@@ -282,7 +282,7 @@ RAC 생성 ─→ Documents 파이프라인 ─→ PromptBuilder.build() (execut
 
 ## 참조
 
-- 프롬프트 시스템 아키텍처: `docs/architecture/13-prompt-system.md`
+- 프롬프트 시스템 아키텍처: `docs/internals/13-prompt-system.md`
 - RAC 타입: `packages/ant-shared/src/rac.ts`
 - PromptBuilder: `packages/ant-cli/src/core/prompt/builder/PromptBuilder.ts`
 - AutoInjectionResolver: `packages/ant-cli/src/core/prompt/builder/AutoInjectionResolver.ts`

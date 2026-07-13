@@ -2,7 +2,7 @@
  * Per-node state-aware tool-set selector for the `execute` phase.
  *
  * Conforms to the `nodes/{name}/tools.ts` contract in
- * `docs/architecture/NODE_GRAPH_LAYOUT.md §2.2`:
+ * `docs/internals/NODE_GRAPH_LAYOUT.md §2.2`:
  *   export async function getTools(state): Promise<ToolDefinition[]>
  *
  * Tool policy:

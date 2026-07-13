@@ -49,7 +49,7 @@ export function getPreviewRoutingMode(): PreviewRoutingMode {
 
 /**
  * The base domain under which per-app subdomains live (e.g.
- * `ant-preview.cross.nexus` → `{label}.ant-preview.cross.nexus`). When set,
+ * `ant-preview.your-domain.tld` → `{label}.ant-preview.your-domain.tld`). When set,
  * subdomain routing is active; when unset, routing falls back to `path`.
  */
 export function getPreviewBaseDomain(): string | undefined {

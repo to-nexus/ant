@@ -26,7 +26,7 @@ import { logger } from '../../../../utils/logger';
  *    SSE only — the durable user_turn line is written by the worker's
  *    `recordUserTurn` (chat-SSOT §6).
  *
- * @see docs/architecture/31-chat-system.md
+ * @see docs/internals/31-chat-system.md
  */
 export function createChatRoutes(deps: {
   chatService?: ChatService;

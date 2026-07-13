@@ -24,7 +24,6 @@ docs/
 │   └── design-input/   The killer feature: Claude / Figma / native design sources
 ├── reference/          CLI, env vars, API, shared types, Redis keys
 ├── internals/          Contributor deep-dives — incident-grade SSOT documents
-├── infra/              Long-form EKS / K8s runbook (DevOps audience)
 ├── observability/      Logging, metrics, debugging
 ├── rubric/             Evaluation rubrics for AI-generated code / PRD / design
 ├── testing/            Test strategy, e2e runbook, verification scenarios
@@ -38,8 +37,7 @@ docs/
 - If you have **an hour**: also read [concepts/architecture.md](concepts/architecture.md)
   and [concepts/spec-driven.md](concepts/spec-driven.md).
 - If you are **deploying to production**: start at
-  [cloud-mode/install.md](cloud-mode/install.md); the long-form EKS runbook is
-  [infra/cloud-deployment-guide.md](infra/cloud-deployment-guide.md).
+  [cloud-mode/install.md](cloud-mode/install.md).
 - If you are **modifying Ant itself**: read [AGENTS.md](../AGENTS.md) first;
   then [develop.md](develop.md) and [internals/](internals/).
 

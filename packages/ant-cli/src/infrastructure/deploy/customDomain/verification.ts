@@ -103,7 +103,7 @@ export async function verifyDomainOwnership(hostname: string, token: string): Pr
 
 /**
  * Build the DNS records the user must create. `cnameTarget` is the stable
- * platform CNAME target (e.g. `ant-domains.cross.nexus`); `apexIps` are the NLB
+ * platform CNAME target (e.g. `ant-domains.your-domain.tld`); `apexIps` are the NLB
  * elastic IPs used for apex A records.
  *
  * When `wildcard` is set, `hostname` is the base domain and the connection is a

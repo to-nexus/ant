@@ -210,9 +210,8 @@ Google Cloud Console OAuth 설정:
 - **모든 서비스 Round-robin LB.** Redis 백 상태로 sticky session
   불필요; 모든 pod이 pub/sub하므로 SSE OK.
 - **`ant-job`은 종료 보호 필요.** 장시간 잡 (5-30분)은 `preStop` +
-  `terminationGracePeriodSeconds` 신중하게.
-  [레거시 인프라 runbook §2.3](../../infra/cloud-deployment-guide.md#23-ant-job-%E2%9A%A0-long-running-jobs)
-  참조 (해당 내용이 본 문서로 fold될 때까지).
+  `terminationGracePeriodSeconds`를 신중하게 설정해 롤링 배포가
+  진행 중인 잡을 죽이지 않도록 한다.
 - **IDE pod은 사용자별 / 프로젝트별.** 오케스트레이터가 동일 EFS를
   IDE pod의 `/workspace`에 마운트. EFS open file handle + 삭제 시
   `fs.rm` race가 `Project already exists` 409의 근본 원인 — cleanup
@@ -222,20 +221,10 @@ Google Cloud Console OAuth 설정:
 #### CloudFront / 멀티 origin 프론트
 
 UI를 별도 origin (CDN 호스팅 번들, BE가 다른 호스트)에서 서빙하면
-[../infra/cloudfront-multi-origin-guide.md](../../infra/cloudfront-multi-origin-guide.md)
-의 CORS / 쿠키 / CSP 설정 참조. 쿠키 `Domain` 속성은
-`JwtService.deriveCookieDomain`이 derive — 값을 강제하려면
-`COOKIE_DOMAIN` env, 또는 소스의 `KNOWN_BASE_DOMAINS`에 등록 가능한
-도메인 추가.
-
-#### Long-form 런북
-
-상세 step-by-step EKS 배포 가이드 — IAM, Helm value, EFS CSI 드라이버
-버전, ElastiCache custom CNAME TLS, `ant-job` KEDA ScaledObject,
-per-tenant 리소스 제한 — 는
-[../infra/cloud-deployment-guide.md](../../infra/cloud-deployment-guide.md)에
-있습니다. 그 파일은 배포 실행하는 DevOps팀 대상; 본 페이지는 운영자
-overview.
+쿠키 `Domain` 속성은 `JwtService.deriveCookieDomain`이 derive — 값을
+강제하려면 `COOKIE_DOMAIN` env, 또는 소스의 `KNOWN_BASE_DOMAINS`에
+등록 가능한 도메인 추가. CDN의 CORS / 쿠키 / CSP 설정을 해당 origin에
+맞춘다.
 
 ### CORS 운영 매트릭스 <a id="cors-operating-matrix"></a>
 

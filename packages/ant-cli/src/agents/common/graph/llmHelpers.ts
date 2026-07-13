@@ -4,7 +4,7 @@
  * Provides wrapper functions that automatically track token usage
  * and accumulate to state, eliminating code duplication across nodes.
  * 
- * Architecture: docs/architecture/13-token-usage-tracking.md
+ * Architecture: docs/internals/35-token-usage-tracking.md
  */
 
 import { LLMClient, LLMInvokeResult, CacheableContent, LLMStreamEvent } from '../../../core/ports/llm';
@@ -822,7 +822,7 @@ export function broadcastTokenUsageByModel(state: KanbanUpdatableState): void {
 //      with `{ taskId: 'estimating', node: nodeId }` — so detect/triage
 //      LLM calls appear in the debug log (previously absent).
 //
-// See docs/architecture/13-token-usage-tracking.md for the full rationale.
+// See docs/internals/35-token-usage-tracking.md for the full rationale.
 
 export type EstimatingNodeId = 'triage' | 'detect' | 'decompose';
 

@@ -69,4 +69,4 @@ src/
 
 ## 환경변수
 
-인프라 환경변수(`ANT_REDIS_URL`, `ANT_SERVER_MODE` 등)와 런타임 환경변수(`ANT_JOB_ID`, `ANT_USER_ID` 등)로 구분된다. 상세는 [01-infrastructure.md](../../docs/architecture/01-infrastructure.md) 참조.
+인프라 환경변수(`ANT_REDIS_URL`, `ANT_SERVER_MODE` 등)와 런타임 환경변수(`ANT_JOB_ID`, `ANT_USER_ID` 등)로 구분된다. 상세는 [01-infrastructure.md](../../docs/internals/02-infrastructure.md) 참조.

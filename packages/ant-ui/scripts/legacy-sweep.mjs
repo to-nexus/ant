@@ -13,7 +13,7 @@
  *
  * Kept as a node script (not shell) so it runs identically on macOS/Linux
  * and inside CI even when `rg` is absent. See
- * docs/architecture/ui-async-policy.md §11 for context.
+ * docs/internals/ui-async-policy.md §11 for context.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
@@ -68,7 +68,7 @@ if (hits.length > 0) {
   }
   console.error(
     `\nAllowed directories: ${ALLOWED_DIRS.join(', ')}\n`
-    + 'See docs/architecture/ui-async-policy.md for the policy.',
+    + 'See docs/internals/ui-async-policy.md for the policy.',
   );
   process.exit(1);
 }

@@ -437,7 +437,7 @@ interface TokenUsageBadgeProps {
 /**
  * TokenUsageBadge - Display token usage with billing-centric display
  *
- * Architecture: docs/architecture/13-token-usage-tracking.md
+ * Architecture: docs/internals/35-token-usage-tracking.md
  *
  * DESIGN PRINCIPLE: Show billable (cost-weighted) input tokens, not raw volume.
  *   - billableInput = new×1.0 + creation×1.25 + read×0.1

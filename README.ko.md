@@ -42,7 +42,7 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
 ```bash
 git clone https://github.com/to-nexus/ant && cd ant
 pnpm install
-pnpm dev:infra            # Redis + ChromaDB (Docker)
+pnpm dev:infra            # 인프라 (Redis, ChromaDB, visual-processor) — Docker
 pnpm dev:all        # API + Realtime + Worker + Preview + UI + site
 ```
 
@@ -55,8 +55,8 @@ OpenAI도 대부분의 잡에서 동작합니다.
 ```bash
 cp packages/ant-cli/.env.example.local packages/ant-cli/.env
 # packages/ant-cli/.env 편집:
-#   ANT_ANTHROPIC_API_KEY=sk-ant-...
-#   ANT_ENCRYPTION_KEY=$(openssl rand -base64 32)
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
 
 자세한 셋업: [docs/ko/local-mode/install.md](docs/ko/local-mode/install.md).
@@ -120,8 +120,8 @@ native는 schema-based.) 풀 가이드:
 | **Game**                  | 개발 중     | Phaser/Web 게임 (sprite + HUD + audio)          |
 
 > **게임 vertical** 은 모드 골격이 준비되어 있습니다 — 도메인 레지스트리,
-> `gameArtTier` visual surface, `gameContentTier` genre/coreLoop 매트릭스,
-> `design-game-art` intent set 이 모두 와이어링되어 있습니다 — 그러나
+> `gameArtTier` visual surface, `design-game-art` intent set 이 모두
+> 와이어링되어 있습니다 — 그러나
 > **아직 프로덕션 준비 상태가 아닙니다**. Stable 표시될 때까지 거친
 > 부분과 breaking change 가 있을 수 있습니다. 현재 지원되는 경로는
 > service 도메인 워크플로입니다.

@@ -2,7 +2,7 @@
  * useProjectLifecycle — the single orchestrator for `(project, feature)`
  * transitions.
  *
- * Contract (see docs/architecture/24-git-operations.md §0 and §9.6):
+ * Contract (see docs/internals/24-git-operations.md §0 and §9.6):
  *
  * Whenever `(selectedProject, selectedFeature)` changes, exactly one effect
  * fires and runs:

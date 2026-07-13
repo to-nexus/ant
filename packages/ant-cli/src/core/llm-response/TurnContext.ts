@@ -63,7 +63,7 @@ export class TurnContext {
    * `commandCardByCommand` / `thinking` carry-over between cycles
    * (verification re-entry stale-card RCA). The fresh section is what
    * backs the chronology guarantee in
-   * docs/architecture/31-chat-system.md §섹션-정렬 rule 4 — without
+   * docs/internals/31-chat-system.md §섹션-정렬 rule 4 — without
    * the suffix, cancelled cards (`_cancelled_:{cardId}`) get sorted
    * BELOW the worker section even after Resume, which is the
    * `even-getting-knave` regression.

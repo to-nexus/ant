@@ -21,7 +21,7 @@ false positives (see [§5](#5-the-dispatch-table-invariant-audit-false-positive-
 |---|---|---|
 | **Tier I — intent policies** | [`PromptBuilder.resolveInjections`](../../packages/ant-cli/src/core/prompt/builder/PromptBuilder.ts) + [`prompt-policy-matrix.ts`](../../packages/ant-shared/src/prompt-policy-matrix.ts) | Always injects `jobs/shared/injections/output-tag-policy`; then `getPromptPolicies(intent)` → `POLICY_TEMPLATE_MAP`. Code intents inject UI / game-art design policy *only when* a `visual/ui` \| `visual/game-art/ant` slot is present (conditional). |
 | **Tier A/D — auto** | [`AutoInjectionResolver.resolve`](../../packages/ant-cli/src/core/prompt/builder/AutoInjectionResolver.ts) | ~18 independent gates (see [§2](#2-autoinjectionresolver-gate-inventory)). |
-| **Basis section** | [`PromptBuilder.buildBasisSection`](../../packages/ant-cli/src/core/prompt/builder/PromptBuilder.ts) | Matrix-gated (`isTierActive`) tier render: domain → techTier → visualTier → gameArtTier → gameContentTier. |
+| **Basis section** | [`PromptBuilder.buildBasisSection`](../../packages/ant-cli/src/core/prompt/builder/PromptBuilder.ts) | Matrix-gated (`isTierActive`) tier render: domain → techTier → visualTier → gameArtTier. |
 | **taskType → variant** | [`templatePaths.ts`](../../packages/ant-cli/src/core/prompt/builder/templatePaths.ts) + `hooksForTaskType` | Per-node base/rules variant selection. |
 | **Per-node composition** | each node | How the node assembles the above. |
 
@@ -30,7 +30,7 @@ false positives (see [§5](#5-the-dispatch-table-invariant-audit-false-positive-
 `node` · `taskType` · `mode` · `job` · `language` · `framework` · `stack` · `domain` · `intent` ·
 data flags (`hasDirective`, `hasMemory`, `hasRetryContext`, `hasLessons`, `hasSessionContext`,
 `hasMissingDependency`, `hasRuntimeError`, `hasCodebase`) · derived (`hasFrontend`, `hasBackend`) ·
-matrix flags (`visualTierActive`, `gameArtTierActive`, `gameContentTierActive`).
+matrix flags (`visualTierActive`, `gameArtTierActive`).
 
 Strict allowlists (no silent fallback — prevents injecting a file that does not exist):
 - language hints: `{typescript-node, typescript-browser, go}`

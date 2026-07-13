@@ -1,7 +1,7 @@
 /**
  * git-world selectors — pure derivations over {@link GitSnapshot}.
  *
- * Design invariants (see `docs/architecture/24-git-operations.md`):
+ * Design invariants (see `docs/internals/24-git-operations.md`):
  * - Every discriminant is a string-literal so consumers can switch
  *   exhaustively (`never` check at the default branch).
  * - Selectors **never** read `gitStatus` / `gitChanges` fields directly;

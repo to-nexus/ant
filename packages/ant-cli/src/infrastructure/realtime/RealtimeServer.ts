@@ -10,7 +10,7 @@
  * - Redis Pub/Sub subscription for cross-pod message delivery
  * - JWT cookie authentication (shared with ant-api and ant-preview)
  * 
- * @see docs/architecture/10-cloud-architecture.md
+ * @see docs/internals/02-infrastructure.md
  */
 
 import express, { Express, Request, Response } from 'express';

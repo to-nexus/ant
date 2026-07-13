@@ -14,7 +14,7 @@ import { initialAsyncFields } from '@/domain/async';
  * exists flag) conflated loading / empty / unknown and spawned the shared-
  * text loading-vs-empty bug. All readers now go through
  * `selectProjectConfigMissing` / `selectProjectConfigExists` selectors.
- * See docs/architecture/ui-async-policy.md.
+ * See docs/internals/ui-async-policy.md.
  */
 
 export interface ProjectConfigState {

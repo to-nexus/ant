@@ -2,7 +2,7 @@
  * Per-node state-aware tool-set selector for the design-job `execute` phase.
  *
  * Conforms to the `nodes/{name}/tools.ts` contract in
- * `docs/architecture/NODE_GRAPH_LAYOUT.md §2.2`:
+ * `docs/internals/NODE_GRAPH_LAYOUT.md §2.2`:
  *   export async function getTools(state): Promise<ToolDefinition[]>
  *
  * The selector owns the per-intent dispatch matrix for the design job so
@@ -30,7 +30,7 @@ export interface ExecuteToolsOptions {
  * discovery tools (SEARCH_WEB, FETCH_URL) are dropped from the returned
  * set. Mirrors code job's split where `TOOL_SETS.codeBasic` (execute)
  * omits them while `TOOL_SETS.planExplore` (plan) carries them. See plan
- * `docs/architecture/15-design-job.md` and the
+ * `docs/internals/15-design-job.md` and the
  * `plan-execute-parallel-spring` plan file.
  */
 function applyPlanGate(state: DesignGraphState, tools: ToolDefinition[]): ToolDefinition[] {

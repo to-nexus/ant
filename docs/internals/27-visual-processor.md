@@ -4,7 +4,7 @@
 
 Visual Job의 deliver 노드에서 최종 이미지에 후처리(배경 제거, 포맷 변환)를 적용하는 파이프라인. 실제 이미지 처리는 Python FastAPI 사이드카(`visual-processor`)에 위임하며, ant-cli는 Hexagonal Architecture 포트/어댑터를 통해 사이드카와 통신한다.
 
-서버 자체의 기능 명세(API 스펙, 내부 아키텍처)는 [visual-processor/README.md](../../packages/ant-cli/src/periphery/integrations/visual-processor/README.md), 배포 가이드(Pod 리소스, K8s, 스케일링)는 [Cloud Deployment Guide](../infra/cloud-deployment-guide.md) Section 2.9에 있다.
+서버 자체의 기능 명세(API 스펙, 내부 아키텍처)는 [visual-processor/README.md](../../packages/ant-cli/src/periphery/integrations/visual-processor/README.md) 참조. 배포(Pod 리소스, K8s, 스케일링)는 각자의 배포 인프라 범위다.
 
 ## 아키텍처 결정
 
@@ -175,5 +175,4 @@ packages/ant-cli/src/
 - Visual Job 워크플로우: [18-visual-job.md](18-visual-job.md)
 - 에이전트 아키텍처: [11-agent-architecture.md](11-agent-architecture.md)
 - 인프라스트럭처 (Redis, BullMQ): [02-infrastructure.md](02-infrastructure.md)
-- 배포 가이드 (Pod 리소스, K8s, 스케일링): [cloud-deployment-guide.md](../infra/cloud-deployment-guide.md)
 - 시스템 개요: [00-system-overview.md](00-system-overview.md)

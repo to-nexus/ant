@@ -6,7 +6,7 @@
  *
  *   - The full inventory of registered tag names + their patterns.
  *   - The 4-axis classification (intent / processing / persistence /
- *     blocking) for each tag — see `docs/architecture/36-output-tag-matrix.md`.
+ *     blocking) for each tag — see `docs/internals/36-output-tag-matrix.md`.
  *   - The `chatLineKind` / `streamAction` discriminators.
  *   - The `promptContract` string each tag contributes to the
  *     `output-tag-policy` partial (Phase 2).
@@ -292,7 +292,7 @@ export function getTag<T = unknown>(name: string): OutputTagSpec<T> {
   const entry = REGISTRY.get(name);
   if (!entry) {
     throw new Error(
-      `[OutputTagRegistry] unknown tag "${name}" — every canonical tag must be registered (see docs/architecture/36-output-tag-matrix.md)`,
+      `[OutputTagRegistry] unknown tag "${name}" — every canonical tag must be registered (see docs/internals/36-output-tag-matrix.md)`,
     );
   }
   return entry as OutputTagSpec<T>;

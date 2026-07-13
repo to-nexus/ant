@@ -226,7 +226,7 @@ POST /remove-bg
 
 ## Deployment
 
-Pod 리소스, Kubernetes 매니페스트, 스케일링 전략, GPU 지원 등 배포 관련 내용은 [Cloud Deployment Guide](../../../../../../../docs/infra/cloud-deployment-guide.md) Section 2.9 참조.
+Pod 리소스, Kubernetes 매니페스트, 스케일링 전략, GPU 지원 등 배포 관련 내용은 각자의 배포 인프라 범위다 (OSS 트리에 포함되지 않음).
 
 **로컬 개발 시:**
 
@@ -268,4 +268,4 @@ visual-processor/
     └── app.py               # FastAPI 앱 팩토리 + 라우트
 ```
 
-ant-cli와의 통합 아키텍처는 [docs/architecture/27-visual-processor.md](../../../../../../../docs/architecture/27-visual-processor.md) 참조.
+ant-cli와의 통합 아키텍처는 [docs/internals/27-visual-processor.md](../../../../../../../docs/internals/27-visual-processor.md) 참조.

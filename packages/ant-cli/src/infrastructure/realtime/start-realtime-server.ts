@@ -14,7 +14,7 @@
  *   ANT_REDIS_URL             - Redis connection URL (required)
  *   ANT_CORS_ORIGINS          - Comma-separated CORS origins (optional)
  * 
- * @see docs/architecture/10-cloud-architecture.md
+ * @see docs/internals/02-infrastructure.md
  */
 
 import 'dotenv/config';

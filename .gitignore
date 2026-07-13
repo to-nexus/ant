@@ -81,21 +81,20 @@ workspaces/**/sessions/
 # logs
 .ant-debug/
 
-# Claude Code (personal data)
-.claude/projects/
-.claude/plans/
-.claude/settings.local.json
+# Claude Code (personal / local harness state — not shipped publicly)
+.claude/
 
 # Untracked docs
 docs/untracked/
 docs/tmp/
 
 # Personal AI agent rules (kept locally, not exposed publicly).
-# Public-facing version is AGENTS.md. See docs/internals/ssot-policies.md
-# for the contributor-friendly summary.
+# The public-facing source of truth for contributors is AGENTS.md.
 CLAUDE.md
 .cursorrules
 
 # Verification scenario harness runtime (fixture source is in packages/ant-cli/tests/verification-scenarios)
 /.ant-test/
-.claude/settings.json
+
+# Editor / IDE multi-root workspace files (personal layout, not shipped)
+*.code-workspace

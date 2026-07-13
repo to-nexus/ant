@@ -407,7 +407,7 @@ function AppShell() {
   //   1. resets git-world state for the new identity
   //   2. reconnects SSE (server publishes `reconnectRefill` on open)
   //   3. primes project config + authoritative git state
-  // See `docs/architecture/24-git-operations.md §0` and
+  // See `docs/internals/24-git-operations.md §0` and
   // `src/domain/project-world/lifecycle.ts`.
   useProjectLifecycle();
 

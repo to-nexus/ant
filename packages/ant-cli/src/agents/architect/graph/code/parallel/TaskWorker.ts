@@ -259,7 +259,7 @@ export class TaskWorker<T extends BaseTask> {
       // batch-split error sub-tasks had finished, defeating the
       // `vast-curling-perch` cleanup's "regression-by-repetition" guard
       // (cleanup commit `4673ad7f` introduced the inject but the worker
-      // propagation was missed; see `docs/architecture/17-code-verification-task.md`
+      // propagation was missed; see `docs/internals/17-code-verification-task.md`
       // §3 banner contract). Querying the orchestrator at task-assignment
       // time gives a per-cycle stable snapshot — no need for a live ref
       // because the worker subgraph treats `state.completedTasksDetails`
@@ -350,7 +350,7 @@ export class TaskWorker<T extends BaseTask> {
     //   4. orchestrator-managed transient failure with bumped
     //      `_failedAttempts` (defensive — covers any path that bumps
     //      the attempt counter without setting `interrupted`)
-    // See docs/architecture/31-chat-system.md §섹션-정렬 rule 4.
+    // See docs/internals/31-chat-system.md §섹션-정렬 rule 4.
     // `isReentry` was captured at function entry so the resumeState
     // restore block above (which clears `task.interrupted`) cannot
     // race-erase the marker before the cycleSeq decision runs.

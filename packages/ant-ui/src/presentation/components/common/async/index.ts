@@ -6,7 +6,7 @@
  * ESLint + CI grep guard enforce the primitive usage; this barrel keeps
  * the consumer surface narrow.
  *
- * See docs/architecture/ui-async-policy.md for the rationale.
+ * See docs/internals/ui-async-policy.md for the rationale.
  */
 export * from './primitives';
 export * from './hooks';

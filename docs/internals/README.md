@@ -93,8 +93,6 @@ For binding rules with regression-guard test names, see
 
 - [security-posture.md](security-posture.md) — 5-axis security SSOT
   (secrets / dependencies / CI gates / container-k8s / auth-tenant).
-- [security-hardening-handoff.md](security-hardening-handoff.md) — active
-  remediation worklist & phase dashboard (resumable across sessions).
 
 ## Conventions
 

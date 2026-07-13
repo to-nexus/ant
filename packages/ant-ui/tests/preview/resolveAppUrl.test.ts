@@ -13,7 +13,7 @@ import { resolveAppUrl, PREVIEW_BASE } from '@/infrastructure/http/api/client';
 
 describe('resolveAppUrl', () => {
   it('returns an absolute https URL verbatim (subdomain mode — no origin prefix)', () => {
-    const abs = 'https://individual--probe-to-nexus--jhedu--base.ant-preview.cross.nexus';
+    const abs = 'https://individual--probe-to-nexus--jhedu--base.ant-preview.example.com';
     expect(resolveAppUrl(abs)).toBe(abs);
   });
 

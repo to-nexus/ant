@@ -66,7 +66,6 @@ LLM 이 emit 하는 모든 canonical `<tag>` 의 처리 정책을 4 축 MECE 매
 | `<executionTier>` | decision | consumed-formatted + post-stream | sealed-state + chat-line | non-blocking | decompose |
 | `<domain>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
 | `<gameArtTier>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
-| `<gameContentTier>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
 | `<techTier>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
 | `<tasks>` | metadata | stream-action (`task_added`) | kanban | non-blocking | decompose |
 | `<references>` | metadata | consumed-formatted | chat-line | non-blocking | decompose / learn |
@@ -131,8 +130,8 @@ LLM 이 emit 하는 모든 canonical `<tag>` 의 처리 정책을 4 축 MECE 매
 | code execute | `<file>` `<edit>` `<delete>` `<reply>` `<done>` `<thinking>` | task-type 별 보강 |
 | code direct | `<reply>` `<done>` `<thinking>` (Tier 0/1) | "Tier 0 답변은 `<reply>` 1 회." |
 | code decompose | `<tasks>` `<task>` `<executionTier>` `<techTier>` `<boundary>` `<directHints>` `<thinking>` | decompose-specific |
-| code detect | `<detect>` `<domain>` `<gameArtTier>` `<gameContentTier>` `<techTier>` | detect-specific |
-| design detect | `<detect>` `<domain>` `<gameArtTier>` `<gameContentTier>` `<techTier>` `<specClarify>` | detect-specific |
+| code detect | `<detect>` `<domain>` `<gameArtTier>` `<techTier>` | detect-specific |
+| design detect | `<detect>` `<domain>` `<gameArtTier>` `<techTier>` `<specClarify>` | detect-specific |
 | design decompose | `<tasks>` `<task>` `<executionTier>` `<techTier>` | decompose-specific |
 | planner generate | `<file>` `<reply>` `<clarify>` `<done>` `<thinking>` | explain mode 는 `<reply>` 만 |
 | ask / inline-ask | `<reply>` `<eval>` `<done>` `<thinking>` | "답변은 `<reply>` 안. evaluation report 끝에 `<eval type=\"...\" />`." |

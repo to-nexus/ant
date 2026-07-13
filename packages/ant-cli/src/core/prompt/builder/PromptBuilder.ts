@@ -352,7 +352,7 @@ export class PromptBuilder implements PromptPort {
     // (first-token discipline + no cross-axis nesting + reply ↔ clarify
     // disambiguation). Prepended so it leads the injections section and
     // the LLM internalises the contract before any node-specific guidance.
-    // SSOT: docs/architecture/36-output-tag-matrix.md.
+    // SSOT: docs/internals/36-output-tag-matrix.md.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     injectionPaths.push('jobs/shared/injections/output-tag-policy');
 

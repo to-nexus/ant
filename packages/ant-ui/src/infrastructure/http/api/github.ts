@@ -7,7 +7,7 @@
  * Git REST call is now mediated by the `domain/git-world/` slice and its
  * private client (`domain/git-world/infrastructure/api.ts`).
  *
- * See `docs/architecture/24-git-operations.md §0` for the contract.
+ * See `docs/internals/24-git-operations.md §0` for the contract.
  */
 
 import { API_BASE, apiGet } from './client';

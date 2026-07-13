@@ -8,7 +8,7 @@
  * `state.completedTasksDetails === undefined`. The verify-mode plan
  * prompt's `priorErrorTasks` injection then silently rendered an empty
  * section every cycle, defeating the regression-by-repetition guard
- * (`docs/architecture/17-code-verification-task.md` §3 banner contract).
+ * (`docs/internals/17-code-verification-task.md` §3 banner contract).
  *
  * The fix queries `this.orchestrator.getCompletedTasks()` at workerState
  * construction time so each cycle gets a stable, up-to-date snapshot.

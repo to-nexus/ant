@@ -2,7 +2,7 @@
  * L1 — `codebase/ANTRULES.md` loader invariants.
  *
  * ANTRULES.md is the codebase-specific **deviation ledger** gated by the
- * 3-condition filter (see docs/architecture/35-codebase-meta-policy.md).
+ * 3-condition filter (see docs/internals/35-codebase-meta-policy.md).
  * The loader:
  *   - returns `undefined` on missing / unreadable / empty-content file
  *   - caps content at 1500 chars with a truncation footer

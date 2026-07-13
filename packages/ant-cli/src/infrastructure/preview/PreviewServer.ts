@@ -12,7 +12,7 @@
  * 
  * 별도 호스트: 배포 도메인의 preview sub-host → ant-preview service
  * 
- * @see docs/architecture/10-cloud-architecture.md Section 3.2
+ * @see docs/internals/02-infrastructure.md Section 3.2
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';

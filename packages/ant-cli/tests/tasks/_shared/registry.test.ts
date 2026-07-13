@@ -2,7 +2,7 @@
  * L2 — `tasks/_shared/registry` dispatch invariants.
  *
  * Locks the hook-lookup contract the phase layer relies on (R1 rule at
- * `docs/architecture/NODE_GRAPH_LAYOUT.md`). Both entry points —
+ * `docs/internals/NODE_GRAPH_LAYOUT.md`). Both entry points —
  * `hooksForTaskType(taskType)` (stateless) and `hooksIfActive(state)`
  * (state-scoped) — MUST return the same bundle object so the dispatch
  * surface is consistent whether the caller is a phase node, router,

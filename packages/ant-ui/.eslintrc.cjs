@@ -36,7 +36,7 @@ module.exports = {
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     '@typescript-eslint/no-explicit-any': 'warn',
 
-    // ── Async UI Policy (docs/architecture/ui-async-policy.md) ──────────
+    // ── Async UI Policy (docs/internals/ui-async-policy.md) ──────────
     //
     // Loader2 is the only lucide spinner allowed in the codebase, and it
     // must only be imported by the Spinner primitive. All other code
@@ -59,7 +59,7 @@ module.exports = {
             + 'Read projectConfig directly from the slice with useAsyncResource.',
         },
         // git-world API surface lockdown — see
-        //   docs/architecture/24-git-operations.md §0
+        //   docs/internals/24-git-operations.md §0
         //   .claude/skills/update-git-world/SKILL.md
         // Boundary rules are expressed in the `files:` override below so
         // they apply to every file except git-world's own implementation.
@@ -100,7 +100,7 @@ module.exports = {
     {
       // git-world surface lockdown — files OUTSIDE the git-world slice
       // must not reach for private infrastructure paths. See
-      //   docs/architecture/24-git-operations.md §0
+      //   docs/internals/24-git-operations.md §0
       //   .claude/skills/update-git-world/SKILL.md
       // Level: `error`. `warn` was used during greenfield migration and
       // promoted at Phase 7 cutover.

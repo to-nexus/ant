@@ -884,7 +884,7 @@ export class XMLStreamParser implements IStreamParser {
           // Note: detect/references tags are NOT parsed here — they flow
           // through as normal response so SpecialTagTransformer can format
           // them. Same for the narrative-axis `<reply>` tag (Phase 2 of the
-          // Output Tag Matrix migration — see docs/architecture/36-output-tag-matrix.md):
+          // Output Tag Matrix migration — see docs/internals/36-output-tag-matrix.md):
           // including it in this lookahead lets the parser cut free text
           // BEFORE a `<reply>` opens, so the reply body reaches the
           // transformer cleanly.

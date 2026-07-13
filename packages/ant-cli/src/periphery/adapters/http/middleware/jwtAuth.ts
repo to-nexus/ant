@@ -11,7 +11,7 @@
  * paths. Cloud mode is uniformly authenticated — "cloud mode running on
  * localhost" still requires OAuth completion before any protected request.
  *
- * @see docs/architecture/10-cloud-architecture.md
+ * @see docs/internals/02-infrastructure.md
  */
 
 import { Request, Response, NextFunction } from 'express';
