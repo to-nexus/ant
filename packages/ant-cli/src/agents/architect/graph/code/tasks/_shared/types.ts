@@ -6,7 +6,7 @@
  * behaviour that would otherwise require `if (task.type === '...')` lives
  * behind one of the optional hook members below.
  *
- * Rules (see docs/architecture/NODE_GRAPH_LAYOUT.md):
+ * Rules (see docs/internals/NODE_GRAPH_LAYOUT.md):
  *   R1 — Phase layer is blind; it only calls `hooksIfActive(state)?.X`
  *        or `hooksForTaskType(taskType)?.X`.
  *   R2 — Hook implementations depend on `tasks/{type}/model/` only.

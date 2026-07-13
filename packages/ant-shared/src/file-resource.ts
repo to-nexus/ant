@@ -5,7 +5,7 @@
  * This is the SSOT for the empty-file / template-marker detection result
  * that the editor header warning subscribes to.
  *
- * See docs/architecture/ui-async-policy.md "Remote Resource Single-SSOT".
+ * See docs/internals/ui-async-policy.md "Remote Resource Single-SSOT".
  */
 
 export type TemplateReason = 'file_empty' | 'marker_and_short_content';

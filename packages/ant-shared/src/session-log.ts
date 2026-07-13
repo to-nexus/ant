@@ -308,7 +308,7 @@ export interface ChatStatusLine extends LineBase {
 
 /**
  * Discriminator for `ChatAssistantMessageLine`. The 4-axis tag matrix
- * (`docs/architecture/36-output-tag-matrix.md`) routes every LLM-emitted
+ * (`docs/internals/36-output-tag-matrix.md`) routes every LLM-emitted
  * `assistant_message` body into one of these surfaces; server-side
  * notifications (job-error, prereq fail, conflict, triage guide) carry
  * `system_notice`. `legacy` covers free text from pre-Phase-2 nodes —

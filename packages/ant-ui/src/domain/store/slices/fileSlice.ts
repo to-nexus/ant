@@ -14,7 +14,7 @@ import { selectIsAuthBlocked } from '../selectors/auth';
  * is the user's dirty edit (null means "no unsaved changes"). Every editor
  * surface (body, header template warning, save button, binary preview) MUST
  * subscribe to this slice. Local `useState<string>` for file content is
- * forbidden — see docs/architecture/ui-async-policy.md.
+ * forbidden — see docs/internals/ui-async-policy.md.
  */
 export type CurrentFileState = AsyncFields<FileResource> & {
   buffer: string | null;

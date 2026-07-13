@@ -7,9 +7,7 @@
 > truth for the security standard ANT holds itself to**, so remediation lands
 > on a stated baseline rather than ad-hoc patches.
 >
-> Active remediation tracking (per-phase) lives in
-> [security-hardening-handoff.md](security-hardening-handoff.md). This file is
-> the durable *standard*; that file is the *worklist*.
+> This file is the durable *standard* — the baseline remediation lands on.
 
 The posture has **five axes**. Each names the invariant, the SSOT location, and
 the current enforcement state (✅ enforced / 🔄 remediation in progress /

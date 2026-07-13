@@ -1,7 +1,7 @@
 /**
  * Token Usage Utility Functions
  *
- * Architecture doc: docs/architecture/13-token-usage-tracking.md
+ * Architecture doc: docs/internals/35-token-usage-tracking.md
  *
  * DESIGN PRINCIPLE: Input and Output are fundamentally different cost categories.
  *   - Input: $3/MTok (Sonnet 4), cacheable, high volume, optimization target

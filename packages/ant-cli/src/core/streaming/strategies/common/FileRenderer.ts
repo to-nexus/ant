@@ -524,7 +524,7 @@ export class FileRenderer {
       // design / planner / code-plan are document-side artifact writes,
       // never source-code mutations. Without this gate the streaming
       // path bypasses the tool-handler gate (a known regression — see
-      // `docs/architecture/15-design-job.md` "Codebase mutation gate").
+      // `docs/internals/15-design-job.md` "Codebase mutation gate").
       const codebaseRel = (() => {
         const rootPath = this.fileSystem?.getRootPath?.();
         if (this.codebasePath && rootPath) {
@@ -601,7 +601,7 @@ export class FileRenderer {
         const fileLeaks = detectCrossAxisLeak(fileInfo.contentBuffer, 'artifact');
         if (fileLeaks.length > 0) {
           console.warn(
-            `[FileRenderer] <file path="${filePath}"> body contains cross-axis tags: ${fileLeaks.join(', ')}. Stripped from card preview. (See docs/architecture/36-output-tag-matrix.md Invariant 2.)`,
+            `[FileRenderer] <file path="${filePath}"> body contains cross-axis tags: ${fileLeaks.join(', ')}. Stripped from card preview. (See docs/internals/36-output-tag-matrix.md Invariant 2.)`,
           );
         }
         await this.chatAPI.completeFileCreation(
@@ -693,7 +693,7 @@ export class FileRenderer {
     const codeFileLeaks = detectCrossAxisLeak(fileInfo.contentBuffer, 'artifact');
     if (codeFileLeaks.length > 0) {
       console.warn(
-        `[FileRenderer] <file path="${filePath}"> body contains cross-axis tags: ${codeFileLeaks.join(', ')}. Stripped from card preview. (See docs/architecture/36-output-tag-matrix.md Invariant 2.)`,
+        `[FileRenderer] <file path="${filePath}"> body contains cross-axis tags: ${codeFileLeaks.join(', ')}. Stripped from card preview. (See docs/internals/36-output-tag-matrix.md Invariant 2.)`,
       );
     }
     await this.chatAPI.completeFileCreation(

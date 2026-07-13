@@ -43,7 +43,7 @@ export interface FileState {
   /**
    * AsyncFields<FileResource> + dirty buffer + save status — the single
    * source of truth for the file the editor is displaying. See
-   * slices/fileSlice.ts and docs/architecture/ui-async-policy.md.
+   * slices/fileSlice.ts and docs/internals/ui-async-policy.md.
    */
   currentFile: CurrentFileState;
   viewModeByPath: Record<string, ViewMode>;
@@ -285,7 +285,7 @@ export interface EditorTab {
 }
 
 // Git state moved to `domain/git-world/**`. See
-// `docs/architecture/24-git-operations.md §0` for the SSOT contract.
+// `docs/internals/24-git-operations.md §0` for the SSOT contract.
 
 export interface PerFeaturePreviewState {
   status: PreviewStatus | undefined;

@@ -4,7 +4,7 @@
  * Single source of truth for Git state, user-facing operations, error
  * classification, and PAT state shared across BE (ant-cli) and FE (ant-ui).
  *
- * ## Ant Git Domain Vocabulary (see docs/architecture/24-git-operations.md)
+ * ## Ant Git Domain Vocabulary (see docs/internals/24-git-operations.md)
  *
  * - `Publish` is **polymorphic**: one FE dispatch maps to 4 backend variants
  *   depending on the current state matrix (S1/S2/S3/S4).

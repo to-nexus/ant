@@ -325,7 +325,7 @@ export class InfrastructureFactory {
 
   // ============================================
   // Preview - Moved to ant-preview service
-  // See docs/architecture/10-cloud-architecture.md
+  // See docs/internals/02-infrastructure.md
   // ============================================
 
   // ============================================

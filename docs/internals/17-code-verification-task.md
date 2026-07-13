@@ -197,5 +197,4 @@ tasks/verification/
 
 ## 7. References
 
-- [`docs/tmp/vast-curling-perch-remaining.md`](../tmp/vast-curling-perch-remaining.md) — RCA + 잔여 작업 (이 plan 의 origin)
-- [`/Users/probe/.cursor/plans/vast-curling-perch_verify_cleanup_e97cdde1.plan.md`](../../.cursor/plans/vast-curling-perch_verify_cleanup_e97cdde1.plan.md) — 본 문서의 변경을 추진한 plan
+- This document is the durable SSOT; the originating plan/RCA notes are kept locally and not shipped with the OSS tree.

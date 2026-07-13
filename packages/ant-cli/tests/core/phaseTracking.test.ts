@@ -2,7 +2,7 @@
  * Phase tracking invariants — `withPhaseTracking` + `accumulateTokenUsage`
  * as SSOT for the chat-input token gauge.
  *
- * See docs/architecture/35-token-usage-tracking.md.
+ * See docs/internals/35-token-usage-tracking.md.
  */
 
 import { describe, it, expect, vi } from 'vitest';

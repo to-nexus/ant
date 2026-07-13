@@ -13,18 +13,6 @@
   <a href="docs/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
-<!--
-  Hero video: drop a 30-60s screencast (MP4, muted, 1280x720) here.
-  Upload via GitHub user-attachments: open "New issue", drag the file into
-  the description, copy the generated URL, paste it as a single line below
-  (no markdown image syntax, no <video> tag — GitHub auto-renders raw URLs).
-
-  Recipe + sanitize checklist:
-    docs/internals/media-workflow.md (forthcoming)
-
-  Until the GIF lands, this comment block is the placeholder.
--->
-
 > ⚠️ **Status: pre-alpha.** Ant works end-to-end but the public API and
 > file layout will move until the first tagged release. Track
 > [milestones](../../milestones) for the roadmap.
@@ -56,7 +44,7 @@ black box that occasionally writes code.
 ```bash
 git clone https://github.com/to-nexus/ant && cd ant
 pnpm install
-pnpm dev:infra            # Redis + ChromaDB via Docker
+pnpm dev:infra            # infra (Redis, ChromaDB, visual-processor) via Docker
 pnpm dev:all        # API + Realtime + Worker + Preview + UI + site
 ```
 
@@ -69,8 +57,8 @@ model; OpenAI works for most jobs.
 ```bash
 cp packages/ant-cli/.env.example.local packages/ant-cli/.env
 # edit packages/ant-cli/.env
-#   ANT_ANTHROPIC_API_KEY=sk-ant-...
-#   ANT_ENCRYPTION_KEY=$(openssl rand -base64 32)
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
 
 Full setup walkthrough: [docs/local-mode/install.md](docs/local-mode/install.md).
@@ -135,11 +123,11 @@ Read more: [docs/concepts/architecture.md](docs/concepts/architecture.md).
 | **Service** (web/backend)| Stable         | Full-stack SaaS, dashboards, REST APIs       |
 | **Game**                 | In development | Phaser/Web games with sprites + HUD + audio  |
 
-> The **game vertical** is scaffolded — domain registry, `gameArtTier`
-> visual surface, `gameContentTier` genre/coreLoop matrix, and the
-> `design-game-art` intent set are all wired — but is **not production
-> ready** yet. Expect rough edges and breaking changes until it's marked
-> Stable. Service-domain workflows are the supported path today.
+> The **game vertical** is scaffolded — domain registry, the `gameArtTier`
+> visual surface, and the `design-game-art` intent set are all wired — but
+> is **not production ready** yet. Expect rough edges and breaking changes
+> until it's marked Stable. Service-domain workflows are the supported path
+> today.
 
 The two domains share the same agents but ship different prompt overlays,
 different design templates, and different visual-tier catalogs. Adding
@@ -187,7 +175,7 @@ For contributors:
 
 ## Stack
 
-**Backend** — Node.js 18+, TypeScript (strict), Express, LangGraph,
+**Backend** — Node.js 22+, TypeScript (strict), Express, LangGraph,
 Anthropic / OpenAI SDKs, BullMQ, ioredis, Handlebars, Zod.
 
 **Frontend** — React 18, Vite, Zustand, Tailwind CSS, Radix UI, ReactFlow.
@@ -199,8 +187,8 @@ shared workspace volumes in cloud mode.
 
 ## Contributing
 
-We've shipped 50+ architecture docs and a thousand+ tests because we ship
-serious software. PRs welcome.
+Ant ships with detailed internal architecture docs and an extensive test
+suite. PRs welcome.
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md). For binding architectural
 rules, read [AGENTS.md](AGENTS.md) — it is the public source of truth that

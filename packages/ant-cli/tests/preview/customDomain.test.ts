@@ -47,12 +47,12 @@ describe('custom-domain verification helpers', () => {
   });
 
   it('builds CNAME instructions for subdomains, A instructions for apex', () => {
-    const sub = buildDnsInstructions('app.example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: ['1.1.1.1'] });
+    const sub = buildDnsInstructions('app.example.com', 'tok', { cnameTarget: 'ant-domains.example.net', apexIps: ['1.1.1.1'] });
     expect(sub.apex).toBe(false);
-    expect(sub.connection).toEqual({ kind: 'cname', name: 'app.example.com', value: 'ant-domains.cross.nexus' });
+    expect(sub.connection).toEqual({ kind: 'cname', name: 'app.example.com', value: 'ant-domains.example.net' });
     expect(sub.txt).toEqual({ name: '_ant-challenge.app.example.com', value: 'tok' });
 
-    const apex = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: ['1.1.1.1', '2.2.2.2'] });
+    const apex = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.example.net', apexIps: ['1.1.1.1', '2.2.2.2'] });
     expect(apex.apex).toBe(true);
     expect(apex.connection).toEqual({ kind: 'a', name: 'example.com', values: ['1.1.1.1', '2.2.2.2'] });
   });
@@ -77,16 +77,16 @@ describe('custom-domain verification helpers', () => {
   });
 
   it('builds wildcard instructions: `*.base` CNAME + apex A when apex IPs set', () => {
-    const w = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: ['1.1.1.1', '2.2.2.2'] }, true);
+    const w = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.example.net', apexIps: ['1.1.1.1', '2.2.2.2'] }, true);
     expect(w.wildcard).toBe(true);
     expect(w.apex).toBe(false);
-    expect(w.connection).toEqual({ kind: 'cname', name: '*.example.com', value: 'ant-domains.cross.nexus' });
+    expect(w.connection).toEqual({ kind: 'cname', name: '*.example.com', value: 'ant-domains.example.net' });
     expect(w.txt).toEqual({ name: '_ant-challenge.example.com', value: 'tok' });
     expect(w.apexConnection).toEqual({ kind: 'a', name: 'example.com', values: ['1.1.1.1', '2.2.2.2'] });
   });
 
   it('omits apex A from wildcard instructions when apex IPs are not provisioned', () => {
-    const w = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.cross.nexus', apexIps: [] }, true);
+    const w = buildDnsInstructions('example.com', 'tok', { cnameTarget: 'ant-domains.example.net', apexIps: [] }, true);
     expect(w.wildcard).toBe(true);
     expect(w.apexConnection).toBeUndefined();
   });
@@ -105,9 +105,9 @@ describe('custom-domain config gate', () => {
   it('disabled without a CNAME target, enabled with it', () => {
     delete process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET;
     expect(isCustomDomainEnabled()).toBe(false);
-    process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.cross.nexus';
+    process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.example.net';
     expect(isCustomDomainEnabled()).toBe(true);
-    expect(getCustomDomainCnameTarget()).toBe('ant-domains.cross.nexus');
+    expect(getCustomDomainCnameTarget()).toBe('ant-domains.example.net');
   });
 
   it('parses comma-separated apex IPs', () => {
@@ -133,7 +133,7 @@ function fakeStore() {
 }
 
 describe('CustomDomainService', () => {
-  beforeEach(() => { process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.cross.nexus'; });
+  beforeEach(() => { process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.example.net'; });
   afterEach(() => { delete process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET; vi.restoreAllMocks(); });
 
   it('register stores a pending_dns record + returns DNS instructions', async () => {

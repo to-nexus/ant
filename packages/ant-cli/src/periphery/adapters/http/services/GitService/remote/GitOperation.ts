@@ -146,7 +146,7 @@ export abstract class GitOperation<TIn, TOut> {
 
     // Previously only Clone/Initialize called this hook — the asymmetry was
     // the root cause of deferred watchers never being re-armed on Push/Pull/
-    // Commit/Discard. See §5.2 of docs/architecture/24-git-operations.md.
+    // Commit/Discard. See §5.2 of docs/internals/24-git-operations.md.
     try {
       this.deps.watcher?.retryDeferredWatchers(projectId);
     } catch (error: any) {

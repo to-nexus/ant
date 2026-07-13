@@ -3,7 +3,7 @@
  * git-sweep.mjs — structural re-fragmentation gate.
  *
  * Enforces the invariants of the git-world greenfield rewrite (see
- * `docs/architecture/24-git-operations.md`). Fails the build if any of
+ * `docs/internals/24-git-operations.md`). Fails the build if any of
  * the canonical patterns reappear outside their declared whitelists.
  *
  * Usage:
@@ -205,7 +205,7 @@ const SELF_REFERENCES = [
   'scripts/git-sweep.mjs',
   '.claude/skills/update-git-world/SKILL.md',
   'docs/tmp/git-world-greenfield-rewrite-handoff.md',
-  'docs/architecture/24-git-operations.md',
+  'docs/internals/24-git-operations.md',
 ];
 
 /**

@@ -6,7 +6,6 @@ This page has been merged. The operator-friendly cloud setup now lives at:
   — covers both managed (Persona B, `ant.crosstoken.io`) and self-host
   (Persona C, single-VM or multi-tenant Kubernetes).
 
-The long-form, command-by-command EKS runbook for DevOps teams remains at
-[../infra/cloud-deployment-guide.md](../infra/cloud-deployment-guide.md).
-That file is referenced by the install page's "Long-form runbook"
-section.
+Provider-specific runbooks (IAM, Helm values, CSI drivers, autoscaling) are
+part of your own deployment infrastructure and are not shipped with the OSS
+tree — the install page above is the vendor-neutral SSOT.

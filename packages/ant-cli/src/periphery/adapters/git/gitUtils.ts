@@ -46,7 +46,7 @@ export function resolveLocalPath(localPath: string, project: string): string {
   }
   
   // Relative path: resolve from ant project root
-  // Example: "../test-app" → /Users/probe/dev/ant/../test-app → /Users/probe/dev/test-app
+  // Example: "../test-app" → /home/user/dev/ant/../test-app → /home/user/dev/test-app
   return path.resolve(process.cwd(), localPath);
 }
 

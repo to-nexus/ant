@@ -2,7 +2,7 @@
  * `codebase/ANTRULES.md` loader.
  *
  * ANTRULES.md is the codebase-specific deviation ledger. See
- * `docs/architecture/35-codebase-meta-policy.md` for scope, 3-condition
+ * `docs/internals/35-codebase-meta-policy.md` for scope, 3-condition
  * filter, and write ownership. Returns trimmed content (≤ 1500 chars with
  * a truncation footer when longer) or `undefined` for missing / empty.
  */
@@ -16,7 +16,7 @@ import * as path from 'node:path';
  * pointer so the LLM knows to `read_file` the full file.
  *
  * The 1500-character limit is documented in the policy (see
- * docs/architecture/35-codebase-meta-policy.md §2 "크기 상한: 1500자").
+ * docs/internals/35-codebase-meta-policy.md §2 "크기 상한: 1500자").
  */
 export const ANTRULES_MAX_CHARS = 1500;
 

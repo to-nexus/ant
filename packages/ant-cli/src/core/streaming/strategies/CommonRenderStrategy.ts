@@ -175,7 +175,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
           const planLeaks = detectCrossAxisLeak(this.planContentBuffer, 'artifact');
           if (planLeaks.length > 0) {
             console.warn(
-              `[CommonRenderStrategy] <plan> body contains cross-axis tags: ${planLeaks.join(', ')}. Stripped from card metadata. (See docs/architecture/36-output-tag-matrix.md Invariant 2.)`,
+              `[CommonRenderStrategy] <plan> body contains cross-axis tags: ${planLeaks.join(', ')}. Stripped from card metadata. (See docs/internals/36-output-tag-matrix.md Invariant 2.)`,
             );
           }
           const cleanedPlan = transformAndStrip(

@@ -20,7 +20,7 @@ import { describe, it, expect } from 'vitest';
 // Re-export of the detector for testing without exposing it publicly.
 // We re-implement the same logic here against fixtures; if the execute
 // helper diverges, tests covering both should be kept consistent. The
-// detector spec is in `docs/architecture/15-design-job.md` "Codebase
+// detector spec is in `docs/internals/15-design-job.md` "Codebase
 // mutation gate" and `plan_3398344f.plan.md` §5.3.
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
 const ARTIFACT_MUTATE_TOOLS = new Set([

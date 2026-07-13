@@ -41,7 +41,7 @@ export const ResolvableFields = {
    * Latest-LLM-call snapshot for the currently-running graph node.
    * Seeded by `withPhaseTracking()` at graph wiring, overwritten by
    * `accumulateTokenUsage()`, broadcast by the same to the chat-input
-   * token gauge. See docs/architecture/13-token-usage-tracking.md.
+   * token gauge. See docs/internals/35-token-usage-tracking.md.
    */
   currentPhaseTokenUsage: Annotation<PhaseTokenUsage | undefined>,
   _uiLocale: Annotation<string | undefined>,

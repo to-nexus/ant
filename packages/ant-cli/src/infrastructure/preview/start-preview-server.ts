@@ -16,7 +16,7 @@
  *   ANT_WORKSPACE_BASE_PATH   - Workspace base path
  *   ANT_SERVER_MODE           - 'local' or 'cloud'
  * 
- * @see docs/architecture/10-cloud-architecture.md Section 3.2
+ * @see docs/internals/02-infrastructure.md Section 3.2
  */
 
 import 'dotenv/config';

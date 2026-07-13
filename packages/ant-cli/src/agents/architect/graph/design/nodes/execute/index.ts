@@ -425,7 +425,7 @@ export async function execute(
     // the next execute turn's trailing user message can ask the LLM
     // whether the assigned scope is satisfied. Cleared on any turn that
     // either emits done or has no artifact mutation. See
-    // `docs/architecture/15-design-job.md` "Codebase mutation gate".
+    // `docs/internals/15-design-job.md` "Codebase mutation gate".
     const turnArtifactMutated = turnHadArtifactMutationIntent(files, pendingToolCalls);
     const nextPendingDoneCheck = !explicitDone && turnArtifactMutated;
     const prevEscalation = state._doneCheckEscalation || 0;

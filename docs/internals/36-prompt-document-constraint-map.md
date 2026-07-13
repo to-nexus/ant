@@ -51,7 +51,7 @@
 
 ## FPOP
 
-- SSOT: `docs/architecture/13-prompt-system.md`
+- SSOT: `docs/internals/13-prompt-system.md`
 - 적용 원칙:
   - Principles over Examples
   - What over How
@@ -66,7 +66,7 @@
 
 ## SBS
 
-- SSOT: `docs/architecture/13-prompt-system.md` 의 Scope-Bound Specificity
+- SSOT: `docs/internals/13-prompt-system.md` 의 Scope-Bound Specificity
 - 규칙: `specificity_floor(template) = activation_scope(template)`
 - gate 축:
   - techTier
@@ -83,8 +83,8 @@
 ## MECE
 
 - SSOT:
-  - 프롬프트 작성 정책: `docs/architecture/13-prompt-system.md`
-  - 문서 집합 정책: `.cursorrules` 및 `docs/architecture/35-codebase-meta-policy.md`
+  - 프롬프트 작성 정책: `docs/internals/13-prompt-system.md`
+  - 문서 집합 정책: `.cursorrules` 및 `docs/internals/35-codebase-meta-policy.md`
 - 적용 원칙:
   - 중복 규칙은 공통 partial로 승격
   - job별 차이는 variant와 gate로만 표현

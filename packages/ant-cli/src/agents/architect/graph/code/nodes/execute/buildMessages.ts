@@ -316,7 +316,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   
   // Execute reads files on-demand via read_file tool. No RAG dump block —
   // plan already planned WHICH files to modify; execute fetches only those
-  // through its own tool calls. See docs/architecture/14-code-job.md.
+  // through its own tool calls. See docs/internals/14-code-job.md.
   const taskTechTiers = state.currentTask.techTiers ?? (getTechTier(state) ? [getTechTier(state)!] : []);
   const contextWithTechTier = {
     ...state.context,

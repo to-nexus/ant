@@ -1,8 +1,7 @@
 # 18. Session Redesign (Three Orthogonal Axes + 5-Tier Execution)
 
-> **Status**: §3 Phase B~E 구현 완료 (2026-04-20). 본 문서는 실행 SSOT([`docs/tmp/session-redesign-handoff.md`](../tmp/session-redesign-handoff.md))를 `docs/architecture/` 톤으로 정착시킨 **아키텍처 SSOT**. 인수 시점 이후의 설계/배선 변경은 이 문서를 먼저 갱신한다.
-> **선행 계획서**: `/Users/probe/.cursor/plans/ant_5-tier_execution_model_cc518235.plan.md`
-> **코드 기준**: `8277b313` + §1~§19 (docs/tmp/session-redesign-handoff.md Phase B~E 반영)
+> **Status**: §3 Phase B~E 구현 완료 (2026-04-20). 본 문서는 실행 SSOT([`docs/tmp/session-redesign-handoff.md`](../tmp/session-redesign-handoff.md))를 `docs/internals/` 톤으로 정착시킨 **아키텍처 SSOT**. 인수 시점 이후의 설계/배선 변경은 이 문서를 먼저 갱신한다.
+> **코드 기준**: `8277b313` + §1~§19
 
 ---
 

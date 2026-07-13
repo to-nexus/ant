@@ -487,7 +487,7 @@ export function buildRuntimeContext(state: DesignGraphState): RuntimeContextBloc
  *
  * Framework/language path decisions now delegate to
  * `AutoInjectionResolver.resolveTechTierInjections` (SSOT). See
- * `docs/architecture/13-prompt-system.md` "Hints 계층". The 3-branch
+ * `docs/internals/13-prompt-system.md` "Hints 계층". The 3-branch
  * priority (task → graph → text-search) is preserved here only as an
  * input-gathering step: each branch shapes the `tiers` array, and the
  * resolver decides which `basis/techTier/framework/*` files to emit.

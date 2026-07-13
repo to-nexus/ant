@@ -57,7 +57,7 @@ export class RouteConfigurator {
    * Configure all routes
    * 
    * Note: SSE routes are now served by dedicated Realtime Server
-   * @see docs/architecture/10-cloud-architecture.md
+   * @see docs/internals/02-infrastructure.md
    */
   configure(app: Express): void {
     this.setupRootRoutes(app);
@@ -215,7 +215,7 @@ export class RouteConfigurator {
    */
   private setupPreviewRoutes(app: Express): void {
     // Preview routes moved to ant-preview service
-    // @see docs/architecture/10-cloud-architecture.md
+    // @see docs/internals/02-infrastructure.md
     // Ingress routes /preview/* → ant-preview
     // Local dev: Vite proxy routes /preview/* → localhost:4102
     logger.info('[RouteConfigurator] Preview routes handled by ant-preview service', {

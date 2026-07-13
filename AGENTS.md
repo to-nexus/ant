@@ -130,7 +130,7 @@ be blind to `task.type`. Task-specific logic lives only in
   and registers itself in `tasks/_shared/registry.ts`.
 
 The full 8-axis layout and rules R1–R5 live in
-[`docs/internals/node-graph-layout.md`](docs/internals/node-graph-layout.md).
+[`docs/internals/NODE_GRAPH_LAYOUT.md`](docs/internals/NODE_GRAPH_LAYOUT.md).
 
 ---
 
@@ -188,7 +188,7 @@ The verification infrastructure lives in
 verification tasks and Tier 2 self-verify tasks share it via `composeBundle`.
 
 For the full background and the runtime-escalation paths used by `batchSplit`,
-see [`docs/internals/verification-task.md`](docs/internals/verification-task.md).
+see [`docs/internals/17-code-verification-task.md`](docs/internals/17-code-verification-task.md).
 
 ---
 
@@ -282,7 +282,7 @@ Rendering rules live there only.
   the transformer — not hard-coded in node files.
 
 The current registered inventory is documented in
-[`docs/internals/output-tag-matrix.md`](docs/internals/output-tag-matrix.md).
+[`docs/internals/36-output-tag-matrix.md`](docs/internals/36-output-tag-matrix.md).
 
 ---
 

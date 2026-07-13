@@ -6,18 +6,18 @@ auto-issued HTTPS. Preview is intentionally out of scope — preview is a
 volatile dev server, not something you point a permanent domain at.
 
 This document is the SSOT for how the feature works and **who has to do what**.
-Infra manifests (Caddyfile, K8s YAML) live in
-[`docs/infra/custom-domains.md`](../infra/custom-domains.md).
+The infra manifests (Caddyfile, K8s YAML) that back it are part of your own
+deployment and are not shipped with the OSS tree.
 
 ## Where it fits
 
 It layers on **subdomain routing** (see [22-preview-system.md](22-preview-system.md)):
-deploys already serve at `{label}.ant-deploy.cross.nexus` at **host root, no
+deploys already serve at `{label}.ant-deploy.your-domain.tld` at **host root, no
 basePath**. A custom domain is just an **alias into that same serving path** —
 so there is no separate build, no basePath rewrite, and both frontend and
 backend packages work through the one mechanism.
 
-Our own wildcard `*.ant-deploy.cross.nexus` stays on the existing ALB + ACM.
+Our own wildcard `*.ant-deploy.your-domain.tld` stays on the existing ALB + ACM.
 Only **user-owned** domains — whose TLS certs we cannot pre-provision — need the
 new on-demand-TLS entry point (NLB + Caddy).
 
@@ -66,14 +66,15 @@ Nothing here is per-user; once done, issuance and routing are automatic.
    `X-Forwarded-Host`. Certificate storage **must be shared across replicas**
    (`caddy-storage-redis` on the existing ElastiCache) or replicas double-issue
    and hit Let's Encrypt limits.
-3. **DNS**: create the stable CNAME target (e.g. `ant-domains.cross.nexus`) → NLB.
+3. **DNS**: create the stable CNAME target (e.g. `ant-domains.your-domain.tld`) → NLB.
 4. **ant-preview env**: set `ANT_CUSTOM_DOMAIN_CNAME_TARGET` (required to enable),
    optionally `ANT_CUSTOM_DOMAIN_APEX_IPS` (apex support) and
    `ANT_TLS_ASK_SECRET`.
 5. **NetworkPolicy**: restrict `/internal/tls-ask` to Caddy.
 
-Manifests + Caddyfile: [`docs/infra/custom-domains.md`](../infra/custom-domains.md).
-Managed alternative (Cloudflare for SaaS) is noted there — it replaces steps 1-3.
+The manifests + Caddyfile that implement this are part of your deployment
+infra (not shipped with OSS). A managed alternative (Cloudflare for SaaS)
+replaces steps 1-3.
 
 ### B. Developer using Ant — per domain (two DNS records)
 
@@ -93,7 +94,7 @@ if our IPs change you don't have to touch anything):
 
 ```
 TXT     _ant-challenge.app.mycompany.com   =  ant-verify-3f9a…     (ownership)
-CNAME   app.mycompany.com                  →  ant-domains.cross.nexus   (connect)
+CNAME   app.mycompany.com                  →  ant-domains.your-domain.tld   (connect)
 ```
 
 **Worked example — apex/root `mycompany.com`** (DNS forbids CNAME at the root, so
@@ -101,8 +102,8 @@ use A records to the NLB IPs; requires `ANT_CUSTOM_DOMAIN_APEX_IPS` to be set):
 
 ```
 TXT   _ant-challenge.mycompany.com   =  ant-verify-3f9a…     (ownership)
-A     mycompany.com                  →  3.34.11.22           (connect, NLB EIP)
-A     mycompany.com                  →  13.125.33.44
+A     mycompany.com                  →  203.0.113.10           (connect, NLB EIP)
+A     mycompany.com                  →  203.0.113.11
 ```
 
 If apex support is not provisioned, use a subdomain (`app.` / `www.`) instead —
@@ -124,9 +125,9 @@ the user-visible result is identical (every subdomain served over HTTPS).
 
 ```
 TXT     _ant-challenge.example.com   =  ant-verify-3f9a…            (ownership, base only)
-CNAME   *.example.com                →  ant-domains.cross.nexus     (all subdomains)
-A       example.com                  →  3.34.11.22                  (apex, if APEX_IPS set)
-A       example.com                  →  13.125.33.44
+CNAME   *.example.com                →  ant-domains.your-domain.tld     (all subdomains)
+A       example.com                  →  203.0.113.10                  (apex, if APEX_IPS set)
+A       example.com                  →  203.0.113.11
 ```
 
 A wildcard CNAME does not cover the bare apex, so the apex A-records are shown

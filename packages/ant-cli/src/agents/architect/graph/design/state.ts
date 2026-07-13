@@ -138,7 +138,7 @@ export interface DesignGraphState extends TriageableState {
    * self-check (done emitted, or another mutation cycle started).
    *
    * Drives R5 of the codebase mutation gate plan (artifact-mutation-
-   * then-no-done detection). See `docs/architecture/15-design-job.md`.
+   * then-no-done detection). See `docs/internals/15-design-job.md`.
    */
   _pendingDoneCheck?: boolean;
 

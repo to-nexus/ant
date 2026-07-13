@@ -2,7 +2,7 @@
  * API base + server-mode SSOT for the marketing site.
  *
  * `NEXT_PUBLIC_API_BASE` is the split-host backend origin (e.g.
- * ant.cross.nexus → ant-server.cross.nexus). Empty string means a
+ * ant.your-domain.tld → ant-server.your-domain.tld). Empty string means a
  * single-origin / local-mode build with no backend round-trip available —
  * mirrors ant-ui's `VITE_CLOUD_BACKEND_BASE` empty ⇒ local-mode discipline.
  *
@@ -36,8 +36,8 @@ const RAW_CATALOG_API_BASE = process.env.NEXT_PUBLIC_CLOUD_API_BASE || RAW_API_B
 export const CATALOG_API_BASE = `${RAW_CATALOG_API_BASE}/api`;
 
 /**
- * Managed ANT Cloud app origin (ant-ui host, e.g. `ant.cross.nexus`). A distinct
- * host from `CLOUD_API_BASE` (API-only, `ant-server.cross.nexus`) — split-host
+ * Managed ANT Cloud app origin (ant-ui host, e.g. `ant.your-domain.tld`). A distinct
+ * host from `CLOUD_API_BASE` (API-only, `ant-server.your-domain.tld`) — split-host
  * deployment, never interchangeable. Origin-only, mirroring the `CLOUD_API_BASE`
  * convention: the `/app/` path is appended by consumers, not baked into the var.
  * Env-var only via `NEXT_PUBLIC_CLOUD_APP_BASE`; unset ⇒ '' (no source fallback).

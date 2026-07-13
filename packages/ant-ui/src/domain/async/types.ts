@@ -1,7 +1,7 @@
 /**
  * Async UI Policy — shared async state model.
  *
- * See docs/architecture/ui-async-policy.md for the full rationale.
+ * See docs/internals/ui-async-policy.md for the full rationale.
  * In short: every slice that represents a remote resource stores a flat
  * `AsyncFields<T>`, and selectors compose a discriminated `AsyncResource<T>`
  * view for <AsyncBoundary>. Loading vs. empty vs. error must never share

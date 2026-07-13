@@ -161,7 +161,7 @@ export class AutoInjectionResolver {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Tier A: Blind-spot hints (basis/techTier — Hints 계층)
     // SSOT for `jobs/{job}/basis/techTier/{language,framework}/...` injection.
-    // See docs/architecture/13-prompt-system.md "Hints 계층".
+    // See docs/internals/13-prompt-system.md "Hints 계층".
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     if (job === 'code' || job === 'design') {
       for (const path of this.resolveTechTierInjections(job as 'code' | 'design', tiers, taskType)) {

@@ -223,9 +223,7 @@ Plus:
   sticky sessions needed; SSE works because every pod can pub/sub.
 - **`ant-job` needs termination protection.** Long-running jobs
   (5-30 minutes) require careful `preStop` + `terminationGracePeriodSeconds`
-  configuration. See the per-pod details in
-  [legacy infra runbook §2.3](../infra/cloud-deployment-guide.md#23-ant-job-%E2%9A%A0-long-running-jobs)
-  until that content folds into this page.
+  configuration so a rolling deploy does not kill an in-flight job.
 - **IDE pods are per-user, per-project.** The orchestrator mounts the
   same EFS into the IDE pod's `/workspace`. EFS open file handles +
   `fs.rm` race during delete is the root cause of the `Project already
@@ -236,20 +234,10 @@ Plus:
 #### CloudFront / multi-origin frontends
 
 If you serve the UI from a separate origin (CDN-hosted bundle, BE on a
-different host), see [../infra/cloudfront-multi-origin-guide.md](../infra/cloudfront-multi-origin-guide.md)
-for the CORS / cookie / CSP configuration. The cookie `Domain` attribute
-is derived by `JwtService.deriveCookieDomain` — set `COOKIE_DOMAIN` to
-force a value, or add your registrable domain to `KNOWN_BASE_DOMAINS` in
-the source.
-
-#### Long-form runbook
-
-The detailed step-by-step EKS deployment guide — IAM, Helm values, EFS
-CSI driver versions, TLS for ElastiCache with custom CNAME, KEDA
-ScaledObject for `ant-job`, per-tenant resource limits — lives at
-[../infra/cloud-deployment-guide.md](../infra/cloud-deployment-guide.md).
-That file is targeted at DevOps teams executing the deployment; this
-page is the operator-friendly overview.
+different host), the cookie `Domain` attribute is derived by
+`JwtService.deriveCookieDomain` — set `COOKIE_DOMAIN` to force a value, or
+add your registrable domain to `KNOWN_BASE_DOMAINS` in the source. Match
+your CDN's CORS / cookie / CSP configuration to those origins.
 
 ### CORS operating matrix
 

@@ -32,24 +32,24 @@ describe('toDnsLabel', () => {
 });
 
 describe('extractLabelFromHost', () => {
-  const BASE = 'ant-preview.cross.nexus';
+  const BASE = 'ant-preview.example.com';
 
   it('strips the known base domain suffix', () => {
-    expect(extractLabelFromHost('to-nexus--probe--app--feat.ant-preview.cross.nexus', BASE))
+    expect(extractLabelFromHost('to-nexus--probe--app--feat.ant-preview.example.com', BASE))
       .toBe('to-nexus--probe--app--feat');
   });
 
   it('ignores the port', () => {
-    expect(extractLabelFromHost('lbl.ant-preview.cross.nexus:443', BASE)).toBe('lbl');
+    expect(extractLabelFromHost('lbl.ant-preview.example.com:443', BASE)).toBe('lbl');
   });
 
   it('returns null at the apex (no per-app subdomain)', () => {
-    expect(extractLabelFromHost('ant-preview.cross.nexus', BASE)).toBeNull();
+    expect(extractLabelFromHost('ant-preview.example.com', BASE)).toBeNull();
   });
 
   it('returns null when the label would span multiple DNS levels', () => {
     // A stray dot in the label position is invalid — must be encoded, not raw.
-    expect(extractLabelFromHost('a.b.ant-preview.cross.nexus', BASE)).toBeNull();
+    expect(extractLabelFromHost('a.b.ant-preview.example.com', BASE)).toBeNull();
   });
 
   it('falls back to the first segment when no base domain given', () => {

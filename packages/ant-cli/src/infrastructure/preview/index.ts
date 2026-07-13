@@ -10,7 +10,7 @@
  * All environments (local and cloud) use the same distributed architecture
  * with Redis for state management.
  * 
- * @see docs/architecture/10-cloud-architecture.md
+ * @see docs/internals/02-infrastructure.md
  */
 
 export { PreviewServer, createPreviewServer } from './PreviewServer';

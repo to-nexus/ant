@@ -101,7 +101,7 @@ function HeaderWarningChip({
  * `currentFile: AsyncFields<FileResource>` slice in `fileSlice`. This
  * component subscribes to that slice for content, meta (template warning),
  * dirty buffer and save status — it never holds the remote body in local
- * state. See docs/architecture/ui-async-policy.md "Remote Resource
+ * state. See docs/internals/ui-async-policy.md "Remote Resource
  * Single-SSOT".
  *
  * EXECUTION-CONTEXT: browser-runtime (DOMParser, XMLSerializer, Blob,

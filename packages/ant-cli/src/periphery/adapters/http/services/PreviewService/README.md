@@ -113,6 +113,6 @@ if (detector.isFrontendPackage(packageJson)) {
 
 ## 🔗 관련 문서
 
-- [Dev Server Management Architecture](../../../../../docs/architecture/02-dev-server-management.md)
+- [Dev Server Management Architecture](../../../../../docs/internals/22-preview-system.md)
 - [Preview Setup Guide](../../core/prompt/templates/code/base/injections/preview-setup.md)
 

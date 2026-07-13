@@ -43,7 +43,7 @@ key types and their meaning.
 | Type | Source | Purpose |
 |------|--------|---------|
 | `Domain` | `tier-matrix.ts` | `'service' \| 'game'`. Workspace-level selector. |
-| `TierKey` | `tier-matrix.ts` | `'techTier' \| 'visualTier' \| 'gameArtTier' \| 'gameContentTier'`. |
+| `TierKey` | `tier-matrix.ts` | `'techTier' \| 'visualTier' \| 'gameArtTier'`. |
 | `isTierActive(tier, slot, domain, runtime)` | `tier-matrix.ts` | The single tier-activation predicate. Used by FE wizard, FE summary, BE decompose, BE PromptBuilder. |
 
 ## Canonical paths
@@ -65,10 +65,11 @@ key types and their meaning.
 
 | Type | Source | Purpose |
 |------|--------|---------|
-| `GameGenreVariant` | `game-content-tier-registry.ts` | Phase 4 genre set. |
-| `GameCoreLoopVariant` | `game-content-tier-registry.ts` | Phase 4 core-loop set. |
-| `GENRE_CORELOOP_MATRIX` | `game-content-tier-registry.ts` | The genre × coreLoop validity matrix. |
-| `coreLoopCandidatesFor(genre)` | `game-content-tier-registry.ts` | The narrowing helper used by decompose. |
+| `GameArtTierAxisKey` / `GAME_ART_TIER_AXIS_KEYS` | `game-art-tier-registry.ts` | The 7 game-art tier axes (concept / perspective / entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile). |
+| `GameArtConceptVariant` / `GAME_ART_CONCEPT_VARIANTS` | `game-art-tier-registry.ts` | The concept variant set. |
+| `GameArtPerspectiveVariant` | `game-art-tier-registry.ts` | Render dimension (`2d` / `3d`). |
+
+(Genre and core loop are expressed as free prose in the PRD, not as a closed tier enum — the former `game-content-tier-registry` was removed.)
 
 ## Adding a shared type
 

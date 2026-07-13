@@ -73,7 +73,7 @@ interface ErrorBoundaryState {
 /**
  * Last-line-of-defence error boundary for the entire application tree.
  *
- * Role (Async UI Policy — see docs/architecture/ui-async-policy.md):
+ * Role (Async UI Policy — see docs/internals/ui-async-policy.md):
  *   - RootErrorBoundary handles UNCAUGHT render-phase crashes that escape
  *     every downstream boundary. The fallback is a full-screen reload card
  *     because the app state is assumed unrecoverable at this point.

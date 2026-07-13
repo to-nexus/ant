@@ -12,7 +12,7 @@
  * (`languageDetector.getCompletionMessage`, `executionTier/labels`)
  * and are imported here — never hard-coded.
  *
- * SSOT context: docs/architecture/36-output-tag-matrix.md.
+ * SSOT context: docs/internals/36-output-tag-matrix.md.
  */
 
 import type { Basis, ResolvedActionContext } from '@ant/shared';

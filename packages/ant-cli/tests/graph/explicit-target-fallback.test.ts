@@ -264,7 +264,7 @@ describe('isSafeStagingPath — writer fallback whitelist', () => {
 
   it('rejects absolute paths', () => {
     expect(isSafeStagingPath('/etc/passwd')).toBe(false);
-    expect(isSafeStagingPath('/Users/probe/dev/ant')).toBe(false);
+    expect(isSafeStagingPath('/home/user/dev/ant')).toBe(false);
   });
 
   it('rejects paths that traverse out of the feature root', () => {
