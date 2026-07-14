@@ -22,6 +22,7 @@
 
 import { TextContentBlock } from "../../../../../../../core/ports/llm";
 import { ArchitectGraphState } from "../../../state";
+import { logger } from '../../../../../../../utils/logger';
 import { CodeTask, FeatureCodeTask } from "../../../../../types/task";
 import { getTechTier, getEffectiveDomain, type ResolvedArtifact } from "@ant/shared";
 import { AutoInjectionResolver } from "../../../../../../../core/prompt/builder/AutoInjectionResolver";
@@ -130,7 +131,7 @@ export async function buildPlanPrompt(
   if (!_planBasis) {
     console.warn(`⚠️  [Plan] state.resolvedAction.basis is ${_planBasis === undefined ? 'undefined' : 'falsy'} (resolvedAction exists: ${!!state.resolvedAction}, intent: ${state.resolvedAction?.intent})`);
   } else {
-    console.log(`📐 [Plan] basis present: stack=${_planBasis.techTier?.stack || 'none'}, visualTier=${_planBasis.visualTier ? Object.keys(_planBasis.visualTier).join(',') : 'none'}`);
+    logger.debug(`📐 [Plan] basis present: stack=${_planBasis.techTier?.stack || 'none'}, visualTier=${_planBasis.visualTier ? Object.keys(_planBasis.visualTier).join(',') : 'none'}`);
   }
   // Phase 1: thread domain + slot so the matrix gate (`isTierActive`) is
   // honoured. Without these the legacy permissive path renders every tier

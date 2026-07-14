@@ -14,6 +14,7 @@
 
 import type { MessageContentBlock } from '../ports/llm';
 import { getModelContextWindow } from '@ant/shared';
+import { logger } from '../../utils/logger';
 
 /**
  * Local default for the BE-internal budget guard.
@@ -218,29 +219,33 @@ export class TokenBudgetManager {
   checkBudget(messages: Array<{ role: string; content: string | MessageContentBlock[] }>): TokenEstimation {
     const estimation = this.estimateMessages(messages);
     
-    console.log(`\n📊 [TokenBudget] Estimation:`);
-    console.log(`   System Prompt: ${estimation.breakdown.systemPrompt.toLocaleString()} tokens`);
-    console.log(`   Conversation History: ${estimation.breakdown.conversationHistory.toLocaleString()} tokens`);
-    console.log(`   Current Message: ${estimation.breakdown.currentMessage.toLocaleString()} tokens`);
-    console.log(`   Overhead (tools+format): ${estimation.breakdown.overhead.toLocaleString()} tokens`);
-    console.log(`   Total: ${estimation.totalTokens.toLocaleString()} / ${this.config.maxTokens.toLocaleString()} tokens (${estimation.budgetUsagePercent.toFixed(1)}%)`);
-    
+    logger.debug(
+      `📊 [TokenBudget] Estimation:\n` +
+      `   System Prompt: ${estimation.breakdown.systemPrompt.toLocaleString()} tokens\n` +
+      `   Conversation History: ${estimation.breakdown.conversationHistory.toLocaleString()} tokens\n` +
+      `   Current Message: ${estimation.breakdown.currentMessage.toLocaleString()} tokens\n` +
+      `   Overhead (tools+format): ${estimation.breakdown.overhead.toLocaleString()} tokens\n` +
+      `   Total: ${estimation.totalTokens.toLocaleString()} / ${this.config.maxTokens.toLocaleString()} tokens (${estimation.budgetUsagePercent.toFixed(1)}%)`
+    );
+
     if (estimation.isOverBudget) {
       console.error(`❌ [TokenBudget] OVER BUDGET! Exceeds safe limit.`);
     } else if (estimation.isNearLimit) {
       console.warn(`⚠️  [TokenBudget] Near limit (>${this.config.warningThreshold * 100}%).`);
     } else {
-      console.log(`✅ [TokenBudget] Within safe limits.`);
+      logger.debug(`✅ [TokenBudget] Within safe limits.`);
     }
 
-    // Area-level warnings
+    // Area-level diagnostics. Debug-only: with a large always-on system
+    // prompt these fire on EVERY call (pure noise) — the real guard is the
+    // isOverBudget/isNearLimit branch above.
     const areas = this.config.areaBudgets;
     const { systemPrompt: sp, conversationHistory: ch } = estimation.breakdown;
     if (sp > areas.systemPrompt + areas.projectContext + areas.taskContext) {
-      console.warn(`⚠️  [TokenBudget] First message (${sp.toLocaleString()}) exceeds combined area budget (${(areas.systemPrompt + areas.projectContext + areas.taskContext).toLocaleString()})`);
+      logger.debug(`⚠️  [TokenBudget] First message (${sp.toLocaleString()}) exceeds combined area budget (${(areas.systemPrompt + areas.projectContext + areas.taskContext).toLocaleString()})`);
     }
     if (ch > areas.conversationHistory) {
-      console.warn(`⚠️  [TokenBudget] History (${ch.toLocaleString()}) exceeds area budget (${areas.conversationHistory.toLocaleString()})`);
+      logger.debug(`⚠️  [TokenBudget] History (${ch.toLocaleString()}) exceeds area budget (${areas.conversationHistory.toLocaleString()})`);
     }
     
     return estimation;

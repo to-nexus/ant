@@ -78,19 +78,36 @@ export class AnthropicLLMClient implements LLMClient {
   // `claude-*` ids default to adaptive so a future model never re-introduces
   // the rejected shape.
   //
+  // Adaptive models IGNORE the caller's round toggle (`enableThinking`) for
+  // the thinking param itself. Rationale (broad-mining-minty RCA, Jul 2026):
+  // on adaptive models, OMITTING the thinking param does NOT disable thinking
+  // — adaptive runs by default, server-side and billed. The old
+  // `!enableThinking → {}` branch was therefore a silent no-op "disable", and
+  // because `display` defaults to `"omitted"`, the model reasoned for minutes
+  // with ZERO stream events → withStreamIdleTimeout misread the silence as a
+  // network stall and burned all 8 retries (re-billing the cache each time).
+  // Sending `thinking:{type:'adaptive', display:'summarized'}` on EVERY round
+  // is cost-neutral (the thinking was already happening and billed) and makes
+  // the model stream thinking_delta events, which keep the idle watchdog
+  // alive and surface reasoning in chat.
+  //
   // Effort mapping (adaptive): Anthropic publishes no numeric equivalence
   // between `budget_tokens: N` and adaptive `effort`, but documents that
   // `medium` "may skip thinking entirely for very simple queries" while `high`
   // (default) "always thinks". Map thinkingBudget by tier so high-budget
   // callers (DECOMPOSE/PLAN/REVISE=10000, CODE_EXECUTE=5000) keep the
-  // always-thinks guarantee. `high` is the SDK default, safe with any version.
+  // always-thinks guarantee. When the caller asked for no thinking
+  // (enableThinking=false) we omit output_config — the server default (high)
+  // matches the previous omitted-param behavior, keeping cost unchanged.
   private buildThinkingParams(
     enableThinking: boolean,
     thinkingBudget: number,
   ): Record<string, any> {
-    if (!enableThinking) return {};
-
-    if (getThinkingMode(this.modelName) === 'extended') {
+    const mode = getThinkingMode(this.modelName);
+    if (mode === 'extended') {
+      // Extended models (Haiku 4.5): omission genuinely disables thinking,
+      // so the caller's round toggle stays authoritative.
+      if (!enableThinking) return {};
       return {
         thinking: {
           type: 'enabled',
@@ -98,30 +115,38 @@ export class AnthropicLLMClient implements LLMClient {
         },
       };
     }
+    // `none` only occurs for non-Anthropic ids, which never route to this
+    // client — defensive no-param fallback.
+    if (mode === 'none') return {};
 
-    // adaptive (default for unknown claude-* ids)
+    // adaptive (default for unknown claude-* ids) — always-on, see above.
+    const thinking = { type: 'adaptive', display: 'summarized' };
+    if (!enableThinking) return { thinking };
     const effort = thinkingBudget >= 5000 ? 'high' : 'medium';
     return {
-      thinking: { type: 'adaptive' },
+      thinking,
       output_config: { effort },
     };
   }
 
-  // Idle timeout matches the request regime. 90s assumes a non-thinking
-  // call (TCP-appears-open / Mac sleep). Anthropic adaptive thinking can
-  // be silent >180s between message_start and first thinking_delta on
-  // large prompts (plum-meeting-ember execute incident). Gated on the
-  // adaptive-thinking regime (per-model via MODEL_REGISTRY), not a name
-  // heuristic — Sonnet 5 is adaptive and needs the same 300s window.
+  // Idle timeout matches the request regime. 90s assumes a genuinely
+  // non-thinking call (TCP-appears-open / Mac sleep). Anthropic adaptive
+  // thinking can be silent >180s between message_start and first
+  // thinking_delta on large prompts (plum-meeting-ember execute incident).
+  // Gated on the adaptive-thinking regime (per-model via MODEL_REGISTRY),
+  // not a name heuristic — Sonnet 5 is adaptive and needs the same 300s
+  // window.
   //
-  // The adaptive window applies EVEN WHEN the request sets
-  // enableThinking=false: an adaptive model decides server-side and can
-  // still go silent past 90s after message_start. prime-nesting-grate
-  // RCA — plan tool-loop rounds 2+ (enableThinking:false) on sonnet-5
-  // received message_start (cache usage) within seconds, then stalled
-  // past the 90s watchdog; all 8 stream retries died the same way and
-  // the task permanently failed while re-billing ~150K cached tokens
-  // per retry. The tight 90s window is only safe for non-adaptive models.
+  // Since the broad-mining-minty fix (Jul 2026), buildThinkingParams sends
+  // `thinking:{type:'adaptive', display:'summarized'}` on EVERY round for
+  // adaptive models, so thinking_delta events flow during reasoning and
+  // keep this watchdog alive — the silent-thinking stall class
+  // (prime-nesting-grate: rounds 2+ omitted the param, the model reasoned
+  // silently past the window, and all 8 retries died re-billing ~150K
+  // cached tokens each) is structurally gone. The 300s adaptive window is
+  // retained as a last-resort guard for true network stalls; do not
+  // tighten it back to 90s — summarized deltas can still have long gaps
+  // on very hard reasoning.
   private resolveIdleTimeoutMs(enableThinking: boolean, thinkingBudget: number): number {
     const isAdaptiveModel = getThinkingMode(this.modelName) === 'adaptive';
     if (!enableThinking) return isAdaptiveModel ? 300_000 : 90_000;

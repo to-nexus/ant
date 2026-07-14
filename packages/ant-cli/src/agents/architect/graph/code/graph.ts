@@ -3,6 +3,7 @@ import { Annotation, StateGraph, END } from "@langchain/langgraph";
 import type { TaskType } from '@ant/shared';
 import { DetectableFields } from '../../../common/graph/annotationHelpers';
 import { ArchitectGraphState } from "./state";
+import { logger } from '../../../../utils/logger';
 import { CodeTask } from "../../types/task";
 import { codeResolveStrategy } from "./nodes/resolve";
 import { createResolveNode } from "../../../common/graph/nodes/resolve";
@@ -127,7 +128,7 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
   if (!_parBasis) {
     console.warn(`⚠️  [ParallelOrchestrator] state.resolvedAction.basis is ${_parBasis === undefined ? 'undefined' : 'falsy'} — workers will NOT have basis templates`);
   } else {
-    console.log(`📐 [ParallelOrchestrator] basis present: stack=${_parBasis.techTier?.stack || 'none'}, visualTier=${_parBasis.visualTier ? Object.keys(_parBasis.visualTier).join(',') : 'none'}`);
+    logger.debug(`📐 [ParallelOrchestrator] basis present: stack=${_parBasis.techTier?.stack || 'none'}, visualTier=${_parBasis.visualTier ? Object.keys(_parBasis.visualTier).join(',') : 'none'}`);
   }
   const sharedContext = {
     context: state.context,

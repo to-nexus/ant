@@ -29,6 +29,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 import { buildMessages } from './buildMessages';
 import { getTools } from './tools';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
+import { logger } from '../../../../../../utils/logger';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { resolveCodebaseRel } from './codebaseRel';
@@ -46,7 +47,7 @@ import type { CodeTask } from '../../../../types/task';
 export async function execute(
   state: ArchitectGraphState
 ): Promise<Partial<ArchitectGraphState>> {
-  console.log('\n💭 [Execute] Starting reasoning...\n');
+  logger.debug('💭 [Execute] Starting reasoning...');
 
   // ✅ Increment recursion count (track every node execution)
   state.recursionCount = (state.recursionCount || 0) + 1;
@@ -133,7 +134,7 @@ export async function execute(
       workerFSForManifest.sharedBuffer.getWrittenByOtherTasks(currentTaskName);
     if (otherTaskFiles.length > 0) {
       state._otherWorkerFiles = otherTaskFiles;
-      console.log(`📋 [CodeGen] Session manifest: ${otherTaskFiles.length} file(s) from other tasks`);
+      logger.debug(`📋 [CodeGen] Session manifest: ${otherTaskFiles.length} file(s) from other tasks`);
     }
   } else if (workerFSForManifest?.sharedBuffer?.getWrittenFilesByOtherWorkers) {
     const currentWorkerId = state.workerId ?? 0;
@@ -141,7 +142,7 @@ export async function execute(
       workerFSForManifest.sharedBuffer.getWrittenFilesByOtherWorkers(currentWorkerId);
     if (otherWorkerFiles.length > 0) {
       state._otherWorkerFiles = otherWorkerFiles;
-      console.log(`📋 [CodeGen] Session manifest: ${otherWorkerFiles.length} file(s) from other workers (legacy fallback)`);
+      logger.debug(`📋 [CodeGen] Session manifest: ${otherWorkerFiles.length} file(s) from other workers (legacy fallback)`);
     }
   }
 
@@ -158,9 +159,9 @@ export async function execute(
   }
   
   if (isExplainMode) {
-    console.log(`💡 [CodeGen] Explain mode - read-only tools enabled`);
+    logger.debug(`💡 [CodeGen] Explain mode - read-only tools enabled`);
   } else {
-    console.log(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.resolvedAction?.mode || 'unknown'})`);
+    logger.debug(`🔧 [CodeGen] Tool calling enabled (code job, mode=${state.resolvedAction?.mode || 'unknown'})`);
   }
   
   // ✅ Workflow update
@@ -252,7 +253,7 @@ export async function execute(
     }
   }
 
-  console.log(`📊 [CodeGen] existingFiles seeded from disk: ${existingFiles.size} path(s)`);
+  logger.debug(`📊 [CodeGen] existingFiles seeded from disk: ${existingFiles.size} path(s)`);
 
   // Publish the disk listing to state so `buildTaskInvariantContext` can
   // render the `Existing Codebase Files` manifest. Cross-worker writes are
@@ -609,7 +610,12 @@ export async function execute(
       // (2026-04-22). Plain-string assistant is only valid when no tool_use
       // exists.
       const assistantMessage = toolCalls.length > 0
-        ? buildAssistantMessage({ text: cleanedResponse || undefined, toolCalls })
+        ? buildAssistantMessage({
+            thinking: thinking || undefined,
+            thinkingSignature: thinkingSignature || undefined,
+            text: cleanedResponse || undefined,
+            toolCalls,
+          })
         : (cleanedResponse ? { role: 'assistant' as const, content: cleanedResponse } : null);
 
       // User turn: Anthropic requires that `assistant(tool_use)` be followed
@@ -696,7 +702,7 @@ export async function execute(
       await chatAPI.finalizeMessage();
     }
     
-    console.log(`✅ [CodeGen] Complete: ${toolCalls.length} tools, ${files.length} files${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
+    logger.debug(`✅ [CodeGen] Complete: ${toolCalls.length} tools, ${files.length} files${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
     
     // ✅ Workflow instrumentation: Exit node (success path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -882,8 +888,15 @@ export async function execute(
     
     // When tool calls exist, push assistant message so tool node receives
     // a complete [assistant, user(tool_result)] pair in conversation history.
+    // Thinking block (with signature) is preserved: adaptive models now run
+    // thinking on every round (see AnthropicLLMClient.buildThinkingParams),
+    // and the API contract requires a tool_use-bearing assistant turn to
+    // carry its thinking block unchanged on same-model continuation. The
+    // plan tool-loop (runPlanWithTools) already preserves it — keep aligned.
     const toolCallHistory = toolCalls.length > 0
       ? [...nodeExecute, buildAssistantMessage({
+          thinking: thinking || undefined,
+          thinkingSignature: thinkingSignature || undefined,
           text: cleanFileContentFromResponse(textResponse) || undefined,
           toolCalls,
         })]
