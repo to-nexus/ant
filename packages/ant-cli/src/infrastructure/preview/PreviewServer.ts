@@ -32,7 +32,7 @@ import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/c
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
-import { parseCookieHeader } from '../../periphery/adapters/http/middleware/proxyForwarding';
+import { extractForwardingContext, parseCookieHeader } from '../../periphery/adapters/http/middleware/proxyForwarding';
 import { assertProxyOwnership } from '../../periphery/adapters/http/middleware/proxyOwnership';
 import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
@@ -1370,7 +1370,18 @@ export class PreviewServer {
     });
 
     // 404 handler
-    this.app.use((_req: Request, res: Response) => {
+    this.app.use((req: Request, res: Response) => {
+      // A peer-forwarded request reaching the catch-all means the owner pod
+      // failed to recognize its own preview host — always-on diagnostic, since
+      // this exact silent 404 previously masked a lost-Host routing defect.
+      if (isSubdomainRouting() && req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1') {
+        logger.warn(
+          `[PreviewServer] Peer-forwarded request missed all proxies (catch-all 404): ` +
+          `host=${req.headers.host} xfh=${req.headers['x-forwarded-host'] ?? '(none)'} ` +
+          `previewBase=${getPreviewBaseDomain() ?? '(unset)'} deployBase=${getDeployBaseDomain() ?? '(unset)'} url=${req.url}`,
+          { component: 'PreviewServer' },
+        );
+      }
       res.status(404).json({
         error: 'Not Found',
         message: 'Preview endpoint not found'
@@ -1437,8 +1448,8 @@ export class PreviewServer {
           // DNS label (platform subdomain) or the custom-domain registry (user
           // host, forwarded as X-Forwarded-Host by Caddy) and tunnel verbatim.
           if (isSubdomainRouting()) {
-            const hostHeader =
-              (req.headers['x-forwarded-host'] as string | undefined) || req.headers.host;
+            // SSOT with the HTTP proxies: X-Forwarded-Host first, then Host.
+            const hostHeader = extractForwardingContext(req).externalHost;
             const label = extractLabelFromHost(hostHeader, getDeployBaseDomain());
             let coords = label ? await this.deployService.resolveDeployLabel(label) : null;
             if (!coords) coords = await this.deployService.resolveCustomDomain(hostHeader || '');

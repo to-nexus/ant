@@ -265,15 +265,17 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
     // preview proxy (also root-mounted in this mode) can handle them.
     if (isSubdomainRouting()) {
       // 1) Platform subdomain (`{label}.<deployBaseDomain>`, via ALB): resolve
-      //    the DNS label to a deploy.
-      const label = extractLabelFromHost(req.headers.host, getDeployBaseDomain());
+      //    the DNS label to a deploy. Uses the externally-visible host
+      //    (X-Forwarded-Host first, then Host) — mirrors previewProxy, where a
+      //    peer-forwarded/ingress-rewritten Host no longer carries the label.
+      const externalHost = extractForwardingContext(req).externalHost;
+      const label = extractLabelFromHost(externalHost, getDeployBaseDomain());
       let coords = label && deps.resolveLabel ? await deps.resolveLabel(label) : null;
       // 2) Custom domain (user-owned host, via NLB+Caddy → X-Forwarded-Host):
       //    the host is NOT under the deploy base domain, so no label was found.
       //    Look it up in the custom-domain registry (active-only). Deploy-only.
       if (!coords && deps.resolveCustomDomain) {
-        const externalHost = extractForwardingContext(req).externalHost || req.headers.host || '';
-        coords = await deps.resolveCustomDomain(externalHost);
+        coords = await deps.resolveCustomDomain(externalHost || '');
       }
       if (!coords) return next();
       const { tenantId, userId, projectId, feature, serviceName } = coords;

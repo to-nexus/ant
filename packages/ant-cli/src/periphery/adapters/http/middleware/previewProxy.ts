@@ -192,12 +192,17 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     // uniquely identifies the app, so root-absolute assets (`/images/x`) route
     // correctly by construction.
     if (isSubdomainRouting()) {
-      const label = extractLabelFromHost(req.headers.host, getPreviewBaseDomain());
+      // Resolve the label from the externally-visible host (X-Forwarded-Host
+      // first, then Host). A peer-forwarded request arrives with Host set to
+      // this pod's `ip:port` — undici fetch drops `Host` (forbidden header) —
+      // so the original subdomain host survives ONLY on X-Forwarded-Host.
+      const externalHost = extractForwardingContext(req).externalHost;
+      const label = extractLabelFromHost(externalHost, getPreviewBaseDomain());
       if (!label) return next();
 
       const match = resolvePreviewLabel(await portRegistry.listPreviews(), label);
       if (!match) {
-        trace(`${req.headers.host} label=${label} → MISS 404`);
+        trace(`${externalHost} label=${label} → MISS 404`);
         res.status(404).json({ error: 'Preview not found' });
         return;
       }
@@ -227,7 +232,8 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       // The dev server lives only on the pod that spawned it (`state.podId`), on
       // a port not reachable cross-pod. When we are NOT that pod, forward the
       // whole request to the owner's ant-preview service port with the original
-      // Host preserved; the owner then proxies to its own localhost dev server.
+      // host carried on X-Forwarded-Host (undici drops `Host` — forbidden
+      // header); the owner then proxies to its own localhost dev server.
       // Ownership is decided by podId (os.hostname) — never POD_IP — so it can't
       // silently disable itself. Loop-guarded against a stale owner record.
       const ownerForward = localState ? null : resolveOwnerForward(
@@ -236,13 +242,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
         req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1',
       );
       trace(
-        `${req.headers.host} label=${label} owner=${state.podId ?? '?'}@${state.host}:${state.port} self=${selfPodId()} ` +
+        `${externalHost} label=${label} owner=${state.podId ?? '?'}@${state.host}:${state.port} self=${selfPodId()} ` +
         `→ ${ownerForward ? `fwd ${ownerForward.forwardHost}:${ownerForward.forwardPort}` : localState ? 'local-first' : 'local'}`,
       );
       if (ownerForward) {
         // Owner-forward is a best-effort FAST PATH: if the owner pod is
         // reachable on its service port (1s probe), forward the whole request
-        // there (Host preserved) and let it proxy to its localhost dev server.
+        // there (original host on X-Forwarded-Host) and let it proxy to its
+        // localhost dev server.
         // Pod-to-pod on the service port is NOT guaranteed cross-pod, so an
         // unreachable owner is NOT fatal — we self-heal by rehydrating the dev
         // server on THIS pod (spawn-only, from the shared EFS workspace) and

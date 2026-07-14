@@ -7,8 +7,8 @@
  * `host` = its IP) on an ephemeral port not reachable cross-pod. The ALB
  * round-robins each preview host across replicas with no owner affinity, so a
  * non-owner pod must forward the request to the owner's ant-preview SERVICE port
- * with the original Host preserved, rather than hang on the owner's dev port →
- * front-tier 504.
+ * with the original host carried on X-Forwarded-Host (undici drops `Host`),
+ * rather than hang on the owner's dev port → front-tier 504.
  *
  * The decision keys off `podId` (`os.hostname()`) — NOT `process.env.POD_IP`.
  * An earlier version gated on POD_IP, which the record writer (`getPodHost`) does
