@@ -226,19 +226,70 @@ export class FilePromptAdapter implements PromptPort {
       return current;
     };
 
+    // ── Span-based validation (replaces the legacy first-match regex) ──
+    // The old `{{#if X}}[\s\S]*?{{var}}` heuristic matched from the FIRST
+    // `#if` in the file to the first var occurrence, attributing the var to
+    // an unrelated guard; it was also blind to `{{#each}}` scoping and to
+    // vars used purely as `#if` gate heads. Result: every render warned
+    // about optional gate vars (`visualTierActive`, `pairedFeature`) and
+    // each-scoped iteration fields (`label`, `path`) — pure noise.
+
+    // Balanced block spans via a stack parser (nesting-safe).
+    type Span = { start: number; end: number; head: string };
+    const eachSpans: Span[] = [];
+    const ifSpans: Span[] = [];
+    {
+      const tokenRe = /\{\{#(if|unless|each)\s+([^}]*)\}\}|\{\{\/(if|unless|each)\}\}/g;
+      const stack: Array<{ kind: string; start: number; head: string }> = [];
+      let m: RegExpExecArray | null;
+      while ((m = tokenRe.exec(templateSource)) !== null) {
+        if (m[1]) {
+          const kind = m[1] === 'each' ? 'each' : 'if';
+          stack.push({ kind, start: m.index, head: m[2].trim() });
+        } else {
+          const kind = m[3] === 'each' ? 'each' : 'if';
+          for (let i = stack.length - 1; i >= 0; i--) {
+            if (stack[i].kind === kind) {
+              const open = stack.splice(i, 1)[0];
+              (kind === 'each' ? eachSpans : ifSpans).push({ start: open.start, end: m.index, head: open.head });
+              break;
+            }
+          }
+        }
+      }
+    }
+    const insideEach = (idx: number) => eachSpans.some(s => idx > s.start && idx < s.end);
+
+    // All occurrences of a var: `{{var}}`, `{{var.x}}`, `{{{var}}}`, or as a
+    // `#if`/`#unless` gate head.
+    const occurrencesOf = (varName: string): Array<{ index: number; gateHead: boolean }> => {
+      const occs: Array<{ index: number; gateHead: boolean }> = [];
+      const re = new RegExp(String.raw`\{\{\{?(#(?:if|unless)\s+)?${varName}(?=[.\s\}])[^}]*\}\}`, 'g');
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(templateSource)) !== null) {
+        occs.push({ index: m.index, gateHead: !!m[1] });
+      }
+      return occs;
+    };
+
+    // A var is only reported missing when at least one occurrence would
+    // actually render undefined content with the var absent:
+    //  - gate heads are exempt (missing gate = falsy branch, by design)
+    //  - each-scoped fields are exempt (iteration-local, not top-level vars)
+    //  - occurrences self-guarded by `{{#if var}}` / `{{#if var.x}}` are exempt
+    //  - occurrences guarded by another var validate only if every enclosing
+    //    guard head resolves truthy (heuristic: `{{else}}` branches and
+    //    helper-expression heads like `(eq a b)` are assumed truthy).
     const shouldValidate = (varName: string): boolean => {
-      // Capture dot-paths (e.g. `resolvedAction.documents`) so a guard whose
-      // discriminator lives on a nested field is evaluated correctly. The
-      // legacy `\w+` regex only captured the head segment, treating any
-      // truthy parent object as "guard open" — which forced top-level
-      // validation of inner-each fields (`label` / `path` / `content`) even
-      // when the outer collection itself was undefined.
-      const conditionalPattern = new RegExp(`\\{\\{#if\\s+([\\w.]+)[^}]*\\}\\}[\\s\\S]*?\\{\\{${varName}[^}]*\\}\\}[\\s\\S]*?\\{\\{\\/if\\}\\}`, 'g');
-      const conditionalMatch = templateSource.match(conditionalPattern);
-      if (!conditionalMatch) return true;
-      const conditionMatch = conditionalMatch[0].match(/\{\{#if\s+([\w.]+)/);
-      if (!conditionMatch) return true;
-      return !!lookupDotPath(conditionMatch[1]);
+      const occs = occurrencesOf(varName);
+      if (occs.length === 0) return true;
+      return occs.some(o => {
+        if (o.gateHead) return false;
+        if (insideEach(o.index)) return false;
+        const enclosing = ifSpans.filter(s => o.index > s.start && o.index < s.end);
+        if (enclosing.some(s => s.head === varName || s.head.startsWith(`${varName}.`))) return false;
+        return enclosing.every(s => (/^[\w.]+$/.test(s.head) ? !!lookupDotPath(s.head) : true));
+      });
     };
 
     const missingVars = templateVars.filter(shouldValidate).filter(v => !(v in vars));

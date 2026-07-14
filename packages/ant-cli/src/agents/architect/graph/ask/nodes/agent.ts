@@ -121,8 +121,13 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     input_schema: t.parameters,
   }));
   
-  // Check if this is first call (enable thinking) or continuation (disable thinking)
-  // After tool_use, thinking must be disabled (Anthropic API requirement)
+  // First-call-only thinking toggle. NOTE: this is a legacy round-based
+  // heuristic from the extended-thinking (budget_tokens) era — there is no
+  // "must disable after tool_use" API requirement on current models. On
+  // adaptive models the toggle is intentionally IGNORED by
+  // AnthropicLLMClient.buildThinkingParams (adaptive thinking runs every
+  // round, model-decided); it only still gates thinking on extended models
+  // (Haiku 4.5).
   const isFirstCall = nodeAgent.length === 0;
   
   try {

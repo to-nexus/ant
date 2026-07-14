@@ -21,6 +21,7 @@ import { hooksIfActive } from '../tasks/_shared/registry';
 import { isErrorTask } from '../tasks/error';
 import { isVerifyModeActive } from '../tasks/_shared/verify';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
+import { logger } from '../../../../../utils/logger';
 
 /**
  * Detect recent tool failures from command history
@@ -63,20 +64,20 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // `[PlanEntry] Channel snapshot` line proves the channel was clobbered
   // between router exit and plan entry.
   const selfVerifyOnDone = (currentTask as { selfVerifyOnDone?: boolean } | undefined)?.selfVerifyOnDone;
-  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-  console.log(`📍 [executeRouter] Current Task Info:`);
-  console.log(`   Task: ${currentTask?.name || 'none'}`);
-  console.log(`   Type: ${currentTask?.type || 'none'}`);
-  console.log(`   Priority: ${currentTask?.priority || 'none'}`);
-  console.log(`   isFinalTask: ${isFinalTask}`);
-  console.log(`   isErrorTask: ${isCurrentErrorTask}`);
-  console.log(`   response.done: ${response.done}`);
-  console.log(`   response.toolCalls: ${response.toolCalls?.length || 0}`);
-  console.log(`   _activePhase: ${state._activePhase}`);
-  console.log(`   _verifyEntered: ${state._verifyEntered}`);
-  console.log(`   selfVerifyOnDone: ${selfVerifyOnDone}`);
-  console.log(`   planTextLen: ${state.planText?.length ?? 0}`);
-  console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+  logger.debug(
+    `📍 [executeRouter] Current Task Info:\n` +
+    `   Task: ${currentTask?.name || 'none'}\n` +
+    `   Type: ${currentTask?.type || 'none'}\n` +
+    `   Priority: ${currentTask?.priority || 'none'}\n` +
+    `   isFinalTask: ${isFinalTask}\n` +
+    `   isErrorTask: ${isCurrentErrorTask}\n` +
+    `   response.done: ${response.done}\n` +
+    `   response.toolCalls: ${response.toolCalls?.length || 0}\n` +
+    `   _activePhase: ${state._activePhase}\n` +
+    `   _verifyEntered: ${state._verifyEntered}\n` +
+    `   selfVerifyOnDone: ${selfVerifyOnDone}\n` +
+    `   planTextLen: ${state.planText?.length ?? 0}`
+  );
   
   // Safety Net A (recursion-budget drain) is evaluated LAST — after the
   // toolCalls and done checks below — so a pending gate-rerun or a `<done>`
@@ -106,7 +107,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
 
   // 1. Tool calls 있으면 → tool 노드
   if (response.toolCalls && response.toolCalls.length > 0) {
-    console.log(`🔧 [Router] ${response.toolCalls.length} tool call(s) detected → tool node`);
+    logger.debug(`🔧 [Router] ${response.toolCalls.length} tool call(s) detected → tool node`);
     return 'tool';
   }
   

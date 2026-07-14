@@ -15,6 +15,7 @@
  */
 
 import { IStreamParser } from './parsers/IStreamParser';
+import { logger } from '../../utils/logger';
 import { IRenderStrategy } from './strategies/IRenderStrategy';
 import { StreamState } from './state/StreamState';
 import { FileRegistry } from './state/FileRegistry';
@@ -129,7 +130,7 @@ export class StreamOrchestrator {
    * @returns StreamResult containing raw text and metadata
    */
   async finalize(hasToolCalls: boolean = false): Promise<StreamResult> {
-    console.log('[StreamOrchestrator] 🏁 Finalizing orchestrator...');
+    logger.debug('[StreamOrchestrator] 🏁 Finalizing orchestrator...');
     try {
       // ✅ CRITICAL: Flush parser buffer first (get any remaining content)
       const finalActions = this.parser.finalize();

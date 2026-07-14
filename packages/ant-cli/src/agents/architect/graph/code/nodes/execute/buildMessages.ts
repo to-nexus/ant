@@ -23,6 +23,7 @@ import { layoutValidityFloorVars } from "../../tasks/_shared/helpers/layoutValid
 import type { BaseTask, FeatureTask } from "@ant/shared";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
+import { logger } from '../../../../../../utils/logger';
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { formatViolations } from "../../utils/violationFormatter";
 import { CacheableContent, MessageContentBlock } from "../../../../../../core/ports/llm";
@@ -296,7 +297,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 }>> {
   
   if (state.planText) {
-    console.log(`🔍 [Execute] planText: ${state.planText.length} chars`);
+    logger.debug(`🔍 [Execute] planText: ${state.planText.length} chars`);
   }
 
   if (!state.currentTask) {
@@ -348,7 +349,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       documents: inferred,
     };
     const totalChars = inferred.reduce((s, a) => s + (a.content?.length || 0), 0);
-    console.log(`📄 [Execute] ${pool.length} pool → ${inferred.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? [])})`);
+    logger.debug(`📄 [Execute] ${pool.length} pool → ${inferred.length} selected (${totalChars.toLocaleString()} chars, include=${JSON.stringify(task.include ?? [])})`);
   }
 
   const { ARTIFACT_PREFIX: AP } = await import('@ant/shared');
@@ -417,7 +418,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   if (!_basisDiag) {
     console.warn(`⚠️  [Execute] state.resolvedAction.basis is ${_basisDiag === undefined ? 'undefined' : 'falsy'} (resolvedAction exists: ${!!state.resolvedAction}, intent: ${state.resolvedAction?.intent})`);
   } else {
-    console.log(`📐 [Execute] basis present: stack=${_basisDiag.techTier?.stack || 'none'}, visualTier=${_basisDiag.visualTier ? Object.keys(_basisDiag.visualTier).join(',') : 'none'}`);
+    logger.debug(`📐 [Execute] basis present: stack=${_basisDiag.techTier?.stack || 'none'}, visualTier=${_basisDiag.visualTier ? Object.keys(_basisDiag.visualTier).join(',') : 'none'}`);
   }
 
   // Reference-codebase usage vars — sibling-project catalog for the

@@ -10,6 +10,7 @@
  */
 
 import type { PromptPort } from '../../ports';
+import { logger } from '../../../utils/logger';
 import type { PolicyKey, Basis, BasisSlotConfig, Domain, TierKey, GameArtTier } from '@ant/shared';
 import { getPromptPolicies, POLICY_TEMPLATE_MAP } from '@ant/shared';
 import {
@@ -458,7 +459,7 @@ export class PromptBuilder implements PromptPort {
     }
     const runtime = { techTier: basis.techTier, hasUiDoc: false };
 
-    console.log(
+    logger.debug(
       `📐 [PromptBuilder.buildBasisSection] job=${job}, domain=${effectiveDomain}, ` +
       `stack=${basis.techTier?.stack || 'none'}, ` +
       `fe=${basis.techTier?.frontend?.language || 'none'}/${basis.techTier?.frontend?.framework || 'none'}, ` +
@@ -514,7 +515,7 @@ export class PromptBuilder implements PromptPort {
     if (sections.length === 0) {
       console.warn(`⚠️  [PromptBuilder.buildBasisSection] All template renders resulted in 0 sections`);
     } else {
-      console.log(`📐 [PromptBuilder.buildBasisSection] Loaded ${sections.length} basis section(s)`);
+      logger.debug(`📐 [PromptBuilder.buildBasisSection] Loaded ${sections.length} basis section(s)`);
     }
     return sections.join('\n\n');
   }

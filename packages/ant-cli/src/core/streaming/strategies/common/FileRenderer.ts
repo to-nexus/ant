@@ -12,6 +12,7 @@ import { FileRegistry } from '../../state/FileRegistry';
 import { LineBufferManager } from './LineBuffer';
 import { normalizeToCodebasePath } from '../../../utils/pathNormalizer';
 import { AsyncMutex } from '../../../utils/AsyncMutex';
+import { logger } from '../../../../utils/logger';
 import { detectCrossAxisLeak, stripRegisteredTags } from '../../OutputTagRegistry';
 
 const designFileLocks = new Map<string, AsyncMutex>();
@@ -986,7 +987,7 @@ export class FileRenderer {
     const pendingOperations = Array.from(this.completionPromises.values());
     
     if (pendingOperations.length === 0) {
-      console.log(`✅ [FileRenderer] No file operations pending, proceeding immediately`);
+      logger.debug(`✅ [FileRenderer] No file operations pending, proceeding immediately`);
       return;
     }
     
