@@ -23,7 +23,7 @@ import { ConfigField, GitHubOwnerInfo } from './components/ConfigField';
 import { LLMModelsSection } from './components/LLMModelsSection';
 import { DeepSeekConsentModal } from './components/DeepSeekConsentModal';
 import { DangerZoneSection } from '../common/DangerZoneSection';
-import { MODEL_REGISTRY } from '@ant/shared';
+import { MODEL_REGISTRY, OVERRIDABLE_MODEL_SLOTS, IMAGE_GEN_SLOTS, type ModelJobKey } from '@ant/shared';
 import {
   TwoColLayout,
   TocNav,
@@ -194,16 +194,22 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   };
 
   const commitModelChange = (job: string, nodeType: string, modelId: string) => {
-    setEditedConfig((prev) => ({
-      ...prev,
-      llmModels: {
-        ...prev.llmModels,
-        [job]: {
-          ...(prev.llmModels?.[job as keyof NonNullable<typeof prev.llmModels>] || {}),
-          [nodeType]: modelId || undefined,
-        },
-      },
-    }));
+    setEditedConfig((prev) => {
+      const prevJob = prev.llmModels?.[job as keyof NonNullable<typeof prev.llmModels>] || {};
+      const nextJob: Record<string, string | undefined> = { ...prevJob, [nodeType]: modelId || undefined };
+      // Changing a job's Default cascades across that job's row: every text
+      // node slot follows the new Default. Image-gen slots (visual sketch /
+      // render) keep their own values — a text/default model is nonsensical
+      // for image generation.
+      if (nodeType === 'default') {
+        const jobKey = job as ModelJobKey;
+        const imageSlots = new Set(IMAGE_GEN_SLOTS[jobKey] ?? []);
+        for (const slot of OVERRIDABLE_MODEL_SLOTS[jobKey] ?? []) {
+          if (!imageSlots.has(slot)) nextJob[slot] = modelId || undefined;
+        }
+      }
+      return { ...prev, llmModels: { ...prev.llmModels, [job]: nextJob } };
+    });
   };
 
   // DeepSeek selections pass through an informed-consent gate first. The pending
