@@ -18,6 +18,7 @@
  */
 
 import type { Request, Response as ExpressResponse } from 'express';
+import type { IncomingHttpHeaders } from 'http';
 import { Readable } from 'stream';
 import { withRetry } from '../../../../core/utils/retry';
 
@@ -66,18 +67,28 @@ export interface ForwardingContext {
 }
 
 /**
- * Resolve the externally-visible request context from an Express Request.
- * Honors existing `X-Forwarded-*` (set by an upstream reverse proxy / ingress)
- * and falls back to the immediate request.
+ * Resolve the externally-visible request context from an Express Request or a
+ * raw `IncomingMessage` (WS upgrade). Honors existing `X-Forwarded-*` (set by
+ * an upstream reverse proxy / ingress) and falls back to the immediate request.
  */
-export function extractForwardingContext(req: Request): ForwardingContext {
+export function extractForwardingContext(req: {
+  headers: IncomingHttpHeaders;
+  protocol?: string;
+  ip?: string;
+}): ForwardingContext {
   const hdr = (name: string): string | undefined => {
     const v = req.headers[name];
     if (Array.isArray(v)) return v[0];
     return typeof v === 'string' ? v : undefined;
   };
 
-  const forwardedHost = hdr('x-forwarded-host') || hdr('host') || undefined;
+  // X-Forwarded-Host may be a comma-joined list when multiple proxies append;
+  // the first entry is the original client-facing host (list semantics).
+  const rawForwardedHost = hdr('x-forwarded-host');
+  const forwardedHost =
+    (rawForwardedHost ? rawForwardedHost.split(',')[0].trim() : undefined) ||
+    hdr('host') ||
+    undefined;
   const forwardedProto =
     hdr('x-forwarded-proto') ||
     (typeof req.protocol === 'string' && req.protocol ? req.protocol : undefined);
@@ -170,19 +181,28 @@ export function buildCleanHeaders(
  * Build headers for a PEER forward — re-sending the request verbatim to another
  * ant-preview replica (the owning pod's service port), NOT to a dev server.
  *
- * Unlike `buildCleanHeaders`, this preserves the original `Host` and `Origin`:
- * the owner replica re-runs its own subdomain resolution (which keys off `Host`)
- * and applies its own dev-server `Origin` rewrite when it proxies onward. Drops
- * hop-by-hop headers, forces `accept-encoding: identity` (we re-stream raw bytes),
- * and keeps `Cookie` so the owner can re-verify ownership. The caller adds the
- * loop-guard header (`PREVIEW_PEER_FORWARD_HEADER`).
+ * The original host CANNOT ride on `Host`: the forward is sent with undici
+ * `fetch`, and `Host` is a fetch-spec forbidden header — undici silently
+ * replaces it with the target `ip:port`. So the original external host is
+ * carried on `X-Forwarded-Host` instead (preserved when the ingress already
+ * set it, injected from `Host` otherwise), and the owner replica resolves its
+ * subdomain label from that (see `extractForwardingContext`). `Origin` is
+ * preserved so the owner applies its own dev-server rewrite when it proxies
+ * onward. Drops hop-by-hop headers, forces `accept-encoding: identity` (we
+ * re-stream raw bytes), and keeps `Cookie` so the owner can re-verify
+ * ownership. The caller adds the loop-guard header (`PREVIEW_PEER_FORWARD_HEADER`).
  */
 export function buildForwardHeaders(req: Request): Record<string, string> {
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(req.headers)) {
-    if (HOP_BY_HOP_HEADERS.has(key.toLowerCase())) continue;
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower)) continue;
+    if (lower === 'host') continue; // forbidden header — undici overwrites it with the target ip:port
     if (typeof value !== 'string') continue;
     headers[key] = value;
+  }
+  if (!headers['x-forwarded-host'] && typeof req.headers.host === 'string') {
+    headers['x-forwarded-host'] = req.headers.host;
   }
   headers['accept-encoding'] = 'identity';
   return headers;
