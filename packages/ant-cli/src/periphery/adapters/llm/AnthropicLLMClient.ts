@@ -14,6 +14,7 @@ import {
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
+import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
 import { getModelContextWindow, getThinkingMode } from '@ant/shared';
 
 /**
@@ -760,7 +761,10 @@ export class AnthropicLLMClient implements LLMClient {
   private convertMessages(
     messages: Array<{ role: string; content: string | MessageContentBlock[] | CacheableContent[] }>
   ): Array<{ role: 'user' | 'assistant'; content: string | AnthropicBlock[] }> {
-    const converted = messages.map(m => ({
+    // Provider-neutral guard: strip empty text blocks before mapping to the
+    // wire format. Anthropic rejects empty text blocks with a 400 (e.g. a
+    // clarify-pause turn saved with empty content); see sanitizeMessages.
+    const converted = sanitizeMessages(messages).map(m => ({
       role: m.role as 'user' | 'assistant',
       content: typeof m.content === 'string'
         ? m.content

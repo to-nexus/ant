@@ -20,6 +20,7 @@ import {
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
+import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
 
 /**
  * OpenAI-compatible providers that accept the `thinking:{type}` request param, mapped
@@ -161,7 +162,8 @@ export class OpenAILLMClient implements LLMClient {
     
     const response = await this.client.chat.completions.create({
       model: this.modelName,
-      messages: messages.map(m => ({
+      // Provider-neutral guard: strip empty text blocks; see sanitizeMessages.
+      messages: sanitizeMessages(messages).map(m => ({
         role: m.role as 'user' | 'assistant' | 'system',
         content: normalizeChatContent(m.content),
       })),
@@ -301,7 +303,9 @@ export class OpenAILLMClient implements LLMClient {
   ): any[] {
     const result: any[] = [];
 
-    for (const msg of messages) {
+    // Provider-neutral guard: strip empty text blocks (parity with the
+    // Anthropic 400 case); see sanitizeMessages.
+    for (const msg of sanitizeMessages(messages)) {
       if (typeof msg.content === 'string') {
         result.push({
           role: msg.role as 'user' | 'assistant' | 'system',
@@ -561,7 +565,8 @@ export class OpenAILLMClient implements LLMClient {
   ): Promise<T> {
     const response = await this.client.chat.completions.create({
       model: this.modelName,
-      messages: messages.map(m => ({
+      // Provider-neutral guard: strip empty text blocks; see sanitizeMessages.
+      messages: sanitizeMessages(messages).map(m => ({
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
       })),
