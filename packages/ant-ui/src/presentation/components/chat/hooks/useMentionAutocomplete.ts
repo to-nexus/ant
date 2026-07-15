@@ -27,10 +27,10 @@ export interface MentionSuggestion {
 /** Which RAC field the folder-tree picker should target when opened from chat. */
 export type BrowseField = 'refs' | 'context' | 'target';
 
-// Phase 2 (D22): `domain` is a workspace-scoped 1st-class selector and is
-// mutated only via `DomainToggle`. The chat-input mention surface is
-// turn-scoped and would let users desync workspace state per-message,
-// so `@domain:` is intentionally absent from this list.
+// Phase 2 (D22): `domain` is a project-level property (set at project
+// creation, changed only in project settings). The chat-input mention
+// surface is turn-scoped and would let users desync project state
+// per-message, so `@domain:` is intentionally absent from this list.
 const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@explicit'] as const;
 type MentionPrefix = (typeof MENTION_PREFIXES)[number];
 

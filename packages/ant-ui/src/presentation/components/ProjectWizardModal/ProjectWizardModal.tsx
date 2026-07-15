@@ -16,7 +16,7 @@ import { executeCodeJob } from '@/infrastructure/http/cli';
 import { cn } from '@/shared/utils/design-system';
 
 import type { WizardStep, ExecStepId, ExecStepStatus, ExecStepState } from './types';
-import { designDirOf } from '@ant/shared';
+import { designDirOf, type Domain } from '@ant/shared';
 import { isCanonicalDesignDoc, isValidName, sanitizeRepoName, delay, generateProjectName, generateFeatureName } from './constants';
 import {
   WizardStepIndicator,
@@ -49,6 +49,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
   // ── Step 1 ──
   const [mode, setMode] = useState<'design' | 'code'>(initialMode);
+  // Project-level domain (service / game). Written to config.json at creation;
+  // there is no mid-flow switcher — it is changed later only in project settings.
+  const [domain, setDomain] = useState<Domain>('service');
   const [projectName, setProjectName] = useState(() =>
     existingProjectId ?? generateProjectName(useStore.getState().projects),
   );
@@ -385,6 +388,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         const updates: Record<string, any> = {};
         if (repositoryName) updates.repositoryName = repositoryName;
         if (gitUrl.trim()) updates.githubRepo = gitUrl.trim();
+        // Domain is always written so the project-level SSOT is explicit from
+        // creation (the server default is 'service'; this records the choice).
+        updates.domain = domain;
         if (Object.keys(updates).length > 0) {
           await updateProjectConfig(projectId, { ...serverConfig, ...updates });
         }
@@ -532,7 +538,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   }, [
     isExecuting, existingProjectId, projectName, repositoryName, gitUrl, gitAction, patStatus,
     featureName, directive, showDirective, sourcesFiles, assetsFiles,
-    designDocsFiles, mode, serverMode, language, gitEnabled, gitReadOnly, t,
+    designDocsFiles, mode, domain, serverMode, language, gitEnabled, gitReadOnly, t,
     setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType,
     setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig, runGitOperation,
   ]);
@@ -568,6 +574,8 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 t={t}
                 mode={mode}
                 onModeChange={handleModeChange}
+                domain={domain}
+                onDomainChange={setDomain}
                 existingProjectId={existingProjectId}
                 projectName={projectName}
                 onProjectNameChange={setProjectName}

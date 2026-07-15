@@ -95,7 +95,12 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   // Figma config state — from Zustand store
   const figmaPopulated = useStore((state) => state.figmaPopulated);
   const refreshFigmaPopulated = useStore((state) => state.refreshFigmaPopulated);
-  const workspaceDomain = useStore((state) => state.actionMetadata?.domain);
+  // Domain filtering keys off the persisted project SSOT (`config.json`),
+  // NOT the mutable `actionMetadata.domain` buffer — the latter holds the
+  // previous project's value across a project switch until the config
+  // re-fetch lands, which would filter the tree by the wrong domain.
+  const projectDomainStatus = useStore((state) => state.projectConfig.status);
+  const projectDomain = useStore((state) => state.projectConfig.data?.domain);
 
   useEffect(() => {
     refreshFigmaPopulated();
@@ -383,8 +388,15 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   }, [uploadState?.completed, dismissUpload]);
 
   const prunedFileTree = useMemo(
-    () => (fileTree?.length ? pruneFileTreeForWorkspaceDomain(fileTree, workspaceDomain) : fileTree),
-    [fileTree, workspaceDomain],
+    () => {
+      if (!fileTree?.length) return fileTree;
+      // While the project config is loading, skip pruning (show the full tree)
+      // rather than prune by an unknown domain — a brief over-inclusive view
+      // beats hiding the correct domain's artifacts against a stale value.
+      if (projectDomainStatus !== 'ready') return fileTree;
+      return pruneFileTreeForWorkspaceDomain(fileTree, projectDomain);
+    },
+    [fileTree, projectDomainStatus, projectDomain],
   );
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

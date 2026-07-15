@@ -370,10 +370,10 @@ function ChatActionCards() {
           {t('title')}
         </h2>
         {/* Read-only domain badge — mirrors the absolute-left back button so
-            the centered title stays put. Domain is toggled at the top level
-            (ActionsPanel pick-action); the badge links there. */}
+            the centered title stays put. Domain is a project-level property
+            (set at creation, changed in project settings). */}
         <div style={{ position: 'absolute', right: 0 }}>
-          <DomainBadge onGoToTopLevel={() => openActionsPanel()} />
+          <DomainBadge />
         </div>
       </div>
 

@@ -36,10 +36,10 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     createProjectConfig,
   } = useStore();
   const projectConfigMissing = useStore(selectProjectConfigMissing);
-  // Live domain mirror for the ACTIVE project. `DomainToggle` updates this
-  // synchronously (uiSlice.updateActionMetadata) + persists to config.json,
-  // whereas `projectConfig.data.domain` only updates on re-fetch — so the
-  // active row must read from here to reflect a toggle immediately.
+  // Live domain mirror for the ACTIVE project. `actionMetadata.domain` is the
+  // derived mirror of the project's `config.json` domain — the projectConfig
+  // mirror keeps it in sync after a project-settings domain change — so the
+  // active row reads from here to reflect a change without waiting on a fetch.
   const activeDomain = useStore((s) => s.actionMetadata.domain as Domain | undefined);
 
   const [showWizard, setShowWizard] = useState(false);
@@ -263,7 +263,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             <RowList ariaLabel={t('workspace.title')}>
               {orderedProjects.map((name) => {
                 const isActive = name === selectedProject;
-                // Active row: live mirror (reflects a DomainToggle immediately).
+                // Active row: live mirror (reflects a settings change quickly).
                 // Non-active rows: bulk-resolved cache. Default `service`.
                 const domain: Domain = isActive
                   ? (activeDomain || 'service')
