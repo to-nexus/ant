@@ -22,6 +22,7 @@
 import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { DesignGraphState } from '../../state';
+import { applyDrainFinalization } from './drainFinalize';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
@@ -194,7 +195,13 @@ export async function execute(
 
   // Tool activation: delegate to the per-node tools.ts selector so the
   // execute node body stays focused on streaming / parsing.
-  const tools = await getTools(state, { useSourceFileTool });
+  // Drain-time forced finalization (see ./drainFinalize.ts) may strip the
+  // tool list and append a "emit final output now" note to the messages.
+  const { tools, drainFinalizing } = applyDrainFinalization(
+    state,
+    messages,
+    await getTools(state, { useSourceFileTool }),
+  );
   
   // ✅ Workflow update
   if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -483,6 +490,9 @@ export async function execute(
           _activePhase: 'execute' as const,
           _currentTaskTokenUsage: state._currentTaskTokenUsage,
           tokenUsage: state.tokenUsage,
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+          _drainFinalized: state._drainFinalized || drainFinalizing,
         };
       }
     }
@@ -503,6 +513,13 @@ export async function execute(
       _activePhase: 'execute' as const,
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
       tokenUsage: state.tokenUsage,
+      // recursionCount is a last-value channel: the mutation at the top of this
+      // node is dropped unless returned here. Omitting it starved the
+      // executeRouter drain guard (local-caring-board: gauge ~426 while real
+      // super-steps hit 800, so `remaining < 30` never fired). Code-execute parity.
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+      _drainFinalized: state._drainFinalized || drainFinalizing,
       llmResponse: hasToolCalls ? {
         toolCalls: pendingToolCalls,
         textResponse,

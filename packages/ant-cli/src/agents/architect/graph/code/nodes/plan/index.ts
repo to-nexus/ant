@@ -198,6 +198,13 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const { context: entry, delta: entryDelta } = await resolvePlanEntry(state);
   const { nextTask, isRetry, skipKeywordAndRAG } = entry;
 
+  // recursionCount is a last-value channel — the in-place increment above is
+  // dropped unless committed on the returned delta. Every plan() exit flows
+  // through mergeDelta(base, entryDelta) with delta-wins, so this single
+  // assignment commits the increment on all paths (drain-guard gauge parity).
+  entryDelta.recursionCount = state.recursionCount;
+  entryDelta.recursionLimit = state.recursionLimit;
+
   await workflowEnter(state, nextTask);
 
   // STEP 0.5 — resume interrupted task.

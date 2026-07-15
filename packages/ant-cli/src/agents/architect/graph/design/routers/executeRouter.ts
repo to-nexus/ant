@@ -21,6 +21,15 @@
 
 import { DesignGraphState } from '../state';
 
+/** Router drain: divert to checkTaskStatus when this few super-steps remain. */
+export const RECURSION_DRAIN_THRESHOLD = 30;
+/**
+ * The execute node runs its forced-finalization turn (tools stripped, "emit
+ * final output now") this many steps BEFORE the router drain, so the salvage
+ * turn happens while the router still lets the response route normally.
+ */
+export const DRAIN_FINALIZE_MARGIN = 5;
+
 export function routeAfterExecute(state: DesignGraphState): string {
   const response = state.llmResponse;
 
@@ -49,7 +58,7 @@ export function routeAfterExecute(state: DesignGraphState): string {
   // Recursion limit approaching (read-only check)
   if (state.recursionLimit && state.recursionCount) {
     const remaining = state.recursionLimit - state.recursionCount;
-    if (remaining < 30) {
+    if (remaining < RECURSION_DRAIN_THRESHOLD) {
       console.warn(`⚠️  [ExecuteRouter] Recursion limit approaching (${state.recursionCount}/${state.recursionLimit}) → checkTaskStatus`);
       return 'checkTaskStatus';
     }
