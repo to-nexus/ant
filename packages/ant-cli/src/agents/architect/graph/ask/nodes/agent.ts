@@ -226,13 +226,13 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
         accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
       }
     } else if (llm.invokeWithUsage) {
-      const result = await llm.invokeWithUsage(messages, { system: systemPrompt });
+      const result = await llm.invokeWithUsage(messages, { system: systemPrompt, enableThinking: false });
       responseText = result.content;
       if (result.usage) {
         accumulateTokenUsage(state as any, result.usage, { taskLevel: true, jobLevel: true });
       }
     } else {
-      responseText = await llm.invoke(messages, { system: systemPrompt });
+      responseText = await llm.invoke(messages, { system: systemPrompt, enableThinking: false });
     }
   }
   

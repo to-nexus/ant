@@ -108,12 +108,19 @@ export async function callLLMWithToolLoop(
       applyEstimatedInputTokensFromMessages(options.state, allMessages);
     }
 
+    // Per-round thinking toggle (code-execute / 5e981a1f contract): thinking on
+    // round 0 (initial planning) only, OFF on every tool-continuation round.
+    // On adaptive Anthropic models this is ignored (they always think); it only
+    // bounds toggle providers (GLM/DeepSeek unbounded, Haiku budget-capped),
+    // preventing the every-round GLM reasoning that overflows max_tokens.
+    const roundThinking = round === 0 ? options.enableThinking : false;
+
     for await (const event of llm.stream(allMessages, {
       tools: roundTools.length > 0 ? roundTools : undefined,
       temperature: options.temperature,
       maxTokens: options.maxTokens,
-      enableThinking: options.enableThinking,
-      thinkingBudget: options.thinkingBudget,
+      enableThinking: roundThinking,
+      thinkingBudget: roundThinking ? options.thinkingBudget : undefined,
     })) {
       if (event.type === 'retry') {
         response = '';

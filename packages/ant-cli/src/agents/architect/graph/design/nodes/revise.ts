@@ -152,7 +152,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     } else {
       response = await llm.invoke([
         { role: 'user', content: prompt }
-      ]);
+      ], { enableThinking: false });
     }
     
     // Parse JSON response

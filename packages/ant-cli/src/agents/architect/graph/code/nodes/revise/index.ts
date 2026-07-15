@@ -140,7 +140,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     } else {
       response = await llm.invoke([
         { role: 'user', content: prompt }
-      ]);
+      ], { enableThinking: false });
     }
     
     // Parse JSON response

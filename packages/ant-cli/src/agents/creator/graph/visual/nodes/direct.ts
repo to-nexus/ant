@@ -411,7 +411,11 @@ async function streamWithToolLoop(
     // T1 pre-call estimate per tool-loop round.
     applyEstimatedInputTokensFromMessages(state, currentMessages);
 
-    for await (const event of llm.stream(currentMessages, { tools })) {
+    // Per-round thinking (code-execute / 5e981a1f contract): ON round 0, OFF on
+    // tool-continuation rounds. No-op on Gemini (visual default — thinking is
+    // model-managed) and ignored by adaptive Anthropic; only bounds toggle
+    // providers (GLM/DeepSeek unbounded) if the visual job runs on one.
+    for await (const event of llm.stream(currentMessages, { tools, enableThinking: round === 0 })) {
       if (event.type === 'retry') {
         text = '';
         toolUses.length = 0;
@@ -477,7 +481,7 @@ async function streamWithToolLoop(
   let finalText = '';
   // T1 pre-call estimate for the final text-only call.
   applyEstimatedInputTokensFromMessages(state, currentMessages);
-  for await (const event of llm.stream(currentMessages, { tools: undefined })) {
+  for await (const event of llm.stream(currentMessages, { tools: undefined, enableThinking: false })) {
     maybeUpdatePhaseTokenUsage(state, event);
     if (event.type === 'text' && event.text) {
       finalText += event.text;

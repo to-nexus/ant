@@ -596,7 +596,7 @@ export async function invokeWithTracking(
     return result.content;
   } else {
     // Fallback: no token tracking
-    return await llm.invoke(messages, { temperature, maxTokens });
+    return await llm.invoke(messages, { temperature, maxTokens, enableThinking, thinkingBudget });
   }
 }
 

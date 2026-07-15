@@ -77,7 +77,7 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
     applyEstimatedInputTokensFromMessages(state, messages);
 
     if (llm.stream) {
-      for await (const event of llm.stream(messages)) {
+      for await (const event of llm.stream(messages, { enableThinking: false })) {
         maybeUpdatePhaseTokenUsage(state, event);
         if (event.type === 'text' && event.text) {
           responseText += event.text;
@@ -88,14 +88,14 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
         }
       }
     } else if (llm.invokeWithUsage) {
-      const response = await llm.invokeWithUsage(messages);
+      const response = await llm.invokeWithUsage(messages, { enableThinking: false });
       responseText = response.content;
       if (response.usage) {
         accumulateTokenUsage(state, response.usage, { taskLevel: true, jobLevel: true });
       }
       await chatAPI.sendLLMEvent({ type: 'text', text: responseText });
     } else {
-      responseText = await llm.invoke(messages);
+      responseText = await llm.invoke(messages, { enableThinking: false });
       await chatAPI.sendLLMEvent({ type: 'text', text: responseText });
     }
 

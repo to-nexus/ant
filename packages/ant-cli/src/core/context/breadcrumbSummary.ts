@@ -104,7 +104,7 @@ export async function buildLlmBreadcrumbSummary(
       { role: 'user', content: 'Produce the breadcrumb summary.' },
     ];
     const text = await withTimeout(
-      llm.invoke(messages, { maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS }),
+      llm.invoke(messages, { maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS, enableThinking: false }),
       BREADCRUMB_SUMMARY_TIMEOUT_MS,
     );
     const cleaned = (text ?? '').trim();

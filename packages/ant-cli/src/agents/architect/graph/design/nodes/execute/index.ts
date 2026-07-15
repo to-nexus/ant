@@ -275,13 +275,17 @@ export async function execute(
     // tool-result merges new messages into history).
     applyEstimatedInputTokensFromMessages(state, messages);
     // ✅ Stream with XML parsing + tool calling support
-    // Thinking is always enabled; thinking blocks are preserved in conversation
-    // history by the tool node so the API accepts them on subsequent turns.
+    // Per-round thinking (code-execute / 5e981a1f contract): ON for round 0
+    // (initial doc reasoning), OFF on tool-continuation rounds. Adaptive
+    // Anthropic ignores this (always thinks); it bounds toggle providers
+    // (GLM/DeepSeek unbounded) whose every-round reasoning overflows max_tokens.
+    // Thinking blocks are preserved in conversation history by the tool node so
+    // the API accepts them on subsequent turns.
     for await (const event of llmClient.stream(messages, {
       tools: tools && tools.length > 0 ? tools : undefined,
       maxTokens,
-      enableThinking: true,
-      thinkingBudget: LLM_THINKING_BUDGET.PLAN,
+      enableThinking: !isAfterToolCall,
+      thinkingBudget: !isAfterToolCall ? LLM_THINKING_BUDGET.PLAN : undefined,
     })) {
       if (event.type === 'retry') {
         thinking = '';

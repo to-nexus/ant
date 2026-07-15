@@ -307,12 +307,12 @@ async function invokeAndParseWithRetry(
       const { content } = await runEstimatingLLM(
         state as any,
         'triage',
-        () => llm.invokeWithUsage(messages),
+        () => llm.invokeWithUsage(messages, { enableThinking: false }),
         { promptChars: meta.systemLen + meta.userLen },
       );
       raw = content;
     } else {
-      raw = await llm.invoke(messages);
+      raw = await llm.invoke(messages, { enableThinking: false });
     }
     logTriagePromptAndResponse({
       featurePath: meta.featurePath,

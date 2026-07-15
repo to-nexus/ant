@@ -92,7 +92,7 @@ export async function renderExplainResponse(
   let capturedUsage: any = undefined;
 
   try {
-    for await (const event of llm.stream(messages as any)) {
+    for await (const event of llm.stream(messages as any, { enableThinking: false })) {
       if (event.type === 'retry') {
         textResponse = '';
         capturedUsage = undefined;
