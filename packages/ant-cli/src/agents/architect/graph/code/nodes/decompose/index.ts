@@ -16,7 +16,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, basePriorityFor } from "../../state";
 import { renderPriorityBandGuide } from "../../state.priorityGuide";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, applyExplicitGameArtTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -1449,7 +1449,18 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
     if (gameArtTier || serviceVirtualization) {
       const newBasis: import('@ant/shared').Basis = { ...state.resolvedAction.basis };
-      if (gameArtTier) newBasis.gameArtTier = { ...(state.resolvedAction.basis?.gameArtTier ?? {}), ...gameArtTier };
+      if (gameArtTier) {
+        // Explicit gameArtTier axes (raw actionMetadata.basis.gameArtTier — the
+        // user's wizard selection) are authoritative: the LLM emit / default-fill
+        // only supplies axes the explicit basis lacks, it never overrides a
+        // user-pinned axis (e.g. perspective=3d). Mirrors the explicit-techTier
+        // authority policy in STEP 6.7.
+        newBasis.gameArtTier = applyExplicitGameArtTierOverrides(
+          state.resolvedAction.basis?.gameArtTier,
+          gameArtTier,
+          state.actionMetadata?.basis?.gameArtTier,
+        );
+      }
       if (serviceVirtualization) newBasis.serviceVirtualization = serviceVirtualization;
       state.resolvedAction = { ...state.resolvedAction, basis: newBasis };
       console.log(
