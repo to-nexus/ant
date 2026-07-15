@@ -60,7 +60,11 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
   }
 
   if (!currentTask) {
-    return { currentTask: undefined };
+    return {
+      currentTask: undefined,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    };
   }
 
   // Workflow enter (LLM info attached for the gauge).
@@ -253,6 +257,8 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
     planText: '',
     _activePhase: undefined,
     conversations: { [CONV_KEYS.NODE_PLAN]: [] },
+    recursionCount: state.recursionCount,
+    recursionLimit: state.recursionLimit,
   };
 }
 

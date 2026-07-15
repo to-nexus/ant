@@ -148,6 +148,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       tokenUsage: state.tokenUsage,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
+      _drainFinalized: false,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
     } as any;
   }
   
@@ -188,6 +191,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         _assetValidationRetried: (state._assetValidationRetried || 0) + 1,
         _executeCallIndex: 0,
         _noOutputCallCount: 0,
+        recursionCount: state.recursionCount,
+        recursionLimit: state.recursionLimit,
       };
     }
   }
@@ -321,11 +326,18 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _toolResultCache: undefined,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
+      _drainFinalized: false,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
     };
   }
-  
+
   // No current task (shouldn't happen, but handle gracefully)
-  return { currentTask: undefined };
+  return {
+    currentTask: undefined,
+    recursionCount: state.recursionCount,
+    recursionLimit: state.recursionLimit,
+  };
 }
 
 /**
@@ -688,6 +700,7 @@ export const DesignGraphChannels = {
   interruption: Annotation<any>,
   _executeCallIndex: Annotation<any>,
   _noOutputCallCount: Annotation<any>,
+  _drainFinalized: Annotation<any>,
   _toolResultCache: Annotation<any>,
   fileErrors: Annotation<any>,
   _assetValidationFailed: Annotation<any>,

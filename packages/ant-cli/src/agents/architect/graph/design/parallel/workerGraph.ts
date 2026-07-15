@@ -82,6 +82,8 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     return {
       _taskCompleted: false,
       violations: [],
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
     } as any;
   }
 
@@ -141,6 +143,8 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
         _executeCallIndex: 0,
         _noOutputCallCount: 0,
         _taskCompleted: false,
+        recursionCount: state.recursionCount,
+        recursionLimit: state.recursionLimit,
       } as any;
     }
   }
@@ -213,6 +217,9 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       _toolResultCache: undefined,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
+      _drainFinalized: false,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
     } as any;
   }
 
@@ -220,7 +227,12 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
   }
 
-  return { currentTask: undefined, _taskCompleted: false } as any;
+  return {
+    currentTask: undefined,
+    _taskCompleted: false,
+    recursionCount: state.recursionCount,
+    recursionLimit: state.recursionLimit,
+  } as any;
 }
 
 /**

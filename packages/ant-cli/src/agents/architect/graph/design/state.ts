@@ -198,6 +198,11 @@ export interface DesignGraphState extends TriageableState {
    * no longer a terminal gate (LangGraph `recursionLimit` is the backstop). */
   _noOutputCallCount?: number;
 
+  /** One-shot flag: execute already ran its drain-time forced-finalization
+   * turn (tools stripped, "emit final output now") for the current task.
+   * Reset on task completion by checkTaskStatus. */
+  _drainFinalized?: boolean;
+
   /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */
   _toolResultCache?: Record<string, string>;
 
