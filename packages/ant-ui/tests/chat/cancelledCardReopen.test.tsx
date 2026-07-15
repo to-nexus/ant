@@ -75,6 +75,19 @@ beforeEach(() => {
   storeState.kanban = { jobId: 'job-1', interruption: { timestamp: 't1', canResume: true } };
 });
 
+describe('CancelledVariant — job id header meta', () => {
+  it('shows the job id chip on an unresolved interruption card', () => {
+    storeState.kanban = { jobId: 'job-1', interruption: { timestamp: 't1', canResume: true } };
+    const tree = renderCard();
+    expect(JSON.stringify(tree.toJSON())).toContain('job-1');
+  });
+
+  it('still shows the job id chip after the card resolves (dismissed)', () => {
+    const tree = renderCard(dismissedResolved);
+    expect(JSON.stringify(tree.toJSON())).toContain('job-1');
+  });
+});
+
 describe('CancelledVariant — dismissed card re-open affordance', () => {
   it('renders the reopen action on a dismissed card and calls resumeJob on click', async () => {
     const tree = renderCard(dismissedResolved);

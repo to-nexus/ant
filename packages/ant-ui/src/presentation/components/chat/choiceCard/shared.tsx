@@ -167,6 +167,27 @@ export const THEMES: Record<ThemeColor, ThemeConfig> = {
 // ResolvedBadge
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// JobIdChip — subdued monospace job identifier
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/**
+ * Renders the human-readable job id (e.g. `sharp-choking-glove`) as a subdued
+ * chip so an interruption card makes clear WHICH job it belongs to. Placed via
+ * ChoiceCardShell's `headerMeta` slot.
+ */
+export function JobIdChip({ jobId }: { jobId: string }) {
+  return (
+    <span
+      className="font-mono text-[10px] leading-none px-1.5 py-1 rounded whitespace-nowrap"
+      style={{ color: 'var(--text-3)', background: 'var(--bg-surface-2)' }}
+      title={jobId}
+    >
+      {jobId}
+    </span>
+  );
+}
+
 export type ResolvedIcon = 'dismiss' | 'resume' | null;
 
 function ResolvedBadge({ label, icon }: { label: string; icon?: ResolvedIcon }) {
@@ -203,12 +224,14 @@ interface ChoiceCardShellProps {
   resolvedIcon?: ResolvedIcon;
   /** Rendered under the ResolvedBadge — e.g. a re-open action on a dismissed card. */
   resolvedExtra?: React.ReactNode;
+  /** Subdued top-right header meta — e.g. the job id chip on interruption cards. */
+  headerMeta?: React.ReactNode;
   children: React.ReactNode;
 }
 
 export function ChoiceCardShell({
   theme, icon, title, subtitle,
-  isSelected, resolvedLabel, resolvedIcon, resolvedExtra,
+  isSelected, resolvedLabel, resolvedIcon, resolvedExtra, headerMeta,
   children,
 }: ChoiceCardShellProps) {
   const t = THEMES[theme];
@@ -241,6 +264,7 @@ export function ChoiceCardShell({
               </div>
             )}
           </div>
+          {headerMeta && <div className="flex-shrink-0 pt-0.5">{headerMeta}</div>}
         </div>
 
         {isSelected && resolvedLabel ? (
