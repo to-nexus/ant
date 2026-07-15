@@ -472,8 +472,16 @@ export class FileSessionAdapter implements SessionPort {
       await this.appendLine('feature', line);
     }
 
-    // 2. chat.jsonl에 사본 append (항상). Failure here does NOT abort the
-    //    feature-side record — feature.jsonl is the context SSOT.
+    // 2. chat.jsonl에 사본 append. Idempotent by turnId — the API route
+    //    (`ChatService.appendUserTurn`) is the durable owner of the UI copy
+    //    for chat-initiated turns and writes it at submit time. If that line
+    //    is already present we skip here so no duplicate results; inferred /
+    //    Actions-panel jobs (no submit-time write) still record it. Failure
+    //    here does NOT abort the feature-side record — feature.jsonl is the
+    //    context SSOT.
+    if (await this.hasChatUserTurn(line.turnId)) {
+      return;
+    }
     const sourceRef = options.skipFeature
       ? 'ask-only'
       : `feature.jsonl#${line.turnId}`;
@@ -505,8 +513,24 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
+   * True when chat.jsonl already carries a (non-collapsed) user_turn for
+   * `turnId`. Used to dedup the worker-side chat copy against the durable
+   * submit-time write done by `ChatService.appendUserTurn`. A swept
+   * (collapsed) line is treated as absent so the turn can be re-recorded.
+   */
+  private async hasChatUserTurn(turnId: string): Promise<boolean> {
+    try {
+      const lines = await this.loadAllChat();
+      return lines.some(l => l.type === 'user_turn' && l.turnId === turnId);
+    } catch {
+      // Read failure must not block recording — fall through to append.
+      return false;
+    }
+  }
+
+  /**
    * Append user_turn_meta patch line (executionTier/reason).
-   * 
+   *
    * Decompose 판정 결과를 기록. resolve가 로드 시 user_turn과 turnId 기준 병합.
    */
   async appendUserTurnMeta(line: FeatureUserTurnMetaLine): Promise<void> {

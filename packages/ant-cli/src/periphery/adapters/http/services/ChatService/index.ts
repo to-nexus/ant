@@ -144,17 +144,24 @@ export class ChatService {
   // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Optimistic user_turn echo.
+   * Durable user_turn at submit time.
    *
-   * The durable user_turn line is written by the worker's `recordUserTurn`
-   * (orchestrator entry, before the graph runs) — that's the SSOT. To
-   * keep the UI snappy we also emit a `chat_event_appended` SSE event
-   * here so the user's bubble appears immediately, before the worker
-   * spawns. The id (`user-{turnId}`) matches the durable copy so
-   * reconnect dedupes via the FE projector.
+   * The API route is the durable owner of the UI (chat.jsonl) copy of the
+   * user's message: we persist the line here AND emit the optimistic
+   * `chat_event_appended` SSE so the bubble appears immediately. Writing
+   * at submit — rather than deferring to the worker's `recordUserTurn` —
+   * makes the message survive a refresh even if the job is interrupted
+   * before the worker ever records it (a legitimate early interruption
+   * used to wipe the bubble while the interruption card, written durably
+   * at pause time, survived).
    *
-   * No chat.jsonl write happens here — that would race the worker's
-   * recordUserTurn and produce a duplicate line.
+   * The worker's `recordUserTurn` still writes the feature.jsonl context
+   * copy, and its chat.jsonl copy is deduped by turnId
+   * (`FileSessionAdapter.appendUserTurn`), so no duplicate line results.
+   * The id (`user-{turnId}`) matches that copy so reconnect dedupes via
+   * the FE projector. `jobId` is '' here — the job is not yet allocated
+   * at submit; cancelled-card anchoring resolves via the Redis seed
+   * turnId (see resolveCancelledCardTurnId).
    */
   async appendUserTurn(
     projectId: string,
@@ -178,7 +185,8 @@ export class ChatService {
         ? { actionMetadata }
         : {}),
     };
-    this.broadcaster.broadcastChatLine(projectId, featureName, line, ctx);
+    const adapter = this.makeAdapter(projectId, featureName, ctx);
+    await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
   }
 
   // ═══════════════════════════════════════════════════════════════════

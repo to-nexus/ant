@@ -458,7 +458,7 @@ describe('chat.routes — Phase 9/13 contract', () => {
   // ───────────────────────────────────────────────────────────────────
 
   describe('POST /chat/user-message', () => {
-    it('mints a turnId, returns it in the response, and emits chat_event_appended SSE without writing chat.jsonl', async () => {
+    it('mints a turnId, returns it, emits chat_event_appended SSE, and writes chat.jsonl durably at submit', async () => {
       const res = await harness.call(
         'POST',
         '/projects/proj/features/feat-a/chat/user-message',
@@ -471,9 +471,16 @@ describe('chat.routes — Phase 9/13 contract', () => {
       const lines = chatEvents(store);
       expect(lines.find((l) => l.type === 'user_turn' && (l as any).text === 'hello world')).toBeDefined();
 
-      // No durable chat.jsonl write yet (the worker's recordUserTurn does that).
+      // Durable submit-time write — the user's message survives a refresh
+      // even if the job is interrupted before the worker's recordUserTurn.
       const chatJsonl = path.join(featurePath, 'sessions', 'chat.jsonl');
-      await expect(fs.access(chatJsonl)).rejects.toThrow();
+      const raw = await fs.readFile(chatJsonl, 'utf-8');
+      const disk = raw.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l));
+      const userTurns = disk.filter(
+        (l: any) => l.type === 'user_turn' && l.turnId === res.body.turnId,
+      );
+      expect(userTurns).toHaveLength(1);
+      expect(userTurns[0]).toMatchObject({ text: 'hello world' });
     });
   });
 });
