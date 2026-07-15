@@ -79,6 +79,10 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
     return 'deepseek';
   }
 
+  if (normalized.startsWith('glm')) {
+    return 'glm';
+  }
+
   // Default to anthropic
   console.warn(`[LLM] Unknown model prefix: ${modelName}, defaulting to anthropic`);
   return 'anthropic';
@@ -227,6 +231,20 @@ export function createLLMClient(
         apiKey: resolveProviderApiKey('deepseek'),
         baseURL: 'https://api.deepseek.com',
         provider: 'deepseek',
+        modelName,
+        temperature,
+        maxTokens,
+        timeout,
+      });
+
+    case 'glm':
+      // Zhipu / Z.ai — OpenAI-compatible endpoint (single Bearer token). Reuse
+      // OpenAILLMClient with an injected baseURL + provider tag so the shared
+      // stream path attaches GLM's thinking param and labels events honestly.
+      return new OpenAILLMClient(agentJob, {
+        apiKey: resolveProviderApiKey('glm'),
+        baseURL: 'https://api.z.ai/api/paas/v4',
+        provider: 'glm',
         modelName,
         temperature,
         maxTokens,

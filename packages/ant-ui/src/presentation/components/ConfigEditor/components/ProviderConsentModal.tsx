@@ -1,29 +1,33 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { ModelProvider } from '@ant/shared';
 import { Modal } from '../../common/Modal';
 import { Button } from '../../aurora';
 
-interface DeepSeekConsentModalProps {
+interface ProviderConsentModalProps {
   isOpen: boolean;
-  /** Confirm the DeepSeek selection. `dontShowAgain` reflects the checkbox so the
-   * caller can persist the "don't show again" acknowledgement. */
+  /** The provider whose consent copy to show. Copy lives at `providerConsent.<provider>.*`. */
+  provider: ModelProvider;
+  /** Confirm the selection. `dontShowAgain` reflects the checkbox so the caller can
+   * persist the per-provider "don't show again" acknowledgement. */
   onConfirm: (dontShowAgain: boolean) => void;
   /** Cancel — the selection is not committed (previous model kept). */
   onCancel: () => void;
 }
 
 /**
- * Informed-consent gate shown when a DeepSeek model is selected. DeepSeek is a
- * third-party, China-hosted API with materially different data-handling terms;
- * the user must acknowledge before the selection is committed. Risk bullets and
- * all copy live in the `config` i18n namespace (deepseekConsent.*).
+ * Informed-consent gate shown when a model from a third-party, China-hosted provider
+ * (DeepSeek, GLM/Zhipu) is selected. These APIs have materially different data-handling
+ * terms; the user must acknowledge before the selection is committed. All copy lives in
+ * the `config` i18n namespace, keyed per provider (`providerConsent.<provider>.*`).
  */
-export function DeepSeekConsentModal({ isOpen, onConfirm, onCancel }: DeepSeekConsentModalProps) {
+export function ProviderConsentModal({ isOpen, provider, onConfirm, onCancel }: ProviderConsentModalProps) {
   const { t } = useTranslation('config');
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
+  const key = (field: string) => `providerConsent.${provider}.${field}`;
   // Risk bullets are authored as an i18n array (returnObjects).
-  const risks = t('deepseekConsent.risks', { returnObjects: true }) as string[];
+  const risks = t(key('risks'), { returnObjects: true }) as string[];
 
   return (
     <Modal
@@ -31,23 +35,23 @@ export function DeepSeekConsentModal({ isOpen, onConfirm, onCancel }: DeepSeekCo
       onClose={onCancel}
       onBackdropClick={onCancel}
       accent="orange"
-      eyebrow={t('deepseekConsent.eyebrow')}
-      title={t('deepseekConsent.title')}
+      eyebrow={t(key('eyebrow'))}
+      title={t(key('title'))}
       size="md"
       scrollable
       footer={
         <>
           <Button variant="ghost" size="sm" onClick={onCancel}>
-            {t('deepseekConsent.cancel')}
+            {t(key('cancel'))}
           </Button>
           <Button variant="danger" size="sm" onClick={() => onConfirm(dontShowAgain)}>
-            {t('deepseekConsent.confirm')}
+            {t(key('confirm'))}
           </Button>
         </>
       }
     >
       <p style={{ margin: '0 0 12px', fontSize: 13, lineHeight: 1.6, color: 'var(--text-2)' }}>
-        {t('deepseekConsent.intro')}
+        {t(key('intro'))}
       </p>
 
       <ul style={{ margin: '0 0 14px', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -72,7 +76,7 @@ export function DeepSeekConsentModal({ isOpen, onConfirm, onCancel }: DeepSeekCo
           fontWeight: 600,
         }}
       >
-        {t('deepseekConsent.acknowledgement')}
+        {t(key('acknowledgement'))}
       </p>
 
       <label
@@ -92,7 +96,7 @@ export function DeepSeekConsentModal({ isOpen, onConfirm, onCancel }: DeepSeekCo
           onChange={(e) => setDontShowAgain(e.target.checked)}
           style={{ cursor: 'pointer' }}
         />
-        {t('deepseekConsent.dontShowAgain')}
+        {t(key('dontShowAgain'))}
       </label>
     </Modal>
   );

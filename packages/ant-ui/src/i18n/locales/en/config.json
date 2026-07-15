@@ -137,7 +137,8 @@
     "repoErrorUrlMismatch": "The configured URL differs from the actual Git remote. Revert the URL to match the remote, or delete .git and re-clone.",
     "repoErrorNoRemote": "Git is initialized but no remote repository is configured."
   },
-  "deepseekConsent": {
+  "providerConsent": {
+    "deepseek": {
     "eyebrow": "Third-party AI provider",
     "title": "Using DeepSeek — please review before continuing",
     "intro": "DeepSeek is a third-party model provider based in China. Its data-handling terms differ materially from Anthropic and Google. Before selecting it, understand what this means for your data:",
@@ -151,6 +152,22 @@
     "dontShowAgain": "Don't show this again",
     "confirm": "I understand — use DeepSeek",
     "cancel": "Cancel"
+    },
+    "glm": {
+      "eyebrow": "Third-party AI provider",
+      "title": "Using GLM (Zhipu) — please review before continuing",
+      "intro": "GLM is a third-party model provider from Zhipu AI, based in China. Its data-handling terms differ materially from Anthropic and Google. Before selecting it, understand what this means for your data:",
+      "risks": [
+        "Data location & jurisdiction: Zhipu stores data on servers in the People's Republic of China and is subject to Chinese law, which can compel disclosure to authorities with limited legal recourse — unlike EU/US providers.",
+        "Your prompts leave your environment: everything a job sends — your project's source files, prompts, and generated code — is transmitted to api.z.ai.",
+        "Training & retention: Zhipu's terms permit using inputs/outputs for service improvement and model training, and inputs may be retained for a period even after deletion for legal/compliance reasons.",
+        "Track record: as with any provider outside EU/US data-protection regimes, operational data-handling and disclosure risk should be assumed."
+      ],
+      "acknowledgement": "I understand GLM (Zhipu) is a third-party service outside ANT's control, and I use it at my own responsibility for any code or data sent to it.",
+      "dontShowAgain": "Don't show this again",
+      "confirm": "I understand — use GLM",
+      "cancel": "Cancel"
+    }
   },
   "schema": {
     "repositoryName": "Repository Name",
