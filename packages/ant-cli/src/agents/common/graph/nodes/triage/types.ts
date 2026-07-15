@@ -166,9 +166,9 @@ export interface WorkspaceState {
   // Architecture track — `architecture/`
   hasArchitectureSystem: boolean;     // architecture/system/*-system-*.md or api-contract-*.md
   systemDesignFileNames?: string[];   // e.g. ['fe-system-main.md', 'be-system-order.md', 'api-contract-public.md']
-  hasArchitectureSpec: boolean;       // Any spec-*.md in architecture/spec/
+  hasArchitectureSpec: boolean;       // Any *.md in architecture/spec/ (slug-named; legacy spec-* included)
   specDocCount?: number;
-  specDocNames?: string[];            // e.g. ['spec-social-login.md', 'spec-payment.md']
+  specDocNames?: string[];            // e.g. ['social-login.md', 'defect-fixes.md']
 
   /**
    * Aggregate convenience flag — true when ANY architecture/visual artifact

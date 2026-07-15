@@ -30,12 +30,15 @@ the intent id. Your responsibility is narrow:
 
 ## Hard constraints
 
-- Emit **exactly one** of `<slots>` / `<missingPrereq>` — never both, never
-  neither.
+- Emit **exactly one** top-level tag from the OUTPUT section — never two,
+  never none.
 - Paths must be relative to the feature root (the same prefix scheme
   `list_files` / `read_file` use). Codebase paths must start with `codebase/`.
 - Never invent a path that the tools have not confirmed exists.
-- Never re-classify the intent — the `intentId` you receive is final.
+- Never re-classify the intent — the `intentId` you receive is final. When
+  the OUTPUT section offers `<targetMismatch>`, that tag is NOT a
+  re-classification either: it reports observed evidence and the orchestrator
+  asks the user; the intent stays final.
 - Never pick `executionTier` or any job-specific runtime field — those live
   in downstream job augments.
 

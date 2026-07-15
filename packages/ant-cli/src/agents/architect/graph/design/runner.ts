@@ -4,7 +4,8 @@ import { DesignTask } from "../../types/task";
 import path from 'node:path';
 import * as fs from 'fs/promises';
 import { getSessionRuntimeDir } from '../../../../core/utils/sessionPaths';
-import { deriveResumableState } from '../../../../core/session/resumable';
+import { deriveResumableState, deriveRestoreMode } from '../../../../core/session/resumable';
+import { resolveResumedActionContext } from '../../../common/graph/resumeActionMetadata.js';
 import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
   isEnvResume, logResumeMarker, invokeGraph, saveEarlyDirective,
@@ -63,7 +64,6 @@ export async function runDesignGraph(initial: DesignGraphState) {
         'design'
       );
       
-      const hasInterruption = Boolean(session?.state?.interruption);
       // Project the last checkpoint's in-flight tasks onto the queue head with
       // `interrupted:true`. Two boundaries land tasks here:
       //   - Graceful interrupt (handleInterruption → captureWorkerSnapshots)
@@ -73,16 +73,27 @@ export async function runDesignGraph(initial: DesignGraphState) {
       // The map is idempotent so the graceful case is a no-op spread.
       const persistedRunning: any[] = (session?.state as any)?.runningTasks ?? [];
       const runningMarked = persistedRunning.map((t: any) => ({ ...t, interrupted: true }));
-      const hasOrphanedRunning = !hasInterruption && runningMarked.length > 0;
 
-      // Single owner of "what work is left" (code-job-flickering-sparkle) —
-      // symmetric with code/runner.ts. Auto-restore on interruption/orphaned
-      // running (unchanged); additionally restore a marker-less, running-less
-      // taskQueue on an EXPLICIT resume request only.
+      // Restore decision SSOT (sharp-choking-glove RCA) — symmetric with
+      // code/runner.ts. `deriveRestoreMode` owns the three-way decision:
+      // explicit /resume → 'resume'; a NEW turn with a non-diverging intent on
+      // a not-dismissed resumable session → 'revise-context'; everything else
+      // (dismissed, divergent explicit intent, no directive) → 'fresh'.
+      // Orphaned-running (marker-less leftover runningTasks) needs no separate
+      // trigger: `deriveResumableState` synthesizes a `server_crash`
+      // interruption for it, so it restores via 'resume'/'revise-context'.
       const verdict = deriveResumableState(session?.state, 'design', { isActuallyRunning: false });
       const explicitResume = initial.isResume === true || isEnvResume();
+      const restoreMode = deriveRestoreMode({
+        verdict,
+        explicitResume,
+        newIntent: initial.actionMetadata?.intent,
+        restoredIntent: session?.state?.resolvedAction?.intent,
+        hasNewDirective: Boolean(initial.overrideDirective),
+        dismissed: session?.state?.interruption?.dismissed === true,
+      });
 
-      if (verdict.hasResumableWork && (hasInterruption || hasOrphanedRunning || explicitResume) && session?.state) {
+      if (restoreMode !== 'fresh' && session?.state) {
         const persistedQueue: any[] = (session.state as any).taskQueue ?? [];
         let finalQueueArr = [...runningMarked, ...persistedQueue];
         if (finalQueueArr.length === 0 && session.state.currentTask) {
@@ -102,8 +113,16 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.tokenUsage = session.state.tokenUsage;
         initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
 
-        if (session.state.resolvedAction) {
-          initial.resolvedAction = session.state.resolvedAction;
+        // RAC restoration through the merge SSOT: a same-intent explicit turn
+        // contributes fresh target/refs/context; without new metadata the
+        // session's RAC is kept as-is. (A divergent intent never reaches here
+        // — deriveRestoreMode returns 'fresh' for it.)
+        const restoredAction = resolveResumedActionContext({
+          actionMetadata: initial.actionMetadata,
+          resolvedAction: session.state.resolvedAction,
+        });
+        if (restoredAction) {
+          initial.resolvedAction = restoredAction;
         }
 
         if (session.state.referenceRequests) {
@@ -148,14 +167,19 @@ export async function runDesignGraph(initial: DesignGraphState) {
           initial.filesToDelete = session.state.filesToDelete;
         }
         
-        // ✅ Restore directive/overrideDirective from session
-        if (session.state.overrideDirective) {
-          initial.directive = session.state.overrideDirective;
-        } else if (session.state.directives && session.state.directives.length > 0) {
-          initial.directive = session.state.directives[0];
+        // ✅ Restore directive from session as a FALLBACK only — the incoming
+        // turn's overrideDirective/chatSource keep authority (the old
+        // unconditional `initial.overrideDirective = session.state.…` clobber
+        // wiped the new turn's directive and mis-routed it to plain resume;
+        // code/runner.ts never had this clobber).
+        if (!initial.directive && !initial.overrideDirective) {
+          if (session.state.overrideDirective) {
+            initial.directive = session.state.overrideDirective;
+          } else if (session.state.directives && session.state.directives.length > 0) {
+            initial.directive = session.state.directives[0];
+          }
         }
-        initial.overrideDirective = session.state.overrideDirective;
-        initial.chatSource = session.state.chatSource;
+        initial.chatSource ??= session.state.chatSource;
         
         if (session.state.jobId) {
           initial.jobId = session.state.jobId;
@@ -179,11 +203,14 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.isResume = true;
         initial.awaitingDetectClarify = true;
 
-        if (session.state.directive) {
+        if (session.state.directive && !initial.directive) {
           initial.directive = session.state.directive;
         }
-        initial.overrideDirective = session.state.overrideDirective;
-        initial.chatSource = session.state.chatSource;
+        // Fill-if-empty: the clarify ANSWER arrives as this turn's
+        // overrideDirective — clobbering it with the session's stored value
+        // would erase the answer before routeAfterResolve reads it.
+        initial.overrideDirective ??= session.state.overrideDirective;
+        initial.chatSource ??= session.state.chatSource;
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
         }
@@ -202,11 +229,12 @@ export async function runDesignGraph(initial: DesignGraphState) {
         }
         if (typeof session.state.clarifyRoundsUsed === 'number') initial.clarifyRoundsUsed = session.state.clarifyRoundsUsed;
         if (session.state.clarifyPhase) initial.clarifyPhase = session.state.clarifyPhase;
-        if (session.state.directive) {
+        if (session.state.directive && !initial.directive) {
           initial.directive = session.state.directive;
         }
-        initial.overrideDirective = session.state.overrideDirective;
-        initial.chatSource = session.state.chatSource;
+        // Fill-if-empty — same rationale as the awaitingDetectClarify branch.
+        initial.overrideDirective ??= session.state.overrideDirective;
+        initial.chatSource ??= session.state.chatSource;
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
         }

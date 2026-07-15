@@ -51,7 +51,7 @@ import {
 import { ARCHITECT_TOOLS } from '../../../tool/toolSchemas';
 import { buildDetectWhitelist, isWithinDetectWhitelist } from './detectWhitelist.js';
 import { parseDetectResponse, isEmptyDetectResponse } from './parseDetectResponse.js';
-import { suggestAlternativeIntents } from './suggestAlternatives.js';
+import { suggestAlternativeIntents, suggestReviseFallback } from './suggestAlternatives.js';
 import { loadResolvedArtifacts } from '../../loadDocumentsForRAC.js';
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from '../../llmConfig';
 
@@ -122,6 +122,11 @@ export async function inferRacWithTools(
   // Feature Context Universal Channel only fires through PromptBuilder.build,
   // so we pass featureContext explicitly here to keep the SSOT.
   const slotSummaries = renderSlotSummaries(slots, resolveSlotDir, intentId);
+  // Escape hatch offered only for revise-kind intents with a deterministic
+  // gen-* sibling to fall back to (sharp-choking-glove RCA). Infer-only by
+  // construction: this function never runs on the explicit path.
+  const reviseFallback = slots.target.kind === 'revise' ? suggestReviseFallback(intentId) : [];
+  const allowTargetMismatch = reviseFallback.length > 0;
   const vars = {
     intentId,
     domain: input.domain ?? 'service',
@@ -133,6 +138,7 @@ export async function inferRacWithTools(
     // missing-prereq surface it cannot block on. The matrix is SSOT;
     // default to required (true) when the slot config omits the flag.
     chatRequiresRefs: slots.chatRequiresRefs ?? true,
+    allowTargetMismatch,
   };
   const systemPrompt = await promptBuilder.render(
     TEMPLATE_PATHS.detect.rules!,
@@ -202,6 +208,23 @@ export async function inferRacWithTools(
     parsedResp.missingPrereq = undefined;
   }
 
+  // Ungated <targetMismatch> (LLM invented it for a non-revise intent or one
+  // with no gen-* sibling) → log + ignore, mirroring the chatRequiresRefs
+  // bypass above.
+  if (parsedResp.targetMismatch && !allowTargetMismatch) {
+    console.log(
+      `[detect:inferRacWithTools] LLM emitted <targetMismatch> for ${intentId} ` +
+        `but the hatch is not offered for this intent — ignoring`,
+    );
+    parsedResp.targetMismatch = undefined;
+  }
+
+  // ── 5a. targetMismatch → user-mediated redirect (never a re-classification:
+  // the intentId stays final; the USER picks the gen-* sibling on the card) ──
+  if (parsedResp.targetMismatch) {
+    return buildTargetMismatchResult(intentId, parsedResp.targetMismatch, reviseFallback, input.workspaceState);
+  }
+
   // ── 5. missingPrereq → blocked / redirect-suggested ──
   if (parsedResp.missingPrereq) {
     return buildMissingPrereqResult(
@@ -268,6 +291,30 @@ export async function inferRacWithTools(
     );
     return parseDetectResponse(response);
   }
+}
+
+function buildTargetMismatchResult(
+  intentId: IntentId,
+  mismatch: { reason?: string },
+  alternatives: SuggestedAlternative[],
+  workspaceState: WorkspaceState | undefined,
+): DetectResult {
+  const docNames =
+    workspaceState?.specDocNames?.join(', ') ||
+    workspaceState?.systemDesignFileNames?.join(', ') ||
+    'the existing document';
+  const reason = mismatch.reason?.trim();
+  const head =
+    `⚠️ \`${intentId}\` targets ${docNames}, but its content appears unrelated to this request` +
+    (reason ? ` — ${reason}` : '') +
+    '.';
+  const list = alternatives.map(a => `  • \`${a.intentId}\` — ${a.reason}`).join('\n');
+  return {
+    status: 'redirect-suggested',
+    suggestedAlternatives: alternatives,
+    displayMessage: `${head}\n\nWrite a new document instead?\n${list}`,
+    choiceOptions: buildChoiceFromAlternatives(alternatives),
+  };
 }
 
 function buildMissingPrereqResult(

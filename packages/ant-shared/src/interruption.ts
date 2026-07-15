@@ -58,6 +58,13 @@ export interface InterruptionDetails {
   message: string;
   timestamp: string;
   canResume: boolean;
+  /**
+   * Implicit-continuation consent axis — orthogonal to `canResume` (work
+   * integrity/kind). `true` after the user dismisses the cancelled card: a
+   * subsequent chat turn must NOT silently continue this work, but an
+   * EXPLICIT resume (the `/resume` route) is still allowed and clears it.
+   */
+  dismissed?: boolean;
   /** Code job: task name when verification failed (learn node) */
   failedTask?: string;
   /** Code job: sample violations when verification failed */

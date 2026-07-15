@@ -81,3 +81,54 @@ export function deriveResumableState(
     canResume,
   };
 }
+
+/**
+ * How a new graph invocation relates to the session's leftover work.
+ *
+ * - `resume`         — plain continue of the interrupted queue (API-owned:
+ *                      only `/resume` / `/continue` pass `isResume`/env).
+ * - `revise-context` — a NEW turn on a not-dismissed, still-resumable session
+ *                      with a non-diverging intent: restore the queue as
+ *                      revision context; the new turn's directive/metadata
+ *                      keep authority.
+ * - `fresh`          — no restore at all (dismissed, divergent explicit
+ *                      intent, non-resumable, or nothing left).
+ */
+export type RestoreMode = 'resume' | 'revise-context' | 'fresh';
+
+/**
+ * Single owner of the runner restore decision (sharp-choking-glove RCA).
+ *
+ * Previously each runner hand-rolled `hasResumableWork && (hasInterruption ||
+ * orphaned || explicitResume)`, which silently converted a brand-new job —
+ * carrying a new directive and a divergent EXPLICIT intent — into a plain
+ * resume of the old queue. Two orthogonal axes feed this decision:
+ * `verdict.canResume` (work integrity/kind) and `interruption.dismissed`
+ * (implicit-continuation consent, withdrawn by dismissing the cancelled card).
+ */
+export function deriveRestoreMode(params: {
+  verdict: ResumableVerdict;
+  /** `initial.isResume === true || isEnvResume()` — the API-owned signal. */
+  explicitResume: boolean;
+  /** `initial.actionMetadata?.intent` — this turn's (explicit) intent, if any. */
+  newIntent?: string;
+  /** `session.state.resolvedAction?.intent` — the interrupted job's intent. */
+  restoredIntent?: string;
+  /** `!!initial.overrideDirective` — evaluated BEFORE any session restore. */
+  hasNewDirective: boolean;
+  /** `session.state.interruption?.dismissed === true` */
+  dismissed: boolean;
+}): RestoreMode {
+  const { verdict, explicitResume, newIntent, restoredIntent, hasNewDirective, dismissed } = params;
+  if (!verdict.hasResumableWork) return 'fresh';
+  // Explicit resume is user consent by definition — it also re-opens dismissed
+  // work (the /resume route clears the marker).
+  if (explicitResume) return 'resume';
+  if (dismissed) return 'fresh';
+  const intentDiverged = !!newIntent && !!restoredIntent && newIntent !== restoredIntent;
+  if (intentDiverged) return 'fresh';
+  if (!verdict.canResume) return 'fresh';
+  if (hasNewDirective) return 'revise-context';
+  // A new /execute with no directive is a new job — the API said so.
+  return 'fresh';
+}

@@ -9,6 +9,7 @@ import {
   getSessionFilePathByJob,
   getAgentForJob,
   getSessionDebugDir,
+  getAllSessionPaths,
   DEBUG_SUBDIRS,
 } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
@@ -122,6 +123,72 @@ export async function appendJobSnapshotToSession(
       err,
     );
   }
+}
+
+/**
+ * Single writer of the session-file `interruption.dismissed` marker
+ * (sharp-choking-glove RCA — implicit-continuation consent axis, orthogonal
+ * to `canResume`).
+ *
+ * `dismissed=true` (dismiss flows): the next chat turn must NOT silently
+ * continue this work (`deriveRestoreMode` → 'fresh'), while the explicit
+ * `/resume` route stays available. `dismissed=false` (resume flow): the user
+ * explicitly re-opened the work, so the marker is cleared.
+ *
+ * Scans all session files for the feature and patches the one whose
+ * `state.jobId` matches. Returns true when a session was patched. Best-effort
+ * — missing/unparseable sessions and sessions without an interruption are a
+ * no-op (nothing to arm or disarm).
+ */
+export async function setSessionDismissed(
+  kanbanService: KanbanService | undefined,
+  featurePath: string,
+  jobId: string,
+  dismissed: boolean,
+): Promise<boolean> {
+  for (const entry of getAllSessionPaths(featurePath)) {
+    let raw: string;
+    try {
+      raw = await fs.promises.readFile(entry.path, 'utf-8');
+    } catch {
+      continue;
+    }
+    let session: any;
+    try {
+      session = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    if (session?.state?.jobId !== jobId || !session.state.interruption) continue;
+    if ((session.state.interruption.dismissed === true) === dismissed) return true; // idempotent
+    session.state.interruption = {
+      ...session.state.interruption,
+      dismissed,
+      metadata: dismissed
+        ? { ...(session.state.interruption.metadata ?? {}), stoppedBy: 'dismiss' }
+        : session.state.interruption.metadata,
+    };
+    session.updatedAt = new Date().toISOString();
+    try {
+      await atomicWriteFile(entry.path, JSON.stringify(session, null, 2));
+    } catch (err) {
+      logger.warn(
+        `[SessionCleanup] Failed to persist interruption.dismissed=${dismissed} (jobId=${jobId})`,
+        { component: 'SessionCleanup' },
+        err,
+      );
+      return false;
+    }
+    kanbanService?.invalidateSessionCache(entry.path);
+    logger.info(
+      `[SessionCleanup] interruption.dismissed=${dismissed} persisted (jobId=${jobId}, ${entry.agent}/${entry.job})`,
+    );
+    return true;
+  }
+  logger.debug(
+    `[SessionCleanup] No session with interruption found for dismissed=${dismissed} (jobId=${jobId})`,
+  );
+  return false;
 }
 
 /**
