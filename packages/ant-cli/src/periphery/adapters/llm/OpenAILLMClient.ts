@@ -31,6 +31,32 @@ const THINKING_TOGGLE_PROVIDERS: Record<string, string> = {
   glm: 'GLM_THINKING',
 };
 
+/**
+ * Normalize an OpenAI-compatible `usage` object to the disjoint {@link TaskTokenUsage}
+ * contract. OpenAI-compatible providers (OpenAI, DeepSeek, GLM/Zhipu) report
+ * `prompt_tokens` INCLUDING the cached portion, with
+ * `prompt_tokens_details.cached_tokens` as a subset. The rate card + tokenUtils
+ * assume Anthropic semantics where `inputTokens` is cache-MISS only (disjoint from
+ * `cacheReadTokens`). Subtracting the cached subset here keeps the two axes disjoint
+ * so cached tokens are not billed twice (full input rate AND cache-read rate).
+ */
+export function normalizeOpenAICompatUsage(usage: {
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+  prompt_tokens_details?: { cached_tokens?: number | null } | null;
+} | null | undefined): TaskTokenUsage | undefined {
+  if (!usage) return undefined;
+  const cached = usage.prompt_tokens_details?.cached_tokens || 0;
+  const promptTokens = usage.prompt_tokens || 0;
+  return {
+    inputTokens: Math.max(0, promptTokens - cached),
+    outputTokens: usage.completion_tokens || 0,
+    totalTokens: usage.total_tokens || 0,
+    ...(cached ? { cacheReadTokens: cached } : {}),
+  };
+}
+
 export class OpenAILLMClient implements LLMClient {
   private client: OpenAI;
   /**
@@ -127,14 +153,11 @@ export class OpenAILLMClient implements LLMClient {
     });
 
     const content = response.choices[0]?.message?.content || '';
-    
-    // ✅ Extract token usage
-    const usage = response.usage ? {
-      inputTokens: response.usage.prompt_tokens || 0,
-      outputTokens: response.usage.completion_tokens || 0,
-      totalTokens: response.usage.total_tokens || 0,
-    } : undefined;
-    
+
+    // ✅ Extract token usage, normalized to the disjoint contract (cached tokens
+    // are a subset of prompt_tokens on OpenAI-compatible providers).
+    const usage = normalizeOpenAICompatUsage(response.usage as any);
+
     return { content, usage };
   }
 
@@ -399,16 +422,11 @@ export class OpenAILLMClient implements LLMClient {
     // finish_reason chunk, so reading it only inside the finish block loses it.
     const captureUsage = (chunk: any) => {
       if (!chunk.usage) return;
-      tokenUsage = {
-        inputTokens: chunk.usage.prompt_tokens || 0,
-        outputTokens: chunk.usage.completion_tokens || 0,
-        totalTokens: chunk.usage.total_tokens || 0,
-        // M13 — surface cache hits when the provider reports them (additive; no
-        // billing-formula impact). Present on DeepSeek/OpenAI prompt caching.
-        ...(chunk.usage.prompt_tokens_details?.cached_tokens
-          ? { cacheReadTokens: chunk.usage.prompt_tokens_details.cached_tokens }
-          : {}),
-      };
+      // Normalize to the disjoint contract: `prompt_tokens` INCLUDES the cached
+      // portion on OpenAI-compatible providers, so inputTokens is set to the
+      // cache-MISS remainder (see normalizeOpenAICompatUsage). Without this the
+      // cached tokens are billed twice (full input rate AND cache-read rate).
+      tokenUsage = normalizeOpenAICompatUsage(chunk.usage);
     };
 
     for await (const chunk of stream) {

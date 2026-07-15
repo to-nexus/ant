@@ -135,8 +135,19 @@ export function getModelContextWindowOrDefault(modelId: string | undefined | nul
   return DEFAULT_FALLBACK_CONTEXT_WINDOW;
 }
 
-/** LLM token consumption for a task or aggregate */
+/**
+ * LLM token consumption for a task or aggregate.
+ *
+ * ⚠️ DISJOINT CONTRACT (Anthropic semantics): `inputTokens` is CACHE-MISS ONLY —
+ * it MUST NOT overlap `cacheReadTokens` / `cacheCreationTokens`. Total input
+ * processed = inputTokens + cacheReadTokens + cacheCreationTokens, and pricing
+ * (`pricing.ts`) charges each axis at its own rate. Providers whose native usage
+ * reports a prompt total INCLUDING cache (OpenAI-compatible: `prompt_tokens`)
+ * MUST subtract the cached subset at the client boundary before populating this
+ * shape — otherwise cached tokens are billed twice. See `OpenAILLMClient`.
+ */
 export interface TaskTokenUsage {
+  /** Cache-MISS input tokens only — disjoint from cacheRead/cacheCreation. */
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
