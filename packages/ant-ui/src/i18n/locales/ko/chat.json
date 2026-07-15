@@ -178,6 +178,7 @@
     "dismiss": "닫기",
     "resumed": "재개됨",
     "dismissed": "닫힘",
+    "reopen": "작업 다시 재개",
     "reasons": {
       "recursion_limit": "반복 횟수 한도 도달",
       "user_stopped": "사용자가 중지함",

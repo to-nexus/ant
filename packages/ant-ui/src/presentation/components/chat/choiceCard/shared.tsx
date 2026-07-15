@@ -201,12 +201,14 @@ interface ChoiceCardShellProps {
   isSelected: boolean;
   resolvedLabel: string | null;
   resolvedIcon?: ResolvedIcon;
+  /** Rendered under the ResolvedBadge — e.g. a re-open action on a dismissed card. */
+  resolvedExtra?: React.ReactNode;
   children: React.ReactNode;
 }
 
 export function ChoiceCardShell({
   theme, icon, title, subtitle,
-  isSelected, resolvedLabel, resolvedIcon,
+  isSelected, resolvedLabel, resolvedIcon, resolvedExtra,
   children,
 }: ChoiceCardShellProps) {
   const t = THEMES[theme];
@@ -242,7 +244,10 @@ export function ChoiceCardShell({
         </div>
 
         {isSelected && resolvedLabel ? (
-          <ResolvedBadge label={resolvedLabel} icon={resolvedIcon} />
+          <>
+            <ResolvedBadge label={resolvedLabel} icon={resolvedIcon} />
+            {resolvedExtra}
+          </>
         ) : (
           children
         )}

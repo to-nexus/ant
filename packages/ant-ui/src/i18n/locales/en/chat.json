@@ -178,6 +178,7 @@
     "dismiss": "Dismiss",
     "resumed": "Resumed",
     "dismissed": "Dismissed",
+    "reopen": "Resume task",
     "reasons": {
       "recursion_limit": "Recursion limit reached",
       "user_stopped": "Stopped by user",

@@ -215,12 +215,18 @@ export async function analyzeWorkspace(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // architecture/spec/ — spec-*.md
+  // architecture/spec/ — any *.md
+  //
+  // Writer-side SSOT is the matrix's SPEC_OUTPUTS (action-config-matrix.ts):
+  // gen-spec saves LLM-slug-named files with NO forced prefix (the old
+  // `spec-*` convention is legacy). Filtering on the prefix silently reported
+  // hasArchitectureSpec=false for every post-prefix-drop spec
+  // (sharp-choking-glove RCA).
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const architectureSpecAbs = path.join(featurePath, ARCHITECTURE_SPEC_DIR);
   {
     const specFiles = fs.existsSync(architectureSpecAbs)
-      ? fs.readdirSync(architectureSpecAbs).filter(f => f.startsWith('spec-') && f.endsWith('.md'))
+      ? fs.readdirSync(architectureSpecAbs).filter(f => !f.startsWith('.') && f.endsWith('.md'))
       : [];
     state.hasArchitectureSpec = specFiles.length > 0;
     if (state.hasArchitectureSpec) {

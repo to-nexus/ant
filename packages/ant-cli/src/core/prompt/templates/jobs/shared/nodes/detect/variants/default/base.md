@@ -88,7 +88,9 @@ most likely fit for follow-up intents (`rev-*`, `gen-code-spec`, …).
 
 ## OUTPUT
 
-Emit **either** `<slots>` (proceed) **or** `<missingPrereq>` (blocked).
+Emit **exactly one** of the top-level tags below: `<slots>` (proceed),
+`<missingPrereq>` (blocked){{#if allowTargetMismatch}}, or `<targetMismatch>` (unrelated revise
+candidate){{/if}}.
 
 ### Proceed
 
@@ -121,5 +123,22 @@ Emit **either** `<slots>` (proceed) **or** `<missingPrereq>` (blocked).
 - `recommended` is optional.
 - Emit this when **required** slots cannot be filled from any file inside the
   whitelist. The orchestrator will surface alternative intents to the user.
+{{#if allowTargetMismatch}}
 
-Do **not** emit both tags. Do **not** emit any other top-level tag.
+### Unrelated revise candidate
+
+```
+<targetMismatch reason="one-line observed evidence"/>
+```
+
+- Emit this ONLY after you have `read_file` the revise-candidate document(s)
+  and observed that EVERY candidate's subject matter is unrelated to the
+  directive — no shared feature, defect, or domain referent appears in the
+  content you actually read.
+- This is evidence reporting, not re-classification: the intent stays final;
+  the orchestrator asks the user whether to write a new document instead.
+- If ANY candidate's content relates to the directive, do NOT emit this —
+  fill `<slots>` with that candidate.
+{{/if}}
+
+Emit exactly one top-level tag. Do **not** emit any other top-level tag.

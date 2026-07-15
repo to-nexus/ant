@@ -32,6 +32,15 @@ export interface ParsedDetectResponse {
     required: string[];
     recommended?: string[];
   };
+  /**
+   * Escape-hatch evidence report (infer-only, gated by `allowTargetMismatch`):
+   * the revise-candidate document exists but its CONTENT is topically
+   * unrelated to the directive. Not a re-classification — the caller turns it
+   * into a user-mediated redirect choice card.
+   */
+  targetMismatch?: {
+    reason?: string;
+  };
 }
 
 const SLOTS_TAG = /<slots>\s*([\s\S]*?)\s*<\/slots>/i;
@@ -40,6 +49,8 @@ const REFS_TAG = /<refs>\s*([\s\S]*?)\s*<\/refs>/i;
 const CONTEXT_TAG = /<context>\s*([\s\S]*?)\s*<\/context>/i;
 const MISSING_PREREQ_TAG =
   /<missingPrereq\b([^>]*?)\/?>(?:\s*<\/missingPrereq>)?/i;
+const TARGET_MISMATCH_TAG =
+  /<targetMismatch\b([^>]*?)\/?>(?:\s*<\/targetMismatch>)?/i;
 
 function splitPaths(raw: string): string[] {
   if (!raw) return [];
@@ -86,6 +97,14 @@ export function parseDetectResponse(raw: string): ParsedDetectResponse {
     }
   }
 
+  const mismatchMatch = raw.match(TARGET_MISMATCH_TAG);
+  if (mismatchMatch) {
+    const attrs = mismatchMatch[1] ?? '';
+    const reasonMatch = attrs.match(/reason\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const reason = (reasonMatch?.[1] ?? reasonMatch?.[2] ?? '').trim();
+    result.targetMismatch = reason ? { reason } : {};
+  }
+
   const slotsMatch = raw.match(SLOTS_TAG);
   const slotsBody = slotsMatch ? slotsMatch[1] : raw;
 
@@ -117,6 +136,7 @@ export function isEmptyDetectResponse(parsed: ParsedDetectResponse): boolean {
     !parsed.target?.length &&
     !parsed.refs?.length &&
     !parsed.context?.length &&
-    !parsed.missingPrereq
+    !parsed.missingPrereq &&
+    !parsed.targetMismatch
   );
 }

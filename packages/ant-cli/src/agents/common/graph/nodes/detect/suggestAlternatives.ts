@@ -115,3 +115,21 @@ export function suggestAlternativeIntents(
     .filter(a => isValidIntentId(a.intentId))
     .map(a => ({ intentId: a.intentId, reason: a.reason }));
 }
+
+/**
+ * The rev-* → gen-* sibling mapping WITHOUT the workspace `when` predicate —
+ * reuses the same RULES rows so the mapping stays single-owner.
+ *
+ * Used by the detect `<targetMismatch>` escape hatch (sharp-choking-glove RCA):
+ * the revise-candidate document EXISTS (so `when` is false) but its content is
+ * topically unrelated to the directive, and the user is asked whether to write
+ * a new document instead. `rev-code` has no row → empty array → no hatch.
+ */
+export function suggestReviseFallback(intentId: IntentId): SuggestedAlternative[] {
+  if (!intentId.startsWith('rev-')) return [];
+  const matched = RULES.find(r => r.intentId === intentId);
+  if (!matched) return [];
+  return matched.alternatives
+    .filter(a => isValidIntentId(a.intentId))
+    .map(a => ({ intentId: a.intentId, reason: a.reason }));
+}

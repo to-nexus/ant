@@ -59,7 +59,10 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
    kind in the session context (prior user turns, prior artifacts, prior
    summary). Mere existence of a file in workspace state is a weak hint, not
    evidence — never select `rev-*` without prior-work evidence, and workspace
-   existence never forces a sub-selection.
+   existence never forces a sub-selection. When workspace state lists the
+   existing documents' FILENAMES, use them as negative evidence too: if the
+   directive's subject matches none of the listed documents of that family,
+   the extension reading weakens — prefer the sibling `gen-*`.
 2. **A run of identical prior intents is not, by itself, a verdict.** Prior
    resolved intents establish topic continuity only; never "repeat the
    dominant prior intent." The current directive's produced output decides.

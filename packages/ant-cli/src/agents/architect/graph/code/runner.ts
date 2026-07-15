@@ -9,7 +9,8 @@ import {
 } from "../../../common/graph/runnerHelpers";
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { markVerifyEntered } from "./tasks/_shared/verify/markVerifyEntered";
-import { deriveResumableState } from "../../../../core/session/resumable";
+import { deriveResumableState, deriveRestoreMode } from "../../../../core/session/resumable";
+import { resolveResumedActionContext } from "../../../common/graph/resumeActionMetadata.js";
 import type { InterruptionDetails } from "@ant/shared";
 import type { TriageResult } from "../../../common/graph/nodes/triage/types";
 
@@ -47,7 +48,6 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         'code'
       );
       
-      const hasInterruption = Boolean(session?.state?.interruption);
       // Project the last checkpoint's in-flight tasks onto the queue head with
       // `interrupted:true`. Symmetric with design/runner.ts. Two boundaries:
       //   - Graceful interrupt (handleInterruption → captureWorkerSnapshots)
@@ -59,20 +59,28 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
       const runningMarked = persistedRunning.map(
         (t: any) => ({ ...t, interrupted: true }) as CodeTask,
       );
-      const hasOrphanedRunning = !hasInterruption && runningMarked.length > 0;
 
-      // Single owner of "what work is left" (code-job-flickering-sparkle):
+      // Restore decision SSOT (sharp-choking-glove RCA) — symmetric with
+      // design/runner.ts. `deriveRestoreMode` owns the three-way decision:
+      // explicit /resume → 'resume'; a NEW turn with a non-diverging intent on
+      // a not-dismissed resumable session → 'revise-context'; everything else
+      // (dismissed, divergent explicit intent, no directive) → 'fresh'.
       // `hasResumableWork` = taskQueue | currentTask | runningTasks, the same
       // definition the Kanban card and the /resume route use, so they cannot
-      // diverge. TRIGGER: auto-restore on an interruption/orphaned-running
-      // checkpoint (unchanged); ADDITIONALLY restore a marker-less, running-less
-      // taskQueue on an EXPLICIT resume request only (route sets ANT_IS_RESUME /
-      // initial.isResume) — never on a fresh invocation, so new work on a
-      // feature is not silently swallowed.
+      // diverge. Orphaned-running needs no separate trigger: the verdict
+      // synthesizes a `server_crash` interruption for marker-less leftovers.
       const verdict = deriveResumableState(session?.state, 'code', { isActuallyRunning: false });
       const explicitResume = initial.isResume === true || isEnvResume();
+      const restoreMode = deriveRestoreMode({
+        verdict,
+        explicitResume,
+        newIntent: initial.actionMetadata?.intent,
+        restoredIntent: session?.state?.resolvedAction?.intent,
+        hasNewDirective: Boolean(initial.overrideDirective),
+        dismissed: session?.state?.interruption?.dismissed === true,
+      });
 
-      if (verdict.hasResumableWork && (hasInterruption || hasOrphanedRunning || explicitResume) && session?.state) {
+      if (restoreMode !== 'fresh' && session?.state) {
         const persistedQueue = (session.state.taskQueue ?? []) as CodeTask[];
         console.log(`🔄 Resuming: ${persistedQueue.length + runningMarked.length} tasks in queue (running=${runningMarked.length}), ${session.state.completedTasks?.length || 0} completed`);
 
@@ -121,10 +129,18 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
         initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
         
-        if (session.state.resolvedAction) {
-          initial.resolvedAction = session.state.resolvedAction;
+        // RAC restoration through the merge SSOT: a same-intent explicit turn
+        // contributes fresh target/refs/context; without new metadata the
+        // session's RAC is kept as-is. (A divergent intent never reaches here
+        // — deriveRestoreMode returns 'fresh' for it.)
+        const restoredAction = resolveResumedActionContext({
+          actionMetadata: initial.actionMetadata,
+          resolvedAction: session.state.resolvedAction,
+        });
+        if (restoredAction) {
+          initial.resolvedAction = restoredAction;
         }
-        
+
         if (session.state.referenceRequests) {
           initial.referenceRequests = session.state.referenceRequests;
         }

@@ -368,7 +368,11 @@ export async function buildTriagePrompt(params: {
     hasVisualUi: workspaceState.hasVisualUi,
     hasVisualGameArt: workspaceState.hasVisualGameArt,
     hasArchitectureSystem: workspaceState.hasArchitectureSystem,
+    systemDesignFileNames: workspaceState.systemDesignFileNames,
     hasArchitectureSpec: workspaceState.hasArchitectureSpec,
+    // Filename-level topicality signal for rev-* vs gen-* (the boolean alone
+    // cannot tell the LLM WHICH docs exist — sharp-choking-glove RCA).
+    specDocNames: workspaceState.specDocNames,
     hasCodebase: workspaceState.hasCodebase,
     indexedFileCount: workspaceState.indexedFileCount || 'unknown',
     hasDesignDoc: workspaceState.hasDesignDoc,

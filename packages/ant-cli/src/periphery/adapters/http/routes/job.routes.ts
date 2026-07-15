@@ -24,6 +24,7 @@ import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
 import type { JobStateTracker } from '../express/managers/JobStateTracker';
 import type { KanbanService } from '../services';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
+import { setSessionDismissed } from './helpers/sessionCleanup';
 
 /**
  * Pre-flight credit gate for STARTING / RESUMING a job. Returns a 402 payload
@@ -881,6 +882,13 @@ export function createJobRoutes(deps: {
         });
       }
 
+      // Explicit resume re-opens dismissed work — clear the implicit-
+      // continuation marker so the session's consent state matches the
+      // user's action (setSessionDismissed is a no-op when not dismissed).
+      if (sessionData.state?.interruption?.dismissed === true) {
+        await setSessionDismissed(deps.kanbanService, featurePath, sessionJobId, false);
+      }
+
       // ✅ Resume always sets isResume=true. Graph router uses this + hasTaskQueue + hasResolvedAction
       // to determine correct entry point (plan, decompose, or triage)
       const hasTaskQueue = (sessionData.state?.taskQueue?.length || 0) > 0;
@@ -1324,14 +1332,20 @@ export function createJobRoutes(deps: {
       const userContext = extractUserContext(req);
       const jobStatus = await deps.stateStore.getJobStatus(jobId);
 
-      // No Redis record → already sealed (terminal) or never existed — both
-      // surface as idempotent success for the dismiss UX.
+      // No Redis record → already sealed (terminal) or never existed. Still
+      // persist the dismissed marker on the session file: a user-stopped job
+      // is finalized (Redis sealed) at stop time, so THIS is the path a
+      // cancelled-card dismiss actually takes — returning without touching
+      // the session left the interrupted taskQueue armed to hijack the next
+      // chat turn (sharp-choking-glove RCA).
       if (!jobStatus) {
+        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        const patched = await setSessionDismissed(deps.kanbanService, featurePath, jobId, true);
         logger.debug(
-          `Job dismiss: no Redis record (already sealed or never existed) jobId=${jobId}`,
+          `Job dismiss: no Redis record (already sealed or never existed) jobId=${jobId}, sessionPatched=${patched}`,
           { component: 'JobRoute' },
         );
-        return res.json({ success: true, alreadyDismissed: true });
+        return res.json({ success: true, alreadyDismissed: true, sessionPatched: patched });
       }
 
       const terminalStatuses = ['failed', 'completed', 'cancelled', 'stopped'];
@@ -1349,7 +1363,12 @@ export function createJobRoutes(deps: {
           interruption: {
             reason: 'user_stopped',
             message: 'Dismissed by user',
-            canResume: false,
+            // Orthogonal axes: the work itself is intact (user_stopped IS a
+            // resumable kind), so `canResume` stays true and the explicit
+            // /resume route keeps working; `dismissed` withdraws implicit-
+            // continuation consent (deriveRestoreMode → 'fresh' for new turns).
+            canResume: true,
+            dismissed: true,
             timestamp: new Date().toISOString(),
             metadata: { stoppedBy: 'dismiss' },
           },
