@@ -366,11 +366,11 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   // Phase 2 (D22) — workspace project domain defaults to 'service' so the
   // ActionsPanel renders the matrix-correct card set on first paint and
   // the BE detect pipeline gets a deterministic explicit override (10.2).
-  // The chip is mutated only via the top-level DomainToggle on `pick-action`.
-  // The persisted SSOT is `WorkspaceConfig.domain` in the project's
-  // `config.json` artifact — `projectConfigSlice.fetchProjectConfig`
-  // hydrates this value on project load, and `updateActionMetadata`
-  // writes it back on toggle.
+  // This is a DERIVED mirror of the SSOT `WorkspaceConfig.domain` in the
+  // project's `config.json` — `projectConfigSlice.fetchProjectConfig`
+  // hydrates it on project load. The domain is chosen at project creation
+  // and changed only in project settings (ConfigEditor); there is no
+  // in-panel switcher writing this field directly.
   actionMetadata: { domain: 'service' } as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
   spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
@@ -1469,9 +1469,9 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       }
 
       // Phase 2 (D22) — domain transition policy. Centralized here so
-      // every entry point (DomainToggle, projectConfigSlice mirror /
-      // backfill, future SSE broadcast) shares the same cleanup contract
-      // instead of each call site re-implementing it.
+      // every entry point (projectConfigSlice mirror / backfill after a
+      // project-settings domain change, future SSE broadcast) shares the
+      // same cleanup contract instead of each call site re-implementing it.
       //
       // Two-tier guard: cleanup runs only on actual domain change
       // (game ↔ service); persist (`persistWorkspaceDomain`) runs on

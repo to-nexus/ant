@@ -181,6 +181,14 @@
     "baseBranchDesc": "Auto-detected from git repository",
     "baseBranchEditable": "Set the default branch name for initialization (e.g., main, master)"
   },
+  "domain": {
+    "title": "Domain",
+    "description": "Service vs game. Determines which artifact set this project uses (UI design vs game art) and how artifacts are filtered. Applies to every feature. Switching clears domain-specific design selections.",
+    "service": "Service",
+    "serviceDesc": "Web / app services (UI + backend)",
+    "game": "Game",
+    "gameDesc": "Games (game art + engine)"
+  },
   "llmModels": {
     "title": "LLM Settings by Job Node",
     "nodeOverrides": "Node-level overrides",

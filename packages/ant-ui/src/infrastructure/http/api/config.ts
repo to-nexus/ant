@@ -13,10 +13,10 @@ export interface ProjectConfig {
   branchBase?: string;
   /**
    * Workspace domain (Phase 2 — D22). Persisted on the BE in `config.json`
-   * and treated as the SSOT for the project-level domain selector. The
-   * FE mirrors this into `actionMetadata.domain` whenever the project
-   * config loads, and writes back via PUT when the user toggles
-   * `DomainToggle` so refresh / re-entry restore the same domain.
+   * and treated as the SSOT for the project-level domain. The FE mirrors
+   * this into `actionMetadata.domain` whenever the project config loads,
+   * and writes it back via PUT when the user picks a domain at project
+   * creation or changes it in project settings (ConfigEditor).
    */
   domain?: Domain;
   llmModels?: {

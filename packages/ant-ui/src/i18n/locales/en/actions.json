@@ -90,19 +90,16 @@
     }
   },
   "domain": {
-    "label": "Domain",
-    "description": "Choose game vs. service domain",
     "toggle": {
-      "label": "Project Domain",
       "option": {
         "game": "Game",
         "service": "Service"
       }
     },
     "badge": {
-      "hint": "Domain is set on the top screen.",
-      "goToTopLevel": "Go to top level",
-      "aria": "Current project domain"
+      "aria": "Current project domain",
+      "hint": "Domain is set when the project is created and changed in project settings.",
+      "openSettings": "Open project settings"
     }
   },
   "section": {

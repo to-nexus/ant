@@ -4,8 +4,8 @@ import type { BasisSlotConfig } from '@ant/shared';
  * Wizard-internal tier identifier (Phase 2 — D12-revised + D23).
  *
  * Mirrors the BE `TierKey` union from `@ant/shared/tier-matrix.ts`.
- * `domain` is NOT a wizard tier — it's a workspace-level 1st-class slot
- * (D22) handled by `DomainToggle` at the ActionsPanel top screen.
+ * `domain` is NOT a wizard tier — it's a project-level 1st-class slot
+ * (D22) chosen at project creation and changed in project settings.
  *
  * Adding a new tier requires:
  *   1. extending this union,

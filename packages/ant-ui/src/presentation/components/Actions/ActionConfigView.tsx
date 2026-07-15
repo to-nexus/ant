@@ -47,6 +47,9 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const selectedProject = useStore(s => s.selectedProject);
   const fileTree = useStore(s => s.fileTree);
+  // Persisted project-domain SSOT for artifact-tree filtering (config.json).
+  const projectDomainStatus = useStore(s => s.projectConfig.status);
+  const projectDomain = useStore(s => s.projectConfig.data?.domain);
   const highlightArtifactDirs = useStore(s => s.highlightArtifactDirs);
   const spotlightTarget = useStore(s => s.spotlightTarget);
   const setSpotlightTarget = useStore(s => s.setSpotlightTarget);
@@ -266,10 +269,14 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   // exposes the other domain's asset pool (I6). `suggestedDirs` are the slot
   // candidate dirs so the tree ★-marks the recommended locations.
   const [pickerField, setPickerField] = useState<'refs' | 'context' | null>(null);
-  const workspaceDomain = actionMetadata.domain ?? 'service';
+  // Prune by the persisted project domain (config.json SSOT), not the mutable
+  // actionMetadata buffer — see ArtifactsPanel for the drift rationale. While
+  // the config loads, skip pruning rather than filter by an unknown domain.
   const prunedTree = useMemo(
-    () => pruneFileTreeForWorkspaceDomain(fileTree as any, workspaceDomain) as typeof fileTree,
-    [fileTree, workspaceDomain],
+    () => (projectDomainStatus === 'ready'
+      ? (pruneFileTreeForWorkspaceDomain(fileTree as any, projectDomain) as typeof fileTree)
+      : fileTree),
+    [fileTree, projectDomainStatus, projectDomain],
   );
   const suggestedRefDirs = useMemo(
     () => (slots?.refs ?? []).map(s => s.path).filter((p): p is string => !!p && p !== ''),

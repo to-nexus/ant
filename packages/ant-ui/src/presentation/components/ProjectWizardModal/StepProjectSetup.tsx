@@ -1,10 +1,15 @@
 import { useState, type CSSProperties } from 'react';
 import { Compass, Code2, Check, X } from 'lucide-react';
+import type { Domain } from '@ant/shared';
+import { DomainSelect } from '../Actions/DomainSelect';
 
 interface StepProjectSetupProps {
   t: (key: string) => string;
   mode: 'design' | 'code';
   onModeChange: (mode: 'design' | 'code') => void;
+  domain: Domain;
+  onDomainChange: (domain: Domain) => void;
+  domainDisabled?: boolean;
   existingProjectId?: string;
   projectName: string;
   onProjectNameChange: (v: string) => void;
@@ -17,7 +22,7 @@ interface StepProjectSetupProps {
 }
 
 export function StepProjectSetup({
-  t, mode, onModeChange, existingProjectId,
+  t, mode, onModeChange, domain, onDomainChange, domainDisabled, existingProjectId,
   projectName, onProjectNameChange,
   featureName, onFeatureNameChange,
   projectNameExists, featureNameExists,
@@ -48,6 +53,39 @@ export function StepProjectSetup({
           desc={t('quickstart.projectWizard.modeCodeDesc')}
         />
       </div>
+
+      {/* Domain — project-level property (service vs game). Only chosen when
+          creating a new project; features inherit the project's domain, so it
+          is hidden when adding a feature to an existing project. Changeable
+          later in project settings. */}
+      {!existingProjectId && (
+        <div>
+          <label
+            className="block text-sm font-medium mb-1.5"
+            style={{ color: 'var(--text-2)' }}
+          >
+            {t('quickstart.projectWizard.domainLabel')}
+          </label>
+          <DomainSelect
+            value={domain}
+            onChange={onDomainChange}
+            disabled={domainDisabled}
+            labels={{
+              service: {
+                title: t('quickstart.projectWizard.domainService'),
+                desc: t('quickstart.projectWizard.domainServiceDesc'),
+              },
+              game: {
+                title: t('quickstart.projectWizard.domainGame'),
+                desc: t('quickstart.projectWizard.domainGameDesc'),
+              },
+            }}
+          />
+          <p className="mt-1.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
+            {t('quickstart.projectWizard.domainHint')}
+          </p>
+        </div>
+      )}
 
       {/* Project name */}
       <NameField

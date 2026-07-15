@@ -23,7 +23,6 @@ import { ACTION_VISUALS, getIntentVisual } from './actionVisuals';
 import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
 import { BasisWizard } from './basis';
-import { DomainToggle } from './DomainToggle';
 import { DomainBadge } from './DomainBadge';
 
 const STEP_ORDER = ['pick-action', 'pick-intent', 'config', 'basis-edit'] as const;
@@ -162,15 +161,11 @@ export function ActionsPanel() {
 
   const renderStep = () => {
     if (step === 'pick-action') {
-      // Phase 2 (D22) — workspace-level domain selector lives on the
-      // ActionsPanel top screen. Selecting a domain is a sticky workspace
-      // decision; descending into any wizard surfaces the same chip but
-      // disables editing (see `ActionConfigView` / `pick-intent` below).
+      // D22 — domain is a project-level property set at project creation and
+      // changed only in project settings (ConfigEditor). There is no in-panel
+      // switcher; lower depths surface a read-only DomainBadge for context.
       return (
         <div className="h-full flex flex-col overflow-y-auto">
-          <div className="shrink-0 px-5 pt-5 flex justify-end">
-            <DomainToggle topLevel />
-          </div>
           <div className="flex-1 flex items-center justify-center p-8">
             <ActionChipGrid
               readiness={readiness}
@@ -184,10 +179,9 @@ export function ActionsPanel() {
     }
 
     if (step === 'pick-intent' && selectedActionId) {
-      // D22: workspace domain is toggled ONLY on the top `pick-action` screen.
-      // Lower depths (pick-intent / config / basis-edit) surface a read-only
-      // DomainBadge so the user can always see the active domain; clicking it
-      // offers a link back to the top level to change it.
+      // D22: domain is a project-level property (set at creation, changed in
+      // project settings). Lower depths surface a read-only DomainBadge so the
+      // user can always see the active domain.
       return (
         <div className="h-full flex flex-col">
           <div className="shrink-0 px-5 pt-5">

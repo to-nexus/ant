@@ -5,31 +5,26 @@ import { useStore } from '@/domain/store';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 interface DomainBadgeProps {
-  /**
-   * Navigation to the top level where the domain can actually be changed.
-   * Chat passes `() => openActionsPanel()`. Page screens omit it and get the
-   * default `() => setActionsStep('pick-action')`.
-   */
-  onGoToTopLevel?: () => void;
   className?: string;
 }
 
 /**
- * Compact, read-only indicator of the current workspace domain
- * (`actionMetadata.domain`). The badge itself is a click trigger: clicking it
- * opens a small tooltip explaining that the domain is chosen on the top screen,
- * with a link that navigates there. The interactive selector remains
- * `DomainToggle`, rendered only on the ActionsPanel top (`pick-action`).
+ * Compact, read-only indicator of the current project domain
+ * (`actionMetadata.domain`, mirrored from the project's `config.json`).
+ * Domain is a project-level property changed only at project creation or in
+ * project settings — the badge itself never switches it. Its tooltip carries
+ * a link that opens project settings (`projectConfig` main-panel tab) where
+ * the domain can actually be changed.
  */
-export function DomainBadge({ onGoToTopLevel, className }: DomainBadgeProps) {
+export function DomainBadge({ className }: DomainBadgeProps) {
   const { t } = useTranslation('actions');
   const domain = useStore(s => s.actionMetadata).domain ?? 'service';
-  const setActionsStep = useStore(s => s.setActionsStep);
+  const openMainPanelTab = useStore(s => s.openMainPanelTab);
 
-  const goToTopLevel = useCallback(() => {
-    if (onGoToTopLevel) onGoToTopLevel();
-    else setActionsStep('pick-action');
-  }, [onGoToTopLevel, setActionsStep]);
+  const openSettings = useCallback(
+    () => openMainPanelTab('projectConfig'),
+    [openMainPanelTab],
+  );
 
   const content = (
     <div className="flex flex-col gap-1.5 max-w-[15rem]">
@@ -38,12 +33,12 @@ export function DomainBadge({ onGoToTopLevel, className }: DomainBadgeProps) {
       </span>
       <button
         type="button"
-        onClick={goToTopLevel}
+        onClick={openSettings}
         className="inline-flex items-center gap-1 text-xs font-medium self-start"
         style={{ color: 'var(--violet-600)' }}
       >
         <ArrowUpRight className="w-3 h-3 shrink-0" />
-        {t('domain.badge.goToTopLevel')}
+        {t('domain.badge.openSettings')}
       </button>
     </div>
   );

@@ -109,19 +109,16 @@
     }
   },
   "domain": {
-    "label": "도메인",
-    "description": "게임 / 서비스 도메인 선택",
     "toggle": {
-      "label": "프로젝트 도메인",
       "option": {
         "game": "게임",
         "service": "서비스"
       }
     },
     "badge": {
-      "hint": "도메인은 최상위 화면에서 설정합니다.",
-      "goToTopLevel": "최상위로 이동",
-      "aria": "현재 프로젝트 도메인"
+      "aria": "현재 프로젝트 도메인",
+      "hint": "도메인은 프로젝트 생성 시 정해지며 프로젝트 설정에서 변경할 수 있습니다.",
+      "openSettings": "프로젝트 설정 열기"
     }
   },
   "section": {
