@@ -171,6 +171,9 @@ export class OpenAILLMClient implements LLMClient {
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
+      /** Per-round thinking toggle from the tool-loop; honored by hard-toggle
+       *  OpenAI-compat providers (DeepSeek, GLM) — see `_streamInternal`. */
+      enableThinking?: boolean;
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
@@ -196,6 +199,7 @@ export class OpenAILLMClient implements LLMClient {
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
+      enableThinking?: boolean;
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
@@ -206,16 +210,19 @@ export class OpenAILLMClient implements LLMClient {
     const openAIMessages = this.convertToOpenAIMessages(messages);
     const temperature = options?.temperature ?? this.temperature;
 
-    // Dual-mode thinking control for OpenAI-compatible providers that expose the
-    // same `thinking:{type}` param (DeepSeek, GLM/Zhipu). Default 'enabled'
-    // (surfaces reasoning + keeps tool-calling); set the provider's *_THINKING env
-    // to 'disabled' for non-thinking (temperature honored, lower latency). Never
-    // attached on the real OpenAI path. Field is absent from the OpenAI SDK type,
-    // hence the cast at the create site.
+    // Hard-toggle thinking for OpenAI-compat providers (DeepSeek, GLM/Zhipu):
+    // honor the tool-loop's per-round `enableThinking` (ON round 1 / OFF after
+    // tool calls), matching AnthropicLLMClient (5e981a1f parity). Ignoring it
+    // kept reasoning ON every round → max_tokens truncation (empty-calming-alder).
+    // The provider's *_THINKING=disabled env is an operator hard opt-out that
+    // wins. Never attached on the real OpenAI path (SDK has no such field).
     const thinkingToggleEnv = THINKING_TOGGLE_PROVIDERS[this.provider];
-    const providerExtra: Record<string, unknown> = thinkingToggleEnv
-      ? { thinking: { type: process.env[thinkingToggleEnv] === 'disabled' ? 'disabled' : 'enabled' } }
-      : {};
+    const providerExtra: Record<string, unknown> = {};
+    if (thinkingToggleEnv) {
+      const envDisabled = process.env[thinkingToggleEnv] === 'disabled';
+      const enabled = !envDisabled && options?.enableThinking !== false;
+      providerExtra.thinking = { type: enabled ? 'enabled' : 'disabled' };
+    }
 
     const toolsConfig = options?.tools?.length ? {
       tools: options.tools.map(t => ({
