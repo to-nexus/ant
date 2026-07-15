@@ -20,6 +20,7 @@ import {
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetry } from '../../../core/utils/retry';
+import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
 
 export class GeminiLLMClient implements LLMClient {
   private client: GoogleGenAI;
@@ -277,7 +278,9 @@ export class GeminiLLMClient implements LLMClient {
     let systemInstruction: string | undefined;
     const contents: any[] = [];
 
-    for (const msg of messages) {
+    // Provider-neutral guard: strip empty text blocks so no empty part reaches
+    // the wire (parity with the Anthropic 400 case); see sanitizeMessages.
+    for (const msg of sanitizeMessages(messages)) {
       if (msg.role === 'system') {
         systemInstruction = this.extractText(msg.content);
         continue;

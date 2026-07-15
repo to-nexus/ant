@@ -288,7 +288,16 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   if (clarifyGate.paused) {
     console.log(`💬 [Planner:Plan] clarify — pausing (${clarifyGate.blocks.length} block(s))`);
     const cleaned = clarifyGate.cleanedText;
-    const clarifyHistory: ConversationMessage[] = [...updatedHistory, { role: 'assistant', content: cleaned }];
+    // The clarify questions ship as a choice card, not as assistant text, so
+    // `cleaned` is empty when the model emitted only the <clarify> block.
+    // Never store an empty assistant turn: on resume it becomes an empty text
+    // block that Anthropic rejects (400). Anchor the NODE_PLAN turn with the
+    // questions the model asked (also gives it self-context on continuation).
+    const clarifyAnchor =
+      cleaned.trim() ||
+      clarifyGate.blocks.map(b => b.question).filter(Boolean).join('\n') ||
+      '(clarifying questions asked)';
+    const clarifyHistory: ConversationMessage[] = [...updatedHistory, { role: 'assistant', content: clarifyAnchor }];
     await saveConversationToSession(state, {
       nodeKey: CONV_KEYS.NODE_PLAN,
       responseText: cleaned,
