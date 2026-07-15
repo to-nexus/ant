@@ -372,6 +372,26 @@ export function applyExplicitTechTierOverrides(
 }
 
 /**
+ * Merge a decompose gameArtTier emission into the carried basis with explicit
+ * axes authoritative.
+ *
+ * Policy: explicit axes from `actionMetadata.basis.gameArtTier` (the user's
+ * wizard selection) win over anything the LLM emitted in `<gameArtTier>` or the
+ * default-on-retry-exhaustion fill — a user-pinned axis (e.g. `perspective=3d`)
+ * is never downgraded. The LLM emit only supplies axes the explicit basis lacks.
+ * Mirrors `applyExplicitTechTierOverrides`.
+ *
+ * Precedence (last wins): `carried` < `emitted` < `explicit`.
+ */
+export function applyExplicitGameArtTierOverrides(
+  carried: GameArtTier | undefined,
+  emitted: GameArtTier,
+  explicit: GameArtTier | undefined,
+): GameArtTier {
+  return { ...(carried ?? {}), ...emitted, ...(explicit ?? {}) };
+}
+
+/**
  * Compute a single representative TechTier from an array of TechTiers.
  * Used where a single TechTier is needed (language resolution, framework detection).
  *

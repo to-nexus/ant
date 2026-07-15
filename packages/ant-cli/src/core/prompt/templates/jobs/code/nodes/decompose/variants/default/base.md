@@ -147,7 +147,7 @@ A `"design-system"` task at priority 200 is REQUIRED to implement the visual pol
 GameArtTier ships 7 axes. Each axis has a registry-backed candidate set; the LLM emits a comma-separated `axis=value` list:
 
 - `concept` — overall art tone / silhouette palette. Candidates: {{{gameArtConceptCandidates}}}.
-- `perspective` — camera / depth model. Candidates: `2d` (3D deferred to Phase 5+).
+- `perspective` — camera / depth model. Candidates: {{{gameArtPerspectiveCandidates}}}.
 - `entityCatalog` — character / object catalog policy. Candidates: `minimal`, `standard`, `rich`.
 - `motionPattern` — sprite tween / animation policy. Candidates: `static`, `subtle`, `expressive`.
 - `particleProfile` — particle density on feedback events. Candidates: `none`, `light`, `heavy`.
