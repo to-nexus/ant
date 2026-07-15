@@ -253,6 +253,72 @@ describe('FileSessionAdapter — chapter 2 write paths', () => {
     expect(chatLines[0]).toMatchObject({ sourceRef: 'ask-only', turnId: 't-ask' });
   });
 
+  it('appendUserTurn dedups the chat.jsonl copy when a user_turn for the turnId already exists (submit-time durable write)', async () => {
+    // Simulate the API route's durable submit-time write (jobId='').
+    await adapter.appendLine('chat', {
+      type: 'user_turn',
+      ts: '2026-04-20T00:00:05Z',
+      jobId: '',
+      turnId: 't-dedup',
+      jobType: 'code',
+      text: 'hello',
+      sourceRef: 'feature.jsonl#t-dedup',
+    } as ChatLine);
+
+    // Worker's recordUserTurn runs later with the real jobId.
+    const line: FeatureUserTurnLine = {
+      type: 'user_turn',
+      ts: '2026-04-20T00:00:06Z',
+      jobId: 'j-dedup',
+      turnId: 't-dedup',
+      jobType: 'code',
+      text: 'hello',
+      mode: 'generate',
+    };
+    await adapter.appendUserTurn(line);
+
+    const featureLines = await readJsonl<FeatureLine>(featurePath);
+    const chatLines = await readJsonl<ChatLine>(tracePath);
+
+    // feature.jsonl (context SSOT) is still written unconditionally.
+    expect(featureLines).toHaveLength(1);
+    expect(featureLines[0]).toMatchObject({ type: 'user_turn', turnId: 't-dedup', jobId: 'j-dedup' });
+
+    // chat.jsonl keeps exactly ONE user_turn — the submit-time line.
+    const chatUserTurns = chatLines.filter((l) => l.type === 'user_turn' && (l as any).turnId === 't-dedup');
+    expect(chatUserTurns).toHaveLength(1);
+    expect(chatUserTurns[0]).toMatchObject({ turnId: 't-dedup', jobId: '' });
+  });
+
+  it('appendUserTurn (skipFeature) dedups against an existing submit-time chat line (inline-ask)', async () => {
+    await adapter.appendLine('chat', {
+      type: 'user_turn',
+      ts: '2026-04-20T00:00:07Z',
+      jobId: '',
+      turnId: 't-ask-dedup',
+      jobType: 'inline-ask',
+      text: 'q',
+      sourceRef: 'feature.jsonl#t-ask-dedup',
+    } as ChatLine);
+
+    const line: FeatureUserTurnLine = {
+      type: 'user_turn',
+      ts: '2026-04-20T00:00:08Z',
+      jobId: 'j-ask-dedup',
+      turnId: 't-ask-dedup',
+      jobType: 'inline-ask',
+      text: 'q',
+    };
+    await adapter.appendUserTurn(line, { skipFeature: true });
+
+    const featureLines = await readJsonl<FeatureLine>(featurePath);
+    const chatLines = await readJsonl<ChatLine>(tracePath);
+
+    expect(featureLines).toHaveLength(0);
+    const chatUserTurns = chatLines.filter((l) => l.type === 'user_turn' && (l as any).turnId === 't-ask-dedup');
+    expect(chatUserTurns).toHaveLength(1);
+  });
+
   it('appendUserTurn does NOT collapse feature.jsonl when chat.jsonl append fails (non-ask)', async () => {
     // Force chat.jsonl append to fail at the filesystem level by pre-creating
     // the path as a DIRECTORY — fs.appendFile then raises EISDIR. This

@@ -3,9 +3,11 @@
  * facade (chat-SSOT §5).
  *
  * Locks the invariants that:
- *   (a) `appendUserTurn` emits a `chat_event_appended` SSE only — the
- *       durable user_turn line is written by the worker's
- *       `recordUserTurn` (no duplicate disk write here).
+ *   (a) `appendUserTurn` writes the durable chat.jsonl user_turn line at
+ *       submit time AND emits a `chat_event_appended` SSE. The worker's
+ *       `recordUserTurn` dedups its own chat copy by turnId, so the
+ *       message survives a refresh even if the job is interrupted before
+ *       the worker runs (no duplicate line results).
  *   (b) `appendAssistantMessage` / `appendChoicePresented` /
  *       `appendChoiceResolved` write a chat.jsonl line via
  *       `FileSessionAdapter` AND emit a `chat_event_appended` SSE.
@@ -197,16 +199,22 @@ describe('ChatService — Phase 9 emission contract', () => {
     );
   }
 
-  it('appendUserTurn emits chat_event_appended SSE without writing chat.jsonl', async () => {
+  it('appendUserTurn writes chat.jsonl durably at submit AND emits chat_event_appended SSE', async () => {
     await service.appendUserTurn('proj', 'feat-a', 'hello world', 't-aa', 'job-1', USER_CTX);
     const lines = chatEventLines(store);
     expect(lines).toHaveLength(1);
     expect(lines[0].type).toBe('user_turn');
     expect((lines[0] as any).text).toBe('hello world');
 
-    // No durable disk write — the worker's recordUserTurn owns that.
+    // Durable submit-time write — the API route is the owner of the UI
+    // user_turn copy so the message survives a refresh even if the job is
+    // interrupted before the worker's recordUserTurn runs.
     const chatJsonl = path.join(featurePath, 'sessions', 'chat.jsonl');
-    await expect(fs.access(chatJsonl)).rejects.toThrow();
+    const raw = await fs.readFile(chatJsonl, 'utf-8');
+    const disk = raw.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l));
+    const userTurns = disk.filter((l: any) => l.type === 'user_turn' && l.turnId === 't-aa');
+    expect(userTurns).toHaveLength(1);
+    expect(userTurns[0]).toMatchObject({ turnId: 't-aa', text: 'hello world' });
   });
 
   it('appendAssistantMessage writes chat.jsonl AND broadcasts the line', async () => {
