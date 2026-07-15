@@ -13,7 +13,7 @@
  * future model change be a one-line edit instead of a scatter across ~6 files.
  */
 
-/** Per-model token rates, USD per 1M tokens (MTok), Anthropic public pricing. */
+/** Per-model token rates, USD per 1M tokens (MTok), provider public list price. */
 export interface ModelRate {
   /** Fresh (uncached) input tokens. */
   input: number;
@@ -212,9 +212,19 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     thinkingMode: 'none',
     selectable: true,
   },
-  // Gemini — creator/visual job models. Not billed through MODEL_RATE_CARD.
-  // Only the pro (text) model reaches getModelContextWindow; image models go
-  // through GeminiImageClient, so they carry no contextWindow.
+  // Gemini — creator/visual job models. All four are billed through MODEL_RATE_CARD.
+  // TEXT models (pro / flash) price input/output normally. IMAGE models emit their
+  // render as OUTPUT tokens (GeminiImageClient maps candidatesTokenCount→outputTokens),
+  // which Google bills at a special "image output" rate — so their `output` rate is
+  // that image-output price (Google per-image cost expressed per output token).
+  //
+  // Context-tier note: Gemini 3.x text pricing is context-tiered (≤200K vs >200K:
+  // Pro $2/$12 → $4/$18, cache-read −90%). ANT registers the ≤200K tier flat —
+  // these models only do image-prompt engineering / triage (small prompts, always
+  // ≪200K), and the whole rate card is flat per-model (Claude 1M models are billed
+  // the same way). True per-call context tiering would require per-call cost
+  // accumulation (billing prices the SUMMED per-model aggregate, so a tier picked
+  // from the sum would misprice) — a cross-cutting change, not a Gemini special-case.
   'gemini-3.1-pro-preview': {
     id: 'gemini-3.1-pro-preview',
     displayName: 'Gemini 3.1 Pro',
@@ -223,6 +233,10 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     recommended: true,
     capabilities: ['reasoning', 'prompt-engineering'],
     contextWindow: 1_000_000,
+    // ≤200K tier (Google list price). >200K tier is $4 / $18 / cacheRead $0.40.
+    // Gemini caching is not used by ANT (no cacheCreation reported), so cacheWrite*
+    // are inert and mirror input; cacheRead is the −90% hit rate if ever reported.
+    rate: { input: 2, output: 12, cacheWrite5m: 2, cacheWrite1h: 2, cacheRead: 0.2 },
     thinkingMode: 'none',
   },
   'gemini-3-flash': {
@@ -232,6 +246,10 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     description: 'Fast classification and triage for visual jobs',
     recommended: false,
     capabilities: ['fast', 'classification'],
+    // Google list price (text/image/video input tier). cacheRead is the −90% hit
+    // rate; cacheWrite* inert (Gemini caching unused). Audio-input tier ($1 in) is
+    // not registered — visual jobs never send audio.
+    rate: { input: 0.5, output: 3, cacheWrite5m: 0.5, cacheWrite1h: 0.5, cacheRead: 0.05 },
     thinkingMode: 'none',
   },
   'gemini-3-pro-image': {
@@ -241,6 +259,10 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     description: 'High-quality image generation for final renders',
     recommended: true,
     capabilities: ['image-generation', 'high-quality'],
+    // Google list price. `output` is the image-output token rate ($120/MTok) — the
+    // render is billed as output tokens. Cache fields inert (image path reports no
+    // cache tokens); kept for shape consistency.
+    rate: { input: 2, output: 120, cacheWrite5m: 0.375, cacheWrite1h: 0.375, cacheRead: 0.2 },
     thinkingMode: 'none',
   },
   'gemini-3.1-flash-image': {
@@ -250,6 +272,9 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     description: 'Fast image generation for draft exploration',
     recommended: false,
     capabilities: ['image-generation', 'fast'],
+    // Google list price. `output` is the image-output token rate ($60/MTok). Cache
+    // fields inert (image path reports no cache tokens); mirror input for shape.
+    rate: { input: 0.5, output: 60, cacheWrite5m: 0.5, cacheWrite1h: 0.5, cacheRead: 0.05 },
     thinkingMode: 'none',
   },
 };
