@@ -3,7 +3,7 @@ import { Play, XCircle } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { dismissInterruptedJob, resumeJob } from '@/infrastructure/http/api';
 import type { VariantProps, ResolvedIcon } from './shared';
-import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout } from './shared';
+import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, JobIdChip } from './shared';
 import { Slot } from '@/presentation/extensions/slots';
 
 export function CancelledVariant({ presented, resolved }: VariantProps) {
@@ -175,6 +175,9 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
       resolvedLabel={state.resolvedLabel}
       resolvedIcon={resolvedIcon}
       resolvedExtra={reopenAction}
+      // Every interruption card carries its job id so the user always knows
+      // which job was stopped/dismissed — shown resolved or unresolved.
+      headerMeta={jobId ? <JobIdChip jobId={jobId} /> : undefined}
     >
       {detail && (
         <div
