@@ -101,11 +101,28 @@ export class OpenAILLMClient implements LLMClient {
     this.modelName = config.modelName;
   }
 
+  /**
+   * Thinking-param SSOT for OpenAI-compat toggle providers (DeepSeek, GLM/Zhipu),
+   * shared by the streaming and non-streaming paths. Honors the caller's
+   * per-round `enableThinking` (parity with AnthropicLLMClient, 5e981a1f):
+   * ignoring it kept GLM reasoning every round → max_tokens truncation
+   * (empty-calming-alder). The provider's *_THINKING=disabled env is an
+   * operator hard opt-out that wins. Returns `{}` for real OpenAI (no such
+   * field) and any non-toggle provider.
+   */
+  private resolveThinkingParam(options?: { enableThinking?: boolean }): Record<string, unknown> {
+    const thinkingToggleEnv = THINKING_TOGGLE_PROVIDERS[this.provider];
+    if (!thinkingToggleEnv) return {};
+    const envDisabled = process.env[thinkingToggleEnv] === 'disabled';
+    const enabled = !envDisabled && options?.enableThinking !== false;
+    return { thinking: { type: enabled ? 'enabled' : 'disabled' } };
+  }
+
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {
     const result = await this.invokeWithUsage(messages as any, options);
     return result.content;
   }
-  
+
   async invokeWithUsage(
     messages: Array<{ role: string; content: string | CacheableContent[] }>,
     options?: Record<string, any>
@@ -150,7 +167,8 @@ export class OpenAILLMClient implements LLMClient {
       })),
       temperature: options?.temperature ?? this.temperature,
       max_tokens: options?.maxTokens || 16000,
-    });
+      ...this.resolveThinkingParam(options),
+    } as any);
 
     const content = response.choices[0]?.message?.content || '';
 
@@ -210,19 +228,7 @@ export class OpenAILLMClient implements LLMClient {
     const openAIMessages = this.convertToOpenAIMessages(messages);
     const temperature = options?.temperature ?? this.temperature;
 
-    // Hard-toggle thinking for OpenAI-compat providers (DeepSeek, GLM/Zhipu):
-    // honor the tool-loop's per-round `enableThinking` (ON round 1 / OFF after
-    // tool calls), matching AnthropicLLMClient (5e981a1f parity). Ignoring it
-    // kept reasoning ON every round → max_tokens truncation (empty-calming-alder).
-    // The provider's *_THINKING=disabled env is an operator hard opt-out that
-    // wins. Never attached on the real OpenAI path (SDK has no such field).
-    const thinkingToggleEnv = THINKING_TOGGLE_PROVIDERS[this.provider];
-    const providerExtra: Record<string, unknown> = {};
-    if (thinkingToggleEnv) {
-      const envDisabled = process.env[thinkingToggleEnv] === 'disabled';
-      const enabled = !envDisabled && options?.enableThinking !== false;
-      providerExtra.thinking = { type: enabled ? 'enabled' : 'disabled' };
-    }
+    const providerExtra = this.resolveThinkingParam(options);
 
     const toolsConfig = options?.tools?.length ? {
       tools: options.tools.map(t => ({

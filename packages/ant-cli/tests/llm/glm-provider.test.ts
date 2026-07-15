@@ -144,4 +144,41 @@ describe('OpenAI-compat thinking toggle (parity with AnthropicLLMClient)', () =>
     const payload = await captureCreatePayload('openai', { enableThinking: false });
     expect(payload.thinking).toBeUndefined();
   });
+
+  /** Drive the non-streaming `invokeWithUsage` and capture the create payload. */
+  async function captureInvokePayload(
+    provider: string,
+    options: Record<string, any>,
+  ): Promise<any> {
+    const client = new OpenAILLMClient(undefined, {
+      apiKey: 'test-key',
+      modelName: provider === 'openai' ? 'gpt-4o' : `${provider}-5.2`,
+      provider,
+    });
+    const create = vi.fn().mockResolvedValue({
+      choices: [{ message: { content: 'ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+    (client as any).client = { chat: { completions: { create } } };
+
+    await client.invokeWithUsage([{ role: 'user', content: 'hi' }] as any, options);
+    expect(create).toHaveBeenCalledTimes(1);
+    return create.mock.calls[0][0];
+  }
+
+  it('GLM non-streaming (invokeWithUsage): honors enableThinking', async () => {
+    delete process.env.GLM_THINKING;
+    expect((await captureInvokePayload('glm', { enableThinking: false })).thinking).toEqual({ type: 'disabled' });
+    expect((await captureInvokePayload('glm', { enableThinking: true })).thinking).toEqual({ type: 'enabled' });
+    expect((await captureInvokePayload('glm', {})).thinking).toEqual({ type: 'enabled' });
+  });
+
+  it('GLM non-streaming: GLM_THINKING=disabled env wins', async () => {
+    process.env.GLM_THINKING = 'disabled';
+    expect((await captureInvokePayload('glm', { enableThinking: true })).thinking).toEqual({ type: 'disabled' });
+  });
+
+  it('real OpenAI non-streaming: no thinking param', async () => {
+    expect((await captureInvokePayload('openai', { enableThinking: false })).thinking).toBeUndefined();
+  });
 });

@@ -68,7 +68,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   applyEstimatedInputTokens(state as any, combinedPrompt.length);
 
   let responseText = '';
-  for await (const event of llm.stream([{ role: 'user', content: combinedPrompt }])) {
+  for await (const event of llm.stream([{ role: 'user', content: combinedPrompt }], { enableThinking: false })) {
     if (event.type === 'retry') {
       responseText = '';
       continue;

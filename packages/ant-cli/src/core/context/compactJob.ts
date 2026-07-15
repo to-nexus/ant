@@ -99,6 +99,7 @@ export async function compactJob<T extends CompactableEntry>(
   const invokeOpts = {
     system: systemPrompt,
     maxTokens: config.maxOutputTokens || COMPACTION_MAX_OUTPUT_TOKENS,
+    enableThinking: false,
   };
 
   const { summaryText, tokenUsage } = llmClient.invokeWithUsage

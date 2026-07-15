@@ -95,7 +95,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         const { content, usage } = await runEstimatingLLM(
           state as any,
           'detect',
-          () => llm.invokeWithUsage!(messages),
+          () => llm.invokeWithUsage!(messages, { enableThinking: false }),
           { subNode: 'visual', promptChars: classifyPrompt.length },
         );
         if (usage) {
@@ -103,7 +103,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         }
         rawContent = content;
       } else {
-        rawContent = await llm.invoke(messages);
+        rawContent = await llm.invoke(messages, { enableThinking: false });
       }
 
       const classified = parseClassifyResponse(rawContent);

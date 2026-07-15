@@ -62,10 +62,10 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
       ];
       try {
         if (llm.invokeWithUsage) {
-          const response = await llm.invokeWithUsage(messages);
+          const response = await llm.invokeWithUsage(messages, { enableThinking: false });
           return { i, sketchPrompt, svgCode: response.content, usage: response.usage };
         }
-        return { i, sketchPrompt, svgCode: await llm.invoke(messages) };
+        return { i, sketchPrompt, svgCode: await llm.invoke(messages, { enableThinking: false }) };
       } catch (err: any) {
         return { i, sketchPrompt, error: err };
       }
