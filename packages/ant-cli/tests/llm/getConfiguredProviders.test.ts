@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { getConfiguredProviders } from '../../src/periphery/adapters/http/routes/models.routes';
 
-const KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'DEEPSEEK_API_KEY'] as const;
+const KEYS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'GLM_API_KEY'] as const;
 
 describe('getConfiguredProviders', () => {
   const saved: Record<string, string | undefined> = {};
@@ -30,16 +30,18 @@ describe('getConfiguredProviders', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-real';
     process.env.DEEPSEEK_API_KEY = '  '; // blank → not configured
     // OPENAI/GEMINI unset
+    process.env.GLM_API_KEY = 'sk-glm';
     const configured = getConfiguredProviders();
     expect(configured).toContain('anthropic');
+    expect(configured).toContain('glm');
     expect(configured).not.toContain('deepseek');
     expect(configured).not.toContain('openai');
     expect(configured).not.toContain('google');
   });
 
-  it('returns all four when every key is set', () => {
+  it('returns all providers when every key is set', () => {
     for (const k of KEYS) process.env[k] = 'x';
-    expect(getConfiguredProviders().sort()).toEqual(['anthropic', 'deepseek', 'google', 'openai']);
+    expect(getConfiguredProviders().sort()).toEqual(['anthropic', 'deepseek', 'glm', 'google', 'openai']);
   });
 
   it('returns empty when no keys are set', () => {

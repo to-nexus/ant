@@ -21,12 +21,23 @@ import {
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream } from '../../../core/utils/retry';
 
+/**
+ * OpenAI-compatible providers that accept the `thinking:{type}` request param, mapped
+ * to the env var that toggles it off ('disabled'). Absent providers (real OpenAI)
+ * never receive the param. Add a provider here when its endpoint mirrors this shape.
+ */
+const THINKING_TOGGLE_PROVIDERS: Record<string, string> = {
+  deepseek: 'DEEPSEEK_THINKING',
+  glm: 'GLM_THINKING',
+};
+
 export class OpenAILLMClient implements LLMClient {
   private client: OpenAI;
   /**
-   * Provider tag. Defaults to 'openai' but the factory injects 'deepseek' when
-   * this client is reused for DeepSeek's OpenAI-compatible endpoint. Drives the
-   * DeepSeek-only `thinking` param and honest event/log labelling.
+   * Provider tag. Defaults to 'openai' but the factory injects 'deepseek' or 'glm'
+   * when this client is reused for those OpenAI-compatible endpoints. Drives the
+   * per-provider `thinking` param (see THINKING_TOGGLE_PROVIDERS) and honest
+   * event/log labelling.
    */
   public readonly provider: string;
   public readonly modelName: string;
@@ -172,12 +183,15 @@ export class OpenAILLMClient implements LLMClient {
     const openAIMessages = this.convertToOpenAIMessages(messages);
     const temperature = options?.temperature ?? this.temperature;
 
-    // M7 — DeepSeek dual-mode control. Default 'enabled' (surfaces reasoning +
-    // keeps V4 tool-calling). Set DEEPSEEK_THINKING=disabled for non-thinking
-    // (temperature honored, lower latency). Never attached on the real OpenAI path.
-    // Field is absent from the OpenAI SDK type, hence the cast at the create site.
-    const providerExtra: Record<string, unknown> = this.provider === 'deepseek'
-      ? { thinking: { type: process.env.DEEPSEEK_THINKING === 'disabled' ? 'disabled' : 'enabled' } }
+    // Dual-mode thinking control for OpenAI-compatible providers that expose the
+    // same `thinking:{type}` param (DeepSeek, GLM/Zhipu). Default 'enabled'
+    // (surfaces reasoning + keeps tool-calling); set the provider's *_THINKING env
+    // to 'disabled' for non-thinking (temperature honored, lower latency). Never
+    // attached on the real OpenAI path. Field is absent from the OpenAI SDK type,
+    // hence the cast at the create site.
+    const thinkingToggleEnv = THINKING_TOGGLE_PROVIDERS[this.provider];
+    const providerExtra: Record<string, unknown> = thinkingToggleEnv
+      ? { thinking: { type: process.env[thinkingToggleEnv] === 'disabled' ? 'disabled' : 'enabled' } }
       : {};
 
     const toolsConfig = options?.tools?.length ? {

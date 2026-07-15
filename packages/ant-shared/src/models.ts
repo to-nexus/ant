@@ -37,7 +37,7 @@ export interface ModelRate {
 export type ThinkingMode = 'adaptive' | 'extended' | 'none';
 
 /** LLM provider tag — the discriminator every model carries. */
-export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'deepseek';
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'deepseek' | 'glm';
 
 /**
  * Provider → the environment variable that holds its API key. SINGLE owner of
@@ -50,7 +50,23 @@ export const PROVIDER_API_KEY_ENV: Record<ModelProvider, string> = {
   openai: 'OPENAI_API_KEY',
   google: 'GEMINI_API_KEY',
   deepseek: 'DEEPSEEK_API_KEY',
+  glm: 'GLM_API_KEY',
 };
+
+/**
+ * Providers whose selection is gated behind an in-app data-privacy consent notice
+ * (third-party, China-hosted). SINGLE owner of this policy — the config picker reads
+ * it through {@link providerRequiresDataConsent} instead of hardcoding provider ids.
+ */
+export const PROVIDER_REQUIRES_DATA_CONSENT: ReadonlySet<ModelProvider> = new Set([
+  'deepseek',
+  'glm',
+]);
+
+/** Whether selecting a model from `provider` must pass the data-consent gate. */
+export function providerRequiresDataConsent(provider: ModelProvider | undefined): boolean {
+  return !!provider && PROVIDER_REQUIRES_DATA_CONSENT.has(provider);
+}
 
 export interface ModelSpec {
   id: string;
@@ -162,6 +178,37 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     // As with Pro: no separate cache-write fee and the OpenAI stream path does not
     // report cacheCreationTokens, so cacheWrite* mirror input (unused).
     rate: { input: 0.14, output: 0.28, cacheWrite5m: 0.14, cacheWrite1h: 0.14, cacheRead: 0.0028 },
+    thinkingMode: 'none',
+    selectable: true,
+  },
+  // GLM (Zhipu / Z.ai) — OpenAI-compatible API (api.z.ai, single Bearer token),
+  // reuses OpenAILLMClient with an injected baseURL/provider (LLMClientFactory).
+  // Premium flagship; 1M context. Thinking is handled by the OpenAI client provider
+  // gate (thinking:{type:'enabled'}), so thinkingMode stays 'none' here.
+  'glm-5.2': {
+    id: 'glm-5.2',
+    displayName: 'GLM-5.2',
+    provider: 'glm',
+    description: 'GLM-5.2 — Zhipu flagship, top-tier coding + agentic reasoning, 1M context (OpenAI-compatible API)',
+    recommended: false,
+    capabilities: ['coding', 'reasoning', 'large-context'],
+    contextWindow: 1_000_000,
+    // Z.ai first-party list price (USD/MTok). No separate cache-write fee and the
+    // OpenAI stream path does not report cacheCreationTokens, so cacheWrite* mirror
+    // input (unused) — same rationale as the DeepSeek entries.
+    rate: { input: 1.4, output: 4.4, cacheWrite5m: 1.4, cacheWrite1h: 1.4, cacheRead: 0.26 },
+    thinkingMode: 'none',
+    selectable: true,
+  },
+  'glm-4.7': {
+    id: 'glm-4.7',
+    displayName: 'GLM-4.7',
+    provider: 'glm',
+    description: 'GLM-4.7 — cost-effective coding + multi-step reasoning, 200K context (OpenAI-compatible API)',
+    recommended: false,
+    capabilities: ['fast', 'coding', 'reasoning'],
+    contextWindow: 200_000,
+    rate: { input: 0.6, output: 2.2, cacheWrite5m: 0.6, cacheWrite1h: 0.6, cacheRead: 0.11 },
     thinkingMode: 'none',
     selectable: true,
   },

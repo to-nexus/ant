@@ -20,10 +20,11 @@ import { useAvailableModels } from './hooks/useAvailableModels';
 import { useConfigEditor } from './hooks/useConfigEditor';
 import { CONFIG_SCHEMA } from './configSchema';
 import { ConfigField, GitHubOwnerInfo } from './components/ConfigField';
+import { DomainSelect } from '../Actions/DomainSelect';
 import { LLMModelsSection } from './components/LLMModelsSection';
-import { DeepSeekConsentModal } from './components/DeepSeekConsentModal';
+import { ProviderConsentModal } from './components/ProviderConsentModal';
 import { DangerZoneSection } from '../common/DangerZoneSection';
-import { MODEL_REGISTRY, OVERRIDABLE_MODEL_SLOTS, IMAGE_GEN_SLOTS, type ModelJobKey } from '@ant/shared';
+import { MODEL_REGISTRY, OVERRIDABLE_MODEL_SLOTS, IMAGE_GEN_SLOTS, providerRequiresDataConsent, type ModelJobKey, type ModelProvider } from '@ant/shared';
 import {
   TwoColLayout,
   TocNav,
@@ -40,7 +41,7 @@ interface ConfigEditorProps {
   onClose: () => void;
 }
 
-const SECTION_IDS = ['c3p-identity', 'c3p-repository', 'c3p-llm', 'c3p-danger'] as const;
+const SECTION_IDS = ['c3p-identity', 'c3p-domain', 'c3p-repository', 'c3p-llm', 'c3p-danger'] as const;
 
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   // onClose is handled by MainPanel tab close button (kept for API compatibility)
@@ -212,31 +213,34 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     });
   };
 
-  // DeepSeek selections pass through an informed-consent gate first. The pending
-  // selection is held until the user confirms; Cancel drops it (previous model
-  // kept). Provider is read from the shared MODEL_REGISTRY so any future
-  // DeepSeek model is covered without a hardcoded id.
-  const [pendingDeepSeekSelection, setPendingDeepSeekSelection] = useState<
-    { job: string; nodeType: string; modelId: string } | null
+  // Third-party (DeepSeek / GLM) selections pass through a per-provider
+  // informed-consent gate first. The pending selection is held until the user
+  // confirms; Cancel drops it (previous model kept). The consent policy is owned
+  // by the shared MODEL_REGISTRY + providerRequiresDataConsent, so future models
+  // of a gated provider are covered without a hardcoded id.
+  const [pendingConsentSelection, setPendingConsentSelection] = useState<
+    { job: string; nodeType: string; modelId: string; provider: ModelProvider } | null
   >(null);
 
   const handleModelChange = (job: string, nodeType: string, modelId: string) => {
-    const isDeepSeek = !!modelId && MODEL_REGISTRY[modelId]?.provider === 'deepseek';
-    const alreadyAcked = loadFromStorage(STORAGE_KEYS.DEEPSEEK_CONSENT_ACK) === true;
-    if (isDeepSeek && !alreadyAcked) {
-      setPendingDeepSeekSelection({ job, nodeType, modelId });
-      return;
+    const provider = modelId ? MODEL_REGISTRY[modelId]?.provider : undefined;
+    if (provider && providerRequiresDataConsent(provider)) {
+      const alreadyAcked = loadFromStorage(STORAGE_KEYS.PROVIDER_CONSENT_ACK(provider)) === true;
+      if (!alreadyAcked) {
+        setPendingConsentSelection({ job, nodeType, modelId, provider });
+        return;
+      }
     }
     commitModelChange(job, nodeType, modelId);
   };
 
-  const handleDeepSeekConsentConfirm = (dontShowAgain: boolean) => {
-    if (dontShowAgain) saveToStorage(STORAGE_KEYS.DEEPSEEK_CONSENT_ACK, true);
-    if (pendingDeepSeekSelection) {
-      const { job, nodeType, modelId } = pendingDeepSeekSelection;
+  const handleConsentConfirm = (dontShowAgain: boolean) => {
+    if (pendingConsentSelection) {
+      const { job, nodeType, modelId, provider } = pendingConsentSelection;
+      if (dontShowAgain) saveToStorage(STORAGE_KEYS.PROVIDER_CONSENT_ACK(provider), true);
       commitModelChange(job, nodeType, modelId);
     }
-    setPendingDeepSeekSelection(null);
+    setPendingConsentSelection(null);
   };
 
   const handleDiscardChanges = () => {
@@ -391,16 +395,22 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     return keys.some((k) => editedConfig[k] !== config[k]);
   }, [editedConfig, config]);
 
+  const domainDirty = useMemo(
+    () => (editedConfig.domain ?? 'service') !== (config.domain ?? 'service'),
+    [editedConfig.domain, config.domain],
+  );
+
   const llmDirty = useMemo(() => {
     return JSON.stringify(editedConfig.llmModels ?? {}) !== JSON.stringify(config.llmModels ?? {});
   }, [editedConfig, config]);
 
-  const changedCount = [identityDirty, repositoryDirty, llmDirty].filter(Boolean).length;
+  const changedCount = [identityDirty, domainDirty, repositoryDirty, llmDirty].filter(Boolean).length;
 
   const tocElement = (
     <TocNav
       items={[
         { id: 'c3p-identity', label: '아이덴티티', icon: 'Box', dirty: identityDirty },
+        { id: 'c3p-domain', label: t('domain.title'), icon: 'Globe', dirty: domainDirty },
         { id: 'c3p-repository', label: '저장소', icon: 'GitBranch', dirty: repositoryDirty },
         { id: 'c3p-llm', label: 'LLM 모델', icon: 'Brain', dirty: llmDirty },
         { id: 'c3p-danger', label: '위험 영역', icon: 'AlertTriangle' },
@@ -566,6 +576,27 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             </SectionCard>
           )}
 
+          {/* Domain — project-level SSOT (service vs game). Editing here writes
+              config.json on save; the projectConfigSlice mirror then updates
+              actionMetadata.domain and runs the domain-transition cleanup. */}
+          <SectionCard
+            id="c3p-domain"
+            icon="Globe"
+            title={t('domain.title')}
+            accent="cool"
+            description={t('domain.description')}
+            bodyMaxWidth={640}
+          >
+            <DomainSelect
+              value={editedConfig.domain ?? 'service'}
+              onChange={(d) => handleChange('domain', d)}
+              labels={{
+                service: { title: t('domain.service'), desc: t('domain.serviceDesc') },
+                game: { title: t('domain.game'), desc: t('domain.gameDesc') },
+              }}
+            />
+          </SectionCard>
+
           {/* Repository */}
           <SectionCard
             id="c3p-repository"
@@ -653,10 +684,11 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
       <ProjectDeletionPanel onForceDelete={handleForceDelete} />
 
-      <DeepSeekConsentModal
-        isOpen={pendingDeepSeekSelection !== null}
-        onConfirm={handleDeepSeekConsentConfirm}
-        onCancel={() => setPendingDeepSeekSelection(null)}
+      <ProviderConsentModal
+        isOpen={pendingConsentSelection !== null}
+        provider={pendingConsentSelection?.provider ?? 'deepseek'}
+        onConfirm={handleConsentConfirm}
+        onCancel={() => setPendingConsentSelection(null)}
       />
     </div>
   );
