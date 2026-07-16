@@ -237,6 +237,11 @@ export class TokenLogger {
   getLogFilePath(): string {
     return this.logFilePath;
   }
+
+  /** Await all enqueued writes (callers use this before process teardown). */
+  async flush(): Promise<void> {
+    await this.writeQueue.catch(() => {});
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -261,4 +266,14 @@ export function getTokenLogger(options: TokenLoggerOptions): TokenLogger {
  */
 export async function clearTokenLogger(jobId: string): Promise<void> {
   loggerInstances.delete(jobId);
+}
+
+/**
+ * Drain every live logger's write queue. Token logging is fire-and-forget at
+ * call sites; a crash that unwinds straight to process exit can otherwise
+ * tear down before the first append lands (observed as a 0-byte token file
+ * for a job that crashed at its first node).
+ */
+export async function flushTokenLoggers(): Promise<void> {
+  await Promise.all([...loggerInstances.values()].map((l) => l.flush()));
 }

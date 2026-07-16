@@ -261,6 +261,13 @@ async function runJob(params: JobParams): Promise<void> {
       jobId: params.jobId
     }, error);
 
+    // Token logging is fire-and-forget; drain pending writes (bounded) so a
+    // first-node crash doesn't leave a 0-byte token debug file.
+    await Promise.race([
+      import('../core/utils/tokenLogger').then(m => m.flushTokenLoggers()),
+      new Promise<void>(resolve => setTimeout(resolve, 3000)),
+    ]).catch(() => {});
+
     // Deterministic "request too large" (prompt exceeds the model context
     // window) is NOT an infra crash and NOT resumable — resuming re-sends the
     // same oversized request. Fail explicitly with a clear, actionable reason

@@ -266,11 +266,11 @@ describe('parseLLMResponse — JsonSyntaxViolation escalation', () => {
     expect(r.tasks).toHaveLength(3);
   });
 
-  it('non-SyntaxError parser failures (e.g. missing <tasks> tag) still throw plain Error — retry branch is opt-in', () => {
-    // Caller's `instanceof JsonSyntaxViolation` branch only fires for
-    // the JSON.parse channel. Other parser failures (e.g. missing
-    // mandatory `<tasks>` tag) must surface as native Error so the
-    // retry loop fail-fasts instead of looping on a structural defect.
+  it('missing <tasks> tag throws its OWN typed violation, not JsonSyntaxViolation', () => {
+    // Each contract failure keeps its own retry channel: JSON drift →
+    // JsonSyntaxViolation, absent/unclosed <tasks> block →
+    // MissingTasksTagViolation (see missing-tasks-tag-violation.test.ts).
+    // Cross-channel leakage would apply the wrong corrective framing.
     const raw = `<executionTier>3</executionTier>\n${MINIMAL_TECH_TIER}\nno tasks tag here`;
 
     let caught: unknown;
@@ -281,6 +281,7 @@ describe('parseLLMResponse — JsonSyntaxViolation escalation', () => {
     }
     expect(caught).toBeInstanceOf(Error);
     expect(caught).not.toBeInstanceOf(JsonSyntaxViolation);
+    expect((caught as Error).name).toBe('MissingTasksTagViolation');
     expect((caught as Error).message).toMatch(/<tasks> tag is required/);
   });
 });

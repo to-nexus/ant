@@ -101,10 +101,47 @@ export interface ToolLoopResult {
   exhausted: boolean;
   /** True when `shouldAbort` ended the loop early. */
   aborted?: boolean;
+  /**
+   * Stop reason of the round that produced `response`. `'max_tokens'` means
+   * the returned text was truncated mid-stream by the output budget —
+   * callers treating `response` as a complete artifact (subagent reports,
+   * decompose bodies) must not assume it is well-formed.
+   */
+  stopReason?: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'other';
 }
 
 /** Max extra rounds grantable by `beforeFinalReturn` joins. */
 const MAX_JOIN_EXTENSIONS = 2;
+
+const FINAL_ROUND_NOTICE =
+  '[SYSTEM] Tool access has ended — this is your FINAL response. Produce your ' +
+  'complete final output now, following your required output format, from the ' +
+  'findings gathered so far. Do NOT attempt or narrate further tool calls.';
+
+/**
+ * Make the tool-strip on the final round explicit to the model. Without this,
+ * the last-round request silently loses its tools and a model that intended
+ * to keep exploring narrates the unfulfilled intent instead of producing its
+ * final artifact (observed as degenerate "Let me also check…" repetition).
+ * Appends into the trailing user message (keeps role alternation); no-ops on
+ * a string-content opener (fresh single-round calls need no end-of-tools notice).
+ */
+function appendFinalRoundNotice(
+  allMessages: Array<{ role: string; content: string | MessageContentBlock[] }>,
+): void {
+  const last = allMessages[allMessages.length - 1];
+  const notice: MessageContentBlock = { type: 'text', text: FINAL_ROUND_NOTICE };
+  if (last && last.role === 'user' && Array.isArray(last.content)) {
+    const already = last.content.some(
+      (b) => b.type === 'text' && (b as { text?: string }).text === FINAL_ROUND_NOTICE,
+    );
+    if (!already) last.content.push(notice);
+    return;
+  }
+  if (last && last.role === 'assistant') {
+    allMessages.push({ role: 'user', content: [notice] });
+  }
+}
 
 /**
  * Run an LLM call with a multi-round tool-use loop.
@@ -151,9 +188,11 @@ export async function callLLMWithToolLoop(
     let thinkingSignature = '';
     const toolCalls: Array<{ id: string; name: string; input: Record<string, any> }> = [];
     let roundUsage: TaskTokenUsage | undefined;
+    let roundStopReason: ToolLoopResult['stopReason'];
 
     if (isLastRound) {
       console.warn(`⚠️ [ToolLoop] Final round (${round + 1}/${effectiveMaxRounds}) — tools stripped, forcing final response`);
+      appendFinalRoundNotice(allMessages);
     }
 
     if (options.state) {
@@ -208,8 +247,13 @@ export async function callLLMWithToolLoop(
           input: event.toolUse.input,
         });
       }
+      if (event.stopReason) roundStopReason = event.stopReason;
       const u = extractTokenUsageFromStreamEvent(event);
       if (u) roundUsage = u;
+    }
+
+    if (roundStopReason === 'max_tokens') {
+      console.warn(`⚠️ [ToolLoop] Round ${round + 1} output truncated by max_tokens (${options.maxTokens}) — response may be incomplete`);
     }
 
     totalUsage = mergeTokenUsage(totalUsage, roundUsage);
@@ -234,12 +278,12 @@ export async function callLLMWithToolLoop(
           continue;
         }
       }
-      return { response, usage: totalUsage, roundsUsed: round + 1, exhausted: isLastRound };
+      return { response, usage: totalUsage, roundsUsed: round + 1, exhausted: isLastRound, stopReason: roundStopReason };
     }
 
     if (isLastRound) {
       console.warn(`⚠️ [ToolLoop] LLM returned tool calls on final round despite tools being stripped — returning partial response`);
-      return { response: response || '', usage: totalUsage, roundsUsed: round + 1, exhausted: true };
+      return { response: response || '', usage: totalUsage, roundsUsed: round + 1, exhausted: true, stopReason: roundStopReason };
     }
 
     console.log(`🔧 [ToolLoop] Round ${round + 1}: ${toolCalls.length} tool call(s)`);
@@ -340,7 +384,10 @@ export async function callLLMWithToolLoop(
       }
     }
     if (isSecondToLast) {
-      userContent.push({ type: 'text', text: '[SYSTEM] You have 1 tool call remaining. Produce your FINAL output on the next response. Do NOT make additional tool calls.' });
+      // Truthful budget notice — tools are STRIPPED on the next (final) round,
+      // so "1 tool call remaining" would be a lie that invites the model to
+      // plan another call and then narrate the unfulfilled intent.
+      userContent.push({ type: 'text', text: '[SYSTEM] Tool budget exhausted — no tool calls remain. Your next response is your FINAL output; produce it in full. Do NOT attempt or narrate further tool calls.' });
     }
 
     allMessages.push(
