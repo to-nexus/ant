@@ -27,6 +27,8 @@ import { applyClarifyGate, parseClarifyTags } from "../../../../../common/clarif
 import { saveClarifyCheckpoint } from "../../session/checkpoint";
 import { assignedNotInCatalog, resolveCatalogEntry, resolveCatalogPartials } from "./catalogLookup";
 import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
+import { extractMarkdownHeadings } from "../checkTaskStatus/specDocIntegrity";
+import { loadExistingDesignDoc } from "../checkTaskStatus/loadExistingDesignDoc";
 
 interface DecomposeContext {
   phaseStart: number;
@@ -563,6 +565,37 @@ function buildTaskQueue(
   return taskQueue;
 }
 
+/**
+ * Refactor mode only: read each task's existing target doc and attach its
+ * `##` headings as the revision baseline. Missing/unreadable docs leave the
+ * baseline unset (preservation gate no-ops). One read per distinct file.
+ */
+async function attachRevisionBaselines(
+  state: DesignGraphState,
+  taskQueue: TaskQueue<DesignTask>,
+): Promise<void> {
+  const fs = state.deps?.fileSystem;
+  const featurePath = state.context?.featurePath;
+  if (!fs || !featurePath) return;
+
+  const cache = new Map<string, string[]>();
+  for (const task of taskQueue.getAll()) {
+    const file = task.targetFile;
+    if (!file || !file.endsWith('.md')) continue;
+    if (!cache.has(file)) {
+      const existing = await loadExistingDesignDoc(state, file);
+      const headings = existing
+        ? extractMarkdownHeadings(existing)
+            .filter((h) => h.level === 2)
+            .map((h) => h.text)
+        : [];
+      cache.set(file, headings);
+    }
+    const baseline = cache.get(file)!;
+    if (baseline.length > 0) task.revisionBaselineHeadings = baseline;
+  }
+}
+
 // ============================================
 // Main Export
 // ============================================
@@ -1000,6 +1033,14 @@ export async function decomposeSystemDesign(
   // Build task queue. Explicit techTier (raw, never merged with LLM emit)
   // is forwarded so per-task tiers preserve user-pinned framework/language.
   const taskQueue = buildTaskQueue(response, sourceFileNames, basisTechTierConfig, state.actionMetadata?.basis?.techTier);
+
+  // Refactor mode: capture the pre-revision `##` headings per target doc so
+  // the completion-time revision-preservation gate
+  // (`specDocIntegrity.reconcileSpecDoc`) can detect unsanctioned section
+  // loss even when the writer left no in-file original to diff against.
+  if (jobMode === 'refactor') {
+    await attachRevisionBaselines(state, taskQueue);
+  }
 
   // Log decompose result
   await safeLogPrompt(

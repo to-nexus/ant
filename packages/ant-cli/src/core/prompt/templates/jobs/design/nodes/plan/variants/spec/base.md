@@ -16,6 +16,28 @@ You are planning a **spec document** that the Code Job will consume to
 implement the feature. The plan you seal here defines what the spec
 contains and how it is organized — execute will write the actual prose.
 
+{{#if (eq detectedMode "refactor")}}
+### Revision Plan (refactor mode)
+
+The object of this plan is the EXISTING document injected above as
+`# Existing Document (revision target)`. The user directive is a delta
+applied to that document — NOT a brief for a new document.
+
+- Enumerate EVERY existing section and assign each a disposition:
+  - `keep` — preserved verbatim in the revised document; do not
+    re-plan its content.
+  - `modify` — state the exact delta this revision applies.
+  - `remove` — only when the user directive sanctions the removal.
+  - `add` — a new section the directive requires.
+- `documentOutline` = the revised structure of the EXISTING document.
+  Every existing section appears as an outline entry carrying an
+  additional `"disposition"` field:
+  `{ "section": "...", "content": "...", "disposition": "keep" | "modify" | "remove" | "add" }`
+  (for `keep`, `content` may simply say "preserved verbatim").
+- An outline that omits an existing section without a `remove`
+  disposition is INVALID — content the directive does not affect must
+  survive the revision.
+{{else}}
 Your `documentOutline` MUST cover, at minimum:
 
 - **Overview** — what the feature is in one paragraph; explicit
@@ -31,3 +53,4 @@ Your `documentOutline` MUST cover, at minimum:
 
 If the section scope above narrows the document to a single section,
 restrict `documentOutline` to that section alone.
+{{/if}}

@@ -14,6 +14,28 @@ ownership, and interaction patterns. The plan you seal here decides the
 architectural model — execute will turn it into the written document
 following the document-type guide.
 
+{{#if (eq detectedMode "refactor")}}
+### Revision Plan (refactor mode)
+
+The object of this plan is the EXISTING document injected above as
+`# Existing Document (revision target)`. The user directive is a delta
+applied to that document — NOT a brief for a new document.
+
+- Enumerate EVERY existing section and assign each a disposition:
+  - `keep` — preserved verbatim in the revised document; do not
+    re-plan its content.
+  - `modify` — state the exact delta this revision applies.
+  - `remove` — only when the user directive sanctions the removal.
+  - `add` — a new section the directive requires.
+- `documentOutline` = the revised structure of the EXISTING document.
+  Every existing section appears as an outline entry carrying an
+  additional `"disposition"` field:
+  `{ "section": "...", "content": "...", "disposition": "keep" | "modify" | "remove" | "add" }`
+  (for `keep`, `content` may simply say "preserved verbatim").
+- An outline that omits an existing section without a `remove`
+  disposition is INVALID — content the directive does not affect must
+  survive the revision.
+{{else}}
 Your `documentOutline` MUST cover, at minimum:
 
 - **Boundary inventory** — what modules / layers exist in the chosen
@@ -34,3 +56,4 @@ For api-contract documents, replace the boundary/flow sections with:
 
 If the section scope above narrows the document to a single chapter,
 restrict `documentOutline` to that chapter alone.
+{{/if}}

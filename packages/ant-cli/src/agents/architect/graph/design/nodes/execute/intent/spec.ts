@@ -25,6 +25,7 @@ import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/pro
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { buildSelfCheckTrailingMessage } from './selfCheck';
 import { referenceCatalogVars } from '../../../../../../common/tool/reference/catalogVars';
+import { loadExistingDesignDoc } from '../../checkTaskStatus/loadExistingDesignDoc';
 
 export async function buildSpecMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -216,25 +217,12 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
 
   // Existing spec for refactor mode (load from disk — pool may not have latest version)
   if (jobMode === 'refactor') {
-    try {
-      const pathModule = await import('path');
-      if (state.deps?.fileSystem && state.context.featurePath) {
-        const refactorOutputDir = task?.targetDir ?? designDirOf(targetFile);
-        let specDocPath = `${state.context.featurePath}/${refactorOutputDir}/${targetFile}`;
-        const rootPath = state.deps.fileSystem.getRootPath?.();
-        if (rootPath && pathModule.isAbsolute(specDocPath)) {
-          specDocPath = pathModule.relative(rootPath, specDocPath);
-        }
-        if (await state.deps.fileSystem.fileExists(specDocPath)) {
-          const existingContent = await state.deps.fileSystem.readFile(specDocPath);
-          if (existingContent) {
-            contextParts.push(`# Existing Spec Document (to be modified)\n\n${existingContent}`);
-            console.log(`📋 [Execute/Spec] Loaded existing spec: ${targetFile} (${existingContent.length} chars)`);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`⚠️  [Execute/Spec] Failed to load existing spec:`, error);
+    const existingContent = await loadExistingDesignDoc(state, targetFile, task?.targetDir);
+    if (existingContent) {
+      contextParts.push(`# Existing Spec Document (to be modified)\n\n${existingContent}`);
+      console.log(`📋 [Execute/Spec] Loaded existing spec: ${targetFile} (${existingContent.length} chars)`);
+    } else {
+      console.warn(`⚠️  [Execute/Spec] Existing spec not readable for refactor: ${targetFile}`);
     }
   }
 
