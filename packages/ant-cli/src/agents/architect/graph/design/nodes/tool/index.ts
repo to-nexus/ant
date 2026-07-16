@@ -18,7 +18,9 @@ import { getExecutionLogger } from '../../../../../../core/utils/executionLogger
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createDesignToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
-import { CACHEABLE_TOOLS } from '../../../../../common/tool/toolCatalog';
+import { CACHEABLE_TOOLS, TOOL_SETS } from '../../../../../common/tool/toolCatalog';
+import { getToolsByNames } from '../../../../../common/tool/toolSchemas';
+import { createSubagentSeam } from '../../../../../common/subagent';
 import { mergeReferenceRequests } from '../../../../../common/tool/reference/merge';
 import type { ToolExecutionContext, ToolSideEffect } from '../../../../../common/tool/types';
 import { createDesignToolHandlers } from './designToolAdapters';
@@ -116,7 +118,7 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       intentGroup: state.resolvedAction?.intentGroup,
     });
 
-    return {
+    const ctx: ToolExecutionContext = {
       fileSystem: state.deps?.fileSystem as any,
       chatStatus: createChatStatusReporter(),
       workingDir: state.context?.featurePath || process.cwd(),
@@ -152,6 +154,19 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       // defence-in-depth handler-side enforcement for the same policy.
       allowShellExecution: false,
     };
+    // Explore-subagent seam — design is RAC-orthogonal for codebase reads
+    // (no gate); the child inherits sourceDocuments so read_source_doc works.
+    ctx.subagent = createSubagentSeam({
+      jobId: state._httpJobId,
+      jobKind: 'design',
+      llmJobType: 'design',
+      workspaceConfig: state.workspaceConfig,
+      baseCtx: ctx,
+      registry,
+      childTools: getToolsByNames(TOOL_SETS.subagentDesign),
+      promptBuilder: state.deps?.promptBuilder,
+    });
+    return ctx;
   },
 
   registry,

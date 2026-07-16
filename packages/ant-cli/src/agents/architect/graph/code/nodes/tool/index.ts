@@ -14,6 +14,9 @@ import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
 import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
+import { TOOL_SETS } from '../../../../../common/tool/toolCatalog';
+import { getToolsByNames } from '../../../../../common/tool/toolSchemas';
+import { createSubagentSeam } from '../../../../../common/subagent';
 import { computeRacScope, decideRacGate } from '../decompose/racGate';
 import { mergeReferenceRequests } from '../../../../../common/tool/reference/merge';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
@@ -50,7 +53,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
   },
 
   buildContext(state): ToolExecutionContext {
-    return {
+    const ctx: ToolExecutionContext = {
       fileSystem: state.deps?.fileSystem as any,
       chatStatus: createChatStatusReporter(),
       workingDir: state.context?.featurePath || process.cwd(),
@@ -140,6 +143,27 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
         if (!arr.includes(p)) arr.push(p);
       },
     };
+    // Explore-subagent seam — child reads pass the SAME RAC gate as the
+    // parent's on-demand reads (gateCall above), keeping the RAC read-gate
+    // at its two legal sites (decompose inline + this shared tool node).
+    ctx.subagent = createSubagentSeam({
+      jobId: state._httpJobId,
+      jobKind: 'code',
+      llmJobType: 'code',
+      workspaceConfig: state.workspaceConfig,
+      baseCtx: ctx,
+      gate: (call) => {
+        if (call.name !== 'read_file' && call.name !== 'list_files') return { allowed: true };
+        const racScope = computeRacScope(state.resolvedAction);
+        if (!racScope) return { allowed: true };
+        const target = ((call.args as any)?.path ?? (call.args as any)?.directory ?? '') as string;
+        return decideRacGate(target, racScope);
+      },
+      registry,
+      childTools: getToolsByNames(TOOL_SETS.subagentCode),
+      promptBuilder: state.deps?.promptBuilder,
+    });
+    return ctx;
   },
 
   registry,

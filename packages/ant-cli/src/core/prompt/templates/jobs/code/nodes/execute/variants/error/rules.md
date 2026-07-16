@@ -126,3 +126,5 @@ Scope is determined by the remediation mode carried through the plan's `rootCaus
 7. **Process lifecycle**: If you spawned a long-running process during this task (`run_command keep_running: true`), kill it before `<done>`. Same single rule as the Persistent Process Policy injection above — apply phase reuses it; nothing additional applies here.
 
 **Follow these rules for successful error fixing.**
+
+{{> jobs/shared/injections/explore-delegation}}

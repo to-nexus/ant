@@ -22,6 +22,7 @@
 import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { DesignGraphState } from '../../state';
+import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../../common/subagent';
 import { applyDrainFinalization } from './drainFinalize';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
@@ -494,6 +495,51 @@ export async function execute(
           recursionLimit: state.recursionLimit,
           _drainFinalized: state._drainFinalized || drainFinalizing,
         };
+      }
+    }
+
+    // ── Join barrier (explore subagent): withhold <done> while reports are
+    // owed. Router rule 3 (no tools + done=false) re-enters execute; the LLM
+    // re-decides with the delivered reports. Runs whether or not this was a
+    // drain-finalize turn — the redo turn re-passes applyDrainFinalization,
+    // whose one-shot flag keeps the finalization note from repeating.
+    if (explicitDone && !hasToolCalls) {
+      const subagentOwnerKey = ownerKeyFor(state._httpJobId);
+      if (hasPendingSubagents(subagentOwnerKey)) {
+        const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history: nodeHistory });
+        if (joined) {
+          const joinHistory = [
+            ...nodeHistory,
+            {
+              role: 'user' as const,
+              content: [
+                ...joined.blocks,
+                {
+                  type: 'text' as const,
+                  text: 'All pending subagent reports are delivered above. Incorporate them; if the document work is still complete as-is, output <done>true</done> again.',
+                },
+              ],
+            },
+          ];
+          console.log(`🔀 [Execute] <done> withheld — subagent reports delivered, re-entering execute`);
+          return {
+            files,
+            conversations: { [CONV_KEYS.NODE_EXECUTE]: joinHistory },
+            fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+            _executeCallIndex: newCallIndex,
+            _noOutputCallCount: newNoOutputCount,
+            _pendingDoneCheck: false,
+            _doneCheckEscalation: 0,
+            _activePhase: 'execute' as const,
+            _currentTaskTokenUsage: state._currentTaskTokenUsage,
+            tokenUsage: state.tokenUsage,
+            recursionCount: state.recursionCount,
+            recursionLimit: state.recursionLimit,
+            _drainFinalized: state._drainFinalized || drainFinalizing,
+            llmResponse: { textResponse, done: false },
+            ...(joined.tokenDelta as any),
+          };
+        }
       }
     }
 

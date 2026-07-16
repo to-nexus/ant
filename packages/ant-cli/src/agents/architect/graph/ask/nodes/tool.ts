@@ -15,7 +15,10 @@ import { createAskToolRegistry } from '../../../../common/tool/presets';
 import { ToolRegistry } from '../../../../common/tool/registry';
 import { createNoopChatStatusReporter } from '../../../../common/tool/chatStatusAdapter';
 import type { ToolHandler } from '../../../../common/tool/types';
-import { ToolName } from '../../../../common/tool/toolCatalog';
+import { ToolName, TOOL_SETS } from '../../../../common/tool/toolCatalog';
+import { getToolsByNames } from '../../../../common/tool/toolSchemas';
+import { createSubagentSeam } from '../../../../common/subagent';
+import type { ToolExecutionContext } from '../../../../common/tool/types';
 import {
   readWorkspaceFile,
   listWorkspaceFiles,
@@ -55,11 +58,23 @@ const toolNodeFn = createToolNode<AskGraphState>({
   },
 
   buildContext(state) {
-    return {
+    const ctx: ToolExecutionContext = {
       fileSystem: {} as any,
       chatStatus: createNoopChatStatusReporter(),
       workingDir: state.featurePath || process.cwd(),
     };
+    // Explore-subagent seam. Ask has no per-job model slot ('ask' is not a
+    // ModelJobKey), so the child inherits the code job's model resolution.
+    ctx.subagent = createSubagentSeam({
+      jobId: state._httpJobId,
+      jobKind: 'ask',
+      llmJobType: 'code',
+      baseCtx: ctx,
+      registry: getRegistry(),
+      childTools: getToolsByNames(TOOL_SETS.subagentAsk),
+      promptBuilder: state.deps?.promptBuilder,
+    });
+    return ctx;
   },
 
   registry: getRegistry(),

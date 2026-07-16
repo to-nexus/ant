@@ -106,11 +106,11 @@ export function buildPlanGraph() {
     { tool: 'tool', execute: 'execute', __end__: END } as any,
   );
 
-  // execute ⟷ tool; done → END.
+  // execute ⟷ tool; join-barrier redo → execute; done → END.
   graph.addConditionalEdges(
     'execute' as any,
     routeAfterExecute as any,
-    { tool: 'tool', __end__: END } as any,
+    { tool: 'tool', execute: 'execute', __end__: END } as any,
   );
 
   // tool → plan | execute (dispatch on _activePhase).

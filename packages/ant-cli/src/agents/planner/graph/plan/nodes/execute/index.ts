@@ -35,6 +35,7 @@ import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrche
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
+import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../../common/subagent';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { PLAN_CONVERSATION_HISTORY_BUDGET } from '../../../../../../core/context';
 import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
@@ -222,10 +223,52 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
       _activePhase: 'execute',
+      _subagentJoinRedo: false,
     };
   }
 
   await orchestrator.finalize(true);
+
+  // ── Join barrier (explore subagent): the LLM finished authoring while
+  // reports are still owed. Withhold finalization (no disk write yet),
+  // deliver the reports as a user turn, and re-enter execute so the final
+  // document incorporates them.
+  {
+    const subagentOwnerKey = ownerKeyFor(state._httpJobId);
+    if (hasPendingSubagents(subagentOwnerKey)) {
+      const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history: updatedHistory });
+      if (joined) {
+        updatedHistory.push({
+          role: 'assistant',
+          content: responseText || '(finalization withheld — subagent reports pending)',
+        });
+        updatedHistory.push({
+          role: 'user',
+          content: [
+            ...joined.blocks,
+            {
+              type: 'text',
+              text: 'All pending subagent reports are delivered above. Incorporate them and emit your final document now.',
+            },
+          ] as any,
+        });
+        if (state.deps?.workflowUpdate && state._httpJobId) {
+          state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', 0);
+        }
+        console.log(`🔀 [Planner:Execute] Finalization withheld — subagent reports delivered, re-entering execute`);
+        return {
+          conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory },
+          pendingToolCalls: [],
+          tokenUsage: state.tokenUsage,
+          tokenUsageByModel: state.tokenUsageByModel,
+          recursionCount,
+          _activePhase: 'execute',
+          _subagentJoinRedo: true,
+          ...(joined.tokenDelta as any),
+        };
+      }
+    }
+  }
 
   // ── Authoring done — extract the document, write to disk, record session ──
   let resolvedTargetRelPath = getTargetPath(state);
@@ -318,11 +361,13 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     tokenUsage: state.tokenUsage,
     tokenUsageByModel: state.tokenUsageByModel,
     recursionCount,
+    _subagentJoinRedo: false,
   };
 }
 
 /** Router: decide next node after execute. */
-export function routeAfterExecute(state: PlanGraphState): 'tool' | '__end__' {
+export function routeAfterExecute(state: PlanGraphState): 'tool' | 'execute' | '__end__' {
+  if (state._subagentJoinRedo) return 'execute';
   if (state.pendingToolCalls && state.pendingToolCalls.length > 0) return 'tool';
   return '__end__';
 }

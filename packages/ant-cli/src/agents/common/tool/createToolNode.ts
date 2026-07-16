@@ -29,6 +29,10 @@ import type { ToolResultManager, FigmaContext } from '../../../core/utils/toolRe
 import { ToolOrchestrator } from './orchestrator';
 import type { WorkflowUpdate } from './orchestrator';
 import { elideDuplicateReads, buildManifestBlockIfChanged } from './duplicateReadElision';
+import { buildReportBlocks, detectOrphanedLaunches } from '../subagent/drain';
+import { collectCompleted, pendingOlderThan } from '../subagent/registry';
+import { subagentMaxPendingAgeMs } from '../subagent/config';
+import type { MessageContentBlock } from '../../../core/ports/llm';
 
 export interface ToolNodeConfig<TState> {
   /** Read pending tool calls from state. */
@@ -163,6 +167,37 @@ export function createToolNode<TState>(
 
     const baseHistory = config.getHistory(state);
 
+    // ── Subagent drain (factory-level — every tool-node loop gets delivery
+    // for free). Runs when the job wired a seam onto the context:
+    //   1. orphaned launch-acks (resume after crash) → LOST notifications
+    //   2. settled children → report blocks + buffered usage fold
+    //   3. starvation guard: pending entries past max age get a short grace
+    //      await (their runner timeout has already fired or is about to).
+    let subagentBlocks: MessageContentBlock[] = [];
+    let subagentTokenDelta: Partial<TState> = {};
+    if (ctx.subagent) {
+      const ownerKey = ctx.subagent.ownerKey;
+      const stale = pendingOlderThan(ownerKey, subagentMaxPendingAgeMs());
+      if (stale.length > 0) {
+        console.warn(`⚠️ [Tool] ${stale.length} subagent(s) past max pending age — grace-awaiting before drain`);
+        await Promise.race([
+          Promise.allSettled(stale.map((e) => e.promise)),
+          new Promise((resolve) => setTimeout(resolve, 5_000)),
+        ]);
+      }
+      const orphanBlocks = detectOrphanedLaunches(baseHistory, ownerKey);
+      const completed = collectCompleted(ownerKey);
+      subagentBlocks = [...orphanBlocks, ...buildReportBlocks(completed)];
+      if (completed.length > 0) {
+        // Explicit channel delta — same unreturned-channel-drop class as the
+        // Track 1 recursionCount fix; merged after buildReturn below because
+        // some jobs' buildReturn ignores hookUpdates.
+        const { foldSubagentUsage } = await import('../subagent/tokens');
+        subagentTokenDelta = (await foldSubagentUsage(state as any, completed)) as Partial<TState>;
+        console.log(`📨 [Tool] Drained ${completed.length} subagent report(s) (owner: ${ownerKey})`);
+      }
+    }
+
     // Duplicate-read elision (history-side only): a re-read whose content is
     // identical to the preserved prior read of the same (path, range) gets a
     // short stub instead of re-accumulating the full body. Events are left
@@ -182,6 +217,7 @@ export function createToolNode<TState>(
     const userContent = [
       ...resultBlocks,
       ...(manifestBlock ? [manifestBlock as any] : []),
+      ...subagentBlocks,
       ...extraContent,
     ];
 
@@ -191,12 +227,17 @@ export function createToolNode<TState>(
       { role: 'user' as const, content: userContent },
     ];
 
-    const result = config.buildReturn(state, {
-      updatedHistory,
-      executionEvents: batchResult.events,
-      updatedCache: batchResult.updatedCache,
-      hookUpdates,
-    });
+    // Token delta merged AFTER buildReturn: planner/ask buildReturn ignore
+    // hookUpdates, and the fold's channels must survive the node transition.
+    const result = {
+      ...config.buildReturn(state, {
+        updatedHistory,
+        executionEvents: batchResult.events,
+        updatedCache: batchResult.updatedCache,
+        hookUpdates,
+      }),
+      ...subagentTokenDelta,
+    };
 
     // Async I/O hook (session saves, etc.) — runs after buildReturn
     if (config.hooks?.onComplete) {

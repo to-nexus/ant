@@ -74,3 +74,5 @@ You have access to the Figma MCP tools plus asset / file tools:
 ```
 
 Output it ONLY after the catalog content has been generated with `<file>` / `<append>` and you have no more tool calls to make.
+
+{{> jobs/shared/injections/explore-delegation}}

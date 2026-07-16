@@ -199,6 +199,19 @@ export async function checkTaskStatus(
     const completedTasksDetails = state.completedTasksDetails || [];
     completedTasksDetails.push(completedTask);
 
+    // Subagent leak guard: a task must not bequeath undelivered explore
+    // entries to the next task (serial mode shares the `_main_` scope, so a
+    // stale settled report would otherwise drain into the NEXT task's
+    // conversation). Reports dropped here are logged — the join barriers in
+    // execute/direct make this fires-rarely by design.
+    {
+      const { clearSubagentOwner, ownerKeyFor } = await import('../../../../../common/subagent');
+      const dropped = clearSubagentOwner(ownerKeyFor(state._httpJobId));
+      if (dropped > 0) {
+        console.warn(`⚠️ [checkTaskStatus] Dropped ${dropped} undelivered subagent entr(ies) at task completion`);
+      }
+    }
+
     console.log(`[checkTaskStatus] 💾 Saving completed task to completedTasksDetails:`, {
       taskId: completedTask.id,
       taskName: completedTask.name,

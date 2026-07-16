@@ -42,6 +42,16 @@ import { shouldEscalate } from './shouldEscalate';
 import { DIRECT_LOOP_LIMITS, getTechTier } from '@ant/shared';
 import { tierToDirectMode } from '../../../../../../core/executionTier';
 import { loadAntrules } from '../../../../../../core/artifact/antrules';
+import {
+  createSubagentSeam,
+  maybeJoinSubagents,
+  collectCompletedSubagents,
+  hasPendingSubagents,
+  buildReportBlocks,
+  foldSubagentUsage,
+} from '../../../../../common/subagent';
+import { TOOL_SETS } from '../../../../../common/tool/toolCatalog';
+import { getToolsByNames } from '../../../../../common/tool/toolSchemas';
 
 const registry = createCodeToolRegistry();
 
@@ -175,6 +185,11 @@ export async function direct(
     );
   }
 
+  // Owner key is stable across steps (same job + same ALS scope); assigned
+  // when the first tool batch builds the seam, and derivable before that
+  // only if needed by the join (no launches can exist before the first batch).
+  let subagentOwnerKey = '';
+
   for (let step = 0; step < maxSteps; step++) {
     stepsExecuted = step + 1;
 
@@ -262,6 +277,18 @@ export async function direct(
         userId: state.context?.userId,
         organizationId: state.context?.organizationId,
       };
+      // Explore-subagent seam (direct is infer-path only — no RAC gate).
+      ctx.subagent = createSubagentSeam({
+        jobId: state._httpJobId,
+        jobKind: 'code',
+        llmJobType: 'code',
+        workspaceConfig: state.workspaceConfig,
+        baseCtx: ctx,
+        registry,
+        childTools: getToolsByNames(TOOL_SETS.subagentCode),
+        promptBuilder: state.deps?.promptBuilder,
+      });
+      subagentOwnerKey = ctx.subagent.ownerKey;
 
       const batch = await runToolCallsAndCollect({
         registry,
@@ -284,9 +311,16 @@ export async function direct(
         recursionLimit: state.recursionLimit,
       });
 
+      // Drain settled subagent reports into this tool-result user turn.
+      const drainedSubs = subagentOwnerKey ? collectCompletedSubagents(subagentOwnerKey) : [];
+      const subBlocks = drainedSubs.length > 0 ? buildReportBlocks(drainedSubs) : [];
+      if (drainedSubs.length > 0) {
+        await foldSubagentUsage(state as any, drainedSubs);
+        console.log(`📨 [Direct] Drained ${drainedSubs.length} subagent report(s)`);
+      }
       history.push({
         role: 'user' as const,
-        content: batch.toolResultBlocks as any,
+        content: [...(batch.toolResultBlocks as any[]), ...subBlocks] as any,
       });
       state.recursionCount = (state.recursionCount || 0) + 1;
 
@@ -326,6 +360,34 @@ export async function direct(
         break;
       }
       continue;
+    }
+
+    // ── Join barrier (explore subagent): the LLM wants to finish while
+    // reports are still owed. Deliver them and grant another step (bounded
+    // by maxSteps) so the final answer incorporates the findings.
+    if (subagentOwnerKey && hasPendingSubagents(subagentOwnerKey)) {
+      const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history });
+      if (joined) {
+        history.push(
+          buildAssistantMessage({
+            thinking: response.thinking,
+            thinkingSignature: response.thinkingSignature,
+            text: parsed.cleanedText || '(finalization withheld — subagent reports pending)',
+          }),
+        );
+        history.push({
+          role: 'user' as const,
+          content: [
+            ...joined.blocks,
+            {
+              type: 'text' as const,
+              text: 'All pending subagent reports are delivered above. Incorporate them and produce your final answer now.',
+            },
+          ] as any,
+        });
+        console.log(`🔀 [Direct] Finalization withheld — subagent reports delivered`);
+        continue;
+      }
     }
 
     // Terminal assistant turn — no tool calls.
@@ -415,5 +477,9 @@ export async function direct(
     _promotedThisJob: effectivePromoted,
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
+    // Token channels are mutated in-place by accumulateTokenUsage /
+    // foldSubagentUsage — commit them (unreturned-channel-drop class).
+    tokenUsage: state.tokenUsage,
+    tokenUsageByModel: state.tokenUsageByModel,
   };
 }

@@ -451,3 +451,5 @@ Before outputting, verify:
    ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
+
+{{> jobs/shared/injections/explore-delegation}}

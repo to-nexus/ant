@@ -51,3 +51,5 @@ Do NOT write any documentation file before understanding what already exists.
 | **No docs/ directory** | Create `docs/architecture/overview.md` from scratch |
 
 **Constraint**: When updating existing documentation, use `edit_file` to modify specific sections. Do NOT recreate the entire file with `<file>` tag.
+
+{{> jobs/shared/injections/explore-delegation}}

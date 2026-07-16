@@ -80,6 +80,7 @@ const PROGRESS_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
   'task_response_streaming',
   'command_running',
   'command_streaming',
+  'subagent_running',
   'file_creating',
   'file_writing',
   'file_editing',
@@ -95,6 +96,7 @@ const PROGRESS_STATUS_TYPES: ReadonlySet<ChatStatusType> = new Set([
 const TOOLS_WITH_DEDICATED_STATUS: ReadonlySet<string> = new Set([
   'read_file',
   'read_state',
+  'explore',
   'list_files',
   'search_code',
   'run_command',

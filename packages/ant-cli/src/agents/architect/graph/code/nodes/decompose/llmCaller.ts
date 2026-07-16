@@ -16,7 +16,7 @@ import type { ParsedAction } from "../../../../../../core/streaming/types";
 
 interface CallDecomposeOptions {
   tools?: ToolDefinition[];
-  toolHandler?: (name: string, args: Record<string, any>) => string | Promise<string>;
+  toolHandler?: (name: string, args: Record<string, any>, callId?: string) => string | Promise<string>;
   /**
    * Optional graph state. When supplied, any `usage_partial` events surfaced
    * by the LLM adapter will overwrite `state.currentPhaseTokenUsage` so the
@@ -41,6 +41,11 @@ interface CallDecomposeOptions {
    * resets accumulated state per attempt.
    */
   onTaskParsed?: (rawJson: string) => void | Promise<void>;
+
+  /** Drain hook — forwarded to callLLMWithToolLoop.betweenRounds (subagent report delivery). */
+  betweenRounds?: () => Promise<any[]>;
+  /** Join hook — forwarded to callLLMWithToolLoop.beforeFinalReturn (subagent join barrier). */
+  beforeFinalReturn?: () => Promise<any[] | null>;
 }
 
 /**
@@ -91,6 +96,8 @@ export async function callLLMForDecompose(
         enableThinking: true,
         thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
         state: options.state,
+        betweenRounds: options.betweenRounds,
+        beforeFinalReturn: options.beforeFinalReturn,
         // Forward the per-task hook so partial Kanban broadcasts fire
         // even when decompose runs in tool-use (RAG) mode. Without this
         // forwarding, the todo column would only populate after the

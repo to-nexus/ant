@@ -404,6 +404,38 @@ export class ChatAPIClient {
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // Explore subagent cards — one compact card per launch; progressive states
+  // fold via cardId (spinner rides the pending-card channel), the terminal
+  // `subagent_report` line persists the report for the FE overlay.
+  // ─────────────────────────────────────────────────────────────────────
+
+  async subagentStart(subagentId: string, goal: string): Promise<string | undefined> {
+    return this.showChatStatus('subagent_running', {
+      subagentId,
+      goal,
+      rounds: 0,
+      startedAt: new Date().toISOString(),
+    });
+  }
+
+  async subagentProgress(
+    cardId: string,
+    meta: { subagentId: string; goal: string; rounds: number; toolCalls?: number },
+  ): Promise<void> {
+    await this.showChatStatus('subagent_running', { cardId, ...meta });
+  }
+
+  async subagentComplete(
+    cardId: string | undefined,
+    meta: import('@ant/shared').SubagentReportMetadata,
+  ): Promise<void> {
+    await this.showChatStatus('subagent_report', {
+      ...(cardId ? { _mergeIndex: cardId } : {}),
+      ...meta,
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   // Legacy helpers
   // ─────────────────────────────────────────────────────────────────────
 

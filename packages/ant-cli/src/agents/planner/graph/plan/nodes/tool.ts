@@ -14,6 +14,10 @@ import { createChatStatusReporter } from '../../../../common/tool/chatStatusAdap
 import { createPlanToolRegistry } from '../../../../common/tool/presets';
 import { ToolRegistry } from '../../../../common/tool/registry';
 import { CONV_KEYS, getConv, type ConversationKey } from '../../../../common/graph/conversations';
+import { TOOL_SETS } from '../../../../common/tool/toolCatalog';
+import { getToolsByNames } from '../../../../common/tool/toolSchemas';
+import { createSubagentSeam } from '../../../../common/subagent';
+import type { ToolExecutionContext } from '../../../../common/tool/types';
 
 /**
  * Resolve which conversation channel this tool round belongs to, based on the
@@ -64,13 +68,26 @@ const toolNodeFn = createToolNode<PlanGraphState>({
   },
 
   buildContext(state) {
-    return {
+    const ctx: ToolExecutionContext = {
       fileSystem: state.deps?.fileSystem as any,
       chatStatus: createChatStatusReporter(),
       workingDir: state.featurePath,
       featurePath: state.featurePath,
       fileTreeUpdate: state.deps?.fileTreeUpdate as any,
     };
+    // Explore-subagent seam. Child tools are the common read-only trio; the
+    // planner's codebase gate only blocks WRITES, so reads need no gate.
+    ctx.subagent = createSubagentSeam({
+      jobId: state._httpJobId,
+      jobKind: 'planner',
+      llmJobType: 'plan',
+      workspaceConfig: (state as any).workspaceConfig,
+      baseCtx: ctx,
+      registry: getRegistry(),
+      childTools: getToolsByNames(TOOL_SETS.subagentPlanner),
+      promptBuilder: state.deps?.promptBuilder,
+    });
+    return ctx;
   },
 
   registry: getRegistry(),

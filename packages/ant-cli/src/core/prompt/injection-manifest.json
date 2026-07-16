@@ -1,47 +1,104 @@
 {
   "$comment": "Injection template -> expected variable mapping. Source of truth for template contracts.",
   "jobs/shared/injections": {
-    "directive": ["directive"],
-    "memory": ["content"],
+    "directive": [
+      "directive"
+    ],
+    "memory": [
+      "content"
+    ],
     "output-tag-policy": [],
-    "clarify-policy": ["clarifyBudget", "blockingMode"],
+    "clarify-policy": [
+      "clarifyBudget",
+      "blockingMode"
+    ],
     "visual-source-authority": [],
     "ui-design-policy": [],
     "diagram-contract": [],
-    "action-context": ["resolvedAction"],
+    "action-context": [
+      "resolvedAction"
+    ],
     "role-guide": [],
-    "refactor-guidance": ["resolvedAction"],
-    "explain-guidance": ["resolvedAction"],
-    "visual-tier-detection": ["availableVisualLanguagesWithModes", "availableSurfaceSystems", "availableSpatialSystems", "resolvedAction"],
-    "game-art-tier-detection": ["gameArtConceptCandidates", "resolvedAction"],
+    "refactor-guidance": [
+      "resolvedAction"
+    ],
+    "explain-guidance": [
+      "resolvedAction"
+    ],
+    "visual-tier-detection": [
+      "availableVisualLanguagesWithModes",
+      "availableSurfaceSystems",
+      "availableSpatialSystems",
+      "resolvedAction"
+    ],
+    "game-art-tier-detection": [
+      "gameArtConceptCandidates",
+      "resolvedAction"
+    ],
     "game-art-design-policy": [],
-    "codebase-channel": ["codebaseRole", "codebaseEntryPoints"],
+    "codebase-channel": [
+      "codebaseRole",
+      "codebaseEntryPoints"
+    ],
     "handoff-code-shape-discipline": [],
-    "reference-codebase-register": ["hasReferenceCatalog", "referenceCatalog"],
-    "reference-codebase": ["hasReferenceCatalog", "referenceCatalog"],
-    "shared-source-diagnosis": []
+    "reference-codebase-register": [
+      "hasReferenceCatalog",
+      "referenceCatalog"
+    ],
+    "reference-codebase": [
+      "hasReferenceCatalog",
+      "referenceCatalog"
+    ],
+    "shared-source-diagnosis": [],
+    "explore-delegation": []
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],
     "tool-calling-rules-compact": [],
     "system-design-guide": [],
-    "layer-role-fidelity": ["hasAnyAuthoritativeDoc"],
+    "layer-role-fidelity": [
+      "hasAnyAuthoritativeDoc"
+    ],
     "ui-source-ant": [],
-    "ui-source-figma": ["figmaFileKey", "figmaStartNodeId"],
+    "ui-source-figma": [
+      "figmaFileKey",
+      "figmaStartNodeId"
+    ],
     "ui-source-handoff": [],
-    "ui-source-dispatch": ["uiSource"],
-    "feature-ui-observation": ["featureObservesUiSource"],
-    "layout-validity-floor": ["layoutValidityFloorActive"],
+    "ui-source-dispatch": [
+      "uiSource"
+    ],
+    "feature-ui-observation": [
+      "featureObservesUiSource"
+    ],
+    "layout-validity-floor": [
+      "layoutValidityFloorActive"
+    ],
     "game-art-source": [],
     "game-art-source-handoff": [],
-    "game-art-source-dispatch": ["gameArtSource"],
-    "antrules": ["antrulesContent"],
+    "game-art-source-dispatch": [
+      "gameArtSource"
+    ],
+    "antrules": [
+      "antrulesContent"
+    ],
     "setup-directory-sealing": [],
     "dep-self-contained": [],
     "gate-validity-principle": [],
-    "monorepo-install-locality": ["monorepoActive", "monorepoRootPath", "monorepoManagerLabel", "monorepoRootMarker", "monorepoMembersSummary"],
-    "persistent-process-policy": ["allowPersistentProcesses"],
-    "workspace-dep-snapshot": ["hasWorkspaceDepSnapshot", "workspaceDepSnapshot"],
+    "monorepo-install-locality": [
+      "monorepoActive",
+      "monorepoRootPath",
+      "monorepoManagerLabel",
+      "monorepoRootMarker",
+      "monorepoMembersSummary"
+    ],
+    "persistent-process-policy": [
+      "allowPersistentProcesses"
+    ],
+    "workspace-dep-snapshot": [
+      "hasWorkspaceDepSnapshot",
+      "workspaceDepSnapshot"
+    ],
     "batch-execution": [],
     "batch-gather": [],
     "plan-tools-batch": [],
@@ -56,32 +113,67 @@
     "service-virtualization/imagery": [],
     "service-virtualization/session": [],
     "session-lifecycle-completeness": [],
-    "response-language": ["userLanguage"],
-    "entry-point-ownership-rule": ["taskBand"],
-    "entry-point-ownership-checklist": ["taskBand"],
-    "seam/connectivity-closure": ["taskBand", "seamPlanning", "isSliceDeclaration"],
+    "response-language": [
+      "userLanguage"
+    ],
+    "entry-point-ownership-rule": [
+      "taskBand"
+    ],
+    "entry-point-ownership-checklist": [
+      "taskBand"
+    ],
+    "seam/connectivity-closure": [
+      "taskBand",
+      "seamPlanning",
+      "isSliceDeclaration"
+    ],
     "execution-context-discipline": [],
     "symbol-grounding": [],
-    "prior-completed-files": ["priorCompletedFiles"]
+    "prior-completed-files": [
+      "priorCompletedFiles"
+    ]
   },
   "jobs/code/nodes/execute/injections": {
-    "lessons": ["lessons"],
-    "session-context": ["sessionContext"],
-    "retry-context": ["retryContext"],
+    "lessons": [
+      "lessons"
+    ],
+    "session-context": [
+      "sessionContext"
+    ],
+    "retry-context": [
+      "retryContext"
+    ],
     "runtime-error-fix": [],
     "missing-dependency-fix": [],
     "port-management": [],
     "backend-safety": [],
     "chunked-emission": [],
     "attestation": [],
-    "test-code-task": ["prePlanText"],
+    "test-code-task": [
+      "prePlanText"
+    ],
     "test-code-rules": []
   },
   "jobs/code/nodes/plan/injections": {
-    "ui-source-inventory": ["uiSource", "taskType"],
-    "analysis-block": ["analysis", "hasAnalysis"],
-    "parent-pre-plan": ["prePlanText", "hasPrePlanText"],
-    "test-code-protocol": ["hasPrePlanText", "hasPackageManager", "packageManager", "hasLanguageHints", "languageHints"]
+    "ui-source-inventory": [
+      "uiSource",
+      "taskType"
+    ],
+    "analysis-block": [
+      "analysis",
+      "hasAnalysis"
+    ],
+    "parent-pre-plan": [
+      "prePlanText",
+      "hasPrePlanText"
+    ],
+    "test-code-protocol": [
+      "hasPrePlanText",
+      "hasPackageManager",
+      "packageManager",
+      "hasLanguageHints",
+      "languageHints"
+    ]
   },
   "jobs/code/nodes/decompose/injections/framework": {
     "nextjs": [],
@@ -91,7 +183,9 @@
     "gin": []
   },
   "jobs/design/base/injections": {
-    "document-language": ["userLanguage"],
+    "document-language": [
+      "userLanguage"
+    ],
     "api-contract-guide": [],
     "backend-guide": [],
     "frontend-guide": []
@@ -103,16 +197,33 @@
     "ui-assets-guide-by-figma": [],
     "ui-spec-guide-by-desc": [],
     "ui-spec-guide-by-figma": [],
-    "ui-continuation-by-figma": ["targetDoc"],
+    "ui-continuation-by-figma": [
+      "targetDoc"
+    ],
     "game-art-tokens-guide-by-figma": [],
     "game-art-tokens-guide-by-desc": [],
-    "game-art-assets-guide-by-figma": ["forceAppend"],
-    "game-art-assets-guide-by-desc": ["forceAppend"],
-    "game-art-spec-guide-by-figma": ["forceAppend"],
-    "game-art-spec-guide-by-desc": ["forceAppend"],
-    "sealed-plan-block": ["planText"],
-    "sealed-plan-rules": ["planText", "verificationAxis"],
-    "append-anchor": ["appendAnchor"],
+    "game-art-assets-guide-by-figma": [
+      "forceAppend"
+    ],
+    "game-art-assets-guide-by-desc": [
+      "forceAppend"
+    ],
+    "game-art-spec-guide-by-figma": [
+      "forceAppend"
+    ],
+    "game-art-spec-guide-by-desc": [
+      "forceAppend"
+    ],
+    "sealed-plan-block": [
+      "planText"
+    ],
+    "sealed-plan-rules": [
+      "planText",
+      "verificationAxis"
+    ],
+    "append-anchor": [
+      "appendAnchor"
+    ],
     "spec-impl-guide-service": [],
     "spec-impl-guide-game": []
   },

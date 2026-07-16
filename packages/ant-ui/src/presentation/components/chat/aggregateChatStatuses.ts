@@ -90,6 +90,10 @@ interface MergedMetadata {
   mergedCount: number;       // number of source slots merged
 }
 
+// NOTE: `subagent_running` / `subagent_report` must NEVER be added here —
+// each explore launch is one standalone card (spinner → clickable report);
+// coalescing adjacent reports would break the per-card overlay affordance.
+// (Non-family types pass through un-coalesced by construction.)
 const FAMILIES: Record<FamilyKey, FamilyConfig> = {
   read: {
     inFlight: 'reading',

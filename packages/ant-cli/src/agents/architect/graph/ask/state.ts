@@ -49,6 +49,12 @@ export interface AskGraphState extends ResolvableState {
   evalType?: 'prd' | 'system-design' | 'ui-design' | 'game-art' | 'code' | 'all';
   chatMessageStarted?: boolean;
   /**
+   * Join-barrier redo flag (explore subagent): set when the agent node
+   * withheld its final response to deliver pending subagent reports first.
+   * Router re-enters the agent node; the node clears it on its next return.
+   */
+  _subagentJoinRedo?: boolean;
+  /**
    * 5-tier execution strategy. Ask / inline-ask are read-only Q&A flows —
    * always Tier 0 Reflex. The runner injects this at graph start; no LLM
    * judgment involved.
@@ -67,6 +73,10 @@ export const AskAnnotation = Annotation.Root({
   response: Annotation<string | undefined>,
   streamingCompleted: Annotation<boolean | undefined>,
   chatMessageStarted: Annotation<boolean | undefined>,
+  // Join-barrier redo flag (explore subagent): the agent node withheld its
+  // final response because pending subagent reports had to be delivered
+  // first. Router re-enters the agent node; the node clears the flag.
+  _subagentJoinRedo: Annotation<boolean | undefined>,
   resolvedAction: Annotation<ResolvedActionContext | undefined>,
   isEvaluation: Annotation<boolean | undefined>,
   evalType: Annotation<'prd' | 'system-design' | 'ui-design' | 'game-art' | 'code' | 'all' | undefined>,

@@ -564,3 +564,5 @@ For feature tasks: code + `<done>true</done>` only, NO summary.
 ════════════════════════════════════════════════════════════════════════════════
 
 **Follow these rules for successful code application.**
+
+{{> jobs/shared/injections/explore-delegation}}

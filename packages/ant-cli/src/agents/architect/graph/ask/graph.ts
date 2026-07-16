@@ -35,6 +35,8 @@ export function buildAskGraph() {
     {
       tool: 'tool' as any,
       respond: 'respond' as any,
+      // Join-barrier redo: reports delivered, agent re-reasons with them.
+      agent: 'agent' as any,
     } as any
   );
   

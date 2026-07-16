@@ -248,7 +248,41 @@ export type ChatStatusType =
   | 'plan_generating' | 'plan'
   | 'task_response_streaming' | 'task_response'
   | 'refine_impact'
+  | 'subagent_running' | 'subagent_report'
   | 'text';
+
+/** Terminal state of one explore-subagent run (`subagent_report` card). */
+export type SubagentTerminalState = 'done' | 'partial' | 'error' | 'aborted';
+
+/**
+ * Metadata for the `subagent_running` progress card (pending-card channel —
+ * no durable line; replay reproduces the card from the paired terminal line).
+ */
+export interface SubagentRunningMetadata {
+  /** Stable per-launch id (parent tool_use callId). */
+  subagentId: string;
+  goal: string;
+  /** Tool-loop rounds completed so far. */
+  rounds?: number;
+  toolCalls?: number;
+  /** ISO timestamp of launch. */
+  startedAt?: string;
+}
+
+/**
+ * Metadata for the terminal `subagent_report` card. `report` carries the
+ * child's full final report markdown — the FE report overlay renders it on
+ * card click; persisting it on this line is what makes the report
+ * refresh-durable (same pattern as `plan` cards persisting plan markdown).
+ */
+export interface SubagentReportMetadata extends SubagentRunningMetadata {
+  state: SubagentTerminalState;
+  report?: string;
+  /** Set iff state === 'error'. */
+  error?: string;
+  durationMs?: number;
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+}
 
 /**
  * user_turn — feature.jsonl 사본 (text만 유지)

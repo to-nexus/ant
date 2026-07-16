@@ -1741,6 +1741,12 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/explore-delegation": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/game-art-design-policy": {
     "sources": [
       "policy-map",
@@ -1846,6 +1852,11 @@
   "jobs/shared/nodes/triage/variants/default/rules": {
     "sources": [
       "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/shared/subagent/explore-system": {
+    "sources": [
       "render-call"
     ]
   },

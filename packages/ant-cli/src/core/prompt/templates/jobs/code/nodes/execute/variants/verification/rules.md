@@ -197,3 +197,5 @@ Example — deviation found:
 5. **If you spawned a long-running process during this verification cycle (`run_command` with `keep_running: true`), stop it before `<done>`.** Same single rule as the [Persistent Process Policy](#) above — "you start it, you stop it, before `<done>`". Skipping the explicit kill leaves a `next dev` / watcher running and blocks the next preview restart with "Another dev server is already running"; the runtime sweep is a safety net, not your cleanup pass.
 
 **Follow these rules for successful verification.**
+
+{{> jobs/shared/injections/explore-delegation}}

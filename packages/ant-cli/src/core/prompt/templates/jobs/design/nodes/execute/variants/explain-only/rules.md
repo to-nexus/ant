@@ -28,3 +28,5 @@ OUTPUT CONTRACT — EXPLAIN MODE
 ## Language
 
 **Rule.** Reply in the user's language ({{userLanguage}}). If the directive mixes languages, follow the dominant language of the directive.
+
+{{> jobs/shared/injections/explore-delegation}}

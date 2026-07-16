@@ -199,6 +199,17 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
   
   // ✅ Current task completed successfully
   if (state.currentTask) {
+    // Subagent leak guard — mirrors code checkTaskStatus: undelivered explore
+    // entries must not bequeath into the next task's drain (serial `_main_`
+    // scope is shared across tasks).
+    {
+      const { clearSubagentOwner, ownerKeyFor } = await import('../../../common/subagent');
+      const dropped = clearSubagentOwner(ownerKeyFor(state._httpJobId));
+      if (dropped > 0) {
+        console.warn(`⚠️ [checkTaskStatus] Dropped ${dropped} undelivered subagent entr(ies) at task completion`);
+      }
+    }
+
     // ✅ Get helpers
     const { TaskTimingHelper } = await import('../code/state');
     const { getTaskTokenUsage, rollUpTaskUsageToJob } = await import('../../../common/graph/llmHelpers');

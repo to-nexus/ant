@@ -20,6 +20,7 @@ export { handleReadAntSource, handleListAntFiles, handleSearchAntCode } from './
 export { handleRunCommand } from './runCommand';
 export { handleHttpRequest } from './httpProbe';
 export { handleFigmaTool } from './figma';
+export { handleExplore } from './explore';
 export { applyCodeCommandPolicy } from './codeCommandPolicy';
 export { resolveToolPath, resolveToolDirectory, prependFixMessage } from './pathResolver';
 export type { ResolvedToolPath } from './pathResolver';

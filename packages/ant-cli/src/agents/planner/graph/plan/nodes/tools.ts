@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { FileTreeUpdatePort } from '../../../../../core/ports/fileTree';
 import type { ChatStatusReporter } from '../../../../common/tool/types';
+import { ARCHITECT_TOOLS } from '../../../../common/tool/toolSchemas';
 
 interface ToolDefinition {
   name: string;
@@ -307,6 +308,25 @@ export const PLANNER_TOOL_MAP: ReadonlyMap<string, ToolDefinition> = new Map(
 );
 
 /**
+ * `explore` adapter — schema SSOT lives in `common/tool/toolSchemas.ts`
+ * (ARCHITECT_TOOLS.explore); this only reshapes it into the planner's bespoke
+ * ToolDefinition. Deliberately NOT in ALL_PLANNER_TOOLS / PLANNER_TOOL_MAP:
+ * dispatch flows through the shared registry preset (`handleExplore`, which
+ * needs the full ToolExecutionContext + subagent seam), never through the
+ * planner-local execute path.
+ */
+function plannerExploreTool(): ToolDefinition {
+  const schema = ARCHITECT_TOOLS.explore;
+  return {
+    name: schema.name,
+    description: schema.description,
+    parameters: schema.input_schema,
+    execute: async () =>
+      'Error: explore is dispatched through the shared tool registry, not the planner-local executor.',
+  };
+}
+
+/**
  * Tools advertised to the LLM by plan mode. Only `refactor` (rev-plan) edits an
  * EXISTING document via `edit_file`. `generate` authors a NEW document solely
  * through the `<file>` output tag (create-capable), so it must NOT be handed
@@ -314,9 +334,13 @@ export const PLANNER_TOOL_MAP: ReadonlyMap<string, ToolDefinition> = new Map(
  * short-circuits the generate node before the `<file>` writer runs, silently
  * producing no output. `explain` is read-only. SSOT for the generate/refactor
  * split — the generate node consumes this, never re-derives it.
+ *
+ * `explore` (async read-only subagent) is mode-universal — appended to every
+ * mode's advertised list.
  */
 export function plannerToolsForMode(
   planMode: 'generate' | 'refactor' | 'explain',
 ): ToolDefinition[] {
-  return planMode === 'refactor' ? PLANNER_TOOLS : PLANNER_EXPLAIN_TOOLS;
+  const base = planMode === 'refactor' ? PLANNER_TOOLS : PLANNER_EXPLAIN_TOOLS;
+  return [...base, plannerExploreTool()];
 }
