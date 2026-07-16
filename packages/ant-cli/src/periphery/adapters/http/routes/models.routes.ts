@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { MODEL_REGISTRY, DEFAULT_MODELS, PROVIDER_API_KEY_ENV, type ModelProvider } from '@ant/shared';
+import { StaticModelPricingAdapter } from '../../pricing/StaticModelPricingAdapter';
+import type { ModelPricingPort } from '../../../../core/ports/modelPricing';
 
 /**
  * Available LLM Models API
@@ -47,9 +49,11 @@ const AVAILABLE_MODELS: LLMModelInfo[] = Object.values(MODEL_REGISTRY)
 /**
  * Create models routes
  */
-export function createModelsRoutes(): Router {
+export function createModelsRoutes(
+  pricing: ModelPricingPort = new StaticModelPricingAdapter(),
+): Router {
   const router = Router();
-  
+
   /**
    * GET /models
    * Returns list of available models
@@ -69,7 +73,25 @@ export function createModelsRoutes(): Router {
       });
     }
   });
-  
+
+  /**
+   * GET /models/pricing
+   * Per-model unit-price matrix (USD/MTok) via the ModelPricingPort. Registered
+   * BEFORE `/models/:modelId` so "pricing" is not captured as a model id.
+   */
+  router.get('/models/pricing', async (_req: Request, res: Response) => {
+    try {
+      const entries = await pricing.listModelRates();
+      res.json({ entries, currency: 'USD' });
+    } catch (error) {
+      console.error('[Models API] Pricing error:', error);
+      res.status(500).json({
+        error: 'Failed to fetch model pricing',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  });
+
   /**
    * GET /models/:modelId
    * Returns detailed information about a specific model

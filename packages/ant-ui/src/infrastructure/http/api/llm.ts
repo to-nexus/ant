@@ -1,4 +1,4 @@
-import { DEFAULT_MODELS, type ModelProvider } from '@ant/shared';
+import { DEFAULT_MODELS, type ModelProvider, type ModelPricingEntry } from '@ant/shared';
 import { API_BASE, apiGet } from './client';
 
 export interface LLMModelInfo {
@@ -44,4 +44,16 @@ export function fetchAvailableModels(): Promise<AvailableModelsResponse> {
     default: DEFAULT_MODELS.opusTier,
     configuredProviders: undefined,
   }));
+}
+
+/** Per-model unit-price matrix (USD/MTok). Rows come from `GET /models/pricing`,
+ * which serves the SAME `MODEL_RATE_CARD` SSOT used to charge — so the displayed
+ * prices equal the amounts billed. */
+export interface ModelPricingResponse {
+  entries: ModelPricingEntry[];
+  currency: string;
+}
+
+export function fetchModelPricing(): Promise<ModelPricingResponse> {
+  return apiGet<ModelPricingResponse>(`${API_BASE()}/models/pricing`);
 }
