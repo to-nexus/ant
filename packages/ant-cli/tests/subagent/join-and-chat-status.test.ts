@@ -45,6 +45,30 @@ describe('maybeJoinSubagents', () => {
   });
 });
 
+describe('join call-site policy (static)', () => {
+  it('no join site pre-gates maybeJoinSubagents on hasPendingSubagents', async () => {
+    // cyan-driving-apron E2E regression: hasPending counts only RUNNING
+    // children, so a pre-gate skips settled-but-undelivered reports and they
+    // get dropped at task completion. maybeJoinSubagents already returns null
+    // when nothing is owed — call it unconditionally at finalization.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const sites = [
+      'src/agents/architect/graph/code/nodes/execute/index.ts',
+      'src/agents/architect/graph/design/nodes/execute/index.ts',
+      'src/agents/architect/graph/code/nodes/direct/index.ts',
+      'src/agents/architect/graph/ask/nodes/agent.ts',
+      'src/agents/planner/graph/plan/nodes/execute/index.ts',
+    ];
+    for (const rel of sites) {
+      const body = fs.readFileSync(path.resolve(__dirname, '../..', rel), 'utf-8');
+      expect(body, `${rel} must call maybeJoinSubagents`).toContain('maybeJoinSubagents(');
+      expect(body, `${rel} must not pre-gate the join on hasPendingSubagents`)
+        .not.toMatch(/hasPendingSubagents/);
+    }
+  });
+});
+
 describe('join-redo routers', () => {
   it('ask routeAfterAgent re-enters agent on _subagentJoinRedo', () => {
     expect(routeAfterAgent({ _subagentJoinRedo: true, pendingToolCalls: [] } as any)).toBe('agent');

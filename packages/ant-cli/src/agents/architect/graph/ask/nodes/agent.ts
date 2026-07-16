@@ -19,7 +19,7 @@ import { AgentRegistry } from '../../../../common/graph/nodes/triage/AgentRegist
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import { ARCHITECT_TOOLS } from '../../../../common/tool/toolSchemas';
-import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../common/subagent';
+import { maybeJoinSubagents, ownerKeyFor } from '../../../../common/subagent';
 import { v4 as uuidv4 } from 'uuid';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
@@ -249,7 +249,8 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   // calls) but reports are still owed. Withhold the final response, deliver
   // the reports as a user message, and let the router re-enter this node.
   const subagentOwnerKey = ownerKeyFor(state._httpJobId);
-  if (toolCalls.length === 0 && hasPendingSubagents(subagentOwnerKey)) {
+  // No hasPending pre-gate — settled-but-undelivered reports must join too.
+  if (toolCalls.length === 0) {
     const joined = await maybeJoinSubagents(state as any, subagentOwnerKey);
     if (joined) {
       const redoHistory: ConversationMessage[] = [...nodeAgent];

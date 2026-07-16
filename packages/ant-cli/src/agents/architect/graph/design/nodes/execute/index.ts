@@ -22,7 +22,7 @@
 import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { DesignGraphState } from '../../state';
-import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../../common/subagent';
+import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 import { applyDrainFinalization } from './drainFinalize';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
@@ -505,7 +505,9 @@ export async function execute(
     // whose one-shot flag keeps the finalization note from repeating.
     if (explicitDone && !hasToolCalls) {
       const subagentOwnerKey = ownerKeyFor(state._httpJobId);
-      if (hasPendingSubagents(subagentOwnerKey)) {
+      // No hasPending pre-gate — settled-but-undelivered reports must join too
+      // (cyan-driving-apron E2E regression: pre-gate dropped settled reports).
+      {
         const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history: nodeHistory });
         if (joined) {
           const joinHistory = [
