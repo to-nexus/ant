@@ -154,4 +154,21 @@ describe('design runner restore gate (deriveRestoreMode wiring)', () => {
     expect(state.resolvedAction?.intent).toBe('rev-spec');
     expect(state.resolvedAction?.source).toBe('explicit');
   });
+
+  it('(f) restores tokenUsageByModel on resume (USD/credit reset guard)', async () => {
+    const byModel = {
+      'claude-opus-4-8': {
+        inputTokens: 1000, outputTokens: 500, totalTokens: 1500,
+        cacheReadTokens: 100, cacheCreationTokens: 0, callCount: 4,
+      },
+    };
+    const tokenUsage = { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 };
+    const initial = makeInitial({ isResume: true, __session: { tokenUsage, tokenUsageByModel: byModel } });
+    const state = await runDesignGraph(initial);
+
+    // The bug: only `tokenUsage` was restored, so USD/credit (from the per-model
+    // map) reset to 0 while the token total stayed cumulative.
+    expect(state.tokenUsage).toEqual(tokenUsage);
+    expect(state.tokenUsageByModel).toEqual(byModel);
+  });
 });

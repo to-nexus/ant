@@ -126,3 +126,23 @@ describe('code runner restore gate (deriveRestoreMode wiring)', () => {
     expect(state.overrideDirective).toBeUndefined();
   });
 });
+
+describe('code runner restores tokenUsageByModel on resume (USD/credit reset guard)', () => {
+  const byModel = {
+    'claude-opus-4-8': {
+      inputTokens: 1000, outputTokens: 500, totalTokens: 1500,
+      cacheReadTokens: 100, cacheCreationTokens: 0, callCount: 4,
+    },
+  };
+  const tokenUsage = { inputTokens: 1000, outputTokens: 500, totalTokens: 1500 };
+
+  it('restores BOTH the aggregate and the per-model map (not just tokens)', async () => {
+    // The bug: only `tokenUsage` was restored, so USD/credit (derived from the
+    // per-model map) reset to 0 while the token total stayed cumulative.
+    const initial = makeInitial({ isResume: true, __session: { tokenUsage, tokenUsageByModel: byModel } });
+    const state = await runAndCaptureState(initial);
+
+    expect(state.tokenUsage).toEqual(tokenUsage);
+    expect(state.tokenUsageByModel).toEqual(byModel);
+  });
+});
