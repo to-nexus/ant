@@ -108,3 +108,5 @@ Prefer fewer file operations, but do NOT suppress web searches — verifying a f
 ⚠️ **Blind Spot**: When the directive is broad, there is a tendency to invent detailed requirements (specific payment methods, auth providers, database choices) the user never mentioned. Record the unknown as an open question or decision point — do NOT fill it with an assumption.
 
 - **Product surface, not implementation.** The brief captures product-surface decisions (information architecture, screen composition, interaction flows, content policies for a service PRD; coreloop, mechanics, content scope, fail conditions for a game PRD). Technical implementation (code, schema / DTO shape, framework / library / storage / engine selection, exact timeout / retry numbers) belongs to design / code — keep it out of the brief.
+
+{{> jobs/shared/injections/explore-delegation}}

@@ -58,7 +58,53 @@ export interface ToolLoopOptions {
    * push partial Kanban broadcasts.
    */
   onTaskParsed?: (rawJson: string) => void | Promise<void>;
+
+  /**
+   * Suppress the built-in per-tool chat cards (read_file / read_source_doc /
+   * list_files). Subagent child loops set this — the child is silent in chat;
+   * only its launch/report card (owned by the runner) surfaces.
+   */
+  silentChatCards?: boolean;
+
+  /** Threaded into `llm.stream` options (Anthropic adapter honors it). */
+  signal?: AbortSignal;
+
+  /**
+   * Polled at each round boundary. When true the loop returns early with
+   * `aborted: true` and whatever partial response has accumulated.
+   */
+  shouldAbort?: () => boolean;
+
+  /**
+   * Drain hook: called after each tool round's results are collected. Returned
+   * blocks are appended to the tool_result user message (after results, before
+   * the final-round nudge). Used to deliver completed subagent reports.
+   */
+  betweenRounds?: () => Promise<MessageContentBlock[]>;
+
+  /**
+   * Join hook: called when the LLM produced a final response (no tool calls).
+   * A non-empty return means pending work (subagent reports) must be delivered
+   * first — the loop pushes assistant(response) + user(blocks) and continues,
+   * extending the round budget by one (at most twice), so a join at the last
+   * round is not starved.
+   */
+  beforeFinalReturn?: () => Promise<MessageContentBlock[] | null>;
 }
+
+export interface ToolLoopResult {
+  response: string;
+  usage?: TaskTokenUsage;
+  /** Rounds actually consumed (1-based count). */
+  roundsUsed: number;
+  /** True when the final response was forced by the round cap (tools stripped). */
+  exhausted: boolean;
+  /** True when `shouldAbort` ended the loop early. */
+  aborted?: boolean;
+}
+
+/** Max extra rounds grantable by `beforeFinalReturn` joins. */
+const MAX_JOIN_EXTENSIONS = 2;
 
 /**
  * Run an LLM call with a multi-round tool-use loop.
@@ -71,11 +117,13 @@ export async function callLLMWithToolLoop(
   llm: LLMClient,
   messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
   tools: ToolDefinition[],
-  toolHandler: (name: string, args: Record<string, any>) => string | Promise<string>,
+  toolHandler: (name: string, args: Record<string, any>, callId?: string) => string | Promise<string>,
   options: ToolLoopOptions,
-): Promise<{ response: string; usage?: TaskTokenUsage }> {
+): Promise<ToolLoopResult> {
   const { extractTokenUsageFromStreamEvent, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } = await import('../graph/llmHelpers');
   const maxRounds = options.maxRounds ?? 10;
+  let effectiveMaxRounds = maxRounds;
+  let joinExtensions = 0;
   let allMessages = [...messages];
   let totalUsage: TaskTokenUsage | undefined;
   let cumulativeToolResultChars = 0;
@@ -90,8 +138,12 @@ export async function callLLMWithToolLoop(
   }
   const onTaskParsedHook = options.onTaskParsed;
 
-  for (let round = 0; round < maxRounds; round++) {
-    const isLastRound = round === maxRounds - 1;
+  for (let round = 0; round < effectiveMaxRounds; round++) {
+    if (options.shouldAbort?.()) {
+      console.warn(`⚠️ [ToolLoop] Abort requested at round ${round + 1} — returning early`);
+      return { response: '', usage: totalUsage, roundsUsed: round, exhausted: false, aborted: true };
+    }
+    const isLastRound = round === effectiveMaxRounds - 1;
     const roundTools = isLastRound ? [] : tools;
 
     let response = '';
@@ -101,7 +153,7 @@ export async function callLLMWithToolLoop(
     let roundUsage: TaskTokenUsage | undefined;
 
     if (isLastRound) {
-      console.warn(`⚠️ [ToolLoop] Final round (${round + 1}/${maxRounds}) — tools stripped, forcing final response`);
+      console.warn(`⚠️ [ToolLoop] Final round (${round + 1}/${effectiveMaxRounds}) — tools stripped, forcing final response`);
     }
 
     if (options.state) {
@@ -121,6 +173,7 @@ export async function callLLMWithToolLoop(
       maxTokens: options.maxTokens,
       enableThinking: roundThinking,
       thinkingBudget: roundThinking ? options.thinkingBudget : undefined,
+      ...(options.signal ? { signal: options.signal } : {}),
     })) {
       if (event.type === 'retry') {
         response = '';
@@ -162,12 +215,31 @@ export async function callLLMWithToolLoop(
     totalUsage = mergeTokenUsage(totalUsage, roundUsage);
 
     if (toolCalls.length === 0) {
-      return { response, usage: totalUsage };
+      // JOIN seam: pending work (subagent reports) must land before the final
+      // response is accepted. Push the produced response + delivered blocks and
+      // grant one extra round (bounded) so a last-round join is not starved.
+      if (options.beforeFinalReturn) {
+        const joinBlocks = await options.beforeFinalReturn();
+        if (joinBlocks && joinBlocks.length > 0 && joinExtensions < MAX_JOIN_EXTENSIONS) {
+          joinExtensions++;
+          effectiveMaxRounds = Math.min(maxRounds + MAX_JOIN_EXTENSIONS, effectiveMaxRounds + 1);
+          const assistantContent: MessageContentBlock[] = [];
+          if (thinking) assistantContent.push({ type: 'thinking', thinking, signature: thinkingSignature });
+          assistantContent.push({ type: 'text', text: response || '(waiting for pending reports)' });
+          allMessages.push(
+            { role: 'assistant', content: assistantContent },
+            { role: 'user', content: joinBlocks },
+          );
+          console.log(`🔀 [ToolLoop] Join: ${joinBlocks.length} block(s) delivered before final return (extension ${joinExtensions}/${MAX_JOIN_EXTENSIONS})`);
+          continue;
+        }
+      }
+      return { response, usage: totalUsage, roundsUsed: round + 1, exhausted: isLastRound };
     }
 
     if (isLastRound) {
       console.warn(`⚠️ [ToolLoop] LLM returned tool calls on final round despite tools being stripped — returning partial response`);
-      return { response: response || '', usage: totalUsage };
+      return { response: response || '', usage: totalUsage, roundsUsed: round + 1, exhausted: true };
     }
 
     console.log(`🔧 [ToolLoop] Round ${round + 1}: ${toolCalls.length} tool call(s)`);
@@ -183,18 +255,25 @@ export async function callLLMWithToolLoop(
       assistantContent.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.input });
     }
 
-    const { getChatAPIClient } = await import('../../../core/adapters/ChatAPIClient');
-    const chatAPI = getChatAPIClient();
-    const { normalizeToCodebasePath } = await import('../../../core/utils/pathNormalizer');
-    const normalizeWorkspacePath = (raw: string): string =>
-      normalizeToCodebasePath(raw).normalized;
+    const silent = options.silentChatCards === true;
+    const chatAPI = silent
+      ? null
+      : (await import('../../../core/adapters/ChatAPIClient')).getChatAPIClient();
+    const normalizeWorkspacePath = silent
+      ? (raw: string): string => raw
+      : await (async () => {
+          const { normalizeToCodebasePath } = await import('../../../core/utils/pathNormalizer');
+          return (raw: string): string => normalizeToCodebasePath(raw).normalized;
+        })();
 
     const toolResults: MessageContentBlock[] = [];
     for (const tc of toolCalls) {
       let cardId: string | undefined;
       let displayPath: string | undefined;
       try {
-        if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
+        if (!chatAPI) {
+          // silentChatCards: no per-tool cards from this loop
+        } else if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
           displayPath = normalizeWorkspacePath(tc.input.path);
           cardId = await chatAPI.addReadingFile(displayPath);
         } else if (tc.name === 'read_source_doc' && typeof tc.input?.filename === 'string') {
@@ -211,7 +290,7 @@ export async function callLLMWithToolLoop(
         console.warn(`⚠️ [ToolLoop] chat status start failed:`, err);
       }
 
-      let result = await toolHandler(tc.name, tc.input);
+      let result = await toolHandler(tc.name, tc.input, tc.id);
       cumulativeToolResultChars += result.length;
 
       if (cumulativeToolResultChars > TOOL_RESULT_BUDGET) {
@@ -225,7 +304,9 @@ export async function callLLMWithToolLoop(
 
       try {
         const isErr = result.startsWith('Error:');
-        if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
+        if (!chatAPI) {
+          // silentChatCards: no per-tool cards from this loop
+        } else if (tc.name === 'read_file' && typeof tc.input?.path === 'string') {
           await chatAPI.addReadComplete(displayPath ?? tc.input.path, cardId, isErr ? { error: result } : undefined);
         } else if (tc.name === 'read_source_doc' && typeof tc.input?.filename === 'string') {
           await chatAPI.addReadSourceComplete(
@@ -250,8 +331,14 @@ export async function callLLMWithToolLoop(
       toolResults.push({ type: 'tool_result', tool_use_id: tc.id, tool_name: tc.name, content: result });
     }
 
-    const isSecondToLast = maxRounds - round - 2 === 0;
+    const isSecondToLast = effectiveMaxRounds - round - 2 === 0;
     const userContent: MessageContentBlock[] = [...toolResults];
+    if (options.betweenRounds) {
+      const drained = await options.betweenRounds();
+      if (drained && drained.length > 0) {
+        userContent.push(...drained);
+      }
+    }
     if (isSecondToLast) {
       userContent.push({ type: 'text', text: '[SYSTEM] You have 1 tool call remaining. Produce your FINAL output on the next response. Do NOT make additional tool calls.' });
     }
@@ -262,5 +349,5 @@ export async function callLLMWithToolLoop(
     );
   }
 
-  throw new Error(`[ToolLoop] Exceeded maximum rounds (${maxRounds}) without final response`);
+  throw new Error(`[ToolLoop] Exceeded maximum rounds (${effectiveMaxRounds}) without final response`);
 }

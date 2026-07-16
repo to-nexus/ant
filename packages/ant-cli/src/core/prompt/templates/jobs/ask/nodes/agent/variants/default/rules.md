@@ -250,3 +250,5 @@ Evaluation reports use the same channel: the rubric scores and any
 deficiency notes go inside `<reply>...</reply>`, and the trailing
 `<eval type="..." />` tag (when applicable) follows the closing
 `</reply>`.
+
+{{> jobs/shared/injections/explore-delegation}}

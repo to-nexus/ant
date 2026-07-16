@@ -101,3 +101,5 @@
 7. **Process lifecycle**: kill any long-running process you spawned before `<done>` (per the Persistent Process Policy above).
 
 **Follow these rules for successful seam closure.**
+
+{{> jobs/shared/injections/explore-delegation}}

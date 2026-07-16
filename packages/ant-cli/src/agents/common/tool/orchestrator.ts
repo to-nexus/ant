@@ -152,6 +152,7 @@ export class ToolOrchestrator {
       }
 
       // Execute handler
+      ctx.currentToolCallId = id;
       const handler = this.config.registry.get(name);
       if (!handler) {
         console.error(`❌ [Tool] Unknown tool: ${name}`);

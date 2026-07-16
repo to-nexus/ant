@@ -372,6 +372,28 @@ export const ARCHITECT_TOOLS = {
     },
   },
 
+  explore: {
+    name: 'explore',
+    description:
+      'Launch a background research subagent that investigates the workspace with read-only tools and returns a distilled report. ASYNC contract: this tool returns IMMEDIATELY with a launch acknowledgment — do NOT wait or poll. The report is injected into this conversation later as a [SUBAGENT REPORT <id>] message, and any still-pending report is always delivered before this phase can conclude. Launch multiple explores in one response for parallel investigation of independent questions, then CONTINUE YOUR OWN WORK on things that do not depend on the reports. Delegate read-heavy, parallelizable investigation or unfamiliar-territory scans; do NOT delegate a single read of a file you already know or a trivial lookup.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        goal: {
+          type: 'string',
+          description:
+            'Self-contained investigation brief: what to find out, why it matters, and what a useful answer looks like. The subagent sees ONLY this text (plus hints) — include every path, symbol, or constraint it needs.',
+        },
+        hints: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional starting points: file paths, directories, symbols, or search terms.',
+        },
+      },
+      required: ['goal'],
+    },
+  },
+
   // Figma MCP tools (used in UI Design Figma mode)
   figma_get_metadata: {
     name: 'figma_get_metadata',

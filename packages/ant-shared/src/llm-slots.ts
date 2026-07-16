@@ -34,7 +34,11 @@ export type ModelNodeKey =
   | 'sketch'
   | 'render'
   | 'engrave'
-  | 'explain';
+  | 'explain'
+  // BE-only value key (like `tool` / `validate`): the explore-subagent child
+  // client resolves `llmModels[job].subagent ?? llmModels[job].default`. Not a
+  // graph node — exempt from the picker and the drift cross-check.
+  | 'subagent';
 
 /**
  * Per-job model config. Unifies the two hand-copied `JobLLMConfig` interfaces

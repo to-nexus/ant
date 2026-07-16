@@ -65,3 +65,5 @@ Apply when creating a new document, or when the directive explicitly requests qu
 - **DO include product-surface content planning** — the content commitments your domain overlay defines (service PRD: information architecture, screen composition with state matrix, interaction flows, content & domain policies; game PRD: coreloop, mechanics, content scope, fail conditions). "WHAT not HOW" applies to **technical implementation**, NOT to product surface — the planning document owns content; design owns architecture and tokens.
 - **Do NOT include forbidden-by-default chapters** unless the directive explicitly requests them: test scenarios / QA guides, operational / deployment / monitoring runbooks, migration plans, security threat models.
 - **Do NOT include evaluation scores** — that is the evaluator's job.
+
+{{> jobs/shared/injections/explore-delegation}}

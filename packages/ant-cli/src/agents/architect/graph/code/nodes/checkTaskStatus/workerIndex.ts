@@ -129,6 +129,15 @@ export async function workerCheckTaskStatus(
     // _currentTaskTokenUsage already accumulated ALL plan + execute calls via
     // accumulateTokenUsage({ taskLevel: true, jobLevel: true }) in each node.
     // No additional merge or job-level re-accumulation needed here.
+    // Subagent leak guard — worker task scope ends here; drop undelivered
+    // explore entries (mirrors serial checkTaskStatus).
+    {
+      const { clearSubagentOwner, ownerKeyFor } = await import('../../../../../common/subagent');
+      const dropped = clearSubagentOwner(ownerKeyFor(state._httpJobId));
+      if (dropped > 0) {
+        console.warn(`⚠️ [workerCheckTaskStatus] Dropped ${dropped} undelivered subagent entr(ies) at task completion`);
+      }
+    }
     const { getTaskTokenUsage } = await import('../../../../../common/graph/llmHelpers');
     const taskTokenUsage = getTaskTokenUsage(state);
 

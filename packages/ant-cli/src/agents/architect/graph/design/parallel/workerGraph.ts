@@ -154,6 +154,15 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.currentTask) {
     const { TaskTimingHelper } = await import('../../code/state');
+    // Subagent leak guard — worker task scope ends here; drop undelivered
+    // explore entries (mirrors serial checkTaskStatus).
+    {
+      const { clearSubagentOwner, ownerKeyFor } = await import('../../../../common/subagent');
+      const dropped = clearSubagentOwner(ownerKeyFor(state._httpJobId));
+      if (dropped > 0) {
+        console.warn(`⚠️ [workerCheckTaskStatus] Dropped ${dropped} undelivered subagent entr(ies) at task completion`);
+      }
+    }
     const { getTaskTokenUsage, rollUpTaskUsageToJob } = await import('../../../../common/graph/llmHelpers');
 
     const taskTokenUsage = getTaskTokenUsage(state);

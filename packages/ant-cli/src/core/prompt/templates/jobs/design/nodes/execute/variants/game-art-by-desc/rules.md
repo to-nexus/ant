@@ -179,3 +179,5 @@ game-art-spec.json    (read_file tokens.json + assets.json → reference their k
 2. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first) or have not generated the catalog yet.
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
+
+{{> jobs/shared/injections/explore-delegation}}

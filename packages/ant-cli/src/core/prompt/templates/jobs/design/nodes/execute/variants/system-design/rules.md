@@ -550,3 +550,5 @@ Before generating output, verify:
 2. **Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
+
+{{> jobs/shared/injections/explore-delegation}}

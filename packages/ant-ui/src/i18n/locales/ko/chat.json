@@ -14,12 +14,30 @@
     "filesEdited": "{{count}}개 파일 편집됨"
   },
   "mention": {
-    "intent": { "label": "intent", "description": "작업 의도를 지정" },
-    "target": { "label": "target", "description": "대상 파일을 지정" },
-    "ref": { "label": "ref", "description": "참조 문서를 추가" },
-    "ctx": { "label": "ctx", "description": "컨텍스트 문서를 추가" },
-    "browse": { "label": "폴더 트리에서 찾기…", "description": "폴더 트리에서 파일 선택" },
-    "explicit": { "label": "explicit", "description": "추론 생략, 직접 지정" }
+    "intent": {
+      "label": "intent",
+      "description": "작업 의도를 지정"
+    },
+    "target": {
+      "label": "target",
+      "description": "대상 파일을 지정"
+    },
+    "ref": {
+      "label": "ref",
+      "description": "참조 문서를 추가"
+    },
+    "ctx": {
+      "label": "ctx",
+      "description": "컨텍스트 문서를 추가"
+    },
+    "browse": {
+      "label": "폴더 트리에서 찾기…",
+      "description": "폴더 트리에서 파일 선택"
+    },
+    "explicit": {
+      "label": "explicit",
+      "description": "추론 생략, 직접 지정"
+    }
   },
   "panelTabs": {
     "chat": "대화",
@@ -259,5 +277,21 @@
     "continuePlaceholder": "대화를 이어가세요...",
     "readyToStart": "시작 준비 완료",
     "readyEmptyState": "에이전트와 협업하려면 채팅을 시작하세요"
+  },
+  "subagent": {
+    "running": "탐색 중: {{goal}}",
+    "rounds": "{{count}}라운드",
+    "done": "탐색 완료: {{goal}}",
+    "partial": "탐색 부분 완료: {{goal}}",
+    "error": "탐색 실패: {{goal}}",
+    "aborted": "탐색 중단됨: {{goal}}",
+    "viewReport": "리포트 보기",
+    "noReport": "리포트 없음",
+    "stats": "{{duration}} · {{tokens}} 토큰",
+    "overlay": {
+      "title": "탐색 리포트",
+      "close": "리포트 닫기",
+      "openAria": "{{goal}} 탐색 리포트 열기"
+    }
   }
 }

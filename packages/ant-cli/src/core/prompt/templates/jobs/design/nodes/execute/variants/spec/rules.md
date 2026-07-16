@@ -97,3 +97,5 @@
    - You used `<clarify>` tag (wait for user response)
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
+
+{{> jobs/shared/injections/explore-delegation}}

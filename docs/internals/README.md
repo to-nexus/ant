@@ -62,6 +62,7 @@ For binding rules with regression-guard test names, see
 - [28-context-management.md](28-context-management.md)
 - [29-debug-logging.md](29-debug-logging.md)
 - [42-custom-domains.md](42-custom-domains.md) — deploy-only custom domains (NLB+Caddy on-demand TLS); infra + developer tasks
+- [43-explore-subagent.md](43-explore-subagent.md) — async read-only explore subagent pipeline (all jobs): launch/drain/join, registry, chat card + report overlay
 
 ### Frontend
 

@@ -402,6 +402,28 @@ export function generateChatStatusContent(
     case 'task_response':
       return metadata?.content ?? '';
 
+    case 'subagent_running': {
+      const goal = metadata?.goal ?? 'investigation';
+      const rounds = metadata?.rounds;
+      return typeof rounds === 'number' && rounds > 0
+        ? `Exploring: ${goal} (round ${rounds})`
+        : `Exploring: ${goal}...`;
+    }
+
+    case 'subagent_report': {
+      const goal = metadata?.goal ?? 'investigation';
+      switch (metadata?.state) {
+        case 'partial':
+          return `Explored (partial): ${goal}`;
+        case 'error':
+          return `❌ Explore failed: ${metadata?.error ?? goal}`;
+        case 'aborted':
+          return `Explore interrupted: ${goal}`;
+        default:
+          return `Explored: ${goal}`;
+      }
+    }
+
     case 'refine_impact': {
       // Emitted by the rev-plan completion hook (F3). Surfaces which
       // PRD sections were rewritten and which design tasks cite them,

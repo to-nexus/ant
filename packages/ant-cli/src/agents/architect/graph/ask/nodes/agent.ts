@@ -18,6 +18,8 @@ import { formatWorkspaceState } from '../../../../common/graph/nodes/triage/work
 import { AgentRegistry } from '../../../../common/graph/nodes/triage/AgentRegistry.js';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient.js';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
+import { ARCHITECT_TOOLS } from '../../../../common/tool/toolSchemas';
+import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../common/subagent';
 import { v4 as uuidv4 } from 'uuid';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
@@ -114,7 +116,14 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
   // Convert tools to ToolDefinition format
   // Include workspace tools when workspace context is available
   const hasWorkspace = !!state.workspaceState?.featurePath;
-  const allTools = hasWorkspace ? [...ASK_TOOLS, ...WORKSPACE_TOOLS] : ASK_TOOLS;
+  // explore (async read-only subagent) — schema SSOT is ARCHITECT_TOOLS;
+  // reshaped to the ask-local `parameters` convention.
+  const exploreDef = {
+    name: ARCHITECT_TOOLS.explore.name,
+    description: ARCHITECT_TOOLS.explore.description,
+    parameters: ARCHITECT_TOOLS.explore.input_schema as Record<string, any>,
+  };
+  const allTools = hasWorkspace ? [...ASK_TOOLS, ...WORKSPACE_TOOLS, exploreDef] : [...ASK_TOOLS, exploreDef];
   const toolDefinitions = allTools.map(t => ({
     name: t.name,
     description: t.description,
@@ -236,6 +245,30 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     }
   }
   
+  // ── Join barrier (explore subagent): the agent wants to finish (no tool
+  // calls) but reports are still owed. Withhold the final response, deliver
+  // the reports as a user message, and let the router re-enter this node.
+  const subagentOwnerKey = ownerKeyFor(state._httpJobId);
+  if (toolCalls.length === 0 && hasPendingSubagents(subagentOwnerKey)) {
+    const joined = await maybeJoinSubagents(state as any, subagentOwnerKey);
+    if (joined) {
+      const redoHistory: ConversationMessage[] = [...nodeAgent];
+      if (nodeAgent.length === 0) redoHistory.push({ role: 'user', content: state.question });
+      if (responseText) redoHistory.push(buildAssistantMessage({ text: responseText }));
+      redoHistory.push({ role: 'user', content: joined.blocks as any });
+      return {
+        conversations: { [CONV_KEYS.NODE_AGENT]: redoHistory },
+        pendingToolCalls: [],
+        response: undefined,
+        streamingCompleted: false,
+        chatMessageStarted: streamingStarted,
+        _subagentJoinRedo: true,
+        tokenUsage: state.tokenUsage,
+        ...(joined.tokenDelta as any),
+      };
+    }
+  }
+
   // Finalize streaming if we started it and no tool call
   const streamingCompleted = streamingStarted && !toolCall;
   if (streamingCompleted) {
@@ -294,13 +327,17 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
     isEvaluation,
     evalType,
     tokenUsage: state.tokenUsage,
+    _subagentJoinRedo: false,
   };
 }
 
 /**
  * Router: decide next node based on agent output
  */
-export function routeAfterAgent(state: AskGraphState): 'tool' | 'respond' {
+export function routeAfterAgent(state: AskGraphState): 'tool' | 'respond' | 'agent' {
+  if (state._subagentJoinRedo) {
+    return 'agent';
+  }
   if (state.pendingToolCalls && state.pendingToolCalls.length > 0) {
     return 'tool';
   }

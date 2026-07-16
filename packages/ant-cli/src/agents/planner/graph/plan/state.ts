@@ -31,6 +31,8 @@ export const PlanAnnotation = Annotation.Root({
   turnId: Annotation<any>,
   planText: Annotation<any>,
   _activePhase: Annotation<any>,
+  // Join-barrier redo flag (explore subagent) — see routeAfterExecute.
+  _subagentJoinRedo: Annotation<any>,
 } as const);
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
@@ -149,6 +151,12 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
    * discipline as the design job's `_activePhase`.
    */
   _activePhase?: 'plan' | 'execute';
+  /**
+   * Join-barrier redo flag (explore subagent): execute withheld its
+   * finalization to deliver pending subagent reports; the router re-enters
+   * execute and the node clears the flag on its next return.
+   */
+  _subagentJoinRedo?: boolean;
 }
 
 /** Helper to read planMode from resolvedAction */

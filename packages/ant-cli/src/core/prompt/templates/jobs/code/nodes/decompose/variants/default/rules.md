@@ -1097,3 +1097,5 @@ The body is the literal `build` or `opt-out`. Default `build` — the app ships 
 {{#if clarifyActive}}
 {{> jobs/shared/injections/clarify-policy}}
 {{/if}}
+
+{{> jobs/shared/injections/explore-delegation}}

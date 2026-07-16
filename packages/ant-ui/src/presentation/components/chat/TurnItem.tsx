@@ -45,6 +45,7 @@ import { TerminalCard } from './TerminalCard';
 import { FileCard } from './FileCard';
 import { ToolActionCard } from './ToolActionCard';
 import { ContextLoadedCard } from './ContextLoadedCard';
+import { SubagentCard } from './SubagentCard';
 import { RefineImpactCard } from './RefineImpactCard';
 import { ChoiceCard } from './choiceCard';
 import { PlanCard } from './PlanCard';
@@ -471,6 +472,10 @@ const StatusCardDispatch = memo(function StatusCardDispatch({
     case 'figma_calling':
     case 'figma_called':
       return <WorkingCard line={line} pending={pending} variant={line.statusType as any} />;
+
+    case 'subagent_running':
+    case 'subagent_report':
+      return <SubagentCard line={line} pending={pending} />;
 
     case 'context_loaded':
       return <ContextLoadedCard line={line} pending={pending} />;

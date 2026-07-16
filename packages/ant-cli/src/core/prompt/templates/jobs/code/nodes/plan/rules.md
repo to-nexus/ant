@@ -524,3 +524,5 @@ Before writing `<plan>`, internally cover:
 - Do NOT invent assets not in ui-assets.json
 
 ────────────────────────────────────────────────────────────────────────────────
+
+{{> jobs/shared/injections/explore-delegation}}

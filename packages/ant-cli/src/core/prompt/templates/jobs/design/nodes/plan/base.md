@@ -100,3 +100,5 @@ matching this shape:
 
 (Output discipline — when to emit, candidate count requirements,
 file-write tool prohibition — is in the rules section above.)
+
+{{> jobs/shared/injections/explore-delegation}}

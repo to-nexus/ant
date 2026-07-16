@@ -59,6 +59,9 @@ export enum ToolName {
   RUN_COMMAND          = 'run_command',
   HTTP_REQUEST         = 'http_request',
 
+  // ── Delegate (async explore subagent — read-only in-process child) ──
+  EXPLORE              = 'explore',
+
   // ── Fetch / Download ──
   DOWNLOAD_ASSET       = 'download_asset',
   FIGMA_DESIGN_CTX     = 'figma_get_design_context',
@@ -116,6 +119,8 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   // Execute
   [ToolName.RUN_COMMAND]:          '⚙️ Running command',
   [ToolName.HTTP_REQUEST]:         '🌐 HTTP request',
+  // Delegate
+  [ToolName.EXPLORE]:              '🧭 Launching explorer',
   // Fetch / Download
   [ToolName.DOWNLOAD_ASSET]:       '📥 Downloading asset',
   [ToolName.FIGMA_DESIGN_CTX]:     '🎨 Fetching Figma design',
@@ -206,6 +211,8 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // Runtime route verification — only surfaced when persistent processes are
     // allowed (error / runtime-error verify); see plan/execute tool selectors.
     ToolName.HTTP_REQUEST,
+    // Delegate (async explore subagent)
+    ToolName.EXPLORE,
     // Fetch (Figma)
     ...FIGMA_TOOLS,
   ],
@@ -240,6 +247,8 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // tokens and produced "unavailable in this phase" failure turns
     // (see `spare-keeping-metal` RCA). Code exploration is covered by
     // `search_code` (ripgrep-backed) + `read_file` / `list_files`.
+    // Delegate (async explore subagent)
+    ToolName.EXPLORE,
     // Fetch (Figma + asset download)
     ToolName.DOWNLOAD_ASSET,
     ...FIGMA_TOOLS,
@@ -259,6 +268,8 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.MKDIR,
     ToolName.FILE,          // shadow alias
     ToolName.WRITE_FILE,    // shadow alias
+    // Delegate (async explore subagent)
+    ToolName.EXPLORE,
   ],
 
   [JobType.ASK]: [
@@ -270,6 +281,8 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // Read / List (workspace scope)
     ToolName.READ_WORKSPACE_FILE,
     ToolName.LIST_WORKSPACE_FILES,
+    // Delegate (async explore subagent)
+    ToolName.EXPLORE,
   ],
 };
 
@@ -306,12 +319,14 @@ export const TOOL_SETS = {
   codeBasic: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
   planExplore: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.RUN_COMMAND,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -321,6 +336,7 @@ export const TOOL_SETS = {
   designPlanExplore: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -331,11 +347,12 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
     ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
-  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ...ANT_SOURCE_TOOLS] as ToolName[],
-  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ...ANT_SOURCE_TOOLS] as ToolName[],
+  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.EXPLORE, ...ANT_SOURCE_TOOLS] as ToolName[],
+  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.EXPLORE, ...ANT_SOURCE_TOOLS] as ToolName[],
 
   // Design execute default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
   // rationale for why `RUN_COMMAND` is absent. `LIST_ASSETS` is included so the
@@ -345,7 +362,7 @@ export const TOOL_SETS = {
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
-    ToolName.LIST_ASSETS,
+    ToolName.LIST_ASSETS, ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -355,6 +372,7 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -362,6 +380,7 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -371,6 +390,7 @@ export const TOOL_SETS = {
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -381,6 +401,7 @@ export const TOOL_SETS = {
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+    ToolName.EXPLORE,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -388,6 +409,23 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES, ToolName.MKDIR,
     ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX,
     ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
+  ] as ToolName[],
+
+  // ── Explore-subagent child sets — strictly read-only, and NEVER contain
+  // EXPLORE itself (depth-1: a child cannot launch children). Guarded by
+  // tests/subagent/catalog-drift.test.ts.
+  subagentCode: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.READ_STATE,
+  ] as ToolName[],
+  subagentDesign: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.READ_SOURCE_DOC,
+  ] as ToolName[],
+  subagentPlanner: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+  ] as ToolName[],
+  subagentAsk: [
+    ToolName.READ_ANT_SOURCE, ToolName.LIST_ANT_FILES, ToolName.SEARCH_ANT_CODE,
+    ToolName.READ_WORKSPACE_FILE, ToolName.LIST_WORKSPACE_FILES,
   ] as ToolName[],
 } as const;
 
@@ -420,6 +458,7 @@ import {
   handleRunCommand,
   handleHttpRequest,
   handleFigmaTool,
+  handleExplore,
 } from './handlers';
 
 export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolName, ToolHandler>(
@@ -434,6 +473,8 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.CREATE_FILE,      handleCreateFile],
     [ToolName.RUN_COMMAND,      handleRunCommand],
     [ToolName.HTTP_REQUEST,     handleHttpRequest],
+    // Delegate — ctx-dependent (requires ctx.subagent seam, like read_state's ctx.completedTasks)
+    [ToolName.EXPLORE,          handleExplore],
     [ToolName.SEARCH_WEB,       handleSearchWeb],
     [ToolName.FETCH_URL,        handleFetchUrl],
     [ToolName.SEARCH_REFERENCE, handleSearchReferenceCode],

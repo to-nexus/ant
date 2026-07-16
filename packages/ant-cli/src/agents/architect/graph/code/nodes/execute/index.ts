@@ -38,6 +38,7 @@ import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder
 import { buildMergeUserContent } from './mergeUserContent';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
+import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../../common/subagent';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
@@ -886,6 +887,57 @@ export async function execute(
       }
     }
     
+    // ── Join barrier (explore subagent): the LLM wants to finish this task
+    // (<done>, no tool calls) while reports are still owed. Withhold `done`
+    // — routeAfterExecute rule 3 (no tools + no done) re-enters execute —
+    // deliver the reports as a user turn, and let the LLM re-decide with
+    // them in context. Drain normally happens every tool round (tool node),
+    // so this fires only when a child outlives the parent's last tool batch.
+    if (explicitDone && toolCalls.length === 0) {
+      const subagentOwnerKey = ownerKeyFor(state._httpJobId);
+      if (hasPendingSubagents(subagentOwnerKey)) {
+        const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history: nodeExecute });
+        if (joined) {
+          const withheldText = cleanFileContentFromResponse(textResponse)
+            || '(completion withheld — subagent reports pending)';
+          const joinHistory = [
+            ...nodeExecute,
+            { role: 'assistant' as const, content: withheldText },
+            {
+              role: 'user' as const,
+              content: [
+                ...joined.blocks,
+                {
+                  type: 'text' as const,
+                  text: 'All pending subagent reports are delivered above. Incorporate them into your work; if the task is still complete as-is, output <done>true</done> again.',
+                },
+              ],
+            },
+          ];
+          console.log(`🔀 [execute] <done> withheld — subagent reports delivered, re-entering execute`);
+          return {
+            llmResponse: {
+              thinking,
+              thinkingSignature: thinkingSignature || undefined,
+              textResponse,
+              toolCalls,
+              done: false,
+              tokenUsage: capturedUsage,
+            },
+            conversations: { [CONV_KEYS.NODE_EXECUTE]: joinHistory },
+            _activePhase: 'execute' as const,
+            fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
+            _executeCallIndex: newCallIndex,
+            _lastToolBatchMutatedFiles: false,
+            recursionCount: state.recursionCount,
+            recursionLimit: state.recursionLimit,
+            profile: state.profile,
+            ...(joined.tokenDelta as any),
+          };
+        }
+      }
+    }
+
     // When tool calls exist, push assistant message so tool node receives
     // a complete [assistant, user(tool_result)] pair in conversation history.
     // Thinking block (with signature) is preserved: adaptive models now run

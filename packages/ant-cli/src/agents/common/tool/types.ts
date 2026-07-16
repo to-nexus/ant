@@ -290,6 +290,20 @@ export interface ToolExecutionContext {
   sourceDocuments?: any;
   files?: Map<string, any>;
 
+  // === Explore subagent (async, read-only in-process child) ===
+  /**
+   * Seam attached by the job's tool-context assembly. Presence gates the
+   * `explore` handler; a child context always has this stripped (depth-1).
+   * Type lives in agents/common/subagent/types.ts.
+   */
+  subagent?: import('../subagent/types').SubagentSeam;
+  /**
+   * The tool_use id of the call currently being dispatched — set by the
+   * orchestrator immediately before each handler invocation. `explore` uses
+   * it as the registry key pairing launch-acks with report markers.
+   */
+  currentToolCallId?: string;
+
   // === Design-specific (populated by design buildContext) ===
   existingDesignDocs?: Record<string, string>;
   /**

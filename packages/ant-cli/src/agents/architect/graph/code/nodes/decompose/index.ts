@@ -763,7 +763,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       //      orthogonal, matching the original `scope === 'artifact'`
       //      contract (`discovery-tool RAC bypass (2026-04)` regression invariant).
       const { ARCHITECT_TOOLS } = await import('../../../../../common/tool/toolSchemas');
-      const { handleReadFile, handleListFiles } = await import('../../../../../common/tool/handlers');
+      const { handleReadFile, handleListFiles, handleExplore } = await import('../../../../../common/tool/handlers');
       const { decideRacGate } = await import('./racGate');
       const racScope = computeRacScope(state.resolvedAction);
 
@@ -792,23 +792,64 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         activePhase: 'plan',
       };
 
-      const allTools = [ARCHITECT_TOOLS.read_file, ARCHITECT_TOOLS.list_files];
+      // Explore-subagent seam for the inline loop. Child reads pass the SAME
+      // racScope gate as the inline toolHandler below (symmetric 2-site RAC
+      // policy). Reports are drained between rounds / joined before the final
+      // decompose response via the loop hooks.
+      const { createSubagentSeam, buildReportBlocks: buildSubReportBlocks, foldSubagentUsage } =
+        await import('../../../../../common/subagent');
+      const { collectCompleted: collectCompletedSubs, hasPending: hasPendingSubs, joinAll: joinAllSubs } =
+        await import('../../../../../common/subagent/registry');
+      const { TOOL_SETS } = await import('../../../../../common/tool/toolCatalog');
+      const { getToolsByNames } = await import('../../../../../common/tool/toolSchemas');
+      const { createCodeToolRegistry } = await import('../../../../../common/tool/presets');
+      const subagentSeam = createSubagentSeam({
+        jobId: state._httpJobId,
+        jobKind: 'code',
+        llmJobType: 'code',
+        workspaceConfig: state.workspaceConfig,
+        baseCtx: ctx,
+        gate: (call) => {
+          if (call.name !== 'read_file' && call.name !== 'list_files') return { allowed: true };
+          const target = ((call.args as any)?.path ?? (call.args as any)?.directory ?? '') as string;
+          return decideRacGate(target, racScope);
+        },
+        registry: createCodeToolRegistry(),
+        childTools: getToolsByNames(TOOL_SETS.subagentCode),
+        promptBuilder: state.deps?.promptBuilder,
+      });
+      ctx.subagent = subagentSeam;
+      const drainSubagents = async (): Promise<any[]> => {
+        const completed = collectCompletedSubs(subagentSeam.ownerKey);
+        if (completed.length === 0) return [];
+        const tokenDelta = await foldSubagentUsage(state as any, completed);
+        void tokenDelta; // decompose token channels ride state mutation + applyEstimatingUsage; node return carries them via state
+        return buildSubReportBlocks(completed);
+      };
+
+      const allTools = [ARCHITECT_TOOLS.read_file, ARCHITECT_TOOLS.list_files, ARCHITECT_TOOLS.explore];
       const result = await callLLMForDecompose(llm, prompts, state.workspaceConfig, {
         tools: allTools,
-        toolHandler: async (name, args) => {
+        toolHandler: async (name, args, callId) => {
           // RAC gate. `decideRacGate` derives codebase vs sibling from
           // the same `normalizeToCodebasePath` SSOT every other tool
           // callsite uses, replacing the deleted discoveryTools' explicit
-          // `scope === 'artifact'` enum check.
-          const target = (args.path ?? args.directory ?? '') as string;
-          const gate = decideRacGate(target, racScope);
-          if (!gate.allowed) return `Error: ${gate.error}`;
+          // `scope === 'artifact'` enum check. `explore` carries no artifact
+          // path itself — its child reads pass the same gate via the seam.
+          if (name !== 'explore') {
+            const target = (args.path ?? args.directory ?? '') as string;
+            const gate = decideRacGate(target, racScope);
+            if (!gate.allowed) return `Error: ${gate.error}`;
+          }
 
           let res;
           if (name === 'read_file') {
             res = await handleReadFile(ctx, args as { path: string; startLine?: number; endLine?: number });
           } else if (name === 'list_files') {
             res = await handleListFiles(ctx, args as { directory?: string; pattern?: string });
+          } else if (name === 'explore') {
+            ctx.currentToolCallId = callId;
+            res = await handleExplore(ctx, args);
           } else {
             return `Error: Unknown tool "${name}"`;
           }
@@ -820,6 +861,17 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         },
         state,
         onTaskParsed,
+        betweenRounds: drainSubagents,
+        beforeFinalReturn: async () => {
+          if (!hasPendingSubs(subagentSeam.ownerKey)) {
+            const leftovers = await drainSubagents();
+            return leftovers.length > 0 ? leftovers : null;
+          }
+          console.log(`⏳ [Decompose] Join barrier: waiting for pending explore(s)`);
+          await joinAllSubs(subagentSeam.ownerKey);
+          const blocks = await drainSubagents();
+          return blocks.length > 0 ? blocks : null;
+        },
       });
       rawResponse = result.response;
       decomposeTokenUsage = result.tokenUsage;

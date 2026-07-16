@@ -14,12 +14,30 @@
     "filesEdited": "{{count}} File(s) Edited"
   },
   "mention": {
-    "intent": { "label": "intent", "description": "Specify the work intent" },
-    "target": { "label": "target", "description": "Specify the target file" },
-    "ref": { "label": "ref", "description": "Add a reference document" },
-    "ctx": { "label": "ctx", "description": "Add a context document" },
-    "browse": { "label": "Browse in folder tree…", "description": "Pick files from a folder tree" },
-    "explicit": { "label": "explicit", "description": "Skip inference and use metadata as-is" }
+    "intent": {
+      "label": "intent",
+      "description": "Specify the work intent"
+    },
+    "target": {
+      "label": "target",
+      "description": "Specify the target file"
+    },
+    "ref": {
+      "label": "ref",
+      "description": "Add a reference document"
+    },
+    "ctx": {
+      "label": "ctx",
+      "description": "Add a context document"
+    },
+    "browse": {
+      "label": "Browse in folder tree…",
+      "description": "Pick files from a folder tree"
+    },
+    "explicit": {
+      "label": "explicit",
+      "description": "Skip inference and use metadata as-is"
+    }
   },
   "panelTabs": {
     "chat": "Chat",
@@ -259,5 +277,21 @@
     "continuePlaceholder": "Continue your conversation...",
     "readyToStart": "Ready to start",
     "readyEmptyState": "Start chatting to collaborate with the agent"
+  },
+  "subagent": {
+    "running": "Exploring: {{goal}}",
+    "rounds": "round {{count}}",
+    "done": "Explored: {{goal}}",
+    "partial": "Explored (partial): {{goal}}",
+    "error": "Explore failed: {{goal}}",
+    "aborted": "Explore interrupted: {{goal}}",
+    "viewReport": "View report",
+    "noReport": "No report produced",
+    "stats": "{{duration}} · {{tokens}} tokens",
+    "overlay": {
+      "title": "Explore report",
+      "close": "Close report",
+      "openAria": "Open explore report for {{goal}}"
+    }
   }
 }
