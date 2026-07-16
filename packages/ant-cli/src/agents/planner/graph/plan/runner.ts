@@ -125,7 +125,12 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         if (session.state.tokenUsage) {
           initialState.tokenUsage = session.state.tokenUsage;
         }
-        
+        // Restore the per-model map too — it drives USD/credit. Without this the
+        // cost/credit display resets to 0 on resume while tokens stay cumulative.
+        if (session.state.tokenUsageByModel) {
+          initialState.tokenUsageByModel = session.state.tokenUsageByModel;
+        }
+
         // ✅ Restore resolvedAction from session (determines plan mode: generate/refactor/explain)
         if (session.state.resolvedAction) {
           initialState.resolvedAction = session.state.resolvedAction;
@@ -186,6 +191,9 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
         }
         if (session.state.tokenUsage) {
           initialState.tokenUsage = session.state.tokenUsage;
+        }
+        if (session.state.tokenUsageByModel) {
+          initialState.tokenUsageByModel = session.state.tokenUsageByModel;
         }
         // overrideDirective stays as params (= the new clarify answer text)
       } else if (session?.state && isEnvResume()) {

@@ -76,6 +76,9 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
       ...(state.jobId && { jobId: state.jobId }),
       ...(state.jobTiming && { jobTiming: state.jobTiming }),
       ...(state.tokenUsage && { tokenUsage: state.tokenUsage }),
+      // Per-model map drives USD/credit; persist it alongside the aggregate so a
+      // resume restores cost/credit — not just the token total (asymmetry fix).
+      ...(state.tokenUsageByModel && { tokenUsageByModel: state.tokenUsageByModel }),
       ...(state._estimatingTokenUsage && { estimatingTokenUsage: state._estimatingTokenUsage }),
       ...(state.interruption && { interruption: state.interruption }),
       // Tier-Verification Alignment: persist the LLM-classified

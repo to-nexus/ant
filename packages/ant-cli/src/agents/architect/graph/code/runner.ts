@@ -127,6 +127,9 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         // only ever raised, so a stale ceiling overrode the lowered .env=200.
         initial.recursionLimit = finalLimit;
         initial.tokenUsage = session.state.tokenUsage;  // ✅ CRITICAL: Restore job-level token usage
+        // Restore the per-model map too — it drives USD/credit. Without this the
+        // cost/credit display resets to 0 on resume while tokens stay cumulative.
+        initial.tokenUsageByModel = session.state.tokenUsageByModel;
         initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
         
         // RAC restoration through the merge SSOT: a same-intent explicit turn

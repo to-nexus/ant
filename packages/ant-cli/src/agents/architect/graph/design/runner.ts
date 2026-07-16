@@ -111,6 +111,9 @@ export async function runDesignGraph(initial: DesignGraphState) {
         initial.completedTasks = session.state.completedTasks || [];
         initial.completedTasksDetails = session.state.completedTasksDetails || [];
         initial.tokenUsage = session.state.tokenUsage;
+        // Restore the per-model map too — it drives USD/credit. Without this the
+        // cost/credit display resets to 0 on resume while tokens stay cumulative.
+        initial.tokenUsageByModel = session.state.tokenUsageByModel;
         initial._estimatingTokenUsage = session.state.estimatingTokenUsage;
 
         // RAC restoration through the merge SSOT: a same-intent explicit turn
