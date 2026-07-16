@@ -24,9 +24,10 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
 | Dimension | What to observe | How it informs the choice |
 |---|---|---|
 | **Output shape** | What the request PRODUCES: a document / design artifact, a code change, a chat-only readout, or a score. Interrogative phrasing alone does not make it a readout. | artifact → design / plan family · code change → code family · readout → `explain-*` · rubric / score → `ask-evaluate` |
-| **Scope** | Does the directive open a NEW subject, or extend / modify work already in progress (the just-authored or a prior artifact)? Additive phrasing ("also need…", "add…", "X is missing") on an existing subject is an extension. | new subject → `gen-*` · extension or modification of an existing artifact → `rev-*` |
-| **Authoring stance** | From the SESSION Job: are you ALREADY authoring this kind of artifact (a design or plan job), or DOWNSTREAM of it (a code / implementation job)? | already authoring → extend in place (`rev-*`) or a new same-kind doc (`gen-*`) · downstream + an ungroundable multi-boundary problem → specify first (`gen-spec`) |
-| **Boundary count** | The independent, non-collapsible concerns the directive names: one, or two-plus. | not decisive alone, but DECISIVE in combination — from a downstream stance, a problem spanning two-plus boundaries triggers the spec-first Hard Constraint; from an authoring stance it signals extension (`rev-*`). |
+| **Scope** | Does the directive open a NEW subject, or extend / modify work already in progress (the just-authored or a prior artifact)? Additive phrasing ("also need…", "add…", "X is missing") on an existing subject is an extension. Sharing a subject with prior work is continuity, not extension — Directive form tells them apart. | new subject → `gen-*` · extension or modification of an existing artifact → `rev-*` |
+| **Directive form** | Does the directive itself CARRY a content delta against an existing artifact (add / remove / modify a named clause, section, screen, or component), or does it REPORT that built behaviour is broken, still failing, or regressed? A failure report names symptoms, not the artifact change that fixes them; evidence that the artifact was already consumed downstream (implemented, built) corroborates the report reading. When both appear, an explicitly carried delta governs. | carried delta on an existing artifact → `rev-*` · failure report on built behaviour → `gen-*`, from ANY stance |
+| **Authoring stance** | From the SESSION Job: are you ALREADY authoring this kind of artifact (a design or plan job), or DOWNSTREAM of it (a code / implementation job)? | already authoring → same-kind output; Directive form picks `rev-*` (carried delta) vs `gen-*` (failure report / new subject) · downstream + an ungroundable multi-boundary problem → specify first (`gen-spec`) |
+| **Boundary count** | The independent, non-collapsible concerns the directive names: one, or two-plus. | not decisive alone, but DECISIVE in combination — from a downstream stance, a problem spanning two-plus boundaries triggers the spec-first Hard Constraint; from an authoring stance boundary count discriminates nothing — Directive form decides. |
 | **Nature** | Is it a report of a problem in observed / built behaviour, a request to build something not yet there, or a question about current state? | problem → work (code / spec) · build → `gen-*` · current-state question → `explain-*` |
 
 ### Family guidance
@@ -34,8 +35,8 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
 - **`ask-*`** — the directive asks about Ant itself, or requests rubric / eval scoring.
 - **`explain-*`** — asks about an artifact's or system's current state (what it
   contains, how it is structured); the output is a chat-only readout.
-- **`rev-*`** — extends or changes a specific existing artifact (read Scope +
-  Authoring stance together), subject to the prior-work constraint below.
+- **`rev-*`** — extends or changes a specific existing artifact; the directive
+  itself must carry the delta (Directive form), subject to Hard Constraint 1.
 - **`gen-*`** — opens new output: a new subject, a same-kind artifact distinct
   from prior work, or a single-boundary fix. Within a sub-grouped family the
   current directive's **named source** picks the sub: it cites a spec →
@@ -50,19 +51,28 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
   FULL cross-boundary remediation is specified, not whether individual symptoms
   are described: a long, detailed report (stack traces, named routes) does NOT
   make a cross-boundary remediation groundable. From a DESIGN / PLAN authoring
-  stance this does not apply — multi-boundary-ness signals EXTENDING the
-  artifact you are authoring (Scope → `rev-*`), not spawning a new spec.
+  stance the boundary-count trigger does not apply; there Directive form
+  decides — a carried delta extends the existing artifact (`rev-*`), while a
+  failure report on built behaviour opens a fresh remediation spec
+  (`gen-spec`), even when its subject matches an existing spec document.
 
 ## Hard Constraints
 
-1. **`rev-*` requires prior-work evidence** of an artifact of that family's
-   kind in the session context (prior user turns, prior artifacts, prior
-   summary). Mere existence of a file in workspace state is a weak hint, not
-   evidence — never select `rev-*` without prior-work evidence, and workspace
-   existence never forces a sub-selection. When workspace state lists the
-   existing documents' FILENAMES, use them as negative evidence too: if the
-   directive's subject matches none of the listed documents of that family,
-   the extension reading weakens — prefer the sibling `gen-*`.
+1. **`rev-*` requires BOTH prior-work evidence AND a directive-carried delta.**
+   (a) Evidence of prior work on an artifact of that family's kind in the
+   session context (prior user turns, prior artifacts, prior summary). Mere
+   existence of a file in workspace state is a weak hint, not evidence, and
+   workspace existence never forces a sub-selection. (b) The current
+   directive itself proposes a concrete content change to that artifact
+   (add / remove / modify a clause, section, screen, or component). A report
+   that built behaviour is broken, still failing, or regressed satisfies (a)
+   at most, never (b): it requests NEW output → the sibling `gen-*`
+   (Constraint 4 then governs the downstream multi-boundary case). When
+   workspace state lists the existing documents' FILENAMES, use them as
+   evidence for (a) only: a subject matching none of the listed documents of
+   that family weakens the extension reading — prefer the sibling `gen-*` —
+   and a subject matching a listed document supports (a) but never
+   substitutes for (b).
 2. **A run of identical prior intents is not, by itself, a verdict.** Prior
    resolved intents establish topic continuity only; never "repeat the
    dominant prior intent." The current directive's produced output decides.
@@ -76,7 +86,8 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
    alone → `gen-spec`. This OUTRANKS the `gen-code-*` sub-selection: per-symptom
    detail (stack traces, specific routes) describes symptoms, not the
    cross-boundary remediation, and does not make it groundable. Does NOT apply
-   from a design / plan authoring stance (there, multi-boundary → `rev-*`), and
+   from a design / plan authoring stance (there the output is already a
+   design-family artifact and Constraint 1 picks `rev-*` vs `gen-*`), and
    does NOT apply to a build that does not exist yet (Constraint 3 governs).
 5. **Invalid / accidental input** (unintelligible, incomplete, no actionable
    content) → `ask-general`.
