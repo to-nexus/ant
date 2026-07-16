@@ -145,7 +145,7 @@ async function runInner(
     };
   }
 
-  const { response, usage, roundsUsed, exhausted, aborted } = raced;
+  const { response, usage, roundsUsed, exhausted, aborted, stopReason } = raced;
 
   if (aborted) {
     return {
@@ -168,6 +168,35 @@ async function runInner(
     };
   }
 
+  // Viability gate — degenerate output (repetition loops after the final
+  // round's tool-strip) must never reach the parent conversation: 16k of
+  // repeated filler pollutes the parent context and has crashed decompose
+  // downstream. The raw text still goes to the report store + chat card
+  // (`reportFull`) for forensics; only the parent-facing body is replaced.
+  const { assessReportViability } = await import('./assessReportViability');
+  const viability = assessReportViability(report);
+  if (viability.degenerate) {
+    console.warn(
+      `⚠️ [Subagent] Degenerate report gated (id=${params.id}, ` +
+        `distinctRatio=${viability.distinctRatio.toFixed(3)}, units=${viability.totalUnits}, ` +
+        `stopReason=${stopReason ?? 'n/a'}) — replacing with failure notice`,
+    );
+    const { storeFullReport } = await import('./reportStore');
+    storeFullReport(params.id, params.goal, report);
+    return {
+      report:
+        `Exploration terminated abnormally: the model produced degenerate repetitive output` +
+        (stopReason === 'max_tokens' ? ' (truncated at the output-token cap)' : '') +
+        ` instead of a report (goal: ${params.goal}). No usable findings — ` +
+        `read the relevant files directly instead of re-issuing the same broad explore.`,
+      reportFull: report,
+      usage: usage as TaskTokenUsage | undefined,
+      rounds: roundsUsed,
+      state: 'error',
+      modelId,
+    };
+  }
+
   // Over-budget reports are compacted (lead + structural outline + drill-down
   // notice), never blind-cut: the full text goes to the report store for the
   // `subagent_report` tool and to the chat card via `reportFull`. Compaction
@@ -181,6 +210,13 @@ async function runInner(
     const { compactReport } = await import('./compactReport');
     storeFullReport(params.id, params.goal, report);
     report = compactReport(report, cap, params.id);
+  }
+
+  // Truncation is a validity signal, not a formatting detail — the parent
+  // must know the tail is missing. Appended after compaction so head+tail
+  // slicing cannot drop the notice.
+  if (stopReason === 'max_tokens') {
+    report += '\n\n[note] Output hit the token cap — the tail of this report is missing.';
   }
 
   return {

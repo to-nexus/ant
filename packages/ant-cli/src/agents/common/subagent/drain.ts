@@ -33,9 +33,16 @@ export function buildReportBlocks(entries: SubagentEntry[]): MessageContentBlock
   return entries.map((e) => {
     const r = e.result;
     const body = r?.report ?? 'Exploration produced no report.';
+    // Partiality guidance — the `[partial]` body prefix alone gives the parent
+    // no interpretation contract. (Plain prose; must NOT contain the literal
+    // report marker — see the pairing invariant in this file's header.)
+    const partialNote =
+      r?.state === 'partial'
+        ? '\n[note] This exploration was cut short by its round/time budget — treat the findings as non-exhaustive; absence of a finding is NOT evidence of absence.'
+        : '';
     return {
       type: 'text',
-      text: `${reportMarker(e.id)} (goal: ${e.goal})\n${body}`,
+      text: `${reportMarker(e.id)} (goal: ${e.goal})\n${body}${partialNote}`,
     } as MessageContentBlock;
   });
 }

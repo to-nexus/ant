@@ -64,6 +64,49 @@ export function deriveBandFromPriority(priority: number): TaskBand | undefined {
   return undefined;
 }
 
+export interface MissingTasksTagViolationDetail {
+  /** `<tasks>` opened but never closed — the truncation signature (max_tokens mid-stream). */
+  hasUnclosedOpeningTag: boolean;
+  /** Last chars of the raw response, for diagnostics / framing. */
+  responseTail: string;
+}
+
+/**
+ * Typed contract violation for a decompose response with no complete
+ * `<tasks>...</tasks>` block. Mirrors the `JsonSyntaxViolation` /
+ * `ExecutionTierViolation` / `InvalidTaskTypeViolation` shape (detail +
+ * framing builder) so the decompose retry loop can absorb the failure with
+ * corrective framing instead of crashing the job on the first bad response.
+ */
+export class MissingTasksTagViolation extends Error {
+  readonly detail: MissingTasksTagViolationDetail;
+  constructor(rawResponse: string) {
+    super('Invalid response: <tasks> tag is required. LLM must follow the prompt format strictly.');
+    this.name = 'MissingTasksTagViolation';
+    this.detail = {
+      hasUnclosedOpeningTag: rawResponse.includes('<tasks>') && !rawResponse.includes('</tasks>'),
+      responseTail: rawResponse.slice(-200),
+    };
+  }
+}
+
+export function buildMissingTasksTagViolationFraming(v: MissingTasksTagViolation): string {
+  const cause = v.detail.hasUnclosedOpeningTag
+    ? 'Your previous response opened a `<tasks>` block but never closed it — ' +
+      'the output was cut off before `</tasks>` arrived. Emit a COMPLETE block ' +
+      'this time; if output budget is a concern, keep task descriptions terse.'
+    : 'Your previous response contained NO `<tasks>...</tasks>` block at all. ' +
+      'Prose, analysis, or tool narration is NOT a substitute — the task ' +
+      'breakdown MUST be emitted inside the `<tasks>` wrapper.';
+  return (
+    '\n\n---\n\n## Retry: missing <tasks> block\n' +
+    cause +
+    '\n\nRe-emit your FULL response now following the required output format: ' +
+    '`<executionTier>`, `<techTier>`, and a complete `<tasks>` block containing ' +
+    'every `<task>{json}</task>` entry, exactly as the format rules specify.\n'
+  );
+}
+
 export interface ParsedTechTier {
   stack: string;
   stackReasoning: string;
@@ -181,7 +224,7 @@ export function parseTaskItemJson(rawJson: string): unknown {
  *   <task>{json}</task>
  * </tasks>
  * <references>[...]</references>  (optional, can be empty array)
- * 
+ *
  * STRICT MODE: <tasks> wrapper is required. The body may use per-task
  * wrappers (current contract) or a legacy JSON array (BC fallback).
  */
@@ -189,9 +232,9 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
   try {
     // ✅ Extract <tasks> XML tag body (REQUIRED)
     const tasksMatch = rawResponse.match(/<tasks>\s*([\s\S]*?)\s*<\/tasks>/);
-    
+
     if (!tasksMatch) {
-      throw new Error('Invalid response: <tasks> tag is required. LLM must follow the prompt format strictly.');
+      throw new MissingTasksTagViolation(rawResponse);
     }
     
     const tasks = parseTasksBody(tasksMatch[1]);

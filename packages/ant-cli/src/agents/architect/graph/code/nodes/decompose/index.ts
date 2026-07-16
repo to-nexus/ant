@@ -35,7 +35,7 @@ import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareRacInjection } from "./designSelector";
 import { CODEBASE_WALK_IGNORE } from "../../../../../../core/codebase/walkIgnore";
 import { callLLMForDecompose } from "./llmCaller";
-import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary, deriveBandFromPriority } from "./responseParser";
+import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary, deriveBandFromPriority, MissingTasksTagViolation, buildMissingTasksTagViolationFraming } from "./responseParser";
 import { computeRacScope } from "./racGate";
 import { saveAnalysisForDebug } from "./saveAnalysisText";
 import type { BaseTask, TaskType, IntentId } from "@ant/shared";
@@ -929,6 +929,19 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             `${error.detail.message} — retrying with framing`,
         );
         prompts.user = originalUserPrompt + buildJsonSyntaxViolationFraming(error);
+        continue;
+      }
+      // MissingTasksTagViolation — a response with no complete <tasks> block
+      // (prose-only drift, degenerate output, or max_tokens truncation before
+      // `</tasks>`). Same absorb-with-framing contract as the sibling
+      // violations; previously this was an untyped Error and the ONLY
+      // zero-tolerance contract failure (first bad response crashed the job).
+      if (error instanceof MissingTasksTagViolation && attempt < MAX_ATTEMPTS) {
+        console.warn(
+          `⚠️  [Decompose] Missing <tasks> block attempt ${attempt}/${MAX_ATTEMPTS} ` +
+            `(unclosedOpeningTag=${error.detail.hasUnclosedOpeningTag}) — retrying with framing`,
+        );
+        prompts.user = originalUserPrompt + buildMissingTasksTagViolationFraming(error);
         continue;
       }
       logErrorHeader('Decompose');

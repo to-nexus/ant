@@ -108,3 +108,45 @@ describe('callLLMWithToolLoop options', () => {
     expect(joinCalls).toBeLessThanOrEqual(3);
   });
 });
+
+describe('callLLMWithToolLoop — output-validity signals (final round)', () => {
+  it('returns the final round stopReason (max_tokens truncation observable by callers)', async () => {
+    const llm = scriptedLLM([
+      [toolUse('t1')],
+      [text('truncated fin'), { type: 'done', stopReason: 'max_tokens' }],
+    ]);
+    const res = await callLLMWithToolLoop(llm, [{ role: 'user', content: 'q' }], READ_TOOL,
+      async () => 'result', { ...BASE, maxRounds: 5, silentChatCards: true });
+    expect(res.response).toBe('truncated fin');
+    expect(res.stopReason).toBe('max_tokens');
+  });
+
+  it('stopReason reflects the FINAL round, not an earlier round', async () => {
+    const llm = scriptedLLM([
+      [toolUse('t1'), { type: 'done', stopReason: 'tool_use' }],
+      [text('clean final'), { type: 'done', stopReason: 'end_turn' }],
+    ]);
+    const res = await callLLMWithToolLoop(llm, [{ role: 'user', content: 'q' }], READ_TOOL,
+      async () => 'result', { ...BASE, maxRounds: 5, silentChatCards: true });
+    expect(res.stopReason).toBe('end_turn');
+  });
+
+  it('injects an explicit end-of-tools notice into the final (tool-stripped) round request', async () => {
+    // Regression: tiny-counting-mocha — the last-round request silently lost
+    // its tools and the model narrated exploration intent (degenerate
+    // repetition) instead of producing its final artifact.
+    const capture = { messages: [] as any[][] };
+    const llm = scriptedLLM([[toolUse('t1')], [text('forced final')]], capture);
+    const res = await callLLMWithToolLoop(llm, [{ role: 'user', content: 'q' }], READ_TOOL,
+      async () => 'result', { ...BASE, maxRounds: 2, silentChatCards: true });
+    expect(res.exhausted).toBe(true);
+
+    const finalRoundMessages = capture.messages[1];
+    const lastUser = finalRoundMessages[finalRoundMessages.length - 1];
+    const texts = (lastUser.content as any[]).filter((b: any) => b.type === 'text').map((b: any) => b.text);
+    expect(texts.some((t: string) => t.includes('Tool access has ended'))).toBe(true);
+    // The old lie ("1 tool call remaining") must be gone — the final round has
+    // zero tools; the nudge and the notice must both be truthful.
+    expect(texts.some((t: string) => t.includes('1 tool call remaining'))).toBe(false);
+  });
+});
