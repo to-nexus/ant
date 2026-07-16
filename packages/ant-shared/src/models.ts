@@ -68,6 +68,21 @@ export function providerRequiresDataConsent(provider: ModelProvider | undefined)
   return !!provider && PROVIDER_REQUIRES_DATA_CONSENT.has(provider);
 }
 
+/**
+ * Provider → its public pricing page (normalized). SINGLE owner of this mapping.
+ * Surfaced per model on the pricing matrix so the applied unit prices are
+ * traceable to the provider's own list, and so a future remote-fetch pricing
+ * adapter has a canonical source URL to normalize against (rather than each
+ * caller hardcoding a link). Rates themselves still live on `ModelSpec.rate`.
+ */
+export const PROVIDER_PRICING_URL: Record<ModelProvider, string> = {
+  anthropic: 'https://www.anthropic.com/pricing',
+  openai: 'https://openai.com/api/pricing/',
+  google: 'https://ai.google.dev/gemini-api/docs/pricing',
+  deepseek: 'https://api-docs.deepseek.com/quick_start/pricing',
+  glm: 'https://z.ai/model-api',
+};
+
 export interface ModelSpec {
   id: string;
   /** Human-readable label shown in the model picker, e.g. "Sonnet 5". */

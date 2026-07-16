@@ -16,7 +16,12 @@
  */
 
 import type { TaskTokenUsage } from './task';
-import { MODEL_REGISTRY, type ModelRate } from './models';
+import {
+  MODEL_REGISTRY,
+  PROVIDER_PRICING_URL,
+  type ModelRate,
+  type ModelProvider,
+} from './models';
 
 // `ModelRate` now lives in the MODEL_REGISTRY SSOT (@ant/shared/models.ts) and
 // is exported from there; the barrel (index.ts) surfaces it, so existing
@@ -42,6 +47,43 @@ export const MODEL_RATE_CARD: Readonly<Record<string, ModelRate>> = Object.fromE
  * {@link computeCallCostUsd} directly (it throws on unknown ids).
  */
 export const MOST_EXPENSIVE_MODEL_ID = 'claude-opus-4-8';
+
+/**
+ * One row of the per-model pricing matrix (the "가격정보" surface). A flat
+ * projection of the registry's priced models — id + label + provider + the
+ * USD/MTok {@link ModelRate} + the normalized provider pricing source. Consumed
+ * by the {@link ModelPricingPort} adapter and serialized by `GET /models/pricing`.
+ */
+export interface ModelPricingEntry {
+  modelId: string;
+  displayName: string;
+  provider: ModelProvider;
+  /** USD per 1M tokens. This is the applied unit price at markup 1.0 (LLM is pass-through). */
+  rate: ModelRate;
+  /** Normalized provider pricing page (see {@link PROVIDER_PRICING_URL}). */
+  source: string;
+}
+
+/**
+ * Build the per-model pricing matrix. Rows are the entries of
+ * {@link MODEL_RATE_CARD} — the SAME rate map `computeCallCostUsd` prices calls
+ * with — joined to registry metadata (label / provider) and the normalized
+ * provider source. This is deliberately NOT an independent walk of
+ * `MODEL_REGISTRY`: the "가격정보" matrix and the actual charge/display therefore
+ * cannot drift, since both read one rate SSOT. Pure; registry insertion order.
+ */
+export function buildModelPricingTable(): ModelPricingEntry[] {
+  return Object.entries(MODEL_RATE_CARD).map(([modelId, rate]) => {
+    const spec = MODEL_REGISTRY[modelId];
+    return {
+      modelId,
+      displayName: spec?.displayName ?? modelId,
+      provider: spec.provider,
+      rate,
+      source: PROVIDER_PRICING_URL[spec.provider],
+    };
+  });
+}
 
 /** Minimal token shape a cost computation needs. */
 export interface CallUsage {
