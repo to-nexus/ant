@@ -658,26 +658,6 @@ const EMPTY_FILE_STATS: FileStats = Object.freeze({
   files: Object.freeze([]) as unknown as FileStats['files'],
 }) as unknown as FileStats;
 
-/**
- * Find the persisted `subagent_report` line for the given cardId — the
- * report-overlay data source. Returns null when the chat was cleared or the
- * cardId is stale (overlay auto-closes on null).
- */
-export function selectSubagentReportLine(
-  state: ChatProjectorState,
-  cardId: string | null,
-): ChatStatusLine | null {
-  if (!cardId) return null;
-  const events = state.chatEvents ?? [];
-  for (let i = events.length - 1; i >= 0; i--) {
-    const line = events[i];
-    if (line.type === 'chat_status' && line.statusType === 'subagent_report' && line.cardId === cardId) {
-      return line;
-    }
-  }
-  return null;
-}
-
 export function selectFileStats(state: ChatProjectorState): FileStats {
   const events = state.chatEvents ?? [];
   if (fileStatsCache && fileStatsCache.events === events) {

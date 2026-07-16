@@ -283,7 +283,6 @@
   "subagent": {
     "badge": "서브에이전트",
     "running": "탐색 중: {{goal}}",
-    "rounds": "{{count}}라운드",
     "done": "탐색 완료: {{goal}}",
     "partial": "탐색 부분 완료: {{goal}}",
     "error": "탐색 실패: {{goal}}",

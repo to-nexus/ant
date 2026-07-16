@@ -21,7 +21,6 @@ import { useActionReadiness } from '@/application/hooks/features/useActionReadin
 import { ActionChipGrid } from '../Actions';
 import { DomainBadge } from '../Actions/DomainBadge';
 import { useStore } from '@/domain/store';
-import { SubagentReportOverlay } from './SubagentReportOverlay';
 import { selectFileStats } from '@/domain/store/selectors/chat';
 import type { IntentGroup } from '@ant/shared';
 import { Zap, ChevronRight, ChevronLeft } from 'lucide-react';
@@ -168,10 +167,6 @@ export function ChatPanel({
 
         {/* Pinned Query - Absolute overlay to avoid layout feedback loop with Virtuoso */}
         <PinnedQuery query={pinnedQuery} />
-
-        {/* Explore-subagent report overlay — covers the whole chat pane while
-            open (card click → report; Escape/close → back to chat). */}
-        <SubagentReportOverlay />
 
         {/* Empty State Message - Not Ready */}
         {turnCount === 0 && chatPolicy.emptyStateMessage && (

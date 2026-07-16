@@ -283,7 +283,6 @@
   "subagent": {
     "badge": "Subagent",
     "running": "Exploring: {{goal}}",
-    "rounds": "round {{count}}",
     "done": "Explored: {{goal}}",
     "partial": "Explored (partial): {{goal}}",
     "error": "Explore failed: {{goal}}",

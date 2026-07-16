@@ -404,10 +404,7 @@ export function generateChatStatusContent(
 
     case 'subagent_running': {
       const goal = metadata?.goal ?? 'investigation';
-      const rounds = metadata?.rounds;
-      return typeof rounds === 'number' && rounds > 0
-        ? `Subagent exploring: ${goal} (round ${rounds})`
-        : `Subagent exploring: ${goal}...`;
+      return `Subagent exploring: ${goal}...`;
     }
 
     case 'subagent_report': {

@@ -19,8 +19,10 @@ interface VirtualDocumentViewerProps {
 export function VirtualDocumentViewer({ tab }: VirtualDocumentViewerProps) {
   const body = tab.streamPreviewContent ?? tab.content ?? '';
   const isLikelyMarkdown = useMemo(() => {
-    return !!tab.path?.toLowerCase().match(/\.(md|markdown)$/);
-  }, [tab.path]);
+    // Report tabs are path-less markdown (subagent report body); everything
+    // else keys off the file extension.
+    return tab.source === 'report' || !!tab.path?.toLowerCase().match(/\.(md|markdown)$/);
+  }, [tab.path, tab.source]);
 
   const virtualHeaderPathParts = useMemo(() => {
     if (tab.path) return splitPathForEditorHeader(tab.path);

@@ -420,7 +420,7 @@ export class ChatAPIClient {
 
   async subagentProgress(
     cardId: string,
-    meta: { subagentId: string; goal: string; rounds: number; toolCalls?: number },
+    meta: { subagentId: string; goal: string; rounds: number; toolCalls?: number; startedAt?: string },
   ): Promise<void> {
     await this.showChatStatus('subagent_running', { cardId, ...meta });
   }

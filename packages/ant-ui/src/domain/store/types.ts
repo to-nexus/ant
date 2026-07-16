@@ -277,7 +277,7 @@ export interface EditorTab {
   cardId?: string;
   turnId?: string;
   jobId?: string;
-  source?: 'plan' | 'design';
+  source?: 'plan' | 'design' | 'report';
   status?: 'streaming' | 'ready';
   content?: string;
   streamPreviewContent?: string;

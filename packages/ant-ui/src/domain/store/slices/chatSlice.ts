@@ -8,13 +8,6 @@ import { StateCreator } from 'zustand';
 export interface ChatState {
   // ✅ Programmatic chat input (set by any feature, consumed by ChatInput)
   pendingChatInput: PendingChatInput | null;
-  /**
-   * cardId of the subagent_report card whose full report overlay is open.
-   * Lives in the store (not card-local state) because cards are inside the
-   * Virtuoso-virtualized list and unmount when scrolled out — the overlay
-   * mounts at ChatPanel level and must outlive the card instance.
-   */
-  openSubagentReportCardId: string | null;
 }
 
 /**
@@ -40,10 +33,6 @@ export interface ChatActions {
    * Used by: Fix buttons, quick actions, templates, suggestions, etc.
    */
   setPendingChatInput: (input: PendingChatInput | null) => void;
-  /** Open the explore-report overlay for a subagent_report card. */
-  openSubagentReport: (cardId: string) => void;
-  /** Close the explore-report overlay. */
-  closeSubagentReport: () => void;
 }
 
 export type ChatSlice = ChatState & ChatActions;
@@ -53,14 +42,10 @@ export const createChatSlice: StateCreator<any, [], [], ChatSlice> = (set, get) 
   // State
   // ==================
   pendingChatInput: null,
-  openSubagentReportCardId: null,
 
   // ==================
   // Actions
   // ==================
-  openSubagentReport: (cardId) => set({ openSubagentReportCardId: cardId }),
-  closeSubagentReport: () => set({ openSubagentReportCardId: null }),
-
   setPendingChatInput: (input) => {
     if (input) {
       console.log(`[ChatSlice] 💬 Pending input set:`, {

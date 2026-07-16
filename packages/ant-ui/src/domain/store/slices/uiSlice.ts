@@ -11,6 +11,7 @@ import {
   fileTitleFromPath,
   isEditorTabId,
   makePinnedRealTabId,
+  makeReportEditorTabId,
   makeVirtualEditorTabId,
   moveTabIdToOrderEnd,
   reconcileMainPanelActiveTab,
@@ -253,6 +254,8 @@ export interface UIActions {
   ) => void;
   promoteVirtualEditorTabToReal: (args: { cardId: string; filePath: string; source?: 'plan' | 'design' }) => void;
   removeVirtualEditorTabsByJobId: (jobId: string) => void;
+  /** Open a subagent's full report as a read-only virtual editor tab. */
+  openReportEditorTab: (args: { cardId: string; goal: string; report: string }) => void;
 }
 
 export type UISlice = UIState & UIActions;
@@ -1011,6 +1014,59 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       mainPanelActiveTab: isEditorTabId(s.mainPanelActiveTab) ? 'job' : s.mainPanelActiveTab,
       mainPanelTabOrder: s.mainPanelTabOrder.filter((t: string) => !isEditorTabId(t)),
     }));
+  },
+
+  openReportEditorTab: ({ cardId, goal, report }) => {
+    if (!cardId) return;
+    const id = makeReportEditorTabId(cardId);
+    const trimmed = (goal ?? '').trim();
+    const title = trimmed
+      ? trimmed.length > 40
+        ? `${trimmed.slice(0, 40)}…`
+        : trimmed
+      : 'Subagent Report';
+    set((s: any) => {
+      const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
+      const existingIdx = tabs.findIndex((tab) => tab.id === id);
+      if (existingIdx >= 0) {
+        // Re-open focuses the existing tab; refresh title/body in case the
+        // persisted report changed (it normally won't).
+        tabs[existingIdx] = {
+          ...tabs[existingIdx],
+          title,
+          content: report,
+          status: 'ready',
+        };
+      } else {
+        tabs.push({
+          id,
+          cardId,
+          title,
+          kind: 'virtual',
+          pinned: true,
+          readOnly: true,
+          content: report,
+          // `status: 'ready'` keeps this tab out of the streaming-sync purge in
+          // `syncVirtualEditorTabsFromBuffers` (that filter drops only virtual
+          // tabs whose status is still `streaming` and unseen in the buffers).
+          status: 'ready',
+          source: 'report',
+        });
+      }
+      const order = sanitizeEditorTabOrder(s.mainPanelTabOrder as string[], tabs).filter(
+        (t) => t !== 'fileEdit',
+      );
+      const newOrder = order.includes(id)
+        ? (order as MainPanelTabOrderItem[])
+        : ([...order, id] as MainPanelTabOrderItem[]);
+      return {
+        editorTabs: tabs,
+        activeEditorTabId: id,
+        mainPanelActiveTab: id,
+        mainPanelOpenTabs: { ...s.mainPanelOpenTabs, fileEdit: true },
+        mainPanelTabOrder: newOrder,
+      };
+    });
   },
 
   syncVirtualEditorTabsFromBuffers: (buffers) => {

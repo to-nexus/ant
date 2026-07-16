@@ -1,16 +1,16 @@
 /**
  * SubagentCard — running spinner state, terminal per-state rendering,
- * click-to-open only when a report body exists.
+ * click-to-open (into a main-panel report tab) only when a report body exists.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type { ChatStatusLine } from '@ant/shared';
 
-const openSubagentReport = vi.fn();
+const openReportEditorTab = vi.fn();
 
 vi.mock('@/domain/store', () => ({
-  useStore: (selector: (s: any) => any) => selector({ openSubagentReport }),
+  useStore: (selector: (s: any) => any) => selector({ openReportEditorTab }),
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: any) => (o ? `${k}:${JSON.stringify(o)}` : k) }),
@@ -34,14 +34,15 @@ function render(el: React.ReactElement): ReactTestRenderer {
   return tree!;
 }
 
-beforeEach(() => openSubagentReport.mockClear());
+beforeEach(() => openReportEditorTab.mockClear());
 
 describe('SubagentCard', () => {
-  it('running: shows the running label and no button role', () => {
+  it('running: shows the running label, no round chip, no button role', () => {
     const tree = render(<SubagentCard line={line('subagent_running', { goal: 'map auth', rounds: 2 })} />);
     const dump = JSON.stringify(tree.toJSON());
     expect(dump).toContain('subagent.running');
-    expect(dump).toContain('subagent.rounds');
+    // Round counter is intentionally not surfaced anymore.
+    expect(dump).not.toContain('subagent.rounds');
     expect(dump).not.toContain('"role":"button"');
   });
 
@@ -54,13 +55,17 @@ describe('SubagentCard', () => {
     expect(JSON.stringify(terminal.toJSON())).toContain('subagent.badge');
   });
 
-  it('terminal with report: clickable, dispatches openSubagentReport(cardId)', () => {
+  it('terminal with report: clickable, opens a report editor tab', () => {
     const tree = render(
       <SubagentCard line={line('subagent_report', { goal: 'g', state: 'done', report: '# findings' })} />,
     );
     const root = tree.root.findByProps({ role: 'button' });
     act(() => { root.props.onClick(); });
-    expect(openSubagentReport).toHaveBeenCalledWith('card-1');
+    expect(openReportEditorTab).toHaveBeenCalledWith({
+      cardId: 'card-1',
+      goal: 'g',
+      report: '# findings',
+    });
     expect(JSON.stringify(tree.toJSON())).toContain('subagent.viewReport');
   });
 
