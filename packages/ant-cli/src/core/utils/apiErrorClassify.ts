@@ -25,6 +25,51 @@ export function isOverloadedError(error: { message?: string } | string | null | 
 }
 
 /**
+ * Provider account balance / quota depletion signatures.
+ *
+ * Some OpenAI-compatible providers (notably GLM/Zhipu) multiplex two orthogonal
+ * conditions onto HTTP 429: transient rate-limit/overload (retryable) AND a hard
+ * account-balance / resource-package depletion, where retrying NEVER succeeds —
+ * only an operator recharge clears it. The status code alone cannot distinguish
+ * them, so message-substring matching is the only available signal. This is a
+ * deliberate provider-message coupling, permitted here precisely because no
+ * version-independent (status/header) signal exists.
+ */
+const BALANCE_DEPLETION_SIGNATURES = [
+  'insufficient balance',
+  'balance is insufficient',
+  'no resource package',
+  'recharge',
+  'insufficient_quota',
+  'arrearage',
+];
+
+/**
+ * True when the error signals a hard upstream-provider account balance/quota
+ * depletion (NOT the user's own credit balance). NON-retryable and NOT a code
+ * defect: the shared provider account is out of funds. SSOT for both the retry
+ * classifier (`retry.ts`) and the user-facing interruption-message normalization
+ * (`classifyOrchestratorFailure`). Accepts a raw error object (with nested
+ * `.error.message`), a string, or a message-bearing shape.
+ */
+export function isProviderBalanceDepletion(
+  error: { message?: string } | string | null | undefined | unknown,
+): boolean {
+  let msg = '';
+  if (typeof error === 'string') {
+    msg = error;
+  } else if (error && typeof error === 'object') {
+    const e = error as any;
+    msg = [e.message, e.error?.message, e.error?.error?.message]
+      .filter((m): m is string => typeof m === 'string')
+      .join(' ');
+  }
+  if (!msg) return false;
+  const lower = msg.toLowerCase();
+  return BALANCE_DEPLETION_SIGNATURES.some((sig) => lower.includes(sig));
+}
+
+/**
  * True when the failure is a deterministic "request too large" error — the
  * assembled prompt exceeded the model's context window (Anthropic 400
  * `invalid_request_error`, "prompt is too long"). This is NOT transient and NOT
@@ -43,6 +88,7 @@ export function isPromptTooLongError(error: { message?: string } | string | null
  */
 export function summarizeFailureCause(errorMessage: string | undefined): string {
   const msg = errorMessage || '';
+  if (isProviderBalanceDepletion(msg)) return 'AI service temporarily unavailable';
   if (isOverloadedError(msg)) return 'Anthropic API overloaded';
   if (/rate_limit_error/i.test(msg)) return 'API rate limit reached';
   if (/recursion limit/i.test(msg)) return 'Recursion limit reached';

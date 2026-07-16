@@ -72,3 +72,40 @@ describe('withRetry — shouldRetry override', () => {
     expect(attempts).toBe(4);
   });
 });
+
+// Regression — `faint-gripping-charm`: GLM/Zhipu returns HTTP 429 for a hard
+// upstream-account balance depletion. The default LLM classifier used to blanket-
+// treat any 429 as a retryable rate-limit, burning the whole backoff budget on a
+// permanent failure. Balance-depletion 429s must now fail fast (1 attempt).
+describe('withRetry — default classifier, provider balance depletion', () => {
+  it('fails FAST on a balance-depletion 429 (no retry)', async () => {
+    let attempts = 0;
+    await expect(
+      withRetry(
+        async () => {
+          attempts += 1;
+          throw Object.assign(
+            new Error('429 Insufficient balance or no resource package. Please recharge.'),
+            { status: 429 },
+          );
+        },
+        { maxAttempts: 8, initialDelayMs: 1, maxDelayMs: 5 },
+      ),
+    ).rejects.toThrow(/insufficient balance/i);
+    expect(attempts).toBe(1);
+  });
+
+  it('still retries a genuine transient 429 rate-limit (behavior preserved)', async () => {
+    let attempts = 0;
+    const result = await withRetry(
+      async () => {
+        attempts += 1;
+        if (attempts < 3) throw Object.assign(new Error('429 Too Many Requests'), { status: 429 });
+        return 'ok';
+      },
+      { maxAttempts: 8, initialDelayMs: 1, maxDelayMs: 5 },
+    );
+    expect(result).toBe('ok');
+    expect(attempts).toBe(3);
+  });
+});
