@@ -21,6 +21,7 @@ import { renderPriorErrorTasks } from './priorErrorTasks';
 import { renderPriorCompletedFiles } from '../../helpers/priorCompletedFiles';
 import { containsRuntimeErrorPattern } from '../../../../../../../../core/utils/runtimeErrorPattern';
 import { allowsPersistentProcesses } from '../persistentProcessGate';
+import { resolveArtifacts } from '../../../../../../../../core/prompt/builder/ArtifactPipeline';
 
 /**
  * Compact verification banner. Always rendered (the absence of a banner
@@ -119,6 +120,21 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
 
   const depSnapshot = await workspaceDepSnapshotVars(ctx);
 
+  // Acceptance source — a verification task normally carries no `include`
+  // (selectArtifacts' defensive default is []), but a spec-grounded Tier 4
+  // decompose sets `include` to the ref spec's pool path so its acceptance
+  // criteria are checkable here. Same select+compact pipeline as the default
+  // plan prompt (`plan/llm/prompt.ts`).
+  const acceptanceDocs = resolveArtifacts(state.artifacts || [],
+    { taskType: task.type, include: task.include },
+    { threshold: 30_000 });
+  const acceptanceSource = acceptanceDocs.length > 0
+    ? acceptanceDocs.map(d => `### ${d.label || d.path}\n\n${d.content ?? ''}`).join('\n\n---\n\n')
+    : '';
+  if (acceptanceDocs.length > 0) {
+    console.log(`📄 [Plan] Verify-mode acceptance source: ${acceptanceDocs.length} doc(s), include=${JSON.stringify(task.include ?? [])}`);
+  }
+
   const body = await promptBuilder.render(TEMPLATE_PATHS.codePlanVerification.base, {
     taskId: task.id,
     taskName: task.name,
@@ -127,6 +143,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // See `nodes/plan/llm/prompt.ts` — same response-language SSOT plumbing.
     userLanguage: state.context?.userLanguage || 'en',
     hasUserRuntimeErrorContext,
+    acceptanceSource,
+    hasAcceptanceSource: acceptanceSource.length > 0,
     runTests: true,
     projectCodeContext: fmtCtx,
     directoryTree: (codeContext as any)?.directoryTree || '',
@@ -178,6 +196,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       hasUserRuntimeErrorContext,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
       hasPriorExecuteHistory,
+      hasAcceptanceSource: acceptanceSource.length > 0,
+      acceptanceDocsCount: acceptanceDocs.length,
     },
   };
 }

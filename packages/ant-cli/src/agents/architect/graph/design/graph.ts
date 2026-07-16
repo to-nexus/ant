@@ -32,6 +32,7 @@ import path from "node:path";
 import { toFeatureRelative, appendOrUpdatePool } from '../../../../core/prompt/builder/ArtifactPipeline';
 import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from './nodes/checkTaskStatus/assetValidation';
+import { enforceSpecDocIntegrity } from './nodes/checkTaskStatus/specDocIntegrity';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -268,6 +269,14 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     const taskForMarkers = state.currentTask as any;
     if (taskForMarkers?.isLastTaskForDocument && taskForMarkers?.targetFile && state.deps?.fileSystem && state.context?.featurePath) {
       await stripInternalMarkers(state.deps.fileSystem as any, state.context.featurePath, taskForMarkers.targetFile, taskForMarkers.targetDir);
+    }
+
+    // Spec doc single-root invariant — heal duplicate appended documents
+    // (spec tasks never set isLastTaskForDocument, so this is a separate gate).
+    if (state.deps?.fileSystem && state.context?.featurePath) {
+      await enforceSpecDocIntegrity(
+        state.deps.fileSystem as any, state.context.featurePath, taskForMarkers, 'checkTaskStatus',
+      );
     }
     
     // Save checkpoint after completing a task (task-complete boundary).

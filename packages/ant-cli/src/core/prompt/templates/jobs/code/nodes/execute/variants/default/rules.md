@@ -58,6 +58,10 @@ If REFERENCE PROJECTS section shows "NONE available", do NOT attempt to use `sea
 
 **Principle**: The plan is a sketch of WHAT and WHERE; current codebase files are the SSOT for HOW the citations realize. The plan typically points you at the defining file via an inline path in the citing entry's `purpose` / `changes`; where it does not, locate the file via `search_code` / `list_files`. Ground every symbol reference in its defining source per the rule below before writing the call site or the value. Plan's structural decisions (decomposition, file allocation, intent) remain frozen; your refinement authority is limited to the realization axis (signatures, call shapes, type shapes, conventions discovered while reading).
 
+**Constraint — ref/spec realization detail obeys the same axis split**: A spec or design document provided as `ref` binds the contract axis — which files to create/modify, symbol names, wire shapes, env variables, task ordering, acceptance gates. Realization detail it inlines (a signature sketch, hook/handler internals, a code body) was authored before the current code existed and MAY be stale: on the realization axis the defining source file in the current codebase is the SSOT, exactly as it is for the plan. When the ref's inlined signature or shape disagrees with the defining file, follow the defining file and record the deviation in your report — do NOT halt, and do NOT edit the ref. Exception: wire-format identifiers follow the api-contract VERBATIM (see § Wire-format Identifier Preservation).
+
+**Constraint — `[VERIFY]` items are instructions, not facts**: a `[VERIFY: <how>]` marker in a ref document flags a claim its author could not confirm. Before writing code that uses the marked symbol/shape, confirm it by the named means (the installed package's type declarations, the live config); when reality disagrees with the marked claim, reality wins — same axis rule as above.
+
 {{> jobs/code/base/injections/symbol-grounding}}
 
 **Constraint — Solution direction is FROZEN**:
@@ -130,6 +134,8 @@ When Plan doesn't anticipate everything needed:
 
 **Allowed:** Type definitions, helper functions (prefer inline), constants
 **Rules:** Maintain Plan's structure, minimize extra files, report additions
+
+**Ref/spec silence at realization level is yours to fill**: when the ref/spec names an outcome but omits a realization step the unit needs to be operable (an import, a provider/registration wiring, a small helper, local state), implement it from codebase conventions and report the addition — do NOT halt and do NOT emit `<done>false</done>` for realization-level silence. This license never extends to the contract axis: do NOT invent new endpoints, wire fields, env variable names, or cross-task symbols to fill a gap — surface contract gaps instead (see § Wire-format Identifier Preservation).
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 5. Modularization

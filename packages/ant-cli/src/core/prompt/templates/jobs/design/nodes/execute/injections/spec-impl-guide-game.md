@@ -13,3 +13,5 @@ Ground every requirement in concrete game-client identifiers, anchored to the PR
 **Constraint**: Reference the sealed game system-design by name; inline only the contract the step consumes. Do NOT re-derive state-ownership, determinism, or synchronization policy — those are sealed upstream.
 
 **Constraint**: Do NOT record simulation formulas, coordinates, velocities, or timing constants — those are code / balancing concerns, never spec content.
+
+**Constraint — realization ceiling**: Record identifiers, signatures, and field shapes — never function/component bodies. A fenced block of executable implementation (roughly 10+ lines of statements) is the code job's output leaking into the spec; replace it with the signature, the state/event field names it must expose, and the verification gate that proves the behavior. Wire shapes, env vars, commands, and config values stay exact — those are contract, not realization.

@@ -208,6 +208,7 @@ First, analyze step by step (think through):
   - Does test-code apply? (see Test Generation Task — codebase origin decides first; consult `<executionTier>` only in the existing-project branch)
   - Does doc apply? (see Documentation Task — codebase origin decides first; consult `<executionTier>` only in the existing-project branch)
   - Always include a final verification task (`type: "verification"`, `priority: 1000`) — MANDATORY at Tier 3/4.
+    - When the breakdown is grounded in a `ref` design document (Tier 4 — a spec with acceptance criteria), set the verification task's `include` to that ref's pool path so its acceptance criteria are visible at verification time. Without this the verification pass sees only build/test gates and the document's acceptance criteria are never checked.
 
 Then output the tags in the order defined in the Output Sequence section below.
 

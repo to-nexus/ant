@@ -110,6 +110,22 @@ If you have NOT yet observed both conditions in this verification cycle, the no-
 If build succeeds, execute the project's test command using `run_command`.
 {{/if}}
 
+{{#if hasAcceptanceSource}}
+### Step 2.5: Check Acceptance Criteria (ref document injected)
+
+This verification cycle is grounded in a reference design document (below). Its acceptance criteria are part of this cycle's gates, alongside build/typecheck/test:
+
+- **Machine-checkable criteria** — a named command whose result is observable, a named test, a file/symbol whose existence is checkable — MUST be checked with your tools (`run_command`, `read_file`, `search_code`). An unmet machine-checkable criterion is a violation: include it in the Fix Plan like any other error, citing the criterion.
+- **Human-only criteria** (visual quality, interaction feel, anything the document marks as requiring human confirmation) — do NOT invent a machine proxy for them. List them verbatim in your final report as requiring human confirmation; they never justify a fix batch on their own.
+- A `[VERIFY: ...]` marker in the document flags an unconfirmed claim, not a gate — skip it here (the implementing tasks own its confirmation).
+
+════════════════════════════════════════════════════════════════════════════════
+## Reference Document (acceptance source)
+════════════════════════════════════════════════════════════════════════════════
+
+{{{acceptanceSource}}}
+{{/if}}
+
 ### Step {{#if runTests}}3{{else}}2{{/if}}: Analyze Errors
 
 If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE command output — not just error lines:

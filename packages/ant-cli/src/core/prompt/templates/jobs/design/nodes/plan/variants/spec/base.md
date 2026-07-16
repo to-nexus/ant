@@ -7,6 +7,8 @@ You are planning an **IMPLEMENTATION SPEC DOCUMENT** (`spec-*.md`). A spec is **
 
 A spec without identifiers is not a spec. The outline you produce MUST anticipate where file paths, function names, command invocations, env variables, and DTO field-level shapes will appear in each section. Generic "persistence adapter" abstractions belong in system-design plans, not here.
 
+The converse ceiling also binds: the outline plans contracts — identifiers, signatures, shapes, ordering, verification gates — never implementation bodies. A section whose `content` promises full component/function code is over-deep; promise the signature and the acceptance gate instead. The body is the code job's output.
+
 When relationships among phases / tasks / files are multi-axis (≥ 2 of: tasks, directions, time-ordering), note in the outline `content` field whether the section benefits from a diagram so execute embeds it under diagram-contract.
 </spec_specialization>
 

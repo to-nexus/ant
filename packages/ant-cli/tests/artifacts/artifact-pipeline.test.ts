@@ -58,8 +58,14 @@ describe('selectArtifacts (include SSOT)', () => {
     expect(selectArtifacts(pool, { taskType: 'error' })).toEqual([]);
   });
 
-  it('verification → [] regardless of include (defensive guard)', () => {
-    expect(selectArtifacts(pool, { taskType: 'verification', include: ['plan'] })).toEqual([]);
+  it('verification without include → [] (defensive default); authored include honored', () => {
+    expect(selectArtifacts(pool, { taskType: 'verification' })).toEqual([]);
+    expect(selectArtifacts(pool, { taskType: 'verification', include: [] })).toEqual([]);
+    // Spec-grounded Final Verification: decompose authors `include` so the ref's
+    // acceptance criteria are injected at verification time.
+    expect(
+      selectArtifacts(pool, { taskType: 'verification', include: ['plan'] }).map(a => a.path),
+    ).toEqual(['plan']);
   });
 });
 
