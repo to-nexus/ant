@@ -7,6 +7,8 @@
  * - Selective retry based on error type
  */
 
+import { isProviderBalanceDepletion } from './apiErrorClassify';
+
 interface RetryOptions {
   maxAttempts?: number;
   initialDelayMs?: number;
@@ -51,6 +53,15 @@ function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
   if (!error || typeof error !== 'object') return false;
 
   const apiError = error as any;
+
+  // Provider account balance/quota depletion — NON-retryable, checked first so no
+  // downstream error-type or status branch can misclassify it as retryable. GLM/Zhipu
+  // overloads 429 with a hard "Insufficient balance / no resource package" condition
+  // that only an operator recharge (never a retry) can clear.
+  if (isProviderBalanceDepletion(apiError)) {
+    console.log('[Retry] Non-retryable: provider account balance/quota depleted — failing fast');
+    return false;
+  }
 
   // Check for network errors (TypeError with "terminated", "fetch failed", etc.)
   // Also covers idle timeout errors thrown by withStreamIdleTimeout

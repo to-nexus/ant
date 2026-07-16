@@ -15,6 +15,7 @@ export type InterruptionReason =
   | 'api_error'             // LLM API error (rate limit, malformed request, etc.)
   | 'llm_auth_failed'       // LLM API key invalid or missing — never resumable (resume re-hits the same key)
   | 'api_overloaded'        // Anthropic API overloaded (HTTP 529, external/transient — not a code defect)
+  | 'provider_unavailable'  // Upstream LLM provider account out of balance/quota (operator-side, NOT the user's credits — resumable after recharge)
   | 'process_crash'         // Child process crashed unexpectedly
   | 'server_crash'          // Server/worker killed unexpectedly (SIGKILL, OOM, etc.)
   | 'system_sleep'          // System entered sleep mode (wall-clock gap > lock duration)

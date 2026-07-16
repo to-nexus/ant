@@ -28,7 +28,7 @@ import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager"
 import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import type { InterruptionReason } from '../../../../core/types/session';
 import { getExecutionLogger } from '../../../../core/utils/executionLogger';
-import { isOverloadedError, summarizeFailureCause } from '../../../../core/utils/apiErrorClassify';
+import { isOverloadedError, isProviderBalanceDepletion, summarizeFailureCause } from '../../../../core/utils/apiErrorClassify';
 import { isLlmAuthError } from '../../../../core/llm/isLlmAuthError';
 
 /**
@@ -58,6 +58,24 @@ function classifyOrchestratorFailure(
       message: [
         'The LLM API key is invalid or missing. ' +
           'Check the API key for this provider in your server configuration, then start a new job.',
+        `${failedTasks.length} task(s) affected:`,
+        ...lines,
+      ].join('\n'),
+    };
+  }
+
+  // Upstream provider account balance/quota depletion (e.g. GLM/Zhipu HTTP 429
+  // "Insufficient balance … Please recharge"). This is an operator-side outage of
+  // the shared provider account — NOT the user's own ant credits, and NOT a code
+  // defect. Surface a clear message so a user with plenty of credits is not told to
+  // "recharge". Any depleted task dominates: the whole batch will keep failing until
+  // the operator recharges, so `some` (not `every`) is the correct guard.
+  if (failedTasks.some(f => isProviderBalanceDepletion(f.error))) {
+    return {
+      reason: 'provider_unavailable',
+      message: [
+        'The AI model service is temporarily unavailable (upstream provider capacity/balance).',
+        'This is not related to your credit balance and does not indicate a problem with your code — resume once it is restored.',
         `${failedTasks.length} task(s) affected:`,
         ...lines,
       ].join('\n'),
