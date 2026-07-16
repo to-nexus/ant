@@ -212,6 +212,14 @@ export interface DesignGraphState extends TriageableState {
   /** Retry counter for asset validation (max 2 retries before forced completion) */
   _assetValidationRetried?: number;
 
+  /** Set by checkTaskStatus when the refactor-mode revision-preservation gate
+   * fails (unsanctioned section loss) — signals router to retry via execute */
+  _specRevisionFailed?: boolean;
+
+  /** Retry counter for the revision-preservation gate (max 2 retries, then
+   * completion proceeds with the restored pre-revision original) */
+  _specRevisionRetried?: number;
+
   /** Consecutive Figma MCP failure counter (reset on success, persists across tool→execute loop) */
   _figmaConsecutiveErrors?: number;
 

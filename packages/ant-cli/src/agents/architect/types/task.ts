@@ -269,6 +269,14 @@ export type DesignTask = (DocTask | ExplainTask) & {
   sectionScope?: string;           // Description of what this section covers
 
   /**
+   * Refactor mode only: `##` headings of the pre-revision document captured
+   * at decompose. Consumed by the completion-time revision-preservation gate
+   * (`specDocIntegrity.reconcileSpecDoc`). Checkpointed with the task so it
+   * survives resume and reaches both serial and worker completion nodes.
+   */
+  revisionBaselineHeadings?: string[];
+
+  /**
    * Per-task technology tier(s), resolved at buildTaskQueue time from the
    * task's `stack` pointer (derived from targetFile prefix) via
    * `resolveTaskTechTierFromStack(stack, basisTechTierConfig)`:

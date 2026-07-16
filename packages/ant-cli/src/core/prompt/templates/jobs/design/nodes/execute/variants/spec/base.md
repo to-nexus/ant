@@ -98,6 +98,30 @@ Available tools:
 
 ## Output Format
 
+{{#if (eq detectedMode "refactor")}}
+🔧 REFACTOR MODE - REVISE EXISTING SPEC
+
+You are REVISING the existing spec document injected above (`# Existing Spec Document (to be modified)`). The unit of work is that existing document; the user's directive is a delta applied to it.
+
+- Change only what the directive affects.
+- Every section the directive does not affect MUST be reproduced verbatim in your output.
+- Only drop a section when the directive sanctions its removal.
+
+Output the FULL revised document using a `<file>` tag:
+
+```xml
+<file path="architecture/spec/{{targetFile}}">
+# Spec: {{title}}
+
+[Full revised document — directive delta applied, unaffected sections preserved verbatim]
+</file>
+```
+
+**Constraint**: Output the FULL modified document using `<file>` tag, not a diff or partial update.
+
+**Constraint**: `<append>` is FORBIDDEN in refactor mode — the document already exists and `<file>` replaces it atomically. Appending produces a second complete document below the first, corrupting the artifact for the consuming code job. This holds even when the requested change is an addition (a new section): re-emit the whole document with the addition in place via `<file>`.
+
+{{else}}
 {{#if isFirstSection}}
 This is the **first section** of the spec document. Create the document using a `<file>` tag:
 
@@ -122,17 +146,6 @@ This is a **continuation section**. The document already exists. Use `<append>` 
 ⚠️ **CRITICAL: Do NOT use `<file>` tag — it will OVERWRITE the existing document!**
 
 {{/if}}
-
-{{#if (eq detectedMode "refactor")}}
-════════════════════════════════════════════════════════════════════════════════
-🔧 REFACTOR MODE - MODIFY EXISTING SPEC
-════════════════════════════════════════════════════════════════════════════════
-
-You are MODIFYING an existing spec document. Apply the user's requested changes while preserving the overall structure.
-
-**Constraint**: Output the FULL modified document using `<file>` tag, not a diff or partial update.
-
-**Constraint**: `<append>` is FORBIDDEN in refactor mode — the document already exists and `<file>` replaces it atomically. Appending produces a second complete document below the first, corrupting the artifact for the consuming code job. This holds even when the requested change is an addition (a new section): re-emit the whole document with the addition in place via `<file>`.
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════

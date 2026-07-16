@@ -24,6 +24,8 @@ import { resolveDesignBasisTechTier } from "./resolveDesignBasisTechTier";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { generateMnemonic } from "../../../../../../utils/humanId";
+import { extractMarkdownHeadings } from "../checkTaskStatus/specDocIntegrity";
+import { loadExistingDesignDoc } from "../checkTaskStatus/loadExistingDesignDoc";
 
 const SPEC_TARGET_DIR = 'architecture/spec';
 
@@ -222,6 +224,63 @@ async function decomposeSpecSections(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Refactor mode — deterministic revision task (no LLM)
+//
+// `resolveSpecTargetFileForMode` already pins refactor to exactly ONE
+// target file, so the decompose LLM's only real decision ("how many
+// output documents?") is pre-answered = 1. Skipping the LLM closes the
+// mis-framing gap at its source: the revision task's scope is authored
+// here, deterministically, as "existing document + directive as delta"
+// — the LLM cannot re-frame the job as a fresh narrow document.
+// ─────────────────────────────────────────────────────────────
+
+interface SpecRevisionDecomposition {
+  title: string;
+  tasks: SpecTask[];
+  executionTier: ExecutionTierId;
+  revisionBaselineHeadings: string[];
+}
+
+function buildRevisionSectionScope(targetFile: string): string {
+  return (
+    `REVISION of the existing document architecture/spec/${targetFile}. ` +
+    `The unit of work is the existing document with the user directive applied as a delta: ` +
+    `change only what the directive affects; every section the directive does not affect is preserved verbatim; ` +
+    `the output is the full revised document.`
+  );
+}
+
+export async function buildSpecRevisionDecomposition(
+  state: DesignGraphState,
+  targetFile: string,
+): Promise<SpecRevisionDecomposition> {
+  const existing = await loadExistingDesignDoc(state, targetFile, SPEC_TARGET_DIR);
+  if (!existing) {
+    console.warn(
+      `⚠️  [specDecompose] rev-spec target ${targetFile} not readable — proceeding with empty revision baseline (execute will author fresh; preservation gate no-ops)`,
+    );
+  }
+
+  const headings = existing ? extractMarkdownHeadings(existing) : [];
+  const h1 = headings.find((h) => h.level === 1)?.text;
+  const title = (h1 ?? targetFile.replace(/\.md$/, '')).replace(/^spec:\s*/i, '').trim();
+  const baseId = targetFile.replace(/\.md$/, '');
+
+  return {
+    title,
+    tasks: [
+      {
+        id: `spec-${baseId}-rev-1`,
+        name: 'Revision',
+        scope: buildRevisionSectionScope(targetFile),
+      },
+    ],
+    executionTier: ExecutionTierId.Exploratory,
+    revisionBaselineHeadings: headings.filter((h) => h.level === 2).map((h) => h.text),
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────
 
@@ -231,6 +290,7 @@ export async function decomposeSpec(
 ): Promise<DesignGraphState> {
   const directive = state.overrideDirective || state.directive || '';
   const jobMode = state.resolvedAction?.mode || 'generate';
+  const isRefactor = jobMode === 'refactor';
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('📋 SPEC DECOMPOSE');
@@ -240,9 +300,24 @@ export async function decomposeSpec(
 
   await showChatPlaceholder();
 
-  const { slug, title, tasks, executionTier } = await decomposeSpecSections(state);
+  // Refactor resolves the target first (it IS the existing file); generate
+  // needs the LLM's slug before it can name the file.
+  let targetFile: string;
+  let title: string;
+  let tasks: SpecTask[];
+  let executionTier: ExecutionTierId;
+  let revisionBaselineHeadings: string[] | undefined;
+
+  if (isRefactor) {
+    targetFile = await resolveSpecTargetFileForMode(state, jobMode, '');
+    const revision = await buildSpecRevisionDecomposition(state, targetFile);
+    ({ title, tasks, executionTier, revisionBaselineHeadings } = revision);
+  } else {
+    const decomposed = await decomposeSpecSections(state);
+    ({ title, tasks, executionTier } = decomposed);
+    targetFile = await resolveSpecTargetFileForMode(state, jobMode, decomposed.slug);
+  }
   console.log(`🧭 [SpecDecompose] executionTier=${executionTier}`);
-  const targetFile = await resolveSpecTargetFileForMode(state, jobMode, slug);
   const parallelGroup = targetFile.replace(/\.md$/, '');
 
   console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${tasks.length} chapter(s)`);
@@ -266,6 +341,7 @@ export async function decomposeSpec(
       include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
       parallelGroup,
       completed: false,
+      ...(revisionBaselineHeadings ? { revisionBaselineHeadings } : {}),
     };
     taskQueue.push(task);
   });
@@ -277,7 +353,7 @@ export async function decomposeSpec(
     ctx.newJobId,
     'decompose-spec',
     directive.length,
-    { targetFile, slug, title, sectionCount: tasks.length, jobMode }
+    { targetFile, title, sectionCount: tasks.length, jobMode }
   );
 
   // Anchor techTier to the EXISTING codebase via the single design-side owner

@@ -21,6 +21,7 @@ import { referenceCatalogVars } from '../../../../../common/tool/reference/catal
 import {
   selectArtifacts,
 } from '../../../../../../core/prompt/builder/ArtifactPipeline';
+import { loadExistingDesignDoc } from '../checkTaskStatus/loadExistingDesignDoc';
 
 export interface BuildDesignPlanPromptResult {
   blocks: TextContentBlock[];
@@ -37,6 +38,7 @@ export async function buildPlanPromptBlocks(
 
   const intentGroup = state.resolvedAction?.intentGroup ?? 'design-spec';
   const directive = state.overrideDirective || state.directive || '';
+  const detectedMode = state.resolvedAction?.mode || 'generate';
 
   // Artifact selection — mirrors `design/nodes/execute/intent/spec.ts`.
   const taskAny = task as any;
@@ -76,6 +78,7 @@ export async function buildPlanPromptBlocks(
     vars: {
       ...refCat,
       intentGroup,
+      detectedMode,
       currentTask: {
         id: task.id,
         name: task.name,
@@ -100,7 +103,33 @@ export async function buildPlanPromptBlocks(
   };
 
   const promptResult = await promptBuilder.build(config);
-  const blocks = buildCacheableBlocks(promptResult);
+
+  // Revision contract (refactor mode): the plan's object is the EXISTING
+  // document — inject its body deterministically so the plan never depends
+  // on the LLM electing to read it via tools. Same disk-first sourcing as
+  // execute (`spec.ts`), single loader owner.
+  const contextParts: string[] = [];
+  if (detectedMode === 'refactor' && (task as any)?.targetFile) {
+    const existing = await loadExistingDesignDoc(
+      state,
+      (task as any).targetFile,
+      (task as any).targetDir,
+    );
+    if (existing) {
+      contextParts.push(`# Existing Document (revision target)\n\n${existing}`);
+      console.log(
+        `📋 [DesignPlan] Loaded existing doc for revision plan: ${(task as any).targetFile} (${existing.length} chars)`,
+      );
+    } else {
+      console.warn(
+        `⚠️  [DesignPlan] Existing doc not readable for refactor plan: ${(task as any).targetFile}`,
+      );
+    }
+  }
+
+  const blocks = buildCacheableBlocks(promptResult, {
+    contextParts: contextParts.length > 0 ? contextParts : undefined,
+  });
 
   return { blocks: blocks as TextContentBlock[] };
 }

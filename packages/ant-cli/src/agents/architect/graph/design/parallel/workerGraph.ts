@@ -29,7 +29,7 @@ import { designDirOf } from '@ant/shared';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from '../nodes/checkTaskStatus/assetValidation';
-import { enforceSpecDocIntegrity } from '../nodes/checkTaskStatus/specDocIntegrity';
+import { reconcileSpecDoc, buildSpecRevisionRetryMessage } from '../nodes/checkTaskStatus/specDocIntegrity';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -151,6 +151,55 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 2.6: Design-doc reconcile (mirror of the serial gate).
+  // generate: duplicate-root heal. refactor: revision-preservation gate —
+  // unsanctioned section loss rolls the original back and re-prompts execute
+  // (retry authority = violation.isRetryable, cap 2). At the cap, completion
+  // proceeds with the restored original (fail-open).
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (state.currentTask && state.deps?.fileSystem && state.context?.featurePath) {
+    const reconcile = await reconcileSpecDoc(
+      state.deps.fileSystem as any,
+      state.context.featurePath,
+      state.currentTask as any,
+      state.resolvedAction?.mode || 'generate',
+      {
+        planText: state.planText,
+        directive: state.overrideDirective || state.directive,
+        logPrefix: 'workerCheckTaskStatus',
+      },
+    );
+    if (reconcile.violation?.isRetryable === true) {
+      if ((state._specRevisionRetried || 0) < 2) {
+        const retryMessage = {
+          role: 'user' as const,
+          content: buildSpecRevisionRetryMessage(
+            reconcile.violation.missingHeadings,
+            state.currentTask.targetFile || '',
+          ),
+        };
+        if (state.deps?.workflowUpdate && state._httpJobId) {
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+        }
+        return {
+          conversations: { [CONV_KEYS.NODE_EXECUTE]: [...getConv(state.conversations, CONV_KEYS.NODE_EXECUTE), retryMessage] },
+          _specRevisionFailed: true,
+          _specRevisionRetried: (state._specRevisionRetried || 0) + 1,
+          _executeCallIndex: 0,
+          _noOutputCallCount: 0,
+          _taskCompleted: false,
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+        } as any;
+      }
+      console.warn(
+        `⚠️  [Worker checkTaskStatus] Revision preservation retry limit reached (${state._specRevisionRetried}). ` +
+        `Completing with the restored pre-revision original — the directive's delta was NOT applied.`,
+      );
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Normal completion
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.currentTask) {
@@ -210,15 +259,6 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       } catch { /* File may not exist, ignore */ }
     }
 
-    // Spec doc single-root invariant — heal duplicate appended documents
-    // (mirror of the serial checkTaskStatus gate; spec tasks never set
-    // isLastTaskForDocument, so this is a separate gate).
-    if (state.deps?.fileSystem && state.context?.featurePath) {
-      await enforceSpecDocIntegrity(
-        state.deps.fileSystem as any, state.context.featurePath, taskForMarkers, 'workerCheckTaskStatus',
-      );
-    }
-
     if (state.deps?.workflowUpdate && state._httpJobId) {
       await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
     }
@@ -236,6 +276,8 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       _toolResultCache: undefined,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
+      _specRevisionFailed: false,
+      _specRevisionRetried: 0,
       _drainFinalized: false,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -260,7 +302,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
  * back to execute for a re-prompt; otherwise the worker task is done → learn.
  */
 function routeAfterWorkerCheckTaskStatus(state: DesignGraphState): string {
-  return state._assetValidationFailed ? 'execute' : 'learn';
+  return state._assetValidationFailed || state._specRevisionFailed ? 'execute' : 'learn';
 }
 
 /**

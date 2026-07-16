@@ -32,7 +32,7 @@ import path from "node:path";
 import { toFeatureRelative, appendOrUpdatePool } from '../../../../core/prompt/builder/ArtifactPipeline';
 import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from './nodes/checkTaskStatus/assetValidation';
-import { enforceSpecDocIntegrity } from './nodes/checkTaskStatus/specDocIntegrity';
+import { reconcileSpecDoc, buildSpecRevisionRetryMessage } from './nodes/checkTaskStatus/specDocIntegrity';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -149,6 +149,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       tokenUsage: state.tokenUsage,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
+      _specRevisionFailed: false,
+      _specRevisionRetried: 0,
       _drainFinalized: false,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -197,7 +199,53 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       };
     }
   }
-  
+
+  // Design-doc reconcile gate — one owner (`specDocIntegrity.reconcileSpecDoc`).
+  // generate: duplicate-root heal (unchanged semantics, moved from the
+  // completion branch to gate position). refactor: revision-preservation gate —
+  // validates the candidate against the pre-revision baseline BEFORE the task
+  // completes; unsanctioned section loss rolls the original back to disk and
+  // re-prompts execute (retry authority = violation.isRetryable, cap 2 —
+  // asset-gate idiom). At the cap, completion proceeds with the restored
+  // original (fail-open: never destroy user content).
+  if (state.currentTask && state.deps?.fileSystem && state.context?.featurePath) {
+    const reconcile = await reconcileSpecDoc(
+      state.deps.fileSystem as any,
+      state.context.featurePath,
+      state.currentTask as any,
+      state.resolvedAction?.mode || 'generate',
+      {
+        planText: state.planText,
+        directive: state.overrideDirective || state.directive,
+        logPrefix: 'checkTaskStatus',
+      },
+    );
+    if (reconcile.violation?.isRetryable === true) {
+      if ((state._specRevisionRetried || 0) < 2) {
+        const retryMessage = {
+          role: 'user' as const,
+          content: buildSpecRevisionRetryMessage(
+            reconcile.violation.missingHeadings,
+            state.currentTask.targetFile || '',
+          ),
+        };
+        return {
+          conversations: { [CONV_KEYS.NODE_EXECUTE]: [...getConv(state.conversations, CONV_KEYS.NODE_EXECUTE), retryMessage] },
+          _specRevisionFailed: true,
+          _specRevisionRetried: (state._specRevisionRetried || 0) + 1,
+          _executeCallIndex: 0,
+          _noOutputCallCount: 0,
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+        };
+      }
+      console.warn(
+        `⚠️  [checkTaskStatus] Revision preservation retry limit reached (${state._specRevisionRetried}). ` +
+        `Completing with the restored pre-revision original — the directive's delta was NOT applied.`,
+      );
+    }
+  }
+
   // ✅ Current task completed successfully
   if (state.currentTask) {
     // Subagent leak guard — mirrors code checkTaskStatus: undelivered explore
@@ -271,14 +319,6 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       await stripInternalMarkers(state.deps.fileSystem as any, state.context.featurePath, taskForMarkers.targetFile, taskForMarkers.targetDir);
     }
 
-    // Spec doc single-root invariant — heal duplicate appended documents
-    // (spec tasks never set isLastTaskForDocument, so this is a separate gate).
-    if (state.deps?.fileSystem && state.context?.featurePath) {
-      await enforceSpecDocIntegrity(
-        state.deps.fileSystem as any, state.context.featurePath, taskForMarkers, 'checkTaskStatus',
-      );
-    }
-    
     // Save checkpoint after completing a task (task-complete boundary).
     // Clears currentTask + conversations (runtime uses retention policy separately).
     await saveTaskCompleteCheckpoint(state, { completedTasks, completedTasksDetails });
@@ -346,6 +386,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _toolResultCache: undefined,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
+      _specRevisionFailed: false,
+      _specRevisionRetried: 0,
       _drainFinalized: false,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
@@ -725,6 +767,8 @@ export const DesignGraphChannels = {
   fileErrors: Annotation<any>,
   _assetValidationFailed: Annotation<any>,
   _assetValidationRetried: Annotation<any>,
+  _specRevisionFailed: Annotation<any>,
+  _specRevisionRetried: Annotation<any>,
   awaitingDetectClarify: Annotation<any>,
   awaitingClarify: Annotation<any>,
   clarifyRoundsUsed: Annotation<any>,
