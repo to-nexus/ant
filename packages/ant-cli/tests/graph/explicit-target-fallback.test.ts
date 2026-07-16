@@ -313,8 +313,17 @@ describe('renderSlotSummaries — generate target presentation', () => {
     expect(targetPathFor('gen-plan')).toBe('plan/prd.md');
   });
 
-  it('gen-ui-desc → presents concrete files (all UI_OUTPUTS are non-pattern)', () => {
-    expect(targetPathFor('gen-ui-desc')).toBe(
+  it('gen-ui-desc → falls back to the dir (handoff bundle outputs are open-ended patterns)', () => {
+    // Repurposed to the handoff producer: the bundle file set is PRD-driven
+    // (DESIGN.md + tokens/* + components/* + screens/* …), so like gen-sys-fe /
+    // gen-spec the target presents as the directory. Decompose pins each
+    // task's concrete file path — the dir presentation cannot leak into
+    // `<file path>` targets (design-ui is decompose-driven, not writer-driven).
+    expect(targetPathFor('gen-ui-desc')).toBe('visual/ui/handoff');
+  });
+
+  it('gen-ui-figma → still presents the concrete ant JSON trio (regression)', () => {
+    expect(targetPathFor('gen-ui-figma')).toBe(
       'visual/ui/ant/ui-tokens.json, visual/ui/ant/ui-assets.json, visual/ui/ant/ui-spec.json',
     );
   });

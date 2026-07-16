@@ -447,6 +447,13 @@ const L = {
   gameArtTokens: { en: 'game-art-tokens.json', ko: 'game-art-tokens.json' },
   gameArtAssets: { en: 'game-art-assets.json', ko: 'game-art-assets.json' },
   gameArtSpec: { en: 'game-art-spec.json', ko: 'game-art-spec.json' },
+  handoffDesignMd: { en: 'DESIGN.md', ko: 'DESIGN.md' },
+  handoffStyles: { en: 'styles.css', ko: 'styles.css' },
+  handoffTokens: { en: 'tokens/*.css', ko: 'tokens/*.css' },
+  handoffComponents: { en: 'components/*.html', ko: 'components/*.html' },
+  handoffEntities: { en: 'entities/*.html', ko: 'entities/*.html' },
+  handoffScreens: { en: 'screens/*.html', ko: 'screens/*.html' },
+  handoffAssets: { en: 'assets/*.svg', ko: 'assets/*.svg' },
   spec: { en: 'spec document', ko: 'spec 문서' },
   plan: { en: 'PRD', ko: '기획서' },
   prd: { en: 'prd.md', ko: 'prd.md' },
@@ -485,6 +492,15 @@ const UI_DIR = 'visual/ui/ant';
  * `figma/` and `handoff/` sub-sources are Phase 5+ hooks (parser-only today).
  */
 const GAME_ART_DIR = 'visual/game-art/ant';
+/**
+ * Handoff-producer output directories (Claude-Design-style bundle).
+ * `gen-ui-desc` / `gen-game-art-desc` emit a DESIGN.md-rooted structured
+ * bundle here — the same `UiSource.handoff` sub-source free-form user
+ * uploads use, so the code job's existing handoff reader consumes both.
+ * Package-shape SSOT: `templates/jobs/shared/injections/handoff-package-format.md`.
+ */
+const UI_HANDOFF_DIR = 'visual/ui/handoff';
+const GAME_ART_HANDOFF_DIR = 'visual/game-art/handoff';
 const SPEC_DIR = 'architecture/spec';
 const SOURCES_DIR = 'plan';
 // Asset pool RAC slots are domain-gated via `assetsCtx('service'|'game')`
@@ -514,6 +530,25 @@ const GAME_ART_OUTPUTS: OutputSpec[] = [
   output('game-art-tokens', '.json', L.gameArtTokens, false),
   output('game-art-assets', '.json', L.gameArtAssets, false),
   output('game-art-spec', '.json', L.gameArtSpec, false),
+];
+// Handoff bundle outputs (Claude-Design-style structured mini-project).
+// `DESIGN.md` is the anchored root guide (9-section system document + an
+// Artifacts manifest that makes every other file discoverable); the rest are
+// open-ended patterns — the concrete file set is PRD/domain-driven at
+// decompose time (three-ring family: common core / domain-biased / extension).
+const HANDOFF_COMMON_OUTPUTS: OutputSpec[] = [
+  output('DESIGN', '.md', L.handoffDesignMd, false),
+  output('styles', '.css', L.handoffStyles, false),
+  output('tokens/', '.css', L.handoffTokens),
+  output('components/', '.html', L.handoffComponents),
+  output('screens/', '.html', L.handoffScreens),
+  output('assets/', '.svg', L.handoffAssets),
+];
+const HANDOFF_UI_OUTPUTS: OutputSpec[] = HANDOFF_COMMON_OUTPUTS;
+// Game adds `entities/` (engine-rendered visual units) beside the common core.
+const HANDOFF_GAME_ART_OUTPUTS: OutputSpec[] = [
+  ...HANDOFF_COMMON_OUTPUTS,
+  output('entities/', '.html', L.handoffEntities),
 ];
 // Spec files are LLM-named per feature slug (`architecture/spec/{slug}.md`) —
 // there is no fixed filename, so the canonical target is a pattern. `isPattern`
@@ -705,7 +740,11 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   'gen-ui-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [],
-    target: { kind: 'generate', dir: UI_DIR, outputs: UI_OUTPUTS },
+    // Handoff producer (repurposed): PRD → Claude-Design-style bundle under
+    // `visual/ui/handoff/` (DESIGN.md root + shared-layer dirs). The ant-JSON
+    // trio is produced only by the figma pipeline (`gen-ui-figma`); a future
+    // `gen-ui-from-handoff` converter intent covers handoff → ant JSON.
+    target: { kind: 'generate', dir: UI_HANDOFF_DIR, outputs: HANDOFF_UI_OUTPUTS },
     chatRequiresRefs: false,
     basis: { tiers: UI_TIERS },
   },
@@ -735,7 +774,10 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   'gen-game-art-desc': {
     refs: [refDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     context: [assetsCtx('game')],
-    target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
+    // Handoff producer (repurposed) — game peer of `gen-ui-desc`. Emits the
+    // same DESIGN.md-rooted bundle under `visual/game-art/handoff/` with the
+    // game-biased `entities/` ring added.
+    target: { kind: 'generate', dir: GAME_ART_HANDOFF_DIR, outputs: HANDOFF_GAME_ART_OUTPUTS },
     chatRequiresRefs: false,
     basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
   },

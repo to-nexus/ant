@@ -1339,6 +1339,17 @@
       "partial-ref"
     ]
   },
+  "jobs/design/nodes/decompose/variants/game-art-design-by-handoff/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/game-art-design-by-handoff/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
   "jobs/design/nodes/decompose/variants/system-design/base": {
     "sources": [
       "build-callsite",
@@ -1369,6 +1380,17 @@
     ]
   },
   "jobs/design/nodes/decompose/variants/ui-design-by-figma/rules": {
+    "sources": [
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/ui-design-by-handoff/base": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/decompose/variants/ui-design-by-handoff/rules": {
     "sources": [
       "render-call",
       "partial-ref"
@@ -1533,6 +1555,19 @@
       "partial-ref"
     ]
   },
+  "jobs/design/nodes/execute/variants/game-art-by-handoff/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/game-art-by-handoff/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call",
+      "partial-ref"
+    ]
+  },
   "jobs/design/nodes/execute/variants/spec/base": {
     "sources": [
       "build-callsite",
@@ -1578,6 +1613,19 @@
     ]
   },
   "jobs/design/nodes/execute/variants/ui-design-by-figma/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call",
+      "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/ui-design-by-handoff/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/ui-design-by-handoff/rules": {
     "sources": [
       "build-callsite",
       "render-call",
@@ -1761,6 +1809,13 @@
   },
   "jobs/shared/injections/handoff-code-shape-discipline": {
     "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/handoff-package-format": {
+    "sources": [
+      "render-call",
       "partial-ref",
       "manifest"
     ]

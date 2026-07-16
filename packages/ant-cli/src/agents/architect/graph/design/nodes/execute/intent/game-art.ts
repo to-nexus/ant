@@ -174,6 +174,11 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
   const taskId = state.currentTask?.id || '';
   const taskDescription = state.currentTask?.description || '';
   const actualTargetFile = resolveGameArtTargetFile(state);
+  const designTask = state.currentTask as DesignTask | undefined;
+  const isHandoff = designTask?.docFormat === 'handoff';
+  // Handoff files (DESIGN.md / tokens/*.css / entities/*.html) carry no
+  // ant-canonical prefix — targetDir is the placement authority.
+  const targetDirRel = designTask?.targetDir ?? designDirOf(actualTargetFile);
 
   const isLastTaskForDocument = !!(state.currentTask as DesignTask)?.isLastTaskForDocument;
   const forceAppend = !!(state.currentTask as DesignTask)?.forceAppend;
@@ -186,18 +191,20 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
       const featureDirRel = rootPath
         ? path.relative(rootPath, state.context.featurePath)
         : state.context.featurePath.replace(/^\//, '');
-      const filePath = path.join(featureDirRel, designDirOf(actualTargetFile), actualTargetFile);
+      const filePath = path.join(featureDirRel, targetDirRel, actualTargetFile);
       if (await state.deps.fileSystem.fileExists(filePath)) {
         const existing = await state.deps.fileSystem.readFile(filePath) || '';
         if (existing) {
-          try {
-            const parsed = JSON.parse(existing);
-            const dataKeys = Object.keys(parsed).filter(k => k !== '_meta');
-            if (dataKeys.length > 0) {
-              previousChaptersSummary = dataKeys.map((k, i) => `- Category ${i + 1}: ${k}`).join('\n');
+          if (actualTargetFile.endsWith('.json')) {
+            try {
+              const parsed = JSON.parse(existing);
+              const dataKeys = Object.keys(parsed).filter(k => k !== '_meta');
+              if (dataKeys.length > 0) {
+                previousChaptersSummary = dataKeys.map((k, i) => `- Category ${i + 1}: ${k}`).join('\n');
+              }
+            } catch (parseError) {
+              console.warn(`🎮 [Execute Game-Art] Failed to parse ${actualTargetFile} as JSON:`, parseError);
             }
-          } catch (parseError) {
-            console.warn(`🎮 [Execute Game-Art] Failed to parse ${actualTargetFile} as JSON:`, parseError);
           }
           liveAnchor = extractLastSectionKey(existing);
         }
@@ -220,6 +227,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
     taskName: state.currentTask?.name,
     taskDescription,
     targetFile: actualTargetFile,
+    targetPath: `${targetDirRel}/${actualTargetFile}`,
     previousChaptersSummary,
     isLastTaskForDocument,
     forceAppend,
@@ -231,7 +239,9 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
   };
 
   const figmaMode = isGameArtFigmaMode(state);
-  const tpl = figmaMode ? TEMPLATE_PATHS.designGameArtByFigma : TEMPLATE_PATHS.designGameArtByDesc;
+  const tpl = isHandoff
+    ? TEMPLATE_PATHS.designGameArtByHandoff
+    : figmaMode ? TEMPLATE_PATHS.designGameArtByFigma : TEMPLATE_PATHS.designGameArtByDesc;
   const template = await promptBuilder.render(tpl.base, injectedVariables);
   if (!template) {
     throw new Error(`[Execute] Failed to load ${tpl.base}.md template`);
@@ -243,7 +253,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
 
   const jobId = state.jobId || state._httpJobId || 'unknown';
   if (state.context.featurePath) {
-    const logSuffix = figmaMode ? 'by-figma' : 'by-desc';
+    const logSuffix = isHandoff ? 'by-handoff' : figmaMode ? 'by-figma' : 'by-desc';
     try {
       await logPrompt(
         state.context.featurePath,
@@ -255,12 +265,14 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           templatePath: tpl.base,
-          usedTemplates: [
-            tpl.rules!,
-            `jobs/design/nodes/execute/injections/game-art-tokens-guide-${logSuffix}`,
-            `jobs/design/nodes/execute/injections/game-art-assets-guide-${logSuffix}`,
-            `jobs/design/nodes/execute/injections/game-art-spec-guide-${logSuffix}`,
-          ],
+          usedTemplates: isHandoff
+            ? [tpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            : [
+                tpl.rules!,
+                `jobs/design/nodes/execute/injections/game-art-tokens-guide-${logSuffix}`,
+                `jobs/design/nodes/execute/injections/game-art-assets-guide-${logSuffix}`,
+                `jobs/design/nodes/execute/injections/game-art-spec-guide-${logSuffix}`,
+              ],
           injectedVariables: {
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
             targetFile: injectedVariables.targetFile,
@@ -283,25 +295,32 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
 
 /** Runtime resources summary (dynamic — asset counts, mode note). */
 function buildResourcesSummary(state: DesignGraphState): string {
+  const isHandoff = (state.currentTask as DesignTask | undefined)?.docFormat === 'handoff';
   let summary = '\n\n# Available Resources\n\n';
   if (isGameArtFigmaMode(state)) {
     summary += '## Figma / Workfile Mode\n';
     summary += 'Use the Figma MCP tools to observe the source directly, then catalog what you observe.\n\n';
   } else {
     summary += '## Description-driven Mode\n';
-    summary += 'No external visual source is provided. Treat the directive plus PRD / source documents below as the design authority and produce the catalogs directly from them.\n\n';
+    summary += isHandoff
+      ? 'No external visual source is provided. Treat the directive plus PRD / source documents below as the design authority and author the handoff bundle file directly from them.\n\n'
+      : 'No external visual source is provided. Treat the directive plus PRD / source documents below as the design authority and produce the catalogs directly from them.\n\n';
   }
   summary += '## Asset Files (real, already placed under assets/game/)\n';
   const inv = state.assetInventory;
   if (inv?.count) {
-    summary += `There are ${inv.count} real asset file(s). Reference the ones that fit each category as \`kind:'external'\` (\`src\` = the exact path below); use \`list_assets\` for more detail.\n`;
+    summary += isHandoff
+      ? `There are ${inv.count} real asset file(s). When a bundle file needs one, reference it by its exact path below; use \`list_assets\` for more detail.\n`
+      : `There are ${inv.count} real asset file(s). Reference the ones that fit each category as \`kind:'external'\` (\`src\` = the exact path below); use \`list_assets\` for more detail.\n`;
     for (const [group, files] of Object.entries(inv.groups ?? {})) {
       if (files.length === 0) continue;
       summary += `- ${group}: ${files.slice(0, 20).map(f => f.split('/').pop()).join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
     }
     summary += '\n';
   } else {
-    summary += 'No real asset files are placed yet — author entries as `kind:\'inline\'` primitives (the code-fulfillable floor).\n\n';
+    summary += isHandoff
+      ? 'No real asset files are placed yet — author needed vector assets as svg files inside the bundle\'s `assets/` directory instead of pointing at missing files.\n\n'
+      : 'No real asset files are placed yet — author entries as `kind:\'inline\'` primitives (the code-fulfillable floor).\n\n';
   }
   return summary;
 }
@@ -316,8 +335,11 @@ async function logGameArtPrompt(
   if (!state.context.featurePath) return;
   const jobId = state.jobId || state._httpJobId || 'unknown';
   const figmaMode = isGameArtFigmaMode(state);
-  const logSuffix = figmaMode ? 'by-figma' : 'by-desc';
-  const tpl = figmaMode ? TEMPLATE_PATHS.designGameArtByFigma : TEMPLATE_PATHS.designGameArtByDesc;
+  const handoffMode = (state.currentTask as DesignTask | undefined)?.docFormat === 'handoff';
+  const logSuffix = handoffMode ? 'by-handoff' : figmaMode ? 'by-figma' : 'by-desc';
+  const tpl = handoffMode
+    ? TEMPLATE_PATHS.designGameArtByHandoff
+    : figmaMode ? TEMPLATE_PATHS.designGameArtByFigma : TEMPLATE_PATHS.designGameArtByDesc;
   try {
     const totalLength = content
       .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
@@ -326,12 +348,14 @@ async function logGameArtPrompt(
       taskId: extra.taskId as string | undefined,
       taskName: extra.taskName as string | undefined,
       templatePath: tpl.base,
-      usedTemplates: [
-        tpl.rules!,
-        `jobs/design/nodes/execute/injections/game-art-tokens-guide-${logSuffix}`,
-        `jobs/design/nodes/execute/injections/game-art-assets-guide-${logSuffix}`,
-        `jobs/design/nodes/execute/injections/game-art-spec-guide-${logSuffix}`,
-      ],
+      usedTemplates: handoffMode
+        ? [tpl.rules!, 'jobs/shared/injections/handoff-package-format']
+        : [
+            tpl.rules!,
+            `jobs/design/nodes/execute/injections/game-art-tokens-guide-${logSuffix}`,
+            `jobs/design/nodes/execute/injections/game-art-assets-guide-${logSuffix}`,
+            `jobs/design/nodes/execute/injections/game-art-spec-guide-${logSuffix}`,
+          ],
       injectedVariables: extra,
     });
   } catch (logError) {

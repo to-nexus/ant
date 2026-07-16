@@ -267,14 +267,23 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       || state.resolvedAction?.intent === 'rev-game-art';
     const isSpecDesign = state.resolvedAction?.intentGroup === 'design-spec';
 
-    // Canonical destination: UI → visual/ui/ant, Game-Art → visual/game-art/ant,
+    // Output-format resolver (single owner — design/_shared/outputFormat.ts):
+    // handoff jobs write the Claude-Design-style bundle under
+    // visual/*/handoff/ with a dynamic (PRD-driven) file set.
+    const { resolveDesignOutputFormat } = await import('../../_shared/outputFormat');
+    const designDocFormat = (isUiDesign || isGameArtDesign)
+      ? resolveDesignOutputFormat(state, isUiDesign ? 'ui' : 'game-art')
+      : 'json';
+    const isHandoffOutput = designDocFormat === 'handoff';
+
+    // Canonical destination: UI → visual/ui/ant (handoff → visual/ui/handoff),
+    // Game-Art → visual/game-art/ant (handoff → visual/game-art/handoff),
     // Spec → architecture/spec, System → architecture/system. Single directory
-    // per intent (no fallback). Game-art is the game-domain peer of UI (D28);
-    // both write category-keyed JSON, so game-art mirrors the UI JSON branch.
+    // per intent (no fallback). Game-art is the game-domain peer of UI (D28).
     const targetDirRelToFeature = isUiDesign
-      ? ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '')
+      ? (isHandoffOutput ? ARTIFACT_PREFIX.UI_HANDOFF : ARTIFACT_PREFIX.UI_ANT).replace(/\/$/, '')
       : isGameArtDesign
-        ? ARTIFACT_PREFIX.GAME_ART_ANT.replace(/\/$/, '')
+        ? (isHandoffOutput ? ARTIFACT_PREFIX.GAME_ART_HANDOFF : ARTIFACT_PREFIX.GAME_ART_ANT).replace(/\/$/, '')
         : isSpecDesign
           ? ARTIFACT_PREFIX.SPEC.replace(/\/$/, '')
           : ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
@@ -292,7 +301,25 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     try {
       const filesToProcess: { filename: string; dir: string }[] = [];
 
-      if (await fileSystem.fileExists(subDirRel)) {
+      if ((isUiDesign || isGameArtDesign) && isHandoffOutput) {
+        // Handoff bundle: the file set is dynamic (PRD-driven), so the
+        // dir-scan allowlist cannot enumerate it and a plain dir walk would
+        // absorb stale user uploads. Recognize the JOB-SCOPED set — the
+        // targetFile of every completed task this job ran (relative paths
+        // inside the bundle, e.g. `tokens/colors.css`).
+        const taskFiles = [...new Set(
+          (state.completedTasksDetails || [])
+            .map(t => (t as { targetFile?: string }).targetFile)
+            .filter((f): f is string => typeof f === 'string' && f.length > 0),
+        )];
+        for (const rel of taskFiles) {
+          if (await fileSystem.fileExists(path.join(subDirRel, rel))) {
+            filesToProcess.push({ filename: rel, dir: subDirRel });
+          } else {
+            console.warn(`⚠️  [Learn] handoff task output missing on disk: ${rel}`);
+          }
+        }
+      } else if (await fileSystem.fileExists(subDirRel)) {
         const entries = await fileSystem.readDirectory(subDirRel);
 
         if (isUiDesign || isGameArtDesign) {
@@ -322,7 +349,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
         const filePath = path.join(dir, filename);
         let content = await fileSystem.readFile(filePath);
 
-        if (content && (isUiDesign || isGameArtDesign)) {
+        if (content && (isUiDesign || isGameArtDesign) && filename.endsWith('.json')) {
           content = stripMetaFromContent(filename, content);
           await fileSystem.writeFile(filePath, content);
           console.log(`   🧹 Cleaned _meta from: ${filename}`);
@@ -346,6 +373,22 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   if (loadedFiles.length === 0 && !hasEarlyTermination) {
     throw new Error(
       `No design files found under ${expectedOutputDir} — execute nodes must have run`
+    );
+  }
+
+  // Handoff floor: a freshly GENERATED bundle without its DESIGN.md root guide
+  // is unreadable by the code job's handoff reader (the guide carries the
+  // Artifacts manifest). Revise flows may legitimately touch only a subset,
+  // so the floor applies to generate mode only.
+  if (
+    !hasEarlyTermination &&
+    state.resolvedAction?.mode === 'generate' &&
+    loadedFiles.length > 0 &&
+    (state.resolvedAction?.intent === 'gen-ui-desc' || state.resolvedAction?.intent === 'gen-game-art-desc') &&
+    !loadedFiles.some(f => f.path.endsWith('/DESIGN.md'))
+  ) {
+    throw new Error(
+      `Handoff bundle under ${expectedOutputDir} is missing DESIGN.md — the root guide task must have run`
     );
   }
   

@@ -17,10 +17,11 @@ Free-form handoffs commonly carry a user-authored guide that states the entry po
 1. **Survey the manifest**. Scan every stub entry. Note (a) directory shape (grouped by screen / by component / flat), (b) relative file sizes, (c) which entries are token-shaped vs. code-shaped vs. binary.
 2. **Identify guide candidates**. Look for one or more files whose path, name, or position suggests the user wrote them AS a guide for this bundle:
    - Markdown files at the handoff root or at the top of a sub-bundle.
-   - Names whose stem contains (case-insensitive, partial) any of: `handoff`, `readme`, `index`, `guide`, `instructions`, `intent`, `notes`, `spec`, `overview`, `manifest`. The list is illustrative — a markdown file whose name otherwise suggests "I am explaining this bundle" also counts.
+   - Names whose stem contains (case-insensitive, partial) any of: `handoff`, `readme`, `index`, `guide`, `instructions`, `intent`, `notes`, `spec`, `overview`, `manifest`, `design`. The list is illustrative — a markdown file whose name otherwise suggests "I am explaining this bundle" also counts.
    - A markdown file that is significantly smaller than the surrounding code-shaped entries (the writer summarising for the reader).
    When multiple candidates exist, read the smallest plausible one first. When none is obvious, read the most prominently-named markdown entry before any code-shaped file.
 3. **Follow the guide**. Whatever the guide states about entry points, reading order, scope, exclusions, or visual intent IS the user's authoritative direction for this task. Subordinate later reads to it: if the guide says "Read X in full", read X next; if it says "ignore Y", do not read Y.
+   - **Generated-bundle fast path**: a root `DESIGN.md` whose final section is an **Artifacts** manifest marks a producer-generated bundle following the shared handoff package format (DESIGN.md root → `tokens/` custom properties → `components/` → `screens/`, `styles.css` as the import-only entry). Trust the manifest as the authoritative index and reading order; the lazy-read discipline below still governs how much you read.
 4. **Execute**. With the guide in mind, plan and perform on-demand `read_file` calls in the order the guide dictates. If no guide is present after the survey, fall back to dependency order: token declarations and spec documents (json or markdown, whichever the bundle uses) → markup → styles → scripts.
 
 ### Blind spot reminder (Survey)
