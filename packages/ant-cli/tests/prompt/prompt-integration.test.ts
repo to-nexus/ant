@@ -41,12 +41,17 @@ describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', ()
     expect(selected.some(a => a.content.includes('Frontend System Design'))).toBe(true);
   });
 
-  it('verification task → empty selection regardless of include', () => {
+  it('verification task without include → empty (defensive default); authored include honored', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'architecture/system/fe-system-main.md', content: 'Design', role: 'ref' },
     ];
+    // Defensive default: no authored include → nothing injected.
+    expect(selectArtifacts(pool, { taskType: 'verification' })).toHaveLength(0);
+    expect(selectArtifacts(pool, { taskType: 'verification', include: [] })).toHaveLength(0);
+    // Spec-grounded Final Verification: decompose authors `include` so the
+    // ref's acceptance criteria are visible at verification time.
     const selected = selectArtifacts(pool, { taskType: 'verification', include: ['architecture/system/fe-system-main.md'] });
-    expect(selected).toHaveLength(0);
+    expect(selected).toHaveLength(1);
   });
 
   it('no include → empty selection (no taskType default)', () => {

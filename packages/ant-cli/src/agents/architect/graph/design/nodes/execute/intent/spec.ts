@@ -267,13 +267,19 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     sectionScope,
   });
 
+  // Section-correct write tag: refactor-mode and first-section tasks must
+  // replace via <file>; only continuation sections (sectionIndex > 0) may
+  // <append>. Offering both unconditionally let refactor runs append a full
+  // second document below the first (duplicate-root corruption).
+  const writeTag = isFirstSection ? '<file>' : '<append>';
+
   let trailingUserMessage = 'Continue.';
   if (selfCheck) {
     trailingUserMessage = selfCheck;
   } else if (callIndex >= HARD_DEADLINE) {
     trailingUserMessage =
       `Continue.\n\n⚠️ WRITING DEADLINE: You have used ${callIndex} turns exploring. ` +
-      `Write the spec document now using <file> or <append> tag, then output <done>true</done>. ` +
+      `Write the spec document now using the ${writeTag} tag, then output <done>true</done>. ` +
       `No more tool calls — write the document with what you have gathered so far.`;
   } else if (callIndex >= SOFT_DEADLINE) {
     trailingUserMessage =

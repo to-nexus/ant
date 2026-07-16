@@ -109,8 +109,11 @@ function matchesInclude(artifactPath: string, patterns: string[]): boolean {
  * Filter candidate artifacts by policy — single per-task injection SSOT.
  *
  * Priority:
- * 1. `taskType: 'verification'` → always empty (defensive; verification tasks
- *    carry no `include`).
+ * 1. `taskType: 'verification'` WITHOUT an authored `include` → empty
+ *    (defensive default). An explicitly authored `include` is honored — the
+ *    spec-grounded Final Verification carries the ref spec so its acceptance
+ *    criteria are visible at verification time (task.include is the explicit
+ *    narrowing SSOT and wins over the defensive default).
  * 2. `include` present → path-prefix / glob match.
  * 3. No `include` → empty (explicit `[]`, NOT a taskType-based default). The
  *    legacy taskType default switch was removed — every task's injection is
@@ -123,7 +126,7 @@ export function selectArtifacts(
   candidates: ResolvedArtifact[],
   policy: ArtifactSelectionPolicy,
 ): ResolvedArtifact[] {
-  if (policy.taskType === 'verification') return [];
+  if (policy.taskType === 'verification' && !policy.include?.length) return [];
 
   if (policy.include?.length) {
     return candidates.filter(a => matchesInclude(a.path, policy.include!));

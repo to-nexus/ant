@@ -29,6 +29,7 @@ import { designDirOf } from '@ant/shared';
 import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from '../nodes/checkTaskStatus/assetValidation';
+import { enforceSpecDocIntegrity } from '../nodes/checkTaskStatus/specDocIntegrity';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -207,6 +208,15 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
           console.log(`🧹 [workerCheckTaskStatus] Stripped internal markers from ${taskForMarkers.targetFile}`);
         }
       } catch { /* File may not exist, ignore */ }
+    }
+
+    // Spec doc single-root invariant — heal duplicate appended documents
+    // (mirror of the serial checkTaskStatus gate; spec tasks never set
+    // isLastTaskForDocument, so this is a separate gate).
+    if (state.deps?.fileSystem && state.context?.featurePath) {
+      await enforceSpecDocIntegrity(
+        state.deps.fileSystem as any, state.context.featurePath, taskForMarkers, 'workerCheckTaskStatus',
+      );
     }
 
     if (state.deps?.workflowUpdate && state._httpJobId) {
