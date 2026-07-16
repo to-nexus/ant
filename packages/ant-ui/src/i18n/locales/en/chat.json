@@ -281,6 +281,7 @@
     "readyEmptyState": "Start chatting to collaborate with the agent"
   },
   "subagent": {
+    "badge": "Subagent",
     "running": "Exploring: {{goal}}",
     "rounds": "round {{count}}",
     "done": "Explored: {{goal}}",
@@ -291,9 +292,9 @@
     "noReport": "No report produced",
     "stats": "{{duration}} · {{tokens}} tokens",
     "overlay": {
-      "title": "Explore report",
+      "title": "Subagent report",
       "close": "Close report",
-      "openAria": "Open explore report for {{goal}}"
+      "openAria": "Open subagent report for {{goal}}"
     }
   }
 }

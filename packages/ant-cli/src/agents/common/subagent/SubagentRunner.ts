@@ -13,6 +13,7 @@ import { createNoopChatStatusReporter } from '../tool/chatStatusAdapter';
 import {
   subagentMaxRounds,
   subagentMaxReportChars,
+  subagentMaxReportPersistChars,
   subagentTimeoutMs,
   subagentMaxTokens,
 } from './config';
@@ -149,12 +150,6 @@ async function runInner(
   }
 
   let report = (response || '').trim();
-  let truncated = false;
-  const cap = subagentMaxReportChars();
-  if (report.length > cap) {
-    report = report.slice(0, cap) + '\n\n[... report truncated]';
-    truncated = true;
-  }
   if (!report) {
     return {
       report: `Exploration produced no report (goal: ${params.goal}). Treat as no findings; re-issue explore with a narrower goal or read directly.`,
@@ -164,12 +159,28 @@ async function runInner(
       modelId,
     };
   }
-  const partial = exhausted || truncated;
+
+  // Over-budget reports are compacted (lead + structural outline + drill-down
+  // notice), never blind-cut: the full text goes to the report store for the
+  // `subagent_report` tool and to the chat card via `reportFull`. Compaction
+  // is recoverable delivery compression, so it does NOT mark the run partial —
+  // `partial` is reserved for genuinely incomplete exploration (exhaustion).
+  let reportFull: string | undefined;
+  const cap = subagentMaxReportChars();
+  if (report.length > cap) {
+    reportFull = report;
+    const { storeFullReport } = await import('./reportStore');
+    const { compactReport } = await import('./compactReport');
+    storeFullReport(params.id, params.goal, report);
+    report = compactReport(report, cap, params.id);
+  }
+
   return {
-    report: partial ? `[partial] ${report}` : report,
+    report: exhausted ? `[partial] ${report}` : report,
+    ...(reportFull !== undefined ? { reportFull } : {}),
     usage: usage as TaskTokenUsage | undefined,
     rounds: roundsUsed,
-    state: partial ? 'partial' : 'done',
+    state: exhausted ? 'partial' : 'done',
     modelId,
   };
 }
@@ -210,7 +221,9 @@ async function emitTerminalCard(
       goal: params.goal,
       rounds: result.rounds,
       state: result.state,
-      report: result.report,
+      // The card persists the FULL report (human drill-down surface) even when
+      // the parent-facing inline form was compacted.
+      report: (result.reportFull ?? result.report).slice(0, subagentMaxReportPersistChars()),
       ...(result.state === 'error' ? { error: result.report.slice(0, 300) } : {}),
       durationMs,
       usage,

@@ -281,6 +281,7 @@
     "readyEmptyState": "에이전트와 협업하려면 채팅을 시작하세요"
   },
   "subagent": {
+    "badge": "서브에이전트",
     "running": "탐색 중: {{goal}}",
     "rounds": "{{count}}라운드",
     "done": "탐색 완료: {{goal}}",
@@ -291,9 +292,9 @@
     "noReport": "리포트 없음",
     "stats": "{{duration}} · {{tokens}} 토큰",
     "overlay": {
-      "title": "탐색 리포트",
+      "title": "서브에이전트 리포트",
       "close": "리포트 닫기",
-      "openAria": "{{goal}} 탐색 리포트 열기"
+      "openAria": "{{goal}} 서브에이전트 리포트 열기"
     }
   }
 }

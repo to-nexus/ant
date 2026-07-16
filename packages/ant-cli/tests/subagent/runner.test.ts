@@ -1,6 +1,7 @@
 /**
  * SubagentRunner — never-throw contract: happy path report, tool error as
- * result content, round exhaustion → [partial], truncation, empty → error.
+ * result content, round exhaustion → [partial], over-budget compaction
+ * (lead + outline + drill-down, state stays done), empty → error.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -99,12 +100,42 @@ describe('runExploreSubagent', () => {
     expect(result.report.startsWith('[partial] ')).toBe(true);
   });
 
-  it('report is truncated at the configured ceiling', async () => {
-    process.env.ANT_SUBAGENT_MAX_REPORT_CHARS = '20';
-    withLLM([[text('x'.repeat(200))]]);
+  it('over-budget report is compacted (lead + outline + drill-down notice), stays done, keeps full text', async () => {
+    process.env.ANT_SUBAGENT_MAX_REPORT_CHARS = '400';
+    const full =
+      `## Answer\n${'a'.repeat(300)}\n## Details\n${'b'.repeat(300)}\n## Open questions\n${'c'.repeat(300)}`;
+    withLLM([[text(full)]]);
     const result = await runExploreSubagent({ id: 'sub4', goal: 'g', internals: internals() });
-    expect(result.state).toBe('partial');
-    expect(result.report).toContain('[... report truncated]');
+    // Compaction is recoverable delivery compression, NOT an incomplete run.
+    expect(result.state).toBe('done');
+    expect(result.report.startsWith('[partial]')).toBe(false);
+    expect(result.reportFull).toBe(full);
+    // Inline form: lead answer + structural outline + notice naming the tool.
+    expect(result.report).toContain('## Answer');
+    expect(result.report).toContain('Document outline');
+    expect(result.report).toContain('## Open questions');
+    expect(result.report).toContain('subagent_report');
+    expect(result.report).toContain('not inlined');
+    // Ack↔marker pairing invariant: the notice must never contain the marker literal.
+    expect(result.report).not.toMatch(/\[SUBAGENT REPORT/);
+    // Drill-down store holds the complete text.
+    const { readFullReport, clearAllReports } = await import('../../src/agents/common/subagent/reportStore');
+    const slice = readFullReport('sub4', 0, 10_000);
+    expect(slice?.total).toBe(full.length);
+    expect(slice?.slice).toBe(full);
+    clearAllReports();
+  });
+
+  it('unstructured over-budget report falls back to head+tail without overlap', async () => {
+    process.env.ANT_SUBAGENT_MAX_REPORT_CHARS = '400';
+    const full = 'x'.repeat(150) + '\n' + 'y'.repeat(150) + '\n' + 'z'.repeat(300);
+    withLLM([[text(full)]]);
+    const result = await runExploreSubagent({ id: 'sub4b', goal: 'g', internals: internals() });
+    expect(result.state).toBe('done');
+    expect(result.report).toContain('not inlined');
+    expect(result.report.length).toBeLessThan(full.length);
+    const { clearAllReports } = await import('../../src/agents/common/subagent/reportStore');
+    clearAllReports();
   });
 
   it('empty final response is an error-shaped report (never-throw)', async () => {

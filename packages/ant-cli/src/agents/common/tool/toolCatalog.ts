@@ -61,6 +61,7 @@ export enum ToolName {
 
   // ── Delegate (async explore subagent — read-only in-process child) ──
   EXPLORE              = 'explore',
+  SUBAGENT_REPORT      = 'subagent_report',
 
   // ── Fetch / Download ──
   DOWNLOAD_ASSET       = 'download_asset',
@@ -121,6 +122,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   [ToolName.HTTP_REQUEST]:         '🌐 HTTP request',
   // Delegate
   [ToolName.EXPLORE]:              '🧭 Launching explorer',
+  [ToolName.SUBAGENT_REPORT]:      '📄 Reading subagent report',
   // Fetch / Download
   [ToolName.DOWNLOAD_ASSET]:       '📥 Downloading asset',
   [ToolName.FIGMA_DESIGN_CTX]:     '🎨 Fetching Figma design',
@@ -213,6 +215,7 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.HTTP_REQUEST,
     // Delegate (async explore subagent)
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     // Fetch (Figma)
     ...FIGMA_TOOLS,
   ],
@@ -249,6 +252,7 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // `search_code` (ripgrep-backed) + `read_file` / `list_files`.
     // Delegate (async explore subagent)
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     // Fetch (Figma + asset download)
     ToolName.DOWNLOAD_ASSET,
     ...FIGMA_TOOLS,
@@ -270,6 +274,7 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.WRITE_FILE,    // shadow alias
     // Delegate (async explore subagent)
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
   ],
 
   [JobType.ASK]: [
@@ -283,6 +288,7 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.LIST_WORKSPACE_FILES,
     // Delegate (async explore subagent)
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
   ],
 };
 
@@ -320,6 +326,7 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -327,6 +334,7 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.RUN_COMMAND,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -337,6 +345,7 @@ export const TOOL_SETS = {
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -348,11 +357,12 @@ export const TOOL_SETS = {
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
     ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
-  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.EXPLORE, ...ANT_SOURCE_TOOLS] as ToolName[],
-  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.EXPLORE, ...ANT_SOURCE_TOOLS] as ToolName[],
+  designExplain: [ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.EXPLORE, ToolName.SUBAGENT_REPORT, ...ANT_SOURCE_TOOLS] as ToolName[],
+  codeExplain: [ToolName.READ_FILE, ToolName.READ_STATE, ToolName.LIST_FILES, ToolName.SEARCH_CODE, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.EXPLORE, ToolName.SUBAGENT_REPORT, ...ANT_SOURCE_TOOLS] as ToolName[],
 
   // Design execute default set — see JOB_TOOL_MATRIX[JobType.DESIGN]
   // rationale for why `RUN_COMMAND` is absent. `LIST_ASSETS` is included so the
@@ -362,7 +372,7 @@ export const TOOL_SETS = {
   design: [
     ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
-    ToolName.LIST_ASSETS, ToolName.EXPLORE,
+    ToolName.LIST_ASSETS, ToolName.EXPLORE, ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -373,6 +383,7 @@ export const TOOL_SETS = {
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -381,6 +392,7 @@ export const TOOL_SETS = {
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -391,6 +403,7 @@ export const TOOL_SETS = {
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -402,6 +415,7 @@ export const TOOL_SETS = {
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
     ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
   ] as ToolName[],
 
@@ -459,6 +473,7 @@ import {
   handleHttpRequest,
   handleFigmaTool,
   handleExplore,
+  handleSubagentReport,
 } from './handlers';
 
 export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolName, ToolHandler>(
@@ -475,6 +490,8 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.HTTP_REQUEST,     handleHttpRequest],
     // Delegate — ctx-dependent (requires ctx.subagent seam, like read_state's ctx.completedTasks)
     [ToolName.EXPLORE,          handleExplore],
+    // Drill-down into a compacted explore report (ctx-free, process-local store)
+    [ToolName.SUBAGENT_REPORT,  handleSubagentReport],
     [ToolName.SEARCH_WEB,       handleSearchWeb],
     [ToolName.FETCH_URL,        handleFetchUrl],
     [ToolName.SEARCH_REFERENCE, handleSearchReferenceCode],
