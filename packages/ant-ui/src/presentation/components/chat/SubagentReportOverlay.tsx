@@ -79,8 +79,16 @@ export const SubagentReportOverlay = memo(function SubagentReportOverlay() {
       >
         <Icon className="w-4 h-4 flex-shrink-0" style={{ color }} />
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>
-            {t('subagent.overlay.title')}
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-sm font-semibold truncate" style={{ color: 'var(--text-1)' }}>
+              {t('subagent.overlay.title')}
+            </div>
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-medium"
+              style={{ background: 'var(--bg-surface-2)', color: 'var(--violet-500)' }}
+            >
+              {t('subagent.badge')}
+            </span>
           </div>
           <div className="text-xs truncate" style={{ color: 'var(--text-3)' }} title={metadata.goal}>
             {metadata.goal}

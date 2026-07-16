@@ -19,10 +19,34 @@
 
 detect / learn / visual are excluded (no tool loops / no delegation value).
 There is **no enable flag** — only env tunables (`ANT_SUBAGENT_MAX_ROUNDS=12`,
-`ANT_SUBAGENT_MAX_REPORT_CHARS=16000`, `ANT_SUBAGENT_MAX_CONCURRENT=3` per
+`ANT_SUBAGENT_MAX_REPORT_CHARS=16000` (inline interface budget),
+`ANT_SUBAGENT_MAX_REPORT_PERSIST_CHARS=100000` (card/drill-down ceiling),
+`ANT_SUBAGENT_MAX_CONCURRENT=3` per
 ownerKey, `ANT_SUBAGENT_TIMEOUT_MS=300000`, `ANT_SUBAGENT_JOIN_TIMEOUT_MS`,
 `ANT_SUBAGENT_MAX_PENDING_AGE_MS`, `ANT_SUBAGENT_MAX_TOKENS=8192`; SSOT
 [`config.ts`](../../packages/ant-cli/src/agents/common/subagent/config.ts)).
+
+## Report compaction / decompaction
+
+`ANT_SUBAGENT_MAX_REPORT_CHARS` 는 자식의 탐색 예산이 아니라 **부모-자식
+인터페이스 크기**다 (리포트는 부모 tool_result 에 잔류해 이후 매 라운드
+재과금). 3단 체계:
+
+1. **자식 self-bound (주 메커니즘)** — `explore-system.md` 가
+   `{{reportBudgetChars}}` 로 수치 예산을 고지, 자식이 스스로 압축.
+2. **compaction (안전망)** — 초과 시 blind-cut 이 아니라
+   [`compactReport.ts`](../../packages/ant-cli/src/agents/common/subagent/compactReport.ts):
+   리드(lead-with-answer) + **전문 전체의 헤딩 아웃라인(char offset 포함)** +
+   드릴다운 고지. 헤딩 <2 이면 head+tail 폴백. compaction 은 회복 가능한 전달
+   압축이므로 `[partial]`/`state:'partial'` 을 만들지 **않는다** (partial 은
+   라운드 소진/타임아웃 전용).
+3. **decompaction** — 전문은
+   [`reportStore.ts`](../../packages/ant-cli/src/agents/common/subagent/reportStore.ts)
+   (프로세스-로컬, FIFO 30, registry 독트린 동일 — resume 시 소실은 graceful
+   miss) 에 보존되고, 부모는 **`subagent_report(id, offset?, maxChars?)`**
+   도구(모든 explore 노출 preset 에 동반, 자식 셋에는 미포함)로 섹션 점프 또는
+   순차 페이징해 전문을 완독. 채팅 카드 metadata 는 전문을 영속해 인간
+   드릴다운(오버레이)도 무손실.
 
 ## Async pipeline (SSOT: `agents/common/subagent/`)
 
@@ -66,7 +90,7 @@ parent tool_use: explore ─▶ handlers/explore.ts ─▶ seam.launch() → lau
 | 모드 | 리포트 | 비고 |
 |---|---|---|
 | LLM/툴 에러 | `Exploration failed: … re-issue or read directly` (`error`) | 부모 LLM이 복구 결정 |
-| 타임아웃 / 라운드 소진 / 절단 | `[partial] …` (`partial`) | |
+| 타임아웃 / 라운드 소진 | `[partial] …` (`partial`) | 절단은 여기 속하지 않음 — 위 compaction 섹션 (`done` 유지) |
 | 잡 stop | `[partial] aborted` (`aborted`) | `shouldAbort=isJobAborted` 라운드 폴링 + stream signal |
 | crash/중단 후 resume | 히스토리의 launch-ack 고아 감지 → `[SUBAGENT REPORT <id> — LOST]` 주입 | 마커가 pairing SSOT(자기멱등). **ack 본문은 마커 리터럴을 포함하면 안 됨** |
 | 동시성 초과 | launch 거부 (error tool_result) | |

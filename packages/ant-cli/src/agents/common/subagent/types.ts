@@ -8,6 +8,12 @@ export type SubagentJobKind = 'code' | 'design' | 'planner' | 'ask';
 export interface SubagentResult {
   /** Distilled report (error-shaped on failure — the runner never throws). */
   report: string;
+  /**
+   * Complete untruncated report — set only when `report` was compacted to fit
+   * the inline budget. Feeds the chat card (human drill-down) and the
+   * process-local report store (`subagent_report` tool drill-down).
+   */
+  reportFull?: string;
   usage?: TaskTokenUsage;
   /** Child model id, for per-model billing attribution at fold time. */
   modelId?: string;

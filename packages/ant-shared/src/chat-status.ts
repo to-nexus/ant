@@ -406,21 +406,21 @@ export function generateChatStatusContent(
       const goal = metadata?.goal ?? 'investigation';
       const rounds = metadata?.rounds;
       return typeof rounds === 'number' && rounds > 0
-        ? `Exploring: ${goal} (round ${rounds})`
-        : `Exploring: ${goal}...`;
+        ? `Subagent exploring: ${goal} (round ${rounds})`
+        : `Subagent exploring: ${goal}...`;
     }
 
     case 'subagent_report': {
       const goal = metadata?.goal ?? 'investigation';
       switch (metadata?.state) {
         case 'partial':
-          return `Explored (partial): ${goal}`;
+          return `Subagent explored (partial): ${goal}`;
         case 'error':
-          return `❌ Explore failed: ${metadata?.error ?? goal}`;
+          return `❌ Subagent explore failed: ${metadata?.error ?? goal}`;
         case 'aborted':
-          return `Explore interrupted: ${goal}`;
+          return `Subagent explore interrupted: ${goal}`;
         default:
-          return `Explored: ${goal}`;
+          return `Subagent explored: ${goal}`;
       }
     }
 

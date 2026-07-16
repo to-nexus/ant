@@ -22,3 +22,4 @@ Your FINAL text response IS the report the parent receives. It must be self-cont
 - State what you looked for but did NOT find — absence is a finding.
 - End with open questions or uncertainties the parent should verify, if any.
 - Plain prose and lists; no tool-call syntax, no file bodies dumped verbatim beyond the excerpts needed as evidence.
+- Fit the report within {{reportBudgetChars}} characters. If you are approaching that limit, compress the evidence yourself — prioritize what answers the goal over completeness of detail; do not let the tail carry the conclusion.

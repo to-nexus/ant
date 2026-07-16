@@ -118,4 +118,30 @@ describe('catalog policy pins', () => {
     expect(schema.description).toContain('IMMEDIATELY');
     expect(schema.description).toContain('[SUBAGENT REPORT');
   });
+
+  it('SUBAGENT_REPORT rides along with every parent EXPLORE surface', () => {
+    for (const job of [JobType.CODE, JobType.DESIGN, JobType.PLAN, JobType.ASK]) {
+      expect(JOB_TOOL_MATRIX[job]).toContain(ToolName.SUBAGENT_REPORT);
+    }
+    for (const [key, tools] of Object.entries(TOOL_SETS)) {
+      if ((tools as ToolName[]).includes(ToolName.EXPLORE)) {
+        expect(tools, `${key} exposes explore but not subagent_report`).toContain(ToolName.SUBAGENT_REPORT);
+      }
+    }
+  });
+
+  it('depth-1: no child set contains subagent_report (children cannot drill parent reports)', () => {
+    for (const key of CHILD_SETS) {
+      expect((TOOL_SETS as any)[key]).not.toContain(ToolName.SUBAGENT_REPORT);
+    }
+  });
+
+  it('subagent_report has a handler and an offset-paging schema', () => {
+    expect(TOOL_HANDLERS.get(ToolName.SUBAGENT_REPORT)).toBeTypeOf('function');
+    const schema = (ARCHITECT_TOOLS as any).subagent_report;
+    expect(schema.input_schema.required).toEqual(['id']);
+    expect(schema.input_schema.properties.offset).toBeTruthy();
+    // Marker-pairing invariant: the schema description must not embed the marker literal.
+    expect(schema.description).not.toContain('[SUBAGENT REPORT');
+  });
 });

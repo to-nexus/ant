@@ -45,6 +45,15 @@ describe('SubagentCard', () => {
     expect(dump).not.toContain('"role":"button"');
   });
 
+  it('identity badge renders on running AND terminal cards', () => {
+    const running = render(<SubagentCard line={line('subagent_running', { goal: 'g' })} />);
+    expect(JSON.stringify(running.toJSON())).toContain('subagent.badge');
+    const terminal = render(
+      <SubagentCard line={line('subagent_report', { goal: 'g', state: 'done', report: 'r' })} />,
+    );
+    expect(JSON.stringify(terminal.toJSON())).toContain('subagent.badge');
+  });
+
   it('terminal with report: clickable, dispatches openSubagentReport(cardId)', () => {
     const tree = render(
       <SubagentCard line={line('subagent_report', { goal: 'g', state: 'done', report: '# findings' })} />,

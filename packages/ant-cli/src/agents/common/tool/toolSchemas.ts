@@ -394,6 +394,30 @@ export const ARCHITECT_TOOLS = {
     },
   },
 
+  subagent_report: {
+    name: 'subagent_report',
+    description:
+      'Read the full text of a subagent report whose inline form noted omitted content. Instant and read-only. Only useful after a report block that says content was not inlined — it names this tool and an id. Returns a slice plus the total length: jump straight to a section with an offset from the report\'s outline, or page sequentially until the end.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: {
+          type: 'string',
+          description: 'The subagent id given in the report\'s omission notice.',
+        },
+        offset: {
+          type: 'number',
+          description: 'Char offset to read from (use an outline offset for a specific section). Default 0.',
+        },
+        maxChars: {
+          type: 'number',
+          description: 'Max chars to return in this slice. Default: the inline report budget.',
+        },
+      },
+      required: ['id'],
+    },
+  },
+
   // Figma MCP tools (used in UI Design Figma mode)
   figma_get_metadata: {
     name: 'figma_get_metadata',

@@ -84,18 +84,18 @@ describe('join-redo routers', () => {
 });
 
 describe('generateChatStatusContent — subagent cards', () => {
-  it('subagent_running with and without rounds', () => {
+  it('subagent_running with and without rounds (subagent identity in fallback copy)', () => {
     expect(generateChatStatusContent('subagent_running', { goal: 'map the auth flow' }))
-      .toBe('Exploring: map the auth flow...');
+      .toBe('Subagent exploring: map the auth flow...');
     expect(generateChatStatusContent('subagent_running', { goal: 'g', rounds: 3 }))
-      .toBe('Exploring: g (round 3)');
+      .toBe('Subagent exploring: g (round 3)');
   });
 
   it('subagent_report body per terminal state', () => {
-    expect(generateChatStatusContent('subagent_report', { goal: 'g', state: 'done' })).toBe('Explored: g');
-    expect(generateChatStatusContent('subagent_report', { goal: 'g', state: 'partial' })).toBe('Explored (partial): g');
-    expect(generateChatStatusContent('subagent_report', { goal: 'g', state: 'aborted' })).toBe('Explore interrupted: g');
+    expect(generateChatStatusContent('subagent_report', { goal: 'g', state: 'done' })).toBe('Subagent explored: g');
+    expect(generateChatStatusContent('subagent_report', { goal: 'g', state: 'partial' })).toBe('Subagent explored (partial): g');
+    expect(generateChatStatusContent('subagent_report', { goal: 'g', state: 'aborted' })).toBe('Subagent explore interrupted: g');
     expect(generateChatStatusContent('subagent_report', { goal: 'g', state: 'error', error: 'boom' }))
-      .toBe('❌ Explore failed: boom');
+      .toBe('❌ Subagent explore failed: boom');
   });
 });

@@ -10,6 +10,8 @@ export {
   reportMarker,
 } from './drain';
 export { foldSubagentUsage } from './tokens';
+export { compactReport, extractOutline } from './compactReport';
+export { storeFullReport, readFullReport, clearAllReports } from './reportStore';
 export {
   clearAll as clearAllSubagents,
   clearOwner as clearSubagentOwner,

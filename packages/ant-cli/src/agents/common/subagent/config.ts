@@ -14,8 +14,12 @@ function envInt(name: string, def: number): number {
 /** Child tool-loop round cap. */
 export const subagentMaxRounds = (): number => envInt('ANT_SUBAGENT_MAX_ROUNDS', 12);
 
-/** Report truncation ceiling (chars). */
+/** Inline report ceiling (chars) — the parent-facing interface budget, not the child's exploration budget. */
 export const subagentMaxReportChars = (): number => envInt('ANT_SUBAGENT_MAX_REPORT_CHARS', 16_000);
+
+/** Ceiling for the full report kept for drill-down and persisted on the chat line (chars). */
+export const subagentMaxReportPersistChars = (): number =>
+  envInt('ANT_SUBAGENT_MAX_REPORT_PERSIST_CHARS', 100_000);
 
 /** Concurrent children per ownerKey (job × worker/task scope). */
 export const subagentMaxConcurrent = (): number => envInt('ANT_SUBAGENT_MAX_CONCURRENT', 3);

@@ -45,6 +45,19 @@ function formatDuration(ms: number | undefined): string | null {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
+/** Identity chip — makes it explicit that an independent subagent is at work. */
+function SubagentBadge() {
+  const { t } = useTranslation('chat');
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0 font-medium"
+      style={{ background: 'var(--bg-surface-2)', color: 'var(--violet-500)' }}
+    >
+      {t('subagent.badge')}
+    </span>
+  );
+}
+
 export const SubagentCard = memo(function SubagentCard({ line, pending }: SubagentCardProps) {
   const { t } = useTranslation('chat');
   const openSubagentReport = useStore((s) => s.openSubagentReport);
@@ -63,6 +76,7 @@ export const SubagentCard = memo(function SubagentCard({ line, pending }: Subage
       <TurnCardShell accent="info" hoverLift={false}>
         <div className="flex items-center gap-2 px-3 py-2">
           <Spinner size="sm" />
+          <SubagentBadge />
           <span className="text-xs font-medium truncate min-w-0" style={{ color: 'var(--text-1)' }}>
             {t('subagent.running', { goal })}
           </span>
@@ -101,6 +115,7 @@ export const SubagentCard = memo(function SubagentCard({ line, pending }: Subage
     >
       <div className="flex items-center gap-2 px-3 py-2 min-w-0">
         <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color }} />
+        <SubagentBadge />
         <span className="text-xs font-medium truncate min-w-0" style={{ color: 'var(--text-1)' }}>
           {label}
         </span>

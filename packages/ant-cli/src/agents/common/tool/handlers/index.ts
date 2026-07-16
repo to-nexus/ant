@@ -21,6 +21,7 @@ export { handleRunCommand } from './runCommand';
 export { handleHttpRequest } from './httpProbe';
 export { handleFigmaTool } from './figma';
 export { handleExplore } from './explore';
+export { handleSubagentReport } from './subagentReport';
 export { applyCodeCommandPolicy } from './codeCommandPolicy';
 export { resolveToolPath, resolveToolDirectory, prependFixMessage } from './pathResolver';
 export type { ResolvedToolPath } from './pathResolver';

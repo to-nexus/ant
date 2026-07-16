@@ -56,6 +56,8 @@ describe('SubagentReportOverlay', () => {
     const dump = JSON.stringify(tree.toJSON());
     expect(dump).toContain('The findings');
     expect(dump).toContain('subagent.overlay.title');
+    // Identity badge next to the title.
+    expect(dump).toContain('subagent.badge');
 
     const closeBtn = tree.root.findByProps({ 'aria-label': 'subagent.overlay.close' });
     act(() => { closeBtn.props.onClick(); });
