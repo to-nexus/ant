@@ -84,11 +84,12 @@ describe('join-redo routers', () => {
 });
 
 describe('generateChatStatusContent — subagent cards', () => {
-  it('subagent_running with and without rounds (subagent identity in fallback copy)', () => {
+  it('subagent_running fallback copy carries subagent identity, no round counter', () => {
     expect(generateChatStatusContent('subagent_running', { goal: 'map the auth flow' }))
       .toBe('Subagent exploring: map the auth flow...');
+    // The internal round counter is no longer surfaced in the running copy.
     expect(generateChatStatusContent('subagent_running', { goal: 'g', rounds: 3 }))
-      .toBe('Subagent exploring: g (round 3)');
+      .toBe('Subagent exploring: g...');
   });
 
   it('subagent_report body per terminal state', () => {

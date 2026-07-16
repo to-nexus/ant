@@ -1,13 +1,14 @@
 /**
  * SubagentCard — one compact card per explore-subagent launch.
  *
- * Running (`subagent_running`, pending-card channel): spinner + goal + round
- * chip. Terminal (`subagent_report`, persisted line): state-accented summary;
- * clicking opens the full-report overlay (SubagentReportOverlay, mounted at
- * ChatPanel level) when a report body exists.
+ * Running (`subagent_running`, pending-card channel): spinner + shimmering
+ * goal + live elapsed time (Claude-Code-style working presentation; the
+ * internal round counter is intentionally not surfaced). Terminal
+ * (`subagent_report`, persisted line): state-accented summary; clicking opens
+ * the full report in a dedicated main-panel editor tab when a body exists.
  */
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Compass, AlertTriangle, XCircle, FileSearch } from 'lucide-react';
 import type { ChatStatusLine, PendingCardSnapshot, SubagentReportMetadata } from '@ant/shared';
@@ -58,9 +59,55 @@ function SubagentBadge() {
   );
 }
 
+/** Live-ticking elapsed seconds. Prefers the BE `startedAt`; if absent, anchors
+ *  to first render so the timer never resets across metadata deltas. */
+function useElapsedMs(startedAt: string | undefined): number {
+  const firstSeenRef = useRef<number>(Date.now());
+  const startMs = startedAt ? Date.parse(startedAt) : NaN;
+  const anchor = Number.isFinite(startMs) ? startMs : firstSeenRef.current;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return Math.max(0, now - anchor);
+}
+
+/** Running row — spinner + shimmering goal + live elapsed. Extracted so the
+ *  1s interval only mounts while a subagent is actually running. */
+function SubagentRunningRow({ goal, startedAt }: { goal: string; startedAt?: string }) {
+  const { t } = useTranslation('chat');
+  const elapsed = formatDuration(useElapsedMs(startedAt)) ?? '0s';
+  return (
+    <TurnCardShell accent="info" hoverLift={false}>
+      <div className="flex items-center gap-2 px-3 py-2 min-w-0">
+        <Spinner size="sm" />
+        <SubagentBadge />
+        <span
+          className="gradient-flow text-xs font-medium truncate min-w-0"
+          title={goal}
+          style={{
+            backgroundImage: 'var(--gradient-aurora-soft)',
+            backgroundSize: '200% 100%',
+            WebkitBackgroundClip: 'text',
+            backgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            color: 'transparent',
+          }}
+        >
+          {t('subagent.running', { goal })}
+        </span>
+        <span className="ml-auto text-[10px] tabular-nums flex-shrink-0" style={{ color: 'var(--text-3)' }}>
+          {elapsed}
+        </span>
+      </div>
+    </TurnCardShell>
+  );
+}
+
 export const SubagentCard = memo(function SubagentCard({ line, pending }: SubagentCardProps) {
   const { t } = useTranslation('chat');
-  const openSubagentReport = useStore((s) => s.openSubagentReport);
+  const openReportEditorTab = useStore((s) => s.openReportEditorTab);
 
   const metadata = {
     ...(line.metadata ?? {}),
@@ -69,28 +116,18 @@ export const SubagentCard = memo(function SubagentCard({ line, pending }: Subage
   const goal = metadata.goal || '…';
   const isRunning = line.statusType === 'subagent_running';
 
-  const onOpen = useCallback(() => openSubagentReport(line.cardId), [openSubagentReport, line.cardId]);
+  const onOpen = useCallback(
+    () =>
+      openReportEditorTab({
+        cardId: line.cardId,
+        goal,
+        report: metadata.report ?? '',
+      }),
+    [openReportEditorTab, line.cardId, goal, metadata.report],
+  );
 
   if (isRunning) {
-    return (
-      <TurnCardShell accent="info" hoverLift={false}>
-        <div className="flex items-center gap-2 px-3 py-2">
-          <Spinner size="sm" />
-          <SubagentBadge />
-          <span className="text-xs font-medium truncate min-w-0" style={{ color: 'var(--text-1)' }}>
-            {t('subagent.running', { goal })}
-          </span>
-          {typeof metadata.rounds === 'number' && metadata.rounds > 0 && (
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-              style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}
-            >
-              {t('subagent.rounds', { count: metadata.rounds })}
-            </span>
-          )}
-        </div>
-      </TurnCardShell>
-    );
+    return <SubagentRunningRow goal={goal} startedAt={metadata.startedAt} />;
   }
 
   const { accent, Icon, color } = stateVisual(metadata.state);

@@ -22,6 +22,11 @@ export const makePinnedRealTabId = (filePath: string): `editor:real:${string}` =
 export const makeVirtualEditorTabId = (cardId: string): `editor:virtual:${string}` =>
   `editor:virtual:${cardId}`;
 
+/** Report tabs get their own id namespace so they never collide with the
+ *  streaming file-write virtual tabs minted by `makeVirtualEditorTabId`. */
+export const makeReportEditorTabId = (cardId: string): `editor:report:${string}` =>
+  `editor:report:${cardId}`;
+
 export function sanitizeEditorTabOrder(
   order: readonly string[],
   tabs: readonly EditorTab[],

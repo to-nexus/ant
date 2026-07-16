@@ -31,13 +31,13 @@ export type IdeLifecycleState =
 /**
  * Editor tab source — drives VirtualSourceChip gradient selection.
  *
- * Note: the live `EditorTab.source` union in `@/domain/store/types` only
- * emits `'plan' | 'design'` today. We still expose the four spec-mandated
- * sources here so VirtualSourceChip can render the full palette when (a)
- * the store widens its union, (b) callers explicitly pass `'code'` /
- * `'chat'`, or (c) the fallback path maps an undefined source to `'code'`.
+ * Note: the live `EditorTab.source` union in `@/domain/store/types` emits
+ * `'plan' | 'design' | 'report'` today. We still expose the extra
+ * spec-mandated sources here so VirtualSourceChip can render the full palette
+ * when (a) callers explicitly pass `'code'` / `'chat'`, or (b) the fallback
+ * path maps an undefined source to `'code'`.
  */
-export type EditorSource = 'design' | 'plan' | 'code' | 'chat';
+export type EditorSource = 'design' | 'plan' | 'code' | 'chat' | 'report';
 
 /**
  * Editor body solid surface — shared SSOT for the streaming

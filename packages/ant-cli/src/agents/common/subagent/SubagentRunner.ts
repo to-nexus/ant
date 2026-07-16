@@ -29,11 +29,12 @@ export async function runExploreSubagent(params: {
   chatCardId?: string;
 }): Promise<SubagentResult> {
   const startedAt = Date.now();
+  const startedAtIso = new Date(startedAt).toISOString();
   let rounds = 0;
   let result: SubagentResult;
 
   try {
-    result = await runInner(params, (r) => {
+    result = await runInner({ ...params, startedAt: startedAtIso }, (r) => {
       rounds = r;
     });
   } catch (err: unknown) {
@@ -51,7 +52,14 @@ export async function runExploreSubagent(params: {
 }
 
 async function runInner(
-  params: { id: string; goal: string; hints?: string[]; internals: SubagentSeamInternals },
+  params: {
+    id: string;
+    goal: string;
+    hints?: string[];
+    internals: SubagentSeamInternals;
+    chatCardId?: string;
+    startedAt?: string;
+  },
   onRound: (rounds: number) => void,
 ): Promise<SubagentResult> {
   const { internals } = params;
@@ -186,7 +194,7 @@ async function runInner(
 }
 
 async function emitProgressCard(
-  params: { id: string; goal: string; chatCardId?: string },
+  params: { id: string; goal: string; chatCardId?: string; startedAt?: string },
   rounds: number,
 ): Promise<void> {
   if (!params.chatCardId) return;
@@ -196,6 +204,7 @@ async function emitProgressCard(
       subagentId: params.id,
       goal: params.goal,
       rounds,
+      ...(params.startedAt ? { startedAt: params.startedAt } : {}),
     });
   } catch (err) {
     console.warn('⚠️ [Subagent] progress card emit failed:', (err as Error).message);
