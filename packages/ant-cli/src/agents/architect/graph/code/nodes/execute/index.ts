@@ -38,7 +38,7 @@ import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder
 import { buildMergeUserContent } from './mergeUserContent';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
 import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
-import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../../common/subagent';
+import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { isVerificationTask } from '../../tasks/verification';
 import { isUiTask } from '../../tasks/ui';
@@ -895,7 +895,11 @@ export async function execute(
     // so this fires only when a child outlives the parent's last tool batch.
     if (explicitDone && toolCalls.length === 0) {
       const subagentOwnerKey = ownerKeyFor(state._httpJobId);
-      if (hasPendingSubagents(subagentOwnerKey)) {
+      // No hasPending pre-gate: settled-but-undelivered reports (child finished
+      // after the last tool batch) must join too — maybeJoinSubagents returns
+      // null when nothing is owed. (cyan-driving-apron E2E: the pre-gate
+      // dropped settled reports at task completion.)
+      {
         const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history: nodeExecute });
         if (joined) {
           const withheldText = cleanFileContentFromResponse(textResponse)

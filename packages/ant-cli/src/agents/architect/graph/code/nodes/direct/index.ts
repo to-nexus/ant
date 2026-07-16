@@ -46,7 +46,6 @@ import {
   createSubagentSeam,
   maybeJoinSubagents,
   collectCompletedSubagents,
-  hasPendingSubagents,
   buildReportBlocks,
   foldSubagentUsage,
 } from '../../../../../common/subagent';
@@ -365,7 +364,8 @@ export async function direct(
     // ── Join barrier (explore subagent): the LLM wants to finish while
     // reports are still owed. Deliver them and grant another step (bounded
     // by maxSteps) so the final answer incorporates the findings.
-    if (subagentOwnerKey && hasPendingSubagents(subagentOwnerKey)) {
+    // No hasPending pre-gate — settled-but-undelivered reports must join too.
+    if (subagentOwnerKey) {
       const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history });
       if (joined) {
         history.push(

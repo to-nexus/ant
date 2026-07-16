@@ -35,7 +35,7 @@ import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrche
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
-import { maybeJoinSubagents, ownerKeyFor, hasPendingSubagents } from '../../../../../common/subagent';
+import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 import { logPrompt } from '../../../../../../core/utils/promptLogger';
 import { PLAN_CONVERSATION_HISTORY_BUDGET } from '../../../../../../core/context';
 import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
@@ -235,7 +235,8 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   // document incorporates them.
   {
     const subagentOwnerKey = ownerKeyFor(state._httpJobId);
-    if (hasPendingSubagents(subagentOwnerKey)) {
+    // No hasPending pre-gate — settled-but-undelivered reports must join too.
+    {
       const joined = await maybeJoinSubagents(state as any, subagentOwnerKey, { history: updatedHistory });
       if (joined) {
         updatedHistory.push({
