@@ -137,6 +137,16 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/design/nodes/execute/variants/game-art-by-desc/rules',
     system: 'jobs/design/base/system',
   },
+  designUiByHandoff: {
+    base: 'jobs/design/nodes/execute/variants/ui-design-by-handoff/base',
+    rules: 'jobs/design/nodes/execute/variants/ui-design-by-handoff/rules',
+    system: 'jobs/design/base/system',
+  },
+  designGameArtByHandoff: {
+    base: 'jobs/design/nodes/execute/variants/game-art-by-handoff/base',
+    rules: 'jobs/design/nodes/execute/variants/game-art-by-handoff/rules',
+    system: 'jobs/design/base/system',
+  },
   designExplain: {
     base: 'jobs/design/nodes/execute/variants/explain-only/base',
     rules: 'jobs/design/nodes/execute/variants/explain-only/rules',

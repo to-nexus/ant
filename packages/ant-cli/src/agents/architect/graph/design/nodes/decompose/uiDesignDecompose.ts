@@ -69,13 +69,16 @@ export async function decomposeUiDesign(
     sourceFileNames.push('figma.json');
   }
 
-  // Render prompt — figma mode dispatches to the by-figma variant; all
-  // other UI design entry points (gen-ui-desc / rev-ui) share the
-  // description-driven by-desc variant. The legacy `by-ref` variant has
-  // been removed alongside the gen-ui-ref intent.
+  // Output-format resolver (single owner — design/_shared/outputFormat.ts):
+  // 'handoff' → Claude-Design-style bundle producer (gen-ui-desc, or rev-ui on
+  // a handoff source); 'json' → legacy ant-canonical trio (figma pipeline, or
+  // rev-ui on an ant source). Variant dispatch: handoff → by-handoff; json →
+  // by-figma / by-desc (legacy binary preserved; by-ref was removed earlier).
+  const { resolveDesignOutputFormat } = await import('../../_shared/outputFormat');
+  const docFormat = resolveDesignOutputFormat(state, 'ui');
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
-  const templateSuffix = isFigmaMode ? 'by-figma' : 'by-desc';
+  const templateSuffix = docFormat === 'handoff' ? 'by-handoff' : isFigmaMode ? 'by-figma' : 'by-desc';
   const decomposeTemplatePath = `jobs/design/nodes/decompose/variants/ui-design-${templateSuffix}/base`;
 
   const uiDecomposePrompt = await promptAdapter.render(decomposeTemplatePath, {
@@ -191,11 +194,28 @@ export async function decomposeUiDesign(
       throw new Error('Invalid UI task breakdown format from LLM');
     }
 
+    // Handoff bundle invariants (fail-loud): every task authors exactly one
+    // relative file path inside the bundle, and task ids must not collide with
+    // the ant-JSON asset-validation prefix (`checkTaskStatus/assetValidation.ts`
+    // fires `validateAssetReferences` on `ui-assets-*` / `game-art-assets-*`).
+    if (docFormat === 'handoff') {
+      for (const t of response.tasks) {
+        if (!t.targetFile) {
+          throw new Error(`[UIDecompose] handoff task "${t.id}" is missing targetFile`);
+        }
+        if (t.id.startsWith('ui-assets-') || t.id.startsWith('game-art-assets-')) {
+          throw new Error(
+            `[UIDecompose] handoff task id "${t.id}" collides with the ant-JSON asset-validation prefix — use ui-handoff-*`,
+          );
+        }
+      }
+    }
+
     // Build task queue
     const taskQueue = new TaskQueue<DesignTask>();
     response.tasks.forEach((task) => {
       const baseName = task.targetFile.replace(/\.json$/, '');
-      const isAssets = baseName === 'ui-assets';
+      const isAssets = docFormat !== 'handoff' && baseName === 'ui-assets';
 
       // tokens/spec: chapter-specific parallelGroup (enables parallel execution)
       // assets: shared group (keeps sequential — category conflicts possible)
@@ -211,13 +231,16 @@ export async function decomposeUiDesign(
         sf.push('figma.json');
       }
 
-      // In figma mode, include the canonical figma workfile reference
-      // (visual/ui/figma/figma.json) so UI design tasks can read it via the
-      // artifact pool. Single injection SSOT — `include`; role is inherited
-      // from the pool's RAC annotation.
-      const includePrefixes = isFigmaMode
-        ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
-        : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT];
+      // Single injection SSOT — `include`; role is inherited from the pool's
+      // RAC annotation. Handoff tasks see the bundle itself (rev-in-place +
+      // later stages reading earlier-stage files via the pool refresh); figma
+      // mode includes the canonical figma workfile reference; json mode sees
+      // the ant trio.
+      const includePrefixes = docFormat === 'handoff'
+        ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_HANDOFF]
+        : isFigmaMode
+          ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
+          : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.UI_ANT];
 
       taskQueue.push({
         id: task.id,
@@ -230,6 +253,15 @@ export async function decomposeUiDesign(
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,
+        ...(docFormat === 'handoff'
+          ? {
+              docFormat: 'handoff' as const,
+              // DESIGN.md / tokens/*.css / screens/*.html carry no ant-canonical
+              // filename prefix, so designDirOf cannot route them — targetDir is
+              // the placement authority (same mechanism as spec tasks).
+              targetDir: ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, ''),
+            }
+          : {}),
       } as DesignTask);
     });
 

@@ -202,7 +202,18 @@ export type DesignTask = (DocTask | ExplainTask) & {
   targetFile?: string;             // Which design document (e.g., "be-system-main.md", "wallet-login.md")
   targetDir?: string;              // Optional output directory override. When set, callers (execute) use it
                                    // instead of designDirOf(targetFile). Used by spec tasks whose filenames
-                                   // no longer carry a "spec-" prefix and thus cannot be routed by filename alone.
+                                   // no longer carry a "spec-" prefix and thus cannot be routed by filename alone,
+                                   // and by handoff tasks (DESIGN.md / tokens/*.css / screens/*.html carry no
+                                   // ant-canonical prefix).
+
+  /**
+   * Output-format discriminator (single-owner resolver `resolveDesignOutputFormat`
+   * writes it at decompose; execute/learn only read it). `'handoff'` → the task
+   * authors a file of the Claude-Design-style bundle under
+   * `visual/{ui,game-art}/handoff/`; absent/`'json'` → legacy ant-canonical
+   * JSON pipeline.
+   */
+  docFormat?: 'json' | 'handoff';
   targetService?: string;          // MSA: Which service this task targets (e.g., "auth", "order")
 
   /**

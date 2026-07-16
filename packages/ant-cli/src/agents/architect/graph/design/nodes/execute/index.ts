@@ -38,6 +38,7 @@ import type { IntentId } from '@ant/shared';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
 import { ARTIFACT_PREFIX, designDirOf } from '@ant/shared';
+import type { DesignTask } from '../../../../types/task';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './intent/system';
@@ -241,10 +242,12 @@ export async function execute(
   // ✅ Pin the expected output filename for this task — guards against the
   // execute LLM emitting `<file path="...">` with a hallucinated filename
   // when the prompt is internally inconsistent (e.g. decompose mis-assigned
-  // a foreign catalog's sections to this task). UI mode skipped because it
-  // writes multiple artifacts per turn (ui-tokens.json, ui-assets.json,
-  // ui-spec.json) rather than a single targetFile.
-  if (intentGroup !== 'design-ui' && state.currentTask?.targetFile) {
+  // a foreign catalog's sections to this task). Legacy JSON UI mode skipped
+  // because it writes multiple artifacts per turn (ui-tokens.json,
+  // ui-assets.json, ui-spec.json) rather than a single targetFile; handoff
+  // UI tasks author exactly one bundle file each, so they ARE pinned.
+  const isHandoffTask = (state.currentTask as DesignTask | undefined)?.docFormat === 'handoff';
+  if ((intentGroup !== 'design-ui' || isHandoffTask) && state.currentTask?.targetFile) {
     const targetFile = state.currentTask.targetFile;
     // Spec tasks (since the spec- prefix was dropped) ship an explicit
     // `targetDir`; other artifact kinds still derive their dir from the
@@ -607,6 +610,25 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
       } catch { /* continue */ }
     };
 
+    // Handoff bundles nest one level (tokens/ components/ entities/ screens/
+    // assets/) and carry css/html/svg — scan root + first-level subdirs.
+    const scanHandoffDir = async (dirRel: string, prefix: string) => {
+      try {
+        if (!(await state.deps!.fileSystem!.fileExists(dirRel))) return;
+        const entries = await state.deps!.fileSystem!.readDirectory(dirRel);
+        for (const entry of entries) {
+          if (entry.isDirectory) {
+            const subEntries = await state.deps!.fileSystem!.readDirectory(path.join(dirRel, entry.name));
+            for (const sub of subEntries) {
+              if (!sub.isDirectory) existingFiles.add(`${prefix}/${entry.name}/${sub.name}`);
+            }
+          } else {
+            existingFiles.add(`${prefix}/${entry.name}`);
+          }
+        }
+      } catch { /* continue */ }
+    };
+
     const featureRel = rootPath
       ? path.relative(rootPath, state.context.featurePath)
       : state.context.featurePath.replace(/^\//, '');
@@ -618,6 +640,13 @@ async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): 
     await scanDir(path.join(featureRel, visualUiAnt), visualUiAnt);
     await scanDir(path.join(featureRel, archSystem), archSystem);
     await scanDir(path.join(featureRel, archSpec), archSpec);
+
+    if ((state.currentTask as DesignTask | undefined)?.docFormat === 'handoff') {
+      const uiHandoff = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
+      const gameArtHandoff = ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, '');
+      await scanHandoffDir(path.join(featureRel, uiHandoff), uiHandoff);
+      await scanHandoffDir(path.join(featureRel, gameArtHandoff), gameArtHandoff);
+    }
   }
   
   return existingFiles;

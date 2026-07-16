@@ -141,8 +141,11 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .reduce((sum, c) => sum + c.text.length, 0);
       
-      const logSuffix = figmaMode ? 'by-figma' : 'by-desc';
-      const uiTpl = figmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
+      const logHandoff = (task as DesignTask | undefined)?.docFormat === 'handoff';
+      const logSuffix = logHandoff ? 'by-handoff' : figmaMode ? 'by-figma' : 'by-desc';
+      const uiTpl = logHandoff
+        ? TEMPLATE_PATHS.designUiByHandoff
+        : figmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
       await logPrompt(
         state.context.featurePath,
         jobId,
@@ -153,15 +156,17 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
           taskId: task?.id,
           taskName: task?.name,
           templatePath: uiTpl.base,
-          usedTemplates: [
-            uiTpl.rules!,
-            // ui-{tokens,assets,spec}-guide-{by-figma,by-desc} are injection
-            // partials (Tier A auto-injection), not node base/rules — kept
-            // as raw literals because they have no TEMPLATE_PATHS slot.
-            `jobs/design/nodes/execute/injections/ui-tokens-guide-${logSuffix}`,
-            `jobs/design/nodes/execute/injections/ui-assets-guide-${logSuffix}`,
-            `jobs/design/nodes/execute/injections/ui-spec-guide-${logSuffix}`,
-          ],
+          usedTemplates: logHandoff
+            ? [uiTpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            : [
+                uiTpl.rules!,
+                // ui-{tokens,assets,spec}-guide-{by-figma,by-desc} are injection
+                // partials (Tier A auto-injection), not node base/rules — kept
+                // as raw literals because they have no TEMPLATE_PATHS slot.
+                `jobs/design/nodes/execute/injections/ui-tokens-guide-${logSuffix}`,
+                `jobs/design/nodes/execute/injections/ui-assets-guide-${logSuffix}`,
+                `jobs/design/nodes/execute/injections/ui-spec-guide-${logSuffix}`,
+              ],
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
@@ -277,8 +282,11 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         .reduce((sum, c) => sum + c.text.length, 0);
       
       const freshFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
-      const freshLogSuffix = freshFigmaMode ? 'by-figma' : 'by-desc';
-      const freshUiTpl = freshFigmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
+      const freshHandoff = (task as DesignTask | undefined)?.docFormat === 'handoff';
+      const freshLogSuffix = freshHandoff ? 'by-handoff' : freshFigmaMode ? 'by-figma' : 'by-desc';
+      const freshUiTpl = freshHandoff
+        ? TEMPLATE_PATHS.designUiByHandoff
+        : freshFigmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
       await logPrompt(
         state.context.featurePath,
         jobIdFresh,
@@ -289,12 +297,14 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
           taskId: task?.id,
           taskName: task?.name,
           templatePath: freshUiTpl.base,
-          usedTemplates: [
-            freshUiTpl.rules!,
-            `jobs/design/nodes/execute/injections/ui-tokens-guide-${freshLogSuffix}`,
-            `jobs/design/nodes/execute/injections/ui-assets-guide-${freshLogSuffix}`,
-            `jobs/design/nodes/execute/injections/ui-spec-guide-${freshLogSuffix}`,
-          ],
+          usedTemplates: freshHandoff
+            ? [freshUiTpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            : [
+                freshUiTpl.rules!,
+                `jobs/design/nodes/execute/injections/ui-tokens-guide-${freshLogSuffix}`,
+                `jobs/design/nodes/execute/injections/ui-assets-guide-${freshLogSuffix}`,
+                `jobs/design/nodes/execute/injections/ui-spec-guide-${freshLogSuffix}`,
+              ],
           injectedVariables: {
             systemPrompt: systemPrompt ? `[${systemPrompt.length} chars]` : undefined,
             resourcesSummary: resourcesSummary ? `[${resourcesSummary.length} chars]` : undefined,
@@ -390,23 +400,31 @@ function buildResourcesSummary(state: DesignGraphState): string {
       }
     }
   } else {
+    const handoffMode = (state.currentTask as DesignTask | undefined)?.docFormat === 'handoff';
     resourcesSummary += '## Description-driven Mode\n';
-    resourcesSummary += 'No external visual source is provided. Treat the directive plus PRD / source documents listed below as the design authority and produce the UI documents directly from them.\n\n';
+    resourcesSummary += handoffMode
+      ? 'No external visual source is provided. Treat the directive plus PRD / source documents listed below as the design authority and author the handoff bundle file directly from them.\n\n'
+      : 'No external visual source is provided. Treat the directive plus PRD / source documents listed below as the design authority and produce the UI documents directly from them.\n\n';
   }
-  
+
+  const handoffAssets = (state.currentTask as DesignTask | undefined)?.docFormat === 'handoff';
   resourcesSummary += '\n## Asset Files (real, already placed under assets/service/)\n';
   const inv = state.assetInventory;
   if (inv?.count) {
-    resourcesSummary += `There are ${inv.count} real asset file(s). Map the ones the UI needs into ui-assets.json with \`src\` = the exact path below; use \`list_assets\` for detail.\n`;
+    resourcesSummary += handoffAssets
+      ? `There are ${inv.count} real asset file(s). When a bundle file needs one, reference it by its exact path below; use \`list_assets\` for detail.\n`
+      : `There are ${inv.count} real asset file(s). Map the ones the UI needs into ui-assets.json with \`src\` = the exact path below; use \`list_assets\` for detail.\n`;
     for (const [group, files] of Object.entries(inv.groups ?? {})) {
       if (files.length === 0) continue;
       resourcesSummary += `- ${group}: ${files.slice(0, 20).map(f => f.split('/').pop()).join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
     }
     resourcesSummary += '\n';
   } else {
-    resourcesSummary += 'No real asset files placed yet — document needed slots as placeholder `src` paths under `assets/service/<category>/`.\n\n';
+    resourcesSummary += handoffAssets
+      ? 'No real asset files placed yet — author needed vector assets as svg files inside the bundle\'s `assets/` directory instead of pointing at missing files.\n\n'
+      : 'No real asset files placed yet — document needed slots as placeholder `src` paths under `assets/service/<category>/`.\n\n';
   }
-  
+
   return resourcesSummary;
 }
 
@@ -432,12 +450,22 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   const taskId = state.currentTask?.id || '';
   const taskDescription = state.currentTask?.description || '';
   const targetFile = state.currentTask?.targetFile;
-  
+  const uiDesignTask = state.currentTask as DesignTask | undefined;
+  const isHandoff = uiDesignTask?.docFormat === 'handoff';
+  if (isHandoff && !targetFile) {
+    // Decompose fail-loud guarantees targetFile for handoff tasks; a miss here
+    // means a stale checkpoint or a non-decompose writer.
+    throw new Error(`[Execute UI] handoff task "${taskId}" is missing targetFile`);
+  }
+
   // Determine target file from task ID if not explicitly set
-  const actualTargetFile = targetFile || 
+  const actualTargetFile = targetFile ||
     (taskId.startsWith('ui-tokens') ? 'ui-tokens.json' :
      taskId.startsWith('ui-assets') ? 'ui-assets.json' :
      taskId.startsWith('ui-spec') ? 'ui-spec.json' : 'ui-spec.json');
+  // Handoff files (DESIGN.md / tokens/*.css / screens/*.html) carry no
+  // ant-canonical prefix — targetDir is the placement authority.
+  const targetDirRel = uiDesignTask?.targetDir ?? designDirOf(actualTargetFile);
   
   // Pre-computed at decompose time (taskQueue is not accessible in worker subgraph)
   const isLastTaskForDocument = !!(state.currentTask as DesignTask)?.isLastTaskForDocument;
@@ -458,7 +486,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         ? path.relative(rootPath, state.context.featurePath)
         : state.context.featurePath.replace(/^\//, '');
       
-      const filePath = path.join(featureDirRel, designDirOf(actualTargetFile), actualTargetFile);
+      const filePath = path.join(featureDirRel, targetDirRel, actualTargetFile);
       const fileExists = await state.deps.fileSystem.fileExists(filePath);
       
       if (fileExists) {
@@ -513,6 +541,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     taskName: state.currentTask?.name,
     taskDescription,
     targetFile: actualTargetFile,
+    targetPath: `${targetDirRel}/${actualTargetFile}`,
     previousChaptersSummary,
     isLastTaskForDocument,
     forceAppend,
@@ -528,8 +557,10 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   };
 
   const sysFigmaMode = isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
-  const templateSuffix = sysFigmaMode ? 'by-figma' : 'by-desc';
-  const sysUiTpl = sysFigmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
+  const templateSuffix = isHandoff ? 'by-handoff' : sysFigmaMode ? 'by-figma' : 'by-desc';
+  const sysUiTpl = isHandoff
+    ? TEMPLATE_PATHS.designUiByHandoff
+    : sysFigmaMode ? TEMPLATE_PATHS.designUiByFigma : TEMPLATE_PATHS.designUiByDesc;
   const templatePath = sysUiTpl.base;
 
   const template = await promptBuilder.render(templatePath, injectedVariables);
@@ -557,12 +588,14 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
           templatePath,
-          usedTemplates: [
-            sysUiTpl.rules!,
-            `jobs/design/nodes/execute/injections/ui-tokens-guide-${templateSuffix}`,
-            `jobs/design/nodes/execute/injections/ui-assets-guide-${templateSuffix}`,
-            `jobs/design/nodes/execute/injections/ui-spec-guide-${templateSuffix}`,
-          ],
+          usedTemplates: isHandoff
+            ? [sysUiTpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            : [
+                sysUiTpl.rules!,
+                `jobs/design/nodes/execute/injections/ui-tokens-guide-${templateSuffix}`,
+                `jobs/design/nodes/execute/injections/ui-assets-guide-${templateSuffix}`,
+                `jobs/design/nodes/execute/injections/ui-spec-guide-${templateSuffix}`,
+              ],
           injectedVariables: {
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
             targetFile: injectedVariables.targetFile,

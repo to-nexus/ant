@@ -37,14 +37,20 @@ interface DecomposeContext {
 }
 
 /**
- * Pick the decompose template variant based on the chosen intent.
+ * Pick the decompose template variant.
  *
+ * - `docFormat === 'handoff'` → `by-handoff` (Claude-Design-style bundle:
+ *   gen-game-art-desc producer, or rev-game-art revising a handoff bundle
+ *   in place — resolver SSOT: design/_shared/outputFormat.ts)
  * - `gen-game-art-figma` → `by-figma` (Figma MCP-driven catalog generation)
- * - `gen-game-art-desc`, `rev-game-art` and any other entry point → `by-desc`
- *   (directive-driven generation; `rev-game-art` modifies an existing
- *   game-art document and shares the directive contract)
+ * - any other entry point → `by-desc` (legacy JSON contract — rev-game-art
+ *   on an ant source)
  */
-function pickGameArtDesignVariant(state: DesignGraphState): 'by-figma' | 'by-desc' {
+function pickGameArtDesignVariant(
+  state: DesignGraphState,
+  docFormat: 'json' | 'handoff',
+): 'by-figma' | 'by-desc' | 'by-handoff' {
+  if (docFormat === 'handoff') return 'by-handoff';
   const intent = state.resolvedAction?.intent;
   if (intent === 'gen-game-art-figma') return 'by-figma';
   return 'by-desc';
@@ -86,7 +92,9 @@ export async function decomposeGameArtDesign(
   );
 
   const sourceFileNames = pool.sourceFileNames();
-  const variant = pickGameArtDesignVariant(state);
+  const { resolveDesignOutputFormat } = await import('../../_shared/outputFormat');
+  const docFormat = resolveDesignOutputFormat(state, 'game-art');
+  const variant = pickGameArtDesignVariant(state, docFormat);
   const isFigmaMode = variant === 'by-figma'
     && isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
   if (isFigmaMode && !sourceFileNames.includes('figma.json')) {
@@ -206,15 +214,19 @@ export async function decomposeGameArtDesign(
       throw new Error('Invalid game-art task breakdown format from LLM');
     }
 
-    // WS2 §3E — when the user brought a game-art handoff bundle into the RAC,
-    // design must OBSERVE it (survey the placed files) so it can author
-    // `kind:'external'` catalog entries that point at those files. Detected from
-    // the post-RAC pool; game-art sources are hard-exclusive, so a handoff
-    // bundle means the ant sub-source is absent from the RAC (self-outputs still
-    // land under ant/ and are picked up by GAME_ART_ANT below).
-    const hasGameArtHandoff = (state.artifacts ?? []).some(
-      (a: any) => typeof a?.path === 'string' && a.path.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF),
-    );
+    // Handoff bundle invariants (fail-loud) — mirrors uiDesignDecompose.
+    if (docFormat === 'handoff') {
+      for (const t of response.tasks) {
+        if (!t.targetFile) {
+          throw new Error(`[GameArtDecompose] handoff task "${t.id}" is missing targetFile`);
+        }
+        if (t.id.startsWith('ui-assets-') || t.id.startsWith('game-art-assets-')) {
+          throw new Error(
+            `[GameArtDecompose] handoff task id "${t.id}" collides with the ant-JSON asset-validation prefix — use game-art-handoff-*`,
+          );
+        }
+      }
+    }
 
     // Build task queue
     const taskQueue = new TaskQueue<DesignTask>();
@@ -227,16 +239,20 @@ export async function decomposeGameArtDesign(
       const sf: string[] = Array.isArray((task as any).sourceFiles) ? [...(task as any).sourceFiles] : [];
       if (isFigmaMode && !sf.includes('figma.json')) sf.push('figma.json');
 
-      // RAC pool: sources + game-art outputs (+ optional UI ant docs for
-      // cross-surface context). D24-revised v8 — game-art now mounts the
-      // `ant/` sub-source (canonical), parallel to UI's ant. Figma mode
-      // also includes the UI figma workfile reference because game-art
-      // figma is Phase 5+ (parser-only hook today).
-      const includePrefixes: string[] = isFigmaMode
-        ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
-        : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT];
-      // Surface the handoff bundle to the design task when present (WS2 §3E).
-      if (hasGameArtHandoff) includePrefixes.push(ARTIFACT_PREFIX.GAME_ART_HANDOFF);
+      // Single injection SSOT — `include`; role inherited from RAC pool.
+      // Handoff mode: tasks see the bundle itself (revise-in-place + later
+      // stages reading earlier-stage files via the pool refresh). The legacy
+      // WS2 §3E observe-only branch (handoff upload → ant JSON catalog) is
+      // retired — rev-game-art on a handoff source now revises the bundle in
+      // place via the resolver; handoff → ant JSON is the deferred converter
+      // intent's job. JSON mode: sources + game-art ant (+ UI ant for
+      // cross-surface context; figma workfile in figma mode — game-art figma
+      // itself is a Phase 5+ parser hook).
+      const includePrefixes: string[] = docFormat === 'handoff'
+        ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_HANDOFF]
+        : isFigmaMode
+          ? [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT, ARTIFACT_PREFIX.UI_FIGMA]
+          : [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.GAME_ART_ANT, ARTIFACT_PREFIX.UI_ANT];
 
       taskQueue.push({
         id: task.id,
@@ -245,11 +261,16 @@ export async function decomposeGameArtDesign(
         priority: task.priority,
         description: task.description,
         sourceFiles: sf.length > 0 ? sf : undefined,
-        // Single injection SSOT — `include`; role inherited from RAC pool.
         include: includePrefixes,
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,
+        ...(docFormat === 'handoff'
+          ? {
+              docFormat: 'handoff' as const,
+              targetDir: ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, ''),
+            }
+          : {}),
       } as DesignTask);
     });
 

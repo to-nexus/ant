@@ -41,6 +41,7 @@
       "codebaseEntryPoints"
     ],
     "handoff-code-shape-discipline": [],
+    "handoff-package-format": [],
     "reference-codebase-register": [
       "hasReferenceCatalog",
       "referenceCatalog"
