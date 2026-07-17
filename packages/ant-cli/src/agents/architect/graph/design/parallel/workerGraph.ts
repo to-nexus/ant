@@ -30,6 +30,8 @@ import { getExecutionLogger } from '../../../../../core/utils/executionLogger';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from '../nodes/checkTaskStatus/assetValidation';
 import { reconcileSpecDoc, buildSpecRevisionRetryMessage } from '../nodes/checkTaskStatus/specDocIntegrity';
+import { isNoOutputCompletion, buildDesignNoOutputInterruption } from '../nodes/checkTaskStatus/outputVerification';
+import { DesignNoOutputError } from '../errors';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -200,6 +202,38 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 2.7: Zero-output completion guard (design_no_output).
+  // A degenerate/drained execute that wrote no <file> and left its target
+  // absent must fail loud (resumable) — not complete as a phantom success.
+  // Thrown as a typed error so the shared TaskOrchestrator raises the
+  // interruption (mirror of the figma-connection-lost global interrupt).
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (
+    state.currentTask &&
+    (await isNoOutputCompletion(
+      state.deps?.fileSystem as any,
+      state.context?.featurePath,
+      state.currentTask as any,
+      state._taskFilesWritten,
+    ))
+  ) {
+    console.error(
+      `❌ [workerCheckTaskStatus] "${state.currentTask.name}" produced no output ` +
+      `(target "${state.currentTask.targetFile}" absent/empty) — raising resumable design_no_output pause.`,
+    );
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+    }
+    throw new DesignNoOutputError(
+      buildDesignNoOutputInterruption(state.currentTask, {
+        callIndex: state._executeCallIndex || 0,
+        completedCount: (state.completedTasks || []).length,
+        tasksRemaining: state.taskQueue?.size() || 0,
+      }),
+    );
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Normal completion
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.currentTask) {
@@ -279,6 +313,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       _specRevisionFailed: false,
       _specRevisionRetried: 0,
       _drainFinalized: false,
+      _taskFilesWritten: 0,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;

@@ -29,6 +29,7 @@ import type {
 } from './types';
 import { getTaskConcurrency } from './types';
 import { isFigmaRateLimitError, isFigmaMCPConnectionError } from '../../../../../periphery/adapters/figma/errors';
+import { isDesignNoOutputError } from '../../design/errors';
 import { classifyTerminalError } from '../tasks/_shared/verify/terminal/errors';
 import { VerificationBudget, BUDGET_THRESHOLDS } from '../tasks/_shared/verify/terminal/budget';
 import { hooksForTaskType } from '../tasks/_shared/registry';
@@ -661,6 +662,27 @@ export class TaskOrchestrator<T extends BaseTask> {
         }
         this.drain();
         this.signalWorkersToStop();
+        this.broadcastKanban();
+        this.checkAllDone();
+        return;
+      }
+
+      // ✅ Design zero-output: a degenerate/drained design task produced no
+      // artifact. Single-task interrupt (other tasks are unrelated) — same
+      // resumable-pause shape as recursion_limit; do NOT signalWorkersToStop.
+      if (isDesignNoOutputError(error)) {
+        task.interrupted = true;
+        this.hasInterruptedTasks = true;
+        this.interruptReason = 'design_no_output';
+        this.failedTasks.push({ task, error, timestamp: new Date().toISOString() });
+        console.error(`[Orchestrator] Task "${task.name}" produced no output — resumable design_no_output pause`);
+        this.callbacks.onInterruption?.('design_no_output', [task.id]);
+        try {
+          await this.saveCheckpoint({ reason: 'design_no_output', canResume: true });
+        } catch (err) {
+          console.warn(`[Orchestrator] Post-no-output checkpoint failed:`, err);
+        }
+        this.drain();
         this.broadcastKanban();
         this.checkAllDone();
         return;

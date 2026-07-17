@@ -216,6 +216,7 @@
       "figma_rate_limited": "Figma API rate limit exceeded",
       "figma_connection_lost": "Figma connection lost",
       "insufficient_credits": "Credit balance ran out",
+      "design_no_output": "No document was produced",
       "unknown": "Unknown error"
     },
     "subtitles": {
@@ -236,6 +237,7 @@
       "figma_rate_limited": "Wait a moment, then resume to continue.",
       "figma_connection_lost": "Ensure Figma Desktop is open and retry.",
       "insufficient_credits": "Top up your credits, then resume to continue.",
+      "design_no_output": "The design run ended without writing the document. Resume to try again.",
       "unknown": "Resume to continue from where it left off."
     },
     "designErrors": {

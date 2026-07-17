@@ -425,6 +425,12 @@ export async function execute(
     const hasToolCallsOnly = hasToolCalls && !hasNewFileOutput;
     const prevNoOutputCount = state._noOutputCallCount || 0;
 
+    // Per-task artifact-write accumulator. `0` at completion = the model never
+    // emitted a <file> this run; the completion output-gate reads this to fail
+    // loud (design_no_output) instead of reporting a phantom success. Reset to
+    // 0 on task boundary alongside _noOutputCallCount/_executeCallIndex.
+    const newTaskFilesWritten = (state._taskFilesWritten || 0) + files.length;
+
     let newNoOutputCount = prevNoOutputCount;
     if (hasToolCallsOnly) {
       newNoOutputCount = prevNoOutputCount + 1;
@@ -487,6 +493,7 @@ export async function execute(
           llmResponse: { textResponse, done: true },
           _executeCallIndex: newCallIndex,
           _noOutputCallCount: 0,
+          _taskFilesWritten: newTaskFilesWritten,
           // Clarify pause is treated as a stable boundary — not an
           // artifact-mutation-without-done turn — so reset the gate.
           _pendingDoneCheck: false,
@@ -533,6 +540,7 @@ export async function execute(
             fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
             _executeCallIndex: newCallIndex,
             _noOutputCallCount: newNoOutputCount,
+            _taskFilesWritten: newTaskFilesWritten,
             _pendingDoneCheck: false,
             _doneCheckEscalation: 0,
             _activePhase: 'execute' as const,
@@ -554,6 +562,7 @@ export async function execute(
       fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _executeCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
+      _taskFilesWritten: newTaskFilesWritten,
       _pendingDoneCheck: nextPendingDoneCheck,
       _doneCheckEscalation: nextDoneCheckEscalation,
       // Phase signal for the tool node + breadcrumbs. Tool routing /
