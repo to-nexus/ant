@@ -20,15 +20,29 @@ describe('allowsPersistentProcesses', () => {
     ).toBe(true);
   });
 
-  it('prior error sub-tasks present → true', () => {
+  it('split-born prior error sub-tasks present → true', () => {
     expect(
       allowsPersistentProcesses(
         s({
           currentTask: { type: 'verification' },
-          completedTasksDetails: [{ type: 'error', name: 'fix', description: 'd' }],
+          // batchSplitCount ≥ 1 = split-born; decompose-authored error
+          // siblings (no batchSplitCount) do not open the gate — see
+          // tests/tasks/verification/runtimeErrorContextGate.test.ts.
+          completedTasksDetails: [{ type: 'error', name: 'fix', description: 'd', batchSplitCount: 1 }],
         }),
       ),
     ).toBe(true);
+  });
+
+  it('decompose-authored error siblings (no batchSplitCount) → false', () => {
+    expect(
+      allowsPersistentProcesses(
+        s({
+          currentTask: { type: 'feature' },
+          completedTasksDetails: [{ type: 'error', name: 'fix', description: 'd' }],
+        }),
+      ),
+    ).toBe(false);
   });
 
   it('plain feature task, no directive, no prior errors → false', () => {
