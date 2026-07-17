@@ -33,6 +33,7 @@ import { toFeatureRelative, appendOrUpdatePool } from '../../../../core/prompt/b
 import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from './nodes/checkTaskStatus/assetValidation';
 import { reconcileSpecDoc, buildSpecRevisionRetryMessage } from './nodes/checkTaskStatus/specDocIntegrity';
+import { isNoOutputCompletion, buildDesignNoOutputInterruption } from './nodes/checkTaskStatus/outputVerification';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -143,6 +144,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _figmaConsecutiveErrors: 0,
       _executeCallIndex: 0,
       _noOutputCallCount: 0,
+      _taskFilesWritten: 0,
       _toolResultCache: undefined,
       fileErrors: undefined,
       interruption,
@@ -244,6 +246,76 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         `Completing with the restored pre-revision original — the directive's delta was NOT applied.`,
       );
     }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 2.7: Zero-output completion guard (design_no_output).
+  // A degenerate/drained execute that wrote no <file> and left its target
+  // absent must NOT complete as a phantom success — pause resumably so the
+  // user re-runs instead of building on stale files (heavy-bridging-onion RCA).
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (
+    state.currentTask &&
+    (await isNoOutputCompletion(
+      state.deps?.fileSystem as any,
+      state.context?.featurePath,
+      state.currentTask as any,
+      state._taskFilesWritten,
+    ))
+  ) {
+    const { TaskTimingHelper } = await import('../code/state');
+    const { rollUpTaskUsageToJob } = await import('../../../common/graph/llmHelpers');
+    rollUpTaskUsageToJob(state);
+
+    const pausedTask = TaskTimingHelper.pauseTask(state.currentTask);
+    (pausedTask as any).interrupted = true;
+
+    const { TaskQueue: TQ } = await import('../../types/task');
+    const newQueue = new TQ<DesignTask>();
+    newQueue.push(pausedTask);
+    state.taskQueue?.getAll().forEach((t: any) => {
+      if (t.id !== state.currentTask!.id) newQueue.push(t);
+    });
+
+    const interruption = buildDesignNoOutputInterruption(state.currentTask, {
+      callIndex: state._executeCallIndex || 0,
+      completedCount: (state.completedTasks || []).length,
+      tasksRemaining: newQueue.size(),
+    });
+
+    console.error(
+      `❌ [checkTaskStatus] "${state.currentTask.name}" produced no output ` +
+      `(target "${state.currentTask.targetFile}" absent/empty) — raising resumable design_no_output pause.`,
+    );
+
+    await saveInterruptionCheckpoint(state, { taskQueue: newQueue.getAll(), interruption });
+
+    if (state._httpJobId && state.deps?.kanbanUpdate) {
+      state.deps.kanbanUpdate.updateTaskQueue(
+        state._httpJobId,
+        null,
+        newQueue.getAll(),
+        state.completedTasksDetails || [],
+        state.recursionCount,
+        state.recursionLimit,
+        state.tokenUsage,
+      );
+    }
+
+    return {
+      currentTask: undefined,
+      taskQueue: newQueue,
+      _executeCallIndex: 0,
+      _noOutputCallCount: 0,
+      _taskFilesWritten: 0,
+      _drainFinalized: false,
+      _toolResultCache: undefined,
+      fileErrors: undefined,
+      interruption,
+      tokenUsage: state.tokenUsage,
+      recursionCount: state.recursionCount,
+      recursionLimit: state.recursionLimit,
+    } as any;
   }
 
   // ✅ Current task completed successfully
@@ -389,6 +461,7 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _specRevisionFailed: false,
       _specRevisionRetried: 0,
       _drainFinalized: false,
+      _taskFilesWritten: 0,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     };
@@ -675,9 +748,13 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       reason: result.interruptReason || 'recursion_limit',
       message: result.interruptReason === 'user_stopped'
         ? `Task stopped by user (${result.remainingQueue.length} task(s) remaining)`
-        : `Job interrupted: ${result.interruptReason || 'recursion_limit'} (${result.remainingQueue.length} task(s) remaining)`,
+        : result.interruptReason === 'design_no_output'
+          ? `Design execute produced no output — the model explored without writing the document. Nothing was created; re-run to continue.`
+          : `Job interrupted: ${result.interruptReason || 'recursion_limit'} (${result.remainingQueue.length} task(s) remaining)`,
       timestamp: new Date().toISOString(),
-      canResume: result.remainingQueue.length > 0,
+      // design_no_output re-runs the offending task on resume (it went to
+      // failedTasks, not remainingQueue) — resumable even when the queue is empty.
+      canResume: result.remainingQueue.length > 0 || result.interruptReason === 'design_no_output',
       metadata: {
         tasksRemaining: result.remainingQueue.length,
         completedCount: result.completedTasks.length,
@@ -763,6 +840,7 @@ export const DesignGraphChannels = {
   _executeCallIndex: Annotation<any>,
   _noOutputCallCount: Annotation<any>,
   _drainFinalized: Annotation<any>,
+  _taskFilesWritten: Annotation<any>,
   _toolResultCache: Annotation<any>,
   fileErrors: Annotation<any>,
   _assetValidationFailed: Annotation<any>,

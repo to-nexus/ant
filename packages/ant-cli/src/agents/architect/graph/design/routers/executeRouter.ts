@@ -24,6 +24,16 @@ import { DesignGraphState } from '../state';
 /** Router drain: divert to checkTaskStatus when this few super-steps remain. */
 export const RECURSION_DRAIN_THRESHOLD = 30;
 /**
+ * No-output circuit breaker: divert to checkTaskStatus after this many
+ * CONSECUTIVE execute turns produced no `<file>`. Bounds degenerate read-only
+ * loops (heavy-bridging-onion: 375 turns / ~2.9M tokens) far below the
+ * recursion cap. Set well above the execute node's advisory `hardWarnAt`
+ * (7 / 10 / 14) so legitimate read-heavy exploration is untouched. When the
+ * breaker diverts with zero output, the completion output-gate raises a
+ * resumable `design_no_output` pause.
+ */
+export const NO_OUTPUT_HARD_CAP = 25;
+/**
  * The execute node runs its forced-finalization turn (tools stripped, "emit
  * final output now") this many steps BEFORE the router drain, so the salvage
  * turn happens while the router still lets the response route normally.
@@ -62,6 +72,15 @@ export function routeAfterExecute(state: DesignGraphState): string {
       console.warn(`⚠️  [ExecuteRouter] Recursion limit approaching (${state.recursionCount}/${state.recursionLimit}) → checkTaskStatus`);
       return 'checkTaskStatus';
     }
+  }
+
+  // No-output circuit breaker (read-only check). Abort a degenerate read-only
+  // loop early — the drain-finalize salvage turn already had its one shot at
+  // NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN. Diverting with zero output
+  // lands on the completion output-gate → resumable design_no_output pause.
+  if (noOutputCount >= NO_OUTPUT_HARD_CAP) {
+    console.warn(`⚠️  [ExecuteRouter] No-output circuit breaker (streak=${noOutputCount} ≥ ${NO_OUTPUT_HARD_CAP}) → checkTaskStatus`);
+    return 'checkTaskStatus';
   }
 
   // 1. Tool calls → tool node

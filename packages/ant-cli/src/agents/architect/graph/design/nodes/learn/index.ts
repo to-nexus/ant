@@ -194,7 +194,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   const queueTasks = state.taskQueue?.getAll() ?? [];
   const failedInQueue = queueTasks.filter(t => (t as { _failed?: boolean })._failed === true);
   const isLastTask = queueTasks.length === 0;
-  const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts', 'figma_rate_limited', 'figma_connection_lost'];
+  const orchestratorReasons = ['tasks_failed', 'recursion_limit', 'consecutive_timeouts', 'figma_rate_limited', 'figma_connection_lost', 'design_no_output'];
   const staleOrchReason = state.interruption?.reason;
   if (staleOrchReason != null && orchestratorReasons.includes(staleOrchReason)) {
     if (failedInQueue.length > 0) {
@@ -209,7 +209,8 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     || state.interruption?.reason === 'recursion_limit'
     || state.interruption?.reason === 'consecutive_timeouts'
     || state.interruption?.reason === 'figma_rate_limited'
-    || state.interruption?.reason === 'figma_connection_lost';
+    || state.interruption?.reason === 'figma_connection_lost'
+    || state.interruption?.reason === 'design_no_output';
   const hasDesignError = Boolean(state.designError);
   const hasEarlyTermination = hasOrchestratorFailure || hasDesignError;
 
@@ -531,30 +532,49 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       const sourceFiles = state.workspaceState?.planFileNames ?? [];
       const racDomain = state.resolvedAction?.domain;
 
-      await chatAPI.sendChoiceCard({
-        type: 'spec_complete',
-        title: isKo ? '스펙 작성 완료' : 'Spec Complete',
-        choices: [
-          {
-            id: 'develop',
-            label: isKo ? '바로 개발 시작' : 'Start Development',
-            action: 'redirect',
-            data: {
-              targetJob: 'code',
-              specFile,
-              specPath: `${ARTIFACT_PREFIX.SPEC}${specFile}`,
-              sourceFiles,
-              ...(racDomain ? { domain: racDomain } : {}),
+      // Axis B (run-scoped verdict, defense-in-depth): never offer
+      // "Start Development" on a spec that isn't on disk. Axis A already
+      // interrupts a zero-output run before completion, but the resolved
+      // `specFile` derives from `completedTasksDetails[0].targetFile`, which
+      // could name a document the run never wrote while stale siblings were
+      // loaded. Verify existence directly and suppress the card if absent
+      // (heavy-bridging-onion: coordinate-system.md never written).
+      const specRelPath = `${ARTIFACT_PREFIX.SPEC}${specFile}`;
+      const specExists = state.deps?.fileSystem
+        ? await state.deps.fileSystem.fileExists(specRelPath).catch(() => false)
+        : true;
+      if (!specExists) {
+        console.error(
+          `❌ [Learn] Suppressing spec_complete card — resolved spec "${specRelPath}" is not on disk ` +
+          `(run produced no output despite ${state.files?.length ?? 0} loaded file(s)).`,
+        );
+        await chatAPI.finalizeMessage();
+      } else {
+        await chatAPI.sendChoiceCard({
+          type: 'spec_complete',
+          title: isKo ? '스펙 작성 완료' : 'Spec Complete',
+          choices: [
+            {
+              id: 'develop',
+              label: isKo ? '바로 개발 시작' : 'Start Development',
+              action: 'redirect',
+              data: {
+                targetJob: 'code',
+                specFile,
+                specPath: specRelPath,
+                sourceFiles,
+                ...(racDomain ? { domain: racDomain } : {}),
+              },
             },
-          },
-          {
-            id: 'later',
-            label: isKo ? '나중에' : 'Later',
-            action: 'dismiss',
-          },
-        ],
-      });
-      await chatAPI.finalizeMessage();
+            {
+              id: 'later',
+              label: isKo ? '나중에' : 'Later',
+              action: 'dismiss',
+            },
+          ],
+        });
+        await chatAPI.finalizeMessage();
+      }
     } catch (error) {
       console.warn(`⚠️  [Learn] Failed to send spec completion choice card:`, error);
     }

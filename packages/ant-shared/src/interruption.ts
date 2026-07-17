@@ -29,6 +29,7 @@ export type InterruptionReason =
   | 'figma_connection_lost' // Figma MCP connection lost (consecutive failures)
   | 'insufficient_credits'  // Credit balance exhausted mid-job (resumable after top-up)
   | 'awaiting_clarify'      // Turn ended on a <clarify> card; user-actionable, resumes on answer
+  | 'design_no_output'      // Design execute produced zero artifacts (degenerate loop / drain) — resumable after re-run
   | 'unknown';              // Unknown reason
 
 /**

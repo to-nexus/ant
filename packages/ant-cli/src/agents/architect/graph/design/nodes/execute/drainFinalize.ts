@@ -1,20 +1,21 @@
 /**
  * Drain-time forced finalization for the design execute node.
  *
- * When the recursion budget is nearly exhausted, the model gets exactly ONE
+ * When the recursion budget is nearly exhausted OR the no-output streak nears
+ * the circuit breaker (NO_OUTPUT_HARD_CAP), the model gets exactly ONE
  * tool-less turn to emit the artifact from context it already gathered,
- * shortly BEFORE the router's drain guard (RECURSION_DRAIN_THRESHOLD) diverts
- * to checkTaskStatus. This converts an imminent recursion-limit pause into a
- * written (possibly partial) document instead of discarding hundreds of steps
- * of exploration (local-caring-board RCA). Same accepted pattern as
+ * shortly BEFORE the router's drain guard diverts to checkTaskStatus. This
+ * converts an imminent pause into a written (possibly partial) document
+ * instead of discarding the exploration (local-caring-board RCA). Same
+ * accepted pattern as
  * callLLMWithToolLoop's final-round tool strip. One-shot per task via
  * `_drainFinalized` (reset on task completion by checkTaskStatus).
  */
 
 import type { DesignGraphState } from '../../state';
-import { RECURSION_DRAIN_THRESHOLD, DRAIN_FINALIZE_MARGIN } from '../../routers/executeRouter';
+import { RECURSION_DRAIN_THRESHOLD, DRAIN_FINALIZE_MARGIN, NO_OUTPUT_HARD_CAP } from '../../routers/executeRouter';
 
-type DrainInputs = Pick<DesignGraphState, 'recursionCount' | 'recursionLimit' | '_drainFinalized'>;
+type DrainInputs = Pick<DesignGraphState, 'recursionCount' | 'recursionLimit' | '_drainFinalized' | '_noOutputCallCount'>;
 
 export interface DrainFinalizeResult<TTool> {
   tools: TTool[];
@@ -33,15 +34,23 @@ export function applyDrainFinalization<TTool>(
   tools: TTool[],
 ): DrainFinalizeResult<TTool> {
   const remaining = (state.recursionLimit || 0) - (state.recursionCount || 0);
-  const drainFinalizing = !!state.recursionLimit
-    && remaining < RECURSION_DRAIN_THRESHOLD + DRAIN_FINALIZE_MARGIN
-    && !state._drainFinalized;
+  const noOutputCount = state._noOutputCallCount || 0;
+  // Two independent triggers, one salvage turn each (one-shot via _drainFinalized):
+  //  - recursion budget nearly exhausted, or
+  //  - no-output streak one step below the circuit breaker (NO_OUTPUT_HARD_CAP).
+  const recursionTrigger = !!state.recursionLimit
+    && remaining < RECURSION_DRAIN_THRESHOLD + DRAIN_FINALIZE_MARGIN;
+  const noOutputTrigger = noOutputCount >= NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN;
+  const drainFinalizing = (recursionTrigger || noOutputTrigger) && !state._drainFinalized;
 
   if (!drainFinalizing) {
     return { tools, drainFinalizing: false };
   }
 
-  const finalizeNote = `\n\n[SYSTEM] Recursion budget nearly exhausted (${remaining} steps left). ` +
+  const reasonNote = recursionTrigger
+    ? `Recursion budget nearly exhausted (${remaining} steps left).`
+    : `You have explored for ${noOutputCount} turns without writing anything.`;
+  const finalizeNote = `\n\n[SYSTEM] ${reasonNote} ` +
     `Tools are no longer available this turn. Emit your FINAL output NOW from the context you have ` +
     `already gathered: write the complete artifact body using <append>/<file> tags and finish with <done>true</done>.`;
 
@@ -56,6 +65,8 @@ export function applyDrainFinalization<TTool>(
       ];
     }
   }
-  console.warn(`🧯 [Execute] Drain finalization: ${remaining} steps remaining → tools stripped, forcing final output`);
+  console.warn(
+    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → tools stripped, forcing final output`,
+  );
   return { tools: [], drainFinalizing: true };
 }

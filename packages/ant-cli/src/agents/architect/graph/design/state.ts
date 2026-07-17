@@ -203,6 +203,13 @@ export interface DesignGraphState extends TriageableState {
    * Reset on task completion by checkTaskStatus. */
   _drainFinalized?: boolean;
 
+  /** Monotonic count of artifact files the execute node has written for the
+   * CURRENT task this run (incremented by `files.length` each execute turn,
+   * reset to 0 on task boundary). `0` at completion means the model never
+   * emitted a `<file>` — the completion output-gate uses this to fail loud
+   * (design_no_output) instead of reporting a phantom success. */
+  _taskFilesWritten?: number;
+
   /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */
   _toolResultCache?: Record<string, string>;
 
