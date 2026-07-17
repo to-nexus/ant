@@ -167,14 +167,17 @@ describe('hooks/plan.buildPrompt (verification variant)', () => {
     expect(out.vars?.hasUserRuntimeErrorContext).toBe(true);
   });
 
-  it('flips hasUserRuntimeErrorContext when prior error sub-tasks are present even if directive is plain', async () => {
+  it('flips hasUserRuntimeErrorContext when SPLIT-BORN prior error sub-tasks are present even if directive is plain', async () => {
     const { promptBuilder, renderCalls } = makePromptBuilderStub();
     await planBuildPrompt.buildPrompt({
       state: makeState({
         deps: { promptBuilder } as any,
         directive: 'add a settings page',
         completedTasksDetails: [
-          { id: 'e1', name: 'fix-x', type: 'error', priority: 100, description: 'fix import' },
+          // batchSplitCount ≥ 1 = split-born marker; decompose-authored error
+          // siblings (no batchSplitCount) must NOT flip the gate — see
+          // runtimeErrorContextGate.test.ts (orbit-mapping-heart RCA).
+          { id: 'e1', name: 'fix-x', type: 'error', priority: 100, description: 'fix import', batchSplitCount: 1 },
         ] as any,
       }),
       task: task('v7'),

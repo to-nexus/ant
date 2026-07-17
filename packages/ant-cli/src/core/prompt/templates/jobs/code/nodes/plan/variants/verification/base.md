@@ -102,6 +102,8 @@ Compare the build output with the user's report. The build output is the ground 
 2. The original error pattern from the directive above is NOT present in the reproducer output (response body/status for a route, or the script output).
 
 If you have NOT yet observed both conditions in this verification cycle, the no-errors sentinel plan is FORBIDDEN even when typecheck/build/test all pass. Either run the reproducer now (`run_command` permits persistent background processes here, and `http_request` verifies routes — see the persistent-process policy section), or include a `repro` step in your plan describing how the apply phase / next cycle will run it.
+
+**Machine-observability boundary** — the reproducer requirement applies only to scenarios your tools can observe. If the failing scenario is NOT machine-observable with the tools available (no server route to probe, no failing script to re-run — e.g. in-browser visual or interactive behaviour), do NOT invent a machine proxy and do NOT keep exploring in search of one: state in your final report that the scenario requires human confirmation, and resolve by the normal gate outcome — the no-errors sentinel when all machine gates pass. A verification cycle always has a legal terminal: reproducer observed clean → sentinel; reproducer observed failing → fix `batches[]`; reproducer not machine-observable → sentinel plus the human-confirmation note.
 {{/if}}
 
 {{#if runTests}}
