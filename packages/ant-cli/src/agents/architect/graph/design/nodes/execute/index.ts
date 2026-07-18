@@ -199,7 +199,7 @@ export async function execute(
   // execute node body stays focused on streaming / parsing.
   // Drain-time forced finalization (see ./drainFinalize.ts) may strip the
   // tool list and append a "emit final output now" note to the messages.
-  const { tools, drainFinalizing } = applyDrainFinalization(
+  const { tools } = applyDrainFinalization(
     state,
     messages,
     await getTools(state, { useSourceFileTool }),
@@ -503,7 +503,6 @@ export async function execute(
           tokenUsage: state.tokenUsage,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
-          _drainFinalized: state._drainFinalized || drainFinalizing,
         };
       }
     }
@@ -512,7 +511,7 @@ export async function execute(
     // owed. Router rule 3 (no tools + done=false) re-enters execute; the LLM
     // re-decides with the delivered reports. Runs whether or not this was a
     // drain-finalize turn — the redo turn re-passes applyDrainFinalization,
-    // whose one-shot flag keeps the finalization note from repeating.
+    // which re-strips tools and re-appends the note while a trigger holds.
     if (explicitDone && !hasToolCalls) {
       const subagentOwnerKey = ownerKeyFor(state._httpJobId);
       // No hasPending pre-gate — settled-but-undelivered reports must join too
@@ -548,7 +547,6 @@ export async function execute(
             tokenUsage: state.tokenUsage,
             recursionCount: state.recursionCount,
             recursionLimit: state.recursionLimit,
-            _drainFinalized: state._drainFinalized || drainFinalizing,
             llmResponse: { textResponse, done: false },
             ...(joined.tokenDelta as any),
           };
@@ -579,7 +577,6 @@ export async function execute(
       // super-steps hit 800, so `remaining < 30` never fired). Code-execute parity.
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
-      _drainFinalized: state._drainFinalized || drainFinalizing,
       llmResponse: hasToolCalls ? {
         toolCalls: pendingToolCalls,
         textResponse,

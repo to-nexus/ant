@@ -1,21 +1,25 @@
 /**
- * Drain-time forced finalization — design execute (local-caring-board RCA).
+ * Drain-time forced finalization — design execute (local-caring-board RCA,
+ * persistence hardened after sandy-building-dryad).
  *
- * When the recursion budget approaches the router drain threshold, the
- * execute node must run exactly ONE tool-less turn that instructs the model
- * to emit its final artifact from already-gathered context, so an imminent
- * recursion-limit pause salvages a written document instead of discarding
- * the exploration. Contracts locked here:
+ * When the recursion budget approaches the router drain threshold OR the
+ * no-output streak nears the circuit breaker, execute turns run tool-less
+ * with an "emit your final artifact now" note, so an imminent pause salvages
+ * a written document instead of discarding the exploration. Contracts locked
+ * here:
  *
  *   1. UNIT — `applyDrainFinalization` strips tools + appends the
  *      finalization note (string AND block-array user content), fires only
- *      below `RECURSION_DRAIN_THRESHOLD + DRAIN_FINALIZE_MARGIN`, is one-shot
- *      via `_drainFinalized`, and no-ops without a recursionLimit.
+ *      below `RECURSION_DRAIN_THRESHOLD + DRAIN_FINALIZE_MARGIN` (or at
+ *      no-output streak ≥ NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN),
+ *      PERSISTS while a trigger holds (sandy-building-dryad: the one-shot
+ *      salvage was answered with prose, tools came back, and the model read
+ *      on until the breaker fired with zero output), and no-ops without a
+ *      recursionLimit or streak.
  *
  *   2. STATIC — every `return {` block of the design execute node commits
  *      `recursionCount` (the unreturned-channel-drop that starved the drain
- *      guard) and `_drainFinalized` (the one-shot flag), so a future return
- *      path cannot silently regress either.
+ *      guard), so a future return path cannot silently regress it.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -25,6 +29,7 @@ import { applyDrainFinalization } from '../../src/agents/architect/graph/design/
 import {
   RECURSION_DRAIN_THRESHOLD,
   DRAIN_FINALIZE_MARGIN,
+  NO_OUTPUT_HARD_CAP,
 } from '../../src/agents/architect/graph/design/routers/executeRouter';
 
 const TOOLS = [{ name: 'read_file' }, { name: 'search_code' }];
@@ -72,17 +77,62 @@ describe('applyDrainFinalization — unit', () => {
     expect(messages[0].content).toBe('go');
   });
 
-  it('is one-shot: a task that already finalized keeps its tools', () => {
-    const state = { recursionLimit: 100, recursionCount: 99, _drainFinalized: true };
-    const messages = [userMsg('go')];
-    const { tools, drainFinalizing } = applyDrainFinalization(state, messages, TOOLS);
-
-    expect(drainFinalizing).toBe(false);
-    expect(tools).toBe(TOOLS);
-    expect(messages[0].content).toBe('go');
+  it('persists across turns while the recursion trigger holds (not one-shot)', () => {
+    // Same task, next turn: budget only tightened. The strip must hold —
+    // returning the tools after one salvage turn let the model resume
+    // reading until the breaker fired with zero output (sandy-building-dryad).
+    for (const count of [99, 100]) {
+      const messages = [userMsg('go')];
+      const { tools, drainFinalizing } = applyDrainFinalization(
+        { recursionLimit: 100, recursionCount: count },
+        messages,
+        TOOLS,
+      );
+      expect(drainFinalizing).toBe(true);
+      expect(tools).toEqual([]);
+      expect((messages[0].content as any[])[1].text).toContain('FINAL output');
+    }
   });
 
-  it('no-ops when recursionLimit is unset (e.g. tests / legacy invokes)', () => {
+  it('fires on the no-output streak trigger and persists until the streak resets', () => {
+    const margin = NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN;
+    // Below the margin: tools untouched.
+    {
+      const messages = [userMsg('go')];
+      const { tools, drainFinalizing } = applyDrainFinalization(
+        { _noOutputCallCount: margin - 1 },
+        messages,
+        TOOLS,
+      );
+      expect(drainFinalizing).toBe(false);
+      expect(tools).toBe(TOOLS);
+    }
+    // At and above the margin (every remaining pre-breaker turn): stripped.
+    for (const streak of [margin, margin + 1, NO_OUTPUT_HARD_CAP - 1]) {
+      const messages = [userMsg('go')];
+      const { tools, drainFinalizing } = applyDrainFinalization(
+        { _noOutputCallCount: streak },
+        messages,
+        TOOLS,
+      );
+      expect(drainFinalizing).toBe(true);
+      expect(tools).toEqual([]);
+      expect((messages[0].content as any[])[1].text).toContain(`${streak} turns without writing`);
+    }
+    // A file write resets the streak channel → strip releases.
+    {
+      const messages = [userMsg('go')];
+      const { tools, drainFinalizing } = applyDrainFinalization(
+        { _noOutputCallCount: 0 },
+        messages,
+        TOOLS,
+      );
+      expect(drainFinalizing).toBe(false);
+      expect(tools).toBe(TOOLS);
+    }
+  });
+
+  it('no-ops when recursionLimit is unset and no streak accrued (e.g. tests / legacy invokes)', () => {
     const { drainFinalizing } = applyDrainFinalization({}, [userMsg('go')], TOOLS);
     expect(drainFinalizing).toBe(false);
   });
@@ -93,7 +143,7 @@ describe('applyDrainFinalization — unit', () => {
 // Extractor mirrors tests/execute/execute-active-phase.test.ts.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-describe('design execute node — every return commits recursionCount + _drainFinalized', () => {
+describe('design execute node — every return commits recursionCount', () => {
   const source = readFileSync(
     resolve(__dirname, '../../src/agents/architect/graph/design/nodes/execute/index.ts'),
     'utf-8',
@@ -131,7 +181,7 @@ describe('design execute node — every return commits recursionCount + _drainFi
     expect(returnBlocks.length).toBeGreaterThanOrEqual(2);
   });
 
-  it.each([['recursionCount:'], ['_drainFinalized:']])('every return block contains %s', (field) => {
+  it.each([['recursionCount:']])('every return block contains %s', (field) => {
     for (const [i, block] of returnBlocks.entries()) {
       expect(
         block.includes(field),

@@ -6,10 +6,19 @@ The plan node has decided the solution direction, candidate set, and outline
 
 | ✅ Allowed (verification / refinement) | ❌ Forbidden (re-litigation) |
 |---|---|
-| `read_file` / `list_files` / `search_code` to confirm {{verificationAxis}} referenced in the sealed plan | Issue `search_web` queries — you do not have this tool. Plan already searched. |
+| `read_file` / `list_files` / `search_code` to confirm {{verificationAxis}} the document must reference but the sealed plan does NOT already record | Re-verify facts the sealed plan cites with location evidence — those observations are settled |
 | Adapt to existing-file conventions discovered while reading | Re-derive architecture, candidate comparison, or outline |
 | Render `documentOutline` sections faithfully as markdown | Skip / merge / re-order outline sections |
 | Surface a contradiction via `<clarify>` | Silently override the sealed `decision` |
+
+`search_web` is not in your tool set — plan already searched.
+
+**Observation authority inherits across the phase boundary.** The plan phase
+gathered every path, symbol, and location it cites using these same tools —
+treat plan-cited facts as facts YOU observed. Write them into the document
+assertively, without re-reading the cited files and without unverified-claim
+markers. Re-verifying a plan citation is plan's work done twice: it consumes
+your writing budget and adds nothing the document does not already have.
 
 ⚠️ **Blind spot**: When the sealed plan looks "thin" the instinct is to do
 plan's job again. Resist — plan ran with its own budget. Genuine information
