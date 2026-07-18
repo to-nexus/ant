@@ -30,6 +30,7 @@ import {
   resolveTemplateDir,
 } from '../../decompose/catalogLookup';
 import { buildSelfCheckTrailingMessage } from './selfCheck';
+import { deriveExecuteCompactParams } from './executeCompaction';
 
 export interface BuildMessagesResult {
   messages: Array<{ role: 'user' | 'assistant'; content: MessageContentBlock[] }>;
@@ -356,6 +357,9 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     initialBlocks: blocks,
     priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     trailingUserMessage: selfCheckTrailing,
+    // Window-keyed threshold — the 50K default evicts gathered reads mid-task
+    // and refuels the no-output loop (see executeCompaction.ts).
+    compactParams: deriveExecuteCompactParams(state),
   });
   
   // ✅ Log prompt structure (not content) - full message

@@ -24,6 +24,7 @@ import { composeMessages } from '../../../../../../../core/utils/messageComposer
 import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { buildSelfCheckTrailingMessage } from './selfCheck';
+import { deriveExecuteCompactParams } from './executeCompaction';
 import { referenceCatalogVars } from '../../../../../../common/tool/reference/catalogVars';
 import { loadExistingDesignDoc } from '../../checkTaskStatus/loadExistingDesignDoc';
 
@@ -282,6 +283,9 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     initialBlocks: blocks,
     priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
     trailingUserMessage,
+    // Window-keyed threshold — the 50K default evicts gathered reads mid-task
+    // and refuels the no-output loop (see executeCompaction.ts).
+    compactParams: deriveExecuteCompactParams(state),
   });
 
   // ✅ Log prompt structure

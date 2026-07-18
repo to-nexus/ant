@@ -198,11 +198,6 @@ export interface DesignGraphState extends TriageableState {
    * no longer a terminal gate (LangGraph `recursionLimit` is the backstop). */
   _noOutputCallCount?: number;
 
-  /** One-shot flag: execute already ran its drain-time forced-finalization
-   * turn (tools stripped, "emit final output now") for the current task.
-   * Reset on task completion by checkTaskStatus. */
-  _drainFinalized?: boolean;
-
   /** Monotonic count of artifact files the execute node has written for the
    * CURRENT task this run (incremented by `files.length` each execute turn,
    * reset to 0 on task boundary). `0` at completion means the model never
