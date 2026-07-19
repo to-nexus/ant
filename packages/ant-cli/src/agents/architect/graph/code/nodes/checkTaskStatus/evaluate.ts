@@ -148,12 +148,31 @@ function noDoneSignalViolation(
   const filePathMatch = dominant?.command.match(/^tool:\w+:(.+)$/);
   const hookHint = hooksIfActive(state)?.check?.noDoneSignalHint;
 
-  // No-progress breaker framing (Safety Net C, rocky-beating-coral): all
-  // reads SUCCEEDED, so `summarizeDominantFailure` is null and the generic
-  // message would misleadingly blame recursionLimit/failures. Name the
-  // degenerate re-read loop so the retry plan gets accurate context.
+  // No-progress breaker framing (Safety Net C, rocky-beating-coral +
+  // trim-grinding-motif): the streak trips on two zero-information flavors.
+  // With a dominant repeated FAILURE in commandHistory, name the failure loop
+  // (error-flavored trip); otherwise all reads succeeded duplicate-elided and
+  // the generic message would misleadingly blame recursionLimit/failures —
+  // name the degenerate re-read loop so the retry plan gets accurate context.
   const noProgressTripped = (state._noProgressStreak || 0) >= NO_PROGRESS_HARD_CAP;
   if (noProgressTripped) {
+    if (dominant) {
+      return {
+        type: 'no_done_signal',
+        message: `Task was stopped by the no-progress circuit breaker: ${state._noProgressStreak} ` +
+          `consecutive turns repeated already-failed tool calls — "${dominant.command}" failed ` +
+          `${dominant.count} time(s) in the last 5 minutes` +
+          (dominant.lastErrorSnippet ? ` — latest error: ${dominant.lastErrorSnippet.slice(0, 300)}` : '') +
+          `. Zero file output, zero tool mutations, and no <done>.`,
+        file: filePathMatch?.[1],
+        isRetryable: true,
+        suggestedFix: hookHint ??
+          'Do not repeat the exact same call. If the error indicates a missing file, verify the ' +
+          'path with list_files or create it explicitly with a <file path="...">full file body</file> ' +
+          'tag before reading/editing it. If it is a persistent command/environment error, try a ' +
+          'different approach.',
+      };
+    }
     return {
       type: 'no_done_signal',
       message: `Task was stopped by the no-progress circuit breaker: ${state._noProgressStreak} ` +

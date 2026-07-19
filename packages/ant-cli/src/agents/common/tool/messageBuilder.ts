@@ -99,10 +99,16 @@ export function buildToolResultMessage(events: ToolExecutionEvent[]): ToolResult
 /**
  * Convert a ToolResult into the content format expected by Anthropic API.
  * Array content (e.g., Figma multimodal) is passed through; string content
- * is used as-is.
+ * is used as-is. Handler-authored failure content is NEVER replaced by the
+ * bare `error` field — it carries recovery guidance the LLM needs to break
+ * out of retry loops (trim-grinding-motif RCA). The `Error:` synthesis is
+ * a fallback for handlers that set `error` without content.
  */
 function formatToolResultContent(result: ToolResult): string | any[] {
-  if (result.error && typeof result.content === 'string' && !result.content.startsWith('Error:')) {
+  const contentMissing =
+    result.content == null ||
+    (typeof result.content === 'string' && result.content.trim() === '');
+  if (result.error && contentMissing) {
     return `Error: ${result.error}`;
   }
   return result.content;

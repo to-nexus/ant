@@ -423,9 +423,13 @@ export interface ArchitectGraphState extends TriageableState {
    */
   _lastToolBatchMutatedFiles?: boolean;
   /**
-   * Turn-scoped signal: did the most recent execute-phase tool batch consist
-   * ENTIRELY of duplicate-elided successful `read_file` calls (zero new
-   * information, by construction of the execute-then-compare elision)?
+   * Turn-scoped signal: was the most recent execute-phase tool batch
+   * provably zero-information? Two flavors share the flag:
+   *   - ENTIRELY duplicate-elided successful `read_file` calls (by
+   *     construction of the execute-then-compare elision), OR
+   *   - ENTIRELY errored calls whose command labels already carry a failure
+   *     in the pre-batch `commandHistory` (re-issuing calls the model has
+   *     already watched fail — trim-grinding-motif RCA).
    *
    * SSOT writer: `nodes/tool/index.ts buildReturn` (execute-phase batches
    * only — mirrors `_lastToolBatchMutatedFiles`). Reader:
@@ -655,7 +659,18 @@ export interface ArchitectGraphState extends TriageableState {
    *  `ANT_PLAN_FETCH_URL_MAX`). */
   _planFetchUrlCount?: number;
 
-  // ✅ Command history tracking (for loop detection)
+  /**
+   * Command history (loop detection). Single writer: the tool node's
+   * `afterBatch` hook, which RETURNS the appended array via
+   * `hookUpdates.commandHistory` so the channel actually commits — in-place
+   * `state.commandHistory.push(...)` never survives a superstep (the channel
+   * stayed `undefined` forever and Safety Net B / the loop-detection warning
+   * / the dominant-failure diagnostic were structurally dead;
+   * trim-grinding-motif RCA). Pruned to a 5-minute window + 100 entries by
+   * `appendCommandHistory`. Readers: `detectRecentToolFailures`
+   * (executeRouter Safety Net B), `summarizeDominantFailure`
+   * (checkTaskStatus), `isAllRepeatErrorBatch` (tool node).
+   */
   commandHistory?: Array<{
     command: string;
     timestamp: number;

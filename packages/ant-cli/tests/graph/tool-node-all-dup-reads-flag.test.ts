@@ -191,7 +191,13 @@ describe('production tool node — flag writer wiring (static)', () => {
   });
 
   it('computes the flag via the shared isAllDupReadBatch predicate fed by elidedReads', () => {
-    expect(src).toContain("import { isAllDupReadBatch } from './utils/allDupReads'");
+    expect(src).toContain(
+      "import { isAllDupReadBatch, isAllRepeatErrorBatch, commandLabelsForEvent } from './utils/allDupReads'",
+    );
     expect(src).toMatch(/isAllDupReadBatch\(executionEvents, elidedReads\?\.length \?\? 0\)/);
+  });
+
+  it('OR-composes the error-flavored twin fed by the PRE-batch command history (trim-grinding-motif)', () => {
+    expect(src).toMatch(/isAllRepeatErrorBatch\(executionEvents, state\.commandHistory\)/);
   });
 });

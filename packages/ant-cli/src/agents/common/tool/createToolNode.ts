@@ -28,6 +28,7 @@ import type {
 import type { ToolResultManager, FigmaContext } from '../../../core/utils/toolResultManager';
 import { ToolOrchestrator } from './orchestrator';
 import type { WorkflowUpdate } from './orchestrator';
+import { buildToolResultMessage } from './messageBuilder';
 import { elideDuplicateReads, buildManifestBlockIfChanged } from './duplicateReadElision';
 import { buildReportBlocks, detectOrphanedLaunches } from '../subagent/drain';
 import { collectCompleted, pendingOlderThan } from '../subagent/registry';
@@ -201,12 +202,19 @@ export function createToolNode<TState>(
       }
     }
 
+    // Build tool_result blocks AFTER the batch hooks — hooks legitimately
+    // amend `event.result.content` (e.g. the code job's loop-detection
+    // warning). The orchestrator's pre-built `batchResult.toolResultBlocks`
+    // snapshot those strings BEFORE the hooks run, so any hook amendment
+    // would silently never reach the LLM (trim-grinding-motif RCA).
+    const { toolResultBlocks: postHookBlocks } = buildToolResultMessage(batchResult.events);
+
     // Duplicate-read elision (history-side only): a re-read whose content is
     // identical to the preserved prior read of the same (path, range) gets a
     // short stub instead of re-accumulating the full body. Events are left
     // untouched so debug logs keep the real execution record.
     const { blocks: resultBlocks, elided } = elideDuplicateReads(
-      calls, baseHistory, batchResult.toolResultBlocks,
+      calls, baseHistory, postHookBlocks,
     );
     for (const e of elided) {
       console.log(`♻️  [Tool] Duplicate read elided: ${e.path}${e.label} (${e.chars} chars → stub)`);

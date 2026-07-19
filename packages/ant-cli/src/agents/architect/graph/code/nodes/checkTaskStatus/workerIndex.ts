@@ -106,6 +106,7 @@ export async function workerCheckTaskStatus(
       _executeCallIndex: 0,
       _noProgressStreak: 0,
       _lastToolBatchAllDupReads: false,
+      commandHistory: [],
       planText: '',
       // Task boundary delta — keeps the worker symmetric with main
       // graph's checkTaskStatus. Re-enqueued task carries its Session
@@ -175,6 +176,7 @@ export async function workerCheckTaskStatus(
       _executeCallIndex: 0,
       _noProgressStreak: 0,
       _lastToolBatchAllDupReads: false,
+      commandHistory: [],
       // Task boundary delta — symmetric with main graph's success path.
       // Without this, a worker completing a verify-mode task would leak
       // `_verifyEntered=true` and the Session reference into whatever
@@ -225,6 +227,7 @@ export async function workerCheckTaskStatus(
     // burning the whole retry budget in seconds (22af62056 failure class).
     _noProgressStreak: 0,
     _lastToolBatchAllDupReads: false,
+    commandHistory: [],
     // Consume-and-clear the raw source: evaluateTaskStatus already
     // transcribed every fileError into a (retryable) violation above, and
     // fileError violations are always retryable (evaluate.ts), so this is
