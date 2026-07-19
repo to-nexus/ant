@@ -28,6 +28,7 @@
  */
 
 import type { ArchitectGraphState, Violation, ViolationType } from '../../state';
+import { NO_PROGRESS_HARD_CAP } from '../../state';
 import { hooksIfActive } from '../../tasks/_shared/registry';
 
 export interface TaskStatusEvaluation {
@@ -146,6 +147,26 @@ function noDoneSignalViolation(
   const dominant = summarizeDominantFailure(state.commandHistory);
   const filePathMatch = dominant?.command.match(/^tool:\w+:(.+)$/);
   const hookHint = hooksIfActive(state)?.check?.noDoneSignalHint;
+
+  // No-progress breaker framing (Safety Net C, rocky-beating-coral): all
+  // reads SUCCEEDED, so `summarizeDominantFailure` is null and the generic
+  // message would misleadingly blame recursionLimit/failures. Name the
+  // degenerate re-read loop so the retry plan gets accurate context.
+  const noProgressTripped = (state._noProgressStreak || 0) >= NO_PROGRESS_HARD_CAP;
+  if (noProgressTripped) {
+    return {
+      type: 'no_done_signal',
+      message: `Task was stopped by the no-progress circuit breaker: ${state._noProgressStreak} ` +
+        `consecutive turns re-read file regions already read verbatim earlier (every read was ` +
+        `duplicate-elided), with zero file output, zero tool mutations, and no <done>.`,
+      isRetryable: true,
+      suggestedFix: hookHint ??
+        'The needed file contents were already gathered — do not re-read them. Trust ' +
+        '[duplicate read elided] stubs and the already-read manifest: the earlier tool_result ' +
+        'content is still valid. Proceed directly to applying the planned changes with ' +
+        '<file path="...">full file body</file> tags, then output <done>true</done>.',
+    };
+  }
 
   return {
     type: 'no_done_signal',

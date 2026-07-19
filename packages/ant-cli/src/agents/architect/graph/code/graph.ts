@@ -761,6 +761,14 @@ export const CodeGraphChannels = {
         reducer: (_prev: any, next: any) => next,
         default: () => false,
       }),
+      _lastToolBatchAllDupReads: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => false,
+      }),
+      _noProgressStreak: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => 0,
+      }),
       _detectedPackageManager: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
       _existingCodebaseFiles: Annotation<any>,

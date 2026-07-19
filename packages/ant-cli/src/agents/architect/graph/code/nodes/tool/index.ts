@@ -11,6 +11,7 @@ import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { toolResultManager } from './utils/managers';
 import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
+import { isAllDupReadBatch } from './utils/allDupReads';
 import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
@@ -314,7 +315,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
     },
   },
 
-  buildReturn(state, { updatedHistory, executionEvents, hookUpdates }) {
+  buildReturn(state, { updatedHistory, executionEvents, hookUpdates, elidedReads }) {
     const allToolResults = executionEvents.map(e => {
       const isFigma = Array.isArray(e.result.content) &&
         e.result.content.some((b: any) => b.type === 'image');
@@ -344,6 +345,13 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       (e.result.sideEffects || []).some(ef => MUTATION_SIDE_EFFECTS.has(ef.type)),
     );
 
+    // SSOT for `_lastToolBatchAllDupReads` (turn-scoped, execute phase only —
+    // mirrors the mutation flag above): the batch carried zero new
+    // information (every call a duplicate-elided successful read_file).
+    // Consumed by `computeNextNoProgressStreak` behind the no-progress
+    // circuit breaker (rocky-beating-coral RCA).
+    const allDupReads = isAllDupReadBatch(executionEvents, elidedReads?.length ?? 0);
+
     // Reference-registration channel writer (single writer = tool node).
     // `register_reference` handlers emit `referenceRegistered` side-effects;
     // merge them into `state.referenceRequests` so read/list/search_reference
@@ -370,6 +378,7 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // diagnostic exploration) does not mistakenly suppress a downstream
       // execute stuck-loop counter.
       ...(state._activePhase !== 'plan' ? { _lastToolBatchMutatedFiles: touchedFiles } : {}),
+      ...(state._activePhase !== 'plan' ? { _lastToolBatchAllDupReads: allDupReads } : {}),
       ...hookUpdates,
     };
 

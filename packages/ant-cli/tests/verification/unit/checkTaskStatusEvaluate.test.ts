@@ -80,6 +80,34 @@ describe('nodes/checkTaskStatus/evaluate', () => {
     expect(result.violations[0].suggestedFix).toContain('Break down the task scope');
   });
 
+  it('frames no_done_signal as a degenerate re-read loop when the no-progress breaker tripped', async () => {
+    const { NO_PROGRESS_HARD_CAP } = await import('../../../src/agents/architect/graph/code/state');
+    const state = makeState({
+      llmResponse: { done: false } as any,
+      _noProgressStreak: NO_PROGRESS_HARD_CAP,
+    } as any);
+    const result = await evaluateTaskStatus(state, { logPrefix: 'test' });
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].type).toBe('no_done_signal');
+    expect(result.violations[0].isRetryable).toBe(true);
+    // Breaker framing names the successful re-read loop — NOT the generic
+    // "recursionLimit / repeated tool failures" blame (all reads succeeded).
+    expect(result.violations[0].message).toContain('no-progress circuit breaker');
+    expect(result.violations[0].message).toContain('duplicate-elided');
+    expect(result.violations[0].suggestedFix).toContain('do not re-read');
+  });
+
+  it('keeps the generic no_done_signal framing below the breaker threshold', async () => {
+    const state = makeState({
+      llmResponse: { done: false } as any,
+      _noProgressStreak: 3,
+    } as any);
+    const result = await evaluateTaskStatus(state, { logPrefix: 'test' });
+    expect(result.violations[0].type).toBe('no_done_signal');
+    expect(result.violations[0].message).not.toContain('no-progress circuit breaker');
+    expect(result.violations[0].suggestedFix).toContain('Break down the task scope');
+  });
+
   it('verification task picks up the verification-specific hint via hook', async () => {
     const state = makeState({
       llmResponse: { done: false } as any,

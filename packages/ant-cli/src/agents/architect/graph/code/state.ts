@@ -69,6 +69,37 @@ export type ViolationType =
 export const RECURSION_DRAIN_THRESHOLD = 20;
 
 /**
+ * No-progress circuit breaker (rocky-beating-coral RCA, 2026-07-19).
+ *
+ * Bounds a SUCCESS-blind degenerate execute loop: consecutive execute turns
+ * whose only activity was re-reading already-read content (every tool result
+ * duplicate-elided, no file streamed, no tool mutation, no `<done>`). All
+ * pre-existing brakes are failure-gated (Safety Net B), verification-gated
+ * (Safety Net A), or config-gated (LangGraph recursionLimit) — none of them
+ * fires when identical reads keep SUCCEEDING (296-round incident loop).
+ *
+ * Consumers: `routers/executeRouter.ts` (hard divert to checkTaskStatus at
+ * the cap, BEFORE the toolCalls route) and `nodes/execute/drainFinalize.ts`
+ * (persistent tool-strip salvage from CAP − MARGIN). The streak lives in
+ * `_noProgressStreak`; see that channel's contract for writers/resets.
+ *
+ * Cap rationale: the signal counts only provably zero-information rounds
+ * (novel reads / commands / mutations reset it), so 10 salvage-free rounds
+ * + 5 tool-stripped salvage turns is generous — unlike the design job's
+ * NO_OUTPUT_HARD_CAP (25) whose no-`<file>` signal can be legitimate
+ * exploration and needs headroom.
+ */
+export const NO_PROGRESS_HARD_CAP = 15;
+/**
+ * The execute node runs forced-finalization turns (tools stripped, "apply
+ * your changes now") starting this many steps BEFORE the router breaker, so
+ * salvage happens while responses still route normally. Persistent while the
+ * trigger holds — one-shot salvage is ignored by degenerate models
+ * (sandy-building-dryad lesson).
+ */
+export const DRAIN_FINALIZE_MARGIN = 5;
+
+/**
  * Task Priority SSOT — normalized by (task type, task band).
  *
  * A task is defined by **type + band** (Three-Axis model). Priority is the
@@ -391,6 +422,33 @@ export interface ArchitectGraphState extends TriageableState {
    * `urban-fronting-faith` p2 reverify-branch lockout).
    */
   _lastToolBatchMutatedFiles?: boolean;
+  /**
+   * Turn-scoped signal: did the most recent execute-phase tool batch consist
+   * ENTIRELY of duplicate-elided successful `read_file` calls (zero new
+   * information, by construction of the execute-then-compare elision)?
+   *
+   * SSOT writer: `nodes/tool/index.ts buildReturn` (execute-phase batches
+   * only — mirrors `_lastToolBatchMutatedFiles`). Reader:
+   * `computeNextNoProgressStreak` (`nodes/execute/drainFinalize.ts`).
+   * Reset: every execute return path writes `false` so a batch only counts
+   * for ONE subsequent execute turn.
+   */
+  _lastToolBatchAllDupReads?: boolean;
+  /**
+   * No-progress streak: consecutive execute turns with provably zero
+   * progress — the fed-by-`_lastToolBatchAllDupReads` counter behind the
+   * no-progress circuit breaker (`NO_PROGRESS_HARD_CAP`) and the
+   * drain-finalize salvage. Increment/reset rule is single-owned by
+   * `computeNextNoProgressStreak`; the execute node commits the result on
+   * every return path.
+   *
+   * Task/attempt boundary resets to 0 (anti-retry-spiral — a missed reset
+   * would re-trip the breaker on the retry's first router pass):
+   * `checkTaskStatus` success/retry/batch-split returns (both wrappers),
+   * `plan/entry/resolve.ts handleRetryEntry`, and `TaskWorker` per-task init
+   * — everywhere `_executeCallIndex: 0` is emitted.
+   */
+  _noProgressStreak?: number;
   /**
    * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
    * verification plan entry, cached for the rest of the job.

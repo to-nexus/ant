@@ -164,6 +164,11 @@ async function handleRetryEntry(
   const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
   state._executeCallIndex = 0;
   state.violations = [];
+  // Anti-retry-spiral: reset the no-progress breaker signals so the fresh
+  // execute attempt starts with a clean streak (a stale tripped streak would
+  // instantly re-divert on the retry's first router pass).
+  state._noProgressStreak = 0;
+  state._lastToolBatchAllDupReads = false;
   state.conversations = {
     ...state.conversations,
     [CONV_KEYS.NODE_EXECUTE]: [],
@@ -171,6 +176,8 @@ async function handleRetryEntry(
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
     violations: [],
+    _noProgressStreak: 0,
+    _lastToolBatchAllDupReads: false,
     conversations: {
       [CONV_KEYS.NODE_EXECUTE]: [],
     },
