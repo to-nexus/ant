@@ -252,7 +252,14 @@ export const REDIS_KEYS = {
       `${REDIS_DOMAINS.LOCK}:init:${org}:${user}:${projectId}`,
     /** Repository fetch in progress for (org, user, projectId, feature). */
     FETCH: (org: string, user: string, projectId: string, feature: string): string =>
-      `${REDIS_DOMAINS.LOCK}:fetch:${org}:${user}:${projectId}:${feature || 'main'}`,
+      `${REDIS_DOMAINS.LOCK}:fetch:${org}:${user}:${projectId}:${feature || '@anchor'}`,
+    /**
+     * Feature create/delete + branchBase mutation critical section for
+     * (org, user, projectId). Serializes worktree lifecycle against the
+     * branchBase pointer auto-apply rules.
+     */
+    FEATURE_LIFECYCLE: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.LOCK}:feature-lifecycle:${org}:${user}:${projectId}`,
   },
 
   /**

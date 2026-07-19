@@ -12,6 +12,7 @@ import { CodebaseIndexer } from '../core/codebase/CodebaseIndexer';
 import { AdapterFactory } from '../infrastructure/adapters/AdapterFactory';
 import { isVectorDbEnabled } from '../core/config/vectorDbCapability';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../core/config/WorkspacePathResolver';
+import { readBranchBase } from '../core/utils/branchUtils';
 import { UserContext } from '../core/types/user';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -54,15 +55,17 @@ export async function indexCommand(
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 
-    // 3. Determine codebase path (centralized resolution)
-    const codebasePath = workspaceResolver.getCodebasePath(userContext, project);
+    // 3. Determine codebase path — indexing targets the branchBase feature's
+    //    worktree (a project without features has no codebase).
+    const branchBase = readBranchBase(projectPath);
+    const codebasePath = workspaceResolver.getCodebasePath(userContext, project, branchBase);
 
     console.log(`📂 Codebase path: ${codebasePath}\n`);
 
     // 4. Check Git
     const gitDir = path.join(codebasePath, '.git');
     if (!fs.existsSync(gitDir)) {
-      throw new Error('Git repository not initialized. Please clone or initialize first.');
+      throw new Error(`Git repository not initialized for base feature '${branchBase}'. Create a feature first.`);
     }
 
     // 5. Initialize adapters using factory (hexagonal architecture)

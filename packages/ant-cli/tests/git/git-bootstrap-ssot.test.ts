@@ -1,35 +1,48 @@
+/**
+ * GitAnchorSSOT — the project's ONLY repository is the hidden bare anchor at
+ * `{project}/repo.git`, created lazily by the first feature. These tests lock
+ * the anchor primitives the worktree lifecycle is built on:
+ *   - ensureAnchor: idempotent bare init + HEAD aligned to branchBase
+ *   - createInitialCommitOnBranch: plumbing empty-tree commit on an empty anchor
+ *   - readHeadBranch / setHeadBranch round-trip
+ *   - hasOriginRemote: false for a fresh anchor (branchBase unlock signal)
+ */
 import { afterEach, describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import simpleGit from 'simple-git';
-import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 import type { UserContext } from '../../src/core/types/user';
-import { GitBootstrapSSOT } from '../../src/periphery/adapters/http/services/GitService/remote/operations/BaseGitSetupOperation';
+import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
+import { GitHelper } from '../../src/periphery/adapters/http/services/GitService/helper/GitHelper';
 
 const userContext: UserContext = {
   organizationId: 'test-org',
   userId: 'test-user',
 };
 
-const workspaceResolver = {} as WorkspaceResolver;
 const tmpRoots: string[] = [];
 
-async function createTmpCodebase(prefix: string): Promise<{ root: string; codebasePath: string }> {
+/**
+ * Test-side reader for the bare anchor. Explicit GIT_DIR keeps bare usage
+ * legal even under `safe.bareRepository=explicit`, and the env whitelist
+ * avoids simple-git's unsafe-env guard (PAGER / GIT_EDITOR / GIT_CONFIG_*).
+ */
+function bareGit(anchorPath: string) {
+  return simpleGit(anchorPath).env({
+    ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
+    ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+    GIT_DIR: anchorPath,
+  });
+}
+
+async function mkAnchorPath(prefix: string): Promise<string> {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), prefix));
-  const codebasePath = path.join(root, 'codebase');
-  await fs.promises.mkdir(codebasePath, { recursive: true });
   tmpRoots.push(root);
-  return { root, codebasePath };
+  return path.join(root, 'repo.git');
 }
 
-async function latestCommit(codebasePath: string): Promise<string | null> {
-  const git = simpleGit(codebasePath);
-  const log = await git.log({ maxCount: 1 });
-  return log.latest?.hash ?? null;
-}
-
-describe('GitBootstrapSSOT', () => {
+describe('GitAnchorSSOT', () => {
   afterEach(async () => {
     while (tmpRoots.length > 0) {
       const root = tmpRoots.pop()!;
@@ -37,61 +50,100 @@ describe('GitBootstrapSSOT', () => {
     }
   });
 
-  it('fresh codebase를 git + .gitignore + initial commit 상태로 만든다', async () => {
-    const { codebasePath } = await createTmpCodebase('ant-git-bootstrap-fresh-');
-    const bootstrap = new GitBootstrapSSOT(workspaceResolver, 'GitBootstrapSSOTTest');
+  it('ensureAnchor 는 bare anchor 를 생성하고 HEAD 를 branchBase 로 정렬한다', async () => {
+    const anchorPath = await mkAnchorPath('ant-git-anchor-fresh-');
 
-    const result = await bootstrap.ensureLocalGitReady({
+    const result = await gitAnchor.ensureAnchor({
       projectId: 'proj-fresh',
-      codebasePath,
-      baseBranch: 'main',
+      anchorPath,
+      branchBase: 'feat-first',
       userContext,
     });
 
-    expect(result.ready).toBe(true);
     expect(result.created).toBe(true);
-    expect(fs.existsSync(path.join(codebasePath, '.git'))).toBe(true);
-    expect(fs.existsSync(path.join(codebasePath, '.gitignore'))).toBe(true);
-    expect(await latestCommit(codebasePath)).not.toBeNull();
+    // Bare repo validity — HEAD + objects exist directly under the anchor
+    // (no `.git/` subdirectory; see GitHelper.isBareAnchorReady).
+    expect(fs.existsSync(path.join(anchorPath, 'HEAD'))).toBe(true);
+    expect(fs.existsSync(path.join(anchorPath, 'objects'))).toBe(true);
+    expect(GitHelper.isBareAnchorReady(anchorPath)).toBe(true);
+    // No working tree is ever materialized by the anchor itself.
+    expect(fs.existsSync(path.join(anchorPath, '..', 'codebase'))).toBe(false);
+
+    expect(await gitAnchor.readHeadBranch(anchorPath)).toBe('feat-first');
   });
 
-  it('기존 non-git 디렉터리도 커밋 가능한 git 저장소로 승격한다', async () => {
-    const { codebasePath } = await createTmpCodebase('ant-git-bootstrap-existing-');
-    await fs.promises.mkdir(path.join(codebasePath, 'src'), { recursive: true });
-    await fs.promises.writeFile(path.join(codebasePath, 'src', 'index.ts'), 'export const x = 1;\n', 'utf-8');
+  it('ensureAnchor 는 멱등이다 — 두 번째 호출은 created:false', async () => {
+    const anchorPath = await mkAnchorPath('ant-git-anchor-idem-');
 
-    const bootstrap = new GitBootstrapSSOT(workspaceResolver, 'GitBootstrapSSOTTest');
-    const result = await bootstrap.ensureLocalGitReady({
-      projectId: 'proj-existing',
-      codebasePath,
-      baseBranch: 'main',
+    const first = await gitAnchor.ensureAnchor({
+      projectId: 'proj-idem',
+      anchorPath,
+      branchBase: 'main',
+      userContext,
+    });
+    const second = await gitAnchor.ensureAnchor({
+      projectId: 'proj-idem',
+      anchorPath,
+      branchBase: 'main',
       userContext,
     });
 
-    const git = simpleGit(codebasePath);
-    const trackedFiles = await git.raw(['ls-files']);
-
-    expect(result.ready).toBe(true);
-    expect(result.created).toBe(true);
-    expect(trackedFiles).toContain('src/index.ts');
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(GitHelper.isBareAnchorReady(anchorPath)).toBe(true);
   });
 
-  it('이미 init 되었지만 commit 없는 저장소에 initial commit을 보강한다', async () => {
-    const { codebasePath } = await createTmpCodebase('ant-git-bootstrap-unborn-');
-    const git = simpleGit(codebasePath);
-    await git.init(['--initial-branch=main']);
-    await fs.promises.writeFile(path.join(codebasePath, 'README.md'), '# tmp\n', 'utf-8');
-
-    const bootstrap = new GitBootstrapSSOT(workspaceResolver, 'GitBootstrapSSOTTest');
-    const result = await bootstrap.ensureLocalGitReady({
-      projectId: 'proj-unborn',
-      codebasePath,
-      baseBranch: 'main',
+  it('createInitialCommitOnBranch 는 빈 anchor 에 plumbing empty-tree commit 을 만든다', async () => {
+    const anchorPath = await mkAnchorPath('ant-git-anchor-initial-');
+    await gitAnchor.ensureAnchor({
+      projectId: 'proj-initial',
+      anchorPath,
+      branchBase: 'feat-1',
       userContext,
     });
 
-    expect(result.ready).toBe(true);
-    expect(result.created).toBe(false);
-    expect(await latestCommit(codebasePath)).not.toBeNull();
+    // Fresh anchor: branch does not exist yet.
+    expect(await gitAnchor.branchExists(anchorPath, 'feat-1')).toBe(false);
+
+    const commit = await gitAnchor.createInitialCommitOnBranch(anchorPath, 'feat-1', userContext);
+
+    expect(commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(await gitAnchor.branchExists(anchorPath, 'feat-1')).toBe(true);
+
+    const git = bareGit(anchorPath);
+    const resolved = (await git.raw(['rev-parse', 'refs/heads/feat-1'])).trim();
+    expect(resolved).toBe(commit);
+    // Empty-tree commit — no parents, no files.
+    const tree = (await git.raw(['ls-tree', commit])).trim();
+    expect(tree).toBe('');
+  });
+
+  it('setHeadBranch / readHeadBranch 라운드트립', async () => {
+    const anchorPath = await mkAnchorPath('ant-git-anchor-head-');
+    await gitAnchor.ensureAnchor({
+      projectId: 'proj-head',
+      anchorPath,
+      branchBase: 'main',
+      userContext,
+    });
+
+    expect(await gitAnchor.readHeadBranch(anchorPath)).toBe('main');
+    await gitAnchor.setHeadBranch(anchorPath, 'feat-next');
+    expect(await gitAnchor.readHeadBranch(anchorPath)).toBe('feat-next');
+  });
+
+  it('fresh anchor 는 origin remote 가 없다 (branchBase unlock 신호)', async () => {
+    const anchorPath = await mkAnchorPath('ant-git-anchor-remote-');
+
+    // Not materialized yet → false (no throw).
+    expect(await gitAnchor.hasOriginRemote(anchorPath)).toBe(false);
+
+    await gitAnchor.ensureAnchor({
+      projectId: 'proj-remote',
+      anchorPath,
+      branchBase: 'main',
+      userContext,
+    });
+    expect(await gitAnchor.hasOriginRemote(anchorPath)).toBe(false);
   });
 });

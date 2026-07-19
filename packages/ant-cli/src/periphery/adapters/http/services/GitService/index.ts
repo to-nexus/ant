@@ -5,6 +5,7 @@ import type {
 } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
+import { readBranchBase } from '../../../../../core/utils/branchUtils';
 import { GitHubAuthService } from '../../../auth/GitHubAuthService';
 import { ChatService } from '../ChatService';
 import { GitStateBroadcaster } from '../../../../../core/realtime/GitStateBroadcaster';
@@ -111,8 +112,13 @@ export class GitService {
         statusService: this.status,
         broadcaster: opts.broadcaster,
         watcher: opts.watcher,
-        getCodebasePath: (userContext, projectId, featureName) =>
-          this.workspaceResolver.getCodebasePath(userContext, projectId, featureName),
+        getCodebasePath: (userContext, projectId, featureName) => {
+          // Indexing with no feature targets the branchBase feature — a
+          // project without features has no codebase to index.
+          const feature = featureName
+            ?? readBranchBase(this.workspaceResolver.getProjectPath(userContext, projectId));
+          return this.workspaceResolver.getCodebasePath(userContext, projectId, feature);
+        },
         indexer: (projectId, codebasePath, userContext, feedbackFeature) => {
           this.index.autoIndexCodebase(projectId, codebasePath, userContext, feedbackFeature)
             .catch((err: any) => {

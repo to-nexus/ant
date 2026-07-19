@@ -3,7 +3,9 @@ import { API_BASE, authFetch, apiGet, apiDelete } from './client';
 
 export interface Feature {
   name: string;
-  path: string;
+  /** Optimistic-entry marker only — the server list omits it (name is the identity). */
+  path?: string;
+  /** ISO timestamp; server list is creation-ordered (oldest first). */
   createdAt?: string;
 }
 

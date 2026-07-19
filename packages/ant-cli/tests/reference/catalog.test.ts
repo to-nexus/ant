@@ -1,5 +1,9 @@
 /**
  * buildReferenceCatalog — enumerates sibling projects + refs, excludes current.
+ *
+ * New model: every dir under features/ is a feature; branches are the feature
+ * names verbatim (branch == feature name, no `feature/` prefix, no implicit
+ * 'main' prepended — 'main' appears only when a feature named 'main' exists).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
@@ -18,9 +22,15 @@ let wr: UnifiedWorkspaceResolver;
 
 beforeAll(() => {
   base = fs.mkdtempSync(path.join(os.tmpdir(), 'ref-catalog-'));
-  fs.mkdirSync(path.join(base, 'o', 'u', 'be', 'codebase'), { recursive: true });
-  fs.mkdirSync(path.join(base, 'o', 'u', 'be', 'features', 'dev', 'codebase'), { recursive: true });
-  fs.mkdirSync(path.join(base, 'o', 'u', 'app', 'codebase'), { recursive: true });
+  fs.mkdirSync(path.join(base, 'o', 'u', 'be', 'features', 'main', 'codebase'), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(base, 'o', 'u', 'be', 'features', 'dev', 'codebase'), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(base, 'o', 'u', 'app', 'features', 'main', 'codebase'), {
+    recursive: true,
+  });
   wr = new UnifiedWorkspaceResolver(base);
 });
 
@@ -34,10 +44,11 @@ describe('buildReferenceCatalog', () => {
     expect(names).not.toContain('app');
   });
 
-  it('offers main + feature branches', async () => {
+  it('offers feature names verbatim as branches', async () => {
     const catalog = await buildReferenceCatalog(wr, uc, { excludeProject: 'app' });
     const be = catalog.find((c) => c.project === 'be');
-    expect(be?.branches).toEqual(expect.arrayContaining(['main', 'feature/dev']));
+    expect(be?.branches).toEqual(expect.arrayContaining(['main', 'dev']));
+    expect(be?.branches).not.toContain('feature/dev');
   });
 
   it('hasReferenceSurface is true when a sibling exists', async () => {
@@ -47,7 +58,9 @@ describe('buildReferenceCatalog', () => {
 
   it('hasReferenceSurface is false when the only project is the current one', async () => {
     const solo = fs.mkdtempSync(path.join(os.tmpdir(), 'ref-solo-'));
-    fs.mkdirSync(path.join(solo, 'o', 'u', 'app', 'codebase'), { recursive: true });
+    fs.mkdirSync(path.join(solo, 'o', 'u', 'app', 'features', 'main', 'codebase'), {
+      recursive: true,
+    });
     const soloWr = new UnifiedWorkspaceResolver(solo);
     // Uses the real `context.project` field — the former `projectName` phantom
     // silently yielded `undefined`, leaking the current project into the surface.
@@ -66,6 +79,7 @@ describe('buildReferenceCatalog', () => {
     expect(be?.connectedFeature).toBe('staging');
     const rendered = formatReferenceCatalog(catalog);
     expect(rendered).toContain('linked at feature "staging"');
-    expect(rendered).toContain('use branch feature/staging');
+    expect(rendered).toContain('use branch staging');
+    expect(rendered).not.toContain('feature/staging');
   });
 });

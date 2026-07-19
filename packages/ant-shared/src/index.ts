@@ -20,7 +20,8 @@
  *   - file-descriptions.ts  : FILE_DESCRIPTIONS
  *   - deploy.ts             : DeployConfig, DeployVisibility
  *   - org.ts                : OrganizationKind, INDIVIDUAL_ORG_ID, deriveKindFromOrgId
- *   - git.ts                : GitSnapshot, GitUserOperation, GitOperationState, GitPatState, FileChange
+ *   - git.ts                : GitSnapshot, GitUserOperation, GitOperationState, GitPatState, FileChange, GitCloneResult
+ *   - feature-name.ts       : validateFeatureName, isValidFeatureName, RESERVED_FEATURE_NAMES, FeatureNameViolation
  *   - file-resource.ts      : FileResource, FileResourceMeta, FileNode, TemplateReason
  */
 
@@ -48,6 +49,7 @@ export * from './org';
 export * from './sse-events';
 export * from './verification-scenario';
 export * from './git';
+export * from './feature-name';
 export * from './codebase-presence';
 export * from './session-log';
 export * from './file-resource';

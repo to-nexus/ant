@@ -103,17 +103,28 @@ export function MenuDropdown({
       })}
       {menu.kind === 'setup' && (() => {
         const action = menu.actions[0] ?? 'ambiguous';
+        const cloneBlocked = menu.cloneBlockedByFeatures;
         const showClone = action === 'clone' || action === 'ambiguous';
-        const showInitialize = action === 'publish' || action === 'ambiguous';
+        // When clone is blocked, Initialize/Publish must stay reachable even
+        // if the probe suggested "clone" — publish is the only legal setup
+        // action for a project that already has features.
+        const showInitialize = action === 'publish' || action === 'ambiguous' || cloneBlocked;
         return (
           <>
             {showClone && renderItem({
               onClick: handleClone,
               icon: <Download className="w-4 h-4" />,
               title: t('config:git.clone'),
-              desc: t('config:git.cloneDesc'),
-              withDivider: showInitialize,
+              desc: cloneBlocked ? t('config:git.cloneBlockedDesc') : t('config:git.cloneDesc'),
+              disabled: cloneBlocked,
+              titleAttr: cloneBlocked ? t('config:git.cloneBlockedNotice') : undefined,
+              withDivider: showInitialize || cloneBlocked,
             })}
+            {showClone && cloneBlocked && (
+              <div className="px-3 py-2 text-xs" style={{ color: 'var(--text-3)', borderBottom: showInitialize ? '1px solid var(--border-1)' : 'none' }}>
+                {t('config:git.cloneBlockedNotice')}
+              </div>
+            )}
             {showInitialize && renderItem({
               onClick: handleInitialize,
               icon: <Plus className="w-4 h-4" />,

@@ -74,10 +74,54 @@ export class GitHelper {
   }
 
   /**
-   * Sanitize branch name for Git
+   * `true` when the path is a materialized bare repo (the project git anchor
+   * `repo.git`). Bare repos have `HEAD` + `objects/` at the root, no `.git`.
    */
-  static sanitizeBranchName(featureName: string): string {
-    return `feature/${featureName.toLowerCase().replace(/\s+/g, '-')}`;
+  static isBareAnchorReady(anchorPath: string): boolean {
+    return (
+      fs.existsSync(path.join(anchorPath, 'HEAD')) &&
+      fs.existsSync(path.join(anchorPath, 'objects'))
+    );
+  }
+
+  /**
+   * Child env for git commands against the bare anchor. `GIT_DIR` is set
+   * explicitly so bare usage stays legal under `safe.bareRepository=explicit`
+   * (cwd-discovery of bare repos is rejected in that mode). Editor vars are
+   * stripped — simple-git refuses env carrying `GIT_EDITOR` and no anchor
+   * command is interactive.
+   */
+  static bareAnchorEnv(anchorPath: string): Record<string, string> {
+    // Whitelist, not a blacklist — simple-git rejects env carrying editor /
+    // pager vars, and anchor commands are never interactive. Only what git
+    // needs to run and authenticate.
+    const KEEP = [
+      'PATH', 'HOME', 'USER', 'LANG', 'LC_ALL', 'TMPDIR', 'TMP', 'TEMP',
+      'XDG_CONFIG_HOME', 'SSH_AUTH_SOCK',
+      'GIT_SSL_NO_VERIFY', 'GIT_TERMINAL_PROMPT',
+      'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+    ];
+    const env: Record<string, string> = {};
+    for (const key of KEEP) {
+      const value = process.env[key];
+      if (typeof value === 'string') env[key] = value;
+    }
+    env.GIT_DIR = anchorPath;
+    return env;
+  }
+
+  /**
+   * Get a SimpleGit instance rooted at the bare anchor, or null when the
+   * anchor is not materialized. Mirrors {@link getGitInstanceSafe}'s
+   * exact-directory safety (never traverses up to a parent repo).
+   */
+  static getBareGitInstance(anchorPath: string): SimpleGit | null {
+    if (!GitHelper.isBareAnchorReady(anchorPath)) {
+      logger.info(`bare anchor not found`, { component: 'GitHelper' }, { anchorPath });
+      return null;
+    }
+    return simpleGit({ baseDir: anchorPath, ...SIMPLE_GIT_DEFAULT_OPTS })
+      .env(GitHelper.bareAnchorEnv(anchorPath));
   }
 
   /**
@@ -198,8 +242,8 @@ export class GitHelper {
     }
 
     const gitdirPath = match[1].trim();
-    // gitdirPath = /<base>/<proj>/codebase/.git/worktrees/{id}
-    // mainGitDir = /<base>/<proj>/codebase/.git
+    // gitdirPath = /<base>/<proj>/repo.git/worktrees/{id}
+    // mainGitDir = /<base>/<proj>/repo.git (bare anchor)
     const worktreesDir = path.dirname(gitdirPath);
     const mainGitDir = path.dirname(worktreesDir);
 

@@ -45,7 +45,7 @@ function getStartHandler(): string {
 }
 
 describe('cloud-ide.routes POST /start — worktree precheck invariant', () => {
-  it('MUST call ensureWorktreeForIDE for non-RESERVED features', () => {
+  it('MUST call ensureWorktreeForIDE for the (required) feature', () => {
     const handler = getStartHandler();
     expect(handler).toMatch(/ensureWorktreeForIDE\(\s*userContext,\s*projectId,\s*featureName\s*\)/);
   });
@@ -60,17 +60,32 @@ describe('cloud-ide.routes POST /start — worktree precheck invariant', () => {
     expect(startIdx).toBeGreaterThan(workspaceIdx);
   });
 
-  it('precheck MUST be gated on featureName being non-RESERVED', () => {
+  it('featureName is REQUIRED (400) and the precheck runs UNCONDITIONALLY — no RESERVED gating', () => {
     const handler = getStartHandler();
-    // The gate predicate uses RESERVED_FEATURE_NAME exclusion — the literal
-    // identifier MUST appear in the gate region preceding the call.
-    expect(handler).toMatch(/featureName\s*!==\s*RESERVED_FEATURE_NAME[\s\S]+ensureWorktreeForIDE/);
+    // New model: a project without a feature has no codebase — the route
+    // rejects a missing featureName with 400 BEFORE the precheck.
+    const rejectIdx = handler.search(/if\s*\(!featureName\)/);
+    const ensureIdx = handler.indexOf('ensureWorktreeForIDE');
+    expect(rejectIdx).toBeGreaterThan(0);
+    expect(ensureIdx).toBeGreaterThan(rejectIdx);
+    expect(handler).toMatch(/featureName is required/);
+    // `_base` sentinel is gone — the precheck must NOT be gated on a
+    // reserved-name exclusion; it runs for every (required) feature.
+    const source = readSource();
+    expect(source).not.toContain('RESERVED_FEATURE_NAME');
+    expect(handler).not.toMatch(/featureName\s*!==/);
   });
 
   it('helper MUST delegate to ensureGitRepository (the SSOT, not a parallel implementation)', () => {
     const source = readSource();
     expect(source).toMatch(/import\s*\{\s*ensureGitRepository\s*\}/);
-    // The helper body MUST call ensureGitRepository with worktreeService + featureBackup
-    expect(source).toMatch(/ensureGitRepository\(\s*\{[\s\S]*worktreeService[\s\S]*featureBackup[\s\S]*\}\s*\)/);
+    // The helper body MUST call ensureGitRepository with the new input shape:
+    // { workspaceResolver, projectId, userContext, featureName, operationName,
+    //   worktreeService } — gitBootstrap / featureBackup are retired.
+    expect(source).toMatch(
+      /ensureGitRepository\(\s*\{\s*workspaceResolver,\s*projectId,\s*userContext,\s*featureName,\s*operationName:\s*'CloudIDEStart',\s*worktreeService,\s*\}\s*\)/,
+    );
+    expect(source).not.toContain('featureBackup');
+    expect(source).not.toContain('gitBootstrap');
   });
 });

@@ -1,24 +1,23 @@
-import * as fs from 'fs';
 import { SimpleGit } from 'simple-git';
 import { WorkspaceResolver } from '../../../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../../../core/types/user';
-import { readBranchBaseFromConfig, RESERVED_FEATURE_NAME } from '../../../../../../../../core/utils/branchUtils';
 import { logger } from '../../../../../../../../utils/logger';
-import { GitBootstrapSSOT } from '../BaseGitSetupOperation';
-import { GitOperationError } from '../../../errors';
+import { GitConfigError, GitOperationError } from '../../../errors';
 import { GitHelper } from '../../../helper/GitHelper';
 import { WorktreeService, emitWorktreeValidityFailure } from '../../../worktree';
-import { FeatureCodebaseBackup } from '../../../worktree/FeatureCodebaseBackup';
 
 interface EnsureGitRepositoryInput {
   workspaceResolver: WorkspaceResolver;
-  gitBootstrap: GitBootstrapSSOT;
   projectId: string;
   userContext: UserContext;
   featureName?: string;
   operationName: string;
   worktreeService?: WorktreeService;
-  featureBackup?: FeatureCodebaseBackup;
+  /**
+   * `true` only for operations that can run against the bare anchor with no
+   * working tree (fetch). Everything else requires a feature.
+   */
+  allowAnchor?: boolean;
 }
 
 interface EnsureGitRepositoryResult {
@@ -26,17 +25,46 @@ interface EnsureGitRepositoryResult {
   codebasePath: string;
 }
 
+/**
+ * Resolve a ready SimpleGit for a user git operation.
+ *
+ * - feature present → the feature worktree (stage-4 validity check with
+ *   self-heal: removeWorktree remnants + createWorktree re-attach — the
+ *   branch lives in the anchor so committed state survives; UNCOMMITTED
+ *   changes in a corrupt worktree are discarded, logged as a warn).
+ * - feature absent + `allowAnchor` → the bare anchor (`repo.git`).
+ * - feature absent otherwise → GitConfigError (a project without a selected
+ *   feature has no working tree).
+ */
 export async function ensureGitRepository(input: EnsureGitRepositoryInput): Promise<EnsureGitRepositoryResult> {
   const {
     workspaceResolver,
-    gitBootstrap,
     projectId,
     userContext,
     featureName,
     operationName,
     worktreeService,
-    featureBackup,
+    allowAnchor,
   } = input;
+
+  if (!featureName) {
+    if (!allowAnchor) {
+      throw new GitConfigError(
+        'This git operation requires a feature — a project without features has no codebase',
+        { retryable: false }
+      );
+    }
+    const anchorPath = workspaceResolver.getGitAnchorPath(userContext, projectId);
+    await GitHelper.ensureSafeDirectory(anchorPath);
+    const anchorGit = GitHelper.getBareGitInstance(anchorPath);
+    if (!anchorGit) {
+      throw new GitConfigError(
+        'Git is not set up for this project yet — create a feature first',
+        { retryable: false }
+      );
+    }
+    return { git: anchorGit, codebasePath: anchorPath };
+  }
 
   const codebasePath = workspaceResolver.getCodebasePath(userContext, projectId, featureName);
   await GitHelper.ensureSafeDirectory(codebasePath);
@@ -46,10 +74,10 @@ export async function ensureGitRepository(input: EnsureGitRepositoryInput): Prom
   // Stage-4 validity check — `getGitInstanceSafe` only verifies `.git` exists
   // (stage 1). For feature worktrees, the marker may point at a partial
   // gitdir (HEAD/commondir missing) on EFS. Drop the git instance so the
-  // fallback below triggers backup → removeWorktree → createWorktree (which
-  // runs its own post-create probe) → restore. Without this, ops proceed
-  // with a broken worktree and fail later in the user-facing operation.
-  if (git && featureName && featureName !== RESERVED_FEATURE_NAME) {
+  // self-heal below triggers removeWorktree → createWorktree (which runs its
+  // own post-create probe). The feature branch lives in the anchor, so the
+  // committed state is preserved across the heal.
+  if (git) {
     const validity = GitHelper.isWorktreeStructureValid(codebasePath);
     if (!validity.valid) {
       emitWorktreeValidityFailure({
@@ -60,58 +88,25 @@ export async function ensureGitRepository(input: EnsureGitRepositoryInput): Prom
         validity,
       });
       logger.warn(
-        `Worktree validity check failed (${validity.reason}), self-healing...`,
+        `Worktree validity check failed (${validity.reason}), self-healing — uncommitted changes in the corrupt worktree are discarded`,
         { component: operationName, projectId, featureName },
       );
       git = null;
     }
   }
 
-  if (!git && featureName && worktreeService && featureBackup) {
-    const backups = await featureBackup.backup(projectId, [featureName], userContext);
-    try {
-      await worktreeService.createWorktree(projectId, featureName, userContext);
-      const backupPath = backups.get(featureName);
-      if (backupPath && fs.existsSync(backupPath)) {
-        await featureBackup.restoreToWorktree(backupPath, codebasePath);
-      }
-    } finally {
-      await featureBackup.cleanup(backups);
-    }
-
-    await GitHelper.ensureSafeDirectory(codebasePath);
-    git = GitHelper.getGitInstanceSafe(codebasePath);
-  }
-
-  if (!git) {
-    const mainCodebasePath = workspaceResolver.getCodebasePath(userContext, projectId);
-    const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
-    const baseBranch = readBranchBaseFromConfig(projectPath);
-
-    const bootstrap = await gitBootstrap.ensureLocalGitReady({
-      projectId,
-      codebasePath: mainCodebasePath,
-      baseBranch,
-      userContext,
-    });
-
-    if (!bootstrap.ready) {
-      throw new GitOperationError(
-        `Failed to prepare local repository (${bootstrap.reason ?? 'unknown'})`,
-        'config',
-        { retryable: false }
-      );
-    }
-
-    if (featureName && worktreeService) {
-      await worktreeService.createWorktree(projectId, featureName, userContext);
-    }
-
+  if (!git && worktreeService) {
+    // Missing or corrupt worktree — re-materialize it. `createWorktree`
+    // lazily bootstraps the bare anchor, cleans up invalid remnants itself
+    // (worktree remove --force + prune + rm), and re-attaches the existing
+    // branch — never `removeWorktree` here, which would `branch -D` the
+    // feature branch and destroy the committed state.
+    await worktreeService.createWorktree(projectId, featureName, userContext);
     await GitHelper.ensureSafeDirectory(codebasePath);
     git = GitHelper.getGitInstanceSafe(codebasePath);
 
     logger.info(
-      'gitBootstrapRecovered',
+      'gitWorktreeRecovered',
       {
         component: operationName,
         organizationId: userContext.organizationId,
@@ -127,7 +122,7 @@ export async function ensureGitRepository(input: EnsureGitRepositoryInput): Prom
   }
 
   if (!git) {
-    throw new GitOperationError('Local repository is not ready after bootstrap', 'config', {
+    throw new GitOperationError('Feature worktree is not ready after self-heal', 'config', {
       retryable: false,
     });
   }

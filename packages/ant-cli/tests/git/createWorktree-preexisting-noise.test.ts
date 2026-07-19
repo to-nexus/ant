@@ -1,5 +1,5 @@
 /**
- * Locks createWorktree.preExisting noise suppression:
+ * Locks createWorktree.preExisting noise suppression (anchor model):
  * `no-git-file` after FeatureCrud-style empty `codebase/` mkdir → info only (no worktreeValidityFailure warn).
  * Other invalid reasons still emit warn-level diagnostic.
  */
@@ -99,8 +99,10 @@ describe('createWorktree.preExisting — no-git-file vs diagnostic warn', () => 
     const projectId = 'proj-preexist-c';
     await projectCrud.createProject(projectId, userContext);
 
-    const mainCodebasePath = resolver.getCodebasePath(userContext, projectId);
-    const ghostMeta = path.join(mainCodebasePath, '.git', 'worktrees', 'ghost-no-such-dir');
+    // Stale marker from a previous attempt — points at a meta dir under the
+    // bare anchor (`repo.git/worktrees/...`) that no longer exists.
+    const anchorPath = resolver.getGitAnchorPath(userContext, projectId);
+    const ghostMeta = path.join(anchorPath, 'worktrees', 'ghost-no-such-dir');
 
     const featureName = 'feat-preexist-c';
     const featurePath = resolver.getFeaturePath(userContext, projectId, featureName);
@@ -119,8 +121,15 @@ describe('createWorktree.preExisting — no-git-file vs diagnostic warn', () => 
     expect(meta.reason).toBe('gitdir-missing');
     expect(meta.scenario).toBe('S3-stale-marker-from-previous-attempt');
 
-    const git = simpleGit(mainCodebasePath);
-    const wtList = await git.raw(['worktree', 'list', '--porcelain']);
-    expect(wtList).toContain(featureCodebase);
+    // The rebuilt worktree is registered against the bare anchor. Explicit
+    // GIT_DIR keeps bare usage legal under `safe.bareRepository=explicit`;
+    // compare via realpath (git records resolved paths, /private/var vs /var).
+    const anchorGit = simpleGit(anchorPath).env({
+      ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
+      ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+      GIT_DIR: anchorPath,
+    });
+    const wtList = await anchorGit.raw(['worktree', 'list', '--porcelain']);
+    expect(wtList).toContain(fs.realpathSync(featureCodebase));
   });
 });

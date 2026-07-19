@@ -38,7 +38,9 @@ describe('progress status finalization', () => {
 
   beforeAll(() => {
     base = fs.mkdtempSync(path.join(os.tmpdir(), 'ref-status-'));
-    const be = path.join(base, 'o', 'u', 'reference-repo', 'codebase');
+    // Branch == feature name: the reference project's default branch resolves
+    // to the feature worktree dir named after branchBase (default 'main').
+    const be = path.join(base, 'o', 'u', 'reference-repo', 'features', 'main', 'codebase');
     fs.mkdirSync(be, { recursive: true });
     fs.writeFileSync(path.join(be, 'a.ts'), 'export const x = 1;\n');
     wr = new UnifiedWorkspaceResolver(base);

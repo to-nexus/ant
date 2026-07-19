@@ -108,10 +108,10 @@ describe('RemoteService distributed lock — F5', () => {
     expect(history.acquire[0].ttl).toBe(180);
   });
 
-  it('fetch defaults feature to "main" in the key when no feature is given', async () => {
+  it('fetch defaults feature to "@anchor" in the key when no feature is given (anchor-scoped fetch)', async () => {
     patchOp(svc, 'fetchOp', async () => undefined);
     await svc.fetchFromGitHub('proj', userContext);
-    expect(history.acquire[0].key).toMatch(/^ant:lock:fetch:o:u:proj:main$/);
+    expect(history.acquire[0].key).toMatch(/^ant:lock:fetch:o:u:proj:@anchor$/);
   });
 
   it('throws when stateStore is not injected (parent rule book — no in-memory fallback)', async () => {

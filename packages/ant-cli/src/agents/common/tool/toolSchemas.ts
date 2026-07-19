@@ -235,7 +235,7 @@ export const ARCHITECT_TOOLS = {
         },
         branch: {
           type: 'string',
-          description: 'Optional git ref. Omit for the default branch (main). A feature is "feature/{name}".',
+          description: 'Optional git ref. Omit for the project base branch. Ant feature branches are named exactly after the feature.',
         },
       },
       required: ['project'],
@@ -250,7 +250,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         project: { type: 'string', description: 'Registered reference project name.' },
         path: { type: 'string', description: 'File path relative to the reference codebase root.' },
-        branch: { type: 'string', description: 'Optional git ref (default: registered branch / main).' },
+        branch: { type: 'string', description: 'Optional git ref (default: registered branch / the project base branch).' },
         startLine: { type: 'number', description: 'Optional 1-based start line (inclusive).' },
         endLine: { type: 'number', description: 'Optional 1-based end line (inclusive).' },
       },
@@ -266,7 +266,7 @@ export const ARCHITECT_TOOLS = {
       properties: {
         project: { type: 'string', description: 'Registered reference project name.' },
         directory: { type: 'string', description: 'Directory relative to the reference codebase root (default: root).' },
-        branch: { type: 'string', description: 'Optional git ref (default: registered branch / main).' },
+        branch: { type: 'string', description: 'Optional git ref (default: registered branch / the project base branch).' },
         pattern: { type: 'string', description: 'Optional substring filter on entry names.' },
       },
       required: ['project'],
@@ -282,7 +282,7 @@ export const ARCHITECT_TOOLS = {
         project: { type: 'string', description: 'Registered reference project name.' },
         pattern: { type: 'string', description: 'Ripgrep regex to search for (Rust regex syntax).' },
         file_pattern: { type: 'string', description: 'Optional ripgrep glob to scope the search (e.g. "**/*.ts").' },
-        branch: { type: 'string', description: 'Optional git ref (default: registered branch / main).' },
+        branch: { type: 'string', description: 'Optional git ref (default: registered branch / the project base branch).' },
       },
       required: ['project', 'pattern'],
     },

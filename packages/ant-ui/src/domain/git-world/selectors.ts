@@ -56,7 +56,16 @@ export function deriveGitCta(snapshot: GitSnapshot | null): GitCta {
 export type GitMenu =
   | { kind: 'loading' }
   | { kind: 'disabled'; reason: 'noGit' | 'noConfig' }
-  | { kind: 'setup'; actions: ReadonlyArray<'clone' | 'publish' | 'ambiguous'> }
+  | {
+      kind: 'setup';
+      actions: ReadonlyArray<'clone' | 'publish' | 'ambiguous'>;
+      /**
+       * Clone is only permitted on a project with zero features. When the
+       * project already has features the Clone item renders DISABLED with an
+       * explanatory notice (never silently hidden — the user must learn why).
+       */
+      cloneBlockedByFeatures: boolean;
+    }
   | { kind: 'publish'; source: 'noFeatures' | 'noUpstream' }
   | {
       kind: 'synced';
@@ -81,8 +90,16 @@ export function deriveGitMenu(input: DeriveGitMenuInput): GitMenu {
   }
 
   if (!snapshot.hasGit || !snapshot.hasRemote) {
-    if (snapshot.hasFeatures) return { kind: 'publish', source: 'noFeatures' };
-    return { kind: 'setup', actions: [deriveGitSetupCta(snapshot).kind] };
+    const cta = deriveGitSetupCta(snapshot).kind;
+    if (snapshot.hasFeatures) {
+      // Publish is the real action for a featured project; clone stays
+      // visible-but-blocked when the remote probe says (or may say) a repo
+      // exists, so the user learns the zero-features rule instead of
+      // wondering where Clone went.
+      if (cta === 'publish') return { kind: 'publish', source: 'noFeatures' };
+      return { kind: 'setup', actions: [cta], cloneBlockedByFeatures: true };
+    }
+    return { kind: 'setup', actions: [cta], cloneBlockedByFeatures: false };
   }
 
   if (snapshot.hasUpstream === false) {

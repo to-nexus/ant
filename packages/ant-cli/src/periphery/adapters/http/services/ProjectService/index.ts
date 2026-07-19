@@ -78,7 +78,7 @@ export class ProjectService {
 
     // Initialize sub-services
     this.projectCrud = new ProjectCrudService(workspaceResolver);
-    this.featureCrud = new FeatureCrudService(workspaceResolver);
+    this.featureCrud = new FeatureCrudService(workspaceResolver, stateStore);
     this.fileOps = new FileOperationService(workspaceResolver);
     this.git = new GitService(workspaceResolver, githubAuthService, chatService, stateStore);
     
@@ -97,7 +97,7 @@ export class ProjectService {
 
   /**
    * Reference-codebase catalog for the current tenant: every OTHER project and
-   * its selectable git refs (`main` + `feature/{name}`). Feeds the FE reference
+   * its selectable git refs (feature names — branch == feature name). Feeds the FE reference
    * picker and mirrors what the LLM sees at decompose. Tenant-scoped by
    * `userContext`.
    */
@@ -323,7 +323,15 @@ export class ProjectService {
   async listFeatures(projectId: string, userContext: UserContext): Promise<string[]> {
     return this.featureCrud.listFeatures(projectId, userContext);
   }
-  
+
+  /** Creation-ordered feature list with timestamps (API surface). */
+  async listFeaturesDetailed(
+    projectId: string,
+    userContext: UserContext
+  ): Promise<Array<{ name: string; createdAt: Date }>> {
+    return this.featureCrud.listFeaturesDetailed(projectId, userContext);
+  }
+
   async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string, options?: { skipPrdTemplate?: boolean }): Promise<void> {
     return this.featureCrud.createFeature(projectId, featureName, userContext, language, options);
   }

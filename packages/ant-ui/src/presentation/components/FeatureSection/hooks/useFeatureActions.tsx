@@ -64,6 +64,11 @@ export function useFeatureActions(
       await fetchFeatures(projectId);
       await refreshFileTree();
 
+      // The BE may have auto-reassigned branchBase (deleting the base feature
+      // repoints it to the oldest remaining feature). Deleting a NON-selected
+      // feature triggers no lifecycle refetch, so refresh the config here.
+      void useStore.getState().fetchProjectConfig?.(projectId);
+
       const currentFeature = useStore.getState().selectedFeature;
       if (currentFeature === featureName) {
         setSelectedFeature(undefined);

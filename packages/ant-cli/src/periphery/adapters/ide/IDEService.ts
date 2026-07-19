@@ -15,7 +15,8 @@ import { logger } from '../../../utils/logger';
 import { waitForTcpReady, waitForHttpReady } from '../../../infrastructure/ide/readiness';
 import { WorkspacePathResolver } from '../../../core/config/WorkspacePathResolver';
 import { GitHelper } from '../http/services/GitService/helper/GitHelper';
-import { RESERVED_FEATURE_NAME } from '../../../core/utils/branchUtils';
+import { NO_FEATURE_KEY } from '../../../infrastructure/state/redisKeyUtils';
+
 
 export interface IDEInstance {
   containerId: string;
@@ -59,7 +60,7 @@ export class IDEService {
     for (const key of trackedKeys) {
       const parts = key.split(':');
       const [orgId, userId, projId, ...featureParts] = parts;
-      const feat = featureParts.join(':') || RESERVED_FEATURE_NAME;
+      const feat = featureParts.join(':') || NO_FEATURE_KEY;
       await this.stopIDE(`${orgId}:${userId}`, projId, feat).catch((e) => {
         logger.warn(`Failed to stop tracked IDE during project cleanup`, { component: 'IDEService', organizationId: orgId, userId, projectId: projId, featureName: feat }, e);
       });
@@ -223,7 +224,7 @@ export class IDEService {
    * IDE is feature-level: each feature gets its own isolated IDE container
    * with its own worktree-based codebase.
    */
-  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, feature: string = RESERVED_FEATURE_NAME): Promise<IDEInstance> {
+  async startIDE(userContext: UserContext, projectId: string, workspacePath: string, feature: string = NO_FEATURE_KEY): Promise<IDEInstance> {
     const tenantId = `${userContext.organizationId}:${userContext.userId}`;
     const key = `${tenantId}:${projectId}:${feature}`;
 
@@ -459,7 +460,7 @@ export class IDEService {
   /**
    * Stop IDE
    */
-  async stopIDE(tenantId: string, projectId: string, feature: string = RESERVED_FEATURE_NAME): Promise<void> {
+  async stopIDE(tenantId: string, projectId: string, feature: string = NO_FEATURE_KEY): Promise<void> {
     const key = `${tenantId}:${projectId}:${feature}`;
     const instance = this.instances.get(key);
     
@@ -515,7 +516,7 @@ export class IDEService {
   /**
    * Get IDE status
    */
-  async getIDEStatus(tenantId: string, projectId: string, feature: string = RESERVED_FEATURE_NAME): Promise<IDEInstance | null> {
+  async getIDEStatus(tenantId: string, projectId: string, feature: string = NO_FEATURE_KEY): Promise<IDEInstance | null> {
     const key = `${tenantId}:${projectId}:${feature}`;
     const instance = this.instances.get(key);
     
@@ -583,7 +584,7 @@ export class IDEService {
           if (parts.length >= 3) {
             const [orgId, userId, projId, ...featureParts] = parts;
             const tenantId = `${orgId}:${userId}`;
-            const feat = featureParts.join(':') || RESERVED_FEATURE_NAME;
+            const feat = featureParts.join(':') || NO_FEATURE_KEY;
             await this.stopIDE(tenantId, projId, feat);
           }
         } catch (error) {
@@ -608,7 +609,7 @@ export class IDEService {
       if (parts.length >= 3) {
         const [orgId, userId, projectId, ...featureParts] = parts;
         const tenantId = `${orgId}:${userId}`;
-        const feature = featureParts.join(':') || RESERVED_FEATURE_NAME;
+        const feature = featureParts.join(':') || NO_FEATURE_KEY;
         
         try {
           await this.stopIDE(tenantId, projectId, feature);

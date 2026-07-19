@@ -1,28 +1,24 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import simpleGit from 'simple-git';
-import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
+import { WorkspaceResolver, GIT_ANCHOR_DIR } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/orgConfig';
 import { logger } from '../../../../../utils/logger';
-import { detectGitDefaultBranch } from '../../../../../core/utils/branchUtils';
 import { GitHelper } from '../GitService/helper/GitHelper';
-import { GitBootstrapSSOT } from '../GitService/remote/operations/BaseGitSetupOperation';
 import { DeletionVerificationError } from './errors';
 import { DEFAULT_MODELS, MODEL_REGISTRY } from '@ant/shared';
 
 /**
  * ProjectCrudService
- * 
+ *
  * Handles project CRUD operations (Create, Read, Update, Delete)
  */
 export class ProjectCrudService {
   private readonly workspaceResolver: WorkspaceResolver;
-  private readonly gitBootstrap: GitBootstrapSSOT;
-  
+
   constructor(workspaceResolver: WorkspaceResolver) {
     this.workspaceResolver = workspaceResolver;
-    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'ProjectCrudService');
   }
   
   /**
@@ -179,31 +175,14 @@ export class ProjectCrudService {
       }
     };
 
-    // Auto-detect default branch from existing git repo at codebase path
-    try {
-      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, id);
-      const detected = await detectGitDefaultBranch(codebasePath);
-      if (detected) {
-        config.branchBase = detected;
-        logger.debug(`Auto-detected default branch: ${detected}`, { component: 'ProjectCrudService' });
-      }
-    } catch {
-      // Codebase doesn't exist yet — branchBase stays absent
-    }
-    
+    // branchBase is intentionally omitted — a fresh project has NO git and NO
+    // codebase. The first feature creates the bare anchor and auto-sets the
+    // pointer; all runtime reads fall back to 'main' while absent.
     await fs.promises.writeFile(
       configPath,
       JSON.stringify(config, null, 2),
       'utf-8'
     );
-
-    const codebasePath = this.workspaceResolver.getCodebasePath(userContext, id);
-    await this.gitBootstrap.ensureLocalGitReadyOrThrow({
-      projectId: id,
-      codebasePath,
-      baseBranch: config.branchBase || 'main',
-      userContext,
-    });
   }
 
   /**
@@ -314,13 +293,8 @@ export class ProjectCrudService {
    * breaks these references. `git worktree repair` (Git 2.30+) fixes them.
    */
   private async repairGitWorktrees(projectPath: string): Promise<void> {
-    const mainCodebasePath = path.join(projectPath, 'codebase');
-    const gitDir = path.join(mainCodebasePath, '.git');
-
-    if (!fs.existsSync(gitDir)) return;
-
-    const stat = await fs.promises.stat(gitDir);
-    if (!stat.isDirectory()) return;
+    const anchorPath = path.join(projectPath, GIT_ANCHOR_DIR);
+    if (!GitHelper.isBareAnchorReady(anchorPath)) return;
 
     const featuresDir = path.join(projectPath, 'features');
     const worktreePaths: string[] = [];
@@ -338,8 +312,8 @@ export class ProjectCrudService {
 
     if (worktreePaths.length === 0) return;
 
-    await GitHelper.ensureSafeDirectory(mainCodebasePath);
-    const git = simpleGit(mainCodebasePath);
+    await GitHelper.ensureSafeDirectory(anchorPath);
+    const git = simpleGit(anchorPath);
     await git.raw(['worktree', 'repair', ...worktreePaths]);
 
     logger.info(`Repaired ${worktreePaths.length} git worktree(s) after rename`, {
@@ -497,26 +471,16 @@ export class ProjectCrudService {
       }
 
       // Persist the healed config so runtime reads (which take workspaceConfig
-      // as-is) and subsequent loads see the current ids — same best-effort
-      // write discipline as the branchBase sync below.
+      // as-is) and subsequent loads see the current ids — best-effort write.
       if (llmModelsChanged) {
         try {
           await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
         } catch { /* best-effort */ }
       }
 
-      // Sync branchBase from actual git repo (catches external default branch changes)
-      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, id);
-      if (fs.existsSync(path.join(codebasePath, '.git'))) {
-        try {
-          const detected = await detectGitDefaultBranch(codebasePath);
-          if (detected && config.branchBase !== detected) {
-            config.branchBase = detected;
-            await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-          }
-        } catch { /* best-effort */ }
-      }
-      
+      // branchBase is a pointer owned by the branchBase lifecycle SSOT
+      // (auto-apply on feature create/delete, remote HEAD written once at
+      // clone) — no git-sync on read.
       return config;
     } catch (error) {
       // If config doesn't exist, return minimal default config.
@@ -569,6 +533,26 @@ export class ProjectCrudService {
     const configPath = path.join(projectPath, 'config.json');
 
     await fs.promises.mkdir(projectPath, { recursive: true });
+
+    // branchBase is a BE-owned pointer: manual changes go through the
+    // lifecycle SSOT (existing-feature + not-remote-locked validation, anchor
+    // HEAD update); an omitted field never clobbers the stored pointer.
+    const { readBranchBase, setBranchBaseManual } = await import('../GitService/anchor/branchBaseLifecycle');
+    const prevBranchBase = readBranchBase(projectPath);
+    const nextBranchBase = typeof config?.branchBase === 'string' ? config.branchBase : undefined;
+    if (nextBranchBase && nextBranchBase !== prevBranchBase) {
+      await setBranchBaseManual(
+        {
+          projectId,
+          projectPath,
+          anchorPath: this.workspaceResolver.getGitAnchorPath(userContext, projectId),
+          userContext,
+        },
+        nextBranchBase
+      );
+    } else if (!nextBranchBase && config && typeof config === 'object') {
+      config.branchBase = prevBranchBase;
+    }
 
     await fs.promises.writeFile(
       configPath,

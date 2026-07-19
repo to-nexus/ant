@@ -259,16 +259,12 @@ export const createProjectSlice: StateCreator<
     
     try {
       const { fetchFeatures: apiFetchFeatures } = await import('@/infrastructure/http/api');
-      const featureList = await apiFetchFeatures(targetProject);
-      
-      // Filter out base branch names
-      const baseBranchNames = ['main', 'master', 'develop'];
-      const filteredFeatures = featureList.filter(f => !baseBranchNames.includes(f.name.toLowerCase()));
-      
+      // No base-branch name filtering: branch == feature name, so 'main' /
+      // 'master' are legitimate features (e.g. the auto-created base feature
+      // after a clone).
+      const filteredFeatures = await apiFetchFeatures(targetProject);
+
       console.log(`[Store] 📋 Fetched ${filteredFeatures.length} features for ${targetProject}:`, filteredFeatures.map(f => f.name));
-      if (featureList.length !== filteredFeatures.length) {
-        console.log(`[Store] ⚠️ Filtered out base branches:`, featureList.filter(f => baseBranchNames.includes(f.name.toLowerCase())).map(f => f.name));
-      }
 
       // Non-regressing merge: a successful POST is durable (backend creates the
       // feature dir synchronously before responding), so a GET that omits a
@@ -289,7 +285,7 @@ export const createProjectSlice: StateCreator<
       );
       const mergedExtra = keptPending
         .filter(p => p.projectId === targetProject && !serverNames.has(p.name))
-        .map(p => ({ name: p.name, path: `feature/${p.name}` }));
+        .map(p => ({ name: p.name, path: p.name }));
       const merged = [...filteredFeatures, ...mergedExtra];
 
       set({ features: merged, pendingFeatures: keptPending });
@@ -313,7 +309,7 @@ export const createProjectSlice: StateCreator<
     const exists = currentFeatures.some((f) => f.name === featureName);
     const nextFeatures = exists
       ? currentFeatures
-      : [...currentFeatures, { name: featureName, path: `feature/${featureName}` }];
+      : [...currentFeatures, { name: featureName, path: featureName }];
 
     // Record the pending tag so a stale post-create fetchFeatures can't drop it.
     // Keyed by project so it never leaks into another project's list.

@@ -105,7 +105,7 @@ describe('POST /cloud-ide/reset', () => {
     );
   });
 
-  it('defaults featureName to RESERVED_FEATURE_NAME when omitted', async () => {
+  it('rejects with 400 when featureName is omitted (IDE requires a feature)', async () => {
     orchestrator = makeOrchestrator(async () => ({ success: true }));
     app = await startApp(orchestrator);
 
@@ -115,9 +115,8 @@ describe('POST /cloud-ide/reset', () => {
       body: JSON.stringify({ projectId: 'proj' }),
     });
 
-    expect(res.status).toBe(200);
-    const [, , feature] = (orchestrator.forceReset as any).mock.calls[0];
-    expect(feature).toBeTruthy(); // RESERVED_FEATURE_NAME is non-empty
+    expect(res.status).toBe(400);
+    expect((orchestrator.forceReset as any)).not.toHaveBeenCalled();
   });
 
   it('returns 500 when orchestrator.forceReset reports success:false', async () => {

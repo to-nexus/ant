@@ -19,6 +19,9 @@ interface StepProjectSetupProps {
   featureNameExists: boolean;
   projectNameInvalid: boolean;
   featureNameInvalid: boolean;
+  /** Clone flow — the BE names the feature after the remote default branch. */
+  featureNameDisabled?: boolean;
+  featureNameDisabledHint?: string;
 }
 
 export function StepProjectSetup({
@@ -27,6 +30,7 @@ export function StepProjectSetup({
   featureName, onFeatureNameChange,
   projectNameExists, featureNameExists,
   projectNameInvalid, featureNameInvalid,
+  featureNameDisabled, featureNameDisabledHint,
 }: StepProjectSetupProps) {
   const projectNameError = projectNameExists || projectNameInvalid;
   const featureNameError = featureNameExists || featureNameInvalid;
@@ -111,18 +115,23 @@ export function StepProjectSetup({
         label={t('quickstart.projectWizard.featureName')}
         value={featureName}
         onChange={onFeatureNameChange}
+        disabled={featureNameDisabled}
         placeholder="feature-name"
-        hasError={featureNameError}
-        showStatusIcon={!!featureName.trim()}
+        hasError={!featureNameDisabled && featureNameError}
+        showStatusIcon={!featureNameDisabled && !!featureName.trim()}
         errorMessage={
-          featureNameExists
-            ? t('quickstart.projectWizard.nameExists')
-            : featureNameInvalid
-              ? t('quickstart.projectWizard.nameInvalid')
-              : undefined
+          featureNameDisabled
+            ? undefined
+            : featureNameExists
+              ? t('quickstart.projectWizard.nameExists')
+              : featureNameInvalid
+                ? t('quickstart.projectWizard.nameInvalid')
+                : undefined
         }
         hint={
-          !featureNameError ? t('quickstart.projectWizard.featureNameHint') : undefined
+          featureNameDisabled
+            ? featureNameDisabledHint
+            : !featureNameError ? t('quickstart.projectWizard.featureNameHint') : undefined
         }
       />
     </>

@@ -3,13 +3,14 @@
  * (dir-mode) or a git tree-ish accessor (git-mode). Tenant-scoped: `project`
  * must exist in the caller's own workspace.
  *
- * Resolution order:
- *   1. no branch / branch == branchBase / 'main' / 'master' → sibling main
- *      codebase dir  ({proj}/codebase)                              → dir-mode
+ * Branch == feature name (no prefix). Resolution order:
+ *   1. no branch → the project's branchBase feature worktree if on disk
+ *      ({proj}/features/{branchBase}/codebase)                      → dir-mode
+ *      (falls to git-mode against the bare anchor when not materialized)
  *   2. branch names an on-disk ant feature worktree                 → dir-mode
- *      ('feature/{name}' or bare '{name}')  ({proj}/features/{name}/codebase)
+ *      ({proj}/features/{name}/codebase)
  *   3. otherwise (a branch not materialized on disk)                → git-mode
- *      (read via git show / ls-tree / grep against {proj}/codebase/.git)
+ *      (read via git show / ls-tree / grep against {proj}/repo.git)
  */
 
 import * as fs from 'fs';
@@ -27,8 +28,6 @@ export class ReferenceTargetError extends Error {
     this.name = 'ReferenceTargetError';
   }
 }
-
-const MAIN_ALIASES = new Set(['main', 'master']);
 
 export async function resolveReferenceCodebase(
   workspaceResolver: WorkspaceResolver,
@@ -64,22 +63,20 @@ export async function resolveReferenceCodebase(
 
   const projectPath = workspaceResolver.getProjectPath(userContext, project);
   const branchBase = readBranchBase(projectPath);
-  const mainCodebase = workspaceResolver.getCodebasePath(userContext, project);
+  const anchorPath = workspaceResolver.getGitAnchorPath(userContext, project);
 
-  // (1) main codebase
-  if (!branch || branch === branchBase || MAIN_ALIASES.has(branch)) {
-    return { mode: 'dir', absPath: mainCodebase, project, branch: undefined };
-  }
+  // Branch == feature name. `branch` omitted resolves to the project's
+  // branchBase feature.
+  const effectiveBranch = branch ?? branchBase;
 
-  // (2) on-disk feature worktree
-  const featureName = branch.startsWith('feature/') ? branch.slice('feature/'.length) : branch;
-  const featureCodebase = workspaceResolver.getCodebasePath(userContext, project, featureName);
-  if (featureCodebase !== mainCodebase && fs.existsSync(featureCodebase)) {
+  // (1)+(2) on-disk feature worktree
+  const featureCodebase = workspaceResolver.getCodebasePath(userContext, project, effectiveBranch);
+  if (fs.existsSync(featureCodebase)) {
     return { mode: 'dir', absPath: featureCodebase, project, branch };
   }
 
-  // (3) git-mode — branch exists only in git, not as a worktree
-  return { mode: 'git', gitDir: mainCodebase, ref: branch, project, branch };
+  // (3) git-mode — branch exists only in the bare anchor, not as a worktree
+  return { mode: 'git', gitDir: anchorPath, ref: effectiveBranch, project, branch };
 }
 
 /** Directory-tree bootstrap listing (top-level entries) for a resolved dir root. */

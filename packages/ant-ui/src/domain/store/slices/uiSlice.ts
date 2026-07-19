@@ -596,10 +596,17 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     });
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
 
+    if (!featureName) {
+      // No feature ⇒ no codebase ⇒ nothing for the IDE to open.
+      console.warn('[uiSlice] IDE start skipped — no feature selected');
+      set({ ideSession: { kind: 'idle' } });
+      return;
+    }
+
     try {
-      const { startCloudIDE, SERVER_BASE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
+      const { startCloudIDE, SERVER_BASE } = await import('@/infrastructure/http/api');
       const { waitForIdeReady } = await import('@/infrastructure/http/poll');
-      const { instance } = await startCloudIDE(projectId, featureName || RESERVED_FEATURE_NAME);
+      const { instance } = await startCloudIDE(projectId, featureName);
       const proxyUrl = `${SERVER_BASE()}${instance.url}`;
 
       // Pre-flight: BE says ready but verify the proxy actually serves HTTP
@@ -639,9 +646,15 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       ideSession: { kind: 'starting', phase: null, startedAt: Date.now(), sessionKey },
     });
 
+    if (!featureName) {
+      console.warn('[uiSlice] IDE reset skipped — no feature selected');
+      set({ ideSession: { kind: 'idle' } });
+      return;
+    }
+
     try {
-      const { resetCloudIDE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
-      await resetCloudIDE(projectId, featureName || RESERVED_FEATURE_NAME);
+      const { resetCloudIDE } = await import('@/infrastructure/http/api');
+      await resetCloudIDE(projectId, featureName);
       // No auto-restart — drop to idle and wait for explicit user action.
       // The cause may be environmental (node shortage, registry outage); an
       // immediate retry would reproduce the same stuck state.
@@ -659,9 +672,11 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     // it fails.
     set({ ideSession: { kind: 'idle' } });
 
+    if (!featureName) return;
+
     try {
-      const { stopCloudIDE, RESERVED_FEATURE_NAME } = await import('@/infrastructure/http/api');
-      await stopCloudIDE(projectId, featureName || RESERVED_FEATURE_NAME);
+      const { stopCloudIDE } = await import('@/infrastructure/http/api');
+      await stopCloudIDE(projectId, featureName);
     } catch (e: any) {
       // eslint-disable-next-line no-console
       console.warn('[uiSlice] IDE stop failed (idle reap will handle):', e?.message ?? e);

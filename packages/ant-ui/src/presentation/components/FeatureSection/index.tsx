@@ -11,6 +11,7 @@ import { RowList } from '../layout/Explorer/RowList';
 import { FeatureRow } from '../layout/Explorer/FeatureRow';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { FeatureDeletionPanel } from '../common/FeatureDeletion/FeatureDeletionPanel';
+import { featureNameErrorKey } from '@/application/utils/featureNameError';
 
 /**
  * Aurora-tokenized FeatureSection.
@@ -69,11 +70,9 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
     setForceInlineCreate(true);
   }, []);
 
-  // Filter out internal 'main' feature
-  const visibleFeatures = useMemo(
-    () => features.filter((f) => f.name !== 'main'),
-    [features],
-  );
+  // Every feature is user-visible — branch == feature name, so 'main' is a
+  // legitimate feature (e.g. the auto-created base feature after a clone).
+  const visibleFeatures = features;
 
   // Active feature on top, others below
   const orderedFeatures = useMemo(() => {
@@ -118,9 +117,22 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
     [selectedProject, runningJobsByFeature, showConfirm, t, handleDeleteFeature],
   );
 
+  // Inline validation — feature name becomes the git branch name verbatim,
+  // so invalid names are rejected at input time with the specific violation.
+  const newFeatureNameError = useMemo(() => {
+    const name = newFeatureName.trim();
+    if (!name) return null;
+    const key = featureNameErrorKey(name);
+    if (key) return t(`explorer:${key}`);
+    if (features.some((f) => f.name === name)) {
+      return t('explorer:feature.nameError.duplicate');
+    }
+    return null;
+  }, [newFeatureName, features, t]);
+
   const handleSubmitNewFeature = useCallback(async () => {
     const name = newFeatureName.trim();
-    if (!name) return;
+    if (!name || newFeatureNameError) return;
     try {
       await handleCreateFeature(name);
       setNewFeatureName('');
@@ -128,7 +140,7 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
     } catch (err) {
       console.error('Failed to create feature:', err);
     }
-  }, [newFeatureName, handleCreateFeature]);
+  }, [newFeatureName, newFeatureNameError, handleCreateFeature]);
 
   if (!selectedProject) {
     return null;
@@ -258,79 +270,85 @@ export function FeatureSection({ explorerWidth: _explorerWidth }: { explorerWidt
         )}
 
         {forceInlineCreate && (
-          <div
-            style={{
-              marginTop: 6,
-              display: 'flex',
-              gap: 4,
-              alignItems: 'center',
-            }}
-          >
-            <input
-              type="text"
-              autoFocus
-              value={newFeatureName}
-              onChange={(e) => setNewFeatureName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleSubmitNewFeature();
-                if (e.key === 'Escape') {
+          <div style={{ marginTop: 6 }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 4,
+                alignItems: 'center',
+              }}
+            >
+              <input
+                type="text"
+                autoFocus
+                value={newFeatureName}
+                onChange={(e) => setNewFeatureName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleSubmitNewFeature();
+                  if (e.key === 'Escape') {
+                    setForceInlineCreate(false);
+                    setNewFeatureName('');
+                  }
+                }}
+                placeholder={t('explorer:featureDropdown.featureNamePlaceholder', { defaultValue: 'feature-name' })}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  height: 26,
+                  padding: '0 8px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  color: 'var(--text-1)',
+                  background: 'var(--surface-1)',
+                  border: `1px solid ${newFeatureNameError ? 'var(--status-error-fg, #e5484d)' : 'var(--border-1)'}`,
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void handleSubmitNewFeature()}
+                disabled={!newFeatureName.trim() || !!newFeatureNameError}
+                style={{
+                  height: 26,
+                  padding: '0 10px',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--text-on-brand)',
+                  background: 'var(--gradient-aurora)',
+                  boxShadow: 'var(--shadow-glow-aurora)',
+                  border: 'none',
+                  cursor: newFeatureName.trim() && !newFeatureNameError ? 'pointer' : 'not-allowed',
+                  opacity: newFeatureName.trim() && !newFeatureNameError ? 1 : 0.5,
+                }}
+              >
+                ✓
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   setForceInlineCreate(false);
                   setNewFeatureName('');
-                }
-              }}
-              placeholder={t('explorer:featureDropdown.featureNamePlaceholder', { defaultValue: 'feature-name' })}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                height: 26,
-                padding: '0 8px',
-                borderRadius: 6,
-                fontSize: 12,
-                color: 'var(--text-1)',
-                background: 'var(--surface-1)',
-                border: '1px solid var(--border-1)',
-                outline: 'none',
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => void handleSubmitNewFeature()}
-              disabled={!newFeatureName.trim()}
-              style={{
-                height: 26,
-                padding: '0 10px',
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--text-on-brand)',
-                background: 'var(--gradient-aurora)',
-                boxShadow: 'var(--shadow-glow-aurora)',
-                border: 'none',
-                cursor: newFeatureName.trim() ? 'pointer' : 'not-allowed',
-                opacity: newFeatureName.trim() ? 1 : 0.5,
-              }}
-            >
-              ✓
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setForceInlineCreate(false);
-                setNewFeatureName('');
-              }}
-              style={{
-                height: 26,
-                padding: '0 10px',
-                borderRadius: 6,
-                fontSize: 11,
-                color: 'var(--text-3)',
-                background: 'transparent',
-                border: '1px solid var(--border-1)',
-                cursor: 'pointer',
-              }}
-            >
-              ✕
-            </button>
+                }}
+                style={{
+                  height: 26,
+                  padding: '0 10px',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  color: 'var(--text-3)',
+                  background: 'transparent',
+                  border: '1px solid var(--border-1)',
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            {newFeatureNameError && (
+              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--status-error-fg, #e5484d)' }}>
+                {newFeatureNameError}
+              </div>
+            )}
           </div>
         )}
       </SectionShell>

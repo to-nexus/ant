@@ -13,7 +13,7 @@ import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
 import { deriveResumableState } from '../../../../core/session/resumable';
 import { generateTurnId } from '../../../../composition/recordUserTurn';
-import { readBranchBaseFromConfig } from '../../../../core/utils/branchUtils';
+import { readBranchBase } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
@@ -466,9 +466,18 @@ export function createJobRoutes(deps: {
       }
 
       const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
-      const branchBase = readBranchBaseFromConfig(projectPath);
+      const branchBase = readBranchBase(projectPath);
 
-      // Check if base branch already has a running job
+      // Learn runs on the branchBase FEATURE — a project without features has
+      // no codebase to index.
+      const baseFeaturePath = path.join(projectPath, 'features', branchBase);
+      if (!fs.existsSync(baseFeaturePath)) {
+        return res.status(409).json({
+          error: 'Learn requires at least one feature — create a feature first.',
+        });
+      }
+
+      // Check if the base feature already has a running job
       const duplicate = await checkDuplicateJob(projectId, branchBase);
       if (duplicate) {
         return res.status(409).json({

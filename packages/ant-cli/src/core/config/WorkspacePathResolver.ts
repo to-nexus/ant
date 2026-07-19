@@ -13,7 +13,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { UserContext } from '../types/user';
-import { RESERVED_FEATURE_NAME } from '../utils/branchUtils';
 
 export interface WorkspaceResolver {
   /**
@@ -35,23 +34,51 @@ export interface WorkspaceResolver {
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string;
   
   /**
-   * Get codebase path for a project or feature.
-   * 
-   * Centralized resolution of the codebase directory path.
-   * - For main/base branch: returns projectPath/codebase (the main git worktree)
-   * - For features: returns featurePath/codebase (a git worktree for that feature's branch)
+   * Get codebase path for a feature.
+   *
+   * A project without features has NO codebase — `featureId` is required.
+   * - For features: returns featurePath/codebase (a git worktree whose branch name == feature name)
    * - For local repoType: returns the configured localPath regardless of feature
-   * 
-   * @param userContext Contains organizationId and userId
-   * @param projectId Project identifier
-   * @param featureId Optional feature identifier. If omitted or 'main', returns the main codebase.
    */
-  getCodebasePath(userContext: UserContext, projectId: string, featureId?: string): string;
-  
+  getCodebasePath(userContext: UserContext, projectId: string, featureId: string): string;
+
+  /**
+   * Get the project's git anchor path — a hidden bare repo at
+   * `{project}/repo.git`. All feature worktrees hang off this anchor.
+   * Not meaningful for `repoType:'local'` projects (user-owned repo).
+   */
+  getGitAnchorPath(userContext: UserContext, projectId: string): string;
+
   /**
    * Get physical workspaces directory path
    */
   getPhysicalWorkspacesPath(): string;
+}
+
+/** Directory name of the bare git anchor inside a project. */
+export const GIT_ANCHOR_DIR = 'repo.git';
+
+/**
+ * Shared codebase-path resolution used by every WorkspaceResolver
+ * implementation. `repoType:'local'` short-circuits to the user-owned
+ * localPath; otherwise the feature worktree codebase is returned.
+ */
+export function resolveCodebasePathFromConfig(
+  projectPath: string,
+  featurePath: string,
+): string {
+  const configPath = path.join(projectPath, 'config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config.repoType === 'local' && config.localPath) {
+        return resolveLocalPath(config.localPath);
+      }
+    }
+  } catch {
+    // config not found or invalid — fall through to the feature worktree path
+  }
+  return path.join(featurePath, 'codebase');
 }
 
 /**
@@ -259,37 +286,17 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
     return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId, 'features', featureId);
   }
   
-  getCodebasePath(userContext: UserContext, projectId: string, featureId?: string): string {
-    const projectPath = this.getProjectPath(userContext, projectId);
-    
-    // Read project config for repoType and branchBase
-    let branchBase = 'main';
-    const configPath = path.join(projectPath, 'config.json');
-    try {
-      if (fs.existsSync(configPath)) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        if (config.repoType === 'local' && config.localPath) {
-          return resolveLocalPath(config.localPath);
-        }
-        if (config.branchBase) {
-          branchBase = config.branchBase;
-        }
-      }
-    } catch {
-      // config not found or invalid - fall through to default cloud path
-    }
-    
-    // Cloud mode: base branch → projectPath/codebase, feature → featurePath/codebase
-    // Only RESERVED_FEATURE_NAME ('_base') maps to the main codebase path.
-    // User-created ant features (e.g. 'dev') always get their own feature path,
-    // even if the feature name matches the git repo's default branch (branchBase).
-    // Ant features use feature/{name} git branches, so there is no path collision.
-    if (!featureId || featureId === RESERVED_FEATURE_NAME) {
-      return path.join(projectPath, 'codebase');
-    }
-    return path.join(this.getFeaturePath(userContext, projectId, featureId), 'codebase');
+  getCodebasePath(userContext: UserContext, projectId: string, featureId: string): string {
+    return resolveCodebasePathFromConfig(
+      this.getProjectPath(userContext, projectId),
+      this.getFeaturePath(userContext, projectId, featureId),
+    );
   }
-  
+
+  getGitAnchorPath(userContext: UserContext, projectId: string): string {
+    return path.join(this.getProjectPath(userContext, projectId), GIT_ANCHOR_DIR);
+  }
+
   getPhysicalWorkspacesPath(): string {
     return this.workspacesPath;
   }

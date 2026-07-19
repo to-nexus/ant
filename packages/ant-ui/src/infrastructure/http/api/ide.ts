@@ -1,6 +1,5 @@
 import { API_BASE, authFetch } from './client';
 
-export const RESERVED_FEATURE_NAME = '_base';
 
 export interface OpenIDERequest {
   ide: 'cursor' | 'vscode';
@@ -65,7 +64,7 @@ export async function checkIDEInstalled(ide: 'cursor' | 'vscode'): Promise<Check
  */
 export async function startCloudIDE(
   projectId: string,
-  featureName: string = RESERVED_FEATURE_NAME,
+  featureName: string,
 ): Promise<StartCloudIDEResponse> {
   const response = await authFetch(`${API_BASE()}/cloud-ide/start`, {
     method: 'POST',
@@ -82,7 +81,7 @@ export async function startCloudIDE(
  */
 export async function stopCloudIDE(
   projectId: string,
-  featureName: string = RESERVED_FEATURE_NAME,
+  featureName: string,
 ): Promise<{ success: boolean; message?: string }> {
   const response = await authFetch(`${API_BASE()}/cloud-ide/stop`, {
     method: 'POST',
@@ -100,7 +99,7 @@ export async function stopCloudIDE(
  */
 export async function resetCloudIDE(
   projectId: string,
-  featureName: string = RESERVED_FEATURE_NAME,
+  featureName: string,
 ): Promise<{ success: boolean; cleared?: { pod: boolean; stateStore: boolean }; message?: string }> {
   const response = await authFetch(`${API_BASE()}/cloud-ide/reset`, {
     method: 'POST',

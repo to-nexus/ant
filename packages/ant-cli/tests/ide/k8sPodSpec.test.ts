@@ -6,7 +6,8 @@
  *   - container.workingDir === '/workspace' (mirrors Docker's WorkingDir)
  *   - ANT_WORKSPACE env === '/workspace' (alias-consistent)
  *   - feature worktree pod has 3 distinct volumeMounts (alias + mainGitDir + worktreePath)
- *   - base branch pod has exactly 1 volumeMount (alias)
+ *   - defensive `NO_FEATURE_KEY` ('@none') pod has exactly 1 volumeMount (alias)
+ *     — routes require a feature, so this path exists only as a parser fallback
  *   - WORKSPACE_BASE_PATH mismatch -> throw at spec creation time
  */
 
@@ -16,6 +17,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { KubernetesIDEOrchestrator } from '../../src/infrastructure/ide/KubernetesIDEOrchestrator';
+import { NO_FEATURE_KEY } from '../../src/infrastructure/state/redisKeyUtils';
 import type { StateStorePort } from '../../src/core/ports/stateStore';
 
 interface PodSpecFixture {
@@ -37,6 +39,13 @@ function makePodSpecFixture(): PodSpecFixture {
   mkdirSync(path.join(mainGitDir, 'worktrees', 'feat-x'), { recursive: true });
   mkdirSync(featureCodebase, { recursive: true });
   return { base, projectDir, mainCodebase, mainGitDir, featureCodebase };
+}
+
+/** Write the worktree `.git` marker so `resolveK8sWorktreeMounts` resolves. */
+function writeWorktreeMarker(fx: PodSpecFixture): void {
+  const gitFile = path.join(fx.featureCodebase, '.git');
+  const gitdirAbs = path.join(fx.mainGitDir, 'worktrees', 'feat-x');
+  writeFileSync(gitFile, `gitdir: ${gitdirAbs}\n`, 'utf-8');
 }
 
 const stubStateStore = {} as unknown as StateStorePort;
@@ -63,17 +72,17 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
     else process.env.ANT_WORKSPACE_BASE_PATH = originalBase;
   });
 
-  it('base branch pod has exactly one alias mount + workingDir/env consistent', () => {
+  it('defensive NO_FEATURE_KEY pod has exactly one alias mount + workingDir/env consistent', () => {
     const orch = makeOrch();
     // `WORKSPACE_BASE_PATH` is captured at module load — invoke private via cast
     // and pass workspacePath under the same module-load base. Tests bind the
     // env BEFORE first orchestrator usage in this file via beforeEach.
     const spec = (orch as any).createPodSpec(
-      'org:user:proj:_base',
-      'ide-org-user-proj-base',
+      `org:user:proj:${NO_FEATURE_KEY}`,
+      'ide-org-user-proj-none',
       fx.mainCodebase,
       userContext,
-      '_base',
+      NO_FEATURE_KEY,
     );
 
     const container = spec.spec.containers[0];
@@ -84,9 +93,7 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
   });
 
   it('feature worktree pod has 3 distinct volumeMounts (alias + mainGitDir + worktreePath)', () => {
-    const gitFile = path.join(fx.featureCodebase, '.git');
-    const gitdirAbs = path.join(fx.mainGitDir, 'worktrees', 'feat-x');
-    writeFileSync(gitFile, `gitdir: ${gitdirAbs}\n`, 'utf-8');
+    writeWorktreeMarker(fx);
 
     const orch = makeOrch();
     const spec = (orch as any).createPodSpec(
@@ -114,11 +121,11 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
     const orch = makeOrch();
     expect(() =>
       (orch as any).createPodSpec(
-        'org:user:proj:_base',
-        'ide-org-user-proj-base',
+        `org:user:proj:${NO_FEATURE_KEY}`,
+        'ide-org-user-proj-none',
         path.join(outsideDir),
         userContext,
-        '_base',
+        NO_FEATURE_KEY,
       ),
     ).toThrow(/outside ANT_WORKSPACE_BASE_PATH/);
 
@@ -141,17 +148,18 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
     ).toThrow(/requires worktree mounts but resolveK8sWorktreeMounts returned/);
   });
 
-  it('FAIL-FAST: base pod with no worktree mounts is allowed (always 1-mount)', () => {
-    // _base feature is special — main repo `.git` is a directory, no worktree
-    // marker. resolveK8sWorktreeMounts returns [] which is correct here.
+  it('FAIL-FAST: defensive NO_FEATURE_KEY pod with no worktree mounts is allowed (always 1-mount)', () => {
+    // NO_FEATURE_KEY is the defensive parser fallback — `.git` here is a plain
+    // directory, no worktree marker. resolveK8sWorktreeMounts returns [] which
+    // is correct for this path (routes reject missing features upstream).
     const orch = makeOrch();
     expect(() =>
       (orch as any).createPodSpec(
-        'org:user:proj:_base',
-        'ide-org-user-proj-base',
+        `org:user:proj:${NO_FEATURE_KEY}`,
+        'ide-org-user-proj-none',
         fx.mainCodebase,
         userContext,
-        '_base',
+        NO_FEATURE_KEY,
       ),
     ).not.toThrow();
   });
@@ -170,7 +178,7 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
         }],
       },
     } as any;
-    const drift = (orch as any).hasMountDrift(podWithoutProbe, fx.mainCodebase, '_base');
+    const drift = (orch as any).hasMountDrift(podWithoutProbe, fx.mainCodebase, NO_FEATURE_KEY);
     expect(drift).toBe(true);
   });
 
@@ -188,18 +196,19 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
         }],
       },
     } as any;
-    const drift = (orch as any).hasMountDrift(podWithProbe, fx.mainCodebase, '_base');
+    const drift = (orch as any).hasMountDrift(podWithProbe, fx.mainCodebase, NO_FEATURE_KEY);
     expect(drift).toBe(false);
   });
 
   it('pod is hardened: no SA token, non-root pod + container securityContext, caps dropped (O8/O12)', () => {
+    writeWorktreeMarker(fx);
     const orch = makeOrch();
     const spec = (orch as any).createPodSpec(
-      'org:user:proj:_base',
-      'ide-org-user-proj-base',
-      fx.mainCodebase,
+      'org:user:proj:feat-x',
+      'ide-org-user-proj-feat-x',
+      fx.featureCodebase,
       userContext,
-      '_base',
+      'feat-x',
     );
 
     // O12 — SA token never mounted into the IDE container.
@@ -221,19 +230,20 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
   });
 
   it('readinessProbe gates Service Endpoints on openvscode-server HTTP, not just phase=Running', () => {
+    writeWorktreeMarker(fx);
     const orch = makeOrch();
     const spec = (orch as any).createPodSpec(
-      'org:user:proj:_base',
-      'ide-org-user-proj-base',
-      fx.mainCodebase,
+      'org:user:proj:feat-x',
+      'ide-org-user-proj-feat-x',
+      fx.featureCodebase,
       userContext,
-      '_base',
+      'feat-x',
     );
 
     const container = spec.spec.containers[0];
     expect(container.readinessProbe).toBeDefined();
     expect(container.readinessProbe.httpGet).toBeDefined();
-    expect(container.readinessProbe.httpGet.path).toBe('/ide/org:user:proj:_base/');
+    expect(container.readinessProbe.httpGet.path).toBe('/ide/org:user:proj:feat-x/');
     expect(container.readinessProbe.httpGet.port).toBe(3000);
     // failureThreshold * periodSeconds = ~60s grace for cold pulls
     expect(container.readinessProbe.failureThreshold).toBeGreaterThanOrEqual(30);
@@ -265,16 +275,17 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
   });
 
   const emailUser = { userId: 'probe@to.nexus', organizationId: 'individual', email: 'probe@to.nexus' } as any;
-  const emailInstanceKey = 'individual:probe@to.nexus:classboard:_base';
+  const emailInstanceKey = 'individual:probe@to.nexus:classboard:feat-x';
 
   it('pod labels (user, instance) are K8s-valid and <=63 chars with an email userId', () => {
+    writeWorktreeMarker(fx);
     const orch = makeOrch();
     const spec = (orch as any).createPodSpec(
       emailInstanceKey,
-      'ide-individual-probe-to-nexus-classboard-base',
-      fx.mainCodebase,
+      'ide-individual-probe-to-nexus-classboard-feat-x',
+      fx.featureCodebase,
       emailUser,
-      '_base',
+      'feat-x',
     );
 
     const labels = spec.metadata.labels;
@@ -287,16 +298,17 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
   });
 
   it('service selector matches the pod instance label exactly (routing consistency)', () => {
+    writeWorktreeMarker(fx);
     const orch = makeOrch();
     const podSpec = (orch as any).createPodSpec(
       emailInstanceKey,
-      'ide-individual-probe-to-nexus-classboard-base',
-      fx.mainCodebase,
+      'ide-individual-probe-to-nexus-classboard-feat-x',
+      fx.featureCodebase,
       emailUser,
-      '_base',
+      'feat-x',
     );
     const serviceSpec = (orch as any).createServiceSpec
-      ? (orch as any).createServiceSpec(emailInstanceKey, 'ide-individual-probe-to-nexus-classboard-base')
+      ? (orch as any).createServiceSpec(emailInstanceKey, 'ide-individual-probe-to-nexus-classboard-feat-x')
       : null;
 
     // `instance` value goes through the same sanitizer in both pod label and
@@ -311,13 +323,14 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
   });
 
   it('listByUser selector encodes the sanitized user value (matches the pod user label)', () => {
+    writeWorktreeMarker(fx);
     const orch = makeOrch();
     const spec = (orch as any).createPodSpec(
       emailInstanceKey,
-      'ide-individual-probe-to-nexus-classboard-base',
-      fx.mainCodebase,
+      'ide-individual-probe-to-nexus-classboard-feat-x',
+      fx.featureCodebase,
       emailUser,
-      '_base',
+      'feat-x',
     );
     // The selector built in `listByUser` uses sanitizeLabelValue(userId); it
     // must equal the pod's `user` label or the lookup silently returns nothing.

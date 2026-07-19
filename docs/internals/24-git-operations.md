@@ -22,6 +22,7 @@ FE 타입 표면에 등장하지 않는다.
 | `GitSuggestedAction` | `configurePat` / `resolveConflict` / `reconfigureRepo` / `runClone` |
 | `GitPatState` | `{ configured, username? }` |
 | `GitStateEventData` | SSE `gitState` 이벤트의 discriminated union (`workingTreeChange` / `operationComplete` / `reconnectRefill`) |
+| `GitCloneResult` | clone 응답 result — `{ defaultBranch, feature }` (clone 이 자동 생성한 feature 이름 포함) |
 
 ### SSE 1 이벤트 — `gitState`
 
@@ -65,12 +66,13 @@ P9 패턴이 이를 감시한다.
 
 | 상태 (S) | BE 동작 |
 |----------|---------|
-| S1: `!hasGit && !hasRemote` | `git init` + GitHub repo 생성 + initial push (initialize) |
-| S2: `!hasGit && hasRemote` | `git init` + remote 연결 + push (initialize-with-remote) |
-| S3: `hasGit && !hasRemote` | GitHub repo 생성 + `git push -u` (init-remote) |
+| S1/S2: `!hasGit` (anchor 없음 = feature 0개) | 도달 불가 — init variant 는 feature ≥ 1 을 요구하고, 첫 feature 가 anchor 를 생성하므로 feature 가 있으면 항상 `hasGit=true`. feature 0개 publish 는 guard 로 거부 |
+| S3: `hasGit && !hasRemote` | GitHub repo 생성 → `remote add origin` + fetch refspec → `git push -u origin {branchBase}` (사용자가 고른 base 가 GitHub default branch) → `remote set-head origin {branchBase}` best-effort (init). 실패 시 rollback 은 `remote remove origin` 만 — `repo.git` 은 절대 삭제하지 않는다 |
 | S4: `hasGit && hasRemote && !hasUpstream` | `git push -u` (publish-branch) |
 
-FE 는 어느 분기인지 알지 못한 채 `{ kind: 'publish' }` 만 디스패치한다.
+FE 는 어느 분기인지 알지 못한 채 `{ kind: 'publish' }` 만 디스패치한다. init variant 의
+구현 SSOT 는 `GitService/anchor/GitAnchorSSOT.ts` — 옛 `GitBootstrapSSOT` /
+`BaseGitSetupOperation` 은 삭제됐다.
 
 ---
 
@@ -80,10 +82,10 @@ ANT는 GitHub를 통한 Git 연동을 지원한다. 프로젝트 생성 후 Git�
 
 ## Operation 정의
 
-| Operation | 역할 | 원격 레포 | 로컬 .git | Feature |
+| Operation | 역할 | 원격 레포 | 로컬 anchor (`repo.git`) | Feature |
 |-----------|------|:---------:|:---------:|:-------:|
-| **Clone** | 기존 원격 레포를 로컬로 다운로드 | 있어야 함 | 없어야 함 | OK (worktree 자동 생성) |
-| **Init** | 로컬 코드로 새 원격 레포 생성 후 push | 없어야 함 | 없거나 remote 없는 local-only 허용 | OK (worktree 자동 생성) |
+| **Clone** | 기존 원격 레포를 bare anchor 로 다운로드 + default-branch feature 자동 생성 | 있어야 함 | 없어야 함 | **0개 필수** (BE hard guard → 409) |
+| **Init** | 로컬 anchor 로 새 원격 레포 생성 후 push | 없어야 함 | 존재 (첫 feature 가 lazy 생성) | **≥ 1 필수** |
 | **Commit** | 변경사항을 로컬 커밋 | 연결됨 | 있어야 함 | - |
 | **Push** | 로컬 커밋을 원격에 업로드 (upstream 없으면 자동 설정) | 연결됨 | 있어야 함 | - |
 | **Pull** | 원격 변경사항을 로컬로 다운로드 | 연결됨 | 있어야 함 | - |
@@ -94,17 +96,18 @@ ANT는 GitHub를 통한 Git 연동을 지원한다. 프로젝트 생성 후 Git�
 ## 상황별 가능 여부
 
 ```
-                    원격 레포 없음              원격 레포 있음
-              +----------------------+   +------------------------+
-Feature 없음  |  Clone  X (레포없음)  |   |  Clone  O              |
-              |  Init   O            |   |  Init   X (레포존재)    |
-              +----------------------+   +------------------------+
-Feature 있음  |  Clone  X (레포없음)  |   |  Clone  O              |
-              |  Init   O            |   |  Init   X (레포존재)    |
-              +----------------------+   +------------------------+
+                    원격 레포 없음                       원격 레포 있음
+              +------------------------------+   +------------------------------+
+Feature 없음  |  Clone  X (레포없음)          |   |  Clone  O (default-branch     |
+              |  Init   X (feature 필요)      |   |           feature 자동 생성)  |
+              |                              |   |  Init   X (레포존재)          |
+              +------------------------------+   +------------------------------+
+Feature 있음  |  Clone  X (feature 존재 →409) |   |  Clone  X (feature 존재 →409) |
+              |  Init   O                    |   |  Init   X (레포존재)          |
+              +------------------------------+   +------------------------------+
 
-.git 이미 존재 + remote 있음 → Clone/Init 불필요, Push/Pull/Fetch/Commit/Sync/Discard 사용
-.git 이미 존재 + remote 없음 (local-only) → Init 허용 (프로젝트 생성 시 자동 초기화된 상태)
+anchor 존재 + remote 있음 → Clone/Init 불필요, Push/Pull/Fetch/Commit/Sync/Discard 사용
+anchor 존재 (feature ≥ 1) + remote 없음 → Init(publish) 허용
 ```
 
 ### UI 메뉴 구조
@@ -116,12 +119,25 @@ Feature 있음  |  Clone  X (레포없음)  |   |  Clone  O              |
 
 Connected Mode에서 ActionButton이 상황에 따라 Commit / Publish Branch / Push / Pull / Sync / No Changes를 자동 표시한다.
 
+feature 가 하나라도 있으면 Clone 항목은 disabled + notice 로 표시된다
+(`deriveGitMenu.cloneBlockedByFeatures`) — Clone 은 feature 0개일 때만 허용.
+
 ## Worktree 생명주기
 
-### .git 파일 vs .git 디렉터리
+### Bare anchor vs .git marker 파일
 
-- `projectPath/codebase/.git/` (디렉터리) — main worktree, 실제 git 데이터 저장
-- `features/{name}/codebase/.git` (파일) — worktree 참조 파일, **항상 절대경로** `gitdir: <absolute path>/codebase/.git/worktrees/{id}` 형태로 git 이 작성한다 (CLI flag 로 변경 불가). worktree 메타 디렉토리 이름은 worktree 경로의 마지막 path 컴포넌트(보통 `codebase`)에서 파생되며, 충돌 시 git 이 자동 disambiguate 해 `codebase1` 등으로 만든다.
+- `{projectPath}/repo.git/` (bare anchor) — 프로젝트의 **유일한 실제 저장소**. 숨김 bare repo 로, `HEAD` 는 `refs/heads/{branchBase}` 로의 symref, worktree 메타는 `repo.git/worktrees/{id}/` 에 저장된다. 옛 `{project}/codebase/` main worktree 는 존재하지 않는다.
+- `features/{name}/codebase/.git` (파일) — linked worktree 참조 파일, **항상 절대경로** `gitdir: <absolute path>/repo.git/worktrees/{id}` 형태로 git 이 작성한다 (CLI flag 로 변경 불가). worktree 메타 디렉토리 이름은 worktree 경로의 마지막 path 컴포넌트(보통 `codebase`)에서 파생되며, 충돌 시 git 이 자동 disambiguate 해 `codebase1` 등으로 만든다.
+
+feature 가 하나도 없는 프로젝트는 codebase 도, git 도 없다 — anchor 는 **첫 feature 생성 시 lazy 하게** 만들어진다 (`GitAnchorSSOT.ensureAnchor`; empty 상태의 initial commit 은 `hash-object -t tree` / `commit-tree` / `update-ref` plumbing 으로 생성).
+
+### 브랜치 명명
+
+브랜치 이름 == feature 이름 **정확히 동일** — `feature/` prefix 없음, sanitization 없음. git 브랜치명으로 invalid 한 feature 이름은 생성 시점에 거부된다 (`@ant/shared` `validateFeatureName`; `/` 불허). `GitHelper.sanitizeBranchName` 은 삭제됐다.
+
+### Bare anchor 접근 (GIT_DIR)
+
+anchor 를 대상으로 하는 모든 git 명령은 명시적 `GIT_DIR` 로 실행한다 (`GitHelper.bareAnchorEnv` / `getBareGitInstance`) — `safe.bareRepository=explicit` 환경에서도 동작한다. env 는 whitelist 방식 (simple-git 이 editor/pager 류 var 를 거부하므로).
 
 ### Worktree validity (Stage-4 SSOT)
 
@@ -129,7 +145,7 @@ Connected Mode에서 ActionButton이 상황에 따라 Commit / Publish Branch / 
 
 1. `.git` 파일 존재 (worktree marker 있음)
 2. `gitdir:` 형식 파싱 성공
-3. 그 절대경로 디렉토리 (`<main>/.git/worktrees/<id>/`) 존재
+3. 그 절대경로 디렉토리 (`<project>/repo.git/worktrees/<id>/`) 존재
 4. 그 디렉토리에 `HEAD` + `commondir` 두 파일 모두 존재
 
 검사가 cheap (4 stat) 이라 모든 critical path 에서 호출. 새 helper 추가 금지 — partial worktree (NFS partial write / interrupted `git worktree add`) 는 단일 SSOT 로 검출.
@@ -141,22 +157,22 @@ Connected Mode에서 ActionButton이 상황에 따라 Commit / Publish Branch / 
 | pre-existing dir 검사 | `WorktreeService.createWorktree` | partial gitdir 가 valid 로 false-positive 되는 회귀 차단 |
 | post-create probe | `WorktreeService.createWorktree` | `git worktree add` exit-code 0 인데 partial 인 케이스 검출 + throw |
 | orphan 강화 | `WorktreeService.pruneCorruptWorktreeMeta` | partial meta 디렉토리도 자동 회수 |
-| Stage-4 self-heal | `ensureGitRepository` | git instance 만들어진 partial worktree 도 backup → recreate → restore |
+| Stage-4 self-heal | `ensureGitRepository` | corrupt worktree 를 `createWorktree` re-attach 로 복구 (브랜치는 anchor 에 살아있음; corrupt worktree 의 uncommitted changes 는 폐기) |
 | defense-in-depth | `StatusService.getGitChanges` | "not a git repository" 에러 시 structured `worktreeValidityFailure` 로그 emit |
 
 ### IDE Pod Multi-Mount Topology (Cloud / K8s)
 
-worktree marker 가 절대경로를 가리키므로, IDE pod 가 그 절대경로를 컨테이너 안에서 실제로 해소할 수 있어야 한다. K8s pod 는 단일 subPath 마운트만 가지면 `/mnt/workspaces/<...>/codebase/.git/worktrees/<id>` 경로가 컨테이너 안에 존재하지 않아 git 인식 실패.
+worktree marker 가 절대경로를 가리키므로, IDE pod 가 그 절대경로를 컨테이너 안에서 실제로 해소할 수 있어야 한다. K8s pod 는 단일 subPath 마운트만 가지면 `/mnt/workspaces/<...>/repo.git/worktrees/<id>` 경로가 컨테이너 안에 존재하지 않아 git 인식 실패.
 
 해결: **alias-model multi-mount** (Docker `resolveWorktreeBindMounts` 와 K8s `resolveK8sWorktreeMounts` 모두 동형):
 
 | Mount | mountPath | subPath | 책임 |
 |-------|-----------|---------|------|
-| Primary alias | `/workspace` | `<tenant>/<user>/<project>[/features/<feat>]/codebase` | 사용자에게 노출되는 작업 경로 |
-| mainGitDir | `<base>/<...>/codebase/.git` (절대) | 동일 prefix | worktree marker 의 gitdir 절대경로가 컨테이너 안에서 해소되도록 |
+| Primary alias | `/workspace` | `<tenant>/<user>/<project>/features/<feat>/codebase` | 사용자에게 노출되는 작업 경로 |
+| mainGitDir | `<base>/<...>/repo.git` (절대) | 동일 prefix | worktree marker 의 gitdir 절대경로 (`repo.git/worktrees/<id>`) 가 컨테이너 안에서 해소되도록 |
 | worktreePath | `<base>/<...>/features/<feat>/codebase` (절대) | 동일 prefix | 메타 dir 의 back-reference (`<gitdir>/gitdir` 파일이 가리키는 worktree 절대경로) 가 해소되도록 |
 
-기준 브랜치 (`_base`) 는 `.git` 가 디렉토리이므로 worktree mount 0 — primary alias 만 마운트.
+IDE pod 는 **feature 필수** — feature 없는 프로젝트는 codebase 자체가 없으므로 "base branch pod" 는 더 이상 존재하지 않는다.
 
 `.git` 파싱은 `GitHelper.resolveWorktreeAbsPaths` 가 단일 SSOT — Docker/K8s 두 함수는 path 결과만 받아 자기 format (Docker bind 문자열 / K8s mount 객체) 만 책임. 새로 같은 파싱 로직 만들면 `tests/policy/worktree-mount-dedup.test.ts` 가 차단.
 
@@ -171,34 +187,36 @@ API 서버 / IDE pod / job worker 가 **모두 같은** `ANT_WORKSPACE_BASE_PATH
 ### Feature의 Git 상태 전이
 
 ```
-[Feature 생성] → NoGit (codebase 디렉터리만 존재, .git 없음)
+[Feature 생성] → Worktree 즉시 attach (.git marker 파일 생성;
+                 첫 feature 는 anchor lazy 생성 + branchBase = feature 이름 auto-set)
                     │
-                    ├── Init/Clone 성공 → Worktree (.git 파일 생성)
-                    │                       │
-                    │                       ├── 코드 변경 → Uncommitted Changes
-                    │                       ├── Commit → Local Commits
-                    │                       ├── Push → Synced with Remote
-                    │                       ├── Publish Branch → upstream 설정됨
-                    │                       └── Discard → Clean State
+                    ├── 코드 변경 → Uncommitted Changes
+                    ├── Commit → Local Commits
+                    ├── Push → Synced with Remote
+                    ├── Publish Branch → upstream 설정됨
+                    ├── Discard → Clean State
                     │
-                    └── Push/Commit 시도 → Lazy Worktree Creation (자동 생성)
-                                            └── backup → create worktree → restore → 계속
+                    └── worktree 손상 감지 → self-heal: createWorktree re-attach
+                          (브랜치는 anchor 에 살아있으므로 커밋 이력 보존;
+                           corrupt worktree 의 uncommitted changes 는 폐기)
 ```
 
-### Clone/Init 시 Feature Worktree 자동 생성
+feature = linked worktree 는 **생성 시점부터** 성립한다 — "git 없는 feature codebase" 상태는 존재하지 않는다.
 
-Clone 또는 Init 수행 시 기존 feature를 모두 순회하며 worktree를 생성한다:
-- 원격에 `origin/feature/{name}` 브랜치가 존재 → `--track`으로 생성 (hasUpstream=true, Push/Pull 가능)
-- 원격에 해당 브랜치 없음 → 새 로컬 브랜치 생성 (hasUpstream=false, "Publish Branch" 가능)
-- 기존 로컬 코드는 backup → worktree 생성 → restore 과정을 거쳐 uncommitted changes로 복원
+### Clone — feature 0개 전제 + default-branch feature 자동 생성
 
-### Lazy Worktree Creation
+Clone 은 feature 가 **0개일 때만** 허용된다 (BE hard guard → 409; FE 는 `deriveGitMenu.cloneBlockedByFeatures` 로 clone 항목 disabled + notice). 절차:
 
-Push 또는 Commit 시 feature codebase에 유효한 `.git`이 없으면:
-1. 기존 코드를 backup
-2. WorktreeService로 worktree 생성
-3. backup에서 코드 복원
-4. 원래 작업 (push/commit) 계속 진행
+1. `git clone --bare` → `{project}/repo.git`
+2. 명시적 fetch refspec `+refs/heads/*:refs/remotes/origin/*` 설정
+3. remote HEAD → branchBase 로 반영 후 잠금 (`hasRemote` = LOCK)
+4. 원격 default branch 이름의 feature 를 **자동 생성** (worktree attach) — 사용자가 바로 코드를 볼 수 있게
+
+응답 result 는 `GitCloneResult { defaultBranch, feature }` (`@ant/shared`). 옛 `FeatureCodebaseBackup` / temp-clone flatten / `SourceDetector` 경로는 삭제됐다.
+
+### Corrupt Worktree Self-heal (`ensureGitRepository`)
+
+`ensureGitRepository` 는 feature 를 요구한다 — 옛 gitBootstrap / featureBackup 입력은 없다 (fetch 만 `allowAnchor` 로 bare anchor 대상 실행 가능). feature codebase 의 worktree 가 손상되면 self-heal 은 `createWorktree` re-attach — 브랜치는 anchor 에 살아있으므로 커밋 이력은 보존되지만, corrupt worktree 의 uncommitted changes 는 폐기된다. 옛 backup → restore 경로는 삭제됐다.
 
 ### Worktree 안전성
 
@@ -209,12 +227,24 @@ WorktreeService.createWorktree는 기존 디렉터리 발견 시:
 
 `git worktree add` 직후에는 `pollWorktreeValidity` (3 회 × 100ms) 로 EFS NFS 의 eventual consistency lag 흡수 후 최종 invalid 면 `GitOperationError` throw — silent partial create 차단.
 
+### Worktree 생성 시 브랜치 선택 사다리
+
+`WorktreeService.createWorktree` 는 아래 순서로 브랜치를 결정한다 (브랜치 이름 == feature 이름):
+
+1. 로컬 브랜치 존재 → attach
+2. 원격 브랜치 존재 → `--track -b`
+3. branchBase 브랜치 존재 → 그로부터 fork
+4. anchor 에 HEAD commit 존재 → HEAD 로부터 fork
+5. empty anchor → plumbing initial commit 후 attach + seed `.gitignore`/`README` commit
+
+`repoType: 'local'` 은 모든 것을 short-circuit 한다 (사용자 소유 localPath; anchor/worktree/branch 조작 없음) — 옛 `mainCodebasePath === worktreePath` path-equality 가드는 `config.repoType === 'local'` 가드로 대체됐다.
+
 ## Publish Branch
 
 Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
-- `git push -u origin {branchName}` 실행 (Publish Branch)
+- `git push -u origin {featureName}` 실행 (Publish Branch — 브랜치 이름 == feature 이름)
 - UI에서는 ActionButton에 "Publish Branch" 버튼으로 표시
-- 이후 Push는 일반 `git push origin {branchName}`
+- 이후 Push는 일반 `git push origin {featureName}`
 
 > 참고: "Publish Branch"는 per-branch 작업으로, Setup Mode의 Init/Clone과는 별개이다.
 > Init/Clone은 프로젝트 수준의 Git 연결이고, Publish Branch는 개별 feature 브랜치를 원격에 처음 push하는 작업이다.
@@ -232,36 +262,56 @@ Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
 2. 파일 지정 시: tracked 파일은 `git checkout -- {files}`, untracked는 `git clean -f {files}`
 3. 전체 discard: `git checkout -- .` + `git clean -fd`
 
-## 프로젝트 생성 시 로컬 Git 자동 초기화
+## Anchor Lazy 초기화 (첫 Feature 생성 시)
 
-프로젝트 생성(`ProjectCrudService.createProject`) 시 `initializeLocalGit()`을 자동 실행한다:
+프로젝트 생성 시점에는 git 을 만들지 않는다 — feature 가 없는 프로젝트는 codebase 도 git 도 없다. **첫 feature 생성 (0→1)** 시 `GitAnchorSSOT.ensureAnchor` 가:
 
-1. codebase 디렉터리 생성
-2. `git init --initial-branch={branchBase}` 실행
-3. `.gitignore` 자동 생성 (`GitignoreGenerator`)
-4. Initial commit 생성
+1. `{project}/repo.git` bare anchor 생성 (HEAD symref → `refs/heads/{branchBase}`)
+2. plumbing 으로 initial commit 생성 (`hash-object -t tree` / `commit-tree` / `update-ref`)
+3. branchBase = 첫 feature 이름 auto-set (+ anchor HEAD symref)
+4. feature worktree attach + seed `.gitignore`/`README` commit
 
-이 과정은 non-fatal — 실패해도 프로젝트 생성은 계속된다. 결과로 remote 없는 local-only `.git`이 생성된다. 이 상태에서 Init이 허용되며, Init은 remote 설정 후 이 local git을 연결한다.
+이후 Init(publish) 은 remote 설정 후 이 anchor 를 GitHub 에 연결한다.
+
+## branchBase 포인터
+
+`branchBase` 는 anchor HEAD 가 가리키는 base 브랜치 포인터다. **유일한 writer 는 `GitService/anchor/branchBaseLifecycle.ts`**:
+
+- default `'main'`
+- 첫 feature (0→1) 생성 → branchBase = feature 이름 auto-set (+ anchor HEAD symref)
+- base feature 삭제 → 생성 순서상 가장 오래된 남은 feature 로 재지정, 없으면 `'main'`
+- 사용자는 ConfigEditor dropdown 에서 기존 feature 중 하나로 선택 가능 — **remote 미연결 상태에서만**
+- LOCK 조건: anchor 에 origin remote 존재 (`hasRemote`)
+
+read-time git-sync 는 없다 — `detectGitDefaultBranch` 는 삭제됐고, fetch 는 더 이상 remote-HEAD drift 를 branchBase 에 미러링하지 않는다.
 
 ## 공통 전제 조건
 
 - `config.json`의 `githubRepo` 필드 설정 필수 (Clone/Init/Push/Pull/Fetch/Sync)
 - GitHub PAT 설정 필수 (Account Configuration)
-- `.git` + remote 이미 존재 시 Clone/Init 불가 (이미 연결됨)
+- anchor + remote 이미 존재 시 Clone/Init 불가 (이미 연결됨)
+- Clone 은 feature 0개 필수, Init 은 feature ≥ 1 필수
 
-## isBaseBranch
+## Feature 없음 상태 (`_base` sentinel 삭제)
 
-`core/utils/branchUtils.ts`의 `isBaseBranch(featureName, _branchBase?)` 함수는 `featureName === RESERVED_FEATURE_NAME('_base')`으로만 판단한다. `_branchBase` 파라미터는 시그니처에 남아 있으나 무시된다.
+`RESERVED_FEATURE_NAME('_base')` sentinel 과 `isBaseBranch` 는 삭제됐다. "feature 미선택" 의 의미:
+
+- working tree 없음 — IDE / job 라우트는 feature 를 **요구**한다
+- git 읽기 (`GET /git/state` without `feature`) 는 bare anchor 에서 서빙: `hasGit` = anchor 존재, `currentBranch` = anchor HEAD = branchBase, `hasCodebase=false`, changes 는 빈 값
+- 내부 redis-key fallback 상수: `NO_FEATURE_KEY='@none'` (`redisKeyUtils`; 방어적 용도만)
 
 ## 상태 전이
 
 ```
-[프로젝트 생성] → LocalGit (local-only, remote 없음, .git 자동 초기화)
+[프로젝트 생성] → NoGit (codebase 없음, git 없음 — anchor 는 첫 feature 가 lazy 생성)
                     │
-                    ├── feature 생성 → LocalGit + HasFeatures
+                    ├── 첫 feature 생성 → LocalAnchor (bare anchor + worktree,
+                    │                      branchBase = feature 이름, remote 없음)
                     │
-                    ├── Clone 성공 ──→ Connected (연동됨, feature worktree 자동 생성)
-                    └── Init 성공 ──→ Connected (연동됨, feature worktree 자동 생성)
+                    ├── Clone 성공 (feature 0개 전제) ──→ Connected
+                    │     (bare anchor + default-branch feature 자동 생성, branchBase LOCK)
+                    └── Init(publish) 성공 (feature ≥ 1) ──→ Connected
+                          (remote add + push -u {branchBase})
                                         │
                                         ├── Commit → Local Changes
                                         ├── Push/Pull/Fetch/Sync → Connected
@@ -292,12 +342,12 @@ Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
 ```
 {projectPath}/
 ├── config.json           ← githubRepo, branchBase 등
-├── codebase/             ← main worktree (base branch)
-│   └── .git/             ← Clone/Init 후 생성 (디렉터리)
+├── repo.git/             ← bare anchor (숨김; HEAD symref → refs/heads/{branchBase})
+│   └── worktrees/{id}/   ← linked worktree 메타 (HEAD, commondir, gitdir 등)
 └── features/
     └── {featureName}/
-        ├── codebase/     ← git worktree (feature branch)
-        │   └── .git      ← worktree 참조 파일 (gitdir 포인터)
+        ├── codebase/     ← linked worktree (브랜치 이름 == feature 이름)
+        │   └── .git      ← worktree marker 파일 (gitdir: <abs>/repo.git/worktrees/{id})
         ├── plan/
         ├── architecture/
         ├── visual/
@@ -306,9 +356,9 @@ Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
         └── sessions/
 ```
 
-- Git 연결 전: `features/{name}/codebase/`는 일반 디렉터리 (.git 없음)
-- Git 연결 후: `features/{name}/codebase/.git`은 main worktree를 가리키는 참조 파일
-- Lazy creation: Push/Commit 시 .git 없으면 자동으로 worktree 생성
+- feature 없는 프로젝트: codebase 없음, git 없음 (`repo.git` 은 첫 feature 생성 시 lazy 생성)
+- 모든 feature codebase 는 생성 시점부터 linked worktree — `.git` marker 가 `repo.git/worktrees/{id}` 를 가리킨다
+- worktree 손상 시: self-heal = `createWorktree` re-attach (커밋 이력은 anchor 브랜치에 보존, uncommitted changes 폐기)
 
 ## .git 보호
 
@@ -340,6 +390,8 @@ LLM 코드 생성 시 `.git` 파일/디렉터리 손상 방지:
 레거시 `/git/status` · `/git/changes` · `/push` · `/pull` · `/fetch` · `/initialize` · `/clone` · `/git/sync` · `/git/commit` · `/git/discard` 는 Phase 7 컷오버에서 전부 제거됐다. 유일하게 남은 helper 는 Wizard 의 clone 후 폴링용 `GET /projects/:id/clone/status` 뿐이다. Operation 디스패치는 모두 `POST /projects/:id/git/ops/:userOp` 로 수렴.
 
 `ahead` / `behind` 는 로컬이 아는 원격 ref 기준이며, 최신화가 필요하면 사용자가 명시적으로 `fetch` 혹은 `sync` operation 을 디스패치한다.
+
+`feature` 파라미터 없이 호출하면 **bare anchor 기준**으로 서빙한다: `hasGit` = anchor 존재, `currentBranch` = anchor HEAD = branchBase, `hasCodebase=false`, changes 빈 값. anchor 대상 git 명령은 명시적 `GIT_DIR` (`GitHelper.bareAnchorEnv`) 로 실행된다.
 
 ## Realtime: gitState 이벤트
 
@@ -451,6 +503,8 @@ Wizard 처럼 **프로젝트가 선택되지 않은 상태에서 프로젝트를
 | SSE reconnectRefill 발행 | `packages/ant-cli/src/periphery/adapters/http/routes/sse.routes.ts`, `infrastructure/realtime/RealtimeServer.ts` |
 | Feature CRUD | `packages/ant-cli/src/periphery/adapters/http/services/ProjectService/FeatureCrudService.ts` |
 | Worktree | `packages/ant-cli/src/periphery/adapters/http/services/GitService/worktree/index.ts` |
+| Anchor SSOT (`ensureAnchor`, init variant 구현) | `packages/ant-cli/src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT.ts` |
+| branchBase 포인터 단일 writer | `packages/ant-cli/src/periphery/adapters/http/services/GitService/anchor/branchBaseLifecycle.ts` |
 
 ### Frontend
 
@@ -486,6 +540,11 @@ Wizard 처럼 **프로젝트가 선택되지 않은 상태에서 프로젝트를
 | 경계 ESLint (`no-restricted-imports` error) | `packages/ant-ui/.eslintrc.cjs` |
 | 에이전트 스킬 (Git 작업 전 필독) | `.claude/skills/update-git-world/SKILL.md` |
 | 셀렉터/디스패처 스펙 | `packages/ant-ui/tests/git-world/**`, `tests/common/**`, `tests/project-world/**` |
+
+## 참조 카탈로그 어휘
+
+- reference catalog 의 브랜치 = feature 이름 verbatim (prefix/sanitization 없음)
+- `ReferenceTarget.branch` 생략 → 대상 프로젝트의 branchBase
 
 ## 경계
 
