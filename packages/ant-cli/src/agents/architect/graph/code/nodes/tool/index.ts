@@ -10,8 +10,8 @@
 import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { toolResultManager } from './utils/managers';
-import { buildTaskReminder, updateCommandHistory } from './utils/helpers';
-import { isAllDupReadBatch } from './utils/allDupReads';
+import { buildTaskReminder, appendCommandHistory, type CommandHistoryAddition } from './utils/helpers';
+import { isAllDupReadBatch, isAllRepeatErrorBatch, commandLabelsForEvent } from './utils/allDupReads';
 import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
@@ -234,17 +234,6 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       const effects = event.result.sideEffects || [];
       for (const effect of effects) {
         switch (effect.type) {
-          case 'commandExecuted': {
-            const { exitCode, command, success } = effect;
-            const commandExecuted = { command, success, exitCode };
-            const { shouldWarn, warningMessage } = updateCommandHistory(
-              state, commandExecuted, event.result.error, event.result.content,
-            );
-            if (shouldWarn && warningMessage && typeof event.result.content === 'string') {
-              event.result.content = event.result.content + warningMessage;
-            }
-            break;
-          }
           case 'serverStarted': {
             // run_command emits this when LONG_RUNNING_PATTERNS matched and
             // the user passed `keep_running:true` (e.g. `npm run dev`,
@@ -266,44 +255,86 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
           }
         }
       }
-
-      // Safety Net B coverage (RCA `tight-drafting-lever`): non-run_command
-      // tool failures (e.g. read_file "File not found") emit no `commandExecuted`
-      // side-effect, so they evaded detectRecentToolFailures and let the
-      // execute↔tool loop burn to recursion_limit. Record them AND surface the
-      // loop-detection warning to LLM just like run_command does (symmetry).
-      // (run_command already recorded above → skip to avoid double counting).
-      if (event.result.error && !effects.some(e => e.type === 'commandExecuted')) {
-        const target = typeof event.args?.path === 'string' ? `:${event.args.path}` : '';
-        const { shouldWarn, warningMessage } = updateCommandHistory(
-          state,
-          { command: `tool:${event.toolName}${target}`, success: false, exitCode: 1 },
-          event.result.error,
-          event.result.content,
-        );
-        if (shouldWarn && warningMessage && typeof event.result.content === 'string') {
-          event.result.content = event.result.content + warningMessage;
-        }
-      }
+      // Command-history recording moved to `afterBatch` — it must be
+      // returned as a channel delta (`hookUpdates.commandHistory`), not
+      // mutated onto the state snapshot, or it is dropped at the next
+      // superstep and Safety Net B never sees it (trim-grinding-motif RCA).
     },
 
     afterBatch(state, events): Partial<ArchitectGraphState> {
+      const delta: Partial<ArchitectGraphState> = {};
+
+      // Command-history channel delta (phase-blind). Two sources, mirroring
+      // the retired in-place recording:
+      //   (a) run_command → `commandExecuted` side-effect (success + failure),
+      //   (b) any other tool whose result carries `error` (RCA
+      //       `tight-drafting-lever`: read_file "File not found" etc. emit no
+      //       side-effect and previously evaded detectRecentToolFailures).
+      // The appended history is RETURNED via hookUpdates → buildReturn so the
+      // channel actually commits (in-place `state.commandHistory.push` never
+      // survived a superstep — the channel stayed `undefined` forever and
+      // Safety Net B / the loop warning / the dominant-failure diagnostic
+      // were all structurally dead; trim-grinding-motif RCA).
+      const additions: Array<{ add: CommandHistoryAddition; event: typeof events[number] }> = [];
+      for (const event of events) {
+        const effects = event.result.sideEffects || [];
+        let recorded = false;
+        for (const effect of effects) {
+          if (effect.type === 'commandExecuted') {
+            const { exitCode, command, success } = effect;
+            additions.push({
+              add: { command, success, exitCode, error: event.result.error, result: event.result.content },
+              event,
+            });
+            recorded = true;
+          }
+        }
+        if (!recorded && event.result.error) {
+          additions.push({
+            add: {
+              command: commandLabelsForEvent(event)[0],
+              success: false,
+              exitCode: 1,
+              error: event.result.error,
+              result: event.result.content,
+            },
+            event,
+          });
+        }
+      }
+      if (additions.length > 0) {
+        const { history, warnings } = appendCommandHistory(
+          state.commandHistory,
+          additions.map(a => a.add),
+        );
+        delta.commandHistory = history;
+        // Surface the loop-detection warning on the failing call's result.
+        // Effective because the factory builds tool_result blocks AFTER the
+        // batch hooks run (see createToolNode) — mutating events here lands
+        // in the message the LLM actually reads.
+        for (const { add, event } of additions) {
+          const warning = warnings.get(add.command);
+          if (warning && typeof event.result.content === 'string' && !event.result.content.includes('LOOP DETECTION WARNING')) {
+            event.result.content = event.result.content + warning;
+          }
+        }
+      }
+
       // Phase 3-15 / Phase 3a — count successful plan-phase search_web
       // invocations and emit the bumped counter via hookUpdates so
       // LangGraph commits it through the channel reducer. Mutating
       // `state._planSearchWebCount` from `afterExecution` did not
       // propagate (same latent-bug pattern as `_lastToolBatchMutatedFiles`).
-      if (state._activePhase !== 'plan') return {};
-      let bumps = 0;
-      let fetchBumps = 0;
-      for (const e of events) {
-        if (e.toolName === 'search_web' && !e.result.error) bumps += 1;
-        if (e.toolName === 'fetch_url' && !e.result.error) fetchBumps += 1;
+      if (state._activePhase === 'plan') {
+        let bumps = 0;
+        let fetchBumps = 0;
+        for (const e of events) {
+          if (e.toolName === 'search_web' && !e.result.error) bumps += 1;
+          if (e.toolName === 'fetch_url' && !e.result.error) fetchBumps += 1;
+        }
+        if (bumps > 0) delta._planSearchWebCount = (state._planSearchWebCount ?? 0) + bumps;
+        if (fetchBumps > 0) delta._planFetchUrlCount = (state._planFetchUrlCount ?? 0) + fetchBumps;
       }
-      if (bumps === 0 && fetchBumps === 0) return {};
-      const delta: Partial<ArchitectGraphState> = {};
-      if (bumps > 0) delta._planSearchWebCount = (state._planSearchWebCount ?? 0) + bumps;
-      if (fetchBumps > 0) delta._planFetchUrlCount = (state._planFetchUrlCount ?? 0) + fetchBumps;
       return delta;
     },
 
@@ -347,10 +378,18 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
 
     // SSOT for `_lastToolBatchAllDupReads` (turn-scoped, execute phase only —
     // mirrors the mutation flag above): the batch carried zero new
-    // information (every call a duplicate-elided successful read_file).
+    // information. Two provably-zero-information flavors share the flag:
+    //   - every call a duplicate-elided successful read_file
+    //     (rocky-beating-coral RCA), OR
+    //   - every call an ERRORED repeat of a failure already recorded in the
+    //     pre-batch command history (trim-grinding-motif RCA — 371 identical
+    //     File-not-found reads that the success-only predicate never saw).
     // Consumed by `computeNextNoProgressStreak` behind the no-progress
-    // circuit breaker (rocky-beating-coral RCA).
-    const allDupReads = isAllDupReadBatch(executionEvents, elidedReads?.length ?? 0);
+    // circuit breaker. `state.commandHistory` here is the PRE-batch channel
+    // value — the post-batch append lives in `hookUpdates.commandHistory`.
+    const allDupReads =
+      isAllDupReadBatch(executionEvents, elidedReads?.length ?? 0) ||
+      isAllRepeatErrorBatch(executionEvents, state.commandHistory);
 
     // Reference-registration channel writer (single writer = tool node).
     // `register_reference` handlers emit `referenceRegistered` side-effects;

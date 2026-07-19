@@ -166,9 +166,12 @@ async function handleRetryEntry(
   state.violations = [];
   // Anti-retry-spiral: reset the no-progress breaker signals so the fresh
   // execute attempt starts with a clean streak (a stale tripped streak would
-  // instantly re-divert on the retry's first router pass).
+  // instantly re-divert on the retry's first router pass). `commandHistory`
+  // resets for the same reason — inherited failures would let Safety Net B
+  // (≥5 recent failures) re-divert on the retry's first pass.
   state._noProgressStreak = 0;
   state._lastToolBatchAllDupReads = false;
+  state.commandHistory = [];
   state.conversations = {
     ...state.conversations,
     [CONV_KEYS.NODE_EXECUTE]: [],
@@ -178,6 +181,7 @@ async function handleRetryEntry(
     violations: [],
     _noProgressStreak: 0,
     _lastToolBatchAllDupReads: false,
+    commandHistory: [],
     conversations: {
       [CONV_KEYS.NODE_EXECUTE]: [],
     },
@@ -221,9 +225,14 @@ async function handleReverifyEntry(
   // `delta._verifyEntered` for the LangGraph reducer commit).
   state._verifyEntered = true;
   state._executeCallIndex = 0;
+  // Fresh failure window for the verify cycle — verify gates legitimately
+  // re-run commands that failed during apply; inherited counts would let
+  // Safety Net B trip on the first verify-phase failure.
+  state.commandHistory = [];
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
     _verifyEntered: true,
+    commandHistory: [],
   };
 
   await recomputeInstallNeeded(state, { detectPmIfMissing: true });
@@ -286,6 +295,7 @@ async function handleFreshTaskEntry(
   state._executeCallIndex = 0;
   state._planSearchWebCount = 0;
   state._planFetchUrlCount = 0;
+  state.commandHistory = [];
   state.conversations = {
     ...state.conversations,
     [CONV_KEYS.NODE_PLAN]: [],
@@ -295,6 +305,7 @@ async function handleFreshTaskEntry(
     _executeCallIndex: 0,
     _planSearchWebCount: 0,
     _planFetchUrlCount: 0,
+    commandHistory: [],
     conversations: {
       [CONV_KEYS.NODE_PLAN]: [],
       [CONV_KEYS.NODE_EXECUTE]: [],

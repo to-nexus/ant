@@ -273,19 +273,37 @@ describe('buildToolResultMessage', () => {
     });
   });
 
-  it('should handle error results', () => {
+  it('should preserve handler-authored content on error results (trim-grinding-motif)', () => {
+    // Handler content carries recovery guidance — replacing it with the bare
+    // `error` field left the LLM retrying blind. Non-empty content is
+    // delivered verbatim; the error field only flags failure.
     const events: ToolExecutionEvent[] = [
       {
         toolCallId: 'call-err',
         toolName: ToolName.READ_FILE,
         args: { path: 'nonexistent' },
-        result: { content: 'File not found', error: 'File not found' },
+        result: { content: 'File not found — use <file> to create it', error: 'File not found' },
         cached: false,
       },
     ];
 
     const { toolResultBlocks } = buildToolResultMessage(events);
-    expect(toolResultBlocks[0].content).toContain('Error: File not found');
+    expect(toolResultBlocks[0].content).toBe('File not found — use <file> to create it');
+  });
+
+  it('should synthesize `Error:` only when an error result has no content', () => {
+    const events: ToolExecutionEvent[] = [
+      {
+        toolCallId: 'call-err',
+        toolName: ToolName.READ_FILE,
+        args: { path: 'nonexistent' },
+        result: { content: '', error: 'File not found' },
+        cached: false,
+      },
+    ];
+
+    const { toolResultBlocks } = buildToolResultMessage(events);
+    expect(toolResultBlocks[0].content).toBe('Error: File not found');
   });
 
   it('should pass through array content (multimodal)', () => {

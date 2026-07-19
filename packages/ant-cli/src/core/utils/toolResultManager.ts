@@ -72,6 +72,17 @@ export class ToolResultManager {
     figmaContext?: FigmaContext,
   ): TruncationResult {
     if (error && this.config.preserveErrors) {
+      // Handler-authored failure content (recovery guidance + exact error
+      // text) must reach the LLM — replacing it with the bare `error` field
+      // strips steering like read_file's "use <file> to create it instead
+      // of reading it" and leaves the model retrying blind
+      // (trim-grinding-motif: 371 identical File-not-found retries to
+      // recursion_limit). Synthesize from `error` only when the handler
+      // returned no usable content.
+      const hasAuthoredContent = typeof result === 'string' && result.trim().length > 0;
+      if (hasAuthoredContent) {
+        return this.truncateGeneric(result);
+      }
       return {
         content: `Error: ${error}`,
         wasTruncated: false,

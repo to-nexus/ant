@@ -740,7 +740,14 @@ export const CodeGraphChannels = {
         reducer: (_prev: any, next: any) => next,
         default: () => 0,
       }),
-      commandHistory: Annotation<any>,
+      // Preserve-on-undefined: single writer is the tool node's afterBatch
+      // delta (hookUpdates.commandHistory). A stray partial-state spread from
+      // another node must not clobber the accumulated history back to
+      // undefined — it feeds Safety Net B (trim-grinding-motif RCA).
+      commandHistory: Annotation<any>({
+        reducer: (prev: any, next: any) => (next === undefined ? prev : next),
+        default: () => undefined,
+      }),
       llmResponse: Annotation<any>,
       toolResults: Annotation<any>,
       interruption: Annotation<any>,
