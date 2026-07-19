@@ -71,7 +71,8 @@ export class GeminiLLMClient implements LLMClient {
   ): Promise<LLMInvokeResult> {
     const { systemInstruction, contents } = this.convertMessages(messages);
 
-    console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=invoke messages=${messages.length}`);
+    const temperature = options?.temperature ?? this.temperature;
+    console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=invoke messages=${messages.length} temp=${temperature}`);
 
     const response = await withRetry(
       async () => {
@@ -80,7 +81,7 @@ export class GeminiLLMClient implements LLMClient {
           contents,
           config: {
             ...(systemInstruction ? { systemInstruction } : {}),
-            temperature: this.temperature,
+            temperature,
             maxOutputTokens: options?.maxTokens || this.maxTokens,
           },
         });
@@ -116,8 +117,9 @@ export class GeminiLLMClient implements LLMClient {
   ): AsyncIterable<LLMStreamEvent> {
     const { systemInstruction, contents } = this.convertMessages(messages);
     const toolsCount = options?.tools?.length || 0;
+    const temperature = options?.temperature ?? this.temperature;
 
-    console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount}`);
+    console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} temp=${temperature}`);
 
     const geminiTools = options?.tools?.length ? [{
       functionDeclarations: options.tools.map(t => ({
@@ -138,7 +140,7 @@ export class GeminiLLMClient implements LLMClient {
       contents,
       config: {
         ...(systemInstruction ? { systemInstruction } : {}),
-        temperature: this.temperature,
+        temperature,
         maxOutputTokens: options?.maxTokens || this.maxTokens,
         ...(geminiTools ? { tools: geminiTools } : {}),
         ...(stopSequences && stopSequences.length > 0 ? { stopSequences } : {}),
@@ -230,11 +232,13 @@ export class GeminiLLMClient implements LLMClient {
   async invokeStructured<T = any>(
     messages: Array<{ role: string; content: string | CacheableContent[] }>,
     schema: Record<string, any>,
-    schemaName: string
+    schemaName: string,
+    options?: { temperature?: number; maxTokens?: number; [key: string]: any }
   ): Promise<T> {
     const { systemInstruction, contents } = this.convertMessages(messages);
+    const temperature = options?.temperature ?? this.temperature;
 
-    console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=invokeStructured schema=${schemaName}`);
+    console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=invokeStructured schema=${schemaName} temp=${temperature}`);
 
     const response = await withRetry(
       async () => {
@@ -243,8 +247,8 @@ export class GeminiLLMClient implements LLMClient {
           contents,
           config: {
             ...(systemInstruction ? { systemInstruction } : {}),
-            temperature: this.temperature,
-            maxOutputTokens: this.maxTokens,
+            temperature,
+            maxOutputTokens: options?.maxTokens ?? this.maxTokens,
             responseMimeType: 'application/json',
             responseSchema: schema,
           },

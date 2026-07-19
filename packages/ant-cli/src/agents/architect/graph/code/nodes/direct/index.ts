@@ -25,7 +25,7 @@
 import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
-import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { getTools } from './tools';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
@@ -209,6 +209,7 @@ export async function direct(
       messages,
       tools,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      temperature: LLM_TEMPERATURE.CODE_EXECUTE,
       enableThinking: step === 0,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
       state,

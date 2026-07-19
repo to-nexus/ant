@@ -129,7 +129,7 @@ export class OpenAILLMClient implements LLMClient {
     options?: Record<string, any>
   ): Promise<LLMInvokeResult> {
     // ✅ LOG: Actual API call with model name
-    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=invoke messages=${messages.length}`);
+    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=invoke messages=${messages.length} temp=${options?.temperature ?? this.temperature}`);
     
     const toDataUrl = (img: any): string => {
       const mediaType = img?.source?.media_type;
@@ -224,7 +224,7 @@ export class OpenAILLMClient implements LLMClient {
     }
   ): AsyncIterable<LLMStreamEvent> {
     const toolsCount = options?.tools?.length || 0;
-    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount}`);
+    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} temp=${options?.temperature ?? this.temperature}`);
 
     const isCodexModel = this.modelName.includes('codex') || this.modelName.startsWith('gpt-5');
     const openAIMessages = this.convertToOpenAIMessages(messages);
@@ -561,7 +561,8 @@ export class OpenAILLMClient implements LLMClient {
   async invokeStructured<T = any>(
     messages: Array<{ role: string; content: string }>,
     schema: Record<string, any>,
-    schemaName: string
+    schemaName: string,
+    options?: { temperature?: number; maxTokens?: number; [key: string]: any }
   ): Promise<T> {
     const response = await this.client.chat.completions.create({
       model: this.modelName,
@@ -570,8 +571,8 @@ export class OpenAILLMClient implements LLMClient {
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
       })),
-      temperature: 0.7,
-      max_tokens: 16000,
+      temperature: options?.temperature ?? this.temperature,
+      max_tokens: options?.maxTokens ?? 16000,
       response_format: { type: 'json_object' },
     });
 

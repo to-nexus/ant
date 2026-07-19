@@ -11,7 +11,7 @@
 import { AskGraphState } from '../state.js';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations.js';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
-import { LLM_MAX_TOKENS } from '../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../common/tool/messageBuilder';
 import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../common/graph/llmHelpers.js';
 import { formatWorkspaceState } from '../../../../common/graph/nodes/triage/workspaceAnalyzer.js';
@@ -151,6 +151,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
       system: systemPrompt,
       tools: toolDefinitions,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      temperature: LLM_TEMPERATURE.CONVERSATIONAL,
       enableThinking: isFirstCall,
     })) {
       if (event.type === 'retry') {
@@ -235,13 +236,13 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
         accumulateTokenUsage(state as any, response.usage, { taskLevel: true, jobLevel: true });
       }
     } else if (llm.invokeWithUsage) {
-      const result = await llm.invokeWithUsage(messages, { system: systemPrompt, enableThinking: false });
+      const result = await llm.invokeWithUsage(messages, { system: systemPrompt, enableThinking: false, temperature: LLM_TEMPERATURE.CONVERSATIONAL });
       responseText = result.content;
       if (result.usage) {
         accumulateTokenUsage(state as any, result.usage, { taskLevel: true, jobLevel: true });
       }
     } else {
-      responseText = await llm.invoke(messages, { system: systemPrompt, enableThinking: false });
+      responseText = await llm.invoke(messages, { system: systemPrompt, enableThinking: false, temperature: LLM_TEMPERATURE.CONVERSATIONAL });
     }
   }
   

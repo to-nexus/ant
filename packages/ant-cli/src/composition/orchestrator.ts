@@ -3,6 +3,7 @@ import { runPlanGraph } from "../agents/planner";
 import { runAskGraph } from "../agents/architect/graph/ask/runner";
 import { analyzeWorkspace, AgentRegistry, buildTriagePrompt, parseIntentIdTag, deriveTriageGroup, validateIntentId } from "../agents/common/graph/nodes/triage";
 import type { IntentId } from "@ant/shared";
+import { LLM_TEMPERATURE } from "../core/ports/llmSampling";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
 import { isVectorDbEnabled } from "../core/config/vectorDbCapability";
 import { createLLMClient, createImageGenerationClient } from "../periphery/adapters/llm/LLMClientFactory";
@@ -760,11 +761,13 @@ async function runInlineAskDispatch(
 
   // Match the main triage's retry policy: one re-ask before falling back.
   const invokeOnce = async (): Promise<string> => {
+    // Intent classification — same determinism class as the main triage.
+    const opts = { temperature: LLM_TEMPERATURE.DETECT };
     if (llm.invokeWithUsage) {
-      const resp = await llm.invokeWithUsage(messages);
+      const resp = await llm.invokeWithUsage(messages, opts);
       return resp.content;
     }
-    return llm.invoke(messages);
+    return llm.invoke(messages, opts);
   };
 
   let intentId = parseIntentIdTag(await invokeOnce());

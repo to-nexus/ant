@@ -9,6 +9,7 @@
 
 import type { TaskTokenUsage, SubagentReportMetadata } from '@ant/shared';
 import { getJobAbortSignal, isJobAborted } from '../../../composition/jobAbort';
+import { LLM_TEMPERATURE } from '../graph/llmConfig';
 import { createNoopChatStatusReporter } from '../tool/chatStatusAdapter';
 import {
   subagentMaxRounds,
@@ -111,7 +112,7 @@ async function runInner(
 
   let roundCounter = 0;
   const loop = callLLMWithToolLoop(llm, messages, internals.childTools, toolHandler, {
-    temperature: 0.2,
+    temperature: LLM_TEMPERATURE.SUBAGENT_EXPLORE,
     maxTokens: subagentMaxTokens(),
     maxRounds: subagentMaxRounds(),
     silentChatCards: true,

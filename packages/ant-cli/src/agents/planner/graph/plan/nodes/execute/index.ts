@@ -41,7 +41,7 @@ import { PLAN_CONVERSATION_HISTORY_BUDGET } from '../../../../../../core/context
 import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../core/utils/messageComposer';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
-import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildExecuteSystemPrompt } from './buildSystemPrompt';
 import { getTargetPath } from '../plan/buildSystemPrompt';
@@ -163,6 +163,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     for await (const event of llm.stream(messages, {
       tools: toolDefinitions,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      temperature: LLM_TEMPERATURE.DOC_GENERATION,
       enableThinking: isFirstCall,
     })) {
       if (event.type === 'retry') {

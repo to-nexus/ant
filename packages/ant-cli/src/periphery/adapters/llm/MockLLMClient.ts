@@ -128,6 +128,7 @@ export class MockLLMClient implements LLMClient {
     _messages: Array<{ role: string; content: string | CacheableContent[] }>,
     schema: Record<string, any>,
     schemaName: string,
+    _options?: { temperature?: number; maxTokens?: number; [key: string]: any },
   ): Promise<T> {
     console.log(`🧪 [MockLLM] invokeStructured ${this.label()} schema=${schemaName}`);
     return this.buildFromSchema(schema) as T;

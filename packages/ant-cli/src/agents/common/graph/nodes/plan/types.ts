@@ -98,6 +98,8 @@ export interface RunPlanWithToolsArgs<TState extends MinimalPlanState = MinimalP
   /** Thinking budget tokens (only used when enableThinking). */
   thinkingBudget?: number;
   maxTokens: number;
+  /** Per-call sampling temperature (LLM_TEMPERATURE policy key value). */
+  temperature?: number;
   /** Task name for UI streaming (chat status / plan title). */
   taskName: string;
   /** Job type for the streaming render strategy. */

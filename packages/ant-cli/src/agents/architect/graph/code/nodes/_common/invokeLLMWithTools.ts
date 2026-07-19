@@ -20,6 +20,8 @@ export interface InvokeLLMWithToolsInput {
   messages: Array<{ role: 'user' | 'assistant'; content: string | MessageContentBlock[] }>;
   tools: ToolDefinition[];
   maxTokens?: number;
+  /** Per-call sampling temperature (LLM_TEMPERATURE policy key value). */
+  temperature?: number;
   enableThinking?: boolean;
   thinkingBudget?: number;
   /**
@@ -44,7 +46,7 @@ export async function invokeLLMWithTools(
   input: InvokeLLMWithToolsInput,
 ): Promise<InvokeLLMWithToolsResult> {
   const {
-    llm, messages, tools, maxTokens, enableThinking, thinkingBudget, state,
+    llm, messages, tools, maxTokens, temperature, enableThinking, thinkingBudget, state,
   } = input;
 
   let thinking = '';
@@ -61,6 +63,7 @@ export async function invokeLLMWithTools(
   for await (const event of llm.stream(messages as any, {
     tools,
     maxTokens,
+    temperature,
     enableThinking,
     thinkingBudget,
   })) {

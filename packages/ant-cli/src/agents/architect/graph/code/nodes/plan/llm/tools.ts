@@ -29,7 +29,7 @@ import { CodeTask } from "../../../../../types/task";
 import { logPrompt } from "../../../../../../../core/utils/promptLogger";
 import { getExecutionLogger } from "../../../../../../../core/utils/executionLogger";
 import { collectResolvedPartials } from "../../../../../../../periphery/adapters/prompt/FilePromptAdapter";
-import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../../common/graph/llmConfig";
+import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from "../../../../../../common/graph/llmConfig";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
 import { isVerifyModeActive } from "../../../tasks/_shared/verify";
 import { selectLLMForTask } from "./selectModel";
@@ -92,6 +92,7 @@ export async function runPlanLLMWithTools(
     enableThinking: isFirstRound,
     thinkingBudget: isFirstRound ? LLM_THINKING_BUDGET.PLAN : undefined,
     maxTokens: LLM_MAX_TOKENS.DEFAULT,
+    temperature: LLM_TEMPERATURE.PLAN_GENERATION,
     taskName: task.name,
     jobType: 'code',
     onTokenUsage: async (usage) => {

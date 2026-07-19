@@ -19,7 +19,7 @@ import {
   runPlanToolLoopPhase as sharedRunPlanToolLoopPhase,
   runPlanWithTools,
 } from '../../../../../common/graph/nodes/plan';
-import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import type { DesignGraphState } from '../../state';
 import type { DesignTask } from '../../../../types/task';
 import { dispatchOnly } from './dispatchOnly';
@@ -122,6 +122,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       enableThinking: isFirstRound,
       thinkingBudget: isFirstRound ? LLM_THINKING_BUDGET.PLAN : undefined,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      temperature: LLM_TEMPERATURE.PLAN_GENERATION,
       taskName: currentTask!.name,
       jobType: 'design',
       onTokenUsage: async (usage) => {
