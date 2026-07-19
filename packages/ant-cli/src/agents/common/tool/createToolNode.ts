@@ -100,6 +100,9 @@ export interface ToolNodeConfig<TState> {
     executionEvents: ToolExecutionEvent[];
     updatedCache?: Record<string, string>;
     hookUpdates?: Partial<TState>;
+    /** Duplicate-elided reads this batch (history-side stubs). Consumed by the
+     *  code tool node's no-progress signal; other jobs may ignore it. */
+    elidedReads?: Array<{ path: string; label: string; chars: number }>;
   }): Partial<TState>;
 
   /** Workflow instrumentation accessors */
@@ -235,6 +238,7 @@ export function createToolNode<TState>(
         executionEvents: batchResult.events,
         updatedCache: batchResult.updatedCache,
         hookUpdates,
+        elidedReads: elided,
       }),
       ...subagentTokenDelta,
     };

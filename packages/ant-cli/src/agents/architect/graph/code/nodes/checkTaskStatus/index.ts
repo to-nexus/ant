@@ -126,6 +126,8 @@ export async function checkTaskStatus(
       _supersededByBatchSplit: undefined,
       ...(mergedCompletedDetails !== undefined && { completedTasksDetails: mergedCompletedDetails }),
       _executeCallIndex: 0,
+      _noProgressStreak: 0,
+      _lastToolBatchAllDupReads: false,
       planText: '',
       // Task boundary delta — single SSOT writer for verify-mode reset.
       // Session ownership transfers to the next task's `initSession`
@@ -272,6 +274,8 @@ export async function checkTaskStatus(
       retries: 0,
       violations: [],
       _executeCallIndex: 0,
+      _noProgressStreak: 0,
+      _lastToolBatchAllDupReads: false,
     };
 
     // ✅ CRITICAL: Save checkpoint with updated completedTasksDetails
@@ -318,6 +322,8 @@ export async function checkTaskStatus(
       violations: [],
       conversations: { [CONV_KEYS.NODE_EXECUTE]: retainedExecute },
       _executeCallIndex: 0,
+      _noProgressStreak: 0,
+      _lastToolBatchAllDupReads: false,
       planText: '',
       // Task boundary delta — clears Session + flips `_verifyEntered`
       // to false. Next verification responsibility holder (verification
@@ -397,6 +403,11 @@ export async function checkTaskStatus(
     enforcementHistory,
     _nextPlanEntry: 'retry' as const,
     _executeCallIndex: 0,
+    // Anti-retry-spiral: without these resets the retry's first router pass
+    // would still see a tripped no-progress streak and instantly re-divert,
+    // burning the whole retry budget in seconds (22af62056 failure class).
+    _noProgressStreak: 0,
+    _lastToolBatchAllDupReads: false,
     // Consume-and-clear the raw source — see workerIndex.ts for the full
     // rationale. fileError violations are always retryable, so this is the
     // only return path reached when fileErrors is non-empty; clearing it

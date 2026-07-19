@@ -28,6 +28,7 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 // Import submodules
 import { buildMessages } from './buildMessages';
 import { getTools } from './tools';
+import { applyDrainFinalization, computeNextNoProgressStreak } from './drainFinalize';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 import { logger } from '../../../../../../utils/logger';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
@@ -153,7 +154,13 @@ export async function execute(
   // Tool activation: mode-aware selection is encapsulated in `./tools.ts`
   // (NODE_GRAPH_LAYOUT.md §2.2 — caller is a single `await getTools(state)` line).
   const isExplainMode = state.resolvedAction?.mode === 'explain';
-  const tools = await getTools(state);
+  const allTools = await getTools(state);
+
+  // No-progress salvage (rocky-beating-coral RCA): once `_noProgressStreak`
+  // nears the router breaker, strip tools and append a persistent "apply your
+  // changes now" note to the trailing user message (post-composeMessages —
+  // never inside a cached prefix).
+  const { tools, drainFinalizing } = applyDrainFinalization(state, messages, allTools);
   
   if (!state.resolvedAction?.mode) {
     console.warn(`⚠️ [CodeGen] resolvedAction.mode is missing — defaulting to tools enabled`);
@@ -676,6 +683,9 @@ export async function execute(
         // Reset turn-scoped signal so the next execute turn (which won't
         // immediately follow another tool batch) starts with a clean slate.
         _lastToolBatchMutatedFiles: false,
+        _lastToolBatchAllDupReads: false,
+        // Merge instruction injected = productive turn, not a degenerate loop.
+        _noProgressStreak: 0,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         profile: state.profile,
@@ -730,16 +740,28 @@ export async function execute(
       console.log(`✅ [execute] Auto-completing ${state.currentTask?.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
     }
 
-    // Runaway is bounded by Safety Net A (recursionLimit) and Safety Net B
-    // (repeated tool failures) in `executeRouter`, plus LangGraph's
-    // `recursionLimit` ceiling and `batch_cycle_limit` queue-side fan-out.
+    // Runaway is bounded by Safety Net A (recursionLimit, verification-gated)
+    // and Safety Net B (repeated tool FAILURES) in `executeRouter`, LangGraph's
+    // `recursionLimit` ceiling, `batch_cycle_limit` queue-side fan-out, and —
+    // for SUCCESS-blind degenerate loops (rocky-beating-coral: 296 rounds of
+    // duplicate re-reads) — the no-progress circuit breaker fed by
+    // `_noProgressStreak` below.
     const isVerification = state.currentTask ? isVerificationTask(state.currentTask) : false;
     const toolMutatedThisTurn = state._lastToolBatchMutatedFiles === true;
+
+    // No-progress streak (single computation; committed on every return path
+    // below). Progress = streamed files, tool mutation, or explicit <done>.
+    const nextNoProgressStreak = computeNextNoProgressStreak(state, {
+      progressed: streamedInThisCall.length > 0 || toolMutatedThisTurn || explicitDone,
+      drainFinalizing,
+      toolCallCount: toolCalls.length,
+    });
 
     console.log(
       `[diag] execute return: ` +
       `streamed=${streamedInThisCall.length} ` +
       `toolMut=${toolMutatedThisTurn} ` +
+      `noProgress=${nextNoProgressStreak} ` +
       `planText.len=${state.planText?.length ?? 0} ` +
       `nodeExec.len=${nodeExecute.length} ` +
       `_activePhase=${state._activePhase} ` +
@@ -880,6 +902,8 @@ export async function execute(
           // it; the next turn starts fresh and only re-flips when another
           // tool batch mutates files.
           _lastToolBatchMutatedFiles: false,
+          _lastToolBatchAllDupReads: false,
+          _noProgressStreak: nextNoProgressStreak,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           profile: state.profile,
@@ -933,6 +957,9 @@ export async function execute(
             fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
             _executeCallIndex: newCallIndex,
             _lastToolBatchMutatedFiles: false,
+            _lastToolBatchAllDupReads: false,
+            // Subagent reports delivered = novel information, not a loop.
+            _noProgressStreak: 0,
             recursionCount: state.recursionCount,
             recursionLimit: state.recursionLimit,
             profile: state.profile,
@@ -974,6 +1001,8 @@ export async function execute(
       // Reset turn-scoped tool-mutation signal (see top of execute return
       // section for rationale).
       _lastToolBatchMutatedFiles: false,
+      _lastToolBatchAllDupReads: false,
+      _noProgressStreak: nextNoProgressStreak,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       profile: state.profile,

@@ -297,6 +297,8 @@ export class TaskWorker<T extends BaseTask> {
       conversations: {},
       _executeCallIndex: 0,
       _lastToolBatchMutatedFiles: false,
+      _lastToolBatchAllDupReads: false,
+      _noProgressStreak: 0,
       toolResults: [],
       violations: [],
       retries: 0,
