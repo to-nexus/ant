@@ -1,4 +1,4 @@
-import { API_BASE, apiPost, apiDelete } from './client';
+import { API_BASE, apiPost, apiDelete, featureSeg } from './client';
 import type { ActionMetadata } from '@ant/shared';
 
 /**
@@ -27,7 +27,7 @@ export async function addChatUserMessage(
     body.actionMetadata = actionMetadata;
   }
   const data = await apiPost<{ turnId: string; messageId: string }>(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/user-message`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/chat/user-message`,
     body,
   );
   return { turnId: data.turnId, messageId: data.messageId };

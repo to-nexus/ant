@@ -12,6 +12,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
+import { featureNameToSlug, FEATURE_SLUG_SENTINEL } from '@ant/shared';
 import { UserContext } from '../types/user';
 
 export interface WorkspaceResolver {
@@ -57,6 +58,32 @@ export interface WorkspaceResolver {
 
 /** Directory name of the bare git anchor inside a project. */
 export const GIT_ANCHOR_DIR = 'repo.git';
+
+/**
+ * Build the on-disk feature directory path. A feature name may contain `/`
+ * (git-style branch), so it is projected to a single-segment slug — the
+ * directory never nests. This is the single FS chokepoint; downstream
+ * `path.join(featurePath, …)` callers inherit the fix unchanged.
+ *
+ * Backstop: the input must be a raw NAME, never a slug — a `~` here means a
+ * slug leaked in where a name was expected (double-encode bug), so we throw
+ * loudly rather than silently produce a wrong directory.
+ */
+export function buildFeaturePath(projectPath: string, featureId: string): string {
+  if (featureId.includes(FEATURE_SLUG_SENTINEL)) {
+    throw new Error(
+      `[WorkspacePathResolver] getFeaturePath expects a raw feature name, got a slug: ${JSON.stringify(featureId)}`,
+    );
+  }
+  const slug = featureNameToSlug(featureId);
+  const featurePath = path.join(projectPath, 'features', slug);
+  if (path.basename(featurePath) !== slug) {
+    throw new Error(
+      `[WorkspacePathResolver] feature dir must be a single slug segment: ${JSON.stringify(featureId)} -> ${JSON.stringify(slug)}`,
+    );
+  }
+  return featurePath;
+}
 
 /**
  * Shared codebase-path resolution used by every WorkspaceResolver
@@ -169,7 +196,7 @@ export class WorkspacePathResolver {
       // ⚠️ Fallback: construct ABSOLUTE path (assumes Local mode)
       console.warn('[WorkspacePathResolver.resolveFeaturePath] No resolver available, using fallback');
       const workspacesPath = WorkspacePathResolver.getPhysicalWorkspacesPath();
-      return path.join(workspacesPath, 'local', 'user', context.project, 'features', context.featureFolder);
+      return buildFeaturePath(path.join(workspacesPath, 'local', 'user', context.project), context.featureFolder);
     }
     
     // ✅ Build UserContext from ProjectContext
@@ -283,7 +310,7 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
   }
   
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
-    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId, 'features', featureId);
+    return buildFeaturePath(this.getProjectPath(userContext, projectId), featureId);
   }
   
   getCodebasePath(userContext: UserContext, projectId: string, featureId: string): string {

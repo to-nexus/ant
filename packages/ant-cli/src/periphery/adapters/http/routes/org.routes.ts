@@ -10,12 +10,13 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import * as fs from 'fs';
 import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
-import { CANONICAL_FEATURE_DIRS } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, featureSlugToName, featureNameToSlug } from '@ant/shared';
 import { OrgConfig } from '../../../../core/types/orgConfig';
 import {
   UserConfig,
@@ -70,6 +71,7 @@ async function writeOrgConfig(workspacesPath: string, orgId: string, config: Org
 
 export function createOrgRoutes(deps: OrgRoutesDeps): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
   const { workspaceResolver } = deps;
 
   /**
@@ -234,7 +236,8 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       const entries = await fs.promises.readdir(featuresPath, { withFileTypes: true });
       const features = entries
         .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-        .map(e => ({ featureId: e.name }));
+        // dir names are slugs; the API surface carries the raw feature name.
+        .map(e => ({ featureId: featureSlugToName(e.name) }));
 
       res.json({ features });
     } catch (error: any) {
@@ -258,7 +261,7 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       }
       const orgId = userContext.organizationId;
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
-      const featurePath = path.join(workspacesPath, orgId, targetUserId, projectId, 'features', featureId);
+      const featurePath = path.join(workspacesPath, orgId, targetUserId, projectId, 'features', featureNameToSlug(featureId));
 
       if (!fs.existsSync(featurePath)) {
         return res.status(404).json({ error: '피처를 찾을 수 없습니다.' });

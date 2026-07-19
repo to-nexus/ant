@@ -19,6 +19,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import * as path from 'path';
+import { featureNameToSlug } from '@ant/shared';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
@@ -444,7 +445,7 @@ export class PreviewServer {
     
     if (feature && feature !== 'main') {
       // Feature worktree path: basePath/org/user/projectId/features/{feature}/codebase
-      return path.join(basePath, userContext.organizationId, userContext.userId, projectId, 'features', feature, 'codebase');
+      return path.join(basePath, userContext.organizationId, userContext.userId, projectId, 'features', featureNameToSlug(feature), 'codebase');
     }
     
     // Main codebase path: basePath/org/user/projectId/codebase

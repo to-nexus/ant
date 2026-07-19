@@ -19,14 +19,17 @@
     "nameError": {
       "empty": "Feature name is required",
       "reserved": "This name is reserved",
-      "slash": "Slashes (/) are not allowed — feature name = branch name = folder name",
+      "sentinel": "The '~' character is not allowed",
       "whitespace": "Spaces are not allowed",
-      "invalidChars": "Only letters, digits, '.', '_' and '-' are allowed",
-      "leadingDash": "Cannot start with '-'",
-      "leadingDot": "Cannot start with '.'",
-      "trailingDot": "Cannot end with '.'",
+      "invalidChars": "Only letters, digits, '.', '_', '-' and '/' are allowed",
+      "leadingSlash": "Cannot start with '/'",
+      "trailingSlash": "Cannot end with '/'",
+      "emptySegment": "Cannot contain '//'",
+      "leadingDash": "No path segment can start with '-'",
+      "leadingDot": "No path segment can start with '.'",
+      "trailingDot": "No path segment can end with '.'",
       "doubleDot": "Cannot contain '..'",
-      "lockSuffix": "Cannot end with '.lock'",
+      "lockSuffix": "No path segment can end with '.lock'",
       "tooLong": "Too long (max 100 characters)",
       "duplicate": "A feature with this name already exists"
     }

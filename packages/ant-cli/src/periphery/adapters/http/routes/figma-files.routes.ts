@@ -6,6 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { FigmaDataConfig, FIGMA_CONFIG_PATH, createEmptyFigmaData, migrateFigmaConfig } from '@ant/shared';
 import * as path from 'path';
@@ -18,6 +19,7 @@ export interface FigmaFilesRoutesDeps {
 
 export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
 
   const getUserContext = (req: Request) => {
     if ((req as any).user && (req as any).organization) {

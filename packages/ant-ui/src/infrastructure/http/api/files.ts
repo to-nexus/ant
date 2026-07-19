@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, ApiError } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, ApiError, featureSeg } from './client';
 import type { FileNode, FileResource, FileResourceMeta, TemplateReason } from '@ant/shared';
 
 export type { FileNode, FileResource, FileResourceMeta, TemplateReason };
@@ -46,7 +46,7 @@ export async function fetchFileBlob(
   featureName: string,
   filePath: string,
 ): Promise<Blob> {
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/files-raw/${filePath}`;
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files-raw/${filePath}`;
   const response = await authFetch(url);
   if (!response.ok) throw new Error(`Failed to fetch file blob: ${response.statusText}`);
   return response.blob();
@@ -57,7 +57,7 @@ export async function fetchFileBlob(
 export function fetchFileTree(projectId: string, featureName: string, options?: { force?: boolean }): Promise<FileNode[]> {
   const query = options?.force ? '?force=true' : '';
   return apiGet(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/files${query}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files${query}`,
   );
 }
 
@@ -67,7 +67,7 @@ export function fetchFileContent(
   filePath: string,
 ): Promise<FileResource> {
   return apiGet(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/files/${filePath}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files/${filePath}`,
   );
 }
 
@@ -78,7 +78,7 @@ export function saveFileContent(
   content: string,
 ): Promise<FileResource> {
   return apiPut(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/files/${filePath}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files/${filePath}`,
     { content },
   );
 }
@@ -116,7 +116,7 @@ export async function uploadFiles(
     Array.from(files as FileList).forEach((file) => formData.append('files', file));
   }
 
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/upload`;
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/upload`;
 
   if (options?.onProgress || options?.signal) {
     return xhrUpload(url, formData, options);
@@ -191,7 +191,7 @@ export function renameFileOrDirectory(
   newPath: string,
 ): Promise<{ success: boolean; oldPath: string; newPath: string }> {
   return apiPatch(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/rename`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/rename`,
     { oldPath, newPath },
   );
 }
@@ -202,7 +202,7 @@ export function deleteFileOrDirectory(
   filePath: string,
 ): Promise<void> {
   return apiDelete(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/item`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/item`,
     { path: filePath },
   );
 }
@@ -213,7 +213,7 @@ export function createDirectory(
   dirPath: string,
 ): Promise<void> {
   return apiPost(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/directory`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/directory`,
     { path: dirPath },
   );
 }
@@ -224,5 +224,5 @@ export function getDownloadUrl(
   filePath: string,
 ): string {
   // Authentication via JWT cookie (credentials: 'include' on fetch, or same-origin browser navigation)
-  return `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/download?path=${encodeURIComponent(filePath)}`;
+  return `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/download?path=${encodeURIComponent(filePath)}`;
 }

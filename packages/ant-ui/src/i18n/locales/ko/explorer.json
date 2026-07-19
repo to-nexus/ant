@@ -19,14 +19,17 @@
     "nameError": {
       "empty": "feature 이름을 입력하세요",
       "reserved": "예약된 이름입니다",
-      "slash": "슬래시(/)는 사용할 수 없습니다 — feature 이름 = 브랜치 이름 = 폴더 이름",
+      "sentinel": "'~' 문자는 사용할 수 없습니다",
       "whitespace": "공백은 사용할 수 없습니다",
-      "invalidChars": "영문, 숫자, '.', '_', '-'만 사용할 수 있습니다",
-      "leadingDash": "'-'로 시작할 수 없습니다",
-      "leadingDot": "'.'로 시작할 수 없습니다",
-      "trailingDot": "'.'로 끝날 수 없습니다",
+      "invalidChars": "영문, 숫자, '.', '_', '-', '/'만 사용할 수 있습니다",
+      "leadingSlash": "'/'로 시작할 수 없습니다",
+      "trailingSlash": "'/'로 끝날 수 없습니다",
+      "emptySegment": "'//'을 포함할 수 없습니다",
+      "leadingDash": "각 경로 구간은 '-'로 시작할 수 없습니다",
+      "leadingDot": "각 경로 구간은 '.'로 시작할 수 없습니다",
+      "trailingDot": "각 경로 구간은 '.'로 끝날 수 없습니다",
       "doubleDot": "'..'을 포함할 수 없습니다",
-      "lockSuffix": "'.lock'으로 끝날 수 없습니다",
+      "lockSuffix": "각 경로 구간은 '.lock'으로 끝날 수 없습니다",
       "tooLong": "너무 깁니다 (최대 100자)",
       "duplicate": "같은 이름의 feature가 이미 있습니다"
     }

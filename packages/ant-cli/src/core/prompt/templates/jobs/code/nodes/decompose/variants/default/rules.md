@@ -1080,7 +1080,7 @@ The body is the literal `build` or `opt-out`. Default `build` — the app ships 
 
 **Constraint**: ALWAYS output `<references>` tag, even if the array is empty.
 
-**Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. Feature names become `feature/{name}` branches.
+**Reference extraction**: If the directive mentions another project (by name, optionally with a branch or feature name), extract it as a reference object with `project` and optional `branch` fields. A branch name is exactly the feature name (no prefix).
 
 {{> jobs/shared/injections/reference-codebase-register}}
 

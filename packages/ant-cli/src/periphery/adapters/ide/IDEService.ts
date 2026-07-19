@@ -16,6 +16,7 @@ import { waitForTcpReady, waitForHttpReady } from '../../../infrastructure/ide/r
 import { WorkspacePathResolver } from '../../../core/config/WorkspacePathResolver';
 import { GitHelper } from '../http/services/GitService/helper/GitHelper';
 import { NO_FEATURE_KEY } from '../../../infrastructure/state/redisKeyUtils';
+import { featureNameToSlug } from '@ant/shared';
 
 
 export interface IDEInstance {
@@ -232,8 +233,10 @@ export class IDEService {
     const containerName = sanitize(`ant-ide-${userContext.organizationId}-${userContext.userId}-${projectId}-${feature}`);
     const hostname = this.getInitialHostname(userContext, projectId);
     
-    // Base path for reverse proxy: /ide/org:user:project:feature (4-part key)
-    const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
+    // Base path for reverse proxy: /ide/org:user:project:feature (4-part key).
+    // The feature is slugged so a `/`-bearing name stays a single URL segment;
+    // ideProxy `parseIDEKey` decodes it back.
+    const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${featureNameToSlug(feature)}`;
     const serverBasePath = `/ide/${serverKey}`;
     
     // Check if already running

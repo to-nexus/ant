@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import { randomBytes } from 'crypto';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { extractUserContext } from './helpers/userContext';
@@ -61,6 +62,7 @@ export function createFeaturesRoutes(deps: {
   workspaceResolver?: any;
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
 
   /**
    * Resolve featurePath via the projectService's internal workspaceResolver

@@ -11,8 +11,8 @@ Available projects:
 
 Flow:
 1. `register_reference({ project, branch? })` — register the related project.
-   `branch` is optional (defaults to the main branch; `feature/{name}` selects a
-   feature branch). The result includes its top-level entries.
+   `branch` is optional (defaults to the project's base branch; a branch name is
+   exactly a feature name, no prefix). The result includes its top-level entries.
 2. `list_reference_files({ project, directory? })` — browse its tree.
 3. `read_reference_file({ project, path })` — read a file (use startLine/endLine
    for large files).

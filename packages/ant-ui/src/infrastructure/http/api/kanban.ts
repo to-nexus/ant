@@ -1,5 +1,5 @@
 import type { KanbanData } from '@ant/shared';
-import { API_BASE, apiGet } from './client';
+import { API_BASE, apiGet, featureSeg } from './client';
 
 // Re-export shared types (canonical source: @ant/shared)
 export type {
@@ -19,7 +19,7 @@ export function fetchKanbanData(
   featureName: string,
   job: string = 'code',
 ): Promise<KanbanData> {
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/kanban?job=${job}`;
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/kanban?job=${job}`;
   return apiGet<KanbanData>(url).catch(() => ({
     todo: [],
     inProgress: [],
@@ -41,7 +41,7 @@ export function fetchKanbanByJobId(
   jobId: string,
   jobType: string = 'code',
 ): Promise<KanbanData> {
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/kanban?jobId=${encodeURIComponent(jobId)}&type=${encodeURIComponent(jobType)}`;
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/kanban?jobId=${encodeURIComponent(jobId)}&type=${encodeURIComponent(jobType)}`;
   return apiGet<KanbanData>(url).catch(() => ({
     jobId,
     todo: [],

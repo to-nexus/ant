@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
@@ -52,6 +53,7 @@ export function createFeatureLogRoutes(deps: {
   stateTracker?: any;
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
 
   /**
    * GET /projects/:id/features/:feature/breadcrumbs

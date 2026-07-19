@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { featureSlugToName } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import type { UserContext } from '../../../../core/types/user';
 
@@ -101,7 +102,8 @@ export async function listProjectFeatures(
       .map(async (item) => {
         try {
           const stat = await fs.promises.stat(path.join(featuresPath, item));
-          return stat.isDirectory() ? item : null;
+          // `item` is the on-disk slug; the catalog lists raw feature names.
+          return stat.isDirectory() ? featureSlugToName(item) : null;
         } catch {
           return null;
         }

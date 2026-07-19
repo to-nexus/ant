@@ -21,7 +21,7 @@
  *   - deploy.ts             : DeployConfig, DeployVisibility
  *   - org.ts                : OrganizationKind, INDIVIDUAL_ORG_ID, deriveKindFromOrgId
  *   - git.ts                : GitSnapshot, GitUserOperation, GitOperationState, GitPatState, FileChange, GitCloneResult
- *   - feature-name.ts       : validateFeatureName, isValidFeatureName, RESERVED_FEATURE_NAMES, FeatureNameViolation
+ *   - feature-name.ts       : validateFeatureName, isValidFeatureName, featureNameToSlug/featureSlugToName, RESERVED_FEATURE_NAMES, FeatureNameViolation
  *   - file-resource.ts      : FileResource, FileResourceMeta, FileNode, TemplateReason
  */
 

@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPut } from './client';
+import { API_BASE, authFetch, apiGet, apiPut, featureSeg } from './client';
 
 export interface OrgConfig {
   github?: {
@@ -93,6 +93,6 @@ export function fetchMemberDirectories(
   featureId: string,
 ): Promise<{ directories: string[] }> {
   return apiGet(
-    `${API_BASE()}/org/members/${encodeURIComponent(userId)}/projects/${projectId}/features/${featureId}/directories`,
+    `${API_BASE()}/org/members/${encodeURIComponent(userId)}/projects/${projectId}/features/${featureSeg(featureId)}/directories`,
   );
 }

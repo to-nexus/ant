@@ -1,5 +1,5 @@
 import type { Session } from '@/domain/models/session';
-import { API_BASE, authFetch, apiGet, apiDelete } from './client';
+import { API_BASE, authFetch, apiGet, apiDelete, featureSeg } from './client';
 
 export interface Feature {
   name: string;
@@ -57,7 +57,7 @@ export function deleteFeature(
 ): Promise<void> {
   const qs = opts.force ? '?force=true' : '';
   return apiDelete(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}${qs}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}${qs}`,
   );
 }
 
@@ -66,7 +66,7 @@ export async function fetchFeatureSession(
   featureName: string,
   job: string = 'code',
 ): Promise<Session | null> {
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/session?job=${job}`;
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/session?job=${job}`;
   const response = await authFetch(url);
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Failed to fetch feature session: ${response.statusText}`);

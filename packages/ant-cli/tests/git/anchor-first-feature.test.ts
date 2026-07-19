@@ -81,8 +81,22 @@ describe('bare anchor first-feature bootstrap', () => {
   });
 
   it('rejects invalid feature names before touching disk', async () => {
-    await expect(worktrees.createWorktree(PROJECT, 'feat/login', uc)).rejects.toThrow(/invalid feature name/i);
+    // `feat/login` is now VALID (git-style nesting); use a genuinely-illegal name.
+    await expect(worktrees.createWorktree(PROJECT, 'a//b', uc)).rejects.toThrow(/invalid feature name/i);
     expect(fs.existsSync(anchorPath)).toBe(false);
+  });
+
+  it('slash feature name → slug worktree dir, verbatim branch name', async () => {
+    const info = await worktrees.createWorktree(PROJECT, 'release/1.0', uc);
+
+    // worktree dir uses the `/`-free slug…
+    const wt = resolver.getCodebasePath(uc, PROJECT, 'release/1.0');
+    expect(wt.endsWith(path.join('features', 'release~1.0', 'codebase'))).toBe(true);
+    expect(info.path).toBe(wt);
+    // …but the git branch is the raw name, verbatim.
+    expect(info.branch).toBe('release/1.0');
+    expect(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('release/1.0');
+    expect(GitHelper.isWorktreeStructureValid(wt)).toEqual({ valid: true });
   });
 
   it('second feature forks from the branchBase branch', async () => {

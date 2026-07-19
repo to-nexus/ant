@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import { KanbanService } from '../services/KanbanService';
 import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
@@ -17,6 +18,7 @@ export function createKanbanRoutes(deps: {
   watchSessionFile: (jobId: string, projectId: string, featureName: string, task: string) => void;
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
   
   // Get Kanban board data for a specific feature
   router.get('/projects/:id/features/:feature/kanban', async (req: Request, res: Response) => {

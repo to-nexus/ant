@@ -10,6 +10,7 @@ import {
   WorkspaceResolver,
   GIT_ANCHOR_DIR,
   resolveCodebasePathFromConfig,
+  buildFeaturePath,
 } from '../../core/config/WorkspacePathResolver';
 import { WorkspaceServicePort } from '../../core/ports/workspace';
 import { UserContext } from '../../core/types/user';
@@ -34,7 +35,7 @@ export class WorkspaceServiceAdapter implements WorkspaceResolver {
   }
 
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {
-    return path.join(this.getProjectPath(userContext, projectId), 'features', featureId);
+    return buildFeaturePath(this.getProjectPath(userContext, projectId), featureId);
   }
 
   getCodebasePath(userContext: UserContext, projectId: string, featureId: string): string {

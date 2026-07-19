@@ -28,6 +28,7 @@
  */
 
 import { REALTIME_BASE, API_BASE } from '../http/api';
+import { featureNameToSlug } from '@ant/shared';
 import { fetchAuthMeDetailed } from '@ant/auth-client';
 import {
   getAuthBroadcaster,
@@ -195,7 +196,9 @@ class SSEManager {
     // Build SSE URL — authentication is handled via httpOnly JWT cookie
     // (withCredentials: true sends the cookie automatically)
     const realtimeBase = REALTIME_BASE();
-    const basePath = `${realtimeBase}/projects/${projectId}/features/${featureName}/stream`;
+    // Feature name may contain `/`; slug it to a single path segment (the
+    // realtime server's router.param decodes it back).
+    const basePath = `${realtimeBase}/projects/${projectId}/features/${featureNameToSlug(featureName)}/stream`;
     const url = realtimeBase.startsWith('http') ? new URL(basePath) : new URL(basePath, window.location.origin);
     url.searchParams.set('job', job);
     

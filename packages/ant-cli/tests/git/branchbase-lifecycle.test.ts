@@ -25,6 +25,7 @@ import {
   type BranchBaseContext,
 } from '../../src/periphery/adapters/http/services/GitService/anchor/branchBaseLifecycle';
 import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
+import { featureNameToSlug } from '@ant/shared';
 
 const uc = { userId: 'u', organizationId: 'o' };
 
@@ -33,7 +34,10 @@ let anchorPath: string;
 let ctx: BranchBaseContext;
 
 function mkFeature(name: string): void {
-  fs.mkdirSync(path.join(projectPath, 'features', name, 'codebase'), { recursive: true });
+  // On disk a feature is a single slug segment (a name may contain `/`).
+  fs.mkdirSync(path.join(projectPath, 'features', featureNameToSlug(name), 'codebase'), {
+    recursive: true,
+  });
 }
 
 function writeConfig(config: Record<string, unknown>): void {
@@ -118,7 +122,21 @@ describe('branchBase lifecycle', () => {
   });
 
   it('manual set rejects invalid names', async () => {
-    await expect(setBranchBaseManual(ctx, 'feat/x')).rejects.toThrow(/invalid/i);
+    // `feat/x` is now a valid name; use a genuinely-illegal one.
+    await expect(setBranchBaseManual(ctx, 'a//b')).rejects.toThrow(/invalid/i);
+  });
+
+  it('slash feature: dir is the slug, pointer holds the raw name', async () => {
+    mkFeature('release/1.0');
+    // on-disk dir is the slug…
+    expect(fs.existsSync(path.join(projectPath, 'features', 'release~1.0', 'codebase'))).toBe(true);
+    // …but enumeration and the pointer speak the raw name.
+    const listed = await listFeatureDirsByCreation(projectPath);
+    expect(listed.map((f) => f.name)).toContain('release/1.0');
+    await applyAfterFeatureCreate(ctx, 'release/1.0');
+    expect(readBranchBase(projectPath)).toBe('release/1.0');
+    await setBranchBaseManual(ctx, 'release/1.0');
+    expect(readBranchBase(projectPath)).toBe('release/1.0');
   });
 
   it('remote lock freezes the pointer (manual set + delete reassignment)', async () => {

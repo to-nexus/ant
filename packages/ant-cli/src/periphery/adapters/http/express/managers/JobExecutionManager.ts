@@ -15,7 +15,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from './JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
-import { isSessionableJobType, isExecutableJobType, buildInfrastructureInterruption } from '@ant/shared';
+import { isSessionableJobType, isExecutableJobType, buildInfrastructureInterruption, featureNameToSlug } from '@ant/shared';
 
 /**
  * JobExecutionManager
@@ -147,7 +147,7 @@ export class JobExecutionManager {
       } else if (params.feature && params.userContext) {
         const tenantId = `${params.userContext.organizationId}:${params.userContext.userId}`;
         const handle = await this.deps.workspaceService.createWorkspace(tenantId, params.project);
-        const featurePath = path.join(handle.storagePath, 'features', params.feature);
+        const featurePath = path.join(handle.storagePath, 'features', featureNameToSlug(params.feature));
         args.push(featurePath);
       }
       
@@ -204,7 +204,7 @@ export class JobExecutionManager {
     
     const projectPath = handle.storagePath;
     const featurePath = params.feature
-      ? path.join(handle.storagePath, 'features', params.feature)
+      ? path.join(handle.storagePath, 'features', featureNameToSlug(params.feature))
       : projectPath;
     
     // Build isolated environment
