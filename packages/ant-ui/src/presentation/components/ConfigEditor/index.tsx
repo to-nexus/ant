@@ -33,6 +33,7 @@ import {
   SectionCard,
   FieldLabel,
   AuroraInput,
+  AuroraSelect,
 } from './aurora';
 
 interface ConfigEditorProps {
@@ -65,9 +66,12 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useActiveSection([...SECTION_IDS], scrollerRef);
 
-  // Git snapshot (determines if branchBase is editable)
+  // Git snapshot — branchBase locks once a remote is connected (clone/init).
+  // NOT `hasGit`: local git always exists once a feature is created, so a
+  // hasGit-based lock would make the base branch permanently read-only.
   const snapshot = useGitSnapshot();
-  const isGitInitialized = snapshot?.hasGit ?? false;
+  const isBranchBaseLocked = snapshot?.hasRemote ?? false;
+  const features = useStore((state) => state.features);
   const patState = useGitPat();
   const { fetchGitPat } = useGitPatDispatch();
 
@@ -622,15 +626,19 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                 />
               ))}
 
-              {/* Base branch */}
+              {/* Base branch — a pointer into the feature set (branch == feature
+                  name). Locked after remote connection; before that, a dropdown
+                  of existing features; with zero features, the ant default. */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <FieldLabel>{t('schema.baseBranch')}</FieldLabel>
                 <p style={{ margin: '-2px 0 8px', fontSize: 11, color: 'var(--text-4)' }}>
-                  {isGitInitialized
-                    ? t('schema.baseBranchDesc')
-                    : t('schema.baseBranchEditable')}
+                  {isBranchBaseLocked
+                    ? t('schema.baseBranchLockedDesc')
+                    : features.length > 0
+                      ? t('schema.baseBranchPickDesc')
+                      : t('schema.baseBranchNoFeatures')}
                 </p>
-                {isGitInitialized ? (
+                {isBranchBaseLocked || features.length === 0 ? (
                   <div
                     style={{
                       width: '100%',
@@ -646,11 +654,19 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                     {editedConfig.branchBase || 'main'}
                   </div>
                 ) : (
-                  <AuroraInput
-                    value={editedConfig.branchBase || ''}
+                  <AuroraSelect
+                    value={editedConfig.branchBase || features[0]?.name || 'main'}
                     onChange={(v) => handleChange('branchBase', v)}
-                    placeholder="main"
-                    mono
+                    options={(() => {
+                      const opts = features.map((f) => ({ value: f.name, label: f.name }));
+                      // Transient race guard: keep a saved branchBase visible even
+                      // if it's momentarily absent from the features list.
+                      const saved = editedConfig.branchBase;
+                      if (saved && !opts.some((o) => o.value === saved)) {
+                        opts.unshift({ value: saved, label: saved });
+                      }
+                      return opts;
+                    })()}
                   />
                 )}
               </div>

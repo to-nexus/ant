@@ -260,9 +260,10 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     throw new Error("GitPort not provided for branch management");
   }
   
+  // Branch name == feature name (no prefix).
   const branch = state.context.featureFolder
-    ? `feature/${state.context.featureFolder}`
-    : `feature/${state.context.project}-arch-${Date.now()}`;
+    ? state.context.featureFolder
+    : `${state.context.project}-arch-${Date.now()}`;
   
   // Per-task touched-files SSOT — written by tool handlers
   // (`ToolExecutionContext.recordFileTouch`) and the XML `<file>` streaming

@@ -29,7 +29,7 @@ import { LOCK_DURATION, LOCK_EXTENSION_INTERVAL, STALLED_INTERVAL, CANCELLATION_
 import { logger } from '../../utils/logger';
 import { holdIdleSleepAssertion } from './sleepAssertion';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../../core/config/WorkspacePathResolver';
-import { readBranchBaseFromConfig, isBaseBranch } from '../../core/utils/branchUtils';
+import { readBranchBase } from '../../core/utils/branchUtils';
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
 import type { InterruptionReason } from '@ant/shared';
@@ -486,14 +486,19 @@ export class JobWorker {
 
     const workspaceResolver = new UnifiedWorkspaceResolver(workspaceBase);
     const projectPath = workspaceResolver.getProjectPath(payload.userContext, payload.projectId);
-    const branchBase = readBranchBaseFromConfig(projectPath);
-    const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
+    const branchBase = readBranchBase(projectPath);
 
-    // For base branch jobs (learn), use projectPath as featurePath since there's no feature directory
-    const isBaseBranchJob = isBaseBranch(payload.feature, branchBase);
-    const featurePath = isBaseBranchJob
-      ? projectPath
-      : workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
+    // Jobs always run inside a feature — a project without features has no
+    // codebase. Reject at dispatch instead of silently pointing at a
+    // nonexistent working tree ('_base' is the retired no-feature sentinel).
+    if (!payload.feature || payload.feature === '_base') {
+      throw new Error(
+        `Job ${jobId} has no feature — jobs require a feature (project without features has no codebase)`
+      );
+    }
+
+    const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
+    const featurePath = workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
 
     // CLI source/dist root for internal resource paths (templates, policies, etc.)
     const cliRoot = WorkspacePathResolver.getCliRoot();

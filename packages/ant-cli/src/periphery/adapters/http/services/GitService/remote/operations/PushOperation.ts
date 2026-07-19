@@ -2,30 +2,22 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { WorktreeService } from '../../worktree';
-import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
 import { GitOperationError } from '../../errors';
 import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
-import { GitBootstrapSSOT } from './BaseGitSetupOperation';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 
 /**
  * PushOperation
- * 
+ *
  * Handles pushing changes to GitHub.
  * Includes lazy worktree creation and automatic upstream setup ("Publish Branch").
  */
 export class PushOperation {
-  private readonly featureBackup: FeatureCodebaseBackup;
-  private readonly gitBootstrap: GitBootstrapSSOT;
-
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
     private readonly worktreeService: WorktreeService,
     private readonly githubAuthService?: GitHubAuthService
-  ) {
-    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
-    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'PushOperation');
-  }
+  ) {}
 
   async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     if (!this.githubAuthService) {
@@ -35,13 +27,11 @@ export class PushOperation {
     const config = await loadGitHubConfig(this.workspaceResolver, projectId, userContext);
     const { git } = await ensureGitRepository({
       workspaceResolver: this.workspaceResolver,
-      gitBootstrap: this.gitBootstrap,
       projectId,
       userContext,
       featureName,
       operationName: 'PushOperation',
       worktreeService: this.worktreeService,
-      featureBackup: this.featureBackup,
     });
 
     const credentialContext = {

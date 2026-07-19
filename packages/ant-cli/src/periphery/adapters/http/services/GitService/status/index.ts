@@ -29,9 +29,10 @@ interface InternalGitChanges {
   isGitInitialized: boolean;
   hasUpstream: boolean;
 }
-import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
+import { WorkspaceResolver, resolveLocalPath } from '../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHelper } from '../helper/GitHelper';
+import { gitAnchor } from '../anchor/GitAnchorSSOT';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
 import { RemoteChecker } from '../remote/helpers/RemoteChecker';
 import { emitWorktreeValidityFailure } from '../worktree';
@@ -78,13 +79,52 @@ export class StatusService {
     this.githubAuthService = githubAuthService;
   }
 
+  /**
+   * Resolve the read target for a (project, feature?) pair:
+   * - repoType:'local' → the user-owned localPath working repo (feature-agnostic)
+   * - feature selected → that feature's worktree
+   * - no feature       → the bare anchor (no working tree; a project without
+   *                      a selected feature has no codebase)
+   */
+  private resolveReadTarget(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+  ): { kind: 'worktree' | 'anchor'; targetPath: string } {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    try {
+      const configPath = path.join(projectPath, 'config.json');
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.repoType === 'local' && config.localPath) {
+          return { kind: 'worktree', targetPath: resolveLocalPath(config.localPath) };
+        }
+      }
+    } catch { /* fall through */ }
+
+    if (featureName) {
+      return {
+        kind: 'worktree',
+        targetPath: this.workspaceResolver.getCodebasePath(userContext, projectId, featureName),
+      };
+    }
+    return {
+      kind: 'anchor',
+      targetPath: this.workspaceResolver.getGitAnchorPath(userContext, projectId),
+    };
+  }
+
   async getGitStatus(
     projectId: string,
     userContext: UserContext,
     featureName?: string,
   ): Promise<InternalGitStatus> {
     try {
-      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+      const target = this.resolveReadTarget(projectId, userContext, featureName);
+      if (target.kind === 'anchor') {
+        return this.getAnchorStatus(projectId, userContext, target.targetPath);
+      }
+      const codebasePath = target.targetPath;
 
       // `hasCodebase` is the manifest-based SSOT (a real dependency/build
       // manifest is present) — shared with triage's `WorkspaceState`. The raw
@@ -143,13 +183,75 @@ export class StatusService {
     }
   }
 
+  /**
+   * No-feature snapshot backed by the bare anchor: `hasGit` = anchor exists,
+   * `currentBranch` = anchor HEAD (branchBase), codebase flags are always
+   * false (no feature ⇒ no codebase).
+   */
+  private async getAnchorStatus(
+    projectId: string,
+    userContext: UserContext,
+    anchorPath: string,
+  ): Promise<InternalGitStatus> {
+    const hasGit = GitHelper.isBareAnchorReady(anchorPath);
+
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const featuresPath = path.join(projectPath, 'features');
+    const hasFeatures = fs.existsSync(featuresPath) &&
+      fs.readdirSync(featuresPath).filter(f => !f.startsWith('.')).length > 0;
+
+    let currentBranch: string | undefined;
+    let remoteUrl: string | undefined;
+    if (hasGit) {
+      try {
+        await GitHelper.ensureSafeDirectory(anchorPath);
+        currentBranch = (await gitAnchor.readHeadBranch(anchorPath)) ?? undefined;
+        const git = GitHelper.getBareGitInstance(anchorPath);
+        if (git) {
+          try {
+            const raw = await git.remote(['get-url', 'origin']);
+            if (raw) {
+              remoteUrl = raw.trim()
+                .replace(/\/\/[^@]+@/, '//')
+                .replace(/\.git$/, '');
+            }
+          } catch { /* no remote configured */ }
+        }
+      } catch (error) {
+        console.warn('[GitStatusService] Failed to read anchor status:', error);
+      }
+    }
+
+    return {
+      hasGit,
+      hasCodebase: false,
+      codebaseHasFiles: false,
+      hasFeatures,
+      currentBranch,
+      remoteUrl,
+    };
+  }
+
   async getGitChanges(
     projectId: string,
     userContext: UserContext,
     featureName?: string,
   ): Promise<InternalGitChanges> {
     try {
-      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+      const target = this.resolveReadTarget(projectId, userContext, featureName);
+      if (target.kind === 'anchor') {
+        // No feature ⇒ no working tree ⇒ no changes to report.
+        return {
+          staged: [],
+          unstaged: [],
+          untracked: [],
+          ahead: 0,
+          behind: 0,
+          isGitInitialized: GitHelper.isBareAnchorReady(target.targetPath),
+          hasUpstream: false,
+        };
+      }
+      const codebasePath = target.targetPath;
 
       await GitHelper.ensureSafeDirectory(codebasePath);
 
@@ -226,7 +328,7 @@ export class StatusService {
       // The next cloud-ide.start will self-heal via Phase 4 — this branch
       // exists to capture status-poll-only callers.
       const errorMessage = (error as Error)?.message ?? String(error);
-      if (/not a git repository/i.test(errorMessage)) {
+      if (featureName && /not a git repository/i.test(errorMessage)) {
         try {
           const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
           const validity = GitHelper.isWorktreeStructureValid(codebasePath);
@@ -247,13 +349,13 @@ export class StatusService {
   }
 
   /**
-   * Check if GitHub repository clone is complete
+   * Check if GitHub repository clone is complete — the bare anchor exists
+   * AND has an origin remote.
    */
   async checkCloneStatus(projectId: string, userContext: UserContext): Promise<boolean> {
     try {
-      const codebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
-      const gitDir = path.join(codebasePath, '.git');
-      return fs.existsSync(gitDir);
+      const anchorPath = this.workspaceResolver.getGitAnchorPath(userContext, projectId);
+      return GitHelper.isBareAnchorReady(anchorPath) && await gitAnchor.hasOriginRemote(anchorPath);
     } catch (error) {
       console.error('[GitStatusService] Error checking clone status:', error);
       return false;

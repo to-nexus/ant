@@ -47,10 +47,11 @@ function makeFixture(overrides?: {
     getProjectPath: (_ctx: UserContext, projectId: string) => path.join(base, 'org', 'user', projectId),
     getFeaturePath: (_ctx: UserContext, projectId: string, featureId: string) =>
       path.join(base, 'org', 'user', projectId, 'features', featureId),
-    getCodebasePath: (_ctx: UserContext, projectId: string, featureId?: string) =>
-      featureId
-        ? path.join(base, 'org', 'user', projectId, 'features', featureId, 'codebase')
-        : path.join(base, 'org', 'user', projectId, 'codebase'),
+    getCodebasePath: (_ctx: UserContext, projectId: string, featureId: string) =>
+      path.join(base, 'org', 'user', projectId, 'features', featureId, 'codebase'),
+    // Git anchor = hidden bare repo at {project}/repo.git (new architecture).
+    getGitAnchorPath: (_ctx: UserContext, projectId: string) =>
+      path.join(base, 'org', 'user', projectId, 'repo.git'),
     getPhysicalWorkspacesPath: () => base,
   };
   mkdirSync(path.join(base, 'org', 'user'), { recursive: true });
@@ -61,6 +62,10 @@ function makeFixture(overrides?: {
     markUserStopped: vi.fn(async () => undefined),
     setKillReason: vi.fn(async () => undefined),
     getJobStatus: vi.fn(async () => null),
+    deleteJobStatus: vi.fn(async () => undefined),
+    // Feature-lifecycle distributed lock (FeatureCrudService.withFeatureLifecycleLock).
+    tryAcquireLock: vi.fn(async () => true),
+    releaseLockIfOwner: vi.fn(async () => undefined),
     cleanupFeature: vi.fn(async () => {
       if (overrides?.cleanupFeatureShouldThrow) throw overrides.cleanupFeatureShouldThrow;
     }),

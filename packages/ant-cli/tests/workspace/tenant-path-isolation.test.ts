@@ -17,8 +17,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
-import { RESERVED_FEATURE_NAME } from '../../src/core/utils/branchUtils';
+import { UnifiedWorkspaceResolver, GIT_ANCHOR_DIR } from '../../src/core/config/WorkspacePathResolver';
 import type { UserContext } from '../../src/core/types/user';
 
 const BASE = '/mnt/workspaces';
@@ -44,15 +43,12 @@ describe('UnifiedWorkspaceResolver — org + user scoping', () => {
     );
   });
 
-  it('codebase path stays inside the org/user subtree (base + feature branch)', () => {
-    expect(resolver.getCodebasePath(victim, 'proj')).toBe(
-      path.join(BASE, 'victim-org', 'victim-user', 'proj', 'codebase'),
-    );
-    expect(resolver.getCodebasePath(victim, 'proj', RESERVED_FEATURE_NAME)).toBe(
-      path.join(BASE, 'victim-org', 'victim-user', 'proj', 'codebase'),
-    );
+  it('codebase + anchor paths stay inside the org/user subtree', () => {
     expect(resolver.getCodebasePath(victim, 'proj', 'login')).toBe(
       path.join(BASE, 'victim-org', 'victim-user', 'proj', 'features', 'login', 'codebase'),
+    );
+    expect(resolver.getGitAnchorPath(victim, 'proj')).toBe(
+      path.join(BASE, 'victim-org', 'victim-user', 'proj', GIT_ANCHOR_DIR),
     );
   });
 });
@@ -80,7 +76,7 @@ describe('UnifiedWorkspaceResolver — JWT org-forgery isolation (regression)', 
       resolver.getWorkspacePath(orgB),
       resolver.getProjectPath(orgB, 'proj'),
       resolver.getFeaturePath(orgB, 'proj', 'login'),
-      resolver.getCodebasePath(orgB, 'proj'),
+      resolver.getGitAnchorPath(orgB, 'proj'),
       resolver.getCodebasePath(orgB, 'proj', 'login'),
     ]) {
       expect(p.startsWith(orgARoot)).toBe(false);

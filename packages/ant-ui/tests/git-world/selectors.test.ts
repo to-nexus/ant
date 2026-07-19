@@ -115,6 +115,43 @@ describe('deriveGitMenu', () => {
       expect(m.pullBlockedByChanges).toBe(true);
     }
   });
+
+  // Clone is only permitted on a project with ZERO features. With features
+  // present the item renders disabled + notice, never silently hidden.
+  it('setup with zero features → clone available (not blocked)', () => {
+    const s = snap({ hasGit: false, hasRemote: false, hasFeatures: false, remoteExists: true });
+    expect(deriveGitMenu({ snapshot: s, githubRepo: 'x' })).toEqual({
+      kind: 'setup',
+      actions: ['clone'],
+      cloneBlockedByFeatures: false,
+    });
+  });
+
+  it('setup with features + remoteExists=true → clone shown but blocked', () => {
+    const s = snap({ hasGit: true, hasRemote: false, hasFeatures: true, remoteExists: true });
+    expect(deriveGitMenu({ snapshot: s, githubRepo: 'x' })).toEqual({
+      kind: 'setup',
+      actions: ['clone'],
+      cloneBlockedByFeatures: true,
+    });
+  });
+
+  it('setup with features + ambiguous probe → blocked clone + initialize reachable', () => {
+    const s = snap({ hasGit: true, hasRemote: false, hasFeatures: true, remoteExists: undefined });
+    expect(deriveGitMenu({ snapshot: s, githubRepo: 'x' })).toEqual({
+      kind: 'setup',
+      actions: ['ambiguous'],
+      cloneBlockedByFeatures: true,
+    });
+  });
+
+  it('features + remoteExists=false stays publish/noFeatures (clone irrelevant)', () => {
+    const s = snap({ hasGit: true, hasRemote: false, hasFeatures: true, remoteExists: false });
+    expect(deriveGitMenu({ snapshot: s, githubRepo: 'x' })).toEqual({
+      kind: 'publish',
+      source: 'noFeatures',
+    });
+  });
 });
 
 describe('deriveGitBadge', () => {

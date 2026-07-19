@@ -29,8 +29,8 @@ export async function handleRegisterReference(
 
   // Default an omitted branch to the connection-linked feature (the authoritative
   // "which branch" answer from the current project's `@connection` annotations),
-  // instead of falling through to `main`.
-  if (!branch && ctx.project) {
+  // instead of falling through to the target's branchBase.
+  if (!branch && ctx.project && ctx.featureFolder) {
     try {
       const codebaseRoot = deps.workspaceResolver.getCodebasePath(
         deps.userContext,
@@ -38,9 +38,9 @@ export async function handleRegisterReference(
         ctx.featureFolder,
       );
       const connected = (await buildConnectionBranchMap(codebaseRoot)).get(project);
-      if (connected) branch = `feature/${connected}`;
+      if (connected) branch = connected;
     } catch {
-      // no connection hint — resolver defaults to main
+      // no connection hint — resolver defaults to the target's branchBase
     }
   }
 

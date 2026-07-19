@@ -77,11 +77,15 @@ export function createFeaturesRoutes(deps: {
       const projectId = req.params.id;
       const userContext = extractUserContext(req);
       
-      const features = await deps.projectService.listFeatures(projectId, userContext);
-      
-      // Format for API response (path not needed, frontend uses name)
-      const formattedFeatures = features.map(name => ({ name }));
-      
+      // Creation-ordered (oldest first) — the same ordering the branchBase
+      // reassignment rule uses, so FE dropdown and BE auto-apply agree.
+      const features = await deps.projectService.listFeaturesDetailed(projectId, userContext);
+
+      const formattedFeatures = features.map((f) => ({
+        name: f.name,
+        createdAt: f.createdAt.toISOString(),
+      }));
+
       res.json(formattedFeatures);
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'Features');

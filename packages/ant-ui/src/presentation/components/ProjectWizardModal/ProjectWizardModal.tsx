@@ -16,7 +16,7 @@ import { executeCodeJob } from '@/infrastructure/http/cli';
 import { cn } from '@/shared/utils/design-system';
 
 import type { WizardStep, ExecStepId, ExecStepStatus, ExecStepState } from './types';
-import { designDirOf, type Domain } from '@ant/shared';
+import { designDirOf, isValidFeatureName, type Domain, type GitCloneResult } from '@ant/shared';
 import { isCanonicalDesignDoc, isValidName, sanitizeRepoName, delay, generateProjectName, generateFeatureName } from './constants';
 import {
   WizardStepIndicator,
@@ -115,7 +115,8 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   const projectNameExists = !existingProjectId && !!projectName.trim() && projects.includes(projectName.trim());
   const featureNameExists = !!existingProjectId && !!featureName.trim() && features.some((f) => f.name === featureName.trim());
   const projectNameInvalid = !existingProjectId && !!projectName.trim() && !isValidName(projectName.trim());
-  const featureNameInvalid = !!featureName.trim() && !isValidName(featureName.trim());
+  // Feature name becomes the git branch name verbatim — shared validator.
+  const featureNameInvalid = !!featureName.trim() && !isValidFeatureName(featureName.trim());
 
   // ── Effects ──
 
@@ -204,16 +205,27 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     return () => { cancelled = true; };
   }, [existingProjectId, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Clone requires a project with ZERO features — mirror of the BE hard guard.
+  const cloneBlockedByFeatures = !!existingProjectId && features.length > 0;
+
   useEffect(() => {
     if (gitUrl.trim() && patStatus?.configured && gitAction === 'none') {
-      setGitAction('clone');
+      setGitAction(cloneBlockedByFeatures ? 'init' : 'clone');
     }
     if (!gitUrl.trim()) setGitAction('none');
-  }, [gitUrl, patStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gitUrl, patStatus, cloneBlockedByFeatures]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (cloneBlockedByFeatures && gitAction === 'clone') setGitAction('init');
+  }, [cloneBlockedByFeatures, gitAction]);
 
   // ── Derived ──
 
   const gitReadOnly = !!existingProjectId && gitUrlFromConfig;
+
+  // Clone flow: the BE auto-creates a feature named after the remote default
+  // branch — the wizard adopts it instead of creating one from the name field.
+  const isCloneFlow = gitEnabled && !gitReadOnly && gitAction === 'clone' && gitUrl.trim().length > 0;
 
   const hasModeDepData = sourcesFiles.length + assetsFiles.length + designDocsFiles.length > 0 || directive.trim().length > 0;
 
@@ -225,9 +237,11 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     : (hasDirective || hasCodeInputs);
 
   const canGoNext: Record<WizardStep, boolean> = {
-    1: featureName.trim().length >= 3 && isValidName(featureName.trim())
+    // Clone flow ignores the feature-name field (BE auto-creates the base feature).
+    1: (isCloneFlow
+        || (featureName.trim().length >= 3 && isValidFeatureName(featureName.trim()) && !featureNameExists))
       && (!!existingProjectId || (projectName.trim().length >= 3 && isValidName(projectName.trim())))
-      && !projectNameExists && !featureNameExists,
+      && !projectNameExists,
     2: true,
     3: true,
   };
@@ -398,6 +412,8 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         updateExecStep('config', 'done');
       }
 
+      let cloneSucceeded = false;
+      let cloneOpResult: unknown;
       if (hasGitAction) {
         const gitStepId: ExecStepId = gitAction === 'clone' ? 'gitClone' : 'gitInit';
         let gitDone = false;
@@ -416,17 +432,18 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 }
                 throw new Error(cloneResult.error?.message || 'Git clone failed');
               }
-              // Back-compat: some server builds still complete clone
-              // asynchronously after returning success. Poll briefly to
-              // confirm the working tree materialized before proceeding.
+              cloneOpResult = cloneResult.result;
+              // Confirm the anchor + auto-created base feature materialized
+              // before proceeding.
               let cloned = false;
               for (let i = 0; i < 60; i++) {
-                await delay(2000);
                 const status = await checkCloneStatus(projectId);
                 if (status.error) throw new Error(status.error);
                 if (status.cloned) { cloned = true; break; }
+                await delay(2000);
               }
               if (!cloned) throw new Error('Git clone timed out');
+              cloneSucceeded = true;
             } else {
               const initResult = await runGitOperation(projectId, { kind: 'publish' });
               if (!initResult.success) {
@@ -455,15 +472,31 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
       }
 
       updateExecStep('feature', 'active');
-      const hasSources = sourcesFiles.length > 0;
-      await createFeature(projectId, featureName.trim(), language, hasSources ? { skipPrdTemplate: true } : undefined);
-      useStore.getState().addFeatureOptimistic(featureName.trim());
-      await delay(500);
+      let effectiveFeature = featureName.trim();
+      if (cloneSucceeded) {
+        // Adopt the BE-auto-created base feature (named after the remote
+        // default branch) instead of creating one — clone requires zero
+        // features, so the sole listed feature is the auto-created one.
+        const adopted = (cloneOpResult as Partial<GitCloneResult> | undefined)?.feature;
+        if (adopted) {
+          effectiveFeature = adopted;
+        } else {
+          const fetched = await useStore.getState().fetchFeatures(projectId);
+          effectiveFeature = fetched[0]?.name ?? '';
+        }
+        if (!effectiveFeature) throw new Error('Clone finished but no feature was created');
+        useStore.getState().addFeatureOptimistic(effectiveFeature, projectId);
+      } else {
+        const hasSources = sourcesFiles.length > 0;
+        await createFeature(projectId, effectiveFeature, language, hasSources ? { skipPrdTemplate: true } : undefined);
+        useStore.getState().addFeatureOptimistic(effectiveFeature);
+        await delay(500);
+      }
       updateExecStep('feature', 'done');
 
       if (hasFiles) {
         updateExecStep('upload', 'active');
-        const feat = featureName.trim();
+        const feat = effectiveFeature;
         const batch = async (files: File[], dir: string) => {
           if (files.length === 0) return;
           const entries: UploadFileEntry[] = files.map((f) => ({ file: f, relativePath: f.name }));
@@ -488,7 +521,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
       if (useStore.getState().selectedProject !== projectId) setSelectedProject(projectId);
       await delay(150);
-      setSelectedFeature(featureName.trim());
+      setSelectedFeature(effectiveFeature);
       await delay(200);
 
       if (shouldStartJob) {
@@ -496,10 +529,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         const jobType = mode === 'design' ? 'design' : 'code';
         setSelectedAgent('architect');
         setSelectedJobType(jobType);
-        await addChatUserMessage(projectId, featureName.trim(), effectiveDirective);
+        await addChatUserMessage(projectId, effectiveFeature, effectiveDirective);
         setRunning(true, undefined, 'generate');
         const jobExec = executeCodeJob({
-          projectId, featureName: featureName.trim(), jobType, agent: 'architect',
+          projectId, featureName: effectiveFeature, jobType, agent: 'architect',
           overrideDirective: effectiveDirective, chatSource: true,
         });
         setCurrentJob(jobExec);
@@ -585,6 +618,8 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 featureNameExists={featureNameExists}
                 projectNameInvalid={projectNameInvalid}
                 featureNameInvalid={featureNameInvalid}
+                featureNameDisabled={isCloneFlow}
+                featureNameDisabledHint={t('quickstart.projectWizard.featureNameCloneDisabledHint')}
               />
             )}
             {currentStep === 2 && (
@@ -613,6 +648,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 onApplyOwner={applyOwner}
                 gitAction={gitAction}
                 onGitActionChange={setGitAction}
+                cloneDisabled={cloneBlockedByFeatures}
               />
             )}
             {currentStep === 3 && (

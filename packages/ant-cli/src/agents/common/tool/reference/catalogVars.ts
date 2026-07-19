@@ -37,11 +37,11 @@ export async function referenceCatalogVars(state: CatalogStateLike): Promise<Ref
     // Connection-linked feature per sibling — the authoritative "which branch"
     // hint, scanned from the current codebase's `@connection` annotations.
     let connectionBranches: Map<string, string> | undefined;
-    if (currentProject) {
+    if (currentProject && state.context?.featureFolder) {
       const codebaseRoot = workspaceResolver.getCodebasePath(
         userContext,
         currentProject,
-        state.context?.featureFolder,
+        state.context.featureFolder,
       );
       connectionBranches = await buildConnectionBranchMap(codebaseRoot);
     }

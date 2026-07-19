@@ -28,9 +28,9 @@ import {
 } from '../../core/ports/ideOrchestrator';
 import { StateStorePort } from '../../core/ports/stateStore';
 import { UserContext } from '../../core/types/user';
-import { createIDEKey, parseIDEKey } from '../state/redisKeyUtils';
+import { createIDEKey, parseIDEKey, NO_FEATURE_KEY } from '../state/redisKeyUtils';
 import { logger } from '../../utils/logger';
-import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
+
 import { resolveK8sWorktreeMounts } from './k8sWorktreeMounts';
 import { waitForHttpReady } from './readiness';
 import { createIdePhaseEmitter, IdePhaseEmitter } from './idePhaseEmitter';
@@ -377,7 +377,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     // likely the caller skipped `ensureGitRepository`. Surface the failure
     // to the user instead of producing a silent broken pod with an empty
     // `/mnt/workspaces/.../codebase/.git` path inside the container.
-    if (feature !== RESERVED_FEATURE_NAME && worktreeMounts.length === 0) {
+    if (feature !== NO_FEATURE_KEY && worktreeMounts.length === 0) {
       throw new Error(
         `K8s IDE: feature pod '${feature}' requires worktree mounts but resolveK8sWorktreeMounts returned []. ` +
           `Likely cause: ensureGitRepository was not invoked before start(). ` +
@@ -588,7 +588,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   // ============================================
 
   async start(params: IDEParams): Promise<IDEStartResult> {
-    const { userContext, projectId, workspacePath, feature = RESERVED_FEATURE_NAME } = params;
+    const { userContext, projectId, workspacePath, feature = NO_FEATURE_KEY } = params;
     // Use centralized function for IDE instance key (org:user:project:feature)
     const instanceKey = createIDEKey(userContext.organizationId, userContext.userId, projectId, feature);
     const resourceName = this.createResourceName(instanceKey);
@@ -1037,7 +1037,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   async stop(
     tenantId: string,
     projectId: string,
-    feature: string = RESERVED_FEATURE_NAME
+    feature: string = NO_FEATURE_KEY
   ): Promise<{ success: boolean; message?: string }> {
     // tenantId is in format org:user, parse it
     const tenantParts = tenantId.split(':');
@@ -1097,7 +1097,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   async forceReset(
     tenantId: string,
     projectId: string,
-    feature: string = RESERVED_FEATURE_NAME,
+    feature: string = NO_FEATURE_KEY,
   ): Promise<{ success: boolean; message?: string }> {
     const tenantParts = tenantId.split(':');
     const orgId = tenantParts[0] || '';
@@ -1154,7 +1154,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   async getStatus(
     tenantId: string,
     projectId: string,
-    feature: string = RESERVED_FEATURE_NAME
+    feature: string = NO_FEATURE_KEY
   ): Promise<IDEInstance | null> {
     // tenantId is in format org:user, parse it
     const tenantParts = tenantId.split(':');
@@ -1231,7 +1231,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           tenantId: parsed.tenantId,
           userId: parsed.userId,
           projectId: parsed.projectId,
-          feature: parsed.feature || RESERVED_FEATURE_NAME
+          feature: parsed.feature || NO_FEATURE_KEY
         };
       });
     } catch (error: any) {
@@ -1264,7 +1264,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             tenantId: userContext.organizationId,
             userId: userContext.userId,
             projectId: instanceKey,
-            feature: RESERVED_FEATURE_NAME
+            feature: NO_FEATURE_KEY
           };
         }
 
@@ -1278,7 +1278,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           tenantId: parsed.tenantId,
           userId: parsed.userId,
           projectId: parsed.projectId,
-          feature: parsed.feature || RESERVED_FEATURE_NAME
+          feature: parsed.feature || NO_FEATURE_KEY
         };
       });
     } catch (error: any) {
@@ -1304,7 +1304,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     const projectInstances = instances.filter(i => i.projectId === projectId);
 
     for (const instance of projectInstances) {
-      await this.stop(tenantId, projectId, instance.feature || RESERVED_FEATURE_NAME);
+      await this.stop(tenantId, projectId, instance.feature || NO_FEATURE_KEY);
     }
   }
 
@@ -1369,7 +1369,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         instance.tenantId,
         instance.userId,
         instance.projectId,
-        instance.feature || RESERVED_FEATURE_NAME
+        instance.feature || NO_FEATURE_KEY
       );
 
       if (portMapping) {
@@ -1385,7 +1385,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           await this.stop(
             `${instance.tenantId}:${instance.userId}`,
             instance.projectId,
-            instance.feature || RESERVED_FEATURE_NAME
+            instance.feature || NO_FEATURE_KEY
           );
         }
       }

@@ -15,7 +15,21 @@
   "feature": {
     "title": "Features",
     "placeholder": "Select a feature...",
-    "new": "+ New"
+    "new": "+ New",
+    "nameError": {
+      "empty": "Feature name is required",
+      "reserved": "This name is reserved",
+      "slash": "Slashes (/) are not allowed — feature name = branch name = folder name",
+      "whitespace": "Spaces are not allowed",
+      "invalidChars": "Only letters, digits, '.', '_' and '-' are allowed",
+      "leadingDash": "Cannot start with '-'",
+      "leadingDot": "Cannot start with '.'",
+      "trailingDot": "Cannot end with '.'",
+      "doubleDot": "Cannot contain '..'",
+      "lockSuffix": "Cannot end with '.lock'",
+      "tooLong": "Too long (max 100 characters)",
+      "duplicate": "A feature with this name already exists"
+    }
   },
   "item": {
     "deleteConfirm": "Really delete {{name}}?",

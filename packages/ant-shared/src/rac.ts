@@ -455,8 +455,8 @@ export interface ResolvedArtifact {
 /**
  * A cross-project code reference target. Points at a sibling ANT project (same
  * tenant) and, optionally, a git ref. `branch` is a raw git ref; when omitted it
- * resolves to the project's `branchBase` (main). An ant feature maps to the git
- * branch `feature/{name}` — the FE picker emits that form. The reference tools
+ * resolves to the project's `branchBase`. An ant feature maps to the git branch
+ * of the same name (branch == feature name, no prefix). The reference tools
  * (`register_reference` / `read_reference_file` / `list_reference_files` /
  * `search_reference_code`) read (never write) this project's codebase.
  */

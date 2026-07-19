@@ -154,7 +154,7 @@ export abstract class GitOperation<TIn, TOut> {
     }
 
     if (this.deps.indexer && this.shouldIndex(ctx)) {
-      const codebasePath = this.deps.getCodebasePath?.(userContext, projectId);
+      const codebasePath = this.deps.getCodebasePath?.(userContext, projectId, this.indexingFeature(ctx));
       if (codebasePath) {
         try {
           this.deps.indexer(projectId, codebasePath, userContext, this.indexingFeature(ctx));

@@ -178,8 +178,9 @@
     "localPathDesc": "로컬 리포지토리 경로. 지원 형식: 절대 경로 (/Users/...), 홈 (~/ ), 또는 ant-cli 상대 경로 (../../../my-repo)",
     "githubRepo": "GitHub 리포지토리",
     "baseBranch": "기본 브랜치",
-    "baseBranchDesc": "Git 저장소에서 자동 감지됨",
-    "baseBranchEditable": "초기화 시 사용할 기본 브랜치 이름 (예: main, master)"
+    "baseBranchLockedDesc": "잠김 — 연결된 GitHub 저장소가 결정합니다",
+    "baseBranchPickDesc": "base branch로 사용할 feature를 선택하세요 (브랜치 이름 = feature 이름)",
+    "baseBranchNoFeatures": "아직 feature가 없습니다 — 첫 feature를 만들면 자동 적용됩니다 (기본값 'main')"
   },
   "domain": {
     "title": "도메인",
@@ -339,6 +340,8 @@
     "configureFirst": "GitHub 리포지토리를 먼저 설정하세요",
     "clone": "Clone",
     "cloneDesc": "기존 리포지토리 가져오기",
+    "cloneBlockedDesc": "feature가 없는 프로젝트에서만 가능",
+    "cloneBlockedNotice": "이 프로젝트에는 이미 feature가 있습니다 — Clone은 feature가 없는 신규 프로젝트에서만 가능합니다. Publish를 사용하거나 새 프로젝트를 만들어 클론하세요.",
     "initialize": "Initialize",
     "initializeDesc": "새 GitHub 리포지토리 생성 및 Git 초기화",
     "push": "Push",

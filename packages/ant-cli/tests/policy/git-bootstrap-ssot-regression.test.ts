@@ -28,10 +28,47 @@ describe('git bootstrap SSOT regression guard', () => {
     expect(content).not.toContain('Git not initialized, creating codebase directory only');
   });
 
-  it('ProjectCrudService.initializeLocalGit 파편 구현이 제거되어 있다', () => {
+  it('GitBootstrapSSOT / BaseGitSetupOperation 이 삭제되고 gitAnchor 가 SSOT 다', () => {
+    // The legacy lazy git-init SSOT (main codebase on the base branch) is gone.
+    const legacyPath = path.join(
+      REPO_ROOT,
+      'src/periphery/adapters/http/services/GitService/remote/operations/BaseGitSetupOperation.ts'
+    );
+    expect(fs.existsSync(legacyPath)).toBe(false);
+
+    // Replacement: the bare anchor SSOT (`{project}/repo.git`), created lazily
+    // by the FIRST feature. Singleton export `gitAnchor`.
+    const anchorContent = read(
+      'src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT.ts'
+    );
+    expect(anchorContent).toContain('export const gitAnchor = new GitAnchorSSOT()');
+    expect(anchorContent).toContain('ensureAnchor');
+    expect(anchorContent).toContain('createInitialCommitOnBranch');
+
+    // No fragment re-implementations elsewhere in the GitService tree.
+    const gitServiceDir = path.join(
+      REPO_ROOT,
+      'src/periphery/adapters/http/services/GitService'
+    );
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const p = path.join(dir, entry.name);
+        return entry.isDirectory() ? walk(p) : p.endsWith('.ts') ? [p] : [];
+      });
+    for (const file of walk(gitServiceDir)) {
+      const content = fs.readFileSync(file, 'utf-8');
+      expect(content, `stale GitBootstrapSSOT reference in ${file}`).not.toContain('GitBootstrapSSOT');
+      expect(content, `stale FeatureCodebaseBackup reference in ${file}`).not.toContain('FeatureCodebaseBackup');
+    }
+  });
+
+  it('ProjectCrudService.createProject 는 git 을 부트스트랩하지 않는다 (파편 구현 제거)', () => {
     const content = read('src/periphery/adapters/http/services/ProjectService/ProjectCrudService.ts');
+    // Legacy fragment implementations must stay dead — a fresh project has NO
+    // repo.git and NO codebase/; the first feature creates the bare anchor.
     expect(content).not.toContain('initializeLocalGit(');
-    expect(content).toContain('ensureLocalGitReadyOrThrow');
+    expect(content).not.toContain('ensureLocalGitReady');
+    expect(content).not.toContain('GitBootstrapSSOT');
   });
 
   it('user-facing remote operations가 공통 ensureGitRepository helper를 사용한다', () => {
@@ -47,7 +84,7 @@ describe('git bootstrap SSOT regression guard', () => {
     for (const file of targets) {
       const content = read(`src/periphery/adapters/http/services/GitService/remote/operations/${file}`);
       expect(content).toContain('ensureGitRepository');
-      expect(content).toContain('GitBootstrapSSOT');
+      expect(content).not.toContain('GitBootstrapSSOT');
     }
   });
 
@@ -72,8 +109,14 @@ describe('git bootstrap SSOT regression guard', () => {
   // BE 가 FE 파일을 가로질러 읽으면 ant-cli Dockerfile builder stage 처럼
   // ant-ui 소스가 없는 환경에서 ENOENT 가 난다.
 
-  it('WorktreeService 가 mainCodebasePath === worktreePath path-collision 가드를 가진다', () => {
+  it("WorktreeService 가 repoType:'local' short-circuit 가드를 가진다 (path-equality 가드 폐기)", () => {
     const content = read('src/periphery/adapters/http/services/GitService/worktree/index.ts');
-    expect(content).toMatch(/mainCodebasePath\s*===\s*worktreePath/);
+    // NEW guard: user-mapped external codebase (`repoType:'local'`) skips all
+    // anchor / worktree / branch mutations — keyed on config, not path equality.
+    expect(content).toContain('isLocalRepoType');
+    expect(content).toMatch(/repoType\s*===\s*'local'/);
+    // OLD guard (path collision between main codebase and worktree) is gone
+    // together with the main codebase itself.
+    expect(content).not.toMatch(/mainCodebasePath\s*===\s*worktreePath/);
   });
 });

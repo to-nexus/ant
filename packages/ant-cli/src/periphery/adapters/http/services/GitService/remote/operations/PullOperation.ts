@@ -2,29 +2,21 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { WorktreeService } from '../../worktree';
-import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
 import { GitOperationError, GitConflictError } from '../../errors';
 import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
-import { GitBootstrapSSOT } from './BaseGitSetupOperation';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 
 /**
  * PullOperation
- * 
+ *
  * Handles pulling changes from GitHub.
  */
 export class PullOperation {
-  private readonly featureBackup: FeatureCodebaseBackup;
-  private readonly gitBootstrap: GitBootstrapSSOT;
-
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
     private readonly worktreeService: WorktreeService,
     private readonly githubAuthService?: GitHubAuthService
-  ) {
-    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
-    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'PullOperation');
-  }
+  ) {}
 
   async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
     if (!this.githubAuthService) {
@@ -34,13 +26,11 @@ export class PullOperation {
     const config = await loadGitHubConfig(this.workspaceResolver, projectId, userContext);
     const { git } = await ensureGitRepository({
       workspaceResolver: this.workspaceResolver,
-      gitBootstrap: this.gitBootstrap,
       projectId,
       userContext,
       featureName,
       operationName: 'PullOperation',
       worktreeService: this.worktreeService,
-      featureBackup: this.featureBackup,
     });
 
     const credentialContext = {

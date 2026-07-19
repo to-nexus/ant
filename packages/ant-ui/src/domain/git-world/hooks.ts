@@ -32,7 +32,7 @@ interface GitWorldStoreSurface {
   runGitOperation: (
     projectId: string,
     op: GitUserOperation,
-  ) => Promise<{ success: boolean; error?: GitOperationErrorShape }>;
+  ) => Promise<{ success: boolean; error?: GitOperationErrorShape; result?: unknown }>;
   fetchGitWorldState: (
     projectId: string,
     opts?: { feature?: string; fresh?: boolean },

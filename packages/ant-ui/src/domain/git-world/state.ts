@@ -102,7 +102,7 @@ export interface GitWorldActions {
   runGitOperation: (
     projectId: string,
     op: GitUserOperation,
-  ) => Promise<{ success: boolean; error?: GitOperationErrorShape }>;
+  ) => Promise<{ success: boolean; error?: GitOperationErrorShape; result?: unknown }>;
   fetchGitPat: () => Promise<void>;
   /**
    * Save a GitHub PAT. On success the slice's `pat` field is refreshed and
@@ -140,7 +140,7 @@ const WORKING_TREE_DEBOUNCE_MS = 300;
 let fetchSeq = 0;
 
 function keyOf(projectId: string, feature?: string): string {
-  return `${projectId}:${feature ?? '_base'}`;
+  return `${projectId}:${feature ?? '@project'}`;
 }
 
 export const createGitWorldSlice: StateCreator<any, [], [], GitWorldSlice> = (set, get) => ({
@@ -226,7 +226,7 @@ export const createGitWorldSlice: StateCreator<any, [], [], GitWorldSlice> = (se
         if (opFeature === undefined) {
           void get().fetchGitWorldState(projectId, { feature: undefined });
         }
-        return { success: true };
+        return { success: true, result: response.result };
       }
       set({
         operation: {

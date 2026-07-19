@@ -16,7 +16,7 @@ import type { UserContext } from '../../../../core/types/user';
 
 export interface ReferenceCatalogEntry {
   project: string;
-  /** Git refs offered for this project: `main` + `feature/{name}` per ant feature. */
+  /** Git refs offered for this project — feature names (branch == feature name). */
   branches: string[];
   /**
    * Feature this project is linked to via the current project's
@@ -33,7 +33,7 @@ export function formatReferenceCatalog(entries: ReferenceCatalogEntry[]): string
     .map((e) => {
       const branches = e.branches.length ? ` (branches: ${e.branches.join(', ')})` : '';
       if (e.connectedFeature) {
-        return `- ${e.project} — linked at feature "${e.connectedFeature}" (use branch feature/${e.connectedFeature})${branches}`;
+        return `- ${e.project} — linked at feature "${e.connectedFeature}" (use branch ${e.connectedFeature})${branches}`;
       }
       return `- ${e.project}${branches}`;
     })
@@ -81,7 +81,7 @@ export async function listTenantProjects(
   return dirs.filter(Boolean) as string[];
 }
 
-/** Ant feature names of a project (excludes the base branch feature). */
+/** Ant feature names of a project (every dir under features/ is a feature). */
 export async function listProjectFeatures(
   workspaceResolver: WorkspaceResolver,
   userContext: UserContext,
@@ -94,7 +94,6 @@ export async function listProjectFeatures(
   } catch {
     return [];
   }
-  const branchBase = readBranchBase(projectPath);
   const items = await fs.promises.readdir(featuresPath);
   const features = await Promise.all(
     items
@@ -108,14 +107,13 @@ export async function listProjectFeatures(
         }
       }),
   );
-  return (features.filter(Boolean) as string[]).filter(
-    (f) => f !== branchBase && f !== '_base',
-  );
+  return features.filter(Boolean) as string[];
 }
 
 /**
  * Build the reference catalog for the tenant, excluding the current project.
- * Each entry lists `main` plus `feature/{name}` refs the LLM/FE can register.
+ * Each entry lists the project's feature names verbatim (branch == feature
+ * name; the base branch IS one of the features).
  */
 export async function buildReferenceCatalog(
   workspaceResolver: WorkspaceResolver,
@@ -129,7 +127,7 @@ export async function buildReferenceCatalog(
     const features = await listProjectFeatures(workspaceResolver, userContext, project);
     catalog.push({
       project,
-      branches: ['main', ...features.map((f) => `feature/${f}`)],
+      branches: features,
       connectedFeature: opts.connectionBranches?.get(project),
     });
   }

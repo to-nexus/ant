@@ -5,11 +5,13 @@ import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathRe
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
 import { GitHelper } from '../helper/GitHelper';
+import { assertValidFeatureName } from '../helper/featureNameGuard';
 import { ensureCanonicalStructure } from '../../../../../../core/utils/sessionPaths';
-import { readBranchBaseFromConfig, RESERVED_FEATURE_NAME } from '../../../../../../core/utils/branchUtils';
+import { readBranchBase } from '../../../../../../core/utils/branchUtils';
 import { logger } from '../../../../../../utils/logger';
 import { GitOperationError } from '../errors';
-import { GitBootstrapSSOT } from '../remote/operations/BaseGitSetupOperation';
+import { gitAnchor } from '../anchor/GitAnchorSSOT';
+import { GitignoreGenerator } from '../remote/helpers/GitignoreGenerator';
 
 export interface WorktreeInfo {
   path: string;
@@ -19,65 +21,77 @@ export interface WorktreeInfo {
 
 /**
  * WorktreeService
- * 
+ *
  * Manages Git worktrees for feature-based codebase isolation.
- * Replaces BranchService's checkout/stash logic with worktree-based isolation.
- * 
- * Each feature gets its own worktree directory (features/{name}/codebase/)
- * backed by a feature/{name} branch. The main worktree lives at projectPath/codebase/.
- * 
+ *
+ * The project's only real repository is the hidden bare anchor at
+ * `{project}/repo.git`. Every feature is an equal linked worktree at
+ * `features/{name}/codebase/` whose branch name is EXACTLY the feature name.
+ * A project without features has no codebase; the anchor is created lazily
+ * by the first feature.
+ *
  * Key operations:
- * - createWorktree: Creates a new worktree + branch for a feature
- * - removeWorktree: Removes worktree and optionally deletes the branch
- * - listWorktrees: Lists all active worktrees
+ * - createWorktree: attach/track/fork/bootstrap a worktree for a feature
+ * - removeWorktree: remove worktree and delete its branch
+ * - listWorktrees: list active worktrees from the anchor
  */
 export class WorktreeService {
-  private readonly gitBootstrap: GitBootstrapSSOT;
-
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
     private readonly githubAuthService?: GitHubAuthService
-  ) {
-    this.gitBootstrap = new GitBootstrapSSOT(workspaceResolver, 'WorktreeService');
+  ) {}
+
+  private isLocalRepoType(userContext: UserContext, projectId: string): boolean {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    try {
+      const configPath = path.join(projectPath, 'config.json');
+      if (!fs.existsSync(configPath)) return false;
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      return config.repoType === 'local' && !!config.localPath;
+    } catch {
+      return false;
+    }
   }
 
   /**
    * Create a worktree for a feature.
-   * 
-   * This creates a new Git worktree at the feature's codebase path,
-   * either from an existing remote branch or as a new branch from base.
+   *
+   * Branch selection (branch name == feature name):
+   * 1. local branch exists            → attach
+   * 2. remote branch exists           → track origin/{name}
+   * 3. branchBase branch exists       → fork from branchBase
+   * 4. any commit reachable from HEAD → fork from HEAD
+   * 5. empty anchor (first feature)   → plumbing initial commit, then attach
    */
   async createWorktree(
     projectId: string,
     featureName: string,
     userContext: UserContext
   ): Promise<WorktreeInfo> {
-    const mainCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
-    const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
-    const branchName = GitHelper.sanitizeBranchName(featureName);
+    assertValidFeatureName(featureName);
 
-    // Path-collision guard: in `repoType: 'local'` mode (user-mapped external
-    // codebase) all features resolve to the same shared codebase path. A real
-    // `git worktree add` here would target the main repo itself and corrupt
-    // it. Guarantee main-repo bootstrap is done and short-circuit; the feature
-    // operates as a logical alias of base. (Three-axis split: repoType=local
-    // is intentionally a single shared codebase by design.)
-    if (mainCodebasePath === worktreePath) {
-      logger.info(`Worktree skipped — main and feature paths are identical (repoType:'local' or RESERVED feature)`, {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const branchBase = readBranchBase(projectPath);
+
+    // repoType:'local' — user-mapped external codebase shared by every
+    // feature. No anchor, no worktrees, no branch mutations of the user's
+    // own repository; the feature is a logical alias.
+    if (this.isLocalRepoType(userContext, projectId)) {
+      logger.info(`Worktree skipped — repoType:'local' shares one codebase`, {
         component: 'WorktreeService',
         projectId,
         featureName,
       });
-      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-      const baseBranch = readBranchBaseFromConfig(projectPath);
-      await this.gitBootstrap.ensureLocalGitReadyOrThrow({
-        projectId,
-        codebasePath: mainCodebasePath,
-        baseBranch,
-        userContext,
-      });
-      return { path: worktreePath, branch: baseBranch || 'HEAD', isMain: true };
+      const localPath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+      const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      await fs.promises.mkdir(featurePath, { recursive: true });
+      await ensureCanonicalStructure(featurePath);
+      return { path: localPath, branch: branchBase, isMain: true };
     }
+
+    const anchorPath = this.workspaceResolver.getGitAnchorPath(userContext, projectId);
+    const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+    const branchName = featureName;
 
     logger.info(`Creating worktree for feature: ${featureName}`, {
       component: 'WorktreeService',
@@ -86,34 +100,20 @@ export class WorktreeService {
     });
 
     // Ensure canonical feature structure (visual/ui/{ant,figma,handoff}, sessions/*, etc).
-    // Critical for Git-remote operations (Clone/Init/Sync/Pull/Commit/Push) that restore feature
-    // branches without routing through FeatureCrudService.createFeature — this is the single
+    // Critical for Git-remote operations (Clone/Sync/Pull/Commit/Push) that materialize feature
+    // worktrees without routing through FeatureCrudService.createFeature — this is the single
     // guard that keeps canonical directories consistent for every worktree entry point. Idempotent.
-    //
-    // Must use getFeaturePath (ant feature dir) — NOT path.dirname(worktreePath), which can point
-    // to the project root (for `_base` reserved feature) or a local dev dir outside the workspace
-    // (local-repo mode returns resolveLocalPath(config.localPath) as codebase).
-    if (featureName !== RESERVED_FEATURE_NAME) {
-      const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      await fs.promises.mkdir(featurePath, { recursive: true });
-      await ensureCanonicalStructure(featurePath);
-    }
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    await fs.promises.mkdir(featurePath, { recursive: true });
+    await ensureCanonicalStructure(featurePath);
 
-    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-    const baseBranch = readBranchBaseFromConfig(projectPath);
-    await this.gitBootstrap.ensureLocalGitReadyOrThrow({
-      projectId,
-      codebasePath: mainCodebasePath,
-      baseBranch,
-      userContext,
-    });
+    // Lazy anchor bootstrap — the FIRST feature creates `repo.git`.
+    await gitAnchor.ensureAnchor({ projectId, anchorPath, branchBase, userContext });
 
-    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+    const git = GitHelper.getBareGitInstance(anchorPath);
     if (!git) {
-      throw new GitOperationError('Main repository is not ready after bootstrap');
+      throw new GitOperationError('Git anchor is not ready after bootstrap');
     }
-
-    await GitHelper.ensureSafeDirectory(mainCodebasePath);
     await GitHelper.ensureUserConfig(git, userContext);
 
     // Ensure worktree parent directory exists
@@ -160,14 +160,13 @@ export class WorktreeService {
       try { await git.raw(['worktree', 'prune', '--expire=now']); } catch { /* non-critical */ }
     }
 
-    // Check if remote branch exists
+    // Check if remote branch exists (only when the anchor has an origin).
     let remoteExists = false;
-    if (this.githubAuthService) {
+    if (this.githubAuthService && await gitAnchor.hasOriginRemote(anchorPath)) {
       try {
         await this.updateRemoteUrl(git, projectId, userContext);
         await git.fetch(['origin']);
-        const remoteBranches = await git.branch(['-r']);
-        remoteExists = remoteBranches.all.includes(`origin/${branchName}`);
+        remoteExists = await gitAnchor.remoteBranchExists(anchorPath, branchName);
         logger.info(`Remote branch check: ${branchName} ${remoteExists ? 'EXISTS' : 'NOT FOUND'}`, {
           component: 'WorktreeService',
           projectId,
@@ -182,9 +181,8 @@ export class WorktreeService {
       }
     }
 
-    // Check if branch already exists locally
-    const localBranches = await git.branchLocal();
-    const localExists = localBranches.all.includes(branchName);
+    const localExists = await gitAnchor.branchExists(anchorPath, branchName);
+    let bootstrappedInitialCommit = false;
 
     if (localExists) {
       // Branch exists locally - create worktree pointing to it
@@ -202,10 +200,30 @@ export class WorktreeService {
         projectId,
         featureName
       });
+    } else if (await gitAnchor.branchExists(anchorPath, branchBase)) {
+      // Fork from the base branch
+      await git.raw(['worktree', 'add', '-b', branchName, worktreePath, branchBase]);
+      logger.info(`Created worktree forked from base branch: ${branchBase} → ${branchName}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+    } else if (await this.hasAnyCommit(git)) {
+      // branchBase branch is missing but the anchor has history — fork from HEAD.
+      await git.raw(['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
+      logger.info(`Created worktree forked from HEAD (base branch '${branchBase}' missing)`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
     } else {
-      // New branch - create worktree with new branch from current HEAD
-      await git.raw(['worktree', 'add', '-b', branchName, worktreePath]);
-      logger.info(`Created worktree with new branch: ${branchName}`, {
+      // Empty anchor — FIRST feature. Create an initial commit via plumbing
+      // (version-safe alternative to `worktree add --orphan`), attach, then
+      // seed .gitignore/README with a normal commit from the worktree.
+      await gitAnchor.createInitialCommitOnBranch(anchorPath, branchName, userContext);
+      await git.raw(['worktree', 'add', worktreePath, branchName]);
+      bootstrappedInitialCommit = true;
+      logger.info(`Created first worktree with initial commit: ${branchName}`, {
         component: 'WorktreeService',
         projectId,
         featureName
@@ -214,6 +232,10 @@ export class WorktreeService {
 
     // Ensure safe.directory for the worktree
     await GitHelper.ensureSafeDirectory(worktreePath);
+
+    if (bootstrappedInitialCommit) {
+      await this.seedInitialWorktree(worktreePath, projectId, userContext);
+    }
 
     // Post-create probe — verify gitdir actually has HEAD/commondir on EFS.
     // `git worktree add` returning exit-code 0 is not enough: NFS partial
@@ -241,43 +263,84 @@ export class WorktreeService {
     return { path: worktreePath, branch: branchName, isMain: false };
   }
 
+  private async hasAnyCommit(git: SimpleGit): Promise<boolean> {
+    try {
+      await git.raw(['rev-parse', '--verify', 'HEAD']);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Seed the very first worktree of a fresh anchor with `.gitignore` +
+   * README and commit them from the worktree (normal porcelain commit —
+   * keeps plumbing usage minimal).
+   */
+  private async seedInitialWorktree(
+    worktreePath: string,
+    projectId: string,
+    userContext: UserContext
+  ): Promise<void> {
+    try {
+      const gitignorePath = path.join(worktreePath, '.gitignore');
+      if (!fs.existsSync(gitignorePath)) {
+        const gitignoreContent = await GitignoreGenerator.generate(worktreePath);
+        await fs.promises.writeFile(gitignorePath, gitignoreContent, 'utf-8');
+      }
+      const readmePath = path.join(worktreePath, 'README.md');
+      if (!fs.existsSync(readmePath)) {
+        await fs.promises.writeFile(
+          readmePath,
+          `# ${projectId}\n\nGenerated by ANT\n`,
+          'utf-8'
+        );
+      }
+      const wtGit = GitHelper.getGitInstanceSafe(worktreePath);
+      if (!wtGit) return;
+      await GitHelper.ensureUserConfig(wtGit, userContext);
+      await wtGit.add('.');
+      const status = await wtGit.status();
+      if (status.files.length > 0) {
+        await wtGit.commit('Initial commit from ANT');
+      }
+    } catch (error) {
+      logger.warn(`Initial worktree seed failed (non-critical)`, { component: 'WorktreeService' }, {
+        worktreePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   /**
    * Remove a worktree for a feature.
    * Also deletes the local branch after removal.
+   *
+   * NOTE: when the feature IS the base branch, the caller
+   * (FeatureCrudService.deleteFeature) repoints the anchor HEAD via
+   * `applyBeforeBaseFeatureDelete` BEFORE calling this — `branch -D` on the
+   * HEAD branch of the bare anchor would otherwise be refused.
    */
   async removeWorktree(
     projectId: string,
     featureName: string,
     userContext: UserContext
   ): Promise<void> {
-    const mainCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
-    const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
-    const branchName = GitHelper.sanitizeBranchName(featureName);
-
-    // Path-collision guard (mirror of createWorktree): in repoType:'local' the
-    // feature path equals the main codebase. Removing a "worktree" here would
-    // delete the main repo. Skip directory cleanup; only the local branch is
-    // removed (best-effort).
-    if (mainCodebasePath === worktreePath) {
-      logger.info(`Worktree remove skipped — main and feature paths are identical`, {
+    // repoType:'local' — never touch the user-owned repository (no worktree
+    // was created, and deleting a branch named after the feature could hit a
+    // real user branch).
+    if (this.isLocalRepoType(userContext, projectId)) {
+      logger.info(`Worktree remove skipped — repoType:'local'`, {
         component: 'WorktreeService',
         projectId,
         featureName,
       });
-      const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
-      if (git) {
-        try {
-          await git.branch(['-D', branchName]);
-        } catch (err: any) {
-          logger.info(`Could not delete branch ${branchName} (may not exist): ${err.message}`, {
-            component: 'WorktreeService',
-            projectId,
-            featureName,
-          });
-        }
-      }
       return;
     }
+
+    const anchorPath = this.workspaceResolver.getGitAnchorPath(userContext, projectId);
+    const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
+    const branchName = featureName;
 
     logger.info(`Removing worktree for feature: ${featureName}`, {
       component: 'WorktreeService',
@@ -285,9 +348,9 @@ export class WorktreeService {
       featureName
     });
 
-    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+    const git = GitHelper.getBareGitInstance(anchorPath);
     if (!git) {
-      // No git - just remove the directory
+      // No anchor - just remove the directory
       if (fs.existsSync(worktreePath)) {
         await fs.promises.rm(worktreePath, { recursive: true, force: true });
       }
@@ -303,7 +366,7 @@ export class WorktreeService {
         featureName
       });
     } catch (err: any) {
-      // Worktree might not be registered (e.g., if git wasn't initialized when feature was created)
+      // Worktree might not be registered (e.g., if the anchor didn't exist when feature was created)
       logger.warn(`Worktree remove failed (cleaning up directory): ${err.message}`, {
         component: 'WorktreeService',
         projectId,
@@ -314,9 +377,9 @@ export class WorktreeService {
       }
     }
 
-    // Sweep corrupt `.git/worktrees/{branch}` metadata that bare prune
+    // Sweep corrupt `repo.git/worktrees/{id}` metadata that bare prune
     // would leave behind for `safe.expire` (1h default).
-    await WorktreeService.pruneCorruptWorktreeMeta(mainCodebasePath);
+    await WorktreeService.pruneCorruptWorktreeMeta(anchorPath);
 
     // Delete the local branch
     try {
@@ -336,15 +399,15 @@ export class WorktreeService {
   }
 
   /**
-   * Sweep corrupted / orphaned worktree metadata under `.git/worktrees/`.
+   * Sweep corrupted / orphaned worktree metadata under `repo.git/worktrees/`.
    *
    * Distinct from `ProjectCrudService.repairGitWorktrees` (which calls
    * `git worktree repair {paths}` to refresh absolute paths after a project
    * rename). This helper covers the opposite case: the worktree on disk is
-   * gone but the metadata directory under `.git/worktrees/` lingers.
+   * gone but the metadata directory under `repo.git/worktrees/` lingers.
    *
    * Steps:
-   *   1. Walk `.git/worktrees/` directly. Each subdir's `gitdir` file
+   *   1. Walk `repo.git/worktrees/` directly. Each subdir's `gitdir` file
    *      contains the absolute path to the worktree's `.git` marker —
    *      its dirname is the actual worktree directory.
    *   2. If that directory is missing OR its `.git` marker is gone,
@@ -356,12 +419,14 @@ export class WorktreeService {
    *
    * Public + static so cloud-ide.routes.ts can call it (throttled) before
    * pod start without instantiating WorktreeService.
+   *
+   * @param anchorPath - the project's bare anchor (`{project}/repo.git`)
    */
-  static async pruneCorruptWorktreeMeta(mainCodebasePath: string): Promise<void> {
-    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+  static async pruneCorruptWorktreeMeta(anchorPath: string): Promise<void> {
+    const git = GitHelper.getBareGitInstance(anchorPath);
     if (!git) return;
 
-    const worktreesDir = path.join(mainCodebasePath, '.git', 'worktrees');
+    const worktreesDir = path.join(anchorPath, 'worktrees');
     let removed = 0;
 
     try {
@@ -413,7 +478,7 @@ export class WorktreeService {
         }
       }
     } catch (err: any) {
-      // worktrees dir may not exist yet (single-worktree repo) — that's fine
+      // worktrees dir may not exist yet (no features) — that's fine
       if (err?.code !== 'ENOENT') {
         logger.warn(`[WorktreeService] readdir worktrees failed: ${err.message}`, { component: 'WorktreeService' });
       }
@@ -435,15 +500,15 @@ export class WorktreeService {
   }
 
   /**
-   * List all worktrees for a project.
+   * List all worktrees for a project (the bare anchor entry is excluded).
    */
   async listWorktrees(
     projectId: string,
     userContext: UserContext
   ): Promise<WorktreeInfo[]> {
-    const mainCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId);
+    const anchorPath = this.workspaceResolver.getGitAnchorPath(userContext, projectId);
 
-    const git = GitHelper.getGitInstanceSafe(mainCodebasePath);
+    const git = GitHelper.getBareGitInstance(anchorPath);
     if (!git) {
       return [];
     }
@@ -451,13 +516,14 @@ export class WorktreeService {
     try {
       const output = await git.raw(['worktree', 'list', '--porcelain']);
       const worktrees: WorktreeInfo[] = [];
-      
+
       const blocks = output.split('\n\n').filter(b => b.trim());
       for (const block of blocks) {
         const lines = block.split('\n');
         let wtPath = '';
         let branch = '';
-        
+        let isBare = false;
+
         for (const line of lines) {
           if (line.startsWith('worktree ')) {
             wtPath = line.substring('worktree '.length);
@@ -465,13 +531,16 @@ export class WorktreeService {
           if (line.startsWith('branch ')) {
             branch = line.substring('branch refs/heads/'.length);
           }
+          if (line.trim() === 'bare') {
+            isBare = true;
+          }
         }
-        
-        if (wtPath) {
+
+        if (wtPath && !isBare) {
           worktrees.push({
             path: wtPath,
             branch: branch || 'HEAD',
-            isMain: wtPath === mainCodebasePath
+            isMain: false,
           });
         }
       }

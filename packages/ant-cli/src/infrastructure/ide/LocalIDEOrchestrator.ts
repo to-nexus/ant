@@ -22,7 +22,8 @@ import { PortManager } from '../networking/PortManager';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { UserContext } from '../../core/types/user';
 import { logger } from '../../utils/logger';
-import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
+import { NO_FEATURE_KEY } from '../state/redisKeyUtils';
+
 
 export class LocalIDEOrchestrator implements IDEOrchestratorPort {
   private ideService: IDEService;
@@ -53,7 +54,7 @@ export class LocalIDEOrchestrator implements IDEOrchestratorPort {
    * Start an IDE instance
    */
   async start(params: IDEParams): Promise<IDEStartResult> {
-    const { userContext, projectId, workspacePath, feature = RESERVED_FEATURE_NAME } = params;
+    const { userContext, projectId, workspacePath, feature = NO_FEATURE_KEY } = params;
 
     logger.info(`Starting IDE: ${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`, {
       component: 'LocalIDEOrchestrator',
@@ -95,7 +96,7 @@ export class LocalIDEOrchestrator implements IDEOrchestratorPort {
   async stop(
     tenantId: string,
     projectId: string,
-    feature: string = RESERVED_FEATURE_NAME
+    feature: string = NO_FEATURE_KEY
   ): Promise<{ success: boolean; message?: string }> {
     logger.info(`Stopping IDE: ${tenantId}:${projectId}:${feature}`, {
       component: 'LocalIDEOrchestrator'
@@ -121,7 +122,7 @@ export class LocalIDEOrchestrator implements IDEOrchestratorPort {
   async forceReset(
     tenantId: string,
     projectId: string,
-    feature: string = RESERVED_FEATURE_NAME
+    feature: string = NO_FEATURE_KEY
   ): Promise<{ success: boolean; message?: string }> {
     return this.stop(tenantId, projectId, feature);
   }
@@ -132,7 +133,7 @@ export class LocalIDEOrchestrator implements IDEOrchestratorPort {
   async getStatus(
     tenantId: string,
     projectId: string,
-    feature: string = RESERVED_FEATURE_NAME
+    feature: string = NO_FEATURE_KEY
   ): Promise<IDEInstance | null> {
     const instance = await this.ideService.getIDEStatus(tenantId, projectId, feature);
     

@@ -1,5 +1,9 @@
 /**
- * Phase 5 F6 — `WorktreeService.pruneCorruptWorktreeMeta` SSOT.
+ * Phase 5 F6 — `WorktreeService.pruneCorruptWorktreeMeta` SSOT (anchor model).
+ *
+ * The helper takes the project's BARE ANCHOR PATH (`{project}/repo.git`);
+ * worktree metadata lives at `{anchorPath}/worktrees` (there is no
+ * `codebase/.git` — the anchor is the only repository).
  *
  * Locks:
  *   1. corrupt worktree-meta entry whose `worktree` path is gone
@@ -16,11 +20,18 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { mkdtempSync, rmSync, mkdirSync, existsSync, readdirSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import simpleGit from 'simple-git';
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
+import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
+import type { UserContext } from '../../src/core/types/user';
+
+const userContext: UserContext = {
+  organizationId: 'org-test',
+  userId: 'user-test',
+};
 
 let tmp: string;
 
@@ -32,61 +43,66 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function listMetaDirs(mainCodebase: string): string[] {
-  const metaRoot = path.join(mainCodebase, '.git', 'worktrees');
+function listMetaDirs(anchorPath: string): string[] {
+  const metaRoot = path.join(anchorPath, 'worktrees');
   if (!existsSync(metaRoot)) return [];
   return readdirSync(metaRoot);
 }
 
-async function initRepo(mainCodebase: string) {
-  mkdirSync(mainCodebase, { recursive: true });
-  const git = simpleGit(mainCodebase);
-  await git.init();
-  await git.raw(['config', 'user.email', 'test@example.com']);
-  await git.raw(['config', 'user.name', 'test']);
-  writeFileSync(path.join(mainCodebase, 'README.md'), 'init');
-  await git.add('.');
-  await git.commit('init');
-  return git;
+/** Bare anchor with an initial commit on `branch` (plumbing empty-tree commit). */
+async function initAnchor(anchorPath: string, branch: string) {
+  await gitAnchor.ensureAnchor({
+    projectId: 'proj-prune',
+    anchorPath,
+    branchBase: branch,
+    userContext,
+  });
+  await gitAnchor.createInitialCommitOnBranch(anchorPath, branch, userContext);
+  // Explicit GIT_DIR keeps bare usage legal under `safe.bareRepository=explicit`;
+  // env whitelist avoids simple-git's unsafe-env guard (PAGER / GIT_EDITOR / ...).
+  return simpleGit(anchorPath).env({
+    ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
+    ...(process.env.HOME ? { HOME: process.env.HOME } : {}),
+    GIT_DIR: anchorPath,
+  });
 }
 
 describe('WorktreeService.pruneCorruptWorktreeMeta', () => {
   it('removes orphan worktree metadata when the worktree dir is gone', async () => {
-    const main = path.join(tmp, 'codebase');
-    const git = await initRepo(main);
+    const anchor = path.join(tmp, 'repo.git');
+    const git = await initAnchor(anchor, 'orphanfeature');
 
-    const orphanBranch = 'orphanfeature';
     const orphanWorktreePath = path.join(tmp, 'features', 'orphanfeature', 'codebase');
     mkdirSync(path.dirname(orphanWorktreePath), { recursive: true });
-    await git.raw(['worktree', 'add', '-b', orphanBranch, orphanWorktreePath]);
+    await git.raw(['worktree', 'add', orphanWorktreePath, 'orphanfeature']);
 
-    const metaBefore = listMetaDirs(main);
+    const metaBefore = listMetaDirs(anchor);
     expect(metaBefore.length).toBeGreaterThan(0);
 
     // Corrupt: delete the worktree directory while leaving the meta in place
     rmSync(orphanWorktreePath, { recursive: true, force: true });
 
-    await WorktreeService.pruneCorruptWorktreeMeta(main);
+    await WorktreeService.pruneCorruptWorktreeMeta(anchor);
 
-    const metaAfter = listMetaDirs(main);
+    const metaAfter = listMetaDirs(anchor);
     expect(metaAfter.length).toBe(0);
   }, 15_000);
 
   it('preserves valid worktrees', async () => {
-    const main = path.join(tmp, 'codebase');
-    const git = await initRepo(main);
+    const anchor = path.join(tmp, 'repo.git');
+    const git = await initAnchor(anchor, 'realfeature');
 
     const valid = path.join(tmp, 'features', 'realfeature', 'codebase');
     mkdirSync(path.dirname(valid), { recursive: true });
-    await git.raw(['worktree', 'add', '-b', 'realfeature', valid]);
+    await git.raw(['worktree', 'add', valid, 'realfeature']);
 
-    const metaBefore = listMetaDirs(main);
+    const metaBefore = listMetaDirs(anchor);
     expect(metaBefore.length).toBe(1);
 
-    await WorktreeService.pruneCorruptWorktreeMeta(main);
+    await WorktreeService.pruneCorruptWorktreeMeta(anchor);
 
     expect(existsSync(valid)).toBe(true);
-    const metaAfter = listMetaDirs(main);
+    const metaAfter = listMetaDirs(anchor);
     expect(metaAfter).toEqual(metaBefore);
   }, 15_000);
 

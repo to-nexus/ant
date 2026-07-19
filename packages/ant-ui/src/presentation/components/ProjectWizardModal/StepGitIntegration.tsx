@@ -92,6 +92,8 @@ interface StepGitIntegrationProps {
   onApplyOwner: (owner: string) => void;
   gitAction: 'none' | 'clone' | 'init';
   onGitActionChange: (action: 'clone' | 'init') => void;
+  /** Clone requires a project with zero features — renders the option disabled. */
+  cloneDisabled?: boolean;
 }
 
 export function StepGitIntegration({
@@ -101,7 +103,7 @@ export function StepGitIntegration({
   repositoryName, onRepositoryNameChange, onRepoManualEdit,
   gitUrl, onGitUrlChange, gitUrlFromConfig,
   ownerInfo, activeOwner, onApplyOwner,
-  gitAction, onGitActionChange,
+  gitAction, onGitActionChange, cloneDisabled,
 }: StepGitIntegrationProps) {
   const fieldDisabled = readOnly || !patStatus?.configured;
 
@@ -343,11 +345,19 @@ export function StepGitIntegration({
             <div className="space-y-2">
               <ActionRadio
                 selected={gitAction === 'clone'}
-                onSelect={() => onGitActionChange('clone')}
+                onSelect={() => { if (!cloneDisabled) onGitActionChange('clone'); }}
                 title={t('quickstart.projectWizard.gitActionClone')}
-                hint={t('quickstart.projectWizard.gitActionCloneHint')}
+                hint={cloneDisabled
+                  ? t('quickstart.projectWizard.gitActionCloneBlockedHasFeatures')
+                  : t('quickstart.projectWizard.gitActionCloneHint')}
                 name="gitAction"
+                disabled={cloneDisabled}
               />
+              {gitAction === 'clone' && !cloneDisabled && (
+                <p className="text-[11px] px-1" style={{ color: 'var(--text-3)' }}>
+                  {t('quickstart.projectWizard.cloneAutoFeatureHint')}
+                </p>
+              )}
               <ActionRadio
                 selected={gitAction === 'init'}
                 onSelect={() => onGitActionChange('init')}
@@ -431,12 +441,14 @@ function ActionRadio({
   title,
   hint,
   name,
+  disabled,
 }: {
   selected: boolean;
   onSelect: () => void;
   title: string;
   hint: string;
   name: string;
+  disabled?: boolean;
 }) {
   const [hover, setHover] = useState(false);
 
@@ -447,16 +459,18 @@ function ActionRadio({
       }
     : {
         border: '1.5px solid var(--border-2)',
-        background: hover ? 'var(--bg-hover)' : 'transparent',
+        background: hover && !disabled ? 'var(--bg-hover)' : 'transparent',
       };
 
   return (
     <label
-      className="flex items-start gap-3 p-3 cursor-pointer transition-colors"
+      className="flex items-start gap-3 p-3 transition-colors"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         borderRadius: 'var(--r-lg, 10px)',
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
         ...style,
       }}
     >
@@ -465,6 +479,7 @@ function ActionRadio({
         name={name}
         checked={selected}
         onChange={onSelect}
+        disabled={disabled}
         className="mt-0.5"
         style={{ accentColor: 'var(--violet-500)' }}
       />

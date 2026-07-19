@@ -12,9 +12,18 @@
  *   pulls only when behind>0, pushes only when ahead>0, and lazily creates
  *   worktrees.
  * - `Worktree` is fully hidden from the user — features are the only user
- *   concept.
- * - GitHub-only, PAT-authenticated, auto local-init, `_base` is a reserved
- *   feature name.
+ *   concept. The git anchor is a hidden bare repo at `{project}/repo.git`;
+ *   every feature is a linked worktree whose branch name is EXACTLY the
+ *   feature name (no prefix). A project without features has no codebase.
+ * - `branchBase` is a pointer into the feature set: auto-set to the first
+ *   feature, user-selectable among features while no remote is connected,
+ *   and LOCKED once a remote exists (`hasRemote` is the lock signal —
+ *   clone sets it from the remote HEAD, publish/init pushes it as the
+ *   repository default branch).
+ * - `Clone` is only permitted on a project with ZERO features; on success
+ *   the BE auto-creates a feature named after the remote default branch
+ *   (see {@link GitCloneResult}).
+ * - GitHub-only, PAT-authenticated, auto local-init on first feature.
  * - Canonical git vocabulary (`status`, `changes`, `initialize`,
  *   `publish-branch`) is intentionally absent from the FE type surface.
  */
@@ -34,7 +43,7 @@ export interface FileChange {
  * by `Object.freeze` inside `StatusService.getSnapshot` (see docs §7.1).
  */
 export type GitSnapshot = Readonly<{
-  /** `true` once `.git` exists on the project codebase. */
+  /** `true` once the project's bare git anchor (`repo.git`) exists. */
   hasGit: boolean;
   /** `true` if a GitHub remote is configured for the project. */
   hasRemote: boolean;
@@ -47,7 +56,7 @@ export type GitSnapshot = Readonly<{
   hasCodebase: boolean;
   /** `true` if the codebase directory is physically non-empty (any non-hidden file). */
   codebaseHasFiles: boolean;
-  /** `true` if any non-`_base` features exist. */
+  /** `true` if any features (worktrees) exist. */
   hasFeatures: boolean;
   /**
    * Optional probe result of GitHub repo existence (Setup states only).
@@ -57,7 +66,10 @@ export type GitSnapshot = Readonly<{
    * - `undefined` → probe skipped or failed → `[Clone] [Publish]` fallback.
    */
   remoteExists?: boolean;
-  /** Current branch of the currently selected feature's worktree. */
+  /**
+   * Branch of the selected feature's worktree — always equal to the feature
+   * name. With no feature selected, the anchor HEAD (= `branchBase`).
+   */
   currentBranch?: string;
   /** Remote URL resolved from project config (GitHub repo URL). */
   remoteUrl?: string;
@@ -90,6 +102,19 @@ export type GitUserOperation =
   | { kind: 'clone' };
 
 export type GitUserOperationKind = GitUserOperation['kind'];
+
+/**
+ * `result` payload of a successful `{kind:'clone'}` operation.
+ *
+ * Clone requires zero features; the BE auto-creates one feature attached to
+ * the remote default branch so the user immediately has a codebase.
+ */
+export interface GitCloneResult {
+  /** Remote default branch — becomes the locked `branchBase`. */
+  defaultBranch: string;
+  /** Name of the auto-created feature (== defaultBranch). */
+  feature: string;
+}
 
 /**
  * Error classification for Git operations. Drives UI branching (retry,

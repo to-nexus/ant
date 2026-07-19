@@ -8,7 +8,14 @@
  * - Preview: org:user:project:feature (4 parts) - feature-level
  */
 
-import { RESERVED_FEATURE_NAME } from '../../core/utils/branchUtils';
+/**
+ * Internal key segment used when a record is not scoped to a feature.
+ * Routes require a feature for every IDE/job surface, so this exists only
+ * as a defensive parser/creator fallback for malformed inputs — it is NOT a
+ * user-visible feature name ('@' is invalid in feature names by validation,
+ * so it can never collide with a real feature).
+ */
+export const NO_FEATURE_KEY = '@none';
 
 // ============================================
 // IDE Keys (4 parts: org:user:project:feature)
@@ -31,7 +38,7 @@ export function createIDEKey(
   tenantId: string,
   userId: string,
   projectId: string,
-  feature: string = RESERVED_FEATURE_NAME
+  feature: string = NO_FEATURE_KEY
 ): string {
   // Validate all parts are non-empty
   if (!tenantId || !userId || !projectId) {
@@ -39,7 +46,7 @@ export function createIDEKey(
     console.error(`[createIDEKey] ERROR: ${error}`);
     throw new Error(error);
   }
-  return `${tenantId}:${userId}:${projectId}:${feature || RESERVED_FEATURE_NAME}`;
+  return `${tenantId}:${userId}:${projectId}:${feature || NO_FEATURE_KEY}`;
 }
 
 /**
@@ -55,7 +62,7 @@ export function parseIDEKey(key: string): IDEKeyComponents | null {
   }
   
   const [tenantId, userId, projectId, ...featureParts] = parts;
-  const feature = featureParts.join(':') || RESERVED_FEATURE_NAME;
+  const feature = featureParts.join(':') || NO_FEATURE_KEY;
   
   if (!tenantId || !userId || !projectId) {
     return null;

@@ -11,7 +11,7 @@ interface ReferenceTargetPickerProps {
 }
 
 function isSelected(selected: ReferenceTarget[], project: string, branch: string): boolean {
-  return selected.some((t) => t.project === project && (t.branch ?? 'main') === branch);
+  return selected.some((t) => t.project === project && t.branch === branch);
 }
 
 /**
@@ -43,11 +43,12 @@ export function ReferenceTargetPicker({ excludeProject, selected, onChange }: Re
 
   const toggle = (project: string, branch: string) => {
     if (isSelected(selected, project, branch)) {
-      onChange(selected.filter((tt) => !(tt.project === project && (tt.branch ?? 'main') === branch)));
+      onChange(selected.filter((tt) => !(tt.project === project && tt.branch === branch)));
     } else {
-      // Store `main` as an undefined branch so the entry stays stable regardless
-      // of the repo's default-branch name; other refs are stored verbatim.
-      onChange([...selected, { project, branch: branch === 'main' ? undefined : branch }]);
+      // Branch == feature name — an explicitly picked branch is stored
+      // verbatim. (An omitted branch resolves BE-side to the target
+      // project's branchBase.)
+      onChange([...selected, { project, branch }]);
     }
   };
 

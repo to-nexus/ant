@@ -1,8 +1,10 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { GitCloneResult } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import {
   useGitDispatch,
+  useGitSnapshot,
   type GitUserOperation,
 } from '@/domain/git-world';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
@@ -33,6 +35,7 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
   const selectedProject = useStore((s) => s.selectedProject);
   const selectedFeature = useStore((s) => s.selectedFeature);
   const { runGitOperation } = useGitDispatch();
+  const snapshot = useGitSnapshot();
   const { showError, showConfirm } = useAlertModalContext();
   const { toast } = useToastContext();
   const handleGitError = useGitErrorRouting();
@@ -47,18 +50,18 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
         reloadIde?: boolean;
         failureFallback: string;
       },
-    ) => {
-      if (!selectedProject) return;
+    ): Promise<{ success: boolean; result?: unknown }> => {
+      if (!selectedProject) return { success: false };
       onClose();
       const result = await runGitOperation(selectedProject, gitOp);
       if (result.success) {
         if (opts.successToast) toast.success(opts.successToast);
         if (opts.reloadIde) useStore.getState().bumpIdeReloadTimestamp();
-        return;
+        return { success: true, result: result.result };
       }
       const { handled } = handleGitError(result.error);
-      if (handled) return;
-      showError(result.error?.message || opts.failureFallback);
+      if (!handled) showError(result.error?.message || opts.failureFallback);
+      return { success: false };
     },
     [selectedProject, runGitOperation, showError, handleGitError, toast, onClose],
   );
@@ -66,22 +69,46 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
   const handleClone = useCallback(() => {
     if (!selectedProject) return;
     onClose();
+    // Defensive mirror of the BE hard guard — clone requires zero features.
+    if (snapshot?.hasFeatures) {
+      showError(t('config:git.cloneBlockedNotice'));
+      return;
+    }
     showConfirm(t('config:git.confirmClone'), {
       title: t('config:git.clone'),
       type: 'info',
       confirmText: t('config:git.clone'),
       onConfirm: () => {
-        void runMenuOp(
-          { kind: 'clone' },
-          {
-            successToast: t('git.repoCloned'),
-            reloadIde: true,
-            failureFallback: t('git.actionFailed', { action: 'clone' }),
-          },
-        );
+        void (async () => {
+          const projectId = selectedProject;
+          const outcome = await runMenuOp(
+            { kind: 'clone' },
+            {
+              successToast: t('git.repoCloned'),
+              reloadIde: true,
+              failureFallback: t('git.actionFailed', { action: 'clone' }),
+            },
+          );
+          if (!outcome.success) return;
+          // Adopt the auto-created base feature (named after the remote
+          // default branch) so the user immediately sees the cloned code.
+          // Fallback: clone requires zero features, so the sole listed
+          // feature is the auto-created one.
+          const cloneResult = outcome.result as Partial<GitCloneResult> | undefined;
+          let adopted = cloneResult?.feature;
+          const store = useStore.getState();
+          await store.fetchFeatures(projectId);
+          if (!adopted) {
+            const features = useStore.getState().features;
+            adopted = features[0]?.name;
+          }
+          if (adopted) {
+            store.setSelectedFeature(adopted);
+          }
+        })();
       },
     });
-  }, [selectedProject, onClose, showConfirm, runMenuOp, t]);
+  }, [selectedProject, snapshot, onClose, showConfirm, showError, runMenuOp, t]);
 
   const handleInitialize = useCallback(() => {
     if (!selectedProject) return;

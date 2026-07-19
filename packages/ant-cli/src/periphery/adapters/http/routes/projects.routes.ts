@@ -249,12 +249,15 @@ export function createProjectsRoutes(deps: {
       const userContext = extractUserContext(req);
       
       await deps.projectService.updateProjectConfig(projectId, config, userContext);
-      
+
       // Return the saved config for immediate UI update
       const savedConfig = await deps.projectService.getProjectConfig(projectId, userContext);
       res.json(savedConfig);
     } catch (error: any) {
-      if (error.message.includes('Missing required fields')) {
+      if (error instanceof GitOperationError) {
+        // branchBase lifecycle rejections (locked / not an existing feature)
+        res.status(error.statusCode).json({ error: error.message });
+      } else if (error.message.includes('Missing required fields')) {
         res.status(400).json({ error: error.message });
       } else if (error.message === 'Config file not found') {
         res.status(404).json({ error: error.message });

@@ -1,168 +1,290 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
-import { UserContext } from '../../../../../../../core/types/user';
-import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import type { SimpleGit } from 'simple-git';
+import { WorkspaceResolver, resolveLocalPath } from '../../../../../../../core/config/WorkspacePathResolver';
+import { isVectorDbEnabled } from '../../../../../../../core/config/vectorDbCapability';
+import { UserContext } from '../../../../../../../core/types/user';
+import { readBranchBase } from '../../../../../../../core/utils/branchUtils';
+import { GitHubAuthService, GitHubRepoCreateError } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
+import { gitAnchor } from '../../anchor/GitAnchorSSOT';
+import { listFeatureDirsByCreation } from '../../anchor/branchBaseLifecycle';
 import { RemoteChecker } from '../helpers/RemoteChecker';
-import { BaseGitSetupOperation } from './BaseGitSetupOperation';
-import { WorktreeService } from '../../worktree';
-import { FeatureCodebaseBackup } from '../../worktree/FeatureCodebaseBackup';
-import { GitOperationError, GitConflictError } from '../../errors';
+import {
+  GitAuthError,
+  GitConfigError,
+  GitConflictError,
+  GitNetworkError,
+  GitNotFoundError,
+  GitOperationError,
+} from '../../errors';
 
 /**
- * InitOperation
- * 
- * Initializes a new Git repository and pushes to GitHub.
- * Supports existing features: creates LOCAL worktrees for them after init.
+ * InitOperation ("publish" init variant)
+ *
+ * Creates the GitHub repository and connects the project's existing local
+ * git to it. Under the bare-anchor model the repository already exists
+ * locally (created by the first feature), so init is purely:
+ *
+ *   create GitHub repo → add origin → push branchBase (-u) → set remote HEAD
+ *
+ * The user-chosen `branchBase` (a feature's branch) becomes the repository
+ * default branch. Requires ≥1 feature; after init the branchBase pointer is
+ * locked (origin remote present).
  */
-export class InitOperation extends BaseGitSetupOperation {
-  private readonly worktreeService: WorktreeService;
-  private readonly featureBackup: FeatureCodebaseBackup;
+export class InitOperation {
+  constructor(
+    private readonly workspaceResolver: WorkspaceResolver,
+    private readonly githubAuthService?: GitHubAuthService,
+    private readonly onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
+  ) {}
 
-  protected get operationName(): string {
+  private get operationName(): string {
     return 'InitOperation';
   }
 
-  constructor(
-    workspaceResolver: WorkspaceResolver,
-    worktreeService: WorktreeService,
-    githubAuthService?: GitHubAuthService,
-    onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
-  ) {
-    super(workspaceResolver, githubAuthService, onIndexingTrigger);
-    this.worktreeService = worktreeService;
-    this.featureBackup = new FeatureCodebaseBackup(workspaceResolver);
-  }
-
-  async execute(projectId: string, userContext: UserContext, activeFeature?: string): Promise<{ warnings?: string[] }> {
+  async execute(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
     if (!this.githubAuthService) {
       throw new GitOperationError('GitHub integration not configured');
     }
 
-    const { config, projectPath, codebasePath } = await this.loadConfig(projectId, userContext);
-
-    // Check for existing local git before validation
-    const existingGit = GitHelper.getGitInstanceSafe(codebasePath);
-    await this.validateWorkspace(codebasePath, existingGit, config.githubRepo, userContext);
-
-    const existingFeatures = await this.readExistingFeatures(projectPath);
-    const featureBackups = existingFeatures.length > 0
-      ? await this.featureBackup.backup(projectId, existingFeatures, userContext)
-      : new Map<string, string>();
-
-    const seedFeature = activeFeature && existingFeatures.includes(activeFeature)
-      ? activeFeature
-      : existingFeatures[0] || null;
-
-    // Only seed main codebase when there is no existing local git
-    // (if git exists, the codebase already has content and history)
-    if (seedFeature && !existingGit) {
-      await this.seedMainCodebase(projectId, seedFeature, codebasePath, userContext);
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    const configPath = path.join(projectPath, 'config.json');
+    if (!fs.existsSync(configPath)) {
+      throw new GitNotFoundError('Project config not found');
+    }
+    const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
+    if (!config.githubRepo) {
+      throw new GitOperationError('GitHub repository not configured in project config');
     }
 
-    let gitInitialized = false;
+    // repoType:'local' — user-owned repository at localPath; connect it as-is.
+    if (config.repoType === 'local' && config.localPath) {
+      return this.executeLocalRepo(projectId, userContext, config);
+    }
 
+    const branchBase = readBranchBase(projectPath);
+    const anchorPath = this.workspaceResolver.getGitAnchorPath(userContext, projectId);
+
+    // Publish requires at least one feature — branchBase must be a real branch.
+    const features = await listFeatureDirsByCreation(projectPath);
+    if (features.length === 0) {
+      throw new GitConfigError(
+        'Publish requires at least one feature — create a feature first.',
+        { retryable: false }
+      );
+    }
+
+    const git = GitHelper.getBareGitInstance(anchorPath);
+    if (!git || !(await gitAnchor.branchExists(anchorPath, branchBase))) {
+      // Structurally impossible when features exist (first feature always
+      // creates the anchor + an initial commit) — fail loud instead of
+      // half-initializing.
+      throw new GitConfigError(
+        `Local repository is not ready (anchor or base branch '${branchBase}' missing). ` +
+          'Recreate a feature to self-heal, then retry.',
+        { retryable: false }
+      );
+    }
+
+    // Validations: not already connected; remote repo must not exist.
+    if (await gitAnchor.hasOriginRemote(anchorPath)) {
+      throw new GitConflictError('Git repository already initialized. Use push/pull instead.');
+    }
+    console.log(`[${this.operationName}] Checking if remote repository already exists...`);
+    const repoExists = await RemoteChecker.exists(config.githubRepo, userContext, this.githubAuthService);
+    if (repoExists) {
+      throw new GitConflictError(`Remote repository already exists at ${config.githubRepo}. Please use Clone instead to download the existing repository.`);
+    }
+
+    await this.createGitHubRepo(config.githubRepo, projectId, userContext);
+
+    const credentialContext = {
+      org: userContext.organizationId,
+      user: userContext.userId
+    };
+    const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
+      credentialContext,
+      config.githubRepo
+    );
+
+    let remoteAdded = false;
     try {
-      const baseBranch = config.branchBase || 'main';
-      let git: SimpleGit;
+      await git.addRemote('origin', authenticatedUrl);
+      remoteAdded = true;
+      await git.raw(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*']);
+      console.log(`[${this.operationName}] ✅ Remote added`);
 
-      if (existingGit) {
-        // Reuse existing local git (no remote yet) — skip git init and initial commit
-        console.log(`[InitOperation] Reusing existing local git, connecting to GitHub...`);
-        git = existingGit;
-        await GitHelper.ensureSafeDirectory(codebasePath);
-        await GitHelper.ensureUserConfig(git, userContext);
-        await this.createGitignore(codebasePath); // idempotent: skips if already exists
-      } else {
-        const hasFiles = await this.prepareCodebase(codebasePath, projectId);
-        console.log(`[InitOperation] Initializing new Git repository at ${codebasePath}...`);
-        git = await this.initializeGit(codebasePath, baseBranch, userContext);
-        gitInitialized = true;
-        await this.createGitignore(codebasePath);
-        await this.createInitialCommit(git, codebasePath, hasFiles);
-      }
-
-      const defaultBranch = await this.ensureDefaultBranch(git, baseBranch);
-
-      if (defaultBranch !== config.branchBase) {
-        config.branchBase = defaultBranch;
-        const configPath = path.join(projectPath, 'config.json');
-        await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
-        console.log(`[InitOperation] Updated branchBase in config: ${defaultBranch}`);
-      }
-
-      await this.createGitHubRepo(config.githubRepo, projectId, userContext);
-      await this.addRemoteAndPush(git, defaultBranch, config, userContext);
-
-      let warnings: string[] | undefined;
-      if (existingFeatures.length > 0) {
-        warnings = await this.createFeatureWorktrees(projectId, existingFeatures, featureBackups, userContext);
-      }
-
-      await this.triggerIndexing(projectId, codebasePath, userContext);
-      return { warnings };
+      console.log(`[${this.operationName}] Pushing base branch '${branchBase}' to remote...`);
+      await git.push(['-u', 'origin', branchBase]);
+      try {
+        await git.raw(['remote', 'set-head', 'origin', branchBase]);
+      } catch { /* best-effort */ }
+      console.log(`[${this.operationName}] ✅ Pushed to remote: ${branchBase}`);
     } catch (error) {
-      if (gitInitialized) {
-        console.error('[InitOperation] Initialization failed, rolling back Git setup...');
-        await this.rollback(codebasePath);
+      // Never delete repo.git — it holds the user's commits. Undo only the
+      // remote linkage so a retry starts from a clean unlocked state.
+      if (remoteAdded) {
+        try {
+          await git.raw(['remote', 'remove', 'origin']);
+          console.log(`[${this.operationName}] 🔄 Rolled back: origin remote removed`);
+        } catch (rollbackErr: any) {
+          console.error(`[${this.operationName}] ⚠️ Rollback failed:`, rollbackErr?.message);
+        }
       }
       throw error;
-    } finally {
-      await this.featureBackup.cleanup(featureBackups);
     }
+
+    const baseCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, branchBase);
+    await this.triggerIndexing(projectId, baseCodebasePath, userContext, branchBase);
+    return {};
   }
 
-  private async validateWorkspace(
-    codebasePath: string,
-    existingGit: SimpleGit | null,
-    githubRepo: string,
-    userContext: UserContext
-  ): Promise<void> {
-    if (existingGit) {
-      // Local git exists — allow only if it has no remote (local-only repo from project creation)
-      const remotes = await existingGit.getRemotes();
-      if (remotes.length > 0) {
-        throw new GitConflictError('Git repository already initialized. Use push/pull instead.');
-      }
-      console.log(`[InitOperation] Local git found (no remote), will connect to GitHub.`);
-    }
-
-    console.log(`[InitOperation] Checking if remote repository already exists...`);
-    const repoExists = await RemoteChecker.exists(githubRepo, userContext, this.githubAuthService);
-
-    if (repoExists) {
-      throw new GitConflictError(`Remote repository already exists at ${githubRepo}. Please use Clone instead to download the existing repository.`);
-    }
-  }
-
-  private async createFeatureWorktrees(
+  /**
+   * repoType:'local' — the user's own working repository. Reuse its git
+   * (never init/commit on the user's behalf) and push the current branch.
+   */
+  private async executeLocalRepo(
     projectId: string,
-    features: string[],
-    featureBackups: Map<string, string>,
-    userContext: UserContext
-  ): Promise<string[] | undefined> {
-    console.log(`[InitOperation] Creating ${features.length} feature worktree(s)...`);
-    const warnings: string[] = [];
-
-    for (const featureName of features) {
-      try {
-        await this.worktreeService.createWorktree(projectId, featureName, userContext);
-
-        const backupPath = featureBackups.get(featureName);
-        if (backupPath && fs.existsSync(backupPath)) {
-          const worktreePath = this.workspaceResolver.getCodebasePath(userContext, projectId, featureName);
-          await this.featureBackup.restoreToWorktree(backupPath, worktreePath);
-          console.log(`[InitOperation] Restored code for feature: ${featureName}`);
-        }
-      } catch (error: any) {
-        const msg = `Failed to create worktree for feature "${featureName}": ${error.message}`;
-        console.error(`[InitOperation] ${msg}`);
-        warnings.push(msg);
-      }
+    userContext: UserContext,
+    config: any
+  ): Promise<{ warnings?: string[] }> {
+    const codebasePath = resolveLocalPath(config.localPath);
+    const git = GitHelper.getGitInstanceSafe(codebasePath);
+    if (!git) {
+      throw new GitConfigError(
+        `Local repository not found at ${codebasePath} — initialize git there first.`,
+        { retryable: false }
+      );
     }
 
-    return warnings.length > 0 ? warnings : undefined;
+    const remotes = await git.getRemotes();
+    if (remotes.some(r => r.name === 'origin')) {
+      throw new GitConflictError('Git repository already initialized. Use push/pull instead.');
+    }
+    const repoExists = await RemoteChecker.exists(config.githubRepo, userContext, this.githubAuthService!);
+    if (repoExists) {
+      throw new GitConflictError(`Remote repository already exists at ${config.githubRepo}. Please use Clone instead to download the existing repository.`);
+    }
+
+    await this.createGitHubRepo(config.githubRepo, projectId, userContext);
+
+    const credentialContext = {
+      org: userContext.organizationId,
+      user: userContext.userId
+    };
+    const authenticatedUrl = await this.githubAuthService!.buildAuthenticatedUrl(
+      credentialContext,
+      config.githubRepo
+    );
+
+    await GitHelper.ensureSafeDirectory(codebasePath);
+    await GitHelper.ensureUserConfig(git, userContext);
+    await this.addRemoteAndPushCurrent(git, userContext, authenticatedUrl);
+    await this.triggerIndexing(projectId, codebasePath, userContext, readBranchBase(
+      this.workspaceResolver.getProjectPath(userContext, projectId)
+    ));
+    return {};
+  }
+
+  private async addRemoteAndPushCurrent(
+    git: SimpleGit,
+    _userContext: UserContext,
+    authenticatedUrl: string
+  ): Promise<void> {
+    await git.addRemote('origin', authenticatedUrl);
+    const currentBranch = (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
+    await git.push(['-u', 'origin', currentBranch]);
+    console.log(`[${this.operationName}] ✅ Pushed to remote: ${currentBranch}`);
+  }
+
+  private async createGitHubRepo(githubRepo: string, projectId: string, userContext: UserContext): Promise<void> {
+    console.log(`[${this.operationName}] Creating GitHub repository at ${githubRepo}...`);
+
+    try {
+      await this.githubAuthService!.createRepo(
+        userContext,
+        githubRepo,
+        {
+          description: `${projectId} - Generated by ANT`,
+          private: true
+        }
+      );
+      console.log(`[${this.operationName}] ✅ GitHub repository created`);
+    } catch (error: any) {
+      if (error instanceof GitHubRepoCreateError && error.isAlreadyExistsError()) {
+        console.log(`[${this.operationName}] GitHub repo already exists, continuing...`);
+        return;
+      }
+      if (error instanceof GitHubRepoCreateError) {
+        const requestIdSuffix = error.requestId ? ` (request_id=${error.requestId})` : '';
+        if (error.statusCode === 401 || error.statusCode === 403) {
+          throw new GitAuthError(
+            `GitHub authentication failed while creating ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: false }
+          );
+        }
+        if (error.statusCode === 409) {
+          throw new GitConflictError(
+            `GitHub repository conflict for ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: false, suggestedAction: 'reconfigureRepo' }
+          );
+        }
+        if (error.statusCode === 422) {
+          throw new GitConfigError(
+            `GitHub rejected repository settings for ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: false, suggestedAction: 'reconfigureRepo' }
+          );
+        }
+        if (error.statusCode >= 500) {
+          throw new GitNetworkError(
+            `GitHub server error while creating ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+            { retryable: true }
+          );
+        }
+        throw new GitOperationError(
+          `Failed to create GitHub repository ${githubRepo}: ${error.apiMessage}${requestIdSuffix}`,
+          error.statusCode
+        );
+      }
+
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      // AbortSignal.timeout(...) on the fetch rejects with DOMException name 'TimeoutError'.
+      // Map to GitNetworkError so the FE marks it retryable rather than generic-unknown.
+      if (error?.name === 'TimeoutError') {
+        throw new GitNetworkError(`GitHub request timed out while creating ${githubRepo}: ${errorMsg}`, { retryable: true });
+      }
+      throw new GitOperationError(`Failed to create GitHub repository ${githubRepo}: ${errorMsg}`, 'unknown');
+    }
+  }
+
+  private async triggerIndexing(
+    projectId: string,
+    codebasePath: string,
+    userContext: UserContext,
+    feedbackFeature: string
+  ): Promise<void> {
+    if (!isVectorDbEnabled()) {
+      console.log(`[${this.operationName}] ℹ️  Vector DB disabled (ANT_VECTOR_DB_ENABLED=false) — skipping clear + indexing.`);
+      return;
+    }
+
+    console.log(`[${this.operationName}] 🗑️  Clearing Vector DB for fresh start...`);
+    try {
+      const { AdapterFactory } = await import('../../../../../../../infrastructure/adapters/AdapterFactory');
+      const vectorDB = AdapterFactory.createMemoryAdapter();
+      await vectorDB.clear(projectId);
+      console.log(`[${this.operationName}] ✅ Vector DB cleared`);
+    } catch (error) {
+      console.warn(`[${this.operationName}] ⚠️  Could not clear Vector DB:`, error);
+    }
+
+    if (this.onIndexingTrigger) {
+      console.log(`[${this.operationName}] 🔍 Starting codebase indexing...`);
+      setImmediate(() => {
+        this.onIndexingTrigger!(projectId, codebasePath, userContext, feedbackFeature);
+      });
+      console.log(`[${this.operationName}] ✅ Complete, indexing started in background`);
+    }
   }
 }

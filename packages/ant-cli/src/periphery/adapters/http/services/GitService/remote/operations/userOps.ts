@@ -1,4 +1,4 @@
-import type { GitUserOperation } from '@ant/shared';
+import type { GitCloneResult, GitUserOperation } from '@ant/shared';
 import { UserContext } from '../../../../../../../core/types/user';
 import {
   GitOperation,
@@ -58,9 +58,9 @@ export class PublishOperation extends GitOperation<FeatureInput, { warnings?: st
 
   protected async run(ctx: GitOperationContext<FeatureInput>): Promise<{ warnings?: string[] }> {
     const { projectId, userContext, input } = ctx;
-    const snapshot = await this.deps.statusService.getSnapshot(projectId, userContext);
+    const snapshot = await this.deps.statusService.getSnapshot(projectId, userContext, input?.feature);
     if (!snapshot.hasGit || !snapshot.hasRemote) {
-      return this.remote.initializeGitHubRepo(projectId, userContext, input?.feature);
+      return this.remote.initializeGitHubRepo(projectId, userContext);
     }
     if (!snapshot.hasUpstream) {
       await this.remote.pushToGitHub(projectId, userContext, input?.feature);
@@ -196,7 +196,7 @@ export class DiscardOperation extends GitOperation<
   }
 }
 
-export class CloneOperation extends GitOperation<Record<string, unknown>, { warnings?: string[] }> {
+export class CloneOperation extends GitOperation<Record<string, unknown>, GitCloneResult> {
   private readonly remote: RemoteService;
   constructor(deps: FullDeps) {
     super(deps);
@@ -209,7 +209,7 @@ export class CloneOperation extends GitOperation<Record<string, unknown>, { warn
 
   protected async run(
     ctx: GitOperationContext<Record<string, unknown>>,
-  ): Promise<{ warnings?: string[] }> {
+  ): Promise<GitCloneResult> {
     return this.remote.cloneGitHubRepo(ctx.projectId, ctx.userContext);
   }
 

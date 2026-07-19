@@ -10,7 +10,6 @@
  *
  * Skipped when:
  * - URL does not match a feature-scoped pattern
- * - `featureName` is the reserved `_base` (project-root pseudo-feature)
  * - Feature directory does not exist (`ensureCanonicalStructure` itself bails)
  * - User context cannot be resolved (e.g. unauthenticated cloud request —
  *   the downstream handler will reject with 401/403)
@@ -22,7 +21,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { ensureCanonicalStructure } from '../../../../core/utils/sessionPaths';
-import { RESERVED_FEATURE_NAME } from '../../../../core/utils/branchUtils';
 import { extractUserContext } from '../routes/helpers/userContext';
 import { logger } from '../../../../utils/logger';
 
@@ -62,11 +60,6 @@ export function ensureCanonicalFeatureMiddleware(workspaceResolver: WorkspaceRes
       return next();
     }
     const { projectId, featureName, source } = matched;
-
-    // Reserved pseudo-feature — no canonical layout applies.
-    if (featureName === RESERVED_FEATURE_NAME) {
-      return next();
-    }
 
     // Decode once — express route params are already decoded, but req.path is raw.
     let decodedProjectId: string;
