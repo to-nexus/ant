@@ -130,6 +130,29 @@ export class AnthropicLLMClient implements LLMClient {
     };
   }
 
+  // Sampling-param SSOT, sibling of buildThinkingParams (whose contract is
+  // locked by tests/llm/anthropic-thinking-params.test.ts — do not fold the
+  // two: thinking wire shape and sampling wire shape are orthogonal). Both
+  // key off the same getThinkingMode registry.
+  //
+  // - adaptive models (Sonnet 5, Opus 4.6+): NEVER send temperature. The
+  //   4.7+/Sonnet-5 API removed the parameter outright (400 if sent), and
+  //   the 4.6 family rejects temp<1 alongside the always-on adaptive
+  //   thinking param buildThinkingParams sends on every round.
+  // - extended models (Haiku 4.5): the API requires temperature=1/omitted
+  //   when thinking is enabled; send only on non-thinking rounds.
+  // - 'none' never routes to this client — defensive pass-through.
+  private buildSamplingParams(
+    enableThinking: boolean,
+    temperature: number | undefined,
+  ): Record<string, any> {
+    if (temperature === undefined) return {};
+    const mode = getThinkingMode(this.modelName);
+    if (mode === 'adaptive') return {};
+    if (mode === 'extended' && enableThinking) return {};
+    return { temperature };
+  }
+
   // Idle timeout matches the request regime. 90s assumes a genuinely
   // non-thinking call (TCP-appears-open / Mac sleep). Anthropic adaptive
   // thinking can be silent >180s between message_start and first
@@ -172,7 +195,7 @@ export class AnthropicLLMClient implements LLMClient {
       }
     }
     
-    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=invoke messages=${messages.length} cacheable=${cacheableBlocks}`);
+    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=invoke messages=${messages.length} cacheable=${cacheableBlocks} temp=${this.buildSamplingParams(options?.enableThinking === true, options?.temperature).temperature ?? 'omitted'}`);
     
     // ✅ Extract system message (Anthropic requires it as a separate parameter)
     const systemMessage = messages.find(m => m.role === 'system');
@@ -221,6 +244,7 @@ export class AnthropicLLMClient implements LLMClient {
           max_tokens: maxTokens,
           ...(systemParam && { system: systemParam }),
           ...this.buildThinkingParams(enableThinking, thinkingBudget),
+          ...this.buildSamplingParams(enableThinking, options?.temperature),
           messages: converted,
         }, { signal });
         return await stream.finalMessage();
@@ -322,7 +346,7 @@ export class AnthropicLLMClient implements LLMClient {
     const systemMessage = messages.find(m => m.role === 'system');
     const userMessages = messages.filter(m => m.role !== 'system');
     
-    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=stream messages=${userMessages.length} tools=${toolsCount} thinking=${enableThinking} cacheable=${cacheableBlocks}`);
+    console.log(`🔥 [API CALL] provider=anthropic model=${this.modelName} method=stream messages=${userMessages.length} tools=${toolsCount} thinking=${enableThinking} cacheable=${cacheableBlocks} temp=${this.buildSamplingParams(enableThinking, options?.temperature).temperature ?? 'omitted'}`);
     
     // Process system message (options.system takes priority)
     let systemParam: string | undefined = options?.system;
@@ -361,6 +385,7 @@ export class AnthropicLLMClient implements LLMClient {
       max_tokens: maxTokens,
       ...(systemParam ? { system: systemParam } : {}),
       ...this.buildThinkingParams(enableThinking, thinkingBudget),
+      ...this.buildSamplingParams(enableThinking, options?.temperature),
       messages: converted,
       ...(options?.tools && options.tools.length > 0 ? {
         tools: options.tools.map(t => ({
@@ -819,7 +844,8 @@ export class AnthropicLLMClient implements LLMClient {
   async invokeStructured<T = any>(
     messages: Array<{ role: string; content: string | CacheableContent[] }>,
     schema: Record<string, any>,
-    schemaName: string
+    schemaName: string,
+    options?: { temperature?: number; maxTokens?: number; [key: string]: any }
   ): Promise<T> {
     // Anthropic doesn't have native structured output yet
     // Add JSON schema to prompt
@@ -862,7 +888,7 @@ Do not include any explanatory text before or after the JSON. Start your respons
       }
     ];
     
-    const result = await this.invokeWithUsage(enhancedMessages as any);
+    const result = await this.invokeWithUsage(enhancedMessages as any, options);
     const response = result.content;
     
     try {

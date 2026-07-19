@@ -29,7 +29,7 @@ import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient'
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
-import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getTools } from './tools';
 import { resolveLLMClient } from './llmClient';
@@ -295,6 +295,7 @@ export async function execute(
     for await (const event of llmClient.stream(messages, {
       tools: tools && tools.length > 0 ? tools : undefined,
       maxTokens,
+      temperature: LLM_TEMPERATURE.DOC_GENERATION,
       enableThinking: !isAfterToolCall,
       thinkingBudget: !isAfterToolCall ? LLM_THINKING_BUDGET.PLAN : undefined,
     })) {

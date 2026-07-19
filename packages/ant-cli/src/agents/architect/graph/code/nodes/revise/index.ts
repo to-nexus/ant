@@ -1,6 +1,6 @@
 import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
-import { LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
+import { LLM_THINKING_BUDGET, LLM_TEMPERATURE } from "../../../../../common/graph/llmConfig";
 import { ArchitectGraphState } from "../../state";
 import { CodeTask, TaskQueue } from "../../../../types/task";
 import { TEMPLATE_PATHS } from "../../../../../../core/prompt/builder/templatePaths";
@@ -127,7 +127,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     if (llm.invokeWithUsage) {
       const result = await llm.invokeWithUsage([
         { role: 'user', content: prompt }
-      ], { enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.REVISE });
+      ], { enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.REVISE, temperature: LLM_TEMPERATURE.REVISE_DECISION });
       response = result.content;
       // ✅ Track token usage for revise node
       if (result.usage) {
@@ -140,7 +140,7 @@ export async function revise(state: ArchitectGraphState): Promise<ArchitectGraph
     } else {
       response = await llm.invoke([
         { role: 'user', content: prompt }
-      ], { enableThinking: false });
+      ], { enableThinking: false, temperature: LLM_TEMPERATURE.REVISE_DECISION });
     }
     
     // Parse JSON response

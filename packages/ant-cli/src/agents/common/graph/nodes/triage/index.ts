@@ -13,6 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { TriageableState, TriageResult, WorkspaceState } from './types.js';
+import { LLM_TEMPERATURE } from '../../llmConfig';
 import { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
 import { parseIntentIdTag, extractIntentIdRaw } from './parser.js';
 import {
@@ -307,12 +308,12 @@ async function invokeAndParseWithRetry(
       const { content } = await runEstimatingLLM(
         state as any,
         'triage',
-        () => llm.invokeWithUsage(messages, { enableThinking: false }),
+        () => llm.invokeWithUsage(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.DETECT }),
         { promptChars: meta.systemLen + meta.userLen },
       );
       raw = content;
     } else {
-      raw = await llm.invoke(messages, { enableThinking: false });
+      raw = await llm.invoke(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.DETECT });
     }
     logTriagePromptAndResponse({
       featurePath: meta.featurePath,

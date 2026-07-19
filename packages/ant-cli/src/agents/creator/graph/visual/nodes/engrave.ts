@@ -8,6 +8,7 @@
  */
 
 import { VisualGraphState, SvgSketch } from '../types.js';
+import { LLM_TEMPERATURE } from '../../../../common/graph/llmConfig';
 import { accumulateTokenUsage, broadcastTokenUsageByModel, TokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
 import { logPrompt } from '../../../../../core/utils/promptLogger.js';
@@ -62,10 +63,10 @@ export async function engraveNode(state: VisualGraphState): Promise<Partial<Visu
       ];
       try {
         if (llm.invokeWithUsage) {
-          const response = await llm.invokeWithUsage(messages, { enableThinking: false });
+          const response = await llm.invokeWithUsage(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.CODE_EXECUTE });
           return { i, sketchPrompt, svgCode: response.content, usage: response.usage };
         }
-        return { i, sketchPrompt, svgCode: await llm.invoke(messages, { enableThinking: false }) };
+        return { i, sketchPrompt, svgCode: await llm.invoke(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.CODE_EXECUTE }) };
       } catch (err: any) {
         return { i, sketchPrompt, error: err };
       }

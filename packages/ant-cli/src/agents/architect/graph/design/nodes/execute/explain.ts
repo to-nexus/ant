@@ -15,6 +15,7 @@
 import type { DesignGraphState } from '../../state';
 import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
+import { LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import {
   accumulateTokenUsage,
@@ -92,7 +93,7 @@ export async function renderExplainResponse(
   let capturedUsage: any = undefined;
 
   try {
-    for await (const event of llm.stream(messages as any, { enableThinking: false })) {
+    for await (const event of llm.stream(messages as any, { enableThinking: false, temperature: LLM_TEMPERATURE.DOC_GENERATION })) {
       if (event.type === 'retry') {
         textResponse = '';
         capturedUsage = undefined;

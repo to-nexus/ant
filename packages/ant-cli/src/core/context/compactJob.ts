@@ -13,6 +13,7 @@
 import type { CompactionResult, CompactionConfig } from './types';
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './constants';
 import type { LLMClient } from '../ports/llm';
+import { LLM_TEMPERATURE } from '../ports/llmSampling';
 import type { PromptPort } from '../ports/prompt';
 
 const CHARS_PER_TOKEN = 2.8;
@@ -99,6 +100,7 @@ export async function compactJob<T extends CompactableEntry>(
   const invokeOpts = {
     system: systemPrompt,
     maxTokens: config.maxOutputTokens || COMPACTION_MAX_OUTPUT_TOKENS,
+    temperature: LLM_TEMPERATURE.SUMMARIZE,
     enableThinking: false,
   };
 

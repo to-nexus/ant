@@ -7,6 +7,7 @@
 
 import type { DetectStrategy, DetectResult } from '../../../../common/graph/nodes/detect/types.js';
 import type { VisualGraphState } from '../types.js';
+import { LLM_TEMPERATURE } from '../../../../common/graph/llmConfig';
 import type { InferredAction } from '@ant/shared';
 import { runEstimatingLLM, upsertPhaseTokenUsage } from '../../../../common/graph/llmHelpers.js';
 import { parseClassifyResponse } from './classifyParser.js';
@@ -95,7 +96,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         const { content, usage } = await runEstimatingLLM(
           state as any,
           'detect',
-          () => llm.invokeWithUsage!(messages, { enableThinking: false }),
+          () => llm.invokeWithUsage!(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.DETECT }),
           { subNode: 'visual', promptChars: classifyPrompt.length },
         );
         if (usage) {
@@ -103,7 +104,7 @@ export const visualDetectStrategy: DetectStrategy<VisualGraphState> = {
         }
         rawContent = content;
       } else {
-        rawContent = await llm.invoke(messages, { enableThinking: false });
+        rawContent = await llm.invoke(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.DETECT });
       }
 
       const classified = parseClassifyResponse(rawContent);

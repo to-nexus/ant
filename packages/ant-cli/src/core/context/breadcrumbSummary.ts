@@ -14,6 +14,7 @@
  */
 
 import type { LLMClient } from '../ports/llm';
+import { LLM_TEMPERATURE } from '../ports/llmSampling';
 import type { PromptPort } from '../ports/prompt';
 import { buildBreadcrumbSummary } from './breadcrumb';
 
@@ -104,7 +105,7 @@ export async function buildLlmBreadcrumbSummary(
       { role: 'user', content: 'Produce the breadcrumb summary.' },
     ];
     const text = await withTimeout(
-      llm.invoke(messages, { maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS, enableThinking: false }),
+      llm.invoke(messages, { maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS, enableThinking: false, temperature: LLM_TEMPERATURE.SUMMARIZE }),
       BREADCRUMB_SUMMARY_TIMEOUT_MS,
     );
     const cleaned = (text ?? '').trim();

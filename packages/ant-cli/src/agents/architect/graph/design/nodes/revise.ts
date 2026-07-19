@@ -3,7 +3,7 @@ import { extractLLMInfo } from "../../../../../core/ports/workflow";
 import { DesignGraphState } from "../state";
 import { DesignTask, TaskQueue } from "../../../types/task";
 import { getEstimatingLabel } from "../../../../common/graph/timing/estimatingLabels";
-import { LLM_THINKING_BUDGET } from "../../../../common/graph/llmConfig";
+import { LLM_THINKING_BUDGET, LLM_TEMPERATURE } from "../../../../common/graph/llmConfig";
 import { saveReviseCheckpoint } from "../session/checkpoint";
 import { TEMPLATE_PATHS } from "../../../../../core/prompt/builder/templatePaths";
 
@@ -123,7 +123,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     if (llm.invokeWithUsage) {
       const result = await llm.invokeWithUsage([
         { role: 'user', content: prompt }
-      ], { enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.REVISE });
+      ], { enableThinking: true, thinkingBudget: LLM_THINKING_BUDGET.REVISE, temperature: LLM_TEMPERATURE.REVISE_DECISION });
       response = result.content;
       // ✅ Track token usage for revise node
       if (result.usage) {
@@ -152,7 +152,7 @@ export async function revise(state: DesignGraphState): Promise<DesignGraphState>
     } else {
       response = await llm.invoke([
         { role: 'user', content: prompt }
-      ], { enableThinking: false });
+      ], { enableThinking: false, temperature: LLM_TEMPERATURE.REVISE_DECISION });
     }
     
     // Parse JSON response

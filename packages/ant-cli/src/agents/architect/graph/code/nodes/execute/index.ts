@@ -37,7 +37,7 @@ import { resolveCodebaseRel } from './codebaseRel';
 import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { buildMergeUserContent } from './mergeUserContent';
-import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
@@ -340,6 +340,7 @@ export async function execute(
     for await (const event of llmToUse.stream(messages, {
       tools,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      temperature: LLM_TEMPERATURE.CODE_EXECUTE,
       enableThinking: !isAfterToolCall && !hasRemediationPlan,
       thinkingBudget: LLM_THINKING_BUDGET.CODE_EXECUTE,
       signal: getJobAbortSignal(),

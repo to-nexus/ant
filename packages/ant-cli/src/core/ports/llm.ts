@@ -252,6 +252,12 @@ export interface LLMClient {
    *   - `maxTokens`       → output cap
    *   - `enableThinking`  → request extended thinking (provider-dependent)
    *   - `thinkingBudget`  → token budget for the thinking block
+   *   - `temperature`     → per-call sampling temperature (see
+   *                          `core/ports/llmSampling.ts` LLM_TEMPERATURE for
+   *                          the policy table). Provider-dependent: Anthropic
+   *                          omits it whenever the effective request enables
+   *                          thinking (adaptive models: always), Gemini and
+   *                          OpenAI-compat apply it as-is.
    *   - `stopSequences`   → hard-stop strings; generation terminates the
    *                          moment any of these appears in the model's
    *                          text output. Used to cut wasted tokens after
@@ -274,12 +280,14 @@ export interface LLMClient {
    * @param messages - Chat messages (supports prompt caching)
    * @param schema - JSON schema for the expected output
    * @param schemaName - Name of the schema (for tool calling)
+   * @param options - Optional sampling overrides (temperature / maxTokens)
    * @returns Parsed object matching the schema
    */
   invokeStructured<T = any>(
     messages: Array<{ role: string; content: string | CacheableContent[] }>,
     schema: Record<string, any>,
-    schemaName: string
+    schemaName: string,
+    options?: { temperature?: number; maxTokens?: number; [key: string]: any }
   ): Promise<T>;
 }
 

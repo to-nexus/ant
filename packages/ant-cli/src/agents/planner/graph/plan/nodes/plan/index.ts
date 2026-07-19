@@ -42,7 +42,7 @@ import { PLAN_COMPACTION_THRESHOLD, PLAN_COMPACTION_WINDOW, COMPACTION_MAX_OUTPU
 import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../core/utils/messageComposer';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
-import { LLM_MAX_TOKENS } from '../../../../../common/graph/llmConfig';
+import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildPlanSystemPrompt } from './buildSystemPrompt';
 import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
@@ -199,6 +199,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     for await (const event of llm.stream(messages, {
       tools: toolDefinitions,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      temperature: LLM_TEMPERATURE.PLAN_GENERATION,
       enableThinking: isFirstCall,
     })) {
       if (event.type === 'retry') {

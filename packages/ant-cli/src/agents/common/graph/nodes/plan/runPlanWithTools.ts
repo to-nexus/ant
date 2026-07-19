@@ -47,6 +47,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
     enableThinking,
     thinkingBudget,
     maxTokens,
+    temperature,
     taskName,
     jobType,
     onTokenUsage,
@@ -95,6 +96,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   for await (const event of llm.stream(messages, {
     tools,
     maxTokens,
+    temperature,
     enableThinking,
     thinkingBudget: enableThinking ? thinkingBudget : undefined,
     // Hard-stop on `</plan>` so the model cannot emit trailing narrative
