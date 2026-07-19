@@ -28,6 +28,7 @@ import { PortManager } from '../networking/PortManager';
 import { StateStorePort, DeployState, DeployPackage, DeployPhase } from '../../core/ports/stateStore';
 import type { ServiceConnection } from '../../core/ports/portRegistry';
 import type { DeployVisibility } from '@ant/shared';
+import { featureNameToSlug } from '@ant/shared';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
 import { startProcessServer } from './ProcessServer';
@@ -171,7 +172,7 @@ export class DeployService {
   private guessCodebasePath(
     tenantId: string, userId: string, projectId: string, feature: string
   ): string {
-    return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'features', feature, 'codebase');
+    return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'features', featureNameToSlug(feature), 'codebase');
   }
 
   /**

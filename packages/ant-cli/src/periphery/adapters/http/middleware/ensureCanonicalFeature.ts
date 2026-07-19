@@ -19,6 +19,7 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import { featureSlugToName } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { ensureCanonicalStructure } from '../../../../core/utils/sessionPaths';
 import { extractUserContext } from '../routes/helpers/userContext';
@@ -61,12 +62,14 @@ export function ensureCanonicalFeatureMiddleware(workspaceResolver: WorkspaceRes
     }
     const { projectId, featureName, source } = matched;
 
-    // Decode once — express route params are already decoded, but req.path is raw.
+    // Decode once — express route params are already decoded, but req.path is
+    // raw. The feature segment on the wire is a `/`-free slug; recover the raw
+    // feature name so getFeaturePath (which re-slugifies) sees a name.
     let decodedProjectId: string;
     let decodedFeatureName: string;
     try {
       decodedProjectId = decodeURIComponent(projectId);
-      decodedFeatureName = decodeURIComponent(featureName);
+      decodedFeatureName = featureSlugToName(decodeURIComponent(featureName));
     } catch {
       return next();
     }

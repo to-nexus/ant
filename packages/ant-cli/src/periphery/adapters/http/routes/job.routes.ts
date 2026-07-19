@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders, decodeFeatureQuery } from './helpers/featureParam';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ExecuteJobParams } from '../../../../core/ports/http';
@@ -17,7 +18,7 @@ import { readBranchBase } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
-import { getConfigSlots, DEFAULT_MODELS } from '@ant/shared';
+import { getConfigSlots, DEFAULT_MODELS, featureNameToSlug } from '@ant/shared';
 import { isBillingEnabled } from '../../../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
@@ -78,6 +79,7 @@ export function createJobRoutes(deps: {
   kanbanService?: KanbanService;
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
 
   /**
    * Mirror prereq / conflict / job-start error responses into the chat
@@ -470,7 +472,7 @@ export function createJobRoutes(deps: {
 
       // Learn runs on the branchBase FEATURE — a project without features has
       // no codebase to index.
-      const baseFeaturePath = path.join(projectPath, 'features', branchBase);
+      const baseFeaturePath = path.join(projectPath, 'features', featureNameToSlug(branchBase));
       if (!fs.existsSync(baseFeaturePath)) {
         return res.status(409).json({
           error: 'Learn requires at least one feature — create a feature first.',
@@ -531,7 +533,7 @@ export function createJobRoutes(deps: {
   router.get('/jobs/baseline-estimate', async (req: Request, res: Response) => {
     const intent = req.query.intent as string | undefined;
     const projectId = req.query.projectId as string | undefined;
-    const featureName = req.query.featureName as string | undefined;
+    const featureName = decodeFeatureQuery(req.query.featureName as string | undefined);
     const draftText = (req.query.draftText as string | undefined) ?? '';
     const refsRaw = req.query.refs;
     const contextRaw = req.query.context;
@@ -640,7 +642,7 @@ export function createJobRoutes(deps: {
     // and the endpoint returns 404 — matching pre-refactor behaviour when
     // Redis is empty.
     const projectId = req.query.projectId as string | undefined;
-    const featureName = req.query.featureName as string | undefined;
+    const featureName = decodeFeatureQuery(req.query.featureName as string | undefined);
     if (!projectId || !featureName) {
       res.status(404).json({ error: 'Task not found' });
       return;

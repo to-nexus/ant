@@ -134,15 +134,19 @@ export class CloneOperation {
         // non-fatal — refs already present from the clone itself
       }
 
-      // Remote default branch → locked branchBase. Empty remotes keep 'main'.
+      // Remote default branch → locked branchBase (verbatim; `/` is allowed
+      // and becomes feature `release/1.0` tracking `origin/release/1.0`).
+      // Empty remotes keep 'main'.
       const defaultBranch =
         (await gitAnchor.detectRemoteHeadBranch(anchorPath)) ?? config.branchBase ?? 'main';
 
+      // Only genuinely git-illegal / ant-reserved names (e.g. `features`,
+      // `codebase`) are rejected — a `/` in the branch name is fine.
       const nameCheck = validateFeatureName(defaultBranch);
       if (!nameCheck.ok) {
         throw new GitConfigError(
-          `Remote default branch "${defaultBranch}" cannot be used as an ant feature name ` +
-            `(${nameCheck.violation}). Rename the repository's default branch and retry.`,
+          `Remote default branch "${defaultBranch}" is reserved and cannot be used as an ant ` +
+            `feature name (${nameCheck.violation}). Rename the repository's default branch and retry.`,
           { retryable: false, suggestedAction: 'reconfigureRepo' }
         );
       }

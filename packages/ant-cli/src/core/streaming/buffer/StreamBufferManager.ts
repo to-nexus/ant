@@ -13,6 +13,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { featureNameToSlug } from '@ant/shared';
 
 export interface BufferedFile {
   filePath: string;        // Original file path (e.g., "src/App.tsx")
@@ -31,7 +32,7 @@ export class StreamBufferManager {
   
   constructor(projectPath: string, featureName: string, jobType: 'design' | 'code', jobId: string) {
     // Buffer directory: workspaces/{org}/{user}/{project}/features/{feature}/.buffers/{jobType}/
-    this.bufferDir = path.join(projectPath, 'features', featureName, '.buffers', jobType);
+    this.bufferDir = path.join(projectPath, 'features', featureNameToSlug(featureName), '.buffers', jobType);
     this.jobId = jobId;
     this.ensureBufferDir();
   }

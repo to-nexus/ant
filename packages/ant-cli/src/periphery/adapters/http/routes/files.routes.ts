@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import * as fs from 'fs';
 import * as path from 'path';
 import multer from 'multer';
@@ -20,6 +21,7 @@ export function createFilesRoutes(deps: {
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
 
   const getMimeTypeFromPath = (filePath: string): string => {
     const ext = path.extname(filePath).toLowerCase();

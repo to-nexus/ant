@@ -8,6 +8,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { decodeFeatureQuery } from './helpers/featureParam';
 import { IDEOrchestratorPort, IDEParams } from '../../../../core/ports/ideOrchestrator';
 import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
@@ -190,7 +191,7 @@ export function createCloudIDERoutes(
   router.get('/open/:projectId', async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
-      const featureName = (req.query.feature as string) || '';
+      const featureName = decodeFeatureQuery((req.query.feature as string) || '');
       const userContext: UserContext = extractUserContext(req);
 
       if (!featureName) {
@@ -311,7 +312,7 @@ export function createCloudIDERoutes(
   router.get('/status/:projectId', async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
-      const featureName = (req.query.feature as string) || '';
+      const featureName = decodeFeatureQuery((req.query.feature as string) || '');
       const userContext: UserContext = extractUserContext(req);
 
       if (!featureName) {

@@ -133,7 +133,9 @@ feature 가 하나도 없는 프로젝트는 codebase 도, git 도 없다 — an
 
 ### 브랜치 명명
 
-브랜치 이름 == feature 이름 **정확히 동일** — `feature/` prefix 없음, sanitization 없음. git 브랜치명으로 invalid 한 feature 이름은 생성 시점에 거부된다 (`@ant/shared` `validateFeatureName`; `/` 불허). `GitHelper.sanitizeBranchName` 은 삭제됐다.
+브랜치 이름 == feature 이름 **정확히 동일** — `feature/` prefix 없음, sanitization 없음. feature 이름은 `/` 를 포함할 수 있으며(`feature/base`, `release/1.0`), 브랜치명으로 그대로 쓰인다. git `check-ref-format` 위반(`~`, `//`, leading/trailing `/`, `..`, `.lock` 세그먼트 등)만 생성 시점에 거부된다 (`@ant/shared` `validateFeatureName`). `GitHelper.sanitizeBranchName` 은 삭제됐다.
+
+feature 이름은 파일시스템 디렉토리 세그먼트·URL 경로 세그먼트·redis 키(IDE serverKey)에서 `/`-free **슬러그**로 투영된다 (`@ant/shared` `featureNameToSlug`/`featureSlugToName`, `/ ↔ ~`). 디스크상 worktree 는 `features/{slug}/codebase/` 이고 git 브랜치는 날 이름(`release/1.0`)이다. clone 은 remote 기본 브랜치에 `/` 가 있어도 그대로 내려받아 동명 feature 를 만들고 `origin/{name}` 을 트래킹한다.
 
 ### Bare anchor 접근 (GIT_DIR)
 

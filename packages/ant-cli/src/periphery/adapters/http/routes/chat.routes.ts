@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ChatService } from '../services';
@@ -51,6 +52,7 @@ export function createChatRoutes(deps: {
   ) => Promise<void>;
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
 
   /**
    * DELETE /projects/:id/features/:feature/chat/messages

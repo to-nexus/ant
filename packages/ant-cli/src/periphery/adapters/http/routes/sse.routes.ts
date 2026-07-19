@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders } from './helpers/featureParam';
 import { 
   SSEService, 
   KanbanService, 
@@ -35,6 +36,7 @@ export function createSSERoutes(deps: {
   taskQueueSnapshots?: Map<string, any>;
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
   
   /**
    * GET /projects/:id/features/:feature/stream

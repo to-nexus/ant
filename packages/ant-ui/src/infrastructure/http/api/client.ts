@@ -1,5 +1,17 @@
 /// <reference types="vite/client" />
 
+import { featureNameToSlug } from '@ant/shared';
+
+/**
+ * Encode a feature name for use as a URL PATH segment. A feature name may
+ * contain `/` (git-style branch); it is projected to a `/`-free slug so it
+ * stays a single path segment (the BE `router.param` decodes it back). Query
+ * VALUES do not need this — a `/` is legal there — so keep `encodeURIComponent`
+ * for `?feature=` params.
+ */
+export const featureSeg = (featureName: string): string =>
+  encodeURIComponent(featureNameToSlug(featureName));
+
 const DEFAULT_LOCAL_BACKEND_PORT = 4100;
 const STORAGE_KEY_LOCAL_BACKEND_PORT = 'ant-ui:local-backend-port';
 

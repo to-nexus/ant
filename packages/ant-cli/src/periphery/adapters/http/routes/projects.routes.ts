@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { registerFeatureParamDecoders, decodeFeatureQuery } from './helpers/featureParam';
 import type {
   GitUserOperation,
   GitUserOperationKind,
@@ -81,6 +82,7 @@ export function createProjectsRoutes(deps: {
   gitStateBroadcaster?: GitStateBroadcaster;
 }): Router {
   const router = Router();
+  registerFeatureParamDecoders(router);
   
   // List projects
   router.get('/projects', async (req: Request, res: Response) => {
@@ -318,7 +320,7 @@ export function createProjectsRoutes(deps: {
     const projectId = req.params.id;
     try {
       const userContext = extractUserContext(req);
-      const featureName = req.query.feature as string | undefined;
+      const featureName = decodeFeatureQuery(req.query.feature as string | undefined);
       const fresh = req.query.fresh === 'true';
 
       const [snapshot, pat] = await Promise.all([

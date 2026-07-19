@@ -1,4 +1,4 @@
-import { API_BASE, apiGet, apiPost } from './client';
+import { API_BASE, apiGet, apiPost, featureSeg } from './client';
 import type { FeatureBreadcrumbLine } from '@ant/shared';
 
 /**
@@ -8,7 +8,7 @@ export async function getFeatureBreadcrumbs(
   projectId: string,
   featureName: string,
 ): Promise<FeatureBreadcrumbLine[]> {
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/breadcrumbs`;
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/breadcrumbs`;
   const data = await apiGet<{ breadcrumbs: FeatureBreadcrumbLine[] }>(url);
   return data.breadcrumbs ?? [];
 }
@@ -33,6 +33,6 @@ export async function resetFeatureContext(
   featureName: string,
   reason?: string,
 ): Promise<ResetFeatureContextResponse> {
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/context/reset`;
+  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/context/reset`;
   return apiPost<ResetFeatureContextResponse>(url, reason ? { reason } : {});
 }

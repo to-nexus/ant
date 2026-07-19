@@ -9,6 +9,7 @@ import { cn } from '@/shared/utils/design-system';
 import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { isValidName, delay, generateProjectName, generateFeatureName } from '@/presentation/components/ProjectWizardModal/constants';
+import { isValidFeatureName } from '@ant/shared';
 import { BrandHero } from '@/presentation/components/common/BrandHero';
 
 // ─── Ambient Canvas ─────────────────────────────────────────────────
@@ -210,7 +211,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
   const projectNameExists = !existingProjectId && !!projectName.trim() && projects.includes(projectName.trim());
   const featureNameExists = !!existingProjectId && !!featureName.trim() && features.some((f) => f.name === featureName.trim());
   const projectNameInvalid = !existingProjectId && !!projectName.trim() && !isValidName(projectName.trim());
-  const featureNameInvalid = !!featureName.trim() && !isValidName(featureName.trim());
+  const featureNameInvalid = !!featureName.trim() && !isValidFeatureName(featureName.trim());
   const projectNameError = projectNameExists || projectNameInvalid;
   const featureNameError = featureNameExists || featureNameInvalid;
   const hasNameConflict = projectNameError || featureNameError;

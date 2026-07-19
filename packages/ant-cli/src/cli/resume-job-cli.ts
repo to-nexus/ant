@@ -31,6 +31,7 @@ import * as path from 'path';
 import { Command } from 'commander';
 import { orchestrator } from '../composition/orchestrator';
 import { UnifiedWorkspaceResolver } from '../core/config/WorkspacePathResolver';
+import { featureNameToSlug } from '@ant/shared';
 import { initPartials } from '../periphery/adapters/prompt/FilePromptAdapter';
 import { getSessionFilePathByJob } from '../core/utils/sessionPaths';
 
@@ -88,7 +89,7 @@ async function main(): Promise<void> {
 
   // ANT_PROJECT_PATH is required by FileConfigAdapter.load().
   const projectPath = path.join(args.workspaceBase, args.org, args.user, args.project);
-  const featurePath = path.join(projectPath, 'features', args.feature);
+  const featurePath = path.join(projectPath, 'features', featureNameToSlug(args.feature));
   process.env.ANT_PROJECT_PATH = projectPath;
   process.env.ANT_FEATURE_PATH = featurePath;
 

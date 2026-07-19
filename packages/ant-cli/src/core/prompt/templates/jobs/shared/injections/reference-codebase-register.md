@@ -24,8 +24,8 @@ exposes multiple branches, do not guess — ask which branch with a `<clarify>`
 question.
 
 To pre-register at decomposition time, emit a `<references>` tag (a JSON array;
-`branch` is optional and defaults to the project's main branch; `feature/{name}`
-selects a feature branch):
+`branch` is optional and defaults to the project's base branch; a branch name is
+exactly a feature name, no prefix):
 
 <references>
 [{"project":"<project-name>","branch":"<optional-git-ref>","reason":"<why-needed>"}]

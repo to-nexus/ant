@@ -11,6 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { featureSlugToName } from '@ant/shared';
 import type { StateStorePort } from '../ports/stateStore';
 import { pruneDebugArtifacts } from '../utils/debugRetention';
 import { logger } from '../../utils/logger';
@@ -98,9 +99,11 @@ async function listAllFeaturePaths(base: string): Promise<FeatureRef[]> {
         const features = await safeReaddir(featuresDir);
         for (const feature of features) {
           out.push({
+            // `feature` is the on-disk slug: keep it for the path, decode it
+            // for the domain name used to look up job state in redis.
             featurePath: path.join(featuresDir, feature),
             projectId: project,
-            featureName: feature,
+            featureName: featureSlugToName(feature),
           });
         }
       }

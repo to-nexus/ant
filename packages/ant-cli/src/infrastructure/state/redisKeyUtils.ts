@@ -1,12 +1,19 @@
 /**
  * Redis Key Utilities
- * 
+ *
  * Centralized key generation and parsing for all Redis operations.
- * 
+ *
  * Key Formats:
  * - IDE:     org:user:project:feature (4 parts) - feature-level (worktree-based isolation)
  * - Preview: org:user:project:feature (4 parts) - feature-level
+ *
+ * The `feature` segment is stored as a `/`-free slug (a feature name may
+ * contain `/`). This keeps the IDE serverKey — which is embedded in the
+ * `/ide/{key}` proxy URL — a single path segment. Create slugifies, parse
+ * decodes; slash-free names are their own slug (no-op), so existing keys are
+ * byte-identical.
  */
+import { featureNameToSlug, featureSlugToName } from '@ant/shared';
 
 /**
  * Internal key segment used when a record is not scoped to a feature.
@@ -46,7 +53,7 @@ export function createIDEKey(
     console.error(`[createIDEKey] ERROR: ${error}`);
     throw new Error(error);
   }
-  return `${tenantId}:${userId}:${projectId}:${feature || NO_FEATURE_KEY}`;
+  return `${tenantId}:${userId}:${projectId}:${featureNameToSlug(feature || NO_FEATURE_KEY)}`;
 }
 
 /**
@@ -56,13 +63,13 @@ export function createIDEKey(
  */
 export function parseIDEKey(key: string): IDEKeyComponents | null {
   const parts = key.split(':');
-  
+
   if (parts.length < 4) {
     return null;
   }
-  
+
   const [tenantId, userId, projectId, ...featureParts] = parts;
-  const feature = featureParts.join(':') || NO_FEATURE_KEY;
+  const feature = featureSlugToName(featureParts.join(':')) || NO_FEATURE_KEY;
   
   if (!tenantId || !userId || !projectId) {
     return null;
@@ -92,7 +99,7 @@ export function createPreviewKey(
   projectId: string,
   feature: string
 ): string {
-  return `${tenantId}:${userId}:${projectId}:${feature}`;
+  return `${tenantId}:${userId}:${projectId}:${featureNameToSlug(feature)}`;
 }
 
 /**
@@ -108,7 +115,7 @@ export function parsePreviewKey(key: string): PreviewKeyComponents | null {
   }
   
   const [tenantId, userId, projectId, ...featureParts] = parts;
-  const feature = featureParts.join(':');  // feature can contain colons
+  const feature = featureSlugToName(featureParts.join(':'));  // stored as a slug
   
   if (!tenantId || !userId || !projectId || !feature) {
     return null;
@@ -133,7 +140,7 @@ export function createDeployKey(
   projectId: string,
   feature: string
 ): string {
-  return `${tenantId}:${userId}:${projectId}:${feature}`;
+  return `${tenantId}:${userId}:${projectId}:${featureNameToSlug(feature)}`;
 }
 
 /**

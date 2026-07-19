@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { validateFeatureName } from '@ant/shared';
+import { validateFeatureName, featureSlugToName } from '@ant/shared';
 import { UserContext } from '../../../../../../core/types/user';
 import { readBranchBase } from '../../../../../../core/utils/branchUtils';
 import { GitHelper } from '../helper/GitHelper';
@@ -65,7 +65,8 @@ export async function listFeatureDirsByCreation(
       const stat = await fs.promises.stat(path.join(featuresPath, item));
       if (!stat.isDirectory()) continue;
       const birth = stat.birthtime && stat.birthtime.getTime() > 0 ? stat.birthtime : stat.mtime;
-      entries.push({ name: item, createdAt: birth });
+      // `item` is the on-disk slug; the domain feature name decodes it back.
+      entries.push({ name: featureSlugToName(item), createdAt: birth });
     } catch {
       // dir vanished mid-scan — skip
     }

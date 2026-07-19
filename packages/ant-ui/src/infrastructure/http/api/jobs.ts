@@ -1,4 +1,4 @@
-import { API_BASE, authFetch, apiGet, apiPost, apiDelete } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiDelete, featureSeg } from './client';
 
 /**
  * One row in the Job-tab dropdown — a previously executed (or currently
@@ -67,7 +67,7 @@ export async function executeJob(
   }
 
   const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId };
-  const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/execute`;
+  const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/execute`;
 
   const response = await authFetch(endpoint, {
     method: 'POST',
@@ -108,7 +108,7 @@ export function fetchJobHistory(
   // a mid-run endpoint blip), which read to the user as "only the running job
   // is listed." `useJobHistory` now keeps its last-good entries on failure.
   return apiGet<{ jobs: JobHistoryEntry[] }>(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/jobs`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/jobs`,
   );
 }
 
@@ -125,7 +125,7 @@ export async function deleteJobById(
 ): Promise<void> {
   const query = jobType ? `?type=${encodeURIComponent(jobType)}` : '';
   await apiDelete(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/jobs/${encodeURIComponent(jobId)}${query}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/jobs/${encodeURIComponent(jobId)}${query}`,
   );
 }
 
@@ -177,7 +177,7 @@ export function inlineAsk(
   chatSource: boolean = true,
 ): Promise<{ jobId: string; jobType: string }> {
   return apiPost(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/inline-ask`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/inline-ask`,
     { message, chatSource },
   );
 }
@@ -197,7 +197,7 @@ export function dismissInterruptedJob(
   jobId: string,
 ): Promise<{ success: boolean }> {
   return apiPost(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/job/dismiss`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/job/dismiss`,
     { jobId },
   );
 }

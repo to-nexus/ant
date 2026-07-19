@@ -16,7 +16,7 @@
  * `resolveChoice` directly.
  */
 
-import { API_BASE, apiPost } from './client';
+import { API_BASE, apiPost, featureSeg } from './client';
 
 export type TriageChoiceAction = 'proceed' | 'proceedAnyway' | 'redirect' | 'guide' | 'dismiss';
 
@@ -53,7 +53,7 @@ export function resolveChoice(
   },
 ): Promise<ChoiceResolveResponse> {
   return apiPost(
-    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureName)}/chat/choice-resolved`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/chat/choice-resolved`,
     args,
   );
 }
