@@ -30,17 +30,77 @@ type StreakInputs = Pick<
   '_noProgressStreak' | '_lastToolBatchAllDupReads'
 >;
 
+/** Ring size for `_recentExecuteTextHashes` — covers the A/B-alternating
+ * degenerate pattern observed in vivid-orbiting-dodge (two sentences
+ * alternated for ~30s before locking onto one). */
+const RECENT_TEXT_RING_SIZE = 3;
+
+function normalizeAssistantText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** FNV-1a 32-bit — non-crypto; a collision merely risks one spurious +1 in a
+ * streak that needs 10+ consecutive hits to act. */
+function hashText(normalized: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < normalized.length; i++) {
+    h ^= normalized.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
+/**
+ * Output-side no-progress signal (vivid-orbiting-dodge RCA): the current
+ * turn's assistant text is byte-identical (after whitespace/case
+ * normalization) to one of the last `RECENT_TEXT_RING_SIZE` execute turns.
+ * Degenerate loops repeat a fixed sentence verbatim; healthy execution
+ * varies its narration every round. Empty text never matches.
+ */
+export function isRepeatedAssistantText(
+  recentTextHashes: string[] | undefined,
+  textResponse: string,
+): boolean {
+  const normalized = normalizeAssistantText(textResponse);
+  if (!normalized) return false;
+  return (recentTextHashes || []).includes(hashText(normalized));
+}
+
+/** Rolling window of the last few non-empty assistant text hashes. Committed
+ * by the execute node on every return path (same cadence as
+ * `_noProgressStreak`); task/attempt boundaries reset it to `[]`. */
+export function computeNextRecentTextHashes(
+  recentTextHashes: string[] | undefined,
+  textResponse: string,
+): string[] {
+  const prev = recentTextHashes || [];
+  const normalized = normalizeAssistantText(textResponse);
+  if (!normalized) return prev;
+  return [...prev, hashText(normalized)].slice(-RECENT_TEXT_RING_SIZE);
+}
+
 /**
  * Single owner of the `_noProgressStreak` increment/reset rule. The execute
  * node calls this once per turn (at its return section) and commits the
  * result on every return path.
  *
  * - Progress (streamed files, tool mutation, explicit `<done>`) → 0.
+ * - Drain-finalize turn truncated at `max_tokens` with no open `<file>`
+ *   block → jump to `NO_PROGRESS_HARD_CAP`. The model entered its forced
+ *   final turn already degenerate and burned the whole output budget on
+ *   repetition; granting the remaining drain turns is a repeat 17-minute
+ *   gamble (vivid-orbiting-dodge call 219), while the router breaker's
+ *   fresh-conversation retry is the designed escape for exactly this state.
  * - Preceding tool batch was all duplicate-elided reads → +1.
  * - Tool-stripped salvage turn that still produced nothing → +1 (without
  *   this the streak would freeze at CAP − MARGIN once tools are stripped —
  *   the tool node stops running — and the model could emit prose forever
  *   below the breaker).
+ * - Assistant text identical to a recent turn with zero output → +1
+ *   (novel-read degenerate variant: the model repeats one sentence while
+ *   merely advancing a read cursor, so the dup-read signal stays silent
+ *   until the file pool is exhausted — vivid-orbiting-dodge burned 190
+ *   rounds / 20 min in that blind spot).
  * - Anything else (novel reads, commands, fresh reasoning) → 0.
  */
 export function computeNextNoProgressStreak(
@@ -49,12 +109,16 @@ export function computeNextNoProgressStreak(
     progressed: boolean;
     drainFinalizing: boolean;
     toolCallCount: number;
+    repeatedIdenticalText?: boolean;
+    drainTruncatedNoFile?: boolean;
   },
 ): number {
   const prev = state._noProgressStreak || 0;
   if (turn.progressed) return 0;
+  if (turn.drainTruncatedNoFile === true) return NO_PROGRESS_HARD_CAP;
   if (state._lastToolBatchAllDupReads === true) return prev + 1;
   if (turn.drainFinalizing && turn.toolCallCount === 0) return prev + 1;
+  if (turn.repeatedIdenticalText === true) return prev + 1;
   return 0;
 }
 

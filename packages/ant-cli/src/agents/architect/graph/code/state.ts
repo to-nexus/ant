@@ -454,6 +454,21 @@ export interface ArchitectGraphState extends TriageableState {
    */
   _noProgressStreak?: number;
   /**
+   * Rolling window (last 3) of normalized-assistant-text hashes from recent
+   * execute turns — the output-side no-progress signal behind the
+   * `repeatedIdenticalText` rule in `computeNextNoProgressStreak`
+   * (vivid-orbiting-dodge RCA: a degenerate loop can repeat one sentence
+   * verbatim while advancing a NOVEL read cursor, so the tool-side
+   * `_lastToolBatchAllDupReads` signal stays silent for hundreds of rounds).
+   *
+   * Writers: helpers in `nodes/execute/drainFinalize.ts`
+   * (`computeNextRecentTextHashes` / `isRepeatedAssistantText`); the execute
+   * node commits the updated ring on every return path. Resets to `[]` at
+   * the same task/attempt boundaries as `_noProgressStreak` (a stale ring
+   * would give a retry's first repeated sentence a spurious +1).
+   */
+  _recentExecuteTextHashes?: string[];
+  /**
    * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
    * verification plan entry, cached for the rest of the job.
    *

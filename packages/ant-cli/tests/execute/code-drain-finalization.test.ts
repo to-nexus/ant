@@ -20,6 +20,20 @@
  *   3. STATIC — every execute return path commits `_noProgressStreak` and
  *      resets `_lastToolBatchAllDupReads`, so a return path added later
  *      cannot silently drop the channel (the unreturned-channel-drop class).
+ *
+ * vivid-orbiting-dodge follow-up (2026-07-20) — two blind spots locked:
+ *
+ *   4. UNIT — repeated-identical-text signal: a degenerate loop can repeat
+ *      one sentence verbatim while advancing a NOVEL read cursor (190
+ *      rounds / 20 min unseen by the dup-read signal). The text ring
+ *      (`_recentExecuteTextHashes`, last 3) catches the observed
+ *      A/B-alternating variant; identical text with zero output increments
+ *      the same streak.
+ *   5. UNIT — drain turn truncated at max_tokens with no open <file> block
+ *      jumps the streak to NO_PROGRESS_HARD_CAP (call 219 burned 64K
+ *      tokens / 17 min on one repeated sentence; the remaining drain turns
+ *      are the same gamble — the router breaker's fresh retry is the
+ *      designed escape).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -28,6 +42,8 @@ import { resolve } from 'node:path';
 import {
   applyDrainFinalization,
   computeNextNoProgressStreak,
+  computeNextRecentTextHashes,
+  isRepeatedAssistantText,
 } from '../../src/agents/architect/graph/code/nodes/execute/drainFinalize';
 import {
   NO_PROGRESS_HARD_CAP,
@@ -71,6 +87,108 @@ describe('computeNextNoProgressStreak — truth table', () => {
   it('starts from 0 when the channel is unset', () => {
     expect(computeNextNoProgressStreak({}, noTurn)).toBe(0);
     expect(computeNextNoProgressStreak({ _lastToolBatchAllDupReads: true }, noTurn)).toBe(1);
+  });
+
+  it('increments on repeated identical text even when reads were novel', () => {
+    const state = { _noProgressStreak: 5, _lastToolBatchAllDupReads: false };
+    expect(computeNextNoProgressStreak(state, { ...noTurn, repeatedIdenticalText: true })).toBe(6);
+  });
+
+  it('progress beats repeated text (a file written while narrating the same sentence is progress)', () => {
+    const state = { _noProgressStreak: 5, _lastToolBatchAllDupReads: false };
+    expect(computeNextNoProgressStreak(state, {
+      ...noTurn, progressed: true, repeatedIdenticalText: true,
+    })).toBe(0);
+  });
+
+  it('jumps to NO_PROGRESS_HARD_CAP on a drain turn truncated with no open <file> block', () => {
+    const state = { _noProgressStreak: SALVAGE_AT + 1, _lastToolBatchAllDupReads: false };
+    expect(computeNextNoProgressStreak(state, {
+      progressed: false, drainFinalizing: true, toolCallCount: 0, drainTruncatedNoFile: true,
+    })).toBe(NO_PROGRESS_HARD_CAP);
+  });
+
+  it('drain-truncation escalation never fires on a progressed turn', () => {
+    const state = { _noProgressStreak: SALVAGE_AT + 1, _lastToolBatchAllDupReads: false };
+    expect(computeNextNoProgressStreak(state, {
+      progressed: true, drainFinalizing: true, toolCallCount: 0, drainTruncatedNoFile: true,
+    })).toBe(0);
+  });
+});
+
+// ─── 1b. Repeated-identical-text signal (vivid-orbiting-dodge) ───
+
+describe('recent-text ring — repeated assistant text detection', () => {
+  it('detects an exact repeat and is whitespace/case insensitive', () => {
+    const ring = computeNextRecentTextHashes([], 'Now I have all the information needed. Let me create the module.');
+    expect(isRepeatedAssistantText(ring, 'now  I have all the information needed.\nLet me create the module.')).toBe(true);
+  });
+
+  it('does not flag varied narration (healthy execution)', () => {
+    let ring: string[] = [];
+    const healthy = [
+      'Reading the existing test files to understand fixture shapes.',
+      'Now checking the source constants that are mirrored in tests.',
+      'Verifying the resolveAutoFire signature before writing the module.',
+    ];
+    for (const text of healthy) {
+      expect(isRepeatedAssistantText(ring, text)).toBe(false);
+      ring = computeNextRecentTextHashes(ring, text);
+    }
+  });
+
+  it('catches the observed A/B-alternating degenerate pattern via the 3-ring', () => {
+    const a = 'Now I have all the information needed. Let me create the shared test-support module.';
+    const b = 'Now I have all the information needed. Let me create the shared test-support module with all fixture builders.';
+    let ring: string[] = [];
+    ring = computeNextRecentTextHashes(ring, a);
+    ring = computeNextRecentTextHashes(ring, b);
+    // Third turn repeats A — previous-turn-only comparison would miss this.
+    expect(isRepeatedAssistantText(ring, a)).toBe(true);
+    expect(isRepeatedAssistantText(ring, b)).toBe(true);
+  });
+
+  it('empty text never matches and never enters the ring', () => {
+    const ring = computeNextRecentTextHashes([], '   ');
+    expect(ring).toEqual([]);
+    expect(isRepeatedAssistantText(ring, '')).toBe(false);
+  });
+
+  it('ring is bounded to the last 3 non-empty texts', () => {
+    let ring: string[] = [];
+    for (const t of ['one', 'two', 'three', 'four']) {
+      ring = computeNextRecentTextHashes(ring, t);
+    }
+    expect(ring).toHaveLength(3);
+    expect(isRepeatedAssistantText(ring, 'one')).toBe(false);
+    expect(isRepeatedAssistantText(ring, 'four')).toBe(true);
+  });
+
+  it('incident replay: identical narration + novel reads trips the salvage threshold', () => {
+    // vivid-orbiting-dodge execute 14+: same sentence every round, novel
+    // read each time (dup-read signal silent). The text signal alone must
+    // walk the streak to the salvage threshold.
+    const sentence = 'Now I have all the information needed. Let me create the shared test-support module with all fixture builders.';
+    let ring: string[] = computeNextRecentTextHashes([], sentence);
+    let state = { _noProgressStreak: 0, _lastToolBatchAllDupReads: false };
+    for (let round = 0; round < SALVAGE_AT; round++) {
+      const repeated = isRepeatedAssistantText(ring, sentence);
+      expect(repeated).toBe(true);
+      state = {
+        ...state,
+        _noProgressStreak: computeNextNoProgressStreak(state, {
+          progressed: false,
+          drainFinalizing: false,
+          toolCallCount: 1, // novel read every round
+          repeatedIdenticalText: repeated,
+        }),
+      };
+      ring = computeNextRecentTextHashes(ring, sentence);
+    }
+    expect(state._noProgressStreak).toBe(SALVAGE_AT);
+    const messages = [userMsg('go')];
+    const { drainFinalizing } = applyDrainFinalization(state, messages, TOOLS);
+    expect(drainFinalizing).toBe(true);
   });
 });
 
@@ -161,7 +279,23 @@ describe('code execute node — return-path channel commits (static)', () => {
     expect(dupFlagResets.length).toBe(mutatedCommits.length);
   });
 
+  it('commits _recentExecuteTextHashes on every return path that commits the streak', () => {
+    const streakCommits = src.match(/_noProgressStreak: (nextNoProgressStreak|0)/g) ?? [];
+    const ringCommits = src.match(/_recentExecuteTextHashes: nextTextRing/g) ?? [];
+    expect(ringCommits.length).toBe(streakCommits.length);
+  });
+
   it('passes the drain-stripped tool list to the LLM stream', () => {
     expect(src).toMatch(/applyDrainFinalization\(state, messages, allTools\)/);
+  });
+
+  it('wires the two vivid-orbiting-dodge signals into the streak computation', () => {
+    expect(src).toMatch(/repeatedIdenticalText,/);
+    expect(src).toMatch(/drainTruncatedNoFile: drainFinalizing && maxTokensTruncatedNoFile/);
+  });
+
+  it('replaces a discarded max_tokens truncation with a head excerpt + marker (history hygiene)', () => {
+    expect(src).toMatch(/maxTokensTruncatedNoFile && cleanedResponse\.length > 700/);
+    expect(src).toMatch(/without producing any <file> output/);
   });
 });

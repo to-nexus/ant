@@ -28,7 +28,12 @@ import { CommonRenderStrategy } from '../../../../../../core/streaming/strategie
 // Import submodules
 import { buildMessages } from './buildMessages';
 import { getTools } from './tools';
-import { applyDrainFinalization, computeNextNoProgressStreak } from './drainFinalize';
+import {
+  applyDrainFinalization,
+  computeNextNoProgressStreak,
+  computeNextRecentTextHashes,
+  isRepeatedAssistantText,
+} from './drainFinalize';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 import { logger } from '../../../../../../utils/logger';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
@@ -305,6 +310,10 @@ export async function execute(
   let thinkingSignature = '';
   let textResponse = '';
   let isDone = false;  // ✅ Track done event (don't propagate immediately)
+  // max_tokens truncation with NO open <file> block — the discarded-output
+  // flavor (see the stopReason handler). Read by the no-progress streak
+  // computation and the history-hygiene stub in the return section.
+  let maxTokensTruncatedNoFile = false;
   let newCallIndex = (state._executeCallIndex || 0) + 1;
   const toolCalls: Array<{
     id: string;
@@ -435,6 +444,13 @@ export async function execute(
               path: openFile.path,
               tailContent: openFile.tailContent,
             };
+          } else {
+            // The whole output budget went to text/thinking without even
+            // opening a <file> block. Feeds the drain-truncation breaker
+            // escalation and the history-hygiene stub below
+            // (vivid-orbiting-dodge call 219: 64K tokens / 17 min of one
+            // repeated sentence, truncated with zero salvageable output).
+            maxTokensTruncatedNoFile = true;
           }
 
           console.warn(
@@ -499,6 +515,18 @@ export async function execute(
         console.error(`   - ${error}`);
       }
     }
+
+    // Output-side no-progress signal (vivid-orbiting-dodge RCA). Computed
+    // once here; every return path below commits the updated ring alongside
+    // `_noProgressStreak` so the two channels never drift.
+    const repeatedIdenticalText = isRepeatedAssistantText(
+      state._recentExecuteTextHashes,
+      textResponse,
+    );
+    const nextTextRing = computeNextRecentTextHashes(
+      state._recentExecuteTextHashes,
+      textResponse,
+    );
 
     // Files newly written this turn surface to the LLM via conversation
     // tool_results (edit_file / create_file / delete_file) and via streamed
@@ -687,6 +715,7 @@ export async function execute(
         _lastToolBatchAllDupReads: false,
         // Merge instruction injected = productive turn, not a degenerate loop.
         _noProgressStreak: 0,
+        _recentExecuteTextHashes: nextTextRing,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
         profile: state.profile,
@@ -756,6 +785,12 @@ export async function execute(
       progressed: streamedInThisCall.length > 0 || toolMutatedThisTurn || explicitDone,
       drainFinalizing,
       toolCallCount: toolCalls.length,
+      repeatedIdenticalText,
+      // Drain turn that burned its whole output budget on text without even
+      // opening a <file> block → escalate straight to the router breaker
+      // instead of granting the remaining drain turns (each is a potential
+      // repeat of vivid-orbiting-dodge's 64K-token / 17-minute call 219).
+      drainTruncatedNoFile: drainFinalizing && maxTokensTruncatedNoFile,
     });
 
     console.log(
@@ -837,6 +872,19 @@ export async function execute(
       if (!cleanedResponse && thinking) {
         cleanedResponse = `[Previous reasoning (no action taken): ${thinking.substring(0, 500)}]`;
       }
+
+      // History hygiene for discarded max_tokens truncations: the full text
+      // (up to the entire output budget — 64K tokens on vivid-orbiting-dodge
+      // call 219) has zero salvage value, re-bills as uncached input next
+      // round, and feeds the very repetition attractor that produced it.
+      // A head excerpt + truncation marker preserves the anti-amnesia intent.
+      if (maxTokensTruncatedNoFile && cleanedResponse.length > 700) {
+        cleanedResponse =
+          `${cleanedResponse.slice(0, 500)}\n` +
+          `[response truncated at ${capturedUsage?.outputTokens ?? 'the maximum'} output tokens ` +
+          `without producing any <file> output — the rest was repetitive text and has been ` +
+          `discarded. Do NOT restart that narration; emit the intended <file> tags directly.]`;
+      }
       
       if (cleanedResponse) {
         // Build re-entry message with specific file list so the LLM doesn't
@@ -905,6 +953,7 @@ export async function execute(
           _lastToolBatchMutatedFiles: false,
           _lastToolBatchAllDupReads: false,
           _noProgressStreak: nextNoProgressStreak,
+          _recentExecuteTextHashes: nextTextRing,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
           profile: state.profile,
@@ -961,6 +1010,7 @@ export async function execute(
             _lastToolBatchAllDupReads: false,
             // Subagent reports delivered = novel information, not a loop.
             _noProgressStreak: 0,
+            _recentExecuteTextHashes: nextTextRing,
             recursionCount: state.recursionCount,
             recursionLimit: state.recursionLimit,
             profile: state.profile,
@@ -1004,6 +1054,7 @@ export async function execute(
       _lastToolBatchMutatedFiles: false,
       _lastToolBatchAllDupReads: false,
       _noProgressStreak: nextNoProgressStreak,
+      _recentExecuteTextHashes: nextTextRing,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
       profile: state.profile,
