@@ -10,6 +10,7 @@ import { createProject, createFeature, addChatUserMessage } from '@/infrastructu
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { isValidName, delay, generateProjectName, generateFeatureName } from '@/presentation/components/ProjectWizardModal/constants';
 import { isValidFeatureName } from '@ant/shared';
+import { featureNameErrorKey } from '@/application/utils/featureNameError';
 import { BrandHero } from '@/presentation/components/common/BrandHero';
 
 // ─── Ambient Canvas ─────────────────────────────────────────────────
@@ -790,7 +791,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
               {featureNameExists ? (
                 <p className="mt-0.5 text-[11px]" style={{ color: 'var(--red-500)' }}>{t('quickstart.projectWizard.nameExists')}</p>
               ) : featureNameInvalid ? (
-                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--red-500)' }}>{t('quickstart.projectWizard.nameInvalid')}</p>
+                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--red-500)' }}>{t(`explorer:${featureNameErrorKey(featureName.trim()) ?? 'feature.nameError.invalidChars'}`)}</p>
               ) : (
                 <p className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
                   {t('quickstart.gitBranchHint', { name: featureName || '...' })}

@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { Compass, Code2, Check, X } from 'lucide-react';
 import type { Domain } from '@ant/shared';
 import { DomainSelect } from '../Actions/DomainSelect';
+import { featureNameErrorKey } from '@/application/utils/featureNameError';
 
 interface StepProjectSetupProps {
   t: (key: string) => string;
@@ -34,6 +35,12 @@ export function StepProjectSetup({
 }: StepProjectSetupProps) {
   const projectNameError = projectNameExists || projectNameInvalid;
   const featureNameError = featureNameExists || featureNameInvalid;
+  // Feature names share the FeatureSection message source (explorer namespace)
+  // so the per-violation copy stays single-sourced — `/` is allowed, unlike the
+  // project-name field which keeps its own stricter `nameInvalid` wording.
+  const featureInvalidMessage = featureNameInvalid
+    ? t(`explorer:${featureNameErrorKey(featureName.trim()) ?? 'feature.nameError.invalidChars'}`)
+    : undefined;
 
   return (
     <>
@@ -124,9 +131,7 @@ export function StepProjectSetup({
             ? undefined
             : featureNameExists
               ? t('quickstart.projectWizard.nameExists')
-              : featureNameInvalid
-                ? t('quickstart.projectWizard.nameInvalid')
-                : undefined
+              : featureInvalidMessage
         }
         hint={
           featureNameDisabled

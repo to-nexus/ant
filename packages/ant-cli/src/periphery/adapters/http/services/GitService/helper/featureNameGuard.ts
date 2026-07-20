@@ -11,7 +11,7 @@ export function assertValidFeatureName(name: string): void {
   if (check.ok) return;
   throw new GitConfigError(
     `Invalid feature name "${name}" (${check.violation}) — feature names become git branch names: ` +
-      `letters, digits, ".", "_", "-" only; no spaces or "/"`,
+      `letters, digits, ".", "_", "-" and "/" (git-style nesting); no spaces, no "~"`,
     { retryable: false }
   );
 }

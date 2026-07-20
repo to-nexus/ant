@@ -197,6 +197,12 @@ export default defineConfig(({ mode }) => {
     plugins: [antSiteProxy(), auroraCasesDevStatic(), react(), cloudSeamStub(includeCloud)],
     resolve: {
       alias: {
+        // Resolve the shared package to its TS source so vite dev + build never
+        // depend on a rebuilt/gitignored dist (the `.vite/deps` pre-bundle is
+        // keyed on lockfile/config, not dist content, so a stale dist would
+        // silently ship the pre-change validator). All FE imports are the bare
+        // specifier and the package only exports `.`, so an exact alias is safe.
+        '@ant/shared': path.resolve(__dirname, '../ant-shared/src/index.ts'),
         '@': '/src',
         '@/presentation': '/src/presentation',
         '@/application': '/src/application',
