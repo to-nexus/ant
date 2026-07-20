@@ -191,7 +191,10 @@
     ],
     "api-contract-guide": [],
     "backend-guide": [],
-    "frontend-guide": []
+    "frontend-guide": [],
+    "requirement-synthesis": [
+      "planText"
+    ]
   },
   "jobs/design/nodes/execute/injections": {
     "ui-tokens-guide-by-desc": [],

@@ -57,3 +57,5 @@ For api-contract documents, replace the boundary/flow sections with:
 If the section scope above narrows the document to a single chapter,
 restrict `documentOutline` to that chapter alone.
 {{/if}}
+
+{{> jobs/design/base/injections/requirement-synthesis}}

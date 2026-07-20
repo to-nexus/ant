@@ -1278,6 +1278,12 @@
       "manifest"
     ]
   },
+  "jobs/design/base/injections/requirement-synthesis": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/design/base/system": {
     "sources": [
       "build-callsite",

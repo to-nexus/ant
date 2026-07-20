@@ -48,9 +48,14 @@ Your `documentOutline` MUST cover, at minimum:
   derived from `decision.selected`.
 - **Implementation Tasks** — ordered list of atomic units of work the
   Code Job will produce. Each task must be self-contained.
-- **Acceptance Criteria** — observable conditions that prove the
-  implementation matches the spec.
+- **Acceptance Criteria** — the SYNTHESIZED set of distinct, observable
+  conditions that prove the implementation matches the spec. Author these
+  per Requirement Synthesis below: group related directive items, resolve
+  contradictions to one condition, and let the count reflect distinct
+  verifiable outcomes — NOT the directive's item count.
 
 If the section scope above narrows the document to a single section,
 restrict `documentOutline` to that section alone.
 {{/if}}
+
+{{> jobs/design/base/injections/requirement-synthesis}}

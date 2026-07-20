@@ -32,6 +32,11 @@ const PLAN_BASE = T('jobs/design/nodes/plan/variants/spec/base.md');
 const GUIDE_SERVICE = T('jobs/design/nodes/execute/injections/spec-impl-guide-service.md');
 const GUIDE_GAME = T('jobs/design/nodes/execute/injections/spec-impl-guide-game.md');
 
+const SYNTHESIS = T('jobs/design/base/injections/requirement-synthesis.md');
+const SYS_PLAN_BASE = T('jobs/design/nodes/plan/variants/system-design/base.md');
+const SYS_EXEC_BASE = T('jobs/design/nodes/execute/variants/system-design/base.md');
+const INCLUDE = '{{> jobs/design/base/injections/requirement-synthesis}}';
+
 describe('spec depth calibration — contract axis vs realization axis', () => {
   it('scopes "zero degrees of freedom" to the contract axis', () => {
     expect(EXEC_BASE).toMatch(
@@ -111,5 +116,47 @@ describe('spec refactor mode — append prohibition (duplicate-root cause remova
     );
     expect(specTs).toMatch(/const writeTag = isFirstSection \? '<file>' : '<append>'/);
     expect(specTs).not.toMatch(/using <file> or <append> tag/);
+  });
+});
+
+describe('requirement synthesis — interpret the directive, do not transcribe it', () => {
+  it('partial exists and carries the five synthesis operations', () => {
+    for (const op of ['**Group**', '**De-conflict**', '**Upgrade**', '**Correct**', '**Distill**']) {
+      expect(SYNTHESIS).toContain(op);
+    }
+  });
+
+  it('partial states the distinct-outcome (anti-transcription) principle', () => {
+    expect(SYNTHESIS).toMatch(/reflects distinct OUTCOMES, not directive line count/);
+    expect(SYNTHESIS).toContain('never a 1:1 copy');
+  });
+
+  it('partial carries the bounded-agency guardrail with clarify + reply surfacing', () => {
+    expect(SYNTHESIS).toContain('Never silently drop a genuine need');
+    expect(SYNTHESIS).toContain('`<clarify>`');
+    expect(SYNTHESIS).toMatch(/Surface material judgment calls in your `<reply>`/);
+  });
+
+  it('partial has the sealed-plan handoff gated on planText (render, do not re-derive)', () => {
+    expect(SYNTHESIS).toContain('{{#if planText}}');
+    expect(SYNTHESIS).toMatch(/RENDER that decision faithfully/);
+  });
+
+  it('is wired into all four design-authoring templates (spec + system-design, plan + execute)', () => {
+    expect(PLAN_BASE).toContain(INCLUDE);
+    expect(EXEC_BASE).toContain(INCLUDE);
+    expect(SYS_PLAN_BASE).toContain(INCLUDE);
+    expect(SYS_EXEC_BASE).toContain(INCLUDE);
+  });
+
+  it('spec plan reframes Acceptance Criteria as a synthesized set, not a directive echo', () => {
+    expect(PLAN_BASE).toMatch(/SYNTHESIZED set of distinct, observable\s+conditions/);
+    expect(PLAN_BASE).toMatch(/NOT the directive's item count/);
+  });
+
+  it('spec execute reconciles identifier/gate framing so it does not force 1:1 mapping', () => {
+    expect(EXEC_BASE).toContain('Identifier grounding applies AFTER synthesis');
+    expect(EXEC_BASE).toMatch(/One requirement per directive line is NOT the goal/);
+    expect(EXEC_BASE).toMatch(/the SET of criteria is the synthesized distinct-outcome set/);
   });
 });
