@@ -231,15 +231,38 @@ WorktreeService.createWorktree는 기존 디렉터리 발견 시:
 
 ### Worktree 생성 시 브랜치 선택 사다리
 
-`WorktreeService.createWorktree` 는 아래 순서로 브랜치를 결정한다 (브랜치 이름 == feature 이름):
+`WorktreeService.createWorktree` 는 origin convergence (아래 섹션) 후 아래 순서로 브랜치를 결정한다 (브랜치 이름 == feature 이름):
 
-1. 로컬 브랜치 존재 → attach
-2. 원격 브랜치 존재 → `--track -b`
-3. branchBase 브랜치 존재 → 그로부터 fork
-4. anchor 에 HEAD commit 존재 → HEAD 로부터 fork
-5. empty anchor → plumbing initial commit 후 attach + seed `.gitignore`/`README` commit
+1. 원격 브랜치 존재 → `--track -b` (bare-clone 이 import 한 shadowing 로컬 head 는 먼저 `branch -D` — stale tip + no-upstream 방지)
+2. 로컬 브랜치 존재 (원격 counterpart 없음) → attach
+3. 로컬 branchBase 브랜치 존재 → 그로부터 fork
+4. 원격 `origin/{branchBase}` 존재 → 그로부터 fork (`--no-track` — 새 브랜치가 base 의 upstream 을 물려받으면 Publish affordance 가 깨진다). converge 된 anchor 는 fetch 로 `refs/remotes/origin/*` 만 채워지므로 (clone 과 달리 로컬 head import 없음) 이 스텝이 없으면 원격에 없는 새 feature 가 orphan 으로 낙하한다.
+5. anchor 에 HEAD commit 존재 → HEAD 로부터 fork
+6. empty anchor → plumbing initial commit 후 attach + seed `.gitignore`/`README` commit
 
 `repoType: 'local'` 은 모든 것을 short-circuit 한다 (사용자 소유 localPath; anchor/worktree/branch 조작 없음) — 옛 `mainCodebasePath === worktreePath` path-equality 가드는 `config.repoType === 'local'` 가드로 대체됐다.
+
+### Origin Convergence (`WorktreeService.syncOriginState`)
+
+`config.githubRepo` 는 clone/init **전에** 기록되므로 "githubRepo 설정됨 ≠ 연동됨". createWorktree 는 래더 진입 전에 anchor 의 origin 상태를 config 와 **트랜잭셔널**하게 수렴시킨다:
+
+1. anchor 에 origin 없음 + `config.githubRepo` 존재 → `remote add origin <PAT URL>` + fetch refspec 백필 (`ensureOriginWithRefspec`; origin 이 이미 있으면 `set-url` + refspec 백필만 — 구 clone 앵커의 refspec 누락도 여기서 치유)
+2. `git fetch origin` 프로브 → 성공 + 원격 tracking ref ≥ 1 일 때만 origin 유지
+3. 아니면 `remote remove origin` 롤백 — origin 존재는 branchBase lock 및 Init/Clone 자격 신호이므로 "실제 원격과 ref 를 교환한 적 있음"의 의미를 지켜야 한다
+4. no-origin→origin 전이 성공 시 `applyAfterRemoteConverge` 가 remote HEAD 를 branchBase 로 1회 기록 (clone 의 remote-HEAD 기록의 지연 버전)
+
+fetch 프로브 실패 분류:
+
+| 실패 | 동작 |
+|---|---|
+| PAT 미등록 (`buildAuthenticatedUrl` throw) | convergence 스킵, 기존 origin fetch best-effort |
+| repository not found | 롤백 후 로컬 래더 (Publish/init 플로우 — repo 가 아직 없는 선언 상태) |
+| origin 이 원래 있던 anchor | stale tracking ref 로 진행 (일시 장애가 feature 생성을 막지 않음) |
+| 전이 시도 + anchor 에 커밋 있음 | warn 후 로컬 래더 |
+| 전이 시도 + **빈 anchor** + auth 거부 | `GitAuthError` throw (non-retryable) |
+| 전이 시도 + **빈 anchor** + 네트워크/기타 | `GitNetworkError` throw (retryable) — 연동된 legacy 프로젝트에서 일시 장애가 영구 orphan 분기로 굳는 것 차단 |
+
+이 convergence 가 **legacy 프로젝트** (bare anchor 이전, `{project}/codebase/.git` 시대에 연동됨) 의 anchor 편입 경로다: 첫 feature 생성이 origin 을 붙이고 기존 원격 브랜치를 추적한다. 옛 feature 들은 자기 gitdir (구 `codebase/.git` worktree) 로 계속 동작하며 마이그레이션되지 않는다.
 
 ## Publish Branch
 
@@ -283,6 +306,7 @@ Feature에서 처음 Push할 때 upstream이 설정되지 않은 경우:
 - 첫 feature (0→1) 생성 → branchBase = feature 이름 auto-set (+ anchor HEAD symref)
 - base feature 삭제 → 생성 순서상 가장 오래된 남은 feature 로 재지정, 없으면 `'main'`
 - 사용자는 ConfigEditor dropdown 에서 기존 feature 중 하나로 선택 가능 — **remote 미연결 상태에서만**
+- origin convergence (no-origin→origin 전이, legacy 프로젝트 편입) → `applyAfterRemoteConverge` 가 remote HEAD 를 1회 기록
 - LOCK 조건: anchor 에 origin remote 존재 (`hasRemote`)
 
 read-time git-sync 는 없다 — `detectGitDefaultBranch` 는 삭제됐고, fetch 는 더 이상 remote-HEAD drift 를 branchBase 에 미러링하지 않는다.

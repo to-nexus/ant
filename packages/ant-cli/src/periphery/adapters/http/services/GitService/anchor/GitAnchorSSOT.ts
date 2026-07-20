@@ -127,6 +127,59 @@ export class GitAnchorSSOT {
     }
   }
 
+  /**
+   * Add origin (or refresh its URL when already present) and backfill the
+   * fetch refspec. Returns whether origin was newly added — callers use
+   * `added` to roll back a failed convergence probe transactionally
+   * (origin presence is load-bearing: it IS the branchBase lock and the
+   * Init/Clone eligibility signal).
+   */
+  async ensureOriginWithRefspec(anchorPath: string, url: string): Promise<{ added: boolean }> {
+    const git = this.git(anchorPath);
+    let added = false;
+    if (await this.hasOriginRemote(anchorPath)) {
+      await git.remote(['set-url', 'origin', url]);
+    } else {
+      try {
+        await git.remote(['add', 'origin', url]);
+        added = true;
+      } catch (error) {
+        // Concurrent converge (the ensureGitRepository self-heal path runs
+        // outside the FEATURE_LIFECYCLE lock) — the other writer won.
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes('already exists')) throw error;
+        await git.remote(['set-url', 'origin', url]);
+      }
+    }
+    // `git clone --bare` (and hand-wired anchors) configure no fetch
+    // refspec — without it, fetch cannot populate refs/remotes/origin/*.
+    const refspec = await git
+      .raw(['config', '--get', 'remote.origin.fetch'])
+      .catch(() => '');
+    if (!refspec.trim()) {
+      await git.raw(['config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*']);
+    }
+    return { added };
+  }
+
+  /** Rollback counterpart of {@link ensureOriginWithRefspec}. */
+  async removeOriginRemote(anchorPath: string): Promise<void> {
+    try {
+      await this.git(anchorPath).remote(['remove', 'origin']);
+    } catch {
+      // no such remote — already rolled back
+    }
+  }
+
+  async hasAnyRemoteTrackingRef(anchorPath: string): Promise<boolean> {
+    try {
+      const out = await this.git(anchorPath).raw(['for-each-ref', '--count=1', 'refs/remotes/origin']);
+      return out.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
   async readHeadBranch(anchorPath: string): Promise<string | null> {
     try {
       const ref = await this.git(anchorPath).raw(['symbolic-ref', '--short', 'HEAD']);

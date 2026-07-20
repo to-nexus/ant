@@ -161,6 +161,45 @@ export async function applyBeforeBaseFeatureDelete(
 }
 
 /**
+ * One-shot pointer write when a lazily-converged anchor first acquires
+ * origin — the deferred analog of clone's remote-HEAD record. Legacy
+ * projects (pre-bare-anchor, already connected via config.githubRepo) reach
+ * the connected state through feature creation instead of clone/init, so the
+ * remote HEAD must be recorded here before the origin lock takes effect.
+ *
+ * Caller guarantees the no-origin→origin transition just happened (under the
+ * FEATURE_LIFECYCLE lock). Returns the effective branchBase.
+ */
+export async function applyAfterRemoteConverge(ctx: BranchBaseContext): Promise<string> {
+  const current = readBranchBase(ctx.projectPath);
+  const detected = await gitAnchor.detectRemoteHeadBranch(ctx.anchorPath);
+  if (!detected || detected === current) return current;
+
+  const check = validateFeatureName(detected);
+  if (!check.ok) {
+    // Unlike clone (which may reject and ask the user to rename), converge is
+    // incidental to feature creation and must never block it.
+    logger.warn('Remote HEAD invalid as branchBase — keeping current pointer', {
+      component: COMPONENT,
+    }, {
+      projectId: ctx.projectId,
+      detected,
+      violation: check.violation,
+      branchBase: current,
+    });
+    return current;
+  }
+
+  await setPointer(ctx, detected);
+  logger.info('branchBase converged to remote HEAD', { component: COMPONENT }, {
+    projectId: ctx.projectId,
+    branchBase: detected,
+    previous: current,
+  });
+  return detected;
+}
+
+/**
  * Manual selection from the ConfigEditor dropdown. Rejected when the remote
  * lock is on or the value is not an existing feature.
  */
