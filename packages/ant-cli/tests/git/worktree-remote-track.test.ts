@@ -44,8 +44,8 @@ function commit(cwd: string, file: string, content: string, message: string): st
   return git(cwd, 'rev-parse', 'HEAD');
 }
 
-// updateRemoteUrl early-returns when config.githubRepo is unset (our config), so a
-// truthy stub is enough to open the `githubAuthService && hasOriginRemote` gate.
+// syncOriginState skips convergence when config.githubRepo is unset (our config)
+// and just fetches the existing origin, so a truthy stub is enough to open the gate.
 const authStub = {} as unknown as GitHubAuthService;
 
 beforeEach(() => {

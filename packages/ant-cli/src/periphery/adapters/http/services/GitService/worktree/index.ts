@@ -9,8 +9,9 @@ import { assertValidFeatureName } from '../helper/featureNameGuard';
 import { ensureCanonicalStructure } from '../../../../../../core/utils/sessionPaths';
 import { readBranchBase } from '../../../../../../core/utils/branchUtils';
 import { logger } from '../../../../../../utils/logger';
-import { GitOperationError } from '../errors';
+import { GitAuthError, GitNetworkError, GitOperationError } from '../errors';
 import { gitAnchor } from '../anchor/GitAnchorSSOT';
+import { applyAfterRemoteConverge, BranchBaseContext } from '../anchor/branchBaseLifecycle';
 import { GitignoreGenerator } from '../remote/helpers/GitignoreGenerator';
 
 export interface WorktreeInfo {
@@ -56,13 +57,16 @@ export class WorktreeService {
   /**
    * Create a worktree for a feature.
    *
-   * Branch selection (branch name == feature name):
-   * 1. remote branch exists           → track origin/{name} (drops any shadowing
-   *                                      local head from a bare-clone import first)
+   * Branch selection (branch name == feature name), after origin convergence
+   * ({@link syncOriginState} — attaches origin from config.githubRepo when the
+   * anchor lacks it, e.g. legacy pre-anchor projects):
+   * 1. remote branch exists            → track origin/{name} (drops any shadowing
+   *                                       local head from a bare-clone import first)
    * 2. local branch exists (no remote) → attach
-   * 3. branchBase branch exists       → fork from branchBase
-   * 4. any commit reachable from HEAD → fork from HEAD
-   * 5. empty anchor (first feature)   → plumbing initial commit, then attach
+   * 3. local branchBase exists         → fork from branchBase
+   * 4. remote branchBase exists        → fork from origin/{branchBase}, --no-track
+   * 5. any commit reachable from HEAD  → fork from HEAD
+   * 6. empty anchor (first feature)    → plumbing initial commit, then attach
    */
   async createWorktree(
     projectId: string,
@@ -161,25 +165,23 @@ export class WorktreeService {
       try { await git.raw(['worktree', 'prune', '--expire=now']); } catch { /* non-critical */ }
     }
 
-    // Check if remote branch exists (only when the anchor has an origin).
+    // Converge origin state (attach/refresh origin + refspec from config,
+    // fetch), then check whether a remote branch matches the feature name.
+    const { originReady, branchBase: effectiveBase } = await this.syncOriginState(
+      git,
+      anchorPath,
+      projectId,
+      userContext,
+      branchBase
+    );
     let remoteExists = false;
-    if (this.githubAuthService && await gitAnchor.hasOriginRemote(anchorPath)) {
-      try {
-        await this.updateRemoteUrl(git, projectId, userContext);
-        await git.fetch(['origin']);
-        remoteExists = await gitAnchor.remoteBranchExists(anchorPath, branchName);
-        logger.info(`Remote branch check: ${branchName} ${remoteExists ? 'EXISTS' : 'NOT FOUND'}`, {
-          component: 'WorktreeService',
-          projectId,
-          featureName
-        });
-      } catch (err) {
-        logger.info(`Could not check remote (non-critical)`, {
-          component: 'WorktreeService',
-          projectId,
-          featureName
-        });
-      }
+    if (originReady) {
+      remoteExists = await gitAnchor.remoteBranchExists(anchorPath, branchName);
+      logger.info(`Remote branch check: ${branchName} ${remoteExists ? 'EXISTS' : 'NOT FOUND'}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
     }
 
     const localExists = await gitAnchor.branchExists(anchorPath, branchName);
@@ -210,10 +212,23 @@ export class WorktreeService {
         projectId,
         featureName
       });
-    } else if (await gitAnchor.branchExists(anchorPath, branchBase)) {
+    } else if (await gitAnchor.branchExists(anchorPath, effectiveBase)) {
       // Fork from the base branch
-      await git.raw(['worktree', 'add', '-b', branchName, worktreePath, branchBase]);
-      logger.info(`Created worktree forked from base branch: ${branchBase} → ${branchName}`, {
+      await git.raw(['worktree', 'add', '-b', branchName, worktreePath, effectiveBase]);
+      logger.info(`Created worktree forked from base branch: ${effectiveBase} → ${branchName}`, {
+        component: 'WorktreeService',
+        projectId,
+        featureName
+      });
+    } else if (originReady && await gitAnchor.remoteBranchExists(anchorPath, effectiveBase)) {
+      // Connected anchor with no local base head (lazily-converged legacy
+      // anchor: fetch populates refs/remotes/origin/* only, unlike clone).
+      // Fork the NEW branch from the remote base tip. --no-track is
+      // load-bearing — branch.autoSetupMerge would otherwise set upstream to
+      // origin/{branchBase}, making the FE offer pull/sync against the wrong
+      // branch instead of Publish for a genuinely-new branch.
+      await git.raw(['worktree', 'add', '--no-track', '-b', branchName, worktreePath, `origin/${effectiveBase}`]);
+      logger.info(`Created worktree forked from remote base: origin/${effectiveBase} → ${branchName}`, {
         component: 'WorktreeService',
         projectId,
         featureName
@@ -221,7 +236,7 @@ export class WorktreeService {
     } else if (await this.hasAnyCommit(git)) {
       // branchBase branch is missing but the anchor has history — fork from HEAD.
       await git.raw(['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
-      logger.info(`Created worktree forked from HEAD (base branch '${branchBase}' missing)`, {
+      logger.info(`Created worktree forked from HEAD (base branch '${effectiveBase}' missing)`, {
         component: 'WorktreeService',
         projectId,
         featureName
@@ -562,39 +577,157 @@ export class WorktreeService {
   }
 
   /**
-   * Update the remote URL with authenticated credentials.
+   * Converge the anchor's origin state with the project config before the
+   * branch-selection ladder runs, and fetch so remote-branch checks see
+   * fresh refs.
+   *
+   * `config.githubRepo` is written by project setup BEFORE clone/init runs,
+   * so "githubRepo set" does not mean "connected". Convergence is therefore
+   * transactional: origin (+ fetch refspec) is added, probed with a fetch,
+   * and KEPT only when the probe proves a live remote with at least one
+   * branch. Otherwise the added origin is rolled back — origin presence is
+   * load-bearing (branchBase lock, Init/Publish eligibility) and must keep
+   * meaning "clone/init/converge actually exchanged refs with a live remote".
+   *
+   * This is how legacy projects (pre-bare-anchor, connected via the old
+   * `{project}/codebase/.git`) converge onto the anchor: their first
+   * post-migration feature attaches origin and tracks the existing remote
+   * branches instead of bootstrapping an orphan history.
    */
-  private async updateRemoteUrl(
+  private async syncOriginState(
     git: SimpleGit,
+    anchorPath: string,
     projectId: string,
-    userContext: UserContext
-  ): Promise<void> {
-    if (!this.githubAuthService) return;
+    userContext: UserContext,
+    branchBase: string
+  ): Promise<{ originReady: boolean; branchBase: string }> {
+    if (!this.githubAuthService) return { originReady: false, branchBase };
 
+    const hadOrigin = await gitAnchor.hasOriginRemote(anchorPath);
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-    const configPath = path.join(projectPath, 'config.json');
 
-    if (!fs.existsSync(configPath)) return;
+    let authenticatedUrl: string | null = null;
+    const githubRepo = this.readGithubRepo(projectPath);
+    if (githubRepo) {
+      try {
+        authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
+          { org: userContext.organizationId, user: userContext.userId },
+          githubRepo
+        );
+      } catch {
+        // PAT unavailable — cannot (re)wire origin; fall through to the
+        // best-effort fetch of whatever origin already exists.
+        logger.info(`PAT unavailable — skipping origin convergence`, {
+          component: 'WorktreeService',
+          projectId
+        });
+      }
+    }
 
-    const config = JSON.parse(await fs.promises.readFile(configPath, 'utf-8'));
-    if (!config.githubRepo) return;
+    if (!authenticatedUrl) {
+      if (hadOrigin) {
+        try {
+          await git.fetch(['origin']);
+        } catch {
+          logger.info(`Could not fetch origin (non-critical)`, {
+            component: 'WorktreeService',
+            projectId
+          });
+        }
+      }
+      return { originReady: hadOrigin, branchBase };
+    }
 
-    const credentialContext = {
-      org: userContext.organizationId,
-      user: userContext.userId
-    };
-    const authenticatedUrl = await this.githubAuthService.buildAuthenticatedUrl(
-      credentialContext,
-      config.githubRepo
-    );
+    const { added } = await gitAnchor.ensureOriginWithRefspec(anchorPath, authenticatedUrl);
 
     try {
-      const remotes = await git.getRemotes(true);
-      if (remotes.some(r => r.name === 'origin')) {
-        await git.remote(['set-url', 'origin', authenticatedUrl]);
+      await git.fetch(['origin']);
+    } catch (error) {
+      if (added) {
+        await gitAnchor.removeOriginRemote(anchorPath);
       }
+      const message = error instanceof Error ? error.message : String(error);
+      const lower = message.toLowerCase();
+
+      if (
+        lower.includes('repository not found') ||
+        lower.includes('does not appear to be a git repository')
+      ) {
+        // Publish(init) flow — githubRepo is declared before the repo
+        // exists on GitHub. Proceed with the local ladder.
+        return { originReady: false, branchBase };
+      }
+      if (!added) {
+        // Origin pre-existed (cloned/converged earlier) — a transient fetch
+        // failure must not block feature creation. Proceed on the stale
+        // remote-tracking refs when they exist; tracking set from a stale
+        // tip heals on the next pull.
+        const hasStaleRefs = await gitAnchor.hasAnyRemoteTrackingRef(anchorPath);
+        logger.warn(`Origin fetch failed — proceeding with stale remote refs`, {
+          component: 'WorktreeService',
+          projectId
+        }, { error: message, hasStaleRefs });
+        return { originReady: hasStaleRefs, branchBase };
+      }
+      if (await this.hasAnyCommit(git)) {
+        // Anchor has history — creation can fork the local base; a stale
+        // remote check only degrades tracking, not correctness.
+        logger.warn(`Origin fetch failed (non-critical, anchor has history)`, {
+          component: 'WorktreeService',
+          projectId
+        }, { error: message });
+        return { originReady: false, branchBase };
+      }
+      // The no-origin→origin transition failed on an EMPTY anchor of a
+      // connected-looking project: falling through would bootstrap an orphan
+      // history permanently diverged from the remote. Fail loud instead —
+      // the error is actionable/retryable.
+      if (
+        lower.includes('authentication failed') ||
+        lower.includes('could not read from remote repository')
+      ) {
+        throw new GitAuthError(
+          `GitHub authentication failed while connecting the project repository (${githubRepo}). ` +
+            `Fix your PAT and retry creating the feature.`,
+          { cause: error }
+        );
+      }
+      throw new GitNetworkError(
+        `Could not reach the remote repository (${githubRepo}) while creating the first feature: ${message}. ` +
+          `Retry once the remote is reachable.`,
+        { cause: error }
+      );
+    }
+
+    if (added && !(await gitAnchor.hasAnyRemoteTrackingRef(anchorPath))) {
+      // Empty remote (e.g. leftover of a failed init that created the GitHub
+      // repo but rolled back origin) — not meaningfully connected. Keep the
+      // anchor unlocked so the Publish(init) retry path stays open.
+      await gitAnchor.removeOriginRemote(anchorPath);
+      return { originReady: false, branchBase };
+    }
+
+    if (added) {
+      const ctx: BranchBaseContext = { projectId, projectPath, anchorPath, userContext };
+      const converged = await applyAfterRemoteConverge(ctx);
+      logger.info(`Anchor origin converged from project config`, {
+        component: 'WorktreeService',
+        projectId
+      }, { branchBase: converged });
+      return { originReady: true, branchBase: converged };
+    }
+
+    return { originReady: true, branchBase };
+  }
+
+  private readGithubRepo(projectPath: string): string | null {
+    try {
+      const configPath = path.join(projectPath, 'config.json');
+      if (!fs.existsSync(configPath)) return null;
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      return typeof config.githubRepo === 'string' && config.githubRepo ? config.githubRepo : null;
     } catch {
-      // Non-critical
+      return null;
     }
   }
 }

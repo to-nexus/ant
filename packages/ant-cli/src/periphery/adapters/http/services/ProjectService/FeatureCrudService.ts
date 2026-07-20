@@ -173,6 +173,36 @@ export class FeatureCrudService {
         throw new Error('Feature already exists');
       }
 
+      try {
+        await this.createFeatureBody(projectId, featureName, featurePath, userContext, language, options);
+      } catch (error) {
+        // The existence guard above proves THIS call created featurePath —
+        // remove it so a retry does not hit "Feature already exists" with a
+        // half-created feature (e.g. worktree creation failed). Also prune
+        // any worktree meta the failed `git worktree add` left in the anchor,
+        // otherwise the retry's add fails with "already registered".
+        await fs.promises.rm(featurePath, { recursive: true, force: true }).catch((rmErr) => {
+          logger.warn('[FeatureCrudService.createFeature] failed-create cleanup could not remove feature dir', {
+            component: 'FeatureCrudService',
+            projectId,
+            featureName,
+          }, { featurePath, error: rmErr instanceof Error ? rmErr.message : String(rmErr) });
+        });
+        const anchorPath = this.workspaceResolver.getGitAnchorPath(userContext, projectId);
+        await WorktreeService.pruneCorruptWorktreeMeta(anchorPath).catch(() => undefined);
+        throw error;
+      }
+    });
+  }
+
+  private async createFeatureBody(
+    projectId: string,
+    featureName: string,
+    featurePath: string,
+    userContext: UserContext,
+    language?: string,
+    options?: { skipPrdTemplate?: boolean }
+  ): Promise<void> {
       // 'codebase' is managed separately (WorktreeService may replace it with a git worktree).
       // Must be created BEFORE ensureCanonicalStructure — its mkdir -p also creates featurePath.
       await fs.promises.mkdir(path.join(featurePath, 'codebase'), { recursive: true });
@@ -237,9 +267,8 @@ export class FeatureCrudService {
           featureName,
         }, { error: probeErr?.message ?? String(probeErr) });
       }
-    });
   }
-  
+
   /**
    * Delete a feature (removes worktree, branch, and feature directory).
    *

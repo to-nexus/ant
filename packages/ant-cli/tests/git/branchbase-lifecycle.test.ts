@@ -17,6 +17,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import {
   applyAfterFeatureCreate,
+  applyAfterRemoteConverge,
   applyBeforeBaseFeatureDelete,
   setBranchBaseManual,
   isBranchBaseLocked,
@@ -170,5 +171,50 @@ describe('branchBase lifecycle', () => {
     mkFeature('a');
     const names = (await listFeatureDirsByCreation(projectPath)).map((f) => f.name);
     expect(names).toEqual(['b', 'a']);
+  });
+
+  describe('applyAfterRemoteConverge', () => {
+    /** Local "remote" whose HEAD names the given default branch. */
+    function mkRemote(defaultBranch: string): string {
+      const remoteDir = path.join(projectPath, 'remote-src');
+      fs.mkdirSync(remoteDir, { recursive: true });
+      execFileSync('git', ['-C', remoteDir, 'init', '-b', defaultBranch]);
+      execFileSync('git', ['-C', remoteDir, 'config', 'user.email', 't@t']);
+      execFileSync('git', ['-C', remoteDir, 'config', 'user.name', 't']);
+      fs.writeFileSync(path.join(remoteDir, 'a.txt'), 'a');
+      execFileSync('git', ['-C', remoteDir, 'add', '.']);
+      execFileSync('git', ['-C', remoteDir, 'commit', '-m', 'c1']);
+      return remoteDir;
+    }
+
+    it('records the remote HEAD as branchBase (+ anchor HEAD) and returns it', async () => {
+      await gitAnchor.ensureAnchor({ projectId: 'p', anchorPath, branchBase: 'main', userContext: uc });
+      const remoteDir = mkRemote('master');
+      execFileSync('git', ['--git-dir', anchorPath, 'remote', 'add', 'origin', remoteDir]);
+
+      const converged = await applyAfterRemoteConverge(ctx);
+
+      expect(converged).toBe('master');
+      expect(readBranchBase(projectPath)).toBe('master');
+      expect(await gitAnchor.readHeadBranch(anchorPath)).toBe('master');
+      expect(await isBranchBaseLocked(anchorPath)).toBe(true);
+    });
+
+    it('is a no-op when the remote HEAD matches the current pointer', async () => {
+      await gitAnchor.ensureAnchor({ projectId: 'p', anchorPath, branchBase: 'main', userContext: uc });
+      const remoteDir = mkRemote('main');
+      execFileSync('git', ['--git-dir', anchorPath, 'remote', 'add', 'origin', remoteDir]);
+
+      expect(await applyAfterRemoteConverge(ctx)).toBe('main');
+      expect(readBranchBase(projectPath)).toBe('main');
+    });
+
+    it('unreachable remote: detection falls back to the anchor HEAD → pointer unchanged', async () => {
+      await gitAnchor.ensureAnchor({ projectId: 'p', anchorPath, branchBase: 'main', userContext: uc });
+      execFileSync('git', ['--git-dir', anchorPath, 'remote', 'add', 'origin', 'https://example.invalid/repo.git']);
+
+      expect(await applyAfterRemoteConverge(ctx)).toBe('main');
+      expect(readBranchBase(projectPath)).toBe('main');
+    });
   });
 });
