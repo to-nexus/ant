@@ -41,6 +41,7 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
   const { t } = useTranslation('explorer');
   const selectedProject = useStore((s) => s.selectedProject);
   const selectedFeature = useStore((s) => s.selectedFeature);
+  const features = useStore((s) => s.features);
   const snapshot = useGitSnapshot();
   const snapshotRefreshing = useGitSnapshotRefreshing();
   const op = useGitOperation();
@@ -119,6 +120,22 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
       <div className="w-full flex gap-1.5 items-center">
         <PlaceholderButton message={t('config:git.notInitialized')} />
         {menuSlot}
+      </div>
+    );
+  }
+
+  // Git connected (hasRemote) but no feature selected → every remaining git
+  // action (commit/push/pull/sync + the synced menu) is feature(worktree)-
+  // scoped. Rather than silently operating on branchBase, prompt the user to
+  // pick a feature. `menuSlot` is intentionally omitted here: the connected
+  // menu offers only feature-scoped ops, so there is nothing project-level to
+  // show. (Not-connected G0/G1 fall through to keep their onboarding CTAs.)
+  if (snapshot.hasRemote && !selectedFeature) {
+    return (
+      <div className="w-full flex gap-1.5 items-center">
+        <PlaceholderButton
+          message={t(features.length === 0 ? 'config:git.createFeatureFirst' : 'config:git.selectFeature')}
+        />
       </div>
     );
   }

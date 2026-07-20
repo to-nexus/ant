@@ -337,6 +337,8 @@
     "setupComplete": "Once both are configured, Publish will be enabled.",
     "management": "Git management",
     "notInitialized": "Git not initialized",
+    "selectFeature": "Select a feature",
+    "createFeatureFirst": "Create a feature to start",
     "configureFirst": "Configure GitHub repo first",
     "clone": "Clone",
     "cloneDesc": "Clone existing repository",

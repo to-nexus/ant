@@ -337,6 +337,8 @@
     "setupComplete": "두 항목을 모두 설정하면 Publish가 활성화됩니다.",
     "management": "Git 관리",
     "notInitialized": "Git 초기화되지 않음",
+    "selectFeature": "feature를 선택하세요",
+    "createFeatureFirst": "먼저 feature를 만드세요",
     "configureFirst": "GitHub 리포지토리를 먼저 설정하세요",
     "clone": "Clone",
     "cloneDesc": "기존 리포지토리 가져오기",
