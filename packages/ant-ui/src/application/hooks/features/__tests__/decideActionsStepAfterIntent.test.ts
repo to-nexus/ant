@@ -100,7 +100,7 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
       const slot = getConfigSlots('gen-plan')?.basis;
       const metadata = empty({
         domain: 'game',
-        basis: { gameArtTier: { concept: 'flatMinimal' } } as any,
+        basis: { gameArtTier: { concept: 'flatVector' } } as any,
       });
       expect(decideActionsStepAfterIntent(slot, metadata)).toBe('config');
     });

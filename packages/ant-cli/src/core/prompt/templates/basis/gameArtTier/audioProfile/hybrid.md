@@ -51,7 +51,7 @@ The `sfx` category stays inline; the `bgm` category is purely external.
 
 ### Concept affinity
 
-`hybrid` is concept-agnostic at the pipeline level. A concept-specific BGM (synthwave for `neonArcade`, lo-fi for `softPastel`) sits at the content layer; the profile choice is independent.
+`hybrid` is concept-agnostic at the pipeline level. A concept-specific BGM (synthwave for `neonSynth`, lo-fi for `softCozy`) sits at the content layer; the profile choice is independent.
 
 ### Blind-spot reminders
 

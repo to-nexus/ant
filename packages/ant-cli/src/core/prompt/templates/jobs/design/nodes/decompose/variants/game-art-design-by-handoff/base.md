@@ -42,6 +42,13 @@ You are decomposing game-art design work into file-authoring tasks for a **hando
 - **Tokens**: palette / silhouette / lighting / motion-tone + HUD tokens as CSS custom properties, split by concern only as far as the design warrants.
 - In-canvas motion vocabulary (sprite movement feel, particle behavior, projectile arcs) belongs to entity demos and DESIGN.md — NOT to web UI interaction rules.
 
+**Concept seed → DESIGN.md authority**: when a `gameArtTier.concept` basis block is injected above, treat it as the SEED — the starting art direction, not the final word. DESIGN.md §1 (Visual Theme & Atmosphere) and §2 (Color Palette & Roles) EXPAND and SUPERSEDE it: they carry the full, grounded direction. The flow is one-directional (seed → DESIGN.md); never restate the seed verbatim, and if the PRD and the seed conflict, the PRD-grounded DESIGN.md wins.
+
+**Art-bible completeness** — the bundle must let a downstream implementer build every visible surface. Ensure the decomposition covers:
+- **Entity art direction**: DESIGN.md states each entity family's silhouette weight, proportion, and color-role convention; the `entities/` demos realize it. Do not leave entity look to chance.
+- **Camera / perspective**: DESIGN.md notes a camera treatment consistent with `gameArtTier.perspective` (2d framing & Z-order, or 3d camera & depth) so entity and scene files agree.
+- **Atmosphere**: DESIGN.md §1 states the world's mood, and — when the game implies it — time-of-day / weather / lighting-mood so scenes read as one place.
+
 ### Available Resources
 
 | Resource | Count |

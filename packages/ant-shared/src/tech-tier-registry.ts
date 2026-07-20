@@ -234,7 +234,21 @@ export interface BasisOption {
   description?: { en: string; ko: string };
   icon?: string;
   accentColor?: string;
+  /**
+   * visualLanguage-only advisory: which theme mode(s) this design language
+   * supports. Display-only badge + a detection-prompt constraint — never a
+   * persisted field on `VisualTier`.
+   */
   supportedModes?: 'light' | 'dark' | 'both';
+  /**
+   * gameArtTier `concept`-only advisory twin of `supportedModes`: which
+   * render perspective(s) this art concept supports (a pixel style is 2d-only,
+   * a low-poly style 3d, most styles both). Display-only badge + a
+   * detection-prompt constraint + a wizard perspective-step auto-collapse when
+   * a single perspective is supported — never a persisted field on
+   * `GameArtTier`. Missing ⇒ `'both'`.
+   */
+  supportedPerspectives?: '2d' | '3d' | 'both';
 }
 
 export const STACK_OPTIONS: BasisOption[] = [

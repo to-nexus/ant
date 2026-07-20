@@ -29,7 +29,7 @@ The `expressive` motion pattern commits to **spring physics, bounce, squash-and-
 - `arcadePaddle` → `expressive` is the canonical match. Brick break + ball trail + paddle squash + screen shake are the genre's expected feedback. The Breakout / Arkanoid tradition is loud-feedback.
 - `arcadeSnake` → `expressive` is unusual. The grid-tick body advance does not benefit from spring; reserve `expressive` for the food-eat moment (entity pulse + particle burst) only.
 - `match3` → `expressive` is unusual but legal for "juicy" match-3 variants (Royal Match style). The cascade chain is amplified by overshoot + particle synergy.
-- `cardSolitaire` → `expressive` breaks the canonical `cardClassic` tone. Reserve for card-game variants that explicitly want a "magic shop" feel.
+- `cardSolitaire` → `expressive` breaks a calm card-table tone. Reserve for card-game variants that explicitly want a "magic shop" feel.
 - `slidingPuzzle` → `expressive` mismatches the genre. Reflective tile-puzzles want `static` or `subtle`.
 - `crowdRunner` → `expressive` is the canonical match for the high-feedback variant. Gate-pass overshoot, formation-explosion on heavy ops, screen shake on threshold crossings (cliff warning, terminal arrival), per-unit fire flashes — `expressive` underscores the resource accrual / loss arc the genre runs on.
 
@@ -42,7 +42,7 @@ The `expressive` motion pattern commits to **spring physics, bounce, squash-and-
 
 ### Concept affinity (guidance, not strict)
 
-`expressive` pairs naturally with `neonArcade` (Tron / synthwave glow surge on hit) and works for `flatMinimal` (juicy modern match-3 in flat tone). It mismatches `cardClassic` (the table is calm), `softPastel` (the calm tone refuses bouncy feedback), and most of `pixelRetro` (era hardware did not support spring physics; the look is deliberate retro mismatch only).
+`expressive` pairs naturally with `neonSynth` (synthwave glow surge on hit) and works for `flatVector` (juicy modern match-3 in flat tone). It mismatches `softCozy` (the calm tone refuses bouncy feedback) and most of `pixelArcade` (era hardware did not support spring physics; the look is deliberate retro mismatch only).
 
 ### Blind-spot reminders
 

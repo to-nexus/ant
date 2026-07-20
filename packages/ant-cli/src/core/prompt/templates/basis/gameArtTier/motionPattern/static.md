@@ -25,7 +25,7 @@ The `static` motion pattern commits to **discrete position changes** — entitie
 
 - `slidingPuzzle` → `static` is the canonical match. Tile-snap-to-grid IS the genre's motion language. Easing the slide breaks the genre's reflective tone.
 - `match3` → `static` is unusual. Match-3 cascades typically benefit from a `subtle` ease (the dropping tiles have inertia).
-- `cardSolitaire` → `static` works for very minimal solitaire variants; the canonical `cardClassic` tone expects `subtle` (card flip + settle).
+- `cardSolitaire` → `static` works for very minimal solitaire variants; a polished card-table tone expects `subtle` (card flip + settle).
 - `arcadePaddle` → `static` is unusual. Paddle / ball motion expects continuous physics; `static` is only reasonable for grid-bound paddle variants.
 - `arcadeSnake` → `static` is the canonical match. Grid-tick body advance IS the genre's motion language.
 - `crowdRunner` → `static` is a strong mismatch — the crowd's continuous advance and steering are the genre's motion language. Only adopt `static` for a lane-tick variant where the crowd snaps between discrete lanes per tick rather than gliding.
@@ -33,12 +33,12 @@ The `static` motion pattern commits to **discrete position changes** — entitie
 ### Code-time consequences
 
 - The scene's `update(time, delta)` reads `delta` for tick timing only — no mid-tick interpolation.
-- Positions are integers (or grid coordinates) at all times; sub-pixel rendering is forbidden (CSS `image-rendering: pixelated` if the project also uses `pixelRetro`).
+- Positions are integers (or grid coordinates) at all times; sub-pixel rendering is forbidden (CSS `image-rendering: pixelated` if the project also uses `pixelArcade`).
 - The motion budget is zero — no tween / particle / spring math runs per frame outside of the engine's housekeeping.
 
 ### Concept affinity (guidance, not strict)
 
-`static` pairs naturally with `pixelRetro` (era-faithful step animation) and `cardClassic` (calm table). It works for `flatMinimal` (stark, clean grids) but most flat-minimal projects benefit from `subtle`. `softPastel` and `neonArcade` are unusual fits — those concepts expect at least some motion to convey their tone.
+`static` pairs naturally with `pixelArcade` (era-faithful step animation). It works for `flatVector` (stark, clean grids) but most flat-vector projects benefit from `subtle`. `softCozy` and `neonSynth` are unusual fits — those concepts expect at least some motion to convey their tone.
 
 ### Blind-spot reminders
 

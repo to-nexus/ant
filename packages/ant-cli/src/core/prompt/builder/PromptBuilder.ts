@@ -24,6 +24,7 @@ import {
   TIER_KEYS,
   isTierActive,
   shouldEmitVisualTierSpatialFloor,
+  shouldEmitGameArtConcept,
   getEffectiveDomain,
   getConfigSlots,
   getRACDocuments,
@@ -246,7 +247,14 @@ export class PromptBuilder implements PromptPort {
       // the look; the floor backstops omitted spacing). Read from the RAC pool
       // (job-level), matching how `hasUi`/`uiSource` are computed in buildMessages.
       const racDocs = rac ? getRACDocuments(rac) : [];
-      const hasUiDoc = racDocs.length > 0 && new ArtifactPoolView(racDocs).uiSource() !== null;
+      const racPool = new ArtifactPoolView(racDocs);
+      const hasUiDoc = racDocs.length > 0 && racPool.uiSource() !== null;
+      // hasGameArtDoc: a game-art reference (ant-json/figma/handoff under
+      // visual/game-art/**) is already the art authority in the RAC pool. When
+      // present, the gameArtTier `concept` design-language layer steps aside
+      // (shouldEmitGameArtConcept) so it doesn't inject a competing parallel art
+      // direction. Bootstrapping a handoff (no ref yet) → false → concept seeds.
+      const hasGameArtDoc = racDocs.length > 0 && racPool.hasGameArt();
       // D27: the domain overlay is domain-driven, NOT basis-driven — it must
       // render for every includeBasis job, even when `basis` is undefined.
       // Intents whose tier slot lacks a seedable techTier (gen-plan, greenfield
@@ -256,7 +264,7 @@ export class PromptBuilder implements PromptPort {
       // strip service plans of their PRD framing too). buildBasisSection now
       // always renders the domain overlay (effectiveDomain defaults
       // undefined→service) and only iterates tiers when `basis` is present.
-      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths, slot, hasUiDoc);
+      basisSection = await this.buildBasisSection(config.basis, job, taskTechTiers, domain, basisPaths, slot, hasUiDoc, undefined, hasGameArtDoc);
     }
 
     // Dedup: remove paths already rendered in the basis section so injections
@@ -432,6 +440,7 @@ export class PromptBuilder implements PromptPort {
     slot: BasisSlotConfig | undefined,
     hasUiDoc: boolean = false,
     opts?: { skipJobDomainOverlay?: boolean },
+    hasGameArtDoc: boolean = false,
   ): Promise<string> {
     const sections: string[] = [];
     const effectiveDomain = getEffectiveDomain(domain as Domain | undefined);
@@ -486,7 +495,16 @@ export class PromptBuilder implements PromptPort {
           await this.renderVisualTier(sections, basis, job, outPaths);
           break;
         case 'gameArtTier':
-          await this.renderGameArtTier(sections, basis, job, outPaths);
+          // The `concept` aesthetic layer steps aside when a game-art reference
+          // doc is the art authority (shouldEmitGameArtConcept) — the mechanical
+          // axes (perspective + policy) always survive.
+          await this.renderGameArtTier(
+            sections,
+            basis,
+            job,
+            shouldEmitGameArtConcept(slot, effectiveDomain, { techTier: basis.techTier, hasGameArtDoc }),
+            outPaths,
+          );
           break;
       }
     }
@@ -650,6 +668,7 @@ export class PromptBuilder implements PromptPort {
     sections: string[],
     basis: Basis,
     job: string,
+    emitConcept: boolean,
     outPaths?: Set<string>,
   ): Promise<void> {
     const gat = basis.gameArtTier;
@@ -658,6 +677,9 @@ export class PromptBuilder implements PromptPort {
     if (!hasAnyAxis) return;
     await this.tryPushBasisTemplate(sections, GAME_ART_TIER_TEMPLATE_PATHS.preamble(), outPaths);
     for (const axis of GAME_ART_TIER_AXIS_KEYS) {
+      // concept is the aesthetic design-language layer — withheld when a game-art
+      // reference doc is the art authority. Mechanical axes always render.
+      if (axis === 'concept' && !emitConcept) continue;
       const value = gat[axis as keyof GameArtTier];
       if (!value) continue;
       const pathFn = GAME_ART_TIER_TEMPLATE_PATHS[axis as keyof typeof GAME_ART_TIER_TEMPLATE_PATHS];
@@ -747,7 +769,11 @@ export class PromptBuilder implements PromptPort {
    * execute which assembles prompts manually (not via build()). Returns ''
    * when no gameArtTier axis is active.
    */
-  async buildGameArtTierBasis(basis: Basis | undefined, job: string): Promise<string> {
+  async buildGameArtTierBasis(
+    basis: Basis | undefined,
+    job: string,
+    opts?: { suppressConcept?: boolean },
+  ): Promise<string> {
     const gat = basis?.gameArtTier;
     if (!gat) return '';
     const hasAnyAxis = GAME_ART_TIER_AXIS_KEYS.some(k => gat[k as keyof typeof gat]);
@@ -756,6 +782,9 @@ export class PromptBuilder implements PromptPort {
 
     await this.tryPushBasisTemplate(sections, GAME_ART_TIER_TEMPLATE_PATHS.preamble());
     for (const axis of GAME_ART_TIER_AXIS_KEYS) {
+      // concept steps aside when a game-art reference doc is the art authority
+      // (caller passes suppressConcept from pool.hasGameArt()). Mechanical axes stay.
+      if (axis === 'concept' && opts?.suppressConcept) continue;
       const value = gat[axis as keyof typeof gat];
       if (!value) continue;
       const pathFn = GAME_ART_TIER_TEMPLATE_PATHS[axis as keyof typeof GAME_ART_TIER_TEMPLATE_PATHS];

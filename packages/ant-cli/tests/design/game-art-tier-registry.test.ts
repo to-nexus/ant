@@ -29,6 +29,8 @@ import {
   GAME_ART_AUDIO_PROFILE_VARIANTS,
   GAME_ART_TIER_TEMPLATE_PATHS,
   GAME_ART_TIER_AXIS_KEYS,
+  GAME_ART_CONCEPT_OPTIONS,
+  getGameArtConceptsWithPerspectives,
 } from '@ant/shared';
 
 const TEMPLATES_ROOT = path.resolve(__dirname, '../../src/core/prompt/templates');
@@ -46,6 +48,34 @@ const VARIANT_MAP: Record<string, readonly string[]> = {
   projectilePolicy: GAME_ART_PROJECTILE_POLICY_VARIANTS,
   audioProfile: GAME_ART_AUDIO_PROFILE_VARIANTS,
 };
+
+// v10 — concept `supportedPerspectives` is the game-domain twin of
+// visualLanguage's `supportedModes`: an advisory declaration (which render
+// perspective(s) an art concept supports) surfaced as a wizard badge + a
+// detection-prompt constraint. Every concept option must declare it, and the
+// serializer must mirror `getVisualLanguagesWithModes`' `id (value)` shape.
+describe('GameArtTier: concept supportedPerspectives (supportedModes twin)', () => {
+  it('every concept option declares a valid supportedPerspectives', () => {
+    expect(GAME_ART_CONCEPT_OPTIONS.length).toBe(GAME_ART_CONCEPT_VARIANTS.length);
+    for (const opt of GAME_ART_CONCEPT_OPTIONS) {
+      expect(['2d', '3d', 'both']).toContain(opt.supportedPerspectives);
+    }
+  });
+
+  it('serializer emits `id (2d|3d|both)` for every concept', () => {
+    const serialized = getGameArtConceptsWithPerspectives();
+    for (const opt of GAME_ART_CONCEPT_OPTIONS) {
+      expect(serialized).toContain(`${opt.id} (${opt.supportedPerspectives})`);
+    }
+  });
+
+  it('covers at least one of each perspective bucket (2d-only, 3d-only, both)', () => {
+    const buckets = new Set(GAME_ART_CONCEPT_OPTIONS.map(o => o.supportedPerspectives));
+    expect(buckets.has('2d')).toBe(true);
+    expect(buckets.has('3d')).toBe(true);
+    expect(buckets.has('both')).toBe(true);
+  });
+});
 
 describe('GameArtTier: Registry → Template files exist', () => {
   it('shared preamble exists', () => {

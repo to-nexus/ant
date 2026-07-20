@@ -32,7 +32,8 @@
       "resolvedAction"
     ],
     "game-art-tier-detection": [
-      "gameArtConceptCandidates",
+      "gameArtConceptsWithPerspectives",
+      "gameArtPerspectiveCandidates",
       "resolvedAction"
     ],
     "game-art-design-policy": [],

@@ -121,7 +121,7 @@ class MainScene extends Phaser.Scene {
 }
 ```
 
-- `devicePixelRatio` is honored automatically by Phaser when `scale.mode !== Scale.NONE`. For HiDPI sharpness, leave the default; only override `scale.zoom` when the design specifies an integer-pixel aesthetic (e.g. `pixelRetro` concept).
+- `devicePixelRatio` is honored automatically by Phaser when `scale.mode !== Scale.NONE`. For HiDPI sharpness, leave the default; only override `scale.zoom` when the art direction describes a pixel-art / integer-pixel aesthetic (e.g. a `pixelArcade` / `pixelJRPG` concept).
 - `Phaser.Game.destroy(true, false)` on React unmount: the second argument MUST be `false` so the canvas DOM element is removed by Phaser (not orphaned in React's tree).
 
 ### Side-effect mitigation (R2 / R4)

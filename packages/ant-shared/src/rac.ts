@@ -128,23 +128,38 @@ export interface VisualTier {
 //   - particle / projectile motion → `particleProfile` / `projectilePolicy`
 
 /**
- * v9 (D32-revised) — 5 concepts diversified across the 6 sub-genres.
- * The concept registry is intentionally smaller than the genre registry
- * — concepts generalise across genres. `pixelRetro` carries through
- * from Phase 3; `flatMinimal` and `neonArcade` were introduced in v7's
- * pre-revision pass; `softPastel` and `cardClassic` are v8 additions
- * tuned for match3-class and cardSolitaire respectively. The `crowdRunner`
- * genre (added v9) reads naturally with `flatMinimal` / `neonArcade` /
- * `pixelRetro`. Phase 5+ widens the union when the production-asset
- * pipeline opens (dark-fantasy / three-kingdoms /
- * martial-arts / sf-fantasy etc.).
+ * v10 — genre-neutral art-style archetypes, curated to span the real
+ * game-art landscape (Champlain / Pixune / RocketBrush taxonomy:
+ * production × rendering × thematic layers) at the same breadth level as
+ * the service-UI `visualLanguage` (20 design languages). These replace the
+ * v9 5-concept genre-tinged set (`flatMinimal`/`pixelRetro`/`neonArcade`/
+ * `softPastel`/`cardClassic`), which under-represented the traditional
+ * fantasy-RPG territory (16-bit JRPG / hand-painted high-fantasy /
+ * dark-fantasy).
+ *
+ * Each concept is a single coherent NAMED style (production + theme bundled),
+ * NOT an orthogonal axis. It is a MINIMAL design guide / seed — used when
+ * bootstrapping a handoff or coding with no art reference; it yields to a
+ * real art reference (figma / ant-json / handoff) via the gameArtTier concept
+ * suppressor (`shouldEmitGameArtConcept` in tier-matrix.ts). Same standing as
+ * the service-UI concept.
+ *
+ * Fantasy-RPG coverage: `pixelJRPG` (16-bit) + `paintedFantasy` (hand-painted
+ * high-fantasy) + `darkGothic` (dark-fantasy) + `stylizedReal`
+ * (fantasy-realism).
  */
 export type GameArtConceptVariant =
-  | 'flatMinimal'
-  | 'pixelRetro'
-  | 'neonArcade'
-  | 'softPastel'
-  | 'cardClassic';
+  | 'flatVector'
+  | 'pixelArcade'
+  | 'pixelJRPG'
+  | 'paintedFantasy'
+  | 'celToon'
+  | 'handDrawnStorybook'
+  | 'lowPolyGeo'
+  | 'neonSynth'
+  | 'softCozy'
+  | 'darkGothic'
+  | 'stylizedReal';
 /**
  * Render dimension. `'2d'` → plain Phaser; `'3d'` → Phaser + the enable3d
  * extension (three.js render + ammo.js physics), which supplies code-only

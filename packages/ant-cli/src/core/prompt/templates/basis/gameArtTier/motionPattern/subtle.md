@@ -39,7 +39,7 @@ The `subtle` motion pattern commits to **ease-in-out tweens with short durations
 
 ### Concept affinity (guidance, not strict)
 
-`subtle` is the most domain-agnostic motion pattern. It pairs naturally with `flatMinimal` (modern app feel), `cardClassic` (table calmness), and `softPastel` (cozy pace). It works for `pixelRetro` only when the project explicitly mixes pixel art with smooth tweens (a stylistic choice — declare in PRD). `neonArcade` benefits more from `expressive`.
+`subtle` is the most domain-agnostic motion pattern. It pairs naturally with `flatVector` (clean modern feel) and `softCozy` (cozy pace). It works for `pixelArcade` only when the project explicitly mixes pixel art with smooth tweens (a stylistic choice — declare in PRD). `neonSynth` benefits more from `expressive`.
 
 ### Blind-spot reminders
 

@@ -30,7 +30,7 @@ The `none` particle profile commits to **zero particle emitters in the project**
 
 ### Concept affinity (guidance, not strict)
 
-`none` pairs naturally with `cardClassic` and `pixelRetro` (era-faithful, no particle systems on the original hardware). It works for `flatMinimal` and `softPastel` (calm aesthetics). `neonArcade` rarely benefits from `none` — neon visuals expect at least a glow trail.
+`none` pairs naturally with `pixelArcade` (era-faithful, no particle systems on the original hardware). It works for `flatVector` and `softCozy` (calm aesthetics). `neonSynth` rarely benefits from `none` — neon visuals expect at least a glow trail.
 
 ### Blind-spot reminders
 

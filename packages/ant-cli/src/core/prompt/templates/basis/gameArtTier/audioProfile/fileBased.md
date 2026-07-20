@@ -52,7 +52,7 @@ Each sub-genre benefits but none requires `fileBased` — `procedural` is the Ph
 
 ### Concept affinity
 
-`fileBased` is concept-agnostic at the audio-pipeline level — any concept can ship with file-based audio. Concept-specific audio (8-bit chip tunes for `pixelRetro`, synthwave BGM for `neonArcade`, lo-fi piano for `softPastel`) is a content choice, not a profile choice.
+`fileBased` is concept-agnostic at the audio-pipeline level — any concept can ship with file-based audio. Concept-specific audio (8-bit chip tunes for `pixelArcade`, synthwave BGM for `neonSynth`, lo-fi piano for `softCozy`) is a content choice, not a profile choice.
 
 ### Blind-spot reminders
 

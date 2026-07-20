@@ -55,7 +55,7 @@ The procedural format gives each sub-genre a distinct sonic signature without ex
 
 ### Concept affinity
 
-`procedural` is concept-agnostic — every concept can ship with procedural audio. The waveform choice can echo concept tone (square waves for `pixelRetro`, sine for `softPastel`, sawtooth for `neonArcade`).
+`procedural` is concept-agnostic — every concept can ship with procedural audio. The waveform choice can echo concept tone (square waves for `pixelArcade`, sine for `softCozy`, sawtooth for `neonSynth`).
 
 ### Blind-spot reminders
 

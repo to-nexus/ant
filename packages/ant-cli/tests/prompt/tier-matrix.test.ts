@@ -17,6 +17,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isTierActive,
   shouldEmitVisualTierSpatialFloor,
+  shouldEmitGameArtConcept,
   TIER_DOMAIN_MATRIX,
   TIER_KEYS,
   type TierKey,
@@ -131,6 +132,32 @@ describe('shouldEmitVisualTierSpatialFloor — layer-selective hasUiDoc survivor
     expect(
       shouldEmitVisualTierSpatialFloor({ tiers: ['techTier'] }, 'service', { hasUiDoc: true }),
     ).toBe(false);
+  });
+});
+
+// v10 game-domain twin of the hasUiDoc/visualTier suppression: when a game-art
+// reference doc is the art authority, the gameArtTier `concept` design-language
+// layer steps aside (its palette/silhouette/lighting/motion/HUD direction would
+// conflict), but the mechanical axes (perspective + policy) always survive —
+// scoped to one axis, NOT the whole tier (perspective is a load-bearing render
+// switch). Bootstrapping a handoff (no ref yet) keeps concept as the seed.
+describe('shouldEmitGameArtConcept — layer-selective hasGameArtDoc suppression', () => {
+  const slot: BasisSlotConfig = { tiers: ['gameArtTier'] };
+
+  it('emits concept when no game-art reference is present (seed a fresh handoff)', () => {
+    expect(shouldEmitGameArtConcept(slot, 'game', {})).toBe(true);
+    expect(shouldEmitGameArtConcept(slot, 'game', { hasGameArtDoc: false })).toBe(true);
+  });
+
+  it('withholds concept when a game-art reference doc is the art authority', () => {
+    expect(shouldEmitGameArtConcept(slot, 'game', { hasGameArtDoc: true })).toBe(false);
+  });
+
+  it('does NOT emit where gameArtTier is not a slot/domain option', () => {
+    // service domain — matrix forbids gameArtTier
+    expect(shouldEmitGameArtConcept(slot, 'service', {})).toBe(false);
+    // slot opts out
+    expect(shouldEmitGameArtConcept({ tiers: ['techTier'] }, 'game', {})).toBe(false);
   });
 });
 

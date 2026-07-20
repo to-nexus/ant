@@ -34,16 +34,16 @@ describe('parseDecisionTags — happy path', () => {
   });
 
   it('parses gameArtTier (concept + perspective — v8 D32-revised)', () => {
-    const r = parseDecisionTags('<gameArtTier>concept=flatMinimal,perspective=2d</gameArtTier>');
-    expect(r.parsed.gameArtTier).toEqual({ concept: 'flatMinimal', perspective: '2d' });
+    const r = parseDecisionTags('<gameArtTier>concept=flatVector,perspective=2d</gameArtTier>');
+    expect(r.parsed.gameArtTier).toEqual({ concept: 'flatVector', perspective: '2d' });
   });
 
   it('parses gameArtTier with all 7 axes (Phase 4)', () => {
     const r = parseDecisionTags(
-      '<gameArtTier>concept=neonArcade,perspective=2d,entityCatalog=standard,motionPattern=expressive,particleProfile=heavy,projectilePolicy=none,audioProfile=fileBased</gameArtTier>',
+      '<gameArtTier>concept=neonSynth,perspective=2d,entityCatalog=standard,motionPattern=expressive,particleProfile=heavy,projectilePolicy=none,audioProfile=fileBased</gameArtTier>',
     );
     expect(r.parsed.gameArtTier).toEqual({
-      concept: 'neonArcade',
+      concept: 'neonSynth',
       perspective: '2d',
       entityCatalog: 'standard',
       motionPattern: 'expressive',
@@ -78,7 +78,7 @@ describe('parseDecisionTags — happy path', () => {
   it('parses domain + gameArtTier together', () => {
     const raw = `
       <domain>game</domain>
-      <gameArtTier>concept=cardClassic,perspective=2d</gameArtTier>
+      <gameArtTier>concept=darkGothic,perspective=2d</gameArtTier>
     `;
     const r = parseDecisionTags(raw);
     expect(r.violations).toHaveLength(0);
@@ -86,7 +86,7 @@ describe('parseDecisionTags — happy path', () => {
     // (SV is service-only) — it is the one registered tag not emitted here.
     expect(r.missing).toEqual(['serviceVirtualization']);
     expect(r.parsed.domain).toBe('game');
-    expect(r.parsed.gameArtTier).toEqual({ concept: 'cardClassic', perspective: '2d' });
+    expect(r.parsed.gameArtTier).toEqual({ concept: 'darkGothic', perspective: '2d' });
   });
 
   it('IGNORES standalone <gameEngine> tag (lives inside <techTier>)', () => {
@@ -104,16 +104,16 @@ describe('parseDecisionTags — invalid bodies', () => {
   });
 
   it('drops unknown art axis silently (forward-compat)', () => {
-    const r = parseDecisionTags('<gameArtTier>unknownAxis=foo,concept=flatMinimal</gameArtTier>');
-    expect(r.parsed.gameArtTier).toEqual({ concept: 'flatMinimal' });
+    const r = parseDecisionTags('<gameArtTier>unknownAxis=foo,concept=flatVector</gameArtTier>');
+    expect(r.parsed.gameArtTier).toEqual({ concept: 'flatVector' });
   });
 
   it('drops unknown variant value silently for Phase 4 axes (forward-compat)', () => {
     const r = parseDecisionTags(
-      '<gameArtTier>concept=flatMinimal,entityCatalog=ultraRich,motionPattern=subtle</gameArtTier>',
+      '<gameArtTier>concept=flatVector,entityCatalog=ultraRich,motionPattern=subtle</gameArtTier>',
     );
     // ultraRich is not a registered entityCatalog variant — dropped.
-    expect(r.parsed.gameArtTier).toEqual({ concept: 'flatMinimal', motionPattern: 'subtle' });
+    expect(r.parsed.gameArtTier).toEqual({ concept: 'flatVector', motionPattern: 'subtle' });
   });
 
   it('records a violation when gameArtTier body has no recognised axes', () => {
@@ -140,7 +140,7 @@ describe('applyDecisionTagDefaults — graceful degrade (10.4)', () => {
     // Phase 4 default fills all 7 art axes — registry-backed conservative
     // values that work in css-only inline production.
     expect(filled.gameArtTier).toEqual({
-      concept: 'flatMinimal',
+      concept: 'flatVector',
       perspective: '2d',
       entityCatalog: 'minimal',
       motionPattern: 'static',
@@ -151,12 +151,12 @@ describe('applyDecisionTagDefaults — graceful degrade (10.4)', () => {
   });
 
   it('does not override an existing parsed value', () => {
-    const r = parseDecisionTags('<gameArtTier>concept=neonArcade,perspective=2d</gameArtTier>');
+    const r = parseDecisionTags('<gameArtTier>concept=neonSynth,perspective=2d</gameArtTier>');
     const filled = applyDecisionTagDefaults(r.parsed, ['gameArtTier']);
     // Phase 4 — defaults supplement only the axes the LLM did NOT emit.
-    // The parsed value (neonArcade / 2d) is preserved verbatim; this test
+    // The parsed value (neonSynth / 2d) is preserved verbatim; this test
     // verifies that the merge does not stomp the existing value.
-    expect(filled.gameArtTier).toEqual({ concept: 'neonArcade', perspective: '2d' });
+    expect(filled.gameArtTier).toEqual({ concept: 'neonSynth', perspective: '2d' });
   });
 });
 

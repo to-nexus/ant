@@ -97,6 +97,17 @@ export interface TierRuntimeContext {
    */
   hasUiDoc?: boolean;
   /**
+   * Game-domain twin of `hasUiDoc`: whether a game-art reference document
+   * (ant-json / figma / handoff under `visual/game-art/**`) is already in the
+   * RAC pool. When true the reference IS the art authority, so the gameArtTier
+   * `concept` design-language layer is withheld (`shouldEmitGameArtConcept`)
+   * to avoid a conflicting parallel art direction. The mechanical axes
+   * (perspective + policy axes) always survive — unlike visualTier this does
+   * NOT suppress the whole tier. When bootstrapping a handoff (no reference yet)
+   * this is false and `concept` seeds the output.
+   */
+  hasGameArtDoc?: boolean;
+  /**
    * Whether the workspace already contains a codebase (see
    * `GitSnapshot.hasCodebase` — true when `codebase/` is populated or the
    * memory-index sentinel is present). When true, BOTH techTier AND
@@ -220,6 +231,34 @@ export function shouldEmitVisualTierSpatialFloor(
   if (ctx.techTier?.stack === 'backend') return false;
   if (ctx.hasCodebase === true) return false;
   return ctx.hasUiDoc === true;
+}
+
+/**
+ * Layer-selective gate for the gameArtTier `concept` design-language layer —
+ * the game-domain twin of visualTier's `hasUiDoc` suppression, scoped to a
+ * single axis.
+ *
+ * `gameArtTier` is game-domain's single visual SSOT and its `perspective`
+ * axis is a load-bearing code render-path switch (2d vs 3d), so — unlike
+ * visualTier — we do NOT suppress the whole tier. Instead only the `concept`
+ * aesthetic layer is withheld when a game-art reference document is already
+ * the art authority (`ctx.hasGameArtDoc === true`): its palette / silhouette /
+ * lighting / motion / HUD direction would conflict with the reference. The
+ * mechanical axes (perspective + entityCatalog / motionPattern /
+ * particleProfile / projectilePolicy / audioProfile) always survive.
+ *
+ * Returns true (emit the concept layer) iff gameArtTier is a real option for
+ * this slot+domain AND no game-art reference is present. Bootstrapping a
+ * handoff (no reference yet) → emit, so `concept` seeds the output.
+ */
+export function shouldEmitGameArtConcept(
+  slot: BasisSlotConfig | undefined,
+  domain: Domain | undefined,
+  runtime?: TierRuntimeContext,
+): boolean {
+  if (!slot?.tiers?.includes('gameArtTier')) return false;
+  if (!domain || !TIER_DOMAIN_MATRIX.gameArtTier.includes(domain)) return false;
+  return (runtime ?? {}).hasGameArtDoc !== true;
 }
 
 /**

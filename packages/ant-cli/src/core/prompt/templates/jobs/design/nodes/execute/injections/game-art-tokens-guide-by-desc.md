@@ -13,18 +13,16 @@ written directive / PRD.
 ### Core Principles
 
 #### 1. Concept-derived
-The chosen `gameArtTier.concept` is the primary signal. Each concept
-variant has a canonical palette mood:
-
-| concept variant | palette mood                   | silhouette weight | lighting tone     | motion easing | natural-fit sub-genre (gentle hint, not enforced) |
-|-----------------|--------------------------------|-------------------|-------------------|---------------|---------------------------------------------------|
-| flatMinimal     | single + 1–2 accents           | medium / soft     | flat (no shadow)  | snappy        | match3, slidingPuzzle, cardSolitaire              |
-| pixelRetro      | 16-color limited (NES / GB)    | bold (pixel block)| hard-edge / step  | step          | slidingPuzzle (Sokoban), arcadeSnake              |
-| neonArcade      | dark bg + neon complementary   | thin-line (glow)  | radial neon glow  | snappy        | arcadePaddle (Tron), arcadeSnake                  |
-| softPastel      | pastel hue (#FFD8E4 / #C7E2FF) | rounded / soft    | pillowy / soft    | slow ease-out | match3 (Two Dots / Threes), cardSolitaire         |
-| cardClassic     | green felt + white face + suits| flat (suit picto) | flat shadow / flip| snappy        | cardSolitaire (Solitaire / FreeCell — primary)    |
-
-These rows are starting points — the directive may shift any axis. The "natural-fit sub-genre" column is a soft hint: no genre × concept matrix is enforced — the directive may legitimately pair any concept with any sub-genre.
+The chosen `gameArtTier.concept` is the primary signal. Its full art direction
+— palette identity, silhouette weight, lighting tone, motion easing, and HUD
+defaults — is supplied to you as the injected `<basis axis="...concept/...">`
+block above. Derive each token field from that block's corresponding dimension:
+palette prose → `palette.*`, silhouette prose → `silhouette.*`, lighting prose →
+`lighting.*`, motion prose → `motionTone.*`, HUD defaults → `hud.*`. Do NOT
+restate the concept block here — read it and translate it into the discrete
+token fields below (the concept block is the design authority; this JSON is the
+discrete authority the code job consumes). The concept block gives the starting
+mood; the directive may shift any axis.
 
 #### 2. Directive-grounded
 When the directive specifies a particular palette ("neon cyan and
@@ -116,8 +114,8 @@ canvas-only game with no HTML overlay.
 
 ### Quality Criteria
 
-1. **Concept-aligned**: every value matches the chosen concept's mood
-   table above (or a documented directive-driven shift)
+1. **Concept-aligned**: every value matches the injected concept basis
+   block (or a documented directive-driven shift)
 2. **Canonical namespace**: role colors are string hex under `palette.*`;
    N-way entity colors live only under `palette.entities.<id>` — no invented
    parallel keys, no object-valued `palette.primary`
@@ -127,7 +125,7 @@ canvas-only game with no HTML overlay.
 
 ### Workflow
 
-1. Look up the concept's row in the table above
+1. Read the injected concept basis block and extract its palette / silhouette / lighting / motion / HUD direction
 2. Enumerate the distinct entities/blocks/tiles the directive/PRD implies and
    assign each a stable `palette.entities.<id>` color (strong mutual contrast)
 3. Apply directive-specified shifts (palette overrides, etc.)
