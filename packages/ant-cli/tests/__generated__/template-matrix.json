@@ -981,6 +981,12 @@
       "manifest"
     ]
   },
+  "jobs/code/nodes/execute/injections/file-modularization": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/nodes/execute/injections/lessons": {
     "sources": [
       "auto-injection",

@@ -138,18 +138,7 @@ When Plan doesn't anticipate everything needed:
 **Ref/spec silence at realization level is yours to fill**: when the ref/spec names an outcome but omits a realization step the unit needs to be operable (an import, a provider/registration wiring, a small helper, local state), implement it from codebase conventions and report the addition — do NOT halt and do NOT emit `<done>false</done>` for realization-level silence. This license never extends to the contract axis: do NOT invent new endpoints, wire fields, env variable names, or cross-task symbols to fill a gap — surface contract gaps instead (see § Wire-format Identifier Preservation).
 
 ────────────────────────────────────────────────────────────────────────────────
-### 5. Modularization
-
-If a file becomes too large (300+ lines), you MAY split into submodules.
-
-**Rule:** Plan's entry point MUST be preserved and re-export submodules.
-
-```
-Plan: "Create [module] in [area]"
-Your modularization:
-  [area]/[module].ts      ← Entry point (re-exports)
-  [area]/[module]/*.ts    ← Submodules
-```
+{{> jobs/code/nodes/execute/injections/file-modularization}}
 
 {{> jobs/code/base/injections/persistence-schema-rule}}
 

@@ -313,8 +313,8 @@ CRITICAL:
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
 | `"ui"` | Visual **enhancement** | Enhance the visual presentation of a renderable feature's functionally-complete component (styling + whatever the enhancement requires), preserving its functional behavior. One ui task per renderable feature (visual-unit category). Always emitted when renderable features exist, even without ui-doc. Emit ZERO ui tasks when no renderable features exist (priority 650–749). See UI pairing rule in Independent Output Unit Splitting. |
-| `"test-code"` | **Tests** for implemented functionality | Author or update tests after feature/integration tasks (priority 700). See Test Generation Task section for inclusion rubric. |
-| `"doc"` | **Documentation** | Generate or update project documentation after features and tests (priority 800). See Documentation Task section. |
+| `"test-code"` | **Tests** for implemented functionality | Author or update tests after feature/integration tasks (priority 800). See Test Generation Task section for inclusion rubric. |
+| `"doc"` | **Documentation** | Generate or update project documentation after features and tests (priority 850). See Documentation Task section. |
 | `"verification"` | Final **gate** | Run install/typecheck/build/test gates across the integrated result (priority 1000). One per Tier 3/4 breakdown. See Verification Task section. |
 | `"explain"` | Read-only **explanation** | Explain mode only. Produces prose, never modifies files. See mode×tier matrix. |
 
@@ -390,7 +390,7 @@ Do NOT embed token setup in setup or ui tasks.
 
 ## Test Generation Task
 
-**Principle**: A test generation task (`type: "test-code"`, priority 700) creates or updates tests that verify implemented functionality. It runs after all feature and integration tasks, before documentation and verification.
+**Principle**: A test generation task (`type: "test-code"`, priority 800) creates or updates tests that verify implemented functionality. It runs after all feature and integration tasks, before documentation and verification.
 
 {{> jobs/code/nodes/decompose/variants/default/inclusion-rubric taskType="test-code" deliverable="tests" fromScratchRationale="A testing baseline ships with the initial build."}}
 
@@ -456,7 +456,7 @@ Do NOT embed token setup in setup or ui tasks.
 
 ## Documentation Task
 
-**Principle**: A documentation task (`type: "doc"`, priority 800) generates or updates project documentation after all feature and test generation tasks complete, observing the complete codebase.
+**Principle**: A documentation task (`type: "doc"`, priority 850) generates or updates project documentation after all feature and test generation tasks complete, observing the complete codebase.
 
 {{> jobs/code/nodes/decompose/variants/default/inclusion-rubric taskType="doc" deliverable="documentation" fromScratchRationale="Seed documentation ships with the initial build."}}
 
@@ -483,8 +483,8 @@ Do NOT embed token setup in setup or ui tasks.
 
 | Checkpoint | Strategy |
 |-----------|----------|
-| **Multiple packages/services observed** | Create one root doc task (priority 800, `parallelGroup: "doc-root"`) for project-level documentation + one doc task per package (priority 800, distinct `parallelGroup` per package) for package-scoped documentation |
-| **Single package** | Create one doc task (priority 800, `parallelGroup: "doc-root"`) covering all documentation |
+| **Multiple packages/services observed** | Create one root doc task (priority 850, `parallelGroup: "doc-root"`) for project-level documentation + one doc task per package (priority 850, distinct `parallelGroup` per package) for package-scoped documentation |
+| **Single package** | Create one doc task (priority 850, `parallelGroup: "doc-root"`) covering all documentation |
 
 **Principle**: Root documentation task covers project-wide scope (root operational docs + architecture documentation). Each package documentation task covers only that package's operational docs. This separation keeps context scoped per task and prevents token growth proportional to total project size.
 
