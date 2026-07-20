@@ -533,4 +533,6 @@ overlay enumerates them. In general, do NOT add:
 
 {{> jobs/shared/injections/reference-codebase}}
 
+{{> jobs/design/base/injections/requirement-synthesis}}
+
 {{{runtimeContext}}}

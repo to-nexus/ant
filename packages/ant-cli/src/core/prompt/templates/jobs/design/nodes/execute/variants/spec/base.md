@@ -28,7 +28,7 @@ CRITICAL: A spec without identifiers is not a spec. Generic "persistence adapter
     - YES → compress to signature + field shape + acceptance gate. The body is the code job's OUTPUT, not spec content.
     - NO → keep.
 
-**Required Content** (the artifact contract): every requirement resolves to concrete, named identifiers — file paths, symbols, entry points, configuration, data shapes, and verification gates. The domain-specific identifier guide below states exactly which identifiers your workspace's spec must record.
+**Required Content** (the artifact contract): every requirement resolves to concrete, named identifiers — file paths, symbols, entry points, configuration, data shapes, and verification gates. The domain-specific identifier guide below states exactly which identifiers your workspace's spec must record. Identifier grounding applies AFTER synthesis: first distill the directive into distinct requirements (see Requirement Synthesis below), THEN ground each surviving requirement in concrete identifiers. One requirement per directive line is NOT the goal — one requirement per distinct outcome is.
 
 {{#if specImplGuidePartial}}{{> (lookup . 'specImplGuidePartial') }}{{else}}{{> jobs/design/nodes/execute/injections/spec-impl-guide-service}}{{/if}}
 
@@ -39,7 +39,9 @@ CRITICAL: A spec without identifiers is not a spec. Generic "persistence adapter
 
 **Unverified-claim marking**: a claim you could not verify in the current workspace (an API surface of a not-yet-installed package, an external service's response shape) MUST carry a `[VERIFY: <how to confirm>]` marker naming the confirmation method (e.g. the installed package's type declarations, the live config). Assertive, unmarked statements are reserved for facts you actually observed{{#if planText}} — and facts the sealed plan records count as observed: the plan phase gathered them with these same tools, so state them assertively without re-reading and without a marker{{/if}}. The consuming code job treats a `[VERIFY]` item as an instruction to confirm before use, not as a settled fact.
 
-**Acceptance criteria are gates, not wishes**: every acceptance criterion MUST name its confirmation means — a command whose result is observed, a test name, a file/symbol whose existence is checked, or a concretely observable behavior. Criteria that no machine can check (visual quality, interaction feel) are still allowed but MUST be marked as requiring human confirmation, so the consuming verification pass can separate machine-checkable gates from human review items.
+**Acceptance criteria are gates, not wishes**: every acceptance criterion MUST name its confirmation means — a command whose result is observed, a test name, a file/symbol whose existence is checked, or a concretely observable behavior. Criteria that no machine can check (visual quality, interaction feel) are still allowed but MUST be marked as requiring human confirmation, so the consuming verification pass can separate machine-checkable gates from human review items. Each criterion that EXISTS is a gate; the SET of criteria is the synthesized distinct-outcome set, not a per-directive-line enumeration.
+
+{{> jobs/design/base/injections/requirement-synthesis}}
 
 ## Phase / Task / Verification Structure
 
