@@ -19,6 +19,7 @@
  */
 
 import { ArchitectGraphState, RECURSION_DRAIN_THRESHOLD, NO_PROGRESS_HARD_CAP } from '../state';
+import { hasRepeatedRecentFailure } from '../nodes/tool/utils/helpers';
 import { isVerificationTask } from '../tasks/verification';
 import { hooksIfActive } from '../tasks/_shared/registry';
 import { isErrorTask } from '../tasks/error';
@@ -89,10 +90,17 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // (no tool call, no done) near budget exhaustion. See the block before the
   // final `execute` fallback.
 
-  // Safety Net B: Check for repeated tool failures (all task types, R1 blind)
+  // Safety Net B: Check for repeated tool failures (all task types, R1 blind).
+  // Volume alone is not repetition — a single parallel batch of N distinct
+  // first-time failures must stay in the conversation so the next round can
+  // self-correct in-context (the failure results ARE the correction signal).
+  // Diverting on first sight tears the conversation down into a fresh retry
+  // that has never seen the failures and deterministically re-issues them
+  // (heavy-grading-folio loop). Only a failure signature the model already
+  // observed and re-issued (same command failing 2+ times) qualifies.
   const recentFailures = detectRecentToolFailures(state);
-  if (recentFailures >= 5) {
-    console.warn(`⚠️  [Router] ${recentFailures} recent tool failures detected`);
+  if (recentFailures >= 5 && hasRepeatedRecentFailure(state.commandHistory)) {
+    console.warn(`⚠️  [Router] ${recentFailures} recent tool failures detected (with repeated signature)`);
     console.warn(`   🚨 Forcing checkTaskStatus (Safety Net B)`);
     return 'checkTaskStatus';
   }

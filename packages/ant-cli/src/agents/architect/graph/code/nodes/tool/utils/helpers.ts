@@ -113,3 +113,29 @@ DO NOT run "${add.command}" again without changing something fundamental.`);
   };
 }
 
+/**
+ * True when some single command has failed 2+ times inside the retention
+ * window — the "repetition" prerequisite for executeRouter Safety Net B.
+ *
+ * A failure the LLM has not yet observed cannot count as "repeating": one
+ * parallel batch of N distinct first-time failures (e.g. 5 exploratory
+ * read_file misses) must flow back into the conversation so the model can
+ * self-correct in-context, not tear the conversation down (heavy-grading-
+ * folio: teardown on the first failure batch discarded the model's own
+ * stated correction and re-entered a byte-identical fresh attempt).
+ */
+export function hasRepeatedRecentFailure(
+  commandHistory: CommandHistoryEntry[] | undefined,
+  now: number = Date.now(),
+): boolean {
+  if (!commandHistory || commandHistory.length === 0) return false;
+  const windowStart = now - HISTORY_WINDOW_MS;
+  const seen = new Set<string>();
+  for (const h of commandHistory) {
+    if (h.success || h.timestamp <= windowStart) continue;
+    if (seen.has(h.command)) return true;
+    seen.add(h.command);
+  }
+  return false;
+}
+

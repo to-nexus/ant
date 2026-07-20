@@ -136,8 +136,14 @@ export async function observeMissingDepsForTask(state: ArchitectGraphState): Pro
 /**
  * Build retry context from enforcement history so the LLM knows what was
  * already tried and failed. Returns null when not in a retry cycle.
+ *
+ * The `state.retries > 0` gate makes this the retry-attempt memory channel:
+ * it only opens when the retry counter survives the plan re-entry boundary
+ * (single writer: plan/handleRetryEntry — a `retries: 0` clobber anywhere on
+ * that path starves this into byte-identical retry prompts; exported for the
+ * heavy-grading-folio regression test).
  */
-function buildRetryContext(state: ArchitectGraphState) {
+export function buildRetryContext(state: ArchitectGraphState) {
   if (!state.retries || state.retries === 0 || !state.enforcementHistory?.length) {
     return null;
   }

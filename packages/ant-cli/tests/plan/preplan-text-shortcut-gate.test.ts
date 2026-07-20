@@ -112,3 +112,60 @@ describe('maybePrePlannedFastPath — shortcut firing scope', () => {
     },
   );
 });
+
+describe('maybePrePlannedFastPath — retry counter single-writer contract (heavy-grading-folio)', () => {
+  // plan/handleRetryEntry is the ONLY writer of `state.retries` (bc1e45b9).
+  // prePlanned used to commit `retries: 0` on every pass, so the counter
+  // oscillated 0↔1 forever: the maxRetries terminal guard never fired, the
+  // workerGraph `retries < maxRetries` edge never closed, and execute's
+  // buildRetryContext (`retries > 0` gate) never rendered — an error task
+  // whose reads all failed re-entered execute with a byte-identical fresh
+  // prompt ~75 times over 13 minutes until the user cancelled.
+
+  it('preserves a bumped retries value instead of clobbering it to 0', async () => {
+    const task = buildTask('error', '{"task":{"id":"err"}}'.padEnd(200, ' '));
+    const state = buildState(task);
+    (state as any).retries = 2; // as bumped by handleRetryEntry
+    const result = await maybePrePlannedFastPath(
+      state,
+      { nextTask: task, isRetry: true, skipKeywordAndRAG: false, inToolLoop: false },
+      noopWorkflowExit,
+    );
+    expect(result).not.toBeNull();
+    expect((result as any).retries).toBe(2);
+  });
+
+  it('retry cycle is bounded: bump 1 → 2 → VerificationTerminalError at maxRetries', async () => {
+    const { resolvePlanEntry } = await import(
+      '../../src/agents/architect/graph/code/nodes/plan/entry'
+    );
+    const { VerificationTerminalError } = await import(
+      '../../src/agents/architect/graph/code/tasks/_shared/verify/terminal/errors'
+    );
+
+    const task = buildTask('error', '{"task":{"id":"err"}}'.padEnd(200, ' '));
+    const state: any = {
+      ...buildState(task),
+      maxRetries: 3,
+      retries: 0,
+      violations: [],
+      commandHistory: [],
+      _activePhase: 'execute',
+      _nextPlanEntry: 'retry',
+    };
+
+    for (const expected of [1, 2]) {
+      const { context } = await resolvePlanEntry(state);
+      const res = await maybePrePlannedFastPath(state, context, noopWorkflowExit);
+      expect(res).not.toBeNull();
+      expect((res as any).retries).toBe(expected);
+      // Simulate the worker cycle: commit the plan return, then the next
+      // failed attempt sets the retry entry marker again.
+      Object.assign(state, res, { _nextPlanEntry: 'retry', _activePhase: 'execute' });
+    }
+
+    // Third retry entry: bump 2 → 3 hits maxRetries → terminal, not another
+    // fresh identical attempt.
+    await expect(resolvePlanEntry(state)).rejects.toThrow(VerificationTerminalError);
+  });
+});
