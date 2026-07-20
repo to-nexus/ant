@@ -20,11 +20,13 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { GAME_ART_CONCEPT_VARIANTS, GAME_ART_CONCEPT_OPTIONS } from '@ant/shared';
 
 const TEMPLATES_ROOT = path.resolve(__dirname, '../../src/core/prompt/templates');
 
-// v9 (D32-revised) — registry-aligned variant arrays.
-const CONCEPT_VARIANTS = ['flatMinimal', 'pixelRetro', 'neonArcade', 'softPastel', 'cardClassic'];
+// v10 — registry-aligned (genre-neutral archetype set). Derived from the SSOT
+// so a concept add/rename/remove needs no edit here.
+const CONCEPT_VARIANTS = [...GAME_ART_CONCEPT_VARIANTS];
 const PERSPECTIVE_VARIANTS = ['2d'];
 // Phase 4 axes.
 const ENTITY_CATALOG_VARIANTS = ['minimal', 'standard', 'rich'];
@@ -54,13 +56,9 @@ function spec(group: string, basePath: string, variant: string, aliases: string[
 }
 
 const VARIANT_SPECS: VariantSpec[] = [
-  // v9 concepts (D32-revised) — humanized aliases.
+  // v10 concepts — humanized alias derived from the registry OPTIONS label.
   ...CONCEPT_VARIANTS.map(v => spec('gameArtTier.concept', 'basis/gameArtTier/concept', v, [
-    v === 'flatMinimal' ? 'Flat Minimal' :
-    v === 'pixelRetro' ? 'Pixel Retro' :
-    v === 'neonArcade' ? 'Neon Arcade' :
-    v === 'softPastel' ? 'Soft Pastel' :
-    v === 'cardClassic' ? 'Card Classic' : v,
+    GAME_ART_CONCEPT_OPTIONS.find(o => o.id === v)?.label.en ?? v,
   ])),
   ...PERSPECTIVE_VARIANTS.map(v => spec('gameArtTier.perspective', 'basis/gameArtTier/perspective', v)),
   // Phase 4 axis bodies.

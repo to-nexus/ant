@@ -146,7 +146,7 @@ A `"design-system"` task at priority 200 is REQUIRED to implement the visual pol
 
 GameArtTier ships 7 axes. Each axis has a registry-backed candidate set; the LLM emits a comma-separated `axis=value` list:
 
-- `concept` — overall art tone / silhouette palette. Candidates: {{{gameArtConceptCandidates}}}.
+- `concept` — overall art tone / silhouette palette. Candidates (each annotated with the render perspective(s) it supports): {{{gameArtConceptsWithPerspectives}}}. Respect the annotation — a `(2d)` concept pairs with `perspective=2d`, a `(3d)` concept with `perspective=3d`, a `(both)` concept with either.
 - `perspective` — camera / depth model. Candidates: {{{gameArtPerspectiveCandidates}}}.
 - `entityCatalog` — character / object catalog policy. Candidates: `minimal`, `standard`, `rich`.
 - `motionPattern` — sprite tween / animation policy. Candidates: `static`, `subtle`, `expressive`.
@@ -154,11 +154,11 @@ GameArtTier ships 7 axes. Each axis has a registry-backed candidate set; the LLM
 - `projectilePolicy` — projectile mechanics policy. Candidates: `none`, `simple`, `complex` (css-only scope recommends `none` / `simple`).
 - `audioProfile` — audio source policy. Candidates: `procedural`, `fileBased`, `hybrid`.
 
-Explicit values from `resolvedAction.basis.gameArtTier` are authoritative — preserve them as-is. Infer missing axes from the directive and any provided refs (e.g. "match-3 puzzle, soft pastel tone" → `concept=softPastel,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural`).
+Explicit values from `resolvedAction.basis.gameArtTier` are authoritative — preserve them as-is. Infer missing axes from the directive and any provided refs (e.g. "cozy match-3, soft pastel tone" → `concept=softCozy,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural`).
 
 Output the game-art tier in `<gameArtTier>` tags after `<techTier>` (before `<tasks>`):
 
-<gameArtTier>concept=flatMinimal,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural</gameArtTier>
+<gameArtTier>concept=flatVector,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural</gameArtTier>
 
 - The body is a comma-separated `axis=value` list — emit all 7 axes.
 - Unknown axes are silently dropped; unknown values for known axes are dropped at parse time and the slot falls back to the default-on-retry value.

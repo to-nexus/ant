@@ -37,8 +37,8 @@ describe('decompose gameArtTier perspective explicit-authority', () => {
       {
         directive: 'Build a 3D arcade game',
         gameArtTierActive: true,
-        gameArtConceptCandidates: '`flatMinimal`, `pixelRetro`, `neonArcade`',
-        // Mirrors decompose/index.ts:469-471 serialization.
+        // Mirrors decompose/index.ts serialization (perspective-annotated concepts).
+        gameArtConceptsWithPerspectives: 'flatVector (both), pixelArcade (2d), lowPolyGeo (3d)',
         gameArtPerspectiveCandidates: '`2d`, `3d`',
       },
     );
@@ -49,11 +49,11 @@ describe('decompose gameArtTier perspective explicit-authority', () => {
   });
 
   it('explicit perspective=3d wins over an LLM-emitted 2d', () => {
-    const carried: GameArtTier = { concept: 'neonArcade', perspective: '3d' };
-    const explicit: GameArtTier = { concept: 'neonArcade', perspective: '3d' };
+    const carried: GameArtTier = { concept: 'neonSynth', perspective: '3d' };
+    const explicit: GameArtTier = { concept: 'neonSynth', perspective: '3d' };
     // LLM re-emitted the whole tier with perspective=2d.
     const emitted: GameArtTier = {
-      concept: 'neonArcade',
+      concept: 'neonSynth',
       perspective: '2d',
       entityCatalog: 'standard',
     };
@@ -70,7 +70,7 @@ describe('decompose gameArtTier perspective explicit-authority', () => {
     const explicit: GameArtTier = { perspective: '3d' };
     // default-on-retry-exhaustion object (DecisionTagRegistry) — perspective 2d.
     const defaultFill: GameArtTier = {
-      concept: 'flatMinimal',
+      concept: 'flatVector',
       perspective: '2d',
       entityCatalog: 'standard',
       motionPattern: 'subtle',
@@ -82,13 +82,13 @@ describe('decompose gameArtTier perspective explicit-authority', () => {
     const merged = applyExplicitGameArtTierOverrides(carried, defaultFill, explicit);
 
     expect(merged.perspective).toBe('3d');
-    expect(merged.concept).toBe('flatMinimal');
+    expect(merged.concept).toBe('flatVector');
   });
 
   it('infer path (no explicit basis) leaves the emit in control', () => {
-    const emitted: GameArtTier = { concept: 'pixelRetro', perspective: '2d' };
+    const emitted: GameArtTier = { concept: 'pixelArcade', perspective: '2d' };
     const merged = applyExplicitGameArtTierOverrides(undefined, emitted, undefined);
     expect(merged.perspective).toBe('2d');
-    expect(merged.concept).toBe('pixelRetro');
+    expect(merged.concept).toBe('pixelArcade');
   });
 });

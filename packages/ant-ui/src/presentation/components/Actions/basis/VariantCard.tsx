@@ -191,6 +191,18 @@ export function VariantCard({ option, isSelected, onClick, tierKey, layerKey, in
               {option.description[lang] ?? option.description.en}
             </p>
           )}
+          {/* gameArtTier concept twin of visualLanguage's light/dark badge:
+              which render perspective(s) this art concept supports. */}
+          {tierKey === 'gameArtTier' && layerKey === 'concept' && option.supportedPerspectives && !isAuto && (
+            <span
+              className="inline-flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+              style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}
+            >
+              {option.supportedPerspectives === 'both'
+                ? '2D · 3D'
+                : option.supportedPerspectives.toUpperCase()}
+            </span>
+          )}
         </div>
       </div>
     </motion.button>

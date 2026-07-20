@@ -91,8 +91,8 @@ const domainTagDef: DecisionTagDef<Domain> = {
 
 /**
  * gameArtTier emission body grammar:
- *   Phase 3:  `concept=flatMinimal,perspective=2d`
- *   Phase 4:  `concept=flatMinimal,perspective=2d,entityCatalog=standard,
+ *   Phase 3:  `concept=flatVector,perspective=2d`
+ *   Phase 4:  `concept=flatVector,perspective=2d,entityCatalog=standard,
  *             motionPattern=subtle,particleProfile=light,projectilePolicy=none,
  *             audioProfile=procedural`
  *
@@ -107,10 +107,10 @@ const gameArtTierTagDef: DecisionTagDef<GameArtTier> = {
   pattern: /<gameArtTier>\s*([\s\S]*?)\s*<\/gameArtTier>/i,
   // Defaults degrade to the conservative, parser-valid value for each axis
   // (D40): `perspective='2d'` (plain Phaser — the safe fallback when a 3D
-  // tag is garbled), `concept='flatMinimal'` (most domain-agnostic concept),
-  // and css-only-inline-friendly values for the remaining axes.
+  // tag is garbled), `concept='flatVector'` (most domain-agnostic concept —
+  // the safe default), and css-only-inline-friendly values for the rest.
   defaultOnRetryExhaustion: {
-    concept: 'flatMinimal',
+    concept: 'flatVector',
     perspective: '2d',
     entityCatalog: 'minimal',
     motionPattern: 'static',

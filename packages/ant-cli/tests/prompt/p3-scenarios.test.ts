@@ -10,14 +10,14 @@
  *
  * Scenario A (single-shot directive, match-3 / Phaser):
  *   gen-code-directive + workspaceConfig.domain === 'game'
- *   + basis.gameArtTier     = { concept: 'flatMinimal', perspective: '2d' } (D32-revised v9 + D30)
+ *   + basis.gameArtTier     = { concept: 'flatVector', perspective: '2d' } (D32-revised v9 + D30)
  *   + basis.techTier        = [{ stack: 'frontend', language: 'typescript',
  *                                framework: 'react', gameEngine: 'phaser' }]  (D29 single)
  *
  *   PromptBuilder MUST be able to layer:
  *     1. domain/game.md                                  — workspace identity
  *     2. jobs/code/domain/game.md                        — code-overlay
- *     3. basis/gameArtTier/concept/flatMinimal.md        — Wave 2 ledger (v9)
+ *     3. basis/gameArtTier/concept/flatVector.md        — Wave 2 ledger (v9)
  *     4. basis/gameArtTier/perspective/2d.md             — Wave 2 ledger
  *     5. basis/techTier/gameEngine/phaser.md             — Wave 1 engine
  *     6. jobs/code/basis/gameArtTier/_preamble.md        — Wave 1 css-only
@@ -68,7 +68,7 @@ describe('Phase 3 — Scenario A (single-shot directive, match-3 / Phaser)', () 
       markers: [/loop ownership/i, /scene/i, /asset import policy/i, /determinism/i],
     },
     {
-      rel: 'basis/gameArtTier/concept/flatMinimal',
+      rel: 'basis/gameArtTier/concept/flatVector',
       markers: [/palette/i, /silhouette/i],
     },
     {
@@ -250,7 +250,7 @@ describe('Phase 3 — Scenario B (3+1 chain: plan → sys-fe → ui+art design �
 // Scenario C upgrades Scenario A:
 //   gen-code-sys + workspaceConfig.domain === 'game'
 //   + basis.gameArtTier     = {
-//       concept: 'flatMinimal', perspective: '2d',
+//       concept: 'flatVector', perspective: '2d',
 //       entityCatalog: 'standard',                                          (Phase 4)
 //       motionPattern: 'subtle',                                            (Phase 4)
 //       particleProfile: 'light',                                           (Phase 4)

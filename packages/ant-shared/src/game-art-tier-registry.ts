@@ -34,21 +34,25 @@ import type { BasisOption } from './tech-tier-registry';
 // ============================================
 
 /**
- * v9 (D32-revised) — 5 concepts tuned for the design-time inline-payload
- * ceiling and the 6 sub-genres registered by D31-revised v9. The concept
- * registry is intentionally smaller than the genre registry — concepts
- * generalise across genres (a `flatMinimal` look fits `match3` /
- * `arcadePaddle` / `crowdRunner` alike). `pixelRetro` is the only concept
- * carried over from Phase 3; the rest are post-v7 (`flatMinimal` /
- * `neonArcade`) plus v8 additions (`softPastel` / `cardClassic`). Phase
- * 5+ widens the union when production assets are authored.
+ * v10 — genre-neutral art-style archetypes spanning the real game-art
+ * taxonomy (production × rendering × thematic) at UI-`visualLanguage`-level
+ * breadth. Replaces the v9 genre-tinged 5-set. Each is a single coherent
+ * named style + an advisory `supportedPerspectives` (see GAME_ART_CONCEPT_OPTIONS
+ * + getGameArtConceptsWithPerspectives). Fantasy-RPG territory is covered by
+ * pixelJRPG / paintedFantasy / darkGothic / stylizedReal.
  */
 export const GAME_ART_CONCEPT_VARIANTS: readonly GameArtConceptVariant[] = [
-  'flatMinimal',
-  'pixelRetro',
-  'neonArcade',
-  'softPastel',
-  'cardClassic',
+  'flatVector',
+  'pixelArcade',
+  'pixelJRPG',
+  'paintedFantasy',
+  'celToon',
+  'handDrawnStorybook',
+  'lowPolyGeo',
+  'neonSynth',
+  'softCozy',
+  'darkGothic',
+  'stylizedReal',
 ] as const;
 
 /**
@@ -121,12 +125,32 @@ export const GAME_ART_TIER_TEMPLATE_PATHS = {
 // ============================================
 
 export const GAME_ART_CONCEPT_OPTIONS: BasisOption[] = [
-  { id: 'flatMinimal', label: { en: 'Flat Minimal', ko: '플랫 미니멀' }, description: { en: 'Material/iOS rounded shapes, single-accent palette, no shadow', ko: 'Material/iOS 둥근 도형, 단색 + 강조 1~2 색, 무그림자' }, accentColor: 'sky' },
-  { id: 'pixelRetro', label: { en: 'Pixel Retro', ko: '픽셀 레트로' }, description: { en: '8/16-bit pixel aesthetic with limited palette', ko: '8/16비트 픽셀 미학과 제한된 팔레트' }, accentColor: 'orange' },
-  { id: 'neonArcade', label: { en: 'Neon Arcade', ko: '네온 아케이드' }, description: { en: 'Tron / synthwave — dark background with neon glow lines', ko: 'Tron / 신스웨이브 — 어두운 배경 + 네온 보색 글로우' }, accentColor: 'violet' },
-  { id: 'softPastel', label: { en: 'Soft Pastel', ko: '소프트 파스텔' }, description: { en: 'Pastel hues, pillowy gradients (Two Dots / Threes tone)', ko: '파스텔 hue, 부드러운 그라디언트 (Two Dots / Threes 톤)' }, accentColor: 'pink' },
-  { id: 'cardClassic', label: { en: 'Card Classic', ko: '클래식 카드' }, description: { en: 'Green felt + white card face + suit pictograms (Solitaire tone)', ko: '녹색 펠트 + 흰 카드 면 + suit 픽토그램 (Solitaire 톤)' }, accentColor: 'green' },
+  { id: 'flatVector', label: { en: 'Flat Vector', ko: '플랫 벡터' }, description: { en: 'Clean flat solid-fill vector shapes, minimal detail (hyper-casual / mobile)', ko: '클린 플랫 솔리드-필 벡터 도형, 최소 디테일 (하이퍼캐주얼 / 모바일)' }, accentColor: 'sky', supportedPerspectives: 'both' },
+  { id: 'pixelArcade', label: { en: 'Pixel Arcade', ko: '픽셀 아케이드' }, description: { en: '8-bit limited-palette hard-edge pixel art, stepped animation (retro arcade)', ko: '8비트 제한 팔레트 하드엣지 픽셀아트, 스텝 애니 (레트로 아케이드)' }, accentColor: 'orange', supportedPerspectives: '2d' },
+  { id: 'pixelJRPG', label: { en: 'Pixel JRPG', ko: '픽셀 JRPG' }, description: { en: '16-bit lush pixel with parallax + expressive sprites, jewel/earth palette (classic fantasy RPG)', ko: '16비트 lush 픽셀 + 패럴랙스 + 표현적 스프라이트, 주얼/어스 팔레트 (전통 판타지 RPG)' }, accentColor: 'amber', supportedPerspectives: '2d' },
+  { id: 'paintedFantasy', label: { en: 'Painted Fantasy', ko: '페인티드 판타지' }, description: { en: 'Hand-painted / illustrated high-fantasy, ornate silhouettes, dramatic light, parchment + serif HUD', ko: '핸드페인티드/일러스트 고판타지, 오네이트 실루엣, 드라마틱 광, 양피지+세리프 HUD' }, accentColor: 'yellow', supportedPerspectives: 'both' },
+  { id: 'celToon', label: { en: 'Cel Toon', ko: '셀 툰' }, description: { en: 'Bold ink outlines + flat cel fills (anime / comic / modern JRPG)', ko: '볼드 잉크 아웃라인 + 플랫 셀 필 (애니 / 코믹 / 모던 JRPG)' }, accentColor: 'red', supportedPerspectives: 'both' },
+  { id: 'handDrawnStorybook', label: { en: 'Hand-Drawn Storybook', ko: '손그림 스토리북' }, description: { en: 'Watercolor / ink hand-drawn strokes, paper texture, organic wobble (indie / storybook)', ko: '수채/잉크 손그림 스트로크, 종이 텍스처, 유기적 흔들림 (인디 / 동화)' }, accentColor: 'teal', supportedPerspectives: '2d' },
+  { id: 'lowPolyGeo', label: { en: 'Low-Poly Geometric', ko: '로우폴리 지오메트릭' }, description: { en: 'Faceted flat-shaded geometric forms (indie 3D via enable3d primitives)', ko: '패싯 플랫셰이드 지오메트릭 폼 (enable3d 프리미티브 기반 인디 3D)' }, accentColor: 'lime', supportedPerspectives: '3d' },
+  { id: 'neonSynth', label: { en: 'Neon Synth', ko: '네온 신스' }, description: { en: 'Dark ground + emissive neon glow, high contrast (arcade / cyberpunk / synthwave)', ko: '다크 그라운드 + 이미시브 네온 글로우, 고대비 (아케이드 / 사이버펑크 / 신스웨이브)' }, accentColor: 'violet', supportedPerspectives: 'both' },
+  { id: 'softCozy', label: { en: 'Soft Cozy', ko: '소프트 코지' }, description: { en: 'Pastel hues, pillowy rounded volumes, soft light (cozy / casual)', ko: '파스텔 hue, 라운드 pillowy 볼륨, 소프트 광 (코지 / 캐주얼)' }, accentColor: 'pink', supportedPerspectives: 'both' },
+  { id: 'darkGothic', label: { en: 'Dark Gothic', ko: '다크 고딕' }, description: { en: 'High-contrast desaturated, dramatic shadow, gothic ink (dark-fantasy / horror)', ko: '고대비 저채도, 드라마틱 그림자, 고딕 잉크 (다크판타지 / 호러)' }, accentColor: 'slate', supportedPerspectives: 'both' },
+  { id: 'stylizedReal', label: { en: 'Stylized Realistic', ko: '스타일라이즈드 리얼' }, description: { en: 'Semi-realistic stylized, naturalistic palette + volumetric light (fantasy-realism, primarily a handoff seed)', ko: '세미-리얼리스틱 스타일라이즈드, 자연광+볼류메트릭 (판타지-리얼리즘, 주로 핸드오프 seed)' }, accentColor: 'stone', supportedPerspectives: '3d' },
 ];
+
+/**
+ * Serializes each concept id with its supported render perspective for the
+ * decompose detection prompt — twin of visual-tier-registry's
+ * `getVisualLanguagesWithModes()`. Produces e.g.
+ * `flatVector (both), pixelArcade (2d), lowPolyGeo (3d), …`. The detection
+ * prompt uses this to constrain the LLM's `perspective` choice to what the
+ * chosen `concept` supports (a `2d`-only concept must not be rendered `3d`).
+ */
+export function getGameArtConceptsWithPerspectives(): string {
+  return GAME_ART_CONCEPT_OPTIONS
+    .map(o => `${o.id} (${o.supportedPerspectives ?? 'both'})`)
+    .join(', ');
+}
 
 export const GAME_ART_PERSPECTIVE_OPTIONS: BasisOption[] = [
   { id: '2d', label: { en: '2D', ko: '2D' }, description: { en: 'Flat 2D camera (top-down / side / iso). Plain Phaser rendering.', ko: '평면 2D 카메라 (탑다운 / 사이드 / 아이소메트릭). 일반 Phaser 렌더링.' }, accentColor: 'blue' },

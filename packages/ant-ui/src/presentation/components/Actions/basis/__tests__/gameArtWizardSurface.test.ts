@@ -70,7 +70,7 @@ describe('D50 — Game-art wizard surface (concept + perspective only)', () => {
     // compile if any of the 5 asset axes were still required keys. The
     // runtime check enumerates the keys we DID pick to confirm.
     const sel: BasisWizardState['selections']['gameArtTier'] = {
-      concept: 'flatMinimal',
+      concept: 'flatVector',
       perspective: '2d',
     };
     expect(Object.keys(sel).sort()).toEqual(['concept', 'perspective']);

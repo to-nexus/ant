@@ -20,10 +20,10 @@ import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import { CacheableContent, MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { DesignTask } from '../../../../../types/task';
-import { designDirOf, ARTIFACT_PREFIX } from '@ant/shared';
+import { designDirOf, ARTIFACT_PREFIX, getRACDocuments } from '@ant/shared';
 import type { ResolvedArtifact } from '@ant/shared';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
-import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
+import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { extractLastSectionKey } from '../../../_shared/anchor';
 
@@ -248,7 +248,19 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
   }
 
   // Game-domain peer of buildVisualTierBasis — visualTier is inactive for game.
-  const gameArtTierBasis = await promptBuilder.buildGameArtTierBasis(state.resolvedAction?.basis, 'design');
+  // The `concept` aesthetic layer seeds a fresh handoff (gen-game-art-desc) but
+  // steps aside when a game-art reference (figma / ant-json / existing handoff)
+  // is already the art authority in the RAC — read from the RAC inputs
+  // (resolvedAction.refs ∪ context), NOT the mutated pool, so a producer's own
+  // mid-job self-output never triggers suppression.
+  const racGameArtDoc = state.resolvedAction
+    ? new ArtifactPoolView(getRACDocuments(state.resolvedAction)).hasGameArt()
+    : false;
+  const gameArtTierBasis = await promptBuilder.buildGameArtTierBasis(
+    state.resolvedAction?.basis,
+    'design',
+    { suppressConcept: racGameArtDoc },
+  );
   const finalTemplate = gameArtTierBasis ? `${gameArtTierBasis}\n\n${template}` : template;
 
   const jobId = state.jobId || state._httpJobId || 'unknown';

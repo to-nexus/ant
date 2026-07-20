@@ -16,7 +16,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, basePriorityFor } from "../../state";
 import { renderPriorityBandGuide } from "../../state.priorityGuide";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, applyExplicitGameArtTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, applyExplicitGameArtTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -465,6 +465,12 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       : undefined,
     gameArtConceptCandidates: _gameArtTierEnabled
       ? GAME_ART_CONCEPT_VARIANTS.map((v: string) => `\`${v}\``).join(', ')
+      : undefined,
+    // Concept ids annotated with the render perspective(s) each supports —
+    // used by the game-art-tier-detection partial to constrain the perspective
+    // pick to what the chosen concept supports.
+    gameArtConceptsWithPerspectives: _gameArtTierEnabled
+      ? getGameArtConceptsWithPerspectives()
       : undefined,
     gameArtPerspectiveCandidates: _gameArtTierEnabled
       ? GAME_ART_PERSPECTIVE_VARIANTS.map((v: string) => `\`${v}\``).join(', ')

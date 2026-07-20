@@ -26,7 +26,7 @@ import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
@@ -132,6 +132,11 @@ export async function decomposeGameArtDesign(
           .join('\n')
       : undefined,
     gameArtConceptCandidates: GAME_ART_CONCEPT_VARIANTS.map((v: string) => `\`${v}\``).join(', '),
+    // Concept ids annotated with supported perspective(s) + the perspective
+    // candidate list — the game-art-tier-detection partial uses both to
+    // constrain the perspective pick to the chosen concept's support.
+    gameArtConceptsWithPerspectives: getGameArtConceptsWithPerspectives(),
+    gameArtPerspectiveCandidates: GAME_ART_PERSPECTIVE_VARIANTS.map((v: string) => `\`${v}\``).join(', '),
     resolvedAction: state.resolvedAction,
   });
 

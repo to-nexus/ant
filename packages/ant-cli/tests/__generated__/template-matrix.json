@@ -39,27 +39,57 @@
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/cardClassic": {
+  "basis/gameArtTier/concept/celToon": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/flatMinimal": {
+  "basis/gameArtTier/concept/darkGothic": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/neonArcade": {
+  "basis/gameArtTier/concept/flatVector": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/pixelRetro": {
+  "basis/gameArtTier/concept/handDrawnStorybook": {
     "sources": [
       "basis-registry"
     ]
   },
-  "basis/gameArtTier/concept/softPastel": {
+  "basis/gameArtTier/concept/lowPolyGeo": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/neonSynth": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/paintedFantasy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/pixelArcade": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/pixelJRPG": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/softCozy": {
+    "sources": [
+      "basis-registry"
+    ]
+  },
+  "basis/gameArtTier/concept/stylizedReal": {
     "sources": [
       "basis-registry"
     ]

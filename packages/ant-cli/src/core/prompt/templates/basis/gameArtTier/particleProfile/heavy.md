@@ -40,7 +40,7 @@ The `effects` category in `game-art-spec.json` then references multiple ids per 
 - `match3` → `heavy` is unusual but legal for "Royal Match"-style juicy match-3. Cascading match clears stack debris + confetti + ambient sparkle.
 - `arcadeSnake` → `heavy` is unusual. Snake's clean Tron-grid aesthetic rarely benefits; reserve for "Slither.io"-style variants where leaderboard / boss interactions justify big VFX.
 - `slidingPuzzle` → `heavy` mismatches the genre. Reflective tile-puzzles want quiet feedback.
-- `cardSolitaire` → `heavy` mismatches the canonical `cardClassic` tone. Reserve for arcade-card hybrids ("Solitaire with magic").
+- `cardSolitaire` → `heavy` mismatches a calm card-table tone. Reserve for arcade-card hybrids ("Solitaire with magic").
 - `crowdRunner` → `heavy` is reachable for projects that commit continuous bullet trails, ambient course-edge effects, formation-explosion on heavy ops, and big terminal / boss telegraphs. Default `crowdRunner` fits `light`; `heavy` is opt-in for ambitious feedback.
 
 ### Code-time consequences
@@ -51,7 +51,7 @@ The `effects` category in `game-art-spec.json` then references multiple ids per 
 
 ### Concept affinity (guidance, not strict)
 
-`heavy` pairs naturally with `neonArcade` (Tron explosion grids, ambient neon dust, scanline overlays driven by particles). It works for `flatMinimal` only when the project explicitly leans into "juicy" feedback (Royal Match-style); otherwise downgrade. `pixelRetro` rarely supports `heavy` — era-faithful retro lacks the hardware tradition for it (only stylized retro that amplifies the era is acceptable). `softPastel` and `cardClassic` mismatch.
+`heavy` pairs naturally with `neonSynth` (Tron explosion grids, ambient neon dust, scanline overlays driven by particles). It works for `flatVector` only when the project explicitly leans into "juicy" feedback (Royal Match-style); otherwise downgrade. `pixelArcade` rarely supports `heavy` — era-faithful retro lacks the hardware tradition for it (only stylized retro that amplifies the era is acceptable). `softCozy` mismatches (its calm tone refuses heavy bursts).
 
 ### Blind-spot reminders
 

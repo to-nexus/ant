@@ -34,7 +34,7 @@ For Phase 5+ super-categories (bullet-hell / RPG-with-spells — legacy / archiv
 
 ### Concept affinity
 
-`complex` is largely concept-agnostic; whichever concept the project commits, the projectile system itself becomes the dominant visual language during play. `neonArcade` is the most natural fit for the Phase 5+ shooter / bullet-hell projects that would actually benefit.
+`complex` is largely concept-agnostic; whichever concept the project commits, the projectile system itself becomes the dominant visual language during play. `neonSynth` is the most natural fit for the Phase 5+ shooter / bullet-hell projects that would actually benefit.
 
 ### Blind-spot reminders
 

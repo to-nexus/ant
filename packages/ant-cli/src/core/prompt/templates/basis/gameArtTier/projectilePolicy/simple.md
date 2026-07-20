@@ -49,7 +49,7 @@ The `projectiles` category in `game-art-spec.json` records the per-projectile be
 
 ### Concept affinity (guidance, not strict)
 
-`simple` pairs naturally with `neonArcade` (a glowing energy bolt is its canonical projectile), `pixelRetro` (8-bit shoot-em-up bullet), and `flatMinimal` (a clean arrow shape). `softPastel` and `cardClassic` mismatch — projectile mechanics fight those concepts' calm tones.
+`simple` pairs naturally with `neonSynth` (a glowing energy bolt is its canonical projectile), `pixelArcade` (8-bit shoot-em-up bullet), and `flatVector` (a clean arrow shape). `softCozy` mismatches — projectile mechanics fight its calm tone.
 
 ### Blind-spot reminders
 

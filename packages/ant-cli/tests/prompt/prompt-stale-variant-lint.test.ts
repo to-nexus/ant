@@ -54,7 +54,14 @@ import * as path from 'node:path';
 // Deprecated vocabulary (kept in sync with rac.ts unions + registry arrays)
 // ============================================
 
-const DEPRECATED_CONCEPT = ['modernCasual', 'sfFantasy', 'darkFantasy', 'threeKingdoms', 'martialArts'] as const;
+const DEPRECATED_CONCEPT = [
+  // v7 pre-revision names
+  'modernCasual', 'sfFantasy', 'darkFantasy', 'threeKingdoms', 'martialArts',
+  // v9 genre-tinged 5-set, retired in v10 in favor of genre-neutral archetypes
+  // (flatVector / pixelArcade / pixelJRPG / paintedFantasy / celToon /
+  // handDrawnStorybook / lowPolyGeo / neonSynth / softCozy / darkGothic / stylizedReal)
+  'flatMinimal', 'pixelRetro', 'neonArcade', 'softPastel', 'cardClassic',
+] as const;
 const DEPRECATED_GENRE = ['puzzle', 'casual', 'arcade', 'action', 'platformer', 'shooter', 'rpg', 'strategy'] as const;
 const DEPRECATED_CORE_LOOP = ['fight', 'build', 'explore'] as const;
 // perspective is now a 2-variant registry (`['2d','3d']`) — neither is deprecated.

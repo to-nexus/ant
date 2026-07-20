@@ -155,7 +155,7 @@ describe('uiSlice — domain transition cleanup (game → service)', () => {
     store.getState().updateActionMetadata({ domain: 'game' });
     store.getState().updateActionMetadata({
       basis: {
-        gameArtTier: { concept: 'flatMinimal', perspective: '2d' },
+        gameArtTier: { concept: 'flatVector', perspective: '2d' },
         visualTier: { visualLanguage: 'modernSaas' },
       },
     });

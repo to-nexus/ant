@@ -110,8 +110,16 @@ function buildBasisFromSelections(
   // explicit basis intentionally leaves them unset so the registry
   // candidate set drives the choice.
   const gat: Partial<GameArtTier> = {};
-  if (isReal(selections.gameArtTier.concept)) gat.concept = selections.gameArtTier.concept as any;
-  if (isReal(selections.gameArtTier.perspective)) gat.perspective = selections.gameArtTier.perspective as any;
+  if (isReal(selections.gameArtTier.concept)) {
+    gat.concept = selections.gameArtTier.concept as any;
+    // A single-perspective concept forces its perspective (the wizard step
+    // auto-collapsed) — twin of a dark-only visualLanguage implying dark tokens.
+    const sp = GAME_ART_CONCEPT_OPTIONS.find(o => o.id === selections.gameArtTier.concept)?.supportedPerspectives;
+    if (sp === '2d' || sp === '3d') gat.perspective = sp;
+  }
+  if (!gat.perspective && isReal(selections.gameArtTier.perspective)) {
+    gat.perspective = selections.gameArtTier.perspective as any;
+  }
 
   const ds = selections.visualTier.designSystem;
   const basis = buildBasisPreset({
@@ -176,8 +184,26 @@ function computeVisualSteps(
   return steps;
 }
 
-function computeGameArtSteps(hasGameArtTier: boolean): WizardStepDef[] {
-  return hasGameArtTier ? [...GAME_ART_STEPS] : [];
+/** The render perspective(s) a concept supports (twin of visualLanguage's supportedModes). */
+function conceptSupportedPerspectives(
+  conceptId: string | undefined,
+): '2d' | '3d' | 'both' | undefined {
+  if (!conceptId || !isReal(conceptId)) return undefined;
+  return GAME_ART_CONCEPT_OPTIONS.find(o => o.id === conceptId)?.supportedPerspectives;
+}
+
+function computeGameArtSteps(
+  selections: BasisWizardState['selections'],
+  hasGameArtTier: boolean,
+): WizardStepDef[] {
+  if (!hasGameArtTier) return [];
+  // concept is always asked; the perspective step auto-collapses when the chosen
+  // concept supports only one perspective (its value is forced in
+  // buildBasisFromSelections). Shown while concept is unset/Auto or supports both.
+  const steps: WizardStepDef[] = [GAME_ART_STEPS[0]];
+  const sp = conceptSupportedPerspectives(selections.gameArtTier.concept);
+  if (!sp || sp === 'both') steps.push(GAME_ART_STEPS[1]);
+  return steps;
 }
 
 function getSelectionValue(sel: BasisWizardState['selections'], step: WizardStepDef): string | undefined {
@@ -325,8 +351,8 @@ export function useBasisWizard(
   );
 
   const gameArtSteps = useMemo(
-    () => computeGameArtSteps(hasGameArtTier),
-    [hasGameArtTier],
+    () => computeGameArtSteps(state.selections, hasGameArtTier),
+    [state.selections, hasGameArtTier],
   );
 
   const activeSteps = useMemo<WizardStepDef[]>(() => {
@@ -494,7 +520,7 @@ export function useBasisWizard(
           newActiveSteps = computeVisualSteps(next.selections, hasVisualTier);
           break;
         case 'gameArtTier':
-          newActiveSteps = computeGameArtSteps(hasGameArtTier);
+          newActiveSteps = computeGameArtSteps(next.selections, hasGameArtTier);
           break;
       }
 

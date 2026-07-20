@@ -41,7 +41,7 @@ Each entry is a single shape; the emitter config (count, spread, lifetime) is in
 
 ### Concept affinity (guidance, not strict)
 
-`light` pairs naturally with `flatMinimal` (single-color sparks), `softPastel` (gentle pulse), and `pixelRetro` (era-appropriate 1–4-pixel shrapnel — limited but expected). `neonArcade` benefits from `light` (neon spark on hit) and can step up to `heavy`. `cardClassic` rarely uses `light`; the table aesthetic prefers `none`.
+`light` pairs naturally with `flatVector` (single-color sparks), `softCozy` (gentle pulse), and `pixelArcade` (era-appropriate 1–4-pixel shrapnel — limited but expected). `neonSynth` benefits from `light` (neon spark on hit) and can step up to `heavy`. A calm card-table aesthetic rarely uses `light`; it prefers `none`.
 
 ### Blind-spot reminders
 

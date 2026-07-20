@@ -1057,7 +1057,7 @@ Output in this exact order:
 {{#if gameArtTierActive}}
 **{{#if needsBoundaryClassification}}3{{else}}2{{/if}}. `<gameArtTier>` tag** (game-domain art policy — see Step 1.5 above):
 
-<gameArtTier>concept=flatMinimal,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural</gameArtTier>
+<gameArtTier>concept=flatVector,perspective=2d,entityCatalog=minimal,motionPattern=subtle,particleProfile=light,projectilePolicy=none,audioProfile=procedural</gameArtTier>
 
 The body is a comma-separated `axis=value` list. Phase 4 emits all 7 axes (concept / perspective / entityCatalog / motionPattern / particleProfile / projectilePolicy / audioProfile).
 {{/if}}
