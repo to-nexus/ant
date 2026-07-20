@@ -59,7 +59,11 @@ export async function maybePrePlannedFastPath(
     ...state,
     currentTask: nextTask,
     planText: prePlanText!,
-    retries: 0,
+    // retries — handleRetryEntry is the single writer (bc1e45b9). Writing
+    // `retries: 0` here clobbered the just-bumped counter on every retry
+    // entry, defeating the maxRetries terminal guard AND the retries>0 gate
+    // on execute's buildRetryContext — the heavy-grading-folio infinite
+    // fresh-retry loop (identical failed reads, ~75 cycles).
     completedTasksDetails: state.completedTasksDetails || [],
     recursionCount: state.recursionCount,
     recursionLimit: state.recursionLimit,
