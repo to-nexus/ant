@@ -143,8 +143,11 @@ describe('handleSearchCode — cwd regression (vast-curling-perch RCA)', () => {
     const result = await handleSearchCode(makeCtx(), {
       pattern: '__definitely_not_present_anywhere__',
     });
-    expect(result.error).toMatch(/No matches found/);
-    expect(result.error).not.toMatch(/ENOENT/);
+    // A zero-match is a non-error result: the diagnostic rides in `content`,
+    // and `error` is left unset so failure-based safety nets do not count it.
+    expect(result.error).toBeUndefined();
+    expect(result.content).toMatch(/No matches found/);
+    expect(result.content).not.toMatch(/ENOENT/);
   });
 
   it('returns a structured "no matches" (never spawn ENOENT) when file_pattern targets a non-existent path', async () => {
@@ -152,8 +155,9 @@ describe('handleSearchCode — cwd regression (vast-curling-perch RCA)', () => {
       pattern: NEEDLE,
       file_pattern: 'features/nonexistent/**/*.ts',
     });
-    expect(result.error).not.toMatch(/spawn.*ENOENT/);
-    expect(result.error).toMatch(/No matches found/);
+    expect(result.error).toBeUndefined();
+    expect(result.content).not.toMatch(/spawn.*ENOENT/);
+    expect(result.content).toMatch(/No matches found/);
   });
 });
 
@@ -298,7 +302,8 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
     const result = await handleSearchCode(makeCtx(), {
       pattern: DEPS_NEEDLE,
     });
-    expect(result.error).toMatch(/No matches found/);
+    expect(result.error).toBeUndefined();
+    expect(result.content).toMatch(/No matches found/);
     expect(result.content).not.toContain('demo-lib');
   });
 
@@ -316,12 +321,15 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
     const result = await handleSearchCode(makeCtx(), {
       pattern: '__will_not_match_anywhere__',
     });
-    expect(result.error).toMatch(/No matches found/);
-    expect(result.error).toContain('[search context]');
-    expect(result.error).toContain(`cwd: ${workspacePath}`);
-    expect(result.error).toMatch(/appliedExcludes:.*node_modules/);
-    expect(result.error).toMatch(/include_dependencies: false/);
-    expect(result.error).toMatch(/deps-tree walk \(--no-ignore --hidden --follow\): false/);
+    // Zero-match diagnostics now ride in `content` (no `error`) — the [search
+    // context] block content is unchanged; only the carrying field moved.
+    expect(result.error).toBeUndefined();
+    expect(result.content).toMatch(/No matches found/);
+    expect(result.content).toContain('[search context]');
+    expect(result.content).toContain(`cwd: ${workspacePath}`);
+    expect(result.content).toMatch(/appliedExcludes:.*node_modules/);
+    expect(result.content).toMatch(/include_dependencies: false/);
+    expect(result.content).toMatch(/deps-tree walk \(--no-ignore --hidden --follow\): false/);
   });
 
   it('defect D: zero-match diagnostics show normalize correction when file_pattern was rewritten', async () => {
@@ -329,8 +337,9 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
       pattern: '__will_not_match_anywhere__',
       file_pattern: '**/*.nonexistent-extension',
     });
-    expect(result.error).toContain('file_pattern normalized');
-    expect(result.error).toContain('codebase/**/*.nonexistent-extension');
+    expect(result.error).toBeUndefined();
+    expect(result.content).toContain('file_pattern normalized');
+    expect(result.content).toContain('codebase/**/*.nonexistent-extension');
   });
 
   it('defect D: zero-match diagnostics flag auto-inferred deps mode explicitly', async () => {
@@ -338,8 +347,27 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
       pattern: '__will_not_match_anywhere__',
       file_pattern: 'codebase/apps/hub/node_modules/some-lib/**/*.js',
     });
-    expect(result.error).toMatch(/include_dependencies: true.*auto-inferred/);
-    expect(result.error).toMatch(/deps-tree walk \(--no-ignore --hidden --follow\): true/);
+    expect(result.error).toBeUndefined();
+    expect(result.content).toMatch(/include_dependencies: true.*auto-inferred/);
+    expect(result.content).toMatch(/deps-tree walk \(--no-ignore --hidden --follow\): true/);
+  });
+
+  // Failure-accounting contract: the tool node's afterBatch recorder counts a
+  // result as a `commandHistory` failure iff `result.error` is truthy. A
+  // zero-match is legitimate exploration, so it MUST NOT be a failure — this
+  // is what regressed once 97ed51c25 made commandHistory live and exploratory
+  // no-matches began exhausting exploration-heavy tasks' retry budgets. If
+  // this reverts to returning `error`, the recorder would count every
+  // exploratory miss and Safety Net B / the no-progress breaker / the
+  // dominant-failure `no_done_signal` framing would all misfire again.
+  it('a zero-match is not a tool failure for safety-net accounting (no truthy error)', async () => {
+    const result = await handleSearchCode(makeCtx(), {
+      pattern: '__will_not_match_anywhere__',
+    });
+    // The exact predicate the afterBatch recorder uses to decide "failure".
+    expect(Boolean(result.error)).toBe(false);
+    // Diagnostic is still delivered to the LLM via content (no signal lost).
+    expect(result.content).toMatch(/No matches found/);
   });
 });
 
