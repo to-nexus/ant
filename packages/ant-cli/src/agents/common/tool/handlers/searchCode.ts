@@ -308,17 +308,28 @@ export async function handleSearchCode(
     lines = lines.map(l => (l.startsWith('./') ? l.slice(2) : l));
 
     if (code === 1 || lines.length === 0) {
-      const errorMsg = formatZeroMatchMessage(pattern, args.file_pattern, plan);
-      console.error(`[searchCode] ${errorMsg.split('\n')[0]}`);
+      // A zero-match search is a legitimate, informative exploration result —
+      // NOT a tool failure. Returning `error` here made every failure-based
+      // consumer (Safety Net B `detectRecentToolFailures`, the error-flavored
+      // no-progress breaker `isAllRepeatErrorBatch`, the ≥3 same-command loop
+      // warning, and `summarizeDominantFailure`'s `no_done_signal` framing)
+      // count normal exploratory no-matches as failures — exhausting the retry
+      // budget of exploration-heavy tasks once `commandHistory` went live in
+      // 97ed51c25. The diagnostic still reaches the LLM via `content` and the
+      // UI card via `showStatus`, mirroring the sibling `searchReferenceCode`
+      // handler which already returns a no-match as content-only. The real
+      // error path (ripgrep exit 2, above) keeps `error`.
+      const zeroMatchMsg = formatZeroMatchMessage(pattern, args.file_pattern, plan);
+      console.log(`[searchCode] ${zeroMatchMsg.split('\n')[0]}`);
       await ctx.chatStatus.showStatus('searched_code', {
         pattern,
         filesCount: 0,
         totalMatches: 0,
         filesList: [],
-        error: errorMsg,
+        error: zeroMatchMsg,
         _mergeIndex: searchingIndex,
       });
-      return { content: errorMsg, error: errorMsg };
+      return { content: zeroMatchMsg };
     }
 
     let truncatedNotice = '';
