@@ -57,8 +57,9 @@ export class WorktreeService {
    * Create a worktree for a feature.
    *
    * Branch selection (branch name == feature name):
-   * 1. local branch exists            → attach
-   * 2. remote branch exists           → track origin/{name}
+   * 1. remote branch exists           → track origin/{name} (drops any shadowing
+   *                                      local head from a bare-clone import first)
+   * 2. local branch exists (no remote) → attach
    * 3. branchBase branch exists       → fork from branchBase
    * 4. any commit reachable from HEAD → fork from HEAD
    * 5. empty anchor (first feature)   → plumbing initial commit, then attach
@@ -184,18 +185,27 @@ export class WorktreeService {
     const localExists = await gitAnchor.branchExists(anchorPath, branchName);
     let bootstrappedInitialCommit = false;
 
-    if (localExists) {
-      // Branch exists locally - create worktree pointing to it
-      await git.raw(['worktree', 'add', worktreePath, branchName]);
-      logger.info(`Created worktree from existing local branch: ${branchName}`, {
+    if (remoteExists) {
+      // A matching remote branch is authoritative — the worktree must track it.
+      // `git clone --bare` imports every remote branch as a local head
+      // (refs/heads/*); such a surplus head would otherwise shadow this path and
+      // pin the worktree to the stale clone-time commit with no upstream. Drop it
+      // so the worktree is (re)created tracking origin/{name} at its current tip.
+      // Safe: at create time a local head with a remote counterpart is a
+      // bare-clone artifact — feature deletion `branch -D`s user branches.
+      if (localExists) {
+        await git.raw(['branch', '-D', branchName]);
+      }
+      await git.raw(['worktree', 'add', '--track', '-b', branchName, worktreePath, `origin/${branchName}`]);
+      logger.info(`Created worktree tracking remote branch: origin/${branchName}`, {
         component: 'WorktreeService',
         projectId,
         featureName
       });
-    } else if (remoteExists) {
-      // Remote branch exists - create worktree tracking it
-      await git.raw(['worktree', 'add', '--track', '-b', branchName, worktreePath, `origin/${branchName}`]);
-      logger.info(`Created worktree tracking remote branch: origin/${branchName}`, {
+    } else if (localExists) {
+      // Branch exists locally (no remote counterpart) - create worktree pointing to it
+      await git.raw(['worktree', 'add', worktreePath, branchName]);
+      logger.info(`Created worktree from existing local branch: ${branchName}`, {
         component: 'WorktreeService',
         projectId,
         featureName
