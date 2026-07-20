@@ -150,6 +150,7 @@
     "port-management": [],
     "backend-safety": [],
     "chunked-emission": [],
+    "file-modularization": [],
     "attestation": [],
     "test-code-task": [
       "prePlanText"

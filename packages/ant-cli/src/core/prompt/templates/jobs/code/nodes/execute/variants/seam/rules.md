@@ -54,6 +54,8 @@
 
 {{> jobs/code/nodes/execute/injections/chunked-emission}}
 
+{{> jobs/code/nodes/execute/injections/file-modularization}}
+
 ### Tool Calling (File Operations)
 
 | Tool | Purpose |
