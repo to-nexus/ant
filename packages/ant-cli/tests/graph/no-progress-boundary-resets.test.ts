@@ -39,23 +39,29 @@ describe('no-progress breaker — boundary resets (static)', () => {
       const callIndexResets = (src.match(/_executeCallIndex: 0/g) ?? []).length;
       const streakResets = (src.match(/_noProgressStreak: 0/g) ?? []).length;
       const dupFlagResets = (src.match(/_lastToolBatchAllDupReads: false/g) ?? []).length;
+      const textRingResets = (src.match(/_recentExecuteTextHashes: \[\]/g) ?? []).length;
       expect(callIndexResets).toBeGreaterThan(0);
       expect(streakResets).toBe(callIndexResets);
       expect(dupFlagResets).toBe(callIndexResets);
+      expect(textRingResets).toBe(callIndexResets);
     });
   }
 
   it('plan handleRetryEntry resets the breaker channels in BOTH mutation and delta', () => {
     const src = read('src/agents/architect/graph/code/nodes/plan/entry/resolve.ts');
     expect(src).toMatch(/state\._noProgressStreak = 0/);
+    expect(src).toMatch(/state\._recentExecuteTextHashes = \[\]/);
     expect(src).toMatch(/state\._lastToolBatchAllDupReads = false/);
     const deltaResets = (src.match(/_noProgressStreak: 0/g) ?? []).length;
     expect(deltaResets).toBeGreaterThanOrEqual(1);
+    const deltaRingResets = (src.match(/_recentExecuteTextHashes: \[\]/g) ?? []).length;
+    expect(deltaRingResets).toBeGreaterThanOrEqual(1);
   });
 
   it('worker subgraph inherits the channels via the CodeGraphChannels spread', () => {
     const graphSrc = read('src/agents/architect/graph/code/graph.ts');
     expect(graphSrc).toMatch(/_noProgressStreak:\s*Annotation/);
     expect(graphSrc).toMatch(/_lastToolBatchAllDupReads:\s*Annotation/);
+    expect(graphSrc).toMatch(/_recentExecuteTextHashes:\s*Annotation/);
   });
 });

@@ -776,6 +776,10 @@ export const CodeGraphChannels = {
         reducer: (_prev: any, next: any) => next,
         default: () => 0,
       }),
+      _recentExecuteTextHashes: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => [],
+      }),
       _detectedPackageManager: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
       _existingCodebaseFiles: Annotation<any>,
