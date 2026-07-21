@@ -117,6 +117,13 @@ export class SharedFileBuffer {
   private codebaseRel: string;
   /** Workers authorized to overwrite another worker's file (post-conflict merge) */
   private authorizedWriters = new Map<string, Set<number>>();
+  /**
+   * Paths deleted through the buffer since their last write. A tombstone
+   * guards against a stale cross-worker READ (buffered pre-delete content) or a
+   * stale-version EDIT resurrecting the file after a sibling worker deleted it.
+   * A legitimate re-creation (`isNewFile`) clears the tombstone and proceeds.
+   */
+  private deleted = new Set<string>();
 
   constructor(codebaseRel: string = 'codebase') {
     this.codebaseRel = codebaseRel;
@@ -205,6 +212,30 @@ export class SharedFileBuffer {
     return await lock.runExclusive(async () => {
       const normalized = this.normalizePath(filePath);
       const existing = this.files.get(normalized);
+
+      // 0. Tombstone check — a sibling worker deleted this path through the
+      // buffer. A create (`isNewFile`) or a fresh write with no version basis
+      // legitimately re-creates it, so lift the tombstone and continue. An
+      // edit/overwrite whose basis predates the deletion is a stale
+      // resurrection — reject so the worker re-reads and observes the file is
+      // gone instead of writing its prior content back to disk.
+      if (this.deleted.has(normalized)) {
+        if (
+          options.isNewFile ||
+          (options.expectedVersion === undefined && !options.isOverwrite)
+        ) {
+          this.deleted.delete(normalized);
+        } else {
+          return {
+            success: false,
+            stale: true,
+            error:
+              `File "${filePath}" was deleted by a sibling task since you last ` +
+              `read it. Do not re-emit its prior content; if you intend to ` +
+              `recreate it, write it as a new file.`,
+          };
+        }
+      }
 
       // 1. Version-based stale check (editFile path)
       // If expectedVersion is provided, the caller read this file before editing.
@@ -305,6 +336,34 @@ export class SharedFileBuffer {
       await delegate.writeFile(filePath, content);
 
       return { success: true };
+    });
+  }
+
+  /**
+   * Delete a file through the buffer — symmetric with `write()`.
+   *
+   * Runs under the per-file mutex so it serializes against concurrent writes,
+   * removes the on-disk file AND the buffer entry (so cross-worker `has()` /
+   * `read()` / `fileExists()` / `getAllWrittenPaths()` reflect the deletion),
+   * and records a tombstone that blocks a stale re-write from resurrecting it.
+   *
+   * Without this, `delete_file` bypassed the buffer: the entry survived, a
+   * sibling worker still read the pre-delete content, and a later write
+   * re-materialized the file which the filesystem-truth `git add '.'` commit
+   * then re-committed.
+   */
+  async delete(
+    filePath: string,
+    _workerId: number,
+    delegate: FileSystemPort,
+  ): Promise<void> {
+    const lock = this.getFileLock(filePath);
+    await lock.runExclusive(async () => {
+      const normalized = this.normalizePath(filePath);
+      await delegate.deleteFile(filePath);
+      this.files.delete(normalized);
+      this.authorizedWriters.delete(normalized);
+      this.deleted.add(normalized);
     });
   }
 

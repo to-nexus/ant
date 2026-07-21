@@ -162,7 +162,10 @@ export class WorkerFileSystem implements FileSystemPort {
   }
 
   async deleteFile(path: string): Promise<void> {
-    return this.delegate.deleteFile(path);
+    // Route through the buffer (symmetric with the write paths) so the deletion
+    // is visible cross-worker and cannot be resurrected by a stale buffered read.
+    await this.sharedBuffer.delete(path, this.workerId, this.delegate);
+    this.readVersions.delete(this.sharedBuffer.normalizePath(path));
   }
 
   async readDirectory(
