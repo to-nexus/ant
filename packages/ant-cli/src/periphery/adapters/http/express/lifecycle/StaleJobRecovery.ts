@@ -61,6 +61,7 @@ import type { JobStateTracker } from '../managers/JobStateTracker';
 import type { KanbanService } from '../../services';
 import { finalizeTerminalJob } from './finalizeTerminalJob';
 import { pauseJob } from './pauseJob';
+import { deriveResumableState } from '../../../../../core/session/resumable';
 
 const COMPONENT = 'StaleJobRecovery';
 const RECOVERY_LOCK_KEY = 'ant:lock:stale-job-recovery';
@@ -190,6 +191,56 @@ async function recoverOrphanedRunningJobs(
           { component: COMPONENT },
         );
         continue;
+      }
+
+      // Completed-session discriminator (idempotent-kazoo RCA). The graph can
+      // finish (durable `jobTiming.completedAt` written by the terminal learn
+      // node) yet get SIGTERM'd during its trailing best-effort work — before
+      // the post-graph `reportResult(true)` → `finalizeTerminalJob` seal — so
+      // Redis is stranded on `running`. Blindly stamping an interruption via
+      // `pauseJob` here would flip the durable `isJobCompleted=true` verdict to
+      // false while the queue is drained, wedging the job in an un-resumable,
+      // un-finalizable paused limbo (rich-icing-mirth). This is a missed-seal,
+      // exactly what Phase 2/3 reconcile — so finalize it `completed` instead.
+      // Consumes the SAME `deriveResumableState` verdict the resume route and
+      // KanbanService use, read through KanbanService's single file-access
+      // owner, so it cannot diverge from them.
+      try {
+        const sessionState = await deps.kanbanService?.readSessionState(
+          job.projectId,
+          job.featureName,
+          jobType,
+          job.userContext,
+        );
+        if (sessionState) {
+          const verdict = deriveResumableState(sessionState, jobType, { isActuallyRunning: false });
+          if (verdict.isJobCompleted) {
+            logger.info(
+              `Orphaned job ${job.jobId} already completed on disk (missed seal) — finalizing 'completed' instead of pausing`,
+              { component: COMPONENT, jobId: job.jobId },
+            );
+            await finalizeTerminalJob(deps, {
+              jobId: job.jobId,
+              finalStatus: 'completed',
+              projectId: job.projectId,
+              featureName: job.featureName,
+              jobType,
+              userContext: job.userContext,
+            });
+            try {
+              const bullJob = await jobQueue.getJob(job.jobId);
+              if (bullJob) await bullJob.remove();
+            } catch { /* lock likely expired already — best-effort */ }
+            continue;
+          }
+        }
+      } catch (err) {
+        // Never block the pause path on the discriminator — fall through to
+        // the existing (safe, resumable) pauseJob behavior on any read error.
+        logger.warn(
+          `Phase 1 completed-session check failed for ${job.jobId} — falling back to pause`,
+          { component: COMPONENT }, err,
+        );
       }
 
       // POISON FLAG — acquire BEFORE pauseJob so a worker child still alive on
