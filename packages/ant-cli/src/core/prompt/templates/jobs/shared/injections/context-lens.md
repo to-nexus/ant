@@ -34,7 +34,10 @@ work unless the current directive explicitly supersedes one.
 
 Structured records of older exchanges (oldest first). `constraints` quote
 the user's own wording and remain binding until explicitly superseded —
-do NOT drop them for being old.
+do NOT drop them for being old. These are condensed: when a digest or the
+rolling summary seems to omit detail the current work depends on, recall
+the original wording via the `read_state` tool with `scope: "history"`
+(if the tool is available) instead of guessing.
 
 {{#each lens.digests}}
 - outcome: {{this.digest.outcome}}

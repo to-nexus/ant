@@ -382,15 +382,15 @@ async function backfillExchangesFromChat(
 //
 // Collapse (Hard Reset only after job-context-bridge T2) is handled at
 // write time by FileSessionAdapter.appendBoundary. Compact is the
-// orthogonal safety net: when the combined user_turn + breadcrumb payload
-// crosses FEATURE_CONTEXT_THRESHOLD, the older entries from BOTH channels
-// are folded into a single MECE summary while the most recent
-// FEATURE_CONTEXT_WINDOW user_turns (and the breadcrumbs at or after the
-// window cutoff timestamp) stay intact.
-//
-// Updated by job-context-bridge T5 — breadcrumbs are no longer
-// "bounded by design": once auto boundaries are gone they can accumulate
-// indefinitely, so compact must include them.
+// orthogonal safety net: when the carry-over reservoir
+// (estimateCarryoverTokens — all channels) crosses
+// FEATURE_CONTEXT_THRESHOLD, the older entries are folded into a single
+// MECE summary while the most recent FEATURE_CONTEXT_WINDOW user_turns
+// (and the breadcrumbs/exchanges/digests at or after the window cutoff
+// timestamp) stay intact. The threshold is a fold trigger evaluated at the
+// next job's hydrate — NOT an injection cap (per-call injection is bounded
+// separately by contextProfile caps), so an over-threshold reservoir
+// between jobs is a normal state.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CHARS_PER_TOKEN = 2.8;
@@ -424,6 +424,48 @@ function estimateBreadcrumbsTokens(bcs: FeatureBreadcrumbLine[]): number {
     (sum, bc) =>
       sum + Math.ceil(formatBreadcrumbAsContent(bc).length / CHARS_PER_TOKEN),
     0,
+  );
+}
+
+function digestChars(d: LensDigestEntry): number {
+  const parts = [
+    d.digest.outcome,
+    ...d.digest.decisions,
+    ...d.digest.constraints,
+    ...(d.digest.openQuestions ?? []),
+  ];
+  return parts.reduce((sum, p) => sum + (p?.length ?? 0), 0);
+}
+
+/**
+ * Single measurement of the carry-over reservoir — the ONLY definition of
+ * "how many tokens transfer to the next job". Sums every channel (user
+ * turns, breadcrumbs, assistant finals, band-2 digests, rolling summary,
+ * constraint ledger). Both the compaction trigger and the FE gauge's
+ * GET context/estimate consume this; keeping them on one formula is what
+ * makes the gauge number and the fold threshold the same quantity.
+ */
+export function estimateCarryoverTokens(ctx: FeatureContext): number {
+  const digestTokens = (ctx.digests ?? []).reduce(
+    (sum, d) => sum + Math.ceil(digestChars(d) / CHARS_PER_TOKEN),
+    0,
+  );
+  const assistantTokens = (ctx.exchanges ?? []).reduce(
+    (sum, e) => sum + Math.ceil((e.assistantFinalText?.length ?? 0) / CHARS_PER_TOKEN),
+    0,
+  );
+  const ledgerTokens = (ctx.constraintLedger ?? []).reduce(
+    (sum, c) => sum + Math.ceil(c.length / CHARS_PER_TOKEN),
+    0,
+  );
+  const summaryTokens = Math.ceil((ctx.summary?.length ?? 0) / CHARS_PER_TOKEN);
+  return (
+    estimateTurnsTokens(ctx.userTurns) +
+    estimateBreadcrumbsTokens(ctx.breadcrumbs) +
+    assistantTokens +
+    digestTokens +
+    summaryTokens +
+    ledgerTokens
   );
 }
 
@@ -475,15 +517,7 @@ export async function compactFeatureContext(
 
   if (ctx.userTurns.length <= windowSize) return ctx;
 
-  const assistantTokens = (ctx.exchanges ?? []).reduce(
-    (sum, e) => sum + Math.ceil((e.assistantFinalText?.length ?? 0) / CHARS_PER_TOKEN),
-    0,
-  );
-  const totalTokens =
-    estimateTurnsTokens(ctx.userTurns) +
-    estimateBreadcrumbsTokens(ctx.breadcrumbs) +
-    assistantTokens;
-  if (totalTokens <= threshold) return ctx;
+  if (estimateCarryoverTokens(ctx) <= threshold) return ctx;
 
   const keptUserTurns = ctx.userTurns.slice(-windowSize);
   const oldUserTurns = ctx.userTurns.slice(0, -windowSize);

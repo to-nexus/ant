@@ -126,8 +126,9 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
         logPrefix: 'Resolve/Resume',
         // Resume path — `state.executionTier` was restored from checkpoint
         // if decompose ran on a prior turn, so the tier facade can gate
-        // compact properly. On fresh resume without prior tier the
-        // fallback produces Tier 4 (Plan) which skips LLM compaction.
+        // compact properly. On fresh resume without prior tier the fallback
+        // produces Tier 4 (Plan), whose compact strategy is the same
+        // ThresholdLLMCompact as Tiers 1-3 (only Tier 0 Reflex is a no-op).
         executionTier: getExecutionTier(state),
       },
     );

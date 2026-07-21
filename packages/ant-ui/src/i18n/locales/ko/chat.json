@@ -299,19 +299,18 @@
     }
   },
   "contextLens": {
-    "gaugeTooltipTitle": "이월 기억 (carry-over)",
-    "gaugeTooltipBody": "{{tokens}} / {{cap}} 토큰이 다음 잡으로 이월됩니다.",
-    "gaugeSemantics": "이 게이지는 다음 잡에 넘어갈 증류 기억의 크기입니다(크로스잡). 입력창 옆 링은 현재 호출 1회의 프롬프트 점유율입니다(호출당).",
     "gaugeAria": "컨텍스트 패널 열기",
+    "panelStatus": "다음 잡으로 이월: {{tokens}} / {{cap}} 토큰 (압축 기준점)",
+    "willCompact": "기준점 초과 — 다음 잡 시작 시 자동 압축",
+    "panelInfo": "이 패널은 다음 잡에 넘어갈 증류 기억(크로스잡)입니다. 기준값은 상한이 아니라 압축 기준점으로, 초과 시 다음 잡 시작 때 오래된 턴이 롤링 요약으로 접힙니다. 입력창 옆 링은 별개로, 현재 호출 1회의 프롬프트 점유율이며 이월 기억이 항상 포함됩니다.",
+    "panelInfoAria": "이월 기억 설명",
     "panelTitle": "컨텍스트 렌즈",
     "empty": "아직 이월될 기억이 없습니다 — 잡이 완료되면 기억이 쌓입니다.",
     "constraints": "상시 제약 (Standing Constraints)",
-    "constraintsEmpty": "아직 상시 제약이 없습니다. 아래 항목을 pin 하면 모든 후속 잡에 유지됩니다.",
+    "constraintsEmpty": "아직 상시 제약이 없습니다 — 잡이 끝나면 대화에서 추출된 제약이 자동으로 쌓입니다.",
     "summaryLabel": "롤링 요약 — 오래된 턴은 여기에 접힘",
     "exchanges": "최근 대화 (Recent Exchanges)",
     "digests": "이전 턴 요약 (Digests)",
-    "ephemeral": "ask",
-    "pin": "상시 제약으로 고정",
-    "pinned": "고정됨 — 모든 후속 잡에 이월"
+    "ephemeral": "ask"
   }
 }

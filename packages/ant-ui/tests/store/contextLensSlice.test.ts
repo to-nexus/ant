@@ -6,8 +6,6 @@
  *  - feature-scoped key guard: a stale response from a previous feature
  *    never overwrites the current feature's data
  *  - lens 'empty' derivation when no band content exists
- *  - pin = mutate-with-ground-truth: both cached resources patch their
- *    ledger from the POST response, no refetch
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -15,13 +13,11 @@ import { create } from 'zustand';
 
 const getContextEstimateMock = vi.fn();
 const getContextLensMock = vi.fn();
-const pinContextConstraintMock = vi.fn();
 
 vi.mock('@/infrastructure/http/api/featureLog', () => ({
   getFeatureBreadcrumbs: vi.fn(async () => []),
   getContextEstimate: (...args: unknown[]) => getContextEstimateMock(...args),
   getContextLens: (...args: unknown[]) => getContextLensMock(...args),
-  pinContextConstraint: (...args: unknown[]) => pinContextConstraintMock(...args),
   resetFeatureContext: vi.fn(),
 }));
 
@@ -47,7 +43,6 @@ const LENS = {
 beforeEach(() => {
   getContextEstimateMock.mockReset().mockResolvedValue(ESTIMATE);
   getContextLensMock.mockReset().mockResolvedValue(LENS);
-  pinContextConstraintMock.mockReset();
 });
 
 describe('loadContextEstimate', () => {
@@ -96,26 +91,6 @@ describe('loadContextLens', () => {
     await store.getState().loadContextLens('p1', 'f1');
     expect(store.getState().contextLens.status).toBe('ready');
     expect(store.getState().contextLens.data).toEqual(LENS);
-  });
-});
-
-describe('pinContextText', () => {
-  it('patches both cached resources with the server ledger (no refetch)', async () => {
-    const store = makeStore();
-    await store.getState().loadContextEstimate('p1', 'f1');
-    await store.getState().loadContextLens('p1', 'f1');
-    getContextEstimateMock.mockClear();
-    getContextLensMock.mockClear();
-
-    pinContextConstraintMock.mockResolvedValueOnce({ success: true, ledger: ['rule A', 'rule B'] });
-    await store.getState().pinContextText('p1', 'f1', 'rule B');
-
-    expect(pinContextConstraintMock).toHaveBeenCalledWith('p1', 'f1', 'rule B');
-    expect(store.getState().contextLens.data?.ledger).toEqual(['rule A', 'rule B']);
-    expect(store.getState().contextEstimate.data?.ledger).toEqual(['rule A', 'rule B']);
-    // Ground-truth from the mutation response — no GET round-trip.
-    expect(getContextEstimateMock).not.toHaveBeenCalled();
-    expect(getContextLensMock).not.toHaveBeenCalled();
   });
 });
 

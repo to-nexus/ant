@@ -58,7 +58,13 @@ export async function compactJob<T extends CompactableEntry>(
 ): Promise<CompactionResult<T>> {
   const totalTokens = estimateTokens(entries);
 
-  if (totalTokens <= config.threshold) {
+  // The threshold gate belongs to callers that hand compactJob the WHOLE
+  // conversation (planner/visual). Pre-partitioning callers
+  // (recentWindowSize <= 0, e.g. compactFeatureContext) already decided to
+  // fold against their own reservoir measurement — re-judging here with the
+  // folded-old subset silently vetoes that decision (surfaced when the
+  // feature threshold moved to 24k: reservoir over budget, old subset under).
+  if (config.recentWindowSize > 0 && totalTokens <= config.threshold) {
     return {
       entries,
       wasCompacted: false,

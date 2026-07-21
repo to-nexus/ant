@@ -1,12 +1,10 @@
 /**
  * E2-4 BE — Context Lens panel endpoints contract guard.
  *
- * GET  /context/lens — band bodies (exchanges/digests/ledger/summary) from
- *      the same buildFeatureContext assembly as /context/estimate.
- * POST /context/pin — ledger promotion: appends a NEW context_summary line
- *      that verbatim-carries the previous checkpoint and unions the pinned
- *      text into constraintLedger. Never folds live lines (epoch sentinel
- *      when no prior checkpoint exists); idempotent on duplicate text.
+ * GET /context/lens — band bodies (exchanges/digests/ledger/summary) from
+ *     the same buildFeatureContext assembly as /context/estimate.
+ * (POST /context/pin was removed — the ledger grows only via the automatic
+ * distill → compaction-union path; there is no user pin.)
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
@@ -92,66 +90,14 @@ describe('GET /context/lens', () => {
   });
 });
 
-describe('POST /context/pin', () => {
-  const pin = (text: unknown) =>
-    fetch(`${baseUrl}/projects/p1/features/f1/context/pin`, {
+describe('removed POST /context/pin', () => {
+  it('is no longer routed (user pin retired — auto distill/union only)', async () => {
+    const res = await fetch(`${baseUrl}/projects/p1/features/f1/context/pin`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text: 'anything' }),
     });
-
-  it('400 when text is missing/empty', async () => {
-    expect((await pin('')).status).toBe(400);
-    expect((await pin('   ')).status).toBe(400);
-    expect(appendContextSummaryMock).not.toHaveBeenCalled();
-  });
-
-  it('with no prior checkpoint: appends an epoch-sentinel checkpoint that folds nothing', async () => {
-    const res = await pin('always use aurora tokens');
-    expect(res.status).toBe(200);
-    expect((await res.json()).ledger).toEqual(['always use aurora tokens']);
-
-    expect(appendContextSummaryMock).toHaveBeenCalledTimes(1);
-    const line = appendContextSummaryMock.mock.calls[0][0];
-    expect(line.type).toBe('context_summary');
-    expect(line.coversThroughTs).toBe('1970-01-01T00:00:00.000Z');
-    expect(line.summary).toBe('');
-    expect(line.constraintLedger).toEqual(['always use aurora tokens']);
-  });
-
-  it('with a prior checkpoint: verbatim-carries summary/coversThroughTs and unions the ledger', async () => {
-    loadSinceBoundaryMock.mockResolvedValue({
-      userTurns: [], userTurnMetas: [], breadcrumbs: [], assistantTurns: [],
-      contextSummaries: [{
-        type: 'context_summary', ts: '2026-07-20T10:00:00.000Z', jobId: 'j1', turnId: 't1',
-        jobType: 'code', coversThroughTs: '2026-07-20T09:00:00.000Z',
-        summary: 'old summary', constraintLedger: ['existing constraint'],
-      }],
-    });
-
-    const res = await pin('new pinned rule');
-    expect(res.status).toBe(200);
-    expect((await res.json()).ledger).toEqual(['existing constraint', 'new pinned rule']);
-
-    const line = appendContextSummaryMock.mock.calls[0][0];
-    expect(line.coversThroughTs).toBe('2026-07-20T09:00:00.000Z');
-    expect(line.summary).toBe('old summary');
-    expect(line.constraintLedger).toEqual(['existing constraint', 'new pinned rule']);
-  });
-
-  it('is idempotent: duplicate text appends no new checkpoint', async () => {
-    loadSinceBoundaryMock.mockResolvedValue({
-      userTurns: [], userTurnMetas: [], breadcrumbs: [], assistantTurns: [],
-      contextSummaries: [{
-        type: 'context_summary', ts: '2026-07-20T10:00:00.000Z', jobId: 'j1', turnId: 't1',
-        jobType: 'code', coversThroughTs: '2026-07-20T09:00:00.000Z',
-        summary: 's', constraintLedger: ['already pinned'],
-      }],
-    });
-
-    const res = await pin('already pinned');
-    expect(res.status).toBe(200);
-    expect((await res.json()).ledger).toEqual(['already pinned']);
+    expect(res.status).toBe(404);
     expect(appendContextSummaryMock).not.toHaveBeenCalled();
   });
 });

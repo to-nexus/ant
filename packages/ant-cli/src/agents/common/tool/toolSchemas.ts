@@ -46,13 +46,18 @@ export const ARCHITECT_TOOLS = {
   
   read_state: {
     name: 'read_state',
-    description: "Read the LIVE run state of this job — the full description (scope/intent) and authored file manifest of tasks already completed, straight from memory (ahead of any on-disk checkpoint, so it includes a sibling that just finished). The prior-completed-files list shows only a truncated taste of each task; call this to expand one. Pass `task` (a completed task's name or id) for its full scope + files; omit `task` to list every completed task. Use it before re-deriving something a prior task already decided — especially a paired feature task's full intent.",
+    description: "Read the system's own state. scope='run' (default): the LIVE run state of this job — the full description (scope/intent) and authored file manifest of tasks already completed, straight from memory (ahead of any on-disk checkpoint, so it includes a sibling that just finished); the prior-completed-files list shows only a truncated taste of each task — call this to expand one, and use it before re-deriving something a prior task already decided. scope='history': this feature's PAST conversation originals (user requests + assistant answers from earlier jobs), including turns already folded into the rolling summary — use it when an injected digest/summary/constraint seems incomplete and the original wording matters.",
     input_schema: {
       type: 'object' as const,
       properties: {
         task: {
           type: 'string',
-          description: 'Name or id of a completed task to expand to its full scope + file manifest. Omit to list all completed tasks.',
+          description: "scope='run': name or id of a completed task to expand to its full scope + file manifest; omit to list all completed tasks. scope='history': a search text (matched against past user/assistant text) or a turn id; omit to list recent past turns.",
+        },
+        scope: {
+          type: 'string',
+          enum: ['run', 'history'],
+          description: "'run' (default) = this job's completed tasks. 'history' = this feature's past conversation originals across earlier jobs.",
         },
       },
       required: [],

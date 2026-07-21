@@ -240,8 +240,9 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
   }
 
   // Feature Context (cross-job SSOT) — load feature.jsonl, recover turnId.
-  // Plan job runs at fixed Tier 4 (Plan) so compactFeatureContext skips the
-  // LLM call (per tier facade); fallback path is conservative.
+  // No executionTier passed → unconditional compactFeatureContext path:
+  // the safety net runs whenever the carry-over reservoir exceeds
+  // FEATURE_CONTEXT_THRESHOLD (only Tier 0 Reflex opts out via NoopCompact).
   const { featureContext, turnId } = await hydrateFeatureContext(
     {
       session: state.deps?.session,

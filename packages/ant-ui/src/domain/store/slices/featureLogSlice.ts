@@ -10,7 +10,6 @@ import {
   getContextEstimate,
   getContextLens,
   getFeatureBreadcrumbs,
-  pinContextConstraint,
   resetFeatureContext as resetFeatureContextApi,
 } from '@/infrastructure/http/api/featureLog';
 
@@ -61,14 +60,8 @@ export interface FeatureLogActions {
   loadFeatureBreadcrumbs: (projectId: string, featureName: string) => Promise<void>;
   /** Refetch triggers: feature switch (useFeatureLogSync) + terminal job SSE (chatSseHandler). */
   loadContextEstimate: (projectId: string, featureName: string) => Promise<void>;
-  /** Fetched when the Context panel opens (and after a pin). */
+  /** Fetched when the Context panel opens. */
   loadContextLens: (projectId: string, featureName: string) => Promise<void>;
-  /**
-   * Pin = ledger promotion. Appends the text to the standing Constraint
-   * Ledger, then patches both cached resources with the server's ledger
-   * (mutate-with-ground-truth — no SSE round-trip needed).
-   */
-  pinContextText: (projectId: string, featureName: string, text: string) => Promise<void>;
   /**
    * Reserved hook for a future SSE push path (§2.4 live breadcrumb).
    * Currently unused — breadcrumbs are refreshed via `loadFeatureBreadcrumbs`
@@ -185,24 +178,6 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
       console.warn('[FeatureLog] context lens load failed:', error.message);
       set({ contextLens: { status: 'error', data: null, error, refreshing: false } });
     }
-  },
-
-  pinContextText: async (projectId, featureName, text) => {
-    const { ledger } = await pinContextConstraint(projectId, featureName, text);
-    // Mutate-with-ground-truth (ui-async-policy §7.5.2): patch both cached
-    // resources with the server-computed ledger instead of refetching.
-    const key = makeKey(projectId, featureName);
-    if (get().contextLensKey !== key) return;
-    const lens = get().contextLens as AsyncFields<ContextLensResponse>;
-    const estimate = get().contextEstimate as AsyncFields<ContextCarryoverEstimate>;
-    set({
-      ...(lens.data
-        ? { contextLens: { ...lens, status: 'ready', data: { ...lens.data, ledger } } }
-        : {}),
-      ...(estimate.data
-        ? { contextEstimate: { ...estimate, data: { ...estimate.data, ledger } } }
-        : {}),
-    });
   },
 
   appendFeatureBreadcrumb: (line) => {
