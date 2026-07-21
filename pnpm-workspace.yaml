@@ -61,9 +61,13 @@ overrides:
   'ip-address': '^10.1.1'
   # uuid: buf bounds check (langgraph/bullmq/dockerode transitive; direct dep also bumped).
   'uuid': '^11.1.1'
-  # brace-expansion: zero-step DoS — scope to the vulnerable 2.0.x range only,
-  # leaving 1.x consumers untouched (mirrors the minimatch@<X pattern above).
-  'brace-expansion@>=2.0.0 <2.0.3': '^2.0.3'
+  # brace-expansion: DoS — original zero-step (2.0.x) plus CVE-2026-13149
+  # exponential-time expand() (fixed 2.1.2 / 5.0.7). Scope each major to its
+  # vulnerable range only, leaving 1.x consumers untouched (mirrors minimatch@<X).
+  'brace-expansion@>=2.0.0 <2.1.2': '^2.1.2'
+  'brace-expansion@>=5.0.0 <5.0.7': '^5.0.7'
+  # js-yaml: CVE-2026-59869 DoS on malformed input (fixed 4.3.0 / 3.15.0).
+  'js-yaml@>=4.0.0 <4.3.0': '^4.3.0'
   # postcss: CSS-stringify XSS — build-time only (tailwind/vite), safe patch within 8.x.
   'postcss': '^8.5.10'
   # shell-quote: quote() newline-escape bug (concurrently dev script transitive).
