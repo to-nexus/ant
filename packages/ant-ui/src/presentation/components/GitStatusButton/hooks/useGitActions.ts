@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { GitSnapshot } from '@ant/shared';
 import {
@@ -47,13 +47,33 @@ export function useGitActions(
 
   const featureArg = selectedFeature ?? undefined;
 
+  // Commit decision modal state (E6-1). `handleCommit` opens it; the modal
+  // resolves to a user-authored or ant-authored dispatch.
+  const [commitModal, setCommitModal] = useState<{ open: boolean; files?: string[] }>({
+    open: false,
+  });
+
   const handleCommit = useMemo(
-    () => async (files?: string[]) => {
+    () => (files?: string[]) => {
       if (!selectedProject || !snapshot) return;
+      setCommitModal({ open: true, files });
+    },
+    [selectedProject, snapshot],
+  );
+
+  const closeCommitModal = useCallback(() => setCommitModal({ open: false }), []);
+
+  const dispatchCommit = useCallback(
+    async (authorMode: 'user' | 'ant', message?: string) => {
+      if (!selectedProject || !snapshot) return;
+      const files = commitModal.files;
+      setCommitModal({ open: false });
       const result = await runGitOperation(selectedProject, {
         kind: 'commit',
         feature: featureArg,
         files,
+        authorMode,
+        ...(message ? { message } : {}),
       });
       if (result.success) {
         toast.success(t('git.commitSuccess'));
@@ -62,7 +82,7 @@ export function useGitActions(
         showError(result.error?.message || t('git.commitFailed'));
       }
     },
-    [selectedProject, snapshot, featureArg, runGitOperation, showError, handleGitError, toast, t],
+    [selectedProject, snapshot, commitModal.files, featureArg, runGitOperation, showError, handleGitError, toast, t],
   );
 
   // Pure push — BE's push-variant of the `publish` operation auto-sets
@@ -185,6 +205,9 @@ export function useGitActions(
     isSyncing,
     isDiscarding,
     handleCommit,
+    commitModal,
+    closeCommitModal,
+    dispatchCommit,
     handlePush,
     handlePublishRepo,
     handlePull,

@@ -229,6 +229,67 @@ export class ChatService {
     await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
   }
 
+  /**
+   * Persist a `system_notice` assistant_message recording an ant-authored git
+   * commit (E6-F, UI transparency). Anchors to the feature's MOST-RECENT
+   * non-collapsed user_turn — a commit runs outside any job/turn, so there is
+   * no exact jobId to match (`findTurnIdForJobWithFallback` intentionally stays
+   * exact-match for other callers). If the feature has no conversation yet the
+   * notice is skipped — the toast suffices. Never throws (best-effort).
+   */
+  async appendCommitNotice(
+    projectId: string,
+    featureName: string,
+    text: string,
+    userContext?: UserContext,
+  ): Promise<void> {
+    if (!text) return;
+    const ctx = userContext ?? this.defaultUserContext;
+    const adapter = this.makeAdapter(projectId, featureName, ctx);
+    if (!adapter) return;
+
+    let turnId: string | null = null;
+    try {
+      const lines = await adapter.loadAllChat();
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (line.collapsed) continue;
+        if (line.type === 'user_turn') {
+          turnId = line.turnId;
+          break;
+        }
+      }
+    } catch (err) {
+      logger.warn(
+        `appendCommitNotice: chat.jsonl read failed for ${projectId}/${featureName}`,
+        { component: COMPONENT },
+        err,
+      );
+      return;
+    }
+    if (!turnId) return;
+
+    const line: ChatAssistantMessageLine = {
+      type: 'assistant_message',
+      ts: new Date().toISOString(),
+      jobId: 'aux-commit', // synthetic — commit runs outside a job
+      turnId,
+      jobType: DEFAULT_JOB_TYPE,
+      kind: 'system_notice',
+      text,
+    };
+
+    try {
+      await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
+    } catch (err) {
+      logger.warn(
+        `appendCommitNotice: append failed for ${projectId}/${featureName}`,
+        { component: COMPONENT },
+        err,
+      );
+    }
+  }
+
   /** Persist a chat_status line + emit `chat_event_appended` SSE. */
   async appendChatStatus(
     projectId: string,

@@ -90,3 +90,19 @@ export const NON_OVERRIDABLE_LLM_NODES: Record<string, readonly string[]> = {
   'planner:plan': ['triage', 'detect'],
   'creator:visual': ['triage', 'detect'],
 };
+
+/**
+ * Auxiliary model slots — NON-graph LLM calls that expose a single (default)
+ * model picker but have NO agent graph. Deliberately kept OUT of `ModelJobKey`
+ * / `OVERRIDABLE_MODEL_SLOTS` / `MODEL_JOB_AGENT` because
+ * `tests/config/llm-model-slots-coverage.test.ts` reconciles those maps against
+ * the compiled LangGraph — a key with no graph would fail graph compilation.
+ * Same shape as the `reviewer` / `doc` job-default-only precedent, but surfaced
+ * in the picker as a default-only row.
+ *
+ * Each key doubles as an `LLMContext.jobType` value; its model resolves via
+ * `llmModels[key].default` (default tier: haiku).
+ */
+export type AuxiliaryModelKey = 'commit';
+
+export const AUXILIARY_MODEL_KEYS: readonly AuxiliaryModelKey[] = ['commit'];

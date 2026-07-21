@@ -25,6 +25,8 @@ export interface ProjectConfig {
     learn?: JobLLMConfig;
     plan?: JobLLMConfig;
     visual?: JobLLMConfig;
+    // Auxiliary (non-graph) model slots — default-only, surfaced in the picker.
+    commit?: JobLLMConfig;
   };
 }
 

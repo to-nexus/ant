@@ -66,6 +66,27 @@ export interface DebitCumulativeArgs extends PlatformFeeFacts {
   note?: string;
 }
 
+/**
+ * A one-shot debit for a NON-job (auxiliary) LLM call — e.g. the ant-authored
+ * commit message. Unlike `SettleArgs`/`DebitCumulativeArgs` there is NO `jobId`,
+ * no reserve/hold cycle, and no `PlatformFeeFacts`: aux calls carry pure LLM
+ * pass-through cost only (no platform fee). Idempotent per `idempotencyKey`.
+ */
+export interface AuxiliaryDebitArgs {
+  orgId: string;
+  userId: string;
+  /** Precise internal USD list cost — LLM pass-through (from per-model pricing). */
+  usdCost: number;
+  /** Per-model USD breakdown (operator/admin display). */
+  modelBreakdown?: Record<string, number>;
+  /** Auxiliary call kind — labels the `'auxiliary'` transaction row (e.g. `commit`). */
+  kind: string;
+  /** Dedupes a retried/re-delivered aux debit so it cannot double-charge. */
+  idempotencyKey: string;
+  projectId?: string;
+  note?: string;
+}
+
 export interface CreditLedgerPort {
   /** Read balance + tier, applying any due monthly grant lazily. */
   getBalance(orgId: string, userId: string): Promise<BalanceSnapshot>;
@@ -80,6 +101,15 @@ export interface CreditLedgerPort {
    * racing on the same job cannot double-charge. Returns the resulting balance.
    */
   debitToCumulative(args: DebitCumulativeArgs): Promise<BalanceSnapshot>;
+
+  /**
+   * Debit the ACTUAL cost of a one-shot NON-job (auxiliary) LLM call. Converts
+   * USD → micro-credits via the account markup, decrements the balance, and
+   * appends an `'auxiliary'` ledger row. Idempotent per `idempotencyKey`. No
+   * reserve/hold and no platform fee (pure LLM pass-through). Returns the
+   * resulting balance.
+   */
+  debitAuxiliary(args: AuxiliaryDebitArgs): Promise<BalanceSnapshot>;
 
   /**
    * Reserve a hold for an in-flight job. Returns `ok:false` (without writing a

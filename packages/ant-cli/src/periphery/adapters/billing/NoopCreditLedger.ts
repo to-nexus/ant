@@ -1,5 +1,6 @@
 import type { BalanceSnapshot, CreditTransaction, SubscriptionTier } from '@ant/shared';
 import type {
+  AuxiliaryDebitArgs,
   CreditLedgerPort,
   DebitCumulativeArgs,
   ReserveResult,
@@ -63,6 +64,10 @@ export class NoopCreditLedger implements CreditLedgerPort {
   }
 
   async debitToCumulative(_args: DebitCumulativeArgs): Promise<BalanceSnapshot> {
+    return this.freeSnapshot();
+  }
+
+  async debitAuxiliary(_args: AuxiliaryDebitArgs): Promise<BalanceSnapshot> {
     return this.freeSnapshot();
   }
 

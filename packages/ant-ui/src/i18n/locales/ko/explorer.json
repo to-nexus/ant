@@ -99,6 +99,16 @@
     "operationInProgressWithCountdown": "다른 Git 작업이 진행 중입니다. 약 {{seconds}}초 뒤 다시 시도해주세요.",
     "commitSuccess": "커밋 완료",
     "commitFailed": "커밋 실패",
+    "commitModal": {
+      "title": "변경사항 커밋",
+      "eyebrow": "변경된 파일 {{count}}개",
+      "commit": "커밋",
+      "antTitle": "ant에게 맡기기",
+      "antDesc": "ant가 커밋 메시지를 작성하고, 관련 없는 변경은 별도 커밋으로 나눕니다.",
+      "userTitle": "직접 작성",
+      "userDesc": "커밋 메시지를 직접 입력합니다.",
+      "messagePlaceholder": "커밋 메시지"
+    },
     "pushSuccess": "Push 완료",
     "pushFailed": "Push 실패",
     "pullSuccess": "Pull 완료",

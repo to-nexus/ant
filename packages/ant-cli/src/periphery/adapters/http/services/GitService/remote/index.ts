@@ -9,7 +9,7 @@ import { PushOperation } from './operations/PushOperation';
 import { PullOperation } from './operations/PullOperation';
 import { FetchOperation } from './operations/FetchOperation';
 import { SyncOperation } from './operations/SyncOperation';
-import { CommitOperation } from './operations/CommitOperation';
+import { CommitOperation, type CommitResult } from './operations/CommitOperation';
 import { DiscardOperation } from './operations/DiscardOperation';
 import { WorktreeService } from '../worktree';
 import { acquireLock } from '../../../../../../core/redis/distributedLock';
@@ -23,6 +23,9 @@ const LOCK_TTL_CLONE_SEC = 600; // clone is the longest single-flight (full bare
 // timeouts (30s), so the work itself completes or throws well before this.
 const LOCK_TTL_INIT_SEC = 120;
 const LOCK_TTL_FETCH_SEC = 180;
+// ant-commit runs an LLM call (≤8s timeout) + a multi-step add/commit loop;
+// 120s covers the slowest realistic run without outliving the FE timeout.
+const LOCK_TTL_COMMIT_SEC = 120;
 
 /**
  * RemoteService (Facade)
@@ -151,9 +154,17 @@ export class RemoteService {
     userContext: UserContext,
     message?: string,
     featureName?: string,
-    files?: string[]
-  ): Promise<{ success: boolean; commitHash?: string }> {
-    return this.commitOp.execute(projectId, userContext, message, featureName, files);
+    files?: string[],
+    authorMode: 'user' | 'ant' = 'user',
+  ): Promise<CommitResult> {
+    // Multi-step (ant path loops add+commit) → serialize per feature so
+    // concurrent commits can't interleave staging on the same worktree.
+    return this.withLock(
+      REDIS_KEYS.LOCK.COMMIT(userContext.organizationId, userContext.userId, projectId, featureName || '@anchor'),
+      LOCK_TTL_COMMIT_SEC,
+      'Another commit is in progress for this project / feature. Please wait and retry.',
+      () => this.commitOp.execute(projectId, userContext, message, featureName, files, authorMode),
+    );
   }
 
   async discardChanges(

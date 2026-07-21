@@ -6,7 +6,7 @@ import type {
   GitStateResponse,
   GitOperationError as GitOperationErrorShape,
 } from '@ant/shared';
-import { ProjectService } from '../services';
+import { ProjectService, ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { validateBody, createProjectSchema } from '../middleware/validateBody';
@@ -78,6 +78,7 @@ function isGitUserOpKind(kind: string): kind is GitUserOperationKind {
  */
 export function createProjectsRoutes(deps: {
   projectService: ProjectService;
+  chatService?: ChatService;
   gitWatcherService?: { retryDeferredWatchers(projectId: string): void };
   gitStateBroadcaster?: GitStateBroadcaster;
 }): Router {
@@ -400,6 +401,21 @@ export function createProjectsRoutes(deps: {
     try {
       const input = (req.body ?? {}) as Record<string, unknown>;
       const result = await operation.execute(projectId, userContext, input);
+
+      // E6-F: record an ant-authored commit in the chat timeline (UI
+      // transparency). Best-effort + fire-and-forget — never blocks or fails
+      // the commit response. Only for ant commits with real commits made.
+      if (userOp === 'commit' && input.authorMode === 'ant' && deps.chatService) {
+        const commits = (result as { commits?: Array<{ message: string }> })?.commits;
+        const feature = typeof input.feature === 'string' ? input.feature : undefined;
+        if (commits && commits.length > 0 && feature) {
+          const body =
+            `ant committed ${commits.length} change${commits.length === 1 ? '' : 's'}:\n` +
+            commits.map((c) => `- ${c.message}`).join('\n');
+          void deps.chatService.appendCommitNotice(projectId, feature, body, userContext);
+        }
+      }
+
       if (heartbeat) clearInterval(heartbeat);
       if (isSlowOp) {
         res.end(JSON.stringify({ success: true, result }));

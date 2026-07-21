@@ -50,7 +50,7 @@ interface LLMConfig {
  * Job/Node context for model selection
  */
 export interface LLMContext {
-  jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'reviewer' | 'doc';
+  jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'reviewer' | 'doc' | 'commit';
   // Every node key except the job-level `default` (owned by @ant/shared llm-slots).
   nodeType?: Exclude<ModelNodeKey, 'default'>;
 }

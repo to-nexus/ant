@@ -254,6 +254,13 @@ export const REDIS_KEYS = {
     FETCH: (org: string, user: string, projectId: string, feature: string): string =>
       `${REDIS_DOMAINS.LOCK}:fetch:${org}:${user}:${projectId}:${feature || '@anchor'}`,
     /**
+     * Commit in progress for (org, user, projectId, feature). Serializes the
+     * multi-step ant-commit (group loop) so concurrent commits can't interleave
+     * `git add` / `git commit` on the same worktree.
+     */
+    COMMIT: (org: string, user: string, projectId: string, feature: string): string =>
+      `${REDIS_DOMAINS.LOCK}:commit:${org}:${user}:${projectId}:${feature || '@anchor'}`,
+    /**
      * Feature create/delete + branchBase mutation critical section for
      * (org, user, projectId). Serializes worktree lifecycle against the
      * branchBase pointer auto-apply rules.

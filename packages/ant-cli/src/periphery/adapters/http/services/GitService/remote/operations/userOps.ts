@@ -6,6 +6,7 @@ import {
   GitOperationDeps,
 } from '../GitOperation';
 import { RemoteService } from '..';
+import type { CommitResult } from './CommitOperation';
 
 /**
  * User-facing Git operation classes. Each one is a thin wrapper that
@@ -26,6 +27,7 @@ interface FeatureInput {
 interface CommitInput extends FeatureInput {
   message?: string;
   files?: string[];
+  authorMode?: 'user' | 'ant';
 }
 
 interface DiscardInput extends FeatureInput {
@@ -145,7 +147,7 @@ export class SyncOperation extends GitOperation<
 
 export class CommitOperation extends GitOperation<
   CommitInput,
-  { success: boolean; commitHash?: string }
+  CommitResult
 > {
   private readonly remote: RemoteService;
   constructor(deps: FullDeps) {
@@ -159,13 +161,14 @@ export class CommitOperation extends GitOperation<
 
   protected async run(
     ctx: GitOperationContext<CommitInput>,
-  ): Promise<{ success: boolean; commitHash?: string }> {
+  ): Promise<CommitResult> {
     return this.remote.commitChanges(
       ctx.projectId,
       ctx.userContext,
       ctx.input?.message,
       ctx.input?.feature,
       ctx.input?.files,
+      ctx.input?.authorMode,
     );
   }
 }

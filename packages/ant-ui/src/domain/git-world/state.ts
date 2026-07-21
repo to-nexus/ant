@@ -53,7 +53,8 @@ const OP_TIMEOUTS: Record<GitUserOperation['kind'], number> = {
   pull: 60_000,
   sync: 90_000,
   fetch: 30_000,
-  commit: 30_000,
+  // ant-authored commits run an LLM call + a multi-commit loop — allow headroom.
+  commit: 60_000,
   discard: 30_000,
 };
 
