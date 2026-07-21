@@ -24,3 +24,12 @@ export function registerFeatureParamDecoders(router: Router): void {
 export function decodeFeatureQuery<T extends string | undefined>(value: T): T {
   return (typeof value === 'string' ? featureSlugToName(value) : value) as T;
 }
+
+/**
+ * Decode a `/`-free feature slug captured by a REGEX route (positional param)
+ * back to the raw name. `router.param` fires only for NAMED params, never for
+ * regex capture groups, so regex handlers must call this explicitly.
+ */
+export function decodeFeatureSegment(value: string): string {
+  return featureSlugToName(value);
+}
