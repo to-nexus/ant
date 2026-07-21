@@ -16,6 +16,7 @@ import { WorkspaceState } from '../../../common/graph/nodes/triage/types';
 import type { MessageContentBlock } from '../../../../core/ports/llm';
 import type { ResolvedActionContext, ExecutionTierId } from '@ant/shared';
 import type { Conversations } from '../../../common/graph/conversations';
+import type { ChatTail } from '../../../../core/context/chatTailBuilder';
 
 /**
  * Tool call record for debugging
@@ -60,6 +61,12 @@ export interface AskGraphState extends ResolvableState {
    * judgment involved.
    */
   executionTier?: ExecutionTierId;
+  /**
+   * P1 rich tail (e2-humming-spindle) — recent user↔assistant exchanges
+   * assembled from chat.jsonl by the caller. Rendered in the agent prompt's
+   * "Recent Conversation" section so cross-job referents resolve.
+   */
+  recentConversation?: ChatTail;
 }
 
 export const AskAnnotation = Annotation.Root({
@@ -81,6 +88,7 @@ export const AskAnnotation = Annotation.Root({
   isEvaluation: Annotation<boolean | undefined>,
   evalType: Annotation<'prd' | 'system-design' | 'ui-design' | 'game-art' | 'code' | 'all' | undefined>,
   executionTier: Annotation<ExecutionTierId | undefined>,
+  recentConversation: Annotation<ChatTail | undefined>,
 } as const);
 
 /**
@@ -98,6 +106,7 @@ export function createInitialAskState(params: {
   };
   _httpJobId?: string;
   featurePath?: string;
+  recentConversation?: ChatTail;
 }): AskGraphState {
   // ExecutionTierId.Reflex = 0. We hardcode the literal here to avoid a
   // runtime import in the state module (which is imported widely).
@@ -119,5 +128,6 @@ export function createInitialAskState(params: {
     pendingToolCalls: [],
     // Ask is a read-only Q&A flow — always Tier 0 Reflex.
     executionTier: RESOLVED_TIER,
+    recentConversation: params.recentConversation,
   } as unknown as AskGraphState;
 }

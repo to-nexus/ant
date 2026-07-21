@@ -31,6 +31,8 @@ export interface AskRunnerParams {
   };
   _httpJobId?: string;
   resolvedAction?: ResolvedActionContext;
+  /** P1 rich tail — recent chat exchanges assembled by the caller. */
+  recentConversation?: import('../../../../core/context/chatTailBuilder').ChatTail;
 }
 
 export interface AskRunnerResult {
@@ -74,6 +76,7 @@ export async function runAskGraph(params: AskRunnerParams): Promise<AskRunnerRes
     deps: { ...params.deps, promptBuilder },
     _httpJobId: params._httpJobId,
     featurePath: params.workspaceState.featurePath,
+    recentConversation: params.recentConversation,
   });
   
   // Pass RAC from triage

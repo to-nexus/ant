@@ -19,6 +19,9 @@
       "resolvedAction"
     ],
     "role-guide": [],
+    "context-lens": [
+      "lens"
+    ],
     "refactor-guidance": [
       "resolvedAction"
     ],

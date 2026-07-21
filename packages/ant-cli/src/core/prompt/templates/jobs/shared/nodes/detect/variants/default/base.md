@@ -80,6 +80,10 @@ first. Anchors capture the artifacts produced by earlier turns and are the
 most likely fit for follow-up intents (`rev-*`, `gen-code-spec`, …).
 {{/if}}
 
+{{#if lens}}
+{{> jobs/shared/injections/context-lens}}
+{{/if}}
+
 {{#if featureContext.summary}}
 ## PRIOR CONTEXT
 

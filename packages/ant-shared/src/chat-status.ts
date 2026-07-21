@@ -282,6 +282,18 @@ export function generateChatStatusContent(
       ).join(', ');
     }
 
+    // Context Lens P3/P4 (F3) — a context_summary checkpoint folded older
+    // exchanges into a rolling summary + constraint ledger. Surfaced so the
+    // user sees WHEN compaction happened instead of memory changing silently.
+    case 'context_compacted': {
+      const folded = metadata?.foldedTurns as number | undefined;
+      const ledger = metadata?.ledgerCount as number | undefined;
+      const parts: string[] = [];
+      if (typeof folded === 'number' && folded > 0) parts.push(`${folded} older exchange(s) summarized`);
+      if (typeof ledger === 'number' && ledger > 0) parts.push(`${ledger} standing constraint(s) carried`);
+      return parts.length ? `🗜️ Context compacted — ${parts.join(', ')}` : '🗜️ Context compacted';
+    }
+
     case 'processing': {
       const action = metadata?.action ?? 'processing';
       const label = PROCESSING_LABELS[action] ?? { progress: action, complete: action };

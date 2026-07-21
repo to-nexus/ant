@@ -46,11 +46,15 @@ from the summary.
 {{/each}}
 {{/if}}
 
+{{#if lens}}
+{{> jobs/shared/injections/context-lens}}
+{{else}}
 {{#if featureContext.userTurns.length}}
 ### Recent User Turns
 {{#each featureContext.userTurns}}
 - [{{this.turnId}}] {{this.text}}
 {{/each}}
+{{/if}}
 {{/if}}
 
 ────────────────────────────────────────────────────────────────────────────────

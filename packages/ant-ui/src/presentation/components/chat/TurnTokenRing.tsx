@@ -242,6 +242,16 @@ function buildView(
         <span>{t('turnTokenGauge.output')}</span>
         <span>{fmt(output)}</span>
       </div>
+      {/* F1 (Context Lens P4) — the ring measures THIS LLM call's prompt
+          occupancy, not the accumulated chat. Cross-job memory is a bounded
+          distilled context (~1% of a 1M window), which is why long chats
+          never visually fill the ring. */}
+      <div className="mt-1 text-[10px] leading-snug" style={{ color: 'var(--text-3)' }}>
+        {t('turnTokenGauge.semanticsNote', {
+          defaultValue:
+            'Shows this call’s prompt occupancy. Chat history is not injected verbatim — ANT carries a compact distilled memory across jobs, so long chats don’t fill the ring.',
+        })}
+      </div>
       {estimating && (
         <div className="mt-1 text-[10px] leading-snug italic" style={{ color: 'var(--text-3)' }}>
           {t('turnTokenGauge.estimatingNote')}

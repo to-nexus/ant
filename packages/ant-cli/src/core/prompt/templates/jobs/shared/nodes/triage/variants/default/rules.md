@@ -25,7 +25,7 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
 |---|---|---|
 | **Output shape** | What the request PRODUCES: a document / design artifact, a code change, a chat-only readout, or a score. Interrogative phrasing alone does not make it a readout. | artifact → design / plan family · code change → code family · readout → `explain-*` · rubric / score → `ask-evaluate` |
 | **Scope** | Does the directive open a NEW subject, or extend / modify work already in progress (the just-authored or a prior artifact)? Additive phrasing ("also need…", "add…", "X is missing") on an existing subject is an extension. Sharing a subject with prior work is continuity, not extension — Directive form tells them apart. | new subject → `gen-*` · extension or modification of an existing artifact → `rev-*` |
-| **Directive form** | Does the directive itself CARRY a content delta against an existing artifact (add / remove / modify a named clause, section, screen, or component), or does it REPORT that built behaviour is broken, still failing, or regressed? A failure report names symptoms, not the artifact change that fixes them; evidence that the artifact was already consumed downstream (implemented, built) corroborates the report reading. When both appear, an explicitly carried delta governs. | carried delta on an existing artifact → `rev-*` · failure report on built behaviour → `gen-*`, from ANY stance |
+| **Directive form** | Does the directive itself CARRY a content delta against an existing artifact (add / remove / modify a named clause, section, screen, or component), or does it REPORT that built behaviour is broken, still failing, or regressed? A failure report names symptoms, not the artifact change that fixes them; the latest same-family artifact's consumption state corroborates the reading — already consumed downstream (implemented, built) supports NEW remediation, while a `[pending — not yet consumed]` marker on the latest prior artifact means the reported problems belong IN that pending artifact (nothing was built from it yet; a parallel second document would fragment the remediation). When both appear, an explicitly carried delta governs. | carried delta on an existing artifact → `rev-*` · failure report on built behaviour with the latest same-family artifact consumed (or none) → `gen-*`, from ANY stance · failure report while the latest same-family artifact is pending → `rev-*` (fold into the pending artifact) |
 | **Authoring stance** | From the SESSION Job: are you ALREADY authoring this kind of artifact (a design or plan job), or DOWNSTREAM of it (a code / implementation job)? | already authoring → same-kind output; Directive form picks `rev-*` (carried delta) vs `gen-*` (failure report / new subject) · downstream + an ungroundable multi-boundary problem → specify first (`gen-spec`) |
 | **Boundary count** | The independent, non-collapsible concerns the directive names: one, or two-plus. | not decisive alone, but DECISIVE in combination — from a downstream stance, a problem spanning two-plus boundaries triggers the spec-first Hard Constraint; from an authoring stance boundary count discriminates nothing — Directive form decides. |
 | **Nature** | Is it a report of a problem in observed / built behaviour, a request to build something not yet there, or a question about current state? | problem → work (code / spec) · build → `gen-*` · current-state question → `explain-*` |
@@ -54,7 +54,13 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
   stance the boundary-count trigger does not apply; there Directive form
   decides — a carried delta extends the existing artifact (`rev-*`), while a
   failure report on built behaviour opens a fresh remediation spec
-  (`gen-spec`), even when its subject matches an existing spec document.
+  (`gen-spec`) when the latest spec has already been consumed downstream,
+  even when its subject matches an existing spec document. When the latest
+  spec is still pending (marked `[pending — not yet consumed by any code
+  job]` in the prior artifacts), the report folds into that pending spec
+  instead (`rev-spec`): the reported behaviour cannot have been built FROM a
+  spec that was never implemented, and opening a second unconsumed spec on
+  the same surface forces a manual merge later.
 
 ## Hard Constraints
 
@@ -67,7 +73,13 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
    (add / remove / modify a clause, section, screen, or component). A report
    that built behaviour is broken, still failing, or regressed satisfies (a)
    at most, never (b): it requests NEW output → the sibling `gen-*`
-   (Constraint 4 then governs the downstream multi-boundary case). When
+   (Constraint 4 then governs the downstream multi-boundary case).
+   EXCEPTION — pending-artifact absorption: when the prior artifacts mark the
+   latest artifact of that family as `[pending — not yet consumed by any code
+   job]`, a failure report DOES satisfy (b) against that pending artifact:
+   the fixes it demands belong in the document that is about to be
+   implemented → the family's `rev-*`. Once the artifact is consumed the
+   exception closes and a report reads as NEW output again. When
    workspace state lists the existing documents' FILENAMES, use them as
    evidence for (a) only: a subject matching none of the listed documents of
    that family weakens the extension reading — prefer the sibling `gen-*` —

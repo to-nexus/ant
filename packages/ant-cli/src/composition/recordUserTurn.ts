@@ -103,7 +103,12 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
 
   const turnId = providedTurnId || generateTurnId();
 
-  const skipFeature = jobType === "ask" || jobType === "inline-ask";
+  // Context Lens P2 (e2-humming-spindle): ask / inline-ask turns are now
+  // recorded in feature.jsonl as EPHEMERAL conversational lines instead of
+  // being skipped entirely (legacy skipFeature=true). Q&A is context — "아까
+  // 물어봤듯이…" must resolve — but ephemeral turns demote first during Lens
+  // assembly and never produce breadcrumbs or boundaries.
+  const isEphemeral = jobType === "ask" || jobType === "inline-ask";
 
   const line: FeatureUserTurnLine = {
     type: "user_turn",
@@ -113,9 +118,10 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
     jobType,
     text: directive,
     mode,
+    ...(isEphemeral ? { ephemeral: true as const } : {}),
   };
 
-  await session.appendUserTurn(line, { skipFeature, actionMetadata: enrichedActionMetadata });
+  await session.appendUserTurn(line, { actionMetadata: enrichedActionMetadata });
 
   // Let the worker's LLMResponseService know which turnId to tag emitted
   // chat.jsonl lines with. Fire-and-forget; failures are logged and ignored.

@@ -5,6 +5,8 @@ import type {
   FeatureUserTurnLine,
   FeatureUserTurnMetaLine,
   FeatureBreadcrumbLine,
+  FeatureAssistantTurnLine,
+  FeatureContextSummaryLine,
   FeatureBoundaryLine,
   ChatLine,
   ChatUserTurnLine,
@@ -441,8 +443,9 @@ export class FileSessionAdapter implements SessionPort {
   /**
    * Append a user_turn to feature.jsonl (context SSOT) and chat.jsonl (UI).
    *
-   * jobType='ask'|'inline-ask'인 경우 skipFeature=true 필요 (호출자 책임) —
-   * ask 대화는 맥락 대상 아니므로 feature.jsonl에 기록하지 않음.
+   * ask / inline-ask 턴도 feature.jsonl 에 기록된다 (Context Lens P2) —
+   * 라인에 `ephemeral: true` 를 실어 조립 시 최우선 강등 대상으로 표시한다.
+   * 레거시 `skipFeature` 옵션은 하위 호환용으로만 남아 있다 (신규 호출 금지).
    *
    * chat.jsonl에는 항상 기록 (UI 연속성).
    *
@@ -545,6 +548,20 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
+   * Append an assistant_turn line to feature.jsonl (Context Lens P2).
+   */
+  async appendAssistantTurn(line: FeatureAssistantTurnLine): Promise<void> {
+    await this.appendLine('feature', line);
+  }
+
+  /**
+   * Append a context_summary checkpoint line (Context Lens P3).
+   */
+  async appendContextSummary(line: FeatureContextSummaryLine): Promise<void> {
+    await this.appendLine('feature', line);
+  }
+
+  /**
    * Append a boundary line to feature.jsonl + collapse all user_turn/user_turn_meta
    * lines before this boundary.
    * 
@@ -604,6 +621,8 @@ export class FileSessionAdapter implements SessionPort {
     userTurns: FeatureUserTurnLine[];
     userTurnMetas: FeatureUserTurnMetaLine[];
     breadcrumbs: FeatureBreadcrumbLine[];
+    assistantTurns: FeatureAssistantTurnLine[];
+    contextSummaries: FeatureContextSummaryLine[];
   }> {
     const filePath = getFeatureJsonlPath(this.featurePath);
     const all = await this.readJsonlLines<FeatureLine>(filePath);
@@ -636,6 +655,8 @@ export class FileSessionAdapter implements SessionPort {
     const userTurns: FeatureUserTurnLine[] = [];
     const userTurnMetas: FeatureUserTurnMetaLine[] = [];
     const breadcrumbs: FeatureBreadcrumbLine[] = [];
+    const assistantTurns: FeatureAssistantTurnLine[] = [];
+    const contextSummaries: FeatureContextSummaryLine[] = [];
 
     for (let i = 0; i < all.length; i++) {
       const line = all[i];
@@ -646,16 +667,20 @@ export class FileSessionAdapter implements SessionPort {
         breadcrumbs.push(line);
         continue;
       }
-      // user_turn / user_turn_meta만 boundary 이후 체크
+      // Conversational lines (+checkpoints)만 boundary 이후 체크
       if (i <= latestBoundaryIdx) continue;
       if (line.type === 'user_turn') {
         userTurns.push(line);
       } else if (line.type === 'user_turn_meta') {
         userTurnMetas.push(line);
+      } else if (line.type === 'assistant_turn') {
+        assistantTurns.push(line);
+      } else if (line.type === 'context_summary') {
+        contextSummaries.push(line);
       }
     }
 
-    return { userTurns, userTurnMetas, breadcrumbs };
+    return { userTurns, userTurnMetas, breadcrumbs, assistantTurns, contextSummaries };
   }
 
   /**
@@ -836,9 +861,11 @@ export class FileSessionAdapter implements SessionPort {
       if (!l.trim()) return l;
       try {
         const obj = JSON.parse(l);
-        // Collapse only user_turn / user_turn_meta before this boundary timestamp
+        // Collapse conversational lines (user_turn / user_turn_meta /
+        // assistant_turn / context_summary) before this boundary timestamp.
+        // Breadcrumbs stay (semi-permanent navigation anchors).
         if (
-          (obj.type === 'user_turn' || obj.type === 'user_turn_meta') &&
+          (obj.type === 'user_turn' || obj.type === 'user_turn_meta' || obj.type === 'assistant_turn' || obj.type === 'context_summary') &&
           !obj.collapsed &&
           obj.ts < boundaryTs
         ) {

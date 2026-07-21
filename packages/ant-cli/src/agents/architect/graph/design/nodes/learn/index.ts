@@ -433,6 +433,21 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     } catch (err) {
       console.warn('⚠️  [Design Learn] breadcrumb write failed:', err);
     }
+
+    // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
+    // Same job-end seam as the breadcrumb but NOT gated by its explain/
+    // touched=0 skips: the conversation matters even without doc changes.
+    const { distillAssistantTurn } = await import('../../../../../../core/context/assistantTurn');
+    await distillAssistantTurn({
+      session: state.deps.session,
+      jobId: state.jobId,
+      turnId: state.turnId,
+      jobType: 'design',
+      directive: state.directive,
+      executionTierId: state.executionTier,
+      llm: state.deps.llm,
+      promptPort: state.deps.promptBuilder,
+    });
   }
   
   // Store lessons to vector memory

@@ -701,6 +701,12 @@ describe('Template Smoke Tests', () => {
       // design. See the reference-codebase feature.
       'jobs/shared/injections/reference-codebase-register',
       'jobs/shared/injections/reference-codebase',
+      // Context Lens bands are wrapped entirely in {{#if lens.*}} (no
+      // {{else}}) — same Contract pattern as analysis-block. The partial
+      // activates only when the consumer node projected a lens (exchanges /
+      // digests / constraint ledger present); a fresh feature leaves it
+      // empty by design. See docs/internals/37-context-management.md.
+      'jobs/shared/injections/context-lens',
       'basis/techTier/stack/backend',
       'basis/techTier/stack/frontend',
     ]);

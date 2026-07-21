@@ -184,7 +184,11 @@ describe('recordUserTurn — resume-path turnId preservation', () => {
     expect(await readJsonl(featurePath)).toHaveLength(0);
   });
 
-  it('inline-ask fresh call skips feature.jsonl but writes chat.jsonl with ask-only sourceRef', async () => {
+  it('inline-ask fresh call records an EPHEMERAL feature.jsonl turn + chat copy (Context Lens P2)', async () => {
+    // Legacy behavior (skipFeature=true, 'ask-only' sourceRef) erased Q&A
+    // from cross-job context entirely — "아까 물어봤듯이…" could never
+    // resolve. Ask turns now land in feature.jsonl flagged ephemeral so the
+    // Lens can demote them first without losing them silently.
     await recordUserTurn({
       featurePath: tmpDir,
       jobType: 'inline-ask',
@@ -193,9 +197,27 @@ describe('recordUserTurn — resume-path turnId preservation', () => {
       isResume: false,
     });
 
-    expect(await readJsonl(featurePath)).toHaveLength(0);
+    const featureLines = await readJsonl<any>(featurePath);
+    expect(featureLines).toHaveLength(1);
+    expect(featureLines[0].type).toBe('user_turn');
+    expect(featureLines[0].ephemeral).toBe(true);
+
     const chatLines = await readJsonl<any>(tracePath);
     expect(chatLines).toHaveLength(1);
-    expect(chatLines[0].sourceRef).toBe('ask-only');
+    expect(chatLines[0].sourceRef).toBe(`feature.jsonl#${featureLines[0].turnId}`);
+  });
+
+  it('code fresh call does NOT carry the ephemeral flag', async () => {
+    await recordUserTurn({
+      featurePath: tmpDir,
+      jobType: 'code',
+      jobId: 'job-code',
+      directive: 'build it',
+      isResume: false,
+    });
+
+    const featureLines = await readJsonl<any>(featurePath);
+    expect(featureLines).toHaveLength(1);
+    expect(featureLines[0].ephemeral).toBeUndefined();
   });
 });

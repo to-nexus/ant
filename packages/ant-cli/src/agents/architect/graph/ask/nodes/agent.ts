@@ -45,6 +45,9 @@ async function buildSystemPrompt(state: AskGraphState): Promise<string> {
       hasWorkspace,
       workspaceState: hasWorkspace ? formatWorkspaceState(state.workspaceState) : '',
       featurePath: state.workspaceState?.featurePath || '',
+      // P1 rich tail (e2-humming-spindle) — recent user↔assistant exchanges
+      // from chat.jsonl so referents like "방금 뭘 바꿨어?" resolve.
+      recentConversation: state.recentConversation,
     },
   });
 

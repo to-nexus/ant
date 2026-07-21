@@ -21,6 +21,8 @@
  */
 
 import { TextContentBlock } from "../../../../../../../core/ports/llm";
+import { projectLens } from "../../../../../../../core/context/lensProjection";
+import { contextProfileFor } from "../../../../../../../core/executionTier/contextProfile";
 import { ArchitectGraphState } from "../../../state";
 import { logger } from '../../../../../../../utils/logger';
 import { CodeTask, FeatureCodeTask } from "../../../../../types/task";
@@ -289,6 +291,13 @@ export async function buildPlanPrompt(
     featureObservesUiSource, featureUiSource,
     layoutValidityFloorActive,
     featureContext: state.featureContext,
+    // Context Lens P2 — band-projected view (standard; Tier 4 lean). When
+    // present the plan template's context-lens partial supersedes the
+    // legacy Recent User Turns list (assistant finals re-enter context).
+    lens: projectLens(
+      state.featureContext,
+      contextProfileFor('plan', state.executionTier),
+    ),
     antrulesContent,
     hasFrontend, hasBackend,
     // Tier 3 cross-task analysis brief — sealed by Decompose; renders

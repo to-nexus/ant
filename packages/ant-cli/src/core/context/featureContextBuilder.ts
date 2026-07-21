@@ -23,7 +23,11 @@ import type {
   FeatureUserTurnLine,
   FeatureUserTurnMetaLine,
   FeatureBreadcrumbLine,
+  FeatureAssistantTurnLine,
+  FeatureContextSummaryLine,
+  TurnDigest,
 } from '@ant/shared';
+import { assistantProseOf, capTail } from './chatTailBuilder';
 import { FEATURE_CONTEXT_THRESHOLD, FEATURE_CONTEXT_WINDOW } from '@ant/shared';
 import { compactJob, type CompactableEntry } from './compactJob';
 import { COMPACTION_MAX_OUTPUT_TOKENS } from './constants';
@@ -53,9 +57,69 @@ export type MergedUserTurn = FeatureUserTurnLine & {
   actionMetadata?: FeatureUserTurnMetaLine['actionMetadata'];
 };
 
+/**
+ * P1b (e2-humming-spindle) — derived consumption state for design-family
+ * breadcrumbs. NEVER persisted to feature.jsonl; recomputed on every merge.
+ *
+ * 'pending'  — the design job authored its artifact(s) and no code job has
+ *              run since. A follow-up problem report on the same surface is
+ *              an extension of this pending artifact (triage routes rev-*),
+ *              because nothing was built from it yet.
+ * 'consumed' — at least one code job ran after this breadcrumb; problem
+ *              reports now describe built behaviour (triage routes gen-*).
+ */
+export type BreadcrumbConsumption = 'pending' | 'consumed';
+
+export type AnnotatedBreadcrumb = FeatureBreadcrumbLine & {
+  consumption?: BreadcrumbConsumption;
+};
+
+/**
+ * Context Lens P2 — one user↔assistant exchange (band-1 verbatim unit).
+ * `assistantFinalText` comes from the turn's `assistant_turn` line (durable
+ * SSOT); `buildFeatureContext` backfills recent gaps from chat.jsonl (the
+ * documented migration fallback for pre-P2 turns).
+ */
+export interface LensExchange {
+  turnId: string;
+  ts: string;
+  jobType?: string;
+  userText: string;
+  actionMetadata?: FeatureUserTurnMetaLine['actionMetadata'];
+  assistantFinalText?: string;
+  /** This turn's breadcrumb anchors (band-1 carries its own turn's anchors). */
+  anchors?: FeatureBreadcrumbLine['anchors'];
+  /** ask/inline-ask — first to demote, never enters band 2. */
+  ephemeral?: boolean;
+}
+
+/** Context Lens P2 — band-2 structured unit (write-once turn digest). */
+export interface LensDigestEntry {
+  turnId: string;
+  ts: string;
+  jobType?: string;
+  digest: TurnDigest;
+}
+
 export interface FeatureContext {
-  breadcrumbs: FeatureBreadcrumbLine[];
+  breadcrumbs: AnnotatedBreadcrumb[];
   userTurns: MergedUserTurn[];
+  /**
+   * Context Lens band 1 source — ALL merged exchanges in chronological
+   * order, uncapped. Consumers MUST render through `projectLens(ctx,
+   * profile)` which applies the per-node K/char caps; raw `exchanges` is
+   * not a prompt surface.
+   */
+  exchanges?: LensExchange[];
+  /** Context Lens band 2 source — digests of turns that have one. */
+  digests?: LensDigestEntry[];
+  /**
+   * Context Lens band 3 (P3) — standing constraints, verbatim-carried.
+   * Deterministic union of every folded digest's `constraints` across
+   * checkpoints; NEVER dropped by compaction. Rendered by every profile
+   * (injection floor, II-5).
+   */
+  constraintLedger?: string[];
   /**
    * LLM-generated summary of older user_turns that were replaced during Compact
    * (§13 compaction_policy). Absent when the context stayed under the
@@ -86,10 +150,14 @@ export function mergeFeatureContext(
     userTurns: FeatureUserTurnLine[];
     userTurnMetas: FeatureUserTurnMetaLine[];
     breadcrumbs: FeatureBreadcrumbLine[];
+    /** Context Lens P2 — optional for legacy callers/tests. */
+    assistantTurns?: FeatureAssistantTurnLine[];
+    /** Context Lens P3 — checkpoint lines; the latest one applies. */
+    contextSummaries?: FeatureContextSummaryLine[];
   },
   // Kept for backward compatibility with callers that still pass an
   // explicit window override; ignored when undefined or negative.
-  options?: { breadcrumbWindow?: number },
+  options?: { breadcrumbWindow?: number; currentJobId?: string },
 ): FeatureContext {
   // Partial-merge by turnId: Triage emits a meta line with `actionMetadata`
   // and Decompose later emits another with `executionTier`. Same-turnId
@@ -112,29 +180,131 @@ export function mergeFeatureContext(
     });
   }
 
+  // Context Lens P3 — the latest checkpoint folds everything at or before
+  // its `coversThroughTs`: those lines are already represented by the
+  // checkpoint's summary + constraint ledger, so they leave the prompt
+  // surface (disk untouched). This replaces the per-hydrate LLM
+  // re-summarization: reading the checkpoint is free.
+  const checkpoint = latestCheckpoint(input.contextSummaries);
+  const coveredBy = (ts: string): boolean =>
+    !!checkpoint && ts <= checkpoint.coversThroughTs;
+
   const merged = input.userTurns
     .filter((turn) => !(turn as { collapsed?: true }).collapsed)
+    .filter((turn) => !coveredBy(turn.ts))
     .map((turn) => {
       const meta = metaByTurn.get(turn.turnId);
       return meta ? { ...turn, ...meta } : turn;
     });
 
   const liveBreadcrumbs = input.breadcrumbs.filter(
-    (bc) => !(bc as { collapsed?: true }).collapsed,
+    (bc) => !(bc as { collapsed?: true }).collapsed && !coveredBy(bc.ts),
   );
 
   // Backward compat: callers (tests / specialised resolves) may still pass
   // `breadcrumbWindow` to enforce a hard slice. When undefined every live
   // BC flows through; compact handles overflow downstream.
   const window = options?.breadcrumbWindow;
-  const breadcrumbs =
+  const windowed =
     typeof window === 'number' && window >= 0
       ? window === 0
         ? []
         : liveBreadcrumbs.slice(-window)
       : liveBreadcrumbs;
 
-  return { breadcrumbs, userTurns: merged };
+  const breadcrumbs = annotateBreadcrumbConsumption(
+    windowed,
+    merged,
+    options?.currentJobId,
+  );
+
+  const { exchanges, digests } = buildLensBands(merged, input.assistantTurns ?? [], breadcrumbs);
+
+  return {
+    breadcrumbs,
+    userTurns: merged,
+    exchanges,
+    digests,
+    ...(checkpoint
+      ? {
+          summary: checkpoint.summary,
+          constraintLedger: checkpoint.constraintLedger,
+        }
+      : {}),
+  };
+}
+
+function latestCheckpoint(
+  summaries: FeatureContextSummaryLine[] | undefined,
+): FeatureContextSummaryLine | undefined {
+  if (!summaries?.length) return undefined;
+  const live = summaries.filter((s) => !(s as { collapsed?: true }).collapsed);
+  return live.length ? live[live.length - 1] : undefined;
+}
+
+/**
+ * Context Lens P2 — pair user turns with their assistant_turn lines (by
+ * turnId) and collect the per-turn breadcrumb anchors. Pure and uncapped;
+ * `projectLens` applies profile caps at render time.
+ */
+function buildLensBands(
+  userTurns: MergedUserTurn[],
+  assistantTurns: FeatureAssistantTurnLine[],
+  breadcrumbs: AnnotatedBreadcrumb[],
+): { exchanges: LensExchange[]; digests: LensDigestEntry[] } {
+  const assistantByTurn = new Map<string, FeatureAssistantTurnLine>();
+  for (const at of assistantTurns) {
+    if (!(at as { collapsed?: true }).collapsed) assistantByTurn.set(at.turnId, at);
+  }
+  const anchorsByTurn = new Map<string, FeatureBreadcrumbLine['anchors']>();
+  for (const bc of breadcrumbs) anchorsByTurn.set(bc.turnId, bc.anchors);
+
+  const exchanges: LensExchange[] = [];
+  const digests: LensDigestEntry[] = [];
+  for (const turn of userTurns) {
+    const at = assistantByTurn.get(turn.turnId);
+    const ephemeral = (turn as { ephemeral?: true }).ephemeral === true || at?.ephemeral === true;
+    exchanges.push({
+      turnId: turn.turnId,
+      ts: turn.ts,
+      jobType: turn.jobType,
+      userText: turn.text || '',
+      actionMetadata: turn.actionMetadata,
+      assistantFinalText: at?.finalText || undefined,
+      anchors: anchorsByTurn.get(turn.turnId),
+      ...(ephemeral ? { ephemeral: true } : {}),
+    });
+    // Ephemeral turns never enter band 2 — they demote straight out.
+    if (at?.digest && !ephemeral) {
+      digests.push({ turnId: turn.turnId, ts: turn.ts, jobType: turn.jobType, digest: at.digest });
+    }
+  }
+  return { exchanges, digests };
+}
+
+/**
+ * P1b — annotate design-job breadcrumbs with their consumption state.
+ *
+ * A design breadcrumb is 'consumed' when any code-job user_turn was recorded
+ * after it, else 'pending'. The current job's own turn is excluded from the
+ * scan: at triage time the classified turn is already on disk with its
+ * routed jobType, and counting it would let the turn being classified flip
+ * the very state that classifies it. Deterministic — no LLM.
+ */
+function annotateBreadcrumbConsumption(
+  breadcrumbs: FeatureBreadcrumbLine[],
+  userTurns: MergedUserTurn[],
+  currentJobId?: string,
+): AnnotatedBreadcrumb[] {
+  const priorCodeTurnTs = userTurns
+    .filter((t) => t.jobType === 'code' && (!currentJobId || t.jobId !== currentJobId))
+    .map((t) => t.ts);
+
+  return breadcrumbs.map((bc) => {
+    if (bc.jobType !== 'design') return bc;
+    const consumed = priorCodeTurnTs.some((ts) => ts > bc.ts);
+    return { ...bc, consumption: consumed ? 'consumed' : 'pending' };
+  });
 }
 
 /**
@@ -145,7 +315,7 @@ export function mergeFeatureContext(
  */
 export async function buildFeatureContext(
   session: SessionPort | undefined,
-  options?: { breadcrumbWindow?: number },
+  options?: { breadcrumbWindow?: number; currentJobId?: string },
 ): Promise<FeatureContext | undefined> {
   if (!session) return undefined;
 
@@ -153,6 +323,7 @@ export async function buildFeatureContext(
     userTurns: FeatureUserTurnLine[];
     userTurnMetas: FeatureUserTurnMetaLine[];
     breadcrumbs: FeatureBreadcrumbLine[];
+    assistantTurns?: FeatureAssistantTurnLine[];
   };
   try {
     loaded = await session.loadSinceBoundary();
@@ -161,7 +332,49 @@ export async function buildFeatureContext(
     return { breadcrumbs: [], userTurns: [] };
   }
 
-  return mergeFeatureContext(loaded, options);
+  const ctx = mergeFeatureContext(loaded, options);
+  await backfillExchangesFromChat(ctx, session);
+  return ctx;
+}
+
+/** Max trailing exchanges eligible for the chat.jsonl migration backfill. */
+const LENS_BACKFILL_WINDOW = 6;
+
+/**
+ * Migration fallback (Context Lens P2): turns recorded before assistant_turn
+ * lines existed have no `assistantFinalText`. For the trailing band-1 window
+ * only, reconstruct it from chat.jsonl via `loadChatByTurnIds`. This is the
+ * ONE sanctioned live read of chat.jsonl in the context pipeline (Chat Clear
+ * invariant) — it converges to zero as assistant_turn lines accumulate.
+ */
+async function backfillExchangesFromChat(
+  ctx: FeatureContext,
+  session: SessionPort,
+): Promise<void> {
+  const exchanges = ctx.exchanges ?? [];
+  const tail = exchanges.slice(-LENS_BACKFILL_WINDOW);
+  const missing = tail.filter((e) => !e.assistantFinalText);
+  if (missing.length === 0) return;
+
+  try {
+    const lines = await session.loadChatByTurnIds(missing.map((e) => e.turnId));
+    const proseByTurn = new Map<string, string[]>();
+    for (const line of lines) {
+      const prose = assistantProseOf(line);
+      if (!prose) continue;
+      const list = proseByTurn.get(line.turnId) ?? [];
+      list.push(prose);
+      proseByTurn.set(line.turnId, list);
+    }
+    for (const exchange of missing) {
+      const parts = proseByTurn.get(exchange.turnId);
+      if (parts?.length) {
+        exchange.assistantFinalText = capTail(parts.join('\n').trim(), 2240);
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️  [FeatureContext] chat backfill failed (non-fatal):', err);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,6 +438,15 @@ export interface CompactFeatureContextOptions {
 export interface CompactFeatureContextDeps {
   llm: LLMClient;
   promptPort: PromptPort;
+  /**
+   * Context Lens P3 — when wired, an overflow compaction persists a
+   * `context_summary` checkpoint line so subsequent hydrates read it for
+   * free instead of re-running the LLM (per-hydrate re-summarization is
+   * retired). Absent (legacy callers/tests): in-memory compaction only.
+   */
+  session?: SessionPort;
+  /** Line identity for the persisted checkpoint. */
+  identity?: { jobId?: string; turnId?: string; jobType?: string };
 }
 
 /**
@@ -253,9 +475,14 @@ export async function compactFeatureContext(
 
   if (ctx.userTurns.length <= windowSize) return ctx;
 
+  const assistantTokens = (ctx.exchanges ?? []).reduce(
+    (sum, e) => sum + Math.ceil((e.assistantFinalText?.length ?? 0) / CHARS_PER_TOKEN),
+    0,
+  );
   const totalTokens =
     estimateTurnsTokens(ctx.userTurns) +
-    estimateBreadcrumbsTokens(ctx.breadcrumbs);
+    estimateBreadcrumbsTokens(ctx.breadcrumbs) +
+    assistantTokens;
   if (totalTokens <= threshold) return ctx;
 
   const keptUserTurns = ctx.userTurns.slice(-windowSize);
@@ -268,14 +495,45 @@ export async function compactFeatureContext(
   const oldBreadcrumbs = ctx.breadcrumbs.filter((bc) => !cutoffTs || bc.ts < cutoffTs);
   const keptBreadcrumbs = ctx.breadcrumbs.filter((bc) => !cutoffTs || bc.ts >= cutoffTs);
 
-  // Mix old user_turns + old BCs in chronological order so the LLM sees
-  // a single timeline. role='breadcrumb' renders as MECE "Artifact".
+  // Lens bands follow the same cutoff (P3): folded exchanges leave band 1,
+  // folded digests leave band 2 — their constraints move to the ledger.
+  const oldExchanges = (ctx.exchanges ?? []).filter((e) => !cutoffTs || e.ts < cutoffTs);
+  const keptExchanges = (ctx.exchanges ?? []).filter((e) => cutoffTs && e.ts >= cutoffTs);
+  const oldDigests = (ctx.digests ?? []).filter((d) => !cutoffTs || d.ts < cutoffTs);
+  const keptDigests = (ctx.digests ?? []).filter((d) => cutoffTs && d.ts >= cutoffTs);
+
+  // Constraint Ledger (P3) — DETERMINISTIC verbatim carry: previous ledger ∪
+  // constraints of the digests being folded, deduped. The LLM never rewrites
+  // the ledger, so "채팅에서 말한 제약" cannot be silently dropped by a bad
+  // summary. Supersession is handled at read time (the current directive
+  // wins per the render constraints), not by deletion.
+  const constraintLedger = [
+    ...new Set([
+      ...(ctx.constraintLedger ?? []),
+      ...oldDigests.flatMap((d) => d.digest.constraints),
+    ]),
+  ];
+
+  // Mix old user_turns + old BCs (+ old assistant finals) in chronological
+  // order so the LLM sees a single timeline. role='breadcrumb' renders as
+  // MECE "Artifact"; the previous rolling summary re-enters as 'system' so
+  // the narrative accumulates across checkpoints.
   const entries: CompactableEntry[] = [
+    ...(ctx.summary
+      ? [{ role: 'system', content: ctx.summary, timestamp: '' }]
+      : []),
     ...oldUserTurns.map((turn) => ({
       role: 'user',
       content: turn.text || '',
       timestamp: turn.ts,
     })),
+    ...oldExchanges
+      .filter((e) => e.assistantFinalText)
+      .map((e) => ({
+        role: 'assistant',
+        content: e.assistantFinalText as string,
+        timestamp: e.ts,
+      })),
     ...oldBreadcrumbs.map((bc) => ({
       role: 'breadcrumb',
       content: formatBreadcrumbAsContent(bc),
@@ -294,11 +552,54 @@ export async function compactFeatureContext(
     });
     if (!result.wasCompacted || !result.summary) return ctx;
 
+    // P3 — persist the checkpoint so the NEXT hydrate reads it for free.
+    // coversThroughTs = the newest folded conversational line.
+    if (deps.session) {
+      const coversThroughTs = [
+        ...oldUserTurns.map((t) => t.ts),
+        ...oldBreadcrumbs.map((b) => b.ts),
+      ].sort().pop();
+      if (coversThroughTs) {
+        try {
+          await deps.session.appendContextSummary({
+            type: 'context_summary',
+            ts: new Date().toISOString(),
+            jobId: deps.identity?.jobId ?? 'unknown',
+            turnId: deps.identity?.turnId ?? 'unknown',
+            jobType: (deps.identity?.jobType ?? 'code') as FeatureContextSummaryLine['jobType'],
+            coversThroughTs,
+            summary: result.summary,
+            constraintLedger,
+          });
+          console.log(
+            `🗜️  [FeatureContext] context_summary checkpoint appended (covers ≤ ${coversThroughTs}, ledger=${constraintLedger.length})`,
+          );
+          // F3 (P4) — surface the compaction as a chat card so memory
+          // changes are visible, not silent. Best-effort: renderer drift
+          // must be observable (no silent catch), never fatal.
+          try {
+            const { getChatAPIClient } = await import('../adapters/ChatAPIClient');
+            await getChatAPIClient().showChatStatus('context_compacted', {
+              foldedTurns: oldUserTurns.length,
+              ledgerCount: constraintLedger.length,
+            });
+          } catch (err) {
+            console.warn('⚠️  [FeatureContext] context_compacted card emit failed:', err);
+          }
+        } catch (err) {
+          console.warn('⚠️  [FeatureContext] checkpoint append failed (in-memory compact still applies):', err);
+        }
+      }
+    }
+
     return {
       ...ctx,
       userTurns: keptUserTurns,
       breadcrumbs: keptBreadcrumbs,
+      exchanges: keptExchanges,
+      digests: keptDigests,
       summary: result.summary,
+      constraintLedger,
       wasCompacted: true,
     };
   } catch (err) {
@@ -369,6 +670,9 @@ export async function hydrateFeatureContext(
 
   let featureContext = await buildFeatureContext(deps.session, {
     breadcrumbWindow: input.breadcrumbWindow,
+    // P1b — excluded from the breadcrumb consumption scan so the turn being
+    // classified cannot flip the pending/consumed state it is judged by.
+    currentJobId: input.jobId,
   });
 
   // Resolve turnId from the FULL pre-compact userTurns. Compact trims the
@@ -399,7 +703,15 @@ export async function hydrateFeatureContext(
       // yet adopted tier-aware plumbing. Both invocations ultimately run
       // the same `compactFeatureContext` body — the tier wrapper only adds
       // opt-out for Reflex / Plan tiers that should skip the LLM call.
-      const compactDeps = { llm: deps.llm, promptPort: deps.promptPort };
+      //
+      // P3 — session + identity let an overflow persist a `context_summary`
+      // checkpoint so subsequent hydrates skip the LLM entirely.
+      const compactDeps: CompactFeatureContextDeps = {
+        llm: deps.llm,
+        promptPort: deps.promptPort,
+        session: deps.session,
+        identity: { jobId: input.jobId, turnId },
+      };
       if (input.executionTier) {
         featureContext = await input.executionTier.compact(featureContext, compactDeps);
       } else {

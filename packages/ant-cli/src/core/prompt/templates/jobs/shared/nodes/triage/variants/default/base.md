@@ -21,8 +21,12 @@ You map the user's directive to exactly one intent id from the matrix below.
 {{#if featureContext.breadcrumbs.length}}
 ## PRIOR ARTIFACTS (잡 간 산출물 anchor)
 {{#each featureContext.breadcrumbs}}
-- [scope={{this.scope}}] anchors: {{json this.anchors}} — {{this.summary}}
+- [scope={{this.scope}}]{{#if this.consumption}}{{#if (eq this.consumption "pending")}} [pending — not yet consumed by any code job]{{else}} [consumed by a later code job]{{/if}}{{/if}} anchors: {{json this.anchors}} — {{this.summary}}
 {{/each}}
+{{/if}}
+
+{{#if lens}}
+{{> jobs/shared/injections/context-lens}}
 {{/if}}
 
 {{#if featureContext.summary}}

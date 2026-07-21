@@ -121,6 +121,18 @@ export async function direct(
   // violations, retryContext, task-type variant rules) because Tier 0/1
   // has no task by construction.
   const executionTierForPrompt = state.executionTier !== undefined ? state.executionTier : 0;
+
+  // P1 rich tail (e2-humming-spindle): Tier 0/1 direct is a conversational
+  // consumer (1-3 LLM calls) — featureContext carries only user turns and
+  // breadcrumbs, never prior ASSISTANT utterances, so referents like "the
+  // second option" were unresolvable. Assemble the recent exchanges from
+  // chat.jsonl (schema-change-free fallback; P2 moves the source to durable
+  // assistant_turn lines).
+  const { buildChatTail } = await import('../../../../../../core/context/chatTailBuilder');
+  const recentConversation = await buildChatTail(state.deps?.session, {
+    excludeTurnId: state.turnId,
+  });
+
   const promptResult = await promptBuilder.build({
     templates: TEMPLATE_PATHS.codeDirect,
     intent: state.resolvedAction?.intent,
@@ -146,6 +158,7 @@ export async function direct(
       directive: state.directive || '',
       directHints: state.directHints || {},
       featureContext: state.featureContext,
+      recentConversation,
       mode,
       directMode,
       isExplainMode,

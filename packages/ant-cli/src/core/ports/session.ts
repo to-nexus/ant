@@ -5,6 +5,8 @@ import type {
   FeatureUserTurnLine,
   FeatureUserTurnMetaLine,
   FeatureBreadcrumbLine,
+  FeatureAssistantTurnLine,
+  FeatureContextSummaryLine,
   FeatureBoundaryLine,
   ChatLine,
   LogJobType,
@@ -106,6 +108,18 @@ export interface SessionPort {
   appendBreadcrumb(line: FeatureBreadcrumbLine): Promise<void>;
 
   /**
+   * Append an assistant_turn line to feature.jsonl (Context Lens P2).
+   * Write-once at job end — the user_turn's assistant-side pair.
+   */
+  appendAssistantTurn(line: FeatureAssistantTurnLine): Promise<void>;
+
+  /**
+   * Append a context_summary checkpoint line (Context Lens P3).
+   * Written once per band-2 overflow; later hydrates read it for free.
+   */
+  appendContextSummary(line: FeatureContextSummaryLine): Promise<void>;
+
+  /**
    * Append a boundary line + collapse prior user_turn/user_turn_meta lines.
    * The primary Collapse mechanism.
    */
@@ -113,12 +127,15 @@ export interface SessionPort {
 
   /**
    * Load feature.jsonl since latest boundary.
-   * Returns T2 (user_turn + user_turn_meta after boundary) + all T3 (breadcrumbs).
+   * Returns T2 (user_turn + user_turn_meta + assistant_turn after boundary)
+   * + all T3 (breadcrumbs).
    */
   loadSinceBoundary(): Promise<{
     userTurns: FeatureUserTurnLine[];
     userTurnMetas: FeatureUserTurnMetaLine[];
     breadcrumbs: FeatureBreadcrumbLine[];
+    assistantTurns: FeatureAssistantTurnLine[];
+    contextSummaries: FeatureContextSummaryLine[];
   }>;
 
   /**

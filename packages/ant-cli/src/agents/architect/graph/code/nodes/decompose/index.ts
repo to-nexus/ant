@@ -56,6 +56,8 @@ import {
 } from "../../../../../common/clarify";
 import { referenceCatalogVars } from "../../../../../common/tool/reference/catalogVars";
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
+import { projectLens } from "../../../../../../core/context/lensProjection";
+import { contextProfileFor } from "../../../../../../core/executionTier/contextProfile";
 import {
   JsonSyntaxViolation,
   buildJsonSyntaxViolationFraming,
@@ -404,6 +406,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
   const enrichedVars = {
     ...decomposeVars,
+    // Context Lens P2 — standard profile (decompose decides the tier, so it
+    // cannot condition on it; runs once per job). Assistant finals + digests
+    // let task breakdown honor referents settled in chat ("옵션 B로 하자").
+    lens: projectLens(state.featureContext, contextProfileFor('decompose')),
     clarifyActive: _clarifyActive,
     clarifyBudget: _clarifyPolicy?.clarifyBudget,
     blockingMode: _clarifyPolicy?.blockingMode,

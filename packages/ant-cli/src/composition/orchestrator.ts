@@ -225,7 +225,7 @@ export async function orchestrator(params: {
           configData
         );
 
-        // ✅ Record user_turn to chat.jsonl (skipFeature=true — ask는 feature.jsonl 미기록).
+        // ✅ Record user_turn (feature.jsonl ephemeral + chat.jsonl — Context Lens P2).
         //   `seedTurnId` (chat SSOT §6) reuses the id pre-allocated by
         //   /chat/user-message so the durable record matches the optimistic
         //   SSE broadcast — the user-message duplication defect is gone.
@@ -259,6 +259,7 @@ export async function orchestrator(params: {
           llm: inlineAskLLM,
           memory,
           jobId,
+          turnId: seedTurnId,
         });
 
         return {
@@ -723,6 +724,8 @@ interface InlineAskDispatchParams {
   llm: any;
   memory?: any;
   jobId?: string;
+  /** Current turn id — excluded from the rich-tail scan (P1). */
+  turnId?: string;
 }
 
 async function runInlineAskDispatch(
@@ -732,7 +735,7 @@ async function runInlineAskDispatch(
   intent: 'ask' | 'work';
   response?: string;
 }> {
-  const { message, featurePath, currentJob, currentAgent, projectId, llm, memory, jobId } = params;
+  const { message, featurePath, currentJob, currentAgent, projectId, llm, memory, jobId, turnId } = params;
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('💬 INLINE ASK DISPATCH');
@@ -791,6 +794,17 @@ async function runInlineAskDispatch(
     return { status: 'completed', intent: 'work' };
   }
 
+  // P1 rich tail (e2-humming-spindle): ask previously received ZERO prior
+  // conversation — "방금 뭘 바꿨어?" was structurally unanswerable. Assemble
+  // the recent user↔assistant exchanges from chat.jsonl via a read-only
+  // session adapter (projectId/featureName derive from featurePath).
+  const { buildChatTail } = await import('../core/context/chatTailBuilder');
+  const askSession = new FileSessionAdapter(featurePath, 'architect', projectId);
+  const recentConversation = await buildChatTail(askSession, { excludeTurnId: turnId });
+  if (recentConversation) {
+    console.log(`📚 [InlineAskDispatch] rich tail: ${recentConversation.exchanges.length} exchanges`);
+  }
+
   const askResult = await runAskGraph({
     question: message,
     language,
@@ -799,7 +813,23 @@ async function runInlineAskDispatch(
     currentAgent,
     deps: { llm },
     _httpJobId: jobId,
+    recentConversation,
   });
+
+  // Context Lens P2 — record the answer as an ephemeral assistant_turn so
+  // follow-ups ("아까 물어봤듯이…") resolve without re-reading chat.jsonl.
+  if (jobId && turnId) {
+    const { distillAssistantTurn } = await import('../core/context/assistantTurn');
+    await distillAssistantTurn({
+      session: askSession,
+      jobId,
+      turnId,
+      jobType: 'inline-ask',
+      directive: message,
+      ephemeral: true,
+      finalTextOverride: askResult.response || '',
+    });
+  }
 
   return {
     status: 'completed',

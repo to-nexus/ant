@@ -162,6 +162,10 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
     profile: state.profile,
     assetInventory: state.assetInventory,
     sessionContext: state.sessionContext,
+    // Cross-job context (feature.jsonl hydrate) — worker plan prompts render
+    // `featureContext.*` blocks; omitting this key leaves every worker's
+    // Prior Context empty while the serial path renders it. e2-humming-spindle P0.
+    featureContext: state.featureContext,
     featureName: state.featureName,
     maxRetries: state.maxRetries || 3,
     recursionCount: state.recursionCount || 0,

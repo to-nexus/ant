@@ -93,6 +93,12 @@ export interface FeatureUserTurnLine extends LineBase {
   text: string;
   /** Detect 노드가 판정한 mode (already known at record time) */
   mode?: Mode;
+  /**
+   * ask / inline-ask 턴 (Context Lens P2). 과거 skipFeature=true 로
+   * feature.jsonl 에서 통째로 빠지던 Q&A 를 ephemeral 대화 기록으로 남긴다
+   * — Lens 조립 시 가장 먼저 강등되고 breadcrumb/boundary 를 만들지 않는다.
+   */
+  ephemeral?: true;
 }
 
 /**
@@ -194,10 +200,75 @@ export interface FeatureBoundaryLine extends Omit<LineBase, 'jobType'> {
   reason: 'auto_job_complete_todo' | 'user_reset' | (string & {});
 }
 
+/**
+ * Structured digest of one user↔assistant exchange, distilled once at job
+ * end (write-once). Band-2 payload of the Context Lens (e2-humming-spindle).
+ *
+ * `decisions` from choice_resolved lines are ingested deterministically
+ * (no LLM); free-prose decisions/constraints come from a small LLM call
+ * (Tier 2+ only). `constraints` MUST quote the user's wording, not
+ * paraphrase — they feed the Constraint Ledger's verbatim-carry chain.
+ */
+export interface TurnDigest {
+  decisions: string[];
+  constraints: string[];
+  outcome: string;
+  openQuestions?: string[];
+}
+
+/**
+ * assistant_turn — user_turn의 assistant측 대칭쌍 (Context Lens P2)
+ *
+ * 기록 시점: 잡 종료 1회 (breadcrumb 배출과 같은 seam), write-once.
+ * `finalText`는 그 턴의 user-facing 최종 발화(사고/툴카드 제외)를
+ * tail-cap한 것 — 다음 턴이 "옵션 B로 하자" 류 지시 대상(referent)을
+ * 해석할 수 있게 하는 유일한 영속 채널이다.
+ *
+ * breadcrumb(파일 산출 흔적, 반영구)과 책임이 다르다: assistant_turn은
+ * 대화 흔적이며 recency에 따라 밴드가 강등된다.
+ */
+export interface FeatureAssistantTurnLine extends LineBase {
+  type: 'assistant_turn';
+  /** Tail-capped user-facing final prose (~800 tokens). */
+  finalText: string;
+  digest?: TurnDigest;
+  /**
+   * Fast-demoting conversational record (ask / inline-ask). Ephemeral turns
+   * are the first to fold into summaries and never generate breadcrumbs.
+   */
+  ephemeral?: true;
+  /** Multi-tab seam (E2-1, deferred) — absent = default scope. */
+  scopeId?: string;
+}
+
+/**
+ * context_summary — Context Lens band-3 체크포인트 (P3)
+ *
+ * 기록 시점: hydrate 중 band-2 예산 초과 시 1회 (compactFeatureContext).
+ * 이후의 hydrate 는 이 라인을 공짜로 읽는다 — 옛 per-hydrate LLM 재요약을
+ * 대체한다. `coversThroughTs` 이하의 conversational 라인은 이 체크포인트에
+ * 접혀 있으므로 프롬프트 주입에서 제외된다 (디스크는 보존).
+ *
+ * `constraintLedger` 는 결정론적 verbatim-carry 다: 이전 원장 ∪ 접힌
+ * digest 들의 constraints, dedupe 만 — LLM 이 원장을 재작성하지 않으므로
+ * "채팅에서 말한 제약은 조용히 사라지지 않는다" 가 구조적으로 보장된다.
+ */
+export interface FeatureContextSummaryLine extends LineBase {
+  type: 'context_summary';
+  /** Lines with ts <= this are folded into `summary` / `constraintLedger`. */
+  coversThroughTs: string;
+  summary: string;
+  constraintLedger: string[];
+  /** Multi-tab seam (E2-1, deferred) — absent = default scope. */
+  scopeId?: string;
+}
+
 export type FeatureLine =
   | FeatureUserTurnLine
   | FeatureUserTurnMetaLine
   | FeatureBreadcrumbLine
+  | FeatureAssistantTurnLine
+  | FeatureContextSummaryLine
   | FeatureBoundaryLine;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -234,6 +305,7 @@ export type ChatStatusType =
   | 'tool_action'
   | 'learning' | 'learned'
   | 'context_loaded'
+  | 'context_compacted'
   | 'triage_choice'
   | 'choice_card'
   | 'cancelled'
