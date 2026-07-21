@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { Spinner } from '@/presentation/components/common/async';
+import { FeatureContextGauge } from './context-lens/FeatureContextGauge';
 
 interface ChatHeaderBarProps {
   selectedProject: string | null;
@@ -270,6 +271,12 @@ export function ChatHeaderBar({
       )}
 
       <div style={{ flex: 1 }} />
+
+      {/* Carry-over memory gauge + Context panel (Context Lens E2-4).
+          Cross-job semantics — distinct from the per-call token ring. */}
+      {selectedProject && selectedFeature && (
+        <FeatureContextGauge projectId={selectedProject} featureName={selectedFeature} />
+      )}
 
       {/* Eraser : sweep current chat view */}
       <button

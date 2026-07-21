@@ -52,6 +52,7 @@ export * from './git';
 export * from './feature-name';
 export * from './codebase-presence';
 export * from './session-log';
+export * from './context-lens';
 export * from './file-resource';
 export * from './folders-compressed';
 export * from './chat-status';

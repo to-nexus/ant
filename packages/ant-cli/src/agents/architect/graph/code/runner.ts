@@ -20,6 +20,12 @@ export interface CodeGraphResult {
   filesChanged: number;
   interruption?: InterruptionDetails;
   triageResult?: TriageResult;
+  // E2-5 — surfaced from the final state for the full-job ask fallback
+  // (architect/index.ts answers `group === 'ask'` turns out-of-graph).
+  workspaceState?: import('../../../common/graph/nodes/triage/types').WorkspaceState;
+  directive?: string;
+  overrideDirective?: string;
+  turnId?: string;
 }
 
 /**
@@ -347,6 +353,10 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         filesChanged: state.filesWritten || 0,
         interruption: state.interruption,
         triageResult: state.triageResult,
+        workspaceState: state.workspaceState,
+        directive: state.directive,
+        overrideDirective: state.overrideDirective,
+        turnId: state.turnId,
       };
     }
     
@@ -429,11 +439,15 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
     reportMessage += ` (paused: ${tasksRemaining} tasks remaining due to recursion limit)`;
   }
   
-  return { 
-    branch: state.branch!, 
+  return {
+    branch: state.branch!,
     reportFile: reportMessage,
     filesChanged: filesGenerated,
     interruption: state.interruption,
     triageResult: state.triageResult,  // ✅ Pass triage result for ask/redirect/blocked handling
+    workspaceState: state.workspaceState,
+    directive: state.directive,
+    overrideDirective: state.overrideDirective,
+    turnId: state.turnId,
   };
 }

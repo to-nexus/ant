@@ -10,6 +10,7 @@ import { runDesignGraph } from "./graph/design/runner";
 import { DesignGraphState } from "./graph/design/state";
 import { runLearnGraph } from "./graph/learn/runner";
 import { LearnGraphState } from "./graph/learn/state";
+import { answerFullJobAsk } from "./graph/ask/fullJobAskFallback";
 import { PromptBuilder } from "../../core/prompt/builder/PromptBuilder";
 
 export async function architectAgent(
@@ -179,10 +180,25 @@ export async function architectAgent(
       const learnDetect = (l as any).detect as { status?: string; displayMessage?: string; suggestedAlternatives?: { intentId: string }[] } | undefined;
 
       if (learnTriage?.group === 'ask') {
+        // E2-5 — triage grouped this turn as a question; the graph ended at
+        // __end__ without answering. Run the ask graph out-of-graph (same
+        // wiring as inline-ask dispatch) so the user actually gets an answer.
+        const learnAnswer = await answerFullJobAsk({
+          question: l.overrideDirective || l.directive || input,
+          language: userLanguage === 'ko' ? 'ko' : 'en',
+          featurePath,
+          projectId: project,
+          currentJob: 'learn',
+          currentAgent: 'architect',
+          workspaceState: l.workspaceState,
+          llm: deps?.llm,
+          jobId: jobId || process.env.ANT_JOB_ID,
+          turnId: l.turnId,
+        });
         return {
           success: true,
           job: 'learn',
-          message: 'Question answered.',
+          message: learnAnswer || 'Question answered.',
         };
       }
       if (learnDetect?.status === 'redirect-suggested') {
@@ -262,10 +278,23 @@ export async function architectAgent(
       const designDetect = (d as any).detect as { status?: string; displayMessage?: string; suggestedAlternatives?: { intentId: string }[] } | undefined;
 
       if (designTriage?.group === 'ask') {
+        // E2-5 — see the learn branch: out-of-graph ask dispatch.
+        const designAnswer = await answerFullJobAsk({
+          question: d.overrideDirective || d.directive || input,
+          language: userLanguage === 'ko' ? 'ko' : 'en',
+          featurePath,
+          projectId: project,
+          currentJob: 'design',
+          currentAgent: 'architect',
+          workspaceState: d.workspaceState,
+          llm: deps?.llm,
+          jobId: jobId || process.env.ANT_JOB_ID,
+          turnId: d.turnId,
+        });
         return {
           success: true,
           job: 'design',
-          message: 'Question answered.',
+          message: designAnswer || 'Question answered.',
         };
       }
       if (designDetect?.status === 'redirect-suggested') {
@@ -426,10 +455,23 @@ export async function architectAgent(
         const codeDetect = (result as any).detect as { status?: string; displayMessage?: string; suggestedAlternatives?: { intentId: string }[] } | undefined;
 
         if (codeTriage?.group === 'ask') {
+          // E2-5 — see the learn branch: out-of-graph ask dispatch.
+          const codeAnswer = await answerFullJobAsk({
+            question: result.overrideDirective || result.directive || input,
+            language: userLanguage === 'ko' ? 'ko' : 'en',
+            featurePath,
+            projectId: project,
+            currentJob: 'code',
+            currentAgent: 'architect',
+            workspaceState: result.workspaceState,
+            llm: deps?.llm,
+            jobId: resolvedJobId,
+            turnId: result.turnId,
+          });
           return {
             success: true,
             job: 'code',
-            message: 'Question answered.',
+            message: codeAnswer || 'Question answered.',
           };
         }
         if (codeDetect?.status === 'redirect-suggested') {

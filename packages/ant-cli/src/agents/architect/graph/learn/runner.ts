@@ -1,12 +1,18 @@
 import { buildLearnGraph } from "./graph";
 import { LearnGraphState } from "./state";
-import { TriageResult } from "../../../common/graph/nodes/triage/types";
+import { TriageResult, WorkspaceState } from "../../../common/graph/nodes/triage/types";
 import { loadRecursionLimit, cleanupChat, invokeGraph } from "../../../common/graph/runnerHelpers";
 import { ExecutionTierId } from "../../../../core/executionTier";
 
 export interface LearnGraphResult {
   stored: number;
   triageResult?: TriageResult;
+  // E2-5 — surfaced from the final state for the full-job ask fallback
+  // (architect/index.ts answers `group === 'ask'` turns out-of-graph).
+  workspaceState?: WorkspaceState;
+  directive?: string;
+  overrideDirective?: string;
+  turnId?: string;
 }
 
 export async function runLearnGraph(initial: LearnGraphState): Promise<LearnGraphResult> {
@@ -26,6 +32,10 @@ export async function runLearnGraph(initial: LearnGraphState): Promise<LearnGrap
     return {
       stored: state.texts?.length || 0,
       triageResult: state.triageResult,
+      workspaceState: state.workspaceState,
+      directive: state.directive,
+      overrideDirective: state.overrideDirective,
+      turnId: state.turnId,
     };
   } catch (error) {
     console.error(`❌ [LearnRunner] Graph execution failed:`, error);
