@@ -433,21 +433,6 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     } catch (err) {
       console.warn('⚠️  [Design Learn] breadcrumb write failed:', err);
     }
-
-    // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
-    // Same job-end seam as the breadcrumb but NOT gated by its explain/
-    // touched=0 skips: the conversation matters even without doc changes.
-    const { distillAssistantTurn } = await import('../../../../../../core/context/assistantTurn');
-    await distillAssistantTurn({
-      session: state.deps.session,
-      jobId: state.jobId,
-      turnId: state.turnId,
-      jobType: 'design',
-      directive: state.directive,
-      executionTierId: state.executionTier,
-      llm: state.deps.llm,
-      promptPort: state.deps.promptBuilder,
-    });
   }
   
   // Store lessons to vector memory
@@ -601,6 +586,28 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // enter/exit bracket symmetric across jobs.
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn', state.workerId ?? 0);
+  }
+
+  // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
+  // MUST be the last statement before return (idempotent-kazoo RCA): it is a
+  // best-effort, up-to-8s blocking LLM call, so a mid-call SIGTERM must never
+  // pre-empt the durable completion checkpoint (saveLearnCheckpoint above) or
+  // the user-facing terminal signals (endJob, spec_complete card). Ordering it
+  // last leaves an already-completed job on any interruption; only the digest
+  // line is lost. Not gated by the breadcrumb's explain/touched=0 skips — the
+  // conversation matters even without doc changes.
+  if (isLastTask && !_isWorkerContext && state.deps?.session) {
+    const { distillAssistantTurn } = await import('../../../../../../core/context/assistantTurn');
+    await distillAssistantTurn({
+      session: state.deps.session,
+      jobId: state.jobId,
+      turnId: state.turnId,
+      jobType: 'design',
+      directive: state.directive,
+      executionTierId: state.executionTier,
+      llm: state.deps.llm,
+      promptPort: state.deps.promptBuilder,
+    });
   }
 
   return {

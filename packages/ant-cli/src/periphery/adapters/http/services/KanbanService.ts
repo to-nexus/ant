@@ -497,6 +497,31 @@ export class KanbanService {
   }
 
   /**
+   * Read the persisted `SessionState` for a job, through the same single
+   * file-access owner as the Kanban projection. Returns `undefined` when the
+   * session file is absent/unreadable. Used by StaleJobRecovery Phase 1 to
+   * consult `deriveResumableState` (the durable "what's left" SSOT) before
+   * deciding pause-vs-finalize — so recovery cannot open the session file on
+   * its own path and drift from this reader.
+   */
+  async readSessionState(
+    projectId: string,
+    featureName: string,
+    jobType: string,
+    userContext?: UserContext,
+  ): Promise<Partial<SessionState> | undefined> {
+    if (!this.workspaceResolver || !userContext) {
+      throw new Error('WorkspaceResolver and userContext are required');
+    }
+
+    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    const sessionPath = getSessionFilePathByJob(featurePath, jobType);
+
+    const sessionData = await this.safeReadSession(sessionPath);
+    return sessionData?.state ?? undefined;
+  }
+
+  /**
    * Read the session file with a small retry loop and last-known-good
    * fallback. Extracted so both `getKanbanData` and
    * `getFinalSnapshotKanbanData` share one I/O policy.

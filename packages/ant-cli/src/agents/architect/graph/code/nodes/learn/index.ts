@@ -637,29 +637,6 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     }
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
-  //
-  // Runs once at job end, NOT gated by the BC gate: the conversation
-  // matters even when no file changed (explain mode, touched=0). The
-  // distiller reads this turn's chat lines, records the user-facing final
-  // prose + a structured digest (choice_resolved ingested deterministically)
-  // into feature.jsonl. Log-and-swallow — a miss never aborts learn.
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if (isLastTask && !isWorkerContext && state.deps?.session) {
-    const { distillAssistantTurn } = await import('../../../../../../core/context/assistantTurn');
-    await distillAssistantTurn({
-      session: state.deps.session,
-      jobId: state.jobId,
-      turnId: state.turnId,
-      jobType: 'code',
-      directive: state.directive,
-      executionTierId: state.executionTier,
-      llm: state.deps.llm,
-      promptPort: state.deps.promptBuilder,
-    });
-  }
-  
   // ASYNC lesson storage - Store to vector DB without blocking workflow
   if (state.deps?.memory && state.deps?.chunk) {
     const deps = {
@@ -809,6 +786,32 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     await clearExecutionLogger(state._httpJobId);
     await clearTokenLogger(state._httpJobId);
     clearPromptLogger('code', state._httpJobId);
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
+  //
+  // MUST be the last statement before return (idempotent-kazoo RCA): it is a
+  // best-effort, up-to-8s blocking LLM call, so a mid-call SIGTERM must never
+  // pre-empt the durable completion checkpoint (the completedAt-bearing
+  // updateArtifacts above) or the user-facing terminal signals (learned
+  // status, final Kanban). Ordering it last leaves an already-completed job on
+  // any interruption; only the digest line is lost. Runs once at job end, NOT
+  // gated by the BC gate: the conversation matters even when no file changed
+  // (explain mode, touched=0). Log-and-swallow — a miss never aborts learn.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (isLastTask && !isWorkerContext && state.deps?.session) {
+    const { distillAssistantTurn } = await import('../../../../../../core/context/assistantTurn');
+    await distillAssistantTurn({
+      session: state.deps.session,
+      jobId: state.jobId,
+      turnId: state.turnId,
+      jobType: 'code',
+      directive: state.directive,
+      executionTierId: state.executionTier,
+      llm: state.deps.llm,
+      promptPort: state.deps.promptBuilder,
+    });
   }
 
   return { ...state, branch, filesWritten: effectiveFilesWritten };
