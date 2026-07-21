@@ -97,6 +97,7 @@
     "main": "메인",
     "worker": "워커 {{n}}",
     "estimatingNote": "프롬프트 크기로 추정한 값 — 실제 사용량이 곧 반영됩니다",
+    "semanticsNote": "이 게이지는 현재 LLM 호출 1회의 프롬프트 점유율입니다. 채팅 원문은 주입되지 않고 잡 사이엔 압축된 증류 기억만 전달되므로, 채팅이 길어져도 링은 차지 않습니다.",
     "moreAria": "게이지 {{count}}개 더",
     "moreTitle": "{{count}}개 더",
     "ariaLabel": "컨텍스트 {{totalPct}}, 프롬프트 {{prompt}}, 최대 {{max}}",

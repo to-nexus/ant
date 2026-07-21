@@ -442,7 +442,17 @@
       "render-call"
     ]
   },
+  "infra/commit-message/system": {
+    "sources": [
+      "render-call"
+    ]
+  },
   "infra/compaction/system": {
+    "sources": [
+      "render-call"
+    ]
+  },
+  "infra/turn-digest/system": {
     "sources": [
       "render-call"
     ]
@@ -1807,6 +1817,12 @@
   "jobs/shared/injections/codebase-channel": {
     "sources": [
       "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
+  "jobs/shared/injections/context-lens": {
+    "sources": [
       "partial-ref",
       "manifest"
     ]

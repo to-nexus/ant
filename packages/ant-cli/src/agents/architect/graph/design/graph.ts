@@ -536,6 +536,10 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
     directive: state.directive,
     existingDesignDocs: state.existingDesignDocs,
     assetInventory: state.assetInventory,
+    // Cross-job context (feature.jsonl hydrate) — design worker plan prompt
+    // renders `featureContext.*`; same omission bug as the code graph.
+    // e2-humming-spindle P0.
+    featureContext: state.featureContext,
     figmaConfig: state.figmaConfig,
     figmaExplorationResult: state.figmaExplorationResult,
     figmaAvailable: state.figmaAvailable,

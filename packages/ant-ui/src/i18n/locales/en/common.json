@@ -97,6 +97,7 @@
     "main": "Main",
     "worker": "Worker {{n}}",
     "estimatingNote": "Estimated from prompt size — actual usage arrives shortly",
+    "semanticsNote": "Shows this call's prompt occupancy. Chat history is not injected verbatim — ANT carries a compact distilled memory across jobs, so long chats don't fill the ring.",
     "moreAria": "{{count}} more gauges",
     "moreTitle": "{{count}} more",
     "ariaLabel": "context {{totalPct}}, prompt {{prompt}}, max {{max}}",

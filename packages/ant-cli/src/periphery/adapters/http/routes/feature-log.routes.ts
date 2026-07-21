@@ -82,6 +82,57 @@ export function createFeatureLogRoutes(deps: {
   });
 
   /**
+   * GET /projects/:id/features/:feature/context/estimate
+   *
+   * Context Lens carry-over estimate (P4 F2 — BE contract for the FE
+   * FeatureContextGauge / Context panel, E2-4). Assembles the SAME
+   * FeatureContext the next job's hydrate would see (no LLM, no
+   * compaction side effects) and reports its band sizes + rough token
+   * estimate against the standard-profile cap.
+   *
+   * Response: {
+   *   exchanges: number; digests: number; ledger: string[];
+   *   summaryPresent: boolean; estimatedTokens: number; capTokens: number;
+   * }
+   */
+  router.get('/projects/:id/features/:feature/context/estimate', async (req: Request, res: Response) => {
+    try {
+      if (!deps.workspaceResolver) {
+        res.status(503).json({ error: 'Workspace resolver not available' });
+        return;
+      }
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const userContext = extractUserContext(req);
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+
+      const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
+      const { buildFeatureContext } = await import('../../../../core/context/featureContextBuilder');
+      const { FEATURE_CONTEXT_THRESHOLD } = await import('@ant/shared');
+      const ctx = await buildFeatureContext(adapter);
+
+      const CHARS_PER_TOKEN = 2.8;
+      const charCount =
+        (ctx?.userTurns ?? []).reduce((s, t) => s + (t.text?.length ?? 0), 0) +
+        (ctx?.exchanges ?? []).reduce((s, e) => s + (e.assistantFinalText?.length ?? 0), 0) +
+        (ctx?.summary?.length ?? 0) +
+        (ctx?.constraintLedger ?? []).reduce((s, c) => s + c.length, 0);
+
+      res.json({
+        exchanges: ctx?.exchanges?.length ?? 0,
+        digests: ctx?.digests?.length ?? 0,
+        ledger: ctx?.constraintLedger ?? [],
+        summaryPresent: !!ctx?.summary,
+        estimatedTokens: Math.ceil(charCount / CHARS_PER_TOKEN),
+        capTokens: FEATURE_CONTEXT_THRESHOLD,
+      });
+    } catch (error: any) {
+      logger.error('Feature context estimate error', { component: 'FeatureLog' }, error);
+      sendErrorResponse(res, 500, error, 'FeatureLog');
+    }
+  });
+
+  /**
    * GET /projects/:id/features/:feature/user-turn-meta
    *
    * Returns user_turn + user_turn_meta lines from `feature.jsonl`, keyed on

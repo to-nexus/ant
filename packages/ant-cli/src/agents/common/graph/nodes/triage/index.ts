@@ -29,6 +29,8 @@ import { getSessionDebugDir } from '../../../../../core/utils/sessionPaths.js';
 import { extractLLMInfo } from '../../../../../core/ports/workflow.js';
 import type { PromptPort } from '../../../../../core/ports/prompt.js';
 import { hydrateFeatureContext } from '../../../../../core/context/featureContextBuilder.js';
+import { projectLens } from '../../../../../core/context/lensProjection.js';
+import { contextProfileFor } from '../../../../../core/executionTier/contextProfile.js';
 import { recordUserTurnMeta } from '../../../../../core/executionTier/recordUserTurnMeta.js';
 import {
   INTENT_DEFINITIONS,
@@ -354,12 +356,24 @@ export async function buildTriagePrompt(params: {
 }): Promise<{ system: string; user: string }> {
   const { userInput, currentJob, currentAgent, workspaceState, featureContext, promptPort } = params;
 
+  // Context Lens P2 — lean profile: digests band only (band-1 user turns
+  // already render via the PRIOR USER TURNS block; assistant prose is
+  // stripped at lean). Exchanges are intentionally empty here.
+  const leanLens = projectLens(
+    featureContext as Parameters<typeof projectLens>[0],
+    contextProfileFor('triage'),
+  );
+
   const vars = {
     currentAgent,
     currentJob,
     userInput,
     intentCatalog: renderIntentCatalog(),
     featureContext: featureContext ?? undefined,
+    lens:
+      leanLens && (leanLens.digests.length || leanLens.constraintLedger?.length)
+        ? { exchanges: [], digests: leanLens.digests, constraintLedger: leanLens.constraintLedger }
+        : undefined,
     hasPlan: workspaceState.hasPlan,
     planPath: workspaceState.planPath || 'available',
     hasMetaDirectives: workspaceState.hasMetaDirectives,

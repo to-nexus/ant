@@ -4,6 +4,12 @@ You are analyzing a software specification to break it into executable tasks.
 
 {{> jobs/shared/injections/codebase-channel}}
 
+{{#if lens}}
+## Prior Conversation Context
+
+{{> jobs/shared/injections/context-lens}}
+{{/if}}
+
 DIRECTIVE:
 {{{directive}}}
 

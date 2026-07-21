@@ -49,7 +49,8 @@ interface WorkingCardProps {
     | 'learning' | 'learned'
     | 'processing' | 'processed'
     | 'downloading' | 'downloaded'
-    | 'figma_calling' | 'figma_called';
+    | 'figma_calling' | 'figma_called'
+    | 'context_compacted';
 }
 
 /** Progress state (~ing) vs complete state (~ed). */
@@ -80,6 +81,7 @@ function variantHue(variant: string): number {
     case 'processing': case 'processed': return 10;
     case 'downloading': case 'downloaded': return 40;
     case 'figma_calling': case 'figma_called': return 340;
+    case 'context_compacted': return 320;
     default: return 270;
   }
 }
@@ -103,6 +105,7 @@ function variantIcon(variant: string, isProgress: boolean): { Icon: IconKind; pu
     case 'processing': case 'processed': return { Icon: isProgress ? SPINNER_MARKER : Eraser,     pulse: false };
     case 'downloading': case 'downloaded':       return { Icon: isProgress ? SPINNER_MARKER : Download,   pulse: false };
     case 'figma_calling': case 'figma_called':   return { Icon: isProgress ? SPINNER_MARKER : Palette,    pulse: false };
+    case 'context_compacted':                    return { Icon: Brain, pulse: false };
     default: return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
   }
 }

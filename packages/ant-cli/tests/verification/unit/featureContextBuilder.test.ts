@@ -612,3 +612,75 @@ describe('compactFeatureContext — active compaction', () => {
     expect(result.userTurns).toHaveLength(10);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1b — breadcrumb consumption annotation (e2-humming-spindle /
+// green-padding-drake RCA). Design-job breadcrumbs are annotated with
+// 'pending' (no later code job) vs 'consumed' (a code job ran after),
+// deterministically from the user_turn jobType sequence. The current job's
+// own turn is excluded so the turn being classified cannot flip the state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('mergeFeatureContext — breadcrumb consumption annotation (P1b)', () => {
+  it('marks a design breadcrumb pending when no code turn follows it', () => {
+    // green-padding-drake shape: earlier code job → design job authors spec
+    // → next directive gets classified. The earlier code turn must NOT count.
+    const ctx = mergeFeatureContext({
+      userTurns: [
+        makeTurn(1, { jobType: 'code' }),
+        makeTurn(2, { jobType: 'design' }),
+      ],
+      userTurnMetas: [],
+      breadcrumbs: [
+        makeBreadcrumb(2, { jobType: 'design', ts: '2026-04-19T00:00:03.000Z' }),
+      ],
+    });
+
+    expect(ctx.breadcrumbs[0].consumption).toBe('pending');
+  });
+
+  it('marks a design breadcrumb consumed when a later code turn exists', () => {
+    const ctx = mergeFeatureContext({
+      userTurns: [
+        makeTurn(1, { jobType: 'design' }),
+        makeTurn(2, { jobType: 'code', ts: '2026-04-19T00:20:00.000Z' }),
+      ],
+      userTurnMetas: [],
+      breadcrumbs: [makeBreadcrumb(1, { jobType: 'design' })],
+    });
+
+    expect(ctx.breadcrumbs[0].consumption).toBe('consumed');
+  });
+
+  it('excludes the current job turn from the consumption scan', () => {
+    // The classified turn is already on disk (recordUserTurn runs before the
+    // graph). If it were counted, a code-job turn would mark the design
+    // breadcrumb consumed while triage is still deciding what the turn IS.
+    const ctx = mergeFeatureContext(
+      {
+        userTurns: [
+          makeTurn(1, { jobType: 'design' }),
+          makeTurn(2, { jobType: 'code', ts: '2026-04-19T00:20:00.000Z', jobId: 'job-current' }),
+        ],
+        userTurnMetas: [],
+        breadcrumbs: [makeBreadcrumb(1, { jobType: 'design' })],
+      },
+      { currentJobId: 'job-current' },
+    );
+
+    expect(ctx.breadcrumbs[0].consumption).toBe('pending');
+  });
+
+  it('leaves non-design breadcrumbs unannotated', () => {
+    const ctx = mergeFeatureContext({
+      userTurns: [
+        makeTurn(1, { jobType: 'code' }),
+        makeTurn(2, { jobType: 'code', ts: '2026-04-19T00:20:00.000Z' }),
+      ],
+      userTurnMetas: [],
+      breadcrumbs: [makeBreadcrumb(1, { jobType: 'code' })],
+    });
+
+    expect(ctx.breadcrumbs[0].consumption).toBeUndefined();
+  });
+});

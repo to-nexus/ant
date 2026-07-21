@@ -350,6 +350,11 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     currentTask: state.currentTask,
     completedTasksDetails: state.completedTasksDetails,
   });
+  // At the orchestrator terminal `currentTask` is cleared, so the
+  // currentTask-only `filesWritten` is 0 for every parallel run. Prefer the
+  // merged job-wide count there; per-worker calls keep their own count.
+  const effectiveFilesWritten =
+    !isWorkerContext && touchedForLearn ? touchedForLearn.all.size : filesWritten;
   const taskFailed = Boolean(state.violations && state.violations.length > 0);
   const bcGate =
     isLastTask && !isWorkerContext
@@ -444,12 +449,22 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         summary: inputSummary.substring(0, 200),
         size: firstDesign?.length || (state.directive || '').length,
       },
-      output: {
-        branch: branch,
-        filesWritten: filesWritten,
-        files: filePaths,
-        modifications: filePaths.length > 0 ? [...filePaths] : []
-      },
+      // Run output must reflect the whole job, not just `currentTask`. At this
+      // orchestrator terminal (`!isWorkerContext`) `currentTask` is cleared by
+      // the parallel node, so `filePaths` (currentTask-only) is empty for every
+      // parallel run. `touchedForLearn` already merges
+      // `completedTasksDetails[].touchedFiles` (+ chat op buckets), so reuse it.
+      output: (() => {
+        const outputFiles = touchedForLearn
+          ? Array.from(touchedForLearn.all)
+          : filePaths;
+        return {
+          branch: branch,
+          filesWritten: outputFiles.length,
+          files: outputFiles,
+          modifications: [...outputFiles],
+        };
+      })(),
       ...(isSuccessfulTerminal && {
         jobId: state.jobId,
         kanbanSnapshot: terminalSnapshot,
@@ -621,6 +636,29 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       }
     }
   }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
+  //
+  // Runs once at job end, NOT gated by the BC gate: the conversation
+  // matters even when no file changed (explain mode, touched=0). The
+  // distiller reads this turn's chat lines, records the user-facing final
+  // prose + a structured digest (choice_resolved ingested deterministically)
+  // into feature.jsonl. Log-and-swallow — a miss never aborts learn.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (isLastTask && !isWorkerContext && state.deps?.session) {
+    const { distillAssistantTurn } = await import('../../../../../../core/context/assistantTurn');
+    await distillAssistantTurn({
+      session: state.deps.session,
+      jobId: state.jobId,
+      turnId: state.turnId,
+      jobType: 'code',
+      directive: state.directive,
+      executionTierId: state.executionTier,
+      llm: state.deps.llm,
+      promptPort: state.deps.promptBuilder,
+    });
+  }
   
   // ASYNC lesson storage - Store to vector DB without blocking workflow
   if (state.deps?.memory && state.deps?.chunk) {
@@ -705,7 +743,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       });
       
       await chatAPI.showChatStatus('learned', {
-        filesWritten: filesWritten,
+        filesWritten: effectiveFilesWritten,
         branch: branch,
         content: `Lessons learned!`,
         _mergeIndex: learningIndex
@@ -773,5 +811,5 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
     clearPromptLogger('code', state._httpJobId);
   }
 
-  return { ...state, branch, filesWritten };
+  return { ...state, branch, filesWritten: effectiveFilesWritten };
 }

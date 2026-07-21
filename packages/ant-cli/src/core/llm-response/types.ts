@@ -75,6 +75,7 @@ export type ChatStatusType =
   | 'tool_action' 
   | 'learning' | 'learned' 
   | 'context_loaded'  // ✅ Context loaded notification (eval report, PRD, design docs, etc.)
+  | 'context_compacted'  // ✅ Context Lens checkpoint badge (P4 F3)
   | 'triage_choice'  // ✅ Triage redirect/blocked choice
   | 'choice_card'    // ✅ Generic choice card (eval_save, etc.)
   | 'file_create_failed' | 'file_edit_failed' | 'file_delete_failed'

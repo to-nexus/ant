@@ -46,7 +46,7 @@
   "context": {
     "resetTooltip": "Permanently delete this feature's sessions (feature.jsonl, chat.jsonl, architect/planner checkpoints). The next job starts fresh.",
     "resetConfirmTitle": "Delete this feature's sessions?",
-    "resetConfirm": "This will permanently delete feature.jsonl, chat.jsonl, and all architect/planner checkpoints (code.json, design.json, learn.json, plan.json) for this feature. The next job will start from an empty state. Continue?",
+    "resetConfirm": "ANT's memory of this feature will be fully erased — unlike \"Clean up chat view\", which only tidies the display. This permanently deletes feature.jsonl, chat.jsonl, and all architect/planner checkpoints (code.json, design.json, learn.json, plan.json). The next job will start from an empty state. Continue?",
     "resetConfirmAction": "Delete",
     "resetSuccessTitle": "Sessions deleted",
     "resetSuccess": "Feature sessions have been deleted. The next job will start fresh.",

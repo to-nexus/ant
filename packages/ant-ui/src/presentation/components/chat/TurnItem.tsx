@@ -480,6 +480,12 @@ const StatusCardDispatch = memo(function StatusCardDispatch({
     case 'context_loaded':
       return <ContextLoadedCard line={line} pending={pending} />;
 
+    // Context Lens P4 (F3) — checkpoint compaction badge. Body string comes
+    // from the shared generateChatStatusContent case; WorkingCard renders it
+    // as a terminal (non-progress) status card.
+    case 'context_compacted':
+      return <WorkingCard line={line} pending={pending} variant="context_compacted" />;
+
     case 'refine_impact':
       return <RefineImpactCard line={line} pending={pending} />;
 

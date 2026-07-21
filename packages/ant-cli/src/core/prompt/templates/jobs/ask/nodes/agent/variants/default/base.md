@@ -85,6 +85,27 @@ The user has an active workspace. You can read workspace files using workspace t
 {{{workspaceState}}}
 {{/if}}
 
+{{#if recentConversation.exchanges.length}}
+---
+
+## 6. Recent Conversation
+
+The most recent exchanges in this feature (oldest first). Use them to resolve
+references in the question ("what did you just change?", "the second option",
+"that file") — the user assumes you remember this conversation.
+
+{{#each recentConversation.exchanges}}
+### [{{this.jobType}}] User
+{{this.userText}}
+{{#if this.assistantText}}
+
+### Assistant
+{{this.assistantText}}
+{{/if}}
+
+{{/each}}
+{{/if}}
+
 ---
 
 ## User Question

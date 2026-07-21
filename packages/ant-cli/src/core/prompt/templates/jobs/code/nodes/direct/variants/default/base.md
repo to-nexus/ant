@@ -47,11 +47,28 @@ from the summary.
 {{/each}}
 {{/if}}
 
+{{#if recentConversation.exchanges.length}}
+### Recent Conversation
+
+The most recent exchanges in this feature (oldest first), including what the
+assistant answered. Use them to resolve references in the directive ("the
+second option", "that file", "what you just changed") — do NOT ask the user
+to restate something already said below.
+
+{{#each recentConversation.exchanges}}
+**User**: {{this.userText}}
+{{#if this.assistantText}}
+**Assistant**: {{this.assistantText}}
+{{/if}}
+
+{{/each}}
+{{else}}
 {{#if featureContext.userTurns.length}}
 ### Recent User Turns
 {{#each featureContext.userTurns}}
 - [{{this.turnId}}] {{this.text}}
 {{/each}}
+{{/if}}
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════

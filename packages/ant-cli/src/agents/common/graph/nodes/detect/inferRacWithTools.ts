@@ -34,6 +34,8 @@ import type { LLMClient, ToolDefinition, MessageContentBlock } from '../../../..
 import type { PromptBuilder } from '../../../../../core/prompt/builder/PromptBuilder';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import type { FeatureContext } from '../../../../../core/context/featureContextBuilder';
+import { projectLens } from '../../../../../core/context/lensProjection';
+import { contextProfileFor } from '../../../../../core/executionTier/contextProfile';
 import type { WorkspaceState } from '../triage/types.js';
 import type { DetectResult, MissingPrerequisites, SuggestedAlternative } from './types.js';
 import * as fs from 'fs';
@@ -127,6 +129,10 @@ export async function inferRacWithTools(
   // construction: this function never runs on the explicit path.
   const reviseFallback = slots.target.kind === 'revise' ? suggestReviseFallback(intentId) : [];
   const allowTargetMismatch = reviseFallback.length > 0;
+  // Context Lens P2 — lean: digests band only (user turns render via the
+  // template's own PRIOR USER TURNS block; assistant prose stripped).
+  const leanLens = projectLens(input.featureContext, contextProfileFor('detect'));
+
   const vars = {
     intentId,
     domain: input.domain ?? 'service',
@@ -134,6 +140,10 @@ export async function inferRacWithTools(
     whitelistPaths: whitelist.paths,
     workspaceState: input.workspaceState,
     featureContext: input.featureContext,
+    lens:
+      leanLens && (leanLens.digests.length || leanLens.constraintLedger?.length)
+        ? { exchanges: [], digests: leanLens.digests, constraintLedger: leanLens.constraintLedger }
+        : undefined,
     // Mirror of the BE bypass below — keeps the LLM from hunting for a
     // missing-prereq surface it cannot block on. The matrix is SSOT;
     // default to required (true) when the slot config omits the flag.
