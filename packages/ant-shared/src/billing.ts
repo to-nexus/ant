@@ -186,14 +186,16 @@ export type CreditTransactionKind =
   | 'grant' // monthly included-credit grant
   | 'subscription' // immediate grant on plan start/change
   | 'debit' // job consumption
+  | 'auxiliary' // non-job (one-shot) LLM consumption, e.g. ant commit message
   | 'topup' // purchased credits
   | 'refund'
   | 'adjustment';
 
 /**
  * Append-only ledger entry. `microCredits` is signed (positive = credit added,
- * negative = consumed). `usdCost` / `modelBreakdown` are present on `debit`
- * rows and are role-gated on the customer surface (operator/admin only).
+ * negative = consumed). `usdCost` / `modelBreakdown` are present on `debit` and
+ * `auxiliary` rows and are role-gated on the customer surface (operator/admin
+ * only).
  */
 export interface CreditTransaction {
   id: string;

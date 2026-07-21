@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { ProjectConfig, JobLLMConfig } from '@/infrastructure/http/api';
 import {
   OVERRIDABLE_MODEL_SLOTS,
+  AUXILIARY_MODEL_KEYS,
   type ModelJobKey,
   type ModelNodeKey,
+  type AuxiliaryModelKey,
 } from '@ant/shared';
 import { AvailableModel } from '../hooks/useAvailableModels';
 import { ModelSelectChip } from './ModelSelectChip';
@@ -76,6 +78,17 @@ const NODE_LABEL: Record<ModelNodeKey, string> = {
   validate: 'Validate',
   learn: 'Learn',
   detect: 'Detect',
+};
+
+// Auxiliary (non-graph) model slots — default-only rows rendered below the job
+// grid. Owned by AUXILIARY_MODEL_KEYS (@ant/shared); these keys deliberately
+// live outside OVERRIDABLE_MODEL_SLOTS (no agent graph). Presentation-only meta.
+const AUX_DEFS: Record<AuxiliaryModelKey, { label: string; desc: string; icon: string }> = {
+  commit: {
+    label: 'Commit message',
+    desc: 'ant-authored git commit messages',
+    icon: 'GitCommitHorizontal',
+  },
 };
 
 const ACCENT_GRAD: Record<SectionAccent, string> = {
@@ -201,6 +214,72 @@ export function LLMModelsSection({
               })}
             </div>
           </div>
+
+          {/* Auxiliary (non-graph) models — default-only single-model rows. */}
+          {AUXILIARY_MODEL_KEYS.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--border-1)' }}>
+              <div
+                style={{
+                  ...HEAD_CELL,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                Auxiliary · one-shot
+              </div>
+              {AUXILIARY_MODEL_KEYS.map((key) => {
+                const def = AUX_DEFS[key];
+                const AuxIcon = resolveIcon(def.icon);
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(200px, 260px) minmax(150px, 1fr)',
+                      fontFamily: 'var(--font-display)',
+                    }}
+                  >
+                    <div style={{ ...BODY_CELL, gap: 10, paddingLeft: 18 }}>
+                      <div
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 'var(--r-md)',
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-1)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--text-2)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        {AuxIcon ? <AuxIcon size={14} strokeWidth={2} /> : null}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.2 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
+                          {def.label}
+                        </span>
+                        <span style={{ fontSize: 10, color: 'var(--text-4)' }}>{def.desc}</span>
+                      </div>
+                    </div>
+                    <div style={BODY_CELL}>
+                      <ModelSelectChip
+                        value={editedConfig.llmModels?.[key]?.default || ''}
+                        models={availableModels}
+                        onChange={(id) => onModelChange(key, 'default', id)}
+                        placeholder={t('projectEditor.selectModel')}
+                        configuredProviders={configuredProviders}
+                        fill
+                        compact
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {unconfiguredProviders.length > 0 && (
             <div

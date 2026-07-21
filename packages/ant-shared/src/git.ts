@@ -97,7 +97,7 @@ export type GitUserOperation =
   | { kind: 'pull'; feature?: string }
   | { kind: 'fetch'; feature?: string }
   | { kind: 'sync'; feature?: string }
-  | { kind: 'commit'; message?: string; files?: string[]; feature?: string }
+  | { kind: 'commit'; message?: string; files?: string[]; feature?: string; authorMode?: 'user' | 'ant' }
   | { kind: 'discard'; files?: string[]; feature?: string }
   | { kind: 'clone' };
 

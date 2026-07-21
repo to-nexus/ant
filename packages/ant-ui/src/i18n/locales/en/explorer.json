@@ -99,6 +99,16 @@
     "operationInProgressWithCountdown": "Another Git operation is currently in progress. Please try again in about {{seconds}}s.",
     "commitSuccess": "Committed successfully",
     "commitFailed": "Commit failed",
+    "commitModal": {
+      "title": "Commit changes",
+      "eyebrow": "{{count}} changed file(s)",
+      "commit": "Commit",
+      "antTitle": "Let ant write it",
+      "antDesc": "ant writes the commit message(s) and splits unrelated changes into separate commits.",
+      "userTitle": "Write it myself",
+      "userDesc": "Enter your own commit message.",
+      "messagePlaceholder": "Commit message"
+    },
     "pushSuccess": "Pushed successfully",
     "pushFailed": "Push failed",
     "pullSuccess": "Pulled successfully",

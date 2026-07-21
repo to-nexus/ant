@@ -10,6 +10,7 @@ import { useGitActions as useGitStoreActions } from './hooks/useGitActions';
 import { PlaceholderButton } from './components/PlaceholderButton';
 import { LoadingButton } from './components/LoadingButton';
 import { ActionButton } from './components/ActionButton';
+import { CommitDecisionModal } from './components/CommitDecisionModal';
 import { GitChangesPanel } from './components/GitChangesPanel';
 import { useStore } from '@/domain/store';
 import type { ReactNode } from 'react';
@@ -84,6 +85,9 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
     isSyncing,
     isDiscarding,
     handleCommit,
+    commitModal,
+    closeCommitModal,
+    dispatchCommit,
     handlePush,
     handlePublishRepo,
     handlePull,
@@ -290,6 +294,13 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
           />
         </div>
       )}
+      <CommitDecisionModal
+        isOpen={commitModal.open}
+        fileCount={commitModal.files?.length ?? totalChanges}
+        onCancel={closeCommitModal}
+        onUserCommit={(message) => dispatchCommit('user', message)}
+        onAntCommit={() => dispatchCommit('ant')}
+      />
     </>
   );
 }

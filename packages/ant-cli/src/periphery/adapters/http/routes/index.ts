@@ -74,6 +74,7 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   // Project CRUD
   router.use(createProjectsRoutes({
     projectService: deps.projectService,
+    chatService: deps.chatService,
     gitWatcherService: deps.gitWatcherService,
     gitStateBroadcaster: deps.gitStateBroadcaster,
   }));
