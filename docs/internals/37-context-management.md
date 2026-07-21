@@ -75,7 +75,7 @@
 | decompose | standard | 잡당 1회; 자기가 tier를 결정하므로 tier 조건 불가 |
 | plan | standard (Tier 4는 lean) | Tier 3 잡당 ~22회 수신; Tier 4는 refs가 ground truth |
 | direct (Tier 0/1) | rich | 대화형 rim, 1-3 호출 (전환기: P1 chat tail) |
-| ask agent | rich | P1 chat tail (`buildChatTail`) — Lens 전환은 후속 |
+| ask agent | rich | P1 chat tail (`buildChatTail`) — Lens 전환은 후속. 도달 경로 2개: inline-ask dispatch (`orchestrator.ts`) + full-job ask 폴백 (`agents/architect/graph/ask/fullJobAskFallback.ts` — E2-5, 아래 §8 참고) |
 
 렌더는 단일 partial [`jobs/shared/injections/context-lens.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/context-lens.md) — Recent Exchanges / Standing Constraints / Prior Exchange Digests.
 
@@ -111,9 +111,18 @@ design breadcrumb에는 파생 주석 `consumption: 'pending' | 'consumed'`가 �
 | `tests/prompt/context-lens-render.test.ts` | P2/P3 — partial 렌더 + plan 대체 + 원장 플로어 |
 | `tests/context/context-summary-checkpoint.test.ts` | P3 — 체크포인트 적용/재사용(LLM 0회)/원장 verbatim-carry |
 | `tests/policy/chat-clear-invariant.test.ts` | Chat Clear 불변식 (chat 읽기 4곳 고정) |
+| `tests/context/full-job-ask-fallback.test.ts` | E2-5 — full-job ask 폴백 (rich tail → runAskGraph → ephemeral distill, architect/index.ts 분기 배선) |
+| `tests/context/context-lens-endpoints.test.ts` | E2-4 BE — `GET context/lens` 밴드 본문 + `POST context/pin` 원장 승격 (epoch sentinel / verbatim-carry / 멱등) |
+| ant-ui `tests/store/contextLensSlice.test.ts` | E2-4 FE — estimate/lens AsyncFields 전이 + feature-key 가드 + pin mutate-with-ground-truth |
 
-## 8. 명시적 스코프 밖
+## 8. 유저 가시화 (E2-4) + full-job ask 폴백 (E2-5)
+
+- **Carry-over 게이지** — 채팅 헤더의 `FeatureContextGauge` 가 `GET context/estimate` 를 표시 (`estimatedTokens / capTokens`). 크로스잡 의미(다음 잡에 넘어갈 기억) — per-call 토큰링과 구분되는 의미를 툴팁에 명시. 갱신: feature 전환(`useFeatureLogSync`) + 잡 종료 SSE(`chatSseHandler`) — 폴링 없음.
+- **Context 패널** — 게이지 클릭 시 `ContextLensPanel` 이 `GET context/lens` 로 밴드 본문을 열람 (Standing Constraints + rolling summary / Recent Exchanges / Digests). **pin = 원장 승격**: `POST context/pin` 이 이전 체크포인트를 verbatim-carry 한 새 `context_summary` 라인을 append (체크포인트 없으면 epoch sentinel `coversThroughTs` 로 아무것도 접지 않음; 멱등). unpin 은 v1 스코프 밖 (원장은 read-time supersession 이라 해가 적다).
+- **full-job ask 폴백 (E2-5)** — 일반 잡(learn/design/code)의 triage 가 `group==='ask'` 로 분류하면 그래프는 `__end__` 로 끝난다 (routeToAskGraph 미배선). `architect/index.ts` 의 세 ask 분기가 그래프 밖 seam 에서 `answerFullJobAsk` (`graph/ask/fullJobAskFallback.ts`) 를 실행 — inline-ask dispatch 와 동형 배선 (P1 rich tail → `runAskGraph` → ephemeral `assistant_turn` 증류, jobType `'ask'`). 실패 시 로그 + 플레이스홀더 메시지 폴백 (ask 실패가 잡 크래시가 되지 않음). learn 그래프에는 이를 위해 `turnId` 채널이 선언됨 (미선언 채널은 node 전이마다 drop).
+
+## 9. 명시적 스코프 밖
 
 - **in-job 실행 품질 / 모델 생성 충실도** — Lens는 크로스잡 맥락만 담당.
 - **멀티탭 (E2-1/E2-2)** — 별도 에픽. 기반만 확보: `assistant_turn`/`context_summary` 스키마의 `scopeId?` 필드.
-- **full-job ask 경로** — triage `group==='ask'` → `__end__` 는 답변 없이 끝나는 dead path (routeToAskGraph 미배선, Phase D 미완). 실제 ask 답변은 inline-ask dispatch 채널 유일. 별도 수리 대상.
+- **P1 chat tail retire (E2-6)** — `assistant_turn` 라인이 실사용에서 충분히 쌓인 뒤 (P2 배포 후 수 주) ask/direct 를 Lens rich 프로파일로 전환하고 `chatTailBuilder` 본체를 제거. docs/tmp 핸드오프 §3 참고.

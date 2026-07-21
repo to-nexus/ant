@@ -1,7 +1,16 @@
 import { StateCreator } from 'zustand';
-import type { FeatureBreadcrumbLine } from '@ant/shared';
+import type {
+  ContextCarryoverEstimate,
+  ContextLensResponse,
+  FeatureBreadcrumbLine,
+} from '@ant/shared';
+import type { AsyncFields } from '@/domain/async';
+import { initialAsyncFields } from '@/domain/async';
 import {
+  getContextEstimate,
+  getContextLens,
   getFeatureBreadcrumbs,
+  pinContextConstraint,
   resetFeatureContext as resetFeatureContextApi,
 } from '@/infrastructure/http/api/featureLog';
 
@@ -36,10 +45,30 @@ export interface FeatureLogState {
    * cannot overwrite the current feature's data.
    */
   breadcrumbsKey?: string;
+  /**
+   * Context Lens (E2-4) — carry-over estimate for the header gauge.
+   * Cross-job semantics: the memory that transfers to the NEXT job, not
+   * the per-call prompt (that's the token ring).
+   */
+  contextEstimate: AsyncFields<ContextCarryoverEstimate>;
+  /** Context Lens (E2-4) — band bodies for the Context panel (on-open fetch). */
+  contextLens: AsyncFields<ContextLensResponse>;
+  /** Feature-scoped cache key for the two context resources above. */
+  contextLensKey?: string;
 }
 
 export interface FeatureLogActions {
   loadFeatureBreadcrumbs: (projectId: string, featureName: string) => Promise<void>;
+  /** Refetch triggers: feature switch (useFeatureLogSync) + terminal job SSE (chatSseHandler). */
+  loadContextEstimate: (projectId: string, featureName: string) => Promise<void>;
+  /** Fetched when the Context panel opens (and after a pin). */
+  loadContextLens: (projectId: string, featureName: string) => Promise<void>;
+  /**
+   * Pin = ledger promotion. Appends the text to the standing Constraint
+   * Ledger, then patches both cached resources with the server's ledger
+   * (mutate-with-ground-truth — no SSE round-trip needed).
+   */
+  pinContextText: (projectId: string, featureName: string, text: string) => Promise<void>;
   /**
    * Reserved hook for a future SSE push path (§2.4 live breadcrumb).
    * Currently unused — breadcrumbs are refreshed via `loadFeatureBreadcrumbs`
@@ -64,11 +93,24 @@ function makeKey(projectId: string, featureName: string): string {
   return `${projectId}:::${featureName}`;
 }
 
+/** Lens response with no live band content at all → 'empty' surface. */
+function isLensEmpty(lens: ContextLensResponse): boolean {
+  return (
+    lens.exchanges.length === 0 &&
+    lens.digests.length === 0 &&
+    lens.ledger.length === 0 &&
+    !lens.summary
+  );
+}
+
 export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> = (set, get) => ({
   breadcrumbs: [],
   breadcrumbsStatus: 'idle',
   breadcrumbsError: undefined,
   breadcrumbsKey: undefined,
+  contextEstimate: initialAsyncFields<ContextCarryoverEstimate>(),
+  contextLens: initialAsyncFields<ContextLensResponse>(),
+  contextLensKey: undefined,
 
   loadFeatureBreadcrumbs: async (projectId, featureName) => {
     const key = makeKey(projectId, featureName);
@@ -91,6 +133,78 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
     }
   },
 
+  loadContextEstimate: async (projectId, featureName) => {
+    const key = makeKey(projectId, featureName);
+    const prev = get().contextEstimate as AsyncFields<ContextCarryoverEstimate>;
+    const isNewFeature = get().contextLensKey !== key;
+    set({
+      contextLensKey: key,
+      contextEstimate:
+        !isNewFeature && prev.status === 'ready'
+          ? { ...prev, refreshing: true }
+          : { status: 'loading', data: null, error: null, refreshing: false },
+      ...(isNewFeature ? { contextLens: initialAsyncFields<ContextLensResponse>() } : {}),
+    });
+    try {
+      const data = await getContextEstimate(projectId, featureName);
+      if (get().contextLensKey !== key) return;
+      set({ contextEstimate: { status: 'ready', data, error: null, refreshing: false } });
+    } catch (err) {
+      if (get().contextLensKey !== key) return;
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.warn('[FeatureLog] context estimate load failed:', error.message);
+      set({ contextEstimate: { status: 'error', data: null, error, refreshing: false } });
+    }
+  },
+
+  loadContextLens: async (projectId, featureName) => {
+    const key = makeKey(projectId, featureName);
+    const prev = get().contextLens as AsyncFields<ContextLensResponse>;
+    const sameFeature = get().contextLensKey === key;
+    set({
+      contextLensKey: key,
+      contextLens:
+        sameFeature && prev.status === 'ready'
+          ? { ...prev, refreshing: true }
+          : { status: 'loading', data: null, error: null, refreshing: false },
+    });
+    try {
+      const data = await getContextLens(projectId, featureName);
+      if (get().contextLensKey !== key) return;
+      set({
+        contextLens: {
+          status: isLensEmpty(data) ? 'empty' : 'ready',
+          data,
+          error: null,
+          refreshing: false,
+        },
+      });
+    } catch (err) {
+      if (get().contextLensKey !== key) return;
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.warn('[FeatureLog] context lens load failed:', error.message);
+      set({ contextLens: { status: 'error', data: null, error, refreshing: false } });
+    }
+  },
+
+  pinContextText: async (projectId, featureName, text) => {
+    const { ledger } = await pinContextConstraint(projectId, featureName, text);
+    // Mutate-with-ground-truth (ui-async-policy §7.5.2): patch both cached
+    // resources with the server-computed ledger instead of refetching.
+    const key = makeKey(projectId, featureName);
+    if (get().contextLensKey !== key) return;
+    const lens = get().contextLens as AsyncFields<ContextLensResponse>;
+    const estimate = get().contextEstimate as AsyncFields<ContextCarryoverEstimate>;
+    set({
+      ...(lens.data
+        ? { contextLens: { ...lens, status: 'ready', data: { ...lens.data, ledger } } }
+        : {}),
+      ...(estimate.data
+        ? { contextEstimate: { ...estimate, data: { ...estimate.data, ledger } } }
+        : {}),
+    });
+  },
+
   appendFeatureBreadcrumb: (line) => {
     set((state: any) => ({ breadcrumbs: [...state.breadcrumbs, line] }));
   },
@@ -101,6 +215,9 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
       breadcrumbsStatus: 'idle',
       breadcrumbsError: undefined,
       breadcrumbsKey: undefined,
+      contextEstimate: initialAsyncFields<ContextCarryoverEstimate>(),
+      contextLens: initialAsyncFields<ContextLensResponse>(),
+      contextLensKey: undefined,
     });
   },
 
@@ -122,9 +239,13 @@ export const createFeatureLogSlice: StateCreator<any, [], [], FeatureLogSlice> =
       breadcrumbsStatus: 'idle',
       breadcrumbsError: undefined,
       breadcrumbsKey: undefined,
+      contextEstimate: initialAsyncFields<ContextCarryoverEstimate>(),
+      contextLens: initialAsyncFields<ContextLensResponse>(),
+      contextLensKey: undefined,
     });
     // Re-fetch; errors surface via the loader's own error state so the UI
     // can show them in the Timeline tab.
     await get().loadFeatureBreadcrumbs(projectId, featureName);
+    await get().loadContextEstimate(projectId, featureName);
   },
 });

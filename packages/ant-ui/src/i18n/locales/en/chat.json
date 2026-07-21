@@ -297,5 +297,21 @@
       "close": "Close report",
       "openAria": "Open subagent report for {{goal}}"
     }
+  },
+  "contextLens": {
+    "gaugeTooltipTitle": "Carry-over memory",
+    "gaugeTooltipBody": "{{tokens}} / {{cap}} tokens will carry over to the next job.",
+    "gaugeSemantics": "This gauge shows the distilled memory handed to the NEXT job (cross-job). The ring by the input shows the CURRENT call's prompt occupancy (per-call).",
+    "gaugeAria": "Open the context panel",
+    "panelTitle": "Context Lens",
+    "empty": "Nothing carries over yet — memory builds as jobs finish.",
+    "constraints": "Standing Constraints",
+    "constraintsEmpty": "No standing constraints yet. Pin an item below to keep it in every future job.",
+    "summaryLabel": "Rolling summary — older turns folded",
+    "exchanges": "Recent Exchanges",
+    "digests": "Prior Turn Digests",
+    "ephemeral": "ask",
+    "pin": "Pin to Standing Constraints",
+    "pinned": "Pinned — carried into every future job"
   }
 }

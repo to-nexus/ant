@@ -27,6 +27,10 @@ export const LearnAnnotation = Annotation.Root({
   reportFilePath: Annotation<any>,
   resolvedAction: Annotation<any>,
   executionTier: Annotation<any>,
+  // Current user turn id — hydrated by triage (feature.jsonl). Must be a
+  // declared channel or it drops at the next node transition; consumed by
+  // the E2-5 full-job ask fallback (rich-tail exclusion + distill).
+  turnId: Annotation<any>,
 } as const);
 
 export interface LearnGraphState extends TriageableState {
@@ -44,6 +48,8 @@ export interface LearnGraphState extends TriageableState {
   texts: string[];
   reportFilePath?: string;
   resolvedAction?: ResolvedActionContext;
+  /** Current user turn id — hydrated by triage from feature.jsonl. */
+  turnId?: string;
   /**
    * 5-tier execution strategy. Learn is a read-only indexing job — always
    * Tier 0 Reflex. The runner injects this value at graph start; no LLM

@@ -9,6 +9,7 @@ import { useStore } from '@/domain/store';
  */
 export function useFeatureLogSync(projectId: string | null, featureName: string | null) {
   const loadFeatureBreadcrumbs = useStore(s => s.loadFeatureBreadcrumbs);
+  const loadContextEstimate = useStore(s => s.loadContextEstimate);
   const clearFeatureLog = useStore(s => s.clearFeatureLog);
 
   useEffect(() => {
@@ -17,5 +18,7 @@ export function useFeatureLogSync(projectId: string | null, featureName: string 
       return;
     }
     void loadFeatureBreadcrumbs(projectId, featureName);
-  }, [projectId, featureName, loadFeatureBreadcrumbs, clearFeatureLog]);
+    // Context Lens (E2-4): seed the carry-over gauge on feature switch.
+    void loadContextEstimate(projectId, featureName);
+  }, [projectId, featureName, loadFeatureBreadcrumbs, loadContextEstimate, clearFeatureLog]);
 }

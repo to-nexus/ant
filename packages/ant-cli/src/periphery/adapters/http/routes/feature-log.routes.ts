@@ -133,6 +133,115 @@ export function createFeatureLogRoutes(deps: {
   });
 
   /**
+   * GET /projects/:id/features/:feature/context/lens
+   *
+   * Context Lens band bodies for the FE Context panel (E2-4). Same
+   * assembly as `/context/estimate` (buildFeatureContext — no LLM, no
+   * compaction side effects) but returns the exchange/digest BODIES so
+   * the panel can list what will carry over to the next job.
+   *
+   * Response: {
+   *   exchanges: LensExchange[]; digests: LensDigestEntry[];
+   *   ledger: string[]; summary: string | null;
+   * }
+   */
+  router.get('/projects/:id/features/:feature/context/lens', async (req: Request, res: Response) => {
+    try {
+      if (!deps.workspaceResolver) {
+        res.status(503).json({ error: 'Workspace resolver not available' });
+        return;
+      }
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const userContext = extractUserContext(req);
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+
+      const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
+      const { buildFeatureContext } = await import('../../../../core/context/featureContextBuilder');
+      const ctx = await buildFeatureContext(adapter);
+
+      res.json({
+        exchanges: ctx?.exchanges ?? [],
+        digests: ctx?.digests ?? [],
+        ledger: ctx?.constraintLedger ?? [],
+        summary: ctx?.summary || null,
+      });
+    } catch (error: any) {
+      logger.error('Feature context lens error', { component: 'FeatureLog' }, error);
+      sendErrorResponse(res, 500, error, 'FeatureLog');
+    }
+  });
+
+  /**
+   * POST /projects/:id/features/:feature/context/pin
+   *
+   * Pin = ledger promotion (E2-4). Appends the given text to the standing
+   * Constraint Ledger by writing a NEW context_summary checkpoint line that
+   * verbatim-carries the previous checkpoint (summary + coversThroughTs)
+   * and unions the pinned text into `constraintLedger`. Checkpoints are
+   * append-only and only the latest applies, so this never folds any live
+   * line: with no prior checkpoint the sentinel epoch `coversThroughTs`
+   * covers nothing. Unpin is intentionally out of scope (read-time
+   * supersession makes stale ledger entries low-harm).
+   *
+   * Body: { text: string }  (trimmed; capped at 500 chars)
+   * Response: { success: true, ledger: string[] }
+   */
+  router.post('/projects/:id/features/:feature/context/pin', async (req: Request, res: Response) => {
+    try {
+      if (!deps.workspaceResolver) {
+        res.status(503).json({ error: 'Workspace resolver not available' });
+        return;
+      }
+      const projectId = req.params.id;
+      const featureName = req.params.feature;
+      const userContext = extractUserContext(req);
+      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+
+      const rawText = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (!rawText) {
+        res.status(400).json({ error: 'text is required' });
+        return;
+      }
+      const PIN_TEXT_CAP = 500;
+      const text = rawText.length > PIN_TEXT_CAP ? `${rawText.slice(0, PIN_TEXT_CAP)}…` : rawText;
+
+      const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
+      const loaded = await adapter.loadSinceBoundary();
+      const summaries = (loaded.contextSummaries ?? []).filter((s) => !(s as { collapsed?: true }).collapsed);
+      const latest = summaries.length ? summaries[summaries.length - 1] : undefined;
+
+      const ledger = [...new Set([...(latest?.constraintLedger ?? []), text])];
+      if (latest && ledger.length === latest.constraintLedger.length) {
+        // Idempotent: already pinned — no new checkpoint line needed.
+        res.json({ success: true, ledger });
+        return;
+      }
+
+      await adapter.appendContextSummary({
+        type: 'context_summary',
+        ts: new Date().toISOString(),
+        jobId: 'user-pin',
+        turnId: `pin-${Date.now()}`,
+        jobType: (latest?.jobType ?? 'code'),
+        // Preserve the previous fold cursor; the epoch sentinel folds nothing.
+        coversThroughTs: latest?.coversThroughTs ?? '1970-01-01T00:00:00.000Z',
+        summary: latest?.summary ?? '',
+        constraintLedger: ledger,
+      });
+
+      logger.info(
+        `Context pin appended (project=${projectId}, feature=${featureName}, ledger=${ledger.length})`,
+        { component: 'FeatureLog' },
+      );
+      res.json({ success: true, ledger });
+    } catch (error: any) {
+      logger.error('Feature context pin error', { component: 'FeatureLog' }, error);
+      sendErrorResponse(res, 500, error, 'FeatureLog');
+    }
+  });
+
+  /**
    * GET /projects/:id/features/:feature/user-turn-meta
    *
    * Returns user_turn + user_turn_meta lines from `feature.jsonl`, keyed on

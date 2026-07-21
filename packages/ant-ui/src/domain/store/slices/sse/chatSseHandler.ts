@@ -235,6 +235,9 @@ function handleNonChatEvent(event: any, set: any, get: any) {
         const feature = cs.selectedFeature;
         if (project && feature) {
           void get().loadFeatureBreadcrumbs?.(project, feature);
+          // Context Lens carry-over gauge (E2-4): job end is when the
+          // distill/checkpoint writers ran — refetch the estimate.
+          void get().loadContextEstimate?.(project, feature);
         }
 
         if (cs.jobStartPending && cs.isRunning) {
