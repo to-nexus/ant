@@ -119,6 +119,33 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
         description: (t.description ?? '') as string,
         files: Array.isArray(t.touchedFiles) ? (t.touchedFiles as string[]) : [],
       })),
+      // Cross-job recall for read_state scope='history' — lazy SessionPort
+      // read over feature.jsonl since the last hard-reset boundary. Raw
+      // lists (checkpoint folding NOT applied): recalling folded originals
+      // is the point. Same 2-layer pattern as completedTasks above.
+      featureHistory: async () => {
+        const session = state.deps?.session;
+        if (!session?.loadSinceBoundary) return [];
+        const loaded = await session.loadSinceBoundary();
+        const finals = new Map(
+          (loaded.assistantTurns ?? [])
+            .filter((l: any) => !l.collapsed)
+            .map((l) => [l.turnId, l]),
+        );
+        return (loaded.userTurns ?? [])
+          .filter((l: any) => !l.collapsed)
+          .map((t) => {
+            const a = finals.get(t.turnId);
+            return {
+              turnId: t.turnId,
+              ts: t.ts,
+              jobType: t.jobType,
+              userText: t.text ?? '',
+              assistantFinalText: a?.finalText,
+              ephemeral: a?.ephemeral === true ? true : undefined,
+            };
+          });
+      },
       retries: state.retries,
       referenceRequests: state.referenceRequests,
       resolvedActionMode: state.resolvedAction?.mode,

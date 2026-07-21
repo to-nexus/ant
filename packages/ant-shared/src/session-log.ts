@@ -534,8 +534,13 @@ export interface SpecClarify {
 // Constants
 // ═══════════════════════════════════════════════════════════════════════
 
-/** T2 토큰이 이 임계값 초과 시 Compact 안전망 발동 */
-export const FEATURE_CONTEXT_THRESHOLD = 12000;
+/**
+ * Carry-over 저장소(estimateCarryoverTokens — 전 채널 합산)의 Compact 발동점.
+ * 다음 잡 진입(hydrate) 시 평가되는 접기 트리거이지 주입 캡이 아니다 —
+ * per-call 실주입은 contextProfile 캡이 별도로 바운드하고, 임계 초과 상태는
+ * 다음 hydrate까지 정상이다(수동 compaction 없음).
+ */
+export const FEATURE_CONTEXT_THRESHOLD = 24000;
 
 /** Compact 시 유지할 최신 user_turn 개수 */
 export const FEATURE_CONTEXT_WINDOW = 6;

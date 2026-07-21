@@ -9,6 +9,7 @@ import {
   hydrateFeatureContext,
   mergeFeatureContext,
   compactFeatureContext,
+  estimateCarryoverTokens,
 } from '../../../src/core/context/featureContextBuilder';
 import type {
   FeatureContext,
@@ -489,6 +490,62 @@ describe('compactFeatureContext — threshold gating', () => {
     expect(result).toBe(ctx);
     expect(result.wasCompacted).toBeUndefined();
     expect(llm.invoke).not.toHaveBeenCalled();
+  });
+
+  it('digest tokens count toward the trigger (measurement SSOT — all channels)', async () => {
+    // 8 turns × 20 chars alone stay under the 500-token threshold; a fat
+    // band-2 digest pushes the reservoir over it. Before the single
+    // estimateCarryoverTokens formula, digests were invisible to the
+    // trigger and this would no-op.
+    const turns = Array.from({ length: 8 }, (_, i) => makeMergedTurn(i, 20));
+    const ctx: FeatureContext = {
+      ...makeMergedCtx(turns),
+      digests: [{
+        turnId: 't-0',
+        ts: turns[0].ts,
+        digest: {
+          decisions: ['d'.repeat(1000)],
+          constraints: ['c'.repeat(1000)],
+          outcome: 'o'.repeat(1000),
+        },
+      }],
+    };
+    const llm = makeCompactLLM('digest-heavy-summary');
+    const promptPort = makeCompactPromptPort();
+
+    const result = await compactFeatureContext(
+      ctx,
+      { llm, promptPort },
+      { threshold: 500, windowSize: 6 },
+    );
+
+    expect(result.wasCompacted).toBe(true);
+    expect(result.userTurns).toHaveLength(6);
+  });
+});
+
+describe('estimateCarryoverTokens — single reservoir measurement', () => {
+  it('sums every channel: turns, breadcrumbs, finals, digests, summary, ledger', () => {
+    const ctx: FeatureContext = {
+      userTurns: [makeMergedTurn(0, 28)], // 28 / 2.8 = 10 tokens
+      breadcrumbs: [],
+      exchanges: [{
+        turnId: 't-0', ts: '2026-04-19T00:00:00.000Z',
+        userText: 'x'.repeat(28),
+        assistantFinalText: 'a'.repeat(28), // 10 tokens (userText counts via the userTurns channel)
+      }],
+      digests: [{
+        turnId: 't-1', ts: '2026-04-19T00:00:01.000Z',
+        digest: { decisions: ['d'.repeat(14)], constraints: ['c'.repeat(14)], outcome: '' }, // 10 tokens
+      }],
+      summary: 's'.repeat(28), // 10 tokens
+      constraintLedger: ['l'.repeat(28)], // 10 tokens
+    };
+    expect(estimateCarryoverTokens(ctx)).toBe(50);
+  });
+
+  it('zero for an empty context', () => {
+    expect(estimateCarryoverTokens({ userTurns: [], breadcrumbs: [] })).toBe(0);
   });
 });
 

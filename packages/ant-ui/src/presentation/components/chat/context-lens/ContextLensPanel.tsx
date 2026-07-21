@@ -1,13 +1,14 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pin, X } from 'lucide-react';
-import type { ContextLensResponse } from '@ant/shared';
+import { Info, Pin, X } from 'lucide-react';
+import type { ContextCarryoverEstimate, ContextLensResponse } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import {
   AsyncBoundary,
   EmptyFallback,
   useAsyncResource,
 } from '@/presentation/components/common/async';
+import { Tooltip } from '@/presentation/components/common/Tooltip';
+import { formatTokens } from './FeatureContextGauge';
 
 interface ContextLensPanelProps {
   projectId: string;
@@ -25,16 +26,24 @@ interface ContextLensPanelProps {
  *   2. Recent Exchanges — band-1 verbatim user↔assistant pairs.
  *   3. Prior Turn Digests — band-2 structured decisions/constraints/outcome.
  *
- * Pin = ledger promotion: any exchange text or digest bullet can be pinned,
- * which appends it to the Constraint Ledger via POST context/pin (the BE
- * writes a new append-only checkpoint). Already-pinned texts render as
- * inert "pinned" state — the slice patches the cached ledger from the
- * server response (mutate-with-ground-truth).
+ * Read-only surface: the ledger grows automatically (job-end distillation +
+ * deterministic union at compaction) — there is no user pin. If a digest or
+ * summary looks incomplete, the LLM can recall folded originals on demand
+ * via `read_state` (scope=history).
+ *
+ * Single explanation surface: the gauge button itself carries NO tooltip.
+ * The always-visible header status line holds the tokens/compaction-point
+ * readout (+ over-threshold notice); deeper semantics (cross-job vs the
+ * per-call ring) sit behind the hover info icon.
  */
 export function ContextLensPanel({ projectId, featureName, onClose }: ContextLensPanelProps) {
   const { t } = useTranslation('chat');
   const lens = useAsyncResource<ContextLensResponse>((s) => s.contextLens);
+  const estimate = useAsyncResource<ContextCarryoverEstimate>((s) => s.contextEstimate);
   const loadContextLens = useStore((s) => s.loadContextLens);
+
+  const est = estimate.status === 'ready' ? estimate.data : null;
+  const overThreshold = !!est && est.capTokens > 0 && est.estimatedTokens > est.capTokens;
 
   return (
     <div
@@ -53,21 +62,58 @@ export function ContextLensPanel({ projectId, featureName, onClose }: ContextLen
       }}
     >
       <div
-        className="flex items-center justify-between flex-shrink-0"
+        className="flex-shrink-0"
         style={{ padding: '10px 12px 8px', borderBottom: '1px solid var(--border-1)' }}
       >
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>
-          {t('contextLens.panelTitle')}
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t('common:button.close', { defaultValue: 'Close' })}
-          className="flex items-center justify-center hover:bg-[color:var(--bg-hover)] transition-colors"
-          style={{ width: 20, height: 20, borderRadius: 'var(--r-sm)', color: 'var(--text-3)' }}
-        >
-          <X size={12} strokeWidth={2.2} />
-        </button>
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)' }}>
+              {t('contextLens.panelTitle')}
+            </span>
+            {/* Deep semantics live behind the info icon (hover — the click
+                default would fight the panel's own outside-click close). */}
+            <Tooltip
+              trigger="hover"
+              placement="bottom"
+              content={
+                <div className="max-w-[260px] text-xs" style={{ color: 'var(--text-2)' }}>
+                  {t('contextLens.panelInfo')}
+                </div>
+              }
+            >
+              <span
+                className="flex items-center"
+                aria-label={t('contextLens.panelInfoAria')}
+                style={{ color: 'var(--text-3)', cursor: 'help' }}
+              >
+                <Info size={12} strokeWidth={2.2} />
+              </span>
+            </Tooltip>
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('common:button.close', { defaultValue: 'Close' })}
+            className="flex items-center justify-center hover:bg-[color:var(--bg-hover)] transition-colors"
+            style={{ width: 20, height: 20, borderRadius: 'var(--r-sm)', color: 'var(--text-3)' }}
+          >
+            <X size={12} strokeWidth={2.2} />
+          </button>
+        </div>
+        {est && (
+          <p className="tabular-nums" style={{ fontSize: 10, color: 'var(--text-3)', margin: '3px 0 0' }}>
+            {t('contextLens.panelStatus', {
+              tokens: formatTokens(est.estimatedTokens),
+              cap: formatTokens(est.capTokens),
+            })}
+            {overThreshold && (
+              <span style={{ color: 'var(--intent-amber-fg)' }}>
+                {' · '}
+                {t('contextLens.willCompact')}
+              </span>
+            )}
+          </p>
+        )}
       </div>
 
       <div className="overflow-y-auto" style={{ padding: '8px 12px 12px' }}>
@@ -77,28 +123,14 @@ export function ContextLensPanel({ projectId, featureName, onClose }: ContextLen
           retry={() => void loadContextLens(projectId, featureName)}
           empty={<EmptyFallback description={t('contextLens.empty')} />}
         >
-          {(data) => (
-            <PanelBody
-              data={data}
-              projectId={projectId}
-              featureName={featureName}
-            />
-          )}
+          {(data) => <PanelBody data={data} />}
         </AsyncBoundary>
       </div>
     </div>
   );
 }
 
-function PanelBody({
-  data,
-  projectId,
-  featureName,
-}: {
-  data: ContextLensResponse;
-  projectId: string;
-  featureName: string;
-}) {
+function PanelBody({ data }: { data: ContextLensResponse }) {
   const { t } = useTranslation('chat');
 
   return (
@@ -176,8 +208,6 @@ function PanelBody({
                       {t('contextLens.ephemeral')}
                     </span>
                   )}
-                  <span className="flex-1" />
-                  <PinButton projectId={projectId} featureName={featureName} text={ex.userText} ledger={data.ledger} />
                 </div>
                 <p className="break-words" style={{ fontSize: 11, lineHeight: '15px', color: 'var(--text-1)', margin: '3px 0 0' }}>
                   {clamp(ex.userText, 160)}
@@ -218,7 +248,6 @@ function PanelBody({
                     <span className="flex-1 min-w-0 break-words" style={{ fontSize: 11, lineHeight: '15px', color: 'var(--text-3)' }}>
                       • {clamp(bullet, 140)}
                     </span>
-                    <PinButton projectId={projectId} featureName={featureName} text={bullet} ledger={data.ledger} />
                   </div>
                 ))}
               </li>
@@ -265,68 +294,6 @@ function JobChip({ jobType }: { jobType: string }) {
     >
       {jobType}
     </span>
-  );
-}
-
-/**
- * Pin-to-ledger button. Renders as inert "pinned" once the text is in the
- * ledger (the slice patches the ledger from the pin response, so this flips
- * without a refetch). Failures reset to pinnable — the action is retryable.
- */
-function PinButton({
-  projectId,
-  featureName,
-  text,
-  ledger,
-}: {
-  projectId: string;
-  featureName: string;
-  text: string;
-  ledger: string[];
-}) {
-  const { t } = useTranslation('chat');
-  const pinContextText = useStore((s) => s.pinContextText);
-  const [busy, setBusy] = useState(false);
-
-  const trimmed = text.trim();
-  // BE caps pinned text at 500 chars ('…' suffix) — match for pinned-state detection.
-  const pinned = ledger.includes(trimmed) || ledger.includes(`${trimmed.slice(0, 500)}…`);
-  if (!trimmed) return null;
-
-  if (pinned) {
-    return (
-      <span
-        className="flex items-center flex-shrink-0"
-        title={t('contextLens.pinned')}
-        aria-label={t('contextLens.pinned')}
-        style={{ color: 'var(--violet-600)' }}
-      >
-        <Pin size={11} strokeWidth={2.4} fill="currentColor" />
-      </span>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={async () => {
-        try {
-          setBusy(true);
-          await pinContextText(projectId, featureName, trimmed);
-        } catch (err) {
-          console.warn('[ContextLens] pin failed:', err);
-        } finally {
-          setBusy(false);
-        }
-      }}
-      title={t('contextLens.pin')}
-      aria-label={t('contextLens.pin')}
-      className="flex items-center flex-shrink-0 hover:text-[color:var(--violet-600)] transition-colors disabled:opacity-40"
-      style={{ color: 'var(--text-3)' }}
-    >
-      <Pin size={11} strokeWidth={2.2} />
-    </button>
   );
 }
 

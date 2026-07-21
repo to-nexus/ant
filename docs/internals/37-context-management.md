@@ -57,6 +57,17 @@
 - **ephemeral 강등**: ask 턴은 K 트리밍 시 나이 무관 최우선 드롭, 밴드2 진입 금지.
 - **마이그레이션 backfill**: assistant_turn 없는 옛 턴은 trailing 6개에 한해 chat.jsonl에서 재구성 (`backfillExchangesFromChat`) — assistant_turn이 쌓이면 0으로 수렴.
 
+### Compaction 발동점 — `estimateCarryoverTokens` × `FEATURE_CONTEXT_THRESHOLD`
+
+- **측정 SSOT**: `estimateCarryoverTokens(ctx)` (featureContextBuilder) — userTurns + breadcrumbs + assistant finals + digests + summary + ledger **전 채널** 합산 (2.8 chars/tok). compaction 트리거와 `GET context/estimate` 게이지가 같은 함수를 소비하므로 "게이지 숫자 = 발동 기준 수량"이 구조적으로 보장된다. (과거엔 두 인라인 식이 서로 다른 채널을 세어 게이지와 발동 기준이 어긋났다.)
+- **의미**: `FEATURE_CONTEXT_THRESHOLD`(24k)는 **주입 캡이 아니라 접기 발동점**. per-call 실주입은 §4 프로파일 캡이 별도로 바운드한다. 평가 시점은 **다음 잡 진입의 hydrate** (resolve; triage per-turn 재수화는 `skipCompaction=true`) — 잡 진행/종료 후 게이지가 발동점을 초과하는 것은 정상 상태이며, 수동 compaction은 없다.
+- **배선**: code/planner/visual/**design** resolve 모두 llm/promptPort를 전달해 compaction이 어느 잡 진입에서도 실행된다 (compaction은 체크포인트·원장 편입 등 **후속 모든 잡이 혜택보는 공용 유지보수** — 소비자 관점 스킵 금지). tier gate는 Tier 0 Reflex만 NoopCompact.
+- **이중 게이트 금지**: `compactJob`은 pre-partition 호출자(`recentWindowSize <= 0` — compactFeatureContext)에 대해 내부 threshold 재판정을 하지 않는다. 접기 결정의 단일 소유자는 저장소 측정을 한 compactFeatureContext다 (재판정 부활 시: 저장소는 초과인데 접힐-옛-부분합이 미만이라 영구 no-op 회귀).
+
+### Recall escape hatch — `read_state` scope='history'
+
+접힌(folded) 턴의 원문은 프롬프트 표면에서만 사라질 뿐 feature.jsonl에 남는다. digest/롤링 summary가 불충분할 때 LLM은 `read_state`에 `scope: 'history'`로 boundary 이후의 user_turn/assistant_turn 원문을 roster/검색으로 열람할 수 있다 (`ctx.featureHistory` 시임 — code tool 노드가 SessionPort lazy closure로 주입; 새 도구 신설 없이 기존 read_state의 scope 확장). 원장(Standing Constraints)은 열람이 필요 없다 — 모든 프로파일에 무조건 주입되는 플로어다.
+
 ### Constraint Ledger — "채팅에서 말한 제약은 조용히 사라지지 않는다"
 
 체크포인트의 `constraintLedger`는 **결정론적 verbatim-carry**: 이전 원장 ∪ 접힌 digest들의 constraints, dedupe만. LLM이 원장을 재작성하지 않으므로 드롭이 구조적으로 불가능하다. supersession은 삭제가 아니라 read-time 규칙("현재 지시가 이긴다")으로 처리. **주입 플로어**: lean 포함 모든 프로파일이 원장을 항상 렌더한다.
@@ -112,13 +123,15 @@ design breadcrumb에는 파생 주석 `consumption: 'pending' | 'consumed'`가 �
 | `tests/context/context-summary-checkpoint.test.ts` | P3 — 체크포인트 적용/재사용(LLM 0회)/원장 verbatim-carry |
 | `tests/policy/chat-clear-invariant.test.ts` | Chat Clear 불변식 (chat 읽기 4곳 고정) |
 | `tests/context/full-job-ask-fallback.test.ts` | E2-5 — full-job ask 폴백 (rich tail → runAskGraph → ephemeral distill, architect/index.ts 분기 배선) |
-| `tests/context/context-lens-endpoints.test.ts` | E2-4 BE — `GET context/lens` 밴드 본문 + `POST context/pin` 원장 승격 (epoch sentinel / verbatim-carry / 멱등) |
-| ant-ui `tests/store/contextLensSlice.test.ts` | E2-4 FE — estimate/lens AsyncFields 전이 + feature-key 가드 + pin mutate-with-ground-truth |
+| `tests/context/context-lens-endpoints.test.ts` | E2-4 BE — `GET context/lens` 밴드 본문 + `POST context/pin` 라우트 부재(404) 가드 |
+| ant-ui `tests/store/contextLensSlice.test.ts` | E2-4 FE — estimate/lens AsyncFields 전이 + feature-key 가드 |
+| `tests/verification/unit/featureContextBuilder.test.ts` | 측정 SSOT — `estimateCarryoverTokens` 전 채널 합산 + digest 토큰이 compaction 트리거에 계상 |
+| `tests/tools/read-state.test.ts` | read_state — run scope + history scope (roster/검색/미배선 graceful) |
 
 ## 8. 유저 가시화 (E2-4) + full-job ask 폴백 (E2-5)
 
-- **Carry-over 게이지** — 채팅 헤더의 `FeatureContextGauge` 가 `GET context/estimate` 를 표시 (`estimatedTokens / capTokens`). 크로스잡 의미(다음 잡에 넘어갈 기억) — per-call 토큰링과 구분되는 의미를 툴팁에 명시. 갱신: feature 전환(`useFeatureLogSync`) + 잡 종료 SSE(`chatSseHandler`) — 폴링 없음.
-- **Context 패널** — 게이지 클릭 시 `ContextLensPanel` 이 `GET context/lens` 로 밴드 본문을 열람 (Standing Constraints + rolling summary / Recent Exchanges / Digests). **pin = 원장 승격**: `POST context/pin` 이 이전 체크포인트를 verbatim-carry 한 새 `context_summary` 라인을 append (체크포인트 없으면 epoch sentinel `coversThroughTs` 로 아무것도 접지 않음; 멱등). unpin 은 v1 스코프 밖 (원장은 read-time supersession 이라 해가 적다).
+- **Carry-over 게이지** — 채팅 헤더의 `FeatureContextGauge` 가 `GET context/estimate` 를 표시 (`estimatedTokens / capTokens`). **게이지 자체에는 툴팁이 없다** — 클릭이 여는 표면은 Context 패널 하나뿐 (과거 click-트리거 툴팁 + 패널 동시 팝업 결함의 구조적 제거). 발동점 초과 시 바가 amber로 전환. 갱신: feature 전환(`useFeatureLogSync`) + 잡 종료 SSE(`chatSseHandler`) — 폴링 없음.
+- **Context 패널** — 게이지 클릭 시 `ContextLensPanel` 이 `GET context/lens` 로 밴드 본문을 열람 (Standing Constraints + rolling summary / Recent Exchanges / Digests). 헤더에 **고정 상태줄**(`{tokens} / {cap}` + 초과 시 "다음 잡 시작 시 자동 압축") 이 항상 표시되고, 심층 의미(크로스잡 vs per-call 링, 링에는 이월분이 실사용 기준 항상 포함)는 hover **ⓘ 인포 툴팁**에 수납. **읽기 전용 표면** — user pin은 제거됐다 (원장은 잡 종료 증류 + compaction 결정론 편입으로만 자동 성장; `POST context/pin` 라우트/타입/액션 전부 retired).
 - **full-job ask 폴백 (E2-5)** — 일반 잡(learn/design/code)의 triage 가 `group==='ask'` 로 분류하면 그래프는 `__end__` 로 끝난다 (routeToAskGraph 미배선). `architect/index.ts` 의 세 ask 분기가 그래프 밖 seam 에서 `answerFullJobAsk` (`graph/ask/fullJobAskFallback.ts`) 를 실행 — inline-ask dispatch 와 동형 배선 (P1 rich tail → `runAskGraph` → ephemeral `assistant_turn` 증류, jobType `'ask'`). 실패 시 로그 + 플레이스홀더 메시지 폴백 (ask 실패가 잡 크래시가 되지 않음). learn 그래프에는 이를 위해 `turnId` 채널이 선언됨 (미선언 채널은 node 전이마다 drop).
 
 ## 9. 명시적 스코프 밖

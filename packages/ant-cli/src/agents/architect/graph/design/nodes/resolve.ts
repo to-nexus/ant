@@ -110,14 +110,19 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     // Checkpoints do not persist turnId — without this, learn cannot attribute
     // breadcrumb/boundary writes to the correct user turn.
     //
-    // §13 note: we intentionally do NOT pass `llm`/`promptPort` here. Design
-    // prompt templates never render `featureContext.summary` (see
-    // `core/prompt/templates/jobs/design/**` — zero references), so the LLM
-    // call that Compact would fire on large user_turn accumulation produces
-    // a digest nothing in this job run consumes. Code resolve keeps compact
-    // because plan/direct templates inject summary; design does not.
+    // §13 note: llm/promptPort ARE passed so the Compact safety net runs at
+    // design entry too. Compaction is shared maintenance, not a consumer
+    // concern: it persists the `context_summary` checkpoint and folds digest
+    // constraints into the ledger, which every LATER job (code/plan/ask)
+    // reads — a design-only streak must not defer that indefinitely. (The
+    // old skip reasoned from "design templates don't render summary", which
+    // ignored the cross-job beneficiaries.)
     const { featureContext, turnId } = await hydrateFeatureContext(
-      { session: state.deps?.session },
+      {
+        session: state.deps?.session,
+        llm: state.deps?.llm,
+        promptPort: state.deps?.promptBuilder,
+      },
       { jobId: state.jobId, logPrefix: 'Design Resolve/Resume' },
     );
 
@@ -263,13 +268,16 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
     // Shared with onResume via `hydrateFeatureContext` so both paths recover
     // the same turnId from feature.jsonl (SSOT).
     //
-    // §13 note: no `llm`/`promptPort` passed. Design prompts do not render
-    // `featureContext.summary`, so running Compact here would fire an LLM
-    // call whose output nobody reads. Compact is code-specific by design —
-    // see onResume for the full rationale.
+    // §13 note: llm/promptPort ARE passed — Compact is shared maintenance
+    // (checkpoint + ledger union) whose beneficiaries are later jobs, so
+    // design entry runs it like code/planner/visual. See onResume rationale.
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     const { featureContext, turnId } = await hydrateFeatureContext(
-      { session: state.deps?.session },
+      {
+        session: state.deps?.session,
+        llm: state.deps?.llm,
+        promptPort: state.deps?.promptBuilder,
+      },
       { jobId: state.jobId, logPrefix: 'Design Resolve' },
     );
 

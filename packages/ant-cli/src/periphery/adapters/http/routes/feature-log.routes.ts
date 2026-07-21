@@ -87,8 +87,11 @@ export function createFeatureLogRoutes(deps: {
    * Context Lens carry-over estimate (P4 F2 — BE contract for the FE
    * FeatureContextGauge / Context panel, E2-4). Assembles the SAME
    * FeatureContext the next job's hydrate would see (no LLM, no
-   * compaction side effects) and reports its band sizes + rough token
-   * estimate against the standard-profile cap.
+   * compaction side effects) and reports its band sizes + reservoir token
+   * estimate (estimateCarryoverTokens — the same quantity the compaction
+   * trigger measures) against FEATURE_CONTEXT_THRESHOLD. estimatedTokens
+   * MAY exceed capTokens between jobs — the threshold is a fold trigger
+   * evaluated at the next job's hydrate, not a hard cap.
    *
    * Response: {
    *   exchanges: number; digests: number; ledger: string[];
@@ -107,23 +110,16 @@ export function createFeatureLogRoutes(deps: {
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
       const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
-      const { buildFeatureContext } = await import('../../../../core/context/featureContextBuilder');
+      const { buildFeatureContext, estimateCarryoverTokens } = await import('../../../../core/context/featureContextBuilder');
       const { FEATURE_CONTEXT_THRESHOLD } = await import('@ant/shared');
       const ctx = await buildFeatureContext(adapter);
-
-      const CHARS_PER_TOKEN = 2.8;
-      const charCount =
-        (ctx?.userTurns ?? []).reduce((s, t) => s + (t.text?.length ?? 0), 0) +
-        (ctx?.exchanges ?? []).reduce((s, e) => s + (e.assistantFinalText?.length ?? 0), 0) +
-        (ctx?.summary?.length ?? 0) +
-        (ctx?.constraintLedger ?? []).reduce((s, c) => s + c.length, 0);
 
       res.json({
         exchanges: ctx?.exchanges?.length ?? 0,
         digests: ctx?.digests?.length ?? 0,
         ledger: ctx?.constraintLedger ?? [],
         summaryPresent: !!ctx?.summary,
-        estimatedTokens: Math.ceil(charCount / CHARS_PER_TOKEN),
+        estimatedTokens: ctx ? estimateCarryoverTokens(ctx) : 0,
         capTokens: FEATURE_CONTEXT_THRESHOLD,
       });
     } catch (error: any) {
@@ -168,75 +164,6 @@ export function createFeatureLogRoutes(deps: {
       });
     } catch (error: any) {
       logger.error('Feature context lens error', { component: 'FeatureLog' }, error);
-      sendErrorResponse(res, 500, error, 'FeatureLog');
-    }
-  });
-
-  /**
-   * POST /projects/:id/features/:feature/context/pin
-   *
-   * Pin = ledger promotion (E2-4). Appends the given text to the standing
-   * Constraint Ledger by writing a NEW context_summary checkpoint line that
-   * verbatim-carries the previous checkpoint (summary + coversThroughTs)
-   * and unions the pinned text into `constraintLedger`. Checkpoints are
-   * append-only and only the latest applies, so this never folds any live
-   * line: with no prior checkpoint the sentinel epoch `coversThroughTs`
-   * covers nothing. Unpin is intentionally out of scope (read-time
-   * supersession makes stale ledger entries low-harm).
-   *
-   * Body: { text: string }  (trimmed; capped at 500 chars)
-   * Response: { success: true, ledger: string[] }
-   */
-  router.post('/projects/:id/features/:feature/context/pin', async (req: Request, res: Response) => {
-    try {
-      if (!deps.workspaceResolver) {
-        res.status(503).json({ error: 'Workspace resolver not available' });
-        return;
-      }
-      const projectId = req.params.id;
-      const featureName = req.params.feature;
-      const userContext = extractUserContext(req);
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-
-      const rawText = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-      if (!rawText) {
-        res.status(400).json({ error: 'text is required' });
-        return;
-      }
-      const PIN_TEXT_CAP = 500;
-      const text = rawText.length > PIN_TEXT_CAP ? `${rawText.slice(0, PIN_TEXT_CAP)}…` : rawText;
-
-      const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
-      const loaded = await adapter.loadSinceBoundary();
-      const summaries = (loaded.contextSummaries ?? []).filter((s) => !(s as { collapsed?: true }).collapsed);
-      const latest = summaries.length ? summaries[summaries.length - 1] : undefined;
-
-      const ledger = [...new Set([...(latest?.constraintLedger ?? []), text])];
-      if (latest && ledger.length === latest.constraintLedger.length) {
-        // Idempotent: already pinned — no new checkpoint line needed.
-        res.json({ success: true, ledger });
-        return;
-      }
-
-      await adapter.appendContextSummary({
-        type: 'context_summary',
-        ts: new Date().toISOString(),
-        jobId: 'user-pin',
-        turnId: `pin-${Date.now()}`,
-        jobType: (latest?.jobType ?? 'code'),
-        // Preserve the previous fold cursor; the epoch sentinel folds nothing.
-        coversThroughTs: latest?.coversThroughTs ?? '1970-01-01T00:00:00.000Z',
-        summary: latest?.summary ?? '',
-        constraintLedger: ledger,
-      });
-
-      logger.info(
-        `Context pin appended (project=${projectId}, feature=${featureName}, ledger=${ledger.length})`,
-        { component: 'FeatureLog' },
-      );
-      res.json({ success: true, ledger });
-    } catch (error: any) {
-      logger.error('Feature context pin error', { component: 'FeatureLog' }, error);
       sendErrorResponse(res, 500, error, 'FeatureLog');
     }
   });

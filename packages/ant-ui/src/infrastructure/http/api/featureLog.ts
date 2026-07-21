@@ -2,7 +2,6 @@ import { API_BASE, apiGet, apiPost, featureSeg } from './client';
 import type {
   ContextCarryoverEstimate,
   ContextLensResponse,
-  ContextPinResponse,
   FeatureBreadcrumbLine,
 } from '@ant/shared';
 
@@ -41,19 +40,6 @@ export async function getContextLens(
 ): Promise<ContextLensResponse> {
   const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/context/lens`;
   return apiGet<ContextLensResponse>(url);
-}
-
-/**
- * Context Lens (E2-4) — pin = ledger promotion. Appends the text to the
- * standing Constraint Ledger (new append-only checkpoint line on the BE).
- */
-export async function pinContextConstraint(
-  projectId: string,
-  featureName: string,
-  text: string,
-): Promise<ContextPinResponse> {
-  const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/context/pin`;
-  return apiPost<ContextPinResponse>(url, { text });
 }
 
 export interface ResetFeatureContextResponse {

@@ -286,6 +286,25 @@ export interface ToolExecutionContext {
     files: string[];
   }>;
 
+  // === Cross-job history recall (read_state scope=history) ===
+  /**
+   * Lazy reader over this feature's user_turn / assistant_turn lines since
+   * the last hard-reset boundary — INCLUDING turns already folded into a
+   * `context_summary` checkpoint. Folding is a prompt-surface concept; the
+   * originals stay on disk, and this is the recall escape hatch when a
+   * digest/rolling summary proves insufficient. Attached by the job's
+   * tool-context assembly from SessionPort (2-layer tool architecture —
+   * the handler never imports graph state).
+   */
+  featureHistory?: () => Promise<ReadonlyArray<{
+    turnId: string;
+    ts: string;
+    jobType?: string;
+    userText: string;
+    assistantFinalText?: string;
+    ephemeral?: boolean;
+  }>>;
+
   // === Artifact read handlers ===
   sourceDocuments?: any;
   files?: Map<string, any>;

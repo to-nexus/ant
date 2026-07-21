@@ -20,9 +20,15 @@ export interface ContextCarryoverEstimate {
   ledger: string[];
   /** Band-3 rolling-summary checkpoint exists. */
   summaryPresent: boolean;
-  /** Rough token estimate of the assembled context (2.8 chars/tok). */
+  /**
+   * Carry-over reservoir tokens (estimateCarryoverTokens — all channels,
+   * 2.8 chars/tok). May exceed `capTokens` between jobs.
+   */
   estimatedTokens: number;
-  /** FEATURE_CONTEXT_THRESHOLD — compaction budget the estimate is measured against. */
+  /**
+   * FEATURE_CONTEXT_THRESHOLD — the compaction trigger evaluated at the
+   * next job's hydrate. A fold point, NOT a hard cap on the estimate.
+   */
   capTokens: number;
 }
 
@@ -56,9 +62,3 @@ export interface ContextLensResponse {
   summary: string | null;
 }
 
-/** POST /projects/:id/features/:feature/context/pin */
-export interface ContextPinResponse {
-  success: boolean;
-  /** The ledger after promotion (dedupe-unioned). */
-  ledger: string[];
-}
