@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { registerFeatureParamDecoders } from './helpers/featureParam';
+import { registerFeatureParamDecoders, decodeFeatureSegment } from './helpers/featureParam';
 import * as fs from 'fs';
 import * as path from 'path';
 import multer from 'multer';
@@ -101,7 +101,7 @@ export function createFilesRoutes(deps: {
   router.get(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files-raw\/(.+)$/, async (req: Request, res: Response) => {
     try {
       const projectId = req.params[0];
-      const featureName = req.params[1];
+      const featureName = decodeFeatureSegment(req.params[1]);
       const filePath = req.params[2];
 
       if (!filePath) {
@@ -143,7 +143,7 @@ export function createFilesRoutes(deps: {
   router.get(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
       const projectId = req.params[0];
-      const featureName = req.params[1];
+      const featureName = decodeFeatureSegment(req.params[1]);
       const filePath = req.params[2];
 
       if (!filePath) {
@@ -174,7 +174,7 @@ export function createFilesRoutes(deps: {
   router.put(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
       const projectId = req.params[0];
-      const featureName = req.params[1];
+      const featureName = decodeFeatureSegment(req.params[1]);
       const filePath = req.params[2];
       const { content } = req.body;
 
