@@ -17,6 +17,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { DEFAULT_MODELS } from '@ant/shared';
 import { buildCommitPlan } from '../../src/core/context/commitMessage';
+import {
+  withAntCoAuthor,
+  ANT_COAUTHOR_TRAILER,
+} from '../../src/periphery/adapters/http/services/GitService/remote/operations/helpers/antAttribution';
 import { loadWorkspaceConfigFromPath } from '../../src/periphery/adapters/config/FileConfigAdapter';
 import type { LLMClient } from '../../src/core/ports/llm';
 import type { PromptPort } from '../../src/core/ports/prompt';
@@ -64,6 +68,29 @@ describe('buildCommitPlan safe salvage', () => {
       status: '', diff: '', recentLog: '', allFiles: FILES, allowMultiple: true,
     });
     expect(groups[0].message).toMatch(/^Update: /);
+  });
+});
+
+describe('withAntCoAuthor — ANT co-author attribution', () => {
+  it('appends the ANT Co-authored-by trailer after a blank line', () => {
+    const out = withAntCoAuthor('feat: add avatar upload endpoint');
+    expect(out).toBe(`feat: add avatar upload endpoint\n\n${ANT_COAUTHOR_TRAILER}`);
+    expect(ANT_COAUTHOR_TRAILER).toBe('Co-authored-by: ANT <ant-agent@to.nexus>');
+  });
+
+  it('is idempotent — decorating twice adds only one trailer', () => {
+    const once = withAntCoAuthor('fix: bug');
+    const twice = withAntCoAuthor(once);
+    expect(twice).toBe(once);
+    expect(twice.match(/Co-authored-by:/g)).toHaveLength(1);
+  });
+
+  it('preserves a multi-paragraph body and appends exactly one trailer', () => {
+    const msg = 'feat: x\n\nsome body paragraph explaining why';
+    const out = withAntCoAuthor(msg);
+    expect(out.startsWith(msg)).toBe(true);
+    expect(out.endsWith(`\n\n${ANT_COAUTHOR_TRAILER}`)).toBe(true);
+    expect(out.match(/Co-authored-by:/g)).toHaveLength(1);
   });
 });
 
