@@ -193,8 +193,10 @@ export function getConfigMergeDefaults(): LLMModels {
     },
     reviewer: { default: modelOpus },
     doc: { default: modelOpus },
-    // Auxiliary (non-graph) one-shot calls default to the cheapest tier.
-    commit: { default: modelHaiku },
+    // Auxiliary (non-graph) one-shot calls (e.g. ant-authored commit messages)
+    // default to the Sonnet tier — cheap enough for a short call, but capable
+    // enough to write a coherent commit message from a diff.
+    commit: { default: modelSonnet },
   };
 }
 
@@ -202,7 +204,6 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
   const envModel = process.env.AI_MODEL_NAME;
   const modelOpus = envModel || DEFAULT_MODELS.opusTier;
   const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
-  const modelHaiku = envModel || DEFAULT_MODELS.haikuTier;
 
   return {
     projectName,
@@ -248,7 +249,7 @@ export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig 
         default: modelOpus,
       },
       commit: {
-        default: modelHaiku,
+        default: modelSonnet,
       },
     },
     visualSettings: {

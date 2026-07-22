@@ -101,7 +101,7 @@ export const NON_OVERRIDABLE_LLM_NODES: Record<string, readonly string[]> = {
  * in the picker as a default-only row.
  *
  * Each key doubles as an `LLMContext.jobType` value; its model resolves via
- * `llmModels[key].default` (default tier: haiku).
+ * `llmModels[key].default` (default tier: sonnet).
  */
 export type AuxiliaryModelKey = 'commit';
 
