@@ -83,6 +83,10 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
     return 'glm';
   }
 
+  if (normalized.startsWith('kimi')) {
+    return 'kimi';
+  }
+
   // Default to anthropic
   console.warn(`[LLM] Unknown model prefix: ${modelName}, defaulting to anthropic`);
   return 'anthropic';
@@ -245,6 +249,21 @@ export function createLLMClient(
         apiKey: resolveProviderApiKey('glm'),
         baseURL: 'https://api.z.ai/api/paas/v4',
         provider: 'glm',
+        modelName,
+        temperature,
+        maxTokens,
+        timeout,
+      });
+
+    case 'kimi':
+      // Moonshot AI (Kimi) — OpenAI-compatible endpoint (single Bearer token).
+      // Reuse OpenAILLMClient with an injected baseURL + provider tag so the
+      // shared stream path labels events honestly. No thinking param is attached
+      // (kimi is intentionally absent from THINKING_TOGGLE_PROVIDERS).
+      return new OpenAILLMClient(agentJob, {
+        apiKey: resolveProviderApiKey('kimi'),
+        baseURL: 'https://api.moonshot.ai/v1',
+        provider: 'kimi',
         modelName,
         temperature,
         maxTokens,

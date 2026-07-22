@@ -37,7 +37,7 @@ export interface ModelRate {
 export type ThinkingMode = 'adaptive' | 'extended' | 'none';
 
 /** LLM provider tag — the discriminator every model carries. */
-export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'deepseek' | 'glm';
+export type ModelProvider = 'anthropic' | 'openai' | 'google' | 'deepseek' | 'glm' | 'kimi';
 
 /**
  * Provider → the environment variable that holds its API key. SINGLE owner of
@@ -51,6 +51,7 @@ export const PROVIDER_API_KEY_ENV: Record<ModelProvider, string> = {
   google: 'GEMINI_API_KEY',
   deepseek: 'DEEPSEEK_API_KEY',
   glm: 'GLM_API_KEY',
+  kimi: 'KIMI_API_KEY',
 };
 
 /**
@@ -61,6 +62,7 @@ export const PROVIDER_API_KEY_ENV: Record<ModelProvider, string> = {
 export const PROVIDER_REQUIRES_DATA_CONSENT: ReadonlySet<ModelProvider> = new Set([
   'deepseek',
   'glm',
+  'kimi',
 ]);
 
 /** Whether selecting a model from `provider` must pass the data-consent gate. */
@@ -81,6 +83,7 @@ export const PROVIDER_PRICING_URL: Record<ModelProvider, string> = {
   google: 'https://ai.google.dev/gemini-api/docs/pricing',
   deepseek: 'https://api-docs.deepseek.com/quick_start/pricing',
   glm: 'https://z.ai/model-api',
+  kimi: 'https://platform.kimi.ai/docs/pricing/chat-k3',
 };
 
 export interface ModelSpec {
@@ -224,6 +227,51 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     capabilities: ['fast', 'coding', 'reasoning'],
     contextWindow: 200_000,
     rate: { input: 0.6, output: 2.2, cacheWrite5m: 0.6, cacheWrite1h: 0.6, cacheRead: 0.11 },
+    thinkingMode: 'none',
+    selectable: true,
+  },
+  // Kimi (Moonshot AI) — OpenAI-compatible API (api.moonshot.ai/v1, single Bearer
+  // token), reuses OpenAILLMClient with an injected baseURL/provider (LLMClientFactory).
+  // China-hosted, so gated behind the data-consent notice (PROVIDER_REQUIRES_DATA_CONSENT).
+  // No separate cache-write fee and the OpenAI stream path does not report
+  // cacheCreationTokens, so cacheWrite* mirror input (unused) — same rationale as the
+  // DeepSeek/GLM entries. thinkingMode stays 'none' (no Anthropic thinking params).
+  'kimi-k3': {
+    id: 'kimi-k3',
+    displayName: 'Kimi K3',
+    provider: 'kimi',
+    description: 'Kimi K3 — Moonshot flagship, long-horizon coding + agentic reasoning, 1M context (OpenAI-compatible API)',
+    recommended: false,
+    capabilities: ['coding', 'reasoning', 'large-context'],
+    contextWindow: 1_048_576,
+    // platform.kimi.ai list price (USD/MTok). cacheRead = cache-hit input price.
+    rate: { input: 3, output: 15, cacheWrite5m: 3, cacheWrite1h: 3, cacheRead: 0.3 },
+    thinkingMode: 'none',
+    selectable: true,
+  },
+  'kimi-k2.7-code': {
+    id: 'kimi-k2.7-code',
+    displayName: 'Kimi K2.7 Code',
+    provider: 'kimi',
+    description: 'Kimi K2.7 Code — cost-effective coding model, 256K context (OpenAI-compatible API)',
+    recommended: false,
+    capabilities: ['coding', 'fast'],
+    contextWindow: 262_144,
+    // platform.kimi.ai list price (USD/MTok). cacheRead = cache-hit input price.
+    rate: { input: 0.95, output: 4, cacheWrite5m: 0.95, cacheWrite1h: 0.95, cacheRead: 0.19 },
+    thinkingMode: 'none',
+    selectable: true,
+  },
+  'kimi-k2.7-code-highspeed': {
+    id: 'kimi-k2.7-code-highspeed',
+    displayName: 'Kimi K2.7 Code (High-speed)',
+    provider: 'kimi',
+    description: 'Kimi K2.7 Code high-speed variant — ~180 tok/s output, 256K context (OpenAI-compatible API)',
+    recommended: false,
+    capabilities: ['coding', 'fast'],
+    contextWindow: 262_144,
+    // platform.kimi.ai list price (USD/MTok) — 2x the standard code variant. cacheRead = cache-hit input price.
+    rate: { input: 1.9, output: 8, cacheWrite5m: 1.9, cacheWrite1h: 1.9, cacheRead: 0.38 },
     thinkingMode: 'none',
     selectable: true,
   },
