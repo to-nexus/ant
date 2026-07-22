@@ -683,8 +683,9 @@ export interface ArchitectGraphState extends TriageableState {
    * / the dominant-failure diagnostic were structurally dead;
    * trim-grinding-motif RCA). Pruned to a 5-minute window + 100 entries by
    * `appendCommandHistory`. Readers: `detectRecentToolFailures`
-   * (executeRouter Safety Net B), `summarizeDominantFailure`
-   * (checkTaskStatus), `isAllRepeatErrorBatch` (tool node).
+   * (executeRouter Safety Net B), `summarizeDominantFailure` /
+   * `summarizeDominantRepeatedCommand` (checkTaskStatus),
+   * `isAllRepeatErrorBatch` / `isAllRepeatCommandBatch` (tool node).
    */
   commandHistory?: Array<{
     command: string;
@@ -692,6 +693,14 @@ export interface ArchitectGraphState extends TriageableState {
     success: boolean;
     exitCode?: number;
     errorSnippet?: string;
+    /**
+     * Volatile-numeral-masked FNV-1a hash of the command's output
+     * (`hashCommandOutput`). Lets `isAllRepeatCommandBatch` detect a
+     * SUCCESSFUL command re-run whose output is identical — the
+     * shy-crushing-bloom blind spot (357 identical passing-exit-code test
+     * re-runs that every failure-gated brake ignored).
+     */
+    outputHash?: string;
   }>;
   
   /**

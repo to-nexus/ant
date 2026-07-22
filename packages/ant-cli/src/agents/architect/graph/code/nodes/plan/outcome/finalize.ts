@@ -130,6 +130,12 @@ export function finalizePlanOutcome(
     recursionLimit: state.recursionLimit,
     workspaceConfig: state.workspaceConfig,
     _activePhase: 'execute' as const,
+    // A finalized plan IS progress — reset the plan-loop no-progress signals
+    // so a stale all-dup flag from the loop's last diagnostic batch cannot
+    // leak a spurious +1 into the execute node's first streak computation
+    // (plan-loop accrual: shy-crushing-bloom).
+    _noProgressStreak: 0,
+    _lastToolBatchAllDupReads: false,
     conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
     llmResponse: isDone
       ? { done: true, textResponse: '', thinking: '', toolCalls: [] }
