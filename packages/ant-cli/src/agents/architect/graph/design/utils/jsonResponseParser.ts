@@ -50,6 +50,9 @@ import {
  *                           `backend` framework sub-objects), `targetFiles`,
  *                           `references`
  *   - spec (inline prompt): `slug`, `title`
+ *   - all variants        : `prdSync` (cross-intent PRD sync — `{ targets,
+ *                           reason }`, validated + task-appended by
+ *                           `decompose/prdSync.ts`)
  *
  * Adding a new meta tag here is the only change needed to surface it on
  * the parsed object. Callers see `parsed[tagName]`.
@@ -66,6 +69,7 @@ const META_TAG_NAMES = [
   'title',
   'references',
   'jobMode',
+  'prdSync',
 ] as const;
 
 /**

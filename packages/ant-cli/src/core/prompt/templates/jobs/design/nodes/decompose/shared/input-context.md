@@ -50,3 +50,4 @@ Use the `read_source_doc` tool for full content of files listed above.
 </directive>
 
 {{/if}}
+{{> jobs/design/nodes/decompose/shared/prd-sync}}

@@ -23,6 +23,8 @@ import { ARTIFACT_PREFIX, BOUNDARY } from "@ant/shared";
 import { resolveDesignBasisTechTier } from "./resolveDesignBasisTechTier";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
+import { ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { sanitizeDocSlug, collisionFreeDocFilename } from "../../../../../common/naming/docSlug";
 import { extractMarkdownHeadings } from "../checkTaskStatus/specDocIntegrity";
 import { loadExistingDesignDoc } from "../checkTaskStatus/loadExistingDesignDoc";
@@ -56,6 +58,8 @@ interface SpecDecomposeResponse {
   title: string;
   tasks: SpecTask[];
   executionTier: ExecutionTierId;
+  /** Cross-intent PRD sync decision (generate mode only; see `prdSync.ts`). */
+  prdSync?: { targets?: string[]; reason?: string };
 }
 
 function stripDesignTargetPrefix(file: string): string {
@@ -159,6 +163,8 @@ async function decomposeSpecSections(
     ``,
     `Output format — emit the meta tags first (one tag per line), then a \`<tasks>\` block with one \`<task>{json}</task>\` element per output document. Each \`<task>\` body is a single JSON object. NO markdown fences anywhere. NO \`<decompose>\` wrapper.`,
     ``,
+    `PRD Sync (optional meta tag): if the directive ALSO asks to update / sync / keep-consistent a related planning document, emit a \`<prdSync>{"targets":["plan/<doc>.md"],"reason":"<one sentence>"}</prdSync>\` tag naming the plan doc(s) present in your input context. The system then appends a task that reconciles that doc AFTER this spec is written. Omit the tag entirely when the directive is silent on the PRD or no plan doc is in context. Never invent a plan path.`,
+    ``,
     `Slug rules:`,
     `- Shape: 1–3 lowercase hyphenated words. Pick the shortest form that still identifies the spec's scope.`,
     `- Prefix: the file lives under \`architecture/spec/\` — do NOT add a \`spec-\` prefix.`,
@@ -215,7 +221,7 @@ async function decomposeSpecSections(
       'SpecDecompose',
     );
 
-    return { slug, title, tasks, executionTier };
+    return { slug, title, tasks, executionTier, prdSync: parsed.prdSync };
   } catch (error) {
     console.warn('⚠️  [specDecompose] Failed to decompose via LLM, using fallback:', error);
     return fallback();
@@ -306,6 +312,9 @@ export async function decomposeSpec(
   let tasks: SpecTask[];
   let executionTier: ExecutionTierId;
   let revisionBaselineHeadings: string[] | undefined;
+  // Cross-intent PRD sync (generate mode only — refactor takes the LLM-free
+  // deterministic path and cannot emit `<prdSync>`).
+  let prdSync: { targets?: string[]; reason?: string } | undefined;
 
   if (isRefactor) {
     targetFile = await resolveSpecTargetFileForMode(state, jobMode, '');
@@ -313,7 +322,7 @@ export async function decomposeSpec(
     ({ title, tasks, executionTier, revisionBaselineHeadings } = revision);
   } else {
     const decomposed = await decomposeSpecSections(state);
-    ({ title, tasks, executionTier } = decomposed);
+    ({ title, tasks, executionTier, prdSync } = decomposed);
     targetFile = await resolveSpecTargetFileForMode(state, jobMode, decomposed.slug);
   }
   console.log(`🧭 [SpecDecompose] executionTier=${executionTier}`);
@@ -344,6 +353,11 @@ export async function decomposeSpec(
     };
     taskQueue.push(task);
   });
+
+  // Cross-intent PRD sync — append a single-owner sync task per validated plan
+  // target when the directive asked to keep the PRD in sync (runs LAST).
+  const specPool = new ArtifactPoolView(state.artifacts || []);
+  appendPrdSyncTasks(taskQueue, resolvePrdSyncTargets(prdSync, specPool));
 
   updateKanban(state, null, taskQueue.getAll());
 

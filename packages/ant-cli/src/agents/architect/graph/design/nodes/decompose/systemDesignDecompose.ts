@@ -18,6 +18,7 @@ import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { resolveDesignBasisTechTier } from "./resolveDesignBasisTechTier";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { resolveDesignTargetFiles } from "../../../../../../core/types/detection";
@@ -95,6 +96,12 @@ export interface SystemDesignResponse {
     branch?: string;
     reason?: string;
   }>;
+  /**
+   * Cross-intent PRD sync decision (see `decompose/prdSync.ts`). Present when
+   * the directive asks to keep a `plan/*.md` doc in sync; validated + appended
+   * as a single-owner sync `doc` task after the queue is built.
+   */
+  prdSync?: { targets?: string[]; reason?: string };
 }
 
 // ============================================
@@ -814,6 +821,7 @@ export async function decomposeSystemDesign(
         documentType: 'unified',
         targetFiles: ['be-system-main.md'],
         ...(parsedResponse.profiles && { profiles: parsedResponse.profiles }),
+        ...(parsedResponse.prdSync && { prdSync: parsedResponse.prdSync }),
         tasks: parsedResponse.tasks.map((task: any) => ({
           ...task,
           targetFile: task.targetFile || 'be-system-main.md'
@@ -1033,6 +1041,10 @@ export async function decomposeSystemDesign(
   // Build task queue. Explicit techTier (raw, never merged with LLM emit)
   // is forwarded so per-task tiers preserve user-pinned framework/language.
   const taskQueue = buildTaskQueue(response, sourceFileNames, basisTechTierConfig, state.actionMetadata?.basis?.techTier);
+
+  // Cross-intent PRD sync — append a single-owner sync task per validated plan
+  // target when the directive asked to keep the PRD in sync (runs LAST).
+  appendPrdSyncTasks(taskQueue, resolvePrdSyncTargets(response.prdSync, pool));
 
   // Refactor mode: capture the pre-revision `##` headings per target doc so
   // the completion-time revision-preservation gate

@@ -37,7 +37,7 @@ import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/
 import type { IntentId } from '@ant/shared';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
-import { ARTIFACT_PREFIX, designDirOf } from '@ant/shared';
+import { ARTIFACT_PREFIX, designDirOf, isPrdSyncTask } from '@ant/shared';
 import type { DesignTask } from '../../../../types/task';
 
 // ✅ Import prompt builders from sub-modules
@@ -45,6 +45,7 @@ import { buildMessages } from './intent/system';
 import { buildUiDesignMessages } from './intent/ui';
 import { buildGameArtMessages } from './intent/game-art';
 import { buildSpecMessages } from './intent/spec';
+import { buildPrdSyncMessages } from './intent/prd-sync';
 import { renderExplainResponse } from './explain';
 
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
@@ -136,7 +137,15 @@ export async function execute(
   let messages;
   let useSourceFileTool = false;
 
-  if (intentGroup === 'design-ui') {
+  // Cross-intent PRD sync: a `doc` task carrying a `prdSyncTargets` grant is
+  // reframed as a surgical full-rewrite of the named plan doc, regardless of
+  // which design intent produced the job. Branch BEFORE the intentGroup split
+  // so the sync task never hits the authoring builder (system / ui / spec /
+  // game-art) for its host intent.
+  const isPrdSync = isPrdSyncTask(state.currentTask);
+  if (isPrdSync) {
+    messages = await buildPrdSyncMessages(state);
+  } else if (intentGroup === 'design-ui') {
     messages = await buildUiDesignMessages(state);
   } else if (intentGroup === 'design-game-art') {
     // Game-domain peer of design-ui (D28). Game-art catalogs are JSON like UI,
@@ -202,7 +211,10 @@ export async function execute(
   const { tools } = applyDrainFinalization(
     state,
     messages,
-    await getTools(state, { useSourceFileTool }),
+    // PRD sync is a no-tool full rewrite: the current doc is injected in the
+    // prompt, so no exploration tools are offered (mirrors the code prd-sync
+    // no-tool-loop model).
+    isPrdSync ? [] : await getTools(state, { useSourceFileTool }),
   );
   
   // ✅ Workflow update
@@ -238,6 +250,10 @@ export async function execute(
     state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
+  // Cross-intent PRD sync: grant the FileRenderer Guard-1 exception for the
+  // plan doc this task is authorized to rewrite. Empty for every ordinary
+  // design task, so sibling-dir writes stay closed by default.
+  renderStrategy.setPrdSyncTargets(state.currentTask?.prdSyncTargets);
 
   // ✅ Pin the expected output filename for this task — guards against the
   // execute LLM emitting `<file path="...">` with a hallucinated filename
@@ -245,9 +261,11 @@ export async function execute(
   // a foreign catalog's sections to this task). Legacy JSON UI mode skipped
   // because it writes multiple artifacts per turn (ui-tokens.json,
   // ui-assets.json, ui-spec.json) rather than a single targetFile; handoff
-  // UI tasks author exactly one bundle file each, so they ARE pinned.
+  // UI tasks author exactly one bundle file each, so they ARE pinned. A
+  // PRD-sync task is pinned regardless of host intentGroup (its targetDir
+  // 'plan' + targetFile resolve to the granted `plan/<doc>.md`).
   const isHandoffTask = (state.currentTask as DesignTask | undefined)?.docFormat === 'handoff';
-  if ((intentGroup !== 'design-ui' || isHandoffTask) && state.currentTask?.targetFile) {
+  if ((isPrdSync || intentGroup !== 'design-ui' || isHandoffTask) && state.currentTask?.targetFile) {
     const targetFile = state.currentTask.targetFile;
     // Spec tasks (since the spec- prefix was dropped) ship an explicit
     // `targetDir`; other artifact kinds still derive their dir from the
