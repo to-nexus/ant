@@ -21,6 +21,7 @@ import { runPlanLLMWithTools } from './tools';
 import { finalizePlanOutcome } from '../outcome/finalize';
 import { BatchSplitSchemaViolation } from '../../../tasks/_shared/batchSplit';
 import { runPlanToolLoopPhase as sharedRunPlanToolLoopPhase } from '../../../../../../common/graph/nodes/plan';
+import { computeNextNoProgressStreak } from '../../execute/drainFinalize';
 
 export type PlanToolLoopOutcome =
   | { kind: 'return'; state: ArchitectGraphState }
@@ -102,12 +103,31 @@ export async function runPlanToolLoopPhase(
   if (state.deps?.workflowUpdate && state._httpJobId) {
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
   }
+  // Plan-loop no-progress accrual (shy-crushing-bloom RCA) — the same
+  // single-owner rule the execute node commits each turn. The preceding tool
+  // batch's `_lastToolBatchAllDupReads` (dup reads / repeat errors /
+  // repeat-commands-with-identical-output) is already on `state` here, so a
+  // degenerate diagnostic loop accrues toward `NO_PROGRESS_HARD_CAP` and the
+  // planRouter breaker diverts it — instead of riding the raw LangGraph
+  // recursion limit to a whole-job hard interrupt (357 identical test
+  // re-runs in the incident). Any informative batch resets the streak to 0
+  // inside `computeNextNoProgressStreak`.
+  const toolCallCount = (outcome.llmResponse as { toolCalls?: unknown[] } | undefined)?.toolCalls?.length ?? 0;
+  const nextNoProgressStreak = computeNextNoProgressStreak(state, {
+    progressed: false,
+    drainFinalizing: false,
+    toolCallCount,
+  });
+  if (nextNoProgressStreak > 0) {
+    console.warn(`🧯 [Plan/toolLoop] no-progress streak ${nextNoProgressStreak} (last batch carried zero new information)`);
+  }
   const returned: ArchitectGraphState = {
     ...state,
     conversations: { [CONV_KEYS.NODE_PLAN]: updatedHistory },
     _activePhase: 'plan' as const,
     llmResponse: outcome.llmResponse as any,
     lessons: state.lessons,
+    _noProgressStreak: nextNoProgressStreak,
   };
   return { kind: 'return', state: returned };
 }

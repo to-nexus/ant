@@ -65,7 +65,14 @@ export async function resolvePlanEntry(state: ArchitectGraphState): Promise<Plan
     nodePlanMsgs: state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0,
   });
 
-  const inToolLoop = state._activePhase === 'plan' && !!state.currentTask;
+  // A pending retry directive outranks tool-loop reentry: the planRouter
+  // no-progress breaker diverts MID-loop (`_activePhase` still 'plan'), and
+  // without this exclusion the subsequent retry entry would be swallowed by
+  // handleToolLoopReentry — resuming the exact degenerate loop the breaker
+  // just cut (checkTaskStatus resets the streak, so the loop would run
+  // another full streak before diverting again, forever).
+  const inToolLoop = state._activePhase === 'plan' && !!state.currentTask &&
+    state._nextPlanEntry !== 'retry';
   const entryReason = inToolLoop ? undefined : state._nextPlanEntry;
   if (!inToolLoop) state._nextPlanEntry = undefined;
   const isRetry = entryReason === 'retry';
@@ -162,6 +169,14 @@ async function handleRetryEntry(
   // LangGraph reducer commit (conversationsReducer otherwise drops the
   // NODE_EXECUTE clear when plan returns through the tool_use branch).
   const preservedMsgCount = state.conversations?.[CONV_KEYS.NODE_PLAN]?.length ?? 0;
+  // Retry entered MID-plan-tool-loop (planRouter breaker divert — the only
+  // path that reaches retry with `_activePhase === 'plan'`): NODE_PLAN is
+  // the degenerate conversation itself — hundreds of zero-information
+  // tool rounds ending in a dangling assistant tool_use (its tool_result
+  // never ran). Preserving it would (a) re-seed the repetition attractor
+  // the breaker just cut and (b) 400 the next LLM call on the orphaned
+  // tool_use. Fresh-conversation retry clears it (shy-crushing-bloom).
+  const clearNodePlan = state._activePhase === 'plan';
   state._executeCallIndex = 0;
   state.violations = [];
   // Anti-retry-spiral: reset the no-progress breaker signals so the fresh
@@ -176,6 +191,7 @@ async function handleRetryEntry(
   state.conversations = {
     ...state.conversations,
     [CONV_KEYS.NODE_EXECUTE]: [],
+    ...(clearNodePlan ? { [CONV_KEYS.NODE_PLAN]: [] } : {}),
   };
   const delta: Partial<ArchitectGraphState> = {
     _executeCallIndex: 0,
@@ -186,10 +202,13 @@ async function handleRetryEntry(
     commandHistory: [],
     conversations: {
       [CONV_KEYS.NODE_EXECUTE]: [],
+      ...(clearNodePlan ? { [CONV_KEYS.NODE_PLAN]: [] } : {}),
     },
   };
   console.log(`\n🔄 [Plan] Retry task: ${nextTask.name} (attempt ${(state.retries || 0) + 1}/${state.maxRetries})`);
-  console.log(`   ♻️  node:execute cleared, node:plan preserved (${preservedMsgCount} messages)\n`);
+  console.log(clearNodePlan
+    ? `   ♻️  node:execute cleared, node:plan cleared (${preservedMsgCount} degenerate plan-loop messages dropped)\n`
+    : `   ♻️  node:execute cleared, node:plan preserved (${preservedMsgCount} messages)\n`);
 
   return {
     context: {

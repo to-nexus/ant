@@ -10,8 +10,10 @@
 import { ArchitectGraphState } from '../../state';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { toolResultManager } from './utils/managers';
-import { buildTaskReminder, appendCommandHistory, type CommandHistoryAddition } from './utils/helpers';
-import { isAllDupReadBatch, isAllRepeatErrorBatch, commandLabelsForEvent } from './utils/allDupReads';
+import { buildTaskReminder, buildVerifyPlanReminder, appendCommandHistory, type CommandHistoryAddition } from './utils/helpers';
+import { isAllDupReadBatch, isAllRepeatErrorBatch, isAllRepeatCommandBatch, commandLabelsForEvent } from './utils/allDupReads';
+import { hashCommandOutput } from '../execute/drainFinalize';
+import { isVerificationTask } from '../../tasks/verification';
 import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
@@ -241,7 +243,17 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
             toolName: event.toolName,
             args: event.args,
             resultChars: resultStr.length,
-            resultPreview: resultStr.length <= 500 ? resultStr : undefined,
+            // Always capture a head preview (shy-crushing-bloom forensics:
+            // the ≤500-only gate left all 357 repeated 2.6K test outputs
+            // unrecorded, so "what did the model actually see?" was
+            // unanswerable from the debug log).
+            resultPreview: resultStr.length <= 500 ? resultStr : resultStr.slice(0, 300),
+            // Output-identity signature for run_command — pairs with
+            // commandHistory.outputHash so a repeat-with-identical-output
+            // loop is judgeable from the log alone.
+            outputHash: event.toolName === 'run_command' && !isMultimodal && typeof content === 'string'
+              ? hashCommandOutput(content)
+              : undefined,
             wasTruncated: false,
             error: event.result.error,
             // Surface 'verify' in the debug log when verification is active,
@@ -366,7 +378,19 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
     },
 
     buildExtraUserContent(state) {
-      if (state._activePhase === 'plan') return [];
+      if (state._activePhase === 'plan') {
+        // The plan tool loop stays reminder-free by design (lean diagnostic
+        // history) — EXCEPT verify-mode (shy-crushing-bloom RCA): a long
+        // gate-diagnosis loop pushes the cycle's legal exits hundreds of K
+        // tokens back into messages[0], and the incident's model locked onto
+        // re-running one gate 357 times with zero recency reinforcement of
+        // the batches[]-on-failure exit.
+        if (state.currentTask &&
+            (isVerifyModeActive(state) || isVerificationTask(state.currentTask))) {
+          return [{ type: 'text' as const, text: buildVerifyPlanReminder(state.currentTask.name) }];
+        }
+        return [];
+      }
       const taskReminder = buildTaskReminder(state);
       if (!taskReminder) return [];
       return [{ type: 'text' as const, text: taskReminder }];
@@ -403,20 +427,27 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       (e.result.sideEffects || []).some(ef => MUTATION_SIDE_EFFECTS.has(ef.type)),
     );
 
-    // SSOT for `_lastToolBatchAllDupReads` (turn-scoped, execute phase only —
-    // mirrors the mutation flag above): the batch carried zero new
-    // information. Two provably-zero-information flavors share the flag:
+    // SSOT for `_lastToolBatchAllDupReads` (turn-scoped, BOTH phases — the
+    // plan tool loop accrues the same no-progress streak since
+    // shy-crushing-bloom): the batch carried zero new information. Three
+    // provably-zero-information flavors share the flag:
     //   - every call a duplicate-elided successful read_file
     //     (rocky-beating-coral RCA), OR
     //   - every call an ERRORED repeat of a failure already recorded in the
     //     pre-batch command history (trim-grinding-motif RCA — 371 identical
-    //     File-not-found reads that the success-only predicate never saw).
+    //     File-not-found reads that the success-only predicate never saw), OR
+    //   - every call a run_command whose (command, output-hash) signature is
+    //     already in the pre-batch history — a SUCCESS-agnostic repeat with
+    //     identical output (shy-crushing-bloom RCA — 357 identical test
+    //     re-runs whose piped exit code was 0, invisible to both flavors
+    //     above).
     // Consumed by `computeNextNoProgressStreak` behind the no-progress
     // circuit breaker. `state.commandHistory` here is the PRE-batch channel
     // value — the post-batch append lives in `hookUpdates.commandHistory`.
     const allDupReads =
       isAllDupReadBatch(executionEvents, elidedReads?.length ?? 0) ||
-      isAllRepeatErrorBatch(executionEvents, state.commandHistory);
+      isAllRepeatErrorBatch(executionEvents, state.commandHistory) ||
+      isAllRepeatCommandBatch(executionEvents, state.commandHistory);
 
     // Reference-registration channel writer (single writer = tool node).
     // `register_reference` handlers emit `referenceRegistered` side-effects;
@@ -444,7 +475,12 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
       // diagnostic exploration) does not mistakenly suppress a downstream
       // execute stuck-loop counter.
       ...(state._activePhase !== 'plan' ? { _lastToolBatchMutatedFiles: touchedFiles } : {}),
-      ...(state._activePhase !== 'plan' ? { _lastToolBatchAllDupReads: allDupReads } : {}),
+      // Committed in BOTH phases (shy-crushing-bloom): the plan tool loop
+      // reads it to accrue `_noProgressStreak` exactly like the execute
+      // node does. Plan→execute leakage is cut at the boundary —
+      // `finalizePlanOutcome` resets flag + streak (a finalized plan IS
+      // progress).
+      _lastToolBatchAllDupReads: allDupReads,
       ...hookUpdates,
     };
 

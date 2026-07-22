@@ -51,6 +51,24 @@ function hashText(normalized: string): string {
 }
 
 /**
+ * Command-output identity hash (shy-crushing-bloom RCA). Volatile numerals
+ * (durations, timestamps, per-test ms) are masked to `#` before hashing —
+ * the incident's 357 identical vitest runs oscillated between 2627/2628
+ * chars purely on a timing digit, so byte-identity would never match. The
+ * masking cannot hide real progress: an output only changes meaningfully
+ * after a mutation, and any mutation turn resets the no-progress streak
+ * before this hash is ever compared.
+ */
+export function hashCommandOutput(output: string): string {
+  const normalized = output
+    .trim()
+    .toLowerCase()
+    .replace(/\d+/g, '#')
+    .replace(/\s+/g, ' ');
+  return hashText(normalized);
+}
+
+/**
  * Output-side no-progress signal (vivid-orbiting-dodge RCA): the current
  * turn's assistant text is byte-identical (after whitespace/case
  * normalization) to one of the last `RECENT_TEXT_RING_SIZE` execute turns.

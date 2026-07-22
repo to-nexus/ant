@@ -7,6 +7,7 @@ import { ArchitectGraphState } from '../../../state';
 import { CommandExecutionResult } from '../types';
 import { isVerificationTask } from '../../../tasks/verification';
 import { isSetupTask } from '../../../tasks/setup';
+import { hashCommandOutput } from '../../execute/drainFinalize';
 
 /**
  * Get temp file path for buffering
@@ -44,6 +45,24 @@ export function buildTaskReminder(state: ArchitectGraphState): string {
   return taskReminder;
 }
 
+/**
+ * Recency reminder for the VERIFY-MODE PLAN tool loop (shy-crushing-bloom
+ * RCA). The plan loop deliberately carries no per-round task reminder, so in
+ * a long diagnostic loop the only instructions live in messages[0] — hundreds
+ * of K tokens back once the loop grows. The incident's model saw 357 rounds
+ * of raw tool results with zero reinforcement of the cycle's legal exits and
+ * locked onto re-running the same gate. This reminder re-states the two legal
+ * terminals (and only for verify-mode plan loops — other task types keep the
+ * lean no-reminder plan loop).
+ */
+export function buildVerifyPlanReminder(taskName: string): string {
+  return `\n\nTask: **${taskName}** (verification diagnosis) — a verification cycle ends in exactly ONE of two shapes: ` +
+    `a remediation plan (\`batches[]\`, one batch per root cause) when any gate fails, ` +
+    `or <done>true</done> when every gate passes. ` +
+    `Re-running a command whose output you have already observed unchanged yields no new information — ` +
+    `diagnose from the outputs you already have.`;
+}
+
 export type CommandHistoryEntry = NonNullable<ArchitectGraphState['commandHistory']>[number];
 
 export interface CommandHistoryAddition extends CommandExecutionResult {
@@ -79,15 +98,40 @@ export function appendCommandHistory(
   const warnings = new Map<string, string>();
 
   for (const add of additions) {
+    // Output-identity signature (shy-crushing-bloom RCA): recorded for every
+    // entry with observable string output so `isAllRepeatCommandBatch` and
+    // the success-repeat notice below can detect a re-run that produced the
+    // SAME output — the class that every failure-gated brake ignores.
+    const outputHash = typeof add.result === 'string'
+      ? hashCommandOutput(add.result)
+      : undefined;
     history.push({
       command: add.command,
       timestamp: now,
       success: add.success,
       exitCode: add.exitCode,
       errorSnippet: add.success ? undefined : (add.error || add.result || '').toString().slice(0, 3000),
+      outputHash,
     });
 
-    if (add.success) continue;
+    if (add.success) {
+      // Success-repeat advisory (in-context nudge; the hard guarantee is the
+      // no-progress breaker): the exact command has now produced identical
+      // output N times in the window. Failure loops get the sterner warning
+      // below; success loops previously got NOTHING (shy-crushing-bloom ran
+      // one passing-exit-code test 357 times without a single pushback).
+      if (outputHash) {
+        const identicalRuns = history.filter(h =>
+          h.command === add.command && h.success &&
+          h.outputHash === outputHash && h.timestamp > windowStart,
+        );
+        if (identicalRuns.length >= 3) {
+          warnings.set(add.command, `\n\n🔁 REPEATED COMMAND NOTICE:
+This exact command has run ${identicalRuns.length} times in the last 5 minutes with identical output. Nothing in the environment changes between identical invocations — running it again will return the same result. Act on the output you already have (emit your plan / apply your changes), or run a DIFFERENT diagnostic.`);
+        }
+      }
+      continue;
+    }
     const recentSimilarFailures = history.filter(h =>
       h.command === add.command && !h.success && h.timestamp > windowStart,
     );

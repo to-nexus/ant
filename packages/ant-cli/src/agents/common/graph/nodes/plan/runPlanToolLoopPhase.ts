@@ -13,9 +13,15 @@
  *
  * No round cap by design: a per-loop ceiling would have to be either too
  * low (collapsing large parent tasks into flat plans under forced no-tools
- * synthesis) or arbitrary. Runaway is bounded by the orthogonal safety
- * nets — LangGraph `recursionLimit`, `executeRouter` Safety Nets A/E,
- * and `MAX_BATCH_SPLIT_CYCLES` for queue-side fan-out.
+ * synthesis) or arbitrary. Runaway is bounded by the orthogonal
+ * PROGRESS-KEYED safety nets: the code job's plan tool loop accrues
+ * `_noProgressStreak` and its `planRouter` hosts Safety Net C (no-progress
+ * breaker) + Safety Net A (verify-mode recursion drain) — added after
+ * shy-crushing-bloom, where 357 identical test re-runs rode the raw
+ * LangGraph `recursionLimit` to a whole-job hard interrupt because every
+ * breaker lived in `executeRouter`, which this loop never visits.
+ * `MAX_BATCH_SPLIT_CYCLES` bounds queue-side fan-out; the LangGraph
+ * `recursionLimit` remains the final backstop.
  *
  * Caller responsibilities (NOT in this helper):
  *   - State shape mutation (e.g. setting `_activePhase`, conversation

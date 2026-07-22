@@ -14,9 +14,10 @@
  *      code tool node's flag writer. Seeded via `getHistory` with a prior
  *      read turn (execute-then-compare: elision fires only when the NEW
  *      read's content matches the preserved prior read).
- *   3. PHASE — plan-phase batches never write the flag (production
- *      buildReturn gates on `_activePhase !== 'plan'` — locked by a static
- *      source check, mirroring the `_lastToolBatchMutatedFiles` guard).
+ *   3. PHASE — the flag commits in BOTH phases (shy-crushing-bloom: the plan
+ *      tool loop accrues the same no-progress streak), while the mutation
+ *      flag keeps its execute-only gate. Plan→execute leakage is cut by the
+ *      `finalizePlanOutcome` reset — both locked by static source checks.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -184,20 +185,40 @@ describe('production tool node — flag writer wiring (static)', () => {
     'utf8',
   );
 
-  it('gates the flag commit on execute phase (plan-phase batches never write it)', () => {
-    expect(src).toMatch(
+  it('commits the flag in BOTH phases (plan tool loop accrues the streak since shy-crushing-bloom)', () => {
+    // The old execute-only gate must NOT come back — the plan tool loop
+    // reads this flag to accrue `_noProgressStreak`.
+    expect(src).not.toMatch(
       /\.\.\.\(state\._activePhase !== 'plan' \? \{ _lastToolBatchAllDupReads: allDupReads \} : \{\}\)/,
+    );
+    expect(src).toMatch(/_lastToolBatchAllDupReads: allDupReads,/);
+    // The mutation flag KEEPS its execute-only gate.
+    expect(src).toMatch(
+      /\.\.\.\(state\._activePhase !== 'plan' \? \{ _lastToolBatchMutatedFiles: touchedFiles \} : \{\}\)/,
     );
   });
 
   it('computes the flag via the shared isAllDupReadBatch predicate fed by elidedReads', () => {
     expect(src).toContain(
-      "import { isAllDupReadBatch, isAllRepeatErrorBatch, commandLabelsForEvent } from './utils/allDupReads'",
+      "import { isAllDupReadBatch, isAllRepeatErrorBatch, isAllRepeatCommandBatch, commandLabelsForEvent } from './utils/allDupReads'",
     );
     expect(src).toMatch(/isAllDupReadBatch\(executionEvents, elidedReads\?\.length \?\? 0\)/);
   });
 
   it('OR-composes the error-flavored twin fed by the PRE-batch command history (trim-grinding-motif)', () => {
     expect(src).toMatch(/isAllRepeatErrorBatch\(executionEvents, state\.commandHistory\)/);
+  });
+
+  it('OR-composes the success-agnostic repeat-command twin (shy-crushing-bloom)', () => {
+    expect(src).toMatch(/isAllRepeatCommandBatch\(executionEvents, state\.commandHistory\)/);
+  });
+
+  it('plan-loop leakage is cut at the boundary — finalizePlanOutcome resets flag + streak', () => {
+    const finalizeSrc = readFileSync(
+      resolve(__dirname, '../../src/agents/architect/graph/code/nodes/plan/outcome/finalize.ts'),
+      'utf8',
+    );
+    expect(finalizeSrc).toMatch(/_noProgressStreak: 0/);
+    expect(finalizeSrc).toMatch(/_lastToolBatchAllDupReads: false/);
   });
 });

@@ -285,6 +285,9 @@ export class ExecutionLogger {
     args: Record<string, any>;
     resultChars: number;
     resultPreview?: string;
+    /** Numeral-masked output-identity hash (run_command only) — lets a
+     * repeat-with-identical-output loop be judged from the log alone. */
+    outputHash?: string;
     wasTruncated: boolean;
     originalTokens?: number;
     truncatedTokens?: number;
