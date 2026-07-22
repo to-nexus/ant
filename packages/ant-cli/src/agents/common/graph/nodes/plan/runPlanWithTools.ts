@@ -47,6 +47,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
     enableThinking,
     thinkingBudget,
     maxTokens,
+    escalatedMaxTokens,
     temperature,
     taskName,
     jobType,
@@ -91,74 +92,118 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   let tokenUsage: any = undefined;
   let capturedStopReason: string | undefined;
 
-  applyEstimatedInputTokensFromMessages(state as any, messages);
+  // Bounded single escalation (gentle-leaping-lathe RCA): consume the round
+  // at the base `maxTokens`; if it truncated MID-`<plan>` (a legitimate
+  // large plan JSON), retry the same round exactly once at the larger
+  // `escalatedMaxTokens`. A no-`<plan>` truncation (degenerate monologue)
+  // is NOT escalated — the base cap is what terminates it. Design-job
+  // callers omit `escalatedMaxTokens`, so `canEscalate` is false and this
+  // reduces to the prior single-pass behavior.
+  const canEscalate = typeof escalatedMaxTokens === 'number' && escalatedMaxTokens > maxTokens;
+  let roundMaxTokens = maxTokens;
+  let escalated = false;
 
-  for await (const event of llm.stream(messages, {
-    tools,
-    maxTokens,
-    temperature,
-    enableThinking,
-    thinkingBudget: enableThinking ? thinkingBudget : undefined,
-    // Hard-stop on `</plan>` so the model cannot emit trailing narrative
-    // after sealing the JSON plan. Tool-call rounds (no `<plan>` emitted)
-    // are unaffected — the stop string never appears.
-    stopSequences: ['</plan>'],
-  })) {
-    if (event.type === 'retry') {
-      textResponse = '';
-      thinking = '';
-      thinkingSignature = '';
-      toolCalls.length = 0;
-      tokenUsage = undefined;
-      capturedStopReason = undefined;
-      orchestrator = new StreamOrchestrator({
-        parser: new XMLStreamParser(),
-        renderStrategy: createStrategy(),
-        existingFiles: new Set(),
-      });
+  for (;;) {
+    // Per-attempt reset — each attempt is a fresh LLM call (both are billed
+    // via `onTokenUsage`) and must not inherit the truncated attempt's text.
+    toolCalls.length = 0;
+    textResponse = '';
+    thinking = '';
+    thinkingSignature = '';
+    tokenUsage = undefined;
+    capturedStopReason = undefined;
+    orchestrator = new StreamOrchestrator({
+      parser: new XMLStreamParser(),
+      renderStrategy: createStrategy(),
+      existingFiles: new Set(),
+    });
+    applyEstimatedInputTokensFromMessages(state as any, messages);
+
+    for await (const event of llm.stream(messages, {
+      tools,
+      maxTokens: roundMaxTokens,
+      temperature,
+      enableThinking,
+      thinkingBudget: enableThinking ? thinkingBudget : undefined,
+      // Hard-stop on `</plan>` so the model cannot emit trailing narrative
+      // after sealing the JSON plan. Tool-call rounds (no `<plan>` emitted)
+      // are unaffected — the stop string never appears.
+      stopSequences: ['</plan>'],
+    })) {
+      if (event.type === 'retry') {
+        // Provider-level retry (e.g. 429) mid-stream — reset accumulators.
+        textResponse = '';
+        thinking = '';
+        thinkingSignature = '';
+        toolCalls.length = 0;
+        tokenUsage = undefined;
+        capturedStopReason = undefined;
+        orchestrator = new StreamOrchestrator({
+          parser: new XMLStreamParser(),
+          renderStrategy: createStrategy(),
+          existingFiles: new Set(),
+        });
+        continue;
+      }
+
+      maybeUpdatePhaseTokenUsage(state as any, event);
+
+      await orchestrator.processEvent(event);
+
+      if (event.type === 'thinking') {
+        thinking += (event as any).thinking ?? '';
+        if ((event as any).signature) {
+          thinkingSignature = (event as any).signature;
+        }
+      }
+      if (event.type === 'tool_use' && (event as any).toolUse) {
+        const { id, name, input } = (event as any).toolUse;
+        await chatAPI.sendLLMEvent(event);
+        toolCalls.push({ id, name, args: input ?? {} });
+      }
+      if (event.type === 'text') {
+        textResponse += (event as any).text ?? '';
+      }
+      if (event.type === 'done' && (event as any).usage) {
+        tokenUsage = (event as any).usage;
+        if (onTokenUsage) {
+          // Awaited so async accumulators (token logger, kanban update,
+          // file persistence) finish before the next stream event lands —
+          // prevents `accumulateTokenUsage` racing with the next round's
+          // `applyEstimatedInputTokensFromMessages` reseed.
+          await onTokenUsage(tokenUsage);
+        }
+        capturedStopReason = (event as any).stopReason as string | undefined;
+      }
+    }
+
+    const truncated = capturedStopReason === 'max_tokens';
+    const hasOpenPlan = textResponse.includes('<plan>') && !textResponse.includes('</plan>');
+
+    // Escalate exactly once when a large plan JSON was cut off mid-emission.
+    if (truncated && hasOpenPlan && canEscalate && !escalated) {
+      escalated = true;
+      roundMaxTokens = escalatedMaxTokens as number;
+      console.warn(
+        `📋 [Plan] round truncated mid-<plan> at ${maxTokens} tokens — escalating to ` +
+        `${escalatedMaxTokens} for one retry (large plan emission).`,
+      );
       continue;
     }
 
-    maybeUpdatePhaseTokenUsage(state as any, event);
-
-    await orchestrator.processEvent(event);
-
-    if (event.type === 'thinking') {
-      thinking += (event as any).thinking ?? '';
-      if ((event as any).signature) {
-        thinkingSignature = (event as any).signature;
-      }
+    // Final attempt — surface the truncation with the round's shape so the
+    // caller can tell a degenerate no-output monologue (0 tools, no `<plan>`)
+    // apart from an escalated large-plan emission.
+    if (truncated && onMaxTokensTruncation) {
+      const planRound = Math.floor((messages.length - 1) / 2);
+      await onMaxTokensTruncation({
+        outputTokens: tokenUsage?.outputTokens ?? roundMaxTokens,
+        round: planRound,
+        toolCallCount: toolCalls.length,
+        hasOpenPlan,
+      });
     }
-    if (event.type === 'tool_use' && (event as any).toolUse) {
-      const { id, name, input } = (event as any).toolUse;
-      await chatAPI.sendLLMEvent(event);
-      toolCalls.push({ id, name, args: input ?? {} });
-    }
-    if (event.type === 'text') {
-      textResponse += (event as any).text ?? '';
-    }
-    if (event.type === 'done' && (event as any).usage) {
-      tokenUsage = (event as any).usage;
-      if (onTokenUsage) {
-        // Awaited so async accumulators (token logger, kanban update,
-        // file persistence) finish before the next stream event lands —
-        // prevents `accumulateTokenUsage` racing with the next round's
-        // `applyEstimatedInputTokensFromMessages` reseed.
-        await onTokenUsage(tokenUsage);
-      }
-      // Truncation observation — the bare fact that we hit maxTokens.
-      // Recovery is the caller's concern (caller falls through to a
-      // fresh tool-loop today; chunked-emission recovery lives in C).
-      const stopReason = (event as any).stopReason as string | undefined;
-      capturedStopReason = stopReason;
-      if (stopReason === 'max_tokens' && onMaxTokensTruncation) {
-        const planRound = Math.floor((messages.length - 1) / 2);
-        await onMaxTokensTruncation({
-          outputTokens: tokenUsage?.outputTokens ?? maxTokens,
-          round: planRound,
-        });
-      }
-    }
+    break;
   }
 
   // Normalize provider differences in stop_sequence handling — Anthropic
