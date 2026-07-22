@@ -77,3 +77,7 @@ overrides:
   # rollup: path-traversal arbitrary file write (build-time, via vite/vitest);
   # in-major bump (4.x), safe with vite 5's rollup ^4 peer range.
   'rollup': '^4.59.0'
+  # sharp: GHSA-f88m-g3jw-g9cj HIGH — bundled libvips vuln (fixed 0.35.0).
+  # next (ant-site) pulls sharp ^0.34 transitively; force the patched line
+  # workspace-wide (direct dep in ant-cli also bumped to ^0.35.3).
+  'sharp': '^0.35.3'
