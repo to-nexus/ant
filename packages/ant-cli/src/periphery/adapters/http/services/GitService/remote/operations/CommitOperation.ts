@@ -4,6 +4,7 @@ import { GitHelper } from '../../helper/GitHelper';
 import { WorktreeService } from '../../worktree';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 import { authorAntCommitPlan } from './helpers/authorAntCommit';
+import { withAntCoAuthor } from './helpers/antAttribution';
 
 export interface CommitResult {
   success: boolean;
@@ -70,7 +71,10 @@ export class CommitOperation {
       for (const group of groups) {
         if (group.files.length === 0) continue;
         await git.add(group.files);
-        const r = await git.commit(group.message);
+        // ANT is credited as co-author; the human stays the primary author.
+        // Keep the undecorated subject in `commits[]` so the chat notice stays
+        // clean — only the git commit carries the trailer.
+        const r = await git.commit(withAntCoAuthor(group.message));
         commits.push({ message: group.message, hash: r.commit });
         console.log(`[CommitOperation] ant-committed (${group.files.length} files): ${group.message}`);
       }
