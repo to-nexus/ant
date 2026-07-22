@@ -1381,6 +1381,11 @@
       "partial-ref"
     ]
   },
+  "jobs/design/nodes/decompose/shared/prd-sync": {
+    "sources": [
+      "partial-ref"
+    ]
+  },
   "jobs/design/nodes/decompose/variants/game-art-design-by-desc/base": {
     "sources": [
       "render-call"
@@ -1630,6 +1635,18 @@
       "build-callsite",
       "render-call",
       "partial-ref"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/prd-sync/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/design/nodes/execute/variants/prd-sync/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call"
     ]
   },
   "jobs/design/nodes/execute/variants/spec/base": {

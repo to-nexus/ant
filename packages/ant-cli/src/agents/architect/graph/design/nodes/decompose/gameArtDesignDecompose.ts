@@ -24,6 +24,7 @@ import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
@@ -301,6 +302,10 @@ export async function decomposeGameArtDesign(
         }
       }
     }
+
+    // Cross-intent PRD sync — append a single-owner sync task per validated
+    // plan target when the directive asked to keep the PRD in sync (runs LAST).
+    appendPrdSyncTasks(taskQueue, resolvePrdSyncTargets((parsedResponse as any).prdSync, pool));
 
     console.log(`✅ GameArt decompose: ${taskQueue.size()} tasks (${response.strategy || 'category-based'} strategy)`);
 

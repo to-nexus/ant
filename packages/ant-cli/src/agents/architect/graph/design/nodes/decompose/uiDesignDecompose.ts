@@ -15,6 +15,7 @@ import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
 import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots } from "@ant/shared";
@@ -292,6 +293,10 @@ export async function decomposeUiDesign(
         }
       }
     }
+
+    // Cross-intent PRD sync — append a single-owner sync task per validated
+    // plan target when the directive asked to keep the PRD in sync (runs LAST).
+    appendPrdSyncTasks(taskQueue, resolvePrdSyncTargets((parsedResponse as any).prdSync, pool));
 
     console.log(`✅ UI decompose: ${taskQueue.size()} tasks (${response.strategy || 'chapter-based'} strategy)`);
 

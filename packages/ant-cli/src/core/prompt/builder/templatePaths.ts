@@ -122,6 +122,17 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/design/nodes/execute/variants/spec/rules',
     system: 'jobs/design/base/system',
   },
+  // Cross-intent PRD sync (design mirror of codeExecutePrdSync) — a `doc` task
+  // carrying a `prdSyncTargets` grant, appended by decompose when the design
+  // directive asks to keep a `plan/*.md` doc in sync. Reframes the task as a
+  // surgical FULL-rewrite of the named plan doc (NOT a design artifact).
+  // Selected in design execute via `isPrdSyncTask(currentTask)` regardless of
+  // intentGroup. The FileRenderer design branch overwrites granted plan paths.
+  designPrdSync: {
+    base: 'jobs/design/nodes/execute/variants/prd-sync/base',
+    rules: 'jobs/design/nodes/execute/variants/prd-sync/rules',
+    system: 'jobs/design/base/system',
+  },
   designSystem: {
     base: 'jobs/design/nodes/execute/variants/system-design/base',
     rules: 'jobs/design/nodes/execute/variants/system-design/rules',
