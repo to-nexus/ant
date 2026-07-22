@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { AUXILIARY_MODEL_KEYS, OVERRIDABLE_MODEL_SLOTS, MODEL_JOB_AGENT } from '@ant/shared';
+import { AUXILIARY_MODEL_KEYS, OVERRIDABLE_MODEL_SLOTS, MODEL_JOB_AGENT, DEFAULT_MODELS } from '@ant/shared';
 import { getConfigMergeDefaults } from '../../src/core/types/workspace';
 import type { LLMContext } from '../../src/periphery/adapters/llm/LLMClientFactory';
 
@@ -20,6 +20,19 @@ describe('auxiliary model slots', () => {
     const defaults = getConfigMergeDefaults();
     for (const key of AUXILIARY_MODEL_KEYS) {
       expect(defaults[key]?.default, `missing default for aux key "${key}"`).toBeTruthy();
+    }
+  });
+
+  it('the commit aux slot defaults to the Sonnet tier', () => {
+    // Without AI_MODEL_NAME the merge base resolves to the tier default; with it
+    // set, the env override wins. Assert the tier default here.
+    const prev = process.env.AI_MODEL_NAME;
+    delete process.env.AI_MODEL_NAME;
+    try {
+      const defaults = getConfigMergeDefaults();
+      expect(defaults.commit?.default).toBe(DEFAULT_MODELS.sonnetTier);
+    } finally {
+      if (prev !== undefined) process.env.AI_MODEL_NAME = prev;
     }
   });
 

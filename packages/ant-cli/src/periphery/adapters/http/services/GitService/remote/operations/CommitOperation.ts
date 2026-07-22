@@ -59,7 +59,13 @@ export class CommitOperation {
 
     if (authorMode === 'ant') {
       const allFiles = status.files.map((f) => f.path);
-      const groups = await authorAntCommitPlan(git, projectId, userContext, allFiles);
+      const groups = await authorAntCommitPlan(
+        git,
+        this.workspaceResolver,
+        projectId,
+        userContext,
+        allFiles,
+      );
       const commits: Array<{ message: string; hash?: string }> = [];
       for (const group of groups) {
         if (group.files.length === 0) continue;

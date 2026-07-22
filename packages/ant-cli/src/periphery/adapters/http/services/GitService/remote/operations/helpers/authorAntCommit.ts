@@ -1,9 +1,10 @@
 import type { SimpleGit } from 'simple-git';
 import { buildCommitPlan, type CommitGroup } from '../../../../../../../../core/context/commitMessage';
 import type { UserContext } from '../../../../../../../../core/types/user';
+import type { WorkspaceResolver } from '../../../../../../../../core/config/WorkspacePathResolver';
 import { isBillingEnabled } from '../../../../../../../../core/config/billingCapability';
 import { FilePromptAdapter } from '../../../../../../prompt/FilePromptAdapter';
-import { FileConfigAdapter } from '../../../../../../config/FileConfigAdapter';
+import { loadWorkspaceConfigFromPath } from '../../../../../../config/FileConfigAdapter';
 import { getInfrastructureFactory } from '../../../../../../../../infrastructure/adapters/InfrastructureFactory';
 
 /** Cap the diff fed to the model — commit rationale needs shape, not every line. */
@@ -23,6 +24,7 @@ function truncate(text: string, cap: number): string {
  */
 export async function authorAntCommitPlan(
   git: SimpleGit,
+  workspaceResolver: WorkspaceResolver,
   projectId: string,
   userContext: UserContext,
   allFiles: string[],
@@ -49,13 +51,22 @@ export async function authorAntCommitPlan(
     /* empty repo (no commits yet) → no convention to follow */
   }
 
-  const config = new FileConfigAdapter();
-  const workspaceConfig = await config.load(projectId).catch(() => undefined);
+  // The git-op commit runs in the shared API-server process, which has NO
+  // `ANT_PROJECT_PATH` (that env var is set only for job-runner children). So
+  // resolve the project path explicitly and load config via the env-free loader
+  // — otherwise the merged `commit` aux-model default is never seen and the
+  // model silently falls back to `AI_MODEL_NAME`/opus.
+  const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
+  const workspaceConfig = await loadWorkspaceConfigFromPath(projectPath, projectId).catch((e) => {
+    console.warn('⚠️  [AntCommit] config load failed, model resolution will use env defaults:', e);
+    return undefined;
+  });
 
   const { createLLMClient } = await import('../../../../../../llm/LLMClientFactory');
   let llm;
   try {
     llm = createLLMClient(undefined, undefined, { jobType: 'commit' }, workspaceConfig);
+    console.log(`[AntCommit] commit model: ${llm.modelName}`);
   } catch {
     // No API key / provider misconfig → let buildCommitPlan fall back to the
     // deterministic timestamp message.

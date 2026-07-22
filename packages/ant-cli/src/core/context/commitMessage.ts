@@ -22,9 +22,13 @@ import { LLM_TEMPERATURE } from '../ports/llmSampling';
 import type { PromptPort } from '../ports/prompt';
 
 /** Hard cap on LLM call duration (ms). Beyond this we fall back. */
-export const COMMIT_MESSAGE_TIMEOUT_MS = 8000;
-/** Cap on output tokens — commit messages are short. */
-export const COMMIT_MESSAGE_MAX_OUTPUT_TOKENS = 512;
+export const COMMIT_MESSAGE_TIMEOUT_MS = 20000;
+/**
+ * Cap on output tokens. Must comfortably fit a multi-commit JSON array that
+ * lists every changed file path — too small and the JSON truncates mid-array,
+ * the parse fails, and we degrade to a fallback message.
+ */
+export const COMMIT_MESSAGE_MAX_OUTPUT_TOKENS = 2048;
 
 export interface CommitGroup {
   message: string;
@@ -50,6 +54,19 @@ export interface BuildCommitPlanInput {
 
 function timestampFallback(files: string[]): CommitGroup[] {
   return [{ message: `Update: ${new Date().toISOString()}`, files }];
+}
+
+/**
+ * A salvaged subject is only usable if it reads like a real commit subject —
+ * NOT a leftover JSON/markdown fence marker from a truncated or malformed
+ * response (e.g. ```` ```json ````, `[`, `{`). Returns the trimmed subject or
+ * null when it should be discarded in favour of the deterministic fallback.
+ */
+function usableSubject(line: string): string | null {
+  const s = line.trim().replace(/^["'`]+|["'`]+$/g, '').trim();
+  if (!s) return null;
+  if (/^(```|~~~|\[|\{|json\b)/i.test(s)) return null;
+  return s;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -167,14 +184,21 @@ export async function buildCommitPlan(input: BuildCommitPlanInput): Promise<Comm
     if (allowMultiple) {
       const groups = parseGroups(cleaned, allFiles);
       if (groups) return groups;
-      console.warn('⚠️  [CommitMsg] multi-commit parse failed, using single commit');
-      // Non-fatal: still salvage a single commit from the raw text if it looks
-      // like a subject line, else fall back to timestamp.
-      const firstLine = cleaned.split('\n')[0].trim();
-      return firstLine ? [{ message: firstLine, files: allFiles }] : timestampFallback(allFiles);
+      // Non-fatal: salvage a single commit from the first line ONLY if it reads
+      // like a real subject — never commit a fence marker (```json) or a raw
+      // JSON bracket from a truncated response.
+      const salvaged = usableSubject(cleaned.split('\n')[0]);
+      console.warn(
+        `⚠️  [CommitMsg] multi-commit JSON parse failed; ${salvaged ? 'salvaged single subject' : 'no usable subject, using timestamp fallback'}`,
+      );
+      return salvaged ? [{ message: salvaged, files: allFiles }] : timestampFallback(allFiles);
     }
 
-    const subject = cleaned.split('\n')[0].trim();
+    const subject = usableSubject(cleaned.split('\n')[0]);
+    if (!subject) {
+      console.warn('⚠️  [CommitMsg] no usable single-line subject, using timestamp fallback');
+      return timestampFallback(allFiles);
+    }
     return [{ message: subject, files: allFiles }];
   } catch (err) {
     console.warn('⚠️  [CommitMsg] LLM call failed, using fallback:', err);

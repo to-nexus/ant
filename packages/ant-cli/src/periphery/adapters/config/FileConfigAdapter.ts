@@ -22,24 +22,39 @@ export class FileConfigAdapter implements ConfigPort {
       );
     }
 
-    const configPath = path.join(projectPath, "config.json");
-
-    if (!fs.existsSync(configPath)) {
-      throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
-    }
-
-    const userConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const mergeBase = getConfigMergeDefaults();
-
-    // Merge with minimal defaults to ensure node-specific overrides from hardcoded defaults
-    // do not shadow user's per-job `default` customization.
-    const mergedLlmModels = deepMergeConfig(mergeBase, userConfig.llmModels || {});
-
-    return {
-      ...userConfig,
-      llmModels: mergedLlmModels,
-    };
+    return loadWorkspaceConfigFromPath(projectPath, project);
   }
+}
+
+/**
+ * Read + merge a project's `config.json` from an explicit project path — the
+ * env-var-free core of `FileConfigAdapter.load()`. Callers OUTSIDE a job-runner
+ * child (e.g. the shared API-server git-op routes) have no `ANT_PROJECT_PATH`,
+ * so they resolve the path via `WorkspaceResolver.getProjectPath()` and call
+ * this directly. The `getConfigMergeDefaults()` merge is what injects job-level
+ * defaults (including the auxiliary `commit` model) that the user config omits.
+ */
+export async function loadWorkspaceConfigFromPath(
+  projectPath: string,
+  project = projectPath,
+): Promise<any> {
+  const configPath = path.join(projectPath, "config.json");
+
+  if (!fs.existsSync(configPath)) {
+    throw new Error(`No config.json for project: ${project}\nExpected at: ${configPath}`);
+  }
+
+  const userConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const mergeBase = getConfigMergeDefaults();
+
+  // Merge with minimal defaults to ensure node-specific overrides from hardcoded defaults
+  // do not shadow user's per-job `default` customization.
+  const mergedLlmModels = deepMergeConfig(mergeBase, userConfig.llmModels || {});
+
+  return {
+    ...userConfig,
+    llmModels: mergedLlmModels,
+  };
 }
 
 /**
