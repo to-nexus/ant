@@ -280,6 +280,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
   }
 
   /**
+   * Cross-intent PRD-sync grant for the current code-execute task — delegates
+   * to the FileRenderer's Guard-1 exception. Empty for ordinary tasks.
+   */
+  setPrdSyncTargets(targets: string[] | undefined): void {
+    this.fileRenderer.setPrdSyncTargets(targets);
+  }
+
+  /**
    * Set task title for plan card header display
    */
   setPlanTaskTitle(title: string): void {

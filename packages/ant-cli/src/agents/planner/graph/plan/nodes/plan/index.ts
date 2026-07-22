@@ -46,6 +46,9 @@ import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../../common/graph/llm
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildPlanSystemPrompt } from './buildSystemPrompt';
 import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
+import { sanitizeDocSlug, collisionFreeDocFilename } from '../../../../../common/naming/docSlug';
+import { isTemplateContent } from '../../../../../../core/utils/templateDetector';
+import { getCanonicalPlanPath } from '@ant/shared';
 import type { IntentId } from '@ant/shared';
 import { saveConversationToSession } from '../sessionWriter';
 import { extractPlanText } from '../../../../../common/graph/nodes/plan/extractPlanText';
@@ -64,6 +67,18 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   }
 
   const planMode = getPlanMode(state);
+
+  // Revise (rev-plan) stale-target repair: the matrix no-ref fallback resolves
+  // `rev-plan` to the suggested `plan/prd.md`, which may not exist now that the
+  // plan job authors LLM-named docs. When the bound target is missing from the
+  // real (non-template) plan files, re-pick the primary so refactor edits a
+  // file that actually exists instead of no-oping on a phantom `prd.md`.
+  const repairedTarget = repairRevisePlanTarget(state);
+  if (repairedTarget) {
+    state.resolvedAction = { ...state.resolvedAction!, target: repairedTarget };
+    console.warn(`🔁 [Planner:Plan] rev-plan target repaired → ${repairedTarget.join(', ')}`);
+  }
+
   console.log(`\n🔎 [Planner:Plan] Observing + scoping... (iteration ${recursionCount}/${state.recursionLimit})`);
 
   if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
@@ -359,6 +374,16 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     console.log(`✅ [Planner:Plan] Brief sealed (${planText.length} chars) — handing off to execute.`);
   }
 
+  // ── LLM-named target file(s): the sealed brief's `targetFiles` decides the
+  //    document filename(s). Applied UNLESS the user explicitly bound a target
+  //    (a lone `plan/prd.md` counts as the soft default and is overridable;
+  //    any other/multi selection is user-bound and wins). Non-JSON best-effort
+  //    briefs leave the target untouched. ──
+  // Prefer the brief-derived target; otherwise persist the rev-plan repair
+  // (state.resolvedAction was already patched above) so it survives the turn.
+  const resolvedAction = (await resolvePlanTargetFromBrief(state, planText))
+    ?? (repairedTarget ? state.resolvedAction : undefined);
+
   if (state.deps?.workflowUpdate && state._httpJobId) state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', 0);
   if (state.deps?.stateSnapshot) {
     state.deps.stateSnapshot.conversations = { ...state.conversations, [CONV_KEYS.NODE_PLAN]: [] };
@@ -374,7 +399,81 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     tokenUsageByModel: state.tokenUsageByModel,
     recursionCount,
     recursionLimit: state.recursionLimit,
+    ...(resolvedAction ? { resolvedAction } : {}),
   };
+}
+
+/**
+ * Repair a stale rev-plan target. Returns a corrected `plan/<file>` target
+ * list when the current refactor target is absent from the real (non-template)
+ * plan files, else `undefined` (keep the resolved target). Uses
+ * `workspaceState.planFileNames` (already template-filtered) — no disk I/O.
+ */
+function repairRevisePlanTarget(state: PlanGraphState): string[] | undefined {
+  if (getPlanMode(state) !== 'refactor') return undefined;
+  const planFiles = state.workspaceState?.planFileNames ?? [];
+  if (planFiles.length === 0) return undefined; // nothing to revise — let downstream surface it
+  const target = state.resolvedAction?.target ?? [];
+  const targetExists =
+    target.length > 0 && target.every((t) => planFiles.includes(t.split('/').pop() ?? t));
+  if (targetExists) return undefined;
+  const primary = planFiles.includes('prd.md') ? 'prd.md' : planFiles[0];
+  return [`plan/${primary}`];
+}
+
+/**
+ * Resolve the plan document's target file(s) from the sealed `<plan>` brief's
+ * `targetFiles`. Returns an updated `resolvedAction` (with a concrete
+ * `plan/<name>.md` target list) when the brief names files AND the current
+ * target is unbound or the soft default; otherwise returns `undefined` (keep
+ * whatever resolve/detect set — including an explicit user selection).
+ */
+async function resolvePlanTargetFromBrief(
+  state: PlanGraphState,
+  planText: string,
+): Promise<PlanGraphState['resolvedAction'] | undefined> {
+  if (!state.resolvedAction) return undefined;
+  // Refactor (rev-plan) edits an existing doc in place — never rename it from
+  // the brief. The target was already bound to the revised file by resolve.
+  if (getPlanMode(state) === 'refactor') return undefined;
+
+  let briefFiles: string[] = [];
+  try {
+    const brief = JSON.parse(planText);
+    if (Array.isArray(brief?.targetFiles)) {
+      briefFiles = brief.targetFiles.filter((f: unknown): f is string => typeof f === 'string' && f.length > 0);
+    }
+  } catch {
+    return undefined; // best-effort non-JSON brief — keep current target
+  }
+  if (briefFiles.length === 0) return undefined;
+
+  const softDefault = getCanonicalPlanPath(); // 'plan/prd.md'
+  const current = state.resolvedAction?.target ?? [];
+  const userBound = current.length > 0 && !(current.length === 1 && current[0] === softDefault);
+  if (userBound) return undefined;
+
+  const fs = state.deps?.fileSystem;
+  const planDirAbs = state.featurePath ? `${state.featurePath}/plan` : undefined;
+
+  // Collision probe: an existing REAL (non-template) doc blocks the name;
+  // an `ant:template` stub or a missing file is treated as absent (usable).
+  const isTaken = async (filename: string): Promise<boolean> => {
+    if (!fs || !planDirAbs) return false;
+    const abs = `${planDirAbs}/${filename}`;
+    if (!(await fs.fileExists(abs))) return false;
+    const content = await fs.readFile(abs);
+    return !isTemplateContent(content ?? '');
+  };
+
+  const names: string[] = [];
+  for (const raw of briefFiles) {
+    const base = (raw.split('/').pop() ?? raw).replace(/\.md$/i, '');
+    const slug = sanitizeDocSlug(base, `plan-${names.length + 1}`);
+    names.push(`plan/${await collisionFreeDocFilename(slug, isTaken)}`);
+  }
+
+  return { ...state.resolvedAction, target: names };
 }
 
 /** Router: decide next node after plan. */

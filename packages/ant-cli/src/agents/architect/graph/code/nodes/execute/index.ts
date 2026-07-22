@@ -229,6 +229,10 @@ export async function execute(
     'execute',  // ✅ codePhase: execute — codebase/ writes allowed via the FileRenderer gate
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
+  // Cross-intent PRD sync: grant the FileRenderer Guard-1 exception for the
+  // plan docs this task (a `doc` sync task) is authorized to rewrite. Empty for
+  // every ordinary task, so sibling-dir writes stay closed by default.
+  renderStrategy.setPrdSyncTargets(state.currentTask?.prdSyncTargets);
   
   // existingFiles guardrail: FileRegistry distinguishes overwrite vs new-create
   // at `<file>` tag emit time. Seed from a one-shot disk listing of `codebase/`

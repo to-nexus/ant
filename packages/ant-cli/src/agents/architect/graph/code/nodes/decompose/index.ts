@@ -39,6 +39,7 @@ import { parseLLMResponse, parseTaskItemJson, createTaskQueue, logTaskSummary, d
 import { computeRacScope } from "./racGate";
 import { saveAnalysisForDebug } from "./saveAnalysisText";
 import type { BaseTask, TaskType, IntentId } from "@ant/shared";
+import type { CodeTask } from "../../../../types/task";
 import {
   ExecutionTierId,
   validateExecutionTier,
@@ -1291,7 +1292,30 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const finalBoundary: Boundary = suggestedBoundary === SUGGESTED_BOUNDARY.PENDING
     ? ((parsedBoundary as Boundary) || BOUNDARY.LIGHTWEIGHT)
     : suggestedBoundary as Boundary;
-  
+
+  // Cross-intent PRD sync — the single-owner doc task. When the directive asked
+  // to keep the related PRD in sync (the `<prdSync>` decision) AND this is a
+  // multi-task tier, append ONE `doc` task carrying the write grant. It runs in
+  // the doc band (after all feature/setup/test work via `preDocBarrier`, before
+  // final verification), so it syncs against the settled implementation. Only
+  // Tier 3/4 (multi-task) — Tier 2's exactly-one-task invariant forbids an extra
+  // task, so directive-driven sync there is out of scope.
+  if (parsed.prdSync && executionTier >= 3) {
+    const targets = parsed.prdSync.targets;
+    tasks.push({
+      id: 'prd-sync',
+      name: 'Sync planning docs',
+      description:
+        `Update the planning document(s) (${targets.join(', ')}) so they reflect the changes this job made, per the user's directive. ` +
+        `Surgically update ONLY the sections the changes affect; preserve all unrelated content verbatim.`,
+      type: 'doc',
+      priority: 875, // doc band (850–899): after feature work, before final verification
+      include: [...targets],
+      prdSyncTargets: [...targets],
+    } as CodeTask);
+    console.log(`📝 [Decompose] Appended PRD-sync doc task → ${targets.join(', ')}`);
+  }
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

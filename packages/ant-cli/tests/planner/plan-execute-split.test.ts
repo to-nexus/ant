@@ -63,8 +63,8 @@ describe('routeAfterExecute — execute node outcomes', () => {
 describe('execute authoring message — re-anchored on directive + brief', () => {
   const directive = 'Redesign jhcompany.co.kr to be more stylish';
 
-  it('generate mode: contains the verbatim directive + the <file> write instruction', () => {
-    const msg = buildAuthoringMessage(directive, 'plan/prd.md', 'generate', false);
+  it('generate mode (single target): contains the verbatim directive + the <file> write instruction', () => {
+    const msg = buildAuthoringMessage(directive, ['plan/prd.md'], 'generate', false);
     expect(msg).toContain(directive);
     expect(msg).toContain('<file path="plan/prd.md">');
     // The anchor is the brief, and the model must transform (not transcribe) it.
@@ -72,14 +72,21 @@ describe('execute authoring message — re-anchored on directive + brief', () =>
     expect(msg).toMatch(/do NOT reproduce/i);
   });
 
+  it('generate mode (multi target): instructs one <file> per doc + MECE partition', () => {
+    const msg = buildAuthoringMessage(directive, ['plan/overview.md', 'plan/auth.md'], 'generate', false);
+    expect(msg).toContain('plan/overview.md, plan/auth.md');
+    expect(msg).toMatch(/one `<file path="\.\.\.">` tag per file/i);
+    expect(msg).toMatch(/MECE|no overlap/i);
+  });
+
   it('refactor mode: instructs edit_file at the target, not a <file> rewrite', () => {
-    const msg = buildAuthoringMessage(directive, 'plan/prd.md', 'refactor', false);
+    const msg = buildAuthoringMessage(directive, ['plan/prd.md'], 'refactor', false);
     expect(msg).toContain('edit_file');
     expect(msg).toContain(directive);
   });
 
   it('carries NO plan-loop transcript (structurally — only directive/target/mode in)', () => {
-    const msg = buildAuthoringMessage(directive, 'plan/prd.md', 'generate', false);
+    const msg = buildAuthoringMessage(directive, ['plan/prd.md'], 'generate', false);
     expect(msg).not.toMatch(/read_workspace_file|list_workspace_files|tool_result|Expert Audit/i);
   });
 });
@@ -113,8 +120,8 @@ describe('prompt re-partition — plan observes, execute authors', () => {
     const planRules = read('plan/variants/default/rules.md');
     const execRules = read('execute/variants/default/rules.md');
     expect(planRules).toMatch(/seal the brief inside a single `<plan>` tag/);
-    expect(planRules).not.toMatch(/complete document wrapped in a single `<file>`/);
-    expect(execRules).toMatch(/complete document wrapped in a single `<file>`/);
+    expect(planRules).not.toMatch(/wrapped in its OWN `<file>`/);
+    expect(execRules).toMatch(/wrapped in its OWN `<file>`/);
   });
 
   it('plan deliverable is a brief, NOT the document (drift guard)', () => {

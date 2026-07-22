@@ -487,8 +487,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         if (!effectiveFeature) throw new Error('Clone finished but no feature was created');
         useStore.getState().addFeatureOptimistic(effectiveFeature, projectId);
       } else {
-        const hasSources = sourcesFiles.length > 0;
-        await createFeature(projectId, effectiveFeature, language, hasSources ? { skipPrdTemplate: true } : undefined);
+        await createFeature(projectId, effectiveFeature, language);
         useStore.getState().addFeatureOptimistic(effectiveFeature);
         await delay(500);
       }

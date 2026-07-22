@@ -332,8 +332,8 @@ export class ProjectService {
     return this.featureCrud.listFeaturesDetailed(projectId, userContext);
   }
 
-  async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string, options?: { skipPrdTemplate?: boolean }): Promise<void> {
-    return this.featureCrud.createFeature(projectId, featureName, userContext, language, options);
+  async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string): Promise<void> {
+    return this.featureCrud.createFeature(projectId, featureName, userContext, language);
   }
   
   /**

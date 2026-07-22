@@ -1087,6 +1087,18 @@
       "render-call"
     ]
   },
+  "jobs/code/nodes/execute/variants/prd-sync/base": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
+  "jobs/code/nodes/execute/variants/prd-sync/rules": {
+    "sources": [
+      "build-callsite",
+      "render-call"
+    ]
+  },
   "jobs/code/nodes/execute/variants/seam/base": {
     "sources": [
       "build-callsite",

@@ -172,8 +172,9 @@ export interface RefineImpactAffected {
  * in `chat-status.ts` and the FE alert renderer both rely on it.
  */
 export interface RefineImpactMetadata {
-  /** Canonical plan output that was rewritten by `rev-plan` (`prd.md`). */
-  updatedDoc: 'prd.md';
+  /** Plan document that was rewritten by `rev-plan` — an LLM-named `plan/*.md`
+   *  basename (`prd.md` by default; the plan job may author others). */
+  updatedDoc: string;
   /** PRD section markers / stable identifiers extracted from the diff. */
   updatedSections: string[];
   /** Cascade layers that contributed (LLM tag, git diff, or user directive). */

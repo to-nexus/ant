@@ -170,6 +170,23 @@ export class FileRenderer {
   }
 
   /**
+   * Cross-intent PRD-sync grant — the `plan/*.md` docs the CURRENT code-execute
+   * task (a `doc` sync task) is authorized to rewrite. Guard 1 normally rejects
+   * a code-execute `<file>` write to sibling dirs; when the write targets one of
+   * these granted paths it is allowed. Set per-task from execute; empty for every
+   * ordinary task, so the plan-write path stays closed by default.
+   */
+  private prdSyncTargets: string[] = [];
+  setPrdSyncTargets(targets: string[] | undefined): void {
+    this.prdSyncTargets = targets ?? [];
+  }
+
+  /** True when `fsPath` is one of the current task's granted PRD-sync targets. */
+  private isGrantedPrdSyncPath(fsPath: string): boolean {
+    return this.prdSyncTargets.some(t => fsPath === t || fsPath.endsWith('/' + t));
+  }
+
+  /**
    * Design-job filename guard — see `FileRendererConfig.expectedTargetFile`.
    *
    * Returns the path the renderer should treat as authoritative. When the
@@ -542,7 +559,14 @@ export class FileRenderer {
       // This rejects sibling domain dirs (architecture/, visual/, assets/,
       // plan/, meta/, sessions/) for code execute — they are artifact
       // destinations for design / planner / visual jobs, not for code.
-      if (codeExecuteAllowed && this.codebasePath && !isCodebaseTarget) {
+      //
+      // Cross-intent PRD-sync exception: a `doc` sync task carries a grant
+      // (`setPrdSyncTargets`) for specific `plan/*.md` docs. A write to a
+      // granted path is allowed through so the code job can keep the PRD in
+      // sync when the directive asked; every other sibling-dir write stays
+      // rejected. The grant is empty for ordinary tasks.
+      const grantedPrdSync = this.isGrantedPrdSyncPath(fsPath);
+      if (codeExecuteAllowed && this.codebasePath && !isCodebaseTarget && !grantedPrdSync) {
         const msg =
           `File write REJECTED: "${filePath}" resolved to "${fsPath}" which is outside ` +
           `the codebase directory ("${codebaseRel}/"). Code files must be under "${codebaseRel}/".`;
@@ -550,6 +574,27 @@ export class FileRenderer {
         this.fileErrors.push(msg);
         await this.chatAPI.failFileCreation(filePath, msg);
         return;
+      }
+
+      // Anti-clobber (PRD-sync): a sync `<file>` is a FULL rewrite of an existing
+      // plan doc — the LLM has the current content in context, so it must re-emit
+      // the complete updated document. Reject a suspiciously truncated body
+      // (< 50% of the current doc) so a partial emit can never silently destroy
+      // the rest of the PRD; steer the model back to a complete rewrite.
+      if (grantedPrdSync && this.fileSystem) {
+        const existing = await this.fileSystem.readFile(fsPath).catch(() => null);
+        const existingLen = existing?.trim().length ?? 0;
+        const newLen = fileInfo.contentBuffer.trim().length;
+        if (existingLen > 400 && newLen < existingLen * 0.5) {
+          const msg =
+            `PRD-sync write REJECTED: "${filePath}" body (${newLen} chars) is far shorter than the ` +
+            `current document (${existingLen} chars). A sync must re-emit the COMPLETE updated document — ` +
+            `apply your changes to the full current content, do not output only the changed section.`;
+          console.error(`❌ [FileRenderer] ${msg}`);
+          this.fileErrors.push(msg);
+          await this.chatAPI.failFileCreation(filePath, msg);
+          return;
+        }
       }
 
       // Guard 2: design / planner / code-plan never write under codebase/.
@@ -574,6 +619,13 @@ export class FileRenderer {
         await getDesignFileLock(fsPath).runExclusive(async () => {
           if (fileInfo.actionType === 'append') {
             await this.handleDesignAppend(fsPath, fileInfo.contentBuffer);
+          } else if (grantedPrdSync) {
+            // PRD-sync target: a sync is a FULL rewrite of the current document
+            // (the LLM re-emits the complete updated doc), so it must OVERWRITE
+            // — the design-doc auto-append below would duplicate content and
+            // corrupt the PRD. Anti-clobber length check already ran above.
+            if (!this.fileSystem) throw new Error('FileSystemPort not available');
+            await this.fileSystem.writeFile(fsPath, fileInfo.contentBuffer);
           } else {
             const existsOnDisk = await this.fileSystem?.fileExists(fsPath);
             if (existsOnDisk) {

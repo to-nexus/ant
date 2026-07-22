@@ -1000,6 +1000,21 @@ Output in `<boundary>` tags before `<tasks>`:
 Constraint: If uncertain, default to lightweight.
 {{/if}}
 
+## PRD Sync (keep planning docs consistent with this job's change)
+
+**Observation target**: Does the user's directive ask to ALSO update / sync / keep-consistent the related planning document(s) — the `plan/*.md` docs present in the artifact pool — with the change this job makes?
+
+**Outcomes:**
+
+- **Directive explicitly asks to sync the PRD** → emit `<prdSync>` naming the relevant `plan/*.md` doc(s) from the pool. Do NOT ask the user — the directive already decided. Continue the normal breakdown; the system appends ONE doc task that performs the sync after the code work settles.
+- **Directive is silent on the PRD, but the change you are breaking down clearly diverges from a plan doc in the pool** (contradicts a stated requirement, or realises something the doc omits) → do NOT emit `<prdSync>`. Instead emit a `<clarify>` asking whether to also update that document; the next turn emits `<prdSync>` if the user agrees.
+- **Neither** → emit nothing.
+
+**Constraints:**
+- `targets` MUST be `plan/*.md` paths PRESENT in the artifact pool. Never invent a plan path, never target a non-plan file.
+- Only multi-unit tiers (`3` / `4`) carry a sync task. At tier `0` / `1` / `2`, OMIT `<prdSync>`.
+- PRD sync is product-surface reconciliation — it never records code / implementation detail into the document.
+
 ## Output Sequence
 
 Output in this exact order:
@@ -1036,6 +1051,15 @@ Output in this exact order:
 }
 </specClarify>
 {{/unless}}
+
+**0.3. `<prdSync>` tag** (CONDITIONAL — see PRD Sync above). Emit ONLY when the directive asks to keep a plan doc in sync (tier `3` / `4`), naming pool `plan/*.md` targets. Omit entirely otherwise:
+
+<prdSync>
+{
+  "targets": ["plan/prd.md"],
+  "reason": "<one-sentence: what changed that the doc must reflect>"
+}
+</prdSync>
 
 {{#if needsBoundaryClassification}}
 **1. `<boundary>` tag** (see Boundary Classification above)

@@ -120,16 +120,18 @@ function extractIdentifiers(haystack: string | undefined | null): string[] {
   return [...found].sort();
 }
 
-const PLAN_PATHS = ['plan/prd.md'];
+/** Any LLM-named plan document under `plan/` (`prd.md` or a MECE split). */
+const PLAN_DOC_RE = /^plan\/[^/]+\.md$/;
 
 /**
- * Decide whether the checkpoint's RAC.refs contained a canonical plan
- * document at the time the task list was authored. Used as a guard on
- * `TaskDependency.hasPrdRef`.
+ * Decide whether the checkpoint's RAC.refs contained a plan document at the
+ * time the task list was authored. Used as a guard on
+ * `TaskDependency.hasPrdRef`. Matches any `plan/*.md` (the plan job now authors
+ * LLM-named docs, not only `plan/prd.md`).
  */
 function hasPlanDocAsRef(rac: ResolvedActionContext | undefined): boolean {
   if (!rac?.refs?.length) return false;
-  return rac.refs.some(p => PLAN_PATHS.includes(p));
+  return rac.refs.some(p => PLAN_DOC_RE.test(p));
 }
 
 /**

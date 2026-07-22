@@ -33,8 +33,9 @@ import { detectAffectedTasks } from './detectAffectedTasks';
 
 export interface RefineImpactAlertInput {
   featurePath: string;
-  /** `prd.md` — the domain-neutral canonical plan document. */
-  updatedDoc: 'prd.md';
+  /** Basename of the rewritten plan document (`prd.md` default; the plan job
+   *  may author other LLM-named `plan/*.md` docs). */
+  updatedDoc: string;
   /** Optional cascade signals — at least one is recommended for non-empty diffs. */
   llmResponse?: string;
   gitDiff?: string;

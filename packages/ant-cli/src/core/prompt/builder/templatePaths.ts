@@ -87,6 +87,16 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/code/nodes/execute/variants/docgen/rules',
     system: 'jobs/code/base/system',
   },
+  // PRD-sync — a `doc` task carrying a `prdSyncTargets` grant. Reuses the doc
+  // bundle's no-tool-loop `<file>` execution model, but the prompt reframes the
+  // task as a surgical FULL-rewrite of the named plan doc(s) to match the code
+  // changes (NOT README/API docgen). Selected via the doc bundle's per-task
+  // `templatePaths` resolver on `isPrdSyncTask`.
+  codeExecutePrdSync: {
+    base: 'jobs/code/nodes/execute/variants/prd-sync/base',
+    rules: 'jobs/code/nodes/execute/variants/prd-sync/rules',
+    system: 'jobs/code/base/system',
+  },
   // seam (cross-feature reference + affordance closure) — its own TaskType,
   // run AFTER ui over the materialized graph. PLAN rides codePlanDefault (the
   // generic investigate→partition plan, reused like test-code) with the

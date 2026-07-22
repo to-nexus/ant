@@ -52,7 +52,7 @@ const TAG_RE = /<updated-sections>([\s\S]*?)<\/updated-sections>/i;
 export type DiffSource = 'llm-tag' | 'git-diff' | 'directive';
 
 export interface PlanDiff {
-  doc: 'prd.md';
+  doc: string;
   /** Stable identifiers / `§X` markers that changed. Sorted, deduplicated. */
   updatedSections: string[];
   /** Which extraction layer(s) contributed. Always non-empty when `updatedSections` is non-empty. */
@@ -60,8 +60,8 @@ export interface PlanDiff {
 }
 
 export interface ExtractPlanDiffInput {
-  /** `prd.md` — the canonical plan output the rev-plan job rewrote. */
-  doc: 'prd.md';
+  /** Basename of the plan doc the rev-plan job rewrote (`prd.md` default). */
+  doc: string;
   /** LLM raw response from the rev-plan turn (may contain the `<updated-sections>` tag). */
   llmResponse?: string;
   /** Git unified-diff string for the plan file (e.g. `git diff <ref> -- plan/prd.md`). */
