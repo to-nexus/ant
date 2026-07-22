@@ -59,4 +59,26 @@ export const LLM_MAX_TOKENS = {
   // tasks at typical sizes. Now identical to DEFAULT, kept as a named
   // constant for intent and so a future bump can split them again.
   DECOMPOSE: 64000,
+
+  // Per-round output ceiling for the plan↔tool diagnostic loop
+  // (`runPlanWithTools`). A diagnostic round legitimately emits either a
+  // few small tool calls (read_file / search paths) or a compact
+  // reasoning note — observed at 35–1,419 output tokens across a healthy
+  // 36-round verify loop. The final `<plan>` JSON emission is the only
+  // round that can legitimately be large; the caller escalates THAT round
+  // to `DEFAULT` on truncation (see `runPlanWithTools` escalatedMaxTokens).
+  //
+  // Why this exists (gentle-leaping-lathe RCA): on OpenAI-compat providers
+  // (GLM/DeepSeek) reasoning shares the single `max_tokens` output budget
+  // and is NOT server-capped by a separate thinking budget the way
+  // Anthropic's `budget_tokens`/`effort` bounds it. A diagnostic round that
+  // degenerated into a repeating monologue therefore ran against the 64K
+  // DEFAULT — ~10–20 min of unbounded generation on GLM throughput, never
+  // returning to the graph so no router-level no-progress breaker could
+  // ever fire. A 16K per-round ceiling forces the provider to terminate a
+  // degenerate round (`finish_reason:length`) in ~2 min, handing control
+  // back to the existing recovery path (`onMaxTokensTruncation` → fresh
+  // tool-loop restart) and the no-progress streak. This is a round-shape
+  // budget, NOT a thinking-time cap — legitimate large plans escalate.
+  PLAN_TOOL_LOOP: 16000,
 } as const;

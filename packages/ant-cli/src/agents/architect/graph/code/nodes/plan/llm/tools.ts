@@ -91,7 +91,16 @@ export async function runPlanLLMWithTools(
     tools,
     enableThinking: isFirstRound,
     thinkingBudget: isFirstRound ? LLM_THINKING_BUDGET.PLAN : undefined,
-    maxTokens: LLM_MAX_TOKENS.DEFAULT,
+    // Round-shape budget (gentle-leaping-lathe RCA): a diagnostic round's
+    // legitimate output is small (tool calls / a compact note); only the
+    // final `<plan>` JSON is large and escalates. Capping the base round at
+    // PLAN_TOOL_LOOP forces the provider to terminate a degenerate monologue
+    // (`finish_reason:length`) in ~2 min instead of grinding the 64K DEFAULT
+    // for 10–20 min on OpenAI-compat providers where reasoning shares the
+    // output budget and is not server-capped. `escalatedMaxTokens` retries
+    // exactly one round at DEFAULT when a real `<plan>` was cut off mid-emit.
+    maxTokens: LLM_MAX_TOKENS.PLAN_TOOL_LOOP,
+    escalatedMaxTokens: LLM_MAX_TOKENS.DEFAULT,
     temperature: LLM_TEMPERATURE.PLAN_GENERATION,
     taskName: task.name,
     jobType: 'code',
@@ -120,16 +129,28 @@ export async function runPlanLLMWithTools(
         },
       );
     },
-    onMaxTokensTruncation: ({ outputTokens, round }) => {
+    onMaxTokensTruncation: ({ outputTokens, round, toolCallCount, hasOpenPlan }) => {
       // safe-braking-eagle: surface max_tokens truncation that the legacy
       // fallthrough path absorbed silently. The output is still discarded
-      // (chunked-emission recovery is option C); A only adds visibility.
+      // (chunked-emission recovery is option C); this only adds visibility.
+      //
+      // gentle-leaping-lathe: a truncation with 0 tool calls AND no open
+      // `<plan>` is a DEGENERATE monologue round — the model burned the
+      // (now-capped) output budget on repetition instead of acting. Label it
+      // distinctly so the ~2-min terminate → fallthrough → single-shot
+      // recovery is diagnosable in the log. We deliberately do NOT feed the
+      // no-progress streak here: the round returns `null` → fallthrough →
+      // single-shot `generatePlanText`, whose `finalizePlanOutcome` resets
+      // `_noProgressStreak: 0` once a plan is produced (recovery == progress),
+      // so a streak bump would be immediately and correctly cleared.
+      const degenerate = toolCallCount === 0 && !hasOpenPlan;
       const taskId = task.id;
       console.warn(
-        `⚠️  [Plan/toolLoop] max_tokens truncated (round=${round}, output=${outputTokens}) ` +
-        `for task "${task.name}" (${taskId}). The partial output is discarded; the next ` +
-        `tool-loop entry restarts from scratch. Consider bumping LLM_MAX_TOKENS.DEFAULT or ` +
-        `having the plan emit \`batches[]\` to fan out before producing this much detail.`,
+        `⚠️  [Plan/toolLoop] max_tokens truncated (round=${round}, output=${outputTokens}, ` +
+        `cap=${LLM_MAX_TOKENS.PLAN_TOOL_LOOP}, degenerate=${degenerate}) for task "${task.name}" ` +
+        `(${taskId}). ${degenerate
+          ? 'Degenerate no-output monologue — terminating this round; recovery falls through to single-shot plan.'
+          : 'Partial output discarded; next tool-loop entry restarts from scratch.'}`,
       );
       const featurePath = state.context?.featurePath;
       if (featurePath && state._httpJobId) {
@@ -142,10 +163,11 @@ export async function runPlanLLMWithTools(
             node: 'plan-toolLoop',
             round,
             outputTokens,
-            maxTokens: LLM_MAX_TOKENS.DEFAULT,
+            maxTokens: LLM_MAX_TOKENS.PLAN_TOOL_LOOP,
+            degenerateMonologue: degenerate,
             taskName: task.name,
             taskType: task.type,
-            recoveryHint: 'fresh-toolloop-restart',
+            recoveryHint: degenerate ? 'terminate-then-single-shot' : 'fresh-toolloop-restart',
           }, taskId)
           .catch(() => { /* non-blocking */ });
       }

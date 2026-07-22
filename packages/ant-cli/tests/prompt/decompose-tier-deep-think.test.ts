@@ -123,12 +123,21 @@ describe('decompose tier-deep-think partial', () => {
       expect(src).toContain('ONLY when the directive itself names');
     });
 
-    it('partial captures the Tier 4 faithful-enumeration constraint', () => {
+    it('partial captures the Tier 4 faithful-enumeration constraint (diff-surface granularity)', () => {
       const src = read(PARTIAL_PATH);
+      // Faithfulness is COVERAGE-based, not one-task-per-section. Enumerated
+      // units MUST all be accounted for; boundaries follow the diff surface
+      // (output files), so same-file units MAY bundle into one task whose
+      // description enumerates every covered unit (traceability). This
+      // reconciles the former "distinct task per unit" line with the
+      // Task Scope Constraint merge exception (gentle-leaping-lathe RCA).
       expect(src).toContain(
-        'Every enumerated unit MUST appear as a distinct `<task>`',
+        'Every enumerated unit MUST be accounted for',
       );
-      expect(src).toContain('Do NOT collapse multiple enumerated units');
+      expect(src).toContain('follow the **diff surface**');
+      expect(src).toContain("that task's `description` MUST enumerate every unit it covers");
+      // The reconciled rule must NOT re-introduce the section-count mandate.
+      expect(src).not.toContain('Do NOT collapse multiple enumerated units');
     });
 
     it('partial scopes problem identification to decompose and solution design to plan', () => {

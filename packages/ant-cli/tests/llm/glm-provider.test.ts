@@ -182,3 +182,56 @@ describe('OpenAI-compat thinking toggle (parity with AnthropicLLMClient)', () =>
     expect((await captureInvokePayload('openai', { enableThinking: false })).thinking).toBeUndefined();
   });
 });
+
+/**
+ * Cooperative-cancellation forwarding (gentle-leaping-lathe RCA).
+ *
+ * OpenAILLMClient historically dropped `options.signal`, so a user stop
+ * could not sever an in-flight GLM stream — a runaway generation ran until
+ * the process was SIGTERM'd. The signal must reach the SDK request options,
+ * and an already-aborted job must not open a fresh stream at all.
+ */
+describe('OpenAILLMClient — abort-signal forwarding (stream)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function makeClientWithCreateSpy() {
+    const client = new OpenAILLMClient(undefined, {
+      apiKey: 'test-key',
+      modelName: 'glm-5.2',
+      provider: 'glm',
+    });
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    const create = vi.fn().mockImplementation(async () => (async function* () {})());
+    (client as any).client = { chat: { completions: { create } } };
+    return { client, create };
+  }
+
+  it('forwards options.signal to chat.completions.create request options', async () => {
+    const { client, create } = makeClientWithCreateSpy();
+    const controller = new AbortController();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of client.stream(
+      [{ role: 'user', content: 'hi' }] as any,
+      { enableThinking: false, signal: controller.signal },
+    )) {
+      /* drain */
+    }
+    expect(create).toHaveBeenCalledTimes(1);
+    // Second positional arg is the SDK request-options object.
+    expect(create.mock.calls[0][1]).toEqual({ signal: controller.signal });
+  });
+
+  it('does NOT open a stream when the signal is already aborted (between-round stop)', async () => {
+    const { client, create } = makeClientWithCreateSpy();
+    const controller = new AbortController();
+    controller.abort();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of client.stream(
+      [{ role: 'user', content: 'hi' }] as any,
+      { enableThinking: false, signal: controller.signal },
+    )) {
+      /* drain */
+    }
+    expect(create).not.toHaveBeenCalled();
+  });
+});

@@ -9,8 +9,9 @@
 **Observation target**: Every numbered unit / section / requirement / acceptance criterion in the active reference document.
 
 **Constraints**:
-- Every enumerated unit MUST appear as a distinct `<task>`. Do NOT collapse multiple enumerated units into one task. Do NOT silently drop units. Do NOT invent units the document does not list.
-- The breakdown is faithful to the document — not optimized for brevity.
+- Every enumerated unit MUST be accounted for: reflected in a `<task>` and never silently dropped; never invent units the document does not list. Faithfulness is measured by COVERAGE of the enumerated units, not by task count.
+- Task boundaries follow the **diff surface** (the set of output files each unit changes), NOT the document's section numbering. When several enumerated units resolve to the SAME output file, they MAY be bundled into ONE task — but that task's `description` MUST enumerate every unit it covers (e.g. "covers T1–T5: …") so traceability is preserved. Do NOT let section count drive task count; let output-file overlap drive it. This is the same anti-fragmentation rationale as **Task Scope Constraint** below — a second task that re-reads and extends a file the first task authored multiplies token cost for no isolation benefit (same-file work cannot run in parallel regardless).
+- Do NOT bundle units that resolve to DIFFERENT output files merely for brevity — distinct diff surfaces remain distinct tasks.
 - Tool calls (`read_file` / `list_files`) are available but should be used sparingly — the document is the authority. Codebase ground-truth verification belongs to the per-task `plan` node, not here.
 - Do NOT emit `<analysis>...</analysis>`. The reference document is the cross-task SSOT at Tier 4 — emitting `<analysis>` here is duplicate and forbidden.
 

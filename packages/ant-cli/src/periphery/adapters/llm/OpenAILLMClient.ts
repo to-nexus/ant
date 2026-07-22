@@ -19,7 +19,7 @@ import {
   ImageContentBlock,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
-import { withRetryStream } from '../../../core/utils/retry';
+import { withRetryStream, withStreamIdleTimeout } from '../../../core/utils/retry';
 import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
 
 /**
@@ -182,9 +182,25 @@ export class OpenAILLMClient implements LLMClient {
   }
 
   /**
+   * Per-event idle window for the streaming watchdog. Mirrors
+   * AnthropicLLMClient.resolveIdleTimeoutMs: a genuinely silent stream
+   * (no OS-level error — TCP appears open after a Mac sleep / network
+   * partition) is aborted so `withRetryStream` can re-issue. Reasoning
+   * providers stream `reasoning_content` deltas (surfaced as `thinking`
+   * events) that keep this watchdog alive, so this guards NETWORK stalls,
+   * not long reasoning — the runaway-reasoning class is bounded by the
+   * caller's per-round `maxTokens` budget (gentle-leaping-lathe), not here.
+   */
+  private resolveStreamIdleMs(enableThinking?: boolean): number {
+    return enableThinking === false ? 90_000 : 180_000;
+  }
+
+  /**
    * 🎯 Unified streaming interface with automatic retry
    * OpenAI doesn't separate thinking blocks like Anthropic
    * ✅ Retries on overloaded_error and api_error
+   * ✅ Idle-timeout watchdog (parity with AnthropicLLMClient) so a silent
+   *    network stall aborts-and-retries instead of hanging the graph.
    */
   async *stream(
     messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
@@ -194,11 +210,19 @@ export class OpenAILLMClient implements LLMClient {
       /** Per-round thinking toggle from the tool-loop; honored by hard-toggle
        *  OpenAI-compat providers (DeepSeek, GLM) — see `_streamInternal`. */
       enableThinking?: boolean;
+      /** Cooperative cancellation from the graph (`getJobAbortSignal()`).
+       *  Forwarded to the SDK request in `_streamInternal` so a user stop
+       *  severs the HTTP stream immediately instead of waiting out the
+       *  generation (gentle-leaping-lathe). */
+      signal?: AbortSignal;
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
+    const idleMs = this.resolveStreamIdleMs(options?.enableThinking);
     yield* withRetryStream(
-      () => this._streamInternal(messages, options),
+      // Idle watchdog INSIDE the retry wrapper so a `terminated` idle-abort
+      // is classified retryable (retry.ts isRetryableError) and re-issued.
+      () => withStreamIdleTimeout(this._streamInternal(messages, options), idleMs),
       {
         // Parity with the Anthropic path (8). DeepSeek 429/500/503 are common
         // under load; retry.ts classifies 429 + status>=500 as retryable.
@@ -220,11 +244,18 @@ export class OpenAILLMClient implements LLMClient {
       tools?: ToolDefinition[];
       maxTokens?: number;
       enableThinking?: boolean;
+      signal?: AbortSignal;
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
     const toolsCount = options?.tools?.length || 0;
     console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} temp=${options?.temperature ?? this.temperature}`);
+
+    // Cover a stop that lands between rounds, before any HTTP is issued
+    // (parity with AnthropicLLMClient). Without this an already-aborted job
+    // would still open a fresh stream.
+    const signal = options?.signal;
+    if (signal?.aborted) return;
 
     const isCodexModel = this.modelName.includes('codex') || this.modelName.startsWith('gpt-5');
     const openAIMessages = this.convertToOpenAIMessages(messages);
@@ -257,7 +288,7 @@ export class OpenAILLMClient implements LLMClient {
           max_tokens: options?.maxTokens || 16000,
           stream: true,
           stream_options: { include_usage: true },
-        });
+        }, { signal });
         yield* this._processChatCompletionsStream(stream);
         return;
       }
@@ -269,7 +300,7 @@ export class OpenAILLMClient implements LLMClient {
         temperature,
         max_tokens: options?.maxTokens || 16000,
         stream: true,
-      });
+      }, { signal });
       yield* this._processResponsesStream(stream);
     } else {
       // B1 (M2) — include_usage makes usage arrive in a final choices-empty
@@ -284,7 +315,7 @@ export class OpenAILLMClient implements LLMClient {
         stream: true,
         stream_options: { include_usage: true },
         ...providerExtra,
-      } as any);
+      } as any, { signal });
       yield* this._processChatCompletionsStream(stream);
     }
   }

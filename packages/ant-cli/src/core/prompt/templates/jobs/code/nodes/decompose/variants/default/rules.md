@@ -616,6 +616,8 @@ When a `ui` / `design-system` task draws from a UI source, choose `include` path
 
 **Constraint — exception scope**: This merge exception is persistence-boundary-scoped. It does NOT apply to Independent Output Unit splitting — per-unit output files do not overlap, and the shared integration point is owned by the wiring task (see Independent Output Unit Splitting below).
 
+**Constraint — relationship to Tier 4 document-anchored decomposition**: For a document-anchored job (Tier 4), the per-tier responsibility matrix's Tier 4 row is authoritative and expresses the SAME principle from the document's side: task boundaries follow the diff surface (output files), not persistence boundaries or section numbering. The two are one rule viewed from two angles — enumerated units sharing an output file bundle into one task (whose `description` enumerates every covered unit); units on distinct output files stay distinct. They are NOT competing MUSTs.
+
 **Constraint**: Cross-entity dependency via imported interface does NOT constitute shared implementation. If a service for boundary A calls a repository for boundary B through an interface defined by a shared foundation task, A and B produce separate output files — do NOT merge.
 
 **Observation target**: For entities that appear separable by persistence boundary, check whether they share implementation modules.

@@ -98,6 +98,16 @@ export interface RunPlanWithToolsArgs<TState extends MinimalPlanState = MinimalP
   /** Thinking budget tokens (only used when enableThinking). */
   thinkingBudget?: number;
   maxTokens: number;
+  /**
+   * Optional larger per-round ceiling used to retry ONE round when the base
+   * `maxTokens` truncated a round that was mid-way through emitting a
+   * `<plan>` JSON block. Distinguishes a legitimate large plan (escalate and
+   * finish it) from a degenerate no-`<plan>` monologue (let the base cap
+   * terminate it). When omitted or `<= maxTokens`, no escalation occurs
+   * (design-job callers pass only `maxTokens`, preserving prior behavior).
+   * See `LLM_MAX_TOKENS.PLAN_TOOL_LOOP`. RCA: gentle-leaping-lathe.
+   */
+  escalatedMaxTokens?: number;
   /** Per-call sampling temperature (LLM_TEMPERATURE policy key value). */
   temperature?: number;
   /** Task name for UI streaming (chat status / plan title). */
@@ -119,8 +129,19 @@ export interface RunPlanWithToolsArgs<TState extends MinimalPlanState = MinimalP
    *
    * RCA: safe-braking-eagle (architect (9)/(10)). The 32K silent cliff
    * looked like a normal completion because nothing observed `stop_reason`.
+   *
+   * `toolCallCount` / `hasOpenPlan` describe the truncated round's shape so
+   * the caller can distinguish a degenerate no-output monologue (0 tool
+   * calls, no `<plan>` — feed the no-progress streak) from a large-plan
+   * emission that was escalated (gentle-leaping-lathe RCA). Only fires for
+   * the FINAL attempt (an escalated retry does not double-fire).
    */
-  onMaxTokensTruncation?: (info: { outputTokens: number; round: number }) => void | Promise<void>;
+  onMaxTokensTruncation?: (info: {
+    outputTokens: number;
+    round: number;
+    toolCallCount: number;
+    hasOpenPlan: boolean;
+  }) => void | Promise<void>;
   /**
    * Minimum length for a `<plan>...</plan>` block to be accepted. Below
    * this threshold the helper ignores the match and falls through to
