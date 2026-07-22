@@ -37,6 +37,11 @@ const PROVIDER_ACCENT: Record<string, ProviderAccent> = {
     bg: 'oklch(94% 0.06 320 / 0.9)',
     ring: 'oklch(72% 0.15 320)',
   },
+  kimi: {
+    fg: 'oklch(46% 0.16 200)',
+    bg: 'oklch(94% 0.06 200 / 0.9)',
+    ring: 'oklch(72% 0.14 200)',
+  },
 };
 
 const FALLBACK_ACCENT: ProviderAccent = {
@@ -158,7 +163,7 @@ export function ModelSelectChip({
     acc[m.provider].push(m);
     return acc;
   }, {});
-  const providerOrder = ['anthropic', 'google', 'openai', 'deepseek', 'glm'].filter((p) => grouped[p]);
+  const providerOrder = ['anthropic', 'google', 'openai', 'deepseek', 'glm', 'kimi'].filter((p) => grouped[p]);
 
   const handleSelect = (modelId: string) => {
     onChange(modelId);
