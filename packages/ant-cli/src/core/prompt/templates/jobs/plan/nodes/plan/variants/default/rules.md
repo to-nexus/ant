@@ -18,12 +18,21 @@ When observation is sufficient (and any Required-core gap is resolved), seal the
   "observations": ["product-surface facts you actually observed — not code structure, not assumptions"],
   "resolvedDecisions": ["decisions settled from the directive or from clarify answers"],
   "openQuestions": ["unresolved gaps that belong in the document's Open-Questions section"],
+  "targetFiles": ["prd.md"],
   "proposedOutline": ["the domain-overlay sections the document must author"]
 }
 </plan>
 ```
 
 **Seal validity**: the brief MUST be well-formed and carry a non-empty `proposedOutline`. An observations-only brief with an empty outline is NOT a valid seal — the authoring phase has nothing to write. `observations` MAY be empty (e.g. greenfield); `proposedOutline` MAY NOT.
+
+**Document file naming (`targetFiles`)**: name the document file(s) this plan will author, as short lowercase-hyphenated `.md` names (no directory prefix — they live under the plan folder).
+
+- **Default to a SINGLE file** named `prd.md`. Emit exactly `["prd.md"]` unless a split is genuinely warranted.
+- Emit **multiple files ONLY for a genuine MECE split** — when the subject decomposes into clearly separable concerns each large enough to stand alone (e.g. `["overview.md", "auth.md", "billing.md"]`). Cap at a handful; each file must cover a non-overlapping slice, and every `proposedOutline` section MUST belong to exactly one file.
+- Choose names from the subject, not from a template. Do NOT invent files for empty sections — fewer, coherent documents beat many thin ones.
+
+⚠️ **Blind Spot**: a split is a real editorial decision, not a default. When unsure, ONE file (`prd.md`) is correct.
 
 **Constraint**: seal EXACTLY ONCE. Do NOT emit a `<plan>` tag AND tool calls, or a `<plan>` tag AND a `<clarify>` block, in the same turn.
 

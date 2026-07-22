@@ -377,8 +377,12 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Execute] PromptBuilder is required but not available in state.deps');
 
+  const resolvedTemplatePaths =
+    typeof execHook?.templatePaths === 'function'
+      ? execHook.templatePaths(state.currentTask)
+      : execHook?.templatePaths;
   const { base: templateBase, rules: templateRules } =
-    execHook?.templatePaths ?? DEFAULT_EXECUTE_TEMPLATES;
+    resolvedTemplatePaths ?? DEFAULT_EXECUTE_TEMPLATES;
 
   const formattedLessons = formatLessonsForPrompt(state.lessons);
 

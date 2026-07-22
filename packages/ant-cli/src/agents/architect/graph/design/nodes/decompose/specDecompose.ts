@@ -23,7 +23,7 @@ import { ARTIFACT_PREFIX, BOUNDARY } from "@ant/shared";
 import { resolveDesignBasisTechTier } from "./resolveDesignBasisTechTier";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
-import { generateMnemonic } from "../../../../../../utils/humanId";
+import { sanitizeDocSlug, collisionFreeDocFilename } from "../../../../../common/naming/docSlug";
 import { extractMarkdownHeadings } from "../checkTaskStatus/specDocIntegrity";
 import { loadExistingDesignDoc } from "../checkTaskStatus/loadExistingDesignDoc";
 
@@ -83,9 +83,9 @@ export async function resolveSpecTargetFileForMode(
       // append a mnemonic, so the no-deps path is the same as "no collision".
       return baseName;
     }
-    const exists = await fs.fileExists(`${state.context.featurePath}/${SPEC_TARGET_DIR}/${baseName}`);
-    if (!exists) return baseName;
-    return `${slug}-${generateMnemonic()}.md`;
+    return collisionFreeDocFilename(slug, (filename) =>
+      fs.fileExists(`${state.context!.featurePath}/${SPEC_TARGET_DIR}/${filename}`),
+    );
   }
 
   const targets = state.resolvedAction?.target ?? [];
@@ -196,10 +196,9 @@ async function decomposeSpecSections(
 
     const parsed = parseLLMJsonResponse(response);
 
-    const rawSlug = typeof parsed.slug === 'string' ? parsed.slug : '';
-    // 30-char cap leaves room for the optional `-{adj}-{noun}` mnemonic
-    // appended by resolveSpecTargetFileForMode() on disk collision.
-    const slug = rawSlug.replace(/[^a-z0-9-]/g, '').slice(0, 30) || `feature-${Date.now()}`;
+    // Cap + `[a-z0-9-]` sanitize leaves room for the optional `-{adj}-{noun}`
+    // mnemonic appended by resolveSpecTargetFileForMode() on disk collision.
+    const slug = sanitizeDocSlug(parsed.slug, `feature-${Date.now()}`);
     const title = (typeof parsed.title === 'string' && parsed.title.length > 0)
       ? parsed.title
       : directive.slice(0, 60);

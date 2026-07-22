@@ -20,13 +20,12 @@ export async function createFeature(
   projectId: string,
   featureName: string,
   language?: string,
-  options?: { skipPrdTemplate?: boolean },
 ): Promise<void> {
   const response = await authFetch(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features`,
     {
       method: 'POST',
-      body: JSON.stringify({ featureName, language, skipPrdTemplate: options?.skipPrdTemplate }),
+      body: JSON.stringify({ featureName, language }),
     },
   );
 

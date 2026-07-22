@@ -12,12 +12,22 @@ You are authoring this workspace's planning document. The observation phase is c
 
 Mode: **{{mode}}**
 
+{{#if hasMultipleTargets}}
+## 3. Target Paths (multi-document plan)
+
+This plan is split into the following documents — author EACH one, emitting a separate `<file path="...">...</file>` tag per file. Partition the sections across them (MECE — no overlap); every file must be complete:
+
+{{#each targetPaths}}
+- `{{this}}`
+{{/each}}
+{{else}}
 {{#if targetPath}}
 ## 3. Target Path
 
 Target document path: `{{targetPath}}`
 
 In **generate** mode, author the document by emitting it inside a `<file path="{{targetPath}}">...</file>` tag (the only write path). In **refactor** mode, edit the existing document in place with `edit_file` at this path.
+{{/if}}
 {{/if}}
 
 {{#if hasPlanText}}

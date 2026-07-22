@@ -558,12 +558,17 @@ const HANDOFF_GAME_ART_OUTPUTS: OutputSpec[] = [
 const SPEC_OUTPUTS: OutputSpec[] = [output('', '.md', L.spec, true)];
 
 /**
- * Plan job output. The plan document is a single domain-neutral artifact —
- * `plan/prd.md` — across every domain. A game project's PRD carries game
- * sections, but that is decided by the `domain==='game'` overlay, NOT by a
- * different filename. Path/filename is never a domain signal; the RAC treats
- * anything under `plan/` as the `sources` (requirements) role regardless of
- * name (see canonical `SOURCES='plan'`).
+ * Plan job output. `plan/prd.md` is the SUGGESTED single-doc default, not a
+ * hard filename: the plan job lets the LLM name its doc(s) and may author
+ * several under `plan/` for a MECE split (the concrete names are decided in
+ * the sealed `<plan>` brief; an empty RAC target means "LLM will name").
+ * This concrete `OutputSpec` remains the explicit-mode fallback + the FE
+ * ActionConfigView default so the wizard still surfaces a sensible target.
+ *
+ * Domain-neutral: a game project's PRD carries game sections via the
+ * `domain==='game'` overlay, NOT a different filename. Path/filename is never
+ * a domain signal; the RAC treats anything under `plan/` as the `sources`
+ * (requirements) role regardless of name (see canonical `SOURCES='plan'`).
  */
 const PRD_OUTPUT: OutputSpec = output('prd', '.md', L.prd, false);
 const PLAN_OUTPUTS: OutputSpec[] = [PRD_OUTPUT];
@@ -584,31 +589,32 @@ export function supportsReferenceCodebase(intent: IntentId): boolean {
   return group === 'code' || group === 'design-spec' || group === 'design-system';
 }
 
-/** The single plan-job output — `plan/prd.md` — across every domain. */
+/** The plan-job output spec — the suggested `plan/prd.md` single-doc default. */
 export function getPlanOutputs(): OutputSpec[] {
   return [PRD_OUTPUT];
 }
 
 /**
- * Filename the plan job emits. Domain-neutral single canonical — a game
- * project's PRD is still `prd.md` (game sections come from the overlay).
+ * Suggested single-doc plan filename. NOT a hard constraint — the plan job
+ * lets the LLM name its doc(s); this is the default hidden from the `gen-plan`
+ * source listing (`excludeFiles`) and the FE default.
  */
 export const PLAN_OUTPUT_FILENAMES = ['prd.md'] as const;
 
-/** Canonical plan-job filename — domain-neutral single `prd.md`. */
+/** Suggested single-doc plan filename (`prd.md`) — see PLAN_OUTPUT_FILENAMES. */
 export function getCanonicalPlanFilename(): string {
   return 'prd.md';
 }
 
-/** Workspace-relative canonical plan-job path — `plan/prd.md`. */
+/** Workspace-relative suggested single-doc plan path — `plan/prd.md`. */
 export function getCanonicalPlanPath(): string {
   return `plan/${getCanonicalPlanFilename()}`;
 }
 
 /**
- * Returns the canonical plan filename if it exists in the given source
- * filenames, else `undefined`. Domain-neutral — the plan document is a
- * single canonical artifact regardless of domain.
+ * Returns the suggested `prd.md` filename if it exists in the given source
+ * filenames, else `undefined`. Used as the single-doc / revise tie-break;
+ * multi-doc plan workspaces are handled by the caller (all `plan/*.md`).
  */
 export function pickExistingPlanFilename(
   sourceFileNames: readonly string[] | undefined,

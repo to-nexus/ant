@@ -124,14 +124,18 @@ const CLARIFY_POLICY_MATRIX: Record<IntentId, ClarifyPolicy> = {
   'gen-code-sys': {
     clarifyEnabled: true,
     clarifyPhases: ['decompose'],
-    clarifyBudget: 1,
+    // Budget 2: one round reserved for a genuine content blocker + one for a
+    // self-judged PRD-sync confirmation (the `<clarify>` branch of the PRD-sync
+    // decision). `proceed-if-sufficient` means exhaustion never dead-ends.
+    clarifyBudget: 2,
     blockingMode: 'proceed-if-sufficient',
     minTier: ExecutionTierId.Task,
   },
   'gen-code-spec': {
     clarifyEnabled: true,
     clarifyPhases: ['decompose'],
-    clarifyBudget: 1,
+    // Budget 2 — see gen-code-sys (blocker round + PRD-sync confirmation round).
+    clarifyBudget: 2,
     blockingMode: 'proceed-if-sufficient',
     minTier: ExecutionTierId.Task,
   },
@@ -147,7 +151,8 @@ const CLARIFY_POLICY_MATRIX: Record<IntentId, ClarifyPolicy> = {
   'rev-code': {
     clarifyEnabled: true,
     clarifyPhases: ['decompose'],
-    clarifyBudget: 1,
+    // Budget 2 — see gen-code-sys (blocker round + PRD-sync confirmation round).
+    clarifyBudget: 2,
     blockingMode: 'proceed-if-sufficient',
     minTier: ExecutionTierId.Exploratory,
   },

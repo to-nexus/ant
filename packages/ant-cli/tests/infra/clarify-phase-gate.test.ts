@@ -112,13 +112,13 @@ describe('applyClarifyGate', () => {
   });
 
   it('default-and-proceed when budget exhausted', async () => {
-    // gen-code-sys budget = 1
+    // gen-code-sys budget = 2 (one blocker round + one PRD-sync confirmation round)
     const r = await applyClarifyGate({
       responseText: CLARIFY,
       intent: 'gen-code-sys',
       phase: 'decompose',
       tier: ExecutionTierId.Task,
-      clarifyRoundsUsed: 1,
+      clarifyRoundsUsed: 2,
     });
     expect(r.paused).toBe(false);
     expect(r.proceedNote).toBeTruthy();

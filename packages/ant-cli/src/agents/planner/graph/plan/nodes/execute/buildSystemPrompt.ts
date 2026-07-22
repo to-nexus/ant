@@ -23,7 +23,9 @@ export async function buildExecuteSystemPrompt(
   if (!promptBuilder) throw new Error('[Planner:Execute] PromptBuilder not available in state.deps');
 
   const targetPath = getTargetPath(state);
-  const hasTargets = (state.resolvedAction?.target?.length ?? 0) > 0;
+  const targetPaths = state.resolvedAction?.target ?? [];
+  const hasTargets = targetPaths.length > 0;
+  const hasMultipleTargets = targetPaths.length > 1;
   const planMode = getPlanMode(state);
 
   // dusk-mounding-pilot guard — never render a Target-Path-less authoring prompt.
@@ -55,6 +57,11 @@ export async function buildExecuteSystemPrompt(
       mode: planMode,
       hasTargets,
       targetPath: targetPath || '',
+      // Multi-file plan output — the sealed brief may split the plan into
+      // several MECE docs under `plan/`. `targetPaths` is the full list; the
+      // template lists them and instructs one `<file>` per file when >1.
+      targetPaths,
+      hasMultipleTargets,
       // The sealed brief from the plan node — the authoring anchor. Rendered
       // under `{{#if planText}}` in the execute base template.
       planText: state.planText || '',

@@ -368,6 +368,15 @@ interface BaseTaskCommon {
    */
   uiSource?: UiSource;
   /**
+   * Cross-intent PRD-sync grant. Set ONLY on the single-owner `doc` sync task
+   * that decompose appends when the directive asks to keep the related PRD in
+   * sync (the `<prdSync>` decision). Carries the `plan/*.md` docs this task is
+   * authorized to rewrite — the write-gate relaxation and the sync prompt are
+   * both scoped to exactly these paths. Absent/empty ⇒ an ordinary task with no
+   * plan-write authority. See the "Cross-intent PRD sync" design.
+   */
+  prdSyncTargets?: string[];
+  /**
    * Derived (NOT LLM-authored): true when this task's output renders a
    * user-visible visual surface. Set by `createTaskQueue` from ui-pairing —
    * a `ui` task, and a feature task paired with a ui task (same `parallelGroup`,
@@ -432,6 +441,18 @@ export type BaseTask =
 export function isBillableWorkTask(task: { type?: string } | null | undefined): boolean {
   const t = task?.type;
   return t !== undefined && t !== 'verification' && t !== 'error';
+}
+
+/**
+ * Cross-intent PRD-sync predicate — a `doc` task carrying a non-empty
+ * `prdSyncTargets` grant. SSOT shared by decompose (task creation), the doc
+ * execute bundle (template dispatch), and the FileRenderer write gate
+ * (grant-scoped `plan/*.md` relaxation), so the three sites cannot drift.
+ */
+export function isPrdSyncTask(
+  task: { type?: string; prdSyncTargets?: string[] } | null | undefined,
+): boolean {
+  return task?.type === 'doc' && (task.prdSyncTargets?.length ?? 0) > 0;
 }
 
 // ============================================

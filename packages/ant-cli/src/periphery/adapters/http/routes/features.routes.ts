@@ -98,16 +98,16 @@ export function createFeaturesRoutes(deps: {
   router.post('/projects/:id/features', async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
-      const { featureName, language, skipPrdTemplate } = req.body;
-      
+      const { featureName, language } = req.body;
+
       if (!featureName) {
         res.status(400).json({ error: 'featureName is required' });
         return;
       }
-      
+
       const userContext = extractUserContext(req);
-      
-      await deps.projectService.createFeature(projectId, featureName, userContext, language, { skipPrdTemplate: !!skipPrdTemplate });
+
+      await deps.projectService.createFeature(projectId, featureName, userContext, language);
       
       if (req.user) {
         logger.debug(`[Features] Created feature '${featureName}' for ${req.user.id}@${req.organization?.id}`);

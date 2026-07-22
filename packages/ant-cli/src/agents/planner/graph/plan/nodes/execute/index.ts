@@ -47,15 +47,22 @@ import { buildExecuteSystemPrompt } from './buildSystemPrompt';
 import { getTargetPath } from '../plan/buildSystemPrompt';
 import { saveConversationToSession, isSafeStagingPath } from '../sessionWriter';
 
-export function buildAuthoringMessage(directive: string, targetPath: string, mode: string, isKorean: boolean): string {
+export function buildAuthoringMessage(directive: string, targets: string[], mode: string, isKorean: boolean): string {
+  const primary = targets[0] ?? '';
   if (mode === 'refactor') {
     return isKorean
-      ? `아래 지시에 따라 \`${targetPath}\` 문서를 편집하세요. 시스템 프롬프트의 브리프가 편집 범위의 근거입니다. \`edit_file\`로 범위 내 변경만 적용하세요.\n\n지시(원문):\n${directive}`
-      : `Apply the scoped edit to \`${targetPath}\` per the directive below. The brief in the system prompt is the edit-scope anchor. Use \`edit_file\` for the in-scope change only.\n\nDirective (verbatim):\n${directive}`;
+      ? `아래 지시에 따라 \`${primary}\` 문서를 편집하세요. 시스템 프롬프트의 브리프가 편집 범위의 근거입니다. \`edit_file\`로 범위 내 변경만 적용하세요.\n\n지시(원문):\n${directive}`
+      : `Apply the scoped edit to \`${primary}\` per the directive below. The brief in the system prompt is the edit-scope anchor. Use \`edit_file\` for the in-scope change only.\n\nDirective (verbatim):\n${directive}`;
+  }
+  if (targets.length > 1) {
+    const list = targets.join(', ');
+    return isKorean
+      ? `아래 지시에 따라 기획 문서들을 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 그대로 옮기지 말고 문서 섹션으로 변환하세요. 다음 파일들을 **각각 하나의 \`<file path="...">\` 태그**로 출력하고, 섹션을 파일 간 겹치지 않게(MECE) 배분하세요 — 각 파일은 완결되어야 합니다: ${list}\n\n지시(원문):\n${directive}`
+      : `Author the planning documents per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce it verbatim — transform it into document sections. Emit **one \`<file path="...">\` tag per file** for exactly these files, partitioning the sections across them with NO overlap (MECE) — each file must be complete: ${list}\n\nDirective (verbatim):\n${directive}`;
   }
   return isKorean
-    ? `아래 지시에 따라 기획 문서를 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 브리프나 분석 내용을 그대로 옮기지 말고 문서 섹션으로 변환하세요. 완성된 문서 전체를 하나의 \`<file path="${targetPath}">\` 태그 안에 출력하세요.\n\n지시(원문):\n${directive}`
-    : `Author the planning document per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce the brief or any analysis verbatim — transform it into the document's sections. Emit the complete document inside a single \`<file path="${targetPath}">\` tag.\n\nDirective (verbatim):\n${directive}`;
+    ? `아래 지시에 따라 기획 문서를 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 브리프나 분석 내용을 그대로 옮기지 말고 문서 섹션으로 변환하세요. 완성된 문서 전체를 하나의 \`<file path="${primary}">\` 태그 안에 출력하세요.\n\n지시(원문):\n${directive}`
+    : `Author the planning document per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce the brief or any analysis verbatim — transform it into the document's sections. Emit the complete document inside a single \`<file path="${primary}">\` tag.\n\nDirective (verbatim):\n${directive}`;
 }
 
 export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
@@ -121,10 +128,11 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   // re-entry the pruned NODE_EXECUTE history rides as prior turns
   // (composeMessages runs the same `compactRun` pruning as before).
   const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
+  const targetPaths = state.resolvedAction?.target ?? [];
   const targetPath = getTargetPath(state) || '';
   const initialBlocks = buildCacheableBlocks(built.result, {
     runtimeParts: nodeExecute.length === 0
-      ? [buildAuthoringMessage(state.directive || '', targetPath, planMode, state.language === 'ko')]
+      ? [buildAuthoringMessage(state.directive || '', targetPaths, planMode, state.language === 'ko')]
       : undefined,
   });
   const execTokenManager = new TokenBudgetManager({
@@ -203,7 +211,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
 
   const updatedHistory: ConversationMessage[] = [...nodeExecute];
   if (nodeExecute.length === 0) {
-    updatedHistory.push({ role: 'user', content: buildAuthoringMessage(state.directive || '', targetPath, planMode, state.language === 'ko') });
+    updatedHistory.push({ role: 'user', content: buildAuthoringMessage(state.directive || '', targetPaths, planMode, state.language === 'ko') });
   }
 
   // ── Tool-call round: short-circuit to the tool node (stay in execute loop) ──
@@ -272,63 +280,75 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     }
   }
 
-  // ── Authoring done — extract the document, write to disk, record session ──
+  // ── Authoring done — extract the document(s), write to disk, record session.
+  //    Generate mode may emit MULTIPLE `<file>` tags (a MECE plan split); write
+  //    every recognized file. Bound targets accept only files whose basename
+  //    matches a declared target (honoring the plan/ dir); unbound accepts any
+  //    safe LLM-emitted path (dusk-mounding-pilot fallback). ──
+  const boundTargets = state.resolvedAction?.target ?? [];
+  const writtenFiles: Array<{ relPath: string; content: string }> = [];
   let resolvedTargetRelPath = getTargetPath(state);
   let generatedDocument: string | undefined;
 
   if (planMode !== 'refactor') {
-    const files = orchestrator.getRegistry().getAllFiles();
-    const matchedFile = resolvedTargetRelPath
-      ? files.find(f => f.path.includes(path.basename(resolvedTargetRelPath!)))
-      : files[0];
-    generatedDocument = matchedFile?.content || undefined;
-
-    // dusk-mounding-pilot writer hardening — promote a safe LLM-emitted path
-    // if RAC.target was empty, so a fully streamed document is not lost.
-    if (generatedDocument && !resolvedTargetRelPath && matchedFile?.path) {
-      const emitted = matchedFile.path;
-      if (isSafeStagingPath(emitted)) {
-        console.warn(`⚠️ [Planner:Execute] RAC.target empty — falling back to LLM-emitted path "${emitted}".`);
-        resolvedTargetRelPath = emitted;
-      } else {
-        console.error(`❌ [Planner:Execute] RAC.target empty AND emitted path "${emitted}" failed whitelist; refusing to write.`);
+    const files = orchestrator.getRegistry().getAllFiles().filter(f => (f.content ?? '').trim().length > 0);
+    const boundByBasename = new Map(boundTargets.map(t => [path.basename(t), t]));
+    for (const f of files) {
+      let relPath: string | undefined;
+      if (boundByBasename.size > 0) {
+        relPath = boundByBasename.get(path.basename(f.path));
+      } else if (isSafeStagingPath(f.path)) {
+        relPath = f.path; // unbound — accept any safe LLM-emitted path
       }
+      if (!relPath) {
+        console.warn(`⚠️ [Planner:Execute] Skipping <file> "${f.path}" — not a declared target / unsafe path.`);
+        continue;
+      }
+      writtenFiles.push({ relPath, content: f.content });
     }
+    generatedDocument = writtenFiles.length > 0 ? writtenFiles.map(w => w.content).join('\n\n') : undefined;
   } else if (resolvedTargetRelPath) {
     // refactor: edits were applied via edit_file; read back the file for session metadata.
     const editTargetPath = path.join(state.featurePath, resolvedTargetRelPath);
     try {
       generatedDocument = await fsPromises.readFile(editTargetPath, 'utf-8');
+      if (generatedDocument) writtenFiles.push({ relPath: resolvedTargetRelPath, content: generatedDocument });
     } catch {
       console.log(`📝 [Planner:Execute] No target file found (no edits made)`);
     }
   }
 
-  if (generatedDocument && resolvedTargetRelPath && planMode !== 'refactor') {
-    const targetAbsPath = path.join(state.featurePath, resolvedTargetRelPath);
+  if (writtenFiles.length > 0 && planMode !== 'refactor') {
     if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
       state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
     }
-    try {
-      await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
-      await fsPromises.writeFile(targetAbsPath, generatedDocument, 'utf-8');
-      console.log(`📝 [Planner:Execute] Written ${generatedDocument.length} chars to ${resolvedTargetRelPath}`);
-    } catch (error: any) {
-      console.error(`❌ [Planner:Execute] Failed to write document: ${error.message}`);
-      throw error;
+    for (const { relPath, content } of writtenFiles) {
+      const targetAbsPath = path.join(state.featurePath, relPath);
+      try {
+        await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
+        await fsPromises.writeFile(targetAbsPath, content, 'utf-8');
+        console.log(`📝 [Planner:Execute] Written ${content.length} chars to ${relPath}`);
+      } catch (error: any) {
+        console.error(`❌ [Planner:Execute] Failed to write document: ${error.message}`);
+        throw error;
+      }
+      notifyFileTree(state, relPath);
     }
-    notifyFileTree(state, resolvedTargetRelPath);
+    resolvedTargetRelPath = writtenFiles[0].relPath; // primary for session record
   }
 
   if (generatedDocument && resolvedTargetRelPath) {
+    // One run entry per turn (combined char count); refine-impact per doc.
     await recordSessionRun(state, planMode, resolvedTargetRelPath, generatedDocument);
-    await emitRefineImpactIfPrd(state, planMode, resolvedTargetRelPath, responseText);
+    for (const { relPath } of writtenFiles) {
+      await emitRefineImpactIfPrd(state, planMode, relPath, responseText);
+    }
   }
 
-  // Writer integrity guard — in generate mode a `<file>` MUST have been emitted.
-  // The context is clean and re-anchored, so a miss is a genuine terminal error
-  // (no authoring-turn self-loop — that was the monolith's crutch).
-  if (!generatedDocument && planMode === 'generate') {
+  // Writer integrity guard — in generate mode at least one `<file>` MUST have
+  // been emitted. The context is clean and re-anchored, so a miss is a genuine
+  // terminal error (no authoring-turn self-loop — that was the monolith's crutch).
+  if (writtenFiles.length === 0 && planMode === 'generate') {
     const missTarget = resolvedTargetRelPath ?? '(unresolved)';
     console.error(
       `❌ [Planner:Execute] NO <file> artifact for target "${missTarget}" — response was not wrapped in a <file> tag. Nothing written to disk.`,
@@ -436,12 +456,13 @@ async function emitRefineImpactIfPrd(
   responseText: string,
 ): Promise<void> {
   if (planMode !== 'refactor') return;
-  if (path.basename(relPath) !== 'prd.md') return;
+  // Any revised plan document under `plan/` cascades — not only `prd.md`.
+  if (!/^plan\/[^/]+\.md$/.test(relPath)) return;
   try {
     const { emitRefineImpactAlert } = await import('../../../../../../core/refine/refineImpactAlert');
     await emitRefineImpactAlert({
       featurePath: state.featurePath,
-      updatedDoc: 'prd.md',
+      updatedDoc: path.basename(relPath),
       llmResponse: responseText,
       directive: state.directive,
     });

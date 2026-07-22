@@ -144,6 +144,13 @@ export interface ParsedDecomposeResponse {
   /** Design-redirect choice when task requires spec that is missing (see SpecClarify). */
   specClarify?: SpecClarify;
   /**
+   * Cross-intent PRD-sync decision. Present when the directive asks to keep the
+   * related PRD in sync AND the LLM resolved which `plan/*.md` docs to update.
+   * `targets` are chosen from the in-context plan pool. Consumed by decompose to
+   * append a single-owner `doc` sync task (`isPrdSyncTask`). Absent ⇒ no sync.
+   */
+  prdSync?: { targets: string[]; reason?: string };
+  /**
    * Tier 3 cross-task analysis brief — free-form markdown body of
    * `<analysis>...</analysis>`. Sealed by Decompose, injected into every
    * per-task `plan` so each task knows the job-level macro goal /
@@ -374,6 +381,28 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       }
     }
 
+    let prdSync: { targets: string[]; reason?: string } | undefined;
+    const prdSyncMatch = rawResponse.match(/<prdSync>\s*([\s\S]*?)\s*<\/prdSync>/i);
+    if (prdSyncMatch) {
+      const body = prdSyncMatch[1].trim();
+      if (body && body !== '{}' && body.toLowerCase() !== 'null') {
+        try {
+          const parsed = JSON.parse(prepareTagJson(body));
+          const targets = Array.isArray(parsed?.targets)
+            ? parsed.targets.filter((t: unknown): t is string => typeof t === 'string' && /^plan\/[^/]+\.md$/.test(t))
+            : [];
+          if (targets.length > 0) {
+            prdSync = { targets, reason: typeof parsed.reason === 'string' ? parsed.reason : undefined };
+            console.log(`📝 [Decompose] prdSync requested for ${targets.join(', ')}`);
+          } else {
+            console.warn('⚠️  [Decompose] <prdSync> had no valid plan/*.md targets, ignoring');
+          }
+        } catch (error) {
+          console.warn('⚠️  [Decompose] Failed to parse <prdSync> tag content:', error);
+        }
+      }
+    }
+
     return {
       tasks,
       referenceRequests,
@@ -383,6 +412,7 @@ export function parseLLMResponse(rawResponse: string): ParsedDecomposeResponse {
       directHints,
       specClarify,
       analysis,
+      prdSync,
     };
     
   } catch (error) {

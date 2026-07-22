@@ -335,8 +335,14 @@ export interface TaskExecuteHook {
   /**
    * Variant template paths. When undefined the generic
    * `jobs/code/nodes/execute/variants/default/{base,rules}` pair is used.
+   *
+   * May be a resolver function of the current task when a single bundle needs
+   * per-instance template dispatch (e.g. the `doc` bundle chooses between the
+   * docgen template and the PRD-sync template based on `isPrdSyncTask(task)`).
    */
-  templatePaths?: { base: string; rules: string };
+  templatePaths?:
+    | { base: string; rules: string }
+    | ((task: { type?: string; prdSyncTargets?: string[] }) => { base: string; rules: string });
   /**
    * Skip the injected examples block (`jobs/code/base/examples`). Replaces
    * the pre-T6b-ι `skipHeavyContext` OR chain + `taskType !== 'setup'`

@@ -89,7 +89,6 @@ npm run dev architect code workspace/${workspaceName}/ui-1.0.0
 /** Template guide messages (CLI always uses English) */
 const TEMPLATE_GUIDE = {
   markerGuide: 'Remove the ant:template line above after writing. The system treats this file as empty while the marker remains.',
-  prdGuide: 'Write your PRD here, or use Planner mode for interactive generation.',
   directiveGuide: 'Add your directive here.',
 } as const;
 
@@ -128,21 +127,10 @@ export async function initFeature(workspaceName: string, featureName: string): P
   await ensureCanonicalStructure(featureDir);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Source templates (plan/, meta/directives/)
+  // Source templates (meta/directives/)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  // ✅ PRD is canonical single file: plan/prd.md
-  const prdTemplate = `<!-- ant:template -->
-<!-- ${TEMPLATE_GUIDE.markerGuide} -->
-# ${featureName} - PRD
-
-<!-- ${TEMPLATE_GUIDE.prdGuide} -->
-`;
-  fs.writeFileSync(
-    path.join(featureDir, "plan/prd.md"),
-    prdTemplate,
-    "utf8"
-  );
+  // No PRD skeleton — `plan/` stays empty; the plan job authors LLM-named
+  // doc(s) into it on demand.
 
   // Create placeholder directive.md files
   const directiveTemplate = `<!-- ant:template -->

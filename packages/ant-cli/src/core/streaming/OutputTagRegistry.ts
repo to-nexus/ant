@@ -804,6 +804,19 @@ register({
     'Emit `<specClarify>{...JSON...}</specClarify>` only when the design detect phase asks for it. Body is internal state — never user-facing.',
 });
 
+register({
+  name: 'prdSync',
+  pattern: /<prdSync>\s*[\s\S]*?\s*<\/prdSync>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['consumed-suppressed'],
+    persistence: ['sealed-state'],
+    blocking: 'non-blocking',
+  },
+  promptContract:
+    'Emit `<prdSync>{"targets":["plan/x.md"],"reason":"..."}</prdSync>` at code/design decompose ONLY when the directive asks to keep the related PRD in sync. `targets` are the in-context `plan/*.md` docs to update. Body is internal state — never user-facing.',
+});
+
 // ── intent registry: workspace-scope tags (still under the metadata axis) ──
 
 register({

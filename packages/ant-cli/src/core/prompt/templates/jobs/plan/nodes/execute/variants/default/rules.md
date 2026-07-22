@@ -4,7 +4,7 @@
 
 ### Generate Mode (full document creation)
 
-Output the complete document wrapped in a single `<file>` XML tag, using the **target path** from the system prompt:
+Output each target document wrapped in its OWN `<file>` XML tag, using the target path(s) from the system prompt:
 
 ```
 <file path="{target_path}">
@@ -13,7 +13,8 @@ Output the complete document wrapped in a single `<file>` XML tag, using the **t
 </file>
 ```
 
-- The `path` attribute MUST match the target path in the "Target Path" section above.
+- The `path` attribute MUST match a target path listed in the "Target Path(s)" section above. Do NOT emit a `<file>` for any other path.
+- Most plans are a SINGLE document. When the system prompt lists MULTIPLE target paths, emit one `<file>` per path and partition the sections across them with NO overlap (MECE); each file must be complete.
 - Everything inside the `<file>` tag is the document content. Do NOT wrap it in code fences — output raw markdown inside the tag.
 - In generate mode the `<file>` tag is the ONLY write path; there is no other way to persist the document.
 - A brief acknowledgement to the user (one or two sentences) goes in a `<reply>...</reply>` tag. Free text outside any registered tag is silently dropped.
