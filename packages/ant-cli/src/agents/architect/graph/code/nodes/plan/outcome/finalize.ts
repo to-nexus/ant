@@ -135,6 +135,7 @@ export function finalizePlanOutcome(
     // leak a spurious +1 into the execute node's first streak computation
     // (plan-loop accrual: shy-crushing-bloom).
     _noProgressStreak: 0,
+    _noOutputStreak: 0,
     _lastToolBatchAllDupReads: false,
     conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
     llmResponse: isDone

@@ -100,6 +100,34 @@ export const NO_PROGRESS_HARD_CAP = 15;
 export const DRAIN_FINALIZE_MARGIN = 5;
 
 /**
+ * No-forward-output circuit breaker (cyan-catching-cedar RCA, 2026-07-23).
+ *
+ * Complements `NO_PROGRESS_HARD_CAP`. That cap counts provably-zero-information
+ * rounds (dup reads / repeat commands / repeated text); it stays at 0 forever
+ * when a degenerate loop keeps issuing genuinely NOVEL reads — novel line
+ * ranges of already-read files, novel `search_code` — while producing no
+ * `<file>` / mutation / `<done>`. cyan-catching-cedar burned ~156 such rounds
+ * (final-verification, glm-5.2) before the user aborted.
+ *
+ * This cap bounds "consecutive execute turns with NO forward output" directly
+ * — the only reset is real forward output — so it is a hard ceiling for every
+ * model and task type regardless of read/search novelty. Ported from the
+ * design job's proven `NO_OUTPUT_HARD_CAP` (design/routers/executeRouter.ts):
+ * the code job's Safety Net C had ported design's dup-read counter + salvage
+ * but never this no-output window. Consumers: `routers/executeRouter.ts`
+ * (Safety Net C2, hard divert at the cap, BEFORE the toolCalls route) and
+ * `nodes/execute/drainFinalize.ts` (salvage from CAP − MARGIN = 25). Lives in
+ * `_noOutputStreak`.
+ *
+ * Cap rationale: 30 (design uses 25). The execute phase is preceded by a full
+ * plan phase that does the heavy reading, so sustained pure-read in execute is
+ * already suspicious; 30 leaves a small margin for verification tasks that
+ * inspect more files in execute, and the salvage soft-landing at 25 offers a
+ * `<done>` escape before the hard divert.
+ */
+export const NO_OUTPUT_HARD_CAP = 30;
+
+/**
  * Task Priority SSOT — normalized by (task type, task band).
  *
  * A task is defined by **type + band** (Three-Axis model). Priority is the
@@ -468,6 +496,28 @@ export interface ArchitectGraphState extends TriageableState {
    * would give a retry's first repeated sentence a spurious +1).
    */
   _recentExecuteTextHashes?: string[];
+  /**
+   * No-forward-output streak: consecutive execute turns that carried tool
+   * calls (or ran a tool-stripped salvage turn) but produced NO forward
+   * output — no streamed `<file>`, no tool mutation, no `<done>`. Behind the
+   * `NO_OUTPUT_HARD_CAP` circuit breaker (Safety Net C2) and the shared
+   * drain-finalize salvage. Increment/reset rule is single-owned by
+   * `computeNextNoOutputStreak` (`nodes/execute/drainFinalize.ts`); the
+   * execute node commits it on every return path.
+   *
+   * SEPARATE from `_noProgressStreak` because `computeNextNoProgressStreak`
+   * is shared with the PLAN tool-loop, which legitimately never emits a
+   * `<file>` — folding a no-output rule into that shared function would make
+   * every plan round accrue it. This channel is execute-only (the plan loop
+   * neither writes nor reads it). cyan-catching-cedar RCA: novel line-range
+   * re-reads keep `_noProgressStreak` at 0 for 156 rounds; this counter is
+   * the "rounds since forward output" signal that catches it.
+   *
+   * Task/attempt boundary resets to 0 at exactly the same sites as
+   * `_noProgressStreak` (everywhere `_executeCallIndex: 0` is emitted) — a
+   * missed reset would re-trip the breaker on a retry's first router pass.
+   */
+  _noOutputStreak?: number;
   /**
    * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
    * verification plan entry, cached for the rest of the job.

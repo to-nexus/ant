@@ -38,10 +38,14 @@ describe('no-progress breaker — boundary resets (static)', () => {
       const src = codeLines(read(rel));
       const callIndexResets = (src.match(/_executeCallIndex: 0/g) ?? []).length;
       const streakResets = (src.match(/_noProgressStreak: 0/g) ?? []).length;
+      const outputStreakResets = (src.match(/_noOutputStreak: 0/g) ?? []).length;
       const dupFlagResets = (src.match(/_lastToolBatchAllDupReads: false/g) ?? []).length;
       const textRingResets = (src.match(/_recentExecuteTextHashes: \[\]/g) ?? []).length;
       expect(callIndexResets).toBeGreaterThan(0);
       expect(streakResets).toBe(callIndexResets);
+      // cyan-catching-cedar: the no-output breaker channel must reset in
+      // lockstep with the no-progress streak or a retry re-trips C2 instantly.
+      expect(outputStreakResets).toBe(callIndexResets);
       expect(dupFlagResets).toBe(callIndexResets);
       expect(textRingResets).toBe(callIndexResets);
     });
@@ -50,10 +54,13 @@ describe('no-progress breaker — boundary resets (static)', () => {
   it('plan handleRetryEntry resets the breaker channels in BOTH mutation and delta', () => {
     const src = read('src/agents/architect/graph/code/nodes/plan/entry/resolve.ts');
     expect(src).toMatch(/state\._noProgressStreak = 0/);
+    expect(src).toMatch(/state\._noOutputStreak = 0/);
     expect(src).toMatch(/state\._recentExecuteTextHashes = \[\]/);
     expect(src).toMatch(/state\._lastToolBatchAllDupReads = false/);
     const deltaResets = (src.match(/_noProgressStreak: 0/g) ?? []).length;
     expect(deltaResets).toBeGreaterThanOrEqual(1);
+    const deltaOutputResets = (src.match(/_noOutputStreak: 0/g) ?? []).length;
+    expect(deltaOutputResets).toBeGreaterThanOrEqual(1);
     const deltaRingResets = (src.match(/_recentExecuteTextHashes: \[\]/g) ?? []).length;
     expect(deltaRingResets).toBeGreaterThanOrEqual(1);
   });
@@ -61,6 +68,7 @@ describe('no-progress breaker — boundary resets (static)', () => {
   it('worker subgraph inherits the channels via the CodeGraphChannels spread', () => {
     const graphSrc = read('src/agents/architect/graph/code/graph.ts');
     expect(graphSrc).toMatch(/_noProgressStreak:\s*Annotation/);
+    expect(graphSrc).toMatch(/_noOutputStreak:\s*Annotation/);
     expect(graphSrc).toMatch(/_lastToolBatchAllDupReads:\s*Annotation/);
     expect(graphSrc).toMatch(/_recentExecuteTextHashes:\s*Annotation/);
   });

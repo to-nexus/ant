@@ -19,7 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { routeAfterExecute } from '../../src/agents/architect/graph/code/routers/executeRouter';
-import { NO_PROGRESS_HARD_CAP } from '../../src/agents/architect/graph/code/state';
+import { NO_PROGRESS_HARD_CAP, NO_OUTPUT_HARD_CAP } from '../../src/agents/architect/graph/code/state';
 
 function makeState(overrides: Record<string, any> = {}) {
   return {
@@ -81,6 +81,28 @@ describe('executeRouter — Safety Net C (no-progress breaker)', () => {
         currentTask: { id: 't', name: 'n', type, priority: 1 },
       });
       expect(routeAfterExecute(clean)).toBe('tool');
+    }
+  });
+
+  it('Safety Net C2 (no-output) diverts at NO_OUTPUT_HARD_CAP with pending tool calls (cyan-catching-cedar)', () => {
+    // _noProgressStreak stays 0 (novel reads); _noOutputStreak alone trips.
+    const state = makeState({ _noProgressStreak: 0, _noOutputStreak: NO_OUTPUT_HARD_CAP });
+    expect(routeAfterExecute(state)).toBe('checkTaskStatus');
+  });
+
+  it('C2 routes to tool at NO_OUTPUT_HARD_CAP − 1 (no premature divert)', () => {
+    const state = makeState({ _noProgressStreak: 0, _noOutputStreak: NO_OUTPUT_HARD_CAP - 1 });
+    expect(routeAfterExecute(state)).toBe('tool');
+  });
+
+  it('C2 is task-type-blind (R1): identical routing across task types', () => {
+    for (const type of ['feature', 'ui', 'verification', 'test-code']) {
+      const tripped = makeState({
+        _noProgressStreak: 0,
+        _noOutputStreak: NO_OUTPUT_HARD_CAP,
+        currentTask: { id: 't', name: 'n', type, priority: 1 },
+      });
+      expect(routeAfterExecute(tripped)).toBe('checkTaskStatus');
     }
   });
 

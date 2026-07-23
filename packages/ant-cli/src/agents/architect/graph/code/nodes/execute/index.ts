@@ -31,6 +31,7 @@ import { getTools } from './tools';
 import {
   applyDrainFinalization,
   computeNextNoProgressStreak,
+  computeNextNoOutputStreak,
   computeNextRecentTextHashes,
   isRepeatedAssistantText,
 } from './drainFinalize';
@@ -719,6 +720,7 @@ export async function execute(
         _lastToolBatchAllDupReads: false,
         // Merge instruction injected = productive turn, not a degenerate loop.
         _noProgressStreak: 0,
+        _noOutputStreak: 0,
         _recentExecuteTextHashes: nextTextRing,
         recursionCount: state.recursionCount,
         recursionLimit: state.recursionLimit,
@@ -797,11 +799,23 @@ export async function execute(
       drainTruncatedNoFile: drainFinalizing && maxTokensTruncatedNoFile,
     });
 
+    // No-forward-output streak (cyan-catching-cedar RCA): counts consecutive
+    // execute turns with tool calls but zero <file>/mutation/<done>, regardless
+    // of read/search novelty — the "rounds since forward output" signal that
+    // `_noProgressStreak` (info-gain only) cannot see. Reuses the same
+    // `progressed` disjunction; committed on every return path below.
+    const nextNoOutputStreak = computeNextNoOutputStreak(state, {
+      progressed: streamedInThisCall.length > 0 || toolMutatedThisTurn || explicitDone,
+      toolCallCount: toolCalls.length,
+      drainFinalizing,
+    });
+
     console.log(
       `[diag] execute return: ` +
       `streamed=${streamedInThisCall.length} ` +
       `toolMut=${toolMutatedThisTurn} ` +
       `noProgress=${nextNoProgressStreak} ` +
+      `noOutput=${nextNoOutputStreak} ` +
       `planText.len=${state.planText?.length ?? 0} ` +
       `nodeExec.len=${nodeExecute.length} ` +
       `_activePhase=${state._activePhase} ` +
@@ -957,6 +971,7 @@ export async function execute(
           _lastToolBatchMutatedFiles: false,
           _lastToolBatchAllDupReads: false,
           _noProgressStreak: nextNoProgressStreak,
+          _noOutputStreak: nextNoOutputStreak,
           _recentExecuteTextHashes: nextTextRing,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -1014,6 +1029,7 @@ export async function execute(
             _lastToolBatchAllDupReads: false,
             // Subagent reports delivered = novel information, not a loop.
             _noProgressStreak: 0,
+            _noOutputStreak: 0,
             _recentExecuteTextHashes: nextTextRing,
             recursionCount: state.recursionCount,
             recursionLimit: state.recursionLimit,
@@ -1058,6 +1074,7 @@ export async function execute(
       _lastToolBatchMutatedFiles: false,
       _lastToolBatchAllDupReads: false,
       _noProgressStreak: nextNoProgressStreak,
+      _noOutputStreak: nextNoOutputStreak,
       _recentExecuteTextHashes: nextTextRing,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,

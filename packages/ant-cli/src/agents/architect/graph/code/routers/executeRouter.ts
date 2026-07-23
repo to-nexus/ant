@@ -18,7 +18,7 @@
  * 에서만 발동).
  */
 
-import { ArchitectGraphState, RECURSION_DRAIN_THRESHOLD, NO_PROGRESS_HARD_CAP } from '../state';
+import { ArchitectGraphState, RECURSION_DRAIN_THRESHOLD, NO_PROGRESS_HARD_CAP, NO_OUTPUT_HARD_CAP } from '../state';
 import { hasRepeatedRecentFailure } from '../nodes/tool/utils/helpers';
 import { isVerificationTask } from '../tasks/verification';
 import { hooksIfActive } from '../tasks/_shared/registry';
@@ -81,6 +81,7 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
     `   _verifyEntered: ${state._verifyEntered}\n` +
     `   selfVerifyOnDone: ${selfVerifyOnDone}\n` +
     `   noProgressStreak: ${state._noProgressStreak ?? 0}\n` +
+    `   noOutputStreak: ${state._noOutputStreak ?? 0}\n` +
     `   planTextLen: ${state.planText?.length ?? 0}`
   );
   
@@ -122,6 +123,25 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   if (noProgressStreak >= NO_PROGRESS_HARD_CAP) {
     console.warn(`⚠️  [Router] No-progress circuit breaker (streak=${noProgressStreak} ≥ ${NO_PROGRESS_HARD_CAP})`);
     console.warn(`   🚨 Forcing checkTaskStatus (Safety Net C)`);
+    return 'checkTaskStatus';
+  }
+
+  // Safety Net C2: no-FORWARD-OUTPUT circuit breaker (all task types, R1
+  // blind; read-only — `_noOutputStreak` is computed by the execute node, see
+  // `computeNextNoOutputStreak`). Where Safety Net C bounds provably-zero-
+  // information loops (duplicate reads), C2 bounds loops whose rounds each
+  // carry a genuinely NOVEL read/search yet produce no `<file>` / mutation /
+  // `<done>` (cyan-catching-cedar: 156 novel-range-read rounds that never
+  // moved `_noProgressStreak` off 0). Same placement rationale as C — ABOVE
+  // the toolCalls route, since the degenerate turn always carries a pending
+  // read/search call — and same landing: checkTaskStatus' `no_done_signal`
+  // retryable violation → fresh-conversation retry via `handleRetryEntry`.
+  // Execute-only: the plan tool-loop never emits `<file>`, so `_noOutputStreak`
+  // is neither written nor read there (no planRouter counterpart).
+  const noOutputStreak = state._noOutputStreak || 0;
+  if (noOutputStreak >= NO_OUTPUT_HARD_CAP) {
+    console.warn(`⚠️  [Router] No-output circuit breaker (streak=${noOutputStreak} ≥ ${NO_OUTPUT_HARD_CAP})`);
+    console.warn(`   🚨 Forcing checkTaskStatus (Safety Net C2)`);
     return 'checkTaskStatus';
   }
 
