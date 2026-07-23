@@ -26,6 +26,12 @@
 - If planText is empty or indicates no errors: output `<done>true</done>` immediately
 - `read_file` is permitted for files referenced in the remediation plan
 
+### Prescription vs Observed File Reality
+
+**Principle**: The remediation plan was authored from failure output — it may not have read every assertion in the files it targets. You hold the actual file content.
+
+**Constraint**: If a prescribed change alters shared state (setup values, fixtures, harness parameters) that a currently-passing assertion in the same target file also observes, and applying it as written would contradict that assertion, do NOT apply it verbatim. Adjust the fix so the file's whole assertion set can pass while preserving the plan's root-cause intent, and state the deviation and its reason in your output. Silently applying a self-contradictory recipe converts one failure into two.
+
 ### Error-Specific Constraints
 
 Scope is determined by the remediation mode carried through the plan's `rootCauseSelfCheck.mode` field (defaults to `patch` when absent).
