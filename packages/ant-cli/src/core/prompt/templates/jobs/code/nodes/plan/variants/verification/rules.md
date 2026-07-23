@@ -116,6 +116,16 @@ Priority ordering:
 - The plan must account for ALL errors discovered across all diagnostic commands. Do not plan a fix for only the first error — the execution phase expects a comprehensive plan.
 - If the same file needs multiple changes, consolidate them into a single `modify` entry with multiple `changes`.
 
+### Remediation Blast Radius
+
+**Principle**: A batch's success criterion is that the whole assertion surface of every file it modifies passes — not just the assertions that are failing today. A prescribed change to shared state that multiple tests observe (setup values, fixtures, harness parameters, timing/volume profiles) perturbs every assertion reading that state, including the currently-passing ones.
+
+**Constraints**:
+- Before finalizing a batch whose `changes` alter shared state inside a target file, read that file's OTHER assertions and check each prescribed value against them. A recipe that cures the failing assertion but breaches a currently-passing sibling assertion is not a fix — it authors the next cycle's failure in advance.
+- Error sub-tasks apply your `changes` without a planning phase of their own. Nothing downstream re-derives the recipe — it must be correct at authoring time.
+
+⚠️ **Blind spot**: The failure output enumerates only the failing axis. The currently-passing assertions in the same file are invisible in the diagnostics, yet they are exactly what a setup/fixture change breaks.
+
 ### Root Cause Self-Check
 
 **Principle**: Before finalizing a file-local patch, verify the fix is not covering a symptom whose real source is upstream. Large N × identical patch plans are a leading indicator of an unaddressed upstream configuration.
