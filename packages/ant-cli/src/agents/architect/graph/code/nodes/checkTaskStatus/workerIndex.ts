@@ -105,6 +105,7 @@ export async function workerCheckTaskStatus(
       _supersededByBatchSplit: undefined,
       _executeCallIndex: 0,
       _noProgressStreak: 0,
+      _noOutputStreak: 0,
       _recentExecuteTextHashes: [],
       _lastToolBatchAllDupReads: false,
       commandHistory: [],
@@ -176,6 +177,7 @@ export async function workerCheckTaskStatus(
       planText: '',
       _executeCallIndex: 0,
       _noProgressStreak: 0,
+      _noOutputStreak: 0,
       _recentExecuteTextHashes: [],
       _lastToolBatchAllDupReads: false,
       commandHistory: [],
@@ -228,6 +230,7 @@ export async function workerCheckTaskStatus(
     // would still see a tripped no-progress streak and instantly re-divert,
     // burning the whole retry budget in seconds (22af62056 failure class).
     _noProgressStreak: 0,
+    _noOutputStreak: 0,
     _recentExecuteTextHashes: [],
     _lastToolBatchAllDupReads: false,
     commandHistory: [],

@@ -185,6 +185,7 @@ async function handleRetryEntry(
   // resets for the same reason — inherited failures would let Safety Net B
   // (≥5 recent failures) re-divert on the retry's first pass.
   state._noProgressStreak = 0;
+  state._noOutputStreak = 0;
   state._recentExecuteTextHashes = [];
   state._lastToolBatchAllDupReads = false;
   state.commandHistory = [];
@@ -197,6 +198,7 @@ async function handleRetryEntry(
     _executeCallIndex: 0,
     violations: [],
     _noProgressStreak: 0,
+    _noOutputStreak: 0,
     _recentExecuteTextHashes: [],
     _lastToolBatchAllDupReads: false,
     commandHistory: [],

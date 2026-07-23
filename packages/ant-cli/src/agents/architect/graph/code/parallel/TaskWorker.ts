@@ -299,6 +299,7 @@ export class TaskWorker<T extends BaseTask> {
       _lastToolBatchMutatedFiles: false,
       _lastToolBatchAllDupReads: false,
       _noProgressStreak: 0,
+      _noOutputStreak: 0,
       _recentExecuteTextHashes: [],
       commandHistory: [],
       toolResults: [],

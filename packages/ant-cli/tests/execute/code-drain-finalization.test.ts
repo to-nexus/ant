@@ -42,16 +42,19 @@ import { resolve } from 'node:path';
 import {
   applyDrainFinalization,
   computeNextNoProgressStreak,
+  computeNextNoOutputStreak,
   computeNextRecentTextHashes,
   isRepeatedAssistantText,
 } from '../../src/agents/architect/graph/code/nodes/execute/drainFinalize';
 import {
   NO_PROGRESS_HARD_CAP,
+  NO_OUTPUT_HARD_CAP,
   DRAIN_FINALIZE_MARGIN,
 } from '../../src/agents/architect/graph/code/state';
 
 const TOOLS = [{ name: 'read_file' }, { name: 'edit_file' }];
 const SALVAGE_AT = NO_PROGRESS_HARD_CAP - DRAIN_FINALIZE_MARGIN;
+const OUTPUT_SALVAGE_AT = NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN;
 
 function userMsg(content: string | any[]) {
   return { role: 'user', content };
@@ -113,6 +116,79 @@ describe('computeNextNoProgressStreak — truth table', () => {
     expect(computeNextNoProgressStreak(state, {
       progressed: true, drainFinalizing: true, toolCallCount: 0, drainTruncatedNoFile: true,
     })).toBe(0);
+  });
+});
+
+// ─── 1a2. No-forward-output streak (cyan-catching-cedar) ───
+
+describe('computeNextNoOutputStreak — truth table', () => {
+  it('resets to 0 on forward output (streamed file / mutation / done)', () => {
+    const state = { _noOutputStreak: 12 };
+    expect(computeNextNoOutputStreak(state, {
+      progressed: true, toolCallCount: 1, drainFinalizing: false,
+    })).toBe(0);
+  });
+
+  it('increments on a tool round that produced no forward output (regardless of read novelty)', () => {
+    const state = { _noOutputStreak: 7 };
+    expect(computeNextNoOutputStreak(state, {
+      progressed: false, toolCallCount: 1, drainFinalizing: false,
+    })).toBe(8);
+  });
+
+  it('increments on a tool-stripped salvage turn that produced nothing (streak must not freeze)', () => {
+    const state = { _noOutputStreak: OUTPUT_SALVAGE_AT };
+    expect(computeNextNoOutputStreak(state, {
+      progressed: false, toolCallCount: 0, drainFinalizing: true,
+    })).toBe(OUTPUT_SALVAGE_AT + 1);
+  });
+
+  it('resets on a plain reasoning-only re-entry (no tools, not finalizing)', () => {
+    const state = { _noOutputStreak: 5 };
+    expect(computeNextNoOutputStreak(state, {
+      progressed: false, toolCallCount: 0, drainFinalizing: false,
+    })).toBe(0);
+  });
+
+  it('starts from 0 when the channel is unset', () => {
+    expect(computeNextNoOutputStreak({}, {
+      progressed: false, toolCallCount: 1, drainFinalizing: false,
+    })).toBe(1);
+  });
+
+  it('cyan-catching-cedar replay: 156 novel-read rounds reach the breaker at NO_OUTPUT_HARD_CAP, not 156', () => {
+    // final-verification looped ~156 rounds of NOVEL read_file (new line
+    // ranges) + novel search_code, zero edits, zero <done>. Each round is
+    // information-bearing so _noProgressStreak stays 0; _noOutputStreak is the
+    // signal that catches it.
+    let state = { _noOutputStreak: 0 };
+    let breakerRound = -1;
+    for (let round = 1; round <= 156; round++) {
+      state = {
+        _noOutputStreak: computeNextNoOutputStreak(state, {
+          progressed: false,      // no <file>/mutation/<done>
+          toolCallCount: 1,       // a novel read or search every round
+          drainFinalizing: false,
+        }),
+      };
+      if (breakerRound < 0 && state._noOutputStreak >= NO_OUTPUT_HARD_CAP) breakerRound = round;
+    }
+    expect(breakerRound).toBe(NO_OUTPUT_HARD_CAP); // ~30, not 156
+  });
+
+  it('edits-through-round-18 never trip it: any forward-output round resets the window', () => {
+    // The incident edited through round 18 before circling. Interleaved edits
+    // must keep the window at 0 — no false positive for productive read→edit.
+    let state = { _noOutputStreak: 0 };
+    for (let round = 1; round <= 18; round++) {
+      const producedOutput = round % 3 === 0; // an edit every 3rd round
+      state = {
+        _noOutputStreak: computeNextNoOutputStreak(state, {
+          progressed: producedOutput, toolCallCount: 1, drainFinalizing: false,
+        }),
+      };
+      expect(state._noOutputStreak).toBeLessThan(NO_OUTPUT_HARD_CAP);
+    }
   });
 });
 
@@ -204,7 +280,7 @@ describe('applyDrainFinalization — code execute', () => {
     expect(tools).toEqual([]);
     const content = messages[0].content as any[];
     expect(content[0]).toEqual({ type: 'text', text: 'apply the plan' });
-    expect(content[1].text).toContain('no progress');
+    expect(content[1].text).toContain('no file output');
     expect(content[1].text).toContain('<file path="...">');
     expect(content[1].text).toContain('<done>true</done>');
   });
@@ -217,6 +293,25 @@ describe('applyDrainFinalization — code execute', () => {
     expect(drainFinalizing).toBe(false);
     expect(tools).toBe(TOOLS);
     expect(messages[0].content).toBe('go');
+  });
+
+  it('ALSO fires on the no-output streak at NO_OUTPUT_HARD_CAP − MARGIN (cyan-catching-cedar)', () => {
+    const messages = [userMsg('inspect the tests')];
+    const { tools, drainFinalizing } = applyDrainFinalization(
+      { _noProgressStreak: 0, _noOutputStreak: OUTPUT_SALVAGE_AT }, messages, TOOLS,
+    );
+    expect(drainFinalizing).toBe(true);
+    expect(tools).toEqual([]);
+    const content = messages[0].content as any[];
+    expect(content[1].text).toContain('no file output');
+  });
+
+  it('does not fire on the no-output streak just below its threshold', () => {
+    const messages = [userMsg('go')];
+    const { drainFinalizing } = applyDrainFinalization(
+      { _noProgressStreak: 0, _noOutputStreak: OUTPUT_SALVAGE_AT - 1 }, messages, TOOLS,
+    );
+    expect(drainFinalizing).toBe(false);
   });
 
   it('persists for every streak value up to and past the breaker (not one-shot)', () => {
@@ -277,6 +372,12 @@ describe('code execute node — return-path channel commits (static)', () => {
     expect(mutatedCommits.length).toBeGreaterThanOrEqual(4);
     expect(streakCommits.length).toBe(mutatedCommits.length);
     expect(dupFlagResets.length).toBe(mutatedCommits.length);
+  });
+
+  it('commits _noOutputStreak on every return path that commits _noProgressStreak (cyan-catching-cedar)', () => {
+    const streakCommits = src.match(/_noProgressStreak: (nextNoProgressStreak|0)/g) ?? [];
+    const outputCommits = src.match(/_noOutputStreak: (nextNoOutputStreak|0)/g) ?? [];
+    expect(outputCommits.length).toBe(streakCommits.length);
   });
 
   it('commits _recentExecuteTextHashes on every return path that commits the streak', () => {

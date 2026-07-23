@@ -23,11 +23,11 @@
  */
 
 import type { ArchitectGraphState } from '../../state';
-import { NO_PROGRESS_HARD_CAP, DRAIN_FINALIZE_MARGIN } from '../../state';
+import { NO_PROGRESS_HARD_CAP, DRAIN_FINALIZE_MARGIN, NO_OUTPUT_HARD_CAP } from '../../state';
 
 type StreakInputs = Pick<
   ArchitectGraphState,
-  '_noProgressStreak' | '_lastToolBatchAllDupReads'
+  '_noProgressStreak' | '_lastToolBatchAllDupReads' | '_noOutputStreak'
 >;
 
 /** Ring size for `_recentExecuteTextHashes` — covers the A/B-alternating
@@ -140,6 +140,37 @@ export function computeNextNoProgressStreak(
   return 0;
 }
 
+/**
+ * Single owner of the `_noOutputStreak` increment/reset rule (cyan-catching-
+ * cedar RCA). Complements `computeNextNoProgressStreak`: it counts consecutive
+ * execute turns with NO FORWARD OUTPUT, regardless of read/search novelty, so
+ * a loop that keeps issuing genuinely-novel reads (novel line ranges of
+ * already-read files, novel `search_code`) while producing no `<file>` /
+ * mutation / `<done>` is still bounded. Ported from the design job's
+ * `_noOutputCallCount` rule.
+ *
+ * - Forward output (streamed `<file>`, tool mutation, explicit `<done>`) → 0.
+ * - A turn with tool calls, OR a tool-stripped salvage turn that produced
+ *   nothing → +1. The `drainFinalizing` clause mirrors the `_noProgressStreak`
+ *   salvage rule: once tools are stripped the tool node stops running, so
+ *   without this the streak would freeze one short of the cap and the model
+ *   could emit prose forever below the breaker (sandy-building-dryad).
+ * - A plain reasoning-only re-entry (no tools, not finalizing) → 0.
+ *
+ * Kept a SEPARATE function (not folded into `computeNextNoProgressStreak`)
+ * because that function is shared with the plan tool-loop, whose rounds
+ * legitimately never emit `<file>`. This rule is execute-only.
+ */
+export function computeNextNoOutputStreak(
+  state: Pick<ArchitectGraphState, '_noOutputStreak'>,
+  turn: { progressed: boolean; toolCallCount: number; drainFinalizing: boolean },
+): number {
+  const prev = state._noOutputStreak || 0;
+  if (turn.progressed) return 0;
+  if (turn.toolCallCount > 0 || turn.drainFinalizing) return prev + 1;
+  return 0;
+}
+
 export interface DrainFinalizeResult<TTool> {
   tools: TTool[];
   drainFinalizing: boolean;
@@ -156,15 +187,21 @@ export function applyDrainFinalization<TTool>(
   messages: Array<{ role: string; content: string | any[] }>,
   tools: TTool[],
 ): DrainFinalizeResult<TTool> {
-  const streak = state._noProgressStreak || 0;
-  const drainFinalizing = streak >= NO_PROGRESS_HARD_CAP - DRAIN_FINALIZE_MARGIN;
+  const progressStreak = state._noProgressStreak || 0;
+  const outputStreak = state._noOutputStreak || 0;
+  const drainFinalizing =
+    progressStreak >= NO_PROGRESS_HARD_CAP - DRAIN_FINALIZE_MARGIN ||
+    outputStreak >= NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN;
 
   if (!drainFinalizing) {
     return { tools, drainFinalizing: false };
   }
 
-  const finalizeNote = `\n\n[SYSTEM] You have made no progress for ${streak} consecutive turns — ` +
-    `every recent read returned content you already have. Tools are no longer available. ` +
+  // Cover both triggers: `_noProgressStreak` (re-reading already-seen content)
+  // and `_noOutputStreak` (novel reads/searches but zero file output).
+  const streak = Math.max(progressStreak, outputStreak);
+  const finalizeNote = `\n\n[SYSTEM] You have produced no file output for ${streak} consecutive turns — ` +
+    `further reading or searching is not making progress. Tools are no longer available. ` +
     `Apply your remaining changes NOW from the context you have already gathered, using ` +
     `<file path="...">full file body</file> tags, or output <done>true</done> if the task's ` +
     `changes are already applied.`;
@@ -181,7 +218,7 @@ export function applyDrainFinalization<TTool>(
     }
   }
   console.warn(
-    `🧯 [Execute] No-progress salvage (streak=${streak} ≥ ${NO_PROGRESS_HARD_CAP - DRAIN_FINALIZE_MARGIN}) → tools stripped, forcing final output`,
+    `🧯 [Execute] No-output salvage (noProgress=${progressStreak}/${NO_PROGRESS_HARD_CAP}, noOutput=${outputStreak}/${NO_OUTPUT_HARD_CAP}) → tools stripped, forcing final output`,
   );
   return { tools: [], drainFinalizing: true };
 }
