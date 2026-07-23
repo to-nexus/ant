@@ -1,8 +1,10 @@
 /**
- * create_file handler — shadow tool (context-injected version)
+ * create_file handler — context-injected version
  *
- * When LLM incorrectly calls 'file', 'write_file', or 'create_file' tool
- * instead of using <file> XML tag, this handler gracefully creates the file.
+ * Creates a NEW file (fails if it already exists — parallel-safe via
+ * WorkerFileSystem.writeNewFile conflict detection). The `<file>` streaming
+ * tag remains the preferred authoring path (real-time streaming to the user);
+ * this tool is the sanctioned fallback for tool-loop contexts.
  */
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
@@ -84,7 +86,6 @@ export async function handleCreateFile(
     if (earlyReturn) return earlyReturn;
 
     console.log(`✅ [CreateFile] Created ${resolved.displayPath} (${content.length} chars)`);
-    console.log(`   ⚠️  Shadow tool used - LLM should use <file> XML tag instead`);
 
     await ctx.chatStatus.completeFileCreation(resolved.displayPath, content);
     ctx.recordFileTouch?.('create', resolved.displayPath);
@@ -108,15 +109,7 @@ export async function handleCreateFile(
       }
     }
 
-    const resultMsg = [
-      `File created successfully: ${resolved.displayPath} (${content.length} chars)`,
-      ``,
-      `⚠️ IMPORTANT: Do NOT use tool calls for file creation.`,
-      `Use the <file> XML tag instead, which enables real-time streaming:`,
-      `<file path="${resolved.displayPath}">`,
-      `...content...`,
-      `</file>`,
-    ].join('\n');
+    const resultMsg = `File created successfully: ${resolved.displayPath} (${content.length} chars)`;
 
     const sideEffects: ToolSideEffect[] = [
       { type: 'fileCreated', path: resolved.displayPath },

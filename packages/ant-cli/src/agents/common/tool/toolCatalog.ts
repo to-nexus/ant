@@ -6,7 +6,7 @@
  * - TOOL_HANDLERS: ToolName → handler function mapping
  * - TOOL_DISPLAY_NAMES: UI display strings
  * - JOB_TOOL_MATRIX: which job uses which tools
- * - CACHEABLE_TOOLS / SHADOW_ALIASES: behavioral metadata
+ * - CACHEABLE_TOOLS: behavioral metadata
  *
  * To add a new tool:
  *   1. Add value to ToolName enum
@@ -69,10 +69,6 @@ export enum ToolName {
   FIGMA_SCREENSHOT     = 'figma_get_screenshot',
   FIGMA_METADATA       = 'figma_get_metadata',
   FIGMA_VARIABLES      = 'figma_get_variable_defs',
-
-  // ── Shadow aliases (LLM sometimes uses these instead of CREATE_FILE) ──
-  FILE                 = 'file',
-  WRITE_FILE           = 'write_file',
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -129,19 +125,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   [ToolName.FIGMA_SCREENSHOT]:     '📸 Capturing Figma screenshot',
   [ToolName.FIGMA_METADATA]:       '📋 Fetching Figma metadata',
   [ToolName.FIGMA_VARIABLES]:      '🎨 Fetching Figma variables',
-  // Shadow aliases
-  [ToolName.FILE]:                 '📄 Creating file',
-  [ToolName.WRITE_FILE]:           '📄 Creating file',
 };
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SHADOW_ALIASES — tool names that resolve to another tool's handler
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-export const SHADOW_ALIASES: ReadonlyMap<ToolName, ToolName> = new Map([
-  [ToolName.FILE,       ToolName.CREATE_FILE],
-  [ToolName.WRITE_FILE, ToolName.CREATE_FILE],
-]);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CACHEABLE_TOOLS — read-only tools whose results can be cached
@@ -206,8 +190,6 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.CREATE_FILE,
     ToolName.DELETE_FILE,
     ToolName.MKDIR,
-    ToolName.FILE,          // shadow alias
-    ToolName.WRITE_FILE,    // shadow alias
     // Execute — (*) wrapped with CodeCommandPolicy
     ToolName.RUN_COMMAND,
     // Runtime route verification — only surfaced when persistent processes are
@@ -270,8 +252,6 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.EDIT_FILE,
     ToolName.CREATE_FILE,
     ToolName.MKDIR,
-    ToolName.FILE,          // shadow alias
-    ToolName.WRITE_FILE,    // shadow alias
     // Delegate (async explore subagent)
     ToolName.EXPLORE,
     ToolName.SUBAGENT_REPORT,
@@ -322,8 +302,13 @@ export const TOOL_SETS = {
     ToolName.SEARCH_REFERENCE,
   ] as ToolName[],
 
+  // CREATE_FILE is advertised in the code execute set only — plan/design jobs
+  // stream documents via the `<file>` tag and deliberately expose no create
+  // tool. Even in code execute, the `<file>` tag stays the preferred path
+  // (real-time streaming); create_file is the tool-loop fallback.
   codeBasic: [
-    ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.CREATE_FILE,
+    ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
     ToolName.EXPLORE,
     ToolName.SUBAGENT_REPORT,
@@ -516,16 +501,11 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
 
 /**
  * Resolve a string tool name to a ToolName enum value.
- * Returns the canonical name for shadow aliases (e.g., 'file' → CREATE_FILE).
- * Returns undefined only if the string is not a valid ToolName at all.
+ * Returns undefined if the string is not a valid ToolName.
  */
 export function resolveToolName(name: string): ToolName | undefined {
   const allValues = new Set(Object.values(ToolName) as string[]);
-  if (!allValues.has(name)) return undefined;
-
-  const asEnum = name as ToolName;
-  const alias = SHADOW_ALIASES.get(asEnum);
-  return alias ?? asEnum;
+  return allValues.has(name) ? (name as ToolName) : undefined;
 }
 
 /** Check if a tool name is a Figma MCP tool. */

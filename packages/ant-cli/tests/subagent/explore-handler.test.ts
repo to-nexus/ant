@@ -101,7 +101,7 @@ describe('catalog policy pins', () => {
       ToolName.EDIT_FILE, ToolName.CREATE_FILE, ToolName.DELETE_FILE, ToolName.MKDIR,
       ToolName.RUN_COMMAND, ToolName.HTTP_REQUEST, ToolName.DOWNLOAD_ASSET,
       ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_METADATA,
-      ToolName.FIGMA_VARIABLES, ToolName.FILE, ToolName.WRITE_FILE,
+      ToolName.FIGMA_VARIABLES,
       ToolName.REGISTER_REFERENCE,
     ]);
     for (const key of CHILD_SETS) {

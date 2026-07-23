@@ -40,7 +40,7 @@ export async function handleEditFile(
 
     const exists = await fileSystem.fileExists(resolved.fsPath);
     if (!exists) {
-      const msg = `File does not exist: ${resolved.displayPath}. Use <file> tag to create new files.`;
+      const msg = `File does not exist: ${resolved.displayPath}. To create a new file use the create_file tool (or the <file> tag).`;
       await ctx.chatStatus.failFileEdit(filePath, msg);
       return { content: msg, error: msg };
     }

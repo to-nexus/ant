@@ -86,7 +86,26 @@ export const ARCHITECT_TOOLS = {
       required: ['path', 'old_str', 'new_str'],
     },
   },
-  
+
+  create_file: {
+    name: 'create_file',
+    description: 'Create a NEW file. The `<file>` streaming tag is the preferred way to author files — its content streams to the user in real time — so default to the tag; use this tool as a fallback when emitting the tag is impractical in the current turn. Fails if the file already exists; use edit_file to modify existing files.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'File path relative to feature root. Code files MUST use codebase/ prefix (e.g., codebase/src/main.ts, codebase/internal/handler/auth.go)',
+        },
+        content: {
+          type: 'string',
+          description: 'The complete content of the new file',
+        },
+      },
+      required: ['path', 'content'],
+    },
+  },
+
   list_files: {
     name: 'list_files',
     description: 'List files in a directory',

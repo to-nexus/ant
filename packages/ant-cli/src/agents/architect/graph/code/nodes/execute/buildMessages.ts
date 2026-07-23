@@ -994,7 +994,7 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
       blocks.push(
         `### ${p}\n\n` +
         `[file not found on disk at \`${normalized}\` — call \`read_file\` to verify the current location before deciding. ` +
-        `If the file truly does not exist, create it with \`<file>\`. ` +
+        `If the file truly does not exist, create it with the \`<file>\` tag (or the \`create_file\` tool). ` +
         `If it exists at a different path, call \`edit_file\` on that path — do NOT use \`<file>\` on existing files.]`
       );
       continue;

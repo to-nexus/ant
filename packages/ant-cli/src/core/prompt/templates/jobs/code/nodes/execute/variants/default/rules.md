@@ -188,15 +188,16 @@ When Plan doesn't anticipate everything needed:
 ## 🔧 Interaction Methods
 ════════════════════════════════════════════════════════════════════════════════
 
-**⚠️ `<file>`, `<append>` are XML streaming tags. File editing uses `edit_file` tool call.**
+**⚠️ File creation defaults to the `<file>` streaming tag (content streams to the user live); the `create_file` tool is the fallback when emitting the tag is impractical. File editing uses the `edit_file` tool call.**
 
-### XML Streaming (Content Generation) — three-channel matrix
+### XML Streaming (Content Generation) — channel matrix
 
-| Tag | Body semantic | Use when |
+| Channel | Body semantic | Use when |
 |-----|---------------|----------|
-| `<file path="...">` | COMPLETE new content; any existing content is REPLACED | Creating a NEW file (or first chunk of chunked emission). If the file already exists, you MUST emit `<file path="..." overwrite="true">` to confirm deliberate replacement — otherwise the write conflicts to prevent silent clobber. |
+| `<file path="...">` | COMPLETE new content; any existing content is REPLACED | **Default for creating a NEW file** (or first chunk of chunked emission) — streams to the user in real time. If the file already exists, you MUST emit `<file path="..." overwrite="true">` to confirm deliberate replacement — otherwise the write conflicts to prevent silent clobber. |
 | `<append path="...">` | ADDITION only, concatenated at the file's *physical end* | ONLY when content naturally extends the file's tail without affecting prior content (CSS cascade tail layer, .gitignore line, log entry, barrel re-export at bottom). NOT a default for "sibling task already wrote this file" — that's `edit_file`. |
 | `edit_file` (tool) | Search/replace targeted pairs | **Default channel for modifying an existing file** — adding an import, inserting a JSON property, changing a value, adjusting a block. Most cross-task continuation falls here. |
+| `create_file` (tool) | COMPLETE content of a NEW file | **Fallback** for creating a NEW file when emitting the `<file>` tag is not practical in the current turn (e.g. mid tool-loop). Prefer the `<file>` tag — it streams. Fails if the file already exists. |
 
 **🚨 CRITICAL: `<file>` and `<append>` tags are SELF-CONTAINED XML, NOT tool calls!**
 
@@ -229,6 +230,7 @@ code...
 |------|---------|
 | `read_file` | Read file content |
 | `edit_file` | Modify EXISTING file (search/replace) |
+| `create_file` | Create NEW file — fallback; prefer the `<file>` tag |
 | `search_code` | Search codebase |
 | `list_files` | List directory contents |
 | `delete_file` | Delete single file |
@@ -240,7 +242,7 @@ code...
 
 | Operation | Method |
 |-----------|--------|
-| Create NEW file (small enough for one round) | `<file path="...">` tag |
+| Create NEW file (small enough for one round) | `<file path="...">` tag — default. `create_file` tool only when the tag is impractical in the current turn |
 | Create NEW file (expected ≥ ~20 KB) | First chunk: `<file path="...">` + `<done>false</done>`; rest: `<append path="...">` in next rounds |
 | Continue a file truncated by a previous round | `<append path="...">` (do NOT re-emit content already written) |
 | Modify existing file (most cross-task continuation — adding import / JSON property / value change / block adjust) | `edit_file` tool |

@@ -12,7 +12,6 @@ import {
   JOB_TOOL_MATRIX,
   TOOL_HANDLERS,
   TOOL_DISPLAY_NAMES,
-  SHADOW_ALIASES,
   CACHEABLE_TOOLS,
   FIGMA_TOOLS,
   resolveToolName,
@@ -48,12 +47,6 @@ describe('ToolName enum', () => {
     const allEnumValues = new Set(Object.values(ToolName));
     for (const key of TOOL_HANDLERS.keys()) {
       expect(allEnumValues.has(key)).toBe(true);
-    }
-  });
-
-  it('shadow aliases must point to tools that have handlers', () => {
-    for (const [alias, canonical] of SHADOW_ALIASES) {
-      expect(TOOL_HANDLERS.has(canonical)).toBe(true);
     }
   });
 
@@ -134,13 +127,12 @@ describe('Catalog helpers', () => {
     expect(resolveToolName('run_command')).toBe(ToolName.RUN_COMMAND);
   });
 
-  it('resolveToolName should resolve shadow aliases', () => {
-    expect(resolveToolName('file')).toBe(ToolName.CREATE_FILE);
-    expect(resolveToolName('write_file')).toBe(ToolName.CREATE_FILE);
-  });
-
-  it('resolveToolName should return undefined for unknown tools', () => {
+  it('resolveToolName should return undefined for unknown tools (retired shadow aliases included)', () => {
     expect(resolveToolName('nonexistent_tool')).toBeUndefined();
+    // `file` / `write_file` were shadow aliases for CREATE_FILE before it was
+    // advertised as a first-class tool; they are gone and must stay gone.
+    expect(resolveToolName('file')).toBeUndefined();
+    expect(resolveToolName('write_file')).toBeUndefined();
   });
 
   it('isFigmaTool should identify Figma tools', () => {
@@ -158,6 +150,37 @@ describe('Catalog helpers', () => {
     const unique = new Set(all);
     expect(all.length).toBe(unique.size);
     expect(all.length).toBeGreaterThan(10);
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// create_file advertisement boundary
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//
+// create_file is a first-class advertised tool for the CODE execute phase
+// only. plan/design jobs stream documents via the `<file>` tag and must not
+// advertise a create tool (real-time document streaming is the core UX).
+
+describe('create_file advertisement boundary', () => {
+  it('create_file has a schema (advertisable) and is in the code execute set', async () => {
+    const { ARCHITECT_TOOLS, TOOL_SETS } = await import('../../src/agents/common/tool/toolSchemas');
+    expect((ARCHITECT_TOOLS as any).create_file).toBeDefined();
+    expect((ARCHITECT_TOOLS as any).create_file.input_schema.required).toEqual(['path', 'content']);
+    expect(TOOL_SETS.codeBasic).toContain(ToolName.CREATE_FILE);
+  });
+
+  it('create_file is NOT advertised to plan/design phases (streaming contract)', async () => {
+    const { TOOL_SETS } = await import('../../src/agents/common/tool/toolSchemas');
+    const nonCodeExecuteSets = [
+      'planExplore', 'designPlanExplore', 'designPlanFigma',
+      'design', 'uiDesignBase', 'uiDesign', 'codeExplain', 'designExplain',
+    ] as const;
+    for (const key of nonCodeExecuteSets) {
+      expect(
+        (TOOL_SETS as any)[key],
+        `${key} must not advertise create_file`,
+      ).not.toContain(ToolName.CREATE_FILE);
+    }
   });
 });
 
@@ -393,8 +416,7 @@ describe('Registry presets (catalog-driven)', () => {
 
     for (const toolName of JOB_TOOL_MATRIX[JobType.CODE]) {
       // Only check tools that have handlers in TOOL_HANDLERS (not Design/Ask-specific)
-      const canonical = SHADOW_ALIASES.get(toolName) ?? toolName;
-      if (TOOL_HANDLERS.has(canonical)) {
+      if (TOOL_HANDLERS.has(toolName)) {
         expect(registry.has(toolName)).toBe(true);
       }
     }
