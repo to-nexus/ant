@@ -36,10 +36,10 @@ describe('per-model token attribution', () => {
   it('buckets under the explicit per-node modelId, not the job default', () => {
     const state = makeState('claude-opus-4-8');
     // plan/execute ran on Sonnet while the job default is Opus.
-    accumulateTokenUsage(state, usage(100, 40), { taskLevel: false, jobLevel: true, modelId: 'claude-sonnet-4-6' });
+    accumulateTokenUsage(state, usage(100, 40), { taskLevel: false, jobLevel: true, modelId: 'claude-sonnet-5' });
 
-    expect(Object.keys(state.tokenUsageByModel ?? {})).toEqual(['claude-sonnet-4-6']);
-    expect(state.tokenUsageByModel?.['claude-sonnet-4-6']).toMatchObject({ inputTokens: 100, outputTokens: 40 });
+    expect(Object.keys(state.tokenUsageByModel ?? {})).toEqual(['claude-sonnet-5']);
+    expect(state.tokenUsageByModel?.['claude-sonnet-5']).toMatchObject({ inputTokens: 100, outputTokens: 40 });
     expect(state.tokenUsageByModel?.['claude-opus-4-8']).toBeUndefined();
   });
 
@@ -54,11 +54,11 @@ describe('per-model token attribution', () => {
     const state = makeState('claude-opus-4-8');
     // decompose on the job default (Opus), plan + execute on Sonnet.
     accumulateTokenUsage(state, usage(50, 20), { taskLevel: false, jobLevel: true }); // decompose → opus fallback
-    accumulateTokenUsage(state, usage(200, 80), { taskLevel: false, jobLevel: true, modelId: 'claude-sonnet-4-6' }); // plan
-    accumulateTokenUsage(state, usage(300, 120), { taskLevel: false, jobLevel: true, modelId: 'claude-sonnet-4-6' }); // execute
+    accumulateTokenUsage(state, usage(200, 80), { taskLevel: false, jobLevel: true, modelId: 'claude-sonnet-5' }); // plan
+    accumulateTokenUsage(state, usage(300, 120), { taskLevel: false, jobLevel: true, modelId: 'claude-sonnet-5' }); // execute
 
     expect(state.tokenUsageByModel?.['claude-opus-4-8']).toMatchObject({ inputTokens: 50, outputTokens: 20, callCount: 1 });
-    expect(state.tokenUsageByModel?.['claude-sonnet-4-6']).toMatchObject({ inputTokens: 500, outputTokens: 200, callCount: 2 });
+    expect(state.tokenUsageByModel?.['claude-sonnet-5']).toMatchObject({ inputTokens: 500, outputTokens: 200, callCount: 2 });
   });
 });
 

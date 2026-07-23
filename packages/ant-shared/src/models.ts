@@ -151,20 +151,6 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     rate: { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
     thinkingMode: 'extended',
   },
-  // Legacy — kept so projects that saved this id still price/size correctly and
-  // pass the capacity check. Not offered as a new choice. Adaptive thinking is
-  // supported on 4.6 and is the forward-recommended mode.
-  'claude-sonnet-4-6': {
-    id: 'claude-sonnet-4-6',
-    displayName: 'Sonnet 4.6',
-    provider: 'anthropic',
-    description: 'Previous-generation Sonnet (legacy)',
-    capabilities: ['coding', 'reasoning', 'large-context'],
-    contextWindow: 1_000_000,
-    rate: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 },
-    thinkingMode: 'adaptive',
-    selectable: false,
-  },
   // DeepSeek — OpenAI-compatible API, reuses OpenAILLMClient with an injected
   // baseURL/provider (LLMClientFactory). Top-tier V4 model; 1M context.
   'deepseek-v4-pro': {

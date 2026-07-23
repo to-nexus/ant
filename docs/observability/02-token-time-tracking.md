@@ -47,7 +47,7 @@ cacheHitRatio가 높을수록 billableInput이 낮아진다. 이것이 캐시 �
 
 ### Context Window 영역 할당
 
-TokenBudgetManager는 모델의 실제 context window (Opus 4.8 / Sonnet 4.6 = 1M, Haiku 4.5 = 200K) 를 영역별로 분배한다. 절대값은 모델에 따라 자동 스케일링되며, 비율은 다음과 같다 (200K 모델 기준 예시):
+TokenBudgetManager는 모델의 실제 context window (Opus 4.8 / Sonnet 5 = 1M, Haiku 4.5 = 200K) 를 영역별로 분배한다. 절대값은 모델에 따라 자동 스케일링되며, 비율은 다음과 같다 (200K 모델 기준 예시):
 
 ```
 200K context window (예시 — 1M 모델은 5배로 자연 스케일)

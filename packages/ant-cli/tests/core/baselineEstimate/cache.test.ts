@@ -101,7 +101,7 @@ describe('baseline cache — round-trip + isolation', () => {
   it('modelId change → cache miss (model swap forces recompute)', async () => {
     const store = makeFakeStore();
     await setCached(store, baseScope(), sampleEstimate);
-    const other = { ...baseScope(), modelId: 'claude-sonnet-4-6' };
+    const other = { ...baseScope(), modelId: 'claude-sonnet-5' };
     expect(await getCached(store, other)).toBeUndefined();
   });
 
