@@ -9,13 +9,13 @@
  *
  * `ANT_COAUTHOR.email` is the single swap point: for GitHub to render the ANT
  * avatar / count it as a contributor, this email must belong to a GitHub
- * account (a dedicated `ant-agent` user or a GitHub App). Until that account
- * exists the trailer still shows the name "ANT" as plain text.
+ * account (a dedicated ANT user or a GitHub App). Until that account is linked
+ * the trailer still shows the name "ANT" as plain text.
  */
 
 export const ANT_COAUTHOR = {
   name: 'ANT',
-  email: 'ant-agent@to.nexus',
+  email: 'ant@to.nexus',
 } as const;
 
 export const ANT_COAUTHOR_TRAILER = `Co-authored-by: ${ANT_COAUTHOR.name} <${ANT_COAUTHOR.email}>`;

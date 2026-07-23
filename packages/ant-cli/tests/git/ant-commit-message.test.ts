@@ -75,7 +75,7 @@ describe('withAntCoAuthor — ANT co-author attribution', () => {
   it('appends the ANT Co-authored-by trailer after a blank line', () => {
     const out = withAntCoAuthor('feat: add avatar upload endpoint');
     expect(out).toBe(`feat: add avatar upload endpoint\n\n${ANT_COAUTHOR_TRAILER}`);
-    expect(ANT_COAUTHOR_TRAILER).toBe('Co-authored-by: ANT <ant-agent@to.nexus>');
+    expect(ANT_COAUTHOR_TRAILER).toBe('Co-authored-by: ANT <ant@to.nexus>');
   });
 
   it('is idempotent — decorating twice adds only one trailer', () => {
