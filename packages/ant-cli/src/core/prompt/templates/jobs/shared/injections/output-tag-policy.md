@@ -27,6 +27,23 @@ write a file: typing that bracket text yourself writes nothing. The only
 way to create or change a file is a real `<file>`/`<edit>`/`<append>` tag
 (first token `<`, per Invariant 1).
 
+### Invariant 1c — Tags are text, not tools
+
+Registered tags are emitted as **literal text** in your response body
+(first token `<`, per Invariant 1) — they are NOT tools or functions and
+must never be produced through the tool / function-call channel. Tools
+are the actions you *call* (read, search, edit, etc.); tags are the
+output you *write*. These are different channels.
+
+To seal a plan you write `<plan>…</plan>` as text — there is no `plan`
+function to call. Likewise there is no `reply`, `done`, or `clarify`
+tool: emitting the tag as text is the only way. If the intent is "seal",
+"emit", or "output" a tag, that means write the tag, not invoke it.
+
+⚠️ In a phase where you are actively calling tools, the instinct is to
+render "seal the plan" as a `plan(...)` tool call. There is no such tool;
+open `<plan>` as your first text token instead.
+
 ### Invariant 2 — No nesting across intent axes
 
 Tags from different intent axes MUST NOT nest inside each other.
