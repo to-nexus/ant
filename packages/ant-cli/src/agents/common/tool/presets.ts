@@ -12,14 +12,12 @@ import {
   JobType,
   JOB_TOOL_MATRIX,
   TOOL_HANDLERS,
-  SHADOW_ALIASES,
 } from './toolCatalog';
 import { applyCodeCommandPolicy } from './handlers/codeCommandPolicy';
 type Gate = string;
 
 /**
  * Build a registry from the catalog matrix for a given job.
- * Resolves shadow aliases to their canonical handler.
  *
  * Tools whose handlers depend on job-specific graph state (e.g.,
  * artifact-scope readers, ant-source readers) are not in TOOL_HANDLERS.
@@ -31,8 +29,7 @@ function buildRegistryFromMatrix(job: JobType): ToolRegistry {
   const tools = JOB_TOOL_MATRIX[job];
 
   for (const toolName of tools) {
-    const canonical = SHADOW_ALIASES.get(toolName) ?? toolName;
-    const handler = TOOL_HANDLERS.get(canonical);
+    const handler = TOOL_HANDLERS.get(toolName);
 
     if (handler) {
       registry.register(toolName, handler);
