@@ -45,6 +45,7 @@ import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildPlanSystemPrompt } from './buildSystemPrompt';
+import { applyPlanDrainFinalization } from '../drainFinalize';
 import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
 import { sanitizeDocSlug, collisionFreeDocFilename } from '../../../../../common/naming/docSlug';
 import { isTemplateContent } from '../../../../../../core/utils/templateDetector';
@@ -196,6 +197,11 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   const activeTools = PLANNER_EXPLAIN_TOOLS;
   const toolDefinitions = activeTools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
 
+  // No-output salvage: after NO_OUTPUT_HARD_CAP − MARGIN tool rounds with no
+  // <plan> seal, strip tools so the model must seal now (a tool-less round
+  // seals a best-effort brief). cyan-catching-cedar follow-up.
+  const { tools: streamToolDefinitions } = applyPlanDrainFinalization(state, messages, toolDefinitions, 'plan');
+
   const chatAPI = getChatAPIClient();
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
@@ -212,7 +218,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   try {
     applyEstimatedInputTokensFromMessages(state as any, messages);
     for await (const event of llm.stream(messages, {
-      tools: toolDefinitions,
+      tools: streamToolDefinitions,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       temperature: LLM_TEMPERATURE.PLAN_GENERATION,
       enableThinking: isFirstCall,
@@ -278,6 +284,9 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
       _activePhase: 'plan',
+      // No forward output this round (research only) — advance the no-output
+      // window; at CAP − MARGIN the next call's tools are stripped.
+      _noOutputCallCount: (state._noOutputCallCount || 0) + 1,
     };
   }
 
@@ -399,6 +408,8 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     tokenUsageByModel: state.tokenUsageByModel,
     recursionCount,
     recursionLimit: state.recursionLimit,
+    // Brief sealed = forward progress; hand execute a fresh no-output budget.
+    _noOutputCallCount: 0,
     ...(resolvedAction ? { resolvedAction } : {}),
   };
 }

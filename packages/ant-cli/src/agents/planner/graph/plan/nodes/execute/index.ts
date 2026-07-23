@@ -44,6 +44,7 @@ import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildExecuteSystemPrompt } from './buildSystemPrompt';
+import { applyPlanDrainFinalization } from '../drainFinalize';
 import { getTargetPath } from '../plan/buildSystemPrompt';
 import { saveConversationToSession, isSafeStagingPath } from '../sessionWriter';
 
@@ -153,6 +154,11 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   const activeTools = plannerToolsForMode(planMode);
   const toolDefinitions = activeTools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
 
+  // No-output salvage: after NO_OUTPUT_HARD_CAP − MARGIN tool rounds with no
+  // <file> write, strip tools so the model must author now (a tool-less round
+  // writes the document or hits the writer-integrity guard). cyan-catching-cedar.
+  const { tools: streamToolDefinitions } = applyPlanDrainFinalization(state, messages, toolDefinitions, 'execute');
+
   const chatAPI = getChatAPIClient();
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
@@ -169,7 +175,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   try {
     applyEstimatedInputTokensFromMessages(state as any, messages);
     for await (const event of llm.stream(messages, {
-      tools: toolDefinitions,
+      tools: streamToolDefinitions,
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       temperature: LLM_TEMPERATURE.DOC_GENERATION,
       enableThinking: isFirstCall,
@@ -233,6 +239,8 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       recursionCount,
       _activePhase: 'execute',
       _subagentJoinRedo: false,
+      // No <file> written this round (tool-only) — advance the no-output window.
+      _noOutputCallCount: (state._noOutputCallCount || 0) + 1,
     };
   }
 
@@ -274,6 +282,8 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
           recursionCount,
           _activePhase: 'execute',
           _subagentJoinRedo: true,
+          // Subagent reports delivered = forward progress; reset the window.
+          _noOutputCallCount: 0,
           ...(joined.tokenDelta as any),
         };
       }
