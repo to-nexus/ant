@@ -287,7 +287,6 @@ export function formatModelLabel(modelId: string): string {
   const id = modelId.toLowerCase();
   if (id.includes('opus-4-8')) return 'Opus 4.8';
   if (id.includes('opus')) return 'Opus';
-  if (id.includes('sonnet-4-6')) return 'Sonnet 4.6';
   if (id.includes('sonnet')) return 'Sonnet';
   if (id.includes('haiku-4-5')) return 'Haiku 4.5';
   if (id.includes('haiku')) return 'Haiku';

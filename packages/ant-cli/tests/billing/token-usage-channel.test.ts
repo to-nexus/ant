@@ -59,7 +59,7 @@ describe('token-usage channels are declared (billing root-cause guard)', () => {
     expect(typeof reducer).toBe('function');
     const prev = { 'claude-opus-4-8': { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
     expect(reducer(prev, undefined)).toBe(prev);
-    const next = { 'claude-sonnet-4-6': { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+    const next = { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
     expect(reducer(prev, next)).toBe(next);
   });
 });

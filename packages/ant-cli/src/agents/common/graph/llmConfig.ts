@@ -28,7 +28,6 @@ export const LLM_MAX_TOKENS = {
   //
   // Anthropic model output ceilings (per Anthropic docs, 2026-06):
   //   - Sonnet 5 (codebase default for code.*) / Opus 4.6/4.7/4.8: 128K ceiling
-  //   - Sonnet 4.6 / 4.5 (legacy): 64K ceiling
   //   - Opus 4 (deprecated, retired 2026-06-15): 32K hard limit
   //
   // 64K is the safe default: within every current model's ceiling (Sonnet 5
