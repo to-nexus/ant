@@ -81,3 +81,7 @@ overrides:
   # next (ant-site) pulls sharp ^0.34 transitively; force the patched line
   # workspace-wide (direct dep in ant-cli also bumped to ^0.35.3).
   'sharp': '^0.35.3'
+  # next: CVE-2026-64641 / -64645 / -64649 HIGH — App Router Server Action
+  # request-smuggling / SSRF chain (fixed 15.5.21). Direct dep in ant-site also
+  # bumped to ^15.5.21; scope the override to the vulnerable <15.5.21 range only.
+  'next@<15.5.21': '^15.5.21'
