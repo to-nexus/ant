@@ -33,7 +33,25 @@ export const PlanAnnotation = Annotation.Root({
   _activePhase: Annotation<any>,
   // Join-barrier redo flag (explore subagent) — see routeAfterExecute.
   _subagentJoinRedo: Annotation<any>,
+  // No-output window (tool-strip salvage trigger) — see _noOutputCallCount.
+  _noOutputCallCount: Annotation<any>,
 } as const);
+
+/**
+ * No-output circuit (cyan-catching-cedar follow-up — planner parity with the
+ * design job). Both planner loops (plan⟷tool research, execute⟷tool authoring)
+ * were bounded only by `recursionLimit=200`; a glm-5.2-class degenerate loop
+ * that keeps issuing NOVEL reads/searches while never sealing a brief / writing
+ * a document could burn ~100 tool rounds before the recursion backstop fires.
+ *
+ * `NO_OUTPUT_HARD_CAP − DRAIN_FINALIZE_MARGIN` (= 20) tool rounds without
+ * forward output strips the tool list for the next call (see
+ * `nodes/drainFinalize.ts`). Because both planner phases terminate structurally
+ * on a tool-less round (plan seals best-effort, execute writes/errors), the
+ * strip alone guarantees termination — no router hard-divert needed.
+ */
+export const NO_OUTPUT_HARD_CAP = 25;
+export const DRAIN_FINALIZE_MARGIN = 5;
 
 export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   directive?: string;
@@ -157,6 +175,18 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
    * execute and the node clears the flag on its next return.
    */
   _subagentJoinRedo?: boolean;
+
+  /**
+   * No-output window: consecutive tool-call rounds (in either the plan or the
+   * execute loop) that produced no forward output — no `<plan>` seal, no
+   * `<file>` write. Incremented by the plan/execute nodes on each tool-round
+   * return; reset to 0 when the plan node seals the brief (→execute) or a
+   * subagent-join redo delivers reports (both = forward progress). At
+   * `NO_OUTPUT_HARD_CAP − DRAIN_FINALIZE_MARGIN` the node strips its tool list
+   * (`applyPlanDrainFinalization`), forcing a terminal turn. The tool node does
+   * not touch this channel (last-write-wins preserves it across the hop).
+   */
+  _noOutputCallCount?: number;
 }
 
 /** Helper to read planMode from resolvedAction */
