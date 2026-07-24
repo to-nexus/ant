@@ -1,11 +1,16 @@
 /**
  * ant-authored commit message guards.
  *
- * Covers the two defects behind "the ant-commit still writes a timestamp /
- * mechanical message":
+ * Covers the defects behind "the ant-commit writes a meaningless timestamp":
  *   1. `buildCommitPlan` must never commit a fence marker / raw JSON bracket as
  *      the message when the model's multi-commit JSON fails to parse.
- *   2. `loadWorkspaceConfigFromPath` (the env-free loader used by the API-server
+ *   2. No failure path may EVER return a bare `Update: <ISO timestamp>` — the
+ *      last-resort message is content-derived from the changed files.
+ *   3. A commit issued while a job runs shares the provider account and gets
+ *      429'd; `buildCommitPlan` must RETRY across the rate window (not guillotine
+ *      the first attempt) so it still receives an LLM-authored message. A true
+ *      balance depletion still fast-fails.
+ *   4. `loadWorkspaceConfigFromPath` (the env-free loader used by the API-server
  *      git-op path) must inject the auxiliary `commit` model default even when
  *      the user's config.json omits it — so model resolution never silently
  *      falls back to AI_MODEL_NAME/opus.
@@ -16,7 +21,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { DEFAULT_MODELS } from '@ant/shared';
-import { buildCommitPlan } from '../../src/core/context/commitMessage';
+import {
+  buildCommitPlan,
+  deriveFallbackCommitMessage,
+} from '../../src/core/context/commitMessage';
+
+/** Bare ISO-timestamp commit message — the regression we must never re-emit. */
+const ISO_TIMESTAMP = /\d{4}-\d\d-\d\dT\d\d:\d\d/;
 import {
   withAntCoAuthor,
   ANT_COAUTHOR_TRAILER,
@@ -40,7 +51,8 @@ const FILES = ['src/a.ts', 'src/b.ts'];
 describe('buildCommitPlan safe salvage', () => {
   it('never commits a fence marker when multi-commit JSON parse fails', async () => {
     // Truncated / malformed fenced block → parseGroups fails → first line is
-    // a fence marker, which MUST be rejected in favour of the timestamp.
+    // a fence marker, which MUST be rejected in favour of a content-derived
+    // message (never a fence, never a timestamp).
     const groups = await buildCommitPlan({
       status: 'M a', diff: 'diff', recentLog: 'log',
       allFiles: FILES, allowMultiple: true,
@@ -49,7 +61,8 @@ describe('buildCommitPlan safe salvage', () => {
     });
     expect(groups).toHaveLength(1);
     expect(groups[0].message).not.toMatch(/^(```|~~~|\[|\{|json\b)/i);
-    expect(groups[0].message).toMatch(/^Update: /);
+    expect(groups[0].message).toMatch(/^Update /);
+    expect(groups[0].message).not.toMatch(ISO_TIMESTAMP);
     expect(groups[0].files).toEqual(FILES);
   });
 
@@ -63,11 +76,77 @@ describe('buildCommitPlan safe salvage', () => {
     expect(groups.map((g) => g.message)).toEqual(['feat: a', 'fix: b']);
   });
 
-  it('falls back to a timestamp when no llm is supplied', async () => {
+  it('falls back to a content-derived message (never a timestamp) when no llm is supplied', async () => {
     const groups = await buildCommitPlan({
       status: '', diff: '', recentLog: '', allFiles: FILES, allowMultiple: true,
     });
-    expect(groups[0].message).toMatch(/^Update: /);
+    expect(groups[0].message).toMatch(/^Update /);
+    expect(groups[0].message).not.toMatch(ISO_TIMESTAMP);
+    expect(groups[0].files).toEqual(FILES);
+  });
+});
+
+describe('deriveFallbackCommitMessage — content-derived, never a timestamp', () => {
+  it('never produces an ISO timestamp for any input', () => {
+    for (const files of [[], ['a.ts'], ['src/a.ts', 'src/b.ts'], Array.from({ length: 40 }, (_, i) => `pkg/mod${i}/x.ts`)]) {
+      expect(deriveFallbackCommitMessage(files)).not.toMatch(ISO_TIMESTAMP);
+    }
+  });
+
+  it('anchors the scope to the shared directory prefix', () => {
+    expect(deriveFallbackCommitMessage(['src/auth/login.ts', 'src/auth/session.ts']))
+      .toBe('Update src/auth: login.ts, session.ts');
+  });
+
+  it('keeps the subject within 72 chars for large change sets', () => {
+    const files = Array.from({ length: 40 }, (_, i) => `src/feature/really-long-module-name-${i}.ts`);
+    const msg = deriveFallbackCommitMessage(files);
+    expect(msg.length).toBeLessThanOrEqual(72);
+    expect(msg).toContain('40 files');
+  });
+});
+
+/** LLM stub whose `invokeWithUsage` throws `attempts-1` times, then succeeds. */
+function flakyUsageLlm(failures: number, error: unknown, reply: string): LLMClient {
+  let calls = 0;
+  return {
+    provider: 'test',
+    modelName: 'test-model',
+    invoke: async () => { throw new Error('unexpected invoke()'); },
+    invokeWithUsage: async () => {
+      calls++;
+      if (calls <= failures) throw error;
+      return { content: reply, usage: { inputTokens: 1, outputTokens: 1 } };
+    },
+  } as unknown as LLMClient;
+}
+
+describe('buildCommitPlan resilience under provider rate contention', () => {
+  it('retries a 429 and still returns the LLM-authored message', async () => {
+    const rate429: any = Object.assign(new Error('rate limited'), { status: 429 });
+    const groups = await buildCommitPlan({
+      status: 'M a', diff: 'diff', recentLog: 'log',
+      allFiles: FILES, allowMultiple: true,
+      llm: flakyUsageLlm(1, rate429, '```json\n[{"message":"feat: real message","files":["src/a.ts","src/b.ts"]}]\n```'),
+      promptPort: stubPrompt,
+    });
+    expect(groups[0].message).toBe('feat: real message');
+    expect(groups[0].message).not.toMatch(ISO_TIMESTAMP);
+  }, 15000);
+
+  it('fast-fails a true balance depletion to a content-derived message (no hang)', async () => {
+    const balance: any = Object.assign(new Error('Insufficient balance, please recharge'), { status: 429 });
+    const started = Date.now();
+    const groups = await buildCommitPlan({
+      status: 'M a', diff: 'diff', recentLog: 'log',
+      allFiles: FILES, allowMultiple: true,
+      llm: flakyUsageLlm(99, balance, 'never reached'),
+      promptPort: stubPrompt,
+    });
+    // Balance depletion is non-retryable → returns immediately (no backoff wait).
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(groups[0].message).toMatch(/^Update /);
+    expect(groups[0].message).not.toMatch(ISO_TIMESTAMP);
   });
 });
 
