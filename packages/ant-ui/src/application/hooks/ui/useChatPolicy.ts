@@ -49,10 +49,16 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   const isAuthenticated = useStore(selectIsAuthenticated);
   
   // ✅ CRITICAL: Check if job is interrupted (user_stopped, recursion_limit, etc.)
-  // Chat doesn't have a dismiss button - it only disappears after successful resume
-  const hasInterruption = !isRunning 
+  // Cleared on dismiss OR successful resume. `interruption.dismissed` is the
+  // authoritative BE consent flag (set on every /job/dismiss, orthogonal to
+  // canResume — sharp-choking-glove); the `dismissedInterruptTimestamp` clause
+  // additionally covers the optimistic hide while a resume is in flight. Reading
+  // ONLY the timestamp missed dismiss, because the paused dismiss branch mints a
+  // fresh interruption timestamp the FE marker can never match.
+  const hasInterruption = !isRunning
     && kanbanData?.interruption?.canResume === true
-    && kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;  // Only hide after resume success
+    && kanbanData?.interruption?.dismissed !== true
+    && kanbanData?.interruption?.timestamp !== dismissedInterruptTimestamp;
 
   // ✅ Not authenticated in cloud mode
   if (!isAuthenticated) {
