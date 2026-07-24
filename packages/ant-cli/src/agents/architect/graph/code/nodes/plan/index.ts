@@ -45,6 +45,7 @@ import { runPlanRAG } from './rag';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { compactRun } from '../../../../../../core/context';
 import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
+import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 
 /**
  * Inline retry budget for `BatchSplitSchemaViolation` (see
@@ -64,6 +65,7 @@ export const __testing__ = {
   MAX_BATCH_SPLIT_CYCLES,
   resolvePlanEntry,
   runPlanToolLoopPhase,
+  deliverOwedExploreReports,
 };
 
 async function workflowEnter(state: ArchitectGraphState, nextTask: CodeTask): Promise<void> {
@@ -187,6 +189,61 @@ async function runMainPlanLLM(
   return { planText: planText ?? '' };
 }
 
+/**
+ * Plan-phase explore-subagent join barrier.
+ *
+ * Unlike execute, the plan phase has no finalize-time join
+ * (`code/nodes/execute/index.ts:989`); its only report delivery is the tool
+ * node's per-round drain, which fires ONLY on rounds where the plan LLM emits
+ * tool calls. When the plan LLM stalls without tool calls (the tool loop falls
+ * through) while explore children are still owed, force-deliver their reports
+ * into NODE_PLAN before the fresh plan-LLM call runs, so the plan is formed
+ * WITH the findings instead of looping "waiting for the subagent reports"
+ * forever (round-grading-sable hang). `maybeJoinSubagents` returns null when
+ * nothing is owed, and `collectCompleted` deletes delivered entries, so this is
+ * self-terminating; the `_noProgressStreak` breaker + `recursionLimit` remain
+ * the runaway backstops.
+ */
+async function deliverOwedExploreReports(
+  state: ArchitectGraphState,
+  entryDelta: Record<string, any>,
+): Promise<void> {
+  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
+  // Fresh entry (empty NODE_PLAN) launches no explores — nothing to await.
+  if (nodePlan.length === 0) return;
+  const joined = await maybeJoinSubagents(
+    state as any,
+    ownerKeyFor(state._httpJobId),
+    { history: nodePlan as any },
+  );
+  if (!joined) return;
+  // Preserve role alternation: the stalled round's assistant text is not
+  // captured by the tool loop, so insert a spacer when the last turn is a
+  // user turn (tool_result) — two consecutive user turns crash Anthropic.
+  const last = nodePlan[nodePlan.length - 1] as { role?: string } | undefined;
+  const spacer =
+    last?.role === 'assistant'
+      ? []
+      : [{ role: 'assistant' as const, content: '(pausing to receive subagent findings)' }];
+  const injected = [
+    ...nodePlan,
+    ...spacer,
+    {
+      role: 'user' as const,
+      content: [
+        ...joined.blocks,
+        {
+          type: 'text' as const,
+          text: 'All pending subagent reports are delivered above. Incorporate their findings into your plan.',
+        },
+      ],
+    },
+  ];
+  state.conversations = { ...state.conversations, [CONV_KEYS.NODE_PLAN]: injected as any };
+  Object.assign(entryDelta, joined.tokenDelta);
+  console.log(`🔀 [Plan] Delivered owed explore report(s) into NODE_PLAN before fresh plan generation`);
+}
+
 export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphState> {
   state.recursionCount = (state.recursionCount || 0) + 1;
 
@@ -235,6 +292,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   // STEP 0.9 — plan↔tool loop re-entry.
   const toolLoop = await runPlanToolLoopPhase(state, nextTask);
   if (toolLoop.kind === 'return') return mergeDelta(toolLoop.state, entryDelta) as ArchitectGraphState;
+
+  // Fallthrough (plan LLM stalled with no <plan> and no tool calls): deliver
+  // any owed explore subagent reports into NODE_PLAN before the fresh
+  // plan-LLM call below. This is the plan-phase join barrier the phase
+  // otherwise lacks — see deliverOwedExploreReports.
+  await deliverOwedExploreReports(state, entryDelta);
 
   // Setup fast path — skip RAG entirely.
   const setupFast = await maybeSetupFastPath(state, entry, workflowExit);
