@@ -39,10 +39,11 @@ import { initPartials } from '../periphery/adapters/prompt/FilePromptAdapter';
 import { logger } from '../utils/logger';
 import { handleGracefulShutdown } from './gracefulShutdown';
 import { abortJob, isJobAborted } from './jobAbort';
-import { REDIS_KEYS, REDIS_CHANNELS } from '../infrastructure/state/redisConstants';
+import { REDIS_CHANNELS } from '../infrastructure/state/redisConstants';
 import { RedisStateStore } from '../infrastructure/state/RedisStateStore';
 import { createTLSOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
+import { resolveKillReason, buildSigtermInterruption } from './sigtermInterruption';
 import { buildInfrastructureInterruption } from '@ant/shared';
 import { isPromptTooLongError } from '../core/utils/apiErrorClassify';
 import { isLlmAuthError } from '../core/llm/isLlmAuthError';
@@ -156,22 +157,6 @@ async function watchUserStop(jobId: string): Promise<void> {
   } catch (err: any) {
     console.warn(`[JobRunner] Failed to wire user-stop watcher: ${err?.message}`);
   }
-}
-
-async function resolveKillReason(jobId: string): Promise<InterruptionReason> {
-  if (!killReasonRedis) return 'server_crash';
-  try {
-    const key = `${REDIS_KEYS.JOB.KILL_REASON}${jobId}`;
-    const raw = await Promise.race([
-      killReasonRedis.get(key),
-      new Promise<null>(resolve => setTimeout(() => resolve(null), 100)),
-    ]);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return (parsed.reason as InterruptionReason) || 'server_crash';
-    }
-  } catch { /* Redis unavailable = infrastructure kill */ }
-  return 'server_crash';
 }
 
 function reportProgress(phase: string, message: string, percentage?: number): void {
@@ -330,7 +315,7 @@ async function main(): Promise<void> {
         ...createTLSOptions(redisUrl),
       });
       killReasonRedis.on('error', () => {}); // suppress unhandled connection errors
-    } catch { /* best-effort — resolveKillReason will fallback to server_crash */ }
+    } catch { /* best-effort — resolveKillReason will fallback to server_shutdown */ }
   }
 
   // Observe the Redis stop SSOT before running, so a user stop is honored even
@@ -368,8 +353,12 @@ async function main(): Promise<void> {
 // SIGTERM Handler — Graceful Shutdown
 // ============================================
 // When SIGTERM is received, resolve the kill reason from Redis:
-// - Key exists → Worker set it (user_stopped / server_crash / server_shutdown)
-// - Key missing → infrastructure killed directly (K8s, OOMKill) → default server_crash
+// - Key exists → Worker set it (user_stopped / worker_stalled / lock_expired /
+//   system_sleep / server_shutdown)
+// - Key missing → default server_shutdown. Reaching THIS handler proves the
+//   process got SIGTERM (graceful termination). A real crash (SIGKILL / OOMKill /
+//   K8s force-kill) is uncatchable and never runs a handler — StaleJobRecovery
+//   labels those server_crash on the next server's reconcile.
 //
 // Timing budget (worst case: stall handler, 2500ms grace):
 //   resolveKillReason 100ms + gracefulShutdown 1800ms = 1900ms < 2500ms
@@ -386,7 +375,7 @@ process.on('SIGTERM', async () => {
   shutdownInitiated = true;
 
   const jobId = process.env.ANT_JOB_ID || 'unknown';
-  const reason = await resolveKillReason(jobId);
+  const reason = await resolveKillReason(jobId, killReasonRedis);
 
   if (stopPollTimer) clearInterval(stopPollTimer);
 
@@ -409,7 +398,7 @@ process.on('SIGTERM', async () => {
   reportResult(false, {
     success: false,
     job: process.env.ANT_JOB_TYPE,
-    interruption: buildSigtermInterruption(reason),
+    interruption: buildSigtermInterruption(reason, process.env.ANT_JOB_TYPE),
   });
   await new Promise<void>(resolve => process.stdout.write('', () => resolve()));
 
@@ -418,32 +407,6 @@ process.on('SIGTERM', async () => {
   console.log(`[JobRunner] Exiting with code 143 (SIGTERM, reason=${reason})`);
   process.exit(143);
 });
-
-/**
- * Build an `InterruptionDetails`-shaped object from a SIGTERM kill reason.
- * Mirrors the patterns used in `JobExecutionManager.analyzeFailureReason`,
- * `ServerLifecycleManager`, and `StaleJobRecovery` so downstream consumers
- * (RouteConfigurator → finalize/pauseJob, JobCleanupManager, ChatService
- * cancelled card) receive a consistent payload regardless of the kill path.
- *
- * `user_stopped` is a terminal (finalize) path with its own semantics. Every
- * other SIGTERM kill reason is an infrastructure interruption, so its
- * `canResume` MUST come from the single owner (`buildInfrastructureInterruption`)
- * which gates on `isMidGraphResumable(jobType)` — otherwise plan/visual jobs
- * would surface a false "resume" affordance after a server_shutdown / crash.
- */
-function buildSigtermInterruption(reason: InterruptionReason): InterruptionDetails {
-  if (reason === 'user_stopped') {
-    return {
-      reason,
-      message: 'Task stopped by user',
-      timestamp: new Date().toISOString(),
-      canResume: true,
-      metadata: { stoppedBy: 'user_action' },
-    };
-  }
-  return buildInfrastructureInterruption(reason, process.env.ANT_JOB_TYPE);
-}
 
 // Run
 main();
