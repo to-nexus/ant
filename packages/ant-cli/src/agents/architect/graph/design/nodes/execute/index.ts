@@ -23,7 +23,7 @@ import type { MessageContentBlock } from '../../../../../../core/ports/llm';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
 import { DesignGraphState } from '../../state';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
-import { applyDrainFinalization } from './drainFinalize';
+import { applyDrainFinalization, computeNextNoOutputCount } from './drainFinalize';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
@@ -208,7 +208,7 @@ export async function execute(
   // execute node body stays focused on streaming / parsing.
   // Drain-time forced finalization (see ./drainFinalize.ts) may strip the
   // tool list and append a "emit final output now" note to the messages.
-  const { tools } = applyDrainFinalization(
+  const { tools, drainFinalizing } = applyDrainFinalization(
     state,
     messages,
     // PRD sync is a no-tool full rewrite: the current doc is injected in the
@@ -450,12 +450,15 @@ export async function execute(
     // 0 on task boundary alongside _noOutputCallCount/_executeCallIndex.
     const newTaskFilesWritten = (state._taskFilesWritten || 0) + files.length;
 
-    let newNoOutputCount = prevNoOutputCount;
-    if (hasToolCallsOnly) {
-      newNoOutputCount = prevNoOutputCount + 1;
-    } else if (hasNewFileOutput) {
-      newNoOutputCount = 0;
-    }
+    // drainFinalizing MUST count toward the streak: once the strip persists
+    // (drainFinalize.ts header) the tool node stops running, so without this
+    // the counter freezes one margin below the cap and the router breaker is
+    // never reached (round-grading-sable). See computeNextNoOutputCount.
+    const newNoOutputCount = computeNextNoOutputCount(prevNoOutputCount, {
+      hasNewFileOutput,
+      hasToolCallsOnly,
+      drainFinalizing,
+    });
 
     // R5 — artifact-mutation-then-no-done detection. When this turn
     // produced an artifact mutation (XML <file>/<append>/<edit>/<delete>

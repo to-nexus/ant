@@ -25,7 +25,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { applyDrainFinalization } from '../../src/agents/architect/graph/design/nodes/execute/drainFinalize';
+import {
+  applyDrainFinalization,
+  computeNextNoOutputCount,
+} from '../../src/agents/architect/graph/design/nodes/execute/drainFinalize';
 import {
   RECURSION_DRAIN_THRESHOLD,
   DRAIN_FINALIZE_MARGIN,
@@ -135,6 +138,50 @@ describe('applyDrainFinalization — unit', () => {
   it('no-ops when recursionLimit is unset and no streak accrued (e.g. tests / legacy invokes)', () => {
     const { drainFinalizing } = applyDrainFinalization({}, [userMsg('go')], TOOLS);
     expect(drainFinalizing).toBe(false);
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// computeNextNoOutputCount — the counter MUST climb through the persistent
+// tool-strip so the router breaker (NO_OUTPUT_HARD_CAP) is reachable.
+// round-grading-sable: the old increment counted only tool-call turns, so once
+// the strip persisted at CAP-MARGIN the counter froze there and the breaker
+// never fired → infinite prose loop. This is the design twin of the code job's
+// `computeNextNoOutputStreak` `|| turn.drainFinalizing` clause.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('computeNextNoOutputCount', () => {
+  it('a file write resets the streak', () => {
+    expect(
+      computeNextNoOutputCount(19, { hasNewFileOutput: true, hasToolCallsOnly: false, drainFinalizing: false }),
+    ).toBe(0);
+  });
+
+  it('a tool-only turn increments', () => {
+    expect(
+      computeNextNoOutputCount(3, { hasNewFileOutput: false, hasToolCallsOnly: true, drainFinalizing: false }),
+    ).toBe(4);
+  });
+
+  it('a drain-finalizing (tool-stripped, no output) turn increments — no freeze', () => {
+    expect(
+      computeNextNoOutputCount(20, { hasNewFileOutput: false, hasToolCallsOnly: false, drainFinalizing: true }),
+    ).toBe(21);
+  });
+
+  it('climbs from the strip margin to the hard cap instead of freezing (round-grading-sable replay)', () => {
+    const margin = NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN; // 20
+    let streak = margin;
+    // Every turn from the margin on is tool-stripped (drainFinalizing) prose —
+    // no file, no tool calls. The counter must reach the cap in <= MARGIN turns.
+    for (let i = 0; i < DRAIN_FINALIZE_MARGIN + 2 && streak < NO_OUTPUT_HARD_CAP; i++) {
+      streak = computeNextNoOutputCount(streak, {
+        hasNewFileOutput: false,
+        hasToolCallsOnly: false,
+        drainFinalizing: true,
+      });
+    }
+    expect(streak).toBeGreaterThanOrEqual(NO_OUTPUT_HARD_CAP);
   });
 });
 

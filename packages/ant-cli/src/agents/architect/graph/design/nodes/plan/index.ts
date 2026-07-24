@@ -14,6 +14,7 @@
  */
 
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
+import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import {
   runPlanToolLoopPhase as sharedRunPlanToolLoopPhase,
@@ -30,6 +31,63 @@ import { buildPlanPromptBlocks } from './prompt';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 
 const PLAN_LLM_INTENT_GROUPS = new Set(['design-spec', 'design-system-design']);
+
+/**
+ * Plan-phase join barrier for explore subagents (design twin of the code job's
+ * `deliverOwedExploreReports`, code/nodes/plan/index.ts). The design plan tool
+ * loop only delivers reports via the tool node's per-round drain, which fires
+ * only on tool-call rounds. When the plan LLM stalls with neither a `<plan>`
+ * seal nor tool calls (fallthrough) while explore reports are still owed, those
+ * reports would be dropped — the phase otherwise wipes NODE_PLAN and bails to
+ * execute with an empty plan (round-grading-sable class). This force-joins any
+ * owed reports into NODE_PLAN and returns a re-entry delta so the plan LLM
+ * re-decides WITH the findings. Returns null when nothing is owed (the caller
+ * then proceeds to the normal empty-plan fallthrough). Self-terminating:
+ * `maybeJoinSubagents` returns null once reports are delivered.
+ */
+async function deliverOwedExploreReportsDelta(
+  state: DesignGraphState,
+  currentTask: DesignTask | undefined,
+): Promise<Partial<DesignGraphState> | null> {
+  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
+  // Fresh entry (empty NODE_PLAN) launched no explores — nothing to await.
+  if (nodePlan.length === 0) return null;
+  const joined = await maybeJoinSubagents(state as any, ownerKeyFor(state._httpJobId), {
+    history: nodePlan as any,
+  });
+  if (!joined) return null;
+  // Preserve role alternation: the stalled round's assistant text is not
+  // captured by the tool loop, so insert a spacer when the last turn is a user
+  // turn (tool_result) — two consecutive user turns crash Anthropic.
+  const last = nodePlan[nodePlan.length - 1] as { role?: string } | undefined;
+  const spacer =
+    last?.role === 'assistant'
+      ? []
+      : [{ role: 'assistant' as const, content: '(pausing to receive subagent findings)' }];
+  const injected = [
+    ...nodePlan,
+    ...spacer,
+    {
+      role: 'user' as const,
+      content: [
+        ...joined.blocks,
+        {
+          type: 'text' as const,
+          text: 'All pending subagent reports are delivered above. Incorporate their findings and seal your <plan> now.',
+        },
+      ],
+    },
+  ] as any;
+  console.log('🔀 [DesignPlan] Delivered owed explore report(s) into NODE_PLAN → re-entering plan');
+  return {
+    currentTask,
+    conversations: { [CONV_KEYS.NODE_PLAN]: injected },
+    _activePhase: 'plan' as const,
+    recursionCount: state.recursionCount,
+    recursionLimit: state.recursionLimit,
+    ...(joined.tokenDelta as any),
+  };
+}
 
 export async function plan(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
   state.recursionCount = (state.recursionCount || 0) + 1;
@@ -211,6 +269,18 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     };
+  }
+
+  // Plan-phase join barrier: if the loop stalled while explore reports are
+  // still owed, deliver them into NODE_PLAN and re-enter plan so the LLM seals
+  // a plan WITH the findings instead of dropping them on the empty-plan bail
+  // below (round-grading-sable). No-op when nothing is owed.
+  const owedDelta = await deliverOwedExploreReportsDelta(state, currentTask as DesignTask);
+  if (owedDelta) {
+    if (state.deps?.workflowUpdate && state._httpJobId) {
+      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
+    }
+    return owedDelta;
   }
 
   // Fallthrough — finalize-from-exploration failed or no LLM output.
