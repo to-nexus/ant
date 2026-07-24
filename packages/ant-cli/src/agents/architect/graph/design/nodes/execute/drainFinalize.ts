@@ -27,6 +27,29 @@ export interface DrainFinalizeResult<TTool> {
 }
 
 /**
+ * Single owner of the `_noOutputCallCount` increment/reset rule. Mirror of the
+ * code job's `computeNextNoOutputStreak` (code/nodes/execute/drainFinalize.ts).
+ *
+ * - Forward output (a `<file>` this turn) → 0.
+ * - A turn with tool calls, OR a tool-stripped salvage turn that produced
+ *   nothing → +1. The `drainFinalizing` clause is load-bearing: once the strip
+ *   PERSISTS (this file's header), the tool node stops running, so without
+ *   counting the stripped turns the streak would freeze one margin short of the
+ *   cap and the breaker (executeRouter NO_OUTPUT_HARD_CAP) would be unreachable
+ *   — the model could emit prose forever below it (round-grading-sable, the
+ *   design twin of sandy-building-dryad).
+ * - A plain reasoning-only re-entry (no tools, not finalizing) → 0.
+ */
+export function computeNextNoOutputCount(
+  prev: number,
+  turn: { hasNewFileOutput: boolean; hasToolCallsOnly: boolean; drainFinalizing: boolean },
+): number {
+  if (turn.hasNewFileOutput) return 0;
+  if (turn.hasToolCallsOnly || turn.drainFinalizing) return prev + 1;
+  return prev;
+}
+
+/**
  * Mutates `messages` in place (appends the finalization note to the last user
  * message, mirroring the no-output-streak nudge injection) and returns the
  * (possibly stripped) tool list plus the active-turn flag.

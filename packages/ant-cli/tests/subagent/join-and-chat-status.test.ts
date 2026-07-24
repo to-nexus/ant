@@ -64,6 +64,10 @@ describe('join call-site policy (static)', () => {
       // fallthrough so a plan worker cannot hang "waiting for the subagent
       // reports". This entry locks the barrier so it can't silently reopen.
       'src/agents/architect/graph/code/nodes/plan/index.ts',
+      // round-grading-sable (design twin): the design plan phase likewise
+      // delivers owed reports on fallthrough and re-enters plan instead of
+      // wiping NODE_PLAN and bailing with an empty plan.
+      'src/agents/architect/graph/design/nodes/plan/index.ts',
     ];
     for (const rel of sites) {
       const body = fs.readFileSync(path.resolve(__dirname, '../..', rel), 'utf-8');
