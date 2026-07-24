@@ -20,9 +20,23 @@ import type { CreditLedgerPort } from '../ports/creditLedger';
 import type { LLMClient } from '../ports/llm';
 import { LLM_TEMPERATURE } from '../ports/llmSampling';
 import type { PromptPort } from '../ports/prompt';
+import { withRetry, isRetryableError } from '../utils/retry';
 
-/** Hard cap on LLM call duration (ms). Beyond this we fall back. */
-export const COMMIT_MESSAGE_TIMEOUT_MS = 20000;
+/**
+ * Per-attempt cap on a single LLM round-trip (ms). A commit issued *while a job
+ * runs* competes with that job on the shared provider account and gets 429'd —
+ * the fix is to RETRY across the provider's rate window (see MAX_ATTEMPTS), NOT
+ * to guillotine the first attempt (the old 20s hard cut defeated the adapter's
+ * own retry/backoff). This bounds one attempt; the retry budget spans many.
+ */
+export const COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS = 25000;
+/**
+ * Retry budget for the commit aux call. Lets a transient rate-limit (429) /
+ * overload clear as the concurrent job's provider usage ebbs. The single
+ * resilience owner (`withRetry`) already fast-fails a true balance depletion, so
+ * this never hangs on a real outage.
+ */
+export const COMMIT_MESSAGE_MAX_ATTEMPTS = 5;
 /**
  * Cap on output tokens. Must comfortably fit a multi-commit JSON array that
  * lists every changed file path — too small and the JSON truncates mid-array,
@@ -52,8 +66,38 @@ export interface BuildCommitPlanInput {
   ledger?: CreditLedgerPort;
 }
 
-function timestampFallback(files: string[]): CommitGroup[] {
-  return [{ message: `Update: ${new Date().toISOString()}`, files }];
+/** Deepest directory prefix shared by every path (scope anchor), or '' if none. */
+function commonDirPrefix(files: string[]): string {
+  if (files.length === 0) return '';
+  const perFileDirs = files.map((f) => f.split('/').slice(0, -1));
+  let common = perFileDirs[0];
+  for (const dirs of perFileDirs.slice(1)) {
+    let i = 0;
+    while (i < common.length && i < dirs.length && common[i] === dirs[i]) i++;
+    common = common.slice(0, i);
+  }
+  return common.join('/');
+}
+
+/**
+ * Last-resort commit subject when the LLM is genuinely unavailable — derived
+ * from the changed files so it is always MEANINGFUL (scope + names), never a
+ * bare timestamp. This is the safety net, not the happy path.
+ */
+export function deriveFallbackCommitMessage(files: string[]): string {
+  if (files.length === 0) return 'Update workspace files';
+  if (files.length === 1) return `Update ${files[0]}`.slice(0, 72);
+  const scope = commonDirPrefix(files);
+  const names = files.map((f) => f.split('/').pop() as string);
+  const shown = names.slice(0, 3).join(', ');
+  const extra = files.length > 3 ? ` (+${files.length - 3} more)` : '';
+  const full = `Update ${scope ? `${scope}: ` : ''}${shown}${extra}`;
+  if (full.length <= 72) return full;
+  return `Update ${scope || 'workspace'} (${files.length} files)`;
+}
+
+function fallbackPlan(files: string[]): CommitGroup[] {
+  return [{ message: deriveFallbackCommitMessage(files), files }];
 }
 
 /**
@@ -69,9 +113,22 @@ function usableSubject(line: string): string | null {
   return s;
 }
 
+/** A per-attempt commit-message timeout is a transient provider stall → retryable. */
+function isCommitTimeout(e: unknown): boolean {
+  return !!(e as { _isCommitTimeout?: boolean } | null)?._isCommitTimeout;
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const id = setTimeout(() => reject(new Error(`commit message timeout after ${ms}ms`)), ms);
+    const id = setTimeout(
+      () =>
+        reject(
+          Object.assign(new Error(`commit message timeout after ${ms}ms`), {
+            _isCommitTimeout: true,
+          }),
+        ),
+      ms,
+    );
     promise.then(
       (v) => {
         clearTimeout(id);
@@ -136,7 +193,7 @@ function parseGroups(text: string, allFiles: string[]): CommitGroup[] | null {
 export async function buildCommitPlan(input: BuildCommitPlanInput): Promise<CommitGroup[]> {
   const { llm, promptPort, allFiles, allowMultiple } = input;
   if (!llm || !promptPort || allFiles.length === 0) {
-    return timestampFallback(allFiles);
+    return fallbackPlan(allFiles);
   }
 
   let systemPrompt: string;
@@ -149,7 +206,7 @@ export async function buildCommitPlan(input: BuildCommitPlanInput): Promise<Comm
     });
   } catch (err) {
     console.warn('⚠️  [CommitMsg] template render failed, using fallback:', err);
-    return timestampFallback(allFiles);
+    return fallbackPlan(allFiles);
   }
 
   try {
@@ -159,26 +216,42 @@ export async function buildCommitPlan(input: BuildCommitPlanInput): Promise<Comm
       { role: 'system', content: systemPrompt },
       { role: 'user', content: 'Write the commit message(s).' },
     ];
-    const text = await withTimeout(
-      invokeAndMeterAuxiliary({
-        llm,
-        messages,
-        options: {
-          maxTokens: COMMIT_MESSAGE_MAX_OUTPUT_TOKENS,
-          enableThinking: false,
-          temperature: LLM_TEMPERATURE.SUMMARIZE,
-        },
-        kind: 'commit',
-        billing: input.billing,
-        ledger: input.ledger,
-      }),
-      COMMIT_MESSAGE_TIMEOUT_MS,
+    // Ride the provider's rate-limit backoff instead of guillotining the first
+    // attempt: a commit issued while a job runs shares the provider account and
+    // gets 429'd; retrying across the rate window is what lets it still receive
+    // an LLM-authored message. `isRetryableError` fast-fails a true balance
+    // depletion, so this never hangs on a real outage.
+    const text = await withRetry(
+      () =>
+        withTimeout(
+          invokeAndMeterAuxiliary({
+            llm,
+            messages,
+            options: {
+              maxTokens: COMMIT_MESSAGE_MAX_OUTPUT_TOKENS,
+              enableThinking: false,
+              temperature: LLM_TEMPERATURE.SUMMARIZE,
+            },
+            kind: 'commit',
+            billing: input.billing,
+            ledger: input.ledger,
+          }),
+          COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS,
+        ),
+      {
+        maxAttempts: COMMIT_MESSAGE_MAX_ATTEMPTS,
+        initialDelayMs: 2000,
+        maxDelayMs: 20000,
+        backoffMultiplier: 2,
+        shouldRetry: (e) =>
+          isCommitTimeout(e) || isRetryableError(e, ['overloaded_error', 'api_error']),
+      },
     );
 
     const cleaned = (text ?? '').trim();
     if (!cleaned) {
       console.warn('⚠️  [CommitMsg] LLM returned empty content, using fallback');
-      return timestampFallback(allFiles);
+      return fallbackPlan(allFiles);
     }
 
     if (allowMultiple) {
@@ -189,19 +262,19 @@ export async function buildCommitPlan(input: BuildCommitPlanInput): Promise<Comm
       // JSON bracket from a truncated response.
       const salvaged = usableSubject(cleaned.split('\n')[0]);
       console.warn(
-        `⚠️  [CommitMsg] multi-commit JSON parse failed; ${salvaged ? 'salvaged single subject' : 'no usable subject, using timestamp fallback'}`,
+        `⚠️  [CommitMsg] multi-commit JSON parse failed; ${salvaged ? 'salvaged single subject' : 'no usable subject, using content-derived fallback'}`,
       );
-      return salvaged ? [{ message: salvaged, files: allFiles }] : timestampFallback(allFiles);
+      return salvaged ? [{ message: salvaged, files: allFiles }] : fallbackPlan(allFiles);
     }
 
     const subject = usableSubject(cleaned.split('\n')[0]);
     if (!subject) {
-      console.warn('⚠️  [CommitMsg] no usable single-line subject, using timestamp fallback');
-      return timestampFallback(allFiles);
+      console.warn('⚠️  [CommitMsg] no usable single-line subject, using content-derived fallback');
+      return fallbackPlan(allFiles);
     }
     return [{ message: subject, files: allFiles }];
   } catch (err) {
     console.warn('⚠️  [CommitMsg] LLM call failed, using fallback:', err);
-    return timestampFallback(allFiles);
+    return fallbackPlan(allFiles);
   }
 }

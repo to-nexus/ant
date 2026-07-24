@@ -47,9 +47,11 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'retryMarker' | 'shouldRetry'
 };
 
 /**
- * Check if error is retryable
+ * Check if error is retryable. Exported so auxiliary one-shot callers (e.g. the
+ * ant-commit message) can compose it into a custom `shouldRetry` while keeping
+ * the built-in provider-balance-depletion fast-fail.
  */
-function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
+export function isRetryableError(error: unknown, retryableErrors: string[]): boolean {
   if (!error || typeof error !== 'object') return false;
 
   const apiError = error as any;

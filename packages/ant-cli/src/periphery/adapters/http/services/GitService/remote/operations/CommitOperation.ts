@@ -7,6 +7,7 @@ import { WorktreeService } from '../../worktree';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 import { authorAntCommitPlan } from './helpers/authorAntCommit';
 import { withAntCoAuthor } from './helpers/antAttribution';
+import { deriveFallbackCommitMessage } from '../../../../../../../core/context/commitMessage';
 
 export interface CommitResult {
   success: boolean;
@@ -96,7 +97,9 @@ export class CommitOperation {
       await git.add('.');
     }
 
-    const commitMessage = message || `Update: ${new Date().toISOString()}`;
+    // When the user submits the "write it myself" path with a blank message,
+    // derive a meaningful subject from the staged files — never a bare timestamp.
+    const commitMessage = message || deriveFallbackCommitMessage(status.files.map((f) => f.path));
     const result = await git.commit(commitMessage);
 
     console.log(`[CommitOperation] Committed: ${commitMessage}`);
