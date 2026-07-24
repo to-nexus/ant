@@ -59,6 +59,11 @@ describe('join call-site policy (static)', () => {
       'src/agents/architect/graph/code/nodes/direct/index.ts',
       'src/agents/architect/graph/ask/nodes/agent.ts',
       'src/agents/planner/graph/plan/nodes/execute/index.ts',
+      // round-grading-sable: the code plan phase has no finalize-time join;
+      // deliverOwedExploreReports delivers owed reports on tool-loop
+      // fallthrough so a plan worker cannot hang "waiting for the subagent
+      // reports". This entry locks the barrier so it can't silently reopen.
+      'src/agents/architect/graph/code/nodes/plan/index.ts',
     ];
     for (const rel of sites) {
       const body = fs.readFileSync(path.resolve(__dirname, '../..', rel), 'utf-8');
