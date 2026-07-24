@@ -128,7 +128,7 @@ export class GitHubAuthService {
   /**
    * Validate PAT with GitHub API
    */
-  private async validatePAT(pat: string): Promise<{ valid: boolean; username?: string; error?: string }> {
+  private async validatePAT(pat: string): Promise<{ valid: boolean; username?: string; githubUserId?: number; email?: string | null; error?: string }> {
     try {
       const response = await fetch('https://api.github.com/user', {
         headers: {
@@ -137,10 +137,10 @@ export class GitHubAuthService {
           'User-Agent': 'ANT-CLI'
         }
       });
-      
+
       if (response.ok) {
-        const userData = await response.json() as { login: string };
-        return { valid: true, username: userData.login };
+        const userData = await response.json() as { login: string; id: number; email: string | null };
+        return { valid: true, username: userData.login, githubUserId: userData.id, email: userData.email };
       } else if (response.status === 401) {
         return { valid: false, error: 'Invalid or expired PAT' };
       } else {
@@ -184,13 +184,15 @@ export class GitHubAuthService {
       {
         token: pat,
         tokenType: 'pat',
-        username: validation.username
+        username: validation.username,
+        githubUserId: validation.githubUserId,
+        email: validation.email ?? undefined,
       }
     );
-    
-    return { 
-      success: true, 
-      username: validation.username 
+
+    return {
+      success: true,
+      username: validation.username
     };
   }
   
@@ -223,6 +225,57 @@ export class GitHubAuthService {
     }
 
     return null;
+  }
+
+  /**
+   * Resolve the git commit identity (name + email) for the PAT owner so GitHub
+   * attributes commits to their account. GitHub links a commit to an account by
+   * matching the author/committer email against a verified account email, so the
+   * synthetic `userId@organizationId` fallback never attributes.
+   *
+   * Email preference: the account's public email; when that is private/null, the
+   * noreply form `${id}+${login}@users.noreply.github.com`, which always links to
+   * the account and needs no extra token scope. Resolves from stored credentials
+   * first, backfilling from GitHub only when id/email are missing.
+   *
+   * Returns `null` when no PAT is configured — callers keep the synthetic fallback.
+   */
+  async getCommitIdentity(
+    userContext: CredentialUserContext
+  ): Promise<{ name: string; email: string } | null> {
+    const credContext: UserContext = {
+      organizationId: userContext.org,
+      userId: userContext.user,
+    };
+
+    let credentials = await this.userConfig.credentials.get<GitHubCredentials>(credContext, 'github');
+    if (!credentials?.token) return null;
+
+    // Backfill login / id / email from GitHub when missing (legacy PATs).
+    if (!credentials.username || credentials.githubUserId === undefined) {
+      const validation = await this.validatePAT(credentials.token);
+      if (validation.valid && validation.username) {
+        credentials = {
+          ...credentials,
+          username: validation.username,
+          githubUserId: validation.githubUserId,
+          email: validation.email ?? credentials.email,
+        };
+        await this.userConfig.credentials.set<GitHubCredentials>(credContext, 'github', credentials);
+      }
+    }
+
+    if (!credentials.username) return null;
+
+    const email =
+      credentials.email ||
+      (credentials.githubUserId !== undefined
+        ? `${credentials.githubUserId}+${credentials.username}@users.noreply.github.com`
+        : null);
+
+    if (!email) return null;
+
+    return { name: credentials.username, email };
   }
 
   /**

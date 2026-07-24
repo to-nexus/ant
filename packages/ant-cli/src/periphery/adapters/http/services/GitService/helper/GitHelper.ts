@@ -343,39 +343,60 @@ export class GitHelper {
     return binds;
   }
 
-  static async ensureUserConfig(git: SimpleGit, userContext: UserContext): Promise<void> {
+  /**
+   * Configure the git author/committer identity for commits.
+   *
+   * When `identity` (the PAT owner's real GitHub name/email) is provided, it is
+   * used so GitHub attributes commits to that account. Otherwise the synthetic
+   * `userId@organizationId` fallback is used.
+   *
+   * Overwrite discipline: a field is written when it is absent, OR when a real
+   * `identity` is available AND the current value equals ant's synthetic pattern
+   * (so stale placeholder identities self-correct on the next commit). A
+   * non-synthetic existing value (a user-set real identity) is never clobbered.
+   */
+  static async ensureUserConfig(
+    git: SimpleGit,
+    userContext: UserContext,
+    identity?: { name: string; email: string }
+  ): Promise<void> {
     try {
-      // Check if user.email is already configured (local or global)
-      let hasEmail = false;
-      let hasName = false;
+      let currentEmail = '';
+      let currentName = '';
 
       try {
-        const email = await git.raw(['config', 'user.email']);
-        hasEmail = !!email.trim();
+        currentEmail = (await git.raw(['config', 'user.email'])).trim();
       } catch {
-        hasEmail = false;
+        currentEmail = '';
       }
 
       try {
-        const name = await git.raw(['config', 'user.name']);
-        hasName = !!name.trim();
+        currentName = (await git.raw(['config', 'user.name'])).trim();
       } catch {
-        hasName = false;
+        currentName = '';
       }
 
-      // Derive email and name from UserContext
-      const derivedEmail = `${userContext.userId}@${userContext.organizationId}`;
-      const derivedName = userContext.userId;
+      // Synthetic fallback (also the fingerprint for "ant wrote this").
+      const syntheticEmail = `${userContext.userId}@${userContext.organizationId}`;
+      const syntheticName = userContext.userId;
 
-      // Set local config if not already set
-      if (!hasEmail) {
-        await git.addConfig('user.email', derivedEmail, false, 'local');
-        logger.info(`Git user.email configured`, { component: 'GitHelper' }, { email: derivedEmail });
+      const targetEmail = identity?.email ?? syntheticEmail;
+      const targetName = identity?.name ?? syntheticName;
+
+      // Write when absent, or when a real identity supersedes a synthetic value.
+      const shouldWriteEmail =
+        !currentEmail || (!!identity && currentEmail === syntheticEmail);
+      const shouldWriteName =
+        !currentName || (!!identity && currentName === syntheticName);
+
+      if (shouldWriteEmail && currentEmail !== targetEmail) {
+        await git.addConfig('user.email', targetEmail, false, 'local');
+        logger.info(`Git user.email configured`, { component: 'GitHelper' }, { email: targetEmail });
       }
 
-      if (!hasName) {
-        await git.addConfig('user.name', derivedName, false, 'local');
-        logger.info(`Git user.name configured`, { component: 'GitHelper' }, { name: derivedName });
+      if (shouldWriteName && currentName !== targetName) {
+        await git.addConfig('user.name', targetName, false, 'local');
+        logger.info(`Git user.name configured`, { component: 'GitHelper' }, { name: targetName });
       }
     } catch (error) {
       logger.warn(`Failed to configure git user`, { component: 'GitHelper' }, { error });

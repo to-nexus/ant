@@ -7,6 +7,7 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper, SIMPLE_GIT_DEFAULT_OPTS } from '../../helper/GitHelper';
+import { resolveCommitIdentity } from '../../helper/resolveCommitIdentity';
 import { gitAnchor } from '../../anchor/GitAnchorSSOT';
 import { listFeatureDirsByCreation } from '../../anchor/branchBaseLifecycle';
 import { WorktreeService } from '../../worktree';
@@ -123,7 +124,7 @@ export class CloneOperation {
       if (!anchorGit) {
         throw new GitOperationError('Clone completed but the bare anchor is not readable');
       }
-      await GitHelper.ensureUserConfig(anchorGit, userContext);
+      await GitHelper.ensureUserConfig(anchorGit, userContext, await resolveCommitIdentity(this.githubAuthService, userContext));
 
       // Bare clones do not configure a fetch refspec — set it explicitly so
       // fetch / remote-branch tracking work like a normal clone.
