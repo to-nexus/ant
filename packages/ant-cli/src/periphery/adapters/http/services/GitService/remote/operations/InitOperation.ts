@@ -7,6 +7,7 @@ import { UserContext } from '../../../../../../../core/types/user';
 import { readBranchBase } from '../../../../../../../core/utils/branchUtils';
 import { GitHubAuthService, GitHubRepoCreateError } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
+import { resolveCommitIdentity } from '../../helper/resolveCommitIdentity';
 import { gitAnchor } from '../../anchor/GitAnchorSSOT';
 import { listFeatureDirsByCreation } from '../../anchor/branchBaseLifecycle';
 import { RemoteChecker } from '../helpers/RemoteChecker';
@@ -179,7 +180,7 @@ export class InitOperation {
     );
 
     await GitHelper.ensureSafeDirectory(codebasePath);
-    await GitHelper.ensureUserConfig(git, userContext);
+    await GitHelper.ensureUserConfig(git, userContext, await resolveCommitIdentity(this.githubAuthService, userContext));
     await this.addRemoteAndPushCurrent(git, userContext, authenticatedUrl);
     await this.triggerIndexing(projectId, codebasePath, userContext, readBranchBase(
       this.workspaceResolver.getProjectPath(userContext, projectId)

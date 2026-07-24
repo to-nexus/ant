@@ -64,7 +64,7 @@ export class RemoteService {
     this.pullOp = new PullOperation(workspaceResolver, worktreeService, githubAuthService);
     this.fetchOp = new FetchOperation(workspaceResolver, worktreeService, githubAuthService);
     this.syncOp = new SyncOperation(workspaceResolver, worktreeService, githubAuthService);
-    this.commitOp = new CommitOperation(workspaceResolver, worktreeService);
+    this.commitOp = new CommitOperation(workspaceResolver, worktreeService, githubAuthService);
     this.discardOp = new DiscardOperation(workspaceResolver, worktreeService);
   }
 

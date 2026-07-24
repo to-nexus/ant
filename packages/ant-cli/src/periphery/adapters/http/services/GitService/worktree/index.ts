@@ -5,6 +5,7 @@ import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathRe
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
 import { GitHelper } from '../helper/GitHelper';
+import { resolveCommitIdentity } from '../helper/resolveCommitIdentity';
 import { assertValidFeatureName } from '../helper/featureNameGuard';
 import { ensureCanonicalStructure } from '../../../../../../core/utils/sessionPaths';
 import { readBranchBase } from '../../../../../../core/utils/branchUtils';
@@ -119,7 +120,7 @@ export class WorktreeService {
     if (!git) {
       throw new GitOperationError('Git anchor is not ready after bootstrap');
     }
-    await GitHelper.ensureUserConfig(git, userContext);
+    await GitHelper.ensureUserConfig(git, userContext, await resolveCommitIdentity(this.githubAuthService, userContext));
 
     // Ensure worktree parent directory exists
     await fs.promises.mkdir(path.dirname(worktreePath), { recursive: true });
@@ -323,7 +324,7 @@ export class WorktreeService {
       }
       const wtGit = GitHelper.getGitInstanceSafe(worktreePath);
       if (!wtGit) return;
-      await GitHelper.ensureUserConfig(wtGit, userContext);
+      await GitHelper.ensureUserConfig(wtGit, userContext, await resolveCommitIdentity(this.githubAuthService, userContext));
       await wtGit.add('.');
       const status = await wtGit.status();
       if (status.files.length > 0) {

@@ -1,6 +1,8 @@
 import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../../core/types/user';
+import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { GitHelper } from '../../helper/GitHelper';
+import { resolveCommitIdentity } from '../../helper/resolveCommitIdentity';
 import { WorktreeService } from '../../worktree';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 import { authorAntCommitPlan } from './helpers/authorAntCommit';
@@ -29,7 +31,8 @@ export interface CommitResult {
 export class CommitOperation {
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
-    private readonly worktreeService: WorktreeService
+    private readonly worktreeService: WorktreeService,
+    private readonly githubAuthService?: GitHubAuthService
   ) {}
 
   async execute(
@@ -49,7 +52,8 @@ export class CommitOperation {
       worktreeService: this.worktreeService,
     });
 
-    await GitHelper.ensureUserConfig(git, userContext);
+    const identity = await resolveCommitIdentity(this.githubAuthService, userContext);
+    await GitHelper.ensureUserConfig(git, userContext, identity);
 
     const status = await git.status();
 
