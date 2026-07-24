@@ -1195,7 +1195,20 @@ export function getDefaultTargetPaths(
   if (!target) return undefined;
 
   if (target.kind === 'revise') {
-    if (opts?.refs?.length === 1) return opts.refs;
+    if (opts?.refs?.length === 1) {
+      // "Ref determines target" (design revise). A figma workfile ref
+      // regenerates the ant JSON trio (figma → ant compile), so the target is
+      // the surface's ant trio, NOT the figma file. ant / handoff refs revise
+      // in place, so the selected ref IS the target. SSOT for the runtime
+      // variant/dir decision is design/_shared/reviseTarget.ts; this pure
+      // helper only supplies the pre-decompose default (FE display / RAC.target).
+      const ref = opts.refs[0];
+      if (ref.includes('/figma/')) {
+        if (intent === 'rev-ui') return UI_OUTPUTS.map(o => `${UI_DIR}/${formatOutputSpec(o)}`);
+        if (intent === 'rev-game-art') return GAME_ART_OUTPUTS.map(o => `${GAME_ART_DIR}/${formatOutputSpec(o)}`);
+      }
+      return opts.refs;
+    }
     // No-ref fallback for `rev-plan`: a triage redirect from another job
     // (e.g. code → plan) carries intent only, with no selected ref. Unlike
     // other revise intents (rev-code / rev-sys / rev-ui — which revise one of

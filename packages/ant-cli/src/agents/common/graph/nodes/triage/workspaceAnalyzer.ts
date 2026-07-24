@@ -235,25 +235,42 @@ export async function analyzeWorkspace(
     }
   }
 
+  // A sub-source dir counts as "present" when it holds any non-dotfile entry.
+  // handoff bundles are free-form (DESIGN.md, tokens/*.css, entities/*.html),
+  // so a fixed-filename check (like the ant trio) cannot detect them.
+  const dirHasAnyFile = (absDir: string): boolean => {
+    try {
+      return fs.existsSync(absDir) && fs.readdirSync(absDir).some(f => !f.startsWith('.'));
+    } catch {
+      return false;
+    }
+  };
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // visual/ui/ant/ — canonical UI design surface
+  // visual/ui/{ant,handoff,figma} — UI design surface (all sub-sources)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const uiAntAbs = path.join(featurePath, VISUAL_UI_ANT_DIR);
+  const uiParentAbs = path.dirname(uiAntAbs);
   const existsInUiAnt = (name: string) => fs.existsSync(path.join(uiAntAbs, name));
   state.hasVisualUi =
     existsInUiAnt('ui-tokens.json') ||
     existsInUiAnt('ui-assets.json') ||
-    existsInUiAnt('ui-spec.json');
+    existsInUiAnt('ui-spec.json') ||
+    dirHasAnyFile(path.join(uiParentAbs, 'handoff')) ||
+    dirHasAnyFile(path.join(uiParentAbs, 'figma'));
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // visual/game-art/ant/ — canonical game-art design surface
+  // visual/game-art/{ant,handoff,figma} — game-art design surface (all sub-sources)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const gameArtAntAbs = path.join(featurePath, VISUAL_GAME_ART_ANT_DIR);
+  const gameArtParentAbs = path.dirname(gameArtAntAbs);
   const existsInGameArtAnt = (name: string) => fs.existsSync(path.join(gameArtAntAbs, name));
   state.hasVisualGameArt =
     existsInGameArtAnt('game-art-tokens.json') ||
     existsInGameArtAnt('game-art-assets.json') ||
-    existsInGameArtAnt('game-art-spec.json');
+    existsInGameArtAnt('game-art-spec.json') ||
+    dirHasAnyFile(path.join(gameArtParentAbs, 'handoff')) ||
+    dirHasAnyFile(path.join(gameArtParentAbs, 'figma'));
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Aggregate `hasDesignDoc` — any architecture/visual artifact present.
@@ -614,10 +631,10 @@ export function formatWorkspaceState(state: WorkspaceState): string {
   lines.push('');
   lines.push('### Design Documents');
   lines.push(state.hasVisualUi
-    ? '✅ UI docs (ui-tokens.json, ui-assets.json, ui-spec.json)'
+    ? '✅ UI docs (visual/ui/ — ant / handoff / figma)'
     : '❌ No UI docs');
   lines.push(state.hasVisualGameArt
-    ? '✅ Game-art docs (game-art-tokens.json, game-art-assets.json, game-art-spec.json)'
+    ? '✅ Game-art docs (visual/game-art/ — ant / handoff / figma)'
     : 'ℹ️ No game-art docs');
   lines.push(state.hasArchitectureSystem
     ? '✅ System design docs found'

@@ -19,20 +19,24 @@
  * plugs in here as another 'json' row.
  */
 import type { DesignGraphState } from '../state';
-import { ArtifactPoolView } from '../../../../../core/artifact/ArtifactPipeline';
+import {
+  type DesignDocFormat,
+  type DesignSurface,
+  resolveReviseSubSource,
+  resolveReviseTarget,
+} from './reviseTarget';
 
-export type DesignDocFormat = 'json' | 'handoff';
+export type { DesignDocFormat } from './reviseTarget';
 
 export function resolveDesignOutputFormat(
   state: Pick<DesignGraphState, 'resolvedAction' | 'artifacts'>,
-  surface: 'ui' | 'game-art',
+  surface: DesignSurface,
 ): DesignDocFormat {
   const intent = state.resolvedAction?.intent;
   if (intent === 'gen-ui-desc' || intent === 'gen-game-art-desc') return 'handoff';
   if (intent === 'rev-ui' || intent === 'rev-game-art') {
-    const pool = new ArtifactPoolView(state.artifacts || []);
-    const source = surface === 'ui' ? pool.uiSource() : pool.gameArtSource();
-    return source === 'handoff' ? 'handoff' : 'json';
+    // Revise: the selected ref sub-source is the SSOT discriminator.
+    return resolveReviseTarget(resolveReviseSubSource(state, surface), surface).docFormat;
   }
   return 'json';
 }

@@ -15,6 +15,8 @@ import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { resolveReviseSubSource, resolveReviseTarget } from "../../_shared/reviseTarget";
+import { buildDesignDiscoveryTools } from "./designDecomposeTools";
 import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
@@ -77,6 +79,12 @@ export async function decomposeUiDesign(
   // by-figma / by-desc (legacy binary preserved; by-ref was removed earlier).
   const { resolveDesignOutputFormat } = await import('../../_shared/outputFormat');
   const docFormat = resolveDesignOutputFormat(state, 'ui');
+  // Revise SSOT (design/_shared/reviseTarget.ts): supplies the explicit
+  // targetDir per sub-source (ant/figma → visual/ui/ant, handoff →
+  // visual/ui/handoff). UI's variant selection already matches the SSOT via
+  // isFigmaMode, so only the targetDir stamp needs it.
+  const isRevise = state.resolvedAction?.intent === 'rev-ui';
+  const reviseTarget = isRevise ? resolveReviseTarget(resolveReviseSubSource(state, 'ui'), 'ui') : null;
   const FilePromptAdapter = await import('../../../../../../periphery/adapters/prompt/FilePromptAdapter');
   const promptAdapter = new FilePromptAdapter.FilePromptAdapter();
   const templateSuffix = docFormat === 'handoff' ? 'by-handoff' : isFigmaMode ? 'by-figma' : 'by-desc';
@@ -145,17 +153,63 @@ export async function decomposeUiDesign(
     // inline branch used `invokeWithUsage` (single-shot) and `<task>` wrappers
     // never reached `XMLStreamParser` so the todo column always landed in one
     // burst at the end.
-    const tools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
+    // Discovery tools: `read_file` + `list_files`, RAC-gated, available to
+    // EVERY design decompose intent (mirrors code decompose). Lets the LLM
+    // dereference handoff STUBS during revise and survey bundle structure —
+    // `read_source_doc` only reads plan/ sources from an in-memory record.
+    const discovery = await buildDesignDiscoveryTools(state);
+    const sourceTools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
+    const tools = [...discovery.tools, ...sourceTools];
+    const toolHandler = async (name: string, args: any): Promise<string> => {
+      if (name === 'read_source_doc') {
+        return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
+      }
+      const discovered = await discovery.dispatch(name, args);
+      if (discovered !== null) return discovered;
+      return `Error: Unknown tool "${name}"`;
+    };
+
+    // Repair-call — one corrective round on contract mismatch (mirrors
+    // systemDesignDecompose.repairCall). Prevents a single off-contract
+    // response from crashing the process via the hard parser.
+    const repairCall = async (rawResponse: string, errorMessage: string): Promise<string> => {
+      const truncated = rawResponse.length > 4000 ? rawResponse.slice(0, 4000) + '\n...[truncated]' : rawResponse;
+      const { response: repaired, usage: repairUsage } = await callLLMWithToolLoop(
+        llmToUse,
+        [
+          { role: 'user' as const, content: uiDecomposePrompt },
+          { role: 'assistant' as const, content: truncated },
+          {
+            role: 'user' as const,
+            content:
+              `Your previous response did not match the required contract.\n\n` +
+              `Error: ${errorMessage}\n\n` +
+              `Re-emit strictly in the contract from the original prompt: ` +
+              `\`<executionTier>\` first, then \`<targetFiles>\`, then a \`<tasks>\` block ` +
+              `with one \`<task>{json}</task>\` per task. NO markdown fences. ` +
+              `NO \`<decompose>\` wrapper. Output the contract only — no other prose.`,
+          },
+        ],
+        [],
+        () => `Error: tools are not available in repair mode`,
+        {
+          temperature: LLM_TEMPERATURE.DECOMPOSE,
+          maxTokens: LLM_MAX_TOKENS.DEFAULT,
+          enableThinking: true,
+          thinkingBudget: 10000,
+          state: state as any,
+          onTaskParsed: streamingHook.onTaskParsed,
+        },
+      );
+      applyEstimatingUsage(state, 'decompose', repairUsage, { subNode: 'ui-repair', promptChars: uiDecomposePrompt.length });
+      return repaired;
+    };
+
     const { response: streamedResponse, usage } = await callLLMWithToolLoop(
       llmToUse,
       [{ role: 'user', content: uiDecomposePrompt }],
       tools,
-      (name, args) => {
-        if (name === 'read_source_doc') {
-          return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
-        }
-        return `Error: Unknown tool "${name}"`;
-      },
+      toolHandler,
       {
         temperature: LLM_TEMPERATURE.DECOMPOSE,
         maxTokens: LLM_MAX_TOKENS.DEFAULT,
@@ -168,17 +222,7 @@ export async function decomposeUiDesign(
     textResponse = streamedResponse;
     applyEstimatingUsage(state, 'decompose', usage, { subNode: 'ui', promptChars: uiDecomposePrompt.length });
 
-    // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
-    // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.
-    const executionTier = coerceExecutionTier(
-      parseExecutionTierTag(textResponse),
-      'UIDecompose',
-    );
-    console.log(`🧭 [UIDecompose] executionTier=${executionTier}`);
-
-    // Parse and validate
-    const parsedResponse = parseLLMJsonResponse(textResponse);
-    const response: {
+    type UiDecomposed = {
       strategy?: string;
       targetFiles: string[];
       tasks: Array<{
@@ -189,28 +233,56 @@ export async function decomposeUiDesign(
         priority: number;
         parallelGroup?: string;
       }>;
-    } = parsedResponse;
+    };
 
-    if (!response.targetFiles || !response.tasks) {
-      throw new Error('Invalid UI task breakdown format from LLM');
-    }
-
-    // Handoff bundle invariants (fail-loud): every task authors exactly one
-    // relative file path inside the bundle, and task ids must not collide with
-    // the ant-JSON asset-validation prefix (`checkTaskStatus/assetValidation.ts`
-    // fires `validateAssetReferences` on `ui-assets-*` / `game-art-assets-*`).
-    if (docFormat === 'handoff') {
-      for (const t of response.tasks) {
-        if (!t.targetFile) {
-          throw new Error(`[UIDecompose] handoff task "${t.id}" is missing targetFile`);
-        }
-        if (t.id.startsWith('ui-assets-') || t.id.startsWith('game-art-assets-')) {
-          throw new Error(
-            `[UIDecompose] handoff task id "${t.id}" collides with the ant-JSON asset-validation prefix — use ui-handoff-*`,
-          );
+    // Parse + validate + handoff invariants, funnelled so any contract
+    // mismatch triggers the single repair round.
+    const parseAndValidate = (text: string): { parsed: any; response: UiDecomposed } => {
+      const parsed = parseLLMJsonResponse(text);
+      const resp = parsed as UiDecomposed;
+      if (!resp.targetFiles || !resp.tasks) {
+        throw new Error('Invalid UI task breakdown format from LLM');
+      }
+      // Handoff bundle invariants (fail-loud): every task authors exactly one
+      // relative file path inside the bundle, and task ids must not collide with
+      // the ant-JSON asset-validation prefix (`checkTaskStatus/assetValidation.ts`
+      // fires `validateAssetReferences` on `ui-assets-*` / `game-art-assets-*`).
+      if (docFormat === 'handoff') {
+        for (const t of resp.tasks) {
+          if (!t.targetFile) {
+            throw new Error(`[UIDecompose] handoff task "${t.id}" is missing targetFile`);
+          }
+          if (t.id.startsWith('ui-assets-') || t.id.startsWith('game-art-assets-')) {
+            throw new Error(
+              `[UIDecompose] handoff task id "${t.id}" collides with the ant-JSON asset-validation prefix — use ui-handoff-*`,
+            );
+          }
         }
       }
+      return { parsed, response: resp };
+    };
+
+    let parsedResponse: any;
+    let response: UiDecomposed;
+    try {
+      ({ parsed: parsedResponse, response } = parseAndValidate(textResponse));
+    } catch (parseError) {
+      console.warn(`⚠️  [UIDecompose] Parse failed: ${(parseError as Error).message}. Sending repair call...`);
+      streamingHook.reset();
+      const repaired = await repairCall(textResponse, (parseError as Error).message);
+      textResponse = repaired;
+      // Re-parse — throws to the outer catch if the repaired response also fails.
+      ({ parsed: parsedResponse, response } = parseAndValidate(textResponse));
     }
+
+    // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
+    // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.
+    // Computed from the FINAL (possibly repaired) response.
+    const executionTier = coerceExecutionTier(
+      parseExecutionTierTag(textResponse),
+      'UIDecompose',
+    );
+    console.log(`🧭 [UIDecompose] executionTier=${executionTier}`);
 
     // Build task queue
     const taskQueue = new TaskQueue<DesignTask>();
@@ -254,15 +326,20 @@ export async function decomposeUiDesign(
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,
+        // targetDir is stamped explicitly for handoff (gen + rev) and for
+        // ant/figma REVISE (SSOT: reviseTarget). DESIGN.md / tokens/*.css /
+        // screens/*.html carry no ant-canonical filename prefix, so designDirOf
+        // cannot route them — targetDir is the placement authority. For
+        // ant/figma revise it makes "ref determines target" an explicit record
+        // instead of the implicit designDirOf filename inference.
         ...(docFormat === 'handoff'
           ? {
               docFormat: 'handoff' as const,
-              // DESIGN.md / tokens/*.css / screens/*.html carry no ant-canonical
-              // filename prefix, so designDirOf cannot route them — targetDir is
-              // the placement authority (same mechanism as spec tasks).
               targetDir: ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, ''),
             }
-          : {}),
+          : reviseTarget
+            ? { targetDir: reviseTarget.targetDir }
+            : {}),
       } as DesignTask);
     });
 
