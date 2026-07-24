@@ -24,10 +24,12 @@ import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
 import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
+import { resolveReviseSubSource, resolveReviseTarget } from "../../_shared/reviseTarget";
+import { buildDesignDiscoveryTools } from "./designDecomposeTools";
 import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives, isFigmaPipeline, isFigmaDataPopulated } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
@@ -93,11 +95,18 @@ export async function decomposeGameArtDesign(
   );
 
   const sourceFileNames = pool.sourceFileNames();
+  // Revise: the selected ref sub-source is the SSOT that decides docFormat +
+  // variant + output dir (design/_shared/reviseTarget.ts). This fixes the old
+  // asymmetry where rev-game-art on a figma ref could never reach `by-figma`.
+  // Generate keeps the intent-driven picker.
+  const isRevise = state.resolvedAction?.intent === 'rev-game-art';
+  const reviseTarget = isRevise
+    ? resolveReviseTarget(resolveReviseSubSource(state, 'game-art'), 'game-art')
+    : null;
   const { resolveDesignOutputFormat } = await import('../../_shared/outputFormat');
-  const docFormat = resolveDesignOutputFormat(state, 'game-art');
-  const variant = pickGameArtDesignVariant(state, docFormat);
-  const isFigmaMode = variant === 'by-figma'
-    && isFigmaPipeline(state.resolvedAction?.intent, isFigmaDataPopulated(state.figmaConfig));
+  const docFormat = reviseTarget ? reviseTarget.docFormat : resolveDesignOutputFormat(state, 'game-art');
+  const variant = reviseTarget ? reviseTarget.variant : pickGameArtDesignVariant(state, docFormat);
+  const isFigmaMode = variant === 'by-figma';
   if (isFigmaMode && !sourceFileNames.includes('figma.json')) {
     sourceFileNames.push('figma.json');
   }
@@ -170,17 +179,63 @@ export async function decomposeGameArtDesign(
     // fires regardless of source size; the previous `invokeWithUsage` inline
     // branch never gave `XMLStreamParser` any text to scan, so the todo
     // column landed in one burst at stream end.
-    const tools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
+    // Discovery tools: `read_file` + `list_files`, RAC-gated, available to
+    // EVERY design decompose intent (mirrors code decompose). Lets the LLM
+    // dereference handoff STUBS during revise and survey bundle structure —
+    // `read_source_doc` only reads plan/ sources from an in-memory record.
+    const discovery = await buildDesignDiscoveryTools(state);
+    const sourceTools = useToolMode && pool.hasSources() ? [READ_SOURCE_DOC_TOOL] : [];
+    const tools = [...discovery.tools, ...sourceTools];
+    const toolHandler = async (name: string, args: any): Promise<string> => {
+      if (name === 'read_source_doc') {
+        return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
+      }
+      const discovered = await discovery.dispatch(name, args);
+      if (discovered !== null) return discovered;
+      return `Error: Unknown tool "${name}"`;
+    };
+
+    // Repair-call — one corrective round on contract mismatch (mirrors
+    // systemDesignDecompose.repairCall). Prevents a single off-contract
+    // response from crashing the process via the hard parser.
+    const repairCall = async (rawResponse: string, errorMessage: string): Promise<string> => {
+      const truncated = rawResponse.length > 4000 ? rawResponse.slice(0, 4000) + '\n...[truncated]' : rawResponse;
+      const { response: repaired, usage: repairUsage } = await callLLMWithToolLoop(
+        llmToUse,
+        [
+          { role: 'user' as const, content: artDecomposePrompt },
+          { role: 'assistant' as const, content: truncated },
+          {
+            role: 'user' as const,
+            content:
+              `Your previous response did not match the required contract.\n\n` +
+              `Error: ${errorMessage}\n\n` +
+              `Re-emit strictly in the contract from the original prompt: ` +
+              `\`<executionTier>\` first, then \`<targetFiles>\`, then a \`<tasks>\` block ` +
+              `with one \`<task>{json}</task>\` per task. NO markdown fences. ` +
+              `NO \`<decompose>\` wrapper. Output the contract only — no other prose.`,
+          },
+        ],
+        [],
+        () => `Error: tools are not available in repair mode`,
+        {
+          temperature: LLM_TEMPERATURE.DECOMPOSE,
+          maxTokens: LLM_MAX_TOKENS.DEFAULT,
+          enableThinking: true,
+          thinkingBudget: 10000,
+          state: state as any,
+          onTaskParsed: streamingHook.onTaskParsed,
+        },
+      );
+      applyEstimatingUsage(state, 'decompose', repairUsage, { subNode: 'gameArt-repair', promptChars: artDecomposePrompt.length });
+      return repaired;
+    };
+
     const { response: streamedResponse, usage } = await callLLMWithToolLoop(
       llmToUse,
       [{ role: 'user', content: artDecomposePrompt }],
       tools,
-      (name, args) => {
-        if (name === 'read_source_doc') {
-          return handleReadSourceFile(args.filename, sourceRecord, args.startLine, args.endLine);
-        }
-        return `Error: Unknown tool "${name}"`;
-      },
+      toolHandler,
       {
         temperature: LLM_TEMPERATURE.DECOMPOSE,
         maxTokens: LLM_MAX_TOKENS.DEFAULT,
@@ -193,17 +248,7 @@ export async function decomposeGameArtDesign(
     textResponse = streamedResponse;
     applyEstimatingUsage(state, 'decompose', usage, { subNode: 'gameArt', promptChars: artDecomposePrompt.length });
 
-    // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
-    // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.
-    const executionTier = coerceExecutionTier(
-      parseExecutionTierTag(textResponse),
-      'GameArtDecompose',
-    );
-    console.log(`🧭 [GameArtDecompose] executionTier=${executionTier}`);
-
-    // Parse and validate
-    const parsedResponse = parseLLMJsonResponse(textResponse);
-    const response: {
+    type GameArtDecomposed = {
       strategy?: string;
       targetFiles: string[];
       tasks: Array<{
@@ -214,25 +259,53 @@ export async function decomposeGameArtDesign(
         priority: number;
         parallelGroup?: string;
       }>;
-    } = parsedResponse;
+    };
 
-    if (!response.targetFiles || !response.tasks) {
-      throw new Error('Invalid game-art task breakdown format from LLM');
-    }
-
-    // Handoff bundle invariants (fail-loud) — mirrors uiDesignDecompose.
-    if (docFormat === 'handoff') {
-      for (const t of response.tasks) {
-        if (!t.targetFile) {
-          throw new Error(`[GameArtDecompose] handoff task "${t.id}" is missing targetFile`);
-        }
-        if (t.id.startsWith('ui-assets-') || t.id.startsWith('game-art-assets-')) {
-          throw new Error(
-            `[GameArtDecompose] handoff task id "${t.id}" collides with the ant-JSON asset-validation prefix — use game-art-handoff-*`,
-          );
+    // Parse + validate + handoff invariants, funnelled so any contract
+    // mismatch triggers the single repair round.
+    const parseAndValidate = (text: string): { parsed: any; response: GameArtDecomposed } => {
+      const parsed = parseLLMJsonResponse(text);
+      const resp = parsed as GameArtDecomposed;
+      if (!resp.targetFiles || !resp.tasks) {
+        throw new Error('Invalid game-art task breakdown format from LLM');
+      }
+      // Handoff bundle invariants (fail-loud) — mirrors uiDesignDecompose.
+      if (docFormat === 'handoff') {
+        for (const t of resp.tasks) {
+          if (!t.targetFile) {
+            throw new Error(`[GameArtDecompose] handoff task "${t.id}" is missing targetFile`);
+          }
+          if (t.id.startsWith('ui-assets-') || t.id.startsWith('game-art-assets-')) {
+            throw new Error(
+              `[GameArtDecompose] handoff task id "${t.id}" collides with the ant-JSON asset-validation prefix — use game-art-handoff-*`,
+            );
+          }
         }
       }
+      return { parsed, response: resp };
+    };
+
+    let parsedResponse: any;
+    let response: GameArtDecomposed;
+    try {
+      ({ parsed: parsedResponse, response } = parseAndValidate(textResponse));
+    } catch (parseError) {
+      console.warn(`⚠️  [GameArtDecompose] Parse failed: ${(parseError as Error).message}. Sending repair call...`);
+      streamingHook.reset();
+      const repaired = await repairCall(textResponse, (parseError as Error).message);
+      textResponse = repaired;
+      // Re-parse — throws to the outer catch if the repaired response also fails.
+      ({ parsed: parsedResponse, response } = parseAndValidate(textResponse));
     }
+
+    // ExecutionTier: LLM SSOT — `<executionTier>N</executionTier>` emitted
+    // BEFORE the JSON output. Missing tag degrades to Tier 0 Reflex.
+    // Computed from the FINAL (possibly repaired) response.
+    const executionTier = coerceExecutionTier(
+      parseExecutionTierTag(textResponse),
+      'GameArtDecompose',
+    );
+    console.log(`🧭 [GameArtDecompose] executionTier=${executionTier}`);
 
     // Build task queue
     const taskQueue = new TaskQueue<DesignTask>();
@@ -271,12 +344,18 @@ export async function decomposeGameArtDesign(
         completed: false,
         targetFile: task.targetFile,
         parallelGroup,
+        // targetDir is stamped explicitly for handoff (gen + rev) and for
+        // ant/figma REVISE (SSOT: reviseTarget). Generate json paths keep the
+        // execute-phase `designDirOf` fallback. This makes "ref determines
+        // target" a per-task record instead of an implicit filename inference.
         ...(docFormat === 'handoff'
           ? {
               docFormat: 'handoff' as const,
               targetDir: ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, ''),
             }
-          : {}),
+          : reviseTarget
+            ? { targetDir: reviseTarget.targetDir }
+            : {}),
       } as DesignTask);
     });
 
