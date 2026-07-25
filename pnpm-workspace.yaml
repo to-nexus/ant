@@ -61,15 +61,21 @@ overrides:
   'ip-address': '^10.1.1'
   # uuid: buf bounds check (langgraph/bullmq/dockerode transitive; direct dep also bumped).
   'uuid': '^11.1.1'
-  # brace-expansion: DoS — original zero-step (2.0.x) plus CVE-2026-13149
-  # exponential-time expand() (fixed 2.1.2 / 5.0.7). Scope each major to its
-  # vulnerable range only, leaving 1.x consumers untouched (mirrors minimatch@<X).
+  # brace-expansion: DoS — original zero-step (2.0.x), CVE-2026-13149
+  # exponential-time expand() (fixed 2.1.2 / 5.0.7), and CVE-2026-14257
+  # memory-exhaustion via unbounded result-string length (fixed 5.0.8 only —
+  # no 2.x backport yet; the 2.x finding is suppressed in secops-ci-policies
+  # until upstream ships one). Scope each major to its vulnerable range only,
+  # leaving 1.x consumers untouched (mirrors minimatch@<X). Do NOT force 2.x
+  # consumers onto 5.x: the 5.x CJS build is named-export (exports.expand)
+  # and crashes minimatch@5/9's default-import at runtime.
   'brace-expansion@>=2.0.0 <2.1.2': '^2.1.2'
-  'brace-expansion@>=5.0.0 <5.0.7': '^5.0.7'
+  'brace-expansion@>=5.0.0 <5.0.8': '^5.0.8'
   # js-yaml: CVE-2026-59869 DoS on malformed input (fixed 4.3.0 / 3.15.0).
   'js-yaml@>=4.0.0 <4.3.0': '^4.3.0'
-  # postcss: CSS-stringify XSS — build-time only (tailwind/vite), safe patch within 8.x.
-  'postcss': '^8.5.10'
+  # postcss: CSS-stringify XSS + GHSA-r28c-9q8g-f849 sourceMappingURL path
+  # traversal (.map disclosure, fixed 8.5.18) — build-time only (tailwind/vite).
+  'postcss': '^8.5.18'
   # shell-quote: quote() newline-escape bug (concurrently dev script transitive).
   'shell-quote': '^1.8.4'
   # @babel/core: sourceMappingURL arbitrary file read (@vitejs/plugin-react transitive).

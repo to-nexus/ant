@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { checkHealth } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { selectIsAuthBlocked } from '@/domain/store/selectors';

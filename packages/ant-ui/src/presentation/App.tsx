@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Route, Routes, useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { AppNavBar } from '@/presentation/components/AppNavBar';
 import { ApprovalBanner } from '@/presentation/components/common/ApprovalBanner';
