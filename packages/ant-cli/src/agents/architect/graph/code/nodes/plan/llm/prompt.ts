@@ -159,8 +159,8 @@ export async function buildPlanPrompt(
   // doc is present — regardless of whether it is injected via ref or
   // context. Gate (`hasSystemDesign`) is therefore the correct flag for
   // the plan/base.md IMMUTABLE notice, not the old role-scoped
-  // `hasSystemDesignRef` (which would have silently skipped gen-code-spec
-  // / rev-code, where sys-design arrives as context).
+  // `hasSystemDesignRef` (which would have silently skipped gen-code-spec,
+  // where sys-design arrives as context).
   //
   //   `hasSystemDesign` (Gate): gates the "API Contract IMMUTABLE" notice.
   //   `hasUi`           (Gate): gates design-system TOKEN INVENTORY / ui
@@ -290,6 +290,10 @@ export async function buildPlanPrompt(
     hasAnyAuthoritativeDoc,
     featureObservesUiSource, featureUiSource,
     layoutValidityFloorActive,
+    // Codebase Channel SSOT — enrichCodebaseVars derives `codebaseRole`
+    // (codebase-channel partial gate) and `hasExistingCode`
+    // (existing-code-discipline gate) from intent + workspaceState.
+    workspaceState: state.workspaceState,
     featureContext: state.featureContext,
     // Context Lens P2 — band-projected view (standard; Tier 4 lean). When
     // present the plan template's context-lens partial supersedes the

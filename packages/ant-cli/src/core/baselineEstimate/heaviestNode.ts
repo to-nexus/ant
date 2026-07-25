@@ -33,11 +33,10 @@ export interface HeaviestNodeMapping {
  * compaction-aware compound flow the estimator emulates.
  */
 export const HEAVIEST_NODE_BY_INTENT: Partial<Record<IntentId, HeaviestNodeMapping>> = {
-  // Code (5) — decompose dominates (full RAC pool + role-scoped 8K/2K compaction).
+  // Code (4) — decompose dominates (full RAC pool + role-scoped 8K/2K compaction).
   'gen-code-sys':             { job: 'code',   node: 'decompose', reason: 'static-max',  templates: TEMPLATE_PATHS.codeDecompose },
   'gen-code-spec':            { job: 'code',   node: 'decompose', reason: 'static-max',  templates: TEMPLATE_PATHS.codeDecompose },
   'gen-code-directive':       { job: 'code',   node: 'decompose', reason: 'static-max',  templates: TEMPLATE_PATHS.codeDecompose },
-  'rev-code':                 { job: 'code',   node: 'decompose', reason: 'static-max',  templates: TEMPLATE_PATHS.codeDecompose },
   'explain-code':             { job: 'code',   node: 'detect',    reason: 'no-decompose', templates: TEMPLATE_PATHS.detect },
 
   // Design UI (4)

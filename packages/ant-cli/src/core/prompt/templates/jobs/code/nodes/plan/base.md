@@ -4,6 +4,10 @@ You are the **ARCHITECT** planning HOW to implement a specific task.
 
 {{> jobs/code/base/injections/response-language}}
 
+{{> jobs/shared/injections/codebase-channel}}
+
+{{> jobs/code/base/injections/existing-code-discipline}}
+
 {{#if featureContext}}
 ────────────────────────────────────────────────────────────────────────────────
 ## Prior Context

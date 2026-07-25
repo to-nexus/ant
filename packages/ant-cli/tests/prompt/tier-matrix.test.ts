@@ -197,7 +197,6 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     { intent: 'gen-code-sys', tiers: ['techTier', 'visualTier', 'gameArtTier'] },
     { intent: 'gen-code-spec', tiers: ['techTier', 'visualTier', 'gameArtTier'] },
     { intent: 'gen-code-directive', tiers: ['techTier', 'visualTier', 'gameArtTier'] },
-    { intent: 'rev-code', tiers: [] },
   ];
 
   it.each(expectations)('intent $intent has tiers $tiers', ({ intent, tiers }) => {
@@ -252,7 +251,7 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
     // on existing code references the real stack — same gate as gen-sys-*. The
     // remaining rev-* stay tier-less (the document/code under review encodes the
     // basis, or the surface is frontend-by-design).
-    const REV_INTENTS: IntentId[] = ['rev-plan', 'rev-ui', 'rev-game-art', 'rev-code'];
+    const REV_INTENTS: IntentId[] = ['rev-plan', 'rev-ui', 'rev-game-art'];
     for (const intent of REV_INTENTS) {
       const slot = getConfigSlots(intent)?.basis;
       expect(slot).toBeDefined();
@@ -273,7 +272,7 @@ describe('intent matrix (§4.1 SSOT-2 — Phase 2 D23)', () => {
       'rev-sys',
       'gen-ui-figma', 'gen-ui-desc', 'rev-ui',
       'gen-game-art-figma', 'gen-game-art-desc', 'rev-game-art',
-      'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
+      'gen-code-sys', 'gen-code-spec', 'gen-code-directive',
     ];
     for (const intent of NON_LOCKED) {
       const slot = getConfigSlots(intent)?.basis;
@@ -328,7 +327,7 @@ describe('full grid sweep (intent × domain × tier)', () => {
     'gen-sys-fe', 'gen-sys-be', 'gen-sys-full', 'rev-sys',
     'gen-ui-figma', 'gen-ui-desc', 'rev-ui',
     'gen-game-art-figma', 'gen-game-art-desc', 'rev-game-art',
-    'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
+    'gen-code-sys', 'gen-code-spec', 'gen-code-directive',
   ];
 
   for (const intent of ARTIFACT_INTENTS) {

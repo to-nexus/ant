@@ -290,7 +290,7 @@ export class ArtifactPoolView {
    *
    * Mirrors the role assignments in `@ant/shared/action-config-matrix.ts`:
    * the four design kinds are exactly the slots that the matrix marks as
-   * `refs:` for any `gen-code-*` / `rev-code` intent.
+   * `refs:` for any `gen-code-*` intent.
    */
   hasAnyDesignRef(): boolean {
     return this.hasSystemDesignRef()
@@ -439,7 +439,7 @@ export class ArtifactPoolView {
    * SSOT for "is this job spec-driven?": a spec with `role='ref'` in the
    * RAC-derived artifact pool means the user/intent explicitly promoted it
    * to a development source (e.g. `gen-code-spec` intent with
-   * `refsSingleSelect: true`, or `rev-code` with a spec mention).
+   * `refsSingleSelect: true`).
    *
    * Returns `null` when no spec is in the ref role — `role='context'` specs
    * do NOT count (they are reference material only).

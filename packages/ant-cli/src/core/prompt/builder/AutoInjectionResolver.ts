@@ -85,7 +85,7 @@ export class AutoInjectionResolver {
    */
   resolve(input: AutoInjectionInput): string[] {
     const injections: string[] = [];
-    const { job, node, taskType, mode, resolvedAction, data } = input;
+    const { job, node, taskType, resolvedAction, data } = input;
 
     const tiers = input.techTiers ?? (input.techTier ? [input.techTier] : []);
     const { hasFrontend, hasBackend } = AutoInjectionResolver.computeStackFlags(
@@ -170,14 +170,12 @@ export class AutoInjectionResolver {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Code job: refactor behavioural-debugging guard
+    // Code job: error-task behavioural-debugging guard. (The code family
+    // has no refactor mode — existing-code handling is presence-driven via
+    // `existing-code-discipline` below.)
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    if (job === 'code') {
-      const isRefactor = mode === 'refactor' || taskType === 'error';
-      const isExplicit = resolvedAction?.source === 'explicit';
-      if ((isExplicit && resolvedAction?.mode === 'refactor') || isRefactor) {
-        injections.push(`${jobPrefix}/behavioral-debugging`);
-      }
+    if (job === 'code' && taskType === 'error') {
+      injections.push(`${jobPrefix}/behavioral-debugging`);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -286,6 +284,17 @@ export class AutoInjectionResolver {
     );
     if (codebaseRole) {
       injections.push(`${commonPrefix}/codebase-channel`);
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Existing-code discipline (presence-driven) — the code-job successor
+    // to the retired mode==='refactor' gate: any code execute over an
+    // existing codebase must preserve behaviour / bound blast radius,
+    // regardless of which gen-code-* intent started the job. Decompose and
+    // plan include the same partial from their templates (single SSOT).
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    if (job === 'code' && node === 'execute' && data.hasCodebase) {
+      this.pushUnique(injections, `${jobPrefix}/existing-code-discipline`);
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

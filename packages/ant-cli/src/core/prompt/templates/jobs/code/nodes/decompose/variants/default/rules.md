@@ -29,7 +29,7 @@ OUTPUT FORMAT:
 
 **Constraint**: Classify using the directive, the mode, and the provided context/refs ONLY. Do NOT invent scope beyond what the directive states.
 
-**Constraint — design refs force Tier 4 for write modes**: When mode is `generate` or `refactor` AND the prompt section `## Available Reference Documents` lists ANY reference document (a `role='ref'` design artifact — spec, system-design, ui, or game-art — chosen by the intent matrix), the executionTier MUST be `4`. The reference document IS the **Development Source** that enumerates this turn's work; classifying lower would collapse multiple work units the document describes into a single task. The intent matrix in `@ant/shared/action-config-matrix.ts` is the SSOT for which artifact kinds are `refs:` for each `gen-code-*` / `rev-code` intent. This rule is enforced by a runtime validator — emitting Tier 1/2/3 with a design ref present will be rejected and retried.
+**Constraint — design refs force Tier 4 for write mode**: When mode is `generate` AND the prompt section `## Available Reference Documents` lists ANY reference document (a `role='ref'` design artifact — spec, system-design, ui, or game-art — chosen by the intent matrix), the executionTier MUST be `4`. The reference document IS the **Development Source** that enumerates this turn's work; classifying lower would collapse multiple work units the document describes into a single task. The intent matrix in `@ant/shared/action-config-matrix.ts` is the SSOT for which artifact kinds are `refs:` for each `gen-code-*` intent. This rule is enforced by a runtime validator — emitting Tier 1/2/3 with a design ref present will be rejected and retried.
 
 **Constraint — directive-driven tier (no design refs)**: When the prompt section `## Available Reference Documents` is absent or empty, classify by directive scope alone:
 - Tier `1` — single write, verification genuinely unneeded (comment / typo / safe config tweak).
@@ -53,16 +53,16 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 | `explain`               | `1`                        | empty (`<tasks></tasks>`)                             | `{ "explorationScope": "<one sentence>" }` naming the area to look at |
 | `explain`               | `2`                        | Exactly one `<task>`, `type: "explain"`, `priority: 200`, `selfVerifyOnDone: false` | `{}` |
 | `explain`               | `3` / `4`                  | Exactly one `<task>`, `type: "explain"`, `priority: 200` | `{}` |
-| `generate` / `refactor` | `1`                        | empty (`<tasks></tasks>`)                             | `{ "targetFiles": [...] }` listing the files the single action touches |
-| `generate` / `refactor` | `2`                        | Exactly one `<task>` (`type` MUST be exactly one of: `"error"`, `"feature"`, `"ui"`, `"setup"`) with `selfVerifyOnDone: true` | `{}` |
-| `generate` / `refactor` | `3` / `4`                  | Full task breakdown per the rules below, `>= 2` `<task>` elements INCLUDING a verification task (priority 1000) | `{}` |
+| `generate`              | `1`                        | empty (`<tasks></tasks>`)                             | `{ "targetFiles": [...] }` listing the files the single action touches |
+| `generate`              | `2`                        | Exactly one `<task>` (`type` MUST be exactly one of: `"error"`, `"feature"`, `"ui"`, `"setup"`) with `selfVerifyOnDone: true` | `{}` |
+| `generate`              | `3` / `4`                  | Full task breakdown per the rules below, `>= 2` `<task>` elements INCLUDING a verification task (priority 1000) | `{}` |
 
-**Constraint**: For `generate` / `refactor` modes, the minimum executionTier is `1`. Do NOT emit `<executionTier>0</executionTier>` for these modes. A "no change required" outcome is NEVER a classification-time decision — it can only be the conclusion of a Tier 1+ execution that observes the code and produces no file edits. Tier `0` remains valid ONLY for `explain` mode (read-only textual answer from the directive alone).
+**Constraint**: For `generate` mode, the minimum executionTier is `1`. Do NOT emit `<executionTier>0</executionTier>` for this mode. A "no change required" outcome is NEVER a classification-time decision — it can only be the conclusion of a Tier 1+ execution that observes the code and produces no file edits. Tier `0` remains valid ONLY for `explain` mode (read-only textual answer from the directive alone).
 
 **Constraint**: Task Schema, Task Type Rules, Task Scope Constraint, Shared Foundation rules, Parallel Execution rules, and every decomposition guidance below apply whenever `<tasks>` contains at least one `<task>` (tiers `2`, `3`, and `4`). When `<tasks>` is empty (tiers `0`, `1`), skip the reasoning steps those rules describe.
 
 {{#unless intentClarifyDisabled}}
-**Constraint**: The `generate` / `refactor` + tier `3`/`4` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes empty and `<specClarify>` is emitted instead of a task breakdown. Spec Clarify does NOT fire at Tier 2 — a single-unit task always has enough source.
+**Constraint**: The `generate` + tier `3`/`4` row defers to the Spec Clarify rules below. If those rules fire, `<tasks>` becomes empty and `<specClarify>` is emitted instead of a task breakdown. Spec Clarify does NOT fire at Tier 2 — a single-unit task always has enough source.
 {{/unless}}
 
 **Constraint**: When tier is `2` AND mode is `explain`, emit exactly one task:
@@ -76,7 +76,7 @@ Lower-tier preference applies ONLY between these three when genuine unit-count a
 - `selfVerifyOnDone`: `false` (explain does not write code, no gates to run)
 - `description`: the full explanation scope derived from the directive
 
-**Constraint**: When tier is `2` AND mode is `generate`/`refactor`, emit exactly one task:
+**Constraint**: When tier is `2` AND mode is `generate`, emit exactly one task:
 - `id`: kebab-case id for the unit of work
 - `name`: human-readable task name
 - `type`: the appropriate type (`"error"` for fixes of broken behavior, `"feature"` for new capability, `"ui"` for visual implementation, `"setup"` only for new-project infrastructure)
@@ -124,31 +124,26 @@ Tier 2's `selfVerifyOnDone:true` runtime escalate to N sub-tasks is a **cost** t
   - `2` Exploratory   — one explain task covers the full answer (observation → written artefact).
   - `3` Task          — answer must be structured as multiple chapter-scale artefacts.
   - `4` RefsGrounded  — answer systematically maps a supplied reference document.
-- `refactor` mode: the action is a code change. Minimum tier is `1` (Tier `0` is explain-only).
-  - `1` OneShot       — verification genuinely unneeded (comment/typo/safe).
-  - `2` Exploratory   — one refactor unit that needs verification (the task automatically runs install/typecheck/build/test in a verify cycle after apply).
-  - `3` Task          — change spans multiple independent persistence boundaries; verification task governs gates.
-  - `4` RefsGrounded  — the refactor plan comes from a supplied reference document.
-- `generate` mode: the action is producing new code. Minimum tier is `1` (Tier `0` is explain-only).
-  - `1` OneShot       — trivial addition where verification is genuinely unneeded.
-  - `2` Exploratory   — one generated unit that needs verification (the task automatically runs install/typecheck/build/test in a verify cycle after apply).
-  - `3` Task          — multi-boundary or multi-concern implementation; verification task governs gates.
-  - `4` RefsGrounded  — the implementation scope is enumerated by a supplied reference document.
+- `generate` mode: the action is producing or modifying code. Minimum tier is `1` (Tier `0` is explain-only).
+  - `1` OneShot       — trivial change where verification is genuinely unneeded (comment/typo/safe).
+  - `2` Exploratory   — one unit of work that needs verification (the task automatically runs install/typecheck/build/test in a verify cycle after apply).
+  - `3` Task          — change spans multiple independent boundaries or concerns; verification task governs gates.
+  - `4` RefsGrounded  — the work scope is enumerated by a supplied reference document.
 
-**Constraint**: Across all three modes above, the Tier 1 vs Tier 2 boundary is **scope of effect** — see the SSOT statement near the classification table (does the change leave module graph / type surface / module-init order unchanged?). The Tier 2 vs Tier 3 boundary is **surface count** — single component (1 surface) vs distinct components (≥ 2 surfaces).
+**Constraint**: Across both modes above, the Tier 1 vs Tier 2 boundary is **scope of effect** — see the SSOT statement near the classification table (does the change leave module graph / type surface / module-init order unchanged?). The Tier 2 vs Tier 3 boundary is **surface count** — single component (1 surface) vs distinct components (≥ 2 surfaces).
 
 ---
 
 ## Spec Clarify (source adequacy for tier 3 decomposition)
 
 {{#unless intentClarifyDisabled}}
-**Observation target**: When the tier is `3` and mode is `generate` / `refactor`, observe whether a design reference document (spec / system-design / ui / game-art) is present in the artifact pool. If a design ref is present, this turn is structurally Tier 4 (see ExecutionTier Classification above) and Spec Clarify does NOT fire.
+**Observation target**: When the tier is `3` and mode is `generate`, observe whether a design reference document (spec / system-design / ui / game-art) is present in the artifact pool. If a design ref is present, this turn is structurally Tier 4 (see ExecutionTier Classification above) and Spec Clarify does NOT fire.
 
 **Principle**: Spec Clarify fires only when the breakdown is multi-unit (Tier 3) AND no design reference grounds it. Under that condition, fabricating a breakdown is guessing — the user should be offered a chance to switch to a design/spec pass first.
 
 | Checkpoint | Question (yes = points to emit) |
 |-----------|----------------|
-| **Mode** | Is the active mode `generate` or `refactor` (i.e., NOT `explain`)? |
+| **Mode** | Is the active mode `generate` (i.e., NOT `explain`)? |
 | **Tier** | Is the tier `3` (Task) — i.e., multi-unit but NOT grounded in a design ref? |
 | **Multi-unit directive** | Does the directive describe two or more independent units of work that cannot be collapsed into a single Tier 2 task? |
 
@@ -318,7 +313,7 @@ CRITICAL:
 | `"verification"` | Final **gate** | Run install/typecheck/build/test gates across the integrated result (priority 1000). One per Tier 3/4 breakdown. See Verification Task section. |
 | `"explain"` | Read-only **explanation** | Explain mode only. Produces prose, never modifies files. See mode×tier matrix. |
 
-**Constraint**: These nine values are the ENTIRE task type enum — never emit any other value (including mode names like `"refactor"` / `"generate"`).
+**Constraint**: These nine values are the ENTIRE task type enum — never emit any other value (including mode or work-style names like `"refactor"` / `"generate"`).
 
 **Principle** — `"design-system"` priority ladder (REQUIRED when visualTier or ui-docs exist):
 - **200**: Token → CSS infrastructure (token variables, CSS custom-property generation, runtime import). Always the first `design-system` task.
@@ -331,7 +326,7 @@ CRITICAL:
 
 **Constraint**: Default to `"feature"` when ambiguous (e.g., "fix" without a clear error/crash).
 
-**Constraint**: Mode keywords in the directive (`generate` / `refactor` / `explain` / 한국어 "리팩토링"·"리팩터링") are **mode signals**, NOT `type` values. Choose `type` from the schema enum by what the task DOES (broken behavior → `"error"`; new behavior → `"feature"`; visual → `"ui"`; etc.) — never copy a mode keyword into `type`. The only mode name that is also a valid `type` is `"explain"`.
+**Constraint**: Work-style keywords in the directive (`generate` / `refactor` / `explain` / 한국어 "리팩토링"·"리팩터링") are **framing signals**, NOT `type` values. Choose `type` from the schema enum by what the task DOES (broken behavior → `"error"`; new behavior → `"feature"`; visual → `"ui"`; etc.) — never copy a mode keyword into `type`. The only mode name that is also a valid `type` is `"explain"`.
 
 **Constraint**: `"feature"` tasks are ALWAYS headless — unstyled structure only. A corresponding `"ui"` task handles visual styling. **"Headless" means unstyled, NOT affordance-blind**: a renderable `"feature"` task observes the UI design source (when one is present in its inputs) for the full set of **affordances / controls / content** the surface must expose, and builds + wires every one of them — including affordances the requirements omit but the design implies (links, secondary actions, the popup/dialog a control opens, the navigation it triggers). The feature owns *what controls exist and that they work*; the paired `"ui"` task owns *how they look*. A control the design shows must never be left inert for the ui task to "finish".
 

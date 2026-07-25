@@ -19,7 +19,7 @@ interface TargetDisplayProps {
   spotlightPath?: string | null;
   onOpenIde?: () => void;
   codebaseHasFiles: boolean;
-  /** When true, existing code is required (e.g. rev-code). Derived from slots having a locked codebase ref. */
+  /** When true, existing code is required (e.g. explain-code). Derived from slots having a locked codebase ref. */
   codebaseRequired: boolean;
   lang: 'en' | 'ko';
 }

@@ -18,7 +18,7 @@ const CLARIFY = '<clarify question="Which DB?"><option>a) Postgres</option><opti
 
 describe('clarify policy matrix', () => {
   it('wired gen intents are enabled (plan/spec/code/system-design)', () => {
-    for (const id of ['gen-plan', 'gen-spec', 'gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code',
+    for (const id of ['gen-plan', 'gen-spec', 'gen-code-sys', 'gen-code-spec', 'gen-code-directive',
       'gen-sys-fe', 'gen-sys-be', 'gen-sys-full'] as IntentId[]) {
       expect(getClarifyPolicy(id).clarifyEnabled).toBe(true);
     }

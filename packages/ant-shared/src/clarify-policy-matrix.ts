@@ -148,14 +148,6 @@ const CLARIFY_POLICY_MATRIX: Record<IntentId, ClarifyPolicy> = {
     blockingMode: 'proceed-if-sufficient',
     minTier: ExecutionTierId.Exploratory,
   },
-  'rev-code': {
-    clarifyEnabled: true,
-    clarifyPhases: ['decompose'],
-    // Budget 2 — see gen-code-sys (blocker round + PRD-sync confirmation round).
-    clarifyBudget: 2,
-    blockingMode: 'proceed-if-sufficient',
-    minTier: ExecutionTierId.Exploratory,
-  },
   'explain-code': DISABLED,
 
   // ── Visual ─────────────────────────────────
@@ -197,6 +189,10 @@ export function isClarifyActive(
   tier?: ExecutionTierId,
 ): boolean {
   const policy = CLARIFY_POLICY_MATRIX[intent];
+  // Retired intent ids (see LEGACY_INTENT_ALIASES) can surface from
+  // mid-flight checkpoints that bypass the derivation chokepoints —
+  // unknown policy means clarify is simply not active, never a crash.
+  if (!policy) return false;
   if (!policy.clarifyEnabled) return false;
   if (!policy.clarifyPhases.includes(phase)) return false;
   if (policy.clarifyBudget <= 0) return false;

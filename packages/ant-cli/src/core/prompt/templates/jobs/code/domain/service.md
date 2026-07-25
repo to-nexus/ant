@@ -2,7 +2,7 @@
 
 **Activation gate**: job `code` × `domain === 'service'`. Layered on top of `templates/domain/service.md` (workspace identity, D27).
 
-This overlay defines the **implementation discipline** specific to service / SaaS / dashboard / internal-tool projects. Use it when a code intent (`gen-code-sys` / `gen-code-spec` / `gen-code-directive` / `rev-code`) materializes a service feature. The code job decides **how** boundaries collaborate at runtime — design's policies (data ownership, contracts, persistence, RBAC) are taken as inputs and compiled into running code, not redebated here.
+This overlay defines the **implementation discipline** specific to service / SaaS / dashboard / internal-tool projects. Use it when a code intent (`gen-code-sys` / `gen-code-spec` / `gen-code-directive`) materializes a service feature. The code job decides **how** boundaries collaborate at runtime — design's policies (data ownership, contracts, persistence, RBAC) are taken as inputs and compiled into running code, not redebated here.
 
 ### MECE implementation section map
 
@@ -90,4 +90,4 @@ This file is gated on `domain === 'service'`. It is REQUIRED to use service impl
 
 ### Refine-mode discipline
 
-When refining existing code (`rev-code`), the directive defines the scope. Do NOT cross into adjacent boundaries (use-case → transport, helper → use-case) even when the refinement reveals an issue there — surface the issue as an open question or a follow-up directive, do not silently rewrite.
+When the directive carries a delta on existing code, the directive defines the scope. Do NOT cross into adjacent boundaries (use-case → transport, helper → use-case) even when the refinement reveals an issue there — surface the issue as an open question or a follow-up directive, do not silently rewrite.

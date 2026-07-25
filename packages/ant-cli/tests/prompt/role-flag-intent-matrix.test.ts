@@ -6,7 +6,6 @@
  *
  *   gen-code-sys   → UI=ref,  SYS=ref,  SPEC=--, SOURCES=context
  *   gen-code-spec  → UI=ctx,  SYS=ctx,  SPEC=ref, SOURCES=ctx
- *   rev-code       → UI=ctx,  SYS=ctx,  SPEC=ref (optional), SOURCES=--
  *   rev-ui         → UI=ref,  SYS=--,   SPEC=--, SOURCES=ctx
  *
  * Post-RAC templates must branch by what the block enforces (Gate /
@@ -15,7 +14,7 @@
  * for every code intent that surfaces UI / system-design as ref OR
  * context, the corresponding `hasUi` / `hasSystemDesign` Gate flag
  * returns true. A regression that reintroduces `hasUiRef` as a Gate
- * (the `gen-code-spec` / `rev-code` regression) would trip this test.
+ * (the `gen-code-spec` regression) would trip this test.
  *
  * Mechanism: `resolveToRAC` alone does NOT populate slots (that's
  * detect/UI's job), and `loadResolvedArtifacts` requires a real FS.
@@ -138,26 +137,6 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
     expect(s.hasSystemDesignContext).toBe(true);
   });
 
-  it('rev-code: UI / system-design surface as CONTEXT (same Gate guarantee as gen-code-spec)', () => {
-    const view = new ArtifactPoolView(buildSyntheticPool('rev-code'));
-    const s = snapshot(view);
-    expect(s.hasUi).toBe(true);
-    expect(s.hasUiRef).toBe(false);
-    expect(s.hasUiContext).toBe(true);
-
-    expect(s.hasSystemDesign).toBe(true);
-    expect(s.hasSystemDesignRef).toBe(false);
-    expect(s.hasSystemDesignContext).toBe(true);
-
-    // rev-code's first ref slot is the codebase itself (skipped by
-    // buildSyntheticPool) and spec is an optional ref — it renders
-    // when the user selects it. Without explicit selection we still
-    // see `hasSpecRef=true` because our synthesizer maps every
-    // refs[] slot to a ref-role artifact. This mirrors the behaviour
-    // when the user DOES pick the optional spec.
-    expect(s.hasSpecRef).toBe(true);
-  });
-
   it('rev-ui: UI is ref (authoritative revise target)', () => {
     const view = new ArtifactPoolView(buildSyntheticPool('rev-ui'));
     const s = snapshot(view);
@@ -173,7 +152,7 @@ describe('role-flag intent matrix — post-RAC Gate guarantees', () => {
     // This is the headline invariant the 3-category taxonomy exists
     // to enforce. A change that re-introduces `hasUiRef` as a Gate
     // for any of these intents breaks this assertion.
-    const intents: IntentId[] = ['gen-code-sys', 'gen-code-spec', 'rev-code', 'rev-ui'];
+    const intents: IntentId[] = ['gen-code-sys', 'gen-code-spec', 'rev-ui'];
     for (const intent of intents) {
       const view = new ArtifactPoolView(buildSyntheticPool(intent));
       expect(view.hasUi(), `${intent}: Gate flag hasUi must be true`).toBe(true);

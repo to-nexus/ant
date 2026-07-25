@@ -157,7 +157,6 @@
     "gen-code-sys": "Please generate code based on the system design documents",
     "gen-code-spec": "Please generate code based on the spec documents",
     "gen-code-directive": "Please generate code based on the directive",
-    "rev-code": "Please refactor the existing codebase",
     "gen-learn": "Please analyze and index the codebase",
     "explain-code": "Please explain the codebase",
     "explain-sys": "Please explain the system design",

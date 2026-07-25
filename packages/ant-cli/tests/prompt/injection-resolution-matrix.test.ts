@@ -108,7 +108,7 @@ describe('Tier I: Intent policies completeness', () => {
   });
 
   it('code intents have no static policies (only conditional)', () => {
-    const codeIntents: IntentId[] = ['gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code', 'explain-code'];
+    const codeIntents: IntentId[] = ['gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'explain-code'];
     for (const id of codeIntents) {
       expect(resolveTierI(id), `${id}`).toHaveLength(0);
     }
@@ -166,11 +166,11 @@ describe('Tier N: Artifact-conditional policies', () => {
     expect(policies).toHaveLength(0);
   });
 
-  it('rev-code with UI artifact triggers ui-design-policy', () => {
+  it('gen-code-directive with UI artifact triggers ui-design-policy', () => {
     const artifacts: ResolvedArtifact[] = [
       { path: 'visual/ui/ant/ui-tokens.json', content: 'mock', role: 'context' },
     ];
-    const policies = resolveTierN('rev-code', artifacts);
+    const policies = resolveTierN('gen-code-directive', artifacts);
     expect(policies).toContain('jobs/shared/injections/ui-design-policy');
   });
 
@@ -441,10 +441,10 @@ describe('RAC-driven injections', () => {
     expect(injections).not.toContain('jobs/shared/injections/action-context');
   });
 
-  it('refactor mode → refactor-guidance', () => {
-    const rac = resolveToRAC('rev-code');
+  it('refactor mode (design rev-*) → refactor-guidance', () => {
+    const rac = resolveToRAC('rev-sys');
     const injections = resolveAutoInjections({
-      job: 'code', mode: 'refactor', resolvedAction: rac, data: {},
+      job: 'design', mode: 'refactor', resolvedAction: rac, data: {},
     });
     expect(injections).toContain('jobs/shared/injections/refactor-guidance');
     expect(injections).not.toContain('jobs/shared/injections/explain-guidance');
@@ -474,19 +474,40 @@ describe('RAC-driven injections', () => {
 // ============================================
 
 describe('Behavioral-debugging injection', () => {
-  it('refactor mode → behavioral-debugging', () => {
+  it('mode alone no longer triggers behavioral-debugging (error taskType is the only trigger)', () => {
     const injections = resolveAutoInjections({
       job: 'code', mode: 'refactor', data: {},
     });
-    expect(injections).toContain('jobs/code/base/injections/behavioral-debugging');
+    expect(injections).not.toContain('jobs/code/base/injections/behavioral-debugging');
   });
 
-  it('explicit refactor via RAC → behavioral-debugging', () => {
-    const rac = resolveToRAC('rev-code', undefined, 'explicit');
+  it('retired mode trigger — a normalized legacy rev-code RAC no longer pulls behavioral-debugging', () => {
+    // rev-code normalizes to gen-code-directive (generate); the old
+    // mode==='refactor' trigger is retired — only taskType==='error' fires.
+    const rac = resolveToRAC('rev-code' as any, undefined, 'explicit');
     const injections = resolveAutoInjections({
       job: 'code', resolvedAction: rac, data: {},
     });
-    expect(injections).toContain('jobs/code/base/injections/behavioral-debugging');
+    expect(rac.intent).toBe('gen-code-directive');
+    expect(injections).not.toContain('jobs/code/base/injections/behavioral-debugging');
+    expect(injections).not.toContain('jobs/shared/injections/refactor-guidance');
+  });
+
+  it('code execute + hasCodebase → existing-code-discipline', () => {
+    const rac = resolveToRAC('gen-code-directive', undefined, 'explicit');
+    const injections = resolveAutoInjections({
+      job: 'code', node: 'execute', resolvedAction: rac, data: { hasCodebase: true },
+    });
+    expect(injections).toContain('jobs/code/base/injections/existing-code-discipline');
+    expect(injections).toContain('jobs/shared/injections/codebase-channel');
+  });
+
+  it('code execute greenfield → no existing-code-discipline', () => {
+    const rac = resolveToRAC('gen-code-directive', undefined, 'explicit');
+    const injections = resolveAutoInjections({
+      job: 'code', node: 'execute', resolvedAction: rac, data: {},
+    });
+    expect(injections).not.toContain('jobs/code/base/injections/existing-code-discipline');
   });
 
   it('error + hasProjectCode → behavioral-debugging', () => {
@@ -600,9 +621,9 @@ describe('Injection deduplication', () => {
   it('no duplicate injection paths', () => {
     const injections = resolveAutoInjections({
       job: 'code', node: 'execute', taskType: 'feature',
-      mode: 'refactor',
+      mode: 'generate',
       techTier: makeTechTier({ stack: 'fullstack' }),
-      resolvedAction: resolveToRAC('rev-code', undefined, 'explicit'),
+      resolvedAction: resolveToRAC('gen-code-directive', undefined, 'explicit'),
       data: {
         hasDirective: true, hasMemory: true,
         hasGitDiff: true, hasRetrievedCode: true,

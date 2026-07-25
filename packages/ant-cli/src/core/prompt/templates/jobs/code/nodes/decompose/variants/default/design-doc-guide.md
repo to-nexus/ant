@@ -5,11 +5,11 @@
 
 **The specification includes design documents.**
 
-{{#if (or (eq mode "refactor") (eq mode "explain"))}}
-**For Bug Fix/Refactor:**
-- Directive describes the bug/issue
+{{#if (eq mode "explain")}}
+**For Explanation:**
+- Directive describes the question/issue
 - Design document provides context
-- Focus on what's broken, reference spec for context
+- Focus on what is asked, reference spec for context
 
 {{else}}
 **For New Features:**

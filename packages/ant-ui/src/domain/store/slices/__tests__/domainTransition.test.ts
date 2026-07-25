@@ -327,7 +327,7 @@ describe('uiSlice — techTier IntentGroup scoping', () => {
     });
     store.getState().selectIntent('gen-code-sys');
     expect(store.getState().actionMetadata.basis?.techTier?.stack).toBe('fullstack');
-    store.getState().selectIntent('rev-code');
+    store.getState().selectIntent('explain-code');
     expect(store.getState().actionMetadata.basis?.techTier?.stack).toBe('fullstack');
   });
 

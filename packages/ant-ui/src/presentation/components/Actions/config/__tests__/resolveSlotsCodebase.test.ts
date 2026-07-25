@@ -82,8 +82,8 @@ describe('resolveSlotEntries — codebase context slot (Codebase Channel SSOT)',
     expect(slots!.context.some(s => s.codebase === true)).toBe(false);
   });
 
-  it('code-anchored ref intents already work — codebaseHasFiles=true makes the ref entry non-empty (rev-code)', () => {
-    const slots = getConfigSlots('rev-code');
+  it('code-anchored ref intents already work — codebaseHasFiles=true makes the ref entry non-empty (explain-code)', () => {
+    const slots = getConfigSlots('explain-code');
     expect(slots).not.toBeNull();
     const codebaseRef = slots!.refs.find(s => s.codebase === true);
     expect(codebaseRef).toBeDefined();
@@ -91,6 +91,17 @@ describe('resolveSlotEntries — codebase context slot (Codebase Channel SSOT)',
     const entries = resolveSlotEntries(slots!.refs, [], undefined, undefined, true);
     const codebaseEntry = entries.find(e => e.def.codebase === true);
     expect(codebaseEntry!.hasFiles).toBe(true);
+  });
+
+  it('code gen intents receive the auto codebase context slot when hasCodebase=true', () => {
+    const slots = getConfigSlots('gen-code-directive', { hasCodebase: true });
+    expect(slots).not.toBeNull();
+    const auto = slots!.context.find(s => s.codebase === true);
+    expect(auto).toBeDefined();
+    expect(auto!.auto).toBe(true);
+
+    const greenfield = getConfigSlots('gen-code-directive', { hasCodebase: false });
+    expect(greenfield!.context.some(s => s.codebase === true)).toBe(false);
   });
 
   /**

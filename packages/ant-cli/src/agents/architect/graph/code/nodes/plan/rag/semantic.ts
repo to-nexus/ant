@@ -81,7 +81,12 @@ export async function loadSemanticFiles(
         project: state.context.project,
         maxTokens: 10000,
         maxFiles: requestCount,  // ✅ Request extra to compensate for duplicates
-        mode: state.resolvedAction?.mode || 'refactor'
+        // Presence-driven retrieval tuning (mode keying retired): existing
+        // codebase → dependency-heavy; greenfield → pattern-seed.
+        profile:
+          state.resolvedAction?.mode === 'explain' ? 'focused'
+          : state.workspaceState?.hasCodebase ? 'dependency-heavy'
+          : 'pattern-seed',
       }
     );
 

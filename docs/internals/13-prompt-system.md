@@ -452,7 +452,7 @@ SBS 가 적용되는 gate 종류 (broad scope — 다음 중 하나라도 활성
 | 축 | 예시 |
 |----|------|
 | **techTier** | `framework=nextjs`, `language=typescript-browser`, `version=react@19`, runtime |
-| **intent** | `gen-code-sys`, `rev-code`, `gen-code-spec`, `gen-ui-figma`, … |
+| **intent** | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `gen-ui-figma`, … |
 | **taskType** | `verification`, `error`, `ui`, `feature`, `setup`, `test-code`, `doc` |
 | **mode** | `generate` / `refactor` / `explain` |
 | **role** | `ref` / `context` / `target` (3-axis Authority) |

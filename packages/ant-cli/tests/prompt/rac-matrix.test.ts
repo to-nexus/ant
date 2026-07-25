@@ -7,7 +7,6 @@ import {
   deriveChatNeedsRefs,
   deriveBuildNeedsRefs,
   hasRealRefSlots,
-  hasMixedCodebaseRefs,
 } from '@ant/shared';
 
 describe('Action Config Matrix completeness', () => {
@@ -248,20 +247,6 @@ describe('Action Config Matrix completeness', () => {
       expect(hasRealRefSlots(slots)).toBe(false);
       expect(deriveBuildNeedsRefs(slots)).toBe(false);
       expect(deriveChatNeedsRefs(slots)).toBe(false);
-    }
-  });
-
-  it('hasMixedCodebaseRefs is true only for rev-code (codebase + non-codebase refs)', () => {
-    const slots = getConfigSlots('rev-code')!;
-    expect(hasMixedCodebaseRefs(slots)).toBe(true);
-
-    for (const def of INTENT_DEFINITIONS) {
-      if (def.id === 'rev-code') continue;
-      const s = getConfigSlots(def.id)!;
-      expect(
-        hasMixedCodebaseRefs(s),
-        `${def.id} should NOT have mixed codebase refs`,
-      ).toBe(false);
     }
   });
 

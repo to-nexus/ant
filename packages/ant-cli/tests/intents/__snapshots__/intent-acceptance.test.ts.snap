@@ -113,24 +113,6 @@ exports[`Intent Acceptance > gen-ui-figma > prompt build: injection list snapsho
 ]
 `;
 
-exports[`Intent Acceptance > rev-code > prompt build: injection list snapshot 1`] = `
-[
-  "jobs/shared/injections/output-tag-policy",
-  "jobs/shared/injections/directive",
-  "jobs/shared/injections/shared-source-diagnosis",
-  "jobs/shared/injections/visual-source-authority",
-  "jobs/code/base/injections/layer-role-fidelity",
-  "jobs/code/base/injections/behavioral-debugging",
-  "jobs/code/base/injections/preview-setup",
-  "jobs/code/base/injections/preview-env-contract",
-  "jobs/code/nodes/execute/injections/port-management",
-  "jobs/code/base/injections/response-language",
-  "jobs/shared/injections/codebase-channel",
-  "jobs/shared/injections/action-context",
-  "jobs/shared/injections/refactor-guidance",
-]
-`;
-
 exports[`Intent Acceptance > rev-spec > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",

@@ -5,7 +5,6 @@ import {
   Monitor, Layers, PenLine,
   Figma, MessageSquareText, Paintbrush,
   ClipboardList, ClipboardPenLine,
-  Wrench,
   MessageCircleQuestion, ClipboardCheck, Bot, MessageCircle,
   BookOpenText,
   Gem, Shapes, PanelTop, PenTool,
@@ -77,7 +76,6 @@ const INTENT_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   'gen-code-sys':       Server,
   'gen-code-spec':      ClipboardList,
   'gen-code-directive': MessageSquareText,
-  'rev-code':           Wrench,
   'explain-code':       BookOpenText,
 
   'gen-visual-logo':          Gem,

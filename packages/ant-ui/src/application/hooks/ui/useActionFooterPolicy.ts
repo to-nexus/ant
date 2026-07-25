@@ -8,7 +8,7 @@
 
 import { useStore } from '@/domain/store';
 import { useGitSnapshot } from '@/domain/git-world';
-import { getConfigSlotsForDomain, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasMixedCodebaseRefs, hasRealRefSlots, type IntentId } from '@ant/shared';
+import { getConfigSlotsForDomain, deriveChatNeedsRefs, deriveBuildNeedsRefs, hasRealRefSlots, type IntentId } from '@ant/shared';
 
 export interface ActionFooterPolicy {
   canStartChat: boolean;
@@ -101,9 +101,7 @@ export function useActionFooterPolicy(): ActionFooterPolicy {
   }
 
   const buildNeedsRefs = deriveBuildNeedsRefs(slots);
-  const buildRefsOk = !buildNeedsRefs
-    ? true
-    : hasMixedCodebaseRefs(slots) ? hasUserSelectedRefs : hasSelectedRefs;
+  const buildRefsOk = !buildNeedsRefs ? true : hasSelectedRefs;
   const contextGate = slots.buildRequiresContext ? hasSelectedContext : true;
   const canBuild = buildRefsOk && contextGate;
 

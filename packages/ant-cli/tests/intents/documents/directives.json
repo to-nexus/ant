@@ -17,7 +17,6 @@
   "gen-code-sys": "설계 문서 기반으로 코드 생성해줘",
   "gen-code-spec": "스펙 기반으로 태스크 검색 API를 구현해줘",
   "gen-code-directive": "간단한 TODO 앱을 만들어줘",
-  "rev-code": "성능 최적화를 위해 코드를 리팩토링해줘",
 
   "_runtime:ts-frontend": "React 프론트엔드 앱을 만들어줘",
   "_runtime:ts-backend": "Express API 서버를 만들어줘",

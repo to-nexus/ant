@@ -285,7 +285,7 @@ curl -X POST http://localhost:4100/api/jobs \
 - **예상 산출물**: 코드베이스에 소스 코드 파일
 - **PASS 기준**: 지시문만으로 앱 골격 또는 요청 범위에 맞는 코드 생성
 
-### rev-code (스펙·문서 기준)
+### gen-code-spec (기존 코드베이스 위 스펙 기반 수정)
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -293,17 +293,17 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "스펙 문서 기반으로 코드를 리팩토링해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "rev-code",
+      "intent": "gen-code-spec",
       "refs": ["architecture/spec/spec-search-api.md"]
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, mode=refactor
+- **예상 Triage**: agent=architect, jobType=code, mode=generate
 - **예상 산출물**: 기존 코드 수정
-- **PASS 기준**: 스펙에 맞게 코드 수정, behavioral debugging injection 포함
+- **PASS 기준**: 스펙에 맞게 코드 수정, 기존 코드베이스에서 existing-code-discipline injection 포함
 
-### rev-code (지시문만)
+### gen-code-directive (기존 코드베이스 위 지시문 delta)
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
@@ -311,13 +311,13 @@ curl -X POST http://localhost:4100/api/jobs \
     "directive": "성능 최적화를 위해 코드를 리팩토링해줘",
     "actionMetadata": {
       "explicit": true,
-      "intent": "rev-code"
+      "intent": "gen-code-directive"
     }
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, mode=refactor
-- **예상 산출물**: 기존 코드 최적화
+- **예상 Triage**: agent=architect, jobType=code, mode=generate
+- **예상 산출물**: 기존 코드 최적화 (existing-code discipline 적용, 무관 코드 무변경)
 - **PASS 기준**: refactor-guidance injection 포함
 
 ---

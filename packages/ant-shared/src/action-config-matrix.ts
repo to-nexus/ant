@@ -892,20 +892,6 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     basis: { tiers: CODE_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
 
-  // ── Code: Rev (codebase required; spec docs as opt-in ref, design docs as context) ──
-  'rev-code': {
-    refs: [codebaseSlot('ref'), refDir(SPEC_DIR, L.specDocs, { required: false, createIntent: 'gen-spec', humanLabel: HL.specDocs })],
-    context: [
-      ctxDir(SYS_DIR, L.systemDesign, { createIntent: 'gen-sys-full', humanLabel: HL.systemDesign }),
-      uiSourceCtx({ createIntent: 'gen-ui-desc' }),
-      gameArtSourceCtx(),
-      assetsCtx('service'),
-      assetsCtx('game'),
-    ],
-    target: { kind: 'codebase' },
-    basis: { tiers: [] },
-  },
-
   // ── Visual ────────────────────────────────
   'gen-visual-logo': {
     refs: [emptyRef()],
@@ -1008,12 +994,14 @@ export interface WorkspaceSlotContext {
 }
 
 /**
- * plan / design (system / spec / ui / game-art) intents that receive the
- * auto codebase context slot when `hasCodebase` is true. code-anchored
- * intents (rev-code / explain-code / gen-learn) already declare a static
- * `codebaseSlot('ref')` and are excluded.
+ * Intents that receive the auto codebase context slot when `hasCodebase`
+ * is true: plan / design (system / spec / ui / game-art) intents plus the
+ * code gen intents (existing-code awareness is workspace-presence-driven —
+ * the spec/sys/directive stays the ref authority, the codebase is binding
+ * context). code-anchored intents (explain-code / gen-learn) already
+ * declare a static `codebaseSlot('ref')` and are excluded.
  */
-const PLAN_DESIGN_INTENTS_FOR_CODEBASE_CONTEXT = new Set<IntentId>([
+const CODEBASE_CONTEXT_INTENTS = new Set<IntentId>([
   'gen-plan',
   'rev-plan',
   'explain-plan',
@@ -1033,10 +1021,13 @@ const PLAN_DESIGN_INTENTS_FOR_CODEBASE_CONTEXT = new Set<IntentId>([
   'gen-spec',
   'rev-spec',
   'explain-spec',
+  'gen-code-sys',
+  'gen-code-spec',
+  'gen-code-directive',
 ]);
 
 function isCodebaseContextEligibleIntent(intent: IntentId): boolean {
-  return PLAN_DESIGN_INTENTS_FOR_CODEBASE_CONTEXT.has(intent);
+  return CODEBASE_CONTEXT_INTENTS.has(intent);
 }
 
 /**
@@ -1076,8 +1067,8 @@ export function getConfigSlots(
  * `path: ''` means `loadResolvedArtifacts` never walks code body into the
  * pool — partial activation must therefore be intent + workspace driven.
  *
- *   - 'ref'      → code-anchored intents (rev-code / explain-code / gen-learn)
- *   - 'context'  → plan/design intents in an existing-project workspace
+ *   - 'ref'      → code-anchored intents (explain-code / gen-learn)
+ *   - 'context'  → plan/design/code-gen intents in an existing-project workspace
  *   - undefined  → greenfield workspace OR non-eligible intent
  */
 export function deriveCodebaseRole(
@@ -1211,7 +1202,7 @@ export function getDefaultTargetPaths(
     }
     // No-ref fallback for `rev-plan`: a triage redirect from another job
     // (e.g. code → plan) carries intent only, with no selected ref. Unlike
-    // other revise intents (rev-code / rev-sys / rev-ui — which revise one of
+    // other revise intents (rev-sys / rev-ui — which revise one of
     // several arbitrary files and genuinely need a ref), the plan has a single
     // canonical document — the same file `gen-plan` writes (`plan/prd.md`).
     // Fall back to it so the revise target resolves instead of leaving
@@ -1258,17 +1249,6 @@ export function deriveChatNeedsRefs(slots: ConfigSlots): boolean {
 export function deriveBuildNeedsRefs(slots: ConfigSlots): boolean {
   if (slots.buildRequiresRefs === false) return false;
   return hasRealRefSlots(slots);
-}
-
-/**
- * Whether locked codebase ref coexists with non-codebase ref slots.
- * When true, build requires user-selected (non-codebase) refs — locked codebase alone is insufficient.
- * Currently applies to rev-code (codebase + optional spec docs).
- */
-export function hasMixedCodebaseRefs(slots: ConfigSlots): boolean {
-  const hasLockedCodebase = slots.refs.some(r => r.codebase && r.locked);
-  const hasNonCodebase = slots.refs.some(r => !r.codebase && !r.emptyHint && r.path);
-  return hasLockedCodebase && hasNonCodebase;
 }
 
 // ============================================

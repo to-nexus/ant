@@ -68,9 +68,17 @@ export interface CodeContext {
 /**
  * Retrieve options
  */
+/**
+ * Retrieval tuning profile — replaces the retired mode keying.
+ *   dependency-heavy: modifying an existing codebase (more code files, fewer lessons)
+ *   pattern-seed:     greenfield authoring (more lessons/patterns, fewer code files)
+ *   focused:          read-only explanation (minimal, focused set)
+ */
+export type RetrieveProfile = 'dependency-heavy' | 'pattern-seed' | 'focused';
+
 export interface RetrieveOptions {
   project?: string;               // ✅ Project name for Vector DB namespace
-  mode?: 'generate' | 'refactor' | 'explain';  // ✅ Code mode for optimization
+  profile?: RetrieveProfile;      // ✅ Retrieval tuning (default: pattern-seed)
   maxTokens?: number;             // Max tokens to load (default: 100K ~75KB)
   maxFiles?: number;              // Max number of files (default: 15)
   exclude?: string[];             // Patterns to exclude
