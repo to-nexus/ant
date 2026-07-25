@@ -41,9 +41,14 @@ overrides:
   picomatch: '^2.3.2'
   path-to-regexp: '^8.4.0'
   'minimatch@<10.2.3': '^10.2.3'
-  'minimatch@<9.0.7 >=9': '^9.0.7'
-  'minimatch@<5.1.8 >=5': '^5.1.8'
-  'glob@<10.5.0 >=10': '^10.5.0'
+  # Force the 5.x/9.x lines up to 10.x too. These come only via archiver@7
+  # (readdir-glob→minimatch@5, archiver-utils→glob@10→minimatch@9), whose sole
+  # transitive brace-expansion@2.1.2 has NO 2.x patch for CVE-2026-14257.
+  # Collapsing minimatch to 10.x drops the 2.x line entirely (10.x → be@5.x).
+  'minimatch@>=5.0.0 <10.0.0': '^10.2.3'
+  # glob 10.x paired with minimatch 9; bump to 11.x (paired with minimatch 10)
+  # so archiver-utils no longer reintroduces the minimatch@9 → be@2.x line.
+  'glob@>=10.0.0 <11.0.0': '^11.0.3'
   '@grpc/grpc-js': '^1.14.4'
   # tsx<4.22 pulls esbuild ~0.25 (GHSA-gv7w-rqvm-qjhr, fixed 0.28.1); 4.22+ pulls esbuild ~0.28
   tsx: '^4.22.4'
