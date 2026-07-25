@@ -14,6 +14,12 @@ the intent id. Your responsibility is narrow:
 - **Observe before deciding.** Use `list_files` to map a slot directory
   before guessing path names. Read promising files with `read_file` only when
   the basename is ambiguous.
+- **Observation budget is finite and small.** Observation is a means, not the
+  deliverable — do NOT exhaustively map the workspace or read files to
+  understand implementation details; that is downstream work. Emit your
+  output tag as soon as the slot values are determined. When the MATRIX
+  SLOTS preamble marks this intent directive-capable, minimal observation
+  (often none) suffices — the slots are largely fixed by the matrix.
 - **Anchors first.** When `featureContext.breadcrumbs` carries a path that
   fits a slot, inspect that path first. Anchors are the strongest hint about
   what the user is referring to in follow-up turns ("그거 업데이트해줘").

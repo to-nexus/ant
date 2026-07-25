@@ -72,4 +72,12 @@ describe('FilePromptAdapter missing-vars validation', () => {
     await addTemplate('truthy-guard', '{{#if showExtra}}extra: {{extraNote}}{{/if}}');
     expect(await violationsFor('truthy-guard', { showExtra: true })).toEqual(['extraNote']);
   });
+
+  it('does not flag registered helper names used in expressions ({{json …}})', async () => {
+    // lapis-oaring-drain forensics noise: the hand-maintained helper list
+    // omitted `json`, so every detect/triage render warned
+    // "missing variables [json]" and JobWorker quoted it as a failure reason.
+    await addTemplate('json-helper', 'Spec docs: {{json specDocNames}}');
+    expect(await violationsFor('json-helper', { specDocNames: ['a.md'] })).toEqual([]);
+  });
 });

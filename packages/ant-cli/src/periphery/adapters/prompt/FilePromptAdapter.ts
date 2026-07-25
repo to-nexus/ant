@@ -208,9 +208,13 @@ export class FilePromptAdapter implements PromptPort {
       : [];
 
     const handlebarsKeywords = ['if', 'unless', 'each', 'with', 'else', 'this'];
-    const handlebarsHelpers = ['eq', 'ne', 'and', 'or', 'add', 'includes', 'gte', 'lower'];
+    // Live helper registry, not a hand-maintained list — a registered helper
+    // (e.g. `json`) misclassified as a variable produced phantom
+    // "missing variables [json]" warnings that JobWorker then quoted as a
+    // failure reason (lapis-oaring-drain forensics noise).
+    const registeredHelpers = Object.keys(Handlebars.helpers);
     const templateVars = (usedVars as string[]).filter(v =>
-      !handlebarsKeywords.includes(v) && !handlebarsHelpers.includes(v)
+      !handlebarsKeywords.includes(v) && !registeredHelpers.includes(v)
     );
 
     // Resolve a dot-path against the top-level vars (e.g. `resolvedAction.documents`

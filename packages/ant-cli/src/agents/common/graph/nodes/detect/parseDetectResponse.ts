@@ -41,6 +41,13 @@ export interface ParsedDetectResponse {
   targetMismatch?: {
     reason?: string;
   };
+  /**
+   * True when a `<slots>` tag was present in the response, even if every
+   * slot inside it was empty. Directive-capable intents legitimately emit
+   * `<slots></slots>` (the prompt says so explicitly) — callers must not
+   * treat that as "no signal" for those intents.
+   */
+  slotsTagPresent?: boolean;
 }
 
 const SLOTS_TAG = /<slots>\s*([\s\S]*?)\s*<\/slots>/i;
@@ -106,6 +113,7 @@ export function parseDetectResponse(raw: string): ParsedDetectResponse {
   }
 
   const slotsMatch = raw.match(SLOTS_TAG);
+  if (slotsMatch) result.slotsTagPresent = true;
   const slotsBody = slotsMatch ? slotsMatch[1] : raw;
 
   const targetMatch = slotsBody.match(TARGET_TAG);
