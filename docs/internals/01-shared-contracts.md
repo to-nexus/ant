@@ -109,7 +109,7 @@ Detect 파이프라인의 공통 어휘와 LLM 추론 출력 타입.
 | `design-system` | 5 | `gen-sys-fe`, `gen-sys-be`, `gen-sys-full`, `rev-sys`, `explain-sys` |
 | `design-ui` | 4 | `gen-ui-figma`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
 | `design-spec` | 3 | `gen-spec`, `rev-spec`, `explain-spec` |
-| `code` | 5 | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `rev-code`, `explain-code` |
+| `code` | 4 | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `explain-code` |
 | `visual` | 2 | `gen-visual`, `explain-visual` |
 | `learn-codebase` | 1 | `gen-learn` |
 | `ask` | 3 | `ask-evaluate`, `ask-ant`, `ask-general` |
@@ -212,7 +212,7 @@ UI(`ActionConfigView`)가 intent 선택 시점에 `actionMetadata.target`을 세
 | design-system (5) | `gen-sys-fe`, `gen-sys-be`, `gen-sys-full`, `rev-sys`, `explain-sys` |
 | design-ui (4) | `gen-ui-figma`, `gen-ui-desc`, `rev-ui`, `explain-ui` |
 | design-spec (3) | `gen-spec`, `rev-spec`, `explain-spec` |
-| code (5) | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `rev-code`, `explain-code` |
+| code (4) | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`, `explain-code` |
 | visual (2) | `gen-visual`, `explain-visual` |
 | learn-codebase (1) | `gen-learn` |
 | ask (3) | `ask-evaluate`, `ask-ant`, `ask-general` |

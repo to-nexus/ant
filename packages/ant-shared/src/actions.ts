@@ -214,7 +214,6 @@ const INTENT_DEFINITIONS_INTERNAL = [
   { id: 'gen-code-sys', intentGroup: 'code', label: { en: 'Code from System Design', ko: '시스템 설계 기반 코드' }, description: { en: 'Generate code from system design documents', ko: '시스템 설계 문서를 기반으로 코드를 생성합니다' } },
   { id: 'gen-code-spec', intentGroup: 'code', label: { en: 'Code from Spec', ko: '스펙 기반 코드' }, description: { en: 'Generate code from feature spec documents', ko: '기능 스펙 문서를 기반으로 코드를 생성합니다' } },
   { id: 'gen-code-directive', intentGroup: 'code', label: { en: 'Code from Directive', ko: '지시사항 기반 코드' }, description: { en: 'Generate code from chat directive', ko: '채팅 지시사항으로 코드를 생성합니다' } },
-  { id: 'rev-code', intentGroup: 'code', label: { en: 'Refactor Code', ko: '코드 리팩토링' }, description: { en: 'Refactor existing codebase', ko: '기존 코드를 리팩토링합니다' } },
   { id: 'explain-code', intentGroup: 'code', label: { en: 'Explain Code', ko: '코드 설명' }, description: { en: 'Explain and answer questions about code', ko: '코드에 대해 설명하고 질문에 답합니다' } },
 
   // Visual
@@ -356,6 +355,21 @@ export function getIntentDescriptionLocalized(
   return getActionDescription(def, domain, lang);
 }
 
+/**
+ * Legacy intents removed from the catalog. Persisted sessions / RACs /
+ * FE-rehydrated state may still carry them; normalize at the two derivation
+ * chokepoints (deriveFromIntent, resolveToRAC) so nothing downstream ever
+ * sees a retired id. rev-code retired 2026-07: existing-code handling is
+ * workspace-presence-driven, a carried delta routes to gen-code-directive.
+ */
+export const LEGACY_INTENT_ALIASES: Record<string, IntentId> = {
+  'rev-code': 'gen-code-directive',
+};
+
+export function normalizeIntentId(raw: string): IntentId {
+  return LEGACY_INTENT_ALIASES[raw] ?? (raw as IntentId);
+}
+
 /** Type guard: check if a string is a valid IntentId from INTENT_DEFINITIONS. */
 export function isValidIntentId(id: string): id is IntentId {
   return INTENT_DEFINITIONS.some(d => d.id === id);
@@ -461,6 +475,9 @@ export function deriveFromIntent(intent: IntentId): {
   jobType: string;
   targetTier?: string;
 } {
+  // Retired ids from persisted state must not fall into the `default:`
+  // branch (which would misroute them to the design job).
+  intent = normalizeIntentId(intent);
   switch (intent) {
     case 'gen-plan':
       return { mode: 'generate', agent: 'planner', jobType: 'plan' };
@@ -505,8 +522,6 @@ export function deriveFromIntent(intent: IntentId): {
     case 'gen-code-spec':
     case 'gen-code-directive':
       return { mode: 'generate', agent: 'architect', jobType: 'code' };
-    case 'rev-code':
-      return { mode: 'refactor', agent: 'architect', jobType: 'code' };
     case 'explain-code':
       return { mode: 'explain', agent: 'architect', jobType: 'code' };
 

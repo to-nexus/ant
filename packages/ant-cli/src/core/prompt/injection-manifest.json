@@ -112,6 +112,9 @@
     "preview-env-contract": [],
     "preview-manifest": [],
     "behavioral-debugging": [],
+    "existing-code-discipline": [
+      "hasExistingCode"
+    ],
     "secure-coding": [],
     "service-virtualization/contract": [],
     "service-virtualization/data": [],

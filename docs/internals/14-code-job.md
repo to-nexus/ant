@@ -4,6 +4,18 @@
 
 Code Job은 사용자의 directive를 받아 소스 코드를 생성하는 architect 에이전트의 LangGraph 그래프이다. 태스크 분해 -> 계획 -> 코드 생성 -> 검증의 흐름으로 동작하며, 태스크 단위 중단/재개를 지원한다.
 
+### 인텐트와 mode — rev-code 폐기 (2026-07)
+
+코드 패밀리 인텐트는 `gen-code-sys` / `gen-code-spec` / `gen-code-directive` / `explain-code` 4개다. `rev-code`(refactor mode)는 폐기됐다 — 코드잡의 target은 항상 codebase 하나라 "새 문서 vs 기존 문서 편집"이라는 rev/gen 축이 존재하지 않고, generate/refactor는 티어·툴셋·태스크 shape 전 층위에서 동일 취급이었다. 코드잡의 mode는 사실상 **write(`generate`) vs read-only(`explain`)** 2값이다 (`Mode` 타입 자체는 design/plan rev-* 용으로 3값 유지).
+
+기존 코드 처우는 인텐트가 아닌 **워크스페이스 presence**가 결정한다:
+
+- `hasCodebase=true`면 code gen 인텐트에 `codebaseSlot('context', {auto:true})`가 동적 주입되고 (`CODEBASE_CONTEXT_INTENTS`), `codebase-channel` + [`existing-code-discipline`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/existing-code-discipline.md) partial(동작 보존 / blast radius 최소화 / 인터페이스 유지)이 decompose(existing-code-check wrapper 경유)·plan(base.md include)·execute(AutoInjectionResolver)에 주입된다.
+- **fresh-build clarify 게이트**: 기존 코드가 있는데 directive가 "처음부터 새로"를 요구하고 기존 코드 처우를 명시하지 않으면, decompose의 existing-code-check가 `<clarify>`로 extend vs replace를 질문한다 (기존 decompose clarify 배관 재사용, `clarifyActive` 게이트).
+- 레거시 호환: 영속 상태의 `rev-code`는 `LEGACY_INTENT_ALIASES`(`@ant/shared/actions.ts`)가 `deriveFromIntent`/`resolveToRAC` 진입부에서 `gen-code-directive`로 정규화한다.
+
+회귀 가드: [`tests/prompt/existing-code-discipline.test.ts`](../../packages/ant-cli/tests/prompt/existing-code-discipline.test.ts), [`tests/core/rac.test.ts`](../../packages/ant-cli/tests/core/rac.test.ts) (alias), [`tests/prompt/injection-resolution-matrix.test.ts`](../../packages/ant-cli/tests/prompt/injection-resolution-matrix.test.ts) (presence 주입 + retired mode trigger).
+
 ## 그래프 노드 흐름
 
 ### 순차 실행 (ANT_TASK_CONCURRENCY = 1)
@@ -295,10 +307,9 @@ post-RAC 페이즈(decompose/plan/execute)의 템플릿은 **3-카테고리 flag
 
 - `gen-code-sys`: UI=ref / SYS=ref
 - `gen-code-spec`: UI=**context** / SYS=context (SPEC이 ref)
-- `rev-code`: UI=**context** / SYS=context
 - `rev-ui`: UI=ref
 
-`hasUiRef`만으로 gating하면 `gen-code-spec`/`rev-code`에서 UI 가이드가 **침묵하는 회귀**가 발생한다. 토큰 인벤토리·design-system 태스크 사다리는 intent와 무관하게 "UI 문서가 있으면 활성" 이 옳은 semantics이므로 Gate(`hasUi`)로 갈라야 한다. 이 invariant은 [`tests/role-flag-intent-matrix.test.ts`](../../packages/ant-cli/tests/role-flag-intent-matrix.test.ts)가 런타임으로 보호한다.
+`hasUiRef`만으로 gating하면 `gen-code-spec`에서 UI 가이드가 **침묵하는 회귀**가 발생한다. 토큰 인벤토리·design-system 태스크 사다리는 intent와 무관하게 "UI 문서가 있으면 활성" 이 옳은 semantics이므로 Gate(`hasUi`)로 갈라야 한다. 이 invariant은 [`tests/role-flag-intent-matrix.test.ts`](../../packages/ant-cli/tests/role-flag-intent-matrix.test.ts)가 런타임으로 보호한다.
 
 규약·금지 사항 전체는 `.cursorrules`의 **Post-RAC Template Condition SSOT** 섹션 참조.
 

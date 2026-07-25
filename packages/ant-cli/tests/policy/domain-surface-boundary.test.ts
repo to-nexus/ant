@@ -152,7 +152,7 @@ describe('Domain-Surface Boundary (D28) — action card visibility', () => {
 });
 
 describe('Domain-Surface Boundary (D28) — code intent ref/ctx routing', () => {
-  const CODE_INTENTS = ['gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code'] as const;
+  const CODE_INTENTS = ['gen-code-sys', 'gen-code-spec', 'gen-code-directive'] as const;
 
   it('every code intent declares both ui-source AND game-art-source slots in its full definition', () => {
     for (const intent of CODE_INTENTS) {
@@ -261,7 +261,7 @@ describe('Domain-Surface Boundary (D28) — service domain regression (zero impa
   });
 
   it('service code intents retain ui-source slots after domain filter', () => {
-    const CODE_INTENTS = ['gen-code-sys', 'gen-code-spec', 'gen-code-directive', 'rev-code'] as const;
+    const CODE_INTENTS = ['gen-code-sys', 'gen-code-spec', 'gen-code-directive'] as const;
     for (const intent of CODE_INTENTS) {
       const filtered = filterSlotsByDomain(getConfigSlots(intent)!, 'service');
       const allSlots = [...filtered.refs, ...filtered.context];

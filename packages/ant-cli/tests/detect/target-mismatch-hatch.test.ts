@@ -60,9 +60,9 @@ describe('suggestReviseFallback — rev→gen sibling mapping (single owner)', (
     expect(suggestReviseFallback('rev-spec' as any).map(a => a.intentId)).toEqual(['gen-spec']);
   });
 
-  it('returns [] for non-revise intents and for rev-code (no doc sibling)', () => {
+  it('returns [] for non-revise and unknown rev intents (no doc sibling)', () => {
     expect(suggestReviseFallback('gen-spec' as any)).toEqual([]);
-    expect(suggestReviseFallback('rev-code' as any)).toEqual([]);
+    expect(suggestReviseFallback('rev-unknown' as any)).toEqual([]);
   });
 });
 

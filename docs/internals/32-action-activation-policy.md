@@ -77,7 +77,6 @@
 | gen-code-sys | refs | refs |
 | gen-code-spec | refs | refs |
 | gen-code-directive | 무조건 | 불가 |
-| rev-code | codebase | codebase + refs |
 | explain-code | codebase | codebase |
 
 ### Visual

@@ -113,6 +113,7 @@ export function validateTasks(
   mode: string | undefined,
   directive: string | undefined,
   artifacts?: ResolvedArtifact[],
+  hasExistingCode?: boolean,
 ): void {
   // Warn about include paths that match nothing in the post-RAC pool — the
   // single injection SSOT is `task.include`, so an include that matches no
@@ -150,9 +151,22 @@ export function validateTasks(
     );
   }
 
+  // Presence-driven over-decomposition guard (successor to the retired
+  // refactor-mode task-count warning): many tasks with no setup task on an
+  // existing codebase usually means a modification was over-decomposed.
+  // A legitimate fresh rebuild carries a setup task and is exempt.
+  if (hasExistingCode && tasks.length > 5 && !tasks.some(t => t.type === 'setup')) {
+    console.warn(`
+⚠️  [Decompose Validation] ${tasks.length} tasks with no setup task on an existing codebase
+
+   Modifications to existing code usually decompose into a handful of tasks.
+   → Review if all tasks are necessary
+    `);
+  }
+
   // Skip remaining validation for generate mode
   if (mode === 'generate') return;
-  
+
   // ✅ Check for potential misclassification
   const misclassification = detectPotentialMisclassification(directive, tasks);
   if (misclassification.hasMisclassification) {
@@ -171,28 +185,28 @@ export function validateTasks(
     `);
   }
   
-  // ✅ Refactor/Explain mode: Excessive task count warning
-  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 5) {
+  // ✅ Explain mode: Excessive task count warning
+  if (mode === 'explain' && tasks.length > 5) {
     console.warn(`
 ⚠️  [Decompose Validation] Excessive tasks in ${mode} mode
-   
+
    Expected: 1-3 tasks for focused changes
    Generated: ${tasks.length} tasks
-   
+
    → Review if all tasks are necessary
     `);
   }
-  
-  // ✅ Check first task for over-broad scope in refactor mode
-  if ((mode === 'refactor' || mode === 'explain') && tasks.length > 0) {
+
+  // ✅ Check first task for over-broad scope in explain mode
+  if (mode === 'explain' && tasks.length > 0) {
     const firstTask = tasks[0];
     if (isOverBroadTask(firstTask)) {
       console.warn(`
 ⚠️  [Decompose Validation] First task too broad for ${mode} mode
-   
+
    Task: ${firstTask.name}
    Description: ${firstTask.description.substring(0, 150)}...
-   
+
    → ${mode} mode should focus on minimal changes
       `);
     }

@@ -140,14 +140,6 @@ const PROMPT_POLICY_MATRIX: Record<IntentId, IntentPromptPolicy> = {
     ],
     refMediaHints: ['text'],
   },
-  'rev-code': {
-    policies: [],
-    conditionalPolicies: [
-      { slotPath: 'visual/ui', policy: 'ui-design-policy' },
-      { slotPath: 'visual/game-art/ant', policy: 'game-art-design-policy' },
-    ],
-    refMediaHints: ['text'],
-  },
   'explain-code': { policies: [], refMediaHints: ['text'] },
 
   // ── Visual ─────────────────────────────────

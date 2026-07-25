@@ -48,30 +48,30 @@ export class CodebaseRetriever {
     const project = options.referenceProject || options.project || 'default';
     const actualWorkingDir = options.referenceWorkingDir || workingDir;
     
-    const mode = options.mode || 'generate';
-    
-    // ✅ Mode-aware adjustments
+    const profile = options.profile || 'pattern-seed';
+
+    // ✅ Profile-aware adjustments
     let maxCodeFiles = 15;
     let maxLessons = 5;
     let minCodeScore = 0.4;  // ✅ Lowered from 0.6 - ChromaDB L2 distance typically gives 0.4-0.5 for relevant matches
     let minLessonScore = 0.35;  // ✅ Lowered from 0.5
-    
-    if (mode === 'generate') {
+
+    if (profile === 'pattern-seed') {
       maxLessons = 8;           // More lessons (patterns)
       minLessonScore = 0.4;     // ✅ Lowered from 0.7 - more permissive for pattern matching
       maxCodeFiles = 12;        // Fewer code files (types only)
-      minCodeScore = 0.45;      // ✅ Slightly higher for generate mode
-    } else if (mode === 'refactor') {
+      minCodeScore = 0.45;      // ✅ Slightly higher for greenfield authoring
+    } else if (profile === 'dependency-heavy') {
       maxCodeFiles = 20;        // More code (dependencies)
       minCodeScore = 0.35;      // ✅ Lowered from 0.5 - need more context
       maxLessons = 3;           // Fewer lessons
-    } else if (mode === 'explain') {
+    } else if (profile === 'focused') {
       maxCodeFiles = 10;        // Minimal code (focus)
       maxLessons = 3;           // Fewer lessons
       minLessonScore = 0.4;     // ✅ Lowered from 0.6
     }
 
-    console.log(`📋 Retrieving codebase + lessons (unified, mode: ${mode})...`);
+    console.log(`📋 Retrieving codebase + lessons (unified, profile: ${profile})...`);
     if (options.referenceProject) {
       console.log(`   📚 Reference project: ${options.referenceProject}${options.referenceBranch ? ` (${options.referenceBranch})` : ''}`);
     }
@@ -104,7 +104,7 @@ export class CodebaseRetriever {
       codeFiles = unifiedResult.codeFiles;
       lessons = unifiedResult.lessons;
 
-      console.log(`   ✅ Unified search: ${codeFiles.length} files, ${lessons.length} lessons (mode: ${mode})`);
+      console.log(`   ✅ Unified search: ${codeFiles.length} files, ${lessons.length} lessons (profile: ${profile})`);
       
       // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
       // ✅ Vector DB empty - NO FALLBACK (retrieve only committed code)

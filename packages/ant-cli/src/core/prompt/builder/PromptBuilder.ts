@@ -117,7 +117,7 @@ export class PromptBuilder implements PromptPort {
     const entryPoints =
       vars['codebaseEntryPoints']
       ?? (vars['workspaceState'] as any)?.codebaseEntryPoints;
-    if (role === undefined && !entryPoints) return vars;
+    if (role === undefined && !entryPoints && !hasCodebase) return vars;
     return {
       ...vars,
       ...(role !== undefined && vars['codebaseRole'] === undefined
@@ -125,6 +125,11 @@ export class PromptBuilder implements PromptPort {
         : {}),
       ...(entryPoints && vars['codebaseEntryPoints'] === undefined
         ? { codebaseEntryPoints: entryPoints }
+        : {}),
+      // `existing-code-discipline` gate. Callers with a stronger signal
+      // (decompose's file-list scan) provide their own value, which wins.
+      ...(hasCodebase && vars['hasExistingCode'] === undefined
+        ? { hasExistingCode: true }
         : {}),
     };
   }

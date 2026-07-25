@@ -123,7 +123,7 @@ export function suggestAlternativeIntents(
  * Used by the detect `<targetMismatch>` escape hatch (sharp-choking-glove RCA):
  * the revise-candidate document EXISTS (so `when` is false) but its content is
  * topically unrelated to the directive, and the user is asked whether to write
- * a new document instead. `rev-code` has no row → empty array → no hatch.
+ * a new document instead. The code family has no rev intent → no hatch.
  */
 export function suggestReviseFallback(intentId: IntentId): SuggestedAlternative[] {
   if (!intentId.startsWith('rev-')) return [];

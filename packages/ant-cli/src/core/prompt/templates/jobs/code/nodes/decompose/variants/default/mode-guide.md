@@ -3,37 +3,8 @@
 🎯 WORK MODE: {{mode}}
 ════════════════════════════════════════════════════════════════════════════════
 
-**Modes and task types are orthogonal axes.** This file owns mode semantics only. The task `type` enum is owned by the Task Schema in the decompose rules. The only overlap is `explain` — both a mode AND a task type by design; `generate` and `refactor` are mode-only and MUST NOT appear as `type` values.
+**Modes and task types are orthogonal axes.** This file owns mode semantics only. The task `type` enum is owned by the Task Schema in the decompose rules. The only overlap is `explain` — both a mode AND a task type by design; `generate` is mode-only and MUST NOT appear as a `type` value.
 
-{{#if (eq mode "refactor")}}
-**REFACTOR MODE - Fix/Improve Existing Code**
-
-🚨 **CRITICAL: You are FIXING existing code, NOT building from scratch!**
-
-**CORE PRINCIPLES:**
-1. **Surgical Fixes**: Target the specific problem, leave everything else untouched
-2. **Preserve Functionality**: All working code remains working
-3. **Focused Tasks**: One issue = one task (don't bundle fixes)
-4. **No Scope Creep**: Fix only what's mentioned, don't add "improvements"
-
-**DIAGNOSTIC METHODOLOGY:**
-
-**Principle:** Diagnosis method depends on error manifestation.
-
-**For Structural Errors** (syntax, types, imports):
-- **Manifestation**: Fails static analysis (compilation, type checking)
-- **Approach**: Static analysis reveals complete picture
-- **Verification**: Re-run static analysis tools
-
-**For Behavioral Errors** (wrong runtime behavior):
-- **Manifestation**: Passes static analysis, fails at runtime
-- **Approach**: Runtime observation mandatory (see Runtime Debugging Protocol)
-- **Verification**: Execute system and observe corrected behavior
-
-**Meta-principle:** Match diagnostic method to error category.
-Static errors → static tools. Behavioral errors → runtime observation.
-
-{{else}}
 {{#if (eq mode "explain")}}
 **EXPLAIN MODE - Chat-Only Explanation**
 
@@ -43,11 +14,12 @@ The deliverable is prose in chat — NO files are created, modified, or deleted.
 
 {{else}}
 {{#if (eq mode "generate")}}
-**GENERATE MODE - New Implementation**
+**GENERATE MODE - Producing or Modifying Code**
 
-You are implementing new features based on the specification.
+You are realizing the directive/specification in code. Whether that means new
+files or changes to existing ones is decided by workspace presence (see the
+existing-codebase section), not by the mode.
 
-{{/if}}
 {{/if}}
 {{/if}}
 

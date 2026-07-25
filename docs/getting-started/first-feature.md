@@ -87,8 +87,9 @@ seconds; larger scopes decompose and verify themselves.
 
 Useful follow-ups:
 
-- `Review the code.` — runs `rev-code`, which produces a review report
-  without writing code.
+- `Refactor the search module for readability.` — runs `gen-code-directive`
+  over the existing codebase (existing-code discipline keeps the change
+  surgical).
 - `Explain how the share flow works.` — runs `explain-code`, returning a
   chat-only walkthrough.
 - `Run the tests and fix anything broken.` — typically lands as a
@@ -102,7 +103,6 @@ Useful follow-ups:
 | System design    | architect | `design`   | [concepts/jobs.md](../concepts/jobs.md) |
 | Code generation  | architect | `code`     | [concepts/jobs.md](../concepts/jobs.md) |
 | Verification     | architect | `code` (verification task) | [concepts/execution-tiers.md](../concepts/execution-tiers.md) |
-| Code review      | architect | `code` (rev-code intent)   | [concepts/jobs.md](../concepts/jobs.md) |
 
 ## Tips
 

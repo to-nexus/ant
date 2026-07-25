@@ -56,7 +56,7 @@ band 표는 손으로 베끼지 않는다. `renderPriorityBandGuide()` 가 `TASK
 
 ## 우선순위 권위 — code-job 단일 권위자
 
-모든 code intent(`gen-code-sys` / `gen-code-spec` / `gen-code-directive` / `rev-code`)는 **동일 canonical band** 를 쓴다. 옛 `gen-code-spec` 자유-우선순위 특례(`isPriorityFromSpec`)는 제거됐다.
+모든 code intent(`gen-code-sys` / `gen-code-spec` / `gen-code-directive`)는 **동일 canonical band** 를 쓴다. 옛 `gen-code-spec` 자유-우선순위 특례(`isPriorityFromSpec`)는 제거됐다.
 
 소스 문서(스펙/시스템 설계/directive)의 작업 순서는 **band 내부 상대 우선순위의 참고**일 뿐이다. band 배치는 의존성 분류를 따른다 — 공통/기반은 소스의 어느 위치든 foundation·platform 으로 추출해 앞단에, feature/ui/error 는 각자 band 에. 소스의 t1…tn 을 priority 숫자에 1:1 복사하지 않는다.
 

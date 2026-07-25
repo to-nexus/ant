@@ -109,7 +109,7 @@ const PLAN_DESIGN_INTENTS: IntentId[] = [
   'rev-spec',
 ];
 
-const CODE_ANCHORED_INTENTS: IntentId[] = ['rev-code', 'gen-learn', 'explain-code'];
+const CODE_ANCHORED_INTENTS: IntentId[] = ['gen-learn', 'explain-code'];
 
 describe('getConfigSlots — codebase context auto-injection', () => {
   it('plan/design intent + hasCodebase=true → context has auto codebase slot', () => {

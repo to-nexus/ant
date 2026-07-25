@@ -21,7 +21,7 @@ import type { ResolvedActionContext } from '@ant/shared';
 
 function rac(refs: string[] = [], context: string[] = []): ResolvedActionContext {
   return {
-    intent: 'rev-code',
+    intent: 'explain-code',
     intentGroup: 'gen-code',
     mode: 'creation',
     refs,

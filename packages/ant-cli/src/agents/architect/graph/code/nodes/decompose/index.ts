@@ -331,10 +331,10 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // Gate flag — decompose activates design-system task guidance
   // whenever ANY UI artifact (ref or context) is present in the
   // post-RAC pool. The intent matrix assigns UI=ref for `gen-code-sys`
-  // but UI=context for `gen-code-spec` / `rev-code` (see
+  // but UI=context for `gen-code-spec` (see
   // `@ant/shared/action-config-matrix.ts`); both must trigger the same
   // decomposition rules (design-system ladder, uiSections schema),
-  // otherwise the latter two intents regress into missing guidance.
+  // otherwise the latter intent regresses into missing guidance.
   // See `AGENTS.md` "Post-RAC Template Condition SSOT".
   const hasUi = pool.hasUi();
 
@@ -1319,7 +1319,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6: Validate and create task queue
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  validateTasks(tasks, state.resolvedAction?.mode, state.directive, state.artifacts);
+  validateTasks(
+    tasks,
+    state.resolvedAction?.mode,
+    state.directive,
+    state.artifacts,
+    state.workspaceState?.hasCodebase,
+  );
 
   if (activeSpecRefFilename) {
     console.log(`📋 [Decompose] Active spec ref: ${activeSpecRefFilename}`);

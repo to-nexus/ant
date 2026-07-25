@@ -523,6 +523,12 @@
       "manifest"
     ]
   },
+  "jobs/code/base/injections/existing-code-discipline": {
+    "sources": [
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/code/base/injections/feature-ui-observation": {
     "sources": [
       "partial-ref",

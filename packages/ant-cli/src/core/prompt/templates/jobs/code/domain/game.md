@@ -2,7 +2,7 @@
 
 **Activation gate**: job `code` × `domain === 'game'`. Layered on top of `templates/domain/game.md` (workspace identity, D27).
 
-This overlay defines the **implementation discipline** specific to game projects. Use it when a code intent (`gen-code-sys` / `gen-code-spec` / `gen-code-directive` / `rev-code`) materializes a playable build. The code job decides **how** state advances, **where** the loop lives, and **which boundary** owns each side-effect — design's policies (state ownership, determinism, event flow) are taken as inputs and turned into running code, not redebated here.
+This overlay defines the **implementation discipline** specific to game projects. Use it when a code intent (`gen-code-sys` / `gen-code-spec` / `gen-code-directive`) materializes a playable build. The code job decides **how** state advances, **where** the loop lives, and **which boundary** owns each side-effect — design's policies (state ownership, determinism, event flow) are taken as inputs and turned into running code, not redebated here.
 
 ### MECE implementation section map
 
@@ -159,4 +159,4 @@ This file is gated on `domain === 'game'`. It is REQUIRED to use game implementa
 
 ### Refine-mode discipline
 
-When refining existing code (`rev-code`), the directive defines the scope. Do NOT cross into adjacent boundaries (Domain → Render, Render → HUD) even when the refinement reveals a leak there — surface the leak as an open question or a follow-up directive, do not silently rewrite.
+When the directive carries a delta on existing code, the directive defines the scope. Do NOT cross into adjacent boundaries (Domain → Render, Render → HUD) even when the refinement reveals a leak there — surface the leak as an open question or a follow-up directive, do not silently rewrite.

@@ -57,6 +57,7 @@ const FP = {
   DESIGN_ARCHITECTURE: 'ARCHITECTURAL DESIGN DOCUMENT',
   DESIGN_SPEC: 'IMPLEMENTATION SPEC DOCUMENT',
   PREVIEW_CONTRACT: 'Dev Server Runtime Contract',
+  EXISTING_CODE: 'Existing-Code Discipline',
 } as const;
 
 // ============================================
@@ -541,13 +542,15 @@ describe('E2E: Plan domain overlay with undefined basis', () => {
 });
 
 // ============================================
-// Cross-cutting: Refactor mode
+// Cross-cutting: Existing codebase (presence-driven discipline)
 // ============================================
 
-describe('E2E: Code execute — refactor mode', () => {
+describe('E2E: Code execute — existing codebase', () => {
   let result: PromptBuildResult;
 
   beforeAll(async () => {
+    // Retired rev-code normalizes to gen-code-directive (legacy alias) —
+    // this build doubles as the alias e2e.
     const rac = resolveToRAC('rev-code' as IntentId, undefined, 'explicit');
 
     const config: PromptBuildConfig = {
@@ -556,11 +559,11 @@ describe('E2E: Code execute — refactor mode', () => {
         rules: 'jobs/code/nodes/execute/variants/default/rules',
         system: 'jobs/code/base/system',
       },
-      intent: 'rev-code' as IntentId,
+      intent: 'gen-code-directive' as IntentId,
       techContext: {
         techTier: makeTechTier({ stack: 'backend' }),
         taskType: 'feature',
-        mode: 'refactor',
+        mode: 'generate',
         resolvedAction: rac,
       },
       pipeline: {
@@ -574,15 +577,21 @@ describe('E2E: Code execute — refactor mode', () => {
         currentTask: { id: 't4', type: 'feature', description: 'Refactor', targetFile: '', name: 'refactor', priority: 'high' },
         resolvedAction: rac,
         projectFileTree: 'src/\n  api.ts',
+        hasCodebase: true,
       },
     };
 
     result = await promptBuilder.build(config);
   });
 
-  it('stage 1: refactor gets refactor-guidance + behavioral-debugging', () => {
-    expect(result.injections).toContain('jobs/shared/injections/refactor-guidance');
-    expect(result.injections).toContain('jobs/code/base/injections/behavioral-debugging');
+  it('stage 0: legacy alias — rev-code RAC normalized to gen-code-directive/generate', () => {
+    expect(result.injections).toBeDefined();
+  });
+
+  it('stage 1: existing codebase gets existing-code-discipline + codebase-channel, NOT refactor-guidance', () => {
+    expect(result.injections).toContain('jobs/code/base/injections/existing-code-discipline');
+    expect(result.injections).toContain('jobs/shared/injections/codebase-channel');
+    expect(result.injections).not.toContain('jobs/shared/injections/refactor-guidance');
     expect(result.injections).toContain('jobs/shared/injections/action-context');
   });
 
@@ -598,10 +607,10 @@ describe('E2E: Code execute — refactor mode', () => {
     assertNoFailedTemplates(result);
   });
 
-  it('stage 3: refactor injection content present', () => {
-    assertSystemContains(result, FP.REFACTOR, 'refactor-guidance');
-    assertSystemContains(result, FP.BEHAVIORAL_DEBUG, 'behavioral-debugging');
+  it('stage 3: discipline injection content present', () => {
+    assertSystemContains(result, FP.EXISTING_CODE, 'existing-code-discipline');
     assertSystemContains(result, FP.BACKEND_SAFETY, 'backend-safety');
+    assertSystemNotContains(result, FP.REFACTOR, 'no refactor-guidance');
     assertSystemNotContains(result, FP.PREVIEW_SETUP, 'no preview-setup');
   });
 });

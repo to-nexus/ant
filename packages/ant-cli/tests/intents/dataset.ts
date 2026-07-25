@@ -364,21 +364,4 @@ export const FIXTURES: IntentFixture[] = [
     },
   },
 
-  // ─────────────────────────────────────────────
-  // Code: Revise (1)
-  // ─────────────────────────────────────────────
-
-  {
-    intent: 'rev-code',
-    directive: D('rev-code'),
-    metadata: { intent: 'rev-code' },
-    documents: {},
-    routing: { agent: 'architect', jobType: 'code', mode: 'refactor' },
-    prompt: {
-      templateBase: 'jobs/code/nodes/execute/variants/default/base',
-      requiredInjections: ['jobs/shared/injections/refactor-guidance'],
-      forbiddenInjections: [],
-      mustContain: ['성능 최적화'],
-    },
-  },
 ];

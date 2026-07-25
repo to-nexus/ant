@@ -85,6 +85,11 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
    that family weakens the extension reading — prefer the sibling `gen-*` —
    and a subject matching a listed document supports (a) but never
    substitutes for (b).
+   A family with NO `rev-*` intent in the catalog absorbs carried deltas
+   into its directive-carrying `gen-*` intent: for the code family, a delta
+   on existing code routes to `gen-code-directive` — the codebase is always
+   the modification target, and existing-code handling is
+   workspace-presence-driven, not intent-driven.
 2. **A run of identical prior intents is not, by itself, a verdict.** Prior
    resolved intents establish topic continuity only; never "repeat the
    dominant prior intent." The current directive's produced output decides.

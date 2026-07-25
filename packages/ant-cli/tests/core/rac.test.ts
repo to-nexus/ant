@@ -117,20 +117,20 @@ describe('getIntentDescription', () => {
     expect(getIntentDescription('nonexistent' as any)).toBeUndefined();
   });
 
-  it('returns description for rev-code', () => {
-    expect(getIntentDescription('rev-code')).toBe('Refactor existing codebase');
+  it('returns description for gen-code-directive', () => {
+    expect(getIntentDescription('gen-code-directive')).toBe('Generate code from chat directive');
   });
 });
 
 // ============================================
-// deriveFromIntent rev-code
+// deriveFromIntent legacy alias (rev-code retired)
 // ============================================
 
-describe('deriveFromIntent rev-code', () => {
-  it('returns refactor mode for rev-code', () => {
-    const result = deriveFromIntent('rev-code');
+describe('deriveFromIntent legacy alias', () => {
+  it('normalizes retired rev-code to gen-code-directive (code job, generate mode)', () => {
+    const result = deriveFromIntent('rev-code' as any);
     expect(result).toEqual({
-      mode: 'refactor',
+      mode: 'generate',
       agent: 'architect',
       jobType: 'code',
     });
@@ -186,12 +186,12 @@ describe('resolveToRAC — explicit path', () => {
     expect(rac.intentGroup).toBe('design-system');
   });
 
-  it('creates RAC for rev-code intent', () => {
-    const rac = resolveToRAC('rev-code', undefined, 'explicit');
+  it('normalizes a persisted rev-code RAC request to gen-code-directive', () => {
+    const rac = resolveToRAC('rev-code' as any, undefined, 'explicit');
 
-    expect(rac.intent).toBe('rev-code');
-    expect(rac.mode).toBe('refactor');
-    expect(rac.intentDescription).toBe('Refactor existing codebase');
+    expect(rac.intent).toBe('gen-code-directive');
+    expect(rac.mode).toBe('generate');
+    expect(rac.intentDescription).toBe('Generate code from chat directive');
   });
 
   it('creates RAC for gen-plan intent', () => {

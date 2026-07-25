@@ -15,7 +15,7 @@
  */
 
 import type { ActionMetadata, IntentId } from './actions';
-import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized } from './actions';
+import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized, normalizeIntentId } from './actions';
 import type { Mode, IntentGroup, Domain, InferredAction } from './detection';
 import { normalizeUiSourceRefs } from './canonical';
 
@@ -577,6 +577,8 @@ export function resolveToRAC(
   source?: 'explicit' | 'infer',
   basis?: Basis,
 ): ResolvedActionContext {
+  // Retired ids (see LEGACY_INTENT_ALIASES) never reach a freshly minted RAC.
+  intentId = normalizeIntentId(intentId);
   const derived = deriveFromIntent(intentId);
 
   const refs = slots?.refs?.length ? normalizeUiSourceRefs(slots.refs) : slots?.refs;

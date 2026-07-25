@@ -33,14 +33,13 @@ Most directives don't need hints — triage classifies them correctly.
 
 An **intent** narrows the job type. The intent determines:
 
-- Which prompt variants the job uses (e.g. `gen-ui-figma` vs `rev-code`).
+- Which prompt variants the job uses (e.g. `gen-ui-figma` vs `gen-code-directive`).
 - Which artifact slots populate the RAC (refs vs context).
 - Which task types are valid in the decomposition.
 
 | Intent group | Examples                                              | Job type   | Status |
 |--------------|-------------------------------------------------------|------------|--------|
 | `gen-code-*` | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`| `code`     | Stable |
-| `rev-code`   | code review                                           | `code`     | Stable |
 | `explain-*`  | `explain-code`, `explain-ui`                          | `code`     | Stable |
 | `gen-ui-*`   | `gen-ui-figma`, `gen-ui-desc`                         | `design`   | Stable |
 | `rev-ui`     | UI review                                             | `design`   | Stable |

@@ -701,6 +701,11 @@ describe('Template Smoke Tests', () => {
       // design. See the reference-codebase feature.
       'jobs/shared/injections/reference-codebase-register',
       'jobs/shared/injections/reference-codebase',
+      // Existing-code discipline is wrapped entirely in
+      // {{#if hasExistingCode}} (no {{else}}) — same Contract pattern as
+      // analysis-block. It activates only when the workspace has an
+      // existing codebase; greenfield renders leave it empty by design.
+      'jobs/code/base/injections/existing-code-discipline',
       // Context Lens bands are wrapped entirely in {{#if lens.*}} (no
       // {{else}}) — same Contract pattern as analysis-block. The partial
       // activates only when the consumer node projected a lens (exchanges /
