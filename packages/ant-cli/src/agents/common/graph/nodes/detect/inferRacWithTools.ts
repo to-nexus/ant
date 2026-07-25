@@ -45,6 +45,7 @@ import {
   resolveToRAC,
   getConfigSlotsForDomain,
   getDefaultTargetPaths,
+  deriveChatNeedsRefs,
   pickUiSourceSubgroupDir,
   isUiTreeParentPath,
   isGameArtTreeParentPath,
@@ -129,6 +130,8 @@ export async function inferRacWithTools(
   // construction: this function never runs on the explicit path.
   const reviseFallback = slots.target.kind === 'revise' ? suggestReviseFallback(intentId) : [];
   const allowTargetMismatch = reviseFallback.length > 0;
+  // Matrix SSOT for directive-capability — see the vars comment below.
+  const chatNeedsRefs = deriveChatNeedsRefs(slots);
   // Context Lens P2 — lean: digests band only (user turns render via the
   // template's own PRIOR USER TURNS block; assistant prose stripped).
   const leanLens = projectLens(input.featureContext, contextProfileFor('detect'));
@@ -145,9 +148,13 @@ export async function inferRacWithTools(
         ? { exchanges: [], digests: leanLens.digests, constraintLedger: leanLens.constraintLedger }
         : undefined,
     // Mirror of the BE bypass below — keeps the LLM from hunting for a
-    // missing-prereq surface it cannot block on. The matrix is SSOT;
-    // default to required (true) when the slot config omits the flag.
-    chatRequiresRefs: slots.chatRequiresRefs ?? true,
+    // missing-prereq surface it cannot block on. `deriveChatNeedsRefs` is the
+    // matrix SSOT (explicit flag overrides, else real-ref-slot presence): the
+    // legacy raw read (`slots.chatRequiresRefs ?? true`) mislabeled implicit
+    // directive-capable intents (e.g. gen-code-directive, refs=[emptyRef()])
+    // as refs-required, steering the LLM into exhaustive ref-hunting
+    // exploration (lapis-oaring-drain RCA).
+    chatRequiresRefs: chatNeedsRefs,
     allowTargetMismatch,
   };
   const systemPrompt = await promptBuilder.render(
@@ -195,14 +202,49 @@ export async function inferRacWithTools(
     { role: 'user', content: userPrompt },
   ];
 
-  let parsedResp = await runOnce(llm, messages, tools, toolHandler);
-  if (isEmptyDetectResponse(parsedResp)) {
-    console.warn('[detect:inferRacWithTools] Empty parse — retrying once');
-    parsedResp = await runOnce(llm, messages, tools, toolHandler);
-    if (isEmptyDetectResponse(parsedResp)) {
+  // Directive-capable intents may legitimately answer with a bare
+  // `<slots></slots>` (the prompt says so) — the tag itself is the signal,
+  // so only a tag-less response counts as unusable for them.
+  const isUnusable = (p: ReturnType<typeof parseDetectResponse>) =>
+    isEmptyDetectResponse(p) && (chatNeedsRefs || !p.slotsTagPresent);
+
+  let attempt = await runOnce(llm, messages, tools, toolHandler, { maxRounds: 8 });
+  if (isUnusable(attempt.parsed)) {
+    console.warn(
+      `[detect:inferRacWithTools] Empty parse (stopReason=${attempt.stopReason ?? 'unknown'}, ` +
+        `exhausted=${attempt.exhausted}) — retrying with corrective framing`,
+    );
+    // Corrective retry — a verbatim replay at low temperature reproduces the
+    // same failure deterministically (lapis-oaring-drain RCA). Tell the model
+    // WHY the previous attempt failed and shrink the round budget so the
+    // forced final round arrives before exploration can degenerate again.
+    // Original `messages` stays untouched (string contents, fresh array).
+    const retryMessages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt + RETRY_CORRECTIVE_NOTE },
+    ];
+    attempt = await runOnce(llm, retryMessages, tools, toolHandler, { maxRounds: 4 });
+    if (isUnusable(attempt.parsed)) {
+      // Structural fallback — same philosophy as the chatRequiresRefs
+      // missingPrereq bypass below: for directive-capable intents the
+      // directive itself is the input, so a slot-inference failure must not
+      // kill the job. Proceed with matrix-default (empty) slots and let the
+      // downstream pipeline run directive-only.
+      if (!chatNeedsRefs) {
+        console.warn(
+          `[detect:inferRacWithTools] Slot inference failed twice for directive-capable ` +
+            `intent ${intentId} — proceeding with matrix-default slots (directive-only)`,
+        );
+        return {
+          status: 'proceed',
+          resolvedAction: resolveToRAC(intentId, { domain: input.domain }, 'infer', undefined),
+          artifacts: [],
+        };
+      }
       throw new Error('[detect:inferRacWithTools] LLM produced no parseable <slots> or <missingPrereq>');
     }
   }
+  const parsedResp = attempt.parsed;
 
   // SSOT: directive-capable intents (matrix `chatRequiresRefs: false`)
   // cannot be blocked on missing refs when invoked via infer — the user's
@@ -210,10 +252,11 @@ export async function inferRacWithTools(
   // infer path (explicit takes a separate branch in `createInferDetectNode`
   // that builds RAC directly), so we do not need an explicit/infer source
   // check here. The matrix is authoritative — never hard-code intent ids.
-  if (parsedResp.missingPrereq && slots.chatRequiresRefs === false) {
+  if (parsedResp.missingPrereq && !chatNeedsRefs) {
     console.log(
       `[detect:inferRacWithTools] LLM emitted <missingPrereq> for ${intentId} ` +
-        `but slots.chatRequiresRefs === false — bypassing block, proceeding directive-only`,
+        `but the intent is directive-capable (deriveChatNeedsRefs=false) — ` +
+        `bypassing block, proceeding directive-only`,
     );
     parsedResp.missingPrereq = undefined;
   }
@@ -286,22 +329,38 @@ export async function inferRacWithTools(
     initialMessages: Array<{ role: string; content: string | MessageContentBlock[] }>,
     toolDefs: ToolDefinition[],
     handler: typeof toolHandler,
+    opts: { maxRounds: number },
   ) {
-    const { response } = await callLLMWithToolLoop(
+    // DETECT_TOOL_LOOP, not DEFAULT: every detect round is small by shape
+    // (tool calls or a few-hundred-token <slots> block). See llmConfig —
+    // the 64K DEFAULT let a degenerate GLM final round run ~8 minutes
+    // (lapis-oaring-drain RCA).
+    const { response, stopReason, exhausted } = await callLLMWithToolLoop(
       llmClient,
       initialMessages,
       toolDefs,
       handler,
       {
         temperature: LLM_TEMPERATURE.DETECT,
-        maxTokens: LLM_MAX_TOKENS.DEFAULT,
+        maxTokens: LLM_MAX_TOKENS.DETECT_TOOL_LOOP,
         enableThinking: false,
-        maxRounds: 8,
+        maxRounds: opts.maxRounds,
       },
     );
-    return parseDetectResponse(response);
+    return { parsed: parseDetectResponse(response), stopReason, exhausted };
   }
 }
+
+/**
+ * Appended to the retry user prompt after a first empty parse. States the
+ * observed failure (budget burned on exploration, no output tag) and the
+ * constraint that fixes it — emit early, observe minimally.
+ */
+const RETRY_CORRECTIVE_NOTE =
+  '\n\n[SYSTEM] Your previous attempt failed: it spent the entire observation ' +
+  'budget exploring and never emitted an output tag. Observation is a means, ' +
+  'not the deliverable. Make at most a few confirming observations, then ' +
+  'immediately emit exactly one top-level output tag from the OUTPUT section.';
 
 function buildTargetMismatchResult(
   intentId: IntentId,

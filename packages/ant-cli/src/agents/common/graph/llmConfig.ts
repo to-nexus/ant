@@ -80,4 +80,20 @@ export const LLM_MAX_TOKENS = {
   // tool-loop restart) and the no-progress streak. This is a round-shape
   // budget, NOT a thinking-time cap — legitimate large plans escalate.
   PLAN_TOOL_LOOP: 16000,
+
+  // Per-round output ceiling for the detect slot-inference loop
+  // (`inferRacWithTools`). Every round of that loop is small by shape:
+  // a few read_file / list_files calls, or the final `<slots>` /
+  // `<missingPrereq>` block (a few hundred tokens). There is no legitimate
+  // large-emission round, so no escalation constant is paired with this cap.
+  //
+  // Same failure class as PLAN_TOOL_LOOP (gentle-leaping-lathe RCA):
+  // lapis-oaring-drain (2026-07-25) burned all 7 tool rounds on codebase
+  // exploration, then the forced tools-stripped final round ran a degenerate
+  // GLM generation against the 64K DEFAULT for ~8 minutes until max_tokens
+  // truncation — no `<slots>` ever arrived, and the verbatim retry
+  // reproduced the same failure. An 8K ceiling terminates a degenerate
+  // detect round in well under a minute and hands control back to the
+  // corrective-retry path in `inferRacWithTools`.
+  DETECT_TOOL_LOOP: 8000,
 } as const;
