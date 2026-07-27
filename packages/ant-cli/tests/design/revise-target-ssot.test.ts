@@ -105,4 +105,28 @@ describe('getDefaultTargetPaths — revise ref determines target', () => {
     expect(getDefaultTargetPaths('rev-game-art', undefined, { refs: ['visual/game-art/handoff'] }))
       .toEqual(['visual/game-art/handoff']);
   });
+
+  it('multi-ref handoff bundle revise → the refs ARE the target (was undefined)', () => {
+    const bundle = [
+      'visual/game-art/handoff/README.md',
+      'visual/game-art/handoff/project/design/tokens/DesignTokens.dc.html',
+      'visual/game-art/handoff/project/design/screens/GameScreen.dc.html',
+    ];
+    expect(getDefaultTargetPaths('rev-game-art', undefined, { refs: bundle })).toEqual(bundle);
+
+    const uiBundle = ['visual/ui/handoff/site/index.html', 'visual/ui/handoff/site/styles.css'];
+    expect(getDefaultTargetPaths('rev-ui', undefined, { refs: uiBundle })).toEqual(uiBundle);
+  });
+
+  it('non-design revise keeps single-select semantics (≥2 refs stay invalid)', () => {
+    expect(getDefaultTargetPaths('rev-spec', undefined, { refs: ['architecture/spec/a.md', 'architecture/spec/b.md'] }))
+      .toBeUndefined();
+    expect(getDefaultTargetPaths('rev-spec', undefined, { refs: ['architecture/spec/a.md'] }))
+      .toEqual(['architecture/spec/a.md']);
+  });
+
+  it('design revise with no refs stays undefined (useExplicitAutoSync contract)', () => {
+    expect(getDefaultTargetPaths('rev-ui', undefined)).toBeUndefined();
+    expect(getDefaultTargetPaths('rev-game-art', undefined, { refs: [] })).toBeUndefined();
+  });
 });

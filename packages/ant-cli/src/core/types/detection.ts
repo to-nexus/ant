@@ -113,7 +113,6 @@ export function formatRACForChat(
     formatted += renderTargetSection(rac, pathsCompressed, isKorean);
     formatted += renderRefsSection(rac, pathsCompressed, isKorean);
     formatted += renderContextSection(rac, pathsCompressed, isKorean);
-    formatted += renderDesignUiOutputSection(rac, isKorean);
   }
 
   formatted += renderTechTierSection(rac, isKorean);
@@ -198,11 +197,14 @@ function renderIntentSection(rac: ResolvedActionContext, isKorean: boolean): str
 }
 
 /**
- * Target paths — generalised from design-system-only to every job. Prefers
+ * Target paths — generalised to every job, design groups included. Prefers
  * `pathsCompressed.target` (folder-collapsed) when provided; otherwise
- * falls back to `rac.target` as individual files. design-ui /
- * design-game-art keep the legacy hardcoded `renderDesignUiOutputSection`
- * because their `target` is a fixed bundle, not user-selected paths.
+ * falls back to `rac.target` as individual files. The former hardcoded
+ * `renderDesignUiOutputSection` (ant-JSON trio regardless of intent /
+ * sub-source) is retired: `rac.target` is derived from the intent matrix +
+ * ref sub-source (`getDefaultTargetPaths`), so a handoff revise announces
+ * the bundle files, a figma revise the ant trio, and `explain-*`
+ * (chat-only, empty target) announces nothing.
  */
 function renderTargetSection(
   rac: ResolvedActionContext,
@@ -211,10 +213,6 @@ function renderTargetSection(
 ): string {
   const entries = resolvePathEntries(pathsCompressed?.target, rac.target);
   if (!entries.length) return '';
-  if (rac.intentGroup === 'design-ui' || rac.intentGroup === 'design-game-art') {
-    // These groups render output via `renderDesignUiOutputSection` instead.
-    return '';
-  }
   return renderPathBlock(
     isKorean ? '🎯 **타겟**' : '🎯 **Target**',
     entries,
@@ -272,24 +270,6 @@ function renderPathBlock(
     return `   • 📄 \`${e.path}\``;
   });
   return `${header}:\n${lines.join('\n')}\n\n`;
-}
-
-function renderDesignUiOutputSection(rac: ResolvedActionContext, isKorean: boolean): string {
-  if (rac.intentGroup === 'design-ui') {
-    let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
-    out += `   • \`visual/ui/ant/ui-tokens.json\`\n`;
-    out += `   • \`visual/ui/ant/ui-assets.json\`\n`;
-    out += `   • \`visual/ui/ant/ui-spec.json\`\n\n`;
-    return out;
-  }
-  if (rac.intentGroup === 'design-game-art') {
-    let out = isKorean ? `📄 **생성 문서**:\n` : `📄 **Output Documents**:\n`;
-    out += `   • \`visual/game-art/ant/game-art-tokens.json\`\n`;
-    out += `   • \`visual/game-art/ant/game-art-assets.json\`\n`;
-    out += `   • \`visual/game-art/ant/game-art-spec.json\`\n\n`;
-    return out;
-  }
-  return '';
 }
 
 function renderTechTierSection(rac: ResolvedActionContext, isKorean: boolean): string {

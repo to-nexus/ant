@@ -576,6 +576,7 @@ const PLAN_OUTPUTS: OutputSpec[] = [PRD_OUTPUT];
 import type { IntentId } from './actions';
 import { deriveFromIntent } from './actions';
 import type { Domain } from './detection';
+import { pickUiSource, pickGameArtSource } from './canonical';
 
 /**
  * Cross-project code exploration (reference-codebase tools) applies to jobs that
@@ -1186,19 +1187,31 @@ export function getDefaultTargetPaths(
   if (!target) return undefined;
 
   if (target.kind === 'revise') {
-    if (opts?.refs?.length === 1) {
-      // "Ref determines target" (design revise). A figma workfile ref
-      // regenerates the ant JSON trio (figma → ant compile), so the target is
-      // the surface's ant trio, NOT the figma file. ant / handoff refs revise
-      // in place, so the selected ref IS the target. SSOT for the runtime
-      // variant/dir decision is design/_shared/reviseTarget.ts; this pure
-      // helper only supplies the pre-decompose default (FE display / RAC.target).
-      const ref = opts.refs[0];
-      if (ref.includes('/figma/')) {
-        if (intent === 'rev-ui') return UI_OUTPUTS.map(o => `${UI_DIR}/${formatOutputSpec(o)}`);
-        if (intent === 'rev-game-art') return GAME_ART_OUTPUTS.map(o => `${GAME_ART_DIR}/${formatOutputSpec(o)}`);
+    const refs = opts?.refs ?? [];
+    if (refs.length > 0) {
+      // Design revise (rev-ui / rev-game-art): the selected ref sub-source is
+      // the single discriminator — mirror of design/_shared/reviseTarget.ts:
+      //   figma   → regenerate the surface's ant JSON trio (figma → ant compile)
+      //   handoff → revise the bundle in place → the refs ARE the target
+      //             (a whole handoff bundle is one multi-file selection)
+      //   ant     → revise the JSON doc(s) in place → the refs ARE the target
+      //   null    → unclassified (e.g. tree-parent dir path) → refs (legacy default)
+      // Sub-source exclusivity over multi-file selections is guaranteed
+      // upstream by normalize*SourceRefs. This pure helper only supplies the
+      // pre-decompose default (FE display / RAC.target / chat announcement).
+      if (intent === 'rev-ui' || intent === 'rev-game-art') {
+        const sub = intent === 'rev-ui' ? pickUiSource(refs) : pickGameArtSource(refs);
+        if (sub === 'figma') {
+          return intent === 'rev-ui'
+            ? UI_OUTPUTS.map(o => `${UI_DIR}/${formatOutputSpec(o)}`)
+            : GAME_ART_OUTPUTS.map(o => `${GAME_ART_DIR}/${formatOutputSpec(o)}`);
+        }
+        return [...refs];
       }
-      return opts.refs;
+      // Non-design revise (rev-spec / rev-sys): refsSingleSelect — the single
+      // selected ref IS the target; a multi-selection stays invalid.
+      if (refs.length === 1) return [...refs];
+      return undefined;
     }
     // No-ref fallback for `rev-plan`: a triage redirect from another job
     // (e.g. code → plan) carries intent only, with no selected ref. Unlike
