@@ -278,6 +278,7 @@ function AppShell() {
   const selectedFeature = useStore((state) => state.selectedFeature);
   const selectedFile = useStore((state) => state.selectedFile);
   const selectedAgent = useStore((state) => state.selectedAgent);
+  const selectedJobType = useStore((state) => state.selectedJobType);
   const isRunning = useStore((state) => state.isRunning);
   const connectionStatus = useStore((state) => state.connectionStatus);
   const setSession = useStore((state) => state.setSession);
@@ -478,7 +479,7 @@ function AppShell() {
       if (selectIsAuthBlocked(useStore.getState())) return;
 
       try {
-        const session = await fetchFeatureSession(selectedProject, selectedFeature);
+        const session = await fetchFeatureSession(selectedProject, selectedFeature, selectedJobType);
         setSession(session ?? undefined);
       } catch (error) {
         console.error('[App] Failed to load session:', error);
@@ -487,7 +488,7 @@ function AppShell() {
     }
 
     loadSession();
-  }, [selectedProject, selectedFeature, isRunning, setSession]);
+  }, [selectedProject, selectedFeature, selectedJobType, isRunning, setSession]);
 
   // ✅ File editor is now a MainPanel tab (FileEdit). No side panel toggling here.
 

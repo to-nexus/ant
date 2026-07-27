@@ -46,5 +46,30 @@ export function handleInitialActiveJobs(
   } else {
     set({ pendingAutoSelect: false } as any);
     get().syncViewToJobType(currentType);
+
+    // No active jobs AND nothing selected: fall back to the latest same-type
+    // run from job history (mirrors setSelectedJobType's auto-select-latest).
+    // A user-stopped job is sealed out of Redis (activeJobs === []) but stays
+    // restorable via its session snapshot — without this fallback the refresh
+    // path has no recovery and the board/tab stay blank. Deferred so the
+    // initial-kanban board applied later in this same SSE event wins when it
+    // carries a jobId (session-priority board of a stopped job).
+    if (jobs.length === 0 && !isNonTaskJob(currentType)) {
+      setTimeout(async () => {
+        const s = get();
+        if (s.currentJobId || s.jobStartPending) return;
+        if (!s.selectedProject || !s.selectedFeature || s.selectedJobType !== currentType) return;
+        try {
+          const { fetchJobHistory } = await import('@/infrastructure/http/api');
+          const history = await fetchJobHistory(s.selectedProject, s.selectedFeature);
+          const latest = history.jobs.find((j: any) => j.type === currentType);
+          if (latest && !get().currentJobId && !get().jobStartPending) {
+            await get().selectJobId(latest.jobId, { live: latest.live, jobType: currentType });
+          }
+        } catch {
+          // best-effort — history fallback must never throw into the SSE handler
+        }
+      }, 0);
+    }
   }
 }

@@ -501,6 +501,8 @@ export class ChatService {
         payload: {
           reason: args.reason,
           jobId,
+          // CancelledVariant titles the card by the interrupted job's type.
+          originalType: args.jobType ?? DEFAULT_JOB_TYPE,
           ...(args.designErrorType ? { designErrorType: args.designErrorType } : {}),
         },
       };

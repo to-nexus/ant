@@ -211,10 +211,14 @@ export function useJobExecution() {
         setRunning(false);
         setCurrentJob(null);
         
-        // Reload session after job completes
+        // Reload session after job completes — scoped to the job type whose
+        // session file this run actually wrote (a defaulted 'code' clobbered
+        // design/plan sessions with null).
         if (selectedProject && selectedFeature) {
           try {
-            const session = await fetchFeatureSession(selectedProject, selectedFeature);
+            const session = await fetchFeatureSession(
+              selectedProject, selectedFeature, useStore.getState().selectedJobType,
+            );
             setSession(session ?? undefined);
           } catch (error) {
             console.error('[useJobExecution] Failed to reload session after job completion:', error);
@@ -305,11 +309,12 @@ export function useJobExecution() {
       // NOTE: Chat message finalization is now handled server-side by JobCleanupManager
       // The removed /chat/finalize-message endpoint was part of the LLMResponseService refactoring
       
-      // Reload session after server confirms stop
+      // Reload session after server confirms stop — same type the stop
+      // request targeted, so a stopped design job reloads design.json.
       if (selectedProject && selectedFeature) {
         console.log('[useJobExecution] Reloading session after stop...');
         try {
-          const session = await fetchFeatureSession(selectedProject, selectedFeature);
+          const session = await fetchFeatureSession(selectedProject, selectedFeature, jobType);
           setSession(session ?? undefined);
           console.log('[useJobExecution] Session reloaded');
         } catch (error) {

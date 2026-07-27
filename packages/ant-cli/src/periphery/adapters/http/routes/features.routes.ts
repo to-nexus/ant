@@ -364,11 +364,17 @@ export function createFeaturesRoutes(deps: {
   });
 
   /**
-   * GET /projects/:id/features/:feature/kanban?jobId={jobId}
+   * GET /projects/:id/features/:feature/kanban
    *
-   * Restores the kanban view for a single (possibly past) jobId.
+   * Single owner of the kanban GET path — dispatches on query shape:
    *
-   * Resolution order:
+   * A. `?job={jobType}` (no jobId) — jobType board (session + Redis hybrid via
+   *    `KanbanService.getKanbanData`). Absorbed from the legacy
+   *    `kanban.routes.ts`, whose registration was shadowed by this route and
+   *    therefore permanently returned 400 to the FE board fetch.
+   *
+   * B. `?jobId={jobId}&type={jobType}` — restores the kanban view for a single
+   *    (possibly past) jobId. Resolution order:
    *   1. Live: Redis live snapshot (`KanbanService.getKanbanData(jobType)`)
    *      when the requested jobId matches the active session jobId for
    *      this jobType.
@@ -381,11 +387,30 @@ export function createFeaturesRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const jobId = (req.query.jobId as string | undefined)?.trim();
-      const requestedType = asJobTabType(req.query.type ?? 'code');
+
+      // ---- Branch A: jobType board (no jobId) ----
       if (!jobId) {
-        res.status(400).json({ error: 'jobId query parameter is required' });
+        const job = asJobTabType(req.query.job ?? req.query.type ?? 'code');
+        if (!job) {
+          res.status(400).json({ error: `Invalid job type. Allowed: ${JOB_TAB_JOB_TYPES.join(', ')}` });
+          return;
+        }
+        if (!deps.kanbanService) {
+          res.status(503).json({ error: 'kanbanService unavailable' });
+          return;
+        }
+        const boardUserContext = extractUserContext(req);
+        const kanbanData = await deps.kanbanService.getKanbanData(
+          projectId, featureName, job,
+          undefined, undefined, undefined,
+          boardUserContext,
+        );
+        res.json(kanbanData);
         return;
       }
+
+      // ---- Branch B: per-jobId restore ----
+      const requestedType = asJobTabType(req.query.type ?? 'code');
       if (!requestedType) {
         res.status(400).json({ error: `Invalid job type. Allowed: ${JOB_TAB_JOB_TYPES.join(', ')}` });
         return;

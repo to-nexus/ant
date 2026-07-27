@@ -17,16 +17,22 @@ export type {
 export function fetchKanbanData(
   projectId: string,
   featureName: string,
-  job: string = 'code',
+  job: string,
 ): Promise<KanbanData> {
   const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/kanban?job=${job}`;
-  return apiGet<KanbanData>(url).catch(() => ({
-    todo: [],
-    inProgress: [],
-    completed: [],
-    isEstimating: false,
-    dataSource: 'session' as const,
-  }));
+  return apiGet<KanbanData>(url).catch((err) => {
+    // Transport resilience: an unreachable board must not break the view —
+    // but log loudly so a silently-failing endpoint (e.g. the historical
+    // route-shadowing 400) is visible instead of masquerading as an empty board.
+    console.error('[kanban] board fetch failed', err);
+    return {
+      todo: [],
+      inProgress: [],
+      completed: [],
+      isEstimating: false,
+      dataSource: 'session' as const,
+    };
+  });
 }
 
 /**
@@ -39,7 +45,7 @@ export function fetchKanbanByJobId(
   projectId: string,
   featureName: string,
   jobId: string,
-  jobType: string = 'code',
+  jobType: string,
 ): Promise<KanbanData> {
   const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/kanban?jobId=${encodeURIComponent(jobId)}&type=${encodeURIComponent(jobType)}`;
   return apiGet<KanbanData>(url).catch(() => ({

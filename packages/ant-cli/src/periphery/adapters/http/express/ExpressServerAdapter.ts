@@ -143,8 +143,7 @@ export class ExpressServerAdapter implements
       this.stateTracker,
       this.jobManager,
       this.workflowBridge,
-      this.cleanupManager.cleanupJobState.bind(this.cleanupManager),
-      this.sessionWatcher.watchSessionFile.bind(this.sessionWatcher)
+      this.cleanupManager.cleanupJobState.bind(this.cleanupManager)
     );
     
     // Configure Express app

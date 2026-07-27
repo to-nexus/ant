@@ -336,7 +336,7 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
   },
 
   syncViewToJobType: (jobType) => {
-    const { activeJobs, currentJobId: prevJobId } = get();
+    const { activeJobs, currentJobId: prevJobId, kanban } = get();
     const activeJob = activeJobs[jobType];
 
     if (prevJobId) {
@@ -344,6 +344,15 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
     }
 
     const isActiveJob = activeJob && (activeJob.status === 'running' || activeJob.status === 'queued');
+
+    // No live job for this type: keep the last known jobId of the SAME type
+    // so the job-tab chip/dropdown survives — a user-stopped job is sealed
+    // out of Redis but stays selectable via its session snapshot. A board
+    // belonging to another jobType must not leak across the switch.
+    const fallbackJobId =
+      kanban?.jobId && (!kanban.jobType || kanban.jobType === jobType)
+        ? kanban.jobId
+        : undefined;
 
     set({
       jobStartPending: false,
@@ -354,7 +363,7 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       isQueued: false,
       queuePosition: null,
       isRunning: !!isActiveJob,
-      currentJobId: isActiveJob ? activeJob.jobId : activeJob?.jobId,
+      currentJobId: isActiveJob ? activeJob.jobId : fallbackJobId,
     });
 
     if (isActiveJob) {
