@@ -205,6 +205,13 @@ export interface DesignGraphState extends TriageableState {
    * (design_no_output) instead of reporting a phantom success. */
   _taskFilesWritten?: number;
 
+  /** Successful artifact tool writes (edit_file/create_file/delete_file
+   * sideEffects) from the JUST-RUN tool batch. Written by the tool node,
+   * consumed-and-cleared by the next execute turn into `_taskFilesWritten` /
+   * `hasNewFileOutput` so tool-based (REVISE) writes count as output exactly
+   * like XML `<file>` writes. */
+  _turnToolWrites?: number;
+
   /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */
   _toolResultCache?: Record<string, string>;
 

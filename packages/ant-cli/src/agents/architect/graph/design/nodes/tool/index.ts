@@ -70,6 +70,33 @@ export function applyFigmaSideEffects(
   }
 }
 
+/**
+ * Count successful artifact-write sideEffects in a tool batch.
+ * Exported for unit tests; the production consumer is `buildReturn` below.
+ *
+ * - success-based: `fileCreated` / `fileModified` / `fileDeleted` are emitted
+ *   only on handler success (`fileNotChanged` deliberately excluded);
+ * - `codebase/**` writes are not design artifacts and never count;
+ * - plan-phase batches never count (exploration, not document writing).
+ */
+export function countArtifactToolWrites(
+  activePhase: string | undefined,
+  executionEvents: ReadonlyArray<{ result: { sideEffects?: readonly ToolSideEffect[] } }> | undefined,
+): number {
+  if (activePhase === 'plan') return 0;
+  const ARTIFACT_WRITE_EFFECTS = new Set(['fileCreated', 'fileModified', 'fileDeleted']);
+  const isCodebaseLike = (p: unknown) =>
+    typeof p === 'string' && (p === 'codebase' || p.startsWith('codebase/') || p.includes('/codebase/'));
+  return (executionEvents || []).reduce(
+    (n, e) =>
+      n +
+      (e.result.sideEffects || []).filter(
+        (ef: any) => ARTIFACT_WRITE_EFFECTS.has(ef.type) && !isCodebaseLike(ef.path),
+      ).length,
+    0,
+  );
+}
+
 const tokenManager = new TokenBudgetManager();
 const designToolResultManager = new ToolResultManager(tokenManager, {
   maxReadFileTokens: 15000,
@@ -237,9 +264,20 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       ? mergeReferenceRequests(state.referenceRequests, refDeltas)
       : undefined;
 
+    // Successful artifact tool writes this batch (edit_file / create_file /
+    // delete_file sideEffects — success-based, `fileNotChanged` excluded).
+    // Execute folds this into `_taskFilesWritten` + `hasNewFileOutput` so
+    // REVISE-mode (tool-write) tasks register output exactly like XML
+    // `<file>` writes: the no-output breaker resets on productive edits and
+    // the design_no_output gate sees tool-written files. Plan-phase batches
+    // never count (exploration, not document writing). SideEffects are the
+    // SSOT of "a write happened" — same pattern as the figma error counter.
+    const turnToolWrites = countArtifactToolWrites(state._activePhase, executionEvents as any);
+
     return {
       conversations: { [activeConvKey(state)]: updatedHistory },
       files: state.files,
+      ...(turnToolWrites > 0 ? { _turnToolWrites: turnToolWrites } : {}),
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
       tokenUsage: state.tokenUsage,
       _toolResultCache: updatedCache ?? state._toolResultCache,

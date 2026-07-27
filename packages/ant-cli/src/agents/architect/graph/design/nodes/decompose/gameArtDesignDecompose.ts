@@ -25,6 +25,7 @@ import { resolveLLMClient, showChatPlaceholder } from "./llmClient";
 import { applyEstimatingUsage } from "../../../../../common/graph/llmHelpers";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { resolveReviseSubSource, resolveReviseTarget } from "../../_shared/reviseTarget";
+import { validateHandoffReviseTargets } from "./handoffTargetGate";
 import { buildDesignDiscoveryTools } from "./designDecomposeTools";
 import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
@@ -258,6 +259,7 @@ export async function decomposeGameArtDesign(
         description: string;
         priority: number;
         parallelGroup?: string;
+        newFile?: boolean;
       }>;
     };
 
@@ -281,6 +283,16 @@ export async function decomposeGameArtDesign(
             );
           }
         }
+        // Refactor: the on-disk bundle is the layout authority — every
+        // targetFile must be an existing bundle path (or a `newFile: true`
+        // addition inside the existing directory family).
+        validateHandoffReviseTargets({
+          tasks: resp.tasks,
+          artifacts: state.artifacts || [],
+          bundlePrefix: ARTIFACT_PREFIX.GAME_ART_HANDOFF,
+          mode: state.resolvedAction?.mode,
+          tag: '[GameArtDecompose]',
+        });
       }
       return { parsed, response: resp };
     };

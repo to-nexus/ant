@@ -1,6 +1,6 @@
 # Game-Art Design Catalog Generation System (Figma / workfile-driven)
 
-{{> jobs/shared/injections/action-context}}
+{{> jobs/shared/injections/action-context suppressJobTarget=true}}
 
 {{> jobs/design/base/injections/document-language}}
 

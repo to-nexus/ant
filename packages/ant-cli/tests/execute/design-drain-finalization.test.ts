@@ -48,11 +48,15 @@ describe('applyDrainFinalization — unit', () => {
     const { tools, drainFinalizing } = applyDrainFinalization(state, messages, TOOLS);
 
     expect(drainFinalizing).toBe(true);
+    // Exploration tools stripped (write tools would be kept — see the
+    // dedicated keep-write-tools case in execute-tool-write-completion.test.ts).
     expect(tools).toEqual([]);
     const content = messages[0].content as any[];
     expect(Array.isArray(content)).toBe(true);
     expect(content[0]).toEqual({ type: 'text', text: 'do the task' });
-    expect(content[1].text).toContain('Emit your FINAL output NOW');
+    expect(content[1].text).toContain('Finish NOW');
+    // Channel-complete salvage note: XML tags AND the REVISE edit_file path.
+    expect(content[1].text).toContain('edit_file');
     expect(content[1].text).toContain('<done>true</done>');
   });
 
@@ -64,7 +68,7 @@ describe('applyDrainFinalization — unit', () => {
 
     expect(blocks).toHaveLength(3);
     expect(blocks[2]).toMatchObject({ type: 'text' });
-    expect((blocks[2] as any).text).toContain('FINAL output');
+    expect((blocks[2] as any).text).toContain('Finish NOW');
   });
 
   it('does not fire while ample budget remains (boundary exact)', () => {
@@ -93,7 +97,7 @@ describe('applyDrainFinalization — unit', () => {
       );
       expect(drainFinalizing).toBe(true);
       expect(tools).toEqual([]);
-      expect((messages[0].content as any[])[1].text).toContain('FINAL output');
+      expect((messages[0].content as any[])[1].text).toContain('Finish NOW');
     }
   });
 

@@ -1,6 +1,6 @@
 # UI Design Document Generation System (Description-driven)
 
-{{> jobs/shared/injections/action-context}}
+{{> jobs/shared/injections/action-context suppressJobTarget=true}}
 
 {{> jobs/design/base/injections/document-language}}
 

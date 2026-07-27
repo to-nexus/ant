@@ -22,6 +22,8 @@ import { composeMessages } from '../../../../../../../core/utils/messageComposer
 import { selectArtifacts } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { extractLastSectionKey } from '../../../_shared/anchor';
+import { buildSelfCheckTrailingMessage } from './selfCheck';
+import { deriveExecuteCompactParams } from './executeCompaction';
 
 /**
  * Build multimodal messages for UI Design generation
@@ -45,16 +47,30 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
   
   if (isAfterToolCall) {
     console.log(`🎨 [Execute] UI Design continuing with existing conversation (${nodeExecute.length} messages)`);
-    
+
     // Build fresh user prompt as initial blocks
     const freshPrompt = await buildUiDesignFreshPrompt(state);
+
+    // R5 self-check: surface the pending-done-check nudge (producer:
+    // execute/index.ts sets `_pendingDoneCheck` every artifact-mutation turn
+    // without <done>; without a consumer here it was write-only for ui).
+    const continuationTask = task as DesignTask | undefined;
+    const continuationTargetFile = continuationTask?.targetFile || 'ui-spec.json';
+    const continuationDir = continuationTask?.targetDir ?? designDirOf(continuationTargetFile);
+    const selfCheck = buildSelfCheckTrailingMessage(state, {
+      artifactPath: `${continuationDir}/${continuationTargetFile}`,
+    });
 
     // Compose messages via MessageComposer (handles history skip, compaction, budget)
     const { messages } = composeMessages({
       initialBlocks: freshPrompt,
       priorTurns: nodeExecute as any,
+      ...(selfCheck ? { trailingUserMessage: selfCheck } : {}),
+      // Window-keyed threshold — the 50K default evicts gathered reads
+      // mid-task and refuels the re-read loop (see executeCompaction.ts).
+      compactParams: deriveExecuteCompactParams(state),
     });
-    
+
     return messages;
   }
   
@@ -213,8 +229,14 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
   // SSOT: mirror role-guide wording. Source docs arrive via the RAC as
   // `role='context'` for Figma/Ref UI intents and as `role='ref'` for desc
   // intents; either way they are authoritative inputs (ref wins on conflict).
-  const freshTaskSourceFiles = (task as DesignTask)?.sourceFiles;
-  let freshSourceArtifacts = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
+  const freshTask = task as DesignTask | undefined;
+  const freshTaskSourceFiles = freshTask?.sourceFiles;
+  // Task include SSOT — same selector as the round-0 builder. The old
+  // hard-coded `[SOURCES]` dropped the handoff bundle stubs from every
+  // continuation round, blinding REVISE tasks to the bundle they edit.
+  let freshSourceArtifacts = selectArtifacts(state.artifacts || [], {
+    include: freshTask?.include?.length ? freshTask.include : [ARTIFACT_PREFIX.SOURCES],
+  });
   if (freshTaskSourceFiles?.length) {
     freshSourceArtifacts = freshSourceArtifacts.filter(a =>
       freshTaskSourceFiles.some(f => a.path.endsWith('/' + f)),
@@ -446,6 +468,10 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   let previousChaptersSummary = '';
   let existingFileContent = '';
   let liveAnchor: string | null = null;
+  // Per-file write strategy: REVISE only when the target actually exists on
+  // disk (observed below). Defaults to the job mode when the disk read is
+  // unavailable so behavior degrades to the legacy detectedMode gate.
+  let targetExists = state.resolvedAction?.mode === 'refactor';
 
   const taskId = state.currentTask?.id || '';
   const taskDescription = state.currentTask?.description || '';
@@ -490,6 +516,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
       const fileExists = await state.deps.fileSystem.fileExists(filePath);
       
       if (fileExists) {
+        targetExists = true;
         existingFileContent = await state.deps.fileSystem.readFile(filePath) || '';
         if (existingFileContent) {
           const isJsonFile = actualTargetFile.endsWith('.json');
@@ -522,6 +549,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           }
         }
       } else {
+        targetExists = false;
         console.log(`📄 [Execute UI] ${actualTargetFile} does not exist yet (first chapter)`);
       }
     } catch (error) {
@@ -552,6 +580,9 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     // partial self-gates on truthiness. See `_shared/anchor.ts` for the SSOT.
     appendAnchor: liveAnchor,
     detectedMode: state.resolvedAction?.mode,
+    // Per-file write-strategy gate (REVISE vs GENERATE) — disk observation,
+    // not job mode: a refactor job may add files that don't exist yet.
+    targetExists,
     userLanguage: state.context.userLanguage || 'en',
     resolvedAction: state.resolvedAction,
   };

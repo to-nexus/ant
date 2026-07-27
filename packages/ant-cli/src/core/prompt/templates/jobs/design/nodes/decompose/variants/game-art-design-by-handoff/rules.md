@@ -20,6 +20,8 @@
 
 Every task authors exactly ONE file. `targetFile` is the file's path RELATIVE to the bundle root (e.g. `DESIGN.md`, `tokens/palette.css`, `entities/enemies.html`, `screens/hud.html`). Never a bare directory, never multiple files.
 
+Refactor mode: the path is not invented — it is one of the manifest paths from the input context, copied verbatim (or a `"newFile": true` addition inside a directory the bundle already has).
+
 ### 2. Task IDs
 
 - Every task id starts with `game-art-handoff-` (e.g. `game-art-handoff-design-md`, `game-art-handoff-entities-enemies`).
@@ -27,20 +29,20 @@ Every task authors exactly ONE file. `targetFile` is the file's path RELATIVE to
 
 ### 3. Ordering by dependency stage (priority windows)
 
-Tasks run in three sequential stages; within a stage they run in parallel. Assign `priority` by the file's dependency depth:
+Tasks run in three sequential stages; within a stage they run in parallel. Assign `priority` by the file's dependency depth (in refactor mode, map each existing file to the stage its ROLE plays — authority/guide/token files are stage 1, shared layers stage 2, screen-level consumers stage 3):
 
 | Stage | Files | Priority |
 |---|---|---|
-| 1 — authority | `DESIGN.md`, `tokens/*.css`, `styles.css` | 100–149 |
-| 2 — shared layers | `components/*`, `entities/*`, `assets/*` | 200–249 |
-| 3 — consumers | `screens/*.html` | 300–349 |
+| 1 — authority | guide/manifest, token files, entry stylesheet | 100–149 |
+| 2 — shared layers | shared component / entity / asset files | 200–249 |
+| 3 — consumers | screen files | 300–349 |
 
-`styles.css` is stage 1: it is an import-only list, and the FULL file set is already decided in this decomposition — its task description must enumerate every css file to import (tokens first, then components/entities).
+Generate mode: `styles.css` is stage 1 — it is an import-only list, and the FULL file set is already decided in this decomposition — its task description must enumerate every css file to import (tokens first, then components/entities).
 
-### 4. DESIGN.md task contract
+### 4. Guide task contract
 
-- Its description covers the nine system sections AND the Artifacts manifest listing every file this decomposition emits (use the exact `targetFile` paths).
-- Every later task's description references the design decision it realizes ("realize the palette from DESIGN.md §2", "entity silhouettes per DESIGN.md §1") — values flow from stage 1, they are not re-invented downstream.
+- Generate mode: the `DESIGN.md` task's description covers the nine system sections AND the Artifacts manifest listing every file this decomposition emits (use the exact `targetFile` paths).
+- Every later task's description references the design decision it realizes ("realize the palette from the guide's palette section", "entity silhouettes per the guide's theme section") — values flow from stage 1, they are not re-invented downstream.
 
 ### 5. Surface split
 
@@ -67,7 +69,7 @@ Each task MUST include `sourceFiles` — an array of source filenames that the t
 
 Emit the meta tags first, then a `<tasks>` block with one `<task>{json}</task>` element per task. Each `<task>` body is a single JSON object. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
-Example:
+Example (generate-mode file set shown — refactor mode uses the existing manifest paths verbatim):
 
 ```
 <executionTier>4</executionTier>
@@ -85,9 +87,10 @@ Example:
 | id | Unique, `game-art-handoff-*` |
 | name | Descriptive |
 | targetFile | Bundle-relative path; MUST be in `<targetFiles>` |
-| description | The file's design scope + which DESIGN.md/token decisions it realizes |
+| description | The file's design scope + which guide/token decisions it realizes |
 | priority | Stage window (100–149 / 200–249 / 300–349) |
 | parallelGroup | Use the task id (every file has a single writer) |
+| newFile | Refactor mode only, optional — `true` when the task adds a file the bundle does not have |
 
 ---
 
@@ -95,6 +98,7 @@ Example:
 
 - ✅ `<executionTier>` emitted FIRST
 - ✅ Generate mode includes a `DESIGN.md` task at stage 1
+- ✅ Refactor mode: every `targetFile` matches an existing bundle path verbatim (or carries `"newFile": true`)
 - ✅ Every task id starts with `game-art-handoff-`
 - ✅ Every `targetFile` is bundle-relative and unique across tasks
 - ✅ Priorities respect the stage table

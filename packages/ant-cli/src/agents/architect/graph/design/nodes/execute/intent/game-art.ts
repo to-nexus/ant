@@ -26,6 +26,8 @@ import { composeMessages } from '../../../../../../../core/utils/messageComposer
 import { selectArtifacts, ArtifactPoolView } from '../../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { extractLastSectionKey } from '../../../_shared/anchor';
+import { buildSelfCheckTrailingMessage } from './selfCheck';
+import { deriveExecuteCompactParams } from './executeCompaction';
 
 /** Figma/workfile mode is opted into only by the figma intent (Phase 5+). */
 function isGameArtFigmaMode(state: DesignGraphState): boolean {
@@ -83,9 +85,22 @@ export async function buildGameArtMessages(state: DesignGraphState): Promise<Arr
   if (isAfterToolCall) {
     console.log(`🎮 [Execute] Game-Art continuing with existing conversation (${nodeExecute.length} messages)`);
     const freshPrompt = await buildGameArtFreshPrompt(state);
+    // R5 self-check: surface the pending-done-check nudge (producer:
+    // execute/index.ts sets `_pendingDoneCheck` every artifact-mutation turn
+    // without <done>; without a consumer here it was write-only for game-art).
+    const continuationTask = task as DesignTask | undefined;
+    const continuationTargetFile = resolveGameArtTargetFile(state);
+    const continuationDir = continuationTask?.targetDir ?? designDirOf(continuationTargetFile);
+    const selfCheck = buildSelfCheckTrailingMessage(state, {
+      artifactPath: `${continuationDir}/${continuationTargetFile}`,
+    });
     const { messages } = composeMessages({
       initialBlocks: freshPrompt,
       priorTurns: nodeExecute as any,
+      ...(selfCheck ? { trailingUserMessage: selfCheck } : {}),
+      // Window-keyed threshold — the 50K default evicts gathered reads
+      // mid-task and refuels the re-read loop (see executeCompaction.ts).
+      compactParams: deriveExecuteCompactParams(state),
     });
     return messages;
   }
@@ -139,7 +154,13 @@ export async function buildGameArtFreshPrompt(state: DesignGraphState): Promise<
 
   const designTask = task as DesignTask | undefined;
   const taskSourceFiles = designTask?.sourceFiles;
-  let sourceArtifacts = selectArtifacts(state.artifacts || [], { include: [ARTIFACT_PREFIX.SOURCES] });
+  // Task include SSOT — same selector as the round-0 builder. The old
+  // hard-coded `[SOURCES]` dropped the handoff bundle stubs from every
+  // continuation round (`sourceDocs: 0`), blinding REVISE tasks to the very
+  // bundle they edit (outer-blending-prism RCA).
+  let sourceArtifacts = selectArtifacts(state.artifacts || [], {
+    include: designTask?.include?.length ? designTask.include : [ARTIFACT_PREFIX.SOURCES],
+  });
   if (taskSourceFiles?.length) {
     sourceArtifacts = sourceArtifacts.filter(a => taskSourceFiles.some(f => a.path.endsWith('/' + f)));
   }
@@ -170,6 +191,10 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
 
   let previousChaptersSummary = '';
   let liveAnchor: string | null = null;
+  // Per-file write strategy: REVISE only when the target actually exists on
+  // disk (observed below). Defaults to the job mode when the disk read is
+  // unavailable so behavior degrades to the legacy detectedMode gate.
+  let targetExists = state.resolvedAction?.mode === 'refactor';
 
   const taskId = state.currentTask?.id || '';
   const taskDescription = state.currentTask?.description || '';
@@ -193,6 +218,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
         : state.context.featurePath.replace(/^\//, '');
       const filePath = path.join(featureDirRel, targetDirRel, actualTargetFile);
       if (await state.deps.fileSystem.fileExists(filePath)) {
+        targetExists = true;
         const existing = await state.deps.fileSystem.readFile(filePath) || '';
         if (existing) {
           if (actualTargetFile.endsWith('.json')) {
@@ -209,6 +235,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
           liveAnchor = extractLastSectionKey(existing);
         }
       } else {
+        targetExists = false;
         console.log(`🎮 [Execute Game-Art] ${actualTargetFile} does not exist yet (first chapter)`);
       }
     } catch (error) {
@@ -234,6 +261,9 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
     siblingTasks: siblingTasks || '',
     appendAnchor: liveAnchor,
     detectedMode: state.resolvedAction?.mode,
+    // Per-file write-strategy gate (REVISE vs GENERATE) — disk observation,
+    // not job mode: a refactor job may add files that don't exist yet.
+    targetExists,
     userLanguage: state.context.userLanguage || 'en',
     resolvedAction: state.resolvedAction,
   };
@@ -289,6 +319,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
             taskDescription: injectedVariables.taskDescription ? `[${injectedVariables.taskDescription.length} chars]` : undefined,
             targetFile: injectedVariables.targetFile,
             detectedMode: injectedVariables.detectedMode,
+            targetExists: injectedVariables.targetExists,
             isLastTaskForDocument: injectedVariables.isLastTaskForDocument,
             forceAppend: injectedVariables.forceAppend,
             previousChaptersSummary: injectedVariables.previousChaptersSummary ? `[${injectedVariables.previousChaptersSummary.length} chars]` : undefined,

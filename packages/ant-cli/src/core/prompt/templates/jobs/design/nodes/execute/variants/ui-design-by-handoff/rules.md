@@ -56,3 +56,20 @@ Apply the contract matching the target file's kind.
 - These files are design references, NOT production code — do not add application logic beyond what demonstrating the design requires.
 
 ⚠️ **Blind spot**: the file you author is read later by a code-generation job that trusts the DESIGN.md manifest and the token layer. An unregistered file, a hardcoded value, or an absolute path silently breaks that consumer.
+
+---
+
+## 🚨 TASK COMPLETION SIGNAL (CRITICAL)
+
+**When the target file is complete, you MUST output:**
+
+```xml
+<done>true</done>
+```
+
+**Rules:**
+1. GENERATE (target file does not exist): emit it right after the single `<file>` block.
+2. REVISE (target file exists): emit it in the turn AFTER the tool results confirm your `edit_file` changes landed — never in the same turn as a tool call.
+3. ⚠️ Do NOT keep re-reading the file to verify — a successful `edit_file` result IS the confirmation.
+
+**⚠️ Without `<done>true</done>` the task never completes; the system will keep asking you to continue.**

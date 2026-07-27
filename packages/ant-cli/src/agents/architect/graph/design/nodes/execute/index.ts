@@ -440,15 +440,24 @@ export async function execute(
     // No-output streak tracker (feeds the advisory soft/hard warnings near
     // the top of this function; no longer a terminal gate — recursionLimit
     // is the ultimate backstop).
-    const hasNewFileOutput = files.length > 0;
+    //
+    // Channel-complete output signal: XML `<file>` registry writes PLUS the
+    // just-run tool batch's successful artifact writes (edit_file/create_file
+    // — `_turnToolWrites`, folded by the tool node from sideEffects). Without
+    // the tool channel, REVISE-mode handoff tasks write via edit_file, keep
+    // `_taskFilesWritten === 0` forever, and loop as "tool calls only"
+    // (outer-blending-prism 90s self-re-read RCA).
+    const toolWrites = state._turnToolWrites || 0;
+    const hasNewFileOutput = files.length > 0 || toolWrites > 0;
     const hasToolCallsOnly = hasToolCalls && !hasNewFileOutput;
     const prevNoOutputCount = state._noOutputCallCount || 0;
 
     // Per-task artifact-write accumulator. `0` at completion = the model never
-    // emitted a <file> this run; the completion output-gate reads this to fail
-    // loud (design_no_output) instead of reporting a phantom success. Reset to
-    // 0 on task boundary alongside _noOutputCallCount/_executeCallIndex.
-    const newTaskFilesWritten = (state._taskFilesWritten || 0) + files.length;
+    // emitted a <file> (or landed a successful artifact tool write) this run;
+    // the completion output-gate reads this to fail loud (design_no_output)
+    // instead of reporting a phantom success. Reset to 0 on task boundary
+    // alongside _noOutputCallCount/_executeCallIndex.
+    const newTaskFilesWritten = (state._taskFilesWritten || 0) + files.length + toolWrites;
 
     // drainFinalizing MUST count toward the streak: once the strip persists
     // (drainFinalize.ts header) the tool node stops running, so without this
@@ -516,6 +525,7 @@ export async function execute(
           _executeCallIndex: newCallIndex,
           _noOutputCallCount: 0,
           _taskFilesWritten: newTaskFilesWritten,
+          _turnToolWrites: 0,
           // Clarify pause is treated as a stable boundary — not an
           // artifact-mutation-without-done turn — so reset the gate.
           _pendingDoneCheck: false,
@@ -562,6 +572,7 @@ export async function execute(
             _executeCallIndex: newCallIndex,
             _noOutputCallCount: newNoOutputCount,
             _taskFilesWritten: newTaskFilesWritten,
+            _turnToolWrites: 0,
             _pendingDoneCheck: false,
             _doneCheckEscalation: 0,
             _activePhase: 'execute' as const,
@@ -583,6 +594,8 @@ export async function execute(
       _executeCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
       _taskFilesWritten: newTaskFilesWritten,
+      // Consume-and-clear: the tool node's write count is per-batch.
+      _turnToolWrites: 0,
       _pendingDoneCheck: nextPendingDoneCheck,
       _doneCheckEscalation: nextDoneCheckEscalation,
       // Phase signal for the tool node + breadcrumbs. Tool routing /
