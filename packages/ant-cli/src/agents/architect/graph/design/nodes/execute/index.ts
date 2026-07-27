@@ -49,8 +49,11 @@ import { buildPrdSyncMessages } from './intent/prd-sync';
 import { renderExplainResponse } from './explain';
 
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
+// `mkdir` is excluded: it creates no artifact content, so counting it would
+// forge the R5 self-check ("the previous turn updated the artifact at <path>")
+// after a no-op directory call (oat-judging-mound RCA).
 const ARTIFACT_MUTATE_TOOLS = new Set([
-  'edit_file', 'delete_file', 'create_file', 'mkdir',
+  'edit_file', 'delete_file', 'create_file',
 ]);
 
 /**
@@ -62,7 +65,7 @@ const ARTIFACT_MUTATE_TOOLS = new Set([
  *     non-codebase paths (codebase paths never reach `files` because
  *     FileRenderer rejects them upstream),
  *   - pending tool-call mutations on non-codebase paths (edit_file /
- *     delete_file / create_file / mkdir).
+ *     delete_file / create_file).
  *
  * Returns `true` even when only tool calls are pending (without any
  * <file> output) so the next-turn self-check still fires after a

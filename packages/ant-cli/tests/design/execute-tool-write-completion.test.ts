@@ -92,6 +92,23 @@ describe('drain finalization keeps write tools (REVISE exit path)', () => {
     const appended = JSON.stringify(messages);
     expect(appended).toContain('edit_file');
   });
+
+  it('does NOT keep mkdir — a sideEffect-less tool can never satisfy the drain exit (oat-judging-mound RCA)', () => {
+    const tools = [
+      { name: 'read_file' },
+      { name: 'edit_file' },
+      { name: 'delete_file' },
+      { name: 'mkdir' },
+    ];
+    const messages = [{ role: 'user', content: 'Continue.' }];
+    const { tools: drained, drainFinalizing } = applyDrainFinalization(
+      { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: 999 } as any,
+      messages as any,
+      tools as any,
+    );
+    expect(drainFinalizing).toBe(true);
+    expect(drained.map((t: any) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
+  });
 });
 
 describe('done-contract presence sweep (all design execute variants)', () => {
