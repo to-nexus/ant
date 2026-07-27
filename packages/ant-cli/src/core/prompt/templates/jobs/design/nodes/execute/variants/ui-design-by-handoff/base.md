@@ -1,6 +1,6 @@
 # UI Handoff Bundle File Authoring
 
-{{> jobs/shared/injections/action-context}}
+{{> jobs/shared/injections/action-context suppressJobTarget=true}}
 
 {{> jobs/design/base/injections/document-language}}
 
@@ -14,16 +14,16 @@
 
 **Task**: {{taskName}} (`{{taskId}}`)
 
-**Target file**: `{{targetPath}}`
+**Target file**: `{{targetPath}}` — write ONLY to this path this task; every other path in this prompt is an input.
 
 ### 📋 Task Description
 
 {{{taskDescription}}}
 
-{{#if (eq detectedMode "refactor")}}
-**Mode**: REVISE — the bundle on disk is the authority. Read `{{targetPath}}` with `read_file`, apply the requested change surgically with `edit_file` (precise `old_str`/`new_str`), and preserve everything else. Do NOT regenerate the whole file unless the task explicitly says so.
+{{#if targetExists}}
+**Write strategy**: REVISE — `{{targetPath}}` exists on disk and is the authority. Read it with `read_file`, apply the requested change surgically with `edit_file` (precise `old_str`/`new_str`), and preserve everything else. Do NOT regenerate the whole file unless the task explicitly says so.
 {{else}}
-**Mode**: GENERATE — author `{{targetPath}}` in full, then emit it as a single `<file>` block (see OUTPUT FORMAT above).
+**Write strategy**: GENERATE — `{{targetPath}}` does not exist yet. Author it in full, then emit it as a single `<file>` block (see OUTPUT FORMAT above).
 {{/if}}
 
 {{#if siblingTasks}}

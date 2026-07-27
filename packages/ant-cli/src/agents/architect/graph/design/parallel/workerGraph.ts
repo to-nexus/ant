@@ -313,6 +313,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       _specRevisionFailed: false,
       _specRevisionRetried: 0,
       _taskFilesWritten: 0,
+      _turnToolWrites: 0,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;

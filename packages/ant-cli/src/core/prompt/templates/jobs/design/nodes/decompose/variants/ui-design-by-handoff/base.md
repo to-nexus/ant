@@ -6,8 +6,6 @@ You are decomposing UI design work into file-authoring tasks for a **handoff bun
 
 **Job Mode**: {{detectedMode}}
 
-{{> jobs/shared/injections/handoff-package-format}}
-
 ---
 
 ## 📥 INPUT CONTEXT
@@ -23,14 +21,19 @@ You are decomposing UI design work into file-authoring tasks for a **handoff bun
 ## 🔧 REVISE MODE — Modify the Existing Bundle In Place
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Principle**: The bundle on disk is the authority. Create the MINIMUM set of tasks that realizes the requested change — usually one task per affected file.
+**Principle**: The bundle on disk is the authority — its EXISTING layout, whatever shape it has, is the layout. Create the MINIMUM set of tasks that realizes the requested change — usually one task per affected file.
 
 - The existing bundle files appear above as a **manifest** (path + size per entry), not as inline content. Call `read_file(path)` on the entries the request touches to observe their content before deciding which files change.
+- **`targetFile` is copied VERBATIM from a manifest path above.** Do NOT re-derive a canonical bundle layout; do NOT invent parallel directories beside the existing structure. Observe where the bundle keeps each concern and edit it there.
 - Create exactly one task per affected file; do NOT create tasks for files the request does not touch.
-- A value change that lives in `tokens/` is fixed in `tokens/` — never patched locally in a screen.
-- When a change alters what a file IS (purpose, not content detail), also emit a task updating the DESIGN.md Artifacts manifest.
+- ⚠️ Do NOT create guide / entry-stylesheet / token-file tasks unless the request changes those files' content.
+- A task may introduce a file the bundle does not have ONLY when the request genuinely adds one: set `"newFile": true` on that task and place the file inside a directory the bundle already has (or at the bundle root). When the bundle has a guide/manifest file, also emit a task registering the addition there.
+- A value change that lives in the bundle's token layer (whichever file the manifest shows owns it) is fixed there — never patched locally in a screen.
+- When a change alters what a file IS (purpose, not content detail), also emit a task updating the bundle's guide/manifest file.
 
 {{else}}
+{{> jobs/shared/injections/handoff-package-format}}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 🆕 GENERATE MODE — Author a New Bundle
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

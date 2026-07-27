@@ -77,8 +77,9 @@ export function applyDrainFinalization<TTool>(
     ? `Recursion budget nearly exhausted (${remaining} steps left).`
     : `You have explored for ${noOutputCount} turns without writing anything.`;
   const finalizeNote = `\n\n[SYSTEM] ${reasonNote} ` +
-    `Tools are no longer available. Emit your FINAL output NOW from the context you have ` +
-    `already gathered: write the complete artifact body using <append>/<file> tags and finish with <done>true</done>.`;
+    `Exploration tools are no longer available. Finish NOW from the context you have ` +
+    `already gathered: write the complete artifact body using <append>/<file> tags — or, when the ` +
+    `target file already exists, apply your final edit_file changes — then output <done>true</done>.`;
 
   const lastMsg = messages[messages.length - 1];
   if (lastMsg && lastMsg.role === 'user') {
@@ -91,8 +92,16 @@ export function applyDrainFinalization<TTool>(
       ];
     }
   }
+  // Strip EXPLORATION tools only — write tools ARE the exit for a REVISE
+  // task (its contract is read_file + edit_file, not <file> regeneration;
+  // full-file regeneration of an existing bundle file from partial context is
+  // destructive). A successful drained write resets the streak via
+  // `_turnToolWrites`; `computeNextNoOutputCount`'s drainFinalizing clause
+  // still bounds non-writing turns, so the breaker stays reachable.
+  const WRITE_TOOL_NAMES = new Set(['edit_file', 'create_file', 'delete_file', 'mkdir']);
+  const drainedTools = tools.filter((t: any) => WRITE_TOOL_NAMES.has(t?.name));
   console.warn(
-    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → tools stripped, forcing final output`,
+    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → exploration tools stripped (${drainedTools.length} write tool(s) kept), forcing final output`,
   );
-  return { tools: [], drainFinalizing: true };
+  return { tools: drainedTools, drainFinalizing: true };
 }
