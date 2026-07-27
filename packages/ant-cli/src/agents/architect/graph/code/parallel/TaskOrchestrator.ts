@@ -1227,6 +1227,42 @@ export class TaskOrchestrator<T extends BaseTask> {
     return out;
   }
 
+  /** Aggregate of all running workers' in-flight per-model partials. */
+  private runningPartialAggregate(): TaskTokenUsage {
+    const agg: TaskTokenUsage = {
+      inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+    };
+    for (const partial of this.runningPartialByModel.values()) {
+      for (const u of Object.values(partial)) {
+        agg.inputTokens += u.inputTokens;
+        agg.outputTokens += u.outputTokens;
+        agg.totalTokens += u.totalTokens;
+        agg.cacheReadTokens = (agg.cacheReadTokens || 0) + (u.cacheReadTokens || 0);
+        agg.cacheCreationTokens = (agg.cacheCreationTokens || 0) + (u.cacheCreationTokens || 0);
+      }
+    }
+    return agg;
+  }
+
+  /**
+   * Job-cumulative aggregate = accumulated (seed + completed/stopped folds)
+   * + Σ running partials. Twin of `liveCumulativeByModel` on the aggregate
+   * axis; the accumulator itself is never mutated, so a later
+   * reportStopped/reportCompletion fold (which deletes the worker's partial
+   * in the same lock-held section) cannot double-count.
+   */
+  private liveCumulativeUsage(): TaskTokenUsage {
+    const p = this.runningPartialAggregate();
+    const a = this.accumulatedTokenUsage;
+    return {
+      inputTokens: a.inputTokens + p.inputTokens,
+      outputTokens: a.outputTokens + p.outputTokens,
+      totalTokens: a.totalTokens + p.totalTokens,
+      cacheReadTokens: (a.cacheReadTokens || 0) + (p.cacheReadTokens || 0),
+      cacheCreationTokens: (a.cacheCreationTokens || 0) + (p.cacheCreationTokens || 0),
+    };
+  }
+
   // ============================================
   // Checkpoint
   // ============================================
@@ -1283,8 +1319,15 @@ export class TaskOrchestrator<T extends BaseTask> {
       runningTasks,
       completedTasks: this.completedTasks,
       failedTasks: this.failedTasks,
-      tokenUsage: this.accumulatedTokenUsage,
-      tokenUsageByModel: this.accumulatedTokenUsageByModel,
+      // Live cumulative (accumulated + Σ running partials), NOT the bare
+      // accumulator: the user-stop interruption checkpoint is written while
+      // workers are still mid-LLM-round, and their in-flight usage lived only
+      // in `runningPartialByModel` — the sealed session snapshot silently
+      // dropped it (outer-blending-prism: 97k recorded vs ~2.6M consumed).
+      // Monotonic across the completion boundary (fold-in == partial
+      // fold-out), so resume seeding and the anti-shrink guard stay correct.
+      tokenUsage: this.liveCumulativeUsage(),
+      tokenUsageByModel: this.liveCumulativeByModel(),
       parallelMode: true,
       ...(effectiveInterruption ? { interruption: effectiveInterruption } : {}),
     };
