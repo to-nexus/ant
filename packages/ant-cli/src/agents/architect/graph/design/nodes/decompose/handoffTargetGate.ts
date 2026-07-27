@@ -9,6 +9,12 @@
  * family (its first path segment matches a directory the bundle already has,
  * or it is a bundle-root file).
  *
+ * Normalize-and-validate: the pool manifest renders full workspace-relative
+ * paths (`visual/.../handoff/...`), so a contract-compliant LLM may emit
+ * `targetFile` with the bundle prefix attached. The gate strips the prefix
+ * in place BEFORE validating — the same task objects flow into the
+ * taskQueue, so execute's `targetDir + targetFile` join stays correct.
+ *
  * Without this gate the decompose LLM re-derives the canonical producer
  * layout (DESIGN.md / tokens/ / components/ / screens/) beside whatever the
  * user actually dropped into the handoff dir, creating a blind duplicate
@@ -38,6 +44,14 @@ export function validateHandoffReviseTargets(opts: {
 }): void {
   if (opts.mode !== 'refactor') return;
   const prefix = opts.bundlePrefix.endsWith('/') ? opts.bundlePrefix : `${opts.bundlePrefix}/`;
+  // Normalize: strip the bundle prefix off full-path targetFiles in place
+  // (manifest paths are workspace-relative; the gate + execute join are
+  // bundle-relative).
+  for (const t of opts.tasks) {
+    if (typeof t.targetFile === 'string' && t.targetFile.startsWith(prefix)) {
+      t.targetFile = t.targetFile.slice(prefix.length);
+    }
+  }
   const existing = new Set(
     opts.artifacts
       .filter((a) => typeof a.path === 'string' && a.path.startsWith(prefix))

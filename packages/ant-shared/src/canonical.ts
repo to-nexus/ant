@@ -641,6 +641,47 @@ export function pathsContainDesignDoc(paths: readonly string[] | undefined): boo
 }
 
 // ============================================
+// Handoff bundle-root SSOT
+// ============================================
+
+/** `visual/ui/handoff` — canonical bundle-root form (no trailing slash). */
+const UI_HANDOFF_ROOT = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
+/** `visual/game-art/handoff` — canonical bundle-root form (no trailing slash). */
+const GAME_ART_HANDOFF_ROOT = ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, '');
+
+/**
+ * Handoff bundle-root SSOT — a handoff bundle is one indivisible selection
+ * unit. Any path classified into the `handoff` sub-source (either surface)
+ * is widened to its bundle root dir (`visual/ui/handoff` /
+ * `visual/game-art/handoff`, no trailing slash — the same string the infer
+ * path's `resolveUiSourceDir` emits), deduped order-preserving. Non-handoff
+ * paths pass through unchanged. Idempotent: the bare root (with or without
+ * trailing slash) maps to the canonical root string.
+ *
+ * Why: the by-handoff revise contract makes the on-disk bundle the layout
+ * authority — decompose must observe the whole bundle (manifest stubs +
+ * on-demand `read_file`). A file-granular RAC entry starves the pool
+ * manifest to one row and makes the RAC read gate deny the rest of the
+ * bundle (tough-lacing-fable RCA). Widening at the RAC funnel converges the
+ * explicit path with the infer path's already-proven bundle-dir shape.
+ */
+export function widenHandoffRefsToBundleDir(
+  paths: readonly string[] | undefined,
+): string[] | undefined {
+  if (!paths?.length) return paths as string[] | undefined;
+  const widened = paths.map(p => {
+    if (p === UI_HANDOFF_ROOT || p.startsWith(ARTIFACT_PREFIX.UI_HANDOFF)) {
+      return UI_HANDOFF_ROOT;
+    }
+    if (p === GAME_ART_HANDOFF_ROOT || p.startsWith(ARTIFACT_PREFIX.GAME_ART_HANDOFF)) {
+      return GAME_ART_HANDOFF_ROOT;
+    }
+    return p;
+  });
+  return [...new Set(widened)];
+}
+
+// ============================================
 // Asset pool root resolution (domain-scoped SSOT)
 // ============================================
 

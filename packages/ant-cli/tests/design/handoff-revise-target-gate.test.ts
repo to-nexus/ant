@@ -53,6 +53,24 @@ describe('validateHandoffReviseTargets', () => {
     ).not.toThrow();
   });
 
+  it('normalizes full workspace-relative targetFiles by stripping the bundle prefix in place', () => {
+    const tasks = [
+      { id: 't1', targetFile: 'visual/game-art/handoff/project/design/tokens/DesignTokens.dc.html' },
+      { id: 't2', targetFile: 'visual/game-art/handoff/README.md' },
+    ];
+    expect(gate(tasks)).not.toThrow();
+    // In-place strip — the same task objects flow into the taskQueue, so
+    // execute's `targetDir + targetFile` join must see bundle-relative paths.
+    expect(tasks[0].targetFile).toBe('project/design/tokens/DesignTokens.dc.html');
+    expect(tasks[1].targetFile).toBe('README.md');
+  });
+
+  it('still rejects a full-path targetFile whose bundle-relative form does not exist', () => {
+    expect(
+      gate([{ id: 't1', targetFile: 'visual/game-art/handoff/tokens/colors.css' }]),
+    ).toThrow(/does not exist in the bundle/);
+  });
+
   it('rejects a canonical-layout path the bundle does not have (the observed defect)', () => {
     expect(gate([{ id: 't1', targetFile: 'tokens/colors.css' }])).toThrow(/does not exist in the bundle/);
     expect(gate([{ id: 't2', targetFile: 'DESIGN.md' }])).toThrow(/VERBATIM/);
@@ -135,7 +153,7 @@ describe('decompose template mode gates (canonical family = generate-only)', () 
       });
       // canonical directory-family table lives in handoff-package-format
       expect(rendered).not.toContain('Directory family');
-      expect(rendered).toContain('copied VERBATIM from a manifest path');
+      expect(rendered).toContain('prefix stripped — bundle-relative');
       expect(rendered).toContain('"newFile": true');
     });
 
@@ -149,7 +167,7 @@ describe('decompose template mode gates (canonical family = generate-only)', () 
         assetCount: 0,
       });
       expect(rendered).toContain('Directory family');
-      expect(rendered).not.toContain('copied VERBATIM from a manifest path');
+      expect(rendered).not.toContain('prefix stripped — bundle-relative');
     });
   }
 });
