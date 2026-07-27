@@ -17,7 +17,7 @@
 import type { ActionMetadata, IntentId } from './actions';
 import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized, normalizeIntentId } from './actions';
 import type { Mode, IntentGroup, Domain, InferredAction } from './detection';
-import { normalizeUiSourceRefs } from './canonical';
+import { normalizeUiSourceRefs, widenHandoffRefsToBundleDir } from './canonical';
 
 // ============================================
 // Workspace State (minimal, for infer path)
@@ -564,6 +564,14 @@ export function getIntentDescription(intent: IntentId): string | undefined {
  * makes the downstream `validateUiSourceExclusivity` (loadDocumentsForRAC)
  * a safety net rather than the primary enforcer; if it ever throws, a
  * caller has bypassed this funnel.
+ *
+ * Handoff bundle-root invariant is owned here too via
+ * `widenHandoffRefsToBundleDir` (canonical.ts SSOT) — a handoff bundle is one
+ * indivisible selection unit, so any handoff-classified ref/context entry is
+ * widened to its bundle root dir (`visual/{ui,game-art}/handoff`), converging
+ * the explicit path with the infer path's bundle-dir shape. `target` widens
+ * only in refactor mode (revise mirrors refs); generate producers' canonical
+ * output-spec target lists stay verbatim.
  */
 export function resolveToRAC(
   intentId: IntentId,
@@ -581,8 +589,15 @@ export function resolveToRAC(
   intentId = normalizeIntentId(intentId);
   const derived = deriveFromIntent(intentId);
 
-  const refs = slots?.refs?.length ? normalizeUiSourceRefs(slots.refs) : slots?.refs;
-  const context = slots?.context?.length ? normalizeUiSourceRefs(slots.context) : slots?.context;
+  const refs = slots?.refs?.length
+    ? widenHandoffRefsToBundleDir(normalizeUiSourceRefs(slots.refs))
+    : slots?.refs;
+  const context = slots?.context?.length
+    ? widenHandoffRefsToBundleDir(normalizeUiSourceRefs(slots.context))
+    : slots?.context;
+  const target = derived.mode === 'refactor'
+    ? widenHandoffRefsToBundleDir(slots?.target)
+    : slots?.target;
 
   // Domain-aware intent description (parity with FE labels). The base
   // `description` is domain-neutral; `descriptionByDomain` branches per
@@ -598,7 +613,7 @@ export function resolveToRAC(
     intentDescription: intentDef
       ? getIntentDescriptionLocalized(intentDef, slots?.domain, 'en')
       : getIntentDescription(intentId),
-    target: slots?.target,
+    target,
     refs,
     context,
     domain: slots?.domain,

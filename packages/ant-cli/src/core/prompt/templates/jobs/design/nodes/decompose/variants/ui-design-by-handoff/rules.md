@@ -20,7 +20,7 @@
 
 Every task authors exactly ONE file. `targetFile` is the file's path RELATIVE to the bundle root (e.g. `DESIGN.md`, `tokens/colors.css`, `components/button.css`, `screens/home.html`). Never a bare directory, never multiple files.
 
-Refactor mode: the path is not invented — it is one of the manifest paths from the input context, copied verbatim (or a `"newFile": true` addition inside a directory the bundle already has).
+Refactor mode: the path is not invented — it is one of the manifest paths from the input context with the `visual/ui/handoff/` prefix stripped (bundle-relative), or a `"newFile": true` addition inside a directory the bundle already has. `read_file`, by contrast, takes the full manifest path as shown.
 
 ### 2. Task IDs
 
@@ -70,7 +70,7 @@ Each task MUST include `sourceFiles` — an array of source filenames that the t
 
 Emit the meta tags first, then a `<tasks>` block with one `<task>{json}</task>` element per task. Each `<task>` body is a single JSON object. NO markdown fences anywhere. NO `<decompose>` wrapper.
 
-Example (generate-mode file set shown — refactor mode uses the existing manifest paths verbatim):
+Example (generate-mode file set shown — refactor mode uses the existing manifest paths, bundle-relative):
 
 ```
 <executionTier>4</executionTier>
@@ -99,7 +99,7 @@ Example (generate-mode file set shown — refactor mode uses the existing manife
 
 - ✅ `<executionTier>` emitted FIRST
 - ✅ Generate mode includes a `DESIGN.md` task at stage 1
-- ✅ Refactor mode: every `targetFile` matches an existing bundle path verbatim (or carries `"newFile": true`)
+- ✅ Refactor mode: every `targetFile` matches an existing bundle path (bundle-relative, prefix stripped) or carries `"newFile": true`
 - ✅ Every task id starts with `ui-handoff-`
 - ✅ Every `targetFile` is bundle-relative and unique across tasks
 - ✅ Priorities respect the stage table (tokens/guide < components/assets < screens)
