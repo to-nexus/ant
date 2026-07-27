@@ -98,7 +98,11 @@ export function applyDrainFinalization<TTool>(
   // destructive). A successful drained write resets the streak via
   // `_turnToolWrites`; `computeNextNoOutputCount`'s drainFinalizing clause
   // still bounds non-writing turns, so the breaker stays reachable.
-  const WRITE_TOOL_NAMES = new Set(['edit_file', 'create_file', 'delete_file', 'mkdir']);
+  // `mkdir` is deliberately NOT a survivor: it emits no sideEffects, so it can
+  // never satisfy the exit condition, yet it always "succeeds" — during forced
+  // finalization it becomes the only rewarding call and traps the model in a
+  // no-op loop until the breaker (oat-judging-mound RCA: 4× mkdir → design_no_output).
+  const WRITE_TOOL_NAMES = new Set(['edit_file', 'create_file', 'delete_file']);
   const drainedTools = tools.filter((t: any) => WRITE_TOOL_NAMES.has(t?.name));
   console.warn(
     `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → exploration tools stripped (${drainedTools.length} write tool(s) kept), forcing final output`,

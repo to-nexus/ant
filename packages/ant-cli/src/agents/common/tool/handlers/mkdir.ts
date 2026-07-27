@@ -21,6 +21,14 @@ export async function handleMkdir(
       return rejectCodebaseMutate('mkdir', resolved);
     }
 
+    // Honest no-op signal: `createDirectory` is recursive and never fails on an
+    // existing directory, so without this check a repeated mkdir reads as fresh
+    // progress ("Directory created") and can sustain a no-output loop.
+    if (await fileSystem.fileExists(resolved.fsPath)) {
+      console.log(`[mkdir] ℹ️ Directory already exists: ${resolved.displayPath}`);
+      return { content: prependFixMessage(resolved, `Directory already exists (no-op): ${resolved.displayPath}`) };
+    }
+
     await fileSystem.createDirectory(resolved.fsPath);
     console.log(`[mkdir] ✅ Created directory: ${resolved.displayPath}`);
 

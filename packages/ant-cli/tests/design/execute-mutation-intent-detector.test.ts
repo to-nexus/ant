@@ -23,8 +23,11 @@ import { describe, it, expect } from 'vitest';
 // detector spec is in `docs/internals/15-design-job.md` "Codebase
 // mutation gate" and `plan_3398344f.plan.md` §5.3.
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
+// `mkdir` is excluded — a directory creation produces no artifact content, so
+// it must not trigger the R5 self-check (oat-judging-mound RCA: a no-op mkdir
+// injected the false "the previous turn updated the artifact" message).
 const ARTIFACT_MUTATE_TOOLS = new Set([
-  'edit_file', 'delete_file', 'create_file', 'mkdir',
+  'edit_file', 'delete_file', 'create_file',
 ]);
 
 function turnHadArtifactMutationIntent(
@@ -88,6 +91,15 @@ describe('turnHadArtifactMutationIntent', () => {
         [{ name: 'delete_file', args: { path: 'architecture/spec/old.md' } }],
       ),
     ).toBe(true);
+  });
+
+  it('false when only a pending mkdir targets an artifact path (no artifact content produced)', () => {
+    expect(
+      turnHadArtifactMutationIntent(
+        [],
+        [{ name: 'mkdir', args: { path: 'architecture/spec' } }],
+      ),
+    ).toBe(false);
   });
 
   it('false when only read-only tools (read_file, list_files) are pending', () => {
