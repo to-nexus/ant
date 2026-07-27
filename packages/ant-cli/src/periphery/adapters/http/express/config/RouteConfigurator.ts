@@ -2,7 +2,6 @@ import { Express, Request, Response } from 'express';
 import express from 'express';
 import {
   createJobRoutes,
-  createKanbanRoutes,
   createWorkflowRoutes,
   createIDERoutes,
   createCloudIDERoutes,
@@ -45,13 +44,7 @@ export class RouteConfigurator {
       interruptionReason?: any,
       explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
       userContext?: any
-    ) => Promise<void>,
-    private readonly watchSessionFile: (
-      jobId: string,
-      projectId: string,
-      featureName: string,
-      task: string
-    ) => void
+    ) => Promise<void>
   ) {}
 
   /**
@@ -73,7 +66,9 @@ export class RouteConfigurator {
     this.setupApiRoutes(app);
     this.setupIDERoutes(app);
     this.setupCloudIDERoutes(app);
-    this.setupKanbanRoutes(app);
+    // Kanban GET lives in features.routes (single owner — dispatches on
+    // ?jobId= vs ?job=). The legacy kanban.routes registration was shadowed
+    // by it and has been removed.
     this.setupPreviewRoutes(app);
     this.setupWorkflowRoutes(app);
     // SSE routes moved to Realtime Server (see 10-cloud-architecture.md)
@@ -194,21 +189,6 @@ export class RouteConfigurator {
       this.deps.githubAuthService,
     );
     app.use('/api/cloud-ide', cloudIDERoutes);
-  }
-
-  /**
-   * Setup Kanban routes
-   */
-  private setupKanbanRoutes(app: Express): void {
-    const state = this.stateTracker.getState();
-    const kanbanRoutes = createKanbanRoutes({
-      kanbanService: this.deps.kanbanService,
-      jobToProject: state.jobToProject,
-      jobs: state.jobs,
-      taskQueueSnapshots: state.taskQueueSnapshots,
-      watchSessionFile: this.watchSessionFile
-    });
-    app.use('/api', kanbanRoutes);
   }
 
   /**

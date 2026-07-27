@@ -260,12 +260,16 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
     };
 
     if (kanbanJobId !== state.currentJobId) {
-      if (state.currentJobId === undefined && !kanbanJobId) {
-        // Skip update
-      } else {
+      const boardHasTasks =
+        (data.todo?.length ?? 0) > 0 ||
+        (data.inProgress?.length ?? 0) > 0 ||
+        (data.completed?.length ?? 0) > 0;
+      if (kanbanJobId || boardHasTasks) {
         console.log('[Store] 🔄 Job ID changed via Kanban update');
         newState.currentJobId = kanbanJobId;
       }
+      // else: an empty board with no jobId carries no identity — never let
+      // it erase the selected job (the board data itself still applies).
     }
 
     set(newState);

@@ -60,10 +60,12 @@ export function deleteFeature(
   );
 }
 
+// `job` is required (fail-loud): a defaulted 'code' silently loaded the wrong
+// session file for design/plan/visual jobs and clobbered the correct one.
 export async function fetchFeatureSession(
   projectId: string,
   featureName: string,
-  job: string = 'code',
+  job: string,
 ): Promise<Session | null> {
   const url = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/session?job=${job}`;
   const response = await authFetch(url);

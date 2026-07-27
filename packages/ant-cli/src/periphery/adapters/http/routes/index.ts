@@ -20,7 +20,6 @@ import type { OrganizationRepositoryPort } from '../../../../core/ports/organiza
 // ✅ Re-export existing routes
 // Note: Preview routes moved to ant-preview service (see 10-cloud-architecture.md)
 export { createJobRoutes } from './job.routes';
-export { createKanbanRoutes } from './kanban.routes';
 export { createWorkflowRoutes } from './workflow.routes';
 export { createSSERoutes } from './sse.routes';
 // Cloud auth + billing routes moved to `@ant/cloud` (mounted via the cloud
