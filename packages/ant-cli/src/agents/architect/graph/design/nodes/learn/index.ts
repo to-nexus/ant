@@ -307,9 +307,15 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
         // dir-scan allowlist cannot enumerate it and a plain dir walk would
         // absorb stale user uploads. Recognize the JOB-SCOPED set — the
         // targetFile of every completed task this job ran (relative paths
-        // inside the bundle, e.g. `tokens/colors.css`).
+        // inside the bundle, e.g. `tokens/colors.css`) — PLUS the current
+        // task. In the parallel worker subgraph learn runs per task with
+        // `currentTask` = the just-completed task, while the append to
+        // `completedTasksDetails` happens only in the serial main graph /
+        // orchestrator merge — without the union every handoff worker task
+        // failed here regardless of what it wrote (heavy-bearing-panda RCA).
+        const currentTargetFile = (state.currentTask as { targetFile?: string } | undefined)?.targetFile;
         const taskFiles = [...new Set(
-          (state.completedTasksDetails || [])
+          [...(state.completedTasksDetails || []), ...(currentTargetFile ? [{ targetFile: currentTargetFile }] : [])]
             .map(t => (t as { targetFile?: string }).targetFile)
             .filter((f): f is string => typeof f === 'string' && f.length > 0),
         )];
