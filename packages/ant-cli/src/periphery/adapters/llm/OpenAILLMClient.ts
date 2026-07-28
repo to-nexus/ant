@@ -20,6 +20,7 @@ import {
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
+import { getLLMDispatcher } from './llmDispatcher';
 import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
 
 /**
@@ -86,6 +87,9 @@ export class OpenAILLMClient implements LLMClient {
       apiKey: config?.apiKey || process.env.OPENAI_API_KEY,
       baseURL: config?.baseURL,
       timeout: config?.timeout || 180000, // 3 minutes
+      // Byte-level liveness (headers/body timeouts + TCP keepalive) — the only
+      // layer that sees provider keepalives. See llmDispatcher.ts.
+      fetchOptions: { dispatcher: getLLMDispatcher() },
     });
 
     this.provider = config?.provider ?? 'openai';
@@ -182,17 +186,20 @@ export class OpenAILLMClient implements LLMClient {
   }
 
   /**
-   * Per-event idle window for the streaming watchdog. Mirrors
-   * AnthropicLLMClient.resolveIdleTimeoutMs: a genuinely silent stream
-   * (no OS-level error — TCP appears open after a Mac sleep / network
-   * partition) is aborted so `withRetryStream` can re-issue. Reasoning
-   * providers stream `reasoning_content` deltas (surfaced as `thinking`
-   * events) that keep this watchdog alive, so this guards NETWORK stalls,
-   * not long reasoning — the runaway-reasoning class is bounded by the
-   * caller's per-round `maxTokens` budget (gentle-leaping-lathe), not here.
+   * Parsed-event BACKSTOP window, not a liveness judge. Transport-level
+   * timers own liveness (llmDispatcher.ts: headers 180s / body 300s +
+   * TCP keepalive — the only layer provider keepalives reset, since the
+   * SDK's SSE parser swallows `:` comment keepalives before the event
+   * iterator). This window only bounds the pathological "bytes keep
+   * flowing but no parseable event ever arrives" state.
+   *
+   * Do NOT tighten per thinking regime: the old 90s disabled-thinking
+   * window killed legitimate >90s-TTFT GLM calls 8/8 identical retries
+   * (sandy-loading-coral 2nd RCA) — the same class prime-nesting-grate
+   * hit on Anthropic adaptive silence.
    */
-  private resolveStreamIdleMs(enableThinking?: boolean): number {
-    return enableThinking === false ? 90_000 : 180_000;
+  private resolveStreamIdleMs(_enableThinking?: boolean): number {
+    return 600_000;
   }
 
   /**

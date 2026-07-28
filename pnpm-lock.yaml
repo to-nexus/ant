@@ -186,6 +186,9 @@ importers:
       simple-git:
         specifier: ^3.36.0
         version: 3.36.0
+      undici:
+        specifier: ^7.29.0
+        version: 7.29.0
       uuid:
         specifier: ^11.1.1
         version: 11.1.1
@@ -4252,6 +4255,10 @@ packages:
 
   undici-types@7.14.0:
     resolution: {integrity: sha512-QQiYxHuyZ9gQUIrmPo3IA+hUl4KYk8uSA7cHrcKd/l3p1OTpZcM0Tbp9x7FAtXdAYhlasd60ncPpgu6ihG6TOA==}
+
+  undici@7.29.0:
+    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+    engines: {node: '>=20.18.1'}
 
   unified@11.0.5:
     resolution: {integrity: sha512-xKvGhPWw3k84Qjh8bI3ZeJjqnyadK+GEFtazSfZv/rKeTkTjOJho6mFqh2SM96iIcZokxiOpg78GazTSg8+KHA==}
@@ -8611,6 +8618,8 @@ snapshots:
   undici-types@6.21.0: {}
 
   undici-types@7.14.0: {}
+
+  undici@7.29.0: {}
 
   unified@11.0.5:
     dependencies:

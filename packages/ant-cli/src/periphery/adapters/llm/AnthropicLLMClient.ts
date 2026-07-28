@@ -7,6 +7,7 @@
 
 // @ts-ignore
 import Anthropic from '@anthropic-ai/sdk';
+import { getLLMDispatcher } from './llmDispatcher';
 import {
   LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult,
   CacheableContent, MessageContentBlock,
@@ -59,6 +60,10 @@ export class AnthropicLLMClient implements LLMClient {
   ) {
     this.client = new Anthropic({
       apiKey: config?.apiKey || process.env.ANTHROPIC_API_KEY,
+      // Byte-level liveness (headers/body timeouts + TCP keepalive) — the only
+      // layer that sees the API's `ping` keepalives (the SDK's SSE parser
+      // swallows them before the event iterator). See llmDispatcher.ts.
+      fetchOptions: { dispatcher: getLLMDispatcher() },
     });
 
     // ✅ modelName은 반드시 명시적으로 제공되어야 함
@@ -153,28 +158,20 @@ export class AnthropicLLMClient implements LLMClient {
     return { temperature };
   }
 
-  // Idle timeout matches the request regime. 90s assumes a genuinely
-  // non-thinking call (TCP-appears-open / Mac sleep). Anthropic adaptive
-  // thinking can be silent >180s between message_start and first
-  // thinking_delta on large prompts (plum-meeting-ember execute incident).
-  // Gated on the adaptive-thinking regime (per-model via MODEL_REGISTRY),
-  // not a name heuristic — Sonnet 5 is adaptive and needs the same 300s
-  // window.
+  // Parsed-event BACKSTOP window, not a liveness judge. Transport-level
+  // timers own liveness (llmDispatcher.ts: headers 180s / body 300s + TCP
+  // keepalive) — the API's `ping` keepalives reset the byte timer but are
+  // swallowed by the SDK's SSE parser before this iterator, so the parsed
+  // layer structurally cannot see them. This window only bounds the
+  // pathological "bytes keep flowing but no parseable event ever arrives"
+  // state.
   //
-  // Since the broad-mining-minty fix (Jul 2026), buildThinkingParams sends
-  // `thinking:{type:'adaptive', display:'summarized'}` on EVERY round for
-  // adaptive models, so thinking_delta events flow during reasoning and
-  // keep this watchdog alive — the silent-thinking stall class
-  // (prime-nesting-grate: rounds 2+ omitted the param, the model reasoned
-  // silently past the window, and all 8 retries died re-billing ~150K
-  // cached tokens each) is structurally gone. The 300s adaptive window is
-  // retained as a last-resort guard for true network stalls; do not
-  // tighten it back to 90s — summarized deltas can still have long gaps
-  // on very hard reasoning.
-  private resolveIdleTimeoutMs(enableThinking: boolean, thinkingBudget: number): number {
-    const isAdaptiveModel = getThinkingMode(this.modelName) === 'adaptive';
-    if (!enableThinking) return isAdaptiveModel ? 300_000 : 90_000;
-    return isAdaptiveModel && thinkingBudget >= 5000 ? 300_000 : 180_000;
+  // History: the regime-gated 90/180/300s windows were liveness guesses —
+  // prime-nesting-grate (adaptive silence killed 8×, re-billing ~150K cached
+  // tokens each) and sandy-loading-coral (GLM >90s TTFT killed 8/8) are the
+  // same class. Never tighten this back into a per-regime guess.
+  private resolveIdleTimeoutMs(_enableThinking: boolean, _thinkingBudget: number): number {
+    return 600_000;
   }
 
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {

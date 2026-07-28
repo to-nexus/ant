@@ -47,6 +47,24 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'retryMarker' | 'shouldRetry'
   onBeforeRetry: undefined as any,  // Optional callback
 };
 
+const RETRYABLE_TRANSPORT_CODES = new Set([
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+  'ECONNRESET',
+  'ETIMEDOUT',
+]);
+
+/** Walk error.cause chain (bounded) for undici/socket transport failure codes. */
+function hasRetryableTransportCause(error: unknown): boolean {
+  let cur: any = error;
+  for (let depth = 0; cur && typeof cur === 'object' && depth < 8; depth++) {
+    if (typeof cur.code === 'string' && RETRYABLE_TRANSPORT_CODES.has(cur.code)) return true;
+    cur = cur.cause;
+  }
+  return false;
+}
+
 /**
  * Check if error is retryable. Exported so auxiliary one-shot callers (e.g. the
  * ant-commit message) can compose it into a custom `shouldRetry` while keeping
@@ -80,7 +98,21 @@ export function isRetryableError(error: unknown, retryableErrors: string[]): boo
       return true;
     }
   }
-  
+
+  // Transport-layer timeouts/resets (undici dispatcher — llmDispatcher.ts) can
+  // reach here wrapped by the SDKs as APIConnectionError ('Connection error.'),
+  // which matches NO branch above: not a TypeError, no .error.type, no .status.
+  // Walk the cause chain for the undici codes and treat the SDK wrapper itself
+  // as a connection-class retryable.
+  if (hasRetryableTransportCause(apiError)) {
+    console.log(`[Retry] Transport-layer error detected (cause chain) - will retry`);
+    return true;
+  }
+  if (apiError.name === 'APIConnectionError') {
+    console.log('[Retry] SDK connection error - will retry');
+    return true;
+  }
+
   // Check Anthropic API error format (nested structure)
   // Structure: { error: { type: 'error', error: { type: 'overloaded_error' } } }
   if (apiError.error?.error?.type) {

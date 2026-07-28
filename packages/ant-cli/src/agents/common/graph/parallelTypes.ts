@@ -62,9 +62,12 @@ export interface OrchestratorConfig {
    * abort severs the worker's registered in-flight stream attempts so the
    * failure propagates through the worker's own catch → reportFailure.
    * Defaults: warn 15min, abort 50min — the abort floor sits above the
-   * worst-case legitimate zero-heartbeat retry envelope (8 idle-timeout
-   * attempts × 300s adaptive window + backoff ≈ 42min), so it can only
-   * fire on states the retry layer provably cannot exit.
+   * worst-case legitimate zero-heartbeat retry envelope (8 attempts each
+   * bounded by the transport bodyTimeout 300s — llmDispatcher.ts — plus
+   * backoff ≈ 42min), so it can only fire on states the transport + retry
+   * layers provably cannot exit (e.g. bytes flowing forever with no
+   * parseable events, bounded per-attempt only by the 600s parsed
+   * backstop).
    */
   stallWarnMs?: number;
   stallAbortMs?: number;
