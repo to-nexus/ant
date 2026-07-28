@@ -8,6 +8,7 @@
 
 import { VisualGraphState } from '../types.js';
 import { LLM_TEMPERATURE } from '../../../../common/graph/llmConfig';
+import { getJobAbortSignal } from '../../../../../composition/jobAbort';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import { accumulateTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, broadcastTokenUsageByModel } from '../../../../common/graph/llmHelpers.js';
 import { getEstimatingLabel } from '../../../../common/graph/timing/estimatingLabels.js';
@@ -78,7 +79,7 @@ export async function explainNode(state: VisualGraphState): Promise<Partial<Visu
     applyEstimatedInputTokensFromMessages(state, messages);
 
     if (llm.stream) {
-      for await (const event of llm.stream(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.CONVERSATIONAL })) {
+      for await (const event of llm.stream(messages, { enableThinking: false, temperature: LLM_TEMPERATURE.CONVERSATIONAL, signal: getJobAbortSignal() })) {
         maybeUpdatePhaseTokenUsage(state, event);
         if (event.type === 'text' && event.text) {
           responseText += event.text;

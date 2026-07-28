@@ -23,6 +23,7 @@ import {
   maybeUpdatePhaseTokenUsage,
 } from '../../../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
+import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
 import { selectArtifacts } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { ARTIFACT_PREFIX } from '@ant/shared';
@@ -93,7 +94,7 @@ export async function renderExplainResponse(
   let capturedUsage: any = undefined;
 
   try {
-    for await (const event of llm.stream(messages as any, { enableThinking: false, temperature: LLM_TEMPERATURE.DOC_GENERATION })) {
+    for await (const event of llm.stream(messages as any, { enableThinking: false, temperature: LLM_TEMPERATURE.DOC_GENERATION, signal: getJobAbortSignal() })) {
       if (event.type === 'retry') {
         textResponse = '';
         capturedUsage = undefined;

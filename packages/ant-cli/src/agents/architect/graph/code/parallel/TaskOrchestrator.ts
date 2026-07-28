@@ -17,6 +17,7 @@ import type { BaseTask, TaskTokenUsage, TokenUsageByModel } from '@ant/shared';
 import { TaskQueue } from '../../../types/task';
 import { TaskTimingHelper } from '../state';
 import { AsyncMutex } from '../../../../../core/utils/AsyncMutex';
+import { abortWorkerStreamAttempts } from '../../../../../core/parallel/streamAttemptRegistry';
 import { TaskWorker } from './TaskWorker';
 import type {
   OrchestratorResult,
@@ -259,6 +260,13 @@ export class TaskOrchestrator<T extends BaseTask> {
   // Periodic checkpoint
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Stall watchdog — per-worker last-progress clock (LLM usage heartbeat) and
+  // one-shot warn dedup. Process-local lifecycle state, not Redis SSOT.
+  private readonly stallWarnMs: number;
+  private readonly stallAbortMs: number;
+  private lastProgressAt = new Map<number, number>();
+  private stallWarned = new Set<number>();
+
   constructor(
     taskQueue: TaskQueue<T>,
     graphBuilder: WorkerGraphBuilder,
@@ -290,6 +298,8 @@ export class TaskOrchestrator<T extends BaseTask> {
       checkpointInterval: config?.checkpointInterval ?? 60_000,
       barriers: config?.barriers,
     };
+    this.stallWarnMs = config?.stallWarnMs ?? 15 * 60_000;
+    this.stallAbortMs = config?.stallAbortMs ?? 50 * 60_000;
 
     // Seed accumulators through the same merge helpers workers use, so the seed
     // and worker deltas combine on one code path.
@@ -393,6 +403,7 @@ export class TaskOrchestrator<T extends BaseTask> {
   async reportCompletion(workerId: number, task: T, tokenUsage?: TaskTokenUsage, tokenUsageByModel?: TokenUsageByModel): Promise<void> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+      this.clearWorkerProgress(workerId);
       // Fold-out: the task's final per-model delta is added to the accumulator
       // below (addTokenUsageByModel), so drop its running partial in the same
       // lock-held section — the token moves buckets, never counted twice.
@@ -511,6 +522,7 @@ export class TaskOrchestrator<T extends BaseTask> {
   ): Promise<void> {
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+      this.clearWorkerProgress(workerId);
       // Drop the parent's running partial. Batch-split does NOT fold the parent's
       // consumed tokens into the accumulator (pre-existing: neither the aggregate
       // nor per-model total bills the split parent's plan tokens — the replacement
@@ -566,6 +578,7 @@ export class TaskOrchestrator<T extends BaseTask> {
     await this.lock.runExclusive(async () => {
       const task = this.runningTasks.get(workerId);
       this.runningTasks.delete(workerId);
+      this.clearWorkerProgress(workerId);
       // Fold-out: the stopped attempt's per-model delta is folded into the
       // accumulator below, so drop its running partial in the same section.
       this.runningPartialByModel.delete(workerId);
@@ -611,6 +624,7 @@ export class TaskOrchestrator<T extends BaseTask> {
 
     await this.lock.runExclusive(async () => {
       this.runningTasks.delete(workerId);
+      this.clearWorkerProgress(workerId);
       // Fold-out: the failed attempt's per-model delta is folded into the
       // accumulator below, so drop its running partial in the same section.
       this.runningPartialByModel.delete(workerId);
@@ -1021,9 +1035,67 @@ export class TaskOrchestrator<T extends BaseTask> {
     }
 
     this.runningTasks.set(workerId, task);
+    this.recordProgress(workerId);
     // Broadcast kanban immediately when task starts (not just on completion)
     this.broadcastKanban();
     return task;
+  }
+
+  /** Reset the stall clock for a worker — called on assignment and on every LLM usage heartbeat. */
+  private recordProgress(workerId: number): void {
+    this.lastProgressAt.set(workerId, Date.now());
+    this.stallWarned.delete(workerId);
+  }
+
+  /** Drop stall-watchdog state when a worker's task leaves runningTasks. */
+  private clearWorkerProgress(workerId: number): void {
+    this.lastProgressAt.delete(workerId);
+    this.stallWarned.delete(workerId);
+  }
+
+  /**
+   * Stall watchdog, evaluated on the checkpoint tick. Two tiers:
+   * - warn (once per episode): loud log + onStallWarning callback.
+   * - abort: sever the worker's registered in-flight LLM stream attempts.
+   *   The abort error then propagates through the worker's OWN catch path →
+   *   reportFailure (retry budget applies). Never report failure from here —
+   *   the wedged graph.invoke promise is still pending and would double-report
+   *   when it eventually settles. A stall with no registered attempt is
+   *   outside the LLM layer (tool/graph hang) — observe only.
+   */
+  private detectStalledWorkers(): void {
+    const now = Date.now();
+    for (const [workerId, task] of this.runningTasks) {
+      const last = this.lastProgressAt.get(workerId);
+      if (last === undefined) {
+        this.lastProgressAt.set(workerId, now);
+        continue;
+      }
+      const idle = now - last;
+      if (idle >= this.stallAbortMs) {
+        const idleSec = Math.round(idle / 1000);
+        const severed = abortWorkerStreamAttempts(
+          workerId,
+          new Error(`[StallWatchdog] no progress for ${idleSec}s on task "${task.name}" — severing in-flight stream`),
+        );
+        // Reset the clock either way so the abort tier never re-fires every tick.
+        this.lastProgressAt.set(workerId, now);
+        this.stallWarned.delete(workerId);
+        if (severed > 0) {
+          console.error(`[Orchestrator] 🛑 Stall watchdog severed ${severed} in-flight stream attempt(s) for worker ${workerId} (task "${task.name}", idle ${idleSec}s) — failure will flow via the worker's catch`);
+        } else {
+          console.error(`[Orchestrator] 🛑 Stall watchdog: worker ${workerId} (task "${task.name}") idle ${idleSec}s with NO in-flight LLM attempt — stall is outside the LLM layer, observing only`);
+        }
+      } else if (idle >= this.stallWarnMs && !this.stallWarned.has(workerId)) {
+        this.stallWarned.add(workerId);
+        console.warn(`[Orchestrator] ⚠️ Worker ${workerId} (task "${task.name}") has shown no LLM progress for ${Math.round(idle / 1000)}s`);
+        try {
+          this.callbacks.onStallWarning?.(task, idle, workerId);
+        } catch (err) {
+          console.warn('[Orchestrator] onStallWarning callback failed:', err);
+        }
+      }
+    }
   }
 
   private spawnAvailableWorkers(): void {
@@ -1211,6 +1283,8 @@ export class TaskOrchestrator<T extends BaseTask> {
     workerId: number,
     byModel: TokenUsageByModel | undefined,
   ): TokenUsageByModel {
+    // Every in-flight usage event doubles as the stall-watchdog heartbeat.
+    this.recordProgress(workerId);
     if (byModel && Object.keys(byModel).length > 0) {
       this.runningPartialByModel.set(workerId, byModel);
     }
@@ -1272,6 +1346,12 @@ export class TaskOrchestrator<T extends BaseTask> {
 
     this.checkpointTimer = setInterval(async () => {
       if (!this.isRunning) return;
+      // Stall detection rides the existing tick — no second timer.
+      try {
+        this.detectStalledWorkers();
+      } catch (err) {
+        console.warn(`[Orchestrator] Stall detection failed:`, err);
+      }
       try {
         await this.saveCheckpoint();
       } catch (err) {

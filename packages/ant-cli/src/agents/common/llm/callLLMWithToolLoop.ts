@@ -11,6 +11,7 @@
  */
 
 import type { LLMClient, ToolDefinition, MessageContentBlock } from '../../../core/ports/llm';
+import { getJobAbortSignal } from '../../../composition/jobAbort';
 import type { TaskTokenUsage } from '@ant/shared';
 import type { TokenTrackingState } from '../graph/llmHelpers';
 
@@ -212,7 +213,9 @@ export async function callLLMWithToolLoop(
       maxTokens: options.maxTokens,
       enableThinking: roundThinking,
       thinkingBudget: roundThinking ? options.thinkingBudget : undefined,
-      ...(options.signal ? { signal: options.signal } : {}),
+      // All consumers run in the job-runner child — default to the job abort
+      // signal so user Stop severs the stream even when callers omit it.
+      signal: options.signal ?? getJobAbortSignal(),
     })) {
       if (event.type === 'retry') {
         response = '';

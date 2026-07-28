@@ -11,6 +11,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { VisualGraphState, SketchVariation } from '../types.js';
+import { getJobAbortSignal } from '../../../../../composition/jobAbort';
 import { LLM_TEMPERATURE } from '../../../../common/graph/llmConfig';
 import { CONV_KEYS, getConv } from '../../../../common/graph/conversations.js';
 import { accumulateTokenUsage, upsertPhaseTokenUsage, maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages, broadcastTokenUsageByModel, TokenUsage } from '../../../../common/graph/llmHelpers.js';
@@ -416,7 +417,7 @@ async function streamWithToolLoop(
     // tool-continuation rounds. No-op on Gemini (visual default — thinking is
     // model-managed) and ignored by adaptive Anthropic; only bounds toggle
     // providers (GLM/DeepSeek unbounded) if the visual job runs on one.
-    for await (const event of llm.stream(currentMessages, { tools, enableThinking: round === 0, temperature: LLM_TEMPERATURE.CODE_EXECUTE })) {
+    for await (const event of llm.stream(currentMessages, { tools, enableThinking: round === 0, temperature: LLM_TEMPERATURE.CODE_EXECUTE, signal: getJobAbortSignal() })) {
       if (event.type === 'retry') {
         text = '';
         toolUses.length = 0;
@@ -482,7 +483,7 @@ async function streamWithToolLoop(
   let finalText = '';
   // T1 pre-call estimate for the final text-only call.
   applyEstimatedInputTokensFromMessages(state, currentMessages);
-  for await (const event of llm.stream(currentMessages, { tools: undefined, enableThinking: false, temperature: LLM_TEMPERATURE.CODE_EXECUTE })) {
+  for await (const event of llm.stream(currentMessages, { tools: undefined, enableThinking: false, temperature: LLM_TEMPERATURE.CODE_EXECUTE, signal: getJobAbortSignal() })) {
     maybeUpdatePhaseTokenUsage(state, event);
     if (event.type === 'text' && event.text) {
       finalText += event.text;

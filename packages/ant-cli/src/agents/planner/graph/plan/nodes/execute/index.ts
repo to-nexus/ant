@@ -17,6 +17,7 @@
 import * as path from 'path';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../../state';
+import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../../common/graph/conversations';
 import {
   extractTokenUsageFromStreamEvent,
@@ -179,6 +180,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       temperature: LLM_TEMPERATURE.DOC_GENERATION,
       enableThinking: isFirstCall,
+      signal: getJobAbortSignal(),
     })) {
       if (event.type === 'retry') {
         responseText = '';

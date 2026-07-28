@@ -8,6 +8,7 @@
  */
 
 import { isProviderBalanceDepletion } from './apiErrorClassify';
+import { registerStreamAttempt } from '../parallel/streamAttemptRegistry';
 
 interface RetryOptions {
   maxAttempts?: number;
@@ -217,12 +218,30 @@ export async function withRetry<T>(
  * and a retryable "terminated" error is thrown. This handles the case where
  * a network connection appears open (no OS-level error) but data has stopped
  * flowing — e.g., after a Mac sleep/wake cycle or transient network partition.
+ *
+ * `onIdleTimeout` fires once, before the timeout error is thrown, and ONLY on
+ * a genuine idle timeout (never on ordinary API errors). Callers use it to
+ * sever the underlying transport (per-attempt AbortController) so the pending
+ * `next()` rejects and the generator chain can unwind.
  */
 export async function* withStreamIdleTimeout<T>(
   gen: AsyncIterable<T>,
   idleTimeoutMs: number,
+  onIdleTimeout?: () => void,
 ): AsyncIterable<T> {
   const iterator = gen[Symbol.asyncIterator]();
+  let released = false;
+  const releaseIterator = (): void => {
+    if (released) return;
+    released = true;
+    // return() QUEUES behind a pending next() (async-generator semantics) —
+    // never await it here or the timeout error becomes unreachable and the
+    // consumer wedges forever (sandy-loading-coral design-worker RCA).
+    try {
+      const r = iterator.return?.();
+      if (r) void Promise.resolve(r).catch(() => {});
+    } catch { /* sync throw from a hostile iterator */ }
+  };
   try {
     while (true) {
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -230,6 +249,7 @@ export async function* withStreamIdleTimeout<T>(
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           console.warn(`[StreamIdleTimeout] No stream event received for ${idleTimeoutMs / 1000}s — aborting (likely silent network stall)`);
+          try { onIdleTimeout?.(); } catch { /* sever hook must not mask the timeout */ }
           const err = Object.assign(new TypeError('terminated'), { _isStreamIdleTimeout: true });
           reject(err);
         }, idleTimeoutMs);
@@ -241,9 +261,7 @@ export async function* withStreamIdleTimeout<T>(
         if (timeoutId !== null) clearTimeout(timeoutId);
       } catch (err) {
         if (timeoutId !== null) clearTimeout(timeoutId);
-        if (iterator.return) {
-          try { await iterator.return(); } catch { /* ignore */ }
-        }
+        releaseIterator();
         throw err;
       }
 
@@ -251,9 +269,34 @@ export async function* withStreamIdleTimeout<T>(
       yield result.value;
     }
   } finally {
-    if (iterator.return) {
-      try { await iterator.return(); } catch { /* ignore */ }
-    }
+    releaseIterator();
+  }
+}
+
+/**
+ * One stream ATTEMPT with a per-attempt AbortController wired to the idle
+ * watchdog. Intended as the factory body for `withRetryStream` — a fresh
+ * controller per attempt. The caller's signal (user Stop) is combined via
+ * AbortSignal.any; the watchdog aborts only its own attempt. The controller
+ * is registered in the stream-attempt registry so the orchestrator's stall
+ * watchdog can sever a wedged attempt externally.
+ */
+export async function* streamAttemptWithIdleAbort<T>(
+  run: (signal: AbortSignal) => AsyncIterable<T>,
+  idleTimeoutMs: number,
+  callerSignal?: AbortSignal,
+): AsyncIterable<T> {
+  const attempt = new AbortController();
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, attempt.signal])
+    : attempt.signal;
+  const unregister = registerStreamAttempt(attempt);
+  try {
+    yield* withStreamIdleTimeout(run(signal), idleTimeoutMs, () =>
+      attempt.abort(new Error('stream idle timeout — attempt severed by watchdog')),
+    );
+  } finally {
+    unregister();
   }
 }
 

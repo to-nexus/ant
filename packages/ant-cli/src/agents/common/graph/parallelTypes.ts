@@ -56,6 +56,19 @@ export interface OrchestratorConfig {
   /** Periodic checkpoint interval in ms (default 60000) */
   checkpointInterval: number;
   /**
+   * Stall watchdog thresholds (ms), evaluated on the checkpoint tick.
+   * "Progress" = any in-flight LLM usage event from the worker
+   * (reportInProgressTokenUsage). warn fires once per stall episode;
+   * abort severs the worker's registered in-flight stream attempts so the
+   * failure propagates through the worker's own catch → reportFailure.
+   * Defaults: warn 15min, abort 50min — the abort floor sits above the
+   * worst-case legitimate zero-heartbeat retry envelope (8 idle-timeout
+   * attempts × 300s adaptive window + backoff ≈ 42min), so it can only
+   * fire on states the retry layer provably cannot exit.
+   */
+  stallWarnMs?: number;
+  stallAbortMs?: number;
+  /**
    * Stage-gate barriers controlling task dispatch order.
    *
    * Code barrier chain:
@@ -140,6 +153,8 @@ export interface OrchestratorCallbacks<T extends BaseTask> {
   ) => void;
   /** Called when a worker terminates (no more tasks to process). */
   onWorkerTerminate?: (workerId: number) => void;
+  /** Called once per stall episode when a running task shows no LLM progress past stallWarnMs. */
+  onStallWarning?: (task: T, idleMs: number, workerId: number) => void;
   /** Called when the orchestrator is interrupted (user stop, recursion limit, consecutive timeouts). */
   onInterruption?: (reason: string, runningTaskIds: string[]) => void;
   /**
