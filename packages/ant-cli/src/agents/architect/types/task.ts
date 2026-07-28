@@ -240,6 +240,17 @@ export type DesignTask = (DocTask | ExplainTask) & {
   /** Pre-computed at decompose time: true if this is the last task targeting the same file. */
   isLastTaskForDocument?: boolean;
 
+  /**
+   * Refactor × handoff only: bundle-relative paths this task deletes with
+   * `delete_file` AFTER merging their surviving content into `targetFile`
+   * (merge-then-delete — a removal always rides the surviving file's task;
+   * delete-only tasks are banned so no-output gates and the learn handoff
+   * file union stay untouched). Validated against the bundle manifest by
+   * `validateHandoffReviseTargets`; pruned from the artifact pool at task
+   * completion. BE-internal — never crosses to the FE kanban.
+   */
+  removeFiles?: string[];
+
   /** Pre-computed at decompose time: true for non-first chapters that must use <append> in parallel. */
   forceAppend?: boolean;
 

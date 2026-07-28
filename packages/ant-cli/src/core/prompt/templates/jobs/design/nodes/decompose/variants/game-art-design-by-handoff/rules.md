@@ -91,6 +91,7 @@ Example (generate-mode file set shown — refactor mode uses the existing manife
 | priority | Stage window (100–149 / 200–249 / 300–349) |
 | parallelGroup | Use the task id (every file has a single writer) |
 | newFile | Refactor mode only, optional — `true` when the task adds a file the bundle does not have |
+| removeFiles | Refactor mode only, optional — bundle-relative paths this task deletes after merging their surviving content into `targetFile`; each must be an existing manifest path and never the task's own `targetFile` |
 
 ---
 
@@ -99,6 +100,7 @@ Example (generate-mode file set shown — refactor mode uses the existing manife
 - ✅ `<executionTier>` emitted FIRST
 - ✅ Generate mode includes a `DESIGN.md` task at stage 1
 - ✅ Refactor mode: every `targetFile` matches an existing bundle path (bundle-relative, prefix stripped) or carries `"newFile": true`
+- ✅ Refactor mode: every `removeFiles` entry is an existing bundle path and is NOT the task's own `targetFile`; the bundle keeps exactly one entry doc after the revision
 - ✅ Every task id starts with `game-art-handoff-`
 - ✅ Every `targetFile` is bundle-relative and unique across tasks
 - ✅ Priorities respect the stage table

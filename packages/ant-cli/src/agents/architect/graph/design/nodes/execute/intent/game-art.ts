@@ -249,6 +249,9 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
     .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 200) || ''}`)
     .join('\n');
 
+  // Merge-then-delete carrier → full workspace-relative paths for delete_file.
+  const removeFilePaths = (designTask?.removeFiles ?? []).map((rf) => `${targetDirRel}/${rf}`);
+
   const injectedVariables = {
     taskId: state.currentTask?.id,
     taskName: state.currentTask?.name,
@@ -260,6 +263,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
     forceAppend,
     siblingTasks: siblingTasks || '',
     appendAnchor: liveAnchor,
+    removeFilePaths: removeFilePaths.length > 0 ? removeFilePaths : undefined,
     detectedMode: state.resolvedAction?.mode,
     // Per-file write-strategy gate (REVISE vs GENERATE) — disk observation,
     // not job mode: a refactor job may add files that don't exist yet.
@@ -308,7 +312,12 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
           taskName: state.currentTask?.name,
           templatePath: tpl.base,
           usedTemplates: isHandoff
-            ? [tpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            ? [
+                tpl.rules!,
+                state.resolvedAction?.mode === 'refactor'
+                  ? 'jobs/shared/injections/handoff-bundle-revision'
+                  : 'jobs/shared/injections/handoff-package-format',
+              ]
             : [
                 tpl.rules!,
                 `jobs/design/nodes/execute/injections/game-art-tokens-guide-${logSuffix}`,

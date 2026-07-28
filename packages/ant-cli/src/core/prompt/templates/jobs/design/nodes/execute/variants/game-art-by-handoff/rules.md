@@ -1,4 +1,8 @@
+{{#if (eq detectedMode "refactor")}}
+{{> jobs/shared/injections/handoff-bundle-revision}}
+{{else}}
 {{> jobs/shared/injections/handoff-package-format}}
+{{/if}}
 
 ---
 
@@ -14,7 +18,7 @@ Generate mode: emit the complete file inside ONE `<file>` block whose `path` is 
 
 - ❌ NO other `<file>` blocks, NO `<append>`, NO markdown fences around the block
 - ❌ NEVER write to a path other than the pinned target
-- Revise mode uses `read_file` + `edit_file` instead (see task section)
+- Revise mode uses `read_file` + `edit_file` instead; structural removals listed in the task use `delete_file` (see task section)
 
 ---
 

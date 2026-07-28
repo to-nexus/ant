@@ -29,6 +29,24 @@ export interface HandoffTaskTarget {
   id: string;
   targetFile: string;
   newFile?: boolean;
+  /** Refactor merge-then-delete: bundle-relative paths this task removes. */
+  removeFiles?: string[];
+}
+
+/**
+ * Guide-doc candidate stems for the entry-doc singularity invariant.
+ * Prose twin (consumer-side reading heuristic):
+ * jobs/code/base/injections/game-art-source-handoff.md — different consumer,
+ * different altitude; this constant gates WRITING, that prose gates reading.
+ */
+export const HANDOFF_GUIDE_STEMS = ['readme', 'design', 'index', 'guide', 'manifest', 'overview'];
+
+/** Markdown files whose basename stem matches a guide candidate (dc.html specimens never count). */
+export function isGuideDoc(bundleRelativePath: string): boolean {
+  const base = bundleRelativePath.slice(bundleRelativePath.lastIndexOf('/') + 1).toLowerCase();
+  if (!base.endsWith('.md')) return false;
+  const stem = base.slice(0, -3);
+  return HANDOFF_GUIDE_STEMS.includes(stem);
 }
 
 export function validateHandoffReviseTargets(opts: {
@@ -50,6 +68,11 @@ export function validateHandoffReviseTargets(opts: {
   for (const t of opts.tasks) {
     if (typeof t.targetFile === 'string' && t.targetFile.startsWith(prefix)) {
       t.targetFile = t.targetFile.slice(prefix.length);
+    }
+    if (Array.isArray(t.removeFiles)) {
+      t.removeFiles = t.removeFiles.map((rf) =>
+        typeof rf === 'string' && rf.startsWith(prefix) ? rf.slice(prefix.length) : rf,
+      );
     }
   }
   const existing = new Set(
@@ -80,5 +103,44 @@ export function validateHandoffReviseTargets(opts: {
     throw new Error(
       `${opts.tag} refactor task "${t.id}" targets "${t.targetFile}" — ${hint}.`,
     );
+  }
+
+  // Structural-revision invariants: removal targets + entry-doc singularity.
+  // Fail-open when the bundle has no recognizable guide doc — stem detection
+  // must not reject bundles with unconventional guide names.
+  const guideDocs = [...existing].filter(isGuideDoc);
+  for (const t of opts.tasks) {
+    for (const rf of t.removeFiles ?? []) {
+      if (!existing.has(rf)) {
+        throw new Error(
+          `${opts.tag} refactor task "${t.id}" removeFiles entry "${rf}" does not exist in the bundle — ` +
+          `copy removal paths VERBATIM from the manifest (bundle-relative, prefix stripped).`,
+        );
+      }
+      if (rf === t.targetFile) {
+        throw new Error(
+          `${opts.tag} refactor task "${t.id}" lists its own targetFile in removeFiles — a removal rides ` +
+          `the SURVIVING file's task: target the survivor and remove the superseded duplicate.`,
+        );
+      }
+    }
+    if (t.newFile === true && isGuideDoc(t.targetFile) && guideDocs.length > 0) {
+      throw new Error(
+        `${opts.tag} refactor task "${t.id}" creates a second guide "${t.targetFile}" — the bundle already ` +
+        `has an entry doc (${guideDocs.join(', ')}). Revise or merge into the existing entry doc instead.`,
+      );
+    }
+  }
+  if (guideDocs.length > 0) {
+    const removesAllGuides = guideDocs.every((g) => opts.tasks.some((t) => t.removeFiles?.includes(g)));
+    const guideSurvives = opts.tasks.some(
+      (t) => isGuideDoc(t.targetFile) && !opts.tasks.some((o) => o.removeFiles?.includes(t.targetFile)),
+    );
+    if (removesAllGuides && !guideSurvives) {
+      throw new Error(
+        `${opts.tag} the decomposition removes every guide doc (${guideDocs.join(', ')}) without any task ` +
+        `owning a surviving entry doc — exactly one structure guide must remain after the revision.`,
+      );
+    }
   }
 }
