@@ -32,6 +32,7 @@
  */
 
 import { applyEstimatedInputTokensFromMessages, maybeUpdatePhaseTokenUsage } from '../../llmHelpers';
+import { getJobAbortSignal } from '../../../../../composition/jobAbort';
 import { buildAssistantMessage } from '../../../tool/messageBuilder';
 import { extractPlanText } from './extractPlanText';
 import type { PlanRoundResult, PlanToolCall, RunPlanWithToolsArgs, MinimalPlanState } from './types';
@@ -129,6 +130,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
       // after sealing the JSON plan. Tool-call rounds (no `<plan>` emitted)
       // are unaffected — the stop string never appears.
       stopSequences: ['</plan>'],
+      signal: getJobAbortSignal(),
     })) {
       if (event.type === 'retry') {
         // Provider-level retry (e.g. 429) mid-stream — reset accumulators.

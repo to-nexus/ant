@@ -6,6 +6,7 @@
 
 import { LearnGraphState, LearnCommand } from "../state";
 import { LLM_TEMPERATURE } from "../../../../common/graph/llmConfig";
+import { getJobAbortSignal } from "../../../../../composition/jobAbort";
 import * as fs from "fs";
 import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathResolver";
 import { resolveToRAC } from '@ant/shared';
@@ -69,7 +70,7 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   applyEstimatedInputTokens(state as any, combinedPrompt.length);
 
   let responseText = '';
-  for await (const event of llm.stream([{ role: 'user', content: combinedPrompt }], { enableThinking: false, temperature: LLM_TEMPERATURE.DECOMPOSE })) {
+  for await (const event of llm.stream([{ role: 'user', content: combinedPrompt }], { enableThinking: false, temperature: LLM_TEMPERATURE.DECOMPOSE, signal: getJobAbortSignal() })) {
     if (event.type === 'retry') {
       responseText = '';
       continue;

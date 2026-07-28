@@ -11,6 +11,7 @@
 
 import { LLMClient, ToolDefinition } from "../../../../../../core/ports";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS, LLM_THINKING_BUDGET } from "../../../../../common/graph/llmConfig";
+import { getJobAbortSignal } from "../../../../../../composition/jobAbort";
 import type { TokenTrackingState } from "../../../../../common/graph/llmHelpers";
 import type { ParsedAction } from "../../../../../../core/streaming/types";
 
@@ -152,6 +153,7 @@ export async function callLLMForDecompose(
     maxTokens: LLM_MAX_TOKENS.DECOMPOSE,
     enableThinking: true,
     thinkingBudget: LLM_THINKING_BUDGET.DECOMPOSE,
+    signal: getJobAbortSignal(),
   })) {
     if (event.type === 'retry') {
       console.log('🔄 [Decompose] Stream retry detected, resetting accumulated state');

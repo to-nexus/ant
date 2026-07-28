@@ -19,7 +19,7 @@ import {
   ImageContentBlock,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
-import { withRetryStream, withStreamIdleTimeout } from '../../../core/utils/retry';
+import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
 
 /**
@@ -222,7 +222,14 @@ export class OpenAILLMClient implements LLMClient {
     yield* withRetryStream(
       // Idle watchdog INSIDE the retry wrapper so a `terminated` idle-abort
       // is classified retryable (retry.ts isRetryableError) and re-issued.
-      () => withStreamIdleTimeout(this._streamInternal(messages, options), idleMs),
+      // Per-attempt AbortController severs the HTTP stream on watchdog fire —
+      // without it the abandoned SDK iterator keeps the attempt wedged
+      // (sandy-loading-coral RCA); caller signal (user Stop) is combined in.
+      () => streamAttemptWithIdleAbort(
+        (signal) => this._streamInternal(messages, { ...options, signal }),
+        idleMs,
+        options?.signal,
+      ),
       {
         // Parity with the Anthropic path (8). DeepSeek 429/500/503 are common
         // under load; retry.ts classifies 429 + status>=500 as retryable.

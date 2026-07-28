@@ -217,8 +217,15 @@ describe('OpenAILLMClient — abort-signal forwarding (stream)', () => {
       /* drain */
     }
     expect(create).toHaveBeenCalledTimes(1);
-    // Second positional arg is the SDK request-options object.
-    expect(create.mock.calls[0][1]).toEqual({ signal: controller.signal });
+    // Second positional arg is the SDK request-options object. Since the
+    // per-attempt watchdog controller (streamAttemptWithIdleAbort), the SDK
+    // receives a COMBINED signal (AbortSignal.any([caller, attempt])), so we
+    // assert behavior — caller abort propagates — not identity.
+    const passed = create.mock.calls[0][1]?.signal as AbortSignal;
+    expect(passed).toBeInstanceOf(AbortSignal);
+    expect(passed.aborted).toBe(false);
+    controller.abort();
+    expect(passed.aborted).toBe(true);
   });
 
   it('does NOT open a stream when the signal is already aborted (between-round stop)', async () => {

@@ -258,6 +258,9 @@ async function parallelOrchestrator(state: ArchitectGraphState): Promise<Partial
         state.deps?.kanbanUpdate?.clearWorkerPhaseTokenUsage?.(workerId);
       },
       isCreditExhausted: () => state.deps?.kanbanUpdate?.isCreditExhausted?.() ?? false,
+      onStallWarning: (task, idleMs, workerId) => {
+        console.warn(`[ParallelOrchestrator] ⚠️ Task "${task.name}" (worker ${workerId}) has made no LLM progress for ${Math.round(idleMs / 1000)}s`);
+      },
       onInterruption: (reason, runningTaskIds) => {
         // ✅ Log job_interrupted event to debug/logs/.
         // Static import + synchronous writeQueue update — see

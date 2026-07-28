@@ -8,6 +8,7 @@
  */
 
 import type { LLMClient, MessageContentBlock, ToolDefinition } from '../../../../../../core/ports/llm';
+import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
 import {
   applyEstimatedInputTokensFromMessages,
   maybeUpdatePhaseTokenUsage,
@@ -66,6 +67,7 @@ export async function invokeLLMWithTools(
     temperature,
     enableThinking,
     thinkingBudget,
+    signal: getJobAbortSignal(),
   })) {
     if (event.type === 'retry') {
       thinking = '';

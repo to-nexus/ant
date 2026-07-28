@@ -33,6 +33,7 @@ import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../.
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
 import { getTools } from './tools';
 import { resolveLLMClient } from './llmClient';
+import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
 import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
 import type { IntentId } from '@ant/shared';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
@@ -319,6 +320,8 @@ export async function execute(
       temperature: LLM_TEMPERATURE.DOC_GENERATION,
       enableThinking: !isAfterToolCall,
       thinkingBudget: !isAfterToolCall ? LLM_THINKING_BUDGET.PLAN : undefined,
+      // User Stop severs the HTTP stream immediately (code-execute parity).
+      signal: getJobAbortSignal(),
     })) {
       if (event.type === 'retry') {
         thinking = '';

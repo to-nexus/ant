@@ -13,7 +13,7 @@ import {
   TextContentBlock, ImageContentBlock, ToolUseContentBlock, ToolResultContentBlock, ThinkingContentBlock,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
-import { withRetryStream, withRetry, withStreamIdleTimeout } from '../../../core/utils/retry';
+import { withRetryStream, withRetry, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
 import { getModelContextWindow, getThinkingMode } from '@ant/shared';
 
@@ -298,8 +298,21 @@ export class AnthropicLLMClient implements LLMClient {
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
+    // Idle watchdog wraps the WHOLE attempt (including the messages.create
+    // await) with a per-attempt AbortController that severs the HTTP stream
+    // on watchdog fire — the abandoned-iterator wedge (sandy-loading-coral
+    // RCA) cannot survive an actual transport abort. Window resolution
+    // stays regime-aware (resolveIdleTimeoutMs).
+    const idleMs = this.resolveIdleTimeoutMs(
+      options?.enableThinking === true,
+      options?.thinkingBudget || 10000,
+    );
     yield* withRetryStream(
-      () => this._streamInternal(messages, options),
+      () => streamAttemptWithIdleAbort(
+        (signal) => this._streamInternal(messages, { ...options, signal }),
+        idleMs,
+        options?.signal,
+      ),
       {
         maxAttempts: 8,
         initialDelayMs: 2000,
@@ -430,9 +443,9 @@ export class AnthropicLLMClient implements LLMClient {
         ...(tokenUsage.cacheCreationTokens !== undefined && { cacheCreationTokens: tokenUsage.cacheCreationTokens }),
       };
 
-    // Idle timeout varies by thinking regime — see resolveIdleTimeoutMs.
-    const STREAM_IDLE_TIMEOUT_MS = this.resolveIdleTimeoutMs(enableThinking, thinkingBudget);
-    for await (const event of withStreamIdleTimeout(stream, STREAM_IDLE_TIMEOUT_MS)) {
+    // Idle watchdog lives in stream() (streamAttemptWithIdleAbort) — it
+    // wraps this whole attempt, so no inner wrap here.
+    for await (const event of stream) {
       // ✅ Capture usage from message_start (initial usage snapshot)
       if (event.type === 'message_start' && (event as any).message?.usage) {
         const usage = (event as any).message.usage;

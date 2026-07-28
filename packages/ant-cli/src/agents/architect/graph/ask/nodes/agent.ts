@@ -9,6 +9,7 @@
  */
 
 import { AskGraphState } from '../state.js';
+import { getJobAbortSignal } from '../../../../../composition/jobAbort';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations.js';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../tools.js';
 import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../common/graph/llmConfig';
@@ -156,6 +157,7 @@ export async function agentNode(state: AskGraphState): Promise<Partial<AskGraphS
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       temperature: LLM_TEMPERATURE.CONVERSATIONAL,
       enableThinking: isFirstCall,
+      signal: getJobAbortSignal(),
     })) {
       if (event.type === 'retry') {
         responseText = '';
