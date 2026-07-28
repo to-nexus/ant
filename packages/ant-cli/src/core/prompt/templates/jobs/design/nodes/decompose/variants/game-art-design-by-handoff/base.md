@@ -17,19 +17,22 @@ You are decomposing game-art design work into file-authoring tasks for a **hando
 ---
 
 {{#if (eq detectedMode "refactor")}}
+{{> jobs/shared/injections/handoff-bundle-revision}}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ## 🔧 REVISE MODE — Modify the Existing Bundle In Place
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**Principle**: The bundle on disk is the authority — its EXISTING layout, whatever shape it has, is the layout. Create the MINIMUM set of tasks that realizes the requested change — usually one task per affected file.
+**Principle**: Create the MINIMUM set of tasks that realizes the requested change — usually one task per affected file.
 
 - The existing bundle files appear above as a **manifest** (path + size per entry), not as inline content. Call `read_file(path)` on the entries the request touches — using the FULL manifest path as shown — to observe their content before deciding which files change.
 - **`targetFile` is a manifest path from above with the `visual/game-art/handoff/` prefix stripped — bundle-relative** (e.g. manifest `visual/game-art/handoff/project/tokens/palette.css` → targetFile `project/tokens/palette.css`). Do NOT re-derive a canonical bundle layout; do NOT invent parallel directories beside the existing structure. Observe where the bundle keeps each concern and edit it there.
 - Create exactly one task per affected file; do NOT create tasks for files the request does not touch.
 - ⚠️ Do NOT create guide / entry-stylesheet / token-file tasks unless the request changes those files' content.
-- A task may introduce a file the bundle does not have ONLY when the request genuinely adds one: set `"newFile": true` on that task and place the file inside a directory the bundle already has (or at the bundle root). When the bundle has a guide/manifest file, also emit a task registering the addition there.
+- A task may introduce a file the bundle does not have ONLY when the request genuinely adds one: set `"newFile": true` on that task and place the file inside a directory the bundle already has (or at the bundle root). When a file is added, also emit (or extend) the task updating the bundle's ENTRY DOC (see above) to register it.
+- When the change merges or removes files, the task that owns the SURVIVING file carries `"removeFiles": ["<bundle-relative path>", ...]` — manifest paths with the prefix stripped, exactly like `targetFile`. Do NOT emit delete-only tasks; do NOT list a removed path in `<targetFiles>`. When a removed path is referenced by the entry doc, also emit (or extend) the entry-doc task to drop the reference.
 - A value change that lives in the bundle's token layer (whichever file the manifest shows owns it) is fixed there — never patched locally in a screen or entity demo.
-- When a change alters what a file IS (purpose, not content detail), also emit a task updating the bundle's guide/manifest file.
+- When a change alters what a file IS (purpose, not content detail), also emit a task updating the bundle's ENTRY DOC.
 
 {{else}}
 {{> jobs/shared/injections/handoff-package-format}}

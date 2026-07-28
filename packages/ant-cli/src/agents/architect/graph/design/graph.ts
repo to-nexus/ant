@@ -29,13 +29,26 @@ import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager"
 import { withPhaseTracking } from "../../../common/graph/llmHelpers";
 import { designDirOf } from "@ant/shared";
 import path from "node:path";
-import { toFeatureRelative, appendOrUpdatePool } from '../../../../core/prompt/builder/ArtifactPipeline';
+import { toFeatureRelative, appendOrUpdatePool, prunePoolPaths } from '../../../../core/prompt/builder/ArtifactPipeline';
 import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from './nodes/checkTaskStatus/assetValidation';
 import { reconcileSpecDoc, buildSpecRevisionRetryMessage } from './nodes/checkTaskStatus/specDocIntegrity';
 import { isNoOutputCompletion, buildDesignNoOutputInterruption } from './nodes/checkTaskStatus/outputVerification';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
+
+/**
+ * Feature-relative pool paths a task deleted via handoff structural revision
+ * (`task.removeFiles` — bundle-relative, joined under the task's targetDir).
+ */
+function collectRemovedBundlePaths(tasks: Array<DesignTask | undefined>): string[] {
+  const out: string[] = [];
+  for (const t of tasks) {
+    if (!t?.removeFiles?.length || !t.targetDir) continue;
+    for (const rf of t.removeFiles) out.push(`${t.targetDir}/${rf}`);
+  }
+  return out;
+}
 
 async function stripInternalMarkers(
   fileSystem: { readFile(p: string): Promise<string>; writeFile(p: string, c: string): Promise<void> },
@@ -430,7 +443,12 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
         content: f.content,
         role: 'ref' as const,
       }));
-    const updatedPool = appendOrUpdatePool(state.artifacts || [], newOutputs);
+    // Structural removals (handoff merge-then-delete): drop deleted bundle
+    // paths so their stale stubs cannot poison later tasks' include loads.
+    const updatedPool = prunePoolPaths(
+      appendOrUpdatePool(state.artifacts || [], newOutputs),
+      collectRemovedBundlePaths([state.currentTask as DesignTask]),
+    );
 
     // Apply conversation retention policy (compact or discard based on context)
     const { applyRetention } = await import('../../../../core/utils/conversationRetention');
@@ -611,6 +629,9 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
           }).catch(() => {});
         }
       },
+      onStallWarning: (task, idleMs, workerId) => {
+        console.warn(`[Design ParallelOrchestrator] ⚠️ Task "${task.name}" (worker ${workerId}) has made no LLM progress for ${Math.round(idleMs / 1000)}s`);
+      },
       onKanbanUpdate: (currentTasks, queue, completedTasks, tokenUsage) => {
         if (state.deps?.kanbanUpdate && state._httpJobId) {
           state.deps.kanbanUpdate.updateTaskQueue(
@@ -739,7 +760,10 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
         role: 'ref' as const,
       }))
   );
-  const refreshedPool = appendOrUpdatePool(state.artifacts || [], completedFileOutputs);
+  const refreshedPool = prunePoolPaths(
+    appendOrUpdatePool(state.artifacts || [], completedFileOutputs),
+    collectRemovedBundlePaths(result.completedTasks),
+  );
 
   return {
     completedTasks: result.completedTasks.map(t => t.id),

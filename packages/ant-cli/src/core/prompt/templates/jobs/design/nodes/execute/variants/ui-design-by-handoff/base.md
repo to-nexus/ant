@@ -26,6 +26,13 @@
 **Write strategy**: GENERATE — `{{targetPath}}` does not exist yet. Author it in full, then emit it as a single `<file>` block (see OUTPUT FORMAT above).
 {{/if}}
 
+{{#if removeFilePaths}}
+**Structural removals**: once `{{targetPath}}` carries the merged/final content, delete each of these superseded files with `delete_file` — this is the ONLY sanctioned write outside the target path this task:
+{{#each removeFilePaths}}
+- `{{this}}`
+{{/each}}
+{{/if}}
+
 {{#if siblingTasks}}
 ### 🤝 Sibling Tasks (same bundle, other files — do NOT author their content)
 

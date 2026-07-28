@@ -234,6 +234,7 @@ export async function decomposeUiDesign(
         priority: number;
         parallelGroup?: string;
         newFile?: boolean;
+        removeFiles?: string[];
       }>;
     };
 
@@ -337,6 +338,10 @@ export async function decomposeUiDesign(
         include: includePrefixes,
         completed: false,
         targetFile: task.targetFile,
+        // Merge-then-delete carrier (refactor × handoff) — gate-validated.
+        ...(Array.isArray(task.removeFiles) && task.removeFiles.length > 0
+          ? { removeFiles: task.removeFiles }
+          : {}),
         parallelGroup,
         // targetDir is stamped explicitly for handoff (gen + rev) and for
         // ant/figma REVISE (SSOT: reviseTarget). DESIGN.md / tokens/*.css /

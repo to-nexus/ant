@@ -499,9 +499,24 @@ export function appendOrUpdatePool(
   return Array.from(map.values());
 }
 
+/**
+ * Drop artifacts whose path was deleted on disk (handoff structural revision —
+ * `task.removeFiles` merge-then-delete). Without this, a deleted bundle file's
+ * resolve-time stub survives in the pool and poisons later tasks' `include`
+ * loads with content that no longer exists.
+ */
+export function prunePoolPaths(
+  pool: ResolvedArtifact[],
+  deletedPaths: string[],
+): ResolvedArtifact[] {
+  if (deletedPaths.length === 0) return pool;
+  const deleted = new Set(deletedPaths);
+  return pool.filter((a) => !deleted.has(a.path));
+}
+
 // `scanDesignOutputs` and `buildDesignArtifactPool` were removed in the
 // state.artifacts post-RAC SSOT refactor. The pool is now exclusively
 // populated by `loadResolvedArtifacts(resolvedAction, featurePath)`
 // (single writer, RAC-bounded) plus `appendOrUpdatePool(pool, task.files)`
-// for design's intra-job self-output. See `AGENTS.md`
-// "state.artifacts Post-RAC SSOT".
+// for design's intra-job self-output (minus `prunePoolPaths` removals).
+// See `AGENTS.md` "state.artifacts Post-RAC SSOT".

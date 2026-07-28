@@ -1900,6 +1900,13 @@
       "manifest"
     ]
   },
+  "jobs/shared/injections/handoff-bundle-revision": {
+    "sources": [
+      "render-call",
+      "partial-ref",
+      "manifest"
+    ]
+  },
   "jobs/shared/injections/handoff-code-shape-discipline": {
     "sources": [
       "partial-ref",

@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { join } from 'path';
 import { ARTIFACT_PREFIX } from '@ant/shared';
-import { validateHandoffReviseTargets } from '../../src/agents/architect/graph/design/nodes/decompose/handoffTargetGate';
+import { validateHandoffReviseTargets, isGuideDoc } from '../../src/agents/architect/graph/design/nodes/decompose/handoffTargetGate';
 import { FilePromptAdapter, initPartials } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 
 const TEMPLATES_DIR = join(__dirname, '../../src/core/prompt/templates');
@@ -32,7 +32,7 @@ const bundleArtifacts = [
   'plan/prd-main.md', // non-bundle pool entry — must be ignored
 ].map((path) => ({ path }));
 
-function gate(tasks: Array<{ id: string; targetFile: string; newFile?: boolean }>, mode = 'refactor') {
+function gate(tasks: Array<{ id: string; targetFile: string; newFile?: boolean; removeFiles?: string[] }>, mode = 'refactor') {
   return () =>
     validateHandoffReviseTargets({
       tasks,
@@ -105,6 +105,87 @@ describe('validateHandoffReviseTargets', () => {
     ).not.toThrow();
   });
 
+  it('accepts merge-then-delete: root README survives, design/README removed (the incident fix)', () => {
+    const tasks = [
+      { id: 't1', targetFile: 'README.md', removeFiles: ['project/design/README.md'] },
+    ];
+    expect(gate(tasks)).not.toThrow();
+  });
+
+  it('normalizes full workspace-relative removeFiles by stripping the bundle prefix in place', () => {
+    const tasks = [
+      { id: 't1', targetFile: 'README.md', removeFiles: ['visual/game-art/handoff/project/design/README.md'] },
+    ];
+    expect(gate(tasks)).not.toThrow();
+    expect(tasks[0].removeFiles![0]).toBe('project/design/README.md');
+  });
+
+  it('rejects a removeFiles entry that does not exist in the bundle', () => {
+    expect(
+      gate([{ id: 't1', targetFile: 'README.md', removeFiles: ['project/design/GHOST.md'] }]),
+    ).toThrow(/removeFiles entry .* does not exist in the bundle/);
+  });
+
+  it('rejects a task that lists its own targetFile in removeFiles', () => {
+    expect(
+      gate([{ id: 't1', targetFile: 'README.md', removeFiles: ['README.md'] }]),
+    ).toThrow(/lists its own targetFile/);
+  });
+
+  it('rejects a newFile guide beside the existing entry doc(s)', () => {
+    expect(
+      gate([{ id: 't1', targetFile: 'project/design/INDEX.md', newFile: true }]),
+    ).toThrow(/second guide/);
+  });
+
+  it('unconventional newFile names are NOT treated as guides (stem match is exact)', () => {
+    expect(
+      gate([{ id: 't1', targetFile: 'project/design/STYLE-NOTES.md', newFile: true }]),
+    ).not.toThrow();
+  });
+
+  it('allows a newFile guide when the bundle has no recognizable guide (fail-open)', () => {
+    expect(() =>
+      validateHandoffReviseTargets({
+        tasks: [{ id: 't1', targetFile: 'README.md', newFile: true }],
+        artifacts: [{ path: 'visual/game-art/handoff/tokens/palette.css' }],
+        bundlePrefix: ARTIFACT_PREFIX.GAME_ART_HANDOFF,
+        mode: 'refactor',
+        tag: '[GameArtDecompose]',
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a decomposition that removes every guide doc without a surviving entry-doc task', () => {
+    expect(
+      gate([
+        {
+          id: 't1',
+          targetFile: 'project/design/tokens/DesignTokens.dc.html',
+          removeFiles: ['README.md', 'project/design/README.md'],
+        },
+      ]),
+    ).toThrow(/exactly one structure guide must remain/);
+  });
+
+  it('accepts removing one of two guides while the other survives as a task target', () => {
+    expect(
+      gate([
+        { id: 't1', targetFile: 'README.md', removeFiles: ['project/design/README.md'] },
+        { id: 't2', targetFile: 'project/design/tokens/DesignTokens.dc.html' },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('isGuideDoc matches .md guide stems only — dc.html specimens never count', () => {
+    expect(isGuideDoc('README.md')).toBe(true);
+    expect(isGuideDoc('project/design/README.md')).toBe(true);
+    expect(isGuideDoc('DESIGN.md')).toBe(true);
+    expect(isGuideDoc('project/design/tokens/DesignTokens.dc.html')).toBe(false);
+    expect(isGuideDoc('screens/index.html')).toBe(false);
+    expect(isGuideDoc('notes.md')).toBe(false);
+  });
+
   it('works symmetrically for the UI bundle prefix', () => {
     const uiArtifacts = [{ path: 'visual/ui/handoff/site/index.html' }];
     expect(() =>
@@ -155,6 +236,11 @@ describe('decompose template mode gates (canonical family = generate-only)', () 
       expect(rendered).not.toContain('Directory family');
       expect(rendered).toContain('prefix stripped — bundle-relative');
       expect(rendered).toContain('"newFile": true');
+      // Structural-revision discipline (handoff-bundle-revision partial):
+      // entry-doc singularity + merge-then-delete emission rule.
+      expect(rendered).toContain('ONE structure-describing guide');
+      expect(rendered).toContain('"removeFiles"');
+      expect(rendered).not.toContain('There is no separate README');
     });
 
     it(`${tpl.includes('game-art') ? 'game-art' : 'ui'}: generate render HAS the canonical family`, async () => {
@@ -168,6 +254,7 @@ describe('decompose template mode gates (canonical family = generate-only)', () 
       });
       expect(rendered).toContain('Directory family');
       expect(rendered).not.toContain('prefix stripped — bundle-relative');
+      expect(rendered).not.toContain('ONE structure-describing guide');
     });
   }
 });
@@ -203,6 +290,32 @@ describe('execute template write-strategy gate (targetExists, not job mode)', ()
       const missing = await adapter.render(tpl, { ...baseVars, targetExists: false });
       expect(missing).toContain('GENERATE');
       expect(missing).not.toContain('apply the requested change surgically');
+    });
+
+    it(`${tpl.includes('game-art') ? 'game-art' : 'ui'}: refactor render swaps package-format for the revision discipline`, async () => {
+      const refactor = await adapter.render(tpl, { ...baseVars, targetExists: true });
+      // The in-prompt contradiction from the incident: a README targetPath
+      // alongside "There is no separate README" must be impossible.
+      expect(refactor).not.toContain('There is no separate README');
+      expect(refactor).toContain('ONE structure-describing guide');
+
+      const generate = await adapter.render(tpl, { ...baseVars, detectedMode: 'generate', targetExists: false });
+      expect(generate).toContain('There is no separate README');
+      expect(generate).not.toContain('ONE structure-describing guide');
+    });
+
+    it(`${tpl.includes('game-art') ? 'game-art' : 'ui'}: removeFilePaths renders the Structural removals block (and only then)`, async () => {
+      const withRemovals = await adapter.render(tpl, {
+        ...baseVars,
+        targetExists: true,
+        removeFilePaths: ['visual/game-art/handoff/project/design/README.md'],
+      });
+      expect(withRemovals).toContain('Structural removals');
+      expect(withRemovals).toContain('visual/game-art/handoff/project/design/README.md');
+      expect(withRemovals).toContain('delete_file');
+
+      const without = await adapter.render(tpl, { ...baseVars, targetExists: true });
+      expect(without).not.toContain('Structural removals');
     });
   }
 });

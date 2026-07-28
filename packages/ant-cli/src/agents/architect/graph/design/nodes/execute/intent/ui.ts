@@ -173,7 +173,12 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
           taskName: task?.name,
           templatePath: uiTpl.base,
           usedTemplates: logHandoff
-            ? [uiTpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            ? [
+                uiTpl.rules!,
+                state.resolvedAction?.mode === 'refactor'
+                  ? 'jobs/shared/injections/handoff-bundle-revision'
+                  : 'jobs/shared/injections/handoff-package-format',
+              ]
             : [
                 uiTpl.rules!,
                 // ui-{tokens,assets,spec}-guide-{by-figma,by-desc} are injection
@@ -320,7 +325,12 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
           taskName: task?.name,
           templatePath: freshUiTpl.base,
           usedTemplates: freshHandoff
-            ? [freshUiTpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            ? [
+                freshUiTpl.rules!,
+                state.resolvedAction?.mode === 'refactor'
+                  ? 'jobs/shared/injections/handoff-bundle-revision'
+                  : 'jobs/shared/injections/handoff-package-format',
+              ]
             : [
                 freshUiTpl.rules!,
                 `jobs/design/nodes/execute/injections/ui-tokens-guide-${freshLogSuffix}`,
@@ -564,6 +574,9 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 200) || ''}`)
     .join('\n');
 
+  // Merge-then-delete carrier → full workspace-relative paths for delete_file.
+  const removeFilePaths = (uiDesignTask?.removeFiles ?? []).map((rf) => `${targetDirRel}/${rf}`);
+
   const injectedVariables = {
     taskId: state.currentTask?.id,
     taskName: state.currentTask?.name,
@@ -579,6 +592,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     // a section-keyed JSON, or is unparseable. The execute template's anchor
     // partial self-gates on truthiness. See `_shared/anchor.ts` for the SSOT.
     appendAnchor: liveAnchor,
+    removeFilePaths: removeFilePaths.length > 0 ? removeFilePaths : undefined,
     detectedMode: state.resolvedAction?.mode,
     // Per-file write-strategy gate (REVISE vs GENERATE) — disk observation,
     // not job mode: a refactor job may add files that don't exist yet.
@@ -620,7 +634,12 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
           taskName: state.currentTask?.name,
           templatePath,
           usedTemplates: isHandoff
-            ? [sysUiTpl.rules!, 'jobs/shared/injections/handoff-package-format']
+            ? [
+                sysUiTpl.rules!,
+                state.resolvedAction?.mode === 'refactor'
+                  ? 'jobs/shared/injections/handoff-bundle-revision'
+                  : 'jobs/shared/injections/handoff-package-format',
+              ]
             : [
                 sysUiTpl.rules!,
                 `jobs/design/nodes/execute/injections/ui-tokens-guide-${templateSuffix}`,

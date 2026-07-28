@@ -85,4 +85,26 @@ describe('learn — worker-context handoff gate (heavy-bearing-panda RCA)', () =
     const paths = (result.files || []).map((f) => f.path);
     expect(paths.filter((p) => p.endsWith('README.md'))).toHaveLength(1);
   });
+
+  it('a merge-then-delete task (removeFiles) completes normally — removed paths never enter the file set', async () => {
+    const state = workerHandoffState({
+      currentTask: {
+        id: 'game-art-handoff-root-readme',
+        name: 'Root README consolidation',
+        type: 'doc',
+        priority: 110,
+        description: 'merge design/README into root README, delete the duplicate',
+        targetFile: 'README.md',
+        targetDir: 'visual/game-art/handoff',
+        docFormat: 'handoff',
+        removeFiles: ['project/design/README.md'],
+      },
+      // Survivor exists; the removed duplicate is already gone from disk.
+      deps: { fileSystem: fsWith({ 'visual/game-art/handoff/README.md': '# Root guide\n' }) },
+    });
+    const result = (await learn(state)) as { files?: Array<{ path: string }> };
+    const paths = (result.files || []).map((f) => f.path);
+    expect(paths).toContain('visual/game-art/handoff/README.md');
+    expect(paths.some((p) => p.endsWith('project/design/README.md'))).toBe(false);
+  });
 });
