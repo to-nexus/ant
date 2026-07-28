@@ -146,6 +146,55 @@ describe('applyDrainFinalization — unit', () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// targetExists dispatch — the drain exit affordance must match the task's
+// actually-viable write channel. sharp-baking-bride: a generate-mode spec task
+// (target not yet on disk) entered drain with edit_file surviving; edit_file
+// can never succeed against a missing file, so the model looped degenerate
+// failing edits to the breaker instead of streaming the <file> tag.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('applyDrainFinalization — targetExists dispatch', () => {
+  const MIXED_TOOLS = [
+    { name: 'read_file' },
+    { name: 'search_code' },
+    { name: 'edit_file' },
+    { name: 'delete_file' },
+  ];
+  const drainState = { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN };
+
+  it('target absent → ALL tools stripped and the note offers only the <file> tag', () => {
+    const messages = [userMsg('go')];
+    const { tools, drainFinalizing } = applyDrainFinalization(
+      drainState, messages, MIXED_TOOLS, { targetExists: false },
+    );
+    expect(drainFinalizing).toBe(true);
+    expect(tools).toEqual([]);
+    const note = (messages[0].content as any[])[1].text as string;
+    expect(note).toContain('<file>');
+    expect(note).toContain('<done>true</done>');
+    expect(note).not.toContain('edit_file');
+    expect(note).not.toContain('<append>');
+  });
+
+  it('target exists → write tools survive and the note keeps the edit_file exit', () => {
+    const messages = [userMsg('go')];
+    const { tools, drainFinalizing } = applyDrainFinalization(
+      drainState, messages, MIXED_TOOLS, { targetExists: true },
+    );
+    expect(drainFinalizing).toBe(true);
+    expect((tools as any[]).map((t) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
+    const note = (messages[0].content as any[])[1].text as string;
+    expect(note).toContain('edit_file');
+  });
+
+  it('omitted opts defaults to targetExists=true (write tools kept — REVISE-safe)', () => {
+    const messages = [userMsg('go')];
+    const { tools } = applyDrainFinalization(drainState, messages, MIXED_TOOLS);
+    expect((tools as any[]).map((t) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // computeNextNoOutputCount — the counter MUST climb through the persistent
 // tool-strip so the router breaker (NO_OUTPUT_HARD_CAP) is reachable.
 // round-grading-sable: the old increment counted only tool-call turns, so once

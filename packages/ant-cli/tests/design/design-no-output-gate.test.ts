@@ -21,6 +21,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isNoOutputCompletion,
   buildDesignNoOutputInterruption,
+  designTargetExists,
 } from '../../src/agents/architect/graph/design/nodes/checkTaskStatus/outputVerification';
 import { DesignNoOutputError, isDesignNoOutputError } from '../../src/agents/architect/graph/design/errors';
 import { routeAfterExecute, NO_OUTPUT_HARD_CAP, DRAIN_FINALIZE_MARGIN } from '../../src/agents/architect/graph/design/routers/executeRouter';
@@ -68,6 +69,39 @@ describe('isNoOutputCompletion', () => {
   it('passes when fileSystem/featurePath are unavailable (cannot verify → do not block)', async () => {
     expect(await isNoOutputCompletion(undefined, '/feat', SPEC_TASK, 0)).toBe(false);
     expect(await isNoOutputCompletion(fsWith({}), undefined, SPEC_TASK, 0)).toBe(false);
+  });
+});
+
+describe('designTargetExists (drain affordance dispatch signal)', () => {
+  const existsWith = (paths: string[]) => ({
+    async fileExists(p: string): Promise<boolean> {
+      return paths.some((k) => p.endsWith(k));
+    },
+  });
+
+  it('true when the declared target is on disk (REVISE — write tools stay)', async () => {
+    const fs = existsWith(['architecture/spec/coordinate-system.md']);
+    expect(await designTargetExists(fs, '/feat', SPEC_TASK)).toBe(true);
+  });
+
+  it('false when the declared target is absent (fresh doc — <file> tag only)', async () => {
+    const fs = existsWith([]);
+    expect(await designTargetExists(fs, '/feat', SPEC_TASK)).toBe(false);
+  });
+
+  it('falls back to designDirOf path assembly when targetDir is absent', async () => {
+    // Suffix-match on the filename only — the dir comes from designDirOf.
+    const fs = existsWith(['coordinate-system.md']);
+    expect(await designTargetExists(fs, '/feat', { targetFile: 'coordinate-system.md' })).toBe(true);
+  });
+
+  it('defaults to true (keep write tools) without a target / fs signal', async () => {
+    expect(await designTargetExists(existsWith([]), '/feat', { targetDir: 'architecture/spec' })).toBe(true);
+    expect(await designTargetExists(undefined, '/feat', SPEC_TASK)).toBe(true);
+    expect(await designTargetExists(existsWith([]), undefined, SPEC_TASK)).toBe(true);
+    expect(
+      await designTargetExists({ fileExists: async () => { throw new Error('EIO'); } }, '/feat', SPEC_TASK),
+    ).toBe(true);
   });
 });
 

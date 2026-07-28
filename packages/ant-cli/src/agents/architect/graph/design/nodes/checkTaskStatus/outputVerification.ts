@@ -28,6 +28,33 @@ interface OutputFileSystem {
   readFile(p: string): Promise<string>;
 }
 
+interface ExistenceFileSystem {
+  fileExists(p: string): Promise<boolean>;
+}
+
+/**
+ * True when the task's declared target file already exists on disk — the
+ * REVISE signal for the execute node's drain-time affordance dispatch
+ * (`applyDrainFinalization`): an existing target keeps the write tools
+ * (edit_file IS the REVISE exit), a not-yet-created target must fall back to
+ * the `<file>` tag only. Shares the path-assembly convention with
+ * `isNoOutputCompletion` above. Defaults to `true` (keep write tools) when
+ * the task declares no target or the fs signal is unavailable.
+ */
+export async function designTargetExists(
+  fileSystem: ExistenceFileSystem | undefined,
+  featurePath: string | undefined,
+  task: { targetDir?: string; targetFile?: string } | undefined,
+): Promise<boolean> {
+  if (!task?.targetFile || !featurePath || !fileSystem?.fileExists) return true;
+  const dir = task.targetDir ?? designDirOf(task.targetFile);
+  try {
+    return await fileSystem.fileExists(path.join(featurePath, dir, task.targetFile));
+  } catch {
+    return true;
+  }
+}
+
 /**
  * True when the current task produced zero artifacts this run AND its declared
  * target file is absent (or empty) on disk. `targetMissing` keeps refactor /

@@ -1,143 +1,94 @@
 /**
- * R5 — turn-level artifact-mutation-intent detection.
+ * R5 — turn-level artifact-mutation detection feeding `_pendingDoneCheck`.
  *
- * The execute node sets `_pendingDoneCheck = true` when a turn produced
- * an artifact mutation (XML <file>/<append>/<edit>/<delete> on an
- * artifact path, or a pending mutate-tool call on an artifact path)
- * but the LLM did NOT emit `<done>true</done>`. This test imports the
- * detector helper and pins its truth table so refactor-mode and
- * spec/system-design intents stay covered.
+ * The execute node sets `_pendingDoneCheck = true` when a turn LANDED an
+ * artifact mutation but the LLM did NOT emit `<done>true</done>`. Two
+ * channels, both success-based:
  *
- * The helper is `turnHadArtifactMutationIntent` in `execute/index.ts`.
- * It is module-private — to keep the surface narrow we re-derive the
- * predicate behaviour here using the same path conventions
- * (`codebase/...` paths are excluded because the FileRenderer / tool
- * gate rejects them upstream — they never reach the detector).
+ *   - XML channel (same turn): `files` holds <file>/<append>/<edit>/<delete>
+ *     writes FileRenderer already landed on disk — intent == success.
+ *   - Tool channel (next turn): successful edit_file/create_file/delete_file
+ *     sideEffects fold into `_turnToolWrites` (tool node), and the execute
+ *     node upgrades `_pendingDoneCheck` from it at round start.
+ *
+ * Pending tool calls are deliberately NOT counted: intent-based counting
+ * forged the self-check after every FAILED write — sharp-baking-bride RCA:
+ * 3× `edit_file` on a nonexistent target each injected "the previous turn
+ * updated the artifact" while suppressing the correct <file>-tag deadline
+ * hint. (mkdir was the earlier seat of the same class — oat-judging-mound.)
+ *
+ * The helper is `turnHadArtifactMutationIntent` in `execute/index.ts`. It is
+ * module-private — the truth table is re-derived here with the same path
+ * conventions, and a STATIC lock below pins the source-level contract so the
+ * mirror cannot silently diverge.
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-// Re-export of the detector for testing without exposing it publicly.
-// We re-implement the same logic here against fixtures; if the execute
-// helper diverges, tests covering both should be kept consistent. The
-// detector spec is in `docs/internals/15-design-job.md` "Codebase
-// mutation gate" and `plan_3398344f.plan.md` §5.3.
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
-// `mkdir` is excluded — a directory creation produces no artifact content, so
-// it must not trigger the R5 self-check (oat-judging-mound RCA: a no-op mkdir
-// injected the false "the previous turn updated the artifact" message).
-const ARTIFACT_MUTATE_TOOLS = new Set([
-  'edit_file', 'delete_file', 'create_file',
-]);
 
 function turnHadArtifactMutationIntent(
   files: Array<{ path: string }>,
-  pendingToolCalls: Array<{ name: string; args?: any }>,
 ): boolean {
-  const xmlMut = files.some(f => f.path && !CODEBASE_LIKE(f.path));
-  const toolMut = pendingToolCalls.some(tc => {
-    if (!ARTIFACT_MUTATE_TOOLS.has(tc.name)) return false;
-    const p = tc.args?.path;
-    return typeof p === 'string' && p.length > 0 && !CODEBASE_LIKE(p);
-  });
-  return xmlMut || toolMut;
+  return files.some(f => f.path && !CODEBASE_LIKE(f.path));
 }
 
-describe('turnHadArtifactMutationIntent', () => {
-  it('false when no files and no tool calls', () => {
-    expect(turnHadArtifactMutationIntent([], [])).toBe(false);
+describe('turnHadArtifactMutationIntent (XML channel — success-based by construction)', () => {
+  it('false when no files were rendered', () => {
+    expect(turnHadArtifactMutationIntent([])).toBe(false);
   });
 
   it('true when an XML <file> on an artifact path was rendered', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [{ path: 'architecture/spec/foo.md' }],
-        [],
-      ),
-    ).toBe(true);
+    expect(turnHadArtifactMutationIntent([{ path: 'architecture/spec/foo.md' }])).toBe(true);
   });
 
   it('true when an XML <append> on plan/ was rendered', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [{ path: 'plan/prd.md' }],
-        [],
-      ),
-    ).toBe(true);
+    expect(turnHadArtifactMutationIntent([{ path: 'plan/prd.md' }])).toBe(true);
   });
 
   it('false when only codebase/ paths appear in `files` (gate already rejected upstream)', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [{ path: 'codebase/src/foo.ts' }],
-        [],
-      ),
-    ).toBe(false);
+    expect(turnHadArtifactMutationIntent([{ path: 'codebase/src/foo.ts' }])).toBe(false);
   });
 
-  it('true when a pending edit_file targets an artifact path (refactor mode)', () => {
+  it('true when mixed codebase + artifact paths were rendered', () => {
     expect(
-      turnHadArtifactMutationIntent(
-        [],
-        [{ name: 'edit_file', args: { path: 'architecture/spec/foo.md' } }],
-      ),
+      turnHadArtifactMutationIntent([
+        { path: 'codebase/src/foo.ts' },
+        { path: 'architecture/system/be-system-main.md' },
+      ]),
     ).toBe(true);
   });
+});
 
-  it('true when a pending delete_file targets an artifact path', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [],
-        [{ name: 'delete_file', args: { path: 'architecture/spec/old.md' } }],
-      ),
-    ).toBe(true);
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STATIC — pin the source-level contract of the R5 gate so the mirrored
+// predicate above and the real module-private helper cannot diverge:
+//   1. the detector no longer inspects pending tool calls (intent),
+//   2. the tool channel enters via the success-based `_turnToolWrites`
+//      round-start upgrade.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('execute node R5 gate — success-based source contract', () => {
+  const source = readFileSync(
+    resolve(__dirname, '../../src/agents/architect/graph/design/nodes/execute/index.ts'),
+    'utf-8',
+  );
+
+  it('the detector takes files only — no pending-tool-call intent parameter', () => {
+    const signature = source.match(/function turnHadArtifactMutationIntent\(([\s\S]*?)\)/);
+    expect(signature, 'turnHadArtifactMutationIntent must exist').toBeTruthy();
+    expect(signature![1]).not.toContain('pendingToolCalls');
   });
 
-  it('false when only a pending mkdir targets an artifact path (no artifact content produced)', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [],
-        [{ name: 'mkdir', args: { path: 'architecture/spec' } }],
-      ),
-    ).toBe(false);
+  it('no intent-based ARTIFACT_MUTATE_TOOLS set remains in the execute node', () => {
+    expect(source).not.toContain('ARTIFACT_MUTATE_TOOLS');
   });
 
-  it('false when only read-only tools (read_file, list_files) are pending', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [],
-        [
-          { name: 'read_file', args: { path: 'architecture/spec/foo.md' } },
-          { name: 'list_files', args: { directory: 'codebase/src' } },
-        ],
-      ),
-    ).toBe(false);
-  });
-
-  it('false when mutate tool targets codebase/ (gate rejects, no real mutation happens)', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [],
-        [{ name: 'edit_file', args: { path: 'codebase/src/foo.ts' } }],
-      ),
-    ).toBe(false);
-  });
-
-  it('false when mutate tool args lacks a path field (malformed call)', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [],
-        [{ name: 'edit_file', args: { search: 'foo', replace: 'bar' } }],
-      ),
-    ).toBe(false);
-  });
-
-  it('true when mixed: codebase/ tool call (rejected) + artifact <file>', () => {
-    expect(
-      turnHadArtifactMutationIntent(
-        [{ path: 'architecture/system/be-system-main.md' }],
-        [{ name: 'edit_file', args: { path: 'codebase/src/foo.ts' } }],
-      ),
-    ).toBe(true);
+  it('the tool channel upgrades _pendingDoneCheck from the success-based _turnToolWrites', () => {
+    expect(source).toMatch(
+      /_pendingDoneCheck && \(state\._turnToolWrites \|\| 0\) > 0/,
+    );
   });
 });

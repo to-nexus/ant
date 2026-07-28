@@ -24,6 +24,7 @@ import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder
 import { DesignGraphState } from '../../state';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 import { applyDrainFinalization, computeNextNoOutputCount } from './drainFinalize';
+import { designTargetExists } from '../checkTaskStatus/outputVerification';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
@@ -50,40 +51,28 @@ import { buildPrdSyncMessages } from './intent/prd-sync';
 import { renderExplainResponse } from './explain';
 
 const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
-// `mkdir` is excluded: it creates no artifact content, so counting it would
-// forge the R5 self-check ("the previous turn updated the artifact at <path>")
-// after a no-op directory call (oat-judging-mound RCA).
-const ARTIFACT_MUTATE_TOOLS = new Set([
-  'edit_file', 'delete_file', 'create_file',
-]);
 
 /**
  * Detect "the LLM updated an artifact this turn" — for the
  * `_pendingDoneCheck` trigger (R5 of the codebase mutation gate plan).
  *
- * Counts both:
- *   - successful XML artifact-axis writes (file/append/edit/delete) on
- *     non-codebase paths (codebase paths never reach `files` because
- *     FileRenderer rejects them upstream),
- *   - pending tool-call mutations on non-codebase paths (edit_file /
- *     delete_file / create_file).
+ * XML channel ONLY: `files` holds artifact-axis writes (file/append/edit/
+ * delete) that FileRenderer already landed on disk this turn (codebase paths
+ * never reach `files` — rejected upstream), so intent == success here.
  *
- * Returns `true` even when only tool calls are pending (without any
- * <file> output) so the next-turn self-check still fires after a
- * tool-only artifact-mutation turn (e.g. refactor mode `edit_file
- * architecture/spec/...`).
+ * The tool channel (edit_file / delete_file / create_file) is deliberately
+ * NOT counted from pending calls: a pending call has not executed yet, and
+ * counting intent forged the R5 self-check after every FAILED write —
+ * sharp-baking-bride RCA: 3× `edit_file` on a nonexistent target each
+ * injected "the previous turn updated the artifact" while suppressing the
+ * correct <file>-tag deadline hint. Tool-channel mutations enter the gate
+ * one round later via `_turnToolWrites` (success-only, folded from
+ * sideEffects by the tool node) — see the upgrade at the top of `execute`.
  */
 function turnHadArtifactMutationIntent(
   files: Array<{ path: string }>,
-  pendingToolCalls: Array<{ name: string; args?: any }>,
 ): boolean {
-  const xmlMut = files.some(f => f.path && !CODEBASE_LIKE(f.path));
-  const toolMut = pendingToolCalls.some(tc => {
-    if (!ARTIFACT_MUTATE_TOOLS.has(tc.name)) return false;
-    const p = tc.args?.path;
-    return typeof p === 'string' && p.length > 0 && !CODEBASE_LIKE(p);
-  });
-  return xmlMut || toolMut;
+  return files.some(f => f.path && !CODEBASE_LIKE(f.path));
 }
 
 export async function execute(
@@ -123,6 +112,16 @@ export async function execute(
     console.log(`📝 [Execute] explain mode — chat-only response, file write skipped`);
     return await renderExplainResponse(state);
   }
+  // Tool-channel half of the R5 gate (see turnHadArtifactMutationIntent):
+  // the previous round's tool batch landed at least one SUCCESSFUL artifact
+  // write (`_turnToolWrites`, folded from sideEffects by the tool node), so
+  // this round's prompt should carry the "artifact updated — is the scope
+  // satisfied?" self-check. Success-based on purpose: failed edit_file calls
+  // must not forge the check (sharp-baking-bride RCA).
+  if (!state._pendingDoneCheck && (state._turnToolWrites || 0) > 0) {
+    state._pendingDoneCheck = true;
+  }
+
   const nodeExecute = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE);
   console.log(`   Conversation history: ${nodeExecute.length} messages`);
   if (taskTokensSoFar?.totalTokens) {
@@ -212,6 +211,14 @@ export async function execute(
   // execute node body stays focused on streaming / parsing.
   // Drain-time forced finalization (see ./drainFinalize.ts) may strip the
   // tool list and append a "emit final output now" note to the messages.
+  // `targetExists` dispatches the drain exit affordance: an existing target
+  // keeps write tools (REVISE exit), a not-yet-created one forces the <file>
+  // tag by stripping everything (sharp-baking-bride RCA).
+  const targetExists = await designTargetExists(
+    state.deps?.fileSystem as any,
+    state.context?.featurePath,
+    state.currentTask,
+  );
   const { tools, drainFinalizing } = applyDrainFinalization(
     state,
     messages,
@@ -219,6 +226,7 @@ export async function execute(
     // prompt, so no exploration tools are offered (mirrors the code prd-sync
     // no-tool-loop model).
     isPrdSync ? [] : await getTools(state, { useSourceFileTool }),
+    { targetExists },
   );
   
   // ✅ Workflow update
@@ -477,14 +485,14 @@ export async function execute(
 
     // R5 — artifact-mutation-then-no-done detection. When this turn
     // produced an artifact mutation (XML <file>/<append>/<edit>/<delete>
-    // landing on an artifact path, or a pending edit_file/delete_file/
-    // create_file/mkdir tool call on an artifact path) but the LLM did
-    // NOT emit `<done>true</done>`, set the pending-done-check flag so
-    // the next execute turn's trailing user message can ask the LLM
-    // whether the assigned scope is satisfied. Cleared on any turn that
-    // either emits done or has no artifact mutation. See
-    // `docs/internals/15-design-job.md` "Codebase mutation gate".
-    const turnArtifactMutated = turnHadArtifactMutationIntent(files, pendingToolCalls);
+    // landing on an artifact path) but the LLM did NOT emit
+    // `<done>true</done>`, set the pending-done-check flag so the next
+    // execute turn's trailing user message can ask the LLM whether the
+    // assigned scope is satisfied. Tool-channel writes join one round later
+    // via the success-based `_turnToolWrites` upgrade at the top of this
+    // node. Cleared on any turn that either emits done or has no artifact
+    // mutation. See `docs/internals/15-design-job.md` "Codebase mutation gate".
+    const turnArtifactMutated = turnHadArtifactMutationIntent(files);
     const nextPendingDoneCheck = !explicitDone && turnArtifactMutated;
     const prevEscalation = state._doneCheckEscalation || 0;
     const nextDoneCheckEscalation = nextPendingDoneCheck ? prevEscalation + 1 : 0;
