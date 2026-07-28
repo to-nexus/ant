@@ -51,6 +51,14 @@ export function createDesignToolHandlers(): Map<string, ToolHandler> {
   handlers.set('write_file', handleCreateFile as ToolHandler);
   handlers.set('append_file', handleAppendFile as ToolHandler);
 
+  // `create_file` is deliberately NOT advertised in the design tool sets
+  // (documents stream via the <file> tag — toolCatalog.ts), but the shared
+  // edit_file handler's missing-file error points the model at it. Register
+  // the handler so that guidance is actionable instead of an unknown-tool
+  // dead end (sharp-baking-bride RCA: drain-time edit_file on a nonexistent
+  // target left no working tool channel).
+  handlers.set('create_file', handleCreateFile as ToolHandler);
+
   // Figma tools — design pre-check + common handler.
   for (const toolName of FIGMA_TOOLS) {
     handlers.set(toolName, async (ctx, args) => {

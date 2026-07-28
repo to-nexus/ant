@@ -53,11 +53,22 @@ export function computeNextNoOutputCount(
  * Mutates `messages` in place (appends the finalization note to the last user
  * message, mirroring the no-output-streak nudge injection) and returns the
  * (possibly stripped) tool list plus the active-turn flag.
+ *
+ * `opts.targetExists` dispatches the drain-time exit affordance on the task's
+ * write channel (the same disk-existence signal the prompt builders use for
+ * REVISE-vs-generate): an existing target keeps the write tools (edit_file IS
+ * the REVISE exit), a not-yet-created target strips ALL tools — its only
+ * channel is the `<file>` tag, and a surviving edit_file can never succeed
+ * against a missing file, so it becomes a degenerate error-loop attractor
+ * instead (sharp-baking-bride RCA: 4× `edit_file` on the unborn spec doc
+ * until the breaker). Defaults to `true` (keep write tools) when the caller
+ * has no target signal.
  */
 export function applyDrainFinalization<TTool>(
   state: DrainInputs,
   messages: Array<{ role: string; content: string | any[] }>,
   tools: TTool[],
+  opts?: { targetExists?: boolean },
 ): DrainFinalizeResult<TTool> {
   const remaining = (state.recursionLimit || 0) - (state.recursionCount || 0);
   const noOutputCount = state._noOutputCallCount || 0;
@@ -73,13 +84,20 @@ export function applyDrainFinalization<TTool>(
     return { tools, drainFinalizing: false };
   }
 
+  const targetExists = opts?.targetExists ?? true;
   const reasonNote = recursionTrigger
     ? `Recursion budget nearly exhausted (${remaining} steps left).`
     : `You have explored for ${noOutputCount} turns without writing anything.`;
-  const finalizeNote = `\n\n[SYSTEM] ${reasonNote} ` +
-    `Exploration tools are no longer available. Finish NOW from the context you have ` +
-    `already gathered: write the complete artifact body using <append>/<file> tags — or, when the ` +
-    `target file already exists, apply your final edit_file changes — then output <done>true</done>.`;
+  // The exit instruction must only advertise channels that can actually
+  // succeed: edit_file against a not-yet-created target errors every time.
+  const exitNote = targetExists
+    ? `Exploration tools are no longer available. Finish NOW from the context you have ` +
+      `already gathered: write the complete artifact body using <append>/<file> tags — or, when the ` +
+      `target file already exists, apply your final edit_file changes — then output <done>true</done>.`
+    : `Tools are no longer available. The target document does not exist yet, so there is ` +
+      `nothing to edit. Write the complete artifact body NOW using the <file> tag from the ` +
+      `context you have already gathered, then output <done>true</done>.`;
+  const finalizeNote = `\n\n[SYSTEM] ${reasonNote} ${exitNote}`;
 
   const lastMsg = messages[messages.length - 1];
   if (lastMsg && lastMsg.role === 'user') {
@@ -92,20 +110,25 @@ export function applyDrainFinalization<TTool>(
       ];
     }
   }
-  // Strip EXPLORATION tools only — write tools ARE the exit for a REVISE
-  // task (its contract is read_file + edit_file, not <file> regeneration;
-  // full-file regeneration of an existing bundle file from partial context is
-  // destructive). A successful drained write resets the streak via
-  // `_turnToolWrites`; `computeNextNoOutputCount`'s drainFinalizing clause
-  // still bounds non-writing turns, so the breaker stays reachable.
+  // Strip EXPLORATION tools only when the target exists — write tools ARE the
+  // exit for a REVISE task (its contract is read_file + edit_file, not <file>
+  // regeneration; full-file regeneration of an existing bundle file from
+  // partial context is destructive). A successful drained write resets the
+  // streak via `_turnToolWrites`; `computeNextNoOutputCount`'s drainFinalizing
+  // clause still bounds non-writing turns, so the breaker stays reachable.
   // `mkdir` is deliberately NOT a survivor: it emits no sideEffects, so it can
   // never satisfy the exit condition, yet it always "succeeds" — during forced
   // finalization it becomes the only rewarding call and traps the model in a
   // no-op loop until the breaker (oat-judging-mound RCA: 4× mkdir → design_no_output).
+  // A not-yet-created target strips everything: no surviving write tool can
+  // succeed against a missing file, and any survivor out-competes the <file>
+  // tag as a tool-call attractor (sharp-baking-bride RCA).
   const WRITE_TOOL_NAMES = new Set(['edit_file', 'create_file', 'delete_file']);
-  const drainedTools = tools.filter((t: any) => WRITE_TOOL_NAMES.has(t?.name));
+  const drainedTools = targetExists
+    ? tools.filter((t: any) => WRITE_TOOL_NAMES.has(t?.name))
+    : ([] as TTool[]);
   console.warn(
-    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → exploration tools stripped (${drainedTools.length} write tool(s) kept), forcing final output`,
+    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → ${targetExists ? `exploration tools stripped (${drainedTools.length} write tool(s) kept)` : 'all tools stripped (target not yet created — <file> tag is the only channel)'}, forcing final output`,
   );
   return { tools: drainedTools, drainFinalizing: true };
 }

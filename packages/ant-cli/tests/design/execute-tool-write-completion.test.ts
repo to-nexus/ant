@@ -109,6 +109,33 @@ describe('drain finalization keeps write tools (REVISE exit path)', () => {
     expect(drainFinalizing).toBe(true);
     expect(drained.map((t: any) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
   });
+
+  it('keeps NOTHING when the target does not exist yet — no write tool can succeed against a missing file (sharp-baking-bride RCA)', () => {
+    const tools = [
+      { name: 'read_file' },
+      { name: 'edit_file' },
+      { name: 'create_file' },
+    ];
+    const messages = [{ role: 'user', content: 'Continue.' }];
+    const { tools: drained } = applyDrainFinalization(
+      { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: 999 } as any,
+      messages as any,
+      tools as any,
+      { targetExists: false },
+    );
+    expect(drained).toEqual([]);
+  });
+});
+
+describe('design tool registry — create_file is handled (unadvertised)', () => {
+  it('createDesignToolHandlers maps create_file so the shared edit_file missing-file guidance is actionable', async () => {
+    const { createDesignToolHandlers } = await import(
+      '../../src/agents/architect/graph/design/nodes/tool/designToolAdapters'
+    );
+    const handlers = createDesignToolHandlers();
+    expect(handlers.has('create_file')).toBe(true);
+    expect(handlers.has('write_file')).toBe(true); // existing shadow-alias stays
+  });
 });
 
 describe('done-contract presence sweep (all design execute variants)', () => {
