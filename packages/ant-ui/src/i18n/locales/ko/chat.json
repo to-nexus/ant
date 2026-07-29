@@ -312,5 +312,8 @@
     "exchanges": "최근 대화 (Recent Exchanges)",
     "digests": "이전 턴 요약 (Digests)",
     "ephemeral": "ask"
+  },
+  "pinnedQuery": {
+    "jumpToMessage": "이 메시지로 이동"
   }
 }

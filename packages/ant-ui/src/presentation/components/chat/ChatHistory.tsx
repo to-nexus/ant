@@ -1,23 +1,28 @@
 /**
- * ChatHistory — virtual-scrolling turn history.
+ * ChatHistory — virtual-scrolling turn history, and sole owner of the pin.
  *
  * Phase 11 chat-SSOT — consumes `Turn[]` directly (no `ChatMessage`
- * envelope) and renders each turn via `TurnItem`. Pin behaviour matches
- * Cursor's: when the topmost visible row is an assistant section, pin
- * the user prompt above it so the user can always see what they asked.
+ * envelope) and renders each turn via `TurnItem`.
  *
- * Each `Turn` carries the user prompt + every assistant section in a
- * single row, so pin lookup is just "previous turn's user line" — no
- * separate user-vs-assistant message scan.
+ * Pin behaviour: the most recent user prompt that has scrolled above the
+ * readable top edge gets pinned, and the pin's button jumps back to it.
+ * Bubbles register themselves through `pinRegistry`, this component keeps
+ * their content-space positions, and `pinTarget` owns the predicate — see
+ * those headers for why neither a DOM query nor row visibility works.
+ *
+ * Pin state is local rather than lifted because the jump needs
+ * `virtuosoRef`, which no ancestor can reach.
  */
 
-import { useEffect, useRef, useCallback, useMemo, forwardRef } from 'react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
-import type { PinnedQueryData } from './PinnedQuery';
+import { useEffect, useRef, useCallback, useMemo, useState, forwardRef } from 'react';
+import { Virtuoso, VirtuosoHandle, type ListRange } from 'react-virtuoso';
+import { PinnedQuery, PIN_COLLAPSED_HEIGHT_PX, type PinnedQueryData } from './PinnedQuery';
 import { TurnItem, TypingIndicator } from './TurnItem';
 import { useStore } from '@/domain/store';
 import type { Turn } from '@/domain/store/selectors/chat';
 import { getPendingChoice, selectResumeFallbackCard } from '@/domain/store/selectors/chat';
+import { resolvePinTarget, type BubbleMetrics } from './pinTarget';
+import { PinRegistryContext, type RegisterBubble } from './pinRegistry';
 import { ChoiceCard } from './choiceCard';
 
 /**
@@ -44,28 +49,42 @@ const ScrollerWithTextSelect = forwardRef<HTMLDivElement, React.ComponentPropsWi
 
 interface ChatHistoryProps {
   turns: Turn[];
-  onPinnedUserMessageChange?: (pinnedQuery: PinnedQueryData | null) => void;
 }
 
-export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryProps) {
+export function ChatHistory({ turns }: ChatHistoryProps) {
   const isRunning = useStore((state) => state.isRunning);
   const kanban = useStore((state) => state.kanban);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollerRef = useRef<HTMLElement | null>(null);
 
-  // Track visibility of each turn using ref (not state to avoid re-renders).
-  const visibleTurnsRef = useRef<Set<number>>(new Set());
+  const [pinnedQuery, setPinnedQuery] = useState<PinnedQueryData | null>(null);
 
-  const turnRefs = useRef<Map<number, HTMLElement>>(new Map());
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  // Bubbles carry `turnId`, Virtuoso addresses rows by index — this bridges
+  // the two, and resolving the jump index at click time (rather than caching
+  // it in the pin payload) keeps a stale index from misfiring.
+  const indexByTurnId = useMemo(() => {
+    const map = new Map<string, number>();
+    turns.forEach((turn, index) => map.set(turn.turnId, index));
+    return map;
+  }, [turns]);
 
   // Latest data ref for stable callbacks
-  const latestRef = useRef({ turns, onPinnedUserMessageChange });
+  const latestRef = useRef({ turns, indexByTurnId });
   latestRef.current.turns = turns;
-  latestRef.current.onPinnedUserMessageChange = onPinnedUserMessageChange;
+  latestRef.current.indexByTurnId = indexByTurnId;
 
-  const lastPinnedRef = useRef<string | null>(null);
+  // Live bubble elements, and their positions in CONTENT space. The metrics
+  // map deliberately outlives the elements: an offset stays valid while the
+  // content above it is unchanged, so virtualization unmounting a bubble
+  // cannot change which prompt is pinned.
+  const bubbleElsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const bubbleMetricsRef = useRef<Map<string, BubbleMetrics>>(new Map());
+  // Dedupe on turn identity, not on prompt text: two identical prompts are
+  // two distinct pins.
+  const lastPinnedTurnIdRef = useRef<string | null>(null);
+  const pinRafRef = useRef<number | null>(null);
+  const emptyRegistryWarnedRef = useRef(false);
   const initialScrollDone = useRef(false);
 
   // Auto-scroll: ON by default, OFF only when user explicitly scrolls up,
@@ -96,150 +115,135 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
     };
   }
 
-  /**
-   * Pin the user prompt above the topmost visible assistant section.
-   *
-   * Each Turn already carries its own user prompt, so the "pin" target is
-   * simply the user line of the topmost visible Turn (or the previous Turn's
-   * user line, when the visible row has no user prompt — e.g. continuations).
-   */
-  const calculatePinnedMessage = useCallback(() => {
-    const { turns: ts, onPinnedUserMessageChange: callback } = latestRef.current;
-    const visible = visibleTurnsRef.current;
-
-    const buildPin = (turn: Turn | undefined): PinnedQueryData | null => {
-      const userLine = turn?.user;
-      if (!userLine?.text) return null;
-      return { content: userLine.text, actionMetadata: userLine.actionMetadata };
-    };
-
-    if (!callback || ts.length === 0) {
-      if (lastPinnedRef.current !== null) {
-        lastPinnedRef.current = null;
-        callback?.(null);
-      }
-      return;
-    }
-
-    if (!initialScrollDone.current) {
-      // Default before initial scroll: pin the most recent user prompt.
-      const lastTurn = ts[ts.length - 1];
-      const pinData = buildPin(lastTurn);
-      const pinKey = pinData?.content || null;
-      if (lastPinnedRef.current !== pinKey) {
-        lastPinnedRef.current = pinKey;
-        callback(pinData);
-      }
-      return;
-    }
-
-    if (visible.size === 0) return; // Wait for IntersectionObserver
-
-    const firstVisibleIndex = Math.min(...Array.from(visible));
-    const visibleTurn = ts[firstVisibleIndex];
-
-    // The visible turn carries its user prompt as part of the same row,
-    // so once it scrolls into view the pin can be cleared. We pin only
-    // when the visible row is "below" the user prompt — i.e. user prompt
-    // is offscreen above. Detection: the visible turn does not own a
-    // user line, so we walk back to find one.
-    if (visibleTurn?.user) {
-      if (lastPinnedRef.current !== null) {
-        lastPinnedRef.current = null;
-        callback(null);
-      }
-      return;
-    }
-
-    for (let i = firstVisibleIndex - 1; i >= 0; i--) {
-      if (ts[i].user) {
-        const pinData = buildPin(ts[i]);
-        const pinKey = pinData?.content || null;
-        if (lastPinnedRef.current !== pinKey) {
-          lastPinnedRef.current = pinKey;
-          callback(pinData);
-        }
-        return;
-      }
-    }
-
-    if (lastPinnedRef.current !== null) {
-      lastPinnedRef.current = null;
-      callback(null);
-    }
+  const registerBubble = useCallback<RegisterBubble>((turnId, element) => {
+    if (element) bubbleElsRef.current.set(turnId, element);
+    else bubbleElsRef.current.delete(turnId);
   }, []);
 
-  useEffect(() => {
-    if (!scrollerRef.current) return;
+  /**
+   * Refresh the content-space metrics of every mounted bubble, then pin the
+   * newest prompt that has scrolled above the readable top edge.
+   * `resolvePinTarget` owns the predicate.
+   */
+  const recomputePin = useCallback(() => {
+    const scroller = scrollerRef.current;
+    const { turns: ts } = latestRef.current;
 
-    observerRef.current?.disconnect();
+    const emit = (next: PinnedQueryData | null) => {
+      const nextId = next?.turnId ?? null;
+      if (nextId === lastPinnedTurnIdRef.current) return;
+      lastPinnedTurnIdRef.current = nextId;
+      setPinnedQuery(next);
+    };
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        let changed = false;
+    if (!scroller || ts.length === 0) {
+      emit(null);
+      return;
+    }
 
-        entries.forEach(entry => {
-          const index = parseInt(entry.target.getAttribute('data-turn-index') || '-1', 10);
-          if (index === -1) return;
+    const scrollTop = scroller.scrollTop;
+    const scrollerTop = scroller.getBoundingClientRect().top;
+    for (const [turnId, el] of bubbleElsRef.current) {
+      const rect = el.getBoundingClientRect();
+      bubbleMetricsRef.current.set(turnId, {
+        offset: rect.top - scrollerTop + scrollTop,
+        height: rect.height,
+      });
+    }
 
-          if (entry.isIntersecting) {
-            if (!visibleTurnsRef.current.has(index)) {
-              visibleTurnsRef.current.add(index);
-              changed = true;
-            }
-          } else {
-            if (visibleTurnsRef.current.has(index)) {
-              visibleTurnsRef.current.delete(index);
-              changed = true;
-            }
-          }
-        });
+    if (import.meta.env.DEV && bubbleElsRef.current.size === 0 && !emptyRegistryWarnedRef.current) {
+      emptyRegistryWarnedRef.current = true;
+      console.warn('📌 [PinnedQuery] no user bubbles registered — the pin cannot resolve a target');
+    }
 
-        if (changed) {
-          calculatePinnedMessage();
-        }
-      },
-      {
-        root: scrollerRef.current,
-        rootMargin: '0px',
-        threshold: 0.1,
-      }
+    const targetIndex = resolvePinTarget(
+      ts,
+      bubbleMetricsRef.current,
+      scrollTop,
+      PIN_COLLAPSED_HEIGHT_PX,
     );
 
-    turnRefs.current.forEach((element) => {
-      observerRef.current?.observe(element);
-    });
-
-    return () => {
-      observerRef.current?.disconnect();
-    };
-  }, [calculatePinnedMessage]);
-
-  const registerTurnRef = useCallback((index: number, element: HTMLElement | null) => {
-    if (element) {
-      turnRefs.current.set(index, element);
-      observerRef.current?.observe(element);
-    } else {
-      const existing = turnRefs.current.get(index);
-      if (existing) {
-        observerRef.current?.unobserve(existing);
-        turnRefs.current.delete(index);
-        visibleTurnsRef.current.delete(index);
-      }
-    }
+    const target = targetIndex == null ? undefined : ts[targetIndex];
+    const userLine = target?.user;
+    emit(
+      target && userLine?.text
+        ? {
+            content: userLine.text,
+            actionMetadata: userLine.actionMetadata,
+            turnId: target.turnId,
+          }
+        : null,
+    );
   }, []);
 
-  useEffect(() => {
-    calculatePinnedMessage();
-  }, [turns.length, calculatePinnedMessage]);
+  // Coalesce every trigger (scroll bursts, range churn, height changes) into
+  // one geometry read per frame.
+  const schedulePinRecompute = useCallback(() => {
+    if (pinRafRef.current != null) return;
+    pinRafRef.current = requestAnimationFrame(() => {
+      pinRafRef.current = null;
+      recomputePin();
+    });
+  }, [recomputePin]);
+
+  useEffect(
+    () => () => {
+      if (pinRafRef.current != null) cancelAnimationFrame(pinRafRef.current);
+    },
+    [],
+  );
+
+  // A newly rendered bubble has no metrics until the next recompute.
+  const handleRangeChanged = useCallback(
+    (_range: ListRange) => schedulePinRecompute(),
+    [schedulePinRecompute],
+  );
+
+  /** Activating the pin scrolls the history back to that prompt. */
+  const handleJumpToPinned = useCallback(() => {
+    const turnId = lastPinnedTurnIdRef.current;
+    if (!turnId) return;
+    const index = latestRef.current.indexByTurnId.get(turnId);
+    if (index === undefined) return;
+    // A jump is an explicit "leave the tail" gesture — without disarming
+    // autoscroll, followOutput yanks the viewport back on the next token.
+    autoScrollRef.current = false;
+    virtuosoRef.current?.scrollToIndex({
+      index,
+      align: 'start',
+      behavior: 'smooth',
+      // Negative offset scrolls up so the prompt lands below the pin bar
+      // rather than underneath it. The CONSTANT, never the live height — the
+      // pin is hover-expanded at the moment the button is pressed.
+      offset: -PIN_COLLAPSED_HEIGHT_PX,
+    });
+  }, []);
+
+  const scrollHandlerRef = useRef<EventListener | null>(null);
+  if (!scrollHandlerRef.current) {
+    scrollHandlerRef.current = () => schedulePinRecompute();
+  }
 
   const handleScrollerRef = useCallback((ref: HTMLElement | Window | null) => {
-    if (scrollerRef.current instanceof HTMLElement && wheelHandlerRef.current) {
-      scrollerRef.current.removeEventListener('wheel', wheelHandlerRef.current);
+    if (scrollerRef.current instanceof HTMLElement) {
+      if (wheelHandlerRef.current) {
+        scrollerRef.current.removeEventListener('wheel', wheelHandlerRef.current);
+      }
+      if (scrollHandlerRef.current) {
+        scrollerRef.current.removeEventListener('scroll', scrollHandlerRef.current);
+      }
     }
     scrollerRef.current = ref as HTMLElement;
-    if (ref instanceof HTMLElement && wheelHandlerRef.current) {
-      ref.addEventListener('wheel', wheelHandlerRef.current, { passive: true });
+    if (ref instanceof HTMLElement) {
+      if (wheelHandlerRef.current) {
+        ref.addEventListener('wheel', wheelHandlerRef.current, { passive: true });
+      }
+      // The pin must react to plain scrolling: moving WITHIN one tall turn
+      // changes nothing about which rows are mounted, yet it is exactly when
+      // the prompt crosses the viewport edge.
+      if (scrollHandlerRef.current) {
+        ref.addEventListener('scroll', scrollHandlerRef.current, { passive: true });
+      }
     }
   }, []);
 
@@ -251,6 +255,9 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
           index: turns.length - 1,
           align: 'end',
         });
+        // Recompute after each step so the pin reflects real geometry from
+        // the first frame, instead of being force-set and then wiped.
+        schedulePinRecompute();
       };
 
       scrollToBottom();
@@ -266,7 +273,7 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
 
       return () => timers.forEach(clearTimeout);
     }
-  }, [turns.length]);
+  }, [turns.length, schedulePinRecompute]);
 
   const handleFollowOutput = useCallback((_isAtBottom: boolean) => {
     return (autoScrollRef.current && !pendingRef.current.has) ? 'auto' : false;
@@ -285,6 +292,11 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
   const lastTurn = turns[turns.length - 1];
   const lastTurnSectionsLen = lastTurn?.sections.length ?? 0;
   const lastTurnItemsLen = useTurnContentSignature(lastTurn);
+
+  // Growing content reflows every bubble above it.
+  useEffect(() => {
+    schedulePinRecompute();
+  }, [turns.length, lastTurnSectionsLen, lastTurnItemsLen, schedulePinRecompute]);
 
   useEffect(() => {
     const prev = prevScrollStateRef.current;
@@ -350,17 +362,13 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
     };
   }, [pending.turnIndex]);
 
-  const itemContent = useCallback((index: number, turn: Turn) => {
+  const itemContent = useCallback((_index: number, turn: Turn) => {
     return (
-      <div
-        className="px-8 py-2 min-w-0"
-        data-turn-index={index}
-        ref={(el) => registerTurnRef(index, el)}
-      >
+      <div className="px-8 py-2 min-w-0">
         <TurnItem turn={turn} />
       </div>
     );
-  }, [registerTurnRef]);
+  }, []);
 
   // Typing indicator is shown when:
   //   - a job is running, AND
@@ -427,20 +435,30 @@ export function ChatHistory({ turns, onPinnedUserMessageChange }: ChatHistoryPro
   }
 
   return (
-    <Virtuoso
-      ref={virtuosoRef}
-      scrollerRef={handleScrollerRef}
-      data={turns}
-      style={{ height: '100%' }}
-      initialTopMostItemIndex={turns.length - 1}
-      followOutput={handleFollowOutput}
-      alignToBottom={true}
-      atBottomThreshold={100}
-      atBottomStateChange={handleAtBottomStateChange}
-      increaseViewportBy={{ top: 0, bottom: 200 }}
-      itemContent={itemContent}
-      components={{ Footer, Scroller: ScrollerWithTextSelect }}
-    />
+    // `relative` only — no overflow, so Virtuoso stays the sole scroll
+    // surface. It is the containing block for the pin overlay, which is kept
+    // out of flow to avoid a layout feedback loop with the virtual list.
+    <div className="relative h-full">
+      <PinnedQuery query={pinnedQuery} onJump={handleJumpToPinned} />
+      <PinRegistryContext.Provider value={registerBubble}>
+        <Virtuoso
+          ref={virtuosoRef}
+          scrollerRef={handleScrollerRef}
+          data={turns}
+          style={{ height: '100%' }}
+          initialTopMostItemIndex={turns.length - 1}
+          followOutput={handleFollowOutput}
+          alignToBottom={true}
+          atBottomThreshold={100}
+          atBottomStateChange={handleAtBottomStateChange}
+          rangeChanged={handleRangeChanged}
+          totalListHeightChanged={schedulePinRecompute}
+          increaseViewportBy={{ top: 0, bottom: 200 }}
+          itemContent={itemContent}
+          components={{ Footer, Scroller: ScrollerWithTextSelect }}
+        />
+      </PinRegistryContext.Provider>
+    </div>
   );
 }
 

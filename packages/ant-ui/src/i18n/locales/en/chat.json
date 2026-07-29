@@ -312,5 +312,8 @@
     "exchanges": "Recent Exchanges",
     "digests": "Prior Turn Digests",
     "ephemeral": "ask"
+  },
+  "pinnedQuery": {
+    "jumpToMessage": "Jump to this message"
   }
 }

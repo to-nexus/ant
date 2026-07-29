@@ -6,13 +6,12 @@
  * (single pass over chat.jsonl status lines, no per-message walk).
  */
 
-import { useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatHeaderBar } from './ChatHeaderBar';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
 import { Slot } from '@/presentation/extensions/slots';
-import { PinnedQuery, type PinnedQueryData } from './PinnedQuery';
 import { QueueStatusBanner } from './QueueStatusBanner';
 import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
 import { useChat } from '@/application/hooks/features/useChat';
@@ -121,20 +120,6 @@ export function ChatPanel({
   // Session-redesign SSOT: load feature.jsonl breadcrumbs on feature switch.
   useFeatureLogSync(_projectId, _featureName);
 
-  // Track which user message to pin (Cursor-style dynamic pinning)
-  const [pinnedQuery, setPinnedQuery] = useState<PinnedQueryData | null>(null);
-
-  const handlePinnedUserMessageChange = useCallback((query: PinnedQueryData | null) => {
-    setPinnedQuery(query);
-  }, []);
-
-  // Clear pin when chat is cleared.
-  useEffect(() => {
-    if (turnCount === 0) {
-      setPinnedQuery(null);
-    }
-  }, [turnCount]);
-
   const hasMessages = turnCount > 0;
   const emptyStateWatermarkSrc = getWatermarkSrc(selectedAgent, 'color');
   const historyWatermarkStyle = hasMessages
@@ -164,9 +149,6 @@ export function ChatPanel({
             aria-hidden="true"
           />
         )}
-
-        {/* Pinned Query - Absolute overlay to avoid layout feedback loop with Virtuoso */}
-        <PinnedQuery query={pinnedQuery} />
 
         {/* Empty State Message - Not Ready */}
         {turnCount === 0 && chatPolicy.emptyStateMessage && (
@@ -248,10 +230,7 @@ export function ChatPanel({
         {/* Chat Turns */}
         {turnCount > 0 && (
           <div className="flex-1 min-h-0">
-            <ChatHistory
-              turns={turns}
-              onPinnedUserMessageChange={handlePinnedUserMessageChange}
-            />
+            <ChatHistory turns={turns} />
           </div>
         )}
       </div>
