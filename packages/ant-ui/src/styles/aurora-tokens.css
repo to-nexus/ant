@@ -429,6 +429,12 @@ code, pre { font-family: var(--font-mono); }
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+/* Sunburst in-flight glyph — rays grow out of / retract into the centre.
+   Paired with pathLength=1 + stroke-dasharray=1 on each ray. */
+@keyframes sunburst-ray {
+  0%, 100% { opacity: 0.28; stroke-dashoffset: 0.5; }
+  50%      { opacity: 1;    stroke-dashoffset: 0; }
+}
 @keyframes type-dot {
   0%, 60%, 100% { opacity: 0.25; transform: scale(0.8); }
   30%           { opacity: 1;    transform: scale(1.1); }

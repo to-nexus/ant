@@ -16,7 +16,9 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: any) => (o ? `${k}:${JSON.stringify(o)}` : k) }),
 }));
 vi.mock('@/presentation/components/common/async', () => ({
-  Spinner: () => null,
+  Spinner: () => 'SPINNER_SENTINEL',
+  SunburstSpinner: (p: { tone?: string; className?: string }) =>
+    `SUNBURST_SENTINEL:${p.tone}:${p.className}`,
 }));
 
 import { SubagentCard } from '../../src/presentation/components/chat/SubagentCard';
@@ -58,6 +60,18 @@ describe('SubagentCard', () => {
     const dump = JSON.stringify(tree.toJSON());
     expect(dump).not.toContain('subagent.rounds');
     expect(dump).not.toContain('"role":"button"');
+  });
+
+  it('running row uses the sunburst glyph in the badge violet, never the thin ring', () => {
+    const tree = render(<SubagentCard line={line('subagent_running', { goal: 'g' })} />);
+    const dump = JSON.stringify(tree.toJSON());
+
+    // `tone` must stay explicit: the default `muted` (--text-3) rendered as a
+    // speck on this borderless line, which is why the glyph exists at all.
+    expect(dump).toContain('SUNBURST_SENTINEL:accent');
+    // The goal span is the only shrinkable item on the row.
+    expect(dump).toContain('flex-shrink-0');
+    expect(dump).not.toContain('SPINNER_SENTINEL');
   });
 
   it('running row is borderless — no background / border / shell', () => {

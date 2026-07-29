@@ -2,7 +2,7 @@
  * SubagentCard — one compact card per explore-subagent launch.
  *
  * Running (`subagent_running`, pending-card channel): borderless line —
- * spinner + shimmering goal + live elapsed (the round counter is
+ * sunburst glyph + shimmering goal + live elapsed (the round counter is
  * intentionally not surfaced). Terminal (`subagent_report`, persisted line):
  * state-accented summary card; clicking opens the full report in a
  * main-panel editor tab when a body exists.
@@ -15,7 +15,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Compass, AlertTriangle, XCircle, FileSearch } from 'lucide-react';
 import type { ChatStatusLine, PendingCardSnapshot, SubagentReportMetadata } from '@ant/shared';
-import { Spinner } from '@/presentation/components/common/async';
+import { SunburstSpinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { TurnCardShell, type TurnCardAccent } from './cards/TurnCardShell';
 
@@ -79,8 +79,10 @@ function useElapsedMs(startedAt: string | undefined): number {
 /**
  * Running row. Extracted so the 1s interval only mounts while a subagent runs.
  *
- * The spinner is the sole VISIBLE progress signal; `subagent.running` moves to
+ * The glyph is the sole VISIBLE progress signal; `subagent.running` moves to
  * `aria-label` so assistive tech still hears what the animation conveys.
+ * A thin ring reads as a speck on a borderless line with no card to frame it,
+ * so this row uses the sunburst glyph in the badge's own violet.
  * Metrics mirror WorkingCard's in-flight row — one rhythm for borderless lines.
  */
 function SubagentRunningRow({ goal, startedAt }: { goal: string; startedAt?: string }) {
@@ -92,7 +94,7 @@ function SubagentRunningRow({ goal, startedAt }: { goal: string; startedAt?: str
       aria-label={t('subagent.running', { goal })}
       className="flex items-center gap-1.5 px-2.5 py-1.5 min-w-0"
     >
-      <Spinner size="md" />
+      <SunburstSpinner size="md" tone="accent" className="flex-shrink-0" />
       <SubagentBadge />
       <span
         className="gradient-flow text-[11px] font-medium truncate min-w-0"

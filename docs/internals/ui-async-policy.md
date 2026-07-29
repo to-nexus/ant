@@ -121,8 +121,10 @@ packages/ant-ui/src/
 │   └─ index.ts
 ├─ domain/store/selectors/    projectConfig / projects helpers
 └─ presentation/components/common/async/
-    ├─ primitives/            Spinner / Skeleton / ProgressBar (SOLE home
-    │                         of Loader2, animate-spin, animate-pulse)
+    ├─ primitives/            Spinner / SunburstSpinner / Skeleton /
+    │                         ProgressBar / StepIndicator (SOLE home
+    │                         of Loader2, animate-spin, animate-pulse);
+    │                         glyphScale.ts holds the shared size/tone table
     ├─ hooks/                 useAsyncDisplay / useAsyncResource
     ├─ boundary/              AsyncBoundary + presets + ErrorBoundary
     │    └─ fallbacks/        LoadingFallback / EmptyFallback / ErrorFallback
