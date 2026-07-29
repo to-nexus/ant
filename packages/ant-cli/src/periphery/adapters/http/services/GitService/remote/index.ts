@@ -23,7 +23,7 @@ const LOCK_TTL_CLONE_SEC = 600; // clone is the longest single-flight (full bare
 // timeouts (30s), so the work itself completes or throws well before this.
 const LOCK_TTL_INIT_SEC = 120;
 const LOCK_TTL_FETCH_SEC = 180;
-// ant-commit runs an aux LLM call (worst case ~51s: 3 attempts × 15s + ~6s
+// ant-commit runs an aux LLM call (worst case ~46s: 2 attempts × 22s + 2s
 // backoff — see commitMessage.ts timing invariant) + a multi-step add/commit
 // loop. Aligned with the FE Promise.race window for `commit` (60s) so the
 // lock never outlives the user-visible failure window — otherwise a timed-out
