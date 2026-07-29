@@ -62,6 +62,17 @@
   "modal": {
     "closeModal": "모달 닫기"
   },
+  "mermaid": {
+    "expand": "다이어그램 확대",
+    "close": "다이어그램 닫기",
+    "zoomIn": "확대",
+    "zoomOut": "축소",
+    "reset": "화면에 맞추기",
+    "actualSize": "실제 크기",
+    "hint": "드래그로 이동 · 스크롤로 확대·축소 · 더블클릭으로 초기화",
+    "rendering": "Mermaid 다이어그램 렌더링 중...",
+    "renderFailed": "Mermaid 렌더링 실패: {{message}}"
+  },
   "fileBrowser": {
     "title": "파일 브라우저",
     "selectPrompt": "프로젝트와 피처를 선택하여 파일을 탐색하세요"
