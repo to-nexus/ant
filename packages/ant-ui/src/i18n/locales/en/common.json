@@ -62,6 +62,17 @@
   "modal": {
     "closeModal": "Close modal"
   },
+  "mermaid": {
+    "expand": "Expand diagram",
+    "close": "Close diagram",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "reset": "Fit to screen",
+    "actualSize": "Actual size",
+    "hint": "Drag to pan · Scroll to zoom · Double-click to reset",
+    "rendering": "Rendering Mermaid diagram...",
+    "renderFailed": "Mermaid rendering failed: {{message}}"
+  },
   "fileBrowser": {
     "title": "File Browser",
     "selectPrompt": "Select a project and feature to browse files"

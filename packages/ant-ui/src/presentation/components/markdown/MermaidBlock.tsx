@@ -1,5 +1,8 @@
 import { memo, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Maximize2 } from 'lucide-react';
 import mermaid from 'mermaid';
+import { MermaidLightbox } from './MermaidLightbox';
 
 interface MermaidBlockProps {
   code: string;
@@ -39,7 +42,7 @@ function FallbackCodeBlock({ code, errorMessage }: { code: string; errorMessage?
     <div className="space-y-2">
       {errorMessage && (
         <div className="text-xs" style={{ color: 'var(--status-error-fg)' }}>
-          Mermaid rendering failed: {errorMessage}
+          {errorMessage}
         </div>
       )}
       <pre
@@ -53,6 +56,8 @@ function FallbackCodeBlock({ code, errorMessage }: { code: string; errorMessage?
 }
 
 export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockProps) {
+  const { t } = useTranslation('common');
+  const [expanded, setExpanded] = useState(false);
   const normalizedCode = useMemo(() => code.trim(), [code]);
   const [state, setState] = useState<MermaidState>(() => {
     const cached = svgCache.get(normalizedCode);
@@ -99,20 +104,52 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
 
   if (state.status === 'rendered') {
     return (
-      <div
-        className="my-3 overflow-x-auto rounded-lg border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] p-2"
-        dangerouslySetInnerHTML={{ __html: state.svg }}
-      />
+      <>
+        <div className="group relative my-3">
+          {/* The icon button below is the accessible control. The container is not a
+              button/role=button: mermaid emits <a> elements (invalid interactive
+              nesting) and a duplicate labelled control would hide the diagram's own
+              text from screen readers. */}
+          <div
+            onClick={() => setExpanded(true)}
+            className="cursor-zoom-in overflow-x-auto rounded-lg border border-[color:var(--border-1)] bg-[color:var(--bg-surface)] p-2"
+            dangerouslySetInnerHTML={{ __html: state.svg }}
+          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded(true);
+            }}
+            aria-label={t('mermaid.expand')}
+            title={t('mermaid.expand')}
+            className="absolute top-2 right-2 p-1.5 rounded-md opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            style={{
+              background: 'var(--bg-surface-2)',
+              border: '1px solid var(--border-1)',
+              color: 'var(--text-2)',
+            }}
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+        {expanded && <MermaidLightbox svg={state.svg} onClose={() => setExpanded(false)} />}
+      </>
     );
   }
 
   if (state.status === 'error') {
-    return <FallbackCodeBlock code={code} errorMessage={state.message} />;
+    return (
+      <FallbackCodeBlock
+        code={code}
+        errorMessage={t('mermaid.renderFailed', { message: state.message })}
+      />
+    );
   }
 
   return (
     <div className="space-y-2">
-      <div className="text-xs text-[color:var(--text-3)]">Rendering Mermaid diagram...</div>
+      <div className="text-xs text-[color:var(--text-3)]">{t('mermaid.rendering')}</div>
       <FallbackCodeBlock code={code} />
     </div>
   );

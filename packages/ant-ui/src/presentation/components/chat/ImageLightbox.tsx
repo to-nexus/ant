@@ -1,66 +1,16 @@
 /**
  * Lightbox components for full-screen image previews.
  *
- * BaseLightbox  — shared dialog shell (native <dialog>, backdrop, close button)
+ * The <dialog> shell lives in common/LightboxShell.
+ *
  * ImageLightbox — single image preview (used by WorkingCard for Figma screenshots)
  * DraftLightbox — carousel with navigation arrows, index indicator, and "Select this" action
  */
 
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, ChevronLeft, ChevronRight, Check } from 'lucide-react';
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// BaseLightbox
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-interface BaseLightboxProps {
-  onClose: () => void;
-  children: React.ReactNode;
-}
-
-function BaseLightbox({ onClose, children }: BaseLightboxProps) {
-  const { t } = useTranslation('chat');
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (!dialog.open) dialog.showModal();
-    return () => { if (dialog.open) dialog.close(); };
-  }, []);
-
-  const handleBackdropClick = useCallback(
-    (e: React.MouseEvent<HTMLDialogElement>) => {
-      if (e.target === dialogRef.current) onClose();
-    },
-    [onClose],
-  );
-
-  return (
-    <dialog
-      ref={dialogRef}
-      className="fixed inset-0 m-0 w-screen h-screen max-w-none max-h-none bg-black/80 backdrop-blur-sm p-0 border-none outline-none"
-      onClick={handleBackdropClick}
-      onClose={onClose}
-    >
-      <div className="relative flex items-center justify-center w-full h-full p-8">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full transition-colors z-10"
-          style={{
-            background: 'oklch(from var(--text-on-brand) l c h / 0.1)',
-            color: 'var(--text-on-brand)',
-          }}
-          aria-label={t('draftSelection.close')}
-        >
-          <X className="w-5 h-5" />
-        </button>
-        {children}
-      </div>
-    </dialog>
-  );
-}
+import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { LightboxShell } from '../common/LightboxShell';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ImageLightbox (single image — Figma screenshots, etc.)
@@ -73,14 +23,16 @@ interface ImageLightboxProps {
 }
 
 export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
+  const { t } = useTranslation('chat');
+
   return (
-    <BaseLightbox onClose={onClose}>
+    <LightboxShell onClose={onClose} closeLabel={t('draftSelection.close')}>
       <img
         src={src}
         alt={alt || 'Preview'}
         className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
       />
-    </BaseLightbox>
+    </LightboxShell>
   );
 }
 
@@ -123,7 +75,7 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
   if (!current) return null;
 
   return (
-    <BaseLightbox onClose={onClose}>
+    <LightboxShell onClose={onClose} closeLabel={t('draftSelection.close')}>
       {hasPrev && (
         <button
           onClick={() => setCurrentIndex(images[safePos - 1].index)}
@@ -182,6 +134,6 @@ export function DraftLightbox({ images, startIndex, onClose, onSelect, disabled 
           <ChevronRight className="w-6 h-6" />
         </button>
       )}
-    </BaseLightbox>
+    </LightboxShell>
   );
 }
