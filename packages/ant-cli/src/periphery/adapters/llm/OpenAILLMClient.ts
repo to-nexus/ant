@@ -288,6 +288,25 @@ export class OpenAILLMClient implements LLMClient {
       })),
     } : {};
 
+    // Tool-call constraint (port `toolChoice`). Emitted ONLY when tools are
+    // declared — OpenAI (and several compat endpoints) 400 on `tool_choice`
+    // without `tools`. `'none'` keeps the declarations in the request so a
+    // tool_calls-heavy history stays self-consistent on the forced-final
+    // round; deleting the declarations instead is what degenerated GLM
+    // (tiny-counting-mocha / sage-causing-rover RCAs).
+    const toolChoiceParam =
+      options?.tools?.length && options?.toolChoice
+        ? { tool_choice: options.toolChoice }
+        : {};
+
+    // `stopSequences` → OpenAI `stop` (max 4 strings per API contract).
+    // Anthropic/Gemini already honored the port option; this adapter silently
+    // dropped it, making e.g. runPlanWithTools' `</plan>` hard-stop a no-op
+    // on GLM/DeepSeek.
+    const stopParam = options?.stopSequences?.length
+      ? { stop: options.stopSequences.slice(0, 4) }
+      : {};
+
     if (isCodexModel) {
       const hasImage = messages.some(m =>
         Array.isArray(m.content) && m.content.some(c => c.type === 'image')
@@ -298,6 +317,8 @@ export class OpenAILLMClient implements LLMClient {
           model: this.modelName,
           messages: openAIMessages,
           ...toolsConfig,
+          ...toolChoiceParam,
+          ...stopParam,
           temperature,
           max_tokens: options?.maxTokens || 16000,
           stream: true,
@@ -311,6 +332,7 @@ export class OpenAILLMClient implements LLMClient {
         model: this.modelName,
         messages: openAIMessages,
         ...toolsConfig,
+        ...toolChoiceParam,
         temperature,
         max_tokens: options?.maxTokens || 16000,
         stream: true,
@@ -324,6 +346,8 @@ export class OpenAILLMClient implements LLMClient {
         model: this.modelName,
         messages: openAIMessages,
         ...toolsConfig,
+        ...toolChoiceParam,
+        ...stopParam,
         temperature,
         max_tokens: options?.maxTokens || 16000,
         stream: true,

@@ -158,7 +158,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   // No-output salvage: after NO_OUTPUT_HARD_CAP − MARGIN tool rounds with no
   // <file> write, strip tools so the model must author now (a tool-less round
   // writes the document or hits the writer-integrity guard). cyan-catching-cedar.
-  const { tools: streamToolDefinitions } = applyPlanDrainFinalization(state, messages, toolDefinitions, 'execute');
+  const { tools: streamToolDefinitions, toolChoice: drainToolChoice } = applyPlanDrainFinalization(state, messages, toolDefinitions, 'execute');
 
   const chatAPI = getChatAPIClient();
   const parser = new XMLStreamParser();
@@ -177,6 +177,7 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     applyEstimatedInputTokensFromMessages(state as any, messages);
     for await (const event of llm.stream(messages, {
       tools: streamToolDefinitions,
+      ...(drainToolChoice && streamToolDefinitions.length > 0 ? { toolChoice: drainToolChoice } : {}),
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       temperature: LLM_TEMPERATURE.DOC_GENERATION,
       enableThinking: isFirstCall,

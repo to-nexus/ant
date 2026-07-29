@@ -26,11 +26,19 @@ export const handleSubagentReport: ToolHandler = async (_ctx, args) => {
 
   const slice = readFullReport(id, offset, maxChars);
   if (!slice) {
+    // Do NOT assert a cause: a miss can mean the exploration hasn't finished
+    // yet (its report is delivered into this conversation when it settles),
+    // the id is wrong, the store rotated it out (bounded FIFO), or the
+    // process restarted. The old wording claimed "the inline report was
+    // already complete" as fact, which misled the parent when the report had
+    // in fact never been delivered (sage-causing-rover).
     return {
       content:
-        `No stored report for id '${id}' — the inline report was already complete, or the process ` +
-        `restarted since that exploration ran. Re-issue explore if the omitted details are still needed ` +
-        `(exploration is read-only and cheap to repeat).`,
+        `No stored report for id '${id}'. If that exploration is still running, its report ` +
+        `will be delivered into this conversation when it completes — you do not need to poll. ` +
+        `Otherwise the id may be wrong, or the report has been rotated out / lost to a process ` +
+        `restart; re-issue explore if the details are still needed (exploration is read-only ` +
+        `and cheap to repeat).`,
     };
   }
   const end = Math.min(slice.offset + slice.slice.length, slice.total);

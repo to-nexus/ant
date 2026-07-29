@@ -163,10 +163,11 @@ export async function execute(
   const allTools = await getTools(state);
 
   // No-progress salvage (rocky-beating-coral RCA): once `_noProgressStreak`
-  // nears the router breaker, strip tools and append a persistent "apply your
-  // changes now" note to the trailing user message (post-composeMessages —
-  // never inside a cached prefix).
-  const { tools, drainFinalizing } = applyDrainFinalization(state, messages, allTools);
+  // nears the router breaker, forbid tool calls (toolChoice='none' — tools
+  // stay declared) and append a persistent "apply your changes now" note to
+  // the trailing user message (post-composeMessages — never inside a cached
+  // prefix).
+  const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(state, messages, allTools);
   
   if (!state.resolvedAction?.mode) {
     console.warn(`⚠️ [CodeGen] resolvedAction.mode is missing — defaulting to tools enabled`);
@@ -353,6 +354,7 @@ export async function execute(
     // ✅ Single stream (no loop!)
     for await (const event of llmToUse.stream(messages, {
       tools,
+      ...(toolChoice && tools.length > 0 ? { toolChoice } : {}),
       maxTokens: LLM_MAX_TOKENS.DEFAULT,
       temperature: LLM_TEMPERATURE.CODE_EXECUTE,
       enableThinking: !isAfterToolCall && !hasRemediationPlan,

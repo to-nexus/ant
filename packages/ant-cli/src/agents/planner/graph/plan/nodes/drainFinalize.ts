@@ -11,9 +11,12 @@
  * Unlike the design/code jobs, NO router hard-divert is needed: both planner
  * phases terminate structurally on a tool-less round (the plan node seals a
  * best-effort brief when no `<plan>` tag is present; the execute node writes the
- * document or hits its writer-integrity guard). An empty tool list makes a
- * tool call impossible, so the very next round terminates the loop — the strip
- * is the whole mechanism, with `recursionLimit` as the ultimate backstop.
+ * document or hits its writer-integrity guard). `toolChoice: 'none'` makes a
+ * tool call impossible at the provider layer, so the very next round terminates
+ * the loop — the constraint is the whole mechanism, with `recursionLimit` as
+ * the ultimate backstop. The tools stay DECLARED: deleting the declarations
+ * while the history carries tool_calls is the GLM degeneration trigger
+ * (sage-causing-rover axis).
  */
 
 import type { PlanGraphState } from '../state';
@@ -21,6 +24,8 @@ import { NO_OUTPUT_HARD_CAP, DRAIN_FINALIZE_MARGIN } from '../state';
 
 export interface PlanDrainResult<TTool> {
   tools: TTool[];
+  /** `'none'` while draining — tools declared, calls forbidden. */
+  toolChoice?: 'none';
   drainFinalizing: boolean;
 }
 
@@ -63,7 +68,7 @@ export function applyPlanDrainFinalization<TTool>(
   }
   console.warn(
     `🧯 [Planner:${phase === 'plan' ? 'Plan' : 'Execute'}] No-output salvage ` +
-    `(streak=${noOutputCount} ≥ ${NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN}) → tools stripped, forcing terminal turn`,
+    `(streak=${noOutputCount} ≥ ${NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN}) → toolChoice='none', forcing terminal turn`,
   );
-  return { tools: [], drainFinalizing: true };
+  return { tools, toolChoice: 'none', drainFinalizing: true };
 }

@@ -47,13 +47,16 @@ describe('applyPlanDrainFinalization — planner tool-strip salvage', () => {
     expect(messages[0].content).toBe('research the codebase');
   });
 
-  it('fires exactly at CAP − MARGIN, stripping tools (plan phase → seal instruction)', () => {
+  it('fires exactly at CAP − MARGIN with toolChoice=none (plan phase → seal instruction)', () => {
     const messages = [userMsg('research')];
-    const { tools, drainFinalizing } = applyPlanDrainFinalization(
+    const { tools, toolChoice, drainFinalizing } = applyPlanDrainFinalization(
       { _noOutputCallCount: SALVAGE_AT }, messages, TOOLS, 'plan',
     );
     expect(drainFinalizing).toBe(true);
-    expect(tools).toEqual([]);
+    // Tools stay DECLARED; the provider constraint carries the prohibition
+    // (sage-causing-rover axis).
+    expect(tools).toBe(TOOLS);
+    expect(toolChoice).toBe('none');
     const content = messages[0].content as any[];
     expect(content[0]).toEqual({ type: 'text', text: 'research' });
     expect(content[1].text).toContain('Tools are no longer available');

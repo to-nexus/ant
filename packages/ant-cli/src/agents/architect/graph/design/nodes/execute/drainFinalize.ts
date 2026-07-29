@@ -23,6 +23,15 @@ type DrainInputs = Pick<DesignGraphState, 'recursionCount' | 'recursionLimit' | 
 
 export interface DrainFinalizeResult<TTool> {
   tools: TTool[];
+  /**
+   * `'none'` on the target-not-yet-created drain path: the tools stay
+   * DECLARED and the provider constraint forbids calling them — deleting
+   * the declarations while the history carries tool_calls is the GLM
+   * degeneration trigger (sage-causing-rover axis). The targetExists path
+   * filters to write tools instead (they ARE the exit) and sets no
+   * constraint.
+   */
+  toolChoice?: 'none';
   drainFinalizing: boolean;
 }
 
@@ -126,9 +135,11 @@ export function applyDrainFinalization<TTool>(
   const WRITE_TOOL_NAMES = new Set(['edit_file', 'create_file', 'delete_file']);
   const drainedTools = targetExists
     ? tools.filter((t: any) => WRITE_TOOL_NAMES.has(t?.name))
-    : ([] as TTool[]);
+    : tools;
   console.warn(
-    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → ${targetExists ? `exploration tools stripped (${drainedTools.length} write tool(s) kept)` : 'all tools stripped (target not yet created — <file> tag is the only channel)'}, forcing final output`,
+    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → ${targetExists ? `exploration tools stripped (${drainedTools.length} write tool(s) kept)` : `toolChoice='none' (target not yet created — <file> tag is the only channel)`}, forcing final output`,
   );
-  return { tools: drainedTools, drainFinalizing: true };
+  return targetExists
+    ? { tools: drainedTools, drainFinalizing: true }
+    : { tools: drainedTools, toolChoice: 'none', drainFinalizing: true };
 }

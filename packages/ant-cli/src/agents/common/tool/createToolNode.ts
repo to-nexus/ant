@@ -33,6 +33,7 @@ import { elideDuplicateReads, buildManifestBlockIfChanged } from './duplicateRea
 import { buildReportBlocks, detectOrphanedLaunches } from '../subagent/drain';
 import { collectCompleted, pendingOlderThan } from '../subagent/registry';
 import { subagentMaxPendingAgeMs } from '../subagent/config';
+import { logSubagentDrain } from '../subagent/drainTrace';
 import type { MessageContentBlock } from '../../../core/ports/llm';
 
 export interface ToolNodeConfig<TState> {
@@ -192,6 +193,18 @@ export function createToolNode<TState>(
       const orphanBlocks = detectOrphanedLaunches(baseHistory, ownerKey);
       const completed = collectCompleted(ownerKey);
       subagentBlocks = [...orphanBlocks, ...buildReportBlocks(completed)];
+      // Delivery trace (sage-causing-rover): which reports landed on which
+      // tool round, into which phase — see subagent/drainTrace.ts.
+      logSubagentDrain({
+        featurePath: ctx.featurePath,
+        jobId: config.getHttpJobId?.(state),
+        site: 'tool-drain',
+        ownerKey,
+        delivered: completed,
+        orphanCount: orphanBlocks.length,
+        phase: (state as any)._activePhase ?? 'execute',
+        taskId: config.getTaskInfo?.(state)?.id,
+      });
       if (completed.length > 0) {
         // Explicit channel delta — same unreturned-channel-drop class as the
         // Track 1 recursionCount fix; merged after buildReturn below because

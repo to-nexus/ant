@@ -110,20 +110,26 @@ describe('drain finalization keeps write tools (REVISE exit path)', () => {
     expect(drained.map((t: any) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
   });
 
-  it('keeps NOTHING when the target does not exist yet — no write tool can succeed against a missing file (sharp-baking-bride RCA)', () => {
+  it('forbids ALL calls when the target does not exist yet — toolChoice=none, declarations kept (sharp-baking-bride + sage-causing-rover RCAs)', () => {
     const tools = [
       { name: 'read_file' },
       { name: 'edit_file' },
       { name: 'create_file' },
     ];
     const messages = [{ role: 'user', content: 'Continue.' }];
-    const { tools: drained } = applyDrainFinalization(
+    const { tools: drained, toolChoice } = applyDrainFinalization(
       { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: 999 } as any,
       messages as any,
       tools as any,
       { targetExists: false },
     );
-    expect(drained).toEqual([]);
+    // sharp-baking-bride's requirement was "no tool CALL can happen" (a
+    // surviving edit_file out-competes the <file> tag and can never succeed
+    // against a missing file). That is now enforced by the provider-level
+    // constraint; the DECLARATIONS stay so the tool_calls-laden history stays
+    // self-consistent (deleting them is the GLM degeneration trigger).
+    expect(drained).toBe(tools);
+    expect(toolChoice).toBe('none');
   });
 });
 

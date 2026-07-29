@@ -162,13 +162,17 @@ describe('applyDrainFinalization — targetExists dispatch', () => {
   ];
   const drainState = { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN };
 
-  it('target absent → ALL tools stripped and the note offers only the <file> tag', () => {
+  it('target absent → tools stay declared with toolChoice=none; note offers only the <file> tag', () => {
     const messages = [userMsg('go')];
-    const { tools, drainFinalizing } = applyDrainFinalization(
+    const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       drainState, messages, MIXED_TOOLS, { targetExists: false },
     );
     expect(drainFinalizing).toBe(true);
-    expect(tools).toEqual([]);
+    // Declarations preserved; the provider constraint forbids the calls
+    // (sage-causing-rover axis — deleting declarations while the history
+    // carries tool_calls is the GLM degeneration trigger).
+    expect(tools).toBe(MIXED_TOOLS);
+    expect(toolChoice).toBe('none');
     const note = (messages[0].content as any[])[1].text as string;
     expect(note).toContain('<file>');
     expect(note).toContain('<done>true</done>');
@@ -178,10 +182,12 @@ describe('applyDrainFinalization — targetExists dispatch', () => {
 
   it('target exists → write tools survive and the note keeps the edit_file exit', () => {
     const messages = [userMsg('go')];
-    const { tools, drainFinalizing } = applyDrainFinalization(
+    const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       drainState, messages, MIXED_TOOLS, { targetExists: true },
     );
     expect(drainFinalizing).toBe(true);
+    // Write tools ARE the exit here — no call constraint.
+    expect(toolChoice).toBeUndefined();
     expect((tools as any[]).map((t) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
     const note = (messages[0].content as any[])[1].text as string;
     expect(note).toContain('edit_file');

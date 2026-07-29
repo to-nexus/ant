@@ -15,6 +15,10 @@
 
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
+import { collectCompleted } from '../../../../../common/subagent/registry';
+import { buildReportBlocks } from '../../../../../common/subagent/drain';
+import { foldSubagentUsage } from '../../../../../common/subagent/tokens';
+import { logSubagentDrain } from '../../../../../common/subagent/drainTrace';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import {
   runPlanToolLoopPhase as sharedRunPlanToolLoopPhase,
@@ -38,55 +42,86 @@ const PLAN_LLM_INTENT_GROUPS = new Set(['design-spec', 'design-system-design']);
  * loop only delivers reports via the tool node's per-round drain, which fires
  * only on tool-call rounds. When the plan LLM stalls with neither a `<plan>`
  * seal nor tool calls (fallthrough) while explore reports are still owed, those
- * reports would be dropped — the phase otherwise wipes NODE_PLAN and bails to
- * execute with an empty plan (round-grading-sable class). This force-joins any
- * owed reports into NODE_PLAN and returns a re-entry delta so the plan LLM
- * re-decides WITH the findings. Returns null when nothing is owed (the caller
- * then proceeds to the normal empty-plan fallthrough). Self-terminating:
- * `maybeJoinSubagents` returns null once reports are delivered.
+ * reports would be dropped (round-grading-sable class).
+ *
+ * IN-NODE consumption (code-twin parity — sage-causing-rover C1 fix): the
+ * joined history is returned to the caller's plan loop, which re-runs the plan
+ * LLM in the SAME node invocation. The previous implementation returned a
+ * graph re-entry delta WITHOUT `llmResponse`; `routeAfterPlan` then saw the
+ * tool node's cleared `toolCalls: []` and misrouted to execute — the reports
+ * had already been deleted from the registry, so the injected NODE_PLAN was
+ * never read again (collect-then-discard, worse than no barrier at all).
+ * Self-terminating: `maybeJoinSubagents` returns null once reports are
+ * delivered.
  */
-async function deliverOwedExploreReportsDelta(
+async function joinOwedReportsIntoHistory(
   state: DesignGraphState,
-  currentTask: DesignTask | undefined,
-): Promise<Partial<DesignGraphState> | null> {
-  const nodePlan = getConv(state.conversations, CONV_KEYS.NODE_PLAN);
-  // Fresh entry (empty NODE_PLAN) launched no explores — nothing to await.
-  if (nodePlan.length === 0) return null;
+  history: Array<{ role: string; content: unknown }>,
+): Promise<{ history: any[]; tokenDelta: Record<string, any> } | null> {
+  // Fresh entry (empty history) launched no explores — nothing to await.
+  if (history.length === 0) return null;
   const joined = await maybeJoinSubagents(state as any, ownerKeyFor(state._httpJobId), {
-    history: nodePlan as any,
+    history: history as any,
   });
   if (!joined) return null;
   // Preserve role alternation: the stalled round's assistant text is not
   // captured by the tool loop, so insert a spacer when the last turn is a user
   // turn (tool_result) — two consecutive user turns crash Anthropic.
-  const last = nodePlan[nodePlan.length - 1] as { role?: string } | undefined;
+  const last = history[history.length - 1] as { role?: string } | undefined;
   const spacer =
     last?.role === 'assistant'
       ? []
       : [{ role: 'assistant' as const, content: '(pausing to receive subagent findings)' }];
-  const injected = [
-    ...nodePlan,
-    ...spacer,
-    {
-      role: 'user' as const,
-      content: [
-        ...joined.blocks,
-        {
-          type: 'text' as const,
-          text: 'All pending subagent reports are delivered above. Incorporate their findings and seal your <plan> now.',
-        },
-      ],
-    },
-  ] as any;
-  console.log('🔀 [DesignPlan] Delivered owed explore report(s) into NODE_PLAN → re-entering plan');
+  console.log('🔀 [DesignPlan] Delivered owed explore report(s) into NODE_PLAN → re-running plan in-node');
   return {
-    currentTask,
-    conversations: { [CONV_KEYS.NODE_PLAN]: injected },
-    _activePhase: 'plan' as const,
-    recursionCount: state.recursionCount,
-    recursionLimit: state.recursionLimit,
-    ...(joined.tokenDelta as any),
+    history: [
+      ...history,
+      ...spacer,
+      {
+        role: 'user' as const,
+        content: [
+          ...joined.blocks,
+          {
+            type: 'text' as const,
+            text: 'All pending subagent reports are delivered above. Incorporate their findings and seal your <plan> now.',
+          },
+        ],
+      },
+    ],
+    tokenDelta: joined.tokenDelta,
   };
+}
+
+/**
+ * Seal-time non-blocking drain (sage-causing-rover C2 fix): reports that
+ * SETTLED between the last tool round and the `<plan>` seal used to flow to
+ * the execute conversation only — the plan was decided without findings the
+ * launch-ack had promised "before this phase concludes". Collects settled
+ * entries WITHOUT awaiting pending ones (no joinAll — a still-running child
+ * keeps the doc-43 contract: execute inherits it via the shared ownerKey).
+ * Returns null when nothing settled.
+ */
+async function drainSettledReportsAtSeal(
+  state: DesignGraphState,
+): Promise<{ blocks: any[]; tokenDelta: Record<string, any> } | null> {
+  const ownerKey = ownerKeyFor(state._httpJobId);
+  const completed = collectCompleted(ownerKey);
+  if (completed.length === 0) return null;
+  const blocks = buildReportBlocks(completed);
+  const tokenDelta = await foldSubagentUsage(state as any, completed);
+  console.log(
+    `🔀 [DesignPlan] ${completed.length} subagent report(s) settled at seal time — re-running plan with findings`,
+  );
+  logSubagentDrain({
+    featurePath: state.context?.featurePath,
+    jobId: state._httpJobId,
+    site: 'seal-drain',
+    ownerKey,
+    delivered: completed,
+    phase: 'plan',
+    taskId: state.currentTask?.id,
+  });
+  return { blocks, tokenDelta };
 }
 
 export async function plan(state: DesignGraphState): Promise<Partial<DesignGraphState>> {
@@ -233,11 +268,82 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
     });
   };
 
-  const outcome = await sharedRunPlanToolLoopPhase({
-    history: nodePlan as any,
+  // Bounded in-node loop: a normal pass produces `planText` (seal) or
+  // `toolCalls` (route to tool node) on the first iteration. Extra passes
+  // exist only for report delivery — (a) seal-time settled reports (C2,
+  // once), (b) fallthrough with owed reports (C1, self-terminating because
+  // `collectCompleted` deletes delivered entries). Hard bound of 4 passes;
+  // the LangGraph recursionLimit stays the outer backstop.
+  let planHistory: any[] = nodePlan as any;
+  let sealDrainDone = false;
+  // Keys folded by joins — values are RE-READ from state at return time:
+  // `foldSubagentUsage` mutates state, and later runRound passes accumulate
+  // on top of it, so a snapshot captured at join time would be stale.
+  const joinTokenDelta: Record<string, any> = {};
+  const tokenDeltaOut = (): Record<string, any> => {
+    const out: Record<string, any> = {};
+    for (const k of Object.keys(joinTokenDelta)) out[k] = (state as any)[k];
+    return out;
+  };
+  let outcome = await sharedRunPlanToolLoopPhase({
+    history: planHistory,
     isActive: true,
     runRound: runRound as any,
   });
+
+  for (let pass = 0; pass < 4; pass++) {
+    if (outcome.kind === 'planText' && !sealDrainDone) {
+      // C2 — seal-time non-blocking drain: settled-but-undelivered reports
+      // must inform the plan BEFORE it is finalized. Re-run the plan LLM once
+      // with the sealed plan + findings; pending (still-running) children are
+      // NOT awaited — they flow to execute per the doc-43 contract.
+      sealDrainDone = true;
+      const drained = await drainSettledReportsAtSeal(state);
+      if (drained) {
+        Object.assign(joinTokenDelta, drained.tokenDelta);
+        planHistory = [
+          ...(planHistory.length > 0 ? planHistory : [await ensureFreshUserTurn()]),
+          { role: 'assistant' as const, content: `<plan>\n${outcome.planText}\n</plan>` },
+          {
+            role: 'user' as const,
+            content: [
+              ...drained.blocks,
+              {
+                type: 'text' as const,
+                text:
+                  'The subagent report(s) above arrived as you sealed your plan. ' +
+                  'If the findings change your plan, revise it; otherwise keep it. ' +
+                  'Output your final <plan> now.',
+              },
+            ],
+          },
+        ];
+        outcome = await sharedRunPlanToolLoopPhase({
+          history: planHistory,
+          isActive: true,
+          runRound: runRound as any,
+        });
+        continue;
+      }
+    }
+
+    if (outcome.kind === 'planText' || outcome.kind === 'toolCalls') break;
+
+    // Fallthrough (no <plan>, no tool calls) — C1: join owed reports and
+    // re-run the plan LLM IN-NODE. Returning a graph delta here misroutes to
+    // execute (the tool node clears `toolCalls`, so `routeAfterPlan` cannot
+    // send a no-toolCalls state back to plan) while the join has already
+    // consumed the registry entries.
+    const joined = await joinOwedReportsIntoHistory(state, planHistory);
+    if (!joined) break;
+    Object.assign(joinTokenDelta, joined.tokenDelta);
+    planHistory = joined.history;
+    outcome = await sharedRunPlanToolLoopPhase({
+      history: planHistory,
+      isActive: true,
+      runRound: runRound as any,
+    });
+  }
 
   if (outcome.kind === 'planText') {
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -246,7 +352,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
     const finalized = await finalizePlanOutcome(state, currentTask as DesignTask, {
       planText: outcome.planText,
     });
-    return finalized;
+    return { ...finalized, ...tokenDeltaOut() };
   }
 
   if (outcome.kind === 'toolCalls') {
@@ -254,8 +360,8 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
     // self-contained for re-entry, so for fresh entry we prepend the
     // cached prompt body (rendered once via `ensureFreshUserTurn`).
     const updatedHistory = [
-      ...(nodePlan.length > 0 ? nodePlan : []),
-      ...(nodePlan.length === 0 ? [await ensureFreshUserTurn()] : []),
+      ...(planHistory.length > 0 ? planHistory : []),
+      ...(planHistory.length === 0 ? [await ensureFreshUserTurn()] : []),
       outcome.assistantMessage,
     ] as any;
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -268,19 +374,8 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       llmResponse: outcome.llmResponse as any,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
+      ...tokenDeltaOut(),
     };
-  }
-
-  // Plan-phase join barrier: if the loop stalled while explore reports are
-  // still owed, deliver them into NODE_PLAN and re-enter plan so the LLM seals
-  // a plan WITH the findings instead of dropping them on the empty-plan bail
-  // below (round-grading-sable). No-op when nothing is owed.
-  const owedDelta = await deliverOwedExploreReportsDelta(state, currentTask as DesignTask);
-  if (owedDelta) {
-    if (state.deps?.workflowUpdate && state._httpJobId) {
-      await state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', state.workerId ?? 0);
-    }
-    return owedDelta;
   }
 
   // Fallthrough — finalize-from-exploration failed or no LLM output.

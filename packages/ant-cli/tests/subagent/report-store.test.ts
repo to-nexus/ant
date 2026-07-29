@@ -73,7 +73,11 @@ describe('handleSubagentReport', () => {
   it('graceful miss suggests re-issuing explore, without the marker literal', async () => {
     const res = await handleSubagentReport({} as any, { id: 'gone' });
     expect(res.error).toBeUndefined();
-    expect(res.content).toContain('Re-issue explore');
+    expect(res.content).toMatch(/re-issue explore/i);
+    // The miss must NOT assert a cause it cannot know (sage-causing-rover):
+    // a miss can also mean the exploration is still running.
+    expect(res.content).not.toContain('was already complete');
+    expect(res.content).toContain('still running');
     expect(res.content).not.toMatch(/\[SUBAGENT REPORT/);
   });
 

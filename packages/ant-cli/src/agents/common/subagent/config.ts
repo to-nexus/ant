@@ -36,3 +36,7 @@ export const subagentMaxPendingAgeMs = (): number =>
 
 /** Child max output tokens per round. */
 export const subagentMaxTokens = (): number => envInt('ANT_SUBAGENT_MAX_TOKENS', 8192);
+
+/** Output cap for the one corrective re-ask after a degenerate round — reduced
+ * so a second degeneration is cheap. */
+export const subagentReAskMaxTokens = (): number => envInt('ANT_SUBAGENT_REASK_MAX_TOKENS', 4096);

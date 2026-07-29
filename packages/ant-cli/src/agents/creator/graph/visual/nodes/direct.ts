@@ -472,8 +472,11 @@ async function streamWithToolLoop(
     ];
   }
 
-  // Tool loop exhausted — force a final text-only response (no tools available)
-  console.warn(`⚠️ [Visual:Direct] Tool loop exhausted after ${maxRounds} rounds, forcing final text-only call`);
+  // Tool loop exhausted — force a final text-only response. Tools stay
+  // DECLARED with toolChoice='none' (deleting the declarations while the
+  // history carries tool_calls is the GLM degeneration trigger —
+  // sage-causing-rover axis).
+  console.warn(`⚠️ [Visual:Direct] Tool loop exhausted after ${maxRounds} rounds, forcing final text-only call (toolChoice='none')`);
 
   currentMessages.push({
     role: 'user',
@@ -483,7 +486,7 @@ async function streamWithToolLoop(
   let finalText = '';
   // T1 pre-call estimate for the final text-only call.
   applyEstimatedInputTokensFromMessages(state, currentMessages);
-  for await (const event of llm.stream(currentMessages, { tools: undefined, enableThinking: false, temperature: LLM_TEMPERATURE.CODE_EXECUTE, signal: getJobAbortSignal() })) {
+  for await (const event of llm.stream(currentMessages, { tools, toolChoice: 'none', enableThinking: false, temperature: LLM_TEMPERATURE.CODE_EXECUTE, signal: getJobAbortSignal() })) {
     maybeUpdatePhaseTokenUsage(state, event);
     if (event.type === 'text' && event.text) {
       finalText += event.text;

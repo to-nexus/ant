@@ -17,7 +17,23 @@ import {
   subagentMaxReportPersistChars,
   subagentTimeoutMs,
   subagentMaxTokens,
+  subagentReAskMaxTokens,
 } from './config';
+
+function mergeChildUsage(
+  a: TaskTokenUsage | undefined,
+  b: TaskTokenUsage | undefined,
+): TaskTokenUsage | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    inputTokens: (a.inputTokens || 0) + (b.inputTokens || 0),
+    outputTokens: (a.outputTokens || 0) + (b.outputTokens || 0),
+    totalTokens: (a.totalTokens || 0) + (b.totalTokens || 0),
+    cacheReadTokens: (a.cacheReadTokens || 0) + (b.cacheReadTokens || 0),
+    cacheCreationTokens: (a.cacheCreationTokens || 0) + (b.cacheCreationTokens || 0),
+  };
+}
 import { buildChildMessages } from './prompts';
 import type { SubagentResult, SubagentSeamInternals } from './types';
 
@@ -110,29 +126,47 @@ async function runInner(
 
   const { callLLMWithToolLoop } = await import('../llm/callLLMWithToolLoop');
 
+  // Single wall-clock deadline shared by the main loop AND the corrective
+  // re-ask below — the re-ask must stay inside the same budget or the
+  // `joinTimeout (330s) > childTimeout (300s)` ordering inverts and the
+  // parent's join barrier fires before the child's own bound.
+  const deadline = Date.now() + subagentTimeoutMs();
+  const raceAgainstDeadline = async <T>(work: Promise<T>): Promise<T | 'timeout'> => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return 'timeout';
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), remaining);
+    });
+    const raced = await Promise.race([work, timeout]);
+    if (timer) clearTimeout(timer);
+    return raced;
+  };
+
   let roundCounter = 0;
-  const loop = callLLMWithToolLoop(llm, messages, internals.childTools, toolHandler, {
-    temperature: LLM_TEMPERATURE.SUBAGENT_EXPLORE,
-    maxTokens: subagentMaxTokens(),
-    maxRounds: subagentMaxRounds(),
-    silentChatCards: true,
-    signal: getJobAbortSignal(),
-    shouldAbort: isJobAborted,
-    betweenRounds: async () => {
-      roundCounter++;
-      onRound(roundCounter);
-      await emitProgressCard(params, roundCounter);
-      return [];
-    },
-  });
+  const runLoop = (
+    loopMessages: Array<{ role: string; content: any }>,
+    maxRounds: number,
+    maxTokens: number,
+  ) =>
+    callLLMWithToolLoop(llm, loopMessages, internals.childTools, toolHandler, {
+      temperature: LLM_TEMPERATURE.SUBAGENT_EXPLORE,
+      maxTokens,
+      maxRounds,
+      silentChatCards: true,
+      signal: getJobAbortSignal(),
+      shouldAbort: isJobAborted,
+      betweenRounds: async () => {
+        roundCounter++;
+        onRound(roundCounter);
+        await emitProgressCard(params, roundCounter);
+        return [];
+      },
+    });
 
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => resolve('timeout'), subagentTimeoutMs());
-  });
-
-  const raced = await Promise.race([loop, timeout]);
-  if (timer) clearTimeout(timer);
+  let raced = await raceAgainstDeadline(
+    runLoop(messages, subagentMaxRounds(), subagentMaxTokens()),
+  );
 
   if (raced === 'timeout') {
     // The loop keeps running detached until its own bounds fire; its usage is
@@ -144,6 +178,43 @@ async function runInner(
       state: 'partial',
       modelId,
     };
+  }
+
+  // Corrective re-ask (once): a degenerate round severed by the in-stream
+  // breaker still leaves the accumulated tool evidence intact in
+  // `finalMessages`. A verbatim replay reproduces the same failure at low
+  // temperature (lapis-oaring-drain RCA) — the re-ask names WHY the previous
+  // attempt failed and demands the report from evidence already gathered.
+  // On success, 11 rounds of real investigation are recovered instead of
+  // discarded; on a second degeneration the normal failure notice stands.
+  if (raced.degenerate && raced.finalMessages && !isJobAborted()) {
+    console.warn(
+      `⚠️ [Subagent] Degenerate round severed (id=${params.id}) — issuing one corrective re-ask`,
+    );
+    const retryMessages = [
+      ...raced.finalMessages,
+      {
+        role: 'user' as const,
+        content:
+          '[SYSTEM] Your previous response degenerated into repeating the same ' +
+          'sentence and was discarded. Do NOT narrate further tool intentions. ' +
+          'Write your COMPLETE final report NOW, from the evidence already ' +
+          'gathered above, following your report contract.',
+      },
+    ];
+    const priorUsage = raced.usage as TaskTokenUsage | undefined;
+    // maxRounds=1 → the re-ask IS a forced-final round (toolChoice='none');
+    // reduced cap so a second degeneration is cheap.
+    const reRaced = await raceAgainstDeadline(
+      runLoop(retryMessages, 1, subagentReAskMaxTokens()),
+    );
+    if (reRaced !== 'timeout') {
+      raced = {
+        ...reRaced,
+        usage: mergeChildUsage(priorUsage, reRaced.usage as TaskTokenUsage | undefined),
+        roundsUsed: roundCounter,
+      };
+    }
   }
 
   const { response, usage, roundsUsed, exhausted, aborted, stopReason } = raced;
@@ -169,17 +240,21 @@ async function runInner(
     };
   }
 
-  // Viability gate — degenerate output (repetition loops after the final
-  // round's tool-strip) must never reach the parent conversation: 16k of
-  // repeated filler pollutes the parent context and has crashed decompose
-  // downstream. The raw text still goes to the report store + chat card
-  // (`reportFull`) for forensics; only the parent-facing body is replaced.
+  // Viability gate — degenerate output must never reach the parent
+  // conversation: repeated filler pollutes the parent context and has crashed
+  // decompose downstream. Trips on the char-heuristic OR on the loop's
+  // in-stream breaker flag (a severed partial can be too short for the
+  // heuristic's 50-unit floor). Reached only when the corrective re-ask above
+  // was skipped or itself degenerated. The raw text still goes to the report
+  // store + chat card (`reportFull`) for forensics; only the parent-facing
+  // body is replaced.
   const { assessReportViability } = await import('./assessReportViability');
   const viability = assessReportViability(report);
-  if (viability.degenerate) {
+  if (viability.degenerate || raced.degenerate) {
     console.warn(
       `⚠️ [Subagent] Degenerate report gated (id=${params.id}, ` +
         `distinctRatio=${viability.distinctRatio.toFixed(3)}, units=${viability.totalUnits}, ` +
+        `breakerSevered=${raced.degenerate === true}, ` +
         `stopReason=${stopReason ?? 'n/a'}) — replacing with failure notice`,
     );
     const { storeFullReport } = await import('./reportStore');
@@ -187,7 +262,11 @@ async function runInner(
     return {
       report:
         `Exploration terminated abnormally: the model produced degenerate repetitive output` +
-        (stopReason === 'max_tokens' ? ' (truncated at the output-token cap)' : '') +
+        (stopReason === 'max_tokens'
+          ? ' (truncated at the output-token cap)'
+          : raced.degenerate
+            ? ' (severed by the repetition breaker)'
+            : '') +
         ` instead of a report (goal: ${params.goal}). No usable findings — ` +
         `read the relevant files directly instead of re-issuing the same broad explore.`,
       reportFull: report,
@@ -218,6 +297,16 @@ async function runInner(
   // slicing cannot drop the notice.
   if (stopReason === 'max_tokens') {
     report += '\n\n[note] Output hit the token cap — the tail of this report is missing.';
+  }
+
+  // Store EVERY report (not just over-cap/degenerate): `subagent_report`
+  // previously could never resolve an under-cap report, yet its miss message
+  // asserted the inline form was complete — the parent had no way to re-read
+  // a report it lost track of. The bounded FIFO in reportStore is the leak
+  // guard; re-inserting an over-cap report refreshes its FIFO slot.
+  {
+    const { storeFullReport } = await import('./reportStore');
+    storeFullReport(params.id, params.goal, reportFull ?? report);
   }
 
   return {

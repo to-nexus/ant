@@ -6,7 +6,7 @@
  * Image generation uses GeminiImageClient instead.
  */
 
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, FunctionCallingConfigMode } from '@google/genai';
 import {
   LLMClient,
   LLMStreamEvent,
@@ -143,6 +143,21 @@ export class GeminiLLMClient implements LLMClient {
         temperature,
         maxOutputTokens: options?.maxTokens || this.maxTokens,
         ...(geminiTools ? { tools: geminiTools } : {}),
+        // Port `toolChoice` → Gemini functionCallingConfig (native support).
+        // Only alongside declared tools; `'none'` keeps the declarations in
+        // the request while forbidding calls (forced-final-answer rounds).
+        ...(geminiTools && options?.toolChoice
+          ? {
+              toolConfig: {
+                functionCallingConfig: {
+                  mode:
+                    options.toolChoice === 'none'
+                      ? FunctionCallingConfigMode.NONE
+                      : FunctionCallingConfigMode.AUTO,
+                },
+              },
+            }
+          : {}),
         ...(stopSequences && stopSequences.length > 0 ? { stopSequences } : {}),
       },
     });

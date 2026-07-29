@@ -262,6 +262,21 @@ export interface LLMClient {
    *                          moment any of these appears in the model's
    *                          text output. Used to cut wasted tokens after
    *                          a structural tag (e.g. `</plan>`, `</detect>`).
+   *   - `toolChoice`      → tool-call constraint for THIS round. `'none'`
+   *                          means the tools stay DECLARED but the model
+   *                          must not call one (forced-final-answer rounds).
+   *                          Contract: only meaningful when `tools` is
+   *                          non-empty — callers MUST omit it otherwise
+   *                          (OpenAI-compat 400s on tool_choice without
+   *                          tools). An adapter that cannot express the
+   *                          constraint natively MUST fall back to omitting
+   *                          the `tools` array for that request (the
+   *                          pre-toolChoice behavior). Rationale: deleting
+   *                          tool declarations while the history still
+   *                          carries tool_calls produced degenerate
+   *                          repetition loops on OpenAI-compat providers
+   *                          (tiny-counting-mocha / lapis-oaring-drain /
+   *                          sage-causing-rover RCAs).
    */
   stream(
     messages: Array<{ role: string; content: string | MessageContentBlock[] }>,
@@ -269,6 +284,7 @@ export interface LLMClient {
       tools?: ToolDefinition[];
       maxTokens?: number;
       stopSequences?: string[];
+      toolChoice?: 'auto' | 'none';
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent>;

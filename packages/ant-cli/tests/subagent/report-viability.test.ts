@@ -119,13 +119,16 @@ describe('runExploreSubagent — degenerate report gating', () => {
     expect(readFullReport('deg1', 0, 50)?.total).toBe(garbage.trim().length);
   });
 
-  it('notes max_tokens truncation on the failure notice when the round was cut', async () => {
+  it('names the severing mechanism on the failure notice when the round was cut', async () => {
+    // The in-stream breaker now severs the round long before max_tokens
+    // arrives (the whole point — ~200 tokens instead of the full cap), so the
+    // notice names the breaker rather than the token cap.
     const garbage = 'Let me also check the host components. '.repeat(1000);
     setLLMClientFactory(() => mockLLM([[text(garbage), { type: 'done', stopReason: 'max_tokens' }]]));
 
     const result = await runExploreSubagent({ id: 'deg2', goal: 'g', internals: internals() });
     expect(result.state).toBe('error');
-    expect(result.report).toContain('truncated at the output-token cap');
+    expect(result.report).toContain('severed by the repetition breaker');
   });
 
   it('appends a truncation note to a NON-degenerate max_tokens report instead of gating it', async () => {

@@ -70,7 +70,12 @@ export type ExecutionEventType =
   // docs/tmp/verification-no-progress-staged-recovery.md §5.
   | 'verification_session_change'
   | 'route_decision'
-  | 'plan_finalize';
+  | 'plan_finalize'
+  // sage-causing-rover RCA — explore-subagent report delivery trace. Emitted
+  // at every drain/join site so a report that never reaches the parent
+  // conversation is diagnosable from log-{jobId}.json alone (the incident's
+  // non-delivery mechanism was undecidable without it).
+  | 'subagent_drain';
 
 export interface ExecutionEvent {
   /** ISO timestamp */
