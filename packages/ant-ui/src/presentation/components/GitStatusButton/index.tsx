@@ -12,6 +12,7 @@ import { LoadingButton } from './components/LoadingButton';
 import { ActionButton } from './components/ActionButton';
 import { CommitDecisionModal } from './components/CommitDecisionModal';
 import { GitChangesPanel } from './components/GitChangesPanel';
+import { distinctChangedPaths, derivePartialSelection } from './selectionPolicy';
 import { useStore } from '@/domain/store';
 import type { ReactNode } from 'react';
 
@@ -53,11 +54,7 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
 
   useEffect(() => {
     if (snapshot) {
-      const allPaths = [
-        ...snapshot.staged.map((f) => f.path),
-        ...snapshot.unstaged.map((f) => f.path),
-        ...snapshot.untracked.map((f) => f.path),
-      ];
+      const allPaths = distinctChangedPaths(snapshot);
       const pathsKey = allPaths.slice().sort().join('\n');
       if (prevPathsRef.current !== pathsKey) {
         const prevPaths = new Set(prevPathsRef.current.split('\n').filter(Boolean));
@@ -145,6 +142,11 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
   }
 
   const totalChanges = snapshot.staged.length + snapshot.unstaged.length + snapshot.untracked.length;
+  // Distinct paths are the honest denominator (staged+unstaged overlap
+  // double-counts in `totalChanges`); full selection dispatches NO list so
+  // the BE stages filesystem truth — see selectionPolicy.ts.
+  const distinctChanges = distinctChangedPaths(snapshot).length;
+  const partialSelection = derivePartialSelection(selectedFiles, distinctChanges);
   const branch = snapshot.currentBranch ?? null;
   const ahead = snapshot.ahead ?? 0;
   const behind = snapshot.behind ?? 0;
@@ -168,7 +170,7 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
         />
         <button
           type="button"
-          onClick={() => handleDiscard(selectedFiles.length < totalChanges ? selectedFiles : undefined)}
+          onClick={() => handleDiscard(partialSelection)}
           disabled={totalChanges === 0 || isDiscarding}
           title={t('git.discardAll')}
           style={{
@@ -296,10 +298,10 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
       )}
       <CommitDecisionModal
         isOpen={commitModal.open}
-        fileCount={commitModal.files?.length ?? totalChanges}
+        fileCount={partialSelection ? partialSelection.length : distinctChanges}
         onCancel={closeCommitModal}
-        onUserCommit={(message) => dispatchCommit('user', message)}
-        onAntCommit={() => dispatchCommit('ant')}
+        onUserCommit={(message) => dispatchCommit('user', message, partialSelection)}
+        onAntCommit={() => dispatchCommit('ant', undefined, partialSelection)}
       />
     </>
   );

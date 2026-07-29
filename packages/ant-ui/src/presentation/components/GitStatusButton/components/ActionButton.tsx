@@ -14,7 +14,9 @@ interface ActionButtonProps {
   isPushing: boolean;
   isPulling: boolean;
   isSyncing: boolean;
-  onCommit: (files?: string[]) => void;
+  /** Opens the commit decision modal — the file selection is read live at
+   *  dispatch time (never frozen here). */
+  onCommit: () => void;
   onPush: () => void;
   /** Create a new remote repo and push. Triggered only for the
    *  `publish.variant === 'noRemoteWithFeatures'` CTA. */
@@ -164,7 +166,7 @@ export function ActionButton({
       <div className="flex items-center flex-1 min-w-0" style={CONTAINER_STYLE}>
         <style>{CONTAINER_QUERY_STYLE}</style>
         <FilledCta
-          onClick={() => onCommit(selectedFiles)}
+          onClick={() => onCommit()}
           disabled={disabled}
           title={isFetchBlockingCta ? t('git.updatingStatus') : undefined}
         >

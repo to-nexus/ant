@@ -28,15 +28,21 @@ import { withRetry, isRetryableError } from '../utils/retry';
  * the fix is to RETRY across the provider's rate window (see MAX_ATTEMPTS), NOT
  * to guillotine the first attempt (the old 20s hard cut defeated the adapter's
  * own retry/backoff). This bounds one attempt; the retry budget spans many.
+ *
+ * TIMING INVARIANT: worst-case total (attempts × timeout + backoff sleeps)
+ * MUST stay under the commit Redis lock TTL (60s) which itself must not
+ * outlive the FE Promise.race window (60s). 3×15s + (2s+4s) ≈ 51s. Exceeding
+ * the FE window makes a SUCCESSFUL commit look failed and blocks the retry
+ * behind the still-held lock (409) — worse than a fallback commit subject.
  */
-export const COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS = 25000;
+export const COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS = 15000;
 /**
  * Retry budget for the commit aux call. Lets a transient rate-limit (429) /
  * overload clear as the concurrent job's provider usage ebbs. The single
  * resilience owner (`withRetry`) already fast-fails a true balance depletion, so
- * this never hangs on a real outage.
+ * this never hangs on a real outage. Bounded by the timing invariant above.
  */
-export const COMMIT_MESSAGE_MAX_ATTEMPTS = 5;
+export const COMMIT_MESSAGE_MAX_ATTEMPTS = 3;
 /**
  * Cap on output tokens. Must comfortably fit a multi-commit JSON array that
  * lists every changed file path — too small and the JSON truncates mid-array,
@@ -241,7 +247,7 @@ export async function buildCommitPlan(input: BuildCommitPlanInput): Promise<Comm
       {
         maxAttempts: COMMIT_MESSAGE_MAX_ATTEMPTS,
         initialDelayMs: 2000,
-        maxDelayMs: 20000,
+        maxDelayMs: 4000,
         backoffMultiplier: 2,
         shouldRetry: (e) =>
           isCommitTimeout(e) || isRetryableError(e, ['overloaded_error', 'api_error']),
