@@ -1,6 +1,7 @@
 import { CodeTask } from "../../../../types/task";
-import type { TaskType, ResolvedArtifact } from '@ant/shared';
+import type { TaskType, ResolvedArtifact, ExecutionTierId } from '@ant/shared';
 import { isErrorTask } from '../../tasks/error';
+import { isVerificationTask } from '../../tasks/verification';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 
 const VALID_TASK_TYPES: readonly TaskType[] = [
@@ -60,6 +61,153 @@ export function validateTaskTypeEnum(tasks: CodeTask[]): void {
         validTypes: VALID_TASK_TYPES,
       });
     }
+  }
+}
+
+export type TierShapeViolationKind =
+  | 'tier2-count'
+  | 'tier2-missing-flag'
+  | 'tier34-count'
+  | 'tier34-missing-final'
+  | 'tier34-selfverify-leak';
+
+export interface TierShapeViolationDetail {
+  kind: TierShapeViolationKind;
+  executionTier: ExecutionTierId;
+  taskCount: number;
+  taskId?: string;
+  taskName?: string;
+}
+
+export class TierShapeViolation extends Error {
+  readonly detail: TierShapeViolationDetail;
+  constructor(detail: TierShapeViolationDetail) {
+    const subject = detail.taskName
+      ? ` (task "${detail.taskId ?? '(no id)'} / ${detail.taskName}")`
+      : '';
+    super(
+      `Tier ${detail.executionTier} task shape violation: ${detail.kind}` +
+      `${subject}, taskCount=${detail.taskCount}`,
+    );
+    this.name = 'TierShapeViolation';
+    this.detail = detail;
+  }
+}
+
+export function buildTierShapeViolationFraming(v: TierShapeViolation): string {
+  const { kind, executionTier, taskCount, taskName } = v.detail;
+  let body: string;
+  switch (kind) {
+    case 'tier2-count':
+      body =
+        `Your previous response classified \`<executionTier>2</executionTier>\` but emitted ` +
+        `${taskCount} tasks. Tier 2 (Exploratory, single unit of work) requires EXACTLY one ` +
+        `\`<task>\`. If the directive genuinely needs more than one independent unit of work, ` +
+        `re-classify as Tier 3 (with a mandatory verification task); otherwise re-emit exactly ` +
+        `one task with \`selfVerifyOnDone: true\`.`;
+      break;
+    case 'tier2-missing-flag':
+      body =
+        `Your previous response's sole Tier 2 task "${taskName}" is missing ` +
+        `\`selfVerifyOnDone: true\`. Every Tier 2 non-explain task MUST set it — the task owns ` +
+        `its own install/typecheck/build/test gates. Re-emit the SAME task with the flag added.`;
+      break;
+    case 'tier34-count':
+      body =
+        `Your previous response classified \`<executionTier>${executionTier}</executionTier>\` ` +
+        `but emitted only ${taskCount} task(s). Tier 3/4 requires AT LEAST 2 tasks: work task(s) ` +
+        `plus a dedicated Final Verification task (\`type: "verification"\`, \`priority: 1000\`). ` +
+        `A truly single-unit breakdown belongs at Tier 2 with \`selfVerifyOnDone: true\` instead. ` +
+        `The single-feature shape [feature × 1 + verification × 1] = 2 tasks is legitimate.`;
+      break;
+    case 'tier34-missing-final':
+      body =
+        `Your previous response's Tier ${executionTier} breakdown is missing the Final ` +
+        `Verification task (\`type: "verification"\`, \`priority: 1000\`). Every Tier 3/4 ` +
+        `breakdown MUST include one — it is the SSOT for install/typecheck/build/test gates. ` +
+        `Re-emit the SAME task breakdown with the verification task appended.`;
+      break;
+    case 'tier34-selfverify-leak':
+      body =
+        `Your previous response's task "${taskName}" carries \`selfVerifyOnDone: true\` at ` +
+        `Tier ${executionTier}. That flag is legal ONLY on the single Tier 2 task — Tier 3/4 ` +
+        `work tasks defer build/test/typecheck gates to the dedicated verification task. ` +
+        `Re-emit the SAME task breakdown with the flag removed from every non-verification task.`;
+      break;
+  }
+  return (
+    '\n\n---\n\n## Retry: tier/task shape contract violation\n' +
+    body +
+    '\nRe-emit the FULL response (all tags in the required Output Sequence), not just the corrected task.\n'
+  );
+}
+
+/**
+ * Tier-shape contract validation — mirrors `createTaskQueue`'s count/shape
+ * gates (responseParser.ts) as a pure check the decompose retry loop can run
+ * BEFORE committing, so an LLM shape drift gets a corrective framing retry
+ * instead of crashing the job. `createTaskQueue`'s own throws remain as the
+ * post-loop backstop.
+ *
+ * Skips when `executionTier <= 1` (direct path ignores tasks) and when
+ * `tasks.length === 0` (the empty-queue case is owned by the specClarify /
+ * empty-tasks guard in decompose STEP 4.7 — do not double-judge here).
+ */
+export function validateTierTaskShape(
+  tasks: CodeTask[],
+  executionTier: ExecutionTierId,
+): void {
+  if (executionTier <= 1 || tasks.length === 0) return;
+
+  if (executionTier === 2) {
+    if (tasks.length !== 1) {
+      throw new TierShapeViolation({
+        kind: 'tier2-count',
+        executionTier,
+        taskCount: tasks.length,
+      });
+    }
+    const sole = tasks[0];
+    const isExplain = (sole.type as string) === 'explain';
+    const flag = (sole as { selfVerifyOnDone?: boolean }).selfVerifyOnDone;
+    if (!isExplain && flag !== true) {
+      throw new TierShapeViolation({
+        kind: 'tier2-missing-flag',
+        executionTier,
+        taskCount: tasks.length,
+        taskId: sole.id,
+        taskName: sole.name,
+      });
+    }
+    return;
+  }
+
+  // executionTier >= 3
+  if (tasks.length < 2) {
+    throw new TierShapeViolation({
+      kind: 'tier34-count',
+      executionTier,
+      taskCount: tasks.length,
+    });
+  }
+  if (!tasks.some(t => isVerificationTask(t))) {
+    throw new TierShapeViolation({
+      kind: 'tier34-missing-final',
+      executionTier,
+      taskCount: tasks.length,
+    });
+  }
+  const leaked = tasks.find(
+    t => (t as { selfVerifyOnDone?: boolean }).selfVerifyOnDone === true && !isVerificationTask(t),
+  );
+  if (leaked) {
+    throw new TierShapeViolation({
+      kind: 'tier34-selfverify-leak',
+      executionTier,
+      taskCount: tasks.length,
+      taskId: leaked.id,
+      taskName: leaked.name,
+    });
   }
 }
 

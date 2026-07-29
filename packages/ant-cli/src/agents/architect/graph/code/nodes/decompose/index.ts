@@ -28,8 +28,11 @@ import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatin
 import {
   validateTasks,
   validateTaskTypeEnum,
+  validateTierTaskShape,
   InvalidTaskTypeViolation,
   buildInvalidTaskTypeViolationFraming,
+  TierShapeViolation,
+  buildTierShapeViolationFraming,
 } from "./validation";
 import { checkSessionRestore, restoreFromSession } from "./sessionManager";
 import { prepareRacInjection } from "./designSelector";
@@ -1037,6 +1040,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       // a corrective framing on stochastic mis-categorisation (e.g.
       // emitting the mode name "refactor" as a task type).
       validateTaskTypeEnum(parsed.tasks);
+      // Tier-shape contract (Tier 2 exactly-one + selfVerifyOnDone; Tier 3/4
+      // >= 2 tasks + Final Verification + no selfVerifyOnDone leak). Runs
+      // AFTER the type-enum check (isVerificationTask needs valid types) and
+      // inside the loop so shape drift retries with framing instead of
+      // crashing at createTaskQueue's post-loop backstop (fixed-imaging-batch
+      // incident: glm Tier 4 selfVerifyOnDone leak → process_crash).
+      validateTierTaskShape(parsed.tasks, executionTier);
       break; // contract satisfied
     } catch (e) {
       if (e instanceof InvalidTaskTypeViolation) {
@@ -1052,6 +1062,23 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           `"${e.detail.observedType}" on "${e.detail.taskName}" — retrying with framing`,
         );
         prompts.user = originalUserPrompt + buildInvalidTaskTypeViolationFraming(e);
+        continue;
+      }
+
+      if (e instanceof TierShapeViolation) {
+        if (attempt >= MAX_ATTEMPTS) {
+          logErrorHeader('Decompose');
+          console.error(
+            `❌ [Decompose] Tier shape violation exhausted ${MAX_ATTEMPTS} attempts: ${e.message}`,
+          );
+          throw e;
+        }
+        console.warn(
+          `⚠️  [Decompose] Tier shape violation attempt ${attempt}/${MAX_ATTEMPTS}: ` +
+          `${e.detail.kind} (tier=${e.detail.executionTier}, tasks=${e.detail.taskCount}` +
+          `${e.detail.taskName ? `, task="${e.detail.taskName}"` : ''}) — retrying with framing`,
+        );
+        prompts.user = originalUserPrompt + buildTierShapeViolationFraming(e);
         continue;
       }
 
