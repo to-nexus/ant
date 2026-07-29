@@ -24,6 +24,8 @@ import { DEFAULT_MODELS } from '@ant/shared';
 import {
   buildCommitPlan,
   deriveFallbackCommitMessage,
+  COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS,
+  COMMIT_MESSAGE_MAX_ATTEMPTS,
 } from '../../src/core/context/commitMessage';
 
 /** Bare ISO-timestamp commit message — the regression we must never re-emit. */
@@ -190,5 +192,26 @@ describe('loadWorkspaceConfigFromPath injects the aux commit default', () => {
       fs.rmSync(dir, { recursive: true, force: true });
       if (prev !== undefined) process.env.AI_MODEL_NAME = prev;
     }
+  });
+});
+
+describe('commit timing invariant — BE worst case < lock TTL ≤ FE window', () => {
+  it('keeps the worst-case LLM budget under the 60s commit lock / FE race window', () => {
+    // Backoff sleeps: initial 2s doubling, capped at 4s (maxDelayMs) —
+    // mirrors the withRetry options in buildCommitPlan.
+    let backoffTotal = 0;
+    let delay = 2000;
+    for (let attempt = 1; attempt < COMMIT_MESSAGE_MAX_ATTEMPTS; attempt++) {
+      backoffTotal += Math.min(delay, 4000);
+      delay *= 2;
+    }
+    const worstCase =
+      COMMIT_MESSAGE_MAX_ATTEMPTS * COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS + backoffTotal;
+    // 60_000 = LOCK_TTL_COMMIT_SEC (GitService/remote/index.ts) = FE
+    // OP_TIMEOUTS.commit (ant-ui git-world/state.ts). If this fails, a commit
+    // can succeed on the BE after the FE already reported failure, and the
+    // immediate retry 409s against the still-held lock (the 226ddda28
+    // regression).
+    expect(worstCase).toBeLessThan(60_000);
   });
 });

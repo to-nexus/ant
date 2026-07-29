@@ -102,34 +102,57 @@ export abstract class GitOperation<TIn, TOut> {
     input: TIn,
   ): Promise<TOut> {
     const ctx: GitOperationContext<TIn> = { projectId, userContext, input };
-    const result = await this.run(ctx);
+    let result: TOut;
+    try {
+      result = await this.run(ctx);
+    } catch (error) {
+      // Failure still broadcasts a FRESH snapshot (with status:'failed') —
+      // without it the FE keeps its stale change list, re-sends the same
+      // dead paths, and the failure self-perpetuates. Watcher retry and
+      // indexing remain success-only.
+      await this.broadcastSnapshot(ctx, {
+        status: 'failed',
+        op: this.kind(),
+        error: {
+          kind: 'unknown',
+          message: error instanceof Error ? error.message : String(error),
+          retryable: true,
+          suggestedAction: null,
+        },
+        failedAt: Date.now(),
+      });
+      throw error;
+    }
     await this.onSuccess(ctx);
     return result;
   }
 
-  protected async onSuccess(ctx: GitOperationContext<TIn>): Promise<void> {
+  /**
+   * Compute the canonical snapshot and publish the `gitState` SSE event.
+   * Shared by the success hook and the failure path — the snapshot must go
+   * out either way so the FE change list never goes stale.
+   */
+  private async broadcastSnapshot(
+    ctx: GitOperationContext<TIn>,
+    operation: GitOperationState,
+  ): Promise<void> {
     const { projectId, userContext } = ctx;
     const feature = this.featureName(ctx);
 
-    // Snapshot + PAT probe are decoupled from the publish attempt so a
+    // Snapshot + PAT probe are decoupled from the operation itself so a
     // StatusService failure never masquerades as an operation failure.
     let snapshot: GitSnapshot | null = null;
     let pat: GitPatState = { configured: false };
     try {
       snapshot = await this.deps.statusService.getSnapshot(projectId, userContext, feature);
     } catch (error: any) {
-      console.warn('[GitOperation] onSuccess snapshot failed:', error?.message ?? error);
+      console.warn('[GitOperation] snapshot failed:', error?.message ?? error);
     }
     try {
       pat = await this.deps.statusService.getPat(userContext);
     } catch { /* tolerate */ }
 
     if (snapshot && this.deps.broadcaster) {
-      const operation: GitOperationState = {
-        status: 'succeeded',
-        op: this.kind(),
-        completedAt: Date.now(),
-      };
       try {
         await this.deps.broadcaster.notifyOperationComplete(
           projectId,
@@ -143,6 +166,16 @@ export abstract class GitOperation<TIn, TOut> {
         console.warn('[GitOperation] broadcaster failed:', error?.message ?? error);
       }
     }
+  }
+
+  protected async onSuccess(ctx: GitOperationContext<TIn>): Promise<void> {
+    const { projectId, userContext } = ctx;
+
+    await this.broadcastSnapshot(ctx, {
+      status: 'succeeded',
+      op: this.kind(),
+      completedAt: Date.now(),
+    });
 
     // Previously only Clone/Initialize called this hook — the asymmetry was
     // the root cause of deferred watchers never being re-armed on Push/Pull/

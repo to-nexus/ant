@@ -384,7 +384,10 @@ export function createProjectsRoutes(deps: {
     // Slow operations (publish/clone) can exceed proxy idle timeouts — emit
     // a keep-alive heartbeat while the operation runs to keep the connection
     // warm.
-    const isSlowOp = userOp === 'publish' || userOp === 'clone' || userOp === 'sync';
+    // `commit` qualifies too: the ant-authored path runs an aux LLM call
+    // (worst case ~51s) that can exceed proxy idle timeouts.
+    const isSlowOp =
+      userOp === 'publish' || userOp === 'clone' || userOp === 'sync' || userOp === 'commit';
     let heartbeat: NodeJS.Timeout | null = null;
     if (isSlowOp) {
       res.setHeader('Content-Type', 'application/json');

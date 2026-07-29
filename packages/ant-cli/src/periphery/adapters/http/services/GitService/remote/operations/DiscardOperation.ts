@@ -2,6 +2,7 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { UserContext } from '../../../../../../../core/types/user';
 import { WorktreeService } from '../../worktree';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
+import { reconcileStagePaths } from './helpers/reconcileStagePaths';
 
 /**
  * DiscardOperation
@@ -36,22 +37,18 @@ export class DiscardOperation {
     const status = await git.status();
 
     if (files && files.length > 0) {
-      // Per-file discard
-      const trackedFiles = files.filter(f =>
-        status.modified.includes(f) || status.deleted.includes(f)
-      );
-      const untrackedFiles = files.filter(f =>
-        status.not_added.includes(f)
-      );
+      // Per-file discard — live status is the pathspec authority (shared
+      // with CommitOperation via reconcileStagePaths).
+      const { tracked, untracked } = reconcileStagePaths(status, files);
 
-      if (trackedFiles.length > 0) {
-        await git.checkout(['--', ...trackedFiles]);
+      if (tracked.length > 0) {
+        await git.checkout(['--', ...tracked]);
       }
-      if (untrackedFiles.length > 0) {
-        await git.raw(['clean', '-f', '--', ...untrackedFiles]);
+      if (untracked.length > 0) {
+        await git.raw(['clean', '-f', '--', ...untracked]);
       }
 
-      const total = trackedFiles.length + untrackedFiles.length;
+      const total = tracked.length + untracked.length;
       console.log(`[DiscardOperation] Discarded ${total} file(s)`);
       return { success: true, discardedFiles: total };
     } else {

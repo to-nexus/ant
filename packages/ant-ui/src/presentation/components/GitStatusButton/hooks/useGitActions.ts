@@ -29,7 +29,7 @@ export function useGitActions(
 ) {
   const { t } = useTranslation('explorer');
   const op = useGitOperation();
-  const { runGitOperation } = useGitDispatch();
+  const { runGitOperation, fetchGitWorldState } = useGitDispatch();
   const { showError, showConfirm } = useAlertModalContext();
   const { toast } = useToastContext();
   const handleGitError = useGitErrorRouting();
@@ -48,15 +48,16 @@ export function useGitActions(
   const featureArg = selectedFeature ?? undefined;
 
   // Commit decision modal state (E6-1). `handleCommit` opens it; the modal
-  // resolves to a user-authored or ant-authored dispatch.
-  const [commitModal, setCommitModal] = useState<{ open: boolean; files?: string[] }>({
-    open: false,
-  });
+  // resolves to a user-authored or ant-authored dispatch. The modal holds NO
+  // file list — the selection is read live at dispatch time (a list frozen
+  // at modal-open goes stale while the user thinks, and a stale path used to
+  // abort the whole `git add`).
+  const [commitModal, setCommitModal] = useState<{ open: boolean }>({ open: false });
 
   const handleCommit = useMemo(
-    () => (files?: string[]) => {
+    () => () => {
       if (!selectedProject || !snapshot) return;
-      setCommitModal({ open: true, files });
+      setCommitModal({ open: true });
     },
     [selectedProject, snapshot],
   );
@@ -64,9 +65,8 @@ export function useGitActions(
   const closeCommitModal = useCallback(() => setCommitModal({ open: false }), []);
 
   const dispatchCommit = useCallback(
-    async (authorMode: 'user' | 'ant', message?: string) => {
+    async (authorMode: 'user' | 'ant', message?: string, files?: string[]) => {
       if (!selectedProject || !snapshot) return;
-      const files = commitModal.files;
       setCommitModal({ open: false });
       const result = await runGitOperation(selectedProject, {
         kind: 'commit',
@@ -78,11 +78,15 @@ export function useGitActions(
       if (result.success) {
         toast.success(t('git.commitSuccess'));
       } else {
+        // Refetch even on failure — the change list may be why we failed
+        // (stale paths); leaving it stale would reproduce the same failure
+        // on retry. Belt-and-braces with the BE's failure-path broadcast.
+        void fetchGitWorldState(selectedProject, { feature: featureArg });
         if (handleGitError(result.error).handled) return;
         showError(result.error?.message || t('git.commitFailed'));
       }
     },
-    [selectedProject, snapshot, commitModal.files, featureArg, runGitOperation, showError, handleGitError, toast, t],
+    [selectedProject, snapshot, featureArg, runGitOperation, fetchGitWorldState, showError, handleGitError, toast, t],
   );
 
   // Pure push — BE's push-variant of the `publish` operation auto-sets
