@@ -4,11 +4,11 @@
  * Phase 11 chat-SSOT — consumes `Turn[]` directly (no `ChatMessage`
  * envelope) and renders each turn via `TurnItem`.
  *
- * Pin behaviour: the most recent user prompt that has scrolled above the
- * readable top edge gets pinned, and the pin's button jumps back to it.
- * Bubbles register themselves through `pinRegistry`, this component keeps
- * their content-space positions, and `pinTarget` owns the predicate — see
- * those headers for why neither a DOM query nor row visibility works.
+ * Pin behaviour: while no user prompt is on screen, the most recent one above
+ * the viewport is pinned, and the pin's button jumps back to it. Bubbles
+ * register themselves through `pinRegistry`, this component keeps their
+ * content-space positions, and `pinTarget` owns the rule — see those headers
+ * for why neither a DOM query nor row visibility works.
  *
  * Pin state is local rather than lifted because the jump needs
  * `virtuosoRef`, which no ancestor can reach.
@@ -121,9 +121,9 @@ export function ChatHistory({ turns }: ChatHistoryProps) {
   }, []);
 
   /**
-   * Refresh the content-space metrics of every mounted bubble, then pin the
-   * newest prompt that has scrolled above the readable top edge.
-   * `resolvePinTarget` owns the predicate.
+   * Refresh the content-space metrics of every mounted bubble, then let
+   * `resolvePinTarget` decide. This function owns geometry only — the rule
+   * (including "a prompt on screen means no pin") lives there.
    */
   const recomputePin = useCallback(() => {
     const scroller = scrollerRef.current;
@@ -143,11 +143,15 @@ export function ChatHistory({ turns }: ChatHistoryProps) {
 
     const scrollTop = scroller.scrollTop;
     const scrollerTop = scroller.getBoundingClientRect().top;
+    // Mark-then-refresh: cached offsets survive unmounting on purpose, but only
+    // the entries re-measured below may be read as "on screen".
+    for (const metrics of bubbleMetricsRef.current.values()) metrics.mounted = false;
     for (const [turnId, el] of bubbleElsRef.current) {
       const rect = el.getBoundingClientRect();
       bubbleMetricsRef.current.set(turnId, {
         offset: rect.top - scrollerTop + scrollTop,
         height: rect.height,
+        mounted: true,
       });
     }
 
@@ -156,12 +160,11 @@ export function ChatHistory({ turns }: ChatHistoryProps) {
       console.warn('📌 [PinnedQuery] no user bubbles registered — the pin cannot resolve a target');
     }
 
-    const targetIndex = resolvePinTarget(
-      ts,
-      bubbleMetricsRef.current,
+    const targetIndex = resolvePinTarget(ts, bubbleMetricsRef.current, {
       scrollTop,
-      PIN_COLLAPSED_HEIGHT_PX,
-    );
+      height: scroller.clientHeight,
+      topInset: PIN_COLLAPSED_HEIGHT_PX,
+    });
 
     const target = targetIndex == null ? undefined : ts[targetIndex];
     const userLine = target?.user;
