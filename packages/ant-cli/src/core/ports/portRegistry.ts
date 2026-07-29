@@ -5,7 +5,7 @@
  * All state is stored in Redis for multi-pod consistency.
  */
 
-import type { PreviewStructureType } from './preview';
+import type { PreviewStructureType, ProjectProfile } from '@ant/shared';
 
 // ============================================
 // Preview Types
@@ -177,8 +177,8 @@ export interface PreviewState {
   // Project structure (auto-detected at preview start)
   structureType?: PreviewStructureType;
   
-  // Project profile (language/framework, detected by decompose node)
-  projectProfile?: { language: string; framework?: string };
+  // Project profile (manifest-derived; see @ant/shared ProjectProfile)
+  projectProfile?: ProjectProfile;
   
   // Service connections (auto-detected + user-configured via Preview Config UI)
   connections: ServiceConnection[];
@@ -244,7 +244,7 @@ export interface DeployPackage {
    * `ProcessSpawner` dispatch by language (Node/Go/Python/…) on first deploy
    * and on rehydration. Absent for static frontends.
    */
-  projectProfile?: { language: string; framework?: string };
+  projectProfile?: ProjectProfile;
   /**
    * Absolute path to THIS package's directory.
    * Used as `cwd` for `next start` and as the build root for `runBuild`.

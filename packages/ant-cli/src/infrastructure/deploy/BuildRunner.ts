@@ -21,6 +21,12 @@ export interface BuildResult {
 
 /**
  * Detect the frontend framework by inspecting package.json dependencies.
+ *
+ * DIFFERENT AXIS from `ProjectProfile.framework` (`detectors/manifest`): this
+ * classifies the BUILD ARTIFACT and the env-var prefix (`toToggleFramework` maps
+ * `vite` → `VITE_`, `nextjs` → `NEXT_PUBLIC_`, `cra` → `REACT_APP_`), so `vite`
+ * and `static` are values here even though neither is a framework. Do not merge
+ * the two — coupling env-toggle prefixes to the display vocabulary breaks both.
  */
 export function detectFramework(workspacePath: string): DeployFramework {
   const pkgPath = path.join(workspacePath, 'package.json');

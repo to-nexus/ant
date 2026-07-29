@@ -210,14 +210,14 @@
     "additionalSetupNeeded": "Additional configuration may be needed in preview server environment",
     "configTitle": "Preview Config",
     "projectInfo": "Project Info",
-    "notDetected": "Not detected (start preview to detect)",
+    "notDetected": "Not detected",
     "backendConnection": "Backend Connection",
     "backendConnectionDesc": "Connect this frontend project to a backend API for preview testing.",
     "controls": "Preview Controls",
     "statusConsole": "Status Console",
     "noIssues": "No issues. Start the preview server to see status.",
     "selectWorkspace": "Select a project to configure preview.",
-    "structureType": "Structure Type:",
+    "structureType": "Structure Type",
     "directUrl": "Direct URL",
     "antProject": "Ant Project",
     "backendUrl": "Backend URL",
@@ -275,6 +275,10 @@
         "codeJobActive": "A code job is running on this feature. Deploy is available once it completes.",
         "tierNotAllowed": "Upgrade to Pro or Max to deploy. Preview is free for all tiers."
       }
-    }
+    },
+    "projectProfile": "Project Profile",
+    "projectProfileDesc": "Structure / language / framework detected from the codebase manifests.",
+    "language": "Language",
+    "framework": "Framework"
   }
 }

@@ -19,7 +19,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import * as path from 'path';
-import { featureNameToSlug } from '@ant/shared';
+import { featureNameToSlug, type ProjectProfile } from '@ant/shared';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
@@ -49,7 +49,8 @@ import { resolveConnectionForSave } from '../../periphery/adapters/http/services
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
 import { resolvePreviewTarget, resolvePreviewLabel, resolveOwnerForward, selfPodId, selfServicePort, PREVIEW_PEER_FORWARD_HEADER } from '../../periphery/adapters/http/middleware/previewRouting';
 import { resolveCrossPodLiveness } from '../../core/utils/crossPodLiveness';
-import { ProjectStructureDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectStructureDetector';
+import { ProjectProfileDetector, type DetectedProjectFacts } from '../../periphery/adapters/http/services/PreviewService/detectors/ProjectProfileDetector';
+import { observedFactsPatch, resolveProjectFacts } from '../../periphery/adapters/http/services/PreviewService/utils/projectFacts';
 import { ConnectionDetector } from '../../periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector';
 import {
   upsertConnectionAnnotation,
@@ -379,7 +380,7 @@ export class PreviewServer {
           return;
         }
         try {
-          const connections = await this.refreshProjectConnections(
+          const connections = await this.refreshProjectFacts(
             { organizationId: msg.organizationId, userId: msg.userId },
             msg.projectId,
             msg.feature || 'main',
@@ -453,14 +454,19 @@ export class PreviewServer {
   }
 
   /**
-   * Re-detect this project's service connections from the CURRENT code and
-   * overwrite the cached registry (+ the live PreviewState if running). SINGLE
-   * source shared by the `detect-connections` endpoint (Auto Detect button) AND
-   * the post-code-job `CONNECTIONS_REFRESH` subscriber — so the post-job panel
-   * reflects the FINAL code, not the snapshot cached early in the job. Best-effort
-   * detection: a missing workspace or structure-detection failure yields [].
+   * Re-detect this project's FACTS — service connections plus the project
+   * profile / structureType — from the CURRENT code, and overwrite the derived
+   * caches (+ the live PreviewState if running).
+   *
+   * SINGLE source shared by the `detect-connections` endpoint (Auto Detect
+   * button) AND the post-code-job `CONNECTIONS_REFRESH` subscriber, so the
+   * post-job panel reflects the FINAL code rather than the snapshot cached early
+   * in the job. The channel constant keeps its name (cross-process contract);
+   * only this handler's responsibility widened. Best-effort throughout: a
+   * missing workspace or detection failure yields [] and leaves the profile
+   * untouched.
    */
-  private async refreshProjectConnections(
+  private async refreshProjectFacts(
     userContext: { organizationId: string; userId: string },
     projectId: string,
     feature: string,
@@ -471,16 +477,16 @@ export class PreviewServer {
       return [];
     }
 
+    const facts = await this.detectProjectFacts(userContext, projectId, feature);
+
     let connections: import('../../core/ports/portRegistry').ServiceConnection[] = [];
-    try {
-      const structureDetector = new ProjectStructureDetector();
-      const structure = await structureDetector.detect(workspacePath);
-      if (structure) {
-        const connectionDetector = new ConnectionDetector();
-        connections = connectionDetector.detect(workspacePath, structure, serverKey);
-      }
-    } catch (detectErr: any) {
-      logger.warn(`[PreviewServer] Structure detection failed, clearing connections: ${detectErr.message}`, { component: 'PreviewServer' });
+    if (facts?.structure) {
+      // Reuse the structure the profile detector already produced — one
+      // filesystem pass, not two.
+      const connectionDetector = new ConnectionDetector();
+      connections = connectionDetector.detect(workspacePath, facts.structure, serverKey);
+    } else {
+      logger.warn(`[PreviewServer] Structure detection yielded nothing, clearing connections for ${serverKey}`, { component: 'PreviewServer' });
     }
 
     // Structure sync (gen-code backstop): ensure `.env` has a key for every
@@ -550,7 +556,12 @@ export class PreviewServer {
       userContext.userId,
       projectId,
       feature,
-      { connections: configConnections }
+      {
+        connections: configConnections,
+        // Same contract as connections: the codebase is the SSOT and this key is
+        // the derived cache.
+        ...observedFactsPatch(facts),
+      }
     );
 
     // Also update PreviewState if preview is currently running
@@ -561,12 +572,42 @@ export class PreviewServer {
       if (currentState.running) {
         await this.stateStore.updatePreview(
           userContext.organizationId, userContext.userId, projectId, feature,
-          { connections }
+          { connections, ...observedFactsPatch(facts) }
         );
       }
     } catch { /* best-effort */ }
 
+    // Push the refreshed facts so an open Preview Config panel updates without a
+    // reload (the post-code-job case the user actually observes).
+    if (facts) {
+      this.previewService.broadcastProjectFacts(
+        userContext.organizationId, userContext.userId, projectId, feature,
+        { structureType: facts.structureType, projectProfile: facts.profile, canStart: facts.canStart },
+      );
+    }
+
     return connections;
+  }
+
+  /**
+   * Observe the project facts for a feature's codebase. The codebase is the
+   * SSOT; Redis holds only derived caches. Cheap enough to run per request —
+   * detection reads manifests only, never source or `node_modules`.
+   */
+  private async detectProjectFacts(
+    userContext: { organizationId: string; userId: string },
+    projectId: string,
+    feature: string,
+    fallback?: ProjectProfile,
+  ): Promise<DetectedProjectFacts | null> {
+    try {
+      const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+      if (!fs.existsSync(workspacePath)) return null;
+      return await new ProjectProfileDetector().detectFacts(workspacePath, fallback);
+    } catch (err: any) {
+      logger.warn(`[PreviewServer] Project facts detection failed: ${err?.message ?? err}`, { component: 'PreviewServer' });
+      return null;
+    }
   }
 
   /**
@@ -842,21 +883,24 @@ export class PreviewServer {
           feature
         );
 
-        // Compute canStart + detect project profile: lightweight filesystem check when idle
-        let canStart = false;
-        let fsProjectProfile: { language: string; framework?: string } | undefined;
-        let fsStructureType: string | undefined;
-        if (!status.running && status.phase !== 'installing' && status.phase !== 'starting') {
-          try {
-            const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
-            const detection = this.detectProjectQuick(workspacePath);
-            canStart = detection.canStart;
-            fsProjectProfile = detection.projectProfile;
-            fsStructureType = detection.structureType;
-          } catch {
-            // Filesystem check failure → canStart remains false
-          }
-        }
+        // Observe the codebase unconditionally — the project's identity does not
+        // depend on whether a preview happens to be running. Only `canStart` is
+        // gated on busyness (see `resolveProjectFacts`). Gating detection itself
+        // is what made the profile disappear mid-start and flip across a
+        // start/stop cycle.
+        const cachedConfig = await this.stateStore
+          .getPreviewConfig(userContext.organizationId, userContext.userId, projectId, feature)
+          .catch(() => null);
+        const detected = await this.detectProjectFacts(
+          userContext, projectId, feature, cachedConfig?.projectProfile ?? undefined,
+        );
+        const isBusy = status.running || status.phase === 'installing' || status.phase === 'starting';
+        const facts = resolveProjectFacts({
+          detected,
+          runtime: { structureType: status.structureType as any, projectProfile: status.projectProfile },
+          cached: cachedConfig,
+          isBusy,
+        });
 
         res.json({
           running: status.running,
@@ -872,11 +916,11 @@ export class PreviewServer {
           setupReasoning: status.setupReasoning,
           setupReason: status.setupReason,
           suggestedFix: status.suggestedFix,
-          structureType: status.structureType || fsStructureType || null,
-          projectProfile: (status as any).projectProfile || fsProjectProfile || null,
+          structureType: facts.structureType,
+          projectProfile: facts.projectProfile,
           connections: status.connections || [],
           restartRequired: status.restartRequired ?? false,
-          canStart,
+          canStart: facts.canStart,
           logs: logs.slice(-50)
         });
       } catch (error: any) {
@@ -916,8 +960,11 @@ export class PreviewServer {
     /**
      * GET /preview/projects/:id/preview-config
      * Get preview configuration (connections, structureType, projectProfile).
-     * If connections registry is empty and project files exist, runs ConnectionDetector
-     * once and caches the result in Redis.
+     *
+     * The codebase is the SSOT for all three: connections come from
+     * `.env.example` / `.env`, and the profile / structureType from the project
+     * manifests. Redis is a derived cache, refreshed here. This endpoint and
+     * `GET /status` share `resolveProjectFacts`, so the two can never disagree.
      */
     this.app.get('/projects/:id/preview-config', async (req: Request, res: Response) => {
       try {
@@ -926,7 +973,7 @@ export class PreviewServer {
         const feature = req.query.feature as string || 'main';
         const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
 
-        let config = await this.stateStore.getPreviewConfig(
+        const config = await this.stateStore.getPreviewConfig(
           userContext.organizationId,
           userContext.userId,
           projectId,
@@ -940,33 +987,37 @@ export class PreviewServer {
           feature
         );
 
-        // `.env.example` (structure) + `.env` (value/toggle) are the SSOT. Always
-        // re-detect from files so the panel reflects the current file state;
-        // Redis preview-config is a derived cache, refreshed here (never the
-        // authority). Cached connections are the fallback when the workspace or
-        // structure is transiently unavailable.
+        const detected = await this.detectProjectFacts(
+          userContext, projectId, feature, config?.projectProfile ?? undefined,
+        );
+        const isBusy = status.running || status.phase === 'installing' || status.phase === 'starting';
+        const facts = resolveProjectFacts({
+          detected,
+          runtime: { structureType: status.structureType as any, projectProfile: status.projectProfile },
+          cached: config,
+          isBusy,
+        });
+
+        // Cached connections are the fallback when the workspace or its structure
+        // is transiently unavailable — never overwrite them with an empty list.
         let connections = config?.connections || [];
-        try {
-          const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
-          if (fs.existsSync(workspacePath)) {
-            const detector = new ProjectStructureDetector();
-            const structure = await detector.detect(workspacePath);
-            if (structure) {
-              const connectionDetector = new ConnectionDetector();
-              connections = connectionDetector.detect(workspacePath, structure, serverKey);
-              await this.stateStore.savePreviewConfig(
-                userContext.organizationId, userContext.userId, projectId, feature,
-                { connections }
-              );
-            }
+        if (detected?.structure) {
+          try {
+            const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
+            const connectionDetector = new ConnectionDetector();
+            connections = connectionDetector.detect(workspacePath, detected.structure, serverKey);
+            await this.stateStore.savePreviewConfig(
+              userContext.organizationId, userContext.userId, projectId, feature,
+              { connections, ...observedFactsPatch(detected) }
+            );
+          } catch (detectErr: any) {
+            logger.warn(`[PreviewServer] Connection detect failed, using cached config: ${detectErr.message}`, { component: 'PreviewServer' });
           }
-        } catch (detectErr: any) {
-          logger.warn(`[PreviewServer] Connection detect failed, using cached config: ${detectErr.message}`, { component: 'PreviewServer' });
         }
 
         res.json({
-          structureType: status.structureType || config?.structureType || null,
-          projectProfile: config?.projectProfile || null,
+          structureType: facts.structureType,
+          projectProfile: facts.projectProfile,
           connections,
         });
       } catch (error: any) {
@@ -1089,7 +1140,7 @@ export class PreviewServer {
           return;
         }
 
-        const connections = await this.refreshProjectConnections(userContext, projectId, feature);
+        const connections = await this.refreshProjectFacts(userContext, projectId, feature);
         logger.info(`[PreviewServer] Detect-connections: found ${connections.length} for ${projectId}/${feature}`, { component: 'PreviewServer' });
         res.json({ success: true, connections });
       } catch (error: any) {
@@ -1739,35 +1790,6 @@ export class PreviewServer {
       }
     } catch (err: any) {
       logger.debug(`[PreviewServer] peer-probe failed: ${err?.message ?? err}`, { component: 'PreviewServer' });
-    }
-  }
-
-  /**
-   * Check if preview can be started (lightweight filesystem check).
-   * Returns true if workspace has a package.json with dev/start scripts,
-   * or a Makefile/go.mod indicating a runnable project.
-   */
-  /**
-   * Lightweight filesystem check: can the project be started, and what is its profile?
-   * Delegates to ProjectStructureDetector.quickDetect() for unified detection logic.
-   */
-  private detectProjectQuick(workspacePath: string): {
-    canStart: boolean;
-    projectProfile?: { language: string; framework?: string };
-    structureType?: string;
-  } {
-    try {
-      const result = ProjectStructureDetector.quickDetect(workspacePath);
-      if (!result) {
-        return { canStart: false };
-      }
-      return {
-        canStart: result.canStart,
-        projectProfile: { language: result.language },
-        structureType: result.structureType,
-      };
-    } catch {
-      return { canStart: false };
     }
   }
 

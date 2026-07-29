@@ -210,14 +210,14 @@
     "additionalSetupNeeded": "프리뷰 서버 실행 환경에서 추가 설정이 필요할 수 있습니다",
     "configTitle": "프리뷰 설정",
     "projectInfo": "프로젝트 정보",
-    "notDetected": "감지되지 않음 (프리뷰를 시작하면 감지됩니다)",
+    "notDetected": "감지되지 않음",
     "backendConnection": "백엔드 연결",
     "backendConnectionDesc": "프리뷰 테스트를 위해 이 프론트엔드 프로젝트를 백엔드 API에 연결합니다.",
     "controls": "프리뷰 컨트롤",
     "statusConsole": "상태 콘솔",
     "noIssues": "문제 없음. 상태를 확인하려면 프리뷰 서버를 시작하세요.",
     "selectWorkspace": "프리뷰를 설정할 프로젝트를 선택하세요.",
-    "structureType": "구조 유형:",
+    "structureType": "구조 유형",
     "directUrl": "직접 URL",
     "antProject": "Ant 프로젝트",
     "backendUrl": "백엔드 URL",
@@ -275,6 +275,10 @@
         "codeJobActive": "이 피처에서 코드 작업이 진행 중입니다. 작업이 끝난 후 배포할 수 있습니다.",
         "tierNotAllowed": "배포는 Pro 또는 Max 플랜에서 가능합니다. 프리뷰는 모든 플랜에서 무료입니다."
       }
-    }
+    },
+    "projectProfile": "프로젝트 프로파일",
+    "projectProfileDesc": "코드베이스 매니페스트에서 감지한 구조 / 언어 / 프레임워크.",
+    "language": "언어",
+    "framework": "프레임워크"
   }
 }

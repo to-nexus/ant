@@ -1428,26 +1428,36 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       console.log(`   Fullstack frameworks: frontend=${mergedConfig.frontend?.framework || 'none'}, backend=${mergedConfig.backend?.framework || 'none'}`);
     }
     
+    // Publish the techTier decision as a preview profile HINT. It is a greenfield
+    // stand-in only: once the code job writes manifests, `ProjectProfileDetector`
+    // observes the real thing and outranks this (`source: 'techtier-hint'`).
+    //
+    // Read from `effectiveTier`, not `parsedTechTier` — for `stack === 'fullstack'`
+    // the frameworks live in the `frontend`/`backend` sub-objects, so the
+    // top-level `parsedTechTier.framework` is always undefined there and the
+    // framework never reached the UI.
     if (state.deps?.previewUpdate && state.context) {
       const stackToStructure: Record<string, 'frontend-only' | 'backend-only' | 'fullstack'> = {
         frontend: 'frontend-only',
         backend: 'backend-only',
         fullstack: 'fullstack',
       };
-      const structureType = stack ? stackToStructure[stack] : undefined;
-      if (structureType) {
-        const projectProfile = {
-          language: parsedTechTier.language,
-          framework: parsedTechTier.framework || undefined,
-        };
-        state.deps.previewUpdate.broadcastStructureType(
+      const hint = {
+        ...(effectiveTier?.language ? { language: effectiveTier.language } : {}),
+        ...(effectiveTier?.framework ? { framework: effectiveTier.framework } : {}),
+        ...(stack && stackToStructure[stack] ? { structureType: stackToStructure[stack] } : {}),
+        source: 'techtier-hint' as const,
+      };
+      // Emit even without a resolved stack — a language alone is still worth
+      // showing, and the manifest wins the moment code lands.
+      if (hint.language || hint.framework || hint.structureType) {
+        state.deps.previewUpdate.broadcastProjectProfileHint(
           state.context.project,
           state.context.featureFolder || 'main',
-          structureType,
-          (state as any).userContext,
-          projectProfile
+          hint,
+          (state as any).userContext
         );
-        console.log(`📡 [Decompose] Broadcast structureType=${structureType} projectProfile=${projectProfile.language}/${projectProfile.framework || 'none'} via SSE`);
+        console.log(`📡 [Decompose] Broadcast profile hint ${hint.language ?? 'none'}/${hint.framework ?? 'none'} (${hint.structureType ?? 'no structure'}) via SSE`);
       }
     }
     

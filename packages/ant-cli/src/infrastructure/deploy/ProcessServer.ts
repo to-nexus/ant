@@ -27,6 +27,7 @@ import type { StaticServerHandle } from './StaticServer';
 import type { ServiceConnection } from '../../core/ports/portRegistry';
 import type { PackageInfo } from '../../periphery/adapters/http/services/PreviewService/types';
 import { ProcessSpawner } from '../../periphery/adapters/http/services/PreviewService/managers/ProcessSpawner';
+import type { ProjectProfile } from '@ant/shared';
 import { logger } from '../../utils/logger';
 
 export interface ProcessServerOptions {
@@ -39,7 +40,7 @@ export interface ProcessServerOptions {
   /** The package directory (cwd for the run command). */
   workspacePath: string;
   /** Detected language/framework — drives the spawner's per-language dispatch. */
-  projectProfile?: { language: string; framework?: string };
+  projectProfile?: ProjectProfile;
   /** Resolved service connections (DB URLs, mock toggles, ant-project links). */
   connections?: ServiceConnection[];
   /** Deploy workspace root for two-level .env loading. */

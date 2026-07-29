@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Layers, Terminal, Box } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { ProjectProfile } from '@/infrastructure/http/api';
 import { SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 
 type ChipTone = 'blue' | 'green' | 'purple';
@@ -136,19 +137,16 @@ export function ProjectProfileSection({
   projectProfile,
 }: {
   structureType: string | null;
-  projectProfile: { language?: string; framework?: string } | null;
+  projectProfile: ProjectProfile | null;
 }) {
   const { t } = useTranslation('explorer');
-  const notDetected = t('preview.notDetected', '감지되지 않음');
+  const notDetected = t('preview.notDetected');
 
   return (
     <SectionCard
       icon="Layout"
-      title={t('preview.projectProfile', '프로젝트 프로파일')}
-      description={t(
-        'preview.projectProfileDesc',
-        '감지된 구조 / 언어 / 프레임워크.',
-      )}
+      title={t('preview.projectProfile')}
+      description={t('preview.projectProfileDesc')}
       accent="cool"
     >
       <div
@@ -159,21 +157,21 @@ export function ProjectProfileSection({
         }}
       >
         <ProfileChip
-          label={t('preview.structureType', 'Structure Type')}
+          label={t('preview.structureType')}
           value={structureType}
           tone="blue"
           Icon={Layers}
           notDetectedLabel={notDetected}
         />
         <ProfileChip
-          label={t('preview.language', 'Language')}
+          label={t('preview.language')}
           value={projectProfile?.language}
           tone="green"
           Icon={Terminal}
           notDetectedLabel={notDetected}
         />
         <ProfileChip
-          label={t('preview.framework', 'Framework')}
+          label={t('preview.framework')}
           value={projectProfile?.framework}
           tone="purple"
           Icon={Box}

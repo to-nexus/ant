@@ -1,35 +1,10 @@
 import { FrameworkType } from '../types';
+import { frameworkFromManifests } from './manifest';
 
-/**
- * Preference order for the npm script that starts a dev preview, per package
- * type. The decision is version/framework-independent — it relies only on the
- * scripts the project itself declares. `start:dev` (NestJS `nest start --watch`)
- * is preferred over plain `start` for backends, since a backend `start` is
- * typically `node dist/main` and requires a prior build. The backend list is a
- * superset of the others, so it doubles as the type-agnostic runnability probe.
- */
-const RUN_SCRIPT_PREFERENCE: Record<'frontend' | 'backend' | 'other', readonly string[]> = {
-  frontend: ['dev', 'develop', 'serve', 'start'],
-  backend: ['dev', 'start:dev', 'develop', 'serve', 'dev:server', 'start'],
-  other: ['dev', 'start:dev', 'develop', 'serve', 'start'],
-};
-
-/**
- * Resolve the npm script name to run for a dev preview, or `undefined` if the
- * package declares none. SSOT for "which script starts this package" — used by
- * the spawner (to build `npm run <script>`) and the structure detector.
- */
-export function resolveRunScript(pkgJson: any, type: 'frontend' | 'backend' | 'other'): string | undefined {
-  const scripts = pkgJson?.scripts ?? {};
-  return RUN_SCRIPT_PREFERENCE[type].find(
-    name => typeof scripts[name] === 'string' && scripts[name].trim().length > 0,
-  );
-}
-
-/** Type-agnostic runnability: does the package declare any recognized dev-server script? */
-export function hasRunnableScript(pkgJson: any): boolean {
-  return resolveRunScript(pkgJson, 'backend') !== undefined;
-}
+// Script resolution now lives in `detectors/manifest/scripts.ts` (pure
+// package.json reading, and `canStartFromManifests` needs it). Re-exported so
+// existing importers keep working.
+export { resolveRunScript, hasRunnableScript } from './manifest/scripts';
 
 /**
  * PackageDetector
@@ -134,21 +109,30 @@ export class PackageDetector {
   }
   
   /**
-   * Detect framework type from package.json
+   * Detect framework type from package.json — a narrowing projection over the
+   * manifest table SSOT (`detectors/manifest`), NOT a second detection table.
+   * `FrameworkType` is the small vocabulary `ProjectValidator` switches on;
+   * anything outside it is `'unknown'`.
    */
   detectFrameworkType(packageJson: any): FrameworkType {
-    const deps = { 
-      ...packageJson.dependencies, 
-      ...packageJson.devDependencies 
-    };
-    
-    if (deps.next) return 'next';
-    if (deps.nuxt) return 'nuxt';
-    if (deps.react || deps['react-dom']) return 'react';
-    if (deps.vue || deps['@vue/runtime-core']) return 'vue';
-    if (deps.svelte) return 'svelte';
-    
-    return 'unknown';
+    const framework = frameworkFromManifests(
+      { dir: '', packageJson, packageJsonMalformed: false, hasPnpmWorkspaceYaml: false, hasGoWork: false, hasSetupPy: false, hasManagePy: false },
+      'frontend',
+    );
+    return framework && framework in FRAMEWORK_TYPE_PROJECTION
+      ? FRAMEWORK_TYPE_PROJECTION[framework]
+      : 'unknown';
   }
 }
+
+/** manifest framework id → the narrower `FrameworkType` validator vocabulary. */
+const FRAMEWORK_TYPE_PROJECTION: Record<string, FrameworkType> = {
+  nextjs: 'next',
+  nuxt: 'nuxt',
+  react: 'react',
+  cra: 'react',
+  vue: 'vue',
+  svelte: 'svelte',
+  sveltekit: 'svelte',
+};
 

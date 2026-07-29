@@ -6,6 +6,7 @@ import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 import { resolveRunScript } from '../detectors/PackageDetector';
+import { resolveSpawnLanguage } from '../utils/projectFacts';
 import { loadProjectEnv as loadProjectEnvShared } from './envAssembly';
 import { backfillMockToggles } from './mockToggles';
 import { isSubdomainRouting } from '../../../../../../core/config/previewRouting';
@@ -82,8 +83,8 @@ export class ProcessSpawner {
    * Dispatches to language-specific spawn based on projectProfile.
    */
   spawn(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
-    const lang = (pkg.projectProfile?.language || 'typescript').toLowerCase();
-    
+    const lang = resolveSpawnLanguage(pkg.projectProfile);
+
     switch (lang) {
       case 'typescript':
       case 'javascript':

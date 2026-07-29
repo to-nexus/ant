@@ -6,6 +6,7 @@ import { LogEntry } from '../../../../../core/ports/http';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { PortRegistryPort, PreviewState, PreviewPackage, PreviewPhase, PreviewErrorStage, ServiceConnection } from '../../../../../core/ports/portRegistry';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
+import type { ProjectProfile } from '@ant/shared';
 import { PreviewIssue, PreviewIssueReasoning, PackageInfo, ValidationResult } from './types';
 import { createServerKey, parseServerKey, toUrlKey, toUrlKeyWithService, packageSlug } from './utils/serverKeyUtils';
 import { previewSubdomainAppUrlForUrlKey } from './utils/previewLabel';
@@ -14,6 +15,7 @@ import { LogManager } from './managers/LogManager';
 import { PackageDetector } from './detectors/PackageDetector';
 import { ProjectValidator } from './validators/ProjectValidator';
 import { ProjectStructureDetector } from './detectors/ProjectStructureDetector';
+import { ProjectProfileDetector } from './detectors/ProjectProfileDetector';
 import { ConnectionDetector } from './detectors/ConnectionDetector';
 import { RuntimeDiagnostics } from './detectors/RuntimeDiagnostics';
 import { DependencyInstaller } from './managers/DependencyInstaller';
@@ -156,6 +158,7 @@ export class PreviewService {
   private packageDetector: PackageDetector;
   private projectValidator: ProjectValidator;
   private structureDetector: ProjectStructureDetector;
+  private profileDetector: ProjectProfileDetector;
   private connectionDetector: ConnectionDetector;
   private runtimeDiagnostics: RuntimeDiagnostics;
   private dependencyInstaller: DependencyInstaller;
@@ -190,6 +193,7 @@ export class PreviewService {
     this.packageDetector = new PackageDetector();
     this.projectValidator = new ProjectValidator();
     this.structureDetector = new ProjectStructureDetector(this.packageDetector);
+    this.profileDetector = new ProjectProfileDetector(this.structureDetector);
     this.connectionDetector = new ConnectionDetector();
     this.runtimeDiagnostics = new RuntimeDiagnostics();
     this.dependencyInstaller = new DependencyInstaller();
@@ -312,6 +316,7 @@ export class PreviewService {
             packages: this.enrichPackagesWithUrl(state.packages || []),
             issues: state.issues || [],
             structureType: state.structureType || undefined,
+            projectProfile: state.projectProfile || undefined,
             connections: state.connections || [],
           };
         }
@@ -434,7 +439,31 @@ export class PreviewService {
       this.onStatusChange(serverKey);
     }
   }
-  
+
+  /**
+   * Push freshly observed project facts to the frontend.
+   *
+   * Used by `PreviewServer.refreshProjectFacts` so a post-code-job re-detection
+   * reaches an open Preview Config panel without a manual reload. A partial
+   * status patch is safe — the frontend slice shallow-merges, and the profile
+   * carries its provenance so the rank rule keeps a manifest result from being
+   * demoted by a later hint.
+   */
+  broadcastProjectFacts(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+    facts: { structureType?: string | null; projectProfile?: ProjectProfile | null; canStart?: boolean },
+  ): void {
+    const serverKey = this.createServerKey(tenantId, userId, projectId, feature);
+    this.broadcastStatus(serverKey, {
+      ...(facts.structureType ? { structureType: facts.structureType } : {}),
+      ...(facts.projectProfile ? { projectProfile: facts.projectProfile } : {}),
+      ...(facts.canStart !== undefined ? { canStart: facts.canStart } : {}),
+    });
+  }
+
   /**
    * Validate preview server setup for frontend projects
    */
@@ -863,35 +892,41 @@ export class PreviewService {
       }
       await this.updatePhase(serverKey, 'installing');
       
-      // 1. Detect project structure
-      //    Read projectProfile from Preview Config (set by decompose via PreviewBroadcaster)
-      let projectProfile: { language: string; framework?: string } | undefined;
+      // 1. Detect project facts from the codebase. The cached profile is passed
+      //    ONLY as a greenfield fallback — the manifests are authoritative
+      //    (passing it as authority made a `typescript` hint run Node detection
+      //    on a `go.mod` repo, and meant a framework was never derived at all).
+      let hintProfile: ProjectProfile | undefined;
       if (this.stateStore) {
         try {
           const previewConfig = await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature);
           if (previewConfig?.projectProfile) {
-            projectProfile = previewConfig.projectProfile;
-            logger.info(`[Preview] Using projectProfile from config: ${projectProfile.language}/${projectProfile.framework || 'none'}`, { component: 'PreviewService' });
+            hintProfile = previewConfig.projectProfile;
           }
         } catch { /* best-effort */ }
       }
-      
-      const structure = await this.structureDetector.detect(localPath, projectProfile);
-      logger.warn(`[Preview] Structure: type=${structure.type}, packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}`, { component: 'PreviewService' });
-      
+
+      const facts = await this.profileDetector.detectFacts(localPath, hintProfile);
+      const structure = facts?.structure;
+      if (!structure) {
+        throw new Error('No recognized project files found');
+      }
+      logger.warn(`[Preview] Structure: type=${structure.type}, packages=${structure.packages.length}, entry=${structure.entry?.name || 'none'}, profile=${facts.profile.language ?? 'none'}/${facts.profile.framework ?? 'none'}`, { component: 'PreviewService' });
+
       if (structure.packages.length === 0) {
         throw new Error('No runnable packages found');
       }
-      
-      // 1.1. Save structureType + projectProfile to Redis (auto-detect for Preview Config UI)
-      const detectedProfile = structure.entry?.projectProfile || structure.packages[0]?.projectProfile;
+
+      // 1.1. Mirror the observed facts onto the runtime state so any pod can
+      //      report them without re-reading the filesystem.
+      const detectedProfile = facts.profile;
       if (this.portRegistry) {
         await this.portRegistry.updatePreview(tenantId, userId, projectId, feature, {
-          structureType: structure.type as any,
-          ...(detectedProfile ? { projectProfile: detectedProfile } : {}),
+          structureType: structure.type,
+          projectProfile: detectedProfile,
         });
       }
-      
+
       // 2. Install dependencies for all packages
       const logCallback = (type: 'stdout' | 'stderr', msg: string) => this.appendLog(serverKey, type, msg);
       const credentialEnv = await this.getCredentialEnv(tenantId, userId, projectId, localPath);
@@ -1118,7 +1153,10 @@ export class PreviewService {
           phase: 'starting',
           port: entryPort,
           backendPort,
-          structureType: structure.type as any,
+          structureType: structure.type,
+          // Carried through the full-state replace: omitting it wiped the
+          // profile written by the `updatePreview` call at detection time.
+          projectProfile: detectedProfile,
           connections,
           host,
           podId: os.hostname(),
@@ -2190,7 +2228,7 @@ export class PreviewService {
     phase?: string;
     error?: string;
     structureType?: string;
-    projectProfile?: { language: string; framework?: string };
+    projectProfile?: ProjectProfile;
     connections?: ServiceConnection[];
     restartRequired?: boolean;
     setupReasoning?: string;
@@ -2208,15 +2246,10 @@ export class PreviewService {
           const processes = this.previewServers.get(serverKey);
           const aliveProcesses = processes?.filter(p => !p.killed && p.exitCode === null) || [];
           
-          // Merge projectProfile from PREVIEW_CONFIG if runtime state lacks it
-          let projectProfile = redisState.projectProfile;
-          if (!projectProfile && this.stateStore) {
-            try {
-              const config = await this.stateStore.getPreviewConfig(tenantId, userId, projectId, feature);
-              projectProfile = config?.projectProfile ?? undefined;
-            } catch { /* best-effort */ }
-          }
-          
+          // No PREVIEW_CONFIG fallback here: `resolveProjectFacts` at the HTTP
+          // boundary owns provenance ranking across fresh / runtime / cached, so
+          // reading the cache again on every /status would be a redundant round
+          // trip that also bypasses the rank rule.
           return {
             running: redisState.running,
             ready: redisState.ready,
@@ -2229,7 +2262,7 @@ export class PreviewService {
             packages: this.enrichPackagesWithUrl(redisState.packages || []),
             issues: (redisState.issues || []) as any,
             structureType: redisState.structureType,
-            projectProfile,
+            projectProfile: redisState.projectProfile,
             connections: redisState.connections,
             restartRequired: redisState.restartRequired,
             setupReasoning: redisState.setupReasoning,

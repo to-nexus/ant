@@ -3,7 +3,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
 import { detectPackageManager, buildInstallCommand, findProjectRoot, type PackageManager } from '../../../../../../utils/packageManager';
+import type { ProjectProfile } from '@ant/shared';
 import type { LogCallback } from '../types';
+import { resolveSpawnLanguage } from '../utils/projectFacts';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
 const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -28,13 +30,13 @@ export class DependencyInstaller {
     packagePath: string, 
     displayName: string,
     onLog: LogCallback,
-    projectProfile?: { language: string; framework?: string },
+    projectProfile?: ProjectProfile,
     credentialEnv?: Record<string, string>,
     signal?: AbortSignal
   ): Promise<void> {
     const relativePath = displayName || path.basename(packagePath);
-    const lang = (projectProfile?.language || 'typescript').toLowerCase();
-    
+    const lang = resolveSpawnLanguage(projectProfile);
+
     switch (lang) {
       case 'typescript':
       case 'javascript':
