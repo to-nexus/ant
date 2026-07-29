@@ -292,11 +292,7 @@
     "viewReport": "리포트 보기",
     "noReport": "리포트 없음",
     "stats": "{{duration}} · {{tokens}} 토큰",
-    "overlay": {
-      "title": "서브에이전트 리포트",
-      "close": "리포트 닫기",
-      "openAria": "{{goal}} 서브에이전트 리포트 열기"
-    }
+    "reportOpenAria": "{{goal}} 서브에이전트 리포트 열기"
   },
   "contextLens": {
     "gaugeAria": "컨텍스트 패널 열기",

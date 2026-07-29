@@ -292,11 +292,7 @@
     "viewReport": "View report",
     "noReport": "No report produced",
     "stats": "{{duration}} · {{tokens}} tokens",
-    "overlay": {
-      "title": "Subagent report",
-      "close": "Close report",
-      "openAria": "Open subagent report for {{goal}}"
-    }
+    "reportOpenAria": "Open subagent report for {{goal}}"
   },
   "contextLens": {
     "gaugeAria": "Open the context panel",

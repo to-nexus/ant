@@ -31,7 +31,7 @@ export function EditorTabActions({
 
   return (
     <div className="flex items-center gap-0.5">
-      {policy.isStreaming ? (
+      {policy.isStreaming && (
         <span
           title={streamingTitle}
           className="inline-flex items-center justify-center rounded p-1"
@@ -39,7 +39,9 @@ export function EditorTabActions({
         >
           <StreamingSpinner className="w-3 h-3" />
         </span>
-      ) : (
+      )}
+
+      {policy.showPinToggle && (
         <button
           type="button"
           className="p-1 rounded"

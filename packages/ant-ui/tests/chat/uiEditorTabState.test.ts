@@ -333,6 +333,67 @@ describe('uiSlice editor tab transitions', () => {
     });
   });
 
+  // Regression — the report tab is `virtual` + `pinned: true`, which used to
+  // hide the close button entirely. `closeEditorTab` itself always worked; the
+  // guarantee locked here is that closing it fully tears the surface down so
+  // the user is never stuck with an unremovable report.
+  it('opens a subagent report tab and closes it back to an empty editor surface', () => {
+    const h = createHarness();
+
+    h.state().openReportEditorTab({
+      cardId: 'card-7',
+      goal: 'trace the auth seam',
+      report: '# Findings\n\nport mismatch',
+    });
+
+    const reportId = 'editor:report:card-7';
+    expect(h.state().editorTabs).toHaveLength(1);
+    expect(h.state().editorTabs[0]).toMatchObject({
+      id: reportId,
+      kind: 'virtual',
+      pinned: true,
+      readOnly: true,
+      status: 'ready',
+      source: 'report',
+      title: 'trace the auth seam',
+      content: '# Findings\n\nport mismatch',
+    });
+    expect(h.state().activeEditorTabId).toBe(reportId);
+    expect(h.state().mainPanelActiveTab).toBe(reportId);
+    expect(h.state().mainPanelOpenTabs.fileEdit).toBe(true);
+
+    h.state().closeEditorTab(reportId);
+
+    expect(h.state().editorTabs).toHaveLength(0);
+    expect(h.state().activeEditorTabId).toBeNull();
+    expect(h.state().mainPanelOpenTabs.fileEdit).toBe(false);
+    expect(h.state().mainPanelActiveTab).toBe('job');
+    expect(h.state().mainPanelTabOrder).not.toContain(reportId);
+  });
+
+  it('closing a report tab keeps a coexisting real file tab open', () => {
+    const realTab = makeRealTab({
+      id: 'editor:pinned:docs/spec.md',
+      title: 'spec.md',
+      path: 'docs/spec.md',
+    });
+    const h = createHarness();
+    h.set({
+      editorTabs: [realTab],
+      activeEditorTabId: realTab.id,
+      mainPanelActiveTab: realTab.id,
+      mainPanelOpenTabs: { ...h.state().mainPanelOpenTabs, fileEdit: true },
+      mainPanelTabOrder: [realTab.id],
+    });
+
+    h.state().openReportEditorTab({ cardId: 'card-9', goal: 'scan', report: 'body' });
+    h.state().closeEditorTab('editor:report:card-9');
+
+    expect(h.state().editorTabs).toHaveLength(1);
+    expect(h.state().editorTabs[0].id).toBe(realTab.id);
+    expect(h.state().mainPanelOpenTabs.fileEdit).toBe(true);
+  });
+
   it('selectEditorTab activates top-level tab id and updates order', () => {
     const unpinned = makeRealTab({
       id: 'editor:unpinned',

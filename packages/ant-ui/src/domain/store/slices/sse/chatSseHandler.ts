@@ -177,6 +177,14 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
       case 'events_cleared': {
         flushStreamingDeltaBatch(get);
         get().clearChatEvents(chatEvent.scope);
+        // Every virtual editor tab is backed by a chat card (subagent report,
+        // streaming plan/design preview) that just ceased to exist, so it would
+        // otherwise linger as an orphan — `syncVirtualEditorTabsFromBuffers` is
+        // the only pruner and this is the one branch that never re-runs it.
+        // Real file tabs are NOT chat-backed and stay open.
+        for (const tab of get().editorTabs ?? []) {
+          if (tab.kind === 'virtual') get().closeEditorTab?.(tab.id);
+        }
         // `scope='full'` means the BE collapsed feature.jsonl too;
         // wipe FE breadcrumb cache so the Timeline tab drops stale rows.
         if (chatEvent.scope === 'full') {
