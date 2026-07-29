@@ -1,20 +1,8 @@
 import { twMerge } from 'tailwind-merge';
+import { GLYPH_SIZE, GLYPH_TONE, type GlyphSize, type GlyphTone } from './glyphScale';
 
-export type SpinnerSize = 'sm' | 'md' | 'lg';
-export type SpinnerTone = 'muted' | 'accent' | 'inverse' | 'inherit';
-
-const SIZE: Record<SpinnerSize, string> = {
-  sm: 'w-3.5 h-3.5',
-  md: 'w-4 h-4',
-  lg: 'w-6 h-6',
-};
-
-const TONE: Record<SpinnerTone, string> = {
-  muted: 'var(--text-3)',
-  accent: 'var(--violet-500)',
-  inverse: 'white',
-  inherit: 'currentColor',
-};
+export type SpinnerSize = GlyphSize;
+export type SpinnerTone = GlyphTone;
 
 export interface SpinnerProps {
   size?: SpinnerSize;
@@ -33,10 +21,10 @@ export interface SpinnerProps {
  * keyframe defined in `src/styles/aurora-tokens.css`.
  */
 export function Spinner({ size = 'md', tone = 'muted', className = '', label, style }: SpinnerProps) {
-  const color = TONE[tone];
+  const color = GLYPH_TONE[tone];
   return (
     <svg
-      className={twMerge(SIZE[size], className)}
+      className={twMerge(GLYPH_SIZE[size], className)}
       viewBox="0 0 24 24"
       fill="none"
       stroke={color}
