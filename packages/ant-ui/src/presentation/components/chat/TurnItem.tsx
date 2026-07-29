@@ -78,7 +78,7 @@ interface TurnItemProps {
 export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
   return (
     <div className="w-full min-w-0">
-      {turn.user && <UserBubble user={turn.user} />}
+      {turn.user && <UserBubble turnId={turn.turnId} user={turn.user} />}
       <div className="space-y-3">
         {turn.sections.map((section, idx) => (
           <SectionStack
@@ -97,10 +97,20 @@ export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
 // User bubble
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const UserBubble = memo(function UserBubble({ user }: { user: ChatUserTurnLine }) {
+// `data-user-turn-id` is the pin's observation target: PinnedQuery asks
+// whether THIS bubble has scrolled above the viewport, which the enclosing
+// virtual row cannot answer (it spans the whole response). See pinTarget.ts.
+const UserBubble = memo(function UserBubble({
+  turnId,
+  user,
+}: {
+  turnId: string;
+  user: ChatUserTurnLine;
+}) {
   return (
     <div
       className="w-full px-4 py-3"
+      data-user-turn-id={turnId}
       style={{
         background: 'oklch(from var(--violet-300) l c h / 0.12)',
         borderLeft: '1px solid',
@@ -449,6 +459,8 @@ const StatusCardDispatch = memo(function StatusCardDispatch({
     case 'listed_files':
     case 'searching_code':
     case 'searched_code':
+    case 'searching_reference':
+    case 'searched_reference':
     case 'reading':
     case 'read':
     case 'reading_state':
@@ -471,7 +483,7 @@ const StatusCardDispatch = memo(function StatusCardDispatch({
     case 'downloaded':
     case 'figma_calling':
     case 'figma_called':
-      return <WorkingCard line={line} pending={pending} variant={line.statusType as any} />;
+      return <WorkingCard line={line} pending={pending} variant={line.statusType} />;
 
     case 'subagent_running':
     case 'subagent_report':

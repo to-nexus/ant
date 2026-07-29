@@ -37,13 +37,37 @@ function render(el: React.ReactElement): ReactTestRenderer {
 beforeEach(() => openReportEditorTab.mockClear());
 
 describe('SubagentCard', () => {
-  it('running: shows the running label, no round chip, no button role', () => {
+  it('running: goal is the only visible text; the state label moves to aria-label', () => {
     const tree = render(<SubagentCard line={line('subagent_running', { goal: 'map auth', rounds: 2 })} />);
-    const dump = JSON.stringify(tree.toJSON());
-    expect(dump).toContain('subagent.running');
+    const row = tree.root.findByProps({ role: 'status' });
+
+    // The spinner is the sole VISUAL carrier of "in progress" — the running
+    // label must not be rendered as text next to it.
+    const visibleText = (function collect(node: any): string[] {
+      if (typeof node === 'string') return [node];
+      if (!node || typeof node !== 'object') return [];
+      return (node.children ?? []).flatMap(collect);
+    })(tree.toJSON());
+    expect(visibleText).toContain('map auth');
+    expect(visibleText.some((s) => s.includes('subagent.running'))).toBe(false);
+
+    // ...but it survives for assistive tech.
+    expect(row.props['aria-label']).toContain('subagent.running');
+
     // Round counter is intentionally not surfaced anymore.
+    const dump = JSON.stringify(tree.toJSON());
     expect(dump).not.toContain('subagent.rounds');
     expect(dump).not.toContain('"role":"button"');
+  });
+
+  it('running row is borderless — no background / border / shell', () => {
+    const tree = render(<SubagentCard line={line('subagent_running', { goal: 'g' })} />);
+    const row = tree.root.findByProps({ role: 'status' });
+    const style = (row.props.style ?? {}) as Record<string, unknown>;
+    expect(style.background).toBeUndefined();
+    expect(style.border).toBeUndefined();
+    // The shimmer clips a gradient to the TEXT, not to a row background.
+    expect(JSON.stringify(tree.toJSON())).not.toContain('var(--bg-surface)');
   });
 
   it('identity badge renders on running AND terminal cards', () => {

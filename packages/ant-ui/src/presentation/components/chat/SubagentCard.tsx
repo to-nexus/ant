@@ -1,11 +1,14 @@
 /**
  * SubagentCard — one compact card per explore-subagent launch.
  *
- * Running (`subagent_running`, pending-card channel): spinner + shimmering
- * goal + live elapsed time (Claude-Code-style working presentation; the
- * internal round counter is intentionally not surfaced). Terminal
- * (`subagent_report`, persisted line): state-accented summary; clicking opens
- * the full report in a dedicated main-panel editor tab when a body exists.
+ * Running (`subagent_running`, pending-card channel): borderless line —
+ * spinner + shimmering goal + live elapsed (the round counter is
+ * intentionally not surfaced). Terminal (`subagent_report`, persisted line):
+ * state-accented summary card; clicking opens the full report in a
+ * main-panel editor tab when a body exists.
+ *
+ * The terminal row keeps its state wording on purpose: it has no animation,
+ * and `stateVisual` maps `partial` and `aborted` onto the same icon.
  */
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
@@ -73,35 +76,42 @@ function useElapsedMs(startedAt: string | undefined): number {
   return Math.max(0, now - anchor);
 }
 
-/** Running row — spinner + shimmering goal + live elapsed. Extracted so the
- *  1s interval only mounts while a subagent is actually running. */
+/**
+ * Running row. Extracted so the 1s interval only mounts while a subagent runs.
+ *
+ * The spinner is the sole VISIBLE progress signal; `subagent.running` moves to
+ * `aria-label` so assistive tech still hears what the animation conveys.
+ * Metrics mirror WorkingCard's in-flight row — one rhythm for borderless lines.
+ */
 function SubagentRunningRow({ goal, startedAt }: { goal: string; startedAt?: string }) {
   const { t } = useTranslation('chat');
   const elapsed = formatDuration(useElapsedMs(startedAt)) ?? '0s';
   return (
-    <TurnCardShell accent="info" hoverLift={false}>
-      <div className="flex items-center gap-2 px-3 py-2 min-w-0">
-        <Spinner size="sm" />
-        <SubagentBadge />
-        <span
-          className="gradient-flow text-xs font-medium truncate min-w-0"
-          title={goal}
-          style={{
-            backgroundImage: 'var(--gradient-aurora-soft)',
-            backgroundSize: '200% 100%',
-            WebkitBackgroundClip: 'text',
-            backgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            color: 'transparent',
-          }}
-        >
-          {t('subagent.running', { goal })}
-        </span>
-        <span className="ml-auto text-[10px] tabular-nums flex-shrink-0" style={{ color: 'var(--text-3)' }}>
-          {elapsed}
-        </span>
-      </div>
-    </TurnCardShell>
+    <div
+      role="status"
+      aria-label={t('subagent.running', { goal })}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 min-w-0"
+    >
+      <Spinner size="md" />
+      <SubagentBadge />
+      <span
+        className="gradient-flow text-[11px] font-medium truncate min-w-0"
+        title={goal}
+        style={{
+          backgroundImage: 'var(--gradient-aurora-soft)',
+          backgroundSize: '200% 100%',
+          WebkitBackgroundClip: 'text',
+          backgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          color: 'transparent',
+        }}
+      >
+        {goal}
+      </span>
+      <span className="ml-auto text-[10px] tabular-nums flex-shrink-0" style={{ color: 'var(--text-3)' }}>
+        {elapsed}
+      </span>
+    </div>
   );
 }
 
