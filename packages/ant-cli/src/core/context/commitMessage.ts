@@ -31,18 +31,22 @@ import { withRetry, isRetryableError } from '../utils/retry';
  *
  * TIMING INVARIANT: worst-case total (attempts × timeout + backoff sleeps)
  * MUST stay under the commit Redis lock TTL (60s) which itself must not
- * outlive the FE Promise.race window (60s). 3×15s + (2s+4s) ≈ 51s. Exceeding
+ * outlive the FE Promise.race window (60s). 2×22s + 2s = 46s. Exceeding
  * the FE window makes a SUCCESSFUL commit look failed and blocks the retry
  * behind the still-held lock (409) — worse than a fallback commit subject.
+ *
+ * 22s per attempt: production showed sonnet exceeding a 15s cap on a real
+ * 12k-char diff (3/3 timeouts → fallback subject every time). Favor a wider
+ * single attempt over more retries — the retry only helps transient 429s.
  */
-export const COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS = 15000;
+export const COMMIT_MESSAGE_ATTEMPT_TIMEOUT_MS = 22000;
 /**
  * Retry budget for the commit aux call. Lets a transient rate-limit (429) /
  * overload clear as the concurrent job's provider usage ebbs. The single
  * resilience owner (`withRetry`) already fast-fails a true balance depletion, so
  * this never hangs on a real outage. Bounded by the timing invariant above.
  */
-export const COMMIT_MESSAGE_MAX_ATTEMPTS = 3;
+export const COMMIT_MESSAGE_MAX_ATTEMPTS = 2;
 /**
  * Cap on output tokens. Must comfortably fit a multi-commit JSON array that
  * lists every changed file path — too small and the JSON truncates mid-array,

@@ -193,3 +193,101 @@ describe('CommitOperation — stale pathspecs cannot abort the commit', () => {
     expect(git(repo, 'log', '--oneline').trim().split('\n')).toHaveLength(1);
   });
 });
+
+describe('CommitOperation — index-resident ghosts (status lists, add rejects)', () => {
+  // Production RCA (2026-07-29, polyhedron): an intent-to-add leftover from
+  // `git add -N .` whose file was later deleted stays visible in `git status`
+  // yet can make `git add <path>` abort the whole list. Disk existence — not
+  // status membership — must decide how a path is staged.
+  let repo: string;
+  let op: CommitOperation;
+
+  function makeItaGhost(name: string) {
+    fs.writeFileSync(path.join(repo, name), 'ghost\n');
+    git(repo, 'add', '-N', name);
+    fs.rmSync(path.join(repo, name));
+  }
+
+  beforeEach(() => {
+    repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-commit-ghost-'));
+    git(repo, 'init', '-q');
+    git(repo, 'config', 'user.email', 'test@test');
+    git(repo, 'config', 'user.name', 'test');
+    fs.writeFileSync(path.join(repo, 'base.ts'), 'base\n');
+    git(repo, 'add', 'base.ts');
+    git(repo, 'commit', '-q', '-m', 'init');
+
+    const workspaceResolver = {
+      getCodebasePath: () => repo,
+      getProjectPath: () => repo,
+      getGitAnchorPath: () => repo,
+    } as never;
+    op = new CommitOperation(workspaceResolver, {} as never, undefined);
+    authorAntCommitPlanMock.mockReset();
+  });
+
+  afterEach(() => {
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+
+  it('user path: ghost in selection is healed, survivors commit, index is clean after', async () => {
+    makeItaGhost('phantom.test.ts');
+    fs.writeFileSync(path.join(repo, 'real.ts'), 'real\n');
+    // Sanity: the ghost IS visible in status (this is what defeated
+    // status-based reconciliation alone).
+    expect(git(repo, 'status', '--porcelain')).toContain('phantom.test.ts');
+
+    const result = await op.execute('proj', userContext, 'feat: heal', 'feat', ['phantom.test.ts', 'real.ts'], 'user');
+    expect(result.success).toBe(true);
+    const committed = git(repo, 'show', '--name-only', '--pretty=format:', 'HEAD').trim();
+    expect(committed).toBe('real.ts');
+    // Ghost fully evicted — gone from index and from status.
+    expect(git(repo, 'ls-files')).not.toContain('phantom.test.ts');
+    expect(git(repo, 'status', '--porcelain')).not.toContain('phantom.test.ts');
+  });
+
+  it('user path: ghost-only selection → no-op success that self-heals the index', async () => {
+    makeItaGhost('phantom.test.ts');
+    const result = await op.execute('proj', userContext, 'msg', 'feat', ['phantom.test.ts'], 'user');
+    expect(result.success).toBe(true);
+    expect(result.commits).toBeUndefined();
+    expect(git(repo, 'log', '--oneline').trim().split('\n')).toHaveLength(1);
+    expect(git(repo, 'status', '--porcelain')).not.toContain('phantom.test.ts');
+  });
+
+  it('user path: tracked-deleted file still commits as a deletion (rm --cached route)', async () => {
+    fs.rmSync(path.join(repo, 'base.ts'));
+    const result = await op.execute('proj', userContext, 'feat: delete base', 'feat', ['base.ts'], 'user');
+    expect(result.success).toBe(true);
+    expect(git(repo, 'show', '--name-status', '--pretty=format:', 'HEAD')).toContain('D\tbase.ts');
+    expect(git(repo, 'ls-files')).not.toContain('base.ts');
+  });
+
+  it('ant path: pre-existing ghost inside the plan group cannot abort the commit', async () => {
+    makeItaGhost('phantom.test.ts');
+    fs.writeFileSync(path.join(repo, 'stays.ts'), 's\n');
+    authorAntCommitPlanMock.mockImplementation(async (_g, _r, _p, _u, allFiles: string[]) => [
+      { message: 'ant: with ghost', files: allFiles },
+    ]);
+
+    const result = await op.execute('proj', userContext, undefined, 'feat', undefined, 'ant');
+    expect(result.success).toBe(true);
+    expect(result.commits).toHaveLength(1);
+    const committed = git(repo, 'show', '--name-only', '--pretty=format:', 'HEAD').trim();
+    expect(committed).toBe('stays.ts');
+    expect(git(repo, 'status', '--porcelain')).not.toContain('phantom.test.ts');
+  });
+
+  it('ant path: ghost-only workspace → success without a commit, index healed', async () => {
+    makeItaGhost('phantom.test.ts');
+    authorAntCommitPlanMock.mockImplementation(async (_g, _r, _p, _u, allFiles: string[]) => [
+      { message: 'ant: ghost only', files: allFiles },
+    ]);
+
+    const result = await op.execute('proj', userContext, undefined, 'feat', undefined, 'ant');
+    expect(result.success).toBe(true);
+    expect(result.commits).toEqual([]);
+    expect(git(repo, 'log', '--oneline').trim().split('\n')).toHaveLength(1);
+    expect(git(repo, 'status', '--porcelain')).not.toContain('phantom.test.ts');
+  });
+});
