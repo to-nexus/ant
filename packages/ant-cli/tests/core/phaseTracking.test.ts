@@ -34,7 +34,7 @@ type StateWithDeps = TokenTrackingState & {
 };
 
 /** Default LLM stub for tests — Phase-3 SSOT requires `state.deps.llm.modelName`. */
-const TEST_LLM = { modelName: 'claude-opus-4-8' };
+const TEST_LLM = { modelName: 'claude-opus-5' };
 
 describe('withPhaseTracking — phase snapshot seed', () => {
   it('initializes currentPhaseTokenUsage with zero counts before node runs', async () => {
@@ -58,7 +58,7 @@ describe('withPhaseTracking — phase snapshot seed', () => {
     expect(observed[0]?.tokenUsage.callCount).toBe(0);
     // Phase-3: zero-seed carries mode='live' and the model's contextWindow.
     expect(observed[0]?.mode).toBe('live');
-    expect(observed[0]?.contextWindow).toBe(1_000_000); // claude-opus-4-8
+    expect(observed[0]?.contextWindow).toBe(1_000_000); // claude-opus-5
   });
 
   it('does NOT throw when the model id is unregistered — gauge falls back, job survives', async () => {

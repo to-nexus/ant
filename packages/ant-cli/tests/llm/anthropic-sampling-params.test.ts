@@ -3,7 +3,7 @@
  *
  * The per-call temperature from the LLM_TEMPERATURE policy table can only be
  * sent where the Anthropic API accepts it:
- *  - adaptive models (Sonnet 5, Opus 4.6+): the API removed the temperature
+ *  - adaptive models (Sonnet 5, Opus 5, Fable 5): the API removed the temperature
  *    parameter (400 if sent), and buildThinkingParams sends the adaptive
  *    thinking param on EVERY round anyway → NEVER send temperature;
  *  - extended models (Haiku 4.5): temperature must be 1/omitted while
@@ -27,7 +27,7 @@ function samplingParams(
 }
 
 describe('buildSamplingParams — adaptive models never receive temperature', () => {
-  it.each(['claude-sonnet-5', 'claude-opus-4-8'])('%s: {} for thinking on AND off', (model) => {
+  it.each(['claude-sonnet-5', 'claude-opus-5'])('%s: {} for thinking on AND off', (model) => {
     expect(samplingParams(model, true, 0.2)).toEqual({});
     expect(samplingParams(model, false, 0.2)).toEqual({});
   });

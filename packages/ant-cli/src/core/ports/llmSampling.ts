@@ -9,7 +9,7 @@
  * fallback for sites that predate the policy, not a policy value.
  *
  * Provider reality (enforced in the adapters, not here):
- * - Anthropic adaptive-thinking models (Sonnet 5 / Opus 4.7+ / Fable): the
+ * - Anthropic adaptive-thinking models (Sonnet 5 / Opus 5 / Fable 5): the
  *   API removed the temperature parameter — the adapter always omits it,
  *   so these keys are inert on the default Anthropic tier.
  * - Anthropic extended-thinking models (Haiku 4.5): applied only on

@@ -93,7 +93,7 @@ const sampleEstimate: BaselineEstimate = {
   dynamic: { racBodyTokens: 0, userMessageTokens: 0 },
   total: 8_421,
   contextWindow: 1_000_000,
-  modelId: 'claude-opus-4-8',
+  modelId: 'claude-opus-5',
   timing: 'T0',
 };
 

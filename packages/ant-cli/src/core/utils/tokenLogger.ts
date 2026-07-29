@@ -28,7 +28,7 @@ export interface TokenLogEntry {
   timestamp: string;
 
   /**
-   * Model id that produced this call (e.g. `claude-opus-4-8`). Required for
+   * Model id that produced this call (e.g. `claude-opus-5`). Required for
    * accurate per-model cost attribution — a job mixes models across nodes
    * (plan=Opus, execute=Sonnet) so the billing pipeline must price each call
    * at its own model's rate. `'unknown'` when the call site could not resolve

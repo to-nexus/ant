@@ -157,7 +157,7 @@ describe('design runner restore gate (deriveRestoreMode wiring)', () => {
 
   it('(f) restores tokenUsageByModel on resume (USD/credit reset guard)', async () => {
     const byModel = {
-      'claude-opus-4-8': {
+      'claude-opus-5': {
         inputTokens: 1000, outputTokens: 500, totalTokens: 1500,
         cacheReadTokens: 100, cacheCreationTokens: 0, callCount: 4,
       },

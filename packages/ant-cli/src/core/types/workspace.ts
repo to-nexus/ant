@@ -45,7 +45,7 @@ export interface VisualSettings {
  * Removes version suffix and capitalizes words
  * 
  * Examples:
- * - "claude-sonnet-4-20250929" → "Claude Sonnet 4"
+ * - "claude-haiku-4-5-20251001" → "CLAUDE HAIKU 4 5"
  * - "gpt-4-turbo-preview" → "GPT 4 Turbo Preview"
  * - "o1-preview" → "O1 Preview"
  */

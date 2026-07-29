@@ -127,7 +127,7 @@ describe('TaskOrchestrator — interruption checkpoint live usage', () => {
       { maxWorkers: 1, checkpointInterval: 0 },
       [],
       usage(147, 15),
-      { 'claude-opus-4-8': { ...usage(147, 15), callCount: 1 } },
+      { 'claude-opus-5': { ...usage(147, 15), callCount: 1 } },
     );
 
     const result = await orchestrator.run();

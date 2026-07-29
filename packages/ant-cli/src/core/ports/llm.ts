@@ -181,7 +181,7 @@ export interface LLMStreamEvent {
   
   // ---- Metadata ----
   metadata?: {
-    model?: string;           // Model name (e.g. "claude-3-5-sonnet")
+    model?: string;           // Model name (e.g. "claude-opus-5")
     provider?: string;        // Provider name (e.g. "anthropic", "openai")
     timestamp?: string;       // ISO 8601 timestamp
     blockStart?: boolean;     // Marks block opening (e.g. thinking block start)

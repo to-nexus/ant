@@ -102,7 +102,7 @@ describe('TurnTokenGauge — empty fallback (always visible)', () => {
 
   it('C2: live arrives (200K Haiku) then both clear → placeholder inherits the 200K contextWindow (sticky, NOT default 1M)', () => {
     // Frame 1: live phase with Haiku 4.5's 200K context window (non-default
-    // — the gauge's DEFAULT_FALLBACK is 1M, matching Opus 4.8 / Sonnet 5).
+    // — the gauge's DEFAULT_FALLBACK is 1M, matching Opus 5 / Sonnet 5).
     mockKanban = { currentPhaseTokenUsages: [liveSnapshot(200_000)] };
     let tree: ReactTestRenderer | undefined;
     act(() => {

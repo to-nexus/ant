@@ -48,18 +48,18 @@ describe('KanbanBroadcaster — per-model anti-shrink guard', () => {
 
   it('accepts a growing cumulative update', () => {
     b.updateTokenUsageByModel({ 'deepseek-v4-pro': u(100, 1) });
-    b.updateTokenUsageByModel({ 'deepseek-v4-pro': u(300, 4), 'claude-opus-4-8': u(147, 15) });
-    expect(Object.keys(b.cachedTokenUsageByModel)).toEqual(['deepseek-v4-pro', 'claude-opus-4-8']);
+    b.updateTokenUsageByModel({ 'deepseek-v4-pro': u(300, 4), 'claude-opus-5': u(147, 15) });
+    expect(Object.keys(b.cachedTokenUsageByModel)).toEqual(['deepseek-v4-pro', 'claude-opus-5']);
     expect(b.cachedTokenUsageByModel['deepseek-v4-pro'].inputTokens).toBe(300);
   });
 
   it('rejects a shrinking update (partial/stale publisher)', () => {
-    const full = { 'deepseek-v4-pro': u(12_000_000, 114_000, 10_800_000), 'claude-opus-4-8': u(147_000, 15_000) };
+    const full = { 'deepseek-v4-pro': u(12_000_000, 114_000, 10_800_000), 'claude-opus-5': u(147_000, 15_000) };
     b.updateTokenUsageByModel(full);
     // A single task's tiny map arrives late — must NOT clobber the full one.
     b.updateTokenUsageByModel({ 'deepseek-v4-pro': u(254_000, 4_600, 220_000) });
     expect(b.cachedTokenUsageByModel).toBe(full);
-    expect(b.cachedTokenUsageByModel['claude-opus-4-8']).toBeDefined();
+    expect(b.cachedTokenUsageByModel['claude-opus-5']).toBeDefined();
   });
 
   it('still ignores an empty {} update', () => {

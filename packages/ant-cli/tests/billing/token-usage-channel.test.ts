@@ -57,7 +57,7 @@ describe('token-usage channels are declared (billing root-cause guard)', () => {
     const ch: any = (CodeGraphChannels as any).tokenUsageByModel;
     const reducer = ch?.operator; // LangGraph stores the merge fn on `operator`
     expect(typeof reducer).toBe('function');
-    const prev = { 'claude-opus-4-8': { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
+    const prev = { 'claude-opus-5': { inputTokens: 10, outputTokens: 5, totalTokens: 15 } };
     expect(reducer(prev, undefined)).toBe(prev);
     const next = { 'claude-sonnet-5': { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
     expect(reducer(prev, next)).toBe(next);

@@ -28,7 +28,7 @@ describe('broadcastTokenUsageByModel helper', () => {
   it('forwards the accumulated per-model map to the broadcaster', () => {
     const calls: any[] = [];
     const state: any = {
-      tokenUsageByModel: { 'claude-opus-4-8': { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
+      tokenUsageByModel: { 'claude-opus-5': { inputTokens: 10, outputTokens: 5, totalTokens: 15 } },
       deps: { kanbanUpdate: { updateTokenUsageByModel: (b: any) => calls.push(b) } },
     };
     broadcastTokenUsageByModel(state);

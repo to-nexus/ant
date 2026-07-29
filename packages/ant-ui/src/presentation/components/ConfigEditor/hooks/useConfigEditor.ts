@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { DEFAULT_MODELS } from '@ant/shared';
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { selectServerMode } from '@/domain/store/selectors/auth';
@@ -42,19 +43,19 @@ export function useConfigEditor(
             design: {
               default: defaultModelId,
               decompose: defaultModelId,
-              plan: 'claude-opus-4-8',
+              plan: DEFAULT_MODELS.opusTier,
               execute: defaultModelId,
             },
             code: {
               default: defaultModelId,
-              decompose: 'claude-opus-4-8',
+              decompose: DEFAULT_MODELS.opusTier,
               plan: defaultModelId,
               execute: defaultModelId,
             },
             learn: { default: defaultModelId },
             plan: {
               default: defaultModelId,
-              plan: 'claude-opus-4-8',
+              plan: DEFAULT_MODELS.opusTier,
               execute: defaultModelId,
             },
             visual: {
@@ -65,8 +66,8 @@ export function useConfigEditor(
               render: 'gemini-3-pro-image',
               engrave: 'gemini-3.1-pro-preview',
             },
-            reviewer: { default: 'claude-opus-4-8' },
-            doc: { default: 'claude-opus-4-8' },
+            reviewer: { default: DEFAULT_MODELS.opusTier },
+            doc: { default: DEFAULT_MODELS.opusTier },
           }
         }));
       }

@@ -57,7 +57,7 @@ export interface TaskTiming {
  *
  * Strict: an unknown model id throws. Silent fallback to a hardcoded 200k
  * would produce a 5× under-reported gauge when running against the 1M
- * ceiling that Opus 4.8 / Sonnet 5 expose by default on the Claude API.
+ * ceiling that Opus 5 / Sonnet 5 expose by default on the Claude API.
  * Update the map (and only the map) when adding a new model.
  *
  * The map is the SSOT for "what context window does THIS model expose"; phase
@@ -78,7 +78,7 @@ export const MODEL_CONTEXT_WINDOWS: Readonly<Record<string, number>> = Object.fr
  * Fallback context window used by UI surfaces (e.g. `TurnTokenGauge`'s
  * empty-state ring) when no live / baseline `PhaseTokenUsage` snapshot is
  * available yet. Picked to match the modal value of `MODEL_CONTEXT_WINDOWS`
- * (Opus 4.8 + Sonnet 5 use 1_000_000; only Haiku 4.5 uses 200_000).
+ * (Opus 5 + Sonnet 5 use 1_000_000; only Haiku 4.5 uses 200_000).
  * When a snapshot lands, the gauge switches to its model-specific
  * `contextWindow` — this constant is only the first-frame placeholder,
  * never a long-lived ground truth.
@@ -199,12 +199,12 @@ export interface PhaseTokenUsage {
   /**
    * Model's full context window in tokens (resolved via
    * `getModelContextWindow(modelId)`). Required so the gauge's denominator
-   * is model-aware — Opus 4.8 / Sonnet 5 (1M) vs. Haiku 4.5 (200k) must
+   * is model-aware — Opus 5 / Sonnet 5 (1M) vs. Haiku 4.5 (200k) must
    * not collapse into a single hardcoded constant.
    */
   contextWindow: number;
   /**
-   * Model id that produced this phase's tokens (e.g. `claude-opus-4-8`).
+   * Model id that produced this phase's tokens (e.g. `claude-opus-5`).
    * Carried so the cost/credit display can price the phase at its own model's
    * rate — a phase running Opus and a phase running Sonnet must not collapse
    * into one blended cost. Optional for backward compatibility with snapshots
