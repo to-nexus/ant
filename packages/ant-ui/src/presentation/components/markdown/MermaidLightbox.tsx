@@ -18,6 +18,7 @@ import {
   type PanZoomState,
   type Size,
   centerAtScale,
+  clampPan,
   fitToViewport,
   panBy,
   parseSvgIntrinsicSize,
@@ -54,6 +55,15 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
 
   const fit = useMemo(() => fitToViewport(content, viewport), [content, viewport]);
 
+  /**
+   * Single chokepoint for every state transition, so no call site can leave the
+   * diagram panned into empty margin. Reducer form keeps it correct under batching.
+   */
+  const commit = useCallback((next: (s: PanZoomState) => PanZoomState) => {
+    hasInteractedRef.current = true;
+    setState((s) => clampPan(next(s), contentRef.current, viewportRef.current));
+  }, []);
+
   // Measure the surface and keep the initial fit in sync until first interaction.
   useLayoutEffect(() => {
     const el = surfaceRef.current;
@@ -72,7 +82,12 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
   }, []);
 
   useEffect(() => {
-    if (hasInteractedRef.current) return;
+    if (hasInteractedRef.current) {
+      // A resize can shrink the viewport past the current bounds — re-clamp without
+      // discarding where the user had panned to.
+      setState((s) => clampPan(s, contentRef.current, viewport));
+      return;
+    }
     setState(fitToViewport(contentRef.current, viewport));
   }, [viewport]);
 
@@ -91,13 +106,12 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const p = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      hasInteractedRef.current = true;
-      setState((s) => zoomAt(s, wheelFactor(e.deltaY, e.deltaMode, e.ctrlKey), p));
+      commit((s) => zoomAt(s, wheelFactor(e.deltaY, e.deltaMode, e.ctrlKey), p));
     };
 
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+  }, [commit]);
 
   const viewportCenter = useCallback(
     () => ({ x: viewportRef.current.width / 2, y: viewportRef.current.height / 2 }),
@@ -106,21 +120,18 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
 
   const zoomByStep = useCallback(
     (factor: number) => {
-      hasInteractedRef.current = true;
-      setState((s) => zoomAt(s, factor, viewportCenter()));
+      commit((s) => zoomAt(s, factor, viewportCenter()));
     },
-    [viewportCenter],
+    [commit, viewportCenter],
   );
 
   const resetToFit = useCallback(() => {
-    hasInteractedRef.current = true;
-    setState(fitToViewport(contentRef.current, viewportRef.current));
-  }, []);
+    commit(() => fitToViewport(contentRef.current, viewportRef.current));
+  }, [commit]);
 
   const zoomToActualSize = useCallback(() => {
-    hasInteractedRef.current = true;
-    setState(centerAtScale(contentRef.current, viewportRef.current, 1));
-  }, []);
+    commit(() => centerAtScale(contentRef.current, viewportRef.current, 1));
+  }, [commit]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
@@ -131,16 +142,18 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
     setDragging(true);
   }, []);
 
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag || drag.id !== e.pointerId) return;
-    const dx = e.clientX - drag.x;
-    const dy = e.clientY - drag.y;
-    drag.x = e.clientX;
-    drag.y = e.clientY;
-    hasInteractedRef.current = true;
-    setState((s) => panBy(s, dx, dy));
-  }, []);
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag || drag.id !== e.pointerId) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+      commit((s) => panBy(s, dx, dy));
+    },
+    [commit],
+  );
 
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (dragRef.current?.id !== e.pointerId) return;
@@ -157,14 +170,13 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const p = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      hasInteractedRef.current = true;
-      setState((s) =>
+      commit((s) =>
         Math.abs(s.scale - fit.scale) < 0.01
           ? zoomAt(s, 1 / s.scale, p) // → exactly 1.0, anchored at the cursor
           : fitToViewport(contentRef.current, viewportRef.current),
       );
     },
-    [fit.scale],
+    [commit, fit.scale],
   );
 
   // Local, not a window listener: DraftLightbox already owns a window arrow-key
@@ -191,21 +203,20 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
         case 'ArrowUp':
         case 'ArrowDown': {
           e.preventDefault();
-          hasInteractedRef.current = true;
           const dx = e.key === 'ArrowLeft' ? KEY_PAN_STEP : e.key === 'ArrowRight' ? -KEY_PAN_STEP : 0;
           const dy = e.key === 'ArrowUp' ? KEY_PAN_STEP : e.key === 'ArrowDown' ? -KEY_PAN_STEP : 0;
-          setState((s) => panBy(s, dx, dy));
+          commit((s) => panBy(s, dx, dy));
           break;
         }
         default:
           break;
       }
     },
-    [resetToFit, zoomByStep, zoomToActualSize],
+    [commit, resetToFit, zoomByStep, zoomToActualSize],
   );
 
   return (
-    <LightboxShell layout="bleed" onClose={onClose} closeLabel={t('mermaid.close')}>
+    <LightboxShell layout="bleed" scrim="canvas" onClose={onClose} closeLabel={t('mermaid.close')}>
       <div
         ref={surfaceRef}
         data-testid="mermaid-lightbox"
@@ -231,11 +242,13 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
             transform: `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`,
             transformOrigin: '0 0',
             willChange: 'transform',
-            // Mermaid always renders in its light default theme (no `theme` is passed
-            // to initialize), so a light diagram would vanish against the dark scrim.
-            // Replace with a token if mermaid theming is ever wired to aurora.
-            background: '#ffffff',
+            // Same surface as the collapsed block in MermaidBlock, so expanding reads
+            // as the same diagram enlarged rather than a differently-themed window.
+            background: 'var(--bg-surface)',
             borderRadius: 'var(--r-md)',
+            // Outline rather than border: a border would consume 2px of the box and
+            // skew the viewBox-exact sizing the transform math depends on.
+            boxShadow: '0 0 0 1px var(--border-1)',
           }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
@@ -244,9 +257,9 @@ export function MermaidLightbox({ svg, onClose }: MermaidLightboxProps) {
       <div
         className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1"
         style={{
-          // The toolbar sits on its own opaque theme surface rather than on the scrim:
-          // IconButton's neutral tone is var(--text-2), which is unreadable on black.
-          background: 'oklch(from var(--bg-surface) l c h / 0.92)',
+          // surface-2 rather than surface: the diagram itself is on --bg-surface, so the
+          // toolbar needs the next step in the recess ramp to stay a distinct plane.
+          background: 'oklch(from var(--bg-surface-2) l c h / 0.95)',
           border: '1px solid var(--border-1)',
           borderRadius: 'var(--r-pill)',
           boxShadow: 'var(--shadow-lg)',

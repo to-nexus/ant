@@ -29,6 +29,10 @@ function transformHost(tree: Renderer) {
   )[0];
 }
 
+function dialogNode(tree: Renderer) {
+  return tree.root.findAll((node) => node.type === 'dialog', { deep: true })[0];
+}
+
 function surface(tree: Renderer) {
   return tree.root.findAll(
     (node) => node.props != null && node.props['data-testid'] === 'mermaid-lightbox',
@@ -151,6 +155,51 @@ describe('MermaidLightbox', () => {
       control(tree, 'mermaid.actualSize').props.onClick();
     });
     expect(zoomReadout(tree)).toBe('100%');
+  });
+
+  it('uses the app canvas for the scrim instead of a neutral dark overlay', async () => {
+    const tree = await renderLightbox();
+    const dialog = dialogNode(tree);
+
+    expect(dialog.props.style?.background).toContain('var(--bg-canvas)');
+    expect(dialog.props.className).not.toContain('bg-black/80');
+  });
+
+  // The collapsed block in MermaidBlock uses --bg-surface; expanding must not look
+  // like a differently-themed window.
+  it('puts the diagram on the same surface token as the collapsed block', async () => {
+    const tree = await renderLightbox();
+    expect(transformHost(tree).props.style.background).toBe('var(--bg-surface)');
+  });
+
+  it('outlines the diagram without consuming layout width', async () => {
+    const tree = await renderLightbox();
+    const style = transformHost(tree).props.style;
+
+    expect(style.boxShadow).toContain('var(--border-1)');
+    expect(style.border).toBeUndefined();
+    // A border would shrink the content box and skew the viewBox-exact sizing.
+    expect(style.width).toBe(1000);
+  });
+
+  it('keeps the diagram within bounds when panning past an edge', async () => {
+    const tree = await renderLightbox();
+    const surfaceNode = surface(tree);
+
+    // Viewport is unmeasured in this environment, so no bound is knowable and the
+    // translation must survive untouched — the clamp must not zero out a real drag.
+    await act(async () => {
+      surfaceNode.props.onPointerDown({
+        button: 0,
+        pointerId: 1,
+        clientX: 0,
+        clientY: 0,
+        currentTarget: { setPointerCapture: () => {}, hasPointerCapture: () => true, releasePointerCapture: () => {} },
+      });
+      surfaceNode.props.onPointerMove({ pointerId: 1, clientX: 40, clientY: 25 });
+    });
+
+    expect(transformHost(tree).props.style.transform).toBe('translate(40px, 25px) scale(1)');
   });
 
   it('invokes onClose from the shell close button', async () => {

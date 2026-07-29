@@ -75,6 +75,33 @@ export function panBy(state: PanZoomState, dx: number, dy: number): PanZoomState
 }
 
 /**
+ * Per-axis bound: never expose dead space.
+ *
+ * Content larger than the viewport pans only until its own edge reaches the viewport
+ * edge. Content smaller than the viewport has nowhere meaningful to go, so the axis
+ * locks to centered.
+ */
+function clampAxis(t: number, contentPx: number, viewportPx: number): number {
+  // Unmeasured viewport (or empty content): no bound is knowable yet, so leave it be.
+  if (viewportPx <= 0 || contentPx <= 0) return t;
+  if (contentPx <= viewportPx) return (viewportPx - contentPx) / 2;
+  return Math.min(0, Math.max(viewportPx - contentPx, t));
+}
+
+/**
+ * Constrain a translation so the diagram always fills the viewport (or sits centered
+ * when it is smaller). Every state transition must pass through this — panning into
+ * empty margin is not how viewers behave.
+ */
+export function clampPan(state: PanZoomState, content: Size, viewport: Size): PanZoomState {
+  return {
+    scale: state.scale,
+    tx: clampAxis(state.tx, content.width * state.scale, viewport.width),
+    ty: clampAxis(state.ty, content.height * state.scale, viewport.height),
+  };
+}
+
+/**
  * Wheel delta → zoom factor.
  *
  * Exponential so that in-then-out by the same delta returns exactly to the start,
