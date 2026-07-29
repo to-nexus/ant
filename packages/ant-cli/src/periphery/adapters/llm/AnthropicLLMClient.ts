@@ -16,7 +16,7 @@ import {
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
-import { getModelContextWindow, getThinkingMode } from '@ant/shared';
+import { getModelContextWindow, getThinkingMode, canDisableThinking } from '@ant/shared';
 
 /**
  * Anthropic Messages API accepted content block shapes.
@@ -84,34 +84,49 @@ export class AnthropicLLMClient implements LLMClient {
   // ids default to adaptive so a future model never re-introduces the
   // rejected shape.
   //
-  // Adaptive models IGNORE the caller's round toggle (`enableThinking`) for
-  // the thinking param itself. Rationale (broad-mining-minty RCA, Jul 2026):
-  // on adaptive models, OMITTING the thinking param does NOT disable thinking
+  // Adaptive-model handling of the caller's round toggle (`enableThinking`)
+  // is CHANNEL-SPLIT. Rationale (broad-mining-minty RCA, Jul 2026): on
+  // adaptive models, OMITTING the thinking param does NOT disable thinking
   // — adaptive runs by default, server-side and billed. The old
   // `!enableThinking → {}` branch was therefore a silent no-op "disable", and
   // because `display` defaults to `"omitted"`, the model reasoned for minutes
   // with ZERO stream events → withStreamIdleTimeout misread the silence as a
   // network stall and burned all 8 retries (re-billing the cache each time).
-  // Sending `thinking:{type:'adaptive', display:'summarized'}` on EVERY round
-  // is cost-neutral (the thinking was already happening and billed) and makes
-  // the model stream thinking_delta events, which keep the idle watchdog
-  // alive and surface reasoning in chat.
   //
-  // Effort (adaptive): PINNED to `high` — no thinkingBudget tier, no per-round
-  // omission. `medium` may skip thinking entirely; `high` (the server default)
-  // always thinks, so pinning it is cost-neutral against the previously-omitted
-  // rounds while removing the tier that could silently skip thinking on a round
-  // the caller asked to think. `xhigh`/`max` (available on Opus 5) are
-  // deliberately unused — they raise per-round spend on every job.
+  // - stream channel (`honorExplicitDisable=false`): always-on
+  //   `thinking:{type:'adaptive', display:'summarized'}` regardless of the
+  //   toggle — thinking_delta events keep the idle watchdog alive, and
+  //   disabled-thinking on Opus 5 carries a documented tool-call-as-text
+  //   degeneration risk that tool-heavy graph rounds must not take.
+  // - invoke channel (`honorExplicitDisable=true`): an EXPLICIT
+  //   `enableThinking === false` sends `thinking:{type:'disabled'}` — a legal
+  //   wire shape on Sonnet 5 / Opus 5 (registry-gated via canDisableThinking).
+  //   This is NOT the forbidden omission-as-disable: it is the API's real
+  //   off-switch. Without it, aux calls with small maxTokens (commit message
+  //   2048, breadcrumb 256) had their entire budget consumed by thinking →
+  //   stop_reason max_tokens with ZERO text blocks → empty content → fallback
+  //   (git-idempotent-tulip 3차 RCA). `output_config` is intentionally omitted
+  //   alongside `disabled`: Opus 5 rejects disabled × effort xhigh/max, while
+  //   the server default (high) is always a valid pairing.
+  //   `undefined` is NOT promoted to disable — callers that never set the
+  //   toggle keep always-on adaptive.
+  //
+  // Effort (adaptive, thinking on): PINNED to `high` — no thinkingBudget tier,
+  // no per-round omission. `medium` may skip thinking entirely; `high` (the
+  // server default) always thinks, so pinning it is cost-neutral against the
+  // previously-omitted rounds while removing the tier that could silently skip
+  // thinking on a round the caller asked to think. `xhigh`/`max` (available on
+  // Opus 5) are deliberately unused — they raise per-round spend on every job.
   private buildThinkingParams(
-    enableThinking: boolean,
+    enableThinking: boolean | undefined,
     thinkingBudget: number,
+    honorExplicitDisable: boolean,
   ): Record<string, any> {
     const mode = getThinkingMode(this.modelName);
     if (mode === 'extended') {
       // Extended models (Haiku 4.5): omission genuinely disables thinking,
       // so the caller's round toggle stays authoritative.
-      if (!enableThinking) return {};
+      if (enableThinking !== true) return {};
       return {
         thinking: {
           type: 'enabled',
@@ -123,13 +138,21 @@ export class AnthropicLLMClient implements LLMClient {
     // client — defensive no-param fallback.
     if (mode === 'none') return {};
 
-    // adaptive (default for unknown claude-* ids) — always-on at `high`, see
-    // above. `enableThinking` / `thinkingBudget` are intentionally ignored here;
-    // both remain authoritative for `extended` models.
+    // adaptive (default for unknown claude-* ids) — see channel split above.
+    if (honorExplicitDisable && enableThinking === false && canDisableThinking(this.modelName)) {
+      return { thinking: { type: 'disabled' } };
+    }
     return {
       thinking: { type: 'adaptive', display: 'summarized' },
       output_config: { effort: 'high' },
     };
+  }
+
+  /** Whether the params built by buildThinkingParams actually run thinking —
+   *  drives the invoke-path maxTokens floor (thinking + text share one cap). */
+  private static thinkingActive(params: Record<string, any>): boolean {
+    const type = params.thinking?.type as string | undefined;
+    return type !== undefined && type !== 'disabled';
   }
 
   // Sampling-param SSOT, sibling of buildThinkingParams (whose contract is
@@ -210,10 +233,16 @@ export class AnthropicLLMClient implements LLMClient {
       }
     }
     
-    const enableThinking = options?.enableThinking === true;
     const thinkingBudget = options?.thinkingBudget || 10000;
+    // invoke channel honors an EXPLICIT enableThinking:false as a real
+    // `thinking:{type:'disabled'}` (see buildThinkingParams channel split).
+    const thinkingParams = this.buildThinkingParams(options?.enableThinking, thinkingBudget, true);
     const requestedMaxTokens = options?.maxTokens || 16000;
-    const maxTokens = enableThinking
+    // Floor keys off the ACTUAL thinking state of the outgoing request, not
+    // the caller's toggle: max_tokens caps thinking + text together, so any
+    // round that thinks needs headroom or the text starves. Disabled rounds
+    // keep the caller's cap verbatim (all of it is text budget).
+    const maxTokens = AnthropicLLMClient.thinkingActive(thinkingParams)
       ? Math.max(requestedMaxTokens, thinkingBudget + 2000)
       : requestedMaxTokens;
     
@@ -235,8 +264,8 @@ export class AnthropicLLMClient implements LLMClient {
           model: this.modelName,
           max_tokens: maxTokens,
           ...(systemParam && { system: systemParam }),
-          ...this.buildThinkingParams(enableThinking, thinkingBudget),
-          ...this.buildSamplingParams(enableThinking, options?.temperature),
+          ...thinkingParams,
+          ...this.buildSamplingParams(options?.enableThinking === true, options?.temperature),
           messages: converted,
         }, { signal });
         return await stream.finalMessage();
@@ -252,7 +281,24 @@ export class AnthropicLLMClient implements LLMClient {
 
     const textBlocks = response.content.filter((block: any) => block.type === 'text');
     const content = textBlocks.map((block: any) => block.text).join('');
-    
+
+    // Response-shape diagnostics — one line that makes the empty-content
+    // failure class self-identifying in prod logs (3차 RCA: thinking consumed
+    // the whole max_tokens cap → zero text blocks → silent fallback upstream).
+    const thinkingBlockCount = response.content.filter((b: any) => b.type === 'thinking').length;
+    const stopReason = (response as any).stop_reason as string | undefined;
+    console.log(
+      `📥 [API RESULT] model=${this.modelName} method=invoke stop_reason=${stopReason ?? 'unknown'} ` +
+      `blocks=text:${textBlocks.length}/thinking:${thinkingBlockCount} ` +
+      `thinking_req=${(thinkingParams as any).thinking?.type ?? 'omitted'} outputTokens=${(response as any).usage?.output_tokens ?? '?'}`,
+    );
+    if (textBlocks.length === 0 && stopReason === 'max_tokens') {
+      console.warn(
+        `⚠️  [AnthropicLLM] thinking consumed the entire max_tokens budget (${maxTokens}) — ` +
+        `no text emitted. Caller receives empty content.`,
+      );
+    }
+
     // ✅ Extract token usage with cache metrics
     const usage = (response as any).usage ? {
       inputTokens: (response as any).usage.input_tokens || 0,
@@ -389,7 +435,9 @@ export class AnthropicLLMClient implements LLMClient {
       model: this.modelName,
       max_tokens: maxTokens,
       ...(systemParam ? { system: systemParam } : {}),
-      ...this.buildThinkingParams(enableThinking, thinkingBudget),
+      // stream channel: honorExplicitDisable=false — always-on adaptive for
+      // watchdog liveness; never sends `disabled` (see buildThinkingParams).
+      ...this.buildThinkingParams(enableThinking, thinkingBudget, false),
       ...this.buildSamplingParams(enableThinking, options?.temperature),
       messages: converted,
       ...(options?.tools && options.tools.length > 0 ? {

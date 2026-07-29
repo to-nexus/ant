@@ -101,6 +101,14 @@ export interface ModelSpec {
   rate?: ModelRate;
   thinkingMode: ThinkingMode;
   /**
+   * Adaptive models only: `true` = the API rejects an explicit
+   * `thinking:{type:'disabled'}` with a 400 (Fable-class — thinking is always
+   * on). Sonnet 5 / Opus 5 accept `disabled` (Opus 5 at effort ≤ high, which
+   * holds when `output_config` is omitted), so they leave this unset.
+   * Consumed via {@link canDisableThinking}.
+   */
+  rejectsDisabledThinking?: boolean;
+  /**
    * Whether the model is offered as a NEW choice via the `/models` endpoint.
    * `false` = known/priced/sized for back-compat (existing projects that saved
    * it still work) but no longer selectable. Defaults to `true`.
@@ -348,4 +356,17 @@ export function getThinkingMode(modelId: string): ThinkingMode {
   const spec = MODEL_REGISTRY[modelId];
   if (spec) return spec.thinkingMode;
   return modelId.startsWith('claude-') ? 'adaptive' : 'none';
+}
+
+/**
+ * Whether an explicit `thinking:{type:'disabled'}` is a legal wire shape for
+ * this model. Unknown ids default to `true`: if a future Fable-class model
+ * slips through unregistered, the resulting 400 is a VISIBLE failure that
+ * falls back immediately — strictly better diagnostics than the silent
+ * thinking-starvation (all of max_tokens consumed by thinking, zero text
+ * blocks) that motivated this helper. Register such models with
+ * `rejectsDisabledThinking: true`.
+ */
+export function canDisableThinking(modelId: string): boolean {
+  return MODEL_REGISTRY[modelId]?.rejectsDisabledThinking !== true;
 }
