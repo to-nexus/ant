@@ -3,6 +3,7 @@ import {
   getPreviewConfig,
   type PreviewConfig,
   type PreviewStatus,
+  type ProjectProfile,
   type ServiceConnection,
 } from '@/infrastructure/http/api';
 
@@ -11,7 +12,7 @@ export interface UsePreviewConfigResult {
   setConfig: React.Dispatch<React.SetStateAction<PreviewConfig | null>>;
   isLoading: boolean;
   structureType: string | null;
-  projectProfile: { language?: string; framework?: string } | null;
+  projectProfile: ProjectProfile | null;
   connections: ServiceConnection[];
   phase: string;
   isReady: boolean;
@@ -46,14 +47,12 @@ export function usePreviewConfig(
     loadConfig();
   }, [loadConfig]);
 
-  const structureType = previewStatus?.structureType || config?.structureType || null;
-
-  const projectProfile = useMemo(() => {
-    const ps = previewStatus?.projectProfile;
-    const cs = config?.projectProfile;
-    if (!ps && !cs) return null;
-    return { ...(cs || {}), ...(ps || {}) };
-  }, [previewStatus?.projectProfile, config?.projectProfile]);
+  // Pick, never merge. Both sources are resolved server-side by
+  // `resolveProjectFacts`, and the store slice already applies the provenance
+  // rank rule to `previewStatus`. Field-merging the two produced chimeras
+  // (a hint's framework glued onto a manifest's language).
+  const structureType = previewStatus?.structureType ?? config?.structureType ?? null;
+  const projectProfile = previewStatus?.projectProfile ?? config?.projectProfile ?? null;
 
   const connections: ServiceConnection[] = useMemo(() => {
     const base = config?.connections || [];

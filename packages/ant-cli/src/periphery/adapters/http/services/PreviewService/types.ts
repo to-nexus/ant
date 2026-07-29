@@ -1,4 +1,5 @@
 import { ChildProcess } from 'child_process';
+import type { PreviewStructureType, ProjectProfile } from '@ant/shared';
 
 // ============================================
 // Common Callback Types
@@ -31,7 +32,8 @@ export interface PackageInfo {
   path: string;
   type: 'frontend' | 'backend' | 'other';
   packageJson?: any;  // Optional: not present for non-Node projects (Go, Python, etc.)
-  projectProfile?: { language: string; framework?: string };  // Detected by decompose node
+  /** Per-directory profile read from this package's own manifests. */
+  projectProfile?: ProjectProfile;
   port?: number;
   process?: ChildProcess;
   /**
@@ -52,7 +54,7 @@ export interface PackageInfo {
  * Project structure detection result
  */
 export interface ProjectStructure {
-  type: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo';
+  type: PreviewStructureType;
   packages: PackageInfo[];
   entry?: PackageInfo;  // Entry point for Open button (usually frontend)
 }

@@ -128,7 +128,8 @@ export interface PendingChoiceData {
 // Re-export from portRegistry
 export { PortMapping, PreviewState, IDEState, PreviewPackage, PreviewRuntimeIssue, PreviewPhase, ServiceCategory, ConnectionResolution, ServiceConnection, DeployState, DeployPackage, DeployPhase, DeployFramework } from './portRegistry';
 import { PreviewState, IDEState, PortMapping, ServiceConnection, DeployState } from './portRegistry';
-import type { PreviewStructureType } from './preview';
+import type { PreviewConfigRecord } from './preview';
+export type { PreviewConfigRecord } from './preview';
 
 // ============================================
 // StateStorePort Interface
@@ -291,7 +292,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
+    update: Partial<Pick<PreviewState, 'running' | 'ready' | 'phase' | 'error' | 'issues' | 'packages' | 'backendPort' | 'nativeBasePath' | 'structureType' | 'projectProfile' | 'setupReasoning' | 'setupReason' | 'suggestedFix' | 'connections' | 'restartRequired'>>
   ): Promise<void>;
   
   /**
@@ -313,7 +314,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string,
-    config: { connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null }
+    config: PreviewConfigRecord
   ): Promise<void>;
   
   /**
@@ -325,7 +326,7 @@ export interface StateStorePort {
     userId: string,
     projectId: string,
     feature: string
-  ): Promise<{ connections?: ServiceConnection[] | null; structureType?: PreviewStructureType | null; projectProfile?: { language: string; framework?: string } | null } | null>;
+  ): Promise<PreviewConfigRecord | null>;
   
   /**
    * Unregister preview

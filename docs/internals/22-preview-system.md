@@ -47,12 +47,12 @@ Preview 상태는 두 개의 독립된 Redis 키에 저장된다:
 | Redis 키 | 용도 | 수명 | 포함 데이터 |
 |----------|------|------|------------|
 | `PREVIEW` (`ant:infra:preview:{portKey}`) | 런타임 상태 | Preview 실행 중에만 존재. `stopPreview` 시 삭제 | running, phase, port, host, podId, packages, connections (w/ status), issues, restartRequired |
-| `PREVIEW_CONFIG` (`ant:infra:preview-config:{portKey}`) | 영속 설정 | Preview 중지 후에도 유지 (TTL) | connections (status 없음), structureType, projectProfile |
+| `PREVIEW_CONFIG` (`ant:infra:preview-config:{portKey}`) | 파생 캐시 | Preview 중지 후에도 유지 (TTL) | connections (status 없음), structureType, projectProfile (provenance 태그 포함) |
 
 설계 원칙:
 - `PREVIEW`: 런타임 전용. connection의 `status` (active/unreachable/not-started)는 여기에만 저장.
-- `PREVIEW_CONFIG`: 사용자 설정 전용. connection의 resolution, envVar 등 설정 정보만 저장. **런타임 status를 저장하지 않는다.**
-- 프론트엔드는 두 소스를 merge: `config.connections`를 base로, `previewStatus.connections`의 status를 overlay.
+- `PREVIEW_CONFIG`: **파생 캐시이며 authority 가 아니다.** connections 는 `.env.example` / `.env` 에서, projectProfile / structureType 은 코드베이스 매니페스트에서 매 read 마다 재도출된다. 캐시값은 cross-pod read 와 워크스페이스 일시 unavailable 구간만 커버한다. **런타임 status 는 저장하지 않는다.**
+- 프론트엔드는 connections 만 merge (`config.connections` base + `previewStatus.connections` 의 status overlay). projectProfile 은 **merge 하지 않고 pick** — 아래 Project Profile 절 참고.
 
 ## 호스트 분리
 
@@ -282,6 +282,35 @@ display = live가 있으면 base에 live.status overlay, 없으면 base 그대�
 - **수동 재감지**: "Auto Detect" 버튼 → POST /detect-connections → 파일시스템 재스캔. **소스 기준 재설정**(`preserveUserEdits=false`).
 - **Preview Start**: Redis 레지스트리에서만 읽기 (감지 실행 안 함)
 - **코드잡 완료 후 자동 새로고침**: `CONNECTIONS_REFRESH` pub/sub → 재감지. 단 `preserveUserEdits=true` — 사용자가 패널에서 바꿨지만 아직 `.env.example`에 영속 안 된(`userModified`) 편집을 덮어쓰지 않는다([`mergeDetectedWithSaved`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/mergeUserEdits.ts)). 소스가 편집을 따라잡으면(detected == saved) `userModified`를 해제해 "변경됨" 뱃지를 정리한다.
+
+## Project Profile (구조유형 / 언어 / 프레임워크)
+
+**코드베이스가 SSOT다.** 감지는 매니페스트 (`package.json` / `pnpm-workspace.yaml` / `go.mod` / `go.work` / `requirements.txt` / `pyproject.toml` / `Cargo.toml` / `pom.xml` / `build.gradle` / `Makefile`) 만 읽는다 — 소스 트리나 `node_modules` 는 절대 walk 하지 않으므로 매 HTTP read 마다 실행해도 충분히 싸다. 별도 fingerprint 캐시는 두지 않는다 (`PREVIEW_CONFIG` 가 이미 캐시).
+
+| 레이어 | 파일 | 책임 |
+|---|---|---|
+| 매니페스트 프리미티브 | [`detectors/manifest/`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/manifest) | `readManifests` / `languageFromManifests` / `frameworkFromManifests` / `canStartFromManifests` — language·framework·runnability 테이블의 단일 소유자 |
+| 단일 owner | [`ProjectProfileDetector`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ProjectProfileDetector.ts) | `detectFacts(root, fallback?)` → `{ structureType, profile, canStart, structure? }`. `structure` 를 되돌려주어 호출자가 구조 감지를 재실행하지 않는다 (요청당 파일시스템 1 pass) |
+| precedence | [`utils/projectFacts.ts`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/utils/projectFacts.ts) | `resolveProjectFacts` — `GET /status` 와 `GET /preview-config` 가 공유하므로 두 엔드포인트가 어긋날 수 없다 |
+| 계약 | [`@ant/shared/preview.ts`](../../packages/ant-shared/src/preview.ts) | `ProjectProfile` / `PreviewStructureType` / `isMoreAuthoritativeProfile` (BE·FE 공용 rank 규칙) |
+
+### Provenance 우선순위
+
+`manifest` ⟩ `techtier-hint` ⟩ 없음. 프로파일은 **atomic bundle** 이며 provenance 를 넘어 field-merge 하지 않는다 — 매니페스트 결과에 framework 가 없으면 "framework 가 없다"는 뜻이고, hint 의 framework 를 빌려오지 않는다 (`language: go` + `framework: nextjs` 같은 키메라의 원인).
+
+- `techtier-hint` = 코드잡 decompose 의 `<techTier>` 추론. **그린필드 전용 stand-in** 으로, 코드가 생기는 순간 매니페스트가 이긴다. `PreviewBroadcaster` 는 provenance 없는 top-level `structureType` 을 발행하지 않는다 (`||` fallback 으로 부활해 진실을 덮는다).
+- FE 는 [`previewSlice.mergePreviewStatus`](../../packages/ant-ui/src/domain/store/slices/previewSlice.ts) 한 곳에서 rank 규칙을 적용한다 (strictly 낮은 provenance patch 만 거부; 동일 provenance 는 fresher 관측이므로 반영).
+
+### 감지 타이밍
+
+- **읽을 때마다**: `GET /status` · `GET /preview-config` 양쪽 모두 실행 여부와 무관하게 감지한다. `canStart` 만 busy (running/installing/starting) 로 게이팅된다.
+- **코드잡 완료 후 / Auto Detect**: `refreshProjectFacts` 가 connections 와 함께 프로파일·structureType 을 갱신하고 SSE status patch 로 푸시한다 (`CONNECTIONS_REFRESH` 채널 상수는 cross-process 계약이라 이름을 유지한다 — 핸들러 책임만 확장됐다).
+- **Preview Start**: 캐시된 프로파일을 authority 가 아닌 **fallback** 으로만 넘긴다.
+
+### 다른 축과 혼동하지 말 것
+
+- `CodebaseAnalyzer` / `EnvironmentDetector` — techTier **결정** 축. `SupportedLanguage = ['typescript','go']` 닫힌 enum 으로 prompt basis partial 을 키잉하므로 `python` 을 흘리면 존재하지 않는 partial 을 선택한다.
+- `BuildRunner.detectFramework` — 빌드 산출물 / env-var prefix 분류기 (`vite` → `VITE_`, `nextjs` → `NEXT_PUBLIC_`, `cra` → `REACT_APP_`). `vite` · `static` 은 프레임워크가 아니다.
 
 ### Env 주입 우선순위 (ProcessSpawner)
 

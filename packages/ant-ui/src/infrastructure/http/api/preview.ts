@@ -1,4 +1,9 @@
+import type { PreviewStructureType, ProjectProfile } from '@ant/shared';
 import { PREVIEW_BASE, authFetch, apiGet, apiPost, apiPut } from './client';
+
+// Re-exported so presentation/application layers import the preview contract
+// from one place (precedent: `api/deploy.ts`). @ant/shared is the SSOT.
+export type { PreviewStructureType, ProjectProfile } from '@ant/shared';
 
 export interface LogEntry {
   timestamp: string;
@@ -86,8 +91,8 @@ export interface PreviewStatus {
   errorStage?: 'install' | 'infra' | 'provisioning' | 'starting';
   /** Actionable next-step hint for the failed stage. */
   hint?: string;
-  structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
-  projectProfile?: { language: string; framework?: string } | null;
+  structureType?: PreviewStructureType | null;
+  projectProfile?: ProjectProfile | null;
   connections?: ServiceConnection[] | null;
   /**
    * A saved connection/toggle change has not yet been applied to the running
@@ -99,8 +104,8 @@ export interface PreviewStatus {
 }
 
 export interface PreviewConfig {
-  structureType?: 'frontend-only' | 'backend-only' | 'fullstack' | 'monorepo' | null;
-  projectProfile?: { language: string; framework?: string } | null;
+  structureType?: PreviewStructureType | null;
+  projectProfile?: ProjectProfile | null;
   connections?: ServiceConnection[] | null;
 }
 

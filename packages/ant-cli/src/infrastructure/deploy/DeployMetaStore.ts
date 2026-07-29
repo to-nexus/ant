@@ -20,7 +20,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { DeployFramework, ServiceConnection } from '../../core/ports/portRegistry';
-import type { DeployVisibility } from '@ant/shared';
+import type { DeployVisibility, ProjectProfile } from '@ant/shared';
 
 export interface DeployMetaPackage {
   /** Original package name (e.g. "apps/web"). UI display value. */
@@ -38,7 +38,7 @@ export interface DeployMetaPackage {
    * Detected language/framework for a `process` package — lets the shared
    * `ProcessSpawner` dispatch by language on rehydration. Absent for static.
    */
-  projectProfile?: { language: string; framework?: string };
+  projectProfile?: ProjectProfile;
   /**
    * Absolute path to THIS package's directory inside the deploy workspace.
    * Used as `cwd` for `next start` on rehydration. For single-frontend

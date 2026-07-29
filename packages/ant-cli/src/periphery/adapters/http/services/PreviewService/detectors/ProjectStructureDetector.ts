@@ -1,41 +1,52 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { ProjectProfile } from '@ant/shared';
 import { PackageInfo, ProjectStructure } from '../types';
 import { PackageDetector, resolveRunScript, hasRunnableScript } from './PackageDetector';
+import {
+  canStartFromManifests,
+  frameworkFromManifests,
+  languageFromManifests,
+  readManifests,
+} from './manifest';
 import { logger } from '../../../../../../utils/logger';
 
 /**
  * ProjectStructureDetector
- * 
- * Detects project structure based on language/framework profile.
- * 
+ *
+ * Detects project structure (monorepo / fullstack / frontend-only / backend-only)
+ * and stamps a per-directory `ProjectProfile` onto every runnable package.
+ *
  * Flow:
- * 1. Determine language from projectProfile (decompose) or filesystem config files
+ * 1. Determine language from the filesystem manifests; a caller-supplied profile
+ *    is a GREENFIELD FALLBACK ONLY (files are authoritative — a `typescript`
+ *    hint on a `go.mod` repo used to run Node detection and find nothing).
  * 2. Dispatch to language-specific detection strategy
  * 3. Each strategy knows its own config files, structure patterns, and entry points
- * 
+ *
  * Node.js/TypeScript is just one of the supported languages, not the default.
  */
 export class ProjectStructureDetector {
   private packageDetector: PackageDetector;
-  
+
   constructor(packageDetector?: PackageDetector) {
     this.packageDetector = packageDetector || new PackageDetector();
   }
-  
+
   /**
    * Detect project structure from path.
-   * 
+   *
    * @param localPath - Absolute path to project root
-   * @param projectProfile - Language/framework profile from decompose (via Preview Config)
+   * @param fallbackProfile - Greenfield fallback (decompose techTier hint). Used
+   *   ONLY when the filesystem yields no language.
    */
-  async detect(localPath: string, projectProfile?: { language: string; framework?: string }): Promise<ProjectStructure> {
-    // 1. Determine language: profile first, filesystem fallback
-    const language = this.resolveLanguage(localPath, projectProfile);
-    const profile = projectProfile || { language };
-    
+  async detect(localPath: string, fallbackProfile?: ProjectProfile): Promise<ProjectStructure> {
+    // 1. Determine language: filesystem first, hint only as greenfield fallback
+    const language = this.resolveLanguage(localPath, fallbackProfile);
+    const profile = this.repoProfile(localPath, language, fallbackProfile);
+
     logger.debug(`Detecting structure for language=${language}${profile.framework ? ` framework=${profile.framework}` : ''}`, { component: 'ProjectStructureDetector' });
-    
+
     // 2. Dispatch to language-specific detection
     switch (language) {
       case 'typescript':
@@ -53,76 +64,50 @@ export class ProjectStructureDetector {
         return this.detectGenericProject(localPath, profile);
     }
   }
-  
+
   /**
-   * Lightweight filesystem-based project detection.
-   * Returns language, canStart, and structureType WITHOUT reading file contents deeply.
-   * Used by PreviewServer.checkCanStart() and GET /status to provide project info
-   * even when decompose has not run yet.
-   * 
-   * @returns detection result, or null if no recognized project files found
+   * Can a preview be started from this path, and is it a recognized project?
+   *
+   * Thin wrapper over the manifest primitives — the `canStart` rule table lives
+   * there so `ProjectProfileDetector` and this class cannot drift.
+   * Returns null when no recognized project manifest exists.
    */
-  static quickDetect(localPath: string): { language: string; canStart: boolean; structureType: string } | null {
-    // Node.js / TypeScript
-    const pkgJsonPath = path.join(localPath, 'package.json');
-    if (fs.existsSync(pkgJsonPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf-8'));
-        const hasDevScript = hasRunnableScript(pkg);
-        const hasWorkspaces = !!(pkg.workspaces) || fs.existsSync(path.join(localPath, 'pnpm-workspace.yaml'));
-        
-        if (hasWorkspaces) {
-          // Check monorepo: any workspace package with dev/start script
-          const canStart = hasDevScript || ProjectStructureDetector.hasRunnableWorkspacePackage(localPath);
-          return { language: 'typescript', canStart, structureType: 'monorepo' };
-        }
-        return { language: 'typescript', canStart: hasDevScript, structureType: 'frontend-only' };
-      } catch {
-        return { language: 'typescript', canStart: false, structureType: 'frontend-only' };
-      }
-    }
-    
-    // Go (workspace first, then single module)
-    if (fs.existsSync(path.join(localPath, 'go.work'))) {
-      return { language: 'go', canStart: true, structureType: 'monorepo' };
-    }
-    if (fs.existsSync(path.join(localPath, 'go.mod'))) {
-      return { language: 'go', canStart: true, structureType: 'backend-only' };
-    }
-    
-    // Rust
-    if (fs.existsSync(path.join(localPath, 'Cargo.toml'))) {
-      return { language: 'rust', canStart: true, structureType: 'backend-only' };
-    }
-    
-    // Python
-    if (fs.existsSync(path.join(localPath, 'requirements.txt')) ||
-        fs.existsSync(path.join(localPath, 'pyproject.toml')) ||
-        fs.existsSync(path.join(localPath, 'setup.py'))) {
-      return { language: 'python', canStart: true, structureType: 'backend-only' };
-    }
-    
-    // Java
-    if (fs.existsSync(path.join(localPath, 'pom.xml')) ||
-        fs.existsSync(path.join(localPath, 'build.gradle')) ||
-        fs.existsSync(path.join(localPath, 'build.gradle.kts'))) {
-      return { language: 'java', canStart: true, structureType: 'backend-only' };
-    }
-    
-    // Makefile (language unknown but may be runnable)
-    if (fs.existsSync(path.join(localPath, 'Makefile'))) {
-      try {
-        const content = fs.readFileSync(path.join(localPath, 'Makefile'), 'utf-8');
-        const hasTarget = /^(dev|run|serve):/m.test(content);
-        return { language: 'unknown', canStart: hasTarget, structureType: 'backend-only' };
-      } catch {
-        return { language: 'unknown', canStart: false, structureType: 'backend-only' };
-      }
-    }
-    
-    return null;
+  static probeStartability(localPath: string): { canStart: boolean } | null {
+    const manifests = readManifests(localPath);
+    if (!manifests) return null;
+    return {
+      canStart: canStartFromManifests(manifests, dir =>
+        ProjectStructureDetector.hasRunnableWorkspacePackage(dir),
+      ),
+    };
   }
-  
+
+  /**
+   * Profile for ONE directory, read from its own manifests. Returns null when the
+   * directory holds no recognized manifest.
+   *
+   * `hints.packageJson` lets callers that already parsed the manifest avoid a
+   * re-read; `hints.type` biases the Node framework lookup order so a backend
+   * package that also depends on `react` still reports its server framework.
+   */
+  static detectDirectoryProfile(
+    dir: string,
+    hints?: { packageJson?: any; type?: 'frontend' | 'backend' | 'other' },
+  ): ProjectProfile | null {
+    const manifests = readManifests(dir);
+    if (!manifests) return null;
+    const merged = hints?.packageJson
+      ? { ...manifests, packageJson: hints.packageJson, packageJsonMalformed: false }
+      : manifests;
+    const language = languageFromManifests(merged);
+    const framework = frameworkFromManifests(merged, hints?.type);
+    return {
+      ...(language ? { language } : {}),
+      ...(framework ? { framework } : {}),
+      source: 'manifest',
+    };
+  }
+
   /**
    * Check if any workspace sub-package has a runnable dev/start script.
    */
@@ -143,24 +128,52 @@ export class ProjectStructureDetector {
     }
     return false;
   }
-  
+
   /**
-   * Resolve language from profile or filesystem config files.
+   * Resolve language from the filesystem, falling back to the hint only when the
+   * filesystem is silent (greenfield).
    */
-  private resolveLanguage(localPath: string, projectProfile?: { language: string; framework?: string }): string {
-    if (projectProfile?.language) {
-      return projectProfile.language.toLowerCase();
-    }
-    
-    // Use shared filesystem detection logic
-    const detected = ProjectStructureDetector.quickDetect(localPath);
-    if (detected) {
-      return detected.language;
-    }
-    
+  private resolveLanguage(localPath: string, fallbackProfile?: ProjectProfile): string {
+    const manifests = readManifests(localPath);
+    const fromFiles = manifests ? languageFromManifests(manifests) : undefined;
+    if (fromFiles) return fromFiles;
+
+    if (fallbackProfile?.language) return fallbackProfile.language.toLowerCase();
+
+    // A Makefile-only project is recognized but has no language — the generic
+    // strategy handles it.
+    if (manifests) return 'unknown';
+
     throw new Error('No recognized project files found (no package.json, go.mod, go.work, Cargo.toml, requirements.txt, pom.xml, etc.)');
   }
-  
+
+  /**
+   * Repo-level representative profile — the default stamped onto packages whose
+   * own directory holds no manifest.
+   */
+  private repoProfile(localPath: string, language: string, fallbackProfile?: ProjectProfile): ProjectProfile {
+    const detected = ProjectStructureDetector.detectDirectoryProfile(localPath);
+    if (detected?.language) return detected;
+    if (language !== 'unknown') {
+      return {
+        language,
+        ...(fallbackProfile?.framework ? { framework: fallbackProfile.framework } : {}),
+        source: fallbackProfile ? 'techtier-hint' : 'manifest',
+      };
+    }
+    return detected ?? { source: 'manifest' };
+  }
+
+  /** Per-directory profile with the repo-level profile as fallback. */
+  private profileFor(
+    dir: string,
+    repoProfile: ProjectProfile,
+    hints?: { packageJson?: any; type?: 'frontend' | 'backend' | 'other' },
+  ): ProjectProfile {
+    const own = ProjectStructureDetector.detectDirectoryProfile(dir, hints);
+    return own?.language ? own : repoProfile;
+  }
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Language-specific detection strategies
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -169,7 +182,7 @@ export class ProjectStructureDetector {
    * Node.js / TypeScript detection
    * Supports: single project, fullstack (subdirs), monorepo (workspaces)
    */
-  private async detectNodeProject(localPath: string, profile: { language: string; framework?: string }): Promise<ProjectStructure> {
+  private async detectNodeProject(localPath: string, profile: ProjectProfile): Promise<ProjectStructure> {
     const rootPkgPath = path.join(localPath, 'package.json');
     if (!fs.existsSync(rootPkgPath)) {
       // Profile says Node but no package.json — treat as single backend
@@ -212,7 +225,7 @@ export class ProjectStructureDetector {
           path: subdirPath,
           type: pkgType,
           packageJson: pkgJson,
-          projectProfile: profile
+          projectProfile: this.profileFor(subdirPath, profile, { packageJson: pkgJson, type: pkgType }),
         });
       } catch (error) {
         continue;
@@ -247,7 +260,7 @@ export class ProjectStructureDetector {
    * Go detection
    * Supports: single module (go.mod), multi-module workspace (go.work)
    */
-  private async detectGoProject(localPath: string, profile: { language: string; framework?: string }): Promise<ProjectStructure> {
+  private async detectGoProject(localPath: string, profile: ProjectProfile): Promise<ProjectStructure> {
     // 1. go.work → multi-module workspace
     const goWorkPath = path.join(localPath, 'go.work');
     if (fs.existsSync(goWorkPath)) {
@@ -276,7 +289,7 @@ export class ProjectStructureDetector {
   private async detectGoWorkspace(
     localPath: string,
     goWorkPath: string,
-    profile: { language: string; framework?: string }
+    profile: ProjectProfile
   ): Promise<ProjectStructure> {
     const packages: PackageInfo[] = [];
     
@@ -303,7 +316,7 @@ export class ProjectStructureDetector {
           name: modRelPath,
           path: modAbsPath,
           type: 'backend',
-          projectProfile: profile,
+          projectProfile: this.profileFor(modAbsPath, profile, { type: 'backend' }),
         });
       }
     } catch (error) {
@@ -379,7 +392,7 @@ export class ProjectStructureDetector {
   private async findGoServiceModules(
     localPath: string,
     servicesDir: string,
-    profile: { language: string; framework?: string }
+    profile: ProjectProfile
   ): Promise<PackageInfo[]> {
     const packages: PackageInfo[] = [];
     
@@ -397,7 +410,7 @@ export class ProjectStructureDetector {
           name: relPath,
           path: svcPath,
           type: 'backend',
-          projectProfile: profile,
+          projectProfile: this.profileFor(svcPath, profile, { type: 'backend' }),
         });
       }
     } catch { /* dir not readable */ }
@@ -409,7 +422,7 @@ export class ProjectStructureDetector {
    * Python detection
    * Config files: requirements.txt, pyproject.toml, setup.py
    */
-  private detectPythonProject(localPath: string, profile: { language: string; framework?: string }): ProjectStructure {
+  private detectPythonProject(localPath: string, profile: ProjectProfile): ProjectStructure {
     // Django/Flask/FastAPI are backend; some Python could be frontend (Streamlit) but rare
     const type = profile.framework?.toLowerCase() === 'streamlit' ? 'frontend' : 'backend';
     logger.debug(`Python project detected${profile.framework ? ` (${profile.framework})` : ''}`, { component: 'ProjectStructureDetector' });
@@ -420,7 +433,7 @@ export class ProjectStructureDetector {
    * Rust detection
    * Config file: Cargo.toml
    */
-  private detectRustProject(localPath: string, profile: { language: string; framework?: string }): ProjectStructure {
+  private detectRustProject(localPath: string, profile: ProjectProfile): ProjectStructure {
     logger.debug(`Rust project detected`, { component: 'ProjectStructureDetector' });
     return this.singlePackage(localPath, 'backend', profile);
   }
@@ -429,7 +442,7 @@ export class ProjectStructureDetector {
    * Java detection
    * Config files: pom.xml, build.gradle, build.gradle.kts
    */
-  private detectJavaProject(localPath: string, profile: { language: string; framework?: string }): ProjectStructure {
+  private detectJavaProject(localPath: string, profile: ProjectProfile): ProjectStructure {
     logger.debug(`Java project detected${profile.framework ? ` (${profile.framework})` : ''}`, { component: 'ProjectStructureDetector' });
     return this.singlePackage(localPath, 'backend', profile);
   }
@@ -438,8 +451,8 @@ export class ProjectStructureDetector {
    * Generic / unknown language detection
    * Supports: Makefile-based projects
    */
-  private detectGenericProject(localPath: string, profile: { language: string; framework?: string }): ProjectStructure {
-    logger.debug(`Generic project detected (language=${profile.language})`, { component: 'ProjectStructureDetector' });
+  private detectGenericProject(localPath: string, profile: ProjectProfile): ProjectStructure {
+    logger.debug(`Generic project detected (language=${profile.language ?? 'unidentified'})`, { component: 'ProjectStructureDetector' });
     return this.singlePackage(localPath, 'backend', profile);
   }
   
@@ -453,27 +466,27 @@ export class ProjectStructureDetector {
   private singlePackage(
     localPath: string,
     type: 'frontend' | 'backend' | 'other',
-    profile: { language: string; framework?: string },
+    profile: ProjectProfile,
     packageJson?: any
   ): ProjectStructure {
     const pkg: PackageInfo = {
       name: 'root',
       path: localPath,
       type,
-      projectProfile: profile,
+      projectProfile: this.profileFor(localPath, profile, { ...(packageJson ? { packageJson } : {}), type }),
       ...(packageJson ? { packageJson } : {}),
     };
-    
+
     const structureType = type === 'frontend' ? 'frontend-only' as const : 'backend-only' as const;
-    logger.debug(`Single ${profile.language} package (${structureType})`, { component: 'ProjectStructureDetector' });
-    
+    logger.debug(`Single ${profile.language ?? 'unidentified'} package (${structureType})`, { component: 'ProjectStructureDetector' });
+
     return { type: structureType, packages: [pkg], entry: pkg };
   }
   
   /**
    * Detect monorepo structure (Node.js workspaces)
    */
-  private async detectMonorepoStructure(localPath: string, rootPkgJson: any, profile: { language: string; framework?: string }): Promise<ProjectStructure> {
+  private async detectMonorepoStructure(localPath: string, rootPkgJson: any, profile: ProjectProfile): Promise<ProjectStructure> {
     const packages: PackageInfo[] = [];
     const workspacePatterns = this.getWorkspacePatterns(localPath, rootPkgJson);
     
@@ -508,7 +521,7 @@ export class ProjectStructureDetector {
               path: wsPath,
               type: pkgType,
               packageJson: pkgJson,
-              projectProfile: profile
+              projectProfile: this.profileFor(wsPath, profile, { packageJson: pkgJson, type: pkgType }),
             });
           }
         } catch (error) {

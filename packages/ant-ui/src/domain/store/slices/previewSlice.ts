@@ -1,4 +1,5 @@
 import { StateCreator } from 'zustand';
+import { isMoreAuthoritativeProfile } from '@ant/shared';
 import type { PreviewStatus, LogEntry } from '@/infrastructure/http/api';
 import { makeFeatureKey } from './deploySlice';
 import { selectIsAuthBlocked } from '../selectors/auth';
@@ -84,9 +85,23 @@ export const createPreviewSlice: StateCreator<any, [], [], PreviewSlice> = (set,
       const nextLogs = hasLocalLogs
         ? prevStatus!.logs!
         : (patch.logs ?? prevStatus?.logs ?? []);
+      // The project profile is provenance-ranked, not last-write-wins: a
+      // decompose `techtier-hint` arriving after a manifest-derived profile must
+      // not demote it (that inversion produced a fullstack↔monorepo flip and
+      // chimeric language/framework pairs). Only a STRICTLY less authoritative
+      // patch is rejected — a same-provenance patch is a fresher observation and
+      // must land. Atomic: never field-merged.
+      const heldIsStronger = isMoreAuthoritativeProfile(
+        prevStatus?.projectProfile,
+        patch.projectProfile,
+      );
+      const nextProfile = heldIsStronger
+        ? prevStatus?.projectProfile
+        : (patch.projectProfile ?? prevStatus?.projectProfile);
       const nextStatus: PreviewStatus = {
         ...(prevStatus ?? { running: false }),
         ...patch,
+        ...(nextProfile !== undefined ? { projectProfile: nextProfile } : {}),
         logs: nextLogs,
       };
       // Invariant: a terminal phase implies not-loading (mirrors

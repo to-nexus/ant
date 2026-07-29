@@ -45,6 +45,7 @@ export * from './rac';
 export * from './prompt-policy-matrix';
 export * from './clarify-policy-matrix';
 export * from './deploy';
+export * from './preview';
 export * from './org';
 export * from './sse-events';
 export * from './verification-scenario';
