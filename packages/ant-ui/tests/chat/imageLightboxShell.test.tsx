@@ -50,7 +50,7 @@ function dialogNode(tree: Renderer) {
 }
 
 describe('LightboxShell extraction', () => {
-  it('keeps the full-viewport scrim on the dialog', async () => {
+  it('keeps the full-viewport dark scrim for image previews', async () => {
     const tree = await render(<ImageLightbox src="/a.png" onClose={() => {}} />);
     const className = dialogNode(tree).props.className as string;
 
@@ -63,6 +63,34 @@ describe('LightboxShell extraction', () => {
     ]) {
       expect(className).toContain(token);
     }
+  });
+
+  it('swaps the scrim and the close button colors for the canvas variant', async () => {
+    const dark = await render(
+      <LightboxShell onClose={() => {}} closeLabel="x">
+        <span />
+      </LightboxShell>,
+    );
+    const darkClose = dark.root.findAll(
+      (node) => node.props != null && node.props['aria-label'] === 'x',
+      { deep: true },
+    )[0];
+    // --text-on-brand is #ffffff in BOTH themes, so it only works on a dark scrim.
+    expect(darkClose.props.style.color).toBe('var(--text-on-brand)');
+
+    const canvas = await render(
+      <LightboxShell onClose={() => {}} closeLabel="x" scrim="canvas">
+        <span />
+      </LightboxShell>,
+    );
+    expect(dialogNode(canvas).props.className).not.toContain('bg-black/80');
+    expect(dialogNode(canvas).props.style.background).toContain('var(--bg-canvas)');
+
+    const canvasClose = canvas.root.findAll(
+      (node) => node.props != null && node.props['aria-label'] === 'x',
+      { deep: true },
+    )[0];
+    expect(canvasClose.props.style.color).toBe('var(--text-2)');
   });
 
   it('centers content with padding by default and bleeds when asked', async () => {

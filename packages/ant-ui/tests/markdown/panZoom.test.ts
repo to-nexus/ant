@@ -5,6 +5,7 @@ import {
   MAX_WHEEL_PX,
   MIN_SCALE,
   centerAtScale,
+  clampPan,
   clampScale,
   fitToViewport,
   panBy,
@@ -124,6 +125,80 @@ describe('wheelFactor', () => {
   it('returns 1 for non-finite deltas', () => {
     expect(wheelFactor(NaN, 0, false)).toBe(1);
     expect(wheelFactor(Infinity, 0, false)).toBe(1);
+  });
+});
+
+describe('clampPan', () => {
+  const viewport = { width: 800, height: 600 };
+
+  it('locks an axis to centered when the scaled content is smaller than the viewport', () => {
+    const clamped = clampPan({ scale: 1, tx: 9999, ty: -9999 }, { width: 400, height: 300 }, viewport);
+    expect(clamped).toEqual({ scale: 1, tx: 200, ty: 150 });
+  });
+
+  it('never exposes dead space on either edge of oversized content', () => {
+    const content = { width: 2000, height: 1500 };
+
+    // Dragged far past the top-left: the content's own top-left pins to the viewport's.
+    expect(clampPan({ scale: 1, tx: 500, ty: 500 }, content, viewport)).toEqual({
+      scale: 1,
+      tx: 0,
+      ty: 0,
+    });
+
+    // Dragged far past the bottom-right: the content's bottom-right pins instead.
+    expect(clampPan({ scale: 1, tx: -5000, ty: -5000 }, content, viewport)).toEqual({
+      scale: 1,
+      tx: 800 - 2000,
+      ty: 600 - 1500,
+    });
+  });
+
+  it('leaves an in-bounds translation untouched', () => {
+    const inBounds = { scale: 1, tx: -300, ty: -200 };
+    expect(clampPan(inBounds, { width: 2000, height: 1500 }, viewport)).toEqual(inBounds);
+  });
+
+  it('accounts for scale when deciding the bound', () => {
+    const content = { width: 1000, height: 1000 };
+
+    // At 0.5 the content is 500x500 — smaller than the viewport, so both axes center.
+    expect(clampPan({ scale: 0.5, tx: -400, ty: -400 }, content, viewport)).toEqual({
+      scale: 0.5,
+      tx: 150,
+      ty: 50,
+    });
+
+    // At 2 it is 2000x2000 — panning is allowed within the wider bound.
+    expect(clampPan({ scale: 2, tx: -400, ty: -400 }, content, viewport)).toEqual({
+      scale: 2,
+      tx: -400,
+      ty: -400,
+    });
+  });
+
+  it('can center one axis while bounding the other', () => {
+    // A wide, short diagram: horizontally pannable, vertically centered.
+    const clamped = clampPan({ scale: 1, tx: 300, ty: 300 }, { width: 2000, height: 200 }, viewport);
+    expect(clamped.tx).toBe(0);
+    expect(clamped.ty).toBe(200);
+  });
+
+  it('is idempotent', () => {
+    const content = { width: 2000, height: 1500 };
+    const once = clampPan({ scale: 1, tx: 5000, ty: -9000 }, content, viewport);
+    expect(clampPan(once, content, viewport)).toEqual(once);
+  });
+
+  it('leaves the translation alone while the viewport is unmeasured', () => {
+    const state = { scale: 1, tx: 42, ty: -17 };
+    expect(clampPan(state, { width: 1000, height: 500 }, { width: 0, height: 0 })).toEqual(state);
+  });
+
+  it('keeps a fitted state exactly where fitToViewport put it', () => {
+    const content = { width: 2000, height: 400 };
+    const fit = fitToViewport(content, viewport);
+    expect(clampPan(fit, content, viewport)).toEqual(fit);
   });
 });
 
