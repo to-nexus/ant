@@ -148,6 +148,33 @@ export function clearOwner(ownerKey: string): number {
   return dropped;
 }
 
+/**
+ * Drop every entry belonging to ANY cycle of one task (sage-causing-rover C3).
+ * A transient re-queue INCRs `cycleSeq`, so the re-entered task computes a
+ * NEW ownerKey (`…#taskKey#pN`) while entries from the prior cycle sit under
+ * the old one — permanently unreachable (drain/clearOwner use the new key)
+ * and re-surfacing as spurious LOST blocks on every history scan. Called at
+ * task pickup; the orphan-detection pairing then reports the swept children
+ * as LOST exactly once, which is the correct semantic for a restarted task.
+ * Matches the exact base key and any `#p<cycle>` suffix — never a sibling
+ * task whose key merely shares a prefix.
+ */
+export function clearOwnerByTaskPrefix(
+  jobId: string | undefined,
+  workerId: number,
+  taskKey: string,
+): number {
+  const base = `${jobId ?? 'nojob'}:worker-${workerId}#${taskKey}`;
+  let dropped = 0;
+  for (const [id, e] of entries) {
+    if (e.ownerKey === base || e.ownerKey.startsWith(`${base}#p`)) {
+      entries.delete(id);
+      dropped++;
+    }
+  }
+  return dropped;
+}
+
 /** Test helper. */
 export function clearAll(): void {
   entries.clear();

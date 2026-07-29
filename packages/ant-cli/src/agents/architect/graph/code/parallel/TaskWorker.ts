@@ -405,6 +405,26 @@ export class TaskWorker<T extends BaseTask> {
       );
       cycleSeq = 0;
     }
+    // Re-entry sweeps prior-cycle subagent entries (sage-causing-rover C3):
+    // the cycleSeq INCR above changes this task's ownerKey, so entries filed
+    // under the previous cycle would be permanently unreachable (drain and
+    // clearOwner use the new key) while their launch-acks in the rehydrated
+    // conversation would re-scan as spurious LOST forever. Sweeping converts
+    // them into one clean LOST notification via the ack↔marker pairing.
+    if (isReentry) {
+      const { clearOwnerByTaskPrefix } = await import('../../../../common/subagent/registry');
+      const swept = clearOwnerByTaskPrefix(
+        (workerState as any)._httpJobId,
+        this.workerId,
+        taskKey,
+      );
+      if (swept > 0) {
+        console.warn(
+          `⚠️ [Worker ${this.workerId}] Swept ${swept} stale subagent entr(ies) from prior cycle of ${taskKey}`,
+        );
+      }
+    }
+
     const result = await runInWorkerScope(this.workerId, () =>
       runInTaskScope(taskKey, cycleSeq, () =>
         graph.invoke(workerState, {

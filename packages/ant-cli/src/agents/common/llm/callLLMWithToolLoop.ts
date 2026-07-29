@@ -12,6 +12,7 @@
 
 import type { LLMClient, ToolDefinition, MessageContentBlock } from '../../../core/ports/llm';
 import { getJobAbortSignal } from '../../../composition/jobAbort';
+import { StreamRepetitionTracker } from '../../../core/utils/textRepetition';
 import type { TaskTokenUsage } from '@ant/shared';
 import type { TokenTrackingState } from '../graph/llmHelpers';
 
@@ -98,7 +99,7 @@ export interface ToolLoopResult {
   usage?: TaskTokenUsage;
   /** Rounds actually consumed (1-based count). */
   roundsUsed: number;
-  /** True when the final response was forced by the round cap (tools stripped). */
+  /** True when the final response was forced by the round cap (toolChoice='none'). */
   exhausted: boolean;
   /** True when `shouldAbort` ended the loop early. */
   aborted?: boolean;
@@ -109,6 +110,20 @@ export interface ToolLoopResult {
    * decompose bodies) must not assume it is well-formed.
    */
   stopReason?: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | 'other';
+  /**
+   * True when the in-stream repetition breaker severed the round: the model
+   * was emitting the same sentence/line in a tight loop and the stream was
+   * abandoned mid-generation instead of running to the token cap. `response`
+   * holds the partial (degenerate) text — treat it as garbage, not artifact.
+   */
+  degenerate?: boolean;
+  /**
+   * Conversation as of the LAST COMPLETED round (the degenerate round's
+   * output is NOT included). Lets callers mount a corrective re-ask on the
+   * accumulated evidence instead of discarding the whole exploration
+   * (SubagentRunner). Populated only when `degenerate` is true.
+   */
+  finalMessages?: Array<{ role: string; content: string | MessageContentBlock[] }>;
 }
 
 /** Max extra rounds grantable by `beforeFinalReturn` joins. */
@@ -120,10 +135,12 @@ const FINAL_ROUND_NOTICE =
   'findings gathered so far. Do NOT attempt or narrate further tool calls.';
 
 /**
- * Make the tool-strip on the final round explicit to the model. Without this,
- * the last-round request silently loses its tools and a model that intended
- * to keep exploring narrates the unfulfilled intent instead of producing its
- * final artifact (observed as degenerate "Let me also check…" repetition).
+ * Make the final-round tool prohibition explicit to the model in prose.
+ * The hard constraint is `toolChoice: 'none'` (tools stay declared); this
+ * notice is defense-in-depth for providers that ignore tool_choice — without
+ * any signal, a model that intended to keep exploring narrates the
+ * unfulfilled intent instead of producing its final artifact (observed as
+ * degenerate "Let me also check…" repetition).
  * Appends into the trailing user message (keeps role alternation); no-ops on
  * a string-content opener (fresh single-round calls need no end-of-tools notice).
  */
@@ -182,7 +199,17 @@ export async function callLLMWithToolLoop(
       return { response: '', usage: totalUsage, roundsUsed: round, exhausted: false, aborted: true };
     }
     const isLastRound = round === effectiveMaxRounds - 1;
-    const roundTools = isLastRound ? [] : tools;
+    // Final round: tools stay DECLARED; `toolChoice: 'none'` carries the
+    // prohibition at the provider layer. The old strip (`isLastRound ? [] :
+    // tools`) sent a request whose history was full of tool_calls but whose
+    // payload had no tool declarations — on OpenAI-compat providers (GLM)
+    // that inconsistency reliably degenerated into "Let me also check…"
+    // repetition loops running to the token cap (tiny-counting-mocha /
+    // lapis-oaring-drain / sage-causing-rover RCAs). FINAL_ROUND_NOTICE stays
+    // as prose-level defense-in-depth for providers that ignore tool_choice.
+    const roundTools = tools;
+    const roundToolChoice: 'auto' | 'none' | undefined =
+      tools.length > 0 ? (isLastRound ? 'none' : 'auto') : undefined;
 
     let response = '';
     let thinking = '';
@@ -192,7 +219,7 @@ export async function callLLMWithToolLoop(
     let roundStopReason: ToolLoopResult['stopReason'];
 
     if (isLastRound) {
-      console.warn(`⚠️ [ToolLoop] Final round (${round + 1}/${effectiveMaxRounds}) — tools stripped, forcing final response`);
+      console.warn(`⚠️ [ToolLoop] Final round (${round + 1}/${effectiveMaxRounds}) — toolChoice='none', forcing final response`);
       appendFinalRoundNotice(allMessages);
     }
 
@@ -207,8 +234,19 @@ export async function callLLMWithToolLoop(
     // preventing the every-round GLM reasoning that overflows max_tokens.
     const roundThinking = round === 0 ? options.enableThinking : false;
 
+    // In-stream degeneration breaker: a model that locks onto one sentence
+    // otherwise runs to the token cap (~90s / 8K tokens of garbage per
+    // incident round). `break` (NOT AbortController) severs the round — the
+    // iterator's return() lets the adapter clean up the connection; reusing
+    // an aborted controller across withRetryStream attempts would disguise
+    // empty retries as success, and touching the job signal would poison
+    // job-runner's abort handling.
+    const repetition = new StreamRepetitionTracker();
+    let degenerateBreak = false;
+
     for await (const event of llm.stream(allMessages, {
       tools: roundTools.length > 0 ? roundTools : undefined,
+      ...(roundToolChoice ? { toolChoice: roundToolChoice } : {}),
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       enableThinking: roundThinking,
@@ -223,6 +261,7 @@ export async function callLLMWithToolLoop(
         thinkingSignature = '';
         toolCalls.length = 0;
         roundUsage = undefined;
+        repetition.reset();
         if (xmlParser) xmlParser.reset();
         if (xmlState) xmlState.reset();
         continue;
@@ -232,6 +271,10 @@ export async function callLLMWithToolLoop(
       }
       if (event.text) {
         response += event.text;
+        if (repetition.push(event.text)) {
+          degenerateBreak = true;
+          break;
+        }
         if (xmlParser && xmlState && onTaskParsedHook) {
           const actions = xmlParser.parse(event, xmlState);
           for (const action of actions) {
@@ -253,6 +296,28 @@ export async function callLLMWithToolLoop(
       if (event.stopReason) roundStopReason = event.stopReason;
       const u = extractTokenUsageFromStreamEvent(event);
       if (u) roundUsage = u;
+    }
+
+    if (degenerateBreak) {
+      // Return immediately: the degenerate assistant turn must NOT be pushed
+      // into the history (an unsigned thinking block or garbage text in a
+      // continued conversation would 400 on Anthropic / skew later rounds).
+      // Round usage is lost with the severed stream (no `done` event) —
+      // accepted: bounded by maxTokens and the output is waste; same
+      // trade-off class as the SubagentRunner timeout path.
+      console.warn(
+        `⚠️ [ToolLoop] In-stream repetition breaker severed round ${round + 1} ` +
+          `after ${response.length} chars — returning degenerate partial`,
+      );
+      return {
+        response,
+        usage: totalUsage,
+        roundsUsed: round + 1,
+        exhausted: isLastRound,
+        stopReason: roundStopReason,
+        degenerate: true,
+        finalMessages: allMessages,
+      };
     }
 
     if (roundStopReason === 'max_tokens') {
@@ -285,7 +350,9 @@ export async function callLLMWithToolLoop(
     }
 
     if (isLastRound) {
-      console.warn(`⚠️ [ToolLoop] LLM returned tool calls on final round despite tools being stripped — returning partial response`);
+      // Reachable only when the provider ignores toolChoice='none' — the
+      // pending calls are never executed; return whatever text arrived.
+      console.warn(`⚠️ [ToolLoop] LLM returned tool calls on final round despite toolChoice='none' — returning partial response`);
       return { response: response || '', usage: totalUsage, roundsUsed: round + 1, exhausted: true, stopReason: roundStopReason };
     }
 

@@ -271,13 +271,17 @@ describe('recent-text ring — repeated assistant text detection', () => {
 // ─── 2. Salvage (persistent tool strip) ───
 
 describe('applyDrainFinalization — code execute', () => {
-  it('strips tools and appends the note exactly at CAP − MARGIN', () => {
+  it('keeps tools declared with toolChoice=none and appends the note exactly at CAP − MARGIN', () => {
     const messages = [userMsg('apply the plan')];
-    const { tools, drainFinalizing } = applyDrainFinalization(
+    const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       { _noProgressStreak: SALVAGE_AT }, messages, TOOLS,
     );
     expect(drainFinalizing).toBe(true);
-    expect(tools).toEqual([]);
+    // Tools stay DECLARED; the provider-level constraint carries the
+    // prohibition (sage-causing-rover axis — deleting declarations while the
+    // history carries tool_calls degenerates GLM).
+    expect(tools).toBe(TOOLS);
+    expect(toolChoice).toBe('none');
     const content = messages[0].content as any[];
     expect(content[0]).toEqual({ type: 'text', text: 'apply the plan' });
     expect(content[1].text).toContain('no file output');
@@ -297,11 +301,12 @@ describe('applyDrainFinalization — code execute', () => {
 
   it('ALSO fires on the no-output streak at NO_OUTPUT_HARD_CAP − MARGIN (cyan-catching-cedar)', () => {
     const messages = [userMsg('inspect the tests')];
-    const { tools, drainFinalizing } = applyDrainFinalization(
+    const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       { _noProgressStreak: 0, _noOutputStreak: OUTPUT_SALVAGE_AT }, messages, TOOLS,
     );
     expect(drainFinalizing).toBe(true);
-    expect(tools).toEqual([]);
+    expect(tools).toBe(TOOLS);
+    expect(toolChoice).toBe('none');
     const content = messages[0].content as any[];
     expect(content[1].text).toContain('no file output');
   });
@@ -317,11 +322,12 @@ describe('applyDrainFinalization — code execute', () => {
   it('persists for every streak value up to and past the breaker (not one-shot)', () => {
     for (const streak of [SALVAGE_AT, SALVAGE_AT + 1, NO_PROGRESS_HARD_CAP - 1, NO_PROGRESS_HARD_CAP]) {
       const messages = [userMsg('go')];
-      const { tools, drainFinalizing } = applyDrainFinalization(
+      const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
         { _noProgressStreak: streak }, messages, TOOLS,
       );
       expect(drainFinalizing).toBe(true);
-      expect(tools).toEqual([]);
+      expect(tools).toBe(TOOLS);
+      expect(toolChoice).toBe('none');
     }
   });
 

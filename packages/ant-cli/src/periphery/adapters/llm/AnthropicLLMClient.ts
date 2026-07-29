@@ -403,6 +403,12 @@ export class AnthropicLLMClient implements LLMClient {
           description: t.description,
           input_schema: t.input_schema,
         })),
+        // Port `toolChoice` → Anthropic `tool_choice` (native support).
+        // Emitted only alongside a non-empty tools array. Keeping the tools
+        // block declared on a `'none'` round also preserves the tools+system
+        // cache tiers — the pre-toolChoice strip invalidated the whole prefix
+        // on the most expensive (final) round.
+        ...(options?.toolChoice ? { tool_choice: { type: options.toolChoice } } : {}),
       } : {}),
       ...(stopSequences && stopSequences.length > 0 ? { stop_sequences: stopSequences } : {}),
       stream: true,

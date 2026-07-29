@@ -10,6 +10,7 @@ import type { MessageContentBlock } from '../../../core/ports/llm';
 import { buildReportBlocks, detectOrphanedLaunches } from './drain';
 import { collectCompleted, hasPending, joinAll } from './registry';
 import { foldSubagentUsage } from './tokens';
+import { logSubagentDrain } from './drainTrace';
 
 export async function maybeJoinSubagents(
   state: Record<string, any>,
@@ -32,5 +33,15 @@ export async function maybeJoinSubagents(
 
   const tokenDelta = await foldSubagentUsage(state, completed);
   console.log(`🔀 [Subagent] Join delivered ${completed.length} report(s)${orphanBlocks.length ? ` + ${orphanBlocks.length} LOST` : ''} (owner: ${ownerKey})`);
+  logSubagentDrain({
+    featurePath: state.context?.featurePath,
+    jobId: state._httpJobId,
+    site: 'join',
+    ownerKey,
+    delivered: completed,
+    orphanCount: orphanBlocks.length,
+    phase: state._activePhase,
+    taskId: state.currentTask?.id,
+  });
   return { blocks, tokenDelta };
 }

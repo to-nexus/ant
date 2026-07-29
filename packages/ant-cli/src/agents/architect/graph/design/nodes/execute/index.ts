@@ -219,7 +219,7 @@ export async function execute(
     state.context?.featurePath,
     state.currentTask,
   );
-  const { tools, drainFinalizing } = applyDrainFinalization(
+  const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
     state,
     messages,
     // PRD sync is a no-tool full rewrite: the current doc is injected in the
@@ -324,6 +324,7 @@ export async function execute(
     // the API accepts them on subsequent turns.
     for await (const event of llmClient.stream(messages, {
       tools: tools && tools.length > 0 ? tools : undefined,
+      ...(toolChoice && tools && tools.length > 0 ? { toolChoice } : {}),
       maxTokens,
       temperature: LLM_TEMPERATURE.DOC_GENERATION,
       enableThinking: !isAfterToolCall,

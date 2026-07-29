@@ -24,6 +24,9 @@
 
 import type { ArchitectGraphState } from '../../state';
 import { NO_PROGRESS_HARD_CAP, DRAIN_FINALIZE_MARGIN, NO_OUTPUT_HARD_CAP } from '../../state';
+// Single-owner primitives — see core/utils/textRepetition.ts (also consumed
+// by callLLMWithToolLoop's in-stream degeneration breaker).
+import { normalizeAssistantText, hashText } from '../../../../../../core/utils/textRepetition';
 
 type StreakInputs = Pick<
   ArchitectGraphState,
@@ -34,21 +37,6 @@ type StreakInputs = Pick<
  * degenerate pattern observed in vivid-orbiting-dodge (two sentences
  * alternated for ~30s before locking onto one). */
 const RECENT_TEXT_RING_SIZE = 3;
-
-function normalizeAssistantText(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-/** FNV-1a 32-bit — non-crypto; a collision merely risks one spurious +1 in a
- * streak that needs 10+ consecutive hits to act. */
-function hashText(normalized: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < normalized.length; i++) {
-    h ^= normalized.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16);
-}
 
 /**
  * Command-output identity hash (shy-crushing-bloom RCA). Volatile numerals
@@ -173,13 +161,21 @@ export function computeNextNoOutputStreak(
 
 export interface DrainFinalizeResult<TTool> {
   tools: TTool[];
+  /**
+   * `'none'` while draining: the tools stay DECLARED in the request and the
+   * provider-level constraint carries the prohibition. Deleting the
+   * declarations while the history is full of tool_calls degenerated GLM
+   * into repetition loops against the full output budget
+   * (vivid-orbiting-dodge at 64K; same axis as sage-causing-rover).
+   */
+  toolChoice?: 'none';
   drainFinalizing: boolean;
 }
 
 /**
  * Mutates `messages` in place (appends the finalization note to the last
  * user message — post-composeMessages, so the note never lands inside a
- * cached prefix) and returns the (possibly stripped) tool list plus the
+ * cached prefix) and returns the tool list + tool-call constraint plus the
  * active-turn flag.
  */
 export function applyDrainFinalization<TTool>(
@@ -218,7 +214,7 @@ export function applyDrainFinalization<TTool>(
     }
   }
   console.warn(
-    `🧯 [Execute] No-output salvage (noProgress=${progressStreak}/${NO_PROGRESS_HARD_CAP}, noOutput=${outputStreak}/${NO_OUTPUT_HARD_CAP}) → tools stripped, forcing final output`,
+    `🧯 [Execute] No-output salvage (noProgress=${progressStreak}/${NO_PROGRESS_HARD_CAP}, noOutput=${outputStreak}/${NO_OUTPUT_HARD_CAP}) → toolChoice='none', forcing final output`,
   );
-  return { tools: [], drainFinalizing: true };
+  return { tools, toolChoice: 'none', drainFinalizing: true };
 }
