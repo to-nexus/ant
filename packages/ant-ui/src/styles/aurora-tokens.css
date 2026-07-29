@@ -429,11 +429,13 @@ code, pre { font-family: var(--font-mono); }
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-/* Sunburst in-flight glyph — rays grow out of / retract into the centre.
-   Paired with pathLength=1 + stroke-dasharray=1 on each ray. */
+/* Sunburst in-flight glyph — per-ray brightness chase, staggered by
+   negative animation-delay (macOS activity-spinner technique). Ray length
+   is fixed; only opacity animates, so the bright pulse is the sole visible
+   motion (see SunburstSpinner.tsx for why this replaced a rotate+dash version). */
 @keyframes sunburst-ray {
-  0%, 100% { opacity: 0.28; stroke-dashoffset: 0.5; }
-  50%      { opacity: 1;    stroke-dashoffset: 0; }
+  from { opacity: 1; }
+  to   { opacity: 0.2; }
 }
 @keyframes type-dot {
   0%, 60%, 100% { opacity: 0.25; transform: scale(0.8); }

@@ -9,16 +9,24 @@ export interface SunburstSpinnerProps {
   style?: React.CSSProperties;
 }
 
+const RAY_COUNT = 8;
+const CYCLE_S = 1;
+
 /**
- * Sunburst in-flight glyph — an eight-ray `✳` whose rays grow out of and retract
- * into the centre while the whole star turns slowly. Drop-in prop-compatible with
- * `Spinner`; use it where a thin ring reads as a speck (borderless chat lines with
- * no card to frame it).
+ * Sunburst in-flight glyph — an eight-ray `✳` where a bright pulse chases
+ * around fixed-length rays (the macOS "network activity" spinner technique).
+ * Drop-in prop-compatible with `Spinner`; use it where a thin ring reads as a
+ * speck (borderless chat lines with no card to frame it).
  *
- * Rays alternate long/short and each carries its own phase offset, so the star
- * shimmers instead of pulsing as one block. `pathLength=1` normalises every ray
- * to a unit length, letting one `stroke-dashoffset` keyframe drive both lengths.
- * Keyframes (`sunburst-ray`, `spin`) live in `src/styles/aurora-tokens.css`.
+ * Each ray runs the SAME `sunburst-ray` fade (opacity 1 → 0.2) over the SAME
+ * `CYCLE_S`-long duration, offset by a negative delay of `i * (CYCLE_S /
+ * RAY_COUNT)`. Negative delays start every ray already mid-fade instead of
+ * waiting out a positive delay first, so the stagger is visible from the
+ * very first frame. Ray LENGTH never animates — only brightness does — so
+ * the one thing that visibly moves is the bright pulse itself; nothing rigid
+ * rotates (an earlier version spun the whole `<svg>`, which made the mostly-
+ * dim ray field read as the rotating body instead of the highlight).
+ * Keyframe (`sunburst-ray`) lives in `src/styles/aurora-tokens.css`.
  */
 export function SunburstSpinner({
   size = 'md',
@@ -35,12 +43,12 @@ export function SunburstSpinner({
       fill="none"
       stroke={color}
       strokeLinecap="round"
-      style={{ animation: 'spin 3s linear infinite', ...style }}
+      style={style}
       aria-hidden={label ? undefined : true}
       aria-label={label}
       role={label ? 'status' : undefined}
     >
-      {Array.from({ length: 8 }, (_, i) => {
+      {Array.from({ length: RAY_COUNT }, (_, i) => {
         const long = i % 2 === 0;
         return (
           <line
@@ -51,11 +59,9 @@ export function SunburstSpinner({
             y2={long ? 12 - 10.5 : 12 - 8}
             strokeWidth={long ? 2 : 1.6}
             transform={`rotate(${i * 45} 12 12)`}
-            pathLength={1}
-            strokeDasharray="1"
             style={{
-              animation: 'sunburst-ray 1.4s ease-in-out infinite',
-              animationDelay: `${i * 0.12}s`,
+              animation: `sunburst-ray ${CYCLE_S}s linear infinite`,
+              animationDelay: `${-i * (CYCLE_S / RAY_COUNT)}s`,
             }}
           />
         );
