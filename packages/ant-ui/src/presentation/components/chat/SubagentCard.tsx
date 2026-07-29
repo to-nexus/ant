@@ -156,7 +156,7 @@ export const SubagentCard = memo(function SubagentCard({ line, pending }: Subage
       hoverLift={hasReport}
       className={hasReport ? 'cursor-pointer' : undefined}
       {...(hasReport
-        ? { role: 'button', tabIndex: 0, 'aria-label': t('subagent.overlay.openAria', { goal }), onClick: onOpen,
+        ? { role: 'button', tabIndex: 0, 'aria-label': t('subagent.reportOpenAria', { goal }), onClick: onOpen,
             onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } } }
         : {})}
     >

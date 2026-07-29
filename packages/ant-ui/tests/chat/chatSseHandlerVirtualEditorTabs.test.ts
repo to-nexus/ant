@@ -14,6 +14,8 @@ interface HarnessState {
   promoteVirtualEditorTabToReal: ReturnType<typeof vi.fn>;
   clearPendingCardFromBuffers: ReturnType<typeof vi.fn>;
   removeVirtualEditorTabsByJobId: ReturnType<typeof vi.fn>;
+  editorTabs: Array<{ id: string; kind: 'real' | 'virtual' }>;
+  closeEditorTab: ReturnType<typeof vi.fn>;
   refreshFileTree: ReturnType<typeof vi.fn>;
   clearChatEvents: ReturnType<typeof vi.fn>;
   clearFeatureLog: ReturnType<typeof vi.fn>;
@@ -41,6 +43,13 @@ function createHarness(overrides: Partial<HarnessState> = {}) {
     promoteVirtualEditorTabToReal: vi.fn(),
     clearPendingCardFromBuffers: vi.fn(),
     removeVirtualEditorTabsByJobId: vi.fn(),
+    editorTabs: [],
+    closeEditorTab: vi.fn((tabId: string) => {
+      state = {
+        ...state,
+        editorTabs: state.editorTabs.filter((tab) => tab.id !== tabId),
+      };
+    }),
     refreshFileTree: vi.fn(),
     clearChatEvents: vi.fn(),
     clearFeatureLog: vi.fn(),
@@ -248,6 +257,36 @@ describe('chatSseHandler virtual editor tab bridge', () => {
     });
 
     expect(h.state().clearPendingCardFromBuffers).not.toHaveBeenCalled();
+  });
+
+  // Regression — `events_cleared` wipes `chatEvents` + `streamingBuffers` but is
+  // the one branch that never re-runs `syncVirtualEditorTabsFromBuffers` (the
+  // only virtual-tab pruner). A report tab (no `jobId`, so also exempt from
+  // `removeVirtualEditorTabsByJobId`) survived as an orphan whose backing card
+  // no longer existed.
+  it('events_cleared closes chat-backed virtual tabs and keeps real file tabs', () => {
+    const h = createHarness({
+      editorTabs: [
+        { id: 'editor:report:card-7', kind: 'virtual' },
+        { id: 'editor:virtual:card-8', kind: 'virtual' },
+        { id: 'editor:pinned:docs/spec.md', kind: 'real' },
+      ],
+    });
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'events_cleared',
+      scope: 'full',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+    } as any);
+
+    expect(h.state().closeEditorTab).toHaveBeenCalledWith('editor:report:card-7');
+    expect(h.state().closeEditorTab).toHaveBeenCalledWith('editor:virtual:card-8');
+    expect(h.state().closeEditorTab).not.toHaveBeenCalledWith('editor:pinned:docs/spec.md');
+    expect(h.state().editorTabs).toEqual([{ id: 'editor:pinned:docs/spec.md', kind: 'real' }]);
+    expect(h.state().clearChatEvents).toHaveBeenCalledWith('full');
+    expect(h.state().clearFeatureLog).toHaveBeenCalled();
   });
 
   it('job failed status closes virtual tabs tied to the job', () => {

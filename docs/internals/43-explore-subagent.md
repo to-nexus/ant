@@ -154,11 +154,22 @@ Redis SSOT 미러가 아니다(jobAbort.ts와 동급 — Unified Distributed Sys
   `TOOLS_WITH_DEDICATED_STATUS('explore')` 등록.
 - Emit: `ChatAPIClient.subagentStart/Progress/Complete` — launch 카드 1장에
   cardId fold. 자식 내부 툴콜 카드는 없다.
-- FE: `SubagentCard`(스피너/state별 터미널, report 있을 때만 클릭) +
-  `SubagentReportOverlay`(ChatPanel history 컨테이너 `absolute inset-0`, 기존
-  마크다운 파이프라인, Escape/닫기). 오버레이 open 상태는 `chatSlice`
-  (`openSubagentReportCardId`) — Virtuoso 가상화로 카드가 unmount돼도 생존.
+- FE: `SubagentCard`(스피너/state별 터미널, report 있을 때만 클릭) → 클릭 시
+  `openReportEditorTab`(uiSlice)이 메인패널 **에디터 탭**을 민팅한다:
+  `editor:report:{cardId}`(`makeReportEditorTabId`), `kind:'virtual'` /
+  `readOnly:true` / `status:'ready'`(스트리밍 퍼지 면제) / `source:'report'`,
+  본문은 `tab.content`. 렌더는 plan/design 프리뷰와 공유하는
+  `VirtualDocumentViewer`(마크다운 파이프라인). 별도 오버레이 컴포넌트나
+  `chatSlice` open 플래그는 없다 — 탭 배열이 유일한 상태.
   `aggregateChatStatuses` FAMILIES에 subagent_* 추가 금지.
+- 탭 액션 정책은 `getEditorTabActionPolicy` 단일 소스. **핀/언핀은 real 탭 전용**
+  (path-keyed 전용 슬롯 ↔ 공유 프리뷰 슬롯 마이그레이션이므로 두 스토어 액션이
+  `kind !== 'real'`로 가드). virtual 탭의 `pinned:true`는 "프리뷰 슬롯 아님"
+  마커일 뿐이라 핀 토글을 노출하지 않으며, 닫기를 억제해서도 안 된다
+  (스트리밍 중인 virtual 탭만 예외 — 버퍼 싱크가 재생성/재포커스한다).
+- 라이프사이클: 피처/프로젝트 전환은 `applyIdentityTransition`이 `editorTabs`를
+  비운다. 채팅 클리어/하드리셋(`events_cleared`)은 백킹 카드가 사라지므로
+  virtual 탭을 전부 닫는다 (real 파일 탭은 chat-backed 아니므로 보존).
 
 ## Prompt SSOT
 
