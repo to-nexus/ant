@@ -41,7 +41,9 @@ interface WorkingCardProps {
     | 'grepping' | 'grepped'
     | 'listing_files' | 'listed_files'
     | 'searching_code' | 'searched_code'
+    | 'searching_reference' | 'searched_reference'
     | 'reading' | 'read' | 'reading_source' | 'read_source'
+    | 'reading_state' | 'read_state'
     | 'indexing' | 'indexed'
     | 'analyzing' | 'analyzed'
     | 'loading' | 'loaded'
@@ -57,6 +59,7 @@ interface WorkingCardProps {
 function isProgressState(variant: string): boolean {
   return [
     'exploring', 'retrieving', 'grepping', 'listing_files', 'searching_code',
+    'searching_reference',
     'reading', 'reading_state', 'reading_source', 'indexing', 'analyzing', 'loading', 'storing',
     'learning', 'processing', 'downloading', 'figma_calling',
   ].includes(variant);
@@ -74,6 +77,9 @@ function variantHue(variant: string): number {
     case 'indexing': case 'indexed': return 295;
     case 'listing_files': case 'listed_files': return 200;
     case 'searching_code': case 'searched_code': return 290;
+    // Reference search targets a DIFFERENT project than the local codebase —
+    // distinct hue so it doesn't read as a local `searching_code` card.
+    case 'searching_reference': case 'searched_reference': return 255;
     case 'analyzing': case 'analyzed': return 160;
     case 'loading': case 'loaded': return 180;
     case 'storing': case 'stored': return 75;
@@ -86,47 +92,48 @@ function variantHue(variant: string): number {
   }
 }
 
-/** Per-variant icon component (or SPINNER_MARKER for in-flight). */
-function variantIcon(variant: string, isProgress: boolean): { Icon: IconKind; pulse: boolean } {
+/**
+ * Per-variant icon: SPINNER_MARKER while in flight, a settled lucide icon once
+ * terminal. The icon slot is the SOLE carrier of progress state — a variant
+ * must not signal "in flight" by pulsing a static icon instead, or the same
+ * state reads two ways depending on which tool ran.
+ */
+function variantIcon(variant: string, isProgress: boolean): IconKind {
+  if (isProgress) return SPINNER_MARKER;
   switch (variant) {
-    case 'exploring': case 'explored':   return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
-    case 'retrieving': case 'retrieved': return { Icon: isProgress ? SPINNER_MARKER : Database,   pulse: false };
-    case 'grepping': case 'grepped':     return { Icon: Search, pulse: isProgress };
-    case 'listing_files': case 'listed_files':   return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
-    case 'searching_code': case 'searched_code': return { Icon: isProgress ? SPINNER_MARKER : Search,     pulse: false };
-    case 'reading': case 'read':
-    case 'reading_source': case 'read_source':   return { Icon: Eye, pulse: isProgress };
-    case 'reading_state': case 'read_state':     return { Icon: Brain, pulse: isProgress };
-    case 'indexing': case 'indexed':     return { Icon: isProgress ? SPINNER_MARKER : Database,   pulse: false };
-    case 'analyzing': case 'analyzed':   return { Icon: isProgress ? SPINNER_MARKER : FileCode,   pulse: false };
-    case 'loading': case 'loaded':       return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
-    case 'storing': case 'stored':       return { Icon: isProgress ? SPINNER_MARKER : Package,    pulse: false };
-    case 'learning': case 'learned':     return { Icon: isProgress ? SPINNER_MARKER : Database,   pulse: false };
-    case 'processing': case 'processed': return { Icon: isProgress ? SPINNER_MARKER : Eraser,     pulse: false };
-    case 'downloading': case 'downloaded':       return { Icon: isProgress ? SPINNER_MARKER : Download,   pulse: false };
-    case 'figma_calling': case 'figma_called':   return { Icon: isProgress ? SPINNER_MARKER : Palette,    pulse: false };
-    case 'context_compacted':                    return { Icon: Brain, pulse: false };
-    default: return { Icon: isProgress ? SPINNER_MARKER : FileSearch, pulse: false };
+    case 'explored':   return FileSearch;
+    case 'retrieved':  return Database;
+    case 'grepped':    return Search;
+    case 'listed_files':   return FileSearch;
+    case 'searched_code':  return Search;
+    case 'searched_reference': return Search;
+    case 'read': case 'read_source': return Eye;
+    case 'read_state': return Brain;
+    case 'indexed':    return Database;
+    case 'analyzed':   return FileCode;
+    case 'loaded':     return FileSearch;
+    case 'stored':     return Package;
+    case 'learned':    return Database;
+    case 'processed':  return Eraser;
+    case 'downloaded': return Download;
+    case 'figma_called': return Palette;
+    case 'context_compacted': return Brain;
+    default: return FileSearch;
   }
 }
 
-/** Tint recipes — composed from oklch() against bg-surface tokens
- *  so light/dark themes flow through the same hue while perceptual L/C
- *  remain balanced (see aurora-tokens.css). */
-function tintBg(hue: number, intensity: 'soft' | 'firm'): string {
-  return intensity === 'firm'
-    ? `oklch(from var(--bg-surface-2) calc(l - 0.02) max(c, 0.06) ${hue})`
-    : `oklch(from var(--bg-surface-2) calc(l - 0.01) max(c, 0.025) ${hue})`;
+/** Tint recipes for terminal cards — composed from oklch() against bg-surface
+ *  tokens so light/dark themes flow through the same hue while perceptual L/C
+ *  remain balanced (see aurora-tokens.css). In-flight rows are untinted. */
+function tintBg(hue: number): string {
+  return `oklch(from var(--bg-surface-2) calc(l - 0.01) max(c, 0.025) ${hue})`;
 }
 function tintFg(hue: number): string {
   return `oklch(56% 0.20 ${hue})`;
 }
-function tintBorder(hue: number): string {
-  return `oklch(72% 0.18 ${hue} / 0.35)`;
-}
 
-/** Renders either the primitive <Spinner> or the custom lucide icon. */
-function WorkingIcon({ icon, pulse, color }: { icon: IconKind; pulse: boolean; color: string }) {
+/** Renders either the primitive <Spinner> or the settled lucide icon. */
+function WorkingIcon({ icon, color }: { icon: IconKind; color: string }) {
   if (icon === SPINNER_MARKER) {
     return (
       <span className="flex-shrink-0 inline-flex" style={{ color }}>
@@ -136,7 +143,7 @@ function WorkingIcon({ icon, pulse, color }: { icon: IconKind; pulse: boolean; c
   }
   const IconComp = icon;
   return (
-    <span className={`flex-shrink-0 inline-flex ${pulse ? 'animate-status-pulse' : ''}`} style={{ color }}>
+    <span className="flex-shrink-0 inline-flex" style={{ color }}>
       <IconComp className="w-3.5 h-3.5" />
     </span>
   );
@@ -144,7 +151,6 @@ function WorkingIcon({ icon, pulse, color }: { icon: IconKind; pulse: boolean; c
 
 interface WorkingCardHeaderProps {
   icon: IconKind;
-  pulse: boolean;
   iconColor: string;
   title: string;
   titleColor: string;
@@ -155,14 +161,14 @@ interface WorkingCardHeaderProps {
 }
 
 function WorkingCardHeader({
-  icon, pulse, iconColor,
+  icon, iconColor,
   title, titleColor,
   detail, detailColor,
   isExpanded, hasExpandable,
 }: WorkingCardHeaderProps) {
   return (
     <>
-      <WorkingIcon icon={icon} pulse={pulse} color={iconColor} />
+      <WorkingIcon icon={icon} color={iconColor} />
       <div className="flex-1 min-w-0" style={{ color: titleColor }}>
         <div className="flex items-center gap-1 min-w-0">
           <TruncatableText
@@ -192,13 +198,92 @@ function WorkingCardHeader({
   );
 }
 
+type StatEntry = { icon: React.ReactNode; label: string; value: string | number };
+
+/**
+ * Expandable body — stats grid + per-file list. `standalone` frames it for
+ * the borderless in-flight row (no enclosing shell to lean on); otherwise it
+ * only draws a top divider inside TurnCardShell.
+ */
+function WorkingCardDrawer({
+  stats, filesList, standalone,
+}: {
+  stats: StatEntry[];
+  filesList: any[];
+  standalone: boolean;
+}) {
+  const frame: React.CSSProperties = standalone
+    ? {
+        marginTop: 4,
+        border: '1px solid var(--border-1)',
+        borderRadius: 'var(--r-sm)',
+        background: 'var(--bg-surface-2)',
+      }
+    : { borderTop: '1px solid var(--border-1)', background: 'var(--bg-surface-2)' };
+
+  return (
+    <div className="max-h-60 overflow-y-auto scrollbar-thin" style={frame}>
+      {stats.length > 0 && (
+        <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border-1)' }}>
+          <div className="grid grid-cols-3 gap-3">
+            {stats.map((stat, idx) => (
+              <div key={idx} className="flex items-center gap-1.5">
+                <span style={{ color: 'var(--text-3)' }}>{stat.icon}</span>
+                <span className="text-xs" style={{ color: 'var(--text-2)' }}>
+                  {stat.label}:
+                </span>
+                <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
+                  {stat.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {filesList.length > 0 && (
+        <div className="px-4 py-2 text-xs">
+          <div className="space-y-1">
+            {filesList.map((file: any, idx: number) => {
+              const filePath = typeof file === 'string' ? file : file.path;
+              // Aggregated read / read_source slots carry a per-file line range
+              // so the drawer matches the single-card header format
+              // (`Read: src/foo.ts (L42-L50)`). Other families (list / grep /
+              // explore) send plain strings, so this falls through to no label.
+              const lineRange =
+                typeof file === 'object' && file?.startLine
+                  ? ` (L${file.startLine}-L${file.endLine ?? '?'})`
+                  : '';
+              return (
+                <div
+                  key={idx}
+                  className="flex items-start gap-2 py-1 transition-colors"
+                  style={{ color: 'var(--text-2)' }}
+                >
+                  <span style={{ color: 'var(--text-3)' }} className="flex-shrink-0 mt-0.5 inline-flex">
+                    <FileCode className="w-3.5 h-3.5" />
+                  </span>
+                  <span className="break-all" style={{ fontFamily: 'var(--font-mono)' }}>
+                    {filePath}
+                    {lineRange && <span style={{ color: 'var(--text-3)' }}>{lineRange}</span>}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export const WorkingCard = memo(function WorkingCard({ line, pending, variant }: WorkingCardProps) {
   const content = lineToContent(line, pending);
   const [isExpanded, setIsExpanded] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const isProgress = isProgressState(variant);
   const hue = variantHue(variant);
-  const { Icon, pulse } = variantIcon(variant, isProgress);
+  const Icon = variantIcon(variant, isProgress);
 
   const selectedFile = useStore(state => state.selectedFile);
   const selectFile = useStore(state => state.selectFile);
@@ -212,7 +297,7 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
   const hasFiles = filesList.length > 0;
 
   // Stats for indexed/analyzed results
-  const stats: Array<{ icon: React.ReactNode; label: string; value: string | number }> = [];
+  const stats: StatEntry[] = [];
   if (content.metadata?.filesIndexed) {
     stats.push({
       icon: <FileSearch className="w-3 h-3" />,
@@ -240,37 +325,55 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
   const hasError = !!(content.metadata as { error?: unknown } | undefined)?.error;
   const hasExpandable = !hasError && (hasFiles || (!isProgress && hasStats));
 
-  const tintedBg = tintBg(hue, isProgress ? 'firm' : 'soft');
   const tintedFg = tintFg(hue);
-  const tintedBorder = tintBorder(hue);
-  const titleColor = isProgress ? tintedFg : 'var(--text-1)';
-  const detailColor = isProgress ? tintedFg : 'var(--text-3)';
-
   const headerProps: Omit<WorkingCardHeaderProps, 'isExpanded' | 'hasExpandable'> = {
     icon: Icon,
-    pulse,
     iconColor: tintedFg,
     title: content.content || '',
-    titleColor,
+    // In flight the spinner alone carries the variant hue — a saturated 11px
+    // title reads as a link/error once the tinted box is gone.
+    titleColor: isProgress ? 'var(--text-3)' : 'var(--text-1)',
     detail: content.metadata?.detail,
-    detailColor,
+    detailColor: 'var(--text-3)',
   };
 
-  // Progress state without a file list → compact inline strip (no chevron, no shell).
-  if (isProgress && !hasFiles) {
+  // In-flight: borderless line, spinner as the only progress signal. The box
+  // below marks "card with a body", not "in progress" — TerminalCard /
+  // FileCard keep theirs while running because they stream into it.
+  if (isProgress) {
+    const toggle = () => hasExpandable && setIsExpanded(!isExpanded);
     return (
-      <div
-        className="flex items-center gap-1.5 px-2.5 py-1.5"
-        style={{
-          background: tintedBg,
-          border: `1px solid ${tintedBorder}`,
-          borderRadius: 'var(--r-md)',
-        }}
-      >
-        <WorkingCardHeader {...headerProps} isExpanded={false} hasExpandable={false} />
+      <div>
+        <div
+          {...(hasExpandable
+            ? {
+                role: 'button' as const,
+                tabIndex: 0,
+                onClick: toggle,
+                onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle();
+                  }
+                },
+              }
+            : {})}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 ${hasExpandable ? 'cursor-pointer' : ''}`}
+        >
+          <WorkingCardHeader
+            {...headerProps}
+            isExpanded={isExpanded}
+            hasExpandable={hasExpandable}
+          />
+        </div>
+        {hasExpandable && isExpanded && (
+          <WorkingCardDrawer stats={stats} filesList={filesList} standalone />
+        )}
       </div>
     );
   }
+
+  const tintedBg = tintBg(hue);
 
   // downloaded asset → click opens file in editor (image preview already built-in)
   const isDownloadedAsset = variant === 'downloaded' && !!content.metadata?.imagePath;
@@ -347,74 +450,7 @@ export const WorkingCard = memo(function WorkingCard({ line, pending, variant }:
       )}
 
       {hasExpandable && isExpanded && (
-        <div
-          className="max-h-60 overflow-y-auto scrollbar-thin"
-          style={{
-            borderTop: '1px solid var(--border-1)',
-            background: 'var(--bg-surface-2)',
-          }}
-        >
-          {/* Stats Section */}
-          {hasStats && (
-            <div
-              className="px-4 py-3"
-              style={{ borderBottom: '1px solid var(--border-1)' }}
-            >
-              <div className="grid grid-cols-3 gap-3">
-                {stats.map((stat, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5">
-                    <span style={{ color: 'var(--text-3)' }}>
-                      {stat.icon}
-                    </span>
-                    <span className="text-xs" style={{ color: 'var(--text-2)' }}>
-                      {stat.label}:
-                    </span>
-                    <span className="text-xs font-medium" style={{ color: 'var(--text-1)' }}>
-                      {stat.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Files List Section */}
-          {hasFiles && (
-            <div className="px-4 py-2 text-xs">
-              <div className="space-y-1">
-                {filesList.map((file: any, idx: number) => {
-                  const filePath = typeof file === 'string' ? file : file.path;
-                  // Aggregated read / read_source slots carry a per-file
-                  // line range so the drawer matches the single-card header
-                  // format (`Read: src/foo.ts (L42-L50)`). Other
-                  // families (list / grep / explore) send plain strings, so
-                  // this branch falls through to no label.
-                  const lineRange =
-                    typeof file === 'object' && file?.startLine
-                      ? ` (L${file.startLine}-L${file.endLine ?? '?'})`
-                      : '';
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-2 py-1 transition-colors"
-                      style={{ color: 'var(--text-2)' }}
-                    >
-                      <span style={{ color: 'var(--text-3)' }} className="flex-shrink-0 mt-0.5 inline-flex">
-                        <FileCode className="w-3.5 h-3.5" />
-                      </span>
-                      <span className="break-all" style={{ fontFamily: 'var(--font-mono)' }}>
-                        {filePath}
-                        {lineRange && (
-                          <span style={{ color: 'var(--text-3)' }}>{lineRange}</span>
-                        )}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+        <WorkingCardDrawer stats={stats} filesList={filesList} standalone={false} />
       )}
 
       {/* Lightbox modal (figma_called only) */}
