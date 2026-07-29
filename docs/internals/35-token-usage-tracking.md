@@ -10,7 +10,7 @@ Three scales of token accounting live side-by-side in Ant. This document defines
 | **Task-level** | `state._currentTaskTokenUsage: TokenUsage` | Cumulative within the currently-running task. Reset per task. | Per-task card token counts in the Kanban view |
 | **Node-phase snapshot** | `state.currentPhaseTokenUsage: PhaseTokenUsage` | Latest single LLM-call snapshot for the currently-running graph node. Overwritten — *not* accumulated. | Chat-input **context gauge** ((input+output) / `phase.contextWindow`) |
 
-`PhaseTokenUsage` is defined in `@ant/shared/src/task.ts`. The gauge's denominator is per-model: `MODEL_CONTEXT_WINDOWS` SSOT (Opus 4.8 / Sonnet 5 = 1_000_000, Haiku 4.5 = 200_000) is resolved via `getModelContextWindow(modelId)` and stamped onto `PhaseTokenUsage.contextWindow`. `DEFAULT_FALLBACK_CONTEXT_WINDOW = 1_000_000` is the first-frame placeholder before any snapshot arrives.
+`PhaseTokenUsage` is defined in `@ant/shared/src/task.ts`. The gauge's denominator is per-model: `MODEL_CONTEXT_WINDOWS` SSOT (Opus 5 / Sonnet 5 = 1_000_000, Haiku 4.5 = 200_000) is resolved via `getModelContextWindow(modelId)` and stamped onto `PhaseTokenUsage.contextWindow`. `DEFAULT_FALLBACK_CONTEXT_WINDOW = 1_000_000` is the first-frame placeholder before any snapshot arrives.
 
 ## Why "overwrite, not accumulate" for the node-phase snapshot
 

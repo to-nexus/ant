@@ -78,10 +78,10 @@ describe('reconcilePerModelUsage — safety-net', () => {
   });
 
   it('picks the most-EXPENSIVE present model for the shortfall (soft over-charge)', () => {
-    const byModel = { 'deepseek-v4-pro': u(100, 1, 0), 'claude-opus-4-8': u(100, 1, 0) };
+    const byModel = { 'deepseek-v4-pro': u(100, 1, 0), 'claude-opus-5': u(100, 1, 0) };
     const r = reconcilePerModelUsage(byModel, 1_000_000, 5000);
     expect(r.corrected).toBe(true);
-    expect(r.targetModelId).toBe('claude-opus-4-8'); // opus input rate > deepseek
+    expect(r.targetModelId).toBe('claude-opus-5'); // opus input rate > deepseek
   });
 });
 
@@ -95,7 +95,7 @@ describe('slow-earning-heron ground truth', () => {
     const byModel = {
       // Debug log grouped by modelId: new input / output / cache-read.
       'deepseek-v4-pro': { inputTokens: 12_218_794, outputTokens: 114_379, totalTokens: 12_333_173, cacheReadTokens: 10_796_416, cacheCreationTokens: 0 },
-      'claude-opus-4-8': { inputTokens: 147_079, outputTokens: 15_027, totalTokens: 162_106, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      'claude-opus-5': { inputTokens: 147_079, outputTokens: 15_027, totalTokens: 162_106, cacheReadTokens: 0, cacheCreationTokens: 0 },
     };
     const { usd } = computeJobCostUsd(byModel);
     expect(usd).toBeGreaterThan(6);

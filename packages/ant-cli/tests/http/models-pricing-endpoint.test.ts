@@ -27,7 +27,7 @@ describe('StaticModelPricingAdapter', () => {
       expect(e.displayName.length).toBeGreaterThan(0);
     }
     // Opus is priced through the credit pipeline — must be present.
-    expect(entries.some((e) => e.modelId === 'claude-opus-4-8')).toBe(true);
+    expect(entries.some((e) => e.modelId === 'claude-opus-5')).toBe(true);
   });
 });
 

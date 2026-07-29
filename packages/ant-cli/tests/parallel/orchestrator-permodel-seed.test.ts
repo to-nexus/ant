@@ -50,13 +50,13 @@ describe('TaskOrchestrator — per-model seed + delta merge', () => {
       { maxWorkers: 1, checkpointInterval: 0 },
       [],
       usage(147, 15),                                          // seed aggregate (opus decompose)
-      { 'claude-opus-4-8': { ...usage(147, 15), callCount: 1 } }, // seed per-model (opus)
+      { 'claude-opus-5': { ...usage(147, 15), callCount: 1 } }, // seed per-model (opus)
     );
 
     const result = await orchestrator.run();
 
     // Opus (seed) survives, deepseek deltas sum: 300*2 input, 4*2 output.
-    expect(result.tokenUsageByModel['claude-opus-4-8']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
+    expect(result.tokenUsageByModel['claude-opus-5']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
     expect(result.tokenUsageByModel['deepseek-v4-pro']).toMatchObject({ inputTokens: 600, outputTokens: 8 });
 
     // Aggregate mirrors: seed 147 + 2*300 = 747 input.
@@ -65,7 +65,7 @@ describe('TaskOrchestrator — per-model seed + delta merge', () => {
 
     // Per-model input sum equals the aggregate input (conservation invariant).
     const perModelInput =
-      result.tokenUsageByModel['claude-opus-4-8'].inputTokens +
+      result.tokenUsageByModel['claude-opus-5'].inputTokens +
       result.tokenUsageByModel['deepseek-v4-pro'].inputTokens;
     expect(perModelInput).toBe(result.tokenUsage.inputTokens);
   });

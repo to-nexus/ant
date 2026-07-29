@@ -27,11 +27,10 @@ export const LLM_MAX_TOKENS = {
   // Default for plan / execute / verify.
   //
   // Anthropic model output ceilings (per Anthropic docs, 2026-06):
-  //   - Sonnet 5 (codebase default for code.*) / Opus 4.6/4.7/4.8: 128K ceiling
-  //   - Opus 4 (deprecated, retired 2026-06-15): 32K hard limit
+  //   - Sonnet 5 (codebase default for code.*) / Opus 5: 128K ceiling
   //
   // 64K is the safe default: within every current model's ceiling (Sonnet 5
-  // and Opus 4.8 both allow 128K, so this is conservative, not a cap forced by
+  // and Opus 5 both allow 128K, so this is conservative, not a cap forced by
   // the model). With thinkingBudget 10K, text space = ~54K; with 5K, ~59K.
   //
   // Why bumped 32K → 64K (safe-braking-eagle RCA):
@@ -45,9 +44,9 @@ export const LLM_MAX_TOKENS = {
   // Detection lives on `LLMStreamEvent.stopReason` (option A);
   // chunked-emission recovery is option C.
   //
-  // Risk model: Opus 4 (deprecated) at 32K would have this rejected. Not
-  // reachable from default config; only at risk if a user explicitly
-  // overrides to the legacy ID before its 2026-06-15 retirement.
+  // Risk model: every model in MODEL_REGISTRY allows >=64K output, so 64K is
+  // never rejected by the current registry. Re-check this constant if a model
+  // with a lower output ceiling is ever registered.
   DEFAULT: 64000,
 
   // Decompose Tier 4 may emit 30+ tasks against multi-ref design docs and

@@ -20,7 +20,7 @@ import type { SessionState } from '../../src/core/types/session';
 import type { TokenUsageByModel } from '@ant/shared';
 
 const byModel: TokenUsageByModel = {
-  'claude-opus-4-8': {
+  'claude-opus-5': {
     inputTokens: 100,
     outputTokens: 50,
     totalTokens: 150,

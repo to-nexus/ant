@@ -30,7 +30,7 @@ export interface ModelRate {
 /**
  * How a model's thinking is requested on the Anthropic Messages API.
  * - `adaptive`  → `thinking:{type:'adaptive'}` + `output_config.effort`
- *                 (Sonnet 5, Opus 4.6/4.7/4.8, Fable 5). Rejects `budget_tokens`.
+ *                 (Sonnet 5, Opus 5, Fable 5). Rejects `budget_tokens`.
  * - `extended`  → legacy `thinking:{type:'enabled', budget_tokens}` (Haiku 4.5).
  * - `none`      → no thinking params (non-Anthropic / image models).
  */
@@ -127,11 +127,11 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     rate: { input: 3, output: 15, cacheWrite5m: 3.75, cacheWrite1h: 6, cacheRead: 0.3 },
     thinkingMode: 'adaptive',
   },
-  'claude-opus-4-8': {
-    id: 'claude-opus-4-8',
-    displayName: 'Opus 4.8',
+  'claude-opus-5': {
+    id: 'claude-opus-5',
+    displayName: 'Opus 5',
     provider: 'anthropic',
-    description: 'Most capable Claude model, best for complex reasoning',
+    description: 'Most capable Claude model for complex agentic coding and reasoning',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context', 'complex-analysis'],
     contextWindow: 1_000_000,
@@ -338,7 +338,7 @@ export const DEFAULT_MODELS = {
   /** learn job default — fastest/cheapest tier for codebase indexing. */
   haikuTier: 'claude-haiku-4-5-20251001',
   /** reviewer / doc defaults + global fallback when nothing else resolves. */
-  opusTier: 'claude-opus-4-8',
+  opusTier: 'claude-opus-5',
 } as const;
 
 /** Thinking mode for a model id, defaulting to `adaptive` for unknown Anthropic

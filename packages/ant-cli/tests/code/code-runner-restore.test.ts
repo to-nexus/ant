@@ -129,7 +129,7 @@ describe('code runner restore gate (deriveRestoreMode wiring)', () => {
 
 describe('code runner restores tokenUsageByModel on resume (USD/credit reset guard)', () => {
   const byModel = {
-    'claude-opus-4-8': {
+    'claude-opus-5': {
       inputTokens: 1000, outputTokens: 500, totalTokens: 1500,
       cacheReadTokens: 100, cacheCreationTokens: 0, callCount: 4,
     },

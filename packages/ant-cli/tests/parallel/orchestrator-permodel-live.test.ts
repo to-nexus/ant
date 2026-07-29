@@ -76,7 +76,7 @@ describe('TaskOrchestrator — live per-model publication (running job)', () => 
       { maxWorkers: 1, checkpointInterval: 0 },
       [],
       usage(147, 15),                                             // seed aggregate (opus decompose)
-      { 'claude-opus-4-8': { ...usage(147, 15), callCount: 1 } }, // seed per-model (opus)
+      { 'claude-opus-5': { ...usage(147, 15), callCount: 1 } }, // seed per-model (opus)
     );
 
     const result = await orchestrator.run();
@@ -84,7 +84,7 @@ describe('TaskOrchestrator — live per-model publication (running job)', () => 
     // (1) A pre-completion publish carries BOTH the seed model and the in-flight
     // worker model, priced at a positive USD — the popup would no longer be blank.
     const liveWithBoth = published.find(
-      (m) => m['claude-opus-4-8'] && m['claude-sonnet-5'],
+      (m) => m['claude-opus-5'] && m['claude-sonnet-5'],
     );
     expect(liveWithBoth).toBeDefined();
     expect(computeJobCostUsd(liveWithBoth as Record<string, any>).usd).toBeGreaterThan(0);
@@ -105,11 +105,11 @@ describe('TaskOrchestrator — live per-model publication (running job)', () => 
 
     // (3) Conservation — final per-model = seed + Σ deltas, no double count, and
     // per-model input sum mirrors the aggregate.
-    expect(result.tokenUsageByModel['claude-opus-4-8']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
+    expect(result.tokenUsageByModel['claude-opus-5']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
     expect(result.tokenUsageByModel['claude-sonnet-5']).toMatchObject({ inputTokens: 300, outputTokens: 4 });
     expect(result.tokenUsage.inputTokens).toBe(447);
     const perModelInput =
-      result.tokenUsageByModel['claude-opus-4-8'].inputTokens +
+      result.tokenUsageByModel['claude-opus-5'].inputTokens +
       result.tokenUsageByModel['claude-sonnet-5'].inputTokens;
     expect(perModelInput).toBe(result.tokenUsage.inputTokens);
   });

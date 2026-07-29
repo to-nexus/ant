@@ -46,7 +46,7 @@ export const MODEL_RATE_CARD: Readonly<Record<string, ModelRate>> = Object.fromE
  * under-charge with a cheap default. Callers that prefer hard-fail use
  * {@link computeCallCostUsd} directly (it throws on unknown ids).
  */
-export const MOST_EXPENSIVE_MODEL_ID = 'claude-opus-4-8';
+export const MOST_EXPENSIVE_MODEL_ID = 'claude-opus-5';
 
 /**
  * One row of the per-model pricing matrix (the "가격정보" surface). A flat

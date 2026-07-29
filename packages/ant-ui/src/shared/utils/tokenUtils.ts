@@ -4,9 +4,10 @@
  * Architecture doc: docs/internals/35-token-usage-tracking.md
  *
  * DESIGN PRINCIPLE: Input and Output are fundamentally different cost categories.
- *   - Input: $3/MTok (Sonnet 4), cacheable, high volume, optimization target
- *   - Output: $15/MTok (Sonnet 4), NOT cacheable, lower volume, 5x more expensive
+ *   - Input: cacheable, high volume, optimization target
+ *   - Output: NOT cacheable, lower volume, ~5x more expensive per token
  *   → NEVER sum them into a single "total" — it's like adding different currencies.
+ *   Actual per-model USD rates live in the MODEL_REGISTRY SSOT (@ant/shared/models.ts).
  *
  * Anthropic API field semantics (confirmed via official docs):
  *   - input_tokens = tokens AFTER last cache breakpoint (cache-miss only)
@@ -23,6 +24,7 @@ import {
   computeModelCostBreakdownUsd,
   usdToMicroCredits,
   microCreditsToCredits,
+  MODEL_REGISTRY,
   type TokenUsageByModel,
 } from '@ant/shared';
 
@@ -280,15 +282,20 @@ export function perModelCostRows(
 }
 
 /**
- * Friendly short label for a model id (e.g. `claude-opus-4-8` → "Opus 4.8").
- * Falls back to the raw id for unknown models.
+ * Friendly short label for a model id (e.g. `claude-opus-5` → "Opus 5").
+ *
+ * Reads {@link MODEL_REGISTRY} first so a model release needs no edit here —
+ * the registry's `displayName` IS the label. The version-agnostic ladder below
+ * only covers ids absent from the registry (a stale persisted id before
+ * `getProjectConfig` heals it), and never names a version.
  */
 export function formatModelLabel(modelId: string): string {
+  const spec = MODEL_REGISTRY[modelId];
+  if (spec) return spec.displayName;
+
   const id = modelId.toLowerCase();
-  if (id.includes('opus-4-8')) return 'Opus 4.8';
   if (id.includes('opus')) return 'Opus';
   if (id.includes('sonnet')) return 'Sonnet';
-  if (id.includes('haiku-4-5')) return 'Haiku 4.5';
   if (id.includes('haiku')) return 'Haiku';
   return modelId;
 }

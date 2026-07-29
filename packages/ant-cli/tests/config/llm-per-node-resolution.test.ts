@@ -133,7 +133,7 @@ describe('LLM Per-Node Model Resolution', () => {
       llmModels: {
         plan: {
           default: 'claude-sonnet-5',
-          plan: 'claude-opus-4-8',
+          plan: 'claude-opus-5',
           execute: 'claude-sonnet-5-alt',
         },
       },
@@ -154,7 +154,7 @@ describe('LLM Per-Node Model Resolution', () => {
     );
 
     // Both clients should have been created with different model names
-    expect((planNodeClient as any).modelName).toBe('claude-opus-4-8');
+    expect((planNodeClient as any).modelName).toBe('claude-opus-5');
     expect((executeNodeClient as any).modelName).toBe('claude-sonnet-5-alt');
   });
 

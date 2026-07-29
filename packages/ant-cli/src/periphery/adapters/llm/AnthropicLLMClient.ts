@@ -79,10 +79,10 @@ export class AnthropicLLMClient implements LLMClient {
 
   // Thinking-API dispatch is per-model via the MODEL_REGISTRY SSOT
   // (`getThinkingMode`), NOT a name heuristic. Adaptive-thinking models
-  // (Sonnet 5, Opus 4.6/4.7/4.8, Fable 5) REJECT the legacy `budget_tokens`
-  // shape with a 400; only `extended` models (Haiku 4.5) accept it. Unknown
-  // `claude-*` ids default to adaptive so a future model never re-introduces
-  // the rejected shape.
+  // (Sonnet 5, Opus 5, Fable 5) REJECT the legacy `budget_tokens` shape with
+  // a 400; only `extended` models (Haiku 4.5) accept it. Unknown `claude-*`
+  // ids default to adaptive so a future model never re-introduces the
+  // rejected shape.
   //
   // Adaptive models IGNORE the caller's round toggle (`enableThinking`) for
   // the thinking param itself. Rationale (broad-mining-minty RCA, Jul 2026):
@@ -97,14 +97,12 @@ export class AnthropicLLMClient implements LLMClient {
   // the model stream thinking_delta events, which keep the idle watchdog
   // alive and surface reasoning in chat.
   //
-  // Effort mapping (adaptive): Anthropic publishes no numeric equivalence
-  // between `budget_tokens: N` and adaptive `effort`, but documents that
-  // `medium` "may skip thinking entirely for very simple queries" while `high`
-  // (default) "always thinks". Map thinkingBudget by tier so high-budget
-  // callers (DECOMPOSE/PLAN/REVISE=10000, CODE_EXECUTE=5000) keep the
-  // always-thinks guarantee. When the caller asked for no thinking
-  // (enableThinking=false) we omit output_config — the server default (high)
-  // matches the previous omitted-param behavior, keeping cost unchanged.
+  // Effort (adaptive): PINNED to `high` — no thinkingBudget tier, no per-round
+  // omission. `medium` may skip thinking entirely; `high` (the server default)
+  // always thinks, so pinning it is cost-neutral against the previously-omitted
+  // rounds while removing the tier that could silently skip thinking on a round
+  // the caller asked to think. `xhigh`/`max` (available on Opus 5) are
+  // deliberately unused — they raise per-round spend on every job.
   private buildThinkingParams(
     enableThinking: boolean,
     thinkingBudget: number,
@@ -125,13 +123,12 @@ export class AnthropicLLMClient implements LLMClient {
     // client — defensive no-param fallback.
     if (mode === 'none') return {};
 
-    // adaptive (default for unknown claude-* ids) — always-on, see above.
-    const thinking = { type: 'adaptive', display: 'summarized' };
-    if (!enableThinking) return { thinking };
-    const effort = thinkingBudget >= 5000 ? 'high' : 'medium';
+    // adaptive (default for unknown claude-* ids) — always-on at `high`, see
+    // above. `enableThinking` / `thinkingBudget` are intentionally ignored here;
+    // both remain authoritative for `extended` models.
     return {
-      thinking,
-      output_config: { effort },
+      thinking: { type: 'adaptive', display: 'summarized' },
+      output_config: { effort: 'high' },
     };
   }
 
@@ -140,10 +137,8 @@ export class AnthropicLLMClient implements LLMClient {
   // two: thinking wire shape and sampling wire shape are orthogonal). Both
   // key off the same getThinkingMode registry.
   //
-  // - adaptive models (Sonnet 5, Opus 4.6+): NEVER send temperature. The
-  //   4.7+/Sonnet-5 API removed the parameter outright (400 if sent), and
-  //   the 4.6 family rejects temp<1 alongside the always-on adaptive
-  //   thinking param buildThinkingParams sends on every round.
+  // - adaptive models (Sonnet 5, Opus 5, Fable 5): NEVER send temperature —
+  //   the API removed the parameter outright on these models (400 if sent).
   // - extended models (Haiku 4.5): the API requires temperature=1/omitted
   //   when thinking is enabled; send only on non-thinking rounds.
   // - 'none' never routes to this client — defensive pass-through.
