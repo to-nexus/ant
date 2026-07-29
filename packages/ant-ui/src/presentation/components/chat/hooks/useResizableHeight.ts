@@ -46,12 +46,37 @@ export function useResizableHeight() {
     setTextareaHeight(newHeight);
   }, []);
 
+  // Read the latest height without re-subscribing the document listener on
+  // every pixel of the drag.
+  const heightRef = useRef(textareaHeight);
+  heightRef.current = textareaHeight;
+
+  const finishResize = useCallback(() => {
+    setIsResizing(false);
+    localStorage.setItem(STORAGE_KEY, heightRef.current.toString());
+    window.dispatchEvent(new Event('resize'));
+  }, []);
+
+  // The resize overlay's own `onMouseUp` is not a sufficient exit: release the
+  // button outside the window (or lose focus mid-drag) and it never fires,
+  // leaving a transparent `fixed inset-0; z-index: 9999` overlay mounted that
+  // silently swallows every click in the app. Same pattern as
+  // `application/hooks/ui/useResizeHandlers.ts`.
+  useEffect(() => {
+    if (!isResizing) return;
+    const end = () => finishResize();
+    document.addEventListener('mouseup', end);
+    window.addEventListener('blur', end);
+    return () => {
+      document.removeEventListener('mouseup', end);
+      window.removeEventListener('blur', end);
+    };
+  }, [isResizing, finishResize]);
+
   const handleResizeEnd = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    setIsResizing(false);
-    localStorage.setItem(STORAGE_KEY, textareaHeight.toString());
-    window.dispatchEvent(new Event('resize'));
-  }, [textareaHeight]);
+    finishResize();
+  }, [finishResize]);
 
   return {
     textareaHeight,

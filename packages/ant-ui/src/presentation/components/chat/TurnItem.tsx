@@ -58,6 +58,7 @@ import {
   type Turn,
   type TurnSection,
 } from '@/domain/store/selectors/chat';
+import { useRegisterBubble } from './pinRegistry';
 import { shouldSuppressPreviewOnlyStatusCard } from './statusCardVisibility';
 import {
   buildTrailingThinkingMerge,
@@ -97,9 +98,11 @@ export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
 // User bubble
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// `data-user-turn-id` is the pin's observation target: PinnedQuery asks
-// whether THIS bubble has scrolled above the viewport, which the enclosing
-// virtual row cannot answer (it spans the whole response). See pinTarget.ts.
+// The bubble is the pin's observation target: the pin asks whether THIS
+// element has scrolled above the viewport, which the enclosing virtual row
+// cannot answer (it spans the whole response). Registration is explicit —
+// see pinRegistry.ts for why this is not a DOM query. `data-user-turn-id`
+// is kept only as a debugging handle.
 const UserBubble = memo(function UserBubble({
   turnId,
   user,
@@ -107,9 +110,11 @@ const UserBubble = memo(function UserBubble({
   turnId: string;
   user: ChatUserTurnLine;
 }) {
+  const registerBubble = useRegisterBubble(turnId);
   return (
     <div
       className="w-full px-4 py-3"
+      ref={registerBubble}
       data-user-turn-id={turnId}
       style={{
         background: 'oklch(from var(--violet-300) l c h / 0.12)',
