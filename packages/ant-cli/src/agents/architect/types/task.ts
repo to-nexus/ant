@@ -273,11 +273,12 @@ export type DesignTask = (DocTask | ExplainTask) & {
 
   /**
    * Spec chapter decomposition fields.
-   * When a spec document is split into sections, each task carries its section context.
+   * When a spec document is split into sections, each task carries its position.
+   * The section's scope of work lives in the canonical `description` field —
+   * a parallel scope field here is forbidden (Task Description Authorship SSOT).
    */
   sectionIndex?: number;           // 0-based index of this section (0 = first)
   totalSections?: number;          // Total number of sections for this spec
-  sectionScope?: string;           // Description of what this section covers
 
   /**
    * Refactor mode only: `##` headings of the pre-revision document captured

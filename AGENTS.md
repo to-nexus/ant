@@ -170,6 +170,42 @@ directories (two setups naming the same boundary differently).
 
 ---
 
+## Task Description Authorship — `BaseTask.description`
+
+The fourth task axis is **content**: `description` is the LLM-authored
+per-task scope of work — the work statement plan/execute receive, the Kanban
+card body, and (when no plan is sealed) the ENTIRE execute instruction.
+
+**Assigning the job-level user directive (`state.directive` /
+`state.overrideDirective`) to `task.description` is FORBIDDEN.** The directive
+reaches every prompt on its own channel (`# User Directive` / `{{directive}}`);
+copying it into tasks makes every task identical, erases the decompose LLM's
+per-task reasoning, and double-injects the same text under contradictory
+framing. Also forbidden: a second field carrying per-task scope alongside
+`description` (the historical `DesignTask.sectionScope` split), and two render
+sites for the same field in one prompt.
+
+Legal producers: the decompose/revise LLM verbatim, or a deterministic helper
+that *names* the unit of work without pasting the directive
+(`specDecompose.buildRevisionScope`, `prdSync` task factories). Floor:
+non-empty after trim (`isTaskDescriptionAuthored` in `@ant/shared/task.ts`),
+enforced at task creation — code decompose retries with framing
+(`MissingTaskDescriptionViolation`), design ui/system/game-art throw into
+their repair round, spec synthesizes `buildFullSpecScope()`. Never enforced in
+`TaskQueue.from` (checkpoint restores must not throw).
+
+`sectionScope` survives only as a local variable in design
+`execute/intent/system.ts` (catalog-computed section assignment) — it is not a
+task field.
+
+```bash
+rg -n "description:\s*(state\.)?(override)?[dD]irective\b" packages/*/src --type ts  # Expected: 0
+```
+
+Regression guard: `tests/policy/task-description-authorship.test.ts`.
+
+---
+
 ## Tier × Verification Matrix (Code Job)
 
 The 5-tier execution model is a job-neutral SSOT in

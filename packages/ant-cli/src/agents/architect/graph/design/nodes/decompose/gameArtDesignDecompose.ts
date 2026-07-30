@@ -30,7 +30,7 @@ import { buildDesignDiscoveryTools } from "./designDecomposeTools";
 import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives, findTasksMissingDescription } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
@@ -271,6 +271,15 @@ export async function decomposeGameArtDesign(
       const resp = parsed as GameArtDecomposed;
       if (!resp.targetFiles || !resp.tasks) {
         throw new Error('Invalid game-art task breakdown format from LLM');
+      }
+      // Authored-scope floor (Task Description Authorship SSOT) — repair round
+      // re-prompts on omission.
+      const missingDesc = findTasksMissingDescription(resp.tasks);
+      if (missingDesc.length > 0) {
+        throw new Error(
+          `[GameArtDecompose] task(s) missing non-empty "description": ` +
+          `${missingDesc.map(t => t.id ?? t.name).join(', ')} — every task must carry its per-task scope of work`,
+        );
       }
       // Handoff bundle invariants (fail-loud) — mirrors uiDesignDecompose.
       if (docFormat === 'handoff') {

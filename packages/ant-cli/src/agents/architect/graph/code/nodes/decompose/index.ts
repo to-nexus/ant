@@ -28,9 +28,12 @@ import { getEstimatingLabel } from "../../../../../common/graph/timing/estimatin
 import {
   validateTasks,
   validateTaskTypeEnum,
+  validateTaskDescriptions,
   validateTierTaskShape,
   InvalidTaskTypeViolation,
   buildInvalidTaskTypeViolationFraming,
+  MissingTaskDescriptionViolation,
+  buildMissingTaskDescriptionViolationFraming,
   TierShapeViolation,
   buildTierShapeViolationFraming,
 } from "./validation";
@@ -1072,6 +1075,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       // a corrective framing on stochastic mis-categorisation (e.g.
       // emitting the mode name "refactor" as a task type).
       validateTaskTypeEnum(parsed.tasks);
+      // Authored-scope floor: every task must carry a non-empty description
+      // (Task Description Authorship SSOT). Inside the loop so an omission
+      // retries with framing instead of flowing through createTaskQueue's
+      // `as CodeTask` cast into execute as an undefined work statement.
+      validateTaskDescriptions(parsed.tasks);
       // Tier-shape contract (Tier 2 exactly-one + selfVerifyOnDone; Tier 3/4
       // >= 2 tasks + Final Verification + no selfVerifyOnDone leak). Runs
       // AFTER the type-enum check (isVerificationTask needs valid types) and
@@ -1094,6 +1102,22 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
           `"${e.detail.observedType}" on "${e.detail.taskName}" — retrying with framing`,
         );
         prompts.user = originalUserPrompt + buildInvalidTaskTypeViolationFraming(e);
+        continue;
+      }
+
+      if (e instanceof MissingTaskDescriptionViolation) {
+        if (attempt >= MAX_ATTEMPTS) {
+          logErrorHeader('Decompose');
+          console.error(
+            `❌ [Decompose] Missing task description exhausted ${MAX_ATTEMPTS} attempts: ${e.message}`,
+          );
+          throw e;
+        }
+        console.warn(
+          `⚠️  [Decompose] Missing task description attempt ${attempt}/${MAX_ATTEMPTS}: ` +
+          `task "${e.detail.taskName}" — retrying with framing`,
+        );
+        prompts.user = originalUserPrompt + buildMissingTaskDescriptionViolationFraming(e);
         continue;
       }
 

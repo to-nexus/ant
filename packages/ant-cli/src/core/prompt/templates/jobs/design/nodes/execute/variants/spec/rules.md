@@ -37,13 +37,13 @@
 
 **Principle**: Each task covers exactly the scope assigned to it. Overlap between sections produces duplicate, contradictory, or incomplete specs.
 
-**Constraint**: Write ONLY the content described in the CURRENT SECTION SCOPE. Do NOT write content that belongs to other sections.
+**Constraint**: Write ONLY the content described in the CURRENT TASK SCOPE. Do NOT write content that belongs to other sections.
 
 **Constraint**: Do NOT repeat content that appears in ALREADY WRITTEN sections.
 
 **Constraint**: Each section must be independently readable but reference earlier sections by name rather than restating their content.
 
-⚠️ **Blind spot**: LLMs tend to write "complete" documents rather than assigned sections. Always check CURRENT SECTION SCOPE before writing.
+⚠️ **Blind spot**: LLMs tend to write "complete" documents rather than assigned sections. Always check CURRENT TASK SCOPE before writing.
 
 ════════════════════════════════════════════════════════════════════════════════
 

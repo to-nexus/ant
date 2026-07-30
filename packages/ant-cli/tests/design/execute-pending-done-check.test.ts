@@ -9,7 +9,7 @@
  *     paths under `codebase/` do NOT — those are caught by the gate
  *     earlier),
  *   - the self-check trailing message helper used by spec / system
- *     intents (escalation 1 vs ≥2 wording, sectionScope inclusion).
+ *     intents (escalation 1 vs ≥2 wording, scope inclusion).
  *
  * These two pieces own the entire R5 contract — the execute node only
  * combines them with state plumbing.
@@ -38,7 +38,7 @@ describe('R5 self-check trailing message helper', () => {
       stateStub({ _pendingDoneCheck: true, _doneCheckEscalation: 1 }),
       {
         artifactPath: 'architecture/spec/foo.md',
-        sectionScope: 'Section 2: API Contract',
+        scope: 'Section 2: API Contract',
       },
     );
     expect(out).toBeDefined();
@@ -50,12 +50,12 @@ describe('R5 self-check trailing message helper', () => {
     expect(out!).not.toMatch(/edit_file|delete_file|run_command|You MUST/);
   });
 
-  it('escalation 1 falls back to "full document" when sectionScope is empty', () => {
+  it('escalation 1 falls back to "full document" when scope is empty', () => {
     const out = buildSelfCheckTrailingMessage(
       stateStub({ _pendingDoneCheck: true, _doneCheckEscalation: 1 }),
       {
         artifactPath: 'architecture/system/be-system-main.md',
-        sectionScope: '',
+        scope: '',
       },
     );
     expect(out!).toMatch(/full document/);
@@ -66,7 +66,7 @@ describe('R5 self-check trailing message helper', () => {
       stateStub({ _pendingDoneCheck: true, _doneCheckEscalation: 2 }),
       {
         artifactPath: 'architecture/spec/foo.md',
-        sectionScope: 'Section 1',
+        scope: 'Section 1',
       },
     );
     expect(out).toBeDefined();

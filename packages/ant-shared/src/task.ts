@@ -319,6 +319,33 @@ export type TaskBand = FeatureBand | SetupBand;
 interface BaseTaskCommon {
   id: string;
   name: string;
+  /**
+   * **Per-task scope of work — LLM-authored, never the job-level directive.**
+   *
+   * SSOT for "what THIS task covers". Consumers treat it as the work statement:
+   * code plan (`{{taskDescription}}`), code execute (`**Goal**:` — and the
+   * ENTIRE work statement when no plan is sealed, see
+   * `code/nodes/execute/buildMessages.ts`), design plan
+   * (`{{currentTask.description}}`), design execute intents, Kanban cards,
+   * `_allTasksSummary`, cross-task manifests, learn.
+   *
+   * INVARIANT — assigning the user directive (`state.directive` /
+   * `state.overrideDirective`) here is FORBIDDEN. The directive is job-level
+   * and reaches the prompt on its own channel (`# User Directive` /
+   * `{{directive}}`); copying it here makes every task identical, erases the
+   * decompose LLM's per-task signal, and double-injects the same text under
+   * contradictory framing. Legal producers: the decompose/revise LLM verbatim,
+   * or a deterministic helper that NAMES the unit of work without pasting the
+   * directive (precedents: `specDecompose.buildRevisionScope`,
+   * `prdSync.appendPrdSyncTasks`).
+   *
+   * Floor: non-empty after trim ({@link isTaskDescriptionAuthored}) —
+   * enforced at task creation per job (code decompose retries with framing;
+   * design ui/system/game-art repair-call; spec synthesizes), never in
+   * `TaskQueue.from` (checkpoint restores must not throw).
+   * See "Task Description Authorship SSOT" in AGENTS.md; regression guard:
+   * `tests/policy/task-description-authorship.test.ts`.
+   */
   description: string;
   /** Sort key only. Semantic comparisons (priority windows / band ranges) are
    *  forbidden outside the decompose priority→band site. */
@@ -453,6 +480,25 @@ export function isPrdSyncTask(
   task: { type?: string; prdSyncTargets?: string[] } | null | undefined,
 ): boolean {
   return task?.type === 'doc' && (task.prdSyncTargets?.length ?? 0) > 0;
+}
+
+/**
+ * Authored-scope floor for `BaseTask.description` (see its JSDoc): a task whose
+ * description is missing or blank after trim violates the authorship contract.
+ * Enforced at task creation, never on checkpoint rehydrate.
+ */
+export function isTaskDescriptionAuthored(
+  task: { description?: string } | null | undefined,
+): boolean {
+  return typeof task?.description === 'string' && task.description.trim().length > 0;
+}
+
+/** Offenders of the description floor, so each caller picks its own reaction
+ *  (code: typed retry; design ui/system/game-art: repair round; spec: synthesize). */
+export function findTasksMissingDescription<
+  T extends { id?: string; name?: string; description?: string },
+>(tasks: readonly T[]): T[] {
+  return tasks.filter((t) => !isTaskDescriptionAuthored(t));
 }
 
 // ============================================

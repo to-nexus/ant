@@ -21,7 +21,7 @@ import { buildDesignDiscoveryTools } from "./designDecomposeTools";
 import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
 import { safeLogPrompt } from "../../utils/promptLog";
 import { saveDecomposeCheckpoint } from "../../session/checkpoint";
-import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots } from "@ant/shared";
+import { ARTIFACT_PREFIX, BOUNDARY, buildTechTier, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, findTasksMissingDescription } from "@ant/shared";
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta } from "../../../../../../core/executionTier";
 
@@ -245,6 +245,15 @@ export async function decomposeUiDesign(
       const resp = parsed as UiDecomposed;
       if (!resp.targetFiles || !resp.tasks) {
         throw new Error('Invalid UI task breakdown format from LLM');
+      }
+      // Authored-scope floor (Task Description Authorship SSOT) — repair round
+      // re-prompts on omission.
+      const missingDesc = findTasksMissingDescription(resp.tasks);
+      if (missingDesc.length > 0) {
+        throw new Error(
+          `[UIDecompose] task(s) missing non-empty "description": ` +
+          `${missingDesc.map(t => t.id ?? t.name).join(', ')} — every task must carry its per-task scope of work`,
+        );
       }
       // Handoff bundle invariants (fail-loud): every task authors exactly one
       // relative file path inside the bundle, and task ids must not collide with
