@@ -13,7 +13,7 @@
 
 import { effectiveTechTier, getTechTier } from '@ant/shared';
 import type { PlanPromptCtx, PlanPromptResult } from '../../_shared/types';
-import { formatCodeContext, mapLang } from '../../_shared/helpers/planPrompt';
+import { formatCodeContext, mapLang, substantivePrePlanText } from '../../_shared/helpers/planPrompt';
 import { renderPriorCompletedFiles } from '../../_shared/helpers/priorCompletedFiles';
 import { workspaceDepSnapshotVars } from '../../_shared/helpers/workspaceDepSnapshotHook';
 import { AutoInjectionResolver } from '../../../../../../../core/prompt/builder/AutoInjectionResolver';
@@ -67,6 +67,15 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
 
   const depSnapshot = await workspaceDepSnapshotVars(ctx);
 
+  // Diagnostic-carry — split-born error sub-tasks arrive with the parent's
+  // diagnostic recipe as `prePlanText`. Since the identity-shortcut was
+  // retired (pre-authored diagnoses are hypotheses until verified against
+  // code), this hook surfaces the pre-plan as plan-tool-loop INPUT via the
+  // `parent-pre-plan` partial's diagnostic-carry branch. Decompose-born
+  // error tasks carry no prePlanText — the partial self-gates to nothing.
+  const prePlanText = substantivePrePlanText(task);
+  const hasPrePlanText = prePlanText !== undefined;
+
   const body = await promptBuilder.render(TEMPLATE_PATHS.codePlanError.base, {
     taskId: task.id,
     taskName: task.name,
@@ -103,6 +112,15 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     // Cross-task output manifest — same SSOT as generic plan/execute. Lets the
     // error fix reuse an existing shared store / module instead of recreating.
     priorCompletedFiles: renderPriorCompletedFiles(state, task),
+    // Parent pre-plan (diagnostic carry) — mirrors the generic path's var
+    // derivation in `nodes/plan/llm/prompt.ts`. Slice/cross-batch branches
+    // are feature/ui/design-system/test-code/seam concepts; error renders
+    // only the diagnostic-carry branch.
+    prePlanText: prePlanText ?? '',
+    hasPrePlanText,
+    isDiagnosticCarry: hasPrePlanText,
+    isSliceDeclaration: false,
+    hasCrossBatchContracts: false,
     ...depSnapshot,
   });
 
@@ -116,6 +134,8 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
       hasViolationsText: !!violationsText,
       violationsTextLen: violationsText?.length ?? 0,
       hasWorkspaceDepSnapshot: depSnapshot.hasWorkspaceDepSnapshot,
+      hasPrePlanText,
+      isDiagnosticCarry: hasPrePlanText,
     },
   };
 }

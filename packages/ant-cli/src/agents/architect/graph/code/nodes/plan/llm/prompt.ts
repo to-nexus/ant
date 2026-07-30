@@ -44,7 +44,7 @@ import { loadAntrules } from "../../../../../../../core/artifact/antrules";
 import { getRACDocuments } from "@ant/shared";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
 import { toPlanPromptResult, type PlanPromptCtx } from "../../../tasks/_shared/types";
-import { formatCodeContext } from "../../../tasks/_shared/helpers/planPrompt";
+import { formatCodeContext, substantivePrePlanText } from "../../../tasks/_shared/helpers/planPrompt";
 import { renderPriorCompletedFiles } from "../../../tasks/_shared/helpers/priorCompletedFiles";
 import { featureUiObservationVars } from "../../../tasks/_shared/helpers/featureUiObservation";
 import { layoutValidityFloorVars } from "../../../tasks/_shared/helpers/layoutValidityFloor";
@@ -196,11 +196,13 @@ export async function buildPlanPrompt(
   // is rendered as plan-tool-loop INPUT (NOT the planText itself; that's
   // the LLM's output). See
   // `nodes/plan/injections/parent-pre-plan.md` for the FPOP-compliant
-  // guidance the LLM receives. Identity-shortcut (state.planText :=
-  // prePlanText, no LLM) is reserved for `error` task type — see
-  // `nodes/plan/shortcut/prePlanned.ts`.
-  const prePlanTextRaw = (task as CodeTask).prePlanText;
-  const hasPrePlanText = typeof prePlanTextRaw === 'string' && prePlanTextRaw.length > 50;
+  // guidance the LLM receives. Note: error sub-tasks don't reach this
+  // generic path in production — their bundle publishes its own
+  // `plan.buildPrompt` (`tasks/error/hooks/plan.ts`), which mirrors this
+  // derivation for the diagnostic-carry branch. The former error
+  // identity-shortcut (verbatim planText adoption, no LLM) is retired.
+  const prePlanTextRaw = substantivePrePlanText(task as CodeTask);
+  const hasPrePlanText = prePlanTextRaw !== undefined;
 
   // Parent-pre-plan shape SSOT — type-based, regex-free.
   // - slice declaration: feature / ui / design-system / test-code each receive

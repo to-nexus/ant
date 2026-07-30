@@ -33,7 +33,6 @@ import { mergeDelta } from './outcome/delta';
 import { finalizePlanOutcome } from './outcome/finalize';
 import {
   maybeResumeInterrupted,
-  maybePrePlannedFastPath,
   maybeSetupFastPath,
 } from './shortcut';
 import {
@@ -268,9 +267,12 @@ export async function plan(state: ArchitectGraphState): Promise<ArchitectGraphSt
   const resumed = await maybeResumeInterrupted(state, entry, workflowExit);
   if (resumed) return mergeDelta(resumed, entryDelta) as ArchitectGraphState;
 
-  // STEP 0.6 — pre-planned error / test-code fast path.
-  const prePlanned = await maybePrePlannedFastPath(state, entry, workflowExit);
-  if (prePlanned) return mergeDelta(prePlanned, entryDelta) as ArchitectGraphState;
+  // (retired STEP 0.6 — the error identity-shortcut that consumed
+  // `task.prePlanText` verbatim as `planText` was removed: pre-authored
+  // diagnoses are hypotheses until verified against code. Split-born error
+  // sub-tasks now enter the plan-tool-loop like every other split type,
+  // with the parent diagnostic injected as INPUT via
+  // `nodes/plan/injections/parent-pre-plan.md` (diagnostic-carry branch).)
 
   // STEP 0.7 — retry diagnostic log. Verify-mode tasks (verification +
   // Tier 2 self-verify) re-run gates via the tool loop on retry; all

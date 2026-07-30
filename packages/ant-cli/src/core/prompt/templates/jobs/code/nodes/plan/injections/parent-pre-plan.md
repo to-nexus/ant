@@ -20,10 +20,28 @@ pre-plan only declares the slice boundary, the internal `modify[]` /
 
 {{#if isDiagnosticCarry}}
 **Diagnostic carry**: `implementation.*` arrays and (optionally)
-`diagnostics.rootCauses[]`. The parent already inspected the failure and
-assigned each entry to a root cause. Use the implementation block as the
-basis of your plan and refine only where you observe divergence from
-sibling outputs.
+`diagnostics.rootCauses[]`. The parent inspected a failure and authored
+this recipe — it is your **starting plan and carried evidence, not
+verified fact**. The parent's causal claims were written without seeing
+what you can observe now.
+
+**Verification before adoption** (required):
+- When the carried diagnostics quote a machine failure signal that names
+  this batch's defect site (compiler error with file+line, failing test
+  assertion, stack trace frame) AND the `implementation` changes target
+  that named site: verification is the single confirming read of that
+  site. Read it, confirm the quoted signal matches the code, then adopt
+  the implementation block as your plan. Do NOT explore further.
+- Otherwise (the causal chain is inferred — from reading code, from
+  symptoms, from a user report): read the claimed defect site AND trace
+  the claimed causal chain end-to-end against actual code before
+  adopting. A diagnosis that names a mechanism you can disprove by
+  reading the code it describes must be rejected, not implemented.
+- If observation falsifies the parent's diagnosis: plan the verified
+  cause instead. The slice boundary still holds — if the verified cause
+  lies outside this batch's surface, name it explicitly in your
+  `planText` (so the verification gate sees it) instead of widening
+  into it.
 {{/if}}
 
 **Authority**: This pre-plan is your INPUT, not your output. The `planText`
@@ -57,9 +75,9 @@ sibling-owned reference.
 {{/if}}
 {{#if isDiagnosticCarry}}
 - **For diagnostic carries**: the `implementation.*` arrays are the
-  starting plan. Verify file existence and export names against actual
-  sibling outputs; if divergence is observed, refine WITHOUT abandoning
-  the slice boundary.
+  starting plan, adopted only after the verification above. Also verify
+  file existence and export names against actual sibling outputs; if
+  divergence is observed, refine WITHOUT abandoning the slice boundary.
 {{/if}}
 
 This block is sub-task-specific. Job-level cross-task reasoning, when

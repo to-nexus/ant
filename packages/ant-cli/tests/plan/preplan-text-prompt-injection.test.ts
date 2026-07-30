@@ -72,7 +72,13 @@ describe('parent-pre-plan partial — render contract', () => {
     });
     expect(rendered).toContain('Parent Sub-Task Pre-Plan');
     expect(rendered).toContain('Diagnostic carry');
-    expect(rendered).toContain('Verify file existence and export names');
+    // Post shortcut-retirement contract: the recipe is a hypothesis until
+    // verified against code — the block must carry the verify-then-adopt
+    // instructions and the machine-signal fast path.
+    expect(rendered).toContain('starting plan and carried evidence, not');
+    expect(rendered).toContain('Verification before adoption');
+    expect(rendered).toContain('single confirming read');
+    expect(rendered).toMatch(/verify\s+file existence and export names/);
     expect(rendered).not.toContain('Slice declaration');
   });
 

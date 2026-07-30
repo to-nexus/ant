@@ -59,9 +59,12 @@ export const hooks = composeBundle({
       // Focused error-related context only (mirrors analyzer.ts
       // ContextStrategy.maxFilesToRead).
       ragQuota: 5,
-      // Sub-tasks carry a fixed-scope `prePlanText`; bypass the diagnostic
-      // plan-tool-loop.
-      acceptsPrePlanText: true,
+      // Split-born sub-tasks carry the parent's diagnostic as `prePlanText`.
+      // It is injected as plan-tool-loop INPUT (diagnostic-carry branch of
+      // `nodes/plan/injections/parent-pre-plan.md`), NOT consumed verbatim —
+      // the retired identity-shortcut let unverified diagnoses run
+      // unopposed (focal-molding-board). The child plan verifies the
+      // claimed defect site against code before adopting the recipe.
       // Apply-phase empty plan: Execute owns the "nothing to fix" outcome
       // via `emptyPlanFallback` (`tasks/error/hooks/execute.ts`), which
       // prompts the LLM to emit `<done>true</done>` directly. Surfacing the

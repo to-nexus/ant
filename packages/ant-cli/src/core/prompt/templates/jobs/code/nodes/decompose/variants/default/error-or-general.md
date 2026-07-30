@@ -22,6 +22,10 @@
    - Task description: Include **error message, stack trace, observed behavior**
    - **Don't** prescribe solutions
    - **Don't** assume user's diagnosis is correct
+   - If the description includes any causal inference of your own, it MUST be
+     labeled as an unverified hypothesis and paired with the observable
+     evidence that motivated it (exact error text, trace, reproduction) —
+     never with a solution direction. The task's plan phase owns diagnosis.
 
 **Example:**
 

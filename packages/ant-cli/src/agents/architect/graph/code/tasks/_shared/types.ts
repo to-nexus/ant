@@ -204,22 +204,15 @@ export interface TaskPlanHook {
    * `RETRIEVAL_CONFIG`.
    */
   ragQuota?: number;
-  /**
-   * Does this task type accept a pre-planned `prePlanText` body and
-   * bypass the plan-tool-loop entirely (identity-shortcut: `state.planText
-   * := task.prePlanText`)? Only `error` publishes `true` — the parent's
-   * diagnostic IS the plan, and re-running a plan-tool-loop would cascade
-   * (re-derive what verification just observed).
-   *
-   * Other batch-split sub-types (`test-code` / `feature` / `ui`) carry a
-   * `prePlanText` body but MUST enter the plan-tool-loop so the LLM can
-   * verify the parent's predicted exports against actual sibling outputs
-   * before emitting `planText` (drift detection). The pre-plan is surfaced
-   * as plan-tool-loop INPUT via
-   * `nodes/plan/injections/parent-pre-plan.md`, not consumed as the plan
-   * itself.
+  /*
+   * (retired) `acceptsPrePlanText` — the error identity-shortcut flag.
+   * Every batch-split sub-type (error included) now enters the
+   * plan-tool-loop; the parent's `prePlanText` is surfaced as INPUT via
+   * `nodes/plan/injections/parent-pre-plan.md` and verified against code
+   * before adoption. Do not reintroduce a plan-bypass flag: pre-authored
+   * diagnoses are self-certified by the same LLM whose overconfidence is
+   * the failure mode (focal-molding-board).
    */
-  acceptsPrePlanText?: boolean;
 }
 
 export interface TaskToolHook {
