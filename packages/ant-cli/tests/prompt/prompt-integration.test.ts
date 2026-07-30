@@ -62,6 +62,22 @@ describe('Integration A: ArtifactPipeline (artifact pool + selectArtifacts)', ()
     expect(selectArtifacts(pool, { taskType: 'feature' })).toHaveLength(0);
   });
 
+  it('asset-pool stub rides along regardless of include (existence band)', () => {
+    const pool: ResolvedArtifact[] = [
+      { path: 'plan', content: 'PRD body', role: 'ref' },
+      { path: 'assets/game/models/Duck.glb', content: '[asset] assets/game/models/Duck.glb\nsize: 118.0 KB, kind: binary', role: 'context' },
+    ];
+    // Empty include: bodies stay out, the attached asset's existence stub stays in.
+    expect(selectArtifacts(pool, { taskType: 'feature' }).map(a => a.path)).toEqual([
+      'assets/game/models/Duck.glb',
+    ]);
+    // Authored include: stub appended after bodies, never duplicated.
+    expect(selectArtifacts(pool, { include: ['plan'] }).map(a => a.path)).toEqual([
+      'plan',
+      'assets/game/models/Duck.glb',
+    ]);
+  });
+
   it('error task with spec/api-contract include → both selected', () => {
     const pool: ResolvedArtifact[] = [
       { path: 'architecture/system/api-contract-main.md', content: 'API contract', role: 'ref' },
