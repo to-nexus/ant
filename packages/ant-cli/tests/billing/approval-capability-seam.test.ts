@@ -10,10 +10,15 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { NoopOrganizationRepository } from '../../src/periphery/adapters/auth/NoopOrganizationRepository';
+import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
 import { approvalErrorCode } from '../../src/periphery/adapters/http/routes/helpers/approvalGate';
 
 describe('NoopOrganizationRepository — approval defaults (local = always approved)', () => {
-  const repo = new NoopOrganizationRepository();
+  // Typed as the PORT, not the concrete class: the no-op bodies legitimately
+  // declare zero parameters (they ignore every argument), so calling them
+  // through the class type rejects the arguments the port promises. What this
+  // suite verifies is the port contract's local-mode behavior.
+  const repo: OrganizationRepositoryPort = new NoopOrganizationRepository();
 
   it('reports every account as approved', async () => {
     expect(await repo.getUserApproval('anyone@example.com')).toBe('approved');

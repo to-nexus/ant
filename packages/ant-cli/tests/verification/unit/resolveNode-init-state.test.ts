@@ -1,5 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createResolveNode } from '../../../src/agents/common/graph/nodes/resolve';
+import type { ResolvableState } from '../../../src/agents/common/graph/nodes/resolve';
+
+/**
+ * `createResolveNode` is generic over the graph's state shape, and its return is
+ * `Partial<T>`. Without a type argument `T` collapses to the bare
+ * `ResolvableState`, which carries none of the job fields the strategies below
+ * actually return — so the assertions read properties the compiler says do not
+ * exist. Declaring the probe state is what the generic is for.
+ */
+interface ProbeState extends ResolvableState {
+  jobId?: string;
+  turnId?: string;
+  loadedJobId?: string;
+  loadedTurnId?: string;
+  from?: string;
+  recursionLimit?: number;
+}
 
 describe('createResolveNode init-state propagation', () => {
   it('propagates initNewJob result to loadArtifacts in the same resolve turn', async () => {
@@ -13,13 +30,13 @@ describe('createResolveNode init-state propagation', () => {
       turnId: 't-4efa948b',
     }));
 
-    const resolve = createResolveNode({
+    const resolve = createResolveNode<ProbeState>({
       initNewJob,
       loadArtifacts,
       onResume,
     } as any);
 
-    const state: any = {
+    const state: ProbeState = {
       isResume: false,
       context: {},
       directive: '',
@@ -42,7 +59,7 @@ describe('createResolveNode init-state propagation', () => {
     const loadArtifacts = vi.fn(async () => ({ from: 'loadArtifacts' }));
     const onResume = vi.fn(async () => ({ from: 'resume' }));
 
-    const resolve = createResolveNode({
+    const resolve = createResolveNode<ProbeState>({
       initNewJob,
       loadArtifacts,
       onResume,

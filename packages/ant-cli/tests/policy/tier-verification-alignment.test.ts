@@ -31,23 +31,27 @@ beforeAll(() => {
 // createTaskQueue — Tier-based validation
 // ─────────────────────────────────────────────────────────────
 
-const featureTask = (overrides: Partial<CodeTask> = {}): CodeTask => ({
+type FeatureCodeTask = Extract<CodeTask, { type: 'feature' }>;
+type ErrorCodeTask = Extract<CodeTask, { type: 'error' }>;
+
+// Narrowed to the variant each builder actually makes: spreading a union-wide
+// `Partial<CodeTask>` widens `type` past the literal, so the result satisfies no
+// single member of the discriminated union.
+const featureTask = (overrides: Partial<FeatureCodeTask> = {}): FeatureCodeTask => ({
   id: 'feature-1',
   name: 'Build feature',
   type: 'feature',
   priority: 300,
   description: 'implement X',
-  packages: ['shared'],
   ...overrides,
 });
 
-const errorTask = (overrides: Partial<CodeTask> = {}): CodeTask => ({
+const errorTask = (overrides: Partial<ErrorCodeTask> = {}): ErrorCodeTask => ({
   id: 'error-1',
   name: 'Fix error',
   type: 'error',
   priority: 900,
   description: 'fix Y',
-  packages: ['shared'],
   ...overrides,
 });
 
@@ -82,7 +86,6 @@ describe('createTaskQueue — Tier 2 (Exploratory, single unit of work)', () => 
         type: 'explain',
         priority: 200,
         description: 'explain',
-        packages: ['shared'],
       },
     ];
     const { taskQueue } = createTaskQueue(
@@ -141,8 +144,8 @@ describe('createTaskQueue — Tier 3/4 (Task / RefsGrounded)', () => {
 
   it('accepts physical-isolation shape [feature × N + FV × 1]', () => {
     const tasks: CodeTask[] = [
-      featureTask({ id: 'feature-be', packages: ['be-main'] }),
-      featureTask({ id: 'feature-fe', packages: ['fe-main'] }),
+      featureTask({ id: 'feature-be' }),
+      featureTask({ id: 'feature-fe' }),
       finalVerificationTask(),
     ];
     const { taskQueue } = createTaskQueue(

@@ -296,6 +296,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
       violationsText: 'prior failure context',
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
       options: { hasTools: false },
     });
     expect(out.text).toContain('BASIS_SECTION');
@@ -330,6 +331,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     expect(out.text).not.toContain('BASIS_SECTION');
     expect(out.text).toContain('BODY:jobs/code/nodes/plan/variants/error/base');
@@ -345,6 +347,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
         violationsText: undefined,
         uiDoc: undefined,
         remainingTasks: undefined,
+        antrulesContent: undefined,
       }),
     ).rejects.toThrow(/PromptBuilder not available/);
   });
@@ -369,6 +372,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
         violationsText: undefined,
         uiDoc: undefined,
         remainingTasks: undefined,
+        antrulesContent: undefined,
       });
       const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
       expect(base).toBeDefined();
@@ -391,6 +395,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
         violationsText: undefined,
         uiDoc: undefined,
         remainingTasks: undefined,
+        antrulesContent: undefined,
       });
       const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
       expect(base?.vars.hasPrePlanText).toBe(false);
@@ -407,6 +412,7 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
         violationsText: undefined,
         uiDoc: undefined,
         remainingTasks: undefined,
+        antrulesContent: undefined,
       });
       const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
       expect(base?.vars.hasPrePlanText).toBe(false);
