@@ -19,6 +19,7 @@
  */
 
 import type {
+  GameArtTier,
   GameArtConceptVariant,
   GameArtPerspectiveVariant,
   GameArtEntityCatalogVariant,
@@ -103,6 +104,39 @@ export const GAME_ART_TIER_AXIS_KEYS = [
 ] as const;
 
 export type GameArtTierAxisKey = (typeof GAME_ART_TIER_AXIS_KEYS)[number];
+
+/**
+ * Axis → legal-variant whitelist, keyed in GAME_ART_TIER_AXIS_KEYS order.
+ * Single owner for per-axis validation (DecisionTagRegistry parse,
+ * workspace-config basis validation, per-axis default fill).
+ */
+export const GAME_ART_AXIS_VARIANTS: Record<GameArtTierAxisKey, readonly string[]> = {
+  concept: GAME_ART_CONCEPT_VARIANTS,
+  perspective: GAME_ART_PERSPECTIVE_VARIANTS,
+  entityCatalog: GAME_ART_ENTITY_CATALOG_VARIANTS,
+  motionPattern: GAME_ART_MOTION_PATTERN_VARIANTS,
+  particleProfile: GAME_ART_PARTICLE_PROFILE_VARIANTS,
+  projectilePolicy: GAME_ART_PROJECTILE_POLICY_VARIANTS,
+  audioProfile: GAME_ART_AUDIO_PROFILE_VARIANTS,
+};
+
+/**
+ * Per-axis whitelist sanitizer for persisted / externally-sourced
+ * GameArtTier payloads (e.g. `config.json` → `WorkspaceConfig.basis`).
+ * Invalid axis values are dropped (not coerced); returns `undefined` when
+ * nothing valid survives.
+ */
+export function sanitizeGameArtTier(input: unknown): GameArtTier | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const out: Record<string, string> = {};
+  for (const key of GAME_ART_TIER_AXIS_KEYS) {
+    const v = (input as Record<string, unknown>)[key];
+    if (typeof v === 'string' && GAME_ART_AXIS_VARIANTS[key].includes(v)) {
+      out[key] = v;
+    }
+  }
+  return Object.keys(out).length > 0 ? (out as GameArtTier) : undefined;
+}
 
 // ============================================
 // Template Path Functions

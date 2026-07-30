@@ -52,6 +52,35 @@ export const VISUAL_HIERARCHY_RULES_VARIANTS: readonly VisualHierarchyRulesVaria
   'controlledFocus', 'taskPriority', 'summaryFirst', 'quietLayered',
 ] as const;
 
+/**
+ * Per-layer whitelist sanitizer for persisted / externally-sourced
+ * VisualTier payloads (e.g. `config.json` → `WorkspaceConfig.basis`).
+ * Invalid layer values are dropped (not coerced); `designSystem` passes
+ * through as any non-empty string. Returns `undefined` when nothing valid
+ * survives.
+ */
+export function sanitizeVisualTier(input: unknown): VisualTier | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const src = input as Record<string, unknown>;
+  const layerVariants: Record<string, readonly string[]> = {
+    visualLanguage: VISUAL_LANGUAGE_VARIANTS,
+    surfaceSystem: SURFACE_SYSTEM_VARIANTS,
+    spatialSystem: SPATIAL_SYSTEM_VARIANTS,
+    interactionGrammar: INTERACTION_GRAMMAR_VARIANTS,
+    componentSemantics: COMPONENT_SEMANTICS_VARIANTS,
+    visualHierarchyRules: VISUAL_HIERARCHY_RULES_VARIANTS,
+  };
+  const out: Record<string, string> = {};
+  if (typeof src.designSystem === 'string' && src.designSystem.length > 0) {
+    out.designSystem = src.designSystem;
+  }
+  for (const [layer, variants] of Object.entries(layerVariants)) {
+    const v = src[layer];
+    if (typeof v === 'string' && variants.includes(v)) out[layer] = v;
+  }
+  return Object.keys(out).length > 0 ? (out as VisualTier) : undefined;
+}
+
 // ============================================
 // UI Options (BasisOption arrays)
 // ============================================

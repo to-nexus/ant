@@ -258,6 +258,12 @@ export function decisionTagRetryFraming(
  * Apply the registry's `defaultOnRetryExhaustion` to any tag still missing
  * after retries are exhausted (10.4 — graceful degrade). Returns a
  * partial map keyed by tag name.
+ *
+ * Object-valued tags (e.g. `gameArtTier`) fill **per-key**: a partial emit
+ * (`perspective=2d,motionPattern=subtle`) keeps the emitted axes and fills
+ * only the missing ones from the default. The old whole-tag check left a
+ * partially-emitted tier permanently incomplete (`concept: undefined`
+ * survived to the RAC — observed in the focal-molding-board job chain).
  */
 export function applyDecisionTagDefaults(
   parsed: Partial<Record<DecisionTagName, unknown>>,
@@ -265,10 +271,21 @@ export function applyDecisionTagDefaults(
 ): Partial<Record<DecisionTagName, unknown>> {
   const out = { ...parsed };
   for (const name of expected) {
-    if (out[name] !== undefined) continue;
     const def = DECISION_TAG_REGISTRY.find(d => d.name === name);
-    if (def?.defaultOnRetryExhaustion !== undefined) {
-      out[name] = def.defaultOnRetryExhaustion;
+    const fallback = def?.defaultOnRetryExhaustion;
+    if (fallback === undefined) continue;
+    const current = out[name];
+    if (current === undefined) {
+      out[name] = fallback;
+      continue;
+    }
+    // Per-key fill for object-shaped tags: emitted keys win, default fills
+    // the gaps. Scalar tags with a present value are left untouched.
+    if (
+      typeof current === 'object' && current !== null && !Array.isArray(current) &&
+      typeof fallback === 'object' && fallback !== null && !Array.isArray(fallback)
+    ) {
+      out[name] = { ...(fallback as Record<string, unknown>), ...(current as Record<string, unknown>) };
     }
   }
   return out;

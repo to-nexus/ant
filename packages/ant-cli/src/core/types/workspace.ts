@@ -58,8 +58,25 @@ export function getModelDisplayName(modelName: string): string {
     .join(' ');
 }
 
-import type { Domain } from '@ant/shared';
-import { DEFAULT_MODELS } from '@ant/shared';
+import type { Domain, GameArtTier, VisualTier } from '@ant/shared';
+import { DEFAULT_MODELS, sanitizeGameArtTier, sanitizeVisualTier } from '@ant/shared';
+
+/**
+ * Workspace-persisted visual basis (settled tiers).
+ *
+ * The tier axes describe properties of the CODEBASE (e.g. gameArtTier's
+ * `perspective` decides plain-Phaser vs enable3d render paths), so once a
+ * job settles them they must not be re-inferred per job — LLM re-inference
+ * at temperature > 0 flipped `perspective` 2d→3d on an unchanged project
+ * and injected mutually-contradictory basis partials (focal-molding-board).
+ * Written once by `persistSettledBasis` (decompose funnels), read back into
+ * the RAC seed at detect. `techTier` is intentionally NOT here — the
+ * codebase manifests are its SSOT (ProjectProfileDetector).
+ */
+export interface WorkspaceBasis {
+  gameArtTier?: GameArtTier;
+  visualTier?: VisualTier;
+}
 
 /**
  * Workspace Configuration
@@ -87,7 +104,15 @@ export interface WorkspaceConfig {
    * override per 10.2 — explicit > infer).
    */
   domain?: Domain;
-  
+
+  /**
+   * Settled visual basis (D22-adjacent). Absent until a decompose funnel
+   * first settles a tier for this workspace; then carried into every
+   * subsequent job's RAC as authoritative (explicit user overrides via the
+   * wizard still win and update this slot).
+   */
+  basis?: WorkspaceBasis;
+
   // Repository settings
   repoType?: RepoType;              // Default: 'local'
   localPath?: string;               // Local repository path (ONLY for repoType='local')
@@ -148,9 +173,30 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
     return 'service';
   })();
 
+  // Settled visual basis — per-axis whitelist via the registry sanitizers
+  // (invalid axis values are dropped with a warn, never coerced). Absent /
+  // fully-invalid input yields `undefined` (basis stays unsettled).
+  const basis: WorkspaceBasis | undefined = (() => {
+    if (!config.basis || typeof config.basis !== 'object') return undefined;
+    const gameArtTier = sanitizeGameArtTier(config.basis.gameArtTier);
+    const visualTier = sanitizeVisualTier(config.basis.visualTier);
+    if (config.basis.gameArtTier && !gameArtTier) {
+      console.warn('[Config] workspace.basis.gameArtTier had no valid axis values — dropped');
+    }
+    if (config.basis.visualTier && !visualTier) {
+      console.warn('[Config] workspace.basis.visualTier had no valid layer values — dropped');
+    }
+    if (!gameArtTier && !visualTier) return undefined;
+    return {
+      ...(gameArtTier ? { gameArtTier } : {}),
+      ...(visualTier ? { visualTier } : {}),
+    };
+  })();
+
   return {
     projectName: config.projectName,
     domain,
+    basis,
     repoType: repoType,
     localPath: config.localPath,
     branchBase: config.branchBase,
