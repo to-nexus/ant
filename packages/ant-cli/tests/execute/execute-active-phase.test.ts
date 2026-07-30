@@ -44,8 +44,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { routeAfterTool } from '../../src/agents/architect/graph/code/routers/toolRouter';
 import { createToolNode } from '../../src/agents/common/tool/createToolNode';
+import type { ToolRegistry } from '../../src/agents/common/tool/registry';
 import type {
-  ToolRegistry,
   ToolExecutionContext,
   ToolResult,
 } from '../../src/agents/common/tool/types';

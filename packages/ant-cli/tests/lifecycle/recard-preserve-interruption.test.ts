@@ -16,7 +16,27 @@
  * their fresh reason still wins.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import type { InterruptionDetails } from '@ant/shared';
+
+/**
+ * Real shape of `ChatService.appendChoicePresentedCancelled` (see
+ * JobCleanupManager). The spy MUST carry it: the assertions below read
+ * `calls[0][3]`, and an untyped `vi.fn(async () => …)` infers a zero-arg
+ * signature, so the 4th argument is not merely unchecked — it is out of bounds.
+ */
+type AppendChoicePresentedCancelled = (
+  projectId: string,
+  featureName: string,
+  jobId: string,
+  opts: {
+    reason: string;
+    message: string;
+    jobType?: string;
+    designErrorType?: string;
+    userContext?: unknown;
+  },
+) => Promise<{ emitted: boolean; cardId: string }>;
 
 let capturedSessionData: any = null;
 let stateStoreStub: any;
@@ -58,21 +78,21 @@ const { JobStateTracker } = trackerMod;
 
 const JOB_ID = 'prime-nesting-grate';
 
-const TASKS_FAILED = {
+const TASKS_FAILED: InterruptionDetails = {
   reason: 'tasks_failed',
   message: '1 task(s) failed — job paused',
   timestamp: '2026-07-13T10:01:48.958Z',
   canResume: true,
 };
 
-const SERVER_CRASH = {
+const SERVER_CRASH: InterruptionDetails = {
   reason: 'server_crash',
   message: 'Server was terminated unexpectedly. You can resume this job.',
   timestamp: '2026-07-13T10:04:41.833Z',
   canResume: true,
 };
 
-function makeDeps(appendCancelledSpy: ReturnType<typeof vi.fn>) {
+function makeDeps(appendCancelledSpy: Mock<AppendChoicePresentedCancelled>) {
   return {
     workspaceResolver: {
       getFeaturePath: () => '/tmp/recard-preserve-feature',
@@ -119,7 +139,10 @@ async function runCleanup(opts: {
   preferSessionInterruption?: boolean;
   provided?: typeof SERVER_CRASH;
 }) {
-  const appendCancelledSpy = vi.fn(async () => ({ emitted: true, cardId: 'card-1' }));
+  const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({
+    emitted: true,
+    cardId: 'card-1',
+  }));
   const manager = new JobCleanupManager(makeTracker(JOB_ID), makeDeps(appendCancelledSpy));
   await manager.cleanupJobState(
     JOB_ID,

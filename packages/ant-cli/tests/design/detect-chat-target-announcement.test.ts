@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { formatRACForChat } from '../../src/core/types/detection';
-import type { ResolvedActionContext } from '../../src/core/types/detection';
+import type { ResolvedActionContext } from '@ant/shared';
 
 const baseRAC = {
   intentGroup: 'design-game-art',

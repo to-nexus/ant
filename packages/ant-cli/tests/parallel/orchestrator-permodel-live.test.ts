@@ -25,9 +25,7 @@ import { computeJobCostUsd, inputSideTokens } from '@ant/shared';
 import { TaskOrchestrator } from '../../src/agents/architect/graph/code/parallel/TaskOrchestrator';
 import { TaskQueue } from '../../src/agents/architect/types/task';
 
-interface ProbeTask extends BaseTask {
-  type: 'feature';
-}
+type ProbeTask = Extract<BaseTask, { type: 'feature' }>;
 
 function makeTask(id: string): ProbeTask {
   return { id, name: id, type: 'feature', priority: 100, description: 't', exclusive: false } as ProbeTask;
@@ -81,6 +79,11 @@ describe('TaskOrchestrator — live per-model publication (running job)', () => 
 
     const result = await orchestrator.run();
 
+    // Pin the premise: an absent per-model map should fail as an assertion here,
+    // not as an opaque TypeError at the first index below.
+    expect(result.tokenUsageByModel).toBeDefined();
+    const byModel = result.tokenUsageByModel!;
+
     // (1) A pre-completion publish carries BOTH the seed model and the in-flight
     // worker model, priced at a positive USD — the popup would no longer be blank.
     const liveWithBoth = published.find(
@@ -105,12 +108,12 @@ describe('TaskOrchestrator — live per-model publication (running job)', () => 
 
     // (3) Conservation — final per-model = seed + Σ deltas, no double count, and
     // per-model input sum mirrors the aggregate.
-    expect(result.tokenUsageByModel['claude-opus-5']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
-    expect(result.tokenUsageByModel['claude-sonnet-5']).toMatchObject({ inputTokens: 300, outputTokens: 4 });
+    expect(byModel['claude-opus-5']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
+    expect(byModel['claude-sonnet-5']).toMatchObject({ inputTokens: 300, outputTokens: 4 });
     expect(result.tokenUsage.inputTokens).toBe(447);
     const perModelInput =
-      result.tokenUsageByModel['claude-opus-5'].inputTokens +
-      result.tokenUsageByModel['claude-sonnet-5'].inputTokens;
+      byModel['claude-opus-5'].inputTokens +
+      byModel['claude-sonnet-5'].inputTokens;
     expect(perModelInput).toBe(result.tokenUsage.inputTokens);
   });
 });

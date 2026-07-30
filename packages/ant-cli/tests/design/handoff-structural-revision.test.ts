@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import { join } from 'path';
 import { prunePoolPaths, appendOrUpdatePool } from '../../src/core/artifact/ArtifactPipeline';
-import type { ResolvedArtifact } from '../../src/core/artifact/ArtifactPipeline';
+import type { ResolvedArtifact } from '@ant/shared';
 
 const pool: ResolvedArtifact[] = [
   { path: 'visual/game-art/handoff/README.md', content: '# root', role: 'ref' },

@@ -28,9 +28,7 @@ import type { BaseTask } from '@ant/shared';
 import { TaskOrchestrator } from '../../src/agents/architect/graph/code/parallel/TaskOrchestrator';
 import { TaskQueue } from '../../src/agents/architect/types/task';
 
-interface ProbeTask extends BaseTask {
-  type: 'feature';
-}
+type ProbeTask = Extract<BaseTask, { type: 'feature' }>;
 
 function makeTask(id: string, priority: number, parallelGroup?: string): ProbeTask {
   return {

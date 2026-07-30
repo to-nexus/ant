@@ -66,8 +66,6 @@ describe('tasks/_shared/registry — design-system entry', () => {
     expect(typeof dsBundle.scheduling?.classify).toBe('function');
     expect(dsBundle.plan?.buildPrompt).toBeUndefined();
     expect(dsBundle.plan?.toolLoopLogTemplate).toBeUndefined();
-    expect(dsBundle.plan?.checkRetryTermination).toBeUndefined();
-    expect(dsBundle.plan?.initSession).toBeUndefined();
     expect(typeof dsBundle.plan?.extraTemplateVars).toBe('function');
     expect(dsBundle.decompose).toBeUndefined();
     expect(dsBundle.check).toBeUndefined();

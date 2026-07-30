@@ -45,6 +45,10 @@ function makeFixture() {
       featureId
         ? path.join(base, 'org', 'user', projectId, 'features', featureId, 'codebase')
         : path.join(base, 'org', 'user', projectId, 'codebase'),
+    // Bare git anchor (`repo.git`) — part of the WorkspaceResolver port since the
+    // anchor-first feature migration; the stub must satisfy it.
+    getGitAnchorPath: (_ctx: UserContext, projectId: string) =>
+      path.join(base, 'org', 'user', projectId, 'repo.git'),
     getPhysicalWorkspacesPath: () => base,
   };
 

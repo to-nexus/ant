@@ -67,7 +67,6 @@ describe('tasks/_shared/registry — setup entry', () => {
     // through the apply-phase check verbatim — undefined for setup — so
     // there is no composed check evaluator (the SV parity wrapper was
     // removed). Setup has plan.extraTemplateVars from apply phase forwarded.
-    expect(setupBundle.plan?.initSession).toBeUndefined();
     expect(setupBundle.plan?.buildPrompt).toBeUndefined();
     expect(typeof setupBundle.plan?.extraTemplateVars).toBe('function');
     expect(setupBundle.check).toBeUndefined();

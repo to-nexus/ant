@@ -40,7 +40,6 @@ describe('tasks/_shared/registry — ui entry', () => {
     // composeBundle wires `router.routeAfterDone`. The check slot passes
     // through the apply-phase check verbatim — undefined for ui — so there
     // is no composed check evaluator (the SV parity wrapper was removed).
-    expect(uiBundle.plan?.initSession).toBeUndefined();
     expect(uiBundle.check).toBeUndefined();
     expect(uiBundle.tool?.onEvent).toBeUndefined();
     expect(uiBundle.command?.guard).toBeUndefined();
