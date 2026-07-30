@@ -24,7 +24,7 @@ import { resolveDesignBasisTechTier } from "./resolveDesignBasisTechTier";
 import { parseExecutionTierTag, coerceExecutionTier, recordUserTurnMeta, ExecutionTierId } from "../../../../../../core/executionTier";
 import { parseLLMJsonResponse } from "../../utils/jsonResponseParser";
 import { appendPrdSyncTasks, resolvePrdSyncTargets } from "./prdSync";
-import { ArtifactPoolView } from "../../../../../../core/prompt/builder/ArtifactPipeline";
+import { ArtifactPoolView, isAssetPoolPath } from "../../../../../../core/prompt/builder/ArtifactPipeline";
 import { sanitizeDocSlug, collisionFreeDocFilename } from "../../../../../common/naming/docSlug";
 import { extractMarkdownHeadings } from "../checkTaskStatus/specDocIntegrity";
 import { loadExistingDesignDoc } from "../checkTaskStatus/loadExistingDesignDoc";
@@ -113,6 +113,25 @@ export async function resolveSpecTargetFileForMode(
 // LLM call: decompose directive into slug + sections
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Attached-input visibility (paths only — bodies are provided to the writing
+ * phase). Spec decompose is deliberately directive-only for its single
+ * decision ("how many output documents"), but the RAC attachment PATHS must
+ * still be visible so the decompose never scopes a task as if an explicitly
+ * attached file did not exist (fierce-gaining-gully: an attached
+ * `assets/game/models/*.glb` was invisible here and downstream).
+ */
+export function buildAttachedInputLines(
+  artifacts: ReadonlyArray<{ path: string; role: string }>,
+): string[] {
+  if (!artifacts.length) return [];
+  const lines = artifacts.map(a => {
+    const assetNote = isAssetPoolPath(a.path) ? ' (asset — reference by path)' : '';
+    return `- ${a.path} [${a.role}]${assetNote}`;
+  });
+  return ['', 'Attached input files (paths only — bodies are provided to the writing phase):', ...lines];
+}
+
 async function decomposeSpecSections(
   state: DesignGraphState
 ): Promise<SpecDecomposeResponse> {
@@ -141,6 +160,8 @@ async function decomposeSpecSections(
   // DesignTask shape.
   const streamingHook = createDesignTaskStreamingHook(state);
 
+  const attachedBlock = buildAttachedInputLines(state.artifacts ?? []);
+
   const prompt = [
     `You are a software architect. Analyze the following directive and decide how to structure a spec document.`,
     ``,
@@ -160,6 +181,7 @@ async function decomposeSpecSections(
     `  4 RefsGrounded  — multiple separate output documents systematically grounded in supplied reference documents.`,
     ``,
     `Directive: "${directive}"`,
+    ...attachedBlock,
     ``,
     `Output format — emit the meta tags first (one tag per line), then a \`<tasks>\` block with one \`<task>{json}</task>\` element per output document. Each \`<task>\` body is a single JSON object. NO markdown fences anywhere. NO \`<decompose>\` wrapper.`,
     ``,

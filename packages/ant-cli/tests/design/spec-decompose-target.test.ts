@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveSpecTargetFileForMode,
   buildSpecRevisionDecomposition,
+  buildAttachedInputLines,
 } from '../../src/agents/architect/graph/design/nodes/decompose/specDecompose.js';
 import { ExecutionTierId } from '../../src/core/executionTier/index.js';
 
@@ -151,5 +152,21 @@ body
     expect(r.tasks).toHaveLength(1);
     expect(r.revisionBaselineHeadings).toEqual([]);
     expect(r.title).toBe('wallet-login');
+  });
+});
+
+describe('buildAttachedInputLines — RAC attachment visibility at spec decompose', () => {
+  it('renders paths with role, flagging asset-pool entries (fierce-gaining-gully)', () => {
+    const lines = buildAttachedInputLines([
+      { path: 'plan/prd.md', role: 'ref' },
+      { path: 'assets/game/models/Duck.glb', role: 'context' },
+    ]);
+    expect(lines[1]).toContain('Attached input files');
+    expect(lines).toContain('- plan/prd.md [ref]');
+    expect(lines).toContain('- assets/game/models/Duck.glb [context] (asset — reference by path)');
+  });
+
+  it('empty pool → empty block (prompt unchanged)', () => {
+    expect(buildAttachedInputLines([])).toEqual([]);
   });
 });
