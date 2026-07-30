@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ChatHeaderBar } from './ChatHeaderBar';
 import { ChatHistory } from './ChatHistory';
 import { ChatInput } from './ChatInput';
+import { WorkerGroupDock } from './WorkerGroupDock';
 import { Slot } from '@/presentation/extensions/slots';
 import { QueueStatusBanner } from './QueueStatusBanner';
 import { useFeatureLogSync } from './feature-log/useFeatureLogSync';
@@ -233,6 +234,9 @@ export function ChatPanel({
             <ChatHistory turns={turns} />
           </div>
         )}
+
+        {/* Worker-group dock — latest parallel turn's groups, always reachable */}
+        {turnCount > 0 && <WorkerGroupDock turns={turns} />}
       </div>
 
       {/* Input Area - Fixed at bottom */}
