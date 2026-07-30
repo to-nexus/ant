@@ -11,9 +11,14 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { JobPayload } from '../../src/core/ports/queue';
+import type { JobStatusData } from '../../src/core/ports/stateStore';
 
-const enqueue = vi.fn(async () => {});
-const setJobStatus = vi.fn(async () => {});
+// Spies carry their real port signatures: the assertions below read
+// `calls[0][0]` / `calls[0][1]`, and an untyped `vi.fn(async () => {})` infers a
+// zero-arg signature, making those indices out of bounds rather than unchecked.
+const enqueue = vi.fn<(payload: JobPayload) => Promise<string>>(async () => 'job-1');
+const setJobStatus = vi.fn<(jobId: string, status: JobStatusData) => Promise<void>>(async () => {});
 const setJobMapping = vi.fn(async () => {});
 const getJobStatus = vi.fn(async (_id: string) => null as any);
 

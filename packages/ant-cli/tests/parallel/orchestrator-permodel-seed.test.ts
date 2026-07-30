@@ -15,9 +15,7 @@ import type { BaseTask } from '@ant/shared';
 import { TaskOrchestrator } from '../../src/agents/architect/graph/code/parallel/TaskOrchestrator';
 import { TaskQueue } from '../../src/agents/architect/types/task';
 
-interface ProbeTask extends BaseTask {
-  type: 'feature';
-}
+type ProbeTask = Extract<BaseTask, { type: 'feature' }>;
 
 function makeTask(id: string): ProbeTask {
   return { id, name: id, type: 'feature', priority: 100, description: 't', exclusive: false } as ProbeTask;
@@ -55,9 +53,14 @@ describe('TaskOrchestrator — per-model seed + delta merge', () => {
 
     const result = await orchestrator.run();
 
+    // Pin the premise: an absent per-model map should fail as an assertion here,
+    // not as an opaque TypeError at the first index below.
+    expect(result.tokenUsageByModel).toBeDefined();
+    const byModel = result.tokenUsageByModel!;
+
     // Opus (seed) survives, deepseek deltas sum: 300*2 input, 4*2 output.
-    expect(result.tokenUsageByModel['claude-opus-5']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
-    expect(result.tokenUsageByModel['deepseek-v4-pro']).toMatchObject({ inputTokens: 600, outputTokens: 8 });
+    expect(byModel['claude-opus-5']).toMatchObject({ inputTokens: 147, outputTokens: 15 });
+    expect(byModel['deepseek-v4-pro']).toMatchObject({ inputTokens: 600, outputTokens: 8 });
 
     // Aggregate mirrors: seed 147 + 2*300 = 747 input.
     expect(result.tokenUsage.inputTokens).toBe(747);
@@ -65,8 +68,8 @@ describe('TaskOrchestrator — per-model seed + delta merge', () => {
 
     // Per-model input sum equals the aggregate input (conservation invariant).
     const perModelInput =
-      result.tokenUsageByModel['claude-opus-5'].inputTokens +
-      result.tokenUsageByModel['deepseek-v4-pro'].inputTokens;
+      byModel['claude-opus-5'].inputTokens +
+      byModel['deepseek-v4-pro'].inputTokens;
     expect(perModelInput).toBe(result.tokenUsage.inputTokens);
   });
 });

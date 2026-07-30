@@ -31,7 +31,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { BaseTask, TaskTokenUsage } from '@ant/shared';
+import type { ErrorTask, TaskTokenUsage } from '@ant/shared';
 import { JobTimingManager, type JobTiming } from '../src/agents/common/graph/timing/JobTimingManager';
 import { processDiagnosticBatchSplit } from '../src/agents/architect/graph/code/tasks/_shared/batchSplit';
 import { TaskQueue, type CodeTask } from '../src/agents/architect/types/task';
@@ -101,6 +101,7 @@ function makeStartedTask(over: Partial<CodeTask> = {}): CodeTask {
   return TaskTimingHelper.startTask({
     id: 'task-1',
     name: 'Final Verification',
+    description: 'Final Verification',
     type: 'verification',
     priority: 1000,
     ...over,
@@ -212,6 +213,7 @@ describe('batchSplit Path B — drop-and-replace superseded snapshot', () => {
       type: 'error',
       priority: 100,
       name: 'fix compile errors',
+      description: 'fix compile errors',
     });
     const usage: TaskTokenUsage = {
       inputTokens: 3000,
@@ -251,6 +253,7 @@ describe('batchSplit Path B — drop-and-replace superseded snapshot', () => {
       type: 'error',
       priority: 100,
       name: 'fix',
+      description: 'fix',
     });
     const state = makeState({
       _currentTaskTokenUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, callCount: 1 },
@@ -298,10 +301,11 @@ describe('TaskOrchestrator.reportBatchSplit — superseded propagation', () => {
     return orch;
   }
 
-  function supersededFixture(over: Partial<BaseTask> = {}): BaseTask {
+  function supersededFixture(over: Partial<ErrorTask> = {}): ErrorTask {
     return {
       id: 'parent-error-task',
       name: 'fix compile errors',
+      description: 'fix compile errors',
       type: 'error',
       priority: 100,
       completed: false,
@@ -322,6 +326,7 @@ describe('TaskOrchestrator.reportBatchSplit — superseded propagation', () => {
     const reQueuedTask: CodeTask = {
       id: 'fv-task',
       name: 'Final Verification',
+      description: 'Final Verification',
       type: 'verification',
       priority: 1000,
     };
@@ -340,7 +345,7 @@ describe('TaskOrchestrator.reportBatchSplit — superseded propagation', () => {
 
   it('skips duplicate superseded ids (defence-in-depth)', async () => {
     const orch = buildOrchestrator();
-    const fv: CodeTask = { id: 'fv', name: 'fv', type: 'verification', priority: 1000 };
+    const fv: CodeTask = { id: 'fv', name: 'fv', description: 'fv', type: 'verification', priority: 1000 };
     await orch.reportBatchSplit(0, fv, [supersededFixture()]);
     await orch.reportBatchSplit(0, fv, [supersededFixture()]);
     expect(orch.getCompletedTasks()).toHaveLength(1);
@@ -348,7 +353,7 @@ describe('TaskOrchestrator.reportBatchSplit — superseded propagation', () => {
 
   it('does nothing when supersededDetails is undefined or empty (Path A path)', async () => {
     const orch = buildOrchestrator();
-    const fv: CodeTask = { id: 'fv', name: 'fv', type: 'verification', priority: 1000 };
+    const fv: CodeTask = { id: 'fv', name: 'fv', description: 'fv', type: 'verification', priority: 1000 };
     await orch.reportBatchSplit(0, fv);
     await orch.reportBatchSplit(0, fv, []);
     expect(orch.getCompletedTasks()).toEqual([]);
@@ -366,13 +371,14 @@ describe('TaskOrchestrator.reportBatchSplit — superseded propagation', () => {
     const realTask: CodeTask = {
       id: 'real-feature',
       name: 'feature x',
+      description: 'feature x',
       type: 'feature',
       priority: 200,
       timing: { startedAt: new Date().toISOString(), totalPausedDuration: 0 },
     };
     await orch.reportCompletion(0, realTask);
     // Path B superseded parent via reportBatchSplit.
-    const fv: CodeTask = { id: 'fv', name: 'fv', type: 'verification', priority: 1000 };
+    const fv: CodeTask = { id: 'fv', name: 'fv', description: 'fv', type: 'verification', priority: 1000 };
     await orch.reportBatchSplit(0, fv, [supersededFixture()]);
 
     const all = orch.getCompletedTasks();
@@ -409,6 +415,7 @@ describe('TaskOrchestrator.assignTask — pausedAt carry guard', () => {
     const requeued: CodeTask = {
       id: 'requeued-verification',
       name: 'Final Verification',
+      description: 'Final Verification',
       type: 'verification',
       priority: 1000,
       timing: { startedAt, pausedAt, totalPausedDuration: 0 },
@@ -433,6 +440,7 @@ describe('TaskOrchestrator.assignTask — pausedAt carry guard', () => {
     const fresh: CodeTask = {
       id: 'fresh-error-task',
       name: 'fix',
+      description: 'fix',
       type: 'error',
       priority: 50,
       timing: { startedAt: stale, totalPausedDuration: 0 },
@@ -451,6 +459,7 @@ describe('TaskOrchestrator.assignTask — pausedAt carry guard', () => {
     const fresh: CodeTask = {
       id: 'first-task',
       name: 'setup',
+      description: 'setup',
       type: 'setup',
       priority: 200,
     };

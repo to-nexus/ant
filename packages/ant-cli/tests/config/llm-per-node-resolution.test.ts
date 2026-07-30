@@ -58,17 +58,23 @@ describe('LLM Per-Node Model Resolution', () => {
   it('B: getDefaultWorkspaceConfig contains the opinionated per-node defaults (for creation-time snapshot)', () => {
     const defaults = getDefaultWorkspaceConfig('test-project');
 
+    // `llmModels` is optional on WorkspaceConfig, but the whole point of this
+    // case is that the creation-time snapshot ships it — so assert that first
+    // and let the per-job checks below read a non-optional local.
+    expect(defaults.llmModels).toBeDefined();
+    const llmModels = defaults.llmModels!;
+
     // Check that opinionated defaults are present
-    expect(defaults.llmModels.code).toHaveProperty('decompose');
-    expect(defaults.llmModels.code).toHaveProperty('plan');
-    expect(defaults.llmModels.code).toHaveProperty('execute');
+    expect(llmModels.code).toHaveProperty('decompose');
+    expect(llmModels.code).toHaveProperty('plan');
+    expect(llmModels.code).toHaveProperty('execute');
 
-    expect(defaults.llmModels.plan).toHaveProperty('plan');
-    expect(defaults.llmModels.plan).toHaveProperty('execute');
+    expect(llmModels.plan).toHaveProperty('plan');
+    expect(llmModels.plan).toHaveProperty('execute');
 
-    expect(defaults.llmModels.design).toHaveProperty('decompose');
-    expect(defaults.llmModels.design).toHaveProperty('plan');
-    expect(defaults.llmModels.design).toHaveProperty('execute');
+    expect(llmModels.design).toHaveProperty('decompose');
+    expect(llmModels.design).toHaveProperty('plan');
+    expect(llmModels.design).toHaveProperty('execute');
   });
 
   it('C: resolveModelForContext returns job default for unconfigured node types', () => {

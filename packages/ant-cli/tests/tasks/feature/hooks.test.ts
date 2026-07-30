@@ -80,8 +80,6 @@ describe('tasks/_shared/registry — feature entry', () => {
     // the apply-phase check verbatim — undefined for feature — so there is
     // no composed check evaluator (the SV parity wrapper was removed; the
     // task's own verify cycle runs build/test via the command guard).
-    expect(featureBundle.plan?.initSession).toBeUndefined();
-    expect(featureBundle.plan?.checkRetryTermination).toBeUndefined();
     expect(featureBundle.check).toBeUndefined();
     expect(featureBundle.tool?.onEvent).toBeUndefined();
     expect(featureBundle.command?.guard).toBeUndefined();

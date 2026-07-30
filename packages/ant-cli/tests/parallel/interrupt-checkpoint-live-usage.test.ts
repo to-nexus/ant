@@ -25,9 +25,7 @@ import type { BaseTask } from '@ant/shared';
 import { TaskOrchestrator } from '../../src/agents/architect/graph/code/parallel/TaskOrchestrator';
 import { TaskQueue } from '../../src/agents/architect/types/task';
 
-interface ProbeTask extends BaseTask {
-  type: 'feature';
-}
+type ProbeTask = Extract<BaseTask, { type: 'feature' }>;
 
 function makeTask(id: string): ProbeTask {
   return { id, name: id, type: 'feature', priority: 100, description: 't', exclusive: false } as ProbeTask;
@@ -96,8 +94,10 @@ describe('TaskOrchestrator — interruption checkpoint live usage', () => {
     releaseWorker();
     const result = await runPromise;
     expect(result.tokenUsage.inputTokens).toBe(90_371 + 500_000);
-    expect(result.tokenUsageByModel['glm-5.2'].inputTokens).toBe(90_371 + 500_000);
-    expect(result.tokenUsageByModel['glm-5.2'].callCount).toBe(21);
+    expect(result.tokenUsageByModel).toBeDefined();
+    const foldedByModel = result.tokenUsageByModel!;
+    expect(foldedByModel['glm-5.2'].inputTokens).toBe(90_371 + 500_000);
+    expect(foldedByModel['glm-5.2'].callCount).toBe(21);
   });
 
   it('normal completion checkpoint equals the accumulator (no partial re-add)', async () => {
@@ -131,6 +131,11 @@ describe('TaskOrchestrator — interruption checkpoint live usage', () => {
     );
 
     const result = await orchestrator.run();
+
+    // Pin the premise: an absent per-model map should fail as an assertion here,
+    // not as an opaque TypeError at the first index below.
+    expect(result.tokenUsageByModel).toBeDefined();
+    const byModel = result.tokenUsageByModel!;
 
     // Last checkpoint (post-completion): partial already folded + deleted —
     // the live cumulative equals the accumulator, no growth from the fix.
