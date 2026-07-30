@@ -555,7 +555,11 @@ function resolveUiSourceDir(
       s.id === 'ant'
         ? (isGameArt(s.dir) ? !!workspaceState?.hasVisualGameArt : !!workspaceState?.hasVisualUi)
         : s.id === 'figma'
-          ? (isGameArt(s.dir) ? false : !!workspaceState?.hasFigmaConfig)
+          // Both surfaces are symmetric (I10): `hasFigmaConfig` ORs over the
+          // per-domain figma.json locations, and a game workspace can only
+          // ever populate its own. The old `isGameArt → false` hardcode made
+          // the game-art figma sub-source permanently unreachable.
+          ? !!workspaceState?.hasFigmaConfig
           : s.id === 'handoff'
             ? (!!featurePath && dirHasAnyFile(path.join(featurePath, s.dir)))
             : false,

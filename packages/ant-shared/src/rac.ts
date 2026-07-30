@@ -770,7 +770,10 @@ export function isFigmaPipeline(
   intent: IntentId | undefined,
   figmaPopulated: boolean,
 ): boolean {
-  if (intent === 'gen-ui-figma') return true;
-  if (intent === 'rev-ui' && figmaPopulated) return true;
+  if (intent === 'gen-ui-figma' || intent === 'gen-game-art-figma') return true;
+  // Both surfaces are symmetric (I10): a figma-sourced revise compiles the
+  // workfile into the surface's ant trio. `rev-game-art` was missing here, so a
+  // game-art figma ref had no execution path even after being selected.
+  if ((intent === 'rev-ui' || intent === 'rev-game-art') && figmaPopulated) return true;
   return false;
 }

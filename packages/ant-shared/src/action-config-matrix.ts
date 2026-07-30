@@ -179,7 +179,19 @@ export interface SlotDef {
 }
 
 export type TargetDef =
-  | { kind: 'generate'; dir: string; outputs: OutputSpec[] }
+  | {
+      kind: 'generate';
+      dir: string;
+      outputs: OutputSpec[];
+      /**
+       * The directory IS the contract — `outputs` only documents the expected
+       * shape. Set for producers whose concrete file set is decided at
+       * decompose time (the handoff bundle), so the target renders and travels
+       * as one directory instead of N speculative paths. See
+       * {@link isDirLevelTarget}.
+       */
+      dirLevel?: true;
+    }
   | { kind: 'revise' }
   | { kind: 'codebase'; outputs?: OutputSpec[] }
   | { kind: 'chat-only'; hint: { en: string; ko: string } };
@@ -287,17 +299,44 @@ const GAME_ART_SOURCE_SUBGROUPS: UiSourceSubgroup[] = [
 ];
 
 /**
+ * Sub-sources a user can *author*. `ant` is excluded: the ant canonical trio is
+ * produced only by the figma pipeline (since `75e3b5d79` repurposed
+ * `gen-*-desc` as handoff producers), so it is an OUTPUT format, never a
+ * revise source. Offering it as a ref left `rev-ui` / `rev-game-art` with a
+ * permanently-empty, unclickable card.
+ *
+ * Scope: **revise refs only**. Consumer slots (`uiSourceCtx` /
+ * `gameArtSourceCtx` for the code job) and read-only `explain-*` refs keep all
+ * three — they read whatever exists.
+ */
+const AUTHORED_SOURCE_IDS: ReadonlyArray<UiSource> = ['figma', 'handoff'];
+
+interface SourceSlotOpts {
+  createIntent?: string;
+  humanLabel?: { en: string; ko: string };
+  /** Restrict the offered subgroups (e.g. {@link AUTHORED_SOURCE_IDS}). */
+  sources?: ReadonlyArray<UiSource>;
+}
+
+function pickSubgroups(
+  all: UiSourceSubgroup[],
+  sources: ReadonlyArray<UiSource> | undefined,
+): UiSourceSubgroup[] {
+  return sources ? all.filter(s => sources.includes(s.id)) : all;
+}
+
+/**
  * UI source slot as refs (primary authoritative input).
  * D28 — gated to `service` domain. Game workspaces consume `game-art-source`
  * via `gameArtSourceRef` / `gameArtSourceCtx` instead.
  */
-function uiSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
+function uiSourceRef(opts?: SourceSlotOpts): SlotDef {
   return {
     path: 'visual/ui',
     label: L.uiDesign,
     type: 'ui-source',
     required: true,
-    uiSources: UI_SOURCE_SUBGROUPS,
+    uiSources: pickSubgroups(UI_SOURCE_SUBGROUPS, opts?.sources),
     createIntent: opts?.createIntent,
     humanLabel: opts?.humanLabel ?? HL.uiDesign,
     applicableDomains: ['service'],
@@ -328,13 +367,13 @@ function uiSourceCtx(opts?: { createIntent?: string; humanLabel?: { en: string; 
  * infer path narrows to the single valid subgroup dir.
  * D28 — gated to `game` domain.
  */
-function gameArtSourceRef(opts?: { createIntent?: string; humanLabel?: { en: string; ko: string } }): SlotDef {
+function gameArtSourceRef(opts?: SourceSlotOpts): SlotDef {
   return {
     path: 'visual/game-art',
     label: L.gameArtDesign,
     type: 'ui-source',
     required: true,
-    uiSources: GAME_ART_SOURCE_SUBGROUPS,
+    uiSources: pickSubgroups(GAME_ART_SOURCE_SUBGROUPS, opts?.sources),
     createIntent: opts?.createIntent ?? 'gen-game-art-desc',
     humanLabel: opts?.humanLabel ?? HL.gameArtDesign,
     applicableDomains: ['game'],
@@ -576,7 +615,13 @@ const PLAN_OUTPUTS: OutputSpec[] = [PRD_OUTPUT];
 import type { IntentId } from './actions';
 import { deriveFromIntent } from './actions';
 import type { Domain } from './detection';
-import { pickUiSource, pickGameArtSource } from './canonical';
+import type { UiSource } from './canonical';
+import {
+  pickUiSource,
+  pickGameArtSource,
+  widenHandoffRefsToBundleDir,
+  figmaConfigPathFor,
+} from './canonical';
 
 /**
  * Cross-project code exploration (reference-codebase tools) applies to jobs that
@@ -751,14 +796,15 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     // `visual/ui/handoff/` (DESIGN.md root + shared-layer dirs). The ant-JSON
     // trio is produced only by the figma pipeline (`gen-ui-figma`); a future
     // `gen-ui-from-handoff` converter intent covers handoff → ant JSON.
-    target: { kind: 'generate', dir: UI_HANDOFF_DIR, outputs: HANDOFF_UI_OUTPUTS },
+    target: { kind: 'generate', dir: UI_HANDOFF_DIR, outputs: HANDOFF_UI_OUTPUTS, dirLevel: true },
     chatRequiresRefs: false,
     basis: { tiers: UI_TIERS },
   },
 
   // ── UI Design: Rev ─────────────────────────
   'rev-ui': {
-    refs: [uiSourceRef({ createIntent: 'gen-ui-desc' })],
+    // `ant` is omitted — it is the figma pipeline's OUTPUT, not a source.
+    refs: [uiSourceRef({ createIntent: 'gen-ui-desc', sources: AUTHORED_SOURCE_IDS })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
     buildDisabled: true,
@@ -770,7 +816,11 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
   // the entire group when workspace.domain === 'service' via the matrix
   // gate TIER_DOMAIN_MATRIX.gameArtTier === ['game']) ────────────────
   'gen-game-art-figma': {
-    refs: [refFile('visual/ui/figma/figma.json', L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
+    // Game-domain figma workfile reference. Pointing this at the UI tree
+    // (`visual/ui/figma/...`) violated D28's vertical split and left
+    // `visual/game-art/figma/` writer-less, so the game-art figma sub-source
+    // could never be selected.
+    refs: [refFile(figmaConfigPathFor('game'), L.figmaConfig, { locked: true, humanLabel: HL.figmaConfig })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd }), assetsCtx('game')],
     target: { kind: 'generate', dir: GAME_ART_DIR, outputs: GAME_ART_OUTPUTS },
     // figma.json (locked ref) is the game-art authority — same reasoning
@@ -784,12 +834,15 @@ const MATRIX: Record<IntentId, ConfigSlots> = {
     // Handoff producer (repurposed) — game peer of `gen-ui-desc`. Emits the
     // same DESIGN.md-rooted bundle under `visual/game-art/handoff/` with the
     // game-biased `entities/` ring added.
-    target: { kind: 'generate', dir: GAME_ART_HANDOFF_DIR, outputs: HANDOFF_GAME_ART_OUTPUTS },
+    target: { kind: 'generate', dir: GAME_ART_HANDOFF_DIR, outputs: HANDOFF_GAME_ART_OUTPUTS, dirLevel: true },
     chatRequiresRefs: false,
     basis: { tiers: GAME_ART_TIERS, defaults: { game: GAME_FE_PHASER } },
   },
   'rev-game-art': {
-    refs: [gameArtSourceRef()],
+    // `ant` is omitted — it is the figma pipeline's OUTPUT, not a source.
+    // Selecting `figma` here regenerates the ant trio (see
+    // `getDefaultTargetPaths` / `reviseTarget.ts`), so ref ≠ target by design.
+    refs: [gameArtSourceRef({ sources: AUTHORED_SOURCE_IDS })],
     context: [ctxDir(SOURCES_DIR, L.sources, { createIntent: 'gen-plan', humanLabel: HL.prd })],
     target: { kind: 'revise' },
     buildDisabled: true,
@@ -1145,6 +1198,21 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
 }
 
 /**
+ * Whether a target is expressed at directory granularity — SINGLE OWNER of the
+ * "list the directory, not its files" decision, consumed by
+ * `getDefaultTargetPaths`, `TargetDisplay`, and the chat metadata badges.
+ *
+ * Two ways in: an explicit `dirLevel` declaration (handoff producers, whose
+ * concrete file set is PRD-driven at decompose time) or an empty `outputs`
+ * list (e.g. `assets/gen`, where the LLM names every file).
+ */
+export function isDirLevelTarget(target: TargetDef | undefined): boolean {
+  return !!target
+    && target.kind === 'generate'
+    && (target.dirLevel === true || target.outputs.length === 0);
+}
+
+/**
  * Derive default target paths from the matrix for a given intent.
  *
  * Mirrors the FE behaviour in `ActionConfigView.tsx` so that BE detect
@@ -1152,8 +1220,8 @@ export function matchesOutputSpec(filename: string, spec: OutputSpec): boolean {
  * is absent (chat-driven explicit submit, mention-path with explicit
  * toggle, …). Returns:
  *
- *   - `kind: 'generate'` + outputs → `[`${dir}/${formatOutputSpec(o)}`]`
- *   - `kind: 'generate'` + no outputs → `[dir]`
+ *   - `kind: 'generate'` + file-granular outputs → `[`${dir}/${formatOutputSpec(o)}`]`
+ *   - `kind: 'generate'` + {@link isDirLevelTarget} → `[dir]`
  *   - `kind: 'revise'` + `opts.refs?.length === 1` → `opts.refs`
  *     (the single selected ref IS the target — every `revise` intent
  *     carries `refsSingleSelect: true`, so refs.length > 1 is invalid
@@ -1191,9 +1259,11 @@ export function getDefaultTargetPaths(
     if (refs.length > 0) {
       // Design revise (rev-ui / rev-game-art): the selected ref sub-source is
       // the single discriminator — mirror of design/_shared/reviseTarget.ts:
-      //   figma   → regenerate the surface's ant JSON trio (figma → ant compile)
-      //   handoff → revise the bundle in place → the refs ARE the target
-      //             (a whole handoff bundle is one multi-file selection)
+      //   figma   → regenerate the surface's ant JSON trio (figma → ant compile;
+      //             ref ≠ target, the one legitimate divergence)
+      //   handoff → revise the bundle in place → the bundle DIRECTORY is the
+      //             target (a whole handoff bundle is one indivisible unit,
+      //             matching what `resolveToRAC` already widens refs/target to)
       //   ant     → revise the JSON doc(s) in place → the refs ARE the target
       //   null    → unclassified (e.g. tree-parent dir path) → refs (legacy default)
       // Sub-source exclusivity over multi-file selections is guaranteed
@@ -1206,6 +1276,7 @@ export function getDefaultTargetPaths(
             ? UI_OUTPUTS.map(o => `${UI_DIR}/${formatOutputSpec(o)}`)
             : GAME_ART_OUTPUTS.map(o => `${GAME_ART_DIR}/${formatOutputSpec(o)}`);
         }
+        if (sub === 'handoff') return widenHandoffRefsToBundleDir(refs);
         return [...refs];
       }
       // Non-design revise (rev-spec / rev-sys): refsSingleSelect — the single
@@ -1225,7 +1296,8 @@ export function getDefaultTargetPaths(
   }
 
   if (target.kind !== 'generate') return undefined;
-  if (target.outputs.length === 0) return [target.dir];
+  // Directory-granular target (explicit `dirLevel`, or LLM-named outputs).
+  if (isDirLevelTarget(target)) return [target.dir];
 
   // Plan output is domain-neutral (`plan/prd.md`) — the generic mapping
   // below already yields the single canonical path; no per-domain branch.

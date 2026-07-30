@@ -2,9 +2,9 @@
  * detectFigmaSource
  *
  * Single entry point for detecting the figma workfile reference + MCP
- * availability from a feature workspace. The workfile reference is read
- * from the canonical `FIGMA_CONFIG_PATH` (`visual/ui/figma/figma.json`)
- * — every caller shares this same SSOT path, and `migrateFigmaConfig` runs
+ * availability from a feature workspace. The workfile reference lives on the
+ * workspace's own design surface (`figmaConfigPathFor` — `visual/ui/figma/` for
+ * service, `visual/game-art/figma/` for game), and `migrateFigmaConfig` runs
  * unconditionally so resume / loadArtifacts branches cannot drift on schema.
  *
  * Output shape is a flat metadata object; the caller projects it onto
@@ -15,7 +15,10 @@
 import * as path from 'path';
 import type { FileSystemPort } from '../../../../../../core/ports/filesystem';
 import {
-  FIGMA_CONFIG_PATH,
+  type Domain,
+  type FigmaDataConfig,
+  FIGMA_CONFIG_PATHS,
+  figmaConfigPathFor,
   isFigmaDataPopulated,
   migrateFigmaConfig,
   extractFigmaUrlParts,
@@ -36,12 +39,24 @@ export interface DetectFigmaSourceDeps {
   redis?: unknown;
   /** User id used for cloud MCP session lookup. */
   userId?: string;
+  /**
+   * Workspace domain — decides which design surface holds figma.json. When
+   * omitted, both surfaces are probed (they are mutually exclusive per
+   * workspace, so at most one is ever populated).
+   */
+  domain?: Domain;
+}
+
+/** Surface locations to probe, domain-preferred first. */
+function candidatePaths(domain: Domain | undefined): string[] {
+  const preferred = figmaConfigPathFor(domain);
+  return [preferred, ...FIGMA_CONFIG_PATHS.filter(p => p !== preferred)];
 }
 
 /**
- * Read and interpret the figma workfile reference at the canonical location
- * (`visual/ui/figma/figma.json`). All branches are tolerant —
- * missing file / malformed JSON / offline MCP / missing fileKey all return
+ * Read and interpret the figma workfile reference from the workspace's design
+ * surface (`figmaConfigPathFor`). All branches are tolerant — missing file /
+ * malformed JSON / offline MCP / missing fileKey all return
  * `{ available: false }` rather than throwing; figma is always optional.
  */
 export async function detectFigmaSource(
@@ -51,20 +66,23 @@ export async function detectFigmaSource(
   if (!featurePath) return { available: false };
 
   try {
-    const figmaJsonPath = path.join(featurePath, FIGMA_CONFIG_PATH);
-    const figmaRaw = await deps.fileSystem?.readFile?.(figmaJsonPath);
-    if (!figmaRaw) return { available: false };
-
-    let parsedRaw: unknown;
-    try {
-      parsedRaw = JSON.parse(figmaRaw);
-    } catch {
-      return { available: false };
+    let figmaConfig: FigmaDataConfig | undefined;
+    for (const rel of candidatePaths(deps.domain)) {
+      const figmaRaw = await deps.fileSystem?.readFile?.(path.join(featurePath, rel));
+      if (!figmaRaw) continue;
+      let parsedRaw: unknown;
+      try {
+        parsedRaw = JSON.parse(figmaRaw);
+      } catch {
+        continue;
+      }
+      const migrated = migrateFigmaConfig(parsedRaw);
+      if (isFigmaDataPopulated(migrated) && migrated.file) {
+        figmaConfig = migrated;
+        break;
+      }
     }
-    const figmaConfig = migrateFigmaConfig(parsedRaw);
-    if (!isFigmaDataPopulated(figmaConfig) || !figmaConfig.file) {
-      return { available: false };
-    }
+    if (!figmaConfig?.file) return { available: false };
 
     const parts = extractFigmaUrlParts(figmaConfig.file);
     if (!parts.fileKey) return { available: false };

@@ -11,6 +11,7 @@ import {
   getDefaultTargetPaths,
   getIntentLabel,
   pickDefaultUiSourceRefs,
+  pickDefaultGameArtSourceRefs,
   listActiveTiers,
   supportsReferenceCodebase,
   pruneFileTreeForWorkspaceDomain,
@@ -114,6 +115,19 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const selectedRefs = useMemo(() => new Set(actionMetadata.refs ?? []), [actionMetadata.refs]);
   const selectedCtx = useMemo(() => new Set(actionMetadata.context ?? []), [actionMetadata.context]);
 
+  /**
+   * Target SSOT. `getDefaultTargetPaths` owns every kind — including the two
+   * revise rules the panel used to bypass by mirroring refs verbatim:
+   *   - figma ref → the surface's ant JSON trio (ref ≠ target by design)
+   *   - handoff ref → the bundle DIRECTORY (what `resolveToRAC` already widens
+   *     refs/target to on the BE side)
+   */
+  const resolveTargetPaths = useCallback(
+    (refs: string[]): string[] | undefined =>
+      getDefaultTargetPaths(intentId, actionMetadata.domain, { refs }),
+    [intentId, actionMetadata.domain],
+  );
+
   useEffect(() => {
     if (!slots) {
       updateActionMetadata({ refs: undefined, context: undefined, target: undefined });
@@ -131,7 +145,11 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       .filter(e => e.def.required)
       .flatMap(e =>
         e.def.type === 'ui-source' && e.subgroups
-          ? pickDefaultUiSourceRefs(e.subgroups)
+          // Per-surface picker: the two priority orders are identical today,
+          // but the game-art slot must go through its own SSOT entry point.
+          ? (e.def.path.startsWith('visual/game-art')
+              ? pickDefaultGameArtSourceRefs(e.subgroups)
+              : pickDefaultUiSourceRefs(e.subgroups))
           : e.files,
       )
       .filter(f => f.warnings.length === 0);
@@ -153,10 +171,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
     const { target } = slots;
     if (target.kind === 'revise') {
-      // Revise targets the locked single ref selection — the matrix
-      // helper returns undefined for `kind: 'revise'` because there is
-      // no static path. Fall back to the resolved ref(s) here.
-      updateActionMetadata({ target: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
+      updateActionMetadata({ target: resolveTargetPaths(defaultRefPaths) });
     } else {
       // generate / codebase / chat-only — the matrix SSOT
       // (`getDefaultTargetPaths`) drives both this panel and BE detect's
@@ -231,7 +246,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
 
     if (field === 'refs' && slots?.target.kind === 'revise') {
-      updateActionMetadata({ target: next.length > 0 ? next : undefined });
+      updateActionMetadata({ target: resolveTargetPaths(next) });
     }
   };
 
@@ -240,18 +255,26 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
    * If every supplied path is already selected → deselect them all; otherwise
    * add the missing ones. Single `updateActionMetadata` call avoids the
    * state-races that looped `toggleFile` calls would trigger.
+   *
+   * On a `refsSingleSelect` slot the batch REPLACES the ref selection, mirroring
+   * `toggleFile`'s `next = [path]`. That is what makes clicking a sibling
+   * ui-source subgroup a switch (appending would mix two hard-exclusive
+   * sub-sources and get rejected by BE `validateUiSourceExclusivity`).
    */
   const toggleFiles = (paths: string[], field: 'refs' | 'context') => {
     if (paths.length === 0) return;
     const current = field === 'refs' ? (actionMetadata.refs ?? []) : (actionMetadata.context ?? []);
     const currentSet = new Set(current);
     const allSelected = paths.every(p => currentSet.has(p));
+    const replace = field === 'refs' && !!slots?.refsSingleSelect;
     const next = allSelected
       ? current.filter(p => !paths.includes(p))
-      : [...current, ...paths.filter(p => !currentSet.has(p))];
+      : replace
+        ? [...paths]
+        : [...current, ...paths.filter(p => !currentSet.has(p))];
     updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
     if (field === 'refs' && slots?.target.kind === 'revise') {
-      updateActionMetadata({ target: next.length > 0 ? next : undefined });
+      updateActionMetadata({ target: resolveTargetPaths(next) });
     }
   };
 
@@ -382,6 +405,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   onUploadDir={handleUploadDir}
                   onToggleSpotlight={handleToggleSpotlight}
                   onViewFile={handleViewFile}
+                  singleSelect={slots.refsSingleSelect}
+                  onConfigureFigma={warningCtx.onOpenFigmaSettings}
                   spotlightPath={spotlightTarget?.path}
                   lang={lang}
                 />
@@ -413,6 +438,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   selected={selectedCtx}
                   onToggle={(p) => toggleFile(p, 'context')}
                   onToggleMany={(paths) => toggleFiles(paths, 'context')}
+                  onConfigureFigma={warningCtx.onOpenFigmaSettings}
                   onHighlightDir={(dir) => highlightArtifactDirs([dir])}
                   onCreateIntent={handleCreateIntent}
                   onToggleSpotlight={handleToggleSpotlight}
@@ -463,6 +489,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
               <TargetDisplay
                 target={slots.target}
                 selectedRefs={selectedRefs}
+                targetPaths={actionMetadata.target ?? []}
                 targetExisting={targetExisting}
                 onToggleSpotlight={handleToggleSpotlight}
                 spotlightPath={spotlightTarget?.path}

@@ -119,6 +119,7 @@
   },
   "target": {
     "reviseHint": "Select files in Refs to determine targets",
+    "derivedFromRefs": "Derived from the selected source — the output differs from the ref.",
     "codebase": "Codebase",
     "codebaseDetected": "Source code detected",
     "codebaseEmpty": "No source code — generate code first",
@@ -172,5 +173,8 @@
     "loading": "Loading projects…",
     "none": "No other projects in this workspace.",
     "error": "Could not load projects."
+  },
+  "figma": {
+    "setUrl": "Set Figma URL"
   }
 }

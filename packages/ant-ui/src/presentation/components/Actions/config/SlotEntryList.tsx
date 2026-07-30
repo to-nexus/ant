@@ -19,12 +19,19 @@ interface SlotEntryListProps {
   onUploadDir?: (dir: string) => void;
   onToggleSpotlight: (type: 'file' | 'dir', path: string) => void;
   onViewFile?: (path: string) => void;
+  /**
+   * `slots.refsSingleSelect` — a click REPLACES the selection, so a non-active
+   * ui-source subgroup stays clickable (switch) instead of being disabled.
+   */
+  singleSelect?: boolean;
+  /** Opens the Figma settings surface so an unconfigured workfile can be set. */
+  onConfigureFigma?: () => void;
   spotlightPath?: string | null;
   showEmptyActions?: boolean;
   lang: 'en' | 'ko';
 }
 
-export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHighlightDir, onCreateIntent, onUploadDir, onToggleSpotlight, onViewFile, spotlightPath, showEmptyActions = true, lang }: SlotEntryListProps) {
+export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHighlightDir, onCreateIntent, onUploadDir, onToggleSpotlight, onViewFile, singleSelect = false, onConfigureFigma, spotlightPath, showEmptyActions = true, lang }: SlotEntryListProps) {
   const { t } = useTranslation('actions');
   const showSlotLabels = entries.length > 1;
 
@@ -33,6 +40,9 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
 
   const renderFigmaSubgroup = (sg: SlotSubgroup, ctx: SubgroupCtx): React.ReactNode[] => {
     if (!sg.hasFiles) {
+      // An empty figma subgroup is not a dead end — the workfile reference is
+      // set through the Figma settings surface, not by dropping a file here.
+      // Offer that route instead of rendering an inert card.
       return [(
         <FileCard
           key={`${sg.dir}-empty`}
@@ -41,6 +51,15 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
           empty
           emptyStyle="gray"
           disabled={ctx.isLocked}
+          actions={onConfigureFigma ? (
+            <button
+              type="button"
+              onClick={onConfigureFigma}
+              className="px-2 py-1 rounded-lg text-xs font-medium bg-[color:var(--bg-surface-2)] text-[color:var(--text-2)] hover:bg-[color:var(--bg-active)] transition-colors shrink-0"
+            >
+              {t('figma.setUrl')}
+            </button>
+          ) : undefined}
           lang={lang}
         />
       )];
@@ -180,7 +199,13 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
           )?.id;
 
           const cards = entry.subgroups.flatMap(sg => {
-            const isLocked = activeSubgroupId !== undefined && activeSubgroupId !== sg.id;
+            // Exclusivity is enforced by REPLACING the selection on a
+            // single-select slot, so a sibling subgroup must stay clickable —
+            // disabling it stranded the user on whichever source happened to
+            // be auto-selected first ("only handoff is selectable").
+            const isLocked = !singleSelect
+              && activeSubgroupId !== undefined
+              && activeSubgroupId !== sg.id;
             return sg.id === 'figma'
               ? renderFigmaSubgroup(sg, { isLocked, lockedBySlot: entry.def.locked })
               : renderDirSubgroup(sg, { isLocked, lockedBySlot: entry.def.locked });

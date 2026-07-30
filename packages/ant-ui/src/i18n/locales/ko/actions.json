@@ -138,6 +138,7 @@
   },
   "target": {
     "reviseHint": "참조(Refs)에서 파일을 선택하면 타겟이 결정됩니다",
+    "derivedFromRefs": "선택한 소스에서 파생된 타겟입니다 — 참조와 산출물이 다릅니다.",
     "codebase": "코드베이스",
     "codebaseDetected": "소스 코드 감지됨",
     "codebaseEmpty": "소스 코드 없음 — 코드를 먼저 생성하세요",
@@ -192,5 +193,8 @@
     "loading": "프로젝트 불러오는 중…",
     "none": "이 워크스페이스에 다른 프로젝트가 없습니다.",
     "error": "프로젝트를 불러오지 못했습니다."
+  },
+  "figma": {
+    "setUrl": "Figma URL 설정"
   }
 }

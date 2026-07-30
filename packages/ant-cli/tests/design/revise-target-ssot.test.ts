@@ -106,16 +106,22 @@ describe('getDefaultTargetPaths — revise ref determines target', () => {
       .toEqual(['visual/game-art/handoff']);
   });
 
-  it('multi-ref handoff bundle revise → the refs ARE the target (was undefined)', () => {
+  // A handoff bundle is one indivisible unit, and `resolveToRAC` already widens
+  // refactor-mode targets to the bundle root (`widenHandoffRefsToBundleDir`).
+  // The helper returns that same directory so the FE default, `RAC.target`, and
+  // the chat announcement agree instead of listing every bundle file.
+  it('multi-ref handoff bundle revise → the bundle DIRECTORY is the target', () => {
     const bundle = [
       'visual/game-art/handoff/README.md',
       'visual/game-art/handoff/project/design/tokens/DesignTokens.dc.html',
       'visual/game-art/handoff/project/design/screens/GameScreen.dc.html',
     ];
-    expect(getDefaultTargetPaths('rev-game-art', undefined, { refs: bundle })).toEqual(bundle);
+    expect(getDefaultTargetPaths('rev-game-art', undefined, { refs: bundle }))
+      .toEqual(['visual/game-art/handoff']);
 
     const uiBundle = ['visual/ui/handoff/site/index.html', 'visual/ui/handoff/site/styles.css'];
-    expect(getDefaultTargetPaths('rev-ui', undefined, { refs: uiBundle })).toEqual(uiBundle);
+    expect(getDefaultTargetPaths('rev-ui', undefined, { refs: uiBundle }))
+      .toEqual(['visual/ui/handoff']);
   });
 
   it('non-design revise keeps single-select semantics (≥2 refs stay invalid)', () => {
