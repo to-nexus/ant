@@ -272,4 +272,33 @@ describe('Game-Art Asset Validation (D20 + I6)', () => {
     const entry: GameArtAssetEntry = { id: 'spark', kind: 'inline', format: 'svg' };
     expect(validateGameArtAssetEntry(entry, { warnMissingFallback: true })).toEqual([]);
   });
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // models category — 3D model consumption (perspective=3d)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  it('a models external entry (.glb) with a fallback validates clean', () => {
+    const entry: GameArtAssetEntry = {
+      id: 'boss-duck',
+      kind: 'external',
+      src: 'assets/game/models/Duck.glb',
+      format: 'glb',
+      fallback: { format: 'svg', svg: "<svg viewBox='0 0 32 32'><circle/></svg>" },
+    };
+    const srcExists = (p: string) => p === 'assets/game/models/Duck.glb';
+    expect(validateGameArtAssetEntry(entry, { srcExists, warnMissingFallback: true })).toEqual([]);
+  });
+
+  it('a models external entry without a fallback warns under warnMissingFallback (floor hint)', () => {
+    const entry: GameArtAssetEntry = {
+      id: 'boss-duck',
+      kind: 'external',
+      src: 'assets/game/models/Duck.glb',
+      format: 'glb',
+    };
+    const srcExists = (p: string) => p === 'assets/game/models/Duck.glb';
+    const issues = validateGameArtAssetEntry(entry, { srcExists, warnMissingFallback: true });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].code).toBe('external-missing-fallback-hint');
+  });
 });

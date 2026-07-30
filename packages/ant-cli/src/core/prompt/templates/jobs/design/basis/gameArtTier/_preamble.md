@@ -54,7 +54,7 @@ Allowed inline asset shapes:
 - Detailed sprite sheets / animation frames.
 - Photorealistic textures or backgrounds.
 - Mp3 / ogg / wav file payloads (binary content).
-- Imported 3D model files (`.glb` / `.gltf`) or detailed meshes / tilemaps / atlas frames. (A code-only `geometry3d` primitive descriptor `{shape,dims,color}` under `perspective='3d'` is NOT a model — it is allowed inline.)
+- 3D model file payloads (`.glb` / `.gltf`) or detailed meshes / tilemaps / atlas frames — binary meshes cannot be authored inline; a real model file enters ONLY as a `kind: 'external'` entry pointing at a user-placed file under `assets/game/models/`. (A code-only `geometry3d` primitive descriptor `{shape,dims,color}` under `perspective='3d'` is NOT a model — it is allowed inline.)
 
 The task-completion gate validates inline payloads against this ceiling
 (svg primitive count / viewBox side, css byte length, oscillator
@@ -75,6 +75,7 @@ assets/game/
 ├── entities/    # character / object sprites (.svg, .png)
 ├── particles/   # particle textures (.png, .svg)
 ├── projectiles/ # bullet shapes (.svg, .png)
+├── models/      # 3D model meshes (.glb / .gltf — perspective='3d' only)
 ├── sfx/         # SFX clips (Phase 4 hook — .mp3 / .ogg / .wav)
 ├── bgm/         # background music (Phase 4 hook)
 ├── tilemaps/    # tile JSON data (.json)
@@ -141,7 +142,8 @@ Decisions:
 
 - Categorize by asset type. Standard category keys (D25 — keys are
   LLM-chosen but the canonical menu is):
-  - In-canvas: `entities` / `particles` / `projectiles` / `sfx` / `bgm`
+  - In-canvas: `entities` / `particles` / `projectiles` / `models`
+    (3D `.glb`/`.gltf`, `perspective='3d'` only) / `sfx` / `bgm`
     / `tilemaps` / `atlas`
   - HUD/menu (D28): `hud` (score / coin / health glyphs) / `menu`
     (panel chrome / button glyphs) / `dialog` (icon set for confirm /

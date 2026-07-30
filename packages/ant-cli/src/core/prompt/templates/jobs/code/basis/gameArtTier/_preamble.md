@@ -62,6 +62,7 @@ Constraints:
 | `projectiles` | `kind: 'external'` single-image entries load; group-pool consumes the texture. | Same. Multi-projectile-kind groups activate only when `projectilePolicy === 'complex'`. |
 | `atlas` | **Suppressed** (entity / particle external entries still resolve their image, but atlas manifests are not consumed). | **Active**. Atlas manifests register and animation managers consume them. |
 | `tilemaps` | `kind: 'external'` `.json` loads. | Same. Independent of `visualScope`. |
+| `models` | `kind: 'external'` `.glb` / `.gltf` entries load via the enable3d GLTF loader (`perspective === '3d'` only; suppressed under 2d). Independent of `visualScope`. | Same. |
 
 #### 3.3 Conditional emit pattern
 
@@ -146,21 +147,23 @@ The following are forbidden regardless of `audioScope` / `visualScope` value:
 
 ### 7. Available canvas-side methods (positive enumeration)
 
-A code job that needs to render a shape on the canvas surface has five legal categories. The category names are committed here; the **concrete API / library / browser-API names belong to the engine partial** (`basis/techTier/gameEngine/<engine>.md`) — naming them in this file would leak gameEngine-axis specifics across the gameArtTier gate (SBS violation).
+A code job that needs to render a shape on the canvas surface has six legal categories. The category names are committed here; the **concrete API / library / browser-API names belong to the engine partial** (`basis/techTier/gameEngine/<engine>.md`) — naming them in this file would leak gameEngine-axis specifics across the gameArtTier gate (SBS violation).
 
 1. **Engine immediate-mode graphics API** — procedural shape calls (rectangles, circles, polygons, lines, text). The engine partial commits the exact API surface.
 2. **Catalog `kind: 'inline'` payload runtime materialization** — `css` / `svg` / `oscillator` payloads converted to module-scope values at first use (see §2).
 3. **Catalog `kind: 'external'` asset preload** — single images load on both `visualScope` values; atlas / multi-emitter / multi-projectile setups gate behind `visualScope === 'atlas-enabled'`.
 4. **Build-time static-asset import** — engine-agnostic. Any library or module-system surface that ships static assets (icons, sprites, packed images) and bundles into the build. The image-LLM cut in §6 still applies.
 5. **Runtime procedural texture composition** — engine-agnostic. Deterministic code that paints onto a drawing surface and registers the result as a texture (engine partial commits the exact API). Acceptable because the output is reproducible from code, not from a generative model.
+6. **3D model preload** (`perspective === '3d'` only) — `kind: 'external'` `.glb` / `.gltf` entries (or an explicitly attached model file under `assets/game/models/`) load via the 3D extension's model loader, keyed by entry id. The perspective partial commits the exact API.
 
-These five categories ALWAYS serve a minimum-playable render for any shape or sound (§7.1). The follow-up directive is reserved for fidelity *beyond* the floor — production-grade multi-layer art, atlas / animation richness, or the future `visual` job (image-LLM territory). Surface it for the design surface (catalog inline / external entry) or that future job, and do NOT silently violate the §6 cuts. A directive that merely lacks a catalog entry is NOT such a case — it is served by the floor.
+These six categories ALWAYS serve a minimum-playable render for any shape or sound (§7.1). The follow-up directive is reserved for fidelity *beyond* the floor — production-grade multi-layer art, atlas / animation richness, or the future `visual` job (image-LLM territory). Surface it for the design surface (catalog inline / external entry) or that future job, and do NOT silently violate the §6 cuts. A directive that merely lacks a catalog entry is NOT such a case — it is served by the floor.
 
 ### 7.1 Minimum-playable floor (catalog-silent fallback)
 
-The five categories above are not just *permitted* — when the catalog is silent, using them is a **contract**. This section states the floor and its boundary with the §6 / §7 follow-up-directive language.
+The six categories above are not just *permitted* — when the catalog is silent, using them is a **contract**. This section states the floor and its boundary with the §6 / §7 follow-up-directive language.
 
-- **Catalog HAS the entry** (`kind: 'inline'` or `kind: 'external'`): consume it as authored. Fidelity is bounded only by the §4 markers / the design-time envelope — the floor imposes NO ceiling on a present asset and MUST NOT downgrade it to a primitive. A game WITH external / handoff assets renders them at full fidelity.
-- **Catalog is SILENT** on a shape or sound the running build needs: the code job MUST construct a **minimum-playable stand-in** on the spot — category #1 (immediate-mode shapes) or #5 (procedural texture) for visuals, category #2 (materialize an inline payload) when one exists, and a procedural OscillatorNode for a needed sound. Observable outcome: a solid-color rectangle or circle stands in for an entity, a short tone marks an event — enough to be *playable*, not to look finished. **This is a floor, not art authoring.**
+- **Catalog HAS the entry** (`kind: 'inline'` or `kind: 'external'`): consume it as authored. Fidelity is bounded only by the §4 markers / the design-time envelope — the floor imposes NO ceiling on a present asset and MUST NOT downgrade it to a primitive. A game WITH external / handoff assets renders them at full fidelity — including `models` entries, which load as real meshes, never as primitive stand-ins.
+- **A real user-placed file is PRESENT, not silent.** An explicitly attached or placed file under `assets/game/` (e.g. a directive naming `assets/game/models/<file>.glb`) counts as a present asset even before a catalog entry exists — consume it directly (and record/expect its catalog entry via the design surface when one is warranted). Do NOT treat "no catalog entry yet" as license to fall back to a primitive when the file itself is provided.
+- **Catalog is SILENT** on a shape or sound the running build needs (and no real file is provided): the code job MUST construct a **minimum-playable stand-in** on the spot — category #1 (immediate-mode shapes) or #5 (procedural texture) for visuals, category #2 (materialize an inline payload) when one exists, and a procedural OscillatorNode for a needed sound. Observable outcome: a solid-color rectangle or circle stands in for an entity, a short tone marks an event — enough to be *playable*, not to look finished. **This is a floor, not art authoring.**
 - **Boundary with §6.** Drawing a primitive stand-in through the engine's own draw API is reproducible from code (§5 already legitimizes this) and is always allowed. What §6 forbids is *masquerading* a self-authored asset as a catalog entry — registering a fabricated `id` the spec would then reference. The floor never does that; it renders directly.
 - **Boundary with the follow-up directive.** Leaving the build unrenderable because "the catalog had no entry" is itself the violation — the floor removes that excuse. Reserve the follow-up directive for a need that genuinely exceeds the primitive floor (production art / image-LLM territory), never for basic playability.

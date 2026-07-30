@@ -21,6 +21,12 @@ Real asset files may already be placed under `assets/game/<category>/`. **Survey
 that inventory first** (the injected asset list + `list_assets`) and prefer a
 real file when one fits the entry you are authoring.
 
+**A user-placed real file is always consumable.** The presence of a real file
+under `assets/game/` activates its category for `kind: 'external'` mapping —
+the scope markers below describe the AUTHORING default posture (what to
+generate when nothing is placed), never a prohibition on consuming what the
+user has provided.
+
 | kind       | When valid                                                                     |
 |------------|--------------------------------------------------------------------------------|
 | `external` | A real inventory file under `assets/game/...` satisfies this entry's need (surveyed, or named by the directive). Its `src` is that exact path. For `sfx` / `bgm` this additionally requires `_meta.audioScope === 'external-enabled'`; for `atlas` / multi-image entities, `_meta.visualScope === 'atlas-enabled'` |
@@ -43,6 +49,7 @@ category is gated by exactly one of them:
 | `entities`    | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `assets/game/entities/`        |
 | `particles`   | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `assets/game/particles/`       |
 | `projectiles` | always (single-image)                 | `kind: 'external'` `.png` / `.svg` under `assets/game/projectiles/`     |
+| `models`      | `perspective === '3d'`                | `kind: 'external'` `.glb` / `.gltf` under `assets/game/models/` — consumed via the enable3d GLTF loader; carry a `fallback` primitive (the 3D floor) |
 | `atlas`       | `_meta.visualScope === 'atlas-enabled'`   | `kind: 'external'` atlas JSON + image pairs under `assets/game/atlas/` |
 
 Under `_meta.audioScope === 'procedural-only'` (default), all SFX / BGM
@@ -117,7 +124,7 @@ minting a new one.
   "id": "<stable-id>",
   "kind": "external",
   "src": "assets/game/<subdir>/<file>",
-  "format": "svg" | "png" | "jpg" | "webp" | "json",
+  "format": "svg" | "png" | "jpg" | "webp" | "json" | "glb" | "gltf",
   "rendering": "sprite" | "graphics-blit" | "div",
   "fallback": {
     "format": "svg" | "css",

@@ -57,8 +57,10 @@ export const ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
     // for sfx/bgm, `_meta.visualScope === 'atlas-enabled'` for atlas.
     //   - audio (sfx / bgm): .mp3 / .ogg / .wav
     //   - sprite atlas: .json (manifest) + .png / .webp (atlas image)
-    //   - 3D model files (deferred hook): .glb / .gltf — code-only 3D
-    //     (perspective='3d' via enable3d built-in primitives) needs no files here.
+    //   - 3D model files: .glb / .gltf under models/ — consumed by
+    //     perspective='3d' via the enable3d GLTF loader (`models` catalog
+    //     category); enable3d built-in primitives are the fallback floor
+    //     when no model file exists.
     acceptedExtensions: [
       '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.json',
       '.mp3', '.ogg', '.wav',

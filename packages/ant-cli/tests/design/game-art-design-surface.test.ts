@@ -95,6 +95,38 @@ describe('I7-revised — Domain-Surface Boundary', () => {
   });
 });
 
+describe('model-asset consumption legalization (perspective=3d — consumption ≠ authoring)', () => {
+  it('3d perspective consumes attached/cataloged models and never downgrades to primitives', () => {
+    const body = readMd('basis/gameArtTier/perspective/3d.md');
+    expect(body).toMatch(/gltf/i);
+    expect(body).toMatch(/NEVER substitute a\s+primitive/i);
+    // The blanket consumption prohibition must stay dead.
+    expect(body).not.toMatch(/Do NOT reach for a model loader/);
+    expect(body).not.toMatch(/no imported model assets/);
+  });
+
+  it('design preamble carries the models/ category (tree + canonical menu)', () => {
+    const body = readMd('jobs/design/basis/gameArtTier/_preamble.md');
+    expect(body).toMatch(/models\/\s+# 3D model meshes/);
+    expect(body).toMatch(/`models`/);
+  });
+
+  it('assets guide gates models on perspective=3d and admits glb/gltf external format', () => {
+    const body = readMd('jobs/design/nodes/execute/injections/game-art-assets-guide-by-desc.md');
+    expect(body).toMatch(/\| `models`\s+\| `perspective === '3d'`/);
+    expect(body).toMatch(/"glb" \| "gltf"/);
+    expect(body).toMatch(/user-placed real file is always consumable/i);
+  });
+
+  it('code preamble enumerates the 3D model preload as a legal canvas-side category', () => {
+    const body = readMd('jobs/code/basis/gameArtTier/_preamble.md');
+    expect(body).toMatch(/six legal categories/);
+    expect(body).toMatch(/\*\*3D model preload\*\*/);
+    expect(body).toMatch(/PRESENT, not silent/);
+    expect(body).toMatch(/`models` \|/); // §3.2 loading table row
+  });
+});
+
 // game-art-design is the game-domain positional peer of design-ui (D28): it has
 // its own execute builder + variant templates instead of falling through to the
 // system-design path. These lock the wiring so a game-art design job never
