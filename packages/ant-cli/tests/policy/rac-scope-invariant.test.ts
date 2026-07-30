@@ -191,6 +191,7 @@ describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (202
     const gate = decideRacGate(args.path, racScope);
     if (!gate.allowed) return `Error: ${gate.error}`;
     const res = await handleReadFile(ctx(), args);
+    if (typeof res.content !== 'string') throw new Error('expected text content');
     return res.content;
   }
 
@@ -198,6 +199,7 @@ describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (202
     const gate = decideRacGate(args.directory, racScope);
     if (!gate.allowed) return `Error: ${gate.error}`;
     const res = await handleListFiles(ctx(), args);
+    if (typeof res.content !== 'string') throw new Error('expected text content');
     return res.content;
   }
 

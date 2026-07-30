@@ -38,7 +38,7 @@ describe('buildTriagePrompt — workspace filename signals', () => {
       promptPort: { render } as any,
     });
 
-    const vars = render.mock.calls.find(c => (c as any)[1]?.intentCatalog)![1] as any;
+    const vars = (render.mock.calls as unknown as any[][]).find(c => c[1]?.intentCatalog)![1] as any;
     expect(vars.specDocNames).toEqual(['defect-fixes.md']);
     expect(vars.systemDesignFileNames).toEqual(['fe-system-main.md']);
   });

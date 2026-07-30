@@ -26,7 +26,20 @@
  * cancelled card on a clean completion.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+
+/**
+ * Real shape of `ChatService.appendChoicePresentedCancelled` (see
+ * JobCleanupManager). Required because the assertions read `calls[0][3]`: an
+ * untyped `vi.fn(async () => …)` infers a zero-arg signature, putting the 4th
+ * argument out of bounds rather than merely unchecked.
+ */
+type AppendChoicePresentedCancelled = (
+  projectId: string,
+  featureName: string,
+  jobId: string,
+  opts: { reason: string; message: string; jobType?: string; userContext?: unknown },
+) => Promise<{ emitted: boolean; cardId: string }>;
 
 let capturedSessionData: any = null;
 let capturedAppendArgs: { kanban?: any; status?: string } | null = null;
@@ -74,7 +87,7 @@ const trackerMod = await import(
 );
 const { JobStateTracker } = trackerMod;
 
-function makeDeps(appendCancelledSpy: ReturnType<typeof vi.fn>) {
+function makeDeps(appendCancelledSpy: Mock<AppendChoicePresentedCancelled>) {
   return {
     workspaceResolver: {
       getFeaturePath: () => '/tmp/finalize-failed-status-feature',
@@ -157,7 +170,7 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
   });
 
   it('finalStatus="failed" + no interruption → SessionRun.status="failed" AND kanbanData.status="failed" AND cancelled card emits', async () => {
-    const appendCancelledSpy = vi.fn(async () => ({ emitted: true, cardId: 'card-1' }));
+    const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({ emitted: true, cardId: 'card-1' }));
     const tracker = makeTracker('such-pinning-milky');
     const jcm = new JobCleanupManager(tracker, makeDeps(appendCancelledSpy));
 
@@ -185,7 +198,7 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
   });
 
   it('finalStatus="completed" + no interruption → SessionRun.status="completed" AND NO cancelled card', async () => {
-    const appendCancelledSpy = vi.fn(async () => ({ emitted: true, cardId: 'card-2' }));
+    const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({ emitted: true, cardId: 'card-2' }));
     const tracker = makeTracker('clean-job');
     tracker.getState().jobToProject.set('clean-job', {
       projectId: 'proj-test',
@@ -211,7 +224,7 @@ describe('JobCleanupManager — finalStatus propagation (such-pinning-milky regr
   });
 
   it('interruption present (user_stopped) → SessionRun.status="canceled" regardless of finalStatus', async () => {
-    const appendCancelledSpy = vi.fn(async () => ({ emitted: true, cardId: 'card-3' }));
+    const appendCancelledSpy = vi.fn<AppendChoicePresentedCancelled>(async () => ({ emitted: true, cardId: 'card-3' }));
     const tracker = makeTracker('canceled-job');
     tracker.getState().jobToProject.set('canceled-job', {
       projectId: 'proj-test',

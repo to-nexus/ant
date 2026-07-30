@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { callLLMWithToolLoop } from '../../src/agents/common/llm/callLLMWithToolLoop';
-import type { LLMClient, LLMStreamEvent } from '../../src/core/ports/llm';
+import type { LLMClient, LLMStreamEvent, ToolDefinition } from '../../src/core/ports/llm';
 
 /**
  * Per-round thinking-toggle contract (empty-calming-alder follow-up).
@@ -43,7 +43,11 @@ function makeCapturingLLM(rounds: LLMStreamEvent[][]) {
   return { llm, calls };
 }
 
-const NOOP_TOOL = { name: 'noop', description: 'noop', input_schema: { type: 'object', properties: {}, required: [] } };
+const NOOP_TOOL: ToolDefinition = {
+  name: 'noop',
+  description: 'noop',
+  input_schema: { type: 'object', properties: {}, required: [] },
+};
 
 describe('callLLMWithToolLoop — per-round thinking toggle', () => {
   it('sends thinking only on round 0; OFF on tool-continuation rounds', async () => {

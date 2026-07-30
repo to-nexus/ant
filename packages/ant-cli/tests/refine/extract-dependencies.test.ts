@@ -35,17 +35,17 @@ function task(
 const SERVICE_RAC = {
   refs: ['plan/prd.md'],
   context: [],
-} as DesignSessionCheckpointLike['resolvedAction'] as any;
+} as unknown as DesignSessionCheckpointLike['resolvedAction'];
 
 const GAME_RAC = {
   refs: ['plan/gdd.md'],
   context: [],
-} as DesignSessionCheckpointLike['resolvedAction'] as any;
+} as unknown as DesignSessionCheckpointLike['resolvedAction'];
 
 const NO_PLAN_REF_RAC = {
   refs: ['architecture/spec/spec-foo.md'],
   context: ['plan/prd.md'],
-} as DesignSessionCheckpointLike['resolvedAction'] as any;
+} as unknown as DesignSessionCheckpointLike['resolvedAction'];
 
 describe('extractDependencies — service-axis identifiers', () => {
   it('pulls PRD §X / SC- / FL- / FR- / CP- / RB- from descriptions', () => {

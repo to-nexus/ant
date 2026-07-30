@@ -19,6 +19,7 @@ function makeState(overrides: Partial<DeployState>): DeployState {
     podId: 'pod-1',
     workspacePath: '/tmp/deploy',
     packages: [],
+    visibility: 'public',
     startedAt: new Date(),
     lastAccessedAt: new Date(),
     ...overrides,

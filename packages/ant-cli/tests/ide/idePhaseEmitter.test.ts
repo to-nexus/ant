@@ -21,7 +21,6 @@ function makeStateStore(): { stateStore: StateStorePort; published: Array<{ chan
 const userContext: UserContext = {
   organizationId: 'org',
   userId: 'user',
-  email: 'u@example.com',
 };
 
 describe('createIdePhaseEmitter', () => {

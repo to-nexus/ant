@@ -7,7 +7,7 @@ import {
 } from '@ant/shared';
 
 // Mock the transport so the gate never touches ChatAPIClient.
-const sendClarifyMock = vi.fn(async () => {});
+const sendClarifyMock = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
 vi.mock('../../src/agents/common/clarify/transport', () => ({
   sendClarify: (...args: unknown[]) => sendClarifyMock(...args),
 }));

@@ -185,7 +185,7 @@ describe('mergeFeatureContext — breadcrumb window', () => {
 
     expect(ctx.breadcrumbs).toHaveLength(all.length);
     expect(ctx.breadcrumbs[0].turnId).toBe('t-1');
-    expect(ctx.breadcrumbs.at(-1)?.turnId).toBe(`t-${all.length}`);
+    expect(ctx.breadcrumbs[ctx.breadcrumbs.length - 1]?.turnId).toBe(`t-${all.length}`);
   });
 
   it('honours a custom breadcrumbWindow override (back-compat)', () => {

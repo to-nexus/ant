@@ -119,7 +119,7 @@ describe('FullBreadcrumb — unified emit policy', () => {
 describe('Tier3Task — mode dispatch composes correct breadcrumb strategy', () => {
   function stubSession() {
     return {
-      appendBreadcrumb: vi.fn<[FeatureBreadcrumbLine], Promise<void>>().mockResolvedValue(undefined),
+      appendBreadcrumb: vi.fn<(line: FeatureBreadcrumbLine) => Promise<void>>().mockResolvedValue(undefined),
       loadChatByTurnIds: vi.fn().mockResolvedValue([]),
     };
   }

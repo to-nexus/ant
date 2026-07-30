@@ -165,7 +165,7 @@ describe('applyDrainFinalization — no-output trigger', () => {
     );
     expect(drainFinalizing).toBe(true);
     expect(tools).toEqual([]);
-    expect((messages[0].content as any[])[1].text).toContain('without writing anything');
+    expect((messages[0].content as unknown as any[])[1].text).toContain('without writing anything');
   });
 
   it('does not fire below the salvage threshold', () => {

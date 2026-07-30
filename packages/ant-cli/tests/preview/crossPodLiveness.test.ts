@@ -24,7 +24,7 @@ describe('resolveCrossPodLiveness', () => {
       await new Promise<void>((resolve) => {
         server.listen(0, '127.0.0.1', () => {
           const addr = server.address();
-          port = typeof addr === 'object' ? addr.port : 0;
+          port = addr && typeof addr === 'object' ? addr.port : 0;
           resolve();
         });
       });

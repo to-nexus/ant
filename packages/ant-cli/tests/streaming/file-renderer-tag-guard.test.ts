@@ -140,7 +140,7 @@ describe('FileRenderer codebase mutation gate (XML artifact tags)', () => {
         gitPort: makeGitStub(),
         fileSystem: fs,
         writeImmediately: true,
-        jobType: 'planner',
+        jobType: 'plan',
         codebasePath: '/ws/codebase',
       });
       const registry = new FileRegistry(new Set(), fs, 'codebase');
@@ -161,7 +161,7 @@ describe('FileRenderer codebase mutation gate (XML artifact tags)', () => {
         gitPort: makeGitStub(),
         fileSystem: fs,
         writeImmediately: true,
-        jobType: 'planner',
+        jobType: 'plan',
         codebasePath: '/ws/codebase',
       });
       const registry = new FileRegistry(new Set(), fs, 'codebase');

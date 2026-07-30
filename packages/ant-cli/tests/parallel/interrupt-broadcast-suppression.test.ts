@@ -20,8 +20,20 @@ import { describe, it, expect, vi } from 'vitest';
 import { TaskOrchestrator } from '../../src/agents/architect/graph/code/parallel/TaskOrchestrator';
 import { TaskQueue } from '../../src/agents/architect/types/task';
 import type { CodeTask } from '../../src/agents/architect/types/task';
+import type { TaskTokenUsage, TokenUsageByModel } from '@ant/shared';
 
-function makeOrchestrator(onKanbanUpdate: ReturnType<typeof vi.fn>) {
+// The real ParallelCallbacks.onKanbanUpdate signature — `ReturnType<typeof vi.fn>`
+// widens to Mock<Procedure | Constructable>, which the concrete callback slot
+// rejects.
+type KanbanUpdateSpy = (
+  currentTasks: CodeTask[],
+  queue: CodeTask[],
+  completedTasks: CodeTask[],
+  tokenUsage?: TaskTokenUsage,
+  tokenUsageByModel?: TokenUsageByModel,
+) => void;
+
+function makeOrchestrator(onKanbanUpdate: KanbanUpdateSpy) {
   const queue = new TaskQueue<CodeTask>();
   // graphBuilder is never invoked (no workers spawned in this test).
   const graphBuilder = (() => ({})) as any;
@@ -36,7 +48,7 @@ function makeOrchestrator(onKanbanUpdate: ReturnType<typeof vi.fn>) {
 
 describe('TaskOrchestrator.broadcastKanban — interruption suppression (sharded-wand regression)', () => {
   it('emits a broadcast during normal run', () => {
-    const onKanbanUpdate = vi.fn();
+    const onKanbanUpdate = vi.fn<KanbanUpdateSpy>();
     const orch = makeOrchestrator(onKanbanUpdate);
 
     // Private method — invoked directly to isolate the guard from worker setup.
@@ -46,7 +58,7 @@ describe('TaskOrchestrator.broadcastKanban — interruption suppression (sharded
   });
 
   it('suppresses the broadcast once hasInterruptedTasks is set', () => {
-    const onKanbanUpdate = vi.fn();
+    const onKanbanUpdate = vi.fn<KanbanUpdateSpy>();
     const orch = makeOrchestrator(onKanbanUpdate);
 
     (orch as any).hasInterruptedTasks = true;
