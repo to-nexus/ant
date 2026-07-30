@@ -75,6 +75,19 @@ export function isGameArtArtifactPath(p: string): boolean {
   return gameArtSourceOfPath(p) !== null;
 }
 
+/**
+ * Asset-pool artifacts (`assets/{service,game}/**`). These enter the pool as
+ * existence-only path stubs (never bodies — see `loadDocumentsForRAC`'s
+ * stub-load contract), so they ride along with every selection: `task.include`
+ * narrows BODIES, but the existence of an explicitly attached asset must reach
+ * every plan/execute prompt. Handoff stubs stay include-gated — they can be
+ * hundreds of files and carry the per-source dispatch contract (uiSource
+ * exclusivity), unlike the flat asset pools.
+ */
+export function isAssetPoolPath(p: string): boolean {
+  return p.startsWith(ARTIFACT_PREFIX.ASSETS_SERVICE) || p.startsWith(ARTIFACT_PREFIX.ASSETS_GAME);
+}
+
 // ────────────────────────────────────────────────────────────────
 // Types
 // ────────────────────────────────────────────────────────────────
@@ -119,6 +132,14 @@ function matchesInclude(artifactPath: string, patterns: string[]): boolean {
  *    legacy taskType default switch was removed — every task's injection is
  *    now governed solely by its authored `include`.
  *
+ * Existence-band exception: asset-pool stubs (`isAssetPoolPath`) always ride
+ * along (steps 2 and 3), regardless of `include`. `task.include` narrows
+ * BODIES; an explicitly attached asset's EXISTENCE (a ~4-line path stub) must
+ * reach every prompt — dropping it silently is how the fierce-gaining-gully
+ * job concluded an attached Duck.glb "does not exist" and burned tokens
+ * searching for it. The verification defensive default (step 1) stays
+ * absolute: verification verifies code, not attachments.
+ *
  * Role is inherited from the pool's RAC annotation (3-axis Authority: RAC owns
  * role), so there is no separate role-aware selection path.
  */
@@ -128,11 +149,16 @@ export function selectArtifacts(
 ): ResolvedArtifact[] {
   if (policy.taskType === 'verification' && !policy.include?.length) return [];
 
-  if (policy.include?.length) {
-    return candidates.filter(a => matchesInclude(a.path, policy.include!));
-  }
+  const selected = policy.include?.length
+    ? candidates.filter(a => matchesInclude(a.path, policy.include!))
+    : [];
 
-  return [];
+  const selectedPaths = new Set(selected.map(a => a.path));
+  const assetStubs = candidates.filter(
+    a => isAssetPoolPath(a.path) && !selectedPaths.has(a.path),
+  );
+
+  return assetStubs.length ? [...selected, ...assetStubs] : selected;
 }
 
 // ────────────────────────────────────────────────────────────────

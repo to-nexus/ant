@@ -70,6 +70,55 @@ describe('selectArtifacts (include SSOT)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// selectArtifacts — existence band (asset-pool stubs ride along)
+// ---------------------------------------------------------------------------
+
+describe('selectArtifacts (asset-pool existence band)', () => {
+  const glbStub = artifact(
+    'assets/game/models/Duck.glb',
+    'context',
+    '[asset] assets/game/models/Duck.glb\nsize: 118.0 KB, kind: binary',
+  );
+  const handoffStub = artifact(
+    'visual/ui/handoff/page.html',
+    'context',
+    '[reference file] visual/ui/handoff/page.html',
+  );
+  const pool: ResolvedArtifact[] = [
+    artifact('plan', 'ref', 'prd content'),
+    glbStub,
+    handoffStub,
+  ];
+
+  it('asset stub survives empty include — existence always travels', () => {
+    expect(selectArtifacts(pool, { include: [] }).map(a => a.path)).toEqual([
+      'assets/game/models/Duck.glb',
+    ]);
+    expect(selectArtifacts(pool, { taskType: 'feature' }).map(a => a.path)).toEqual([
+      'assets/game/models/Duck.glb',
+    ]);
+  });
+
+  it('asset stub appended after include-selected bodies, no duplication when include matches it', () => {
+    const withBodies = selectArtifacts(pool, { include: ['plan'] });
+    expect(withBodies.map(a => a.path)).toEqual(['plan', 'assets/game/models/Duck.glb']);
+
+    const explicit = selectArtifacts(pool, { include: ['assets/game/'] });
+    expect(explicit.map(a => a.path)).toEqual(['assets/game/models/Duck.glb']);
+  });
+
+  it('verification defensive default stays absolute — no asset stub without include', () => {
+    expect(selectArtifacts(pool, { taskType: 'verification' })).toEqual([]);
+  });
+
+  it('handoff stubs stay include-gated (per-source dispatch contract)', () => {
+    expect(selectArtifacts(pool, { include: [] }).map(a => a.path)).not.toContain(
+      'visual/ui/handoff/page.html',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // appendOrUpdatePool role conflict warning
 // ---------------------------------------------------------------------------
 
