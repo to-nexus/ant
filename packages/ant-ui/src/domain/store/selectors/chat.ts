@@ -414,6 +414,46 @@ function mapsRefEqual<K, V>(a: Map<K, V>, b: Map<K, V>): boolean {
   return true;
 }
 
+/**
+ * One rendered section's worth of lines. `scope` is what lands on
+ * `TurnSection.workerScope`, so every `_main_` run reports plain `_main_` and
+ * downstream consumers — isWorkerGroupScope / parseScope / the dock — are
+ * untouched.
+ */
+interface SectionGroup {
+  scope: string;
+  lines: ChatLine[];
+  firstTs: string;
+  /**
+   * First-appearance rank. Groups are created in line order, so this is the
+   * honest chronological tiebreak when two sections share a `firstTs` — a
+   * lexicographic scope compare would put a trailing `_main_` run above the
+   * `worker-N` work it summarises.
+   */
+  seq: number;
+  /** Set only for `_main_` runs. Run 0 is the pinned orchestration intro. */
+  mainRunIndex?: number;
+}
+
+const NO_BUFFERS: Map<string, StreamingBuffer> = new Map();
+
+function openMainRun(groups: SectionGroup[], index: number, firstTs: string): SectionGroup {
+  const group: SectionGroup = {
+    scope: MAIN_WORKER_SCOPE,
+    lines: [],
+    firstTs,
+    seq: groups.length,
+    mainRunIndex: index,
+  };
+  groups.push(group);
+  return group;
+}
+
+function hasBufferContent(buf: StreamingBuffer | undefined): boolean {
+  if (!buf) return false;
+  return !!(buf.text || buf.thinking || Object.keys(buf.pendingCards ?? {}).length > 0);
+}
+
 function projectSingleTurn(
   turnId: string,
   lines: ChatLine[],
@@ -428,16 +468,22 @@ function projectSingleTurn(
     resolveJobTypeFromBuffers(buffersByScope) ??
     'code';
 
-  // workerScope → ordered ChatLine[] within the turn.
-  const sectionOrder: string[] = [];
-  const linesByScope = new Map<string, ChatLine[]>();
-
-  // First-event timestamp per scope — used for chronological section
-  // ordering below. `_main_` is hard-pinned to first via the sort
-  // comparator (orchestration-narrative policy), so its ts entry is
-  // unused for ordering; we therefore record only the actual first
-  // `_main_` event ts for parity with other scopes.
-  const firstTsByScope = new Map<string, string>();
+  // Scope grouping. Non-main scopes aggregate into ONE section each — a
+  // worker's output must stay in a single container because
+  // WorkerGroupSection / WorkerGroupDock are one-per-worker-scope.
+  //
+  // `_main_` is different: it is not one section but the main scope's
+  // chronological RUNS, bracketing the parallel work. A run closes as soon
+  // as a non-main line appears and the next main line opens a new one. Any
+  // main-scope output that arrives AFTER the workers (the job final summary)
+  // therefore renders at the END of the turn instead of being glued to the
+  // intro nine minutes out of order.
+  const groups: SectionGroup[] = [];
+  const groupByScope = new Map<string, SectionGroup>();
+  // The currently OPEN main run — null while a non-main scope is speaking.
+  let mainRun: SectionGroup | null = null;
+  let mainRunCount = 0;
+  let lastTs = ts;
 
   for (const line of lines) {
     if (line.type === 'user_turn') {
@@ -447,40 +493,63 @@ function projectSingleTurn(
       // user_turn is rendered above sections, not inside them.
       continue;
     }
+    lastTs = line.ts;
     const scope = line.workerScope || MAIN_WORKER_SCOPE;
-    if (!linesByScope.has(scope)) {
-      linesByScope.set(scope, []);
-      sectionOrder.push(scope);
+    if (scope === MAIN_WORKER_SCOPE) {
+      if (!mainRun) mainRun = openMainRun(groups, mainRunCount++, line.ts);
+      mainRun.lines.push(line);
+    } else {
+      // A non-main line closes the open main run.
+      mainRun = null;
+      let group = groupByScope.get(scope);
+      if (!group) {
+        group = { scope, lines: [], firstTs: line.ts, seq: groups.length };
+        groupByScope.set(scope, group);
+        groups.push(group);
+      }
+      group.lines.push(line);
     }
-    linesByScope.get(scope)!.push(line);
-    if (!firstTsByScope.has(scope)) firstTsByScope.set(scope, line.ts);
     jobId ||= line.jobId;
     jobType = parseLogJobType(line.jobType) ?? jobType;
   }
 
+  // Live main-scope prose whose durable line has not landed yet (the summary
+  // mid-stream): without a trailing run the `_main_` buffer would attach to
+  // run 0 and type at the TOP, then jump down when the line persists.
+  if (mainRun === null && mainRunCount > 0 && hasBufferContent(buffersByScope.get(MAIN_WORKER_SCOPE))) {
+    openMainRun(groups, mainRunCount++, lastTs);
+  }
+
   // Section ordering — chronological by first-event timestamp.
   //
-  // `_main_` is pinned to the FIRST position regardless of ts so the
-  // turn-level orchestration narrative (assistant_message, etc.) reads
-  // as the introduction to the parallel work that follows. Every other
-  // section sorts by ascending `firstTsByScope`, with workerScope as a
-  // tiebreaker for determinism. This restores chronology across
-  // long-lived TaskWorkers that handle barrier cohorts in sequence
-  // (e.g. UI cohort → test-code cohort): a worker that picks up a
-  // cohort-2 task gets a fresh `worker-N#task-K` scope whose first ts
-  // sorts AFTER cohort-1 sections, so cohort-2 messages render below.
-  sectionOrder.sort((a, b) => {
+  // Main run 0 is pinned FIRST regardless of ts so the turn-level
+  // orchestration narrative reads as the introduction to the parallel work
+  // that follows. Every other section — worker scopes, the synthetic
+  // `_spec_complete_:` / `_cancelled_:` card scopes, and later main runs —
+  // sorts by ascending `firstTs` with first-appearance rank as the tiebreaker.
+  // This restores chronology across long-lived TaskWorkers that
+  // handle barrier cohorts in sequence (e.g. UI cohort → test-code cohort): a
+  // worker that picks up a cohort-2 task gets a fresh `worker-N#task-K` scope
+  // whose first ts sorts AFTER cohort-1 sections, so cohort-2 messages render
+  // below.
+  groups.sort((a, b) => {
     if (a === b) return 0;
-    if (a === MAIN_WORKER_SCOPE) return -1;
-    if (b === MAIN_WORKER_SCOPE) return 1;
-    const ta = firstTsByScope.get(a) ?? '';
-    const tb = firstTsByScope.get(b) ?? '';
-    if (ta !== tb) return ta < tb ? -1 : 1;
-    return a.localeCompare(b);
+    if (a.mainRunIndex === 0) return -1;
+    if (b.mainRunIndex === 0) return 1;
+    if (a.firstTs !== b.firstTs) return a.firstTs < b.firstTs ? -1 : 1;
+    return a.seq - b.seq;
   });
 
-  const sections: TurnSection[] = sectionOrder.map((scope) =>
-    foldSection(scope, linesByScope.get(scope) ?? [], buffersByScope),
+  // The `_main_` streaming buffer belongs to the LAST main run only.
+  const lastMainRunIndex = mainRunCount - 1;
+  const sections: TurnSection[] = groups.map((group) =>
+    foldSection(
+      group.scope,
+      group.lines,
+      group.mainRunIndex === undefined || group.mainRunIndex === lastMainRunIndex
+        ? buffersByScope
+        : NO_BUFFERS,
+    ),
   );
 
   // Sections that exist only as a streaming buffer (no events for that

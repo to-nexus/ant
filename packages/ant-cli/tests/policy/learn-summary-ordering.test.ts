@@ -1,14 +1,20 @@
 /**
  * Ordering invariant — the job final summary (`emitJobFinalSummary`) runs at
  * the terminal learn seam AFTER the durable completion checkpoint and the
- * user-facing terminal signals, and BEFORE `distillAssistantTurn` (which
- * stays last per learn-distill-ordering.test.ts and harvests the summary as
- * the turn's final prose).
+ * workflow-lifecycle signals, and BEFORE `distillAssistantTurn` (which stays
+ * last per learn-distill-ordering.test.ts and harvests the summary as the
+ * turn's final prose).
+ *
+ * The design job's `spec_complete` CTA sits BETWEEN the two: "Start
+ * Development with this spec" is the next action, so it must follow the job's
+ * own wrap-up prose. Emitting it first (the original order) made the CTA read
+ * as the conclusion and pushed the actual conclusion out of view
+ * (zero-hunting-label).
  *
  * Source-order guard, same rationale as learn-distill-ordering: the learn
  * nodes have too many deps for a behavioral unit test, so the seam position
  * is locked statically. A mid-call SIGTERM during the summary must lose only
- * the summary — never the completion checkpoint.
+ * the summary and the CTA — never the completion checkpoint.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -49,24 +55,35 @@ describe('learn node job-summary ordering — after terminal signals, before dis
     expect(gate).toContain('!state.interruption');
   });
 
-  it('design learn: emitJobFinalSummary is after endJob / spec_complete card and before distill', () => {
+  it('design learn: emitJobFinalSummary is after endJob / exitNode, before the CTA card and distill', () => {
     const src = read('design/nodes/learn/index.ts');
 
     const summary = at(src, 'emitJobFinalSummary({');
     const endJob = at(src, 'workflowUpdate.endJob(');
-    const specCard = at(src, "'spec_complete'");
+    const exitNode = at(src, 'workflowUpdate.exitNode(');
+    const specCard = at(src, 'await emitSpecCompleteCard(');
     const distill = at(src, 'distillAssistantTurn({');
 
     expect(summary).toBeGreaterThan(-1);
+    expect(specCard).toBeGreaterThan(-1);
     expect(summary).toBeGreaterThan(endJob);
-    expect(summary).toBeGreaterThan(specCard);
-    expect(summary).toBeLessThan(distill);
+    expect(summary).toBeGreaterThan(exitNode);
+    // The CTA is the turn's LAST user-facing signal — it follows the wrap-up
+    // prose it refers to (zero-hunting-label), and distill still runs last.
+    expect(specCard).toBeGreaterThan(summary);
+    expect(specCard).toBeLessThan(distill);
 
     expect(src.split('emitJobFinalSummary({').length - 1).toBe(1);
+    expect(src.split('await emitSpecCompleteCard(').length - 1).toBe(1);
 
     const gate = src.slice(Math.max(0, summary - 600), summary);
     expect(gate).toContain('isLastTask');
     expect(gate).toContain('!_isWorkerContext');
     expect(gate).toContain('!hasEarlyTermination');
+
+    // The CTA keeps its own early-termination / worker gate.
+    const cardGate = src.slice(Math.max(0, specCard - 300), specCard);
+    expect(cardGate).toContain('!_isWorkerContext');
+    expect(cardGate).toContain('!hasEarlyTermination');
   });
 });

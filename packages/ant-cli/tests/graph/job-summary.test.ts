@@ -100,6 +100,42 @@ describe('emitJobFinalSummary', () => {
     expect(calls.filter((c) => c === 'start').length).toBe(1);
   });
 
+  it('goes inert after the timeout — the orphaned stream cannot emit a second message', async () => {
+    // withTimeout rejects but cannot abort the stream (the LLM port takes no
+    // AbortSignal), so the iterator keeps yielding. Those events must not
+    // reopen a turn buffer nobody finalizes, nor interleave with the
+    // fallback's own message.
+    vi.useFakeTimers();
+    try {
+      const { api, calls, texts } = mockChatAPI();
+      let releaseFirstChunk!: () => void;
+      const gate = new Promise<void>((r) => { releaseFirstChunk = r; });
+
+      const llm = {
+        stream: async function* () {
+          await gate;                       // still pending when the budget expires
+          yield { type: 'text', text: 'too late' } as any;
+          yield { type: 'text', text: ' and later still' } as any;
+        },
+      } as any;
+
+      const promise = emitJobFinalSummary(baseInput({ chatAPI: api, llm, promptPort }));
+
+      await vi.advanceTimersByTimeAsync(31_000);   // JOB_SUMMARY_TIMEOUT_MS = 30s
+      releaseFirstChunk();
+      const result = await promise;
+      await vi.advanceTimersByTimeAsync(0);        // let the orphan drain
+
+      // Fallback owns the only message.
+      expect(result).toContain('Completed 1 task: Login page.');
+      expect(calls.filter((c) => c === 'start').length).toBe(1);
+      expect(calls.filter((c) => c === 'finalize').length).toBe(1);
+      expect(texts.join('')).not.toContain('too late');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('falls back when the LLM emits no text at all', async () => {
     const { api } = mockChatAPI();
     const llm = { stream: streamOf([{ type: 'done' }]) } as any;

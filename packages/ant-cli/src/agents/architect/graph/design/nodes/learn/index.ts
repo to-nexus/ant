@@ -37,17 +37,25 @@ interface DesignBreadcrumbOptions {
  * fallback when the chat log is empty (e.g. execute wrote via non-tool
  * paths).
  */
-async function applyDesignBreadcrumbBoundary(
-  state: DesignGraphState,
-  options: DesignBreadcrumbOptions = {},
-): Promise<void> {
+/**
+ * What this turn actually wrote, resolved once and shared by the breadcrumb and
+ * the job final summary. Reads chat.jsonl's file-op lines, falling back to
+ * `state.files` actionTypes when execute wrote via non-tool paths.
+ */
+interface DesignTouched {
+  all: string[];
+  created: string[];
+  modified: string[];
+  deleted: string[];
+  range?: { startTs: string; endTs: string };
+}
+
+async function resolveDesignTouched(state: DesignGraphState): Promise<DesignTouched | null> {
   const session = state.deps?.session;
-  if (!session) return;
-  const jobId = state.jobId;
   const turnId = state.turnId;
-  if (!jobId || !turnId) {
-    console.warn('⚠️  [Design Learn] skip breadcrumb/boundary (missing turnId)');
-    return;
+  if (!session || !state.jobId || !turnId) {
+    console.warn('⚠️  [Design Learn] skip touched-file resolution (missing turnId)');
+    return null;
   }
   const touched = await collectTouchedFilesFromChatLog(session, turnId);
   let pathsFromTrace = Array.from(touched.all);
@@ -92,6 +100,19 @@ async function applyDesignBreadcrumbBoundary(
     deleted = fbDeleted;
     rangeRef = undefined;
   }
+  return { all: pathsFromTrace, created, modified, deleted, range: rangeRef };
+}
+
+async function applyDesignBreadcrumbBoundary(
+  state: DesignGraphState,
+  touched: DesignTouched | null,
+  options: DesignBreadcrumbOptions = {},
+): Promise<void> {
+  const session = state.deps?.session;
+  const jobId = state.jobId;
+  const turnId = state.turnId;
+  if (!session || !jobId || !turnId || !touched) return;
+  const { all: pathsFromTrace, created, modified, deleted, range: rangeRef } = touched;
   const mode = state.resolvedAction?.mode;
   // Skip explain mode — no anchor information to record (job-context-bridge T3).
   if (mode === 'explain' && options.forceEmit !== true) {
@@ -428,9 +449,19 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   //   - success: original gates (`mode='explain'`, touched=0) stay intact
   //   - failure/interruption: force-emit a failure summary BC so the next
   //     turn can observe why this run stopped, even when touched=0.
+  // Resolved once and reused by the job final summary below — the summary's
+  // prompt must be able to cite the real paths this turn wrote (its template
+  // asks for them and forbids claiming unevidenced work), which it could not
+  // when `touched` was left unset (zero-hunting-label).
+  let designTouched: DesignTouched | null = null;
   if (isLastTask && !_isWorkerContext && state.deps?.session) {
     try {
-      await applyDesignBreadcrumbBoundary(state, {
+      designTouched = await resolveDesignTouched(state);
+    } catch (err) {
+      console.warn('⚠️  [Design Learn] touched-file resolution failed:', err);
+    }
+    try {
+      await applyDesignBreadcrumbBoundary(state, designTouched, {
         forceEmit: hasEarlyTermination,
         summaryOverride: hasEarlyTermination
           ? buildDesignFailureBreadcrumbSummary(state)
@@ -509,83 +540,6 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     console.log(`\n🏁 Job ended: ${state._httpJobId}\n`);
   }
   
-  // Spec completion choice card: offer to start development
-  if (!_isWorkerContext && !hasEarlyTermination && state.resolvedAction?.intentGroup === 'design-spec' && !state.awaitingClarify) {
-    try {
-      const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
-      const chatAPI = getChatAPIClient();
-
-      await chatAPI.finalizeMessage();
-      
-      // Resolve the spec filename in basename form. design-spec intents
-      // write under `architecture/spec/<name>.md`; we strip the directory
-      // segments so the FE choice card shows the bare filename. Use
-      // `path.basename` so the new domain-rooted tree (`architecture/`,
-      // `visual/`) is handled uniformly without per-prefix branches.
-      const firstPath = state.files?.[0]?.path;
-      const specFile = state.completedTasksDetails?.[0]?.targetFile
-        || (firstPath ? path.basename(firstPath) : undefined)
-        || 'spec.md';
-      
-      const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';
-      
-      // Carry the data the FE needs to start the code job through the
-      // explicit pipeline (no LLM detect re-interpretation of the
-      // "Implement <specFile>" directive). `specPath` pins the spec as
-      // a ref, `sourceFiles` becomes the explicit context (PRD /
-      // user-uploaded originals), and `domain` keeps the resolved
-      // domain stable across the design→code hand-off.
-      const sourceFiles = state.workspaceState?.planFileNames ?? [];
-      const racDomain = state.resolvedAction?.domain;
-
-      // Axis B (run-scoped verdict, defense-in-depth): never offer
-      // "Start Development" on a spec that isn't on disk. Axis A already
-      // interrupts a zero-output run before completion, but the resolved
-      // `specFile` derives from `completedTasksDetails[0].targetFile`, which
-      // could name a document the run never wrote while stale siblings were
-      // loaded. Verify existence directly and suppress the card if absent
-      // (heavy-bridging-onion: coordinate-system.md never written).
-      const specRelPath = `${ARTIFACT_PREFIX.SPEC}${specFile}`;
-      const specExists = state.deps?.fileSystem
-        ? await state.deps.fileSystem.fileExists(specRelPath).catch(() => false)
-        : true;
-      if (!specExists) {
-        console.error(
-          `❌ [Learn] Suppressing spec_complete card — resolved spec "${specRelPath}" is not on disk ` +
-          `(run produced no output despite ${state.files?.length ?? 0} loaded file(s)).`,
-        );
-        await chatAPI.finalizeMessage();
-      } else {
-        await chatAPI.sendChoiceCard({
-          type: 'spec_complete',
-          title: isKo ? '스펙 작성 완료' : 'Spec Complete',
-          choices: [
-            {
-              id: 'develop',
-              label: isKo ? '바로 개발 시작' : 'Start Development',
-              action: 'redirect',
-              data: {
-                targetJob: 'code',
-                specFile,
-                specPath: specRelPath,
-                sourceFiles,
-                ...(racDomain ? { domain: racDomain } : {}),
-              },
-            },
-            {
-              id: 'later',
-              label: isKo ? '나중에' : 'Later',
-              action: 'dismiss',
-            },
-          ],
-        });
-        await chatAPI.finalizeMessage();
-      }
-    } catch (error) {
-      console.warn(`⚠️  [Learn] Failed to send spec completion choice card:`, error);
-    }
-  }
-
   // Workflow instrumentation: Exit node (parity with code learn).
   // learn is terminal so endJob() also clears active state, but emitting exit
   // here avoids a stuck-active 'learn' if endJob is delayed, and keeps the
@@ -614,19 +568,50 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       jobType: 'design',
       jobId: state.jobId,
       turnId: state.turnId,
-      directive: state.directive,
+      // A revise turn's live ask lives in `overrideDirective` — the design
+      // graph already prefers it when building task prompts, so answering
+      // `state.directive` alone would answer the stale one. There is no
+      // `directives` history to pass: unlike the code graph, the design job
+      // carries no such channel (see design/nodes/revise.ts).
+      directive: state.overrideDirective || state.directive,
       completedTasks: (state.completedTasksDetails ?? []).map((t) => ({
         name: t.name,
         type: t.type,
         description: t.description,
-        files: t.targetFile ? [t.targetFile] : undefined,
+        // Feature-relative, not a bare basename: the summary is asked to cite
+        // key paths, and `targetFile` alone ("boss-visual-overhaul.md") is not
+        // one.
+        files: t.targetFile
+          ? [t.targetDir ? `${t.targetDir}/${t.targetFile}` : t.targetFile]
+          : undefined,
       })),
+      ...(designTouched
+        ? {
+            touched: {
+              created: designTouched.created,
+              edited: designTouched.modified,
+              deleted: designTouched.deleted,
+            },
+          }
+        : {}),
       taskProse: await harvestTaskProse(state.deps?.session, state.turnId),
       onUsage: (usage) => {
         accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
         broadcastTokenUsageByModel(state);
       },
     });
+  }
+
+  // Spec completion CTA — LAST user-facing signal of the turn. "Start
+  // Development with this spec" is the next action, so it must follow the
+  // job's own wrap-up prose rather than precede it: emitted before the
+  // summary it read as the conclusion, pushing the actual conclusion out of
+  // view (zero-hunting-label). `emitJobFinalSummary` never throws and is
+  // bounded at JOB_SUMMARY_TIMEOUT_MS, so the card needs no guard here; a
+  // SIGTERM inside that window loses the card, which is recoverable — the
+  // job is already durably complete and the card re-derives from the spec.
+  if (!_isWorkerContext && !hasEarlyTermination) {
+    await emitSpecCompleteCard(state);
   }
 
   // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
@@ -656,4 +641,88 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     ...state,
     lessons
   };
+}
+
+/**
+ * Spec completion choice card — offers "Start Development" on the spec this
+ * turn produced. Called from the learn seam AFTER the job final summary so the
+ * CTA is the turn's last signal. Log-and-swallow: a card miss never aborts learn.
+ */
+async function emitSpecCompleteCard(state: DesignGraphState): Promise<void> {
+  if (state.resolvedAction?.intentGroup !== 'design-spec' || state.awaitingClarify) return;
+
+  try {
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    const chatAPI = getChatAPIClient();
+
+    await chatAPI.finalizeMessage();
+
+    // Resolve the spec filename in basename form. design-spec intents
+    // write under `architecture/spec/<name>.md`; we strip the directory
+    // segments so the FE choice card shows the bare filename. Use
+    // `path.basename` so the new domain-rooted tree (`architecture/`,
+    // `visual/`) is handled uniformly without per-prefix branches.
+    const firstPath = state.files?.[0]?.path;
+    const specFile = state.completedTasksDetails?.[0]?.targetFile
+      || (firstPath ? path.basename(firstPath) : undefined)
+      || 'spec.md';
+
+    const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';
+
+    // Carry the data the FE needs to start the code job through the
+    // explicit pipeline (no LLM detect re-interpretation of the
+    // "Implement <specFile>" directive). `specPath` pins the spec as
+    // a ref, `sourceFiles` becomes the explicit context (PRD /
+    // user-uploaded originals), and `domain` keeps the resolved
+    // domain stable across the design→code hand-off.
+    const sourceFiles = state.workspaceState?.planFileNames ?? [];
+    const racDomain = state.resolvedAction?.domain;
+
+    // Axis B (run-scoped verdict, defense-in-depth): never offer
+    // "Start Development" on a spec that isn't on disk. Axis A already
+    // interrupts a zero-output run before completion, but the resolved
+    // `specFile` derives from `completedTasksDetails[0].targetFile`, which
+    // could name a document the run never wrote while stale siblings were
+    // loaded. Verify existence directly and suppress the card if absent
+    // (heavy-bridging-onion: coordinate-system.md never written).
+    const specRelPath = `${ARTIFACT_PREFIX.SPEC}${specFile}`;
+    const specExists = state.deps?.fileSystem
+      ? await state.deps.fileSystem.fileExists(specRelPath).catch(() => false)
+      : true;
+    if (!specExists) {
+      console.error(
+        `❌ [Learn] Suppressing spec_complete card — resolved spec "${specRelPath}" is not on disk ` +
+        `(run produced no output despite ${state.files?.length ?? 0} loaded file(s)).`,
+      );
+      await chatAPI.finalizeMessage();
+      return;
+    }
+
+    await chatAPI.sendChoiceCard({
+      type: 'spec_complete',
+      title: isKo ? '스펙 작성 완료' : 'Spec Complete',
+      choices: [
+        {
+          id: 'develop',
+          label: isKo ? '바로 개발 시작' : 'Start Development',
+          action: 'redirect',
+          data: {
+            targetJob: 'code',
+            specFile,
+            specPath: specRelPath,
+            sourceFiles,
+            ...(racDomain ? { domain: racDomain } : {}),
+          },
+        },
+        {
+          id: 'later',
+          label: isKo ? '나중에' : 'Later',
+          action: 'dismiss',
+        },
+      ],
+    });
+    await chatAPI.finalizeMessage();
+  } catch (error) {
+    console.warn(`⚠️  [Learn] Failed to send spec completion choice card:`, error);
+  }
 }

@@ -324,6 +324,129 @@ describe('selectTurns — workerScope sub-sections', () => {
     ]);
   });
 
+  // ── `_main_` chronological runs (zero-hunting-label) ──────────────
+  //
+  // `_main_` is the main scope's RUNS, not one section. Main-scope output
+  // that arrives after the workers (the job final summary) must render at
+  // the END of the turn, not glued to the pinned intro run.
+
+  it('opens a second `_main_` run for main-scope prose that arrives after a worker section', () => {
+    const u = userTurn('t-summary');
+    const intro = assistantMessage('t-summary', 'decomposed into 1 task');
+    const work = status('t-summary', 'card-w', 'read', { filePath: 'a.ts' }, 'worker-0#task-A');
+    const summary = assistantMessage('t-summary', 'job wrap-up prose');
+
+    const sections = selectTurns({
+      chatEvents: [u, intro, work, summary],
+      streamingBuffers: emptyBuffers(),
+    })[0].sections;
+
+    // Every main run still reports the plain `_main_` scope so
+    // isWorkerGroupScope / parseScope / the dock stay untouched.
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      MAIN_WORKER_SCOPE,
+      'worker-0#task-A',
+      MAIN_WORKER_SCOPE,
+    ]);
+    expect((sections[0].items[0] as any).line.text).toBe('decomposed into 1 task');
+    expect((sections[2].items[0] as any).line.text).toBe('job wrap-up prose');
+  });
+
+  it('keeps consecutive main-scope lines in ONE run (no spurious splitting)', () => {
+    const u = userTurn('t-onerun');
+    const sections = selectTurns({
+      chatEvents: [
+        u,
+        assistantMessage('t-onerun', 'first'),
+        assistantMessage('t-onerun', 'second'),
+        status('t-onerun', 'card-w', 'read', { filePath: 'a.ts' }, 'worker-0#task-A'),
+      ],
+      streamingBuffers: emptyBuffers(),
+    })[0].sections;
+
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      MAIN_WORKER_SCOPE,
+      'worker-0#task-A',
+    ]);
+    expect(sections[0].items).toHaveLength(2);
+  });
+
+  it('attaches the `_main_` streaming buffer to the LAST main run, not the intro run', () => {
+    const u = userTurn('t-late-stream');
+    const intro = assistantMessage('t-late-stream', 'intro');
+    const work = status('t-late-stream', 'card-w', 'read', { filePath: 'a.ts' }, 'worker-0#task-A');
+    const summary = assistantMessage('t-late-stream', 'wrap-up');
+
+    const buffers: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-late-stream', MAIN_WORKER_SCOPE)]: {
+        turnId: 't-late-stream',
+        workerScope: MAIN_WORKER_SCOPE,
+        text: 'still typing...',
+      },
+    };
+
+    const sections = selectTurns({
+      chatEvents: [u, intro, work, summary],
+      streamingBuffers: buffers,
+    })[0].sections;
+
+    expect(sections).toHaveLength(3);
+    expect(sections[0].activeText).toBeUndefined();
+    expect(sections[2].activeText).toBe('still typing...');
+  });
+
+  it('opens a trailing `_main_` run for a live buffer whose durable line has not landed', () => {
+    // The summary mid-stream: without the trailing run the buffer would
+    // attach to run 0 and type at the TOP, then jump on persist.
+    const u = userTurn('t-midstream');
+    const intro = assistantMessage('t-midstream', 'intro');
+    const work = status('t-midstream', 'card-w', 'read', { filePath: 'a.ts' }, 'worker-0#task-A');
+
+    const buffers: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-midstream', MAIN_WORKER_SCOPE)]: {
+        turnId: 't-midstream',
+        workerScope: MAIN_WORKER_SCOPE,
+        text: 'wrap-up in flight',
+      },
+    };
+
+    const sections = selectTurns({
+      chatEvents: [u, intro, work],
+      streamingBuffers: buffers,
+    })[0].sections;
+
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      MAIN_WORKER_SCOPE,
+      'worker-0#task-A',
+      MAIN_WORKER_SCOPE,
+    ]);
+    expect(sections[0].activeText).toBeUndefined();
+    expect(sections[2].items).toHaveLength(0);
+    expect(sections[2].activeText).toBe('wrap-up in flight');
+  });
+
+  it('keeps the terminal `_spec_complete_:` card below a trailing main run', () => {
+    // Post-fix design learn order: summary prose, THEN the CTA card.
+    const u = userTurn('t-cta');
+    const intro = assistantMessage('t-cta', 'intro');
+    const work = status('t-cta', 'card-w', 'read', { filePath: 'a.ts' }, 'worker-0#task-A');
+    const summary = assistantMessage('t-cta', 'wrap-up');
+    const card = choicePresented('t-cta', 'card-spec', 'spec_complete', '_spec_complete_:card-spec');
+
+    const sections = selectTurns({
+      chatEvents: [u, intro, work, summary, card],
+      streamingBuffers: emptyBuffers(),
+    })[0].sections;
+
+    expect(sections.map((s) => s.workerScope)).toEqual([
+      MAIN_WORKER_SCOPE,
+      'worker-0#task-A',
+      MAIN_WORKER_SCOPE,
+      '_spec_complete_:card-spec',
+    ]);
+    expect((sections[2].items[0] as any).line.text).toBe('wrap-up');
+  });
+
   it('splits a single long-lived worker into per-task sections via `worker-N#task-K` scope', () => {
     // Mirrors the `rigid-fanning-faith` regression: a TaskWorker picks
     // up cohort-1 task A, then cohort-2 task B. Each task must occupy

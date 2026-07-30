@@ -25,6 +25,8 @@ export const JOB_SUMMARY_TIMEOUT_MS = 30_000;
 export const JOB_SUMMARY_MAX_OUTPUT_TOKENS = 900;
 /** Per-task harvested prose cap (chatTailBuilder assistant-cap precedent). */
 const TASK_PROSE_CAP = 1600;
+/** Chat-log read budget — awaited by the learn seam outside the emit timeout. */
+const TASK_PROSE_HARVEST_TIMEOUT_MS = 5_000;
 /** Max key paths cited in the prompt's fileChanges block. */
 const TOP_PATHS_CAP = 12;
 
@@ -105,6 +107,13 @@ async function tryLlmSummary(input: EmitJobFinalSummaryInput): Promise<string | 
 
   let responseText = '';
   let started = false;
+  // The timeout rejects the wrapper but cannot abort the stream itself (the
+  // LLM port takes no AbortSignal), so the orphaned iterator keeps producing
+  // events after we have already fallen back. Without this flag those events
+  // reopen a turn buffer nobody finalizes — a dangling streaming overlay, or a
+  // second message interleaved with the fallback's. Gate the loop AND every
+  // chat emission on it so the orphan is observably inert; it drains silently.
+  let cancelled = false;
   try {
     await withTimeout(
       (async () => {
@@ -113,12 +122,14 @@ async function tryLlmSummary(input: EmitJobFinalSummaryInput): Promise<string | 
           enableThinking: false,
           temperature: LLM_TEMPERATURE.SUMMARIZE,
         })) {
+          if (cancelled) break;
           if (event.type === 'text' && event.text) {
             if (!started) {
               started = true;
               await chatAPI.startMessage();
             }
             responseText += event.text;
+            if (cancelled) break;
             await chatAPI.sendLLMEvent({ type: 'text', text: event.text });
           }
           if (event.type === 'done' && event.usage) {
@@ -130,6 +141,7 @@ async function tryLlmSummary(input: EmitJobFinalSummaryInput): Promise<string | 
         }
       })(),
       JOB_SUMMARY_TIMEOUT_MS,
+      () => { cancelled = true; },
     );
   } catch (err) {
     console.warn('⚠️  [JobSummary] LLM stream failed, using fallback:', err);
@@ -213,7 +225,12 @@ export async function harvestTaskProse(
 ): Promise<string[]> {
   if (!session || !turnId) return [];
   try {
-    const lines = await session.loadChatByTurnIds([turnId]);
+    // Own budget: the learn seam awaits this inline, OUTSIDE the emit call's
+    // timeout, so a hung chat-log read would block job completion unbounded.
+    const lines = await withTimeout(
+      session.loadChatByTurnIds([turnId]),
+      TASK_PROSE_HARVEST_TIMEOUT_MS,
+    );
     const parts: string[] = [];
     for (const line of lines) {
       const prose = assistantProseOf(line);
@@ -226,9 +243,13 @@ export async function harvestTaskProse(
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+/** `onTimeout` fires before the rejection so callers can mark work abandoned. */
+function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const id = setTimeout(() => reject(new Error(`job summary timeout after ${ms}ms`)), ms);
+    const id = setTimeout(() => {
+      onTimeout?.();
+      reject(new Error(`job summary timeout after ${ms}ms`));
+    }, ms);
     promise.then(
       (v) => { clearTimeout(id); resolve(v); },
       (e) => { clearTimeout(id); reject(e); },

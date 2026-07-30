@@ -530,6 +530,34 @@ describe('LLMResponseService — sendLLMEvent dispatch', () => {
     expect(deltas[0]).toMatchObject({ kind: 'text', chunk: 'hello' });
   });
 
+  it('preserves standalone-whitespace text deltas (zero-hunting-label word gluing)', async () => {
+    // Providers emit whitespace-only deltas between word tokens. A `.trim()`
+    // gate here dropped them, so the rendered message read "대한완전한"
+    // instead of "대한 완전한". Every chunk must survive verbatim.
+    const { service, store } = makeService();
+    for (const chunk of ['보스', ' ', '비주얼', ' ', '개편']) {
+      await service.sendLLMEvent({ type: 'text', text: chunk });
+    }
+    expect(emittedDeltas(store).map((d) => d.chunk)).toEqual([
+      '보스', ' ', '비주얼', ' ', '개편',
+    ]);
+
+    await service.finalizeMessage();
+    const messages = emittedLines(store).filter((l) => l.type === 'assistant_message');
+    expect(messages).toHaveLength(1);
+    expect((messages[0] as any).text).toBe('보스 비주얼 개편');
+  });
+
+  it('a whitespace-only text stream produces no durable assistant_message', async () => {
+    const { service, store } = makeService();
+    await service.sendLLMEvent({ type: 'text', text: '   ' });
+    await service.sendLLMEvent({ type: 'text', text: '\n' });
+    await service.finalizeMessage();
+    expect(
+      emittedLines(store).filter((l) => l.type === 'assistant_message'),
+    ).toHaveLength(0);
+  });
+
   it('thinking blockEnd flushes accumulated buffer into a single assistant_thinking line', async () => {
     const { service, store } = makeService();
     await service.sendLLMEvent({ type: 'thinking', thinking: 'a ', metadata: {} });
