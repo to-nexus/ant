@@ -31,6 +31,8 @@ OUTPUT FORMAT:
 
 **Constraint — design refs force Tier 4 for write mode**: When mode is `generate` AND the prompt section `## Available Reference Documents` lists ANY reference document (a `role='ref'` design artifact — spec, system-design, ui, or game-art — chosen by the intent matrix), the executionTier MUST be `4`. The reference document IS the **Development Source** that enumerates this turn's work; classifying lower would collapse multiple work units the document describes into a single task. The intent matrix in `@ant/shared/action-config-matrix.ts` is the SSOT for which artifact kinds are `refs:` for each `gen-code-*` intent. This rule is enforced by a runtime validator — emitting Tier 1/2/3 with a design ref present will be rejected and retried.
 
+**Constraint — informative sections**: a reference-document section that declares itself non-normative (e.g. a `Directive Q&A` tail marked "Informative only — entries are not requirements, tasks, or acceptance criteria") enumerates NO work units; do NOT emit tasks from it.
+
 **Constraint — directive-driven tier (no design refs)**: When the prompt section `## Available Reference Documents` is absent or empty, classify by directive scope alone:
 - Tier `1` — single write, verification genuinely unneeded (comment / typo / safe config tweak).
 - Tier `2` — single unit of work that needs install/typecheck/build/test verification (the task owns inline self-verify).

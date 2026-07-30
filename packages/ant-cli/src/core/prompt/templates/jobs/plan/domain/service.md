@@ -4,9 +4,9 @@
 
 This overlay defines the **PRD skeleton** for service / SaaS / dashboard / internal-tool projects. Use it when the planning intent (`gen-plan` / `rev-plan`) authors a Product Requirements Document. The plan job decides **what** the product is, **why** it exists, **how the user navigates it** (information architecture, screen composition, interaction logic), and **how content behaves** (sort / filter / pagination / empty-state policy). System-level commitments (state ownership, contracts, persistence) and ui token / spec / asset selection belong to the design jobs that consume this PRD — those words MUST NOT appear here. The PRD is the SSOT consumed by `system-design` and `ui-design-by-{desc,figma}` decompose; sections must be authored so design tasks can cite them by stable identifier.
 
-### MECE PRD section map (14 sections)
+### MECE PRD section map (15 sections)
 
-The PRD is partitioned into a **Required core (8)**, **Conditional (5)**, and an **Always-on tail (1)**. Required-core sections appear in every PRD. Conditional sections appear only when the directive's scope warrants them; otherwise §14 records the reason for the omission. The partition is **mutually exclusive** (each section answers a distinct stakeholder concern) and **collectively exhaustive** (the union covers everything design needs to start without re-extracting from prose).
+The PRD is partitioned into a **Required core (8)**, **Conditional (5)**, an **Always-on tail (1)**, and a **Conditional tail (1)**. Required-core sections appear in every PRD. Conditional sections appear only when the directive's scope warrants them; otherwise §14 records the reason for the omission. The partition is **mutually exclusive** (each section answers a distinct stakeholder concern) and **collectively exhaustive** (the union covers everything design needs to start without re-extracting from prose).
 
 #### Required core (always present)
 
@@ -36,6 +36,12 @@ The PRD is partitioned into a **Required core (8)**, **Conditional (5)**, and an
 | # | Section | Outcome the section commits |
 |---|---|---|
 | 14 | Open Questions | Unresolved decisions, conditional sections marked "not applicable", and any sufficiency-checklist failures (see §Pipeline input sufficiency below). State "none" if there are genuinely no open items. |
+
+#### Conditional tail
+
+| # | Section | Include when | Outcome the section commits |
+|---|---|---|---|
+| 15 | Directive Q&A | The directive embeds explicit questions addressed to you | Answers per the Directive Q&A contract in the rules. Omit entirely when the directive has no such questions — its omission needs no §14 note. |
 
 #### Sections explicitly NOT included by default (forbidden without explicit directive)
 

@@ -43,6 +43,8 @@ CRITICAL: A spec without identifiers is not a spec. Generic "persistence adapter
 
 {{> jobs/design/base/injections/requirement-synthesis}}
 
+{{> jobs/shared/injections/directive-qa}}
+
 ## Phase / Task / Verification Structure
 
 A spec body typically follows:
@@ -51,6 +53,7 @@ A spec body typically follows:
 - **Phase 1 — immediate unblock** — ordered tasks with explicit deps.
 - **Phase 2+ — feature delivery** — deeper changes after Phase 1.
 - **Verification** — how each phase is verified end-to-end.
+- **Directive Q&A** — only when the directive embeds explicit questions (contract above).
 
 When relationships among phases / tasks / files are multi-axis (≥ 2 of: tasks, directions, time-ordering), embed a diagram block per diagram-contract (form is selected there from the relationship shape). Single linear sequences stay prose. Decorative diagrams added to look complete are FORBIDDEN.
 When Mermaid is used, follow the Mermaid Syntax Safety constraints defined in diagram-contract.

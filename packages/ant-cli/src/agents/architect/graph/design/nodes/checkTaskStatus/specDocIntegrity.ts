@@ -191,6 +191,13 @@ function normalizeHeading(text: string): string {
 }
 
 /**
+ * Directive-scoped ephemeral sections: their removal is always sanctioned —
+ * they answer the PREVIOUS directive, so a revision that drops them is
+ * correct by contract (see jobs/shared/injections/directive-qa.md).
+ */
+const EPHEMERAL_HEADINGS = new Set(['directive q&a']);
+
+/**
  * Section names the sealed plan explicitly marked `disposition: "remove"`.
  * Tolerant of parse failure (returns []) — the mention fallback covers it.
  */
@@ -231,6 +238,7 @@ export function evaluateRevisionPreservation(
   const missingHeadings = baselineHeadings.filter((heading) => {
     const norm = normalizeHeading(heading);
     if (!norm) return false;
+    if (EPHEMERAL_HEADINGS.has(norm)) return false;
     if (candidateSet.has(norm)) return false;
     if (sanctioned.some((s) => s === norm || s.includes(norm) || norm.includes(s))) return false;
     if (mentionCorpus.includes(norm)) return false;

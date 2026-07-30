@@ -215,6 +215,14 @@ describe('evaluateRevisionPreservation', () => {
     expect(r.ok).toBe(true);
   });
 
+  it('Directive Q&A is ephemeral — removal always sanctioned without plan/directive mention', () => {
+    const r = evaluateRevisionPreservation({
+      baselineHeadings: ['Overview & Defect Catalog', '2. Root Cause Analysis', 'Directive Q&A'],
+      candidate: FAITHFUL_REVISION,
+    });
+    expect(r.ok).toBe(true);
+  });
+
   it('violates when sections vanish without sanction', () => {
     const r = evaluateRevisionPreservation({
       baselineHeadings: BASELINE,
