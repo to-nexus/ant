@@ -44,7 +44,7 @@ describe('indexAssetPool — domain-scoped inventory (I6)', () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'assetinv-empty-'));
     try {
       const inv = indexAssetPool({ featurePath: empty, assetsRoot: pickAssetsRoot({ workspaceDomain: 'game' }) });
-      expect(inv).toEqual({ files: [], groups: {}, count: 0 });
+      expect(inv).toEqual({ files: [], groups: {}, count: 0, sizes: {} });
     } finally {
       fs.rmSync(empty, { recursive: true, force: true });
     }

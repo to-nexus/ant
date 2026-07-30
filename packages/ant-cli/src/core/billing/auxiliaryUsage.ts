@@ -21,6 +21,43 @@
 import { computeModelCostBreakdownUsd, costOfTaskUsage } from '@ant/shared';
 import type { CreditLedgerPort } from '../ports/creditLedger';
 import type { LLMClient } from '../ports/llm';
+import type { TaskTokenUsage } from '../types/task';
+
+/**
+ * In-graph sibling of `invokeAndMeterAuxiliary`: invoke once and REPORT the
+ * usage to the caller instead of debiting it separately.
+ *
+ * A one-shot call made from INSIDE a job (turn digest, breadcrumb summary,
+ * conversation compaction) already has the normal jobId-keyed pipeline
+ * available via the graph's own `accumulateTokenUsage` — an `'auxiliary'`
+ * ledger row would detach those tokens from the job that spent them (no
+ * platform fee, invisible in the job's cost view). So these callers thread an
+ * `onUsage` sink up to their learn/graph seam rather than a ledger.
+ *
+ * Plain `llm.invoke` returns `Promise<string>` and throws usage away, which is
+ * how the turn digest went 100% unbilled on every tier-2+ turn. `onUsage` fires
+ * only when the client implements the optional `invokeWithUsage` AND reports
+ * usage; callers must treat a silent absence as "unmetered", never as zero.
+ */
+export async function invokeAndReportUsage(
+  llm: LLMClient,
+  messages: Array<{ role: string; content: string }>,
+  options?: Record<string, unknown>,
+  onUsage?: (usage: TaskTokenUsage) => void,
+): Promise<string> {
+  if (typeof llm.invokeWithUsage !== 'function') {
+    return llm.invoke(messages, options);
+  }
+  const { content, usage } = await llm.invokeWithUsage(messages, options);
+  if (usage && onUsage) {
+    try {
+      onUsage(usage);
+    } catch (err) {
+      console.warn('⚠️  [AuxUsage] onUsage sink threw:', err);
+    }
+  }
+  return content;
+}
 
 export interface AuxiliaryBillingContext {
   orgId: string;

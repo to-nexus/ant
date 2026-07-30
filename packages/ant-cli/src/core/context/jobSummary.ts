@@ -25,6 +25,8 @@ export const JOB_SUMMARY_TIMEOUT_MS = 30_000;
 export const JOB_SUMMARY_MAX_OUTPUT_TOKENS = 900;
 /** Per-task harvested prose cap (chatTailBuilder assistant-cap precedent). */
 const TASK_PROSE_CAP = 1600;
+/** Max harvested parts (tail-kept) — bounds prompt bloat from working chatter. */
+const TASK_PROSE_PART_CAP = 8;
 /** Chat-log read budget — awaited by the learn seam outside the emit timeout. */
 const TASK_PROSE_HARVEST_TIMEOUT_MS = 5_000;
 /** Max key paths cited in the prompt's fileChanges block. */
@@ -206,6 +208,12 @@ function buildTemplateVars(input: EmitJobFinalSummaryInput): Record<string, unkn
       files: (t.files ?? []).slice(0, 8).join(', '),
     })),
     taskProse: input.taskProse ?? [],
+    // The shape rule used to be left for the model to INFER from a one-bullet
+    // <completedTasks> block 40 lines above the constraint that depends on it —
+    // and it inferred wrong (≈250 words with bold headings for a single task,
+    // near-verbatim duplicating the card the user could already see). Gate it.
+    taskCount: input.completedTasks.length,
+    singleTask: input.completedTasks.length === 1,
     created: touched.created.length,
     edited: touched.edited.length,
     deleted: touched.deleted.length,
@@ -236,7 +244,12 @@ export async function harvestTaskProse(
       const prose = assistantProseOf(line);
       if (prose) parts.push(prose.length > TASK_PROSE_CAP ? `${prose.slice(0, TASK_PROSE_CAP)}…` : prose);
     }
-    return parts;
+    // `TASK_PROSE_CAP` bounds each part but nothing bounded their NUMBER: one
+    // real job harvested 31 parts / 11,385 chars, most of it working chatter
+    // ("Let me read the key files: …") because `assistantProseOf` takes every
+    // non-excluded assistant_message as well as task_response bodies. Keep the
+    // tail — the newest prose is the summary-relevant end state.
+    return parts.slice(-TASK_PROSE_PART_CAP);
   } catch (err) {
     console.warn('⚠️  [JobSummary] task-prose harvest failed:', err);
     return [];

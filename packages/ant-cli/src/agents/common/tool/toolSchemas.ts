@@ -353,13 +353,20 @@ export const ARCHITECT_TOOLS = {
   },
   list_assets: {
     name: 'list_assets',
-    description: 'List all runtime asset files under assets/. Use this to document asset mappings for ui-assets.json. Optional subdirectory filter.',
+    description:
+      "List the real asset files placed in this workspace's asset pool, with their sizes. " +
+      'The pool root is resolved for you from the workspace domain — call with no arguments ' +
+      'to see every asset plus the category names that exist.',
     input_schema: {
       type: 'object' as const,
       properties: {
         category: {
           type: 'string',
-          description: 'Optional subdirectory name to filter by',
+          description:
+            'Optional single category name to filter by, e.g. "models" or "icons". A name from ' +
+            'the `availableCategories` this tool returns — NOT a path, and it does NOT include ' +
+            'the pool root (use "models", never "assets/game/models" or "game/models"). Omit ' +
+            'to list the whole pool.',
         },
       },
       required: [],

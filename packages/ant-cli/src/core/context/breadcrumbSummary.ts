@@ -16,6 +16,8 @@
 import type { LLMClient } from '../ports/llm';
 import { LLM_TEMPERATURE } from '../ports/llmSampling';
 import type { PromptPort } from '../ports/prompt';
+import type { TaskTokenUsage } from '../types/task';
+import { invokeAndReportUsage } from '../billing/auxiliaryUsage';
 import { buildBreadcrumbSummary } from './breadcrumb';
 
 /** Hard cap on LLM call duration (ms). Beyond this we fall back. */
@@ -34,6 +36,8 @@ export interface BuildLlmBreadcrumbSummaryInput {
   touchedCount: number;
   llm?: LLMClient;
   promptPort?: PromptPort;
+  /** Usage sink — without it this learn-seam call is unbilled (see invokeAndReportUsage). */
+  onUsage?: (usage: TaskTokenUsage) => void;
 }
 
 function truncate(list: string[], cap: number): string[] {
@@ -105,7 +109,12 @@ export async function buildLlmBreadcrumbSummary(
       { role: 'user', content: 'Produce the breadcrumb summary.' },
     ];
     const text = await withTimeout(
-      llm.invoke(messages, { maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS, enableThinking: false, temperature: LLM_TEMPERATURE.SUMMARIZE }),
+      invokeAndReportUsage(
+        llm,
+        messages,
+        { maxTokens: BREADCRUMB_SUMMARY_MAX_OUTPUT_TOKENS, enableThinking: false, temperature: LLM_TEMPERATURE.SUMMARIZE },
+        input.onUsage,
+      ),
       BREADCRUMB_SUMMARY_TIMEOUT_MS,
     );
     const cleaned = (text ?? '').trim();

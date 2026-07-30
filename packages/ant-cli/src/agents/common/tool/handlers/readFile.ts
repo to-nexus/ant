@@ -18,7 +18,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
-import { isBinaryFileSync, isBinaryPath } from '../../../../core/utils/binaryExtensions';
+import { isBinaryPath, sniffFile, formatByteSize } from '../../../../core/utils/binaryExtensions';
 
 /**
  * Threshold above which a `read_file` call without `startLine`/`endLine`
@@ -30,10 +30,20 @@ import { isBinaryFileSync, isBinaryPath } from '../../../../core/utils/binaryExt
  */
 export const READ_FILE_FULL_READ_LIMIT = 100_000;
 
-function binaryFileMessage(displayPath: string): string {
+// Reporting the size is the point, not decoration: this is the moment the model
+// reaches for a binary and is told no. With no number in the reply it invented
+// one — a fabricated "193.8 KB" that propagated into a spec and was then used to
+// justify a design decision (zero-hunting-label). Size is the only property of
+// an unreadable file it can legitimately reason about, so it must be here.
+function binaryFileMessage(displayPath: string, sizeBytes?: number): string {
   const ext = path.extname(displayPath).toLowerCase();
-  console.log(`[readFile] ⚠️ Binary file detected: ${displayPath} (${ext || 'no extension'})`);
-  return `[Binary file: ${displayPath}]\nThis is a binary file${ext ? ` (${ext})` : ''} and cannot be read as text.\n\nTo check if file exists: use list_files("${path.dirname(displayPath)}")\nTo use in code: reference the path directly (e.g., url('${displayPath}') or <img src="${displayPath}" />)\nTo copy: use run_command("cp source dest")\n\nProceed with your next action.`;
+  const size = sizeBytes !== undefined ? formatByteSize(sizeBytes) : undefined;
+  console.log(`[readFile] ⚠️ Binary file detected: ${displayPath} (${ext || 'no extension'}${size ? `, ${size}` : ''})`);
+  return `[Binary file: ${displayPath}]\nThis is a binary file${ext ? ` (${ext})` : ''} and cannot be read as text.\n${
+    size
+      ? `size: ${size} — this is the ONLY size figure for this file; never state one that is not reported here.\n`
+      : `size: unknown — do NOT state or estimate one.\n`
+  }\nTo check if file exists: use list_files("${path.dirname(displayPath)}")\nTo use in code: reference the path directly (e.g., url('${displayPath}') or <img src="${displayPath}" />)\nTo copy: use run_command("cp source dest")\n\nProceed with your next action.`;
 }
 
 export async function handleReadFile(
@@ -46,13 +56,21 @@ export async function handleReadFile(
     return { content: 'read_file requires path', error: 'read_file requires path' };
   }
 
-  // Zero-I/O fast path on the raw path; unknown extensions get the content
-  // sniff below once the path is resolved.
+  const fileSystem = ctx.fileSystem;
+
+  // Extension fast path. Resolve first so the reply can carry a real size —
+  // `sniffFile` fstats anyway, so this costs nothing beyond the resolve.
   if (isBinaryPath(filePath)) {
-    return { content: binaryFileMessage(filePath) };
+    let sizeBytes: number | undefined;
+    try {
+      const early = await resolveToolPath(ctx, filePath);
+      sizeBytes = sniffFile(fileSystem.resolveAbsolute(early.fsPath)).size;
+    } catch {
+      // Unresolvable → report without a size rather than guessing.
+    }
+    return { content: binaryFileMessage(filePath, sizeBytes) };
   }
 
-  const fileSystem = ctx.fileSystem;
   const resolved = await resolveToolPath(ctx, filePath);
 
   const isDir = await fileSystem.isDirectory(resolved.fsPath);
@@ -68,8 +86,9 @@ export async function handleReadFile(
   // that the LLM tends to discard as noise. Unreadable/missing paths return
   // false and fall through to the canonical not-found path below.
   try {
-    if (isBinaryFileSync(fileSystem.resolveAbsolute(resolved.fsPath))) {
-      return { content: binaryFileMessage(resolved.displayPath) };
+    const sniffed = sniffFile(fileSystem.resolveAbsolute(resolved.fsPath));
+    if (sniffed.binary) {
+      return { content: binaryFileMessage(resolved.displayPath, sniffed.size) };
     }
   } catch {
     // resolveAbsolute failure → let the normal read path surface the error.

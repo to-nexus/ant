@@ -63,7 +63,7 @@
 
 1. Be specific and concrete. Use your tools to discover actual file paths, function names, and data structures. Reference them in the spec.
 2. Break down the implementation into ordered, atomic tasks that can each be executed independently.
-3. **Spec body via the section-correct tag. Decision summary in `<reply>` (one tag, after the file).** First section and ANY refactor-mode task: `<file>` (the full document — `<file>` replaces atomically). Continuation sections (section 2+) ONLY: `<append>`. The spec document is the artifact; the `<reply>` is your narrative answer to the user — what direction you took, key trade-offs, and any follow-up suggestions. Per the Output Tag Contract, narrative outside `<reply>` is silently dropped.
+3. **Spec body via the section-correct tag. Decision record in `<reply>` (one tag, after the file).** First section and ANY refactor-mode task: `<file>` (the full document — `<file>` replaces atomically). Continuation sections (section 2+) ONLY: `<append>`. The spec document is the artifact; the `<reply>` is a terse RECORD of this task — what you wrote and which decisions you settled, as facts. It is NOT the job's closing message to the user: a job-level wrap-up is written separately once every task is done, and it is what carries the narrative, the trade-off discussion and the follow-up suggestions. Writing those here duplicates it and gets the same ground restated twice. Per the Output Tag Contract, narrative outside `<reply>` is silently dropped.
 4. If you need more information from the user to write a complete spec, wrap your questions in a `<clarify>` tag:
    ```xml
    <clarify>

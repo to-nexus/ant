@@ -55,6 +55,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
     onTokenUsage,
     onMaxTokensTruncation,
     minPlanLength = 50,
+    onRoundText,
   } = args;
 
   if (!llm.stream) {
@@ -218,6 +219,13 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
       console.log(`📋 [Plan] Re-attaching </plan> after clean stop (stop_reason=${capturedStopReason})`);
       textResponse += '</plan>';
     }
+  }
+
+  // Observation hook — fires before classification so a caller can recognise a
+  // control sentinel in a round that will classify as `fallthrough` (which
+  // carries no text).
+  if (onRoundText) {
+    try { onRoundText(textResponse); } catch { /* observer must never break the round */ }
   }
 
   // Extract <plan> BEFORE checking tool calls. Models may emit both a

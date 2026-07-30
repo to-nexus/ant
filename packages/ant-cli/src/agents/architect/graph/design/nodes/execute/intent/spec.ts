@@ -18,7 +18,7 @@ import { MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { DesignTask } from '../../../../../types/task';
 import { designDirOf, ARTIFACT_PREFIX, getConfigSlots, pickAssetsRoot } from '@ant/shared';
 import { formatAssetInventoryBlock } from '../../../../../../../infrastructure/workspace/assetInventory';
-import { logPrompt } from '../../../../../../../core/utils/promptLogger';
+import { logPrompt, measurePromptChars } from '../../../../../../../core/utils/promptLogger';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
 import { composeMessages } from '../../../../../../../core/utils/messageComposer';
@@ -317,10 +317,11 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
         jobId,
         'design',
         'execute-spec',
-        blocks.reduce((sum, b) => sum + (b.type === 'text' ? b.text.length : 0), 0),
+        measurePromptChars(messages as any[]),
         {
           taskId: task?.id,
           taskName: task?.name,
+          callIndex,
           templatePath: TEMPLATE_PATH,
           usedTemplates: [
             TEMPLATE_PATHS.designSpec.rules!,

@@ -136,6 +136,31 @@ describe('emitJobFinalSummary', () => {
     }
   });
 
+  it('tells the model a single-task job has nothing to synthesise across tasks', async () => {
+    // The duplication root cause was upstream: design's per-task `<reply>` was
+    // given the SAME brief as this summary, and the shape rule ("single-task →
+    // 2-4 sentences, no headings") was left for the model to infer from a
+    // one-bullet block far above the constraint. Gate it explicitly instead.
+    const render = vi.fn(async (_tpl: string, _vars: Record<string, unknown>) => 'SYSTEM PROMPT');
+    const llm = { stream: streamOf([{ type: 'text', text: 'ok' }]) } as any;
+
+    await emitJobFinalSummary(
+      baseInput({ chatAPI: mockChatAPI().api, llm, promptPort: { render } as any }),
+    );
+    expect(render.mock.calls[0][1]).toMatchObject({ taskCount: 1, singleTask: true });
+
+    render.mockClear();
+    await emitJobFinalSummary(
+      baseInput({
+        chatAPI: mockChatAPI().api,
+        llm: { stream: streamOf([{ type: 'text', text: 'ok' }]) } as any,
+        promptPort: { render } as any,
+        completedTasks: [{ name: 'A', type: 'feature' }, { name: 'B', type: 'ui' }],
+      }),
+    );
+    expect(render.mock.calls[0][1]).toMatchObject({ taskCount: 2, singleTask: false });
+  });
+
   it('falls back when the LLM emits no text at all', async () => {
     const { api } = mockChatAPI();
     const llm = { stream: streamOf([{ type: 'done' }]) } as any;
@@ -198,6 +223,22 @@ describe('harvestTaskProse', () => {
     expect(prose).toHaveLength(2);
     expect(prose[0]).toBe('Reply A');
     expect(prose[1].length).toBeLessThanOrEqual(1601); // cap + ellipsis
+  });
+
+  it('bounds the PART count, keeping the newest prose', async () => {
+    // Per-part length was capped but the count was not: one real job harvested
+    // 31 parts / 11,385 chars, mostly working chatter ("Let me read the key
+    // files: …"), because every non-excluded assistant_message qualifies.
+    const session = {
+      loadChatByTurnIds: vi.fn(async () =>
+        Array.from({ length: 30 }, (_, i) => ({ type: 'assistant_message', text: `chatter ${i}` })),
+      ),
+    } as any;
+
+    const prose = await harvestTaskProse(session, 'turn-1');
+    expect(prose).toHaveLength(8);
+    // Tail-kept — the end state is what the summary needs.
+    expect(prose[prose.length - 1]).toBe('chatter 29');
   });
 
   it('returns [] without session or turnId, and on load failure', async () => {

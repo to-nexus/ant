@@ -15,6 +15,7 @@ import {
 } from '../../../../../../core/context/breadcrumb';
 import { recordClassification } from '../../../../../../core/utils/featureBiases';
 import { PROMOTION_TOUCHED_THRESHOLD } from '@ant/shared';
+import type { TaskTokenUsage } from '../../../../../../core/types/task';
 import { getExecutionTier } from '../../../../../../core/executionTier';
 import {
   getExecutionLogger,
@@ -796,13 +797,25 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   // then harvests the summary as this turn's final prose). Skipped on any
   // failure/pause path — those keep their existing interruption UX.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Usage sink shared by the post-checkpoint LLM calls at this seam (job
+  // summary, turn digest). Both run AFTER this node's last kanban broadcast,
+  // and `settle` prices from the Redis snapshot only that broadcast writes — so
+  // the digest was 100% unbilled and the summary only lossily so. Accumulating
+  // here plus `flushUsageSnapshot()` at the end of this node closes the window.
+  const onSeamUsage = (usage: TaskTokenUsage): void => {
+    void (async () => {
+      const { accumulateTokenUsage, broadcastTokenUsageByModel } = await import('../../../../../common/graph/llmHelpers');
+      accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
+      broadcastTokenUsageByModel(state);
+    })();
+  };
+
   let jobSummaryText: string | undefined;
   if (
     isLastTask && !isWorkerContext && !hasOrchestratorFailure && !taskFailed &&
     !state.interruption && (state.completedTasksDetails?.length ?? 0) > 0
   ) {
     const { emitJobFinalSummary, harvestTaskProse } = await import('../../../../../../core/context/jobSummary');
-    const { accumulateTokenUsage, broadcastTokenUsageByModel } = await import('../../../../../common/graph/llmHelpers');
     jobSummaryText = await emitJobFinalSummary({
       session: state.deps?.session,
       chatAPI: getChatAPIClient(),
@@ -830,10 +843,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
         (e) => `${e.taskName}: ${e.violations.map((v) => v.message).join('; ')}`,
       ),
       taskProse: await harvestTaskProse(state.deps?.session, state.turnId),
-      onUsage: (usage) => {
-        accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
-        broadcastTokenUsageByModel(state);
-      },
+      onUsage: onSeamUsage,
     });
   }
 
@@ -860,8 +870,19 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       executionTierId: state.executionTier,
       llm: state.deps.llm,
       promptPort: state.deps.promptBuilder,
+      onUsage: onSeamUsage,
       ...(jobSummaryText ? { outcomeHint: jobSummaryText.slice(0, 200) } : {}),
     });
+  }
+
+  // Final usage flush — MUST be last. The summary and digest above accumulated
+  // onto state AFTER this node's last kanban broadcast, so without this the
+  // charged balance and the settled ledger row both miss them. Unlike distill
+  // this is a Redis SET + publish, not an LLM call, so appending it after
+  // distill does not weaken the "no LLM call may pre-empt the durable
+  // checkpoint" rationale that keeps distill last.
+  if (isLastTask && !isWorkerContext) {
+    await state.deps?.kanbanUpdate?.flushUsageSnapshot?.();
   }
 
   return { ...state, branch, filesWritten: effectiveFilesWritten };

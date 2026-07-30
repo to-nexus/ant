@@ -171,6 +171,7 @@ export async function buildUiDesignMessages(state: DesignGraphState): Promise<Ar
         {
           taskId: task?.id,
           taskName: task?.name,
+          callIndex: state._executeCallIndex || 0,
           templatePath: uiTpl.base,
           usedTemplates: logHandoff
             ? [
@@ -323,6 +324,7 @@ export async function buildUiDesignFreshPrompt(state: DesignGraphState): Promise
         {
           taskId: task?.id,
           taskName: task?.name,
+          callIndex: state._executeCallIndex || 0,
           templatePath: freshUiTpl.base,
           usedTemplates: freshHandoff
             ? [
@@ -632,6 +634,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
+          callIndex: state._executeCallIndex || 0,
           templatePath,
           usedTemplates: isHandoff
             ? [

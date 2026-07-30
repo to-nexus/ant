@@ -23,7 +23,9 @@
 import type { SessionPort } from '../ports/session';
 import type { LLMClient } from '../ports/llm';
 import type { PromptPort } from '../ports/prompt';
+import type { TaskTokenUsage } from '../types/task';
 import { LLM_TEMPERATURE } from '../ports/llmSampling';
+import { invokeAndReportUsage } from '../billing/auxiliaryUsage';
 import type {
   ChatLine,
   FeatureAssistantTurnLine,
@@ -64,6 +66,15 @@ export interface DistillAssistantTurnInput {
    * lines may not be flushed yet at distill time). Skips the chat harvest.
    */
   finalTextOverride?: string;
+  /**
+   * Usage sink for the Tier-2+ digest LLM call. Without it this call is
+   * unbilled: plain `llm.invoke` never produces usage, so the digest was a
+   * 100% leak on every tier-2+ turn. The learn nodes pass the same closure
+   * they use for the job summary; callers with no billing path (orchestrator
+   * fallback, ask fallback) pass nothing and never reach the LLM branch
+   * anyway (no `executionTierId`).
+   */
+  onUsage?: (usage: TaskTokenUsage) => void;
 }
 
 /**
@@ -188,11 +199,16 @@ async function buildDigest(input: BuildDigestInput): Promise<TurnDigest | undefi
       { role: 'user', content: 'Produce the turn digest JSON.' },
     ];
     const raw = await withTimeout(
-      input.llm.invoke(messages, {
-        maxTokens: TURN_DIGEST_MAX_OUTPUT_TOKENS,
-        enableThinking: false,
-        temperature: LLM_TEMPERATURE.SUMMARIZE,
-      }),
+      invokeAndReportUsage(
+        input.llm,
+        messages,
+        {
+          maxTokens: TURN_DIGEST_MAX_OUTPUT_TOKENS,
+          enableThinking: false,
+          temperature: LLM_TEMPERATURE.SUMMARIZE,
+        },
+        input.onUsage,
+      ),
       TURN_DIGEST_TIMEOUT_MS,
     );
     const parsed = parseDigestJson(raw);

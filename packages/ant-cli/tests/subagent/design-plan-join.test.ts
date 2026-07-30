@@ -106,8 +106,30 @@ describe('C1/C2 — design plan node wiring (static source guards)', () => {
     // block the seal on still-running children).
     expect(src).toMatch(/collectCompleted\(/);
     expect(src).not.toMatch(/joinAll\(/);
-    // Bounded: the seal drain fires at most once.
+    // Bounded per node invocation (NOT per job — `sealDrainDone` is a local
+    // that a graph re-entry resets; the real bound is recursionLimit plus
+    // `collectCompleted` emptying the registry).
     expect(src).toContain('sealDrainDone');
+  });
+
+  it('the seal-drain re-run can answer "unchanged" without re-emitting the plan', () => {
+    // The old instruction said "otherwise keep it" while the loop accepted
+    // only a full `<plan>` block — so "no revision needed" cost a verbatim
+    // re-emission (~3.6K output tokens / ~45s to say nothing changed).
+    expect(src).toContain('PLAN_UNCHANGED_SENTINEL');
+    expect(src).not.toMatch(/If the findings change your plan, revise it; otherwise keep it/);
+    expect(src).toMatch(/Do NOT re-emit an unchanged plan/);
+
+    // The keep branch restores the plan already sealed, and only when the
+    // re-run did NOT itself produce one.
+    expect(src).toMatch(
+      /outcome\.kind !== 'planText' && PLAN_UNCHANGED_RE\.test\(lastRoundText\)[\s\S]{0,300}planText: sealedPlanText/,
+    );
+
+    // Suppressed axis — the sentinel is internal control and must never reach
+    // chat as raw text (Canonical Tag Rendering SSOT).
+    const registry = read('src/core/streaming/OutputTagRegistry.ts');
+    expect(registry).toMatch(/name: 'plan-unchanged'[\s\S]{0,400}consumed-suppressed/);
   });
 
   it('TaskWorker sweeps prior-cycle entries on re-entry (C3 call site)', () => {
