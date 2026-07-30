@@ -33,6 +33,27 @@ const DEFAULT_MAX = 200;
  * @param assetsRoot  feature-relative pool root from `pickAssetsRoot`
  *                    (`assets/service` | `assets/game`)
  */
+/**
+ * Render the inventory as a prompt block ("## Asset Files ..."), grouped by
+ * category subdir. Returns '' when the pool is empty — callers can append
+ * unconditionally. `usage` is the flavor-specific instruction line (what the
+ * consuming job should DO with a fitting asset).
+ */
+export function formatAssetInventoryBlock(
+  // Accepts the graph-state channel shape too (its `groups` is optional).
+  inv: { count: number; groups?: Record<string, string[]> } | undefined,
+  opts: { assetsRoot: string; usage: string },
+): string {
+  if (!inv?.count) return '';
+  let block = `## Asset Files (real, already placed under ${opts.assetsRoot}/)\n`;
+  block += `There are ${inv.count} real asset file(s). ${opts.usage}\n`;
+  for (const [group, files] of Object.entries(inv.groups ?? {})) {
+    if (files.length === 0) continue;
+    block += `- ${group}: ${files.slice(0, 20).map(f => f.split('/').pop()).join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
+  }
+  return block + '\n';
+}
+
 export function indexAssetPool(params: {
   featurePath?: string;
   assetsRoot: string;

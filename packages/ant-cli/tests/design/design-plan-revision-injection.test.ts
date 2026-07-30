@@ -122,3 +122,28 @@ describe('buildPlanPromptBlocks — revision contract (refactor mode)', () => {
     expect(allText).not.toContain('# Existing Document (revision target)');
   });
 });
+
+describe('buildPlanPromptBlocks — asset inventory injection', () => {
+  it('injects the Asset Files block when the pool has real files (fierce-gaining-gully)', async () => {
+    const state = makeState({ mode: 'generate' });
+    (state as any).resolvedAction.domain = 'game';
+    (state as any).assetInventory = {
+      files: ['assets/game/models/Duck.glb'],
+      groups: { models: ['assets/game/models/Duck.glb'] },
+      count: 1,
+    };
+
+    const { blocks } = await buildPlanPromptBlocks(state, TASK);
+    const allText = blocks.map((b: any) => b.text).join('\n');
+    expect(allText).toContain('## Asset Files (real, already placed under assets/game/)');
+    expect(allText).toContain('Duck.glb');
+    expect(allText).toContain('list_assets');
+  });
+
+  it('stays silent when the pool is empty', async () => {
+    const state = makeState({ mode: 'generate' });
+    const { blocks } = await buildPlanPromptBlocks(state, TASK);
+    const allText = blocks.map((b: any) => b.text).join('\n');
+    expect(allText).not.toContain('## Asset Files');
+  });
+});

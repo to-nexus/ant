@@ -16,12 +16,13 @@ import type { DesignTask } from '../../../../types/task';
 import type { PromptBuildConfig } from '../../../../../../core/prompt/builder/PromptBuildConfig';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { buildCacheableBlocks } from '../../../../../../core/prompt/builder/CacheBlockMapper';
-import { ARTIFACT_PREFIX } from '@ant/shared';
+import { ARTIFACT_PREFIX, pickAssetsRoot } from '@ant/shared';
 import { referenceCatalogVars } from '../../../../../common/tool/reference/catalogVars';
 import {
   selectArtifacts,
 } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { loadExistingDesignDoc } from '../checkTaskStatus/loadExistingDesignDoc';
+import { formatAssetInventoryBlock } from '../../../../../../infrastructure/workspace/assetInventory';
 
 export interface BuildDesignPlanPromptResult {
   blocks: TextContentBlock[];
@@ -43,7 +44,9 @@ export async function buildPlanPromptBlocks(
   // Artifact selection — mirrors `design/nodes/execute/intent/spec.ts`.
   const taskAny = task as any;
   const taskSourceFiles: string[] | undefined = taskAny?.sourceFiles;
-  // Single injection SSOT — `task.include` (LLM-authored), SOURCES fallback.
+  // Single injection SSOT — `task.include` (code-derived for design tasks —
+  // see specDecompose.ts, unlike the code job's LLM-authored includes),
+  // SOURCES fallback.
   let selectedArtifacts = selectArtifacts(state.artifacts || [], {
     include: taskAny?.include?.length ? taskAny.include : [ARTIFACT_PREFIX.SOURCES],
   });
@@ -109,6 +112,21 @@ export async function buildPlanPromptBlocks(
   // on the LLM electing to read it via tools. Same disk-first sourcing as
   // execute (`spec.ts`), single loader owner.
   const contextParts: string[] = [];
+
+  // Real asset pool inventory — the plan phase is where the document's
+  // exploration happens; without this block an attached asset is invisible
+  // until execute (fierce-gaining-gully). Mirrors execute/intent/spec.ts.
+  const assetBlock = formatAssetInventoryBlock(state.assetInventory, {
+    assetsRoot: pickAssetsRoot({
+      workspaceDomain: (state.workspaceConfig as { domain?: any } | undefined)?.domain,
+      racDomain: state.resolvedAction?.domain,
+      intentGroup: state.resolvedAction?.intentGroup,
+    }),
+    usage:
+      'Account for the ones the feature uses in your plan with their exact `assets/...` paths (use `list_assets` for detail). Do NOT invent asset paths that no file backs.',
+  });
+  if (assetBlock) contextParts.push(assetBlock);
+
   if (detectedMode === 'refactor' && (task as any)?.targetFile) {
     const existing = await loadExistingDesignDoc(
       state,

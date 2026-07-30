@@ -7,7 +7,8 @@
  *
  * Plan-phase tools are strictly read-only:
  * - `designPlanExplore` is the default set (read_file, list_files,
- *   search_code, read_source_doc, search_web).
+ *   search_code, read_source_doc, search_web, list_assets — the last so
+ *   attached/placed real assets are discoverable BEFORE the plan seals).
  * - When Figma data is available (UI / spec tasks against a Figma file),
  *   `designPlanFigma` adds the read-only Figma MCP tools.
  *
