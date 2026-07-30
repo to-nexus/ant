@@ -20,12 +20,10 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { FilePromptAdapter, initPartials } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 
 const TEMPLATES_ROOT = path.resolve(__dirname, '../../src/core/prompt/templates');
-const T = (p: string) => readFileSync(path.resolve(TEMPLATES_ROOT, p), 'utf8');
 
 const RULES_PARTIAL = 'jobs/design/nodes/execute/injections/sealed-plan-rules';
 const SPEC_BASE = 'jobs/design/nodes/execute/variants/spec/base';
@@ -42,43 +40,50 @@ beforeAll(async () => {
   adapter = new FilePromptAdapter(TEMPLATES_ROOT);
 });
 
-describe('sealed-plan-rules — observation inheritance (static)', () => {
-  const rules = T(`${RULES_PARTIAL}.md`);
-
-  it('states the inheritance principle', () => {
-    expect(rules).toContain('Observation authority inherits across the phase boundary');
-    expect(rules).toContain('treat plan-cited facts as facts YOU observed');
-    expect(rules).toMatch(/without re-reading the cited files and without unverified-claim\s*markers/);
-  });
-
-  it('narrows Allowed reads to identifiers the plan does NOT record', () => {
-    expect(rules).toMatch(/the document must reference but the sealed plan does NOT already record/);
-  });
-
-  it('forbids re-verifying plan-cited facts', () => {
-    expect(rules).toMatch(/Re-verify facts the sealed plan cites with location evidence/);
-  });
-
-  it('RETENTION — blind-spot warning, search_web note, and empty-plan fallback survive', () => {
-    expect(rules).toContain('Blind spot');
-    expect(rules).toContain('plan ran with its own budget');
-    expect(rules).toMatch(/`search_web` is not in your tool set/);
-    expect(rules).toContain('Empty Plan Fallback');
-  });
-});
-
-describe('sealed-plan-rules — render gates', () => {
-  it('with planText: inheritance contract renders, fallback does not', async () => {
+// Assertions live on RENDERED output, gated both ways, rather than on the raw
+// `.md`. A static text match on the template cannot fail differently from the
+// rendered one when the phrase is deleted, but it also cannot catch a broken
+// Handlebars gate — so the rendered form is strictly stronger, and the
+// sealed/unsealed pair is what makes each phrase falsifiable. (The previous
+// `(static)` describe asserted the same strings a second time by reading the
+// file directly.)
+describe('sealed-plan-rules — observation inheritance gate', () => {
+  it('with planText: the inheritance contract renders and the fallback does not', async () => {
     const out = await adapter.render(RULES_PARTIAL, PLAN_VARS);
+    // The inheritance principle itself.
     expect(out).toContain('Observation authority inherits across the phase boundary');
+    expect(out).toContain('treat plan-cited facts as facts YOU observed');
+    expect(out).toMatch(/without re-reading the cited files and without unverified-claim\s*markers/);
+    // Confirmation reads are narrowed to what the plan does NOT record, and
+    // re-verifying plan-cited facts is forbidden — the two clauses that stop the
+    // explore-only loop this file exists for.
+    expect(out).toMatch(/the document must reference but the sealed plan does NOT already record/);
+    expect(out).toMatch(/Re-verify facts the sealed plan cites with location evidence/);
+    // The caller's axis is interpolated, not hardcoded.
     expect(out).toContain('exact import paths, function signatures, file conventions');
     expect(out).not.toContain('Empty Plan Fallback');
   });
 
-  it('without planText: fallback renders, inheritance contract does not', async () => {
+  it('without planText: the fallback renders and the inheritance contract does not', async () => {
     const out = await adapter.render(RULES_PARTIAL, {});
     expect(out).toContain('Empty Plan Fallback');
     expect(out).not.toContain('Observation authority inherits');
+    expect(out).not.toMatch(/Re-verify facts the sealed plan cites/);
+  });
+
+  it('RETENTION — blind-spot warning and search_web note survive in the sealed branch', async () => {
+    // All three live INSIDE `{{#if planText}}` (verified against the template),
+    // so they are asserted on the sealed render only. A compression pass that
+    // drops them would otherwise be invisible: the contract assertions above
+    // don't touch them.
+    const out = await adapter.render(RULES_PARTIAL, PLAN_VARS);
+    expect(out).toContain('Blind spot');
+    expect(out).toContain('plan ran with its own budget');
+    expect(out).toMatch(/`search_web` is not in your tool set/);
+    // And the unsealed branch swaps in the exploration heuristic instead.
+    const fallback = await adapter.render(RULES_PARTIAL, {});
+    expect(fallback).toContain('Codebase Exploration heuristic');
+    expect(fallback).not.toContain('Blind spot');
   });
 });
 
