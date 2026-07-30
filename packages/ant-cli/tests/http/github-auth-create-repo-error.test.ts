@@ -44,8 +44,10 @@ describe('GitHubAuthService.createRepo error diagnostics', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const thrown = await service.createRepo(USER_CONTEXT as any, 'to-nexus/gamehub-fe')
-      .then(() => null)
-      .catch((error) => error as GitHubRepoCreateError);
+      .then(
+        () => { throw new Error('expected createRepo to reject, but it resolved'); },
+        (error: unknown) => error as GitHubRepoCreateError,
+      );
 
     expect(thrown).toMatchObject({
       name: 'GitHubRepoCreateError',
@@ -82,8 +84,10 @@ describe('GitHubAuthService.createRepo error diagnostics', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const thrown = await service.createRepo(USER_CONTEXT as any, 'to-nexus/gamehub-fe')
-      .then(() => null)
-      .catch((error) => error as GitHubRepoCreateError);
+      .then(
+        () => { throw new Error('expected createRepo to reject, but it resolved'); },
+        (error: unknown) => error as GitHubRepoCreateError,
+      );
 
     expect(thrown).toBeInstanceOf(GitHubRepoCreateError);
     expect(thrown.statusCode).toBe(500);

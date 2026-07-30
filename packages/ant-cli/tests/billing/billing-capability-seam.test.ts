@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { isBillingEnabled } from '../../src/core/config/billingCapability';
 import { NoopCreditLedger } from '../../src/periphery/adapters/billing/NoopCreditLedger';
+import type { CreditLedgerPort } from '../../src/core/ports/creditLedger';
 import { NoopPaymentProvider } from '../../src/periphery/adapters/billing/NoopPaymentProvider';
 import {
   InfrastructureFactory,
@@ -60,12 +61,24 @@ describe('isBillingEnabled', () => {
 
 describe('NoopCreditLedger (dormant fallback)', () => {
   it('reports a free/zero balance and never charges', async () => {
-    const ledger = new NoopCreditLedger();
-    const snap = await ledger.getBalance();
+    // Typed as the PORT: the no-op bodies declare zero parameters (they ignore
+    // every argument), so calling them through the concrete class type rejects
+    // the arguments the port promises. The contract is what this asserts.
+    const ledger: CreditLedgerPort = new NoopCreditLedger();
+    const snap = await ledger.getBalance('o', 'u');
     expect(snap.tier).toBe('free');
     expect(snap.credits).toBe(0);
     // settle / topUp / changeTier are no-ops; balance stays free/0.
-    await ledger.settle({ jobId: 'j', orgId: 'o', userId: 'u', usdCost: 5 });
+    // jobType + billableTaskCount are the PlatformFeeFacts the cloud ledger
+    // prices the per-job fee from — required on SettleArgs.
+    await ledger.settle({
+      jobId: 'j',
+      orgId: 'o',
+      userId: 'u',
+      usdCost: 5,
+      jobType: 'code',
+      billableTaskCount: 1,
+    });
     await ledger.topUp('o', 'u', 1000, 'k');
     const after = await ledger.changeTier('o', 'u', 'pro', { idempotencyKey: 'k' });
     expect(after.credits).toBe(0);

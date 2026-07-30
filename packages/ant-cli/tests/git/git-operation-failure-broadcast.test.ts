@@ -19,7 +19,20 @@ function makeDeps() {
       getSnapshot: vi.fn(async () => snapshot),
       getPat: vi.fn(async () => ({ configured: false })),
     },
-    broadcaster: { notifyOperationComplete: vi.fn(async () => undefined) },
+    // Real GitStateBroadcaster signature — the assertions read `calls[0][3]`
+    // (the GitOperationState), which a zero-arg `vi.fn` puts out of bounds.
+    broadcaster: {
+      notifyOperationComplete: vi.fn<
+        (
+          projectId: string,
+          featureName: string | undefined,
+          snapshot: unknown,
+          operation: { status: string; error?: { message: string } },
+          pat: unknown,
+          userContext?: unknown,
+        ) => Promise<void>
+      >(async () => undefined),
+    },
     watcher: { retryDeferredWatchers: vi.fn() },
   };
 }
@@ -53,7 +66,7 @@ describe('GitOperation failure-path snapshot broadcast', () => {
     expect(deps.broadcaster.notifyOperationComplete).toHaveBeenCalledTimes(1);
     const operationArg = deps.broadcaster.notifyOperationComplete.mock.calls[0][3];
     expect(operationArg.status).toBe('failed');
-    expect(operationArg.error.message).toContain('pathspec kaboom');
+    expect(operationArg.error?.message).toContain('pathspec kaboom');
     // Watcher retry / indexing stay success-only.
     expect(deps.watcher.retryDeferredWatchers).not.toHaveBeenCalled();
   });

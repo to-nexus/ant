@@ -112,7 +112,7 @@ describe('Surface A — parallel task_response card', () => {
       type: 'response',
       data: { content: '<reply>Hello, world.</reply>' },
     };
-    await strategy.render(replyAction, new FileRegistry());
+    await strategy.render(replyAction, new FileRegistry(new Set<string>()));
     await strategy.finalize(true);
 
     const terminal = findCalls(
@@ -131,7 +131,7 @@ describe('Surface A — parallel task_response card', () => {
     const strategy = new CommonRenderStrategy(fake, 'en');
     strategy.setParallelTaskName('worker-task');
 
-    const reg = new FileRegistry();
+    const reg = new FileRegistry(new Set<string>());
     await strategy.render(
       { type: 'response', data: { content: '<rep' } },
       reg,
@@ -163,7 +163,7 @@ describe('Surface A — parallel task_response card', () => {
         type: 'response',
         data: { content: 'context here <reply>answer</reply> trailer' },
       },
-      new FileRegistry(),
+      new FileRegistry(new Set<string>()),
     );
     await strategy.finalize(true);
 
@@ -189,7 +189,7 @@ describe('Surface B — plan card metadata', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { fake, calls } = makeChatAPIFake();
     const strategy = new CommonRenderStrategy(fake, 'en');
-    const reg = new FileRegistry();
+    const reg = new FileRegistry(new Set<string>());
 
     await strategy.render({ type: 'plan_start', data: {} } as ParsedAction, reg);
     await strategy.render(
@@ -218,7 +218,7 @@ describe('Surface B — plan card metadata', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { fake, calls } = makeChatAPIFake();
     const strategy = new CommonRenderStrategy(fake, 'en');
-    const reg = new FileRegistry();
+    const reg = new FileRegistry(new Set<string>());
 
     const validBody = '{"task":{"id":"t","goal":"g"}}';
     await strategy.render({ type: 'plan_start', data: {} } as ParsedAction, reg);
@@ -282,7 +282,7 @@ describe('Surface D — thinking stream', () => {
           blockEnd: false,
         },
       } as ParsedAction,
-      new FileRegistry(),
+      new FileRegistry(new Set<string>()),
     );
 
     const thinkingEvents = findCalls(

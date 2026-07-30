@@ -138,9 +138,11 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
       state: { deps: { promptBuilder } } as any,
       task: task('s1', { techTiers: [{ language: 'typescript' }] } as any),
 
+      codeContext: undefined,
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     expect(vars.hasSetupConstraints).toBe(true);
     expect(vars.setupConstraints).toBe('CONSTRAINTS:jobs/code/nodes/execute/basis/techTier/typescript/setup/constraints');
@@ -153,9 +155,11 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
       state: { deps: { promptBuilder } } as any,
       task: task('s2', { techTiers: [{ language: 'Go' }] } as any),
 
+      codeContext: undefined,
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     expect(renderCalls[0].template).toContain('/techTier/go/setup/constraints');
   });
@@ -170,9 +174,11 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
       state: { deps: { promptBuilder } } as any,
       task: task('s3', { techTiers: [] } as any),
 
+      codeContext: undefined,
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     expect(vars.hasSetupConstraints).toBe(false);
     expect(vars.setupConstraints).toBe('');
@@ -191,9 +197,11 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
       state: { deps: { promptBuilder } } as any,
       task: task('s4', { techTiers: [{ language: 'rust' }] } as any),
 
+      codeContext: undefined,
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     expect(vars.hasSetupConstraints).toBe(false);
     expect(vars.setupConstraints).toBe('');
@@ -208,9 +216,11 @@ describe('tasks/setup/hooks/plan.extraTemplateVars', () => {
       state: { deps: {} } as any,
       task: task('s5', { techTiers: [{ language: 'typescript' }] } as any),
 
+      codeContext: undefined,
       violationsText: undefined,
       uiDoc: undefined,
       remainingTasks: undefined,
+      antrulesContent: undefined,
     });
     expect(vars.hasWorkspaceDepSnapshot).toBe(false);
     expect(vars.workspaceDepSnapshot).toBe('');
