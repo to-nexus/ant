@@ -24,6 +24,18 @@ export function formatCodeContext(ctx: unknown): string {
 }
 
 /**
+ * Substantive-prePlanText predicate — the single definition of "this
+ * batch-split sub-task carries a parent pre-plan worth injecting".
+ * Sub-50-char bodies are treated as absent (truncated/degenerate carries;
+ * the parent-pre-plan partial would render a useless stub). Shared by the
+ * generic plan path (`nodes/plan/llm/prompt.ts`) and the error plan hook.
+ */
+export function substantivePrePlanText(task: { prePlanText?: string }): string | undefined {
+  const raw = task.prePlanText;
+  return typeof raw === 'string' && raw.length > 50 ? raw : undefined;
+}
+
+/**
  * Coarse language → language-hint folder mapping. The plan/verification
  * template tree keys hint partials under
  * `jobs/code/nodes/plan/variants/verification/basis/techTier/{lang}/hints`

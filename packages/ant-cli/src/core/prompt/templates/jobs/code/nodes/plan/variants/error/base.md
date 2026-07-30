@@ -10,6 +10,8 @@ You are analyzing a user-reported error and creating a structured remediation pl
 
 {{> jobs/code/base/injections/prior-completed-files}}
 
+{{> jobs/code/nodes/plan/injections/parent-pre-plan}}
+
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}
@@ -34,6 +36,24 @@ You do NOT fix code — a separate execution phase handles that based on your pl
 **{{taskName}}**
 
 {{{taskDescription}}}
+
+**Hypothesis discipline (non-negotiable)**: Any causal claim in the task
+description above — a root-cause narrative ("the cause is…"), a solution
+direction ("fix it by…") — is an upstream-authored **hypothesis**, written
+before any code was read in this phase. It is NOT a verified diagnosis.
+- Before adopting a claimed cause, read the claimed defect site AND trace
+  the claimed causal chain end-to-end against actual code (the data flow,
+  the consumers, the filters between the claimed cause and the observed
+  symptom). A hypothesis the code disproves must be rejected, not
+  implemented.
+- When the description quotes a machine failure signal that names a
+  file+symbol (compiler error, failing assertion, stack trace), the
+  confirming read of that named site IS the verification — perform it; do
+  not skip it, and do not explore beyond it.
+- If observation falsifies the described cause, plan the verified cause
+  instead. The unit scope below still binds — if the verified cause lies
+  outside this unit's surface, state that in your plan output rather than
+  widening into sibling units.
 
 **Scope boundary (non-negotiable)**: The user-reported error below, the spec / referenced documents, and the
 job-level brief all enumerate the **full** defect set across **all sibling units**. This task owns exactly **one**

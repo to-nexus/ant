@@ -348,4 +348,69 @@ describe('tasks/error/hooks/plan.buildPrompt', () => {
       }),
     ).rejects.toThrow(/PromptBuilder not available/);
   });
+
+  // Diagnostic-carry vars — after the identity-shortcut retirement, the
+  // error plan hook is the ONLY production path that surfaces a split-born
+  // sub-task's `prePlanText` to the LLM (via the parent-pre-plan partial's
+  // diagnostic-carry branch). These rows lock the var wiring.
+  describe('diagnostic-carry var wiring (prePlanText as plan INPUT)', () => {
+    const RECIPE = JSON.stringify({
+      task: { id: 'batch-0', goal: 'remediate import resolution failures' },
+      diagnostics: { source: 'build', totalErrors: 2, rootCauses: [] },
+      implementation: { modify: [], create: [], delete: [] },
+    });
+
+    it('split-born error sub-task (substantive prePlanText) → hasPrePlanText + isDiagnosticCarry true, body verbatim', async () => {
+      const { promptBuilder, renderCalls } = makePromptBuilderStub();
+      const out = await planHook.buildPrompt({
+        state: { deps: { promptBuilder } } as any,
+        task: task('err-batch-1', { prePlanText: RECIPE } as any),
+        codeContext: undefined,
+        violationsText: undefined,
+        uiDoc: undefined,
+        remainingTasks: undefined,
+      });
+      const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
+      expect(base).toBeDefined();
+      expect(base?.vars.hasPrePlanText).toBe(true);
+      expect(base?.vars.isDiagnosticCarry).toBe(true);
+      expect(base?.vars.prePlanText).toBe(RECIPE);
+      // Slice/cross-batch branches are non-error concepts — never rendered here.
+      expect(base?.vars.isSliceDeclaration).toBe(false);
+      expect(base?.vars.hasCrossBatchContracts).toBe(false);
+      expect(out.vars?.hasPrePlanText).toBe(true);
+      expect(out.vars?.isDiagnosticCarry).toBe(true);
+    });
+
+    it('decompose-born error task (no prePlanText) → false + empty-string sentinel', async () => {
+      const { promptBuilder, renderCalls } = makePromptBuilderStub();
+      await planHook.buildPrompt({
+        state: { deps: { promptBuilder } } as any,
+        task: task('err-fresh'),
+        codeContext: undefined,
+        violationsText: undefined,
+        uiDoc: undefined,
+        remainingTasks: undefined,
+      });
+      const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
+      expect(base?.vars.hasPrePlanText).toBe(false);
+      expect(base?.vars.isDiagnosticCarry).toBe(false);
+      expect(base?.vars.prePlanText).toBe('');
+    });
+
+    it('sub-50-char prePlanText treated as absent (shared substantivePrePlanText predicate)', async () => {
+      const { promptBuilder, renderCalls } = makePromptBuilderStub();
+      await planHook.buildPrompt({
+        state: { deps: { promptBuilder } } as any,
+        task: task('err-degenerate', { prePlanText: 'short recipe' } as any),
+        codeContext: undefined,
+        violationsText: undefined,
+        uiDoc: undefined,
+        remainingTasks: undefined,
+      });
+      const base = renderCalls.find(c => c.template === 'jobs/code/nodes/plan/variants/error/base');
+      expect(base?.vars.hasPrePlanText).toBe(false);
+      expect(base?.vars.isDiagnosticCarry).toBe(false);
+    });
+  });
 });

@@ -122,7 +122,7 @@ Priority ordering:
 
 **Constraints**:
 - Before finalizing a batch whose `changes` alter shared state inside a target file, read that file's OTHER assertions and check each prescribed value against them. A recipe that cures the failing assertion but breaches a currently-passing sibling assertion is not a fix — it authors the next cycle's failure in advance.
-- Error sub-tasks apply your `changes` without a planning phase of their own. Nothing downstream re-derives the recipe — it must be correct at authoring time.
+- Each error sub-task verifies your recipe against the actual code before applying it: a recipe whose quoted failure signal names the defect site (compiler error file+line, failing assertion, stack frame) is confirmed with a single read and applied as written; an inferred causal chain is traced end-to-end and rejected if the code disproves it. Author accordingly — aim for recipes correct at authoring time, quote the observed failure signal verbatim in `diagnostics`, and state the evidence for any inferred cause in the batch `rationale` (what you observed, and what observation would disprove it) so the sub-task has a concrete verification target instead of re-deriving the diagnosis.
 
 ⚠️ **Blind spot**: The failure output enumerates only the failing axis. The currently-passing assertions in the same file are invisible in the diagnostics, yet they are exactly what a setup/fixture change breaks.
 

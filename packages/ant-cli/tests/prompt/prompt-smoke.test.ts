@@ -573,6 +573,71 @@ describe('Template Smoke Tests', () => {
     expect(output).toMatch(/Do NOT create batches for sibling units/);
   });
 
+  it('plan/variants/error/base renders the hypothesis discipline alongside the scope boundary (focal-molding-board fix)', async () => {
+    // RCA: decompose-born error tasks arrived with a full causal diagnosis +
+    // solution direction baked into `description`, and the variant framed the
+    // description as binding — the plan phase implemented the unverified
+    // hypothesis (one confirmed-placebo fix shipped with the disproving code
+    // already read). Causal claims are now demoted to hypotheses that must be
+    // verified against code before adoption; the SCOPE stays binding.
+    await initPartials(TEMPLATES_DIR);
+    const output = await adapter.render('jobs/code/nodes/plan/variants/error/base', {
+      ...SAMPLE_VARS,
+      taskName: 'T1',
+      taskDescription: 'unit description',
+      currentTask: { id: 'fix-x', name: 'T1', type: 'error', description: 'x', priority: 900 },
+    });
+
+    expect(output).toContain('Hypothesis discipline (non-negotiable)');
+    expect(output).toMatch(/upstream-authored\s+\*\*hypothesis\*\*/);
+    expect(output).toMatch(/trace\s+the claimed causal chain end-to-end/);
+    expect(output).toMatch(/rejected, not\s+implemented/);
+    // Machine-signal fast path: a quoted compiler error / assertion / stack
+    // frame is confirmed with the single read of the named site.
+    expect(output).toMatch(/confirming read of that named site IS the verification/);
+    // Scope boundary must survive verbatim — only causal claims are demoted.
+    expect(output).toContain('Scope boundary (non-negotiable)');
+  });
+
+  it('plan/variants/error/base renders the parent pre-plan (diagnostic carry) block for split-born sub-tasks', async () => {
+    // After the identity-shortcut retirement, split-born error sub-tasks run
+    // the plan tool loop with the parent's diagnostic injected as INPUT. The
+    // error variant must include the parent-pre-plan partial (self-gated on
+    // hasPrePlanText, so decompose-born error tasks render nothing).
+    await initPartials(TEMPLATES_DIR);
+    const withCarry = await adapter.render('jobs/code/nodes/plan/variants/error/base', {
+      ...SAMPLE_VARS,
+      taskName: 'T1',
+      taskDescription: 'unit description',
+      hasPrePlanText: true,
+      isDiagnosticCarry: true,
+      prePlanText: '{"diagnostics":{"totalErrors":1},"implementation":{"modify":[]}}',
+      currentTask: { id: 'err-batch-1', name: 'T1', type: 'error', description: 'x', priority: 999 },
+    });
+    expect(withCarry).toContain('Parent Sub-Task Pre-Plan');
+    expect(withCarry).toContain('Verification before adoption');
+
+    const withoutCarry = await adapter.render('jobs/code/nodes/plan/variants/error/base', {
+      ...SAMPLE_VARS,
+      taskName: 'T1',
+      taskDescription: 'unit description',
+      hasPrePlanText: false,
+      prePlanText: '',
+      currentTask: { id: 'err-fresh', name: 'T1', type: 'error', description: 'x', priority: 900 },
+    });
+    expect(withoutCarry).not.toContain('Parent Sub-Task Pre-Plan');
+  });
+
+  it('plan/variants/verification/rules carries the verify-then-adopt sub-task contract (shortcut retirement lockstep)', async () => {
+    await initPartials(TEMPLATES_DIR);
+    const output = await adapter.render('jobs/code/nodes/plan/variants/verification/rules', SAMPLE_VARS);
+    // The old binding sentence ("without a planning phase of their own")
+    // must be gone — sub-tasks verify the recipe before applying it.
+    expect(output).not.toMatch(/without a planning phase of their own/);
+    expect(output).toMatch(/verifies your recipe against the actual code/);
+    expect(output).toMatch(/what observation would disprove it/);
+  });
+
   it('verification execute rules carry the ANTRULES write-back checkpoint with the 3-condition filter', async () => {
     await initPartials(TEMPLATES_DIR);
     const output = await adapter.render(
