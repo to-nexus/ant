@@ -311,5 +311,11 @@
   },
   "pinnedQuery": {
     "jumpToMessage": "Jump to this message"
+  },
+  "workerGroup": {
+    "untitled": "Working…",
+    "retry": "retry {{n}}",
+    "summary": "{{count}} steps",
+    "needsAttention": "Needs your input"
   }
 }

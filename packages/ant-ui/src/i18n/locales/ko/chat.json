@@ -311,5 +311,11 @@
   },
   "pinnedQuery": {
     "jumpToMessage": "이 메시지로 이동"
+  },
+  "workerGroup": {
+    "untitled": "작업 중…",
+    "retry": "재시도 {{n}}",
+    "summary": "{{count}}개 스텝",
+    "needsAttention": "입력이 필요합니다"
   }
 }

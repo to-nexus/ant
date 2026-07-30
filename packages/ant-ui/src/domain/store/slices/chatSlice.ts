@@ -8,6 +8,22 @@ import { StateCreator } from 'zustand';
 export interface ChatState {
   // ✅ Programmatic chat input (set by any feature, consumed by ChatInput)
   pendingChatInput: PendingChatInput | null;
+
+  /**
+   * Worker-group collapse overrides, keyed `${turnId}:${workerScope}`.
+   * Stores ONLY explicit user/dock decisions — defaults are derived at
+   * render time (workerGroupPolicy.resolveGroupCollapsed). Never persisted;
+   * lives here (not uiSlice) because it is chat-session-scoped and must
+   * reset with the chat events. MUST NOT flow into the chat projector's
+   * inputs (Turn ref stability — autoscroll/pin invariants).
+   */
+  chatGroupOverrides: Record<string, 'expanded' | 'collapsed'>;
+
+  /**
+   * One-shot jump request consumed by ChatHistory (virtuosoRef is private
+   * to it). `seq` disambiguates repeated jumps to the same group.
+   */
+  chatJumpRequest: { turnId: string; workerScope: string; seq: number } | null;
 }
 
 /**
@@ -33,6 +49,17 @@ export interface ChatActions {
    * Used by: Fix buttons, quick actions, templates, suggestions, etc.
    */
   setPendingChatInput: (input: PendingChatInput | null) => void;
+
+  /** Record an explicit collapse decision (component passes the currently
+   *  RESOLVED state so the toggle flips against defaults correctly). */
+  toggleChatGroup: (turnId: string, workerScope: string, currentlyCollapsed: boolean) => void;
+  /** Force a group expanded (dock jump path). */
+  expandChatGroup: (turnId: string, workerScope: string) => void;
+  /** Request a scroll-to-group jump (consumed by ChatHistory). */
+  requestChatJump: (turnId: string, workerScope: string) => void;
+  clearChatJump: () => void;
+  /** Reset group UI state (feature switch / chat clear). */
+  resetChatGroupState: () => void;
 }
 
 export type ChatSlice = ChatState & ChatActions;
@@ -42,6 +69,8 @@ export const createChatSlice: StateCreator<any, [], [], ChatSlice> = (set, get) 
   // State
   // ==================
   pendingChatInput: null,
+  chatGroupOverrides: {},
+  chatJumpRequest: null,
 
   // ==================
   // Actions
@@ -77,6 +106,37 @@ export const createChatSlice: StateCreator<any, [], [], ChatSlice> = (set, get) 
     }
 
     set({ pendingChatInput: input });
+  },
+
+  toggleChatGroup: (turnId, workerScope, currentlyCollapsed) => {
+    const key = `${turnId}:${workerScope}`;
+    set({
+      chatGroupOverrides: {
+        ...get().chatGroupOverrides,
+        [key]: currentlyCollapsed ? 'expanded' : 'collapsed',
+      },
+    });
+  },
+
+  expandChatGroup: (turnId, workerScope) => {
+    const key = `${turnId}:${workerScope}`;
+    if (get().chatGroupOverrides[key] === 'expanded') return;
+    set({
+      chatGroupOverrides: { ...get().chatGroupOverrides, [key]: 'expanded' },
+    });
+  },
+
+  requestChatJump: (turnId, workerScope) => {
+    const prev = get().chatJumpRequest;
+    set({ chatJumpRequest: { turnId, workerScope, seq: (prev?.seq ?? 0) + 1 } });
+  },
+
+  clearChatJump: () => {
+    if (get().chatJumpRequest) set({ chatJumpRequest: null });
+  },
+
+  resetChatGroupState: () => {
+    set({ chatGroupOverrides: {}, chatJumpRequest: null });
   },
 });
 

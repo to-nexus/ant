@@ -239,6 +239,8 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
 
   clearChatEvents: (_scope = 'chat') => {
     set({ chatEvents: [], streamingBuffers: {} });
+    // Worker-group UI state is keyed by turnId — stale after a wipe.
+    get().resetChatGroupState?.();
   },
 
   initializeSSE: () => {
