@@ -292,8 +292,8 @@ function describeGameAssetDestinations(): {
     svg: dest,
     raster: dest,
     svgInstruction: instr,
-    rasterInstruction: `${instr} (sprites / atlas images / audio all follow this path)`,
-    note: `Game (Phaser): assets are fetched at runtime from public/*, never bundled/imported. Loader key = catalog entry id, so the spec's id references resolve. Honor _meta.audioScope / _meta.visualScope — procedural-only suppresses file-based audio.`,
+    rasterInstruction: `${instr} (sprites / atlas images / audio all follow this path; 3D models (.glb/.gltf) too — copy to codebase/public/assets/models/ and load via the 3D extension's GLTF loader, never bundle/import)`,
+    note: `Game (Phaser): assets are fetched at runtime from public/*, never bundled/imported. Loader key = catalog entry id, so the spec's id references resolve. Honor _meta.audioScope / _meta.visualScope — procedural-only suppresses file-based audio. A user-provided real file (e.g. assets/game/models/*.glb under perspective='3d') is a present asset: consume it as-is, never downgrade to a primitive.`,
   };
 }
 
@@ -1131,6 +1131,7 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     lines.push(`Inspect the list below and decide — for THIS task — which (if any) of these real assets are appropriate to use. If a design spec/catalog references one, honor that; if none is referenced, still use a fitting real asset over a placeholder when the task needs that kind of imagery/audio.`);
     lines.push(`If used: SVG (.svg) → ${dest.svgInstruction}`);
     lines.push(`Raster (png, jpg, webp) → ${dest.rasterInstruction}`);
+    lines.push(`Other formats (3D models, audio, data files) → same copy-to-servable-destination pattern; load with the format's loader. An explicitly attached/placed real file is a binding input — wire it, never substitute a placeholder for it.`);
     lines.push(``);
     if (state.context?.featurePath) {
       lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/assets/`);
