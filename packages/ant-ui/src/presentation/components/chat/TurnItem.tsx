@@ -59,6 +59,8 @@ import {
   type TurnSection,
 } from '@/domain/store/selectors/chat';
 import { useRegisterBubble } from './pinRegistry';
+import { WorkerGroupSection } from './WorkerGroupSection';
+import { isWorkerGroupScope } from './workerGroupPolicy';
 import { shouldSuppressPreviewOnlyStatusCard } from './statusCardVisibility';
 import {
   buildTrailingThinkingMerge,
@@ -77,18 +79,38 @@ interface TurnItemProps {
 // what unblocks long-session jank with `react-virtuoso` already in
 // place.
 export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
+  // Collapse-default input: a turn with ≥2 worker sections is genuinely
+  // parallel and defaults its groups collapsed (workerGroupPolicy).
+  const workerSectionCount = useMemo(
+    () => turn.sections.filter((s) => isWorkerGroupScope(s.workerScope)).length,
+    [turn.sections],
+  );
   return (
     <div className="w-full min-w-0">
       {turn.user && <UserBubble turnId={turn.turnId} user={turn.user} />}
       <div className="space-y-3">
-        {turn.sections.map((section, idx) => (
-          <SectionStack
-            key={`${turn.turnId}:${section.workerScope}:${idx}`}
-            turnId={turn.turnId}
-            turnJobType={turn.jobType}
-            section={section}
-          />
-        ))}
+        {turn.sections.map((section, idx) => {
+          const stack = (
+            <SectionStack
+              key={`${turn.turnId}:${section.workerScope}:${idx}`}
+              turnId={turn.turnId}
+              turnJobType={turn.jobType}
+              section={section}
+              suppressHeader={isWorkerGroupScope(section.workerScope)}
+            />
+          );
+          if (!isWorkerGroupScope(section.workerScope)) return stack;
+          return (
+            <WorkerGroupSection
+              key={`group:${turn.turnId}:${section.workerScope}:${idx}`}
+              turnId={turn.turnId}
+              section={section}
+              workerSectionCount={workerSectionCount}
+            >
+              {stack}
+            </WorkerGroupSection>
+          );
+        })}
       </div>
     </div>
   );
@@ -148,10 +170,13 @@ const SectionStack = memo(function SectionStack({
   turnId,
   turnJobType,
   section,
+  suppressHeader,
 }: {
   turnId: string;
   turnJobType: Turn['jobType'];
   section: TurnSection;
+  /** WorkerGroupSection renders its own rich header — skip the 11px label. */
+  suppressHeader?: boolean;
 }) {
   const isStreaming = !!(
     section.activeText ||
@@ -185,8 +210,8 @@ const SectionStack = memo(function SectionStack({
   // `plan_generating` line's metadata when present so users see the
   // narrative identity rather than the internal task id.
   const sectionHeader = useMemo(
-    () => buildSectionHeader(section),
-    [section],
+    () => (suppressHeader ? null : buildSectionHeader(section)),
+    [section, suppressHeader],
   );
 
   return (
