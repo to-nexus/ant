@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { loadResolvedArtifacts } from '../../src/agents/common/graph/loadDocumentsForRAC';
+import { isBinaryBuffer } from '../../src/core/utils/binaryExtensions';
 import type { ResolvedActionContext } from '@ant/shared';
 
 function rac(refs: string[] = [], context: string[] = []): ResolvedActionContext {
@@ -61,6 +62,16 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     fs.writeFileSync(
       path.join(antDir, 'ui-tokens.json'),
       '{"color":{"bg":"#000"}}',
+    );
+
+    // Game asset pool — binary format whose extension is NOT in
+    // BINARY_EXTENSIONS; the content sniff must classify it (GLB header:
+    // magic "glTF" + little-endian version, which contains NUL bytes).
+    const modelsDir = path.join(featurePath, 'assets/game/models');
+    fs.mkdirSync(modelsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(modelsDir, 'Duck.glb'),
+      Buffer.from([0x67, 0x6c, 0x54, 0x46, 0x02, 0x00, 0x00, 0x00, 0x8c, 0x2b, 0x00, 0x00]),
     );
   });
 
@@ -112,6 +123,34 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     expect(artifacts[0].path).toBe('visual/ui/handoff/styles.css');
     expect(artifacts[0].content).toMatch(/\[reference file\]/);
     expect(artifacts[0].content).not.toContain('#1a1a2e');
+  });
+
+  it('classifies an attached .glb asset as a binary stub via content sniff (no extension whitelist)', () => {
+    const artifacts = loadResolvedArtifacts(
+      rac([], ['assets/game/models/Duck.glb']),
+      featurePath,
+    );
+    expect(artifacts).toHaveLength(1);
+    const glb = artifacts[0];
+    expect(glb.path).toBe('assets/game/models/Duck.glb');
+    expect(glb.role).toBe('context');
+    expect(glb.content).toMatch(/\[asset\] assets\/game\/models\/Duck\.glb/);
+    expect(glb.content).toMatch(/kind: binary/);
+    expect(glb.content).toMatch(/do NOT call read_file/);
+  });
+
+  it('isBinaryBuffer — content verdicts', () => {
+    // NUL byte → binary (GLB header)
+    expect(isBinaryBuffer(Buffer.from([0x67, 0x6c, 0x54, 0x46, 0x02, 0x00, 0x00, 0x00]))).toBe(true);
+    // valid utf-8 (incl. multi-byte) → text
+    expect(isBinaryBuffer(Buffer.from('한글 utf-8 text — fine', 'utf-8'))).toBe(false);
+    // invalid utf-8 (lone continuation bytes) → binary
+    expect(isBinaryBuffer(Buffer.from([0x41, 0x42, 0xff, 0xfe, 0x43]))).toBe(true);
+    // empty → text
+    expect(isBinaryBuffer(Buffer.alloc(0))).toBe(false);
+    // truncated multi-byte tail with truncatedTail=true → NOT binary
+    const truncated = Buffer.concat([Buffer.from('abc', 'utf-8'), Buffer.from([0xf0, 0x9f])]);
+    expect(isBinaryBuffer(truncated, true)).toBe(false);
   });
 
   it('leaves ant UiSource entries unaffected — real content is still injected', () => {

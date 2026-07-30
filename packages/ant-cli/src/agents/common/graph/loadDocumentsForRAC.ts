@@ -30,7 +30,7 @@ import * as path from 'path';
 import type { ResolvedActionContext, ResolvedArtifact, UiSource } from '@ant/shared';
 import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/shared';
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
-import { isBinaryPath } from '../../../core/utils/binaryExtensions';
+import { isBinaryFileSync } from '../../../core/utils/binaryExtensions';
 import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
 
 export function loadResolvedArtifacts(
@@ -152,7 +152,7 @@ function appendPath(
       if (isStubLoadedPath(rel)) {
         try {
           const s = fs.statSync(child);
-          out.push({ path: rel, content: buildHandoffStub(rel, s.size), role });
+          out.push({ path: rel, content: buildHandoffStub(rel, child, s.size), role });
         } catch { /* unreadable child — skip */ }
         continue;
       }
@@ -163,7 +163,7 @@ function appendPath(
   }
 
   if (isStubLoadedPath(relativePath)) {
-    out.push({ path: relativePath, content: buildHandoffStub(relativePath, stat.size), role });
+    out.push({ path: relativePath, content: buildHandoffStub(relativePath, absolute, stat.size), role });
     return;
   }
   const content = readAndNormalize(absolute);
@@ -213,8 +213,10 @@ function formatSize(bytes: number): string {
 
 // Path-only stub for handoff sub-sources AND asset pools. Binary entries are
 // referenced by path (never read_file'd); text entries advertise on-demand read.
-function buildHandoffStub(relPath: string, sizeBytes: number): string {
-  const kind = isBinaryPath(relPath) ? 'binary' : 'text';
+// Kind comes from the content sniff (extension fast-path + head bytes), so
+// novel asset formats classify correctly without an extension whitelist.
+function buildHandoffStub(relPath: string, absPath: string, sizeBytes: number): string {
+  const kind = isBinaryFileSync(absPath) ? 'binary' : 'text';
   const size = formatSize(sizeBytes);
   if (kind === 'binary') {
     return [

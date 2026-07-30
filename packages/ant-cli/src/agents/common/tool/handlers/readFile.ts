@@ -18,7 +18,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
-import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
+import { isBinaryFileSync, isBinaryPath } from '../../../../core/utils/binaryExtensions';
 
 /**
  * Threshold above which a `read_file` call without `startLine`/`endLine`
@@ -30,6 +30,12 @@ import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
  */
 export const READ_FILE_FULL_READ_LIMIT = 100_000;
 
+function binaryFileMessage(displayPath: string): string {
+  const ext = path.extname(displayPath).toLowerCase();
+  console.log(`[readFile] ⚠️ Binary file detected: ${displayPath} (${ext || 'no extension'})`);
+  return `[Binary file: ${displayPath}]\nThis is a binary file${ext ? ` (${ext})` : ''} and cannot be read as text.\n\nTo check if file exists: use list_files("${path.dirname(displayPath)}")\nTo use in code: reference the path directly (e.g., url('${displayPath}') or <img src="${displayPath}" />)\nTo copy: use run_command("cp source dest")\n\nProceed with your next action.`;
+}
+
 export async function handleReadFile(
   ctx: ToolExecutionContext,
   args: { path: string; startLine?: number; endLine?: number },
@@ -40,11 +46,10 @@ export async function handleReadFile(
     return { content: 'read_file requires path', error: 'read_file requires path' };
   }
 
+  // Zero-I/O fast path on the raw path; unknown extensions get the content
+  // sniff below once the path is resolved.
   if (isBinaryPath(filePath)) {
-    const ext = path.extname(filePath).toLowerCase();
-    console.log(`[readFile] ⚠️ Binary file detected: ${filePath} (${ext})`);
-    const content = `[Binary file: ${filePath}]\nThis is a binary file (${ext}) and cannot be read as text.\n\nTo check if file exists: use list_files("${path.dirname(filePath)}")\nTo use in code: reference the path directly (e.g., url('${filePath}') or <img src="${filePath}" />)\nTo copy: use run_command("cp source dest")\n\nProceed with your next action.`;
-    return { content };
+    return { content: binaryFileMessage(filePath) };
   }
 
   const fileSystem = ctx.fileSystem;
@@ -56,6 +61,18 @@ export async function handleReadFile(
       `To see files in this directory: use list_files("${resolved.displayPath}")\n` +
       `To read a specific file: use read_file("${resolved.displayPath}/filename")`;
     return { content };
+  }
+
+  // Content sniff — catches binary formats the extension set doesn't know
+  // (.glb, .fbx, .ogg, …). A utf-8 read of these would return garbage bytes
+  // that the LLM tends to discard as noise. Unreadable/missing paths return
+  // false and fall through to the canonical not-found path below.
+  try {
+    if (isBinaryFileSync(fileSystem.resolveAbsolute(resolved.fsPath))) {
+      return { content: binaryFileMessage(resolved.displayPath) };
+    }
+  } catch {
+    // resolveAbsolute failure → let the normal read path surface the error.
   }
 
   const hasRange = typeof startLine === 'number' || typeof endLine === 'number';
