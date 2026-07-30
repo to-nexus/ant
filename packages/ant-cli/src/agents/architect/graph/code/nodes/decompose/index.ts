@@ -66,6 +66,38 @@ import {
   JsonSyntaxViolation,
   buildJsonSyntaxViolationFraming,
 } from "../../../../../../core/utils/llmResponseParser";
+import * as fs from "fs";
+import * as path from "path";
+
+/**
+ * Deterministic gameArtTier.perspective observer — the codebase manifests
+ * are the SSOT (ProjectProfileDetector pattern): `enable3d` in
+ * package.json IS the 3D signal (it layers three.js/ammo.js onto the
+ * Phaser host), plain `phaser` without it is 2D. Outranks stored/emitted
+ * values in the STEP 6.65 merge (an LLM inference can't flip the render
+ * path of an existing codebase — focal-molding-board's 2d→3d flip);
+ * explicit user wizard choice still wins above it. Greenfield / non-game
+ * codebases yield `undefined` (no signal).
+ */
+export function observePerspectiveFromCodebase(
+  featurePath: string | undefined,
+): '2d' | '3d' | undefined {
+  if (!featurePath) return undefined;
+  try {
+    const pkgPath = path.join(featurePath, 'codebase', 'package.json');
+    if (!fs.existsSync(pkgPath)) return undefined;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+    if (deps['enable3d'] || deps['@enable3d/phaser-extension']) return '3d';
+    if (deps['phaser']) return '2d';
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 
 /**
@@ -1488,30 +1520,11 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       }
     }
     
-    if (state.deps?.session && state.context.featureFolder) {
-      try {
-        const session = await state.deps.session.load(
-          state.context.project,
-          state.context.featureFolder,
-          'code'
-        );
-        await state.deps.session.updateArtifacts(
-          state.context.project,
-          state.context.featureFolder,
-          'code',
-          {
-            state: {
-              ...session.state,
-              resolvedAction: state.resolvedAction,
-            }
-          }
-        );
-      } catch (err) {
-        // Non-critical
-      }
-    }
+    // (session RAC write moved below STEP 6.65 — writing here persisted a
+    // pre-tier-apply RAC, so even the resume path restored a basis without
+    // the visualTier/gameArtTier the decompose actually settled.)
   }
-  
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // STEP 6.6: Apply visualTier from decompose response (gen-code-directive)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1525,7 +1538,18 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       'visualTier',
       getConfigSlots(state.resolvedAction.intent)?.basis,
       getEffectiveDomain(state.resolvedAction?.domain),
-      { techTier: state.resolvedAction?.basis?.techTier, hasUiDoc: hasUi },
+      // `hasCodebase` activates the matrix's existing-codebase suppressor
+      // (D27: stylesheets/tokens of an existing codebase ARE the visual
+      // identity) on the BE — previously only the FE wizard passed it, so
+      // this gate re-inferred a visual policy per job on existing projects.
+      // Scoped to the visualTier gate: the techTier suppressor shares the
+      // signal but decompose's techTier flags (`_runtime`) must stay live
+      // for the `<techTier>` emit contract.
+      {
+        techTier: state.resolvedAction?.basis?.techTier,
+        hasUiDoc: hasUi,
+        hasCodebase: state.workspaceState?.hasCodebase === true,
+      },
     )
   ) {
     const { resolveVisualTierFromDecompose } = await import('../../../../../common/visualTierResolver');
@@ -1586,30 +1610,52 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     if (_effectiveDomain === 'service') {
       expectedTags.push('serviceVirtualization');
     }
-    const applied = applyDecisionTagDefaults(decisionTagsAtFinal.parsed, expectedTags);
+    // serviceVirtualization keeps the parse-time default path (scalar-ish
+    // shape, no carried-merge). gameArtTier defaults are applied AFTER the
+    // carried/emitted/explicit merge below — filling at parse time would
+    // let default axes clobber carried (workspace-seeded) axes through the
+    // `{...carried, ...emitted, ...explicit}` spread.
+    const applied = applyDecisionTagDefaults(
+      decisionTagsAtFinal.parsed,
+      expectedTags.filter((t) => t !== 'gameArtTier'),
+    );
 
-    const gameArtTier = applied.gameArtTier as import('@ant/shared').GameArtTier | undefined;
+    const emittedGameArtTier = decisionTagsAtFinal.parsed.gameArtTier as import('@ant/shared').GameArtTier | undefined;
+    const gameArtTierExpected = expectedTags.includes('gameArtTier');
     const serviceVirtualization = applied.serviceVirtualization as { optedOut: boolean } | undefined;
 
-    if (gameArtTier || serviceVirtualization) {
+    if (gameArtTierExpected || serviceVirtualization) {
       const newBasis: import('@ant/shared').Basis = { ...state.resolvedAction.basis };
-      if (gameArtTier) {
+      if (gameArtTierExpected) {
         // Explicit gameArtTier axes (raw actionMetadata.basis.gameArtTier — the
-        // user's wizard selection) are authoritative: the LLM emit / default-fill
-        // only supplies axes the explicit basis lacks, it never overrides a
+        // user's wizard selection) are authoritative: the LLM emit only
+        // supplies axes the explicit basis lacks, it never overrides a
         // user-pinned axis (e.g. perspective=3d). Mirrors the explicit-techTier
-        // authority policy in STEP 6.7.
-        newBasis.gameArtTier = applyExplicitGameArtTierOverrides(
+        // authority policy in STEP 6.7. Registry defaults fill LAST — only
+        // axes missing from carried ∪ emitted ∪ explicit (per-key fill in
+        // applyDecisionTagDefaults), so a partial emit can no longer leave
+        // `concept: undefined` on the RAC.
+        // Deterministic perspective observation (codebase manifests SSOT)
+        // ranks above carried/emitted, below the explicit wizard choice.
+        const observedPerspective = observePerspectiveFromCodebase(state.context?.featurePath);
+        const merged = applyExplicitGameArtTierOverrides(
           state.resolvedAction.basis?.gameArtTier,
-          gameArtTier,
-          state.actionMetadata?.basis?.gameArtTier,
+          emittedGameArtTier ?? {},
+          {
+            ...(observedPerspective ? { perspective: observedPerspective } : {}),
+            ...state.actionMetadata?.basis?.gameArtTier,
+          },
         );
+        newBasis.gameArtTier = applyDecisionTagDefaults(
+          { gameArtTier: merged },
+          ['gameArtTier'],
+        ).gameArtTier as import('@ant/shared').GameArtTier;
       }
       if (serviceVirtualization) newBasis.serviceVirtualization = serviceVirtualization;
       state.resolvedAction = { ...state.resolvedAction, basis: newBasis };
       console.log(
         `🎮 [Decompose] Phase-1 decision tags applied: ` +
-        `gameArtTier=${gameArtTier ? Object.keys(gameArtTier).join(',') : '-'}, ` +
+        `gameArtTier=${newBasis.gameArtTier ? Object.keys(newBasis.gameArtTier).join(',') : '-'}, ` +
         `serviceVirtualization=${serviceVirtualization ? (serviceVirtualization.optedOut ? 'opt-out' : 'build') : '-'}`,
       );
     }
@@ -1619,6 +1665,53 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
         decisionTagsAtFinal.violations.map(v => `${v.tag}:${v.reason}`).join(', '),
       );
     }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // STEP 6.68: Persist the settled decisions (post-tier-apply)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // (a) Session RAC snapshot — moved here from STEP 6.5 so the persisted
+  //     RAC reflects the applied visualTier/gameArtTier (the old pre-apply
+  //     write restored a tier-less basis on resume).
+  // (b) config.json basis — write-once settled tiers so subsequent jobs
+  //     carry them via detect's seedBasisFromWorkspace instead of
+  //     re-inferring per job (perspective 2d→3d flip, focal-molding-board).
+  if (state.deps?.session && state.context.featureFolder) {
+    try {
+      const session = await state.deps.session.load(
+        state.context.project,
+        state.context.featureFolder,
+        'code'
+      );
+      await state.deps.session.updateArtifacts(
+        state.context.project,
+        state.context.featureFolder,
+        'code',
+        {
+          state: {
+            ...session.state,
+            resolvedAction: state.resolvedAction,
+          }
+        }
+      );
+    } catch (err) {
+      // Non-critical
+    }
+  }
+  if (state.resolvedAction?.basis) {
+    const { persistSettledBasis } = await import('../../../../../../periphery/adapters/config/persistSettledBasis');
+    persistSettledBasis(
+      {
+        gameArtTier: state.resolvedAction.basis.gameArtTier,
+        visualTier: state.resolvedAction.basis.visualTier,
+      },
+      {
+        explicit: {
+          gameArtTier: state.actionMetadata?.basis?.gameArtTier,
+          visualTier: state.actionMetadata?.basis?.visualTier,
+        },
+      },
+    );
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

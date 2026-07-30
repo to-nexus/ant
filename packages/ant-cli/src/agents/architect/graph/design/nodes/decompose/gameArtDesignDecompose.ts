@@ -467,6 +467,19 @@ export async function decomposeGameArtDesign(
             decisionTags.violations.map(v => v.message).join('; '),
         );
       }
+
+      // Persist the settled tier (write-once; explicit wizard values
+      // overwrite) so code jobs on this workspace carry it via detect's
+      // seedBasisFromWorkspace instead of re-inferring per job.
+      if (state.resolvedAction.basis?.gameArtTier) {
+        const { persistSettledBasis } = await import(
+          '../../../../../../periphery/adapters/config/persistSettledBasis'
+        );
+        persistSettledBasis(
+          { gameArtTier: state.resolvedAction.basis.gameArtTier },
+          { explicit: { gameArtTier: state.actionMetadata?.basis?.gameArtTier } },
+        );
+      }
     } catch (e) {
       console.warn(`⚠️ [GameArtDecompose] decision-tag apply skipped:`, e);
     }

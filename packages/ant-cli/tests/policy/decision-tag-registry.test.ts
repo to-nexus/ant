@@ -150,13 +150,30 @@ describe('applyDecisionTagDefaults — graceful degrade (10.4)', () => {
     });
   });
 
-  it('does not override an existing parsed value', () => {
+  it('per-key fill — emitted axes preserved verbatim, missing axes filled from default', () => {
     const r = parseDecisionTags('<gameArtTier>concept=neonSynth,perspective=2d</gameArtTier>');
     const filled = applyDecisionTagDefaults(r.parsed, ['gameArtTier']);
-    // Phase 4 — defaults supplement only the axes the LLM did NOT emit.
-    // The parsed value (neonSynth / 2d) is preserved verbatim; this test
-    // verifies that the merge does not stomp the existing value.
-    expect(filled.gameArtTier).toEqual({ concept: 'neonSynth', perspective: '2d' });
+    // Defaults supplement only the axes the LLM did NOT emit. The old
+    // whole-tag check skipped the fill entirely when ANY axis was present,
+    // leaving a partial emit permanently incomplete (`concept: undefined`
+    // survived to the RAC — focal-molding-board job chain).
+    expect(filled.gameArtTier).toEqual({
+      concept: 'neonSynth',       // emitted — preserved verbatim
+      perspective: '2d',          // emitted — preserved verbatim
+      entityCatalog: 'minimal',   // filled from defaultOnRetryExhaustion
+      motionPattern: 'static',
+      particleProfile: 'none',
+      projectilePolicy: 'none',
+      audioProfile: 'procedural',
+    });
+  });
+
+  it('per-key fill leaves scalar-valued present tags untouched', () => {
+    const r = parseDecisionTags('<serviceVirtualization>opt-out</serviceVirtualization>');
+    const filled = applyDecisionTagDefaults(r.parsed, ['serviceVirtualization']);
+    // Object-shaped {optedOut:true} — emitted key wins over the default's
+    // {optedOut:false}; nothing else to fill.
+    expect(filled.serviceVirtualization).toEqual(r.parsed.serviceVirtualization);
   });
 });
 

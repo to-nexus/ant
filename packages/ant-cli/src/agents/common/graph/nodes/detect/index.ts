@@ -313,6 +313,30 @@ function resolveFeaturePath<T extends DetectableState>(state: T): string | undef
 }
 
 /**
+ * Merge the workspace-persisted settled basis (`config.json` →
+ * `WorkspaceConfig.basis`, written once by `persistSettledBasis`) under the
+ * caller-supplied basis. Per-tier granularity: an explicit wizard tier wins
+ * whole; a tier absent from the explicit basis is filled from the workspace.
+ * Returns `undefined` when neither side contributes anything, preserving
+ * the "no basis" shape downstream gates key on.
+ */
+export function seedBasisFromWorkspace(
+  state: unknown,
+  explicitBasis: Basis | undefined,
+): Basis | undefined {
+  // `workspaceConfig` is a job-state channel (code/design declare it; other
+  // jobs may not) — DetectableState deliberately doesn't require it, so the
+  // read is structural.
+  const wb = (state as { workspaceConfig?: { basis?: { gameArtTier?: Basis['gameArtTier']; visualTier?: Basis['visualTier'] } } })
+    .workspaceConfig?.basis;
+  if (!wb) return explicitBasis;
+  const merged: Basis = { ...(explicitBasis ?? {}) };
+  if (!merged.gameArtTier && wb.gameArtTier) merged.gameArtTier = wb.gameArtTier;
+  if (!merged.visualTier && wb.visualTier) merged.visualTier = wb.visualTier;
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+/**
  * Phase 1 H-3 — apply per-domain seed values from `BasisSlotConfig.defaults[domain]`
  * to the (possibly empty) `basis`. User-supplied fields always win; the seed
  * only fills missing slots so wizard / explicit selections are preserved.
@@ -536,18 +560,26 @@ export function createInferDetectNode<T extends DetectableState>(
       if (state.actionMetadata?.intent) {
         // Explicit path — SSOT = `actionMetadata.intent` 존재. metadata 가
         // 권위. No tool-loop, no progressibility check.
+        //
+        // Domain source: `domain` (triage-derived, precedence ladder) — not
+        // raw `metadata.domain`. A chat turn with an explicit intent but no
+        // domain field must still receive the workspace's game defaults.
         const metadata = state.actionMetadata;
         const explicitTarget = metadata.target?.length
           ? metadata.target
-          : getDefaultTargetPaths(intentId as IntentId, metadata.domain, { refs: metadata.refs });
-        const basis = applyDomainDefaultsToBasis(intentId, metadata.domain, metadata.basis);
+          : getDefaultTargetPaths(intentId as IntentId, domain, { refs: metadata.refs });
+        const basis = applyDomainDefaultsToBasis(
+          intentId,
+          domain,
+          seedBasisFromWorkspace(state, metadata.basis),
+        );
         const resolvedAction = resolveToRAC(
           intentId as IntentId,
           {
             target: explicitTarget,
             refs: metadata.refs,
             context: metadata.context,
-            domain: metadata.domain,
+            domain,
           },
           'explicit',
           basis,
@@ -599,6 +631,15 @@ export function createInferDetectNode<T extends DetectableState>(
             llm,
             promptBuilder,
             locale: state._uiLocale,
+            // Settled workspace basis + per-domain seed — without this the
+            // infer path built the RAC with `basis: undefined` and every
+            // decompose re-inferred all tier axes from scratch (the
+            // gameArtTier perspective 2d→3d flip, focal-molding-board).
+            seedBasis: applyDomainDefaultsToBasis(
+              intentId,
+              domain,
+              seedBasisFromWorkspace(state, undefined),
+            ),
           });
           detectResult = inferred as DetectResult<T>;
         }

@@ -40,7 +40,7 @@ import type { WorkspaceState } from '../triage/types.js';
 import type { DetectResult, MissingPrerequisites, SuggestedAlternative } from './types.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Domain, IntentId, UiSource } from '@ant/shared';
+import type { Basis, Domain, IntentId, UiSource } from '@ant/shared';
 import {
   resolveToRAC,
   getConfigSlotsForDomain,
@@ -70,6 +70,13 @@ export interface InferRacWithToolsInput {
   promptBuilder: PromptBuilder;
   /** Optional locale hint forwarded to the choice card builder. */
   locale?: string;
+  /**
+   * Pre-computed basis seed (workspace-persisted settled tiers + per-domain
+   * defaults, assembled by the detect node). Attached to the RAC so
+   * decompose treats stored tier decisions as authoritative instead of
+   * re-inferring every axis per job.
+   */
+  seedBasis?: Basis;
 }
 
 /**
@@ -237,7 +244,7 @@ export async function inferRacWithTools(
         );
         return {
           status: 'proceed',
-          resolvedAction: resolveToRAC(intentId, { domain: input.domain }, 'infer', undefined),
+          resolvedAction: resolveToRAC(intentId, { domain: input.domain }, 'infer', input.seedBasis),
           artifacts: [],
         };
       }
@@ -308,7 +315,7 @@ export async function inferRacWithTools(
       domain: input.domain,
     },
     'infer',
-    undefined,
+    input.seedBasis,
   );
 
   let artifacts: ReturnType<typeof loadResolvedArtifacts> = [];
