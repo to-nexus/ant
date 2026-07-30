@@ -13,6 +13,9 @@
  *     turn's own lines once at job end; not a hydrate-path read).
  *  4. `breadcrumb.ts` — trace scan for touched files (pre-existing,
  *     write-time only).
+ *  5. `jobSummary.ts` — job-end final summary (same class as
+ *     assistantTurn: reads the finished turn's own task_response prose
+ *     once, at the learn seam; not a hydrate-path read).
  *
  * Any new chat read in core/context/ must be added here CONSCIOUSLY with a
  * rationale, or the Chat Clear guarantee silently breaks.
@@ -29,6 +32,7 @@ const SANCTIONED_FILES = new Set([
   'featureContextBuilder.ts',
   'assistantTurn.ts',
   'breadcrumb.ts',
+  'jobSummary.ts',
 ]);
 
 // Actual read surfaces only — prose mentions of "chat.jsonl" in comments
