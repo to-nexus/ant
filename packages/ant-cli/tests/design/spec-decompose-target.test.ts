@@ -134,9 +134,9 @@ body
     expect(r.tasks).toHaveLength(1);
     expect(r.tasks[0].id).toBe('spec-game-defect-refactor-rev-1');
     expect(r.tasks[0].name).toBe('Revision');
-    expect(r.tasks[0].scope).toContain('REVISION of the existing document architecture/spec/game-defect-refactor.md');
-    expect(r.tasks[0].scope).toContain('preserved verbatim');
-    expect(r.tasks[0].scope).toContain('full revised document');
+    expect(r.tasks[0].description).toContain('REVISION of the existing document architecture/spec/game-defect-refactor.md');
+    expect(r.tasks[0].description).toContain('preserved verbatim');
+    expect(r.tasks[0].description).toContain('full revised document');
     expect(r.title).toBe('Game Defect Refactor');
     expect(r.executionTier).toBe(ExecutionTierId.Exploratory);
     expect(r.revisionBaselineHeadings).toEqual([

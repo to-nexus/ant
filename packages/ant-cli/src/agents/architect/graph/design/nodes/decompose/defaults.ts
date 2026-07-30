@@ -3,8 +3,7 @@
  *
  * Used when the spec is empty (`createDefaultTask`) or the job is an
  * explain-mode single task (`createExplainTask`). Near-pure — reads
- * `state.resolvedAction?.intentGroup` + `state.directive` but no side
- * effects or port access.
+ * `state.resolvedAction?.intentGroup` but no side effects or port access.
  */
 
 import type { DesignGraphState } from "../../state";
@@ -41,6 +40,11 @@ export function createExplainTask(state: DesignGraphState): DesignTask {
     include: surfacePrefix
       ? [ARTIFACT_PREFIX.SOURCES, surfacePrefix]
       : [ARTIFACT_PREFIX.SOURCES],
-    description: state.directive || 'Analyze and explain the design documents',
+    // Constant, NOT the directive — the directive reaches the explain prompt on
+    // its own channel (template var + user message); copying it here would
+    // double-inject it and violate the Task Description Authorship SSOT.
+    description:
+      "Answer the user's question about the existing design material as a chat reply. " +
+      'No design document is produced.',
   };
 }

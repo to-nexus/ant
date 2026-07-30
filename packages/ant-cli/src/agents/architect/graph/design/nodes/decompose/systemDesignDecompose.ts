@@ -10,7 +10,7 @@ import { DesignTask } from "../../../../types/task";
 import { TaskQueue } from "../../../../types/task";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { LLM_TEMPERATURE, LLM_MAX_TOKENS } from "../../../../../common/graph/llmConfig";
-import { ARTIFACT_PREFIX } from '@ant/shared';
+import { ARTIFACT_PREFIX, findTasksMissingDescription } from '@ant/shared';
 import { ArtifactPoolView } from '../../../../../../core/prompt/builder/ArtifactPipeline';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { updateKanban, createDesignTaskStreamingHook } from "./kanbanUpdate";
@@ -852,6 +852,16 @@ export async function decomposeSystemDesign(
     );
     if (sectionViolations.length > 0) {
       throw new Error(formatAssignedSectionsViolations(sectionViolations));
+    }
+
+    // Authored-scope floor (Task Description Authorship SSOT) — repair round
+    // re-prompts on omission.
+    const missingDesc = findTasksMissingDescription(response.tasks);
+    if (missingDesc.length > 0) {
+      throw new Error(
+        `[SystemDecompose] task(s) missing non-empty "description": ` +
+        `${missingDesc.map(t => t.id ?? t.name).join(', ')} — every task must carry its per-task scope of work`,
+      );
     }
 
     return response;

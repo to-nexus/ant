@@ -48,9 +48,9 @@ interface DecomposeContext {
 // ─────────────────────────────────────────────────────────────
 
 interface SpecTask {
-  id: string;       // e.g. "spec-social-login-1"
-  name: string;     // e.g. "Overview & Requirements"
-  scope: string;    // Description of what this section covers
+  id: string;          // e.g. "spec-social-login-1"
+  name: string;        // e.g. "Overview & Requirements"
+  description: string; // Per-task scope of work (canonical BaseTask.description)
 }
 
 interface SpecDecomposeResponse {
@@ -145,7 +145,7 @@ async function decomposeSpecSections(
       {
         id: `spec-feature-${Date.now()}-1`,
         name: 'Full Spec',
-        scope: directive,
+        description: buildFullSpecScope(),
       },
     ],
     executionTier: ExecutionTierId.Reflex,
@@ -170,7 +170,8 @@ async function decomposeSpecSections(
     `- Emit MORE than one task ONLY when the directive genuinely needs SEPARATE output documents (different file slugs / titles). That is rare for spec jobs.`,
     ``,
     `Principle — do NOT pre-decide the solution at decompose:`,
-    `- Task \`name\` and \`scope\` describe WHAT to think about, NOT the chosen structure or section list. Do NOT bake an outline, table of contents, or specific decisions into them — the execute phase owns that thinking.`,
+    `- Task \`name\` and \`description\` describe WHAT to think about, NOT the chosen structure or section list. Do NOT bake an outline, table of contents, or specific decisions into them — the execute phase owns that thinking.`,
+    `- \`description\` names the unit of work and its scope of thinking in your own words. Do NOT restate the directive verbatim — the directive is delivered to every phase on its own channel.`,
     `- Authoring tasks are self-contained writing units; never emit "analysis-only" or "writing-only" tasks.`,
     ``,
     `ExecutionTier (BEFORE the meta tags, emit exactly one \`<executionTier>N</executionTier>\` tag where N is 0..4):`,
@@ -183,7 +184,7 @@ async function decomposeSpecSections(
     `Directive: "${directive}"`,
     ...attachedBlock,
     ``,
-    `Output format — emit the meta tags first (one tag per line), then a \`<tasks>\` block with one \`<task>{json}</task>\` element per output document. Each \`<task>\` body is a single JSON object. NO markdown fences anywhere. NO \`<decompose>\` wrapper.`,
+    `Output format — emit the meta tags first (one tag per line), then a \`<tasks>\` block with one \`<task>{json}</task>\` element per output document. Each \`<task>\` body is a single JSON object carrying exactly \`id\`, \`name\`, \`description\`. NO markdown fences anywhere. NO \`<decompose>\` wrapper.`,
     ``,
     `PRD Sync (optional meta tag): if the directive ALSO asks to update / sync / keep-consistent a related planning document, emit a \`<prdSync>{"targets":["plan/<doc>.md"],"reason":"<one sentence>"}</prdSync>\` tag naming the plan doc(s) present in your input context. The system then appends a task that reconciles that doc AFTER this spec is written. Omit the tag entirely when the directive is silent on the PRD or no plan doc is in context. Never invent a plan path.`,
     ``,
@@ -197,7 +198,7 @@ async function decomposeSpecSections(
     `<slug>your-spec-subject</slug>`,
     `<title>Human Readable Title</title>`,
     `<tasks>`,
-    `  <task>{"id":"spec-{slug}-1","name":"Full Spec","scope":"Scope of thinking for the entire document — surface and outcome to investigate. Do NOT pre-decide the chapter structure."}</task>`,
+    `  <task>{"id":"spec-{slug}-1","name":"Full Spec","description":"Scope of thinking for the entire document — surface and outcome to investigate. Do NOT pre-decide the chapter structure."}</task>`,
     `</tasks>`,
   ].join('\n');
 
@@ -231,12 +232,24 @@ async function decomposeSpecSections(
       ? parsed.title
       : directive.slice(0, 60);
     const tasks: SpecTask[] = Array.isArray(parsed.tasks) && parsed.tasks.length > 0
-      ? parsed.tasks.map((t: any, i: number) => ({
-          id: typeof t.id === 'string' && t.id.length > 0 ? t.id : `spec-${slug}-${i + 1}`,
-          name: typeof t.name === 'string' && t.name.length > 0 ? t.name : `Section ${i + 1}`,
-          scope: typeof t.scope === 'string' ? t.scope : '',
-        }))
-      : [{ id: `spec-${slug}-1`, name: 'Full Spec', scope: directive }];
+      ? parsed.tasks.map((t: any, i: number) => {
+          // Description floor: spec has no repair loop (catch → fallback()), so a
+          // throw would discard a good decomposition over one bad field —
+          // synthesize the deterministic full-document scope instead.
+          let description = typeof t.description === 'string' ? t.description.trim() : '';
+          if (!description) {
+            console.warn(
+              `⚠️  [specDecompose] task ${i + 1} omitted "description" — substituting the full-document scope`,
+            );
+            description = buildFullSpecScope();
+          }
+          return {
+            id: typeof t.id === 'string' && t.id.length > 0 ? t.id : `spec-${slug}-${i + 1}`,
+            name: typeof t.name === 'string' && t.name.length > 0 ? t.name : `Section ${i + 1}`,
+            description,
+          };
+        })
+      : [{ id: `spec-${slug}-1`, name: 'Full Spec', description: buildFullSpecScope() }];
 
     const executionTier = coerceExecutionTier(
       parseExecutionTierTag(response),
@@ -268,12 +281,24 @@ interface SpecRevisionDecomposition {
   revisionBaselineHeadings: string[];
 }
 
-function buildRevisionSectionScope(targetFile: string): string {
+function buildRevisionScope(targetFile: string): string {
   return (
     `REVISION of the existing document architecture/spec/${targetFile}. ` +
     `The unit of work is the existing document with the user directive applied as a delta: ` +
     `change only what the directive affects; every section the directive does not affect is preserved verbatim; ` +
     `the output is the full revised document.`
+  );
+}
+
+// Deterministic degenerate-case scope (LLM omitted `description`, LLM returned
+// no tasks, or the LLM-free fallback path). Deliberately directive-free: the
+// directive is already on its own prompt channel (`# User Directive`), so
+// restating it here would rebuild the double-injection defect this file
+// existed to avoid.
+function buildFullSpecScope(): string {
+  return (
+    'Author the complete spec document end to end. The unit of work is the entire ' +
+    'directive stated in the User Directive section — no chapter split.'
   );
 }
 
@@ -299,7 +324,7 @@ export async function buildSpecRevisionDecomposition(
       {
         id: `spec-${baseId}-rev-1`,
         name: 'Revision',
-        scope: buildRevisionSectionScope(targetFile),
+        description: buildRevisionScope(targetFile),
       },
     ],
     executionTier: ExecutionTierId.Exploratory,
@@ -351,7 +376,7 @@ export async function decomposeSpec(
   const parallelGroup = targetFile.replace(/\.md$/, '');
 
   console.log(`📋 [specDecompose] Target: ${targetFile} ("${title}") — ${tasks.length} chapter(s)`);
-  tasks.forEach((t, i) => console.log(`   ${i + 1}. ${t.name}: ${t.scope.slice(0, 80)}`));
+  tasks.forEach((t, i) => console.log(`   ${i + 1}. ${t.name}: ${t.description.slice(0, 80)}`));
 
   // Build one DesignTask per chapter
   const taskQueue = new TaskQueue<DesignTask>();
@@ -364,10 +389,9 @@ export async function decomposeSpec(
       priority: 200 + index * 10,
       targetFile,
       targetDir: SPEC_TARGET_DIR,
-      description: directive,
+      description: chapter.description,
       sectionIndex: index,
       totalSections: tasks.length,
-      sectionScope: chapter.scope,
       include: [ARTIFACT_PREFIX.SOURCES, ARTIFACT_PREFIX.API_CONTRACT],
       parallelGroup,
       completed: false,

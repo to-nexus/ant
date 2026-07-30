@@ -49,7 +49,6 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // ─── Chapter decomposition fields ───────────────────────────────────────
   const sectionIndex: number = (task as any)?.sectionIndex ?? 0;
   const totalSections: number = (task as any)?.totalSections ?? 1;
-  const sectionScope: string = (task as any)?.sectionScope ?? '';
   const isFirstSection = sectionIndex === 0;
 
   // ─── Load previous sections content if this is a continuation ───────────
@@ -102,9 +101,11 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   runtimeLines.push(`Use: <file path="${specDir}/${targetFile}">...</file>`);
   runtimeLines.push('');
   if (task) {
+    // Name only — the task's scope (description) renders exactly once, in the
+    // template's CURRENT TASK SCOPE block ({{taskDescription}}). A second
+    // render here would duplicate it (Task Description Authorship SSOT).
     runtimeLines.push(`# Current Task`);
     runtimeLines.push(`**${task.name}**`);
-    if (task.description) runtimeLines.push(task.description);
     runtimeLines.push('');
   }
   runtimeLines.push(`# User Directive`);
@@ -147,7 +148,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
       isFirstSection,
       sectionIndex,
       totalSections,
-      sectionScope,
+      taskDescription: task?.description ?? '',
       previousSections,
       userLanguage: state.context.userLanguage || 'en',
       // Implementation-altitude domain identifier guide (Game-Activation T2-b).
@@ -271,7 +272,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   const targetArtifactPath = `architecture/spec/${targetFile}`;
   const selfCheck = buildSelfCheckTrailingMessage(state, {
     artifactPath: targetArtifactPath,
-    sectionScope,
+    scope: task?.description ?? '',
   });
 
   // Section-correct write tag: refactor-mode and first-section tasks must
@@ -330,7 +331,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
             isFirstSection,
             sectionIndex,
             totalSections,
-            sectionScope: sectionScope.slice(0, 80),
+            taskDescription: (task?.description ?? '').slice(0, 80),
             hasExistingSpec: jobMode === 'refactor',
             hasPrd: new ArtifactPoolView(state.artifacts || []).hasSources(),
             hasApiContract: state.existingDesignDocs ? Object.keys(state.existingDesignDocs).some(f => f.startsWith('api-contract-')) : false,

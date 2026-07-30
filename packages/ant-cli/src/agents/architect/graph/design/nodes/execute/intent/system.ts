@@ -86,7 +86,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
       const targetArtifactPath = `${designDirOf(targetFile)}/${targetFile}`;
       selfCheckTrailing = buildSelfCheckTrailingMessage(state, {
         artifactPath: targetArtifactPath,
-        sectionScope,
+        scope: sectionScope,
       });
     }
     

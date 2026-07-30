@@ -44,13 +44,9 @@ architectural decisions.
 {{#if currentTask.targetFile}}
 **Target document** (will be written by execute): `{{currentTask.targetFile}}`
 {{/if}}
-{{#if sectionScope}}
+{{#if (gte totalSections 2)}}
 
-**Section Scope (for execute reference)**:
-
-> {{sectionScope}}
-
-Section **{{add sectionIndex 1}} of {{totalSections}}**
+This task is section **{{add sectionIndex 1}} of {{totalSections}}** of that document — plan only this section's slice.
 {{/if}}
 {{/if}}
 

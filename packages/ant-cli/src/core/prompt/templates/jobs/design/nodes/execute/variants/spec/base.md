@@ -134,7 +134,7 @@ This is the **first section** of the spec document. Create the document using a 
 <file path="architecture/spec/{{targetFile}}">
 # Spec: {{title}}
 
-[Write content for this section only — see CURRENT SECTION SCOPE below]
+[Write content for this section only — see CURRENT TASK SCOPE below]
 </file>
 ```
 
@@ -144,7 +144,7 @@ This is a **continuation section**. The document already exists. Use `<append>` 
 ```xml
 <append path="architecture/spec/{{targetFile}}">
 
-[Write content for this section only — see CURRENT SECTION SCOPE below]
+[Write content for this section only — see CURRENT TASK SCOPE below]
 </append>
 ```
 
@@ -154,19 +154,17 @@ This is a **continuation section**. The document already exists. Use `<append>` 
 {{/if}}
 
 ════════════════════════════════════════════════════════════════════════════════
-## 🎯 CURRENT SECTION SCOPE
+## 🎯 CURRENT TASK SCOPE
 ════════════════════════════════════════════════════════════════════════════════
 
-{{#if sectionScope}}
-**Write ONLY the following content in this task:**
+**Write ONLY the content this task covers:**
 
-> {{sectionScope}}
+> {{{taskDescription}}}
 
+{{#if (gte totalSections 2)}}
 Section **{{add sectionIndex 1}} of {{totalSections}}**
 
 **Constraint**: Do NOT write content that belongs to other sections. Do NOT duplicate content already written.
-{{else}}
-Write the complete spec document with all sections (Overview, Requirements, Scope, Technical Approach, Implementation Tasks, Acceptance Criteria).
 {{/if}}
 
 {{#if previousSections}}

@@ -51,6 +51,15 @@ describe('createDesignTaskStreamingHook', () => {
     expect(queueArg.map((t: any) => t.id)).toEqual(['t1', 't2']);
   });
 
+  it('surfaces the streamed `description` on the accumulated card (Task Description Authorship — spec emits the canonical key)', () => {
+    const hook = createDesignTaskStreamingHook(state);
+
+    hook.onTaskParsed('{"id":"spec-1","name":"Full Spec","description":"Scope of thinking for the checkout flow"}');
+
+    expect(hook.getAccumulated()).toHaveLength(1);
+    expect(hook.getAccumulated()[0].description).toBe('Scope of thinking for the checkout flow');
+  });
+
   it('dedupes by `id` — second occurrence is dropped without re-broadcasting', () => {
     const hook = createDesignTaskStreamingHook(state);
 

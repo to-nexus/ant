@@ -22,8 +22,12 @@ import type { DesignGraphState } from '../../../state';
 export interface SelfCheckOptions {
   /** Feature-relative path of the artifact being produced this task. */
   artifactPath: string;
-  /** Optional scope label (chapter / section text); falls back to the document. */
-  sectionScope?: string;
+  /**
+   * Per-task scope label; falls back to the document. spec passes
+   * `task.description` (the canonical per-task scope); system-design passes
+   * the catalog-computed section assignment from `buildSectionScope`.
+   */
+  scope?: string;
 }
 
 export function buildSelfCheckTrailingMessage(
@@ -33,7 +37,7 @@ export function buildSelfCheckTrailingMessage(
   const pending = state._pendingDoneCheck === true;
   if (!pending) return undefined;
   const escalation = state._doneCheckEscalation || 0;
-  const scopeLabel = options.sectionScope?.trim() || 'full document';
+  const scopeLabel = options.scope?.trim() || 'full document';
 
   if (escalation >= 2) {
     return (
@@ -46,7 +50,7 @@ export function buildSelfCheckTrailingMessage(
   return (
     `The previous turn updated the artifact at \`${options.artifactPath}\` but did not ` +
     `output <done>true</done>.\n\n` +
-    `Decide whether this task's assigned scope (sectionScope: "${scopeLabel}") is satisfied:\n` +
+    `Decide whether this task's assigned scope (scope: "${scopeLabel}") is satisfied:\n` +
     `- Satisfied → output <done>true</done> next.\n` +
     `- Not satisfied → continue updating the same artifact and then output <done>true</done>.`
   );

@@ -1,4 +1,5 @@
 import { CodeTask } from "../../../../types/task";
+import { isTaskDescriptionAuthored } from '@ant/shared';
 import type { TaskType, ResolvedArtifact, ExecutionTierId } from '@ant/shared';
 import { isErrorTask } from '../../tasks/error';
 import { isVerificationTask } from '../../tasks/verification';
@@ -61,6 +62,53 @@ export function validateTaskTypeEnum(tasks: CodeTask[]): void {
         taskName: t.name,
         validTypes: VALID_TASK_TYPES,
       });
+    }
+  }
+}
+
+export interface MissingTaskDescriptionViolationDetail {
+  taskId?: string;
+  taskName: string;
+}
+
+export class MissingTaskDescriptionViolation extends Error {
+  readonly detail: MissingTaskDescriptionViolationDetail;
+  constructor(detail: MissingTaskDescriptionViolationDetail) {
+    super(
+      `Missing/blank "description" on task ` +
+      `"${detail.taskId ?? '(no id)'} / ${detail.taskName}". ` +
+      `Every task must carry a non-empty per-task description ` +
+      `(Task Description Authorship SSOT).`,
+    );
+    this.name = 'MissingTaskDescriptionViolation';
+    this.detail = detail;
+  }
+}
+
+export function buildMissingTaskDescriptionViolationFraming(
+  v: MissingTaskDescriptionViolation,
+): string {
+  const { taskName } = v.detail;
+  return (
+    '\n\n---\n\n## Retry: missing task description\n' +
+    `Your previous response omitted (or left blank) the \`description\` field ` +
+    `on task "${taskName}". Every \`<task>\` JSON object MUST carry a non-empty ` +
+    `\`description\` stating that task's scope of work in your own words — it is ` +
+    `the work statement the execution phase receives. Do NOT paste the directive ` +
+    `verbatim. Re-emit the full task set with a description on every task.\n`
+  );
+}
+
+/**
+ * Authored-scope floor (see `BaseTask.description` JSDoc in @ant/shared).
+ * Throws so the decompose retry loop surfaces a corrective framing — an empty
+ * description would otherwise flow through `createTaskQueue`'s `as CodeTask`
+ * cast and become the ENTIRE execute work statement when no plan is sealed.
+ */
+export function validateTaskDescriptions(tasks: CodeTask[]): void {
+  for (const t of tasks) {
+    if (!isTaskDescriptionAuthored(t)) {
+      throw new MissingTaskDescriptionViolation({ taskId: t.id, taskName: t.name });
     }
   }
 }

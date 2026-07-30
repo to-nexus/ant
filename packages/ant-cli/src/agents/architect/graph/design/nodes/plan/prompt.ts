@@ -61,7 +61,6 @@ export async function buildPlanPromptBlocks(
 
   const sectionIndex: number = taskAny?.sectionIndex ?? 0;
   const totalSections: number = taskAny?.totalSections ?? 1;
-  const sectionScope: string = taskAny?.sectionScope ?? '';
 
   const refCat = await referenceCatalogVars(state);
   const config: PromptBuildConfig = {
@@ -92,7 +91,6 @@ export async function buildPlanPromptBlocks(
       },
       sectionIndex,
       totalSections,
-      sectionScope,
       directive,
       hasTools: true,
       figmaAvailable: state.figmaAvailable === true,
