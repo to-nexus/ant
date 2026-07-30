@@ -16,7 +16,8 @@ import { DesignGraphState } from '../../../state';
 import { CONV_KEYS, getConv } from '../../../../../../common/graph/conversations';
 import { MessageContentBlock } from '../../../../../../../core/ports/llm';
 import { DesignTask } from '../../../../../types/task';
-import { designDirOf, ARTIFACT_PREFIX, getConfigSlots } from '@ant/shared';
+import { designDirOf, ARTIFACT_PREFIX, getConfigSlots, pickAssetsRoot } from '@ant/shared';
+import { formatAssetInventoryBlock } from '../../../../../../../infrastructure/workspace/assetInventory';
 import { logPrompt } from '../../../../../../../core/utils/promptLogger';
 import type { PromptBuildConfig } from '../../../../../../../core/prompt/builder/PromptBuildConfig';
 import { buildCacheableBlocks } from '../../../../../../../core/prompt/builder/CacheBlockMapper';
@@ -112,7 +113,9 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
 
   const title = task?.name?.replace(/^Spec: .+ — /, 'Spec: ').replace('Spec: ', '') || 'Feature';
 
-  // Single injection SSOT — `task.include` (LLM-authored), SOURCES fallback.
+  // Single injection SSOT — `task.include` (code-derived for design tasks —
+  // see specDecompose.ts, unlike the code job's LLM-authored includes),
+  // SOURCES fallback.
   const currentTask = state.currentTask as DesignTask | undefined;
   const taskSourceFiles = currentTask?.sourceFiles;
 
@@ -215,6 +218,21 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     { skipJobDomainOverlay: true },
   );
   if (basisSection) contextParts.push(basisSection);
+
+  // Real asset pool inventory — the spec rules demand an Asset inventory
+  // section, so the data source must be injected (mirrors ui.ts/game-art.ts;
+  // spec was the one intent whose prompt never surfaced attached assets —
+  // fierce-gaining-gully).
+  const assetBlock = formatAssetInventoryBlock(state.assetInventory, {
+    assetsRoot: pickAssetsRoot({
+      workspaceDomain: (state.workspaceConfig as { domain?: any } | undefined)?.domain,
+      racDomain: state.resolvedAction?.domain,
+      intentGroup: state.resolvedAction?.intentGroup,
+    }),
+    usage:
+      'Record the ones the feature uses in the spec\'s Asset inventory section with their exact `assets/...` paths (use `list_assets` for detail) — the Code Job sees only what you write down. Do NOT invent asset paths that no file backs.',
+  });
+  if (assetBlock) contextParts.push(assetBlock);
 
   // Existing spec for refactor mode (load from disk — pool may not have latest version)
   if (jobMode === 'refactor') {

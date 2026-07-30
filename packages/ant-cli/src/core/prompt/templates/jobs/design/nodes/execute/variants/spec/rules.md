@@ -20,14 +20,14 @@
 
 | Target | What to include |
 |--------|----------------|
-| **Asset inventory** | Every asset file in `assets/` with path, description, and intended usage location |
+| **Asset inventory** | Every real asset file the feature uses — from the injected Asset Files inventory and `list_assets` — with path, description, and intended usage location |
 | **UI layout** | Component hierarchy and visual properties observed from design source |
 | **Design tokens** | Token values extracted from design variables (if available) |
 | **Component states** | Interactive states observed in the design |
 
 **Constraint**: Do NOT assume the Code Job has access to the design source. Record ALL observed visual details in the spec document itself.
 
-**Constraint**: Asset references MUST use the format `assets/{category}/{filename}` — the exact path where the file was downloaded.
+**Constraint**: Asset references MUST use the exact on-disk path, including the domain pool segment: `assets/{service|game}/{category}/{filename}`. Never shorten it — the Code Job resolves the path verbatim.
 
 ⚠️ **Blind spot**: LLMs tend to reference Figma URLs or tool names in spec documents instead of recording the actual observed values. The Code Job cannot call Figma — only the values you write down will be available.
 

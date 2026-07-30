@@ -325,10 +325,14 @@ export const TOOL_SETS = {
 
   // Design plan-LLM read-only exploration. NO file-write tools and NO
   // download_asset — plan is for "deciding the solution" only; writing
-  // (and asset download) is the execute node's responsibility.
+  // (and asset download) is the execute node's responsibility. LIST_ASSETS
+  // is a READ (directory survey of assets/{domain}/): the plan phase is
+  // where attached/placed real assets must be discovered, or they never
+  // reach the sealed plan (fierce-gaining-gully).
   designPlanExplore: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
+    ToolName.LIST_ASSETS,
     ToolName.EXPLORE,
     ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
@@ -340,6 +344,7 @@ export const TOOL_SETS = {
   designPlanFigma: [
     ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.READ_SOURCE_DOC, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
+    ToolName.LIST_ASSETS,
     ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT,
     ToolName.EXPLORE,
     ToolName.SUBAGENT_REPORT,
