@@ -51,6 +51,14 @@ export async function handleListFiles(
       ? [resolvedDir.fixMessage, ...filtered]
       : filtered;
 
+    // Orientation for workspace-root listings: name where code vs artifacts
+    // live so the agent doesn't assume the whole workspace is codebase/.
+    if (resolvedDir.fsPath === '.') {
+      resultArr.unshift(
+        'Workspace root — code lives under codebase/; sibling artifact dirs (plan/ architecture/ visual/ assets/ meta/) hold PRD, design docs, and user-placed asset files.',
+      );
+    }
+
     return { content: resultArr.join('\n') };
   } catch (e) {
     const errorMsg = (e as Error).message;
