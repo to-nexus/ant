@@ -789,6 +789,55 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Job final summary (curious-spinning-twilight) — the single user-facing
+  // wrap-up message: answers the directive's questions, states what was done,
+  // lists real remaining work. Runs AFTER the durable completion checkpoint
+  // (a SIGTERM mid-call loses only the summary) and BEFORE distill (which
+  // then harvests the summary as this turn's final prose). Skipped on any
+  // failure/pause path — those keep their existing interruption UX.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  let jobSummaryText: string | undefined;
+  if (
+    isLastTask && !isWorkerContext && !hasOrchestratorFailure && !taskFailed &&
+    !state.interruption && (state.completedTasksDetails?.length ?? 0) > 0
+  ) {
+    const { emitJobFinalSummary, harvestTaskProse } = await import('../../../../../../core/context/jobSummary');
+    const { accumulateTokenUsage, broadcastTokenUsageByModel } = await import('../../../../../common/graph/llmHelpers');
+    jobSummaryText = await emitJobFinalSummary({
+      session: state.deps?.session,
+      chatAPI: getChatAPIClient(),
+      llm: state.deps?.llm,
+      promptPort: state.deps?.promptBuilder,
+      jobType: 'code',
+      jobId: state.jobId,
+      turnId: state.turnId,
+      directive: state.directive,
+      directives: state.directives,
+      completedTasks: (state.completedTasksDetails ?? []).map((t) => ({
+        name: t.name,
+        type: t.type,
+        description: t.description,
+        files: t.touchedFiles,
+      })),
+      touched: touchedForLearn
+        ? {
+            created: touchedForLearn.created,
+            edited: touchedForLearn.modified,
+            deleted: touchedForLearn.deleted,
+          }
+        : undefined,
+      unresolved: (state.unresolvedErrors ?? []).map(
+        (e) => `${e.taskName}: ${e.violations.map((v) => v.message).join('; ')}`,
+      ),
+      taskProse: await harvestTaskProse(state.deps?.session, state.turnId),
+      onUsage: (usage) => {
+        accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
+        broadcastTokenUsageByModel(state);
+      },
+    });
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
   //
   // MUST be the last statement before return (idempotent-kazoo RCA): it is a
@@ -811,6 +860,7 @@ export async function learn(state: ArchitectGraphState): Promise<ArchitectGraphS
       executionTierId: state.executionTier,
       llm: state.deps.llm,
       promptPort: state.deps.promptBuilder,
+      ...(jobSummaryText ? { outcomeHint: jobSummaryText.slice(0, 200) } : {}),
     });
   }
 
