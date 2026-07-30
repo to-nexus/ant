@@ -161,6 +161,7 @@ const CANONICAL_DIR_DEFS: ReadonlyArray<CanonicalDirDef> = [
 
 const CANONICAL_FILE_DEFS: ReadonlyArray<CanonicalFileDef> = [
   { path: 'visual/ui/figma/figma.json', visibility: 'internal' },
+  { path: 'visual/game-art/figma/figma.json', visibility: 'internal' },
 ];
 
 /**
@@ -168,8 +169,36 @@ const CANONICAL_FILE_DEFS: ReadonlyArray<CanonicalFileDef> = [
  * This file holds ONLY the reference to the Figma workfile; it never stores
  * any exploration output. design job consumes it to produce ant-ui artifacts
  * at `visual/ui/ant/`, and code job consumes it at runtime via MCP.
+ *
+ * Service-domain path. Domain-agnostic callers MUST use
+ * {@link figmaConfigPathFor} / {@link FIGMA_CONFIG_PATHS} instead — D28's
+ * vertical split forbids a game workspace from reaching into `visual/ui/**`.
  */
 export const FIGMA_CONFIG_PATH = 'visual/ui/figma/figma.json' as const;
+
+/** Game-domain peer of {@link FIGMA_CONFIG_PATH} (I10 sub-source symmetry). */
+export const GAME_ART_FIGMA_CONFIG_PATH = 'visual/game-art/figma/figma.json' as const;
+
+/**
+ * Figma workfile reference path for a workspace domain. The figma sub-source
+ * must live under its own surface tree so `uiSourceOfPath` /
+ * `gameArtSourceOfPath` can classify the ref — a single shared location would
+ * make a game-art figma ref unclassifiable and silently degrade the revise
+ * pipeline to the ant `by-desc` variant.
+ */
+export function figmaConfigPathFor(domain: Domain | undefined | null): string {
+  return domain === 'game' ? GAME_ART_FIGMA_CONFIG_PATH : FIGMA_CONFIG_PATH;
+}
+
+/**
+ * Every figma workfile reference location. For domain-agnostic presence scans
+ * (e.g. `WorkspaceState.hasFigmaConfig`) — the two domains are mutually
+ * exclusive per workspace, so an OR over this list needs no domain input.
+ */
+export const FIGMA_CONFIG_PATHS: ReadonlyArray<string> = [
+  FIGMA_CONFIG_PATH,
+  GAME_ART_FIGMA_CONFIG_PATH,
+];
 
 // ============================================
 // Derived: full canonical path lists
@@ -665,6 +694,15 @@ const GAME_ART_HANDOFF_ROOT = ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, ''
  * bundle (tough-lacing-fable RCA). Widening at the RAC funnel converges the
  * explicit path with the infer path's already-proven bundle-dir shape.
  */
+/**
+ * Whether a path is a handoff bundle ROOT (not a file inside one) — i.e. the
+ * exact value {@link widenHandoffRefsToBundleDir} widens to. Lets renderers
+ * pick folder vs file affordances without guessing from the basename.
+ */
+export function isHandoffBundleRoot(p: string): boolean {
+  return p === UI_HANDOFF_ROOT || p === GAME_ART_HANDOFF_ROOT;
+}
+
 export function widenHandoffRefsToBundleDir(
   paths: readonly string[] | undefined,
 ): string[] | undefined {

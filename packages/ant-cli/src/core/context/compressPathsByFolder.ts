@@ -66,6 +66,10 @@ export async function compressPathsByFolder(
     }
   }
   for (const dir of ancestors) await gather(dir);
+  // Also probe the selected paths themselves: a directory-granular selection
+  // (handoff bundle root, dir-level target) must be resolvable by the core's
+  // self-directory branch. A file path throws ENOTDIR and caches `null`.
+  for (const p of paths) await gather(p);
 
   return compressPathsByFolderCore(paths, (dir) => dirCache.get(dir) ?? null);
 }

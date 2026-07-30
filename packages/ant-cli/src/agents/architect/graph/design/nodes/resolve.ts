@@ -3,7 +3,7 @@ import { WorkspacePathResolver } from "../../../../../core/config/WorkspacePathR
 import { DesignGraphState } from "../state";
 import * as path from "path";
 import { isTemplateContent } from "../../../../../core/utils/templateDetector";
-import { FIGMA_CONFIG_PATH, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, ARTIFACT_PREFIX, extractFigmaUrlParts, pickAssetsRoot } from "@ant/shared";
+import { figmaConfigPathFor, FigmaDataConfig, migrateFigmaConfig, createEmptyFigmaData, ARTIFACT_PREFIX, extractFigmaUrlParts, pickAssetsRoot } from "@ant/shared";
 import { hydrateFeatureContext } from "../../../../../core/context/featureContextBuilder";
 import { indexAssetPool } from "../../../../../infrastructure/workspace/assetInventory";
 import type { ResolveStrategy } from '../../../../common/graph/nodes/resolve/types';
@@ -225,11 +225,15 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
       }
     } catch { /* Non-critical */ }
 
-    // Load figma workfile reference from canonical location
+    // Load figma workfile reference from the workspace's own design surface
+    // (`figmaConfigPathFor` — D28 keeps a game workspace out of `visual/ui/**`).
     let figmaConfig: FigmaDataConfig | undefined;
     try {
       const fs = await import('fs');
-      const figmaJsonPath = path.join(featurePath, FIGMA_CONFIG_PATH);
+      const figmaJsonPath = path.join(
+        featurePath,
+        figmaConfigPathFor((state.workspaceConfig as { domain?: any } | undefined)?.domain),
+      );
       if (fs.existsSync(figmaJsonPath)) {
         const figmaRaw = fs.readFileSync(figmaJsonPath, 'utf-8');
         const raw = JSON.parse(figmaRaw);

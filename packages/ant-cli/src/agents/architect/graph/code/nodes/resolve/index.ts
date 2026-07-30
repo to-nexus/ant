@@ -99,6 +99,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       fileSystem: state.deps?.fileSystem,
       redis: state.deps?.redis,
       userId: state.context?.userId,
+      domain: (state.workspaceConfig as { domain?: any } | undefined)?.domain,
     });
     state.figmaFileKey = figmaDetected.available ? figmaDetected.fileKey : undefined;
     state.figmaStartNodeId = figmaDetected.available ? figmaDetected.startNodeId : undefined;
@@ -195,6 +196,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       fileSystem,
       redis: state.deps?.redis,
       userId: state.context?.userId,
+      domain: (state.workspaceConfig as { domain?: any } | undefined)?.domain,
     });
     const figmaFileKey = figmaDetected.available ? figmaDetected.fileKey : undefined;
     const figmaStartNodeId = figmaDetected.available ? figmaDetected.startNodeId : undefined;

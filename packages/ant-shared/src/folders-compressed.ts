@@ -16,6 +16,10 @@
  *     directory wins, so a whole-folder selection that spans sub-dirs
  *     (e.g. handoff/index.html + handoff/screens/login.md) emits one
  *     `handoff/` entry rather than per-sub-dir entries.
+ *   - An input path that is ITSELF a listable, non-empty directory emits one
+ *     folder entry for that directory (no ≥2 threshold — the selection is
+ *     already explicit). Directory-granular selections arrive from
+ *     `widenHandoffRefsToBundleDir` and `isDirLevelTarget` matrix targets.
  *   - Files not under any fully-covered directory stay as individual entries.
  *   - A directory whose subtree holds < 2 files never collapses (no value).
  *   - Dotfiles / dot-directories (names starting with `.`) are ignored when
@@ -145,6 +149,21 @@ export function compressPathsByFolderCore(
       if (!emitted.has(root)) {
         out.push({ kind: 'folder', path: root, fileCount: collapsible.get(root)! });
         emitted.add(root);
+      }
+      continue;
+    }
+    // The selected path IS a non-empty directory — emit it as one folder entry
+    // rather than a bare "file". Directory-granular selections reach here from
+    // `widenHandoffRefsToBundleDir` and from dir-level matrix targets, neither
+    // of which the ancestor-coverage rule above can collapse. A zero-file
+    // listing is NOT treated as a directory: `listDir` adapters that answer
+    // optimistically for unknown paths would otherwise turn every file into a
+    // phantom folder.
+    const selfFiles = collectFiles(p);
+    if (selfFiles !== null && selfFiles.length > 0) {
+      if (!emitted.has(p)) {
+        out.push({ kind: 'folder', path: p, fileCount: selfFiles.length });
+        emitted.add(p);
       }
       continue;
     }

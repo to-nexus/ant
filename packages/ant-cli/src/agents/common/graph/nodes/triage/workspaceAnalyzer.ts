@@ -20,7 +20,7 @@ import * as path from 'path';
 import { WorkspaceState, MonorepoLayout, MonorepoManager } from './types';
 import {
   ARTIFACT_PREFIX,
-  FIGMA_CONFIG_PATH,
+  FIGMA_CONFIG_PATHS,
   isFigmaDataPopulated,
   migrateFigmaConfig,
 } from '@ant/shared';
@@ -172,12 +172,17 @@ export async function analyzeWorkspace(
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // visual/ui/figma/figma.json — Figma workfile reference.
-  // `hasFigmaConfig` reflects workfile presence only — MCP reachability is
-  // NOT checked here (that lives in code resolve's `detectFigmaSource`).
+  // Figma workfile reference — `visual/{ui,game-art}/figma/figma.json`.
+  // Domain-agnostic OR over both surface locations: the two domains are
+  // mutually exclusive per workspace, so only one can ever be populated and
+  // this needs no domain input. `hasFigmaConfig` reflects workfile presence
+  // only — MCP reachability is NOT checked here (that lives in code resolve's
+  // `detectFigmaSource`).
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const figmaJsonPath = path.join(featurePath, FIGMA_CONFIG_PATH);
-  if (fs.existsSync(figmaJsonPath)) {
+  for (const rel of FIGMA_CONFIG_PATHS) {
+    if (state.hasFigmaConfig) break;
+    const figmaJsonPath = path.join(featurePath, rel);
+    if (!fs.existsSync(figmaJsonPath)) continue;
     try {
       const raw = JSON.parse(fs.readFileSync(figmaJsonPath, 'utf-8'));
       const figmaConfig = migrateFigmaConfig(raw);

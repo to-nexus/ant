@@ -122,8 +122,8 @@ export async function initFeature(workspaceName: string, featureName: string): P
   // exists post-init. mkdir -p on featureDir is a side-effect.
   fs.mkdirSync(path.join(featureDir, "codebase"), { recursive: true });
 
-  // All canonical dirs + files (including visual/ui/{ant,figma,handoff}
-  // + visual/ui/figma/figma.json) — SSOT via ensureCanonicalStructure.
+  // All canonical dirs + files (including visual/{ui,game-art}/{ant,figma,handoff}
+  // + a per-surface figma/figma.json) — SSOT via ensureCanonicalStructure.
   await ensureCanonicalStructure(featureDir);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -171,8 +171,8 @@ export async function initFeature(workspaceName: string, featureName: string): P
   console.log("");
   console.log("🚀 Next steps:");
   console.log(`  1. Edit plan/prd.md`);
-  console.log(`  2. (Optional) Configure Figma in visual/ui/figma/figma.json`);
-  console.log(`  3. (Optional) Drop a free-form handoff bundle into visual/ui/handoff/`);
+  console.log(`  2. (Optional) Configure Figma in visual/<surface>/figma/figma.json (surface = ui | game-art)`);
+  console.log(`  3. (Optional) Drop a free-form handoff bundle into visual/<surface>/handoff/`);
   console.log(`  4. Generate design: npm run dev architect design workspace/${workspaceName}/${featureName}`);
 }
 

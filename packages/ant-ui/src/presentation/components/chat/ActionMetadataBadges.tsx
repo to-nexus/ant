@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, compressPathsByFolderCore, getConfigSlotsForDomain, getIntentLabel, type ActionMetadata, type IntentId, type PathOrFolder } from '@ant/shared';
+import { INTENT_DEFINITIONS, compressPathsByFolderCore, getConfigSlotsForDomain, getIntentLabel, isDirLevelTarget, type ActionMetadata, type IntentId, type PathOrFolder } from '@ant/shared';
 import { X, Target, Crosshair, FileText, Folder, BookOpen, Zap, Lock } from 'lucide-react';
 import { BadgeOverflowRow, type BadgeOverflowItem } from './BadgeOverflowRow';
 import { makeTreeListDir } from './foldersCompressedTree';
@@ -245,7 +245,19 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
       ? lang === 'ko' ? `(파일 ${count}개)` : `(${count} files)`
       : undefined;
 
-  resolveSlot(folders?.target, meta.target).forEach(entry => {
+  // Dir-level matrix target (`isDirLevelTarget`) that does not exist on disk
+  // yet: `compressPathsByFolderCore`'s self-directory branch cannot see it, so
+  // read the granularity from the matrix instead of listing speculative files.
+  const dirLevelTargetPath = slots && isDirLevelTarget(slots.target) && slots.target.kind === 'generate'
+    ? slots.target.dir
+    : undefined;
+  const targetEntries = resolveSlot(folders?.target, meta.target).map(entry =>
+    !entry.isFolder && entry.rawPath === dirLevelTargetPath
+      ? { ...entry, isFolder: true, display: `${entry.display}/` }
+      : entry,
+  );
+
+  targetEntries.forEach(entry => {
     pinned.push({
       key: `target:${entry.isFolder ? 'folder:' : ''}${entry.rawPath}`,
       node: (

@@ -166,11 +166,15 @@ function resolveSubgroupWarnings(
   const missing = required.filter(name => !present.has(name));
   if (missing.length === 0) return [];
   const list = missing.join(', ');
+  // Surface label from the dir — the same helper serves `visual/ui/ant` and
+  // `visual/game-art/ant`, so the copy must not hardcode "UI".
+  const isGameArt = dir.startsWith('visual/game-art');
+  const surface = { en: isGameArt ? 'game-art' : 'UI', ko: isGameArt ? '게임아트' : 'UI' };
   return [{
     type: 'invalid-file',
     message: {
-      en: `Ant UI bundle is incomplete — missing ${missing.length}/${required.length} file(s): ${list}. Run a UI design job to regenerate the full set.`,
-      ko: `Ant UI 번들이 불완전합니다 — ${required.length}개 중 ${missing.length}개 파일 누락: ${list}. UI 설계 잡을 실행해 전체 세트를 재생성하세요.`,
+      en: `Ant ${surface.en} bundle is incomplete — missing ${missing.length}/${required.length} file(s): ${list}. Run a ${surface.en} design job to regenerate the full set.`,
+      ko: `Ant ${surface.ko} 번들이 불완전합니다 — ${required.length}개 중 ${missing.length}개 파일 누락: ${list}. ${surface.ko} 설계 잡을 실행해 전체 세트를 재생성하세요.`,
     },
   }];
 }

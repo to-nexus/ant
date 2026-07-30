@@ -261,4 +261,28 @@ describe('compressPathsByFolder', () => {
       { kind: 'file', path: 'b.md' },
     ]);
   });
+
+  // Directory-granular selections (`widenHandoffRefsToBundleDir`,
+  // `isDirLevelTarget`) arrive as a single bare directory path, which the
+  // ancestor-coverage rule can never collapse — the path IS the dir.
+  it('emits one folder entry for a path that is itself a directory', async () => {
+    const fs = makeFS({
+      'visual/game-art/handoff': [
+        { name: 'DESIGN.md', isDirectory: false },
+        { name: 'screens', isDirectory: true },
+      ],
+      'visual/game-art/handoff/screens': [{ name: 'title.html', isDirectory: false }],
+    });
+    const out = await compressPathsByFolder(['visual/game-art/handoff'], fs);
+    expect(out).toEqual([
+      { kind: 'folder', path: 'visual/game-art/handoff', fileCount: 2 },
+    ]);
+  });
+
+  // A `readDirectory` that answers optimistically for unknown paths must not
+  // turn every file into a phantom folder.
+  it('does not treat a zero-entry listing as a directory', async () => {
+    const out = await compressPathsByFolder(['plan/prd.md'], makeFS({}));
+    expect(out).toEqual([{ kind: 'file', path: 'plan/prd.md' }]);
+  });
 });

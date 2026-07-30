@@ -92,4 +92,28 @@ describe('FE folder-collapse preview (tree-backed listDir)', () => {
     expect(listDir('visual/ui/handoff/index.html')).toBeNull();
     expect(listDir('nope')).toBeNull();
   });
+
+  // BE `resolveToRAC` widens a refactor-mode handoff target to the bundle root,
+  // so the badge row receives one bare directory path. Rendering it as a plain
+  // "file" showed `handoff` with a file icon and no count.
+  it('emits one folder entry for a bare directory path', () => {
+    const out = compressPathsByFolderCore(
+      ['visual/ui/handoff'],
+      makeTreeListDir(tree),
+    );
+    expect(out).toEqual([
+      { kind: 'folder', path: 'visual/ui/handoff', fileCount: 4 },
+    ]);
+  });
+
+  it('a directory path mixed with an unrelated file keeps both shapes', () => {
+    const out = compressPathsByFolderCore(
+      ['visual/ui/handoff', 'visual/ui/ant/ui-tokens.json'],
+      makeTreeListDir(tree),
+    );
+    expect(out).toEqual([
+      { kind: 'folder', path: 'visual/ui/handoff', fileCount: 4 },
+      { kind: 'file', path: 'visual/ui/ant/ui-tokens.json' },
+    ]);
+  });
 });

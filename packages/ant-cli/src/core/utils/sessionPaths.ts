@@ -253,6 +253,7 @@ export function getAllSessionPaths(featurePath: string): Array<{ path: string; a
  */
 const FILE_CONTENT_FACTORIES: Record<string, () => string> = {
   'visual/ui/figma/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
+  'visual/game-art/figma/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
 };
 
 /**

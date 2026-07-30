@@ -131,6 +131,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     router.use('/figma', createFigmaFilesRoutes({
       workspaceRoot: deps.workspaceRoot,
       workspaceResolver: deps.workspaceResolver,
+      // Domain decides which surface tree holds figma.json (figmaConfigPathFor).
+      projectService: deps.projectService,
     }));
   }
   

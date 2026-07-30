@@ -1,20 +1,24 @@
 /**
  * Figma Files Routes
  *
- * API endpoints for reading/writing the figma workfile reference
- * (canonical path: visual/ui/figma/figma.json).
+ * API endpoints for reading/writing the figma workfile reference. The canonical
+ * path is domain-scoped (D28 vertical split): `visual/ui/figma/figma.json` for
+ * service workspaces, `visual/game-art/figma/figma.json` for game workspaces —
+ * resolved via the `figmaConfigPathFor` SSOT.
  */
 
 import { Router, Request, Response } from 'express';
 import { registerFeatureParamDecoders } from './helpers/featureParam';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { FigmaDataConfig, FIGMA_CONFIG_PATH, createEmptyFigmaData, migrateFigmaConfig } from '@ant/shared';
+import { FigmaDataConfig, figmaConfigPathFor, createEmptyFigmaData, migrateFigmaConfig } from '@ant/shared';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 
 export interface FigmaFilesRoutesDeps {
   workspaceRoot: string;
   workspaceResolver: any;
+  /** Used to read the project's `domain` so the figma path lands on the right surface. */
+  projectService?: { getProjectConfig(id: string, userContext: any): Promise<any> };
 }
 
 export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
@@ -31,7 +35,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
     return { userId: 'local', organizationId: 'local' };
   };
 
-  const getFigmaJsonPath = (req: Request): string => {
+  const getFigmaJsonPath = async (req: Request): Promise<string> => {
     const { projectId, featureName } = req.params;
     const userContext = getUserContext(req);
     const featurePath = deps.workspaceResolver.getFeaturePath(
@@ -39,7 +43,14 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
       projectId,
       featureName
     );
-    return path.join(featurePath, FIGMA_CONFIG_PATH);
+    let domain: string | undefined;
+    try {
+      domain = (await deps.projectService?.getProjectConfig(projectId, userContext))?.domain;
+    } catch {
+      // Unreadable project config → fall back to the service-domain path,
+      // matching `figmaConfigPathFor`'s default.
+    }
+    return path.join(featurePath, figmaConfigPathFor(domain as any));
   };
 
   /**
@@ -53,7 +64,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
    */
   router.get('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {
-      const figmaPath = getFigmaJsonPath(req);
+      const figmaPath = await getFigmaJsonPath(req);
       let config: FigmaDataConfig;
 
       let content: string | undefined;
@@ -92,7 +103,7 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
    */
   router.put('/config/:projectId/:featureName', async (req: Request, res: Response) => {
     try {
-      const figmaPath = getFigmaJsonPath(req);
+      const figmaPath = await getFigmaJsonPath(req);
       const config: FigmaDataConfig = req.body;
 
       await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
