@@ -303,7 +303,7 @@ CRITICAL:
 
 | Type | Principle | When to use |
 |------|-----------|-------------|
-| `"error"` | Something is **broken** | Directive contains error messages, crashes, build failures, or runtime exceptions |
+| `"error"` | Something is **broken, machine-confirmed** | Directive contains a verbatim machine failure signal — build/compile error output, stack trace, test failure output, console error, crash report / non-zero exit — or describes a change that deterministically produces one (e.g. a reported compile break) |
 | `"feature"` | Something **new** — headless | Source code, logic, APIs. Delivers functionally complete behavior in visually unstyled form — all interactive behavior present and working; "unstyled" is missing visual polish, NOT a non-functional stub |
 | `"setup"` | Project **initialization** | New project infrastructure and configuration (generate mode only) |
 | `"design-system"` | Visual **infrastructure** | Design token infrastructure and shared component library. Visual foundation that feature/ui tasks depend on. |
@@ -322,7 +322,9 @@ CRITICAL:
 
 **Constraint — design-system package identity is owned by its own setup, not by the design-system task**: In a multi-package workspace where ≥ 2 applications consume the design system, it is a **shared-library package** — its directory and `package.json` name are created and named once by **its own band-absent setup task** (priority 101+), exactly like any other member (the `band:'root'` setup does NOT enumerate or name it; see the design-doc-guide Setup task mapping). The `design-system` content task(s) at 200/201+ then populate the directory that member's setup created: reference it by its **exact name** (the executor will `list_files` the member parents at run time) — do NOT create the package, do NOT rename it, do NOT invent a package name or `@scope/name`. In a single-application workspace there is no shared package; the design-system output lives inside that one app's source tree (current behavior).
 
-**Constraint**: If the directive contains ANY error message, stack trace, or crash report, the task type MUST be `"error"`.
+**Constraint**: If the directive contains a verbatim machine failure signal (error output, stack trace, test failure output, crash report), the task(s) anchored to that signal MUST be `"error"`.
+
+**Constraint**: The user *calling* something an error/bug/broken does NOT make the task `"error"`. Without a machine failure signal, classify exactly as if the failure vocabulary were absent — the full type enum and band ladder apply as usual (`"setup"` for missing infrastructure, `"design-system"` when token/component infrastructure is involved, `"feature"` with its bands, `"ui"`, test-code/doc, verification per tier). A misbehavior report without machine output (e.g. "clicking save does nothing") is a misimplemented capability — normal classification, not `"error"`. In a mixed breakdown, ONLY the task(s) anchored to a specific machine failure signal are `"error"`; sibling work follows normal rules.
 
 **Constraint**: Default to `"feature"` when ambiguous (e.g., "fix" without a clear error/crash).
 

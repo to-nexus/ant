@@ -11,7 +11,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { containsRuntimeErrorPattern } from '../../src/core/utils/runtimeErrorPattern';
+import {
+  containsRuntimeErrorPattern,
+  containsMachineFailureSignal,
+} from '../../src/core/utils/runtimeErrorPattern';
+import { detectPotentialMisclassification } from '../../src/agents/architect/graph/code/nodes/decompose/validation';
+import type { CodeTask } from '../../src/agents/architect/types/task';
 
 describe('containsRuntimeErrorPattern', () => {
   describe('verbose pattern set (former buildMessages.ts coverage)', () => {
@@ -97,5 +102,87 @@ Require stack:
     at Module._load (node:internal/modules/cjs/loader:1051:27)`;
       expect(containsRuntimeErrorPattern(directive)).toBe(true);
     });
+  });
+});
+
+describe('containsMachineFailureSignal (strict variant)', () => {
+  describe('verbatim machine output — detected', () => {
+    it.each([
+      'Error: Cannot find module foo',
+      'TypeError: Cannot read property of undefined',
+      'NullPointerException in UserService',
+      '    at Module._load (node:internal/modules/cjs/loader:1051:27)',
+      'command exited, exit code: 2',
+      'failed to compile ./src/App.tsx',
+      'Build failed with 3 errors',
+      'npm ERR! code ENOENT',
+      'ELIFECYCLE  Command failed',
+      '2 tests failed in auth.spec.ts',
+      'assertion `x === y` failed',
+      'expected 200 but got 500',
+    ])('detects %j', input => {
+      expect(containsMachineFailureSignal(input)).toBe(true);
+    });
+  });
+
+  describe('failure vocabulary alone — NOT detected', () => {
+    it.each([
+      'there is an error in the layout, fix it',
+      'this button is broken, it feels like a bug',
+      'fix the failed design of the settings page',
+      'clicking save does nothing, please fix this error',
+      '저장 버튼이 에러야, 고쳐줘',
+      'the app crashes my workflow productivity',
+      'login failed for user when the form is empty',
+      'refactor the user service to use dependency injection',
+      '',
+    ])('returns false for %j', input => {
+      expect(containsMachineFailureSignal(input)).toBe(false);
+    });
+  });
+
+  it('returns false for undefined / null', () => {
+    expect(containsMachineFailureSignal(undefined)).toBe(false);
+    expect(containsMachineFailureSignal(null)).toBe(false);
+  });
+});
+
+// Sole consumer alignment: the decompose error-vs-feature misclassification
+// check must key off the STRICT predicate — a directive that merely *calls*
+// something an error must not warn when the LLM (correctly) emits non-error
+// tasks, per the decompose Task Type Rules ("error" requires a machine signal).
+describe('detectPotentialMisclassification — machine-signal alignment', () => {
+  const task = (type: CodeTask['type']): CodeTask =>
+    ({ id: `${type}-1`, name: `${type} task`, type, priority: 300, description: 'x' }) as CodeTask;
+
+  const MACHINE_SIGNAL_DIRECTIVE =
+    'TypeError: Cannot read properties of undefined\n    at render (App.tsx:10:5)';
+  const VOCABULARY_ONLY_DIRECTIVE = 'this page is an error, fix it so saving works';
+
+  it('warns when a machine signal exists but no task is error-type', () => {
+    const r = detectPotentialMisclassification(MACHINE_SIGNAL_DIRECTIVE, [task('feature')]);
+    expect(r.hasMisclassification).toBe(true);
+  });
+
+  it('does NOT warn on vocabulary-only directives classified as non-error', () => {
+    const r = detectPotentialMisclassification(VOCABULARY_ONLY_DIRECTIVE, [
+      task('feature'),
+      task('ui'),
+    ]);
+    expect(r.hasMisclassification).toBe(false);
+  });
+
+  it('does NOT warn when the machine signal is matched by an error task', () => {
+    const r = detectPotentialMisclassification(MACHINE_SIGNAL_DIRECTIVE, [
+      task('error'),
+      task('verification'),
+    ]);
+    expect(r.hasMisclassification).toBe(false);
+  });
+
+  it('does NOT warn on an empty directive', () => {
+    expect(detectPotentialMisclassification(undefined, [task('feature')]).hasMisclassification).toBe(
+      false,
+    );
   });
 });

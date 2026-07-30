@@ -27,6 +27,15 @@
      evidence that motivated it (exact error text, trace, reproduction) —
      never with a solution direction. The task's plan phase owns diagnosis.
 
+4. **Classification gate**: This banner fires on failure *vocabulary* in the
+   directive — it does NOT decide task type; the Task Type Rules do. If fact
+   extraction yields no verbatim machine failure signal (no error output,
+   stack trace, failing-test output, or crash report), treat the directive as
+   a general implementation request — the full standard classification
+   (setup / design-system / feature bands / ui / test-code / doc /
+   verification) applies as usual, and no task may be `"error"` on
+   vocabulary alone.
+
 **Example:**
 
 User directive: "After modifying config.ts, I get RESOURCE_NOT_FOUND error at UserService.ts:103"

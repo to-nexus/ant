@@ -3,6 +3,7 @@ import type { TaskType, ResolvedArtifact, ExecutionTierId } from '@ant/shared';
 import { isErrorTask } from '../../tasks/error';
 import { isVerificationTask } from '../../tasks/verification';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
+import { containsMachineFailureSignal } from '../../../../../../core/utils/runtimeErrorPattern';
 
 const VALID_TASK_TYPES: readonly TaskType[] = [
   'setup', 'feature', 'design-system', 'ui',
@@ -225,16 +226,14 @@ export function detectPotentialMisclassification(
     return { hasMisclassification: false };
   }
   
-  // ✅ Check 1: Explicit error messages in directive
-  const hasErrorMessage = 
-    /error:\s*/i.test(directive) ||
-    /exception/i.test(directive) ||
-    /\s+at\s+.*\(.*:\d+:\d+\)/.test(directive) ||  // Stack trace
-    /exit code:\s*[1-9]/i.test(directive) ||
-    /failed to compile/i.test(directive) ||
-    /build failed/i.test(directive);
-  
-  // ✅ Check 2: If error message exists but no error-type tasks → potential issue
+  // ✅ Check 1: verbatim machine failure signal in directive.
+  // SSOT: `core/utils/runtimeErrorPattern.containsMachineFailureSignal` —
+  // deliberately stricter than `containsRuntimeErrorPattern`: failure
+  // *vocabulary* alone ("this is an error, fix it") must not warn, matching
+  // the decompose Task Type Rules ("error" requires a machine signal).
+  const hasErrorMessage = containsMachineFailureSignal(directive);
+
+  // ✅ Check 2: If a machine signal exists but no error-type tasks → potential issue
   if (hasErrorMessage) {
     const hasErrorTypeTasks = tasks.some(t => isErrorTask(t));
     if (!hasErrorTypeTasks) {
