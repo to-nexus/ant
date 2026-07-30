@@ -159,4 +159,16 @@ describe('TurnContext.getWorkerScopeKey', () => {
       });
     });
   });
+
+  it('carries the human taskName through the scope without touching the scope key', async () => {
+    const ctx = makeContext();
+    await runInWorkerScope(2, async () => {
+      await runInTaskScope('task-XYZ', 0, async () => {
+        expect(getWorkerScope()?.taskName).toBe('Login page');
+        expect(ctx.getWorkerScopeKey()).toBe('worker-2#task-XYZ');
+      }, 'Login page');
+      // Name does not leak outside the task scope.
+      expect(getWorkerScope()?.taskName).toBeUndefined();
+    });
+  });
 });

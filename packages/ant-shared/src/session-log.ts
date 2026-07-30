@@ -74,6 +74,14 @@ interface LineBase {
    * 식별자를 박아 UI가 sub-section으로 그룹핑할 수 있게 한다.
    */
   workerScope?: string;
+  /**
+   * Human-readable task name for worker-scoped lines. Gives the FE
+   * worker-group header a label from the group's FIRST event —
+   * `workerScope`'s task segment is `task.id` (opaque), and the
+   * metadata-scrape fallback only lands with the terminal
+   * `task_response` card. Absent on `_main_` lines.
+   */
+  taskName?: string;
 }
 
 /**

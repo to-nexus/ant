@@ -32,6 +32,7 @@ import type { LLMStreamEvent } from '../ports/llm';
 import type { StateStorePort } from '../ports/stateStore';
 import type { LLMResponseEnv } from './types';
 import { TurnContext } from './TurnContext';
+import { getWorkerScope } from '../parallel/workerScope';
 import { ChatLogAppender } from './ChatLogAppender';
 import { MessageBroadcaster } from '../chat/MessageBroadcaster';
 import { setChatLogAppender, clearChatLogAppender } from './chatLogAppenderRegistry';
@@ -1097,12 +1098,16 @@ export class LLMResponseService {
   private lineBase(_kind: ChatLine['type']) {
     const turnId = this.getTurnId();
     const ws = this.workerScopeForLine();
+    // Human label for the FE worker-group header — stamped only on
+    // worker-scoped lines (LineBase.taskName contract in @ant/shared).
+    const taskName = ws ? getWorkerScope()?.taskName : undefined;
     return {
       ts: new Date().toISOString(),
       jobId: this.turnContext.context.jobId,
       turnId: (turnId ?? '') as string,
       jobType: this.jobType,
       ...(ws ? { workerScope: ws } : {}),
+      ...(taskName ? { taskName } : {}),
     };
   }
 

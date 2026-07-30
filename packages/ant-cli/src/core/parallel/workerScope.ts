@@ -60,6 +60,14 @@ interface WorkerContext {
    * Set at worker entry by `TaskWorker.executeTask`.
    */
   cycleSeq?: number;
+  /**
+   * Human-readable task name, stamped onto every chat line emitted in
+   * this scope (`LineBase.taskName`) so the FE worker-group header has a
+   * label from the group's very first event — `taskKey` is `task.id`
+   * when present, which is opaque to users, and the metadata scrape
+   * only lands with the terminal task_response card.
+   */
+  taskName?: string;
 }
 
 const workerStorage = new AsyncLocalStorage<WorkerContext>();
@@ -95,11 +103,13 @@ export function runInTaskScope<T>(
   taskKey: string,
   cycleSeq: number,
   fn: () => Promise<T>,
+  taskName?: string,
 ): Promise<T>;
 export function runInTaskScope<T>(
   taskKey: string,
   arg2: number | (() => Promise<T>),
   arg3?: () => Promise<T>,
+  taskName?: string,
 ): Promise<T> {
   const cycleSeq = typeof arg2 === 'number' ? arg2 : 0;
   const fn = (typeof arg2 === 'function' ? arg2 : arg3) as () => Promise<T>;
@@ -112,6 +122,7 @@ export function runInTaskScope<T>(
   }
   const next: WorkerContext = { ...prev, taskKey };
   if (cycleSeq > 0) next.cycleSeq = cycleSeq;
+  if (taskName) next.taskName = taskName;
   return workerStorage.run(next, fn);
 }
 

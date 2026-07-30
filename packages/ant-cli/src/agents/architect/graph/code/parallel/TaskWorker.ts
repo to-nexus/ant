@@ -426,10 +426,14 @@ export class TaskWorker<T extends BaseTask> {
     }
 
     const result = await runInWorkerScope(this.workerId, () =>
-      runInTaskScope(taskKey, cycleSeq, () =>
-        graph.invoke(workerState, {
-          recursionLimit: workerState.recursionLimit || envLimit,
-        }),
+      runInTaskScope(
+        taskKey,
+        cycleSeq,
+        () =>
+          graph.invoke(workerState, {
+            recursionLimit: workerState.recursionLimit || envLimit,
+          }),
+        task.name,
       ),
     );
     this.currentState = result;

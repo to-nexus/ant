@@ -23,6 +23,11 @@ import type { Turn } from '@/domain/store/selectors/chat';
 import { getPendingChoice, selectResumeFallbackCard } from '@/domain/store/selectors/chat';
 import { resolvePinTarget, type BubbleMetrics } from './pinTarget';
 import { PinRegistryContext, type RegisterBubble } from './pinRegistry';
+import {
+  WorkerGroupRegistryContext,
+  workerGroupElementKey,
+  type RegisterGroup,
+} from './workerGroupRegistry';
 import { ChoiceCard } from './choiceCard';
 
 /**
@@ -119,6 +124,56 @@ export function ChatHistory({ turns }: ChatHistoryProps) {
     if (element) bubbleElsRef.current.set(turnId, element);
     else bubbleElsRef.current.delete(turnId);
   }, []);
+
+  // Worker-group containers register their live elements (pinRegistry
+  // pattern) so the dock jump below can fine-scroll to the exact group
+  // after Virtuoso lands on the turn row.
+  const groupElsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const registerGroup = useCallback<RegisterGroup>((key, element) => {
+    if (element) groupElsRef.current.set(key, element);
+    else groupElsRef.current.delete(key);
+  }, []);
+
+  // Dock jump consumption. The dock wrote the expand override BEFORE the
+  // request, so by the time the rAF fine-scroll runs the group has its
+  // final (expanded) height.
+  const chatJumpRequest = useStore((state) => state.chatJumpRequest);
+  const clearChatJump = useStore((state) => state.clearChatJump);
+  useEffect(() => {
+    if (!chatJumpRequest) return;
+    const { turnId, workerScope } = chatJumpRequest;
+    const index = latestRef.current.indexByTurnId.get(turnId);
+    clearChatJump();
+    if (index === undefined) return;
+    // Explicit "leave the tail" gesture — mirror handleJumpToPinned.
+    autoScrollRef.current = false;
+    virtuosoRef.current?.scrollToIndex({
+      index,
+      align: 'start',
+      offset: -PIN_COLLAPSED_HEIGHT_PX,
+    });
+    // Double rAF: let Virtuoso mount/measure the row, then fine-scroll to
+    // the group element and flash it.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = groupElsRef.current.get(workerGroupElementKey(turnId, workerScope));
+        const scroller = scrollerRef.current;
+        if (!el || !scroller) return;
+        const rect = el.getBoundingClientRect();
+        const scrollerTop = scroller.getBoundingClientRect().top;
+        scroller.scrollTop += rect.top - scrollerTop - PIN_COLLAPSED_HEIGHT_PX - 8;
+        if (typeof el.animate === 'function') {
+          el.animate(
+            [
+              { backgroundColor: 'oklch(from var(--violet-300) l c h / 0.12)' },
+              { backgroundColor: 'transparent' },
+            ],
+            { duration: 1200, easing: 'ease-out' },
+          );
+        }
+      });
+    });
+  }, [chatJumpRequest, clearChatJump]);
 
   /**
    * Refresh the content-space metrics of every mounted bubble, then let
@@ -444,6 +499,7 @@ export function ChatHistory({ turns }: ChatHistoryProps) {
     <div className="relative h-full">
       <PinnedQuery query={pinnedQuery} onJump={handleJumpToPinned} />
       <PinRegistryContext.Provider value={registerBubble}>
+        <WorkerGroupRegistryContext.Provider value={registerGroup}>
         <Virtuoso
           ref={virtuosoRef}
           scrollerRef={handleScrollerRef}
@@ -460,6 +516,7 @@ export function ChatHistory({ turns }: ChatHistoryProps) {
           itemContent={itemContent}
           components={{ Footer, Scroller: ScrollerWithTextSelect }}
         />
+        </WorkerGroupRegistryContext.Provider>
       </PinRegistryContext.Provider>
     </div>
   );

@@ -316,6 +316,8 @@
     "untitled": "Working…",
     "retry": "retry {{n}}",
     "summary": "{{count}} steps",
-    "needsAttention": "Needs your input"
+    "needsAttention": "Needs your input",
+    "dockLabel": "Parallel task groups",
+    "jumpTo": "Jump to {{label}}"
   }
 }
