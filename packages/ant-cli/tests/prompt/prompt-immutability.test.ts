@@ -42,7 +42,7 @@ describe('AutoInjectionResolver.resolve immutability', () => {
   it('does not mutate input parameter', () => {
     const input = {
       job: 'code' as const,
-      phase: 'execute' as const,
+      node: 'execute' as const,
       taskType: 'feature',
       mode: 'generate' as const,
       techTier: { language: 'typescript' as const, stack: 'frontend' as const },
@@ -60,7 +60,7 @@ describe('AutoInjectionResolver.resolve immutability', () => {
     const before = deepClone(rac);
     const input = {
       job: 'code' as const,
-      phase: 'execute' as const,
+      node: 'execute' as const,
       resolvedAction: rac,
       data: { hasDirective: true },
     };

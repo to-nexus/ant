@@ -24,14 +24,21 @@ import {
 } from '../../src/agents/architect/graph/code/nodes/decompose/validation';
 import type { CodeTask } from '../../src/agents/architect/types/task';
 
-const task = (overrides: Partial<CodeTask> = {}): CodeTask => ({
-  id: 'feature-1',
-  name: 'Build feature',
-  type: 'feature',
-  priority: 300,
-  description: 'implement X',
-  ...overrides,
-});
+// `validateTierTaskShape` is a RUNTIME guard against malformed decompose output
+// — the whole reason it exists is that an LLM can emit shapes the compile-time
+// union forbids (e.g. `selfVerifyOnDone` on a variant that does not declare it,
+// which is the tier2-flag-on-tier4 case below). So this builder deliberately
+// accepts out-of-contract overrides, with the cast localised here rather than at
+// every call site.
+const task = (overrides: Record<string, unknown> = {}): CodeTask =>
+  ({
+    id: 'feature-1',
+    name: 'Build feature',
+    type: 'feature',
+    priority: 300,
+    description: 'implement X',
+    ...overrides,
+  }) as CodeTask;
 
 const verification = (): CodeTask => task({
   id: 'final-verification',

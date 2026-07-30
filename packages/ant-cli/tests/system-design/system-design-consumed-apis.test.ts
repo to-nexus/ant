@@ -300,6 +300,7 @@ describe('validateAndFixTargetFiles — consumedApis (consumer perspective)', ()
 describe('Matrix outputs — api-contract surface (provider/consumer separation)', () => {
   function getOutputPrefixes(intent: string): string[] {
     const slots = getConfigSlots(intent as any);
+    if (!slots) throw new Error(`No config slots for ${intent}`);
     const target = slots.target;
     if (target.kind !== 'generate') throw new Error(`Expected generate target for ${intent}, got ${target.kind}`);
     return target.outputs.map(o => o.prefix);

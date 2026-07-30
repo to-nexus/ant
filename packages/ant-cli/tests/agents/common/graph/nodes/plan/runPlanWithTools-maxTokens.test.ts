@@ -57,7 +57,7 @@ function makeLLM(events: LLMStreamEvent[]): LLMClient {
 const baseTools: ToolDefinition[] = [{
   name: 'read_file',
   description: 'read a file',
-  parameters: { type: 'object', properties: {}, required: [] },
+  input_schema: { type: 'object', properties: {}, required: [] },
 }];
 
 const baseArgs = (llm: LLMClient, onMaxTokensTruncation?: any) => ({

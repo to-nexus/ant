@@ -43,7 +43,9 @@ class FakeOrgRepo implements OrganizationRepositoryPort {
   async getOrganization(orgId: string) {
     return this.orgs.get(orgId) ?? null;
   }
-  async getOrCreateOrganization() {
+  // Explicit Promise<never>: an async body that only throws still infers
+  // Promise<void>, which does not satisfy the port's return type.
+  async getOrCreateOrganization(): Promise<never> {
     throw new Error('not used');
   }
   async searchOrganizations(query: string, limit: number): Promise<OrganizationSummary[]> {
@@ -57,7 +59,9 @@ class FakeOrgRepo implements OrganizationRepositoryPort {
     }
     return results;
   }
-  async attachMembership() {
+  // Explicit Promise<never>: an async body that only throws still infers
+  // Promise<void>, which does not satisfy the port's return type.
+  async attachMembership(): Promise<never> {
     throw new Error('not used');
   }
   async getMembership() {
@@ -72,7 +76,37 @@ class FakeOrgRepo implements OrganizationRepositoryPort {
   async getUserByEmail() {
     return null;
   }
-  async upsertUser() {
+  // Explicit Promise<never>: an async body that only throws still infers
+  // Promise<void>, which does not satisfy the port's return type.
+  async upsertUser(): Promise<never> {
+    throw new Error('not used');
+  }
+
+  // Approval / admin surface — added to the port after this fake was written.
+  // Kept as explicit throwers rather than dropping `implements`, so the next
+  // port addition fails HERE instead of silently leaving the fake behind.
+  async listMembershipsByUser(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getUserApproval(): Promise<never> {
+    throw new Error('not used');
+  }
+  async setUserApproval(): Promise<never> {
+    throw new Error('not used');
+  }
+  async setTestAccountLevel(): Promise<never> {
+    throw new Error('not used');
+  }
+  async syncSuperAdmins(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listUsers(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getAdminConfig(): Promise<never> {
+    throw new Error('not used');
+  }
+  async setAdminConfig(): Promise<never> {
     throw new Error('not used');
   }
   async backfillFromWorkspaceTree() {

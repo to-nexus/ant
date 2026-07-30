@@ -58,7 +58,13 @@ function ctx(): ToolExecutionContext {
 
 async function read(args: { path: string; startLine?: number; endLine?: number }): Promise<string> {
   const result: ToolResult = await handleReadFile(ctx(), args);
-  return result.error ? result.content : result.content;
+  // ToolResult.content is `string | ContentBlock[]`; read_file always returns text.
+  // (The previous `result.error ? result.content : result.content` picked the same
+  // branch either way.)
+  if (typeof result.content !== 'string') {
+    throw new Error('expected handleReadFile to return text content');
+  }
+  return result.content;
 }
 
 describe('handleReadFile — small files (<= 100K)', () => {

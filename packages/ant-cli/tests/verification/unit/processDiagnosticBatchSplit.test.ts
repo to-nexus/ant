@@ -50,14 +50,19 @@ function makeState(overrides: StateOverrides = {}): any {
   };
 }
 
-function makeTask(overrides: Partial<CodeTask> = {}): CodeTask {
+// Overrides are intentionally untyped: this builder produces EVERY task variant
+// (verification default, plus setup / error / test-code / feature / ui at the call
+// sites below), and a union-wide `Partial<CodeTask>` spread widens `type` past the
+// literal so the result satisfies no single member. One cast here beats one per
+// call site.
+function makeTask(overrides: Record<string, unknown> = {}): CodeTask {
   return {
     id: 'task-1',
     name: 'Final Verification',
     type: 'verification',
     priority: 1000,
     ...overrides,
-  };
+  } as CodeTask;
 }
 
 describe('processDiagnosticBatchSplit — LLM-explicit fan-out', () => {

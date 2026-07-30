@@ -48,9 +48,9 @@ describe('local-mode multi-tenant ambiguity warning', () => {
     // Cached on second call — still no second warn.
     inferLocalDefaultTenant();
 
-    const warnText = warnSpy.mock.calls.map(c => String(c[0])).join('\n');
+    const warnText = warnSpy.mock.calls.map((c: unknown[]) => String(c[0])).join('\n');
     expect(warnText).toMatch(/ambiguous/i);
-    const ambiguityWarns = warnSpy.mock.calls.filter(c => /ambiguous/i.test(String(c[0])));
+    const ambiguityWarns = warnSpy.mock.calls.filter((c: unknown[]) => /ambiguous/i.test(String(c[0])));
     expect(ambiguityWarns).toHaveLength(1);
   });
 
@@ -59,13 +59,13 @@ describe('local-mode multi-tenant ambiguity warning', () => {
     mkdirSync(path.join(base, 'orgA', 'u2'), { recursive: true });
 
     expect(inferLocalDefaultTenant()).toBeNull();
-    expect(warnSpy.mock.calls.some(c => /ambiguous/i.test(String(c[0])))).toBe(true);
+    expect(warnSpy.mock.calls.some((c: unknown[]) => /ambiguous/i.test(String(c[0])))).toBe(true);
   });
 
   it('does NOT warn for a clean single-org / single-user workspace', () => {
     mkdirSync(path.join(base, 'orgA', 'u1'), { recursive: true });
 
     expect(inferLocalDefaultTenant()).toEqual({ organizationId: 'orgA', userId: 'u1' });
-    expect(warnSpy.mock.calls.some(c => /ambiguous/i.test(String(c[0])))).toBe(false);
+    expect(warnSpy.mock.calls.some((c: unknown[]) => /ambiguous/i.test(String(c[0])))).toBe(false);
   });
 });

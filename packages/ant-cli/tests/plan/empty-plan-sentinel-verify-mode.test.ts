@@ -98,7 +98,6 @@ describe('finalizePlanOutcome — empty-plan sentinel 게이트 (solar-coming-bo
       id: 'v1',
       type: 'verification',
       priority: 1000,
-      selfVerifyOnDone: undefined as any,
     });
     const state = makeState({ _verifyEntered: true, currentTask: task });
 
@@ -138,7 +137,6 @@ describe('finalizePlanOutcome — empty-plan sentinel 게이트 (solar-coming-bo
       id: 'f2',
       type: 'feature',
       priority: 400,
-      selfVerifyOnDone: undefined as any,
     });
     const state = makeState({ _verifyEntered: false, currentTask: task });
 
@@ -160,7 +158,6 @@ describe('finalizePlanOutcome — empty-plan sentinel 게이트 (solar-coming-bo
       id: 'doc-root',
       type: 'doc',
       priority: 800,
-      selfVerifyOnDone: undefined as any,
     });
     const state = makeState({ _verifyEntered: false, currentTask: task });
 

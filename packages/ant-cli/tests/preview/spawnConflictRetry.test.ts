@@ -52,7 +52,7 @@ function buildPkg(): PackageInfo {
     path: '/tmp/fake/apps/hub',
     type: 'frontend',
     packageJson: { scripts: { dev: 'next dev' } },
-    projectProfile: { language: 'typescript' },
+    projectProfile: { language: 'typescript', source: 'manifest' as const },
   };
 }
 

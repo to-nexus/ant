@@ -407,6 +407,13 @@ the only gate. Test sources are excluded from `packages/ant-cli/tsconfig.json`
 because it ships into the runtime image; `tsconfig.test.json` is what
 typechecks them. Never add test globs to the shipped config.
 
+`pnpm typecheck:tests` is **blocking in CI**. Tests went un-typechecked for a
+long time and accumulated 185 errors across 57 files — stale import paths, task
+literals missing required fields, `interface X extends BaseTask` from before that
+type became a union, spies whose declared arity was smaller than the call they
+assert on, and fields (`packages`, `selfVerifyOnDone` on the wrong variant) that
+had been deleted from the types. All fixed; keep it at zero.
+
 ### ❌ Forbidden
 
 - **Pinning prompt prose.** `expect(rendered).toMatch(/ONE store instance/)`

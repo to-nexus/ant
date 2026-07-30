@@ -171,10 +171,11 @@ Root cause is a race in the auth flow.
     it('is registered under the metadata / consumed-suppressed / sealed-state axis', () => {
       const entry = findTag('analysis');
       expect(entry).toBeDefined();
-      expect(entry.axis.intent).toBe('metadata');
-      expect(entry.axis.processing).toContain('consumed-suppressed');
-      expect(entry.axis.persistence).toContain('sealed-state');
-      expect(entry.axis.blocking).toBe('non-blocking');
+      const axis = entry!.axis;
+      expect(axis.intent).toBe('metadata');
+      expect(axis.processing).toContain('consumed-suppressed');
+      expect(axis.persistence).toContain('sealed-state');
+      expect(axis.blocking).toBe('non-blocking');
     });
 
     it('is in the canonical tag walk so SpecialTagTransformer auto-suppresses raw XML', () => {

@@ -436,7 +436,7 @@ function collectBasisPaths(): Set<string> {
     visualHierarchyRules: VISUAL_HIERARCHY_RULES_VARIANTS,
   };
   for (const [layer, variants] of Object.entries(VARIANT_MAP)) {
-    const pathFn = VISUAL_TIER_TEMPLATE_PATHS[layer as keyof typeof VARIANT_MAP];
+    const pathFn = (VISUAL_TIER_TEMPLATE_PATHS as Record<string, (v: string) => string>)[layer];
     if (typeof pathFn === 'function') {
       for (const v of variants) {
         paths.add((pathFn as (v: string) => string)(v));

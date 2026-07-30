@@ -15,6 +15,7 @@ import { ownerKeyFor } from '../../src/agents/common/subagent/seam';
 import { launchEntry, clearAll } from '../../src/agents/common/subagent/registry';
 import { CONV_KEYS } from '../../src/agents/common/graph/conversations';
 import type { SubagentResult } from '../../src/agents/common/subagent/types';
+import type { ArchitectGraphState } from '../../src/agents/architect/graph/code/state';
 
 const { deliverOwedExploreReports } = __testing__;
 
@@ -43,7 +44,7 @@ function freshState(nodePlan: Array<{ role: string; content: any }>) {
     tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     tokenUsageByModel: {},
     conversations: { [CONV_KEYS.NODE_PLAN]: nodePlan },
-  } as Record<string, any>;
+  } as unknown as ArchitectGraphState;
 }
 
 beforeEach(() => clearAll());

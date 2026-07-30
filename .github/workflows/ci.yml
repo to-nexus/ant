@@ -34,11 +34,11 @@ jobs:
       - run: pnpm typecheck:ui
       # Test sources are excluded from tsconfig.json on purpose (it ships into
       # the runtime image — see packages/ant-cli/tsconfig.test.json). Without
-      # this step a test can import a renamed path and still pass, because
-      # `import type` is erased by esbuild/vitest.
-      # TODO: drop continue-on-error once the inherited backlog reaches 0.
+      # this step a test can import a renamed path, build a task literal missing
+      # a required field, or call a spy with arguments its signature does not
+      # declare, and still pass — `import type` is erased by esbuild/vitest and
+      # the rest never reaches a compiler. Blocking as of the 185 → 0 cleanup.
       - run: pnpm typecheck:tests
-        continue-on-error: true
       - run: pnpm test:cli
       # ant-ui's suite (80 files / 677 cases) runs in ~4s. It was previously
       # typechecked but never executed in CI.

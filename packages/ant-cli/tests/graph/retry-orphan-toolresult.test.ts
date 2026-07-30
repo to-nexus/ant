@@ -35,6 +35,10 @@ import {
   type ConversationMessage,
 } from '../../src/agents/common/graph/conversations';
 import { composeMessages } from '../../src/core/utils/messageComposer';
+// The graph's ConversationMessage additionally permits role:'system', which
+// composeMessages' own ConversationMessage does not — hence the narrowing cast
+// at the call below. Every fixture here is user/assistant.
+import type { ConversationMessage as ComposerMessage } from '../../src/core/context/types';
 import { mergeDelta } from '../../src/agents/architect/graph/code/nodes/plan/outcome/delta';
 
 const NODE_EXECUTE = CONV_KEYS.NODE_EXECUTE;
@@ -110,7 +114,7 @@ describe('retry orphan tool_use — handleRetryEntry conversation clear must rea
     ];
     const { messages } = composeMessages({
       initialBlocks: [{ type: 'text', text: 'system' }] as any,
-      priorTurns: stale,
+      priorTurns: stale as ComposerMessage[],
     });
 
     expect(messages).toHaveLength(5);

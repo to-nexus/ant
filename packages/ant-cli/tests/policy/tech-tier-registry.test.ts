@@ -154,7 +154,7 @@ describe('Template files → Registry (no orphans)', () => {
 
     for (const file of files) {
       const fw = file.replace('.md', '');
-      expect(allFws.has(fw)).toBe(true);
+      expect(allFws.has(fw as never)).toBe(true);
     }
   });
 });
@@ -344,7 +344,7 @@ describe('VisualTier: Registry → Template files exist', () => {
 
   for (const [layer, variants] of Object.entries(VARIANT_MAP)) {
     describe(`layer: ${layer}`, () => {
-      const pathFn = VISUAL_TIER_TEMPLATE_PATHS[layer as keyof typeof VARIANT_MAP];
+      const pathFn = (VISUAL_TIER_TEMPLATE_PATHS as Record<string, (v: string) => string>)[layer];
       it.each([...variants])(`variant "%s" has template file`, (variant) => {
         expect(templateExists((pathFn as (v: string) => string)(variant))).toBe(true);
       });
