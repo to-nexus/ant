@@ -588,6 +588,19 @@ register({
     'Emit `<antrules-decision>none|write|update</antrules-decision>` as text in your reply (NOT a callable tool — never issue it as a tool call) followed by a `<reply>` justification (≥10 chars) before `<done>true</done>` on Tier 3/4 final verification. `none` = no 3-condition entry found; `write` = file did not exist + new entry found; `update` = file exists + new entry found.',
 });
 
+register({
+  name: 'plan-unchanged',
+  pattern: /<plan-unchanged\s*\/?>/i,
+  axis: {
+    intent: 'control',
+    processing: ['consumed-suppressed'],
+    persistence: ['none'],
+    blocking: 'non-blocking',
+  },
+  promptContract:
+    'Reply with exactly `<plan-unchanged/>` when a subagent report delivered at seal time changes nothing in the plan you already sealed — that plan is kept as-is. Never re-emit an unchanged `<plan>` in full. Only valid in answer to a seal-time report delivery.',
+});
+
 // ── decision axis ──────────────────────────────────────────────────────────
 
 register({

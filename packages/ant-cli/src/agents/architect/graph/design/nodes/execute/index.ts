@@ -32,6 +32,7 @@ import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStr
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokensFromMessages } from '../../../../../common/graph/llmHelpers';
+import { measurePromptChars } from '../../../../../../core/utils/promptLogger';
 import { getTools } from './tools';
 import { resolveLLMClient } from './llmClient';
 import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
@@ -435,14 +436,11 @@ export async function execute(
           callIndex: newCallIndex - 1,
           modelId: executeModelId,
           nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length,
-          estimatedPromptChars: (messages as any[]).reduce((sum: number, m: any) => {
-            if (typeof m.content === 'string') return sum + m.content.length;
-            if (Array.isArray(m.content)) {
-              return sum + m.content.reduce((s: number, b: any) =>
-                s + (b.type === 'image' ? 200 : (typeof b.text === 'string' ? b.text.length : JSON.stringify(b).length)), 0);
-            }
-            return sum + JSON.stringify(m.content).length;
-          }, 0),
+          // The tokenLogger spreads this conditionally, so omitting it made the
+          // field vanish from all 21 execute records even though the counter was
+          // right here — the schema promised it and every row silently lied.
+          recursionCount: state.recursionCount,
+          estimatedPromptChars: measurePromptChars(messages as any[]),
           taskCumulativeInput: taskUsage?.inputTokens || 0,
           taskCumulativeOutput: taskUsage?.outputTokens || 0,
         }

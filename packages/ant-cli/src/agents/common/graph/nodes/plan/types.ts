@@ -148,4 +148,12 @@ export interface RunPlanWithToolsArgs<TState extends MinimalPlanState = MinimalP
    * tool-call/fallthrough handling. Default: 50.
    */
   minPlanLength?: number;
+  /**
+   * Optional observer for the round's raw text, fired once before the
+   * outcome is classified. The `fallthrough` outcome carries no text, so a
+   * caller that needs to recognise a control sentinel in a no-plan/no-tool
+   * round has no other way to see it (design's seal-drain "plan unchanged"
+   * reply). Observation only — the helper's own classification is unaffected.
+   */
+  onRoundText?: (text: string) => void;
 }

@@ -10,6 +10,7 @@ import {
   collectTouchedFilesFromChatLog,
 } from '../../../../../../core/context/breadcrumb';
 import { buildLlmBreadcrumbSummary } from '../../../../../../core/context/breadcrumbSummary';
+import type { TaskTokenUsage } from '../../../../../../core/types/task';
 import {
   clearExecutionLogger,
   flushExecutionLogger,
@@ -107,6 +108,7 @@ async function applyDesignBreadcrumbBoundary(
   state: DesignGraphState,
   touched: DesignTouched | null,
   options: DesignBreadcrumbOptions = {},
+  onUsage?: (usage: TaskTokenUsage) => void,
 ): Promise<void> {
   const session = state.deps?.session;
   const jobId = state.jobId;
@@ -138,6 +140,7 @@ async function applyDesignBreadcrumbBoundary(
           touchedCount: pathsFromTrace.length,
           llm: state.deps?.llm,
           promptPort: state.deps?.promptBuilder,
+          ...(onUsage ? { onUsage } : {}),
         });
 
   const breadcrumb = buildBreadcrumb({
@@ -449,6 +452,18 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   //   - success: original gates (`mode='explain'`, touched=0) stay intact
   //   - failure/interruption: force-emit a failure summary BC so the next
   //     turn can observe why this run stopped, even when touched=0.
+  // Usage sink shared by every LLM call at this seam (breadcrumb summary, job
+  // final summary, turn digest). All three run AFTER this node's last kanban
+  // broadcast, and `settle` prices from the Redis snapshot only that broadcast
+  // writes — so their tokens were unbilled or lossily billed. Accumulating here
+  // plus `flushUsageSnapshot()` at the very end of this node closes the window.
+  const reportSeamUsage = async (usage: TaskTokenUsage): Promise<void> => {
+    const { accumulateTokenUsage, broadcastTokenUsageByModel } = await import('../../../../../common/graph/llmHelpers');
+    accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
+    broadcastTokenUsageByModel(state);
+  };
+  const onSeamUsage = (usage: TaskTokenUsage): void => { void reportSeamUsage(usage); };
+
   // Resolved once and reused by the job final summary below — the summary's
   // prompt must be able to cite the real paths this turn wrote (its template
   // asks for them and forbids claiming unevidenced work), which it could not
@@ -461,12 +476,17 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       console.warn('⚠️  [Design Learn] touched-file resolution failed:', err);
     }
     try {
-      await applyDesignBreadcrumbBoundary(state, designTouched, {
-        forceEmit: hasEarlyTermination,
-        summaryOverride: hasEarlyTermination
-          ? buildDesignFailureBreadcrumbSummary(state)
-          : undefined,
-      });
+      await applyDesignBreadcrumbBoundary(
+        state,
+        designTouched,
+        {
+          forceEmit: hasEarlyTermination,
+          summaryOverride: hasEarlyTermination
+            ? buildDesignFailureBreadcrumbSummary(state)
+            : undefined,
+        },
+        onSeamUsage,
+      );
     } catch (err) {
       console.warn('⚠️  [Design Learn] breadcrumb write failed:', err);
     }
@@ -558,7 +578,6 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     (state.completedTasksDetails?.length ?? 0) > 0
   ) {
     const { emitJobFinalSummary, harvestTaskProse } = await import('../../../../../../core/context/jobSummary');
-    const { accumulateTokenUsage, broadcastTokenUsageByModel } = await import('../../../../../common/graph/llmHelpers');
     const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
     jobSummaryText = await emitJobFinalSummary({
       session: state.deps?.session,
@@ -595,10 +614,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
           }
         : {}),
       taskProse: await harvestTaskProse(state.deps?.session, state.turnId),
-      onUsage: (usage) => {
-        accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
-        broadcastTokenUsageByModel(state);
-      },
+      onUsage: onSeamUsage,
     });
   }
 
@@ -633,8 +649,19 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       executionTierId: state.executionTier,
       llm: state.deps.llm,
       promptPort: state.deps.promptBuilder,
+      onUsage: onSeamUsage,
       ...(jobSummaryText ? { outcomeHint: jobSummaryText.slice(0, 200) } : {}),
     });
+  }
+
+  // Final usage flush — MUST be last. The summary and digest above accumulated
+  // onto state AFTER this node's last kanban broadcast, so without this the
+  // charged balance and the settled ledger row both miss them. Unlike distill
+  // this is a Redis SET + publish, not an LLM call, so appending it after
+  // distill does not weaken the "no LLM call may pre-empt the durable
+  // checkpoint" rationale that keeps distill last.
+  if (isLastTask && !_isWorkerContext) {
+    await state.deps?.kanbanUpdate?.flushUsageSnapshot?.();
   }
 
   return {

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { formatByteSize } from '../../core/utils/binaryExtensions';
 
 /**
  * Asset inventory — the single domain-scoped enumeration of a feature's asset
@@ -21,6 +22,18 @@ export interface AssetInventory {
   /** First-subdir grouping under the pool root, e.g. `{ entities: [...] }`. */
   groups: Record<string, string[]>;
   count: number;
+  /**
+   * Byte size per feature-relative path. Additive — `files` keeps its
+   * `string[]` shape because graph state and the code job's prompt block both
+   * consume it directly.
+   *
+   * A binary asset the model cannot read is one it can only reason about by
+   * size, and with no size in reach it invented one: a fabricated "193.8 KB"
+   * propagated into a spec and was then used to justify a design decision
+   * ("the async load window is negligible at 193.8 KB"). One `statSync` per
+   * file, bounded by the same `maxFiles` cap as the walk.
+   */
+  sizes: Record<string, number>;
 }
 
 const DEFAULT_MAX = 200;
@@ -40,8 +53,8 @@ const DEFAULT_MAX = 200;
  * consuming job should DO with a fitting asset).
  */
 export function formatAssetInventoryBlock(
-  // Accepts the graph-state channel shape too (its `groups` is optional).
-  inv: { count: number; groups?: Record<string, string[]> } | undefined,
+  // Accepts the graph-state channel shape too (its `groups` / `sizes` are optional).
+  inv: { count: number; groups?: Record<string, string[]>; sizes?: Record<string, number> } | undefined,
   opts: { assetsRoot: string; usage: string },
 ): string {
   if (!inv?.count) return '';
@@ -49,7 +62,16 @@ export function formatAssetInventoryBlock(
   block += `There are ${inv.count} real asset file(s). ${opts.usage}\n`;
   for (const [group, files] of Object.entries(inv.groups ?? {})) {
     if (files.length === 0) continue;
-    block += `- ${group}: ${files.slice(0, 20).map(f => f.split('/').pop()).join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
+    // Full feature-relative path, not the basename: the group key is only the
+    // FIRST segment below the pool root, so a basename loses the rest of the
+    // path for anything nested deeper — and the path is what code must
+    // reference. Size is included so a binary the model cannot read is still
+    // quantifiable without inventing a number.
+    const rendered = files.slice(0, 20).map((f) => {
+      const bytes = inv.sizes?.[f];
+      return bytes !== undefined ? `${f} (${formatByteSize(bytes)})` : f;
+    });
+    block += `- ${group}: ${rendered.join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
   }
   return block + '\n';
 }
@@ -60,7 +82,7 @@ export function indexAssetPool(params: {
   maxFiles?: number;
 }): AssetInventory {
   const { featurePath, assetsRoot } = params;
-  const empty: AssetInventory = { files: [], groups: {}, count: 0 };
+  const empty: AssetInventory = { files: [], groups: {}, count: 0, sizes: {} };
   if (!featurePath) return empty;
 
   const maxFiles = params.maxFiles
@@ -69,6 +91,7 @@ export function indexAssetPool(params: {
   if (!fs.existsSync(poolAbs)) return empty;
 
   const files: string[] = [];
+  const sizes: Record<string, number> = {};
   const walk = (dirAbs: string): void => {
     if (files.length >= maxFiles) return;
     let entries: fs.Dirent[] = [];
@@ -84,7 +107,12 @@ export function indexAssetPool(params: {
       if (e.isDirectory()) walk(abs);
       else if (e.isFile()) {
         const relToFeature = path.relative(featurePath, abs).replace(/\\/g, '/');
-        if (relToFeature && !relToFeature.startsWith('..')) files.push(relToFeature);
+        if (relToFeature && !relToFeature.startsWith('..')) {
+          files.push(relToFeature);
+          // Same Dirent walk, one extra stat — a binary the model cannot read is
+          // one it can only reason about by size.
+          try { sizes[relToFeature] = fs.statSync(abs).size; } catch { /* raced away */ }
+        }
       }
     }
   };
@@ -100,5 +128,5 @@ export function indexAssetPool(params: {
     (groups[group] ||= []).push(f);
   }
 
-  return { files, groups, count: files.length };
+  return { files, groups, count: files.length, sizes };
 }

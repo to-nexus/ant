@@ -310,6 +310,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
+          callIndex: state._executeCallIndex || 0,
           templatePath: tpl.base,
           usedTemplates: isHandoff
             ? [
@@ -399,6 +400,7 @@ async function logGameArtPrompt(
     await logPrompt(state.context.featurePath, jobId, 'design', phase, totalLength, {
       taskId: extra.taskId as string | undefined,
       taskName: extra.taskName as string | undefined,
+      callIndex: state._executeCallIndex || 0,
       templatePath: tpl.base,
       usedTemplates: handoffMode
         ? [tpl.rules!, 'jobs/shared/injections/handoff-package-format']

@@ -295,14 +295,20 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
    * tracked so close() can flush it. Sets `creditExhausted` when the balance
    * floors at 0 — the orchestrator/serial guard reads `isCreditExhausted()`.
    */
-  private meterCredits(byModel: TokenUsageByModel): void {
+  private meterCredits(byModel: TokenUsageByModel, force = false): void {
     const ledger = this.creditLedger;
     const org = this.userContext?.organizationId;
     const user = this.userContext?.userId;
     if (!ledger || !org || !user) return;
 
     const now = Date.now();
-    if (now - this.lastMeterAtMs < KanbanBroadcaster.METER_THROTTLE_MS) return;
+    // A throttled tick is DROPPED, not deferred — there is no trailing timer.
+    // That is normally harmless (each tick sends the job-cumulative map and the
+    // ledger's debit is monotonic, so a later tick catches up), but at job end
+    // there IS no later tick, and settle cannot recover it either: the settle
+    // target is computed from a snapshot that never saw those tokens, and the
+    // monotonic debit never lowers a charge. Hence `force` for the final flush.
+    if (!force && now - this.lastMeterAtMs < KanbanBroadcaster.METER_THROTTLE_MS) return;
     this.lastMeterAtMs = now;
 
     const { usd } = computeJobCostUsd(byModel as Record<string, any>);
@@ -332,6 +338,42 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
           console.warn(`[KanbanBroadcaster] credit meter tick failed:`, err?.message);
         }),
     );
+  }
+
+  /**
+   * Final usage flush — the last statement of a job's learn seam.
+   *
+   * Usage produced AFTER learn's last `updateTaskQueue` (the turn digest, the
+   * job final summary, a breadcrumb summary) could not be billed: `settle`
+   * prices from the Redis task-queue snapshot, which only `broadcastKanbanUpdate`
+   * writes, and the live meter's 2s throttle drops rather than defers — so a
+   * late tick was either lost outright or landed on the balance while the
+   * settle ledger row still under-reported it.
+   *
+   * Two steps, both from already-cached state (no new inputs, no LLM):
+   *   1. one throttle-bypassing meter tick, so the balance is right;
+   *   2. one snapshot re-issue, so the row `settle` writes is right too.
+   *
+   * Safe to call unconditionally — a no-op without a ledger/userContext or
+   * before any per-model usage exists.
+   */
+  async flushUsageSnapshot(): Promise<void> {
+    if (!this.cachedTokenUsageByModel || Object.keys(this.cachedTokenUsageByModel).length === 0) {
+      return;
+    }
+    this.meterCredits(this.cachedTokenUsageByModel, true);
+    await this.broadcastKanbanUpdate(
+      'usage-flush',
+      this.cachedCurrentTasks,
+      this.cachedQueue,
+      this.cachedCompletedTasks,
+      this.cachedRecursionCount,
+      this.cachedRecursionLimit,
+      this.cachedTokenUsage,
+    ).catch((err) => {
+      console.warn(`[KanbanBroadcaster] final usage snapshot flush failed:`, err?.message);
+    });
+    await this.inflight.flush();
   }
 
   /** True once live metering drove the balance to 0 — exhaustion pause signal. */

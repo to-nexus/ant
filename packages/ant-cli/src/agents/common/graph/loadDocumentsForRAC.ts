@@ -30,7 +30,7 @@ import * as path from 'path';
 import type { ResolvedActionContext, ResolvedArtifact, UiSource } from '@ant/shared';
 import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/shared';
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
-import { isBinaryFileSync } from '../../../core/utils/binaryExtensions';
+import { isBinaryFileSync, formatByteSize } from '../../../core/utils/binaryExtensions';
 import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
 
 export function loadResolvedArtifacts(
@@ -205,19 +205,13 @@ function isCodebaseScopedPath(rel: string): boolean {
   return norm === '' || norm === 'codebase' || norm.startsWith('codebase/');
 }
 
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
-
 // Path-only stub for handoff sub-sources AND asset pools. Binary entries are
 // referenced by path (never read_file'd); text entries advertise on-demand read.
 // Kind comes from the content sniff (extension fast-path + head bytes), so
 // novel asset formats classify correctly without an extension whitelist.
 function buildHandoffStub(relPath: string, absPath: string, sizeBytes: number): string {
   const kind = isBinaryFileSync(absPath) ? 'binary' : 'text';
-  const size = formatSize(sizeBytes);
+  const size = formatByteSize(sizeBytes);
   if (kind === 'binary') {
     return [
       `[asset] ${relPath}`,

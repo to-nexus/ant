@@ -326,6 +326,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
           {
             taskId: state.currentTask?.id,
             taskName: state.currentTask?.name,
+            callIndex: state._executeCallIndex || 0,
             templatePath: TEMPLATE_PATHS.designSystem.base,
             usedTemplates,
             injectedVariables: {
@@ -389,6 +390,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         {
           taskId: state.currentTask?.id,
           taskName: state.currentTask?.name,
+          callIndex: state._executeCallIndex || 0,
           templatePath: TEMPLATE_PATHS.designSystem.base,
           usedTemplates: usedTemplatesForLog,
           injectedVariables: {

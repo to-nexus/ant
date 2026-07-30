@@ -19,6 +19,7 @@
 import type { SessionPort } from '../ports/session';
 import type { LLMClient } from '../ports/llm';
 import type { PromptPort } from '../ports/prompt';
+import type { TaskTokenUsage } from '../types/task';
 import type {
   FeatureUserTurnLine,
   FeatureUserTurnMetaLine,
@@ -489,6 +490,14 @@ export interface CompactFeatureContextDeps {
   session?: SessionPort;
   /** Line identity for the persisted checkpoint. */
   identity?: { jobId?: string; turnId?: string; jobType?: string };
+  /**
+   * Usage sink for the compaction LLM call. `compactJob` returns `tokenUsage`
+   * and this used to be discarded outright, so an overflow compaction was
+   * unbilled. Callers that wire it MUST also return the token channels from
+   * their node — mutating state without returning them drops the update
+   * (the unreturned-channel-drop class).
+   */
+  onUsage?: (usage: TaskTokenUsage) => void;
 }
 
 /**
@@ -584,6 +593,13 @@ export async function compactFeatureContext(
       recentWindowSize: 0,
       maxOutputTokens: COMPACTION_MAX_OUTPUT_TOKENS,
     });
+    if (result.tokenUsage && deps.onUsage) {
+      try {
+        deps.onUsage(result.tokenUsage);
+      } catch (err) {
+        console.warn('⚠️  [FeatureContext] compaction onUsage sink threw:', err);
+      }
+    }
     if (!result.wasCompacted || !result.summary) return ctx;
 
     // P3 — persist the checkpoint so the NEXT hydrate reads it for free.
@@ -662,6 +678,8 @@ export interface HydrateFeatureContextDeps {
   session: SessionPort | undefined;
   llm?: LLMClient;
   promptPort?: PromptPort;
+  /** Forwarded to the compaction step — see CompactFeatureContextDeps.onUsage. */
+  onUsage?: (usage: TaskTokenUsage) => void;
 }
 
 export interface HydrateFeatureContextInput {
@@ -745,6 +763,7 @@ export async function hydrateFeatureContext(
         promptPort: deps.promptPort,
         session: deps.session,
         identity: { jobId: input.jobId, turnId },
+        ...(deps.onUsage ? { onUsage: deps.onUsage } : {}),
       };
       if (input.executionTier) {
         featureContext = await input.executionTier.compact(featureContext, compactDeps);

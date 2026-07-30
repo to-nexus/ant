@@ -73,6 +73,18 @@ export interface TaskQueueUpdatePort {
   updateTokenUsageByModel?(byModel: TokenUsageByModel): void;
 
   /**
+   * Final usage flush — call as the LAST statement of a job's learn seam.
+   *
+   * Usage produced after learn's last `updateTaskQueue` (turn digest, job final
+   * summary, breadcrumb summary) is otherwise unbillable: `settle` prices from
+   * the Redis snapshot that only a kanban broadcast writes, and the live credit
+   * meter's throttle drops late ticks rather than deferring them. This forces
+   * one meter tick plus one snapshot re-issue from cached state, so the charged
+   * balance and the settled ledger row agree.
+   */
+  flushUsageSnapshot?(): Promise<void>;
+
+  /**
    * Record the job's execution tier once decompose determines it. Cached and
    * persisted in the snapshot so the billing meter/settle can index the
    * platform-fee base matrix without reaching into graph state. No-op if the

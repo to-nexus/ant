@@ -223,18 +223,23 @@ export async function handleDownloadAsset(
  * `assets/{service|game}/...` (Phase 2 — D22). Lookup is strictly
  * scoped to the resolved domain root; the parent `assets/` is a
  * container only and is never enumerated as a fallback.
+ *
+ * Built on `indexAssetPool`, the same enumeration the resolve nodes use, so a
+ * `category` filter is an in-memory group lookup rather than a path join. That
+ * distinction is load-bearing: joining an LLM-supplied `category` onto the
+ * already domain-scoped root turned `game/models` into `assets/game/game/models`,
+ * and because `listFiles` returns `[]` for a missing directory rather than
+ * throwing, the miss was reported as the affirmative denial "No assets found.
+ * Add asset files under assets/game/." The model believed that over its own
+ * `list_files` result and designed around an asset it had been given
+ * (zero-hunting-label). An unknown category must therefore be distinguishable
+ * from an empty pool, and both must share ONE response shape so "zero" can be
+ * compared against "some".
  */
 export async function handleListAssets(
   ctx: ToolExecutionContext,
   args: { category?: string },
 ): Promise<ToolResult> {
-  const { category } = args;
-  const fileSystem = ctx.fileSystem;
-  if (!fileSystem) {
-    const msg = 'FileSystemPort not available';
-    return { content: msg, error: msg };
-  }
-
   const featurePath = ctx.featurePath;
   if (!featurePath) {
     const msg = 'featurePath not available in context';
@@ -247,80 +252,81 @@ export async function handleListAssets(
     return { content: msg, error: msg };
   }
 
-  const path = await import('path');
-  const assetsDir = path.join(featurePath, ...assetsRoot.split('/'));
-  const targetDir = category
-    ? path.join(assetsDir, category)
-    : assetsDir;
+  const { indexAssetPool } = await import('../../../../../../../infrastructure/workspace/assetInventory');
+  const inventory = indexAssetPool({ featurePath, assetsRoot });
+  const availableCategories = Object.keys(inventory.groups).sort();
 
-  const rootPath = fileSystem.getRootPath?.() || '';
-  const relativePath = rootPath
-    ? path.relative(rootPath, targetDir)
-    : targetDir.replace(/^\//, '');
+  const describe = (files: string[]) =>
+    files.map((p) => ({
+      path: p,
+      filename: p.split('/').pop() ?? p,
+      extension: (p.match(/\.[^./]+$/)?.[0] ?? '').toLowerCase(),
+      ...(inventory.sizes?.[p] !== undefined ? { sizeBytes: inventory.sizes[p] } : {}),
+    }));
 
-  let allFiles: string[] = [];
-  try {
-    allFiles = await fileSystem.listFiles(relativePath, []);
-  } catch {
-    // Directory doesn't exist or not accessible — treated as empty pool.
+  // Tolerate the predictable domain-prefixed form (`game/models`) instead of
+  // failing on it — the pool root is implicit, so strip it and proceed.
+  let requested = args.category?.replace(/^\/+|\/+$/g, '');
+  if (requested) {
+    const rootHead = assetsRoot.split('/').filter(Boolean).pop();
+    for (const prefix of [assetsRoot, rootHead].filter(Boolean) as string[]) {
+      if (requested === prefix) { requested = undefined; break; }
+      if (requested.startsWith(`${prefix}/`)) {
+        requested = requested.slice(prefix.length + 1);
+        break;
+      }
+    }
   }
 
-  if (allFiles.length === 0) {
+  if (requested && !(requested in inventory.groups)) {
+    // NOT "no assets" — the pool may be full. Say which categories exist.
     return {
       content: JSON.stringify({
-        category: category || 'all',
+        assetsRoot,
+        category: requested,
+        categoryFound: false,
+        availableCategories,
         assets: [],
         count: 0,
-        message: `No assets found. Add asset files under ${assetsRoot}/.`,
+        total: inventory.count,
+        message:
+          `Category "${requested}" does not exist under ${assetsRoot}/. ` +
+          (availableCategories.length > 0
+            ? `Available categories: ${availableCategories.join(', ')}. ` +
+              `Call list_assets with no category to see every asset.`
+            : `The pool is empty — add asset files under ${assetsRoot}/.`),
       }, null, 2),
     };
   }
 
-  const featureRelPath = rootPath
-    ? path.relative(rootPath, featurePath)
-    : featurePath.replace(/^\//, '');
+  const selected = requested ? inventory.groups[requested] : inventory.files;
 
-  const assetsRelPath = rootPath
-    ? path.relative(rootPath, assetsDir)
-    : assetsDir.replace(/^\//, '');
-
-  const grouped: Record<string, { path: string; filename: string; extension: string }[]> = {};
-
-  for (const file of allFiles) {
-    const featureRelativePath = file.startsWith(featureRelPath)
-      ? file.slice(featureRelPath.length).replace(/^[\/\\]/, '')
-      : file;
-    const filename = path.basename(file);
-    const extension = path.extname(file).toLowerCase();
-
-    const assetInfo = { path: featureRelativePath, filename, extension };
-
-    const assetRelative = file.startsWith(assetsRelPath)
-      ? file.slice(assetsRelPath.length).replace(/^[\/\\]/, '')
-      : featureRelativePath;
-    const parts = assetRelative.split(/[\/\\]/);
-    const group = parts.length > 1 ? parts[0] : '(root)';
-    (grouped[group] ||= []).push(assetInfo);
-  }
-
-  const totalCount = Object.values(grouped).reduce((sum, arr) => sum + arr.length, 0);
-  const groupSummary = Object.entries(grouped).map(([k, v]) => `${k}: ${v.length}`).join(', ');
-  console.log(`   📦 Found ${totalCount} assets (${groupSummary})`);
-
-  if (totalCount > 0) {
+  if (selected.length > 0) {
     const mergeIndex = await ctx.chatStatus.showStatus('grepping', { filesCount: 0, totalFiles: 0 });
     await ctx.chatStatus.showStatus('grepped', {
-      filesCount: totalCount,
-      filesList: allFiles,
+      filesCount: selected.length,
+      filesList: selected,
       _mergeIndex: mergeIndex,
     });
   }
 
+  console.log(
+    `   📦 Found ${selected.length} assets under ${assetsRoot}/${requested ?? ''} ` +
+    `(categories: ${availableCategories.join(', ') || 'none'})`,
+  );
+
   return {
     content: JSON.stringify({
-      category: category || 'all',
-      groups: grouped,
-      total: totalCount,
+      assetsRoot,
+      category: requested ?? 'all',
+      categoryFound: true,
+      availableCategories,
+      assets: describe(selected),
+      count: selected.length,
+      total: inventory.count,
+      ...(inventory.count === 0
+        ? { message: `The pool is empty — add asset files under ${assetsRoot}/.` }
+        : {}),
     }, null, 2),
   };
 }

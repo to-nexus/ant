@@ -23,7 +23,7 @@ import { composeMessages } from '../../../../../../../core/utils/messageComposer
 import { TEMPLATE_PATHS } from '../../../../../../../core/prompt/builder/templatePaths';
 import { deriveExecuteCompactParams } from './executeCompaction';
 import { loadExistingDesignDoc } from '../../checkTaskStatus/loadExistingDesignDoc';
-import { logPrompt } from '../../../../../../../core/utils/promptLogger';
+import { logPrompt, measurePromptChars } from '../../../../../../../core/utils/promptLogger';
 
 export async function buildPrdSyncMessages(state: DesignGraphState): Promise<Array<{
   role: 'user' | 'assistant';
@@ -113,10 +113,11 @@ export async function buildPrdSyncMessages(state: DesignGraphState): Promise<Arr
         jobId,
         'design',
         'execute-prd-sync',
-        blocks.reduce((sum, b) => sum + (b.type === 'text' ? b.text.length : 0), 0),
+        measurePromptChars(messages as any[]),
         {
           taskId: task?.id,
           taskName: task?.name,
+          callIndex: state._executeCallIndex || 0,
           templatePath: TEMPLATE_PATHS.designPrdSync.base,
           usedTemplates: [TEMPLATE_PATHS.designPrdSync.rules!],
           injectedVariables: {

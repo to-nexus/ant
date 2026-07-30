@@ -86,6 +86,46 @@ export function isBinaryBuffer(head: Buffer, truncatedTail = false): boolean {
  * canonical not-found / permission error handling instead of a misleading
  * "binary file" message.
  */
+/**
+ * Human byte size — the single renderer for every surface that tells the model
+ * how big a file is (RAC stub, `read_file`'s binary reply, asset inventory).
+ * One owner so those three cannot drift into three different formats.
+ */
+export function formatByteSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+/**
+ * Sniff a file once and report BOTH its kind and its size. `isBinaryFileSync`
+ * already `fstat`s to bound the read window and then discards the size — which
+ * left `read_file`'s binary reply with no number to give, so the model invented
+ * one. Same syscalls, one more field.
+ */
+export function sniffFile(absPath: string): { binary: boolean; size?: number } {
+  let fd: number;
+  try {
+    fd = fs.openSync(absPath, 'r');
+  } catch {
+    return { binary: isBinaryPath(absPath) };
+  }
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return { binary: false };
+    const size = Number(stat.size);
+    if (isBinaryPath(absPath)) return { binary: true, size };
+    const len = Math.min(size, SNIFF_BYTES);
+    const buf = Buffer.alloc(len);
+    const read = fs.readSync(fd, buf, 0, len, 0);
+    return { binary: isBinaryBuffer(buf.subarray(0, read), size > read), size };
+  } catch {
+    return { binary: isBinaryPath(absPath) };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export function isBinaryFileSync(absPath: string): boolean {
   if (isBinaryPath(absPath)) return true;
   let fd: number;

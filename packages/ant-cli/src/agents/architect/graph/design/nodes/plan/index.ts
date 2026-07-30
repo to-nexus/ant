@@ -32,9 +32,28 @@ import { finalizePlanOutcome } from './finalizeOutcome';
 import { getTools } from './tools';
 import { resolveLLMClient } from './llmClient';
 import { buildPlanPromptBlocks } from './prompt';
+import { logPrompt, measurePromptChars } from '../../../../../../core/utils/promptLogger';
+import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 
 const PLAN_LLM_INTENT_GROUPS = new Set(['design-spec', 'design-system-design']);
+
+/**
+ * Keep-sentinel for the seal-time drain's re-run.
+ *
+ * The re-run itself is correct — a report that settles as the plan seals must
+ * inform the plan before it is finalized (the launch-ack promises delivery
+ * "before this phase concludes"), and it does change plans in practice. What
+ * was broken is that the instruction offered a choice the protocol could not
+ * express: it said "otherwise keep it", while the loop's only accepted seal is
+ * a full `<plan>` block. So "no revision needed" cost a verbatim re-emission of
+ * the entire plan — ~3.6K output tokens and ~45s to say nothing changed
+ * (zero-hunting-label). This sentinel gives that answer a cheap encoding.
+ *
+ * Internal control only — never rendered, so it is a suppressed axis.
+ */
+export const PLAN_UNCHANGED_SENTINEL = '<plan-unchanged/>';
+const PLAN_UNCHANGED_RE = /<plan-unchanged\s*\/?>/i;
 
 /**
  * Token channels this node MUST return so LangGraph keeps its own rounds'
@@ -205,6 +224,10 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
     return freshUserTurn;
   };
 
+  // Raw text of the most recent round. The `fallthrough` outcome carries none,
+  // so this is the only way to see a keep-sentinel reply.
+  let lastRoundText = '';
+
   // Build a closure over `runPlanWithTools` so the shared loop helper
   // can drive one round at a time without owning prompt/model/tool
   // selection (those stay design-local here).
@@ -220,6 +243,36 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       : [await ensureFreshUserTurn()];
 
     const isFirstRound = messages.length <= 1;
+    // Prompt provenance for the plan phase. The design plan node logged tokens
+    // per round but never a prompt, so the phase that DECIDES the architecture
+    // (19 calls / ~104K input on one real job) had zero provenance while
+    // execute's 21 rounds were fully logged — and the sealed `planText` that
+    // execute consumes appeared there only as `[16598 chars]`. Code's plan node
+    // has had this via `logPlanToolLoopPrompt`; design simply lacked the port.
+    if (state.context?.featurePath) {
+      const planRound = Math.floor(messages.length / 2);
+      void logPrompt(
+        state.context.featurePath,
+        state._httpJobId || 'unknown',
+        'design',
+        'design-plan',
+        measurePromptChars(messages as any[]),
+        {
+          taskId: currentTask!.id,
+          taskName: currentTask!.name,
+          callIndex: planRound,
+          templatePath: TEMPLATE_PATHS.designPlan.base,
+          usedTemplates: [TEMPLATE_PATHS.designPlan.system!],
+          injectedVariables: {
+            round: planRound,
+            historyMessages: messages.length,
+            isFirstRound,
+            modelId: llm.modelName,
+            toolNames: tools.map((t) => t.name),
+          },
+        },
+      ).catch(() => { /* non-blocking */ });
+    }
     return runPlanWithTools<DesignGraphState>({
       state,
       messages,
@@ -254,6 +307,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
           },
         );
       },
+      onRoundText: (text) => { lastRoundText = text; },
       onMaxTokensTruncation: ({ outputTokens, round }) => {
         console.warn(
           `⚠️  [Design/Plan] max_tokens truncated (round=${round}, output=${outputTokens}) ` +
@@ -283,10 +337,18 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
 
   // Bounded in-node loop: a normal pass produces `planText` (seal) or
   // `toolCalls` (route to tool node) on the first iteration. Extra passes
-  // exist only for report delivery — (a) seal-time settled reports (C2,
-  // once), (b) fallthrough with owed reports (C1, self-terminating because
+  // exist only for report delivery — (a) seal-time settled reports (C2),
+  // (b) fallthrough with owed reports (C1, self-terminating because
   // `collectCompleted` deletes delivered entries). Hard bound of 4 passes;
   // the LangGraph recursionLimit stays the outer backstop.
+  //
+  // `sealDrainDone` bounds C2 to once per NODE INVOCATION, not once per job —
+  // it is a local, so a graph re-entry (plan → tool → plan) starts a fresh
+  // budget. That is the intended semantics (a report settling during a later
+  // round still deserves delivery before the seal), but it means the real
+  // bound on chained seal-drains is `recursionLimit` plus the fact that
+  // `collectCompleted` empties the registry — not this flag. Earlier comments
+  // here claimed "once", which was never true.
   let planHistory: any[] = nodePlan as any;
   let sealDrainDone = false;
   // Token channels, RE-READ from state at return time: `accumulateTokenUsage`
@@ -327,9 +389,10 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       // from there, so the delta would be a stale duplicate of that read.
       const drained = await drainSettledReportsAtSeal(state);
       if (drained) {
+        const sealedPlanText = outcome.planText;
         planHistory = [
           ...(planHistory.length > 0 ? planHistory : [await ensureFreshUserTurn()]),
-          { role: 'assistant' as const, content: `<plan>\n${outcome.planText}\n</plan>` },
+          { role: 'assistant' as const, content: `<plan>\n${sealedPlanText}\n</plan>` },
           {
             role: 'user' as const,
             content: [
@@ -338,17 +401,28 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
                 type: 'text' as const,
                 text:
                   'The subagent report(s) above arrived as you sealed your plan. ' +
-                  'If the findings change your plan, revise it; otherwise keep it. ' +
-                  'Output your final <plan> now.',
+                  'If the findings change your plan, output the revised <plan> in full. ' +
+                  `If they change nothing, reply with exactly ${PLAN_UNCHANGED_SENTINEL} ` +
+                  'and nothing else — your sealed plan above is kept as-is. ' +
+                  'Do NOT re-emit an unchanged plan.',
               },
             ],
           },
         ];
+        lastRoundText = '';
         outcome = await sharedRunPlanToolLoopPhase({
           history: planHistory,
           isActive: true,
           runRound: runRound as any,
         });
+        // Keep-sentinel: the model read the findings and had nothing to change.
+        // Restore the seal it already paid for instead of demanding a verbatim
+        // re-emission (which is what the old "otherwise keep it" wording cost,
+        // since a full `<plan>` block was the only acceptable answer).
+        if (outcome.kind !== 'planText' && PLAN_UNCHANGED_RE.test(lastRoundText)) {
+          console.log('🔀 [DesignPlan] Seal-drain findings changed nothing — keeping the sealed plan');
+          outcome = { kind: 'planText', planText: sealedPlanText };
+        }
         continue;
       }
     }

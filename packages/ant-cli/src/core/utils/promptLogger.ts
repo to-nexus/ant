@@ -75,7 +75,10 @@ export class PromptLogger {
     const promptLength = entry.promptLength || 0;
     const fullEntry: PromptLogEntry = {
       ...entry,
-      callIndex: entry.callIndex ?? 0,
+      // No `?? 0`: defaulting forged a plausible value, so 21 rounds of a
+      // design execute loop all reported `Call Index: 0` and no section could
+      // be correlated to a call. The renderer already omits an absent field —
+      // "unknown" must look like unknown.
       timestamp: new Date().toISOString(),
       tokenEstimate: entry.tokenEstimate ?? this.estimateTokens(promptLength),
     };
@@ -294,6 +297,28 @@ const loggerInstances: Map<string, PromptLogger> = new Map();
 /**
  * Get or create a prompt logger for a job
  */
+/**
+ * Character length of a COMPOSED message array — what was actually sent.
+ *
+ * The design execute builders were measuring their pre-composition
+ * `initialBlocks` instead. Those blocks are invariant for a task, so 21 rounds
+ * of one task all logged the identical `Prompt Length: 91,009` while the real
+ * prompt grew to ~303K chars, and `Token Estimate` inherited the error. The
+ * growth lives entirely in the conversation history the composer prepends, so
+ * the measurement has to happen on the composed array.
+ */
+export function measurePromptChars(messages: Array<{ content: unknown }>): number {
+  return messages.reduce((sum, m) => {
+    const content = m.content;
+    if (typeof content === 'string') return sum + content.length;
+    if (Array.isArray(content)) {
+      return sum + content.reduce((s: number, b: any) =>
+        s + (b?.type === 'image' ? 200 : (typeof b?.text === 'string' ? b.text.length : JSON.stringify(b).length)), 0);
+    }
+    return sum + JSON.stringify(content).length;
+  }, 0);
+}
+
 export function getPromptLogger(options: PromptLoggerOptions): PromptLogger {
   const key = options.jobId;
   
