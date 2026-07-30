@@ -594,6 +594,41 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     await state.deps.workflowUpdate.exitNode(state._httpJobId, 'learn', state.workerId ?? 0);
   }
 
+  // Job final summary (curious-spinning-twilight) — user-facing wrap-up
+  // prose, emitted after the durable checkpoint / terminal signals and before
+  // distill (which harvests it as final prose). Skipped on early-termination
+  // paths — those keep their existing failure UX.
+  let jobSummaryText: string | undefined;
+  if (
+    isLastTask && !_isWorkerContext && !hasEarlyTermination && !state.interruption &&
+    (state.completedTasksDetails?.length ?? 0) > 0
+  ) {
+    const { emitJobFinalSummary, harvestTaskProse } = await import('../../../../../../core/context/jobSummary');
+    const { accumulateTokenUsage, broadcastTokenUsageByModel } = await import('../../../../../common/graph/llmHelpers');
+    const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+    jobSummaryText = await emitJobFinalSummary({
+      session: state.deps?.session,
+      chatAPI: getChatAPIClient(),
+      llm: state.deps?.llm,
+      promptPort: state.deps?.promptBuilder,
+      jobType: 'design',
+      jobId: state.jobId,
+      turnId: state.turnId,
+      directive: state.directive,
+      completedTasks: (state.completedTasksDetails ?? []).map((t) => ({
+        name: t.name,
+        type: t.type,
+        description: t.description,
+        files: t.targetFile ? [t.targetFile] : undefined,
+      })),
+      taskProse: await harvestTaskProse(state.deps?.session, state.turnId),
+      onUsage: (usage) => {
+        accumulateTokenUsage(state, usage, { taskLevel: false, jobLevel: true });
+        broadcastTokenUsageByModel(state);
+      },
+    });
+  }
+
   // Context Lens P2 (e2-humming-spindle) — assistant_turn distillation.
   // MUST be the last statement before return (idempotent-kazoo RCA): it is a
   // best-effort, up-to-8s blocking LLM call, so a mid-call SIGTERM must never
@@ -613,6 +648,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       executionTierId: state.executionTier,
       llm: state.deps.llm,
       promptPort: state.deps.promptBuilder,
+      ...(jobSummaryText ? { outcomeHint: jobSummaryText.slice(0, 200) } : {}),
     });
   }
 
