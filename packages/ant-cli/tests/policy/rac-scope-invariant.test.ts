@@ -262,6 +262,23 @@ describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (202
     expect(result).toContain('Auth SDK');
   });
 
+  it("list_files('.') lists the workspace ROOT (not codebase/) and passes the gate", async () => {
+    // Regression: normalizeToCodebasePath's Rule 4 used to silently rewrite
+    // '.' → 'codebase/.', making the sibling artifact trees (assets/, plan/,
+    // architecture/) structurally undiscoverable (fierce-gaining-gully).
+    const result = await gatedList(
+      { directory: '.' },
+      { refs: [], context: ['plan/prd.md'] },
+    );
+    expect(result).not.toMatch(/outside the RAC selection/);
+    expect(result).toContain('Workspace root');
+    expect(result).toContain('plan/');
+    expect(result).toContain('architecture/');
+    expect(result).toContain('codebase/');
+    // Root listing shows directory NAMES, not codebase contents.
+    expect(result).not.toContain('src/');
+  });
+
   // ── New invariants made possible by the SSOT unification ──────────────
   //
   // The deleted `discoveryTools` had a `scope: 'artifact' | 'codebase'`

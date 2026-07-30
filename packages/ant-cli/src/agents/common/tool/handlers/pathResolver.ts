@@ -60,6 +60,19 @@ export async function resolveToolDirectory(
   ctx: ToolExecutionContext,
   rawDir: string | undefined,
 ): Promise<ResolvedToolPath> {
+  // Workspace-root listing ('' / '.') is a legitimate read and must NOT fall
+  // into normalizeToCodebasePath's Rule 4 catch-all (which rewrites it to
+  // `codebase/.`). Listing the feature root is how an agent discovers the
+  // sibling artifact trees (plan/ architecture/ visual/ assets/ meta/) —
+  // the silent redirect made attached workspace assets undiscoverable
+  // (fierce-gaining-gully). Rule 4 stays authoritative for FILE paths; the
+  // RAC gate (`decideRacGate`) still classifies '.' via its own
+  // normalization and allows it — that divergence is intentional (gate:
+  // allow, handler: list the actual root).
+  const rel = normalizeRelPath(rawDir ?? '.');
+  if (rel === '' || rel === '.') {
+    return { displayPath: '.', fsPath: '.', scope: 'workspace', wasFixed: false };
+  }
   return resolveToolPath(ctx, rawDir ?? '.');
 }
 
