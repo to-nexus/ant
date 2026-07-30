@@ -37,6 +37,19 @@ import { getExecutionLogger } from '../../../../../../core/utils/executionLogger
 const PLAN_LLM_INTENT_GROUPS = new Set(['design-spec', 'design-system-design']);
 
 /**
+ * Token channels this node MUST return so LangGraph keeps its own rounds'
+ * usage. `currentPhaseTokenUsage` is deliberately excluded — see
+ * `foldSubagentUsage` for why folding a child conversation there would corrupt
+ * the parent's context-fullness gauge.
+ */
+export const DESIGN_PLAN_TOKEN_CHANNELS = [
+  'tokenUsage',
+  'tokenUsageByModel',
+  '_currentTaskTokenUsage',
+  '_currentTaskTokenUsageByModel',
+] as const;
+
+/**
  * Plan-phase join barrier for explore subagents (design twin of the code job's
  * `deliverOwedExploreReports`, code/nodes/plan/index.ts). The design plan tool
  * loop only delivers reports via the tool node's per-round drain, which fires
@@ -276,13 +289,24 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
   // the LangGraph recursionLimit stays the outer backstop.
   let planHistory: any[] = nodePlan as any;
   let sealDrainDone = false;
-  // Keys folded by joins — values are RE-READ from state at return time:
-  // `foldSubagentUsage` mutates state, and later runRound passes accumulate
-  // on top of it, so a snapshot captured at join time would be stale.
-  const joinTokenDelta: Record<string, any> = {};
+  // Token channels, RE-READ from state at return time: `accumulateTokenUsage`
+  // (this node's own rounds) and `foldSubagentUsage` (drains) both mutate
+  // `state` in place, and LangGraph DISCARDS mutations that a node does not
+  // return — the unreturned-channel-drop class documented in
+  // subagent/tokens.ts. Keying this off the join delta meant a plan
+  // invocation with no subagent fold returned {} and silently dropped every
+  // round it had just paid for (zero-hunting-label: 16 of 19 design-plan
+  // calls, 96,289 input tokens, never reached the task counter, the kanban
+  // snapshot, or ledger.settle). The list is static: all four are declared on
+  // the design graph, and an `in`-check here could only silently drop one back
+  // into the same bug — `design-plan-token-channels.test.ts` asserts the
+  // declarations instead, so removing a channel fails loudly.
   const tokenDeltaOut = (): Record<string, any> => {
     const out: Record<string, any> = {};
-    for (const k of Object.keys(joinTokenDelta)) out[k] = (state as any)[k];
+    for (const k of DESIGN_PLAN_TOKEN_CHANNELS) {
+      const v = (state as any)[k];
+      if (v !== undefined) out[k] = v;
+    }
     return out;
   };
   let outcome = await sharedRunPlanToolLoopPhase({
@@ -298,9 +322,11 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       // with the sealed plan + findings; pending (still-running) children are
       // NOT awaited — they flow to execute per the doc-43 contract.
       sealDrainDone = true;
+      // `drained.tokenDelta` is intentionally unused: the fold already mutated
+      // `state`, and `tokenDeltaOut()` re-reads every declared token channel
+      // from there, so the delta would be a stale duplicate of that read.
       const drained = await drainSettledReportsAtSeal(state);
       if (drained) {
-        Object.assign(joinTokenDelta, drained.tokenDelta);
         planHistory = [
           ...(planHistory.length > 0 ? planHistory : [await ensureFreshUserTurn()]),
           { role: 'assistant' as const, content: `<plan>\n${outcome.planText}\n</plan>` },
@@ -336,7 +362,6 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
     // consumed the registry entries.
     const joined = await joinOwedReportsIntoHistory(state, planHistory);
     if (!joined) break;
-    Object.assign(joinTokenDelta, joined.tokenDelta);
     planHistory = joined.history;
     outcome = await sharedRunPlanToolLoopPhase({
       history: planHistory,

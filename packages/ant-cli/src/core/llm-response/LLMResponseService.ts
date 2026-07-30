@@ -837,7 +837,13 @@ export class LLMResponseService {
           break;
         }
         case 'text': {
-          if (event.text && event.text.trim()) {
+          // No `.trim()` gate: providers emit standalone-whitespace deltas, and
+          // dropping them concatenated words together in the rendered message
+          // ("보스 비주얼 개편에 대한완전한" — zero-hunting-label). Empty strings
+          // are rejected by streamTextChunk, and flushTextBuffer trims the
+          // accumulated buffer, so pure-whitespace input cannot produce a
+          // blank durable line.
+          if (event.text) {
             await this.streamTextChunk(event.text);
           }
           break;

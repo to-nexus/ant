@@ -35,8 +35,13 @@ describe('learn node distill ordering — distill is last, after completion + te
     const distill = at(src, 'distillAssistantTurn({');
     const saveRun = at(src, 'await saveSessionRun(state)');
     const endJob = at(src, 'workflowUpdate.endJob(');
-    const specCard = at(src, "'spec_complete'");
-    const ret = at(src, 'return {');
+    // Key on the CALL SITE — the card body lives in `emitSpecCompleteCard`,
+    // defined below this function, so the `'spec_complete'` literal itself
+    // sorts after distill without saying anything about emission order.
+    const specCard = at(src, 'await emitSpecCompleteCard(');
+    // The learn node's TERMINAL return specifically — helpers above it have
+    // their own `return {`, so a bare marker would match one of those.
+    const ret = at(src, 'return {\n    ...state,\n    lessons');
 
     // All markers present.
     expect(distill).toBeGreaterThan(-1);
