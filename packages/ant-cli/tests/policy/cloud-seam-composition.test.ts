@@ -14,10 +14,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC = join(__dirname, '../../src');
+const REPO_ROOT = join(__dirname, '../../../..');
 const read = (rel: string) => readFileSync(join(SRC, rel), 'utf8');
 // Line-based stripper: drops whole comment lines (`//`, JSDoc `*`, `/* … */`).
 // A regex block-comment stripper would mis-fire on `/*` sequences inside string
@@ -125,5 +126,33 @@ describe('P2 — moved cloud adapters are absent from OSS src', () => {
     expect(orchestrator).not.toMatch(/\bimport\b[^;]*\bRedisCreditLedger\b/);
     expect(orchestrator).toMatch(/loadCloudModule\s*\(/);
     expect(orchestrator).toMatch(/createCreditLedger\s*\(/);
+  });
+});
+
+// Absence-on-disk, NOT just import-absence. The two are different invariants:
+// a cloud file could sit in the public tree unimported and every import scan
+// above would still pass, while the OSS repo leaks cloud source. This block
+// used to be a shell loop in ci.yml's oss-guard job; it moved here so the rule
+// has one owner instead of two copies that drift.
+describe('P2 — cloud overlay source is absent from the OSS tree on disk', () => {
+  const FORBIDDEN_PATHS = [
+    'packages/ant-cloud',
+    'packages/ant-cli/src/infrastructure/billing/RedisCreditLedger.ts',
+    'packages/ant-cli/src/infrastructure/billing/MockPaymentProvider.ts',
+    'packages/ant-cli/src/infrastructure/auth/AuthService.ts',
+    'packages/ant-cli/src/infrastructure/auth/GoogleOIDCService.ts',
+    'packages/ant-cli/src/infrastructure/auth/RedisOrganizationRepository.ts',
+    'packages/ant-cli/src/periphery/adapters/http/routes/billing.routes.ts',
+    'packages/ant-cli/src/periphery/adapters/http/routes/auth.routes.ts',
+  ];
+
+  it('resolves the repo root (guards against a __dirname depth regression)', () => {
+    // If this breaks, every path below would be trivially "absent" and the
+    // whole block would pass vacuously.
+    expect(existsSync(join(REPO_ROOT, 'pnpm-workspace.yaml'))).toBe(true);
+  });
+
+  it.each(FORBIDDEN_PATHS)('%s does not exist', (rel) => {
+    expect(existsSync(join(REPO_ROOT, rel))).toBe(false);
   });
 });

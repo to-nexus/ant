@@ -70,12 +70,25 @@ describe('wire composition — request body', () => {
     return { client, captured };
   }
 
-  it('adaptive model: body carries adaptive thinking and NO temperature key', async () => {
+  // Both adaptive branches must drop temperature. The invoke channel turns an
+  // EXPLICIT enableThinking:false into thinking:{type:'disabled'} while an unset
+  // toggle stays always-on adaptive (58116ab38) — the wire shape per channel is
+  // owned by anthropic-thinking-params.test.ts; asserted here only to pin that
+  // the temperature omission holds on BOTH, not just the thinking-on branch.
+  it('adaptive model, explicit thinking off: body carries disabled thinking and NO temperature key', async () => {
     const { client, captured } = clientWithCapture('claude-sonnet-5');
     await client.invokeWithUsage(
       [{ role: 'user', content: 'hi' }],
       { enableThinking: false, temperature: 0.2 },
     );
+    expect(captured).toHaveLength(1);
+    expect(captured[0].thinking).toEqual({ type: 'disabled' });
+    expect('temperature' in captured[0]).toBe(false);
+  });
+
+  it('adaptive model, toggle unset: body carries adaptive thinking and NO temperature key', async () => {
+    const { client, captured } = clientWithCapture('claude-sonnet-5');
+    await client.invokeWithUsage([{ role: 'user', content: 'hi' }], { temperature: 0.2 });
     expect(captured).toHaveLength(1);
     expect(captured[0].thinking).toEqual({ type: 'adaptive', display: 'summarized' });
     expect('temperature' in captured[0]).toBe(false);

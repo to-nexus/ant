@@ -18,18 +18,9 @@ permissions:
 jobs:
   typecheck-and-test:
     runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      ANT_REDIS_URL: redis://localhost:6379
+    # No redis service: the vitest suite has zero real-Redis clients (it stubs
+    # in-process). Only boot-smoke needs a live instance. Adding one back here
+    # just slows the job down.
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -41,7 +32,17 @@ jobs:
       - run: pnpm build:shared
       - run: pnpm typecheck:cli
       - run: pnpm typecheck:ui
+      # Test sources are excluded from tsconfig.json on purpose (it ships into
+      # the runtime image — see packages/ant-cli/tsconfig.test.json). Without
+      # this step a test can import a renamed path and still pass, because
+      # `import type` is erased by esbuild/vitest.
+      # TODO: drop continue-on-error once the inherited backlog reaches 0.
+      - run: pnpm typecheck:tests
+        continue-on-error: true
       - run: pnpm test:cli
+      # ant-ui's suite (80 files / 677 cases) runs in ~4s. It was previously
+      # typechecked but never executed in CI.
+      - run: pnpm --filter @ant/ui test
 
   build:
     runs-on: ubuntu-latest
@@ -63,50 +64,24 @@ jobs:
           fi
           echo "OSS UI build is cloud-free."
 
+  # Secret scanning only. The seam invariants formerly re-checked here as shell
+  # greps are owned by the vitest suite, which `typecheck-and-test` already runs:
+  #   - static @ant/cloud imports   → tests/policy/no-cloud-static-import.test.ts
+  #                                   (strips comment lines properly and matches all
+  #                                    three import forms — the grep used a weaker
+  #                                    line-prefix heuristic)
+  #   - cloud overlay source absent → tests/policy/cloud-seam-composition.test.ts
+  #                                   ("absent on disk" describe block)
+  #   - tests/policy + tests/billing → covered by `pnpm test:cli`
+  # Re-running them here duplicated ~62 test files per PR and let the two copies
+  # of each rule drift. No node/pnpm setup either: gitleaks is a downloaded
+  # binary and .gitleaks.toml allowlists node_modules/ + dist/ out of the scan.
   oss-guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # full history for the gitleaks history scan below
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build:shared
-
-      - name: No static @ant/cloud import in ant-cli/src
-        run: |
-          # Allow only the indirected specifier in cloudPlugin.ts (const spec = '@ant/cloud').
-          # Exclude comment lines (JSDoc `*`, `//`, `/*`): a doc example of the dynamic
-          # import form is not an actual import. Real import statements never start with those.
-          hits=$(grep -rnE "from '@ant/cloud'|from \"@ant/cloud\"|import\(\s*['\"]@ant/cloud['\"]\s*\)|require\(\s*['\"]@ant/cloud['\"]\s*\)" packages/ant-cli/src | grep -vE ":[0-9]+:[[:space:]]*(\*|//|/\*)" || true)
-          if [ -n "$hits" ]; then echo "::error::static @ant/cloud import found"; echo "$hits"; exit 1; fi
-          echo "No static @ant/cloud imports."
-
-      - name: Cloud overlay source must be absent
-        run: |
-          for p in \
-            packages/ant-cloud \
-            packages/ant-cli/src/infrastructure/billing/RedisCreditLedger.ts \
-            packages/ant-cli/src/infrastructure/billing/MockPaymentProvider.ts \
-            packages/ant-cli/src/infrastructure/auth/AuthService.ts \
-            packages/ant-cli/src/infrastructure/auth/GoogleOIDCService.ts \
-            packages/ant-cli/src/infrastructure/auth/RedisOrganizationRepository.ts \
-            packages/ant-cli/src/periphery/adapters/http/routes/billing.routes.ts \
-            packages/ant-cli/src/periphery/adapters/http/routes/auth.routes.ts ; do
-            if [ -e "$p" ]; then echo "::error::cloud source present in OSS tree: $p"; exit 1; fi
-          done
-          echo "Cloud overlay source absent."
-
-      - name: Seam regression guards
-        env:
-          ANT_REDIS_URL: redis://localhost:6379
-        run: |
-          cd packages/ant-cli
-          pnpm vitest run tests/policy/ tests/billing/ --reporter=dot
 
       - name: Secret scan (gitleaks, free CLI)
         # The gitleaks-action requires a GITLEAKS_LICENSE secret for org accounts.

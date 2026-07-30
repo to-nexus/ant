@@ -64,7 +64,8 @@ COPY packages/ant-shared ./packages/ant-shared
 COPY packages/ant-cli ./packages/ant-cli
 COPY docs ./docs
 
-# Build ant-cli (builds @ant/shared first, then runs tests + build for @ant/cli)
+# Build ant-cli (builds @ant/shared first, then esbuild-bundles @ant/cli).
+# Deliberately does NOT run the test suite — CI is the gate (.github/workflows/ci.yml).
 RUN pnpm build:cli
 
 # ============================================

@@ -21,7 +21,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
-import type { GitHubAuthService } from '../../src/periphery/adapters/http/auth/GitHubAuthService';
+import type { GitHubAuthService } from '../../src/periphery/adapters/auth/GitHubAuthService';
 
 const uc = { userId: 'u', organizationId: 'o' };
 const PROJECT = 'proj';
