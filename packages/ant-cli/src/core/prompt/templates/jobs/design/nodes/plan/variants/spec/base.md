@@ -37,6 +37,9 @@ applied to that document — NOT a brief for a new document.
 - An outline that omits an existing section without a `remove`
   disposition is INVALID — content the directive does not affect must
   survive the revision.
+- An existing `Directive Q&A` section is directive-scoped: disposition
+  `modify` when the CURRENT directive embeds questions (replace its body),
+  `remove` when it does not — that removal is always sanctioned.
 {{else}}
 Your `documentOutline` MUST cover, at minimum:
 
@@ -54,8 +57,13 @@ Your `documentOutline` MUST cover, at minimum:
   contradictions to one condition, and let the count reflect distinct
   verifiable outcomes — NOT the directive's item count.
 
+When the directive embeds explicit questions addressed to you, additionally
+plan a tail `Directive Q&A` section (contract below) as the final outline entry.
+
 If the section scope above narrows the document to a single section,
 restrict `documentOutline` to that section alone.
 {{/if}}
 
 {{> jobs/design/base/injections/requirement-synthesis}}
+
+{{> jobs/shared/injections/directive-qa}}

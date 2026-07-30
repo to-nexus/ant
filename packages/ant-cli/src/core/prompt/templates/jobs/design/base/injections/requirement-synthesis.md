@@ -33,7 +33,8 @@ the set to match the directive's length is the exact failure this section preven
 - **Surface material judgment calls in your `<reply>`, conversationally** — a
   resolved contradiction, an overridden or dropped explicit request, a corrected
   misconception. This is a natural one-line explanation of a call you made, NOT a
-  per-item ledger and NOT a section in the document. Routine grouping needs no note.
+  per-item ledger and NOT a decisions-ledger section in the document. Routine grouping
+  needs no note.
 
 ⚠️ **Blind spot**: The default failure is transcription — echoing each directive
 bullet as its own item FEELS faithful but produces a bloated, internally

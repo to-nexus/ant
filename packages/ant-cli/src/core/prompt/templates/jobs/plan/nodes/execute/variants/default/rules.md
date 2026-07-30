@@ -37,7 +37,7 @@ edit_file(path="{target_path}", old_str="exact text to find", new_str="replaceme
 
 ## Document Structure (delegated to domain overlay)
 
-The exact section list is defined by the **domain overlay** loaded below (service / game). The overlay partitions sections into **Required core** (always present), **Conditional** (include only when scope warrants; otherwise record the omission in §Open Questions in one line), and **Optional / Always-on**. Do NOT impose an alternative structure — the overlay is the SSOT for the section list, per-section commit depth, and authoring vocabulary. Encode the brief's `proposedOutline` and `resolvedDecisions` into these sections; put unresolved items into §Open Questions.
+The exact section list is defined by the **domain overlay** loaded below (service / game). The overlay partitions sections into **Required core** (always present), **Conditional** (include only when scope warrants; otherwise record the omission in §Open Questions in one line), and **Optional / Always-on**. Do NOT impose an alternative structure — the overlay is the SSOT for the section list, per-section commit depth, and authoring vocabulary. Encode the brief's `proposedOutline` and `resolvedDecisions` into these sections; put unresolved items into §Open Questions. The overlay's conditional `Directive Q&A` tail follows the Directive Q&A contract below — it fires only when the directive embeds explicit questions.
 
 ## Document Quality Principles (Generate Mode)
 
@@ -66,5 +66,7 @@ Apply when creating a new document, or when the directive explicitly requests qu
 - **DO include product-surface content planning** — the content commitments your domain overlay defines (service PRD: information architecture, screen composition with state matrix, interaction flows, content & domain policies; game PRD: coreloop, mechanics, content scope, fail conditions). "WHAT not HOW" applies to **technical implementation**, NOT to product surface — the planning document owns content; design owns architecture and tokens.
 - **Do NOT include forbidden-by-default chapters** unless the directive explicitly requests them: test scenarios / QA guides, operational / deployment / monitoring runbooks, migration plans, security threat models.
 - **Do NOT include evaluation scores** — that is the evaluator's job.
+
+{{> jobs/shared/injections/directive-qa}}
 
 {{> jobs/shared/injections/explore-delegation}}

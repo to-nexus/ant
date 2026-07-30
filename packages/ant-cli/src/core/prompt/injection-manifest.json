@@ -8,6 +8,7 @@
       "content"
     ],
     "output-tag-policy": [],
+    "directive-qa": [],
     "clarify-policy": [
       "clarifyBudget",
       "blockingMode"

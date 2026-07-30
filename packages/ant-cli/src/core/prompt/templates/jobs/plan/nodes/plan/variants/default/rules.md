@@ -70,6 +70,8 @@ When a Required-core gap is observed, ask before sealing using the `<clarify>` t
 
 **Required-core discipline**: Open Questions is reserved for **Conditional** sections only. A Required-core gap is resolved by clarify — commit a domain-conventional default only as a last resort after the clarify budget is exhausted, never as a first-turn substitute. Fabrication (inventing requirements the directive did not imply) is forbidden.
 
+**Directive-embedded questions**: questions the USER asked YOU in the directive are resolved during observation and recorded in the brief (they ride existing fields — `resolvedDecisions` or outline content) so execute can author the overlay's `Directive Q&A` tail; they are never parked in Open Questions and never re-asked via `<clarify>` when observation can answer them.
+
 ## Tool Usage (Observation)
 
 ### Information Freshness

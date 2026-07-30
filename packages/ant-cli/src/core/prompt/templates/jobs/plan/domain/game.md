@@ -38,6 +38,7 @@ These appear only when the directive or genre warrants them. They are NOT mandat
 - **Economy** — only when in-game currency or trade is part of the coreloop
 - **Multiplayer Pacing** — only when game modes include synchronous co-op or competitive (this is plan-level pacing, NOT design-level synchronization policy)
 - **Accessibility Modes** — only when the directive explicitly names accessibility commitments
+- **§Directive Q&A** (document tail) — only when the directive embeds explicit questions addressed to you; authored per the Directive Q&A contract in the rules
 
 #### Sections explicitly NOT included by default (forbidden without explicit directive)
 
