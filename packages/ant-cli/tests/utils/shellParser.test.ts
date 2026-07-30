@@ -1,3 +1,14 @@
+/**
+ * Unit tests for `src/core/utils/shellParser` — the SINGLE owner of these four
+ * pure functions.
+ *
+ * The `splitOnShellOperators` / `tokenizeShellSegment` / `hasActualPipe` cases
+ * below were merged in from `tests/infra/command-allowlist.test.ts`, which had
+ * grown a parallel copy of all three (with a richer case set than this file
+ * carried). Two suites unit-testing the same pure function is how the two
+ * copies drift; that file now covers only `NodeCommandAdapter.isAllowed`, and
+ * parser behaviour lives here.
+ */
 import { describe, expect, it } from 'vitest';
 import {
   hasActualPipe,
@@ -13,11 +24,19 @@ describe('splitOnShellOperators', () => {
     ]);
   });
 
+  it('preserves the surrounding whitespace of each segment', () => {
+    expect(splitOnShellOperators('cd dir && npm install')).toEqual(['cd dir ', ' npm install']);
+    expect(splitOnShellOperators('grep foo | head')).toEqual(['grep foo ', ' head']);
+    expect(splitOnShellOperators('echo a; echo b')).toEqual(['echo a', ' echo b']);
+    expect(splitOnShellOperators('cmd1 || cmd2')).toEqual(['cmd1 ', ' cmd2']);
+  });
+
   it('respects single quotes around operators', () => {
     expect(splitOnShellOperators(`echo 'a && b' ; ls`).map(s => s.trim())).toEqual([
       `echo 'a && b'`,
       'ls',
     ]);
+    expect(splitOnShellOperators("grep -E 'foo|bar' file")).toEqual(["grep -E 'foo|bar' file"]);
   });
 
   it('respects double quotes around operators', () => {
@@ -25,35 +44,99 @@ describe('splitOnShellOperators', () => {
       `echo "a | b"`,
       'ls',
     ]);
+    expect(splitOnShellOperators('grep -E "foo|bar" file')).toEqual(['grep -E "foo|bar" file']);
+  });
+
+  it('does not split on an escaped pipe (grep BRE alternation)', () => {
+    expect(splitOnShellOperators('grep foo\\|bar file')).toEqual(['grep foo\\|bar file']);
+  });
+
+  it('splits the real pipe when a quoted pipe coexists', () => {
+    expect(splitOnShellOperators('grep -E "a|b" file | head')).toEqual(['grep -E "a|b" file ', ' head']);
+  });
+
+  it('handles multiple operators in one command', () => {
+    expect(splitOnShellOperators('cd dir && grep test | head; echo done')).toEqual([
+      'cd dir ', ' grep test ', ' head', ' echo done',
+    ]);
   });
 });
 
 describe('hasActualPipe', () => {
   it('returns true for a real pipe', () => {
     expect(hasActualPipe('cmd1 | cmd2')).toBe(true);
+    expect(hasActualPipe('grep foo | head')).toBe(true);
+    expect(hasActualPipe('cat file | sort | uniq')).toBe(true);
   });
-  it('returns false for grep BRE \\| inside quotes', () => {
+
+  it('returns false when there is no pipe', () => {
+    expect(hasActualPipe('npm install')).toBe(false);
+    expect(hasActualPipe('cd dir && npm install')).toBe(false);
+  });
+
+  it('returns false for a pipe only inside quotes', () => {
+    expect(hasActualPipe('grep -E "foo|bar" file')).toBe(false);
+    expect(hasActualPipe("grep -E 'a|b|c' src/")).toBe(false);
+  });
+
+  it('returns false for grep BRE \\| (escaped, quoted or bare)', () => {
     expect(hasActualPipe(`grep 'a\\|b' file`)).toBe(false);
+    expect(hasActualPipe('grep foo\\|bar file')).toBe(false);
   });
+
   it('returns false for logical ||', () => {
     expect(hasActualPipe('a || b')).toBe(false);
+    expect(hasActualPipe('cmd1 || cmd2')).toBe(false);
+  });
+
+  it('returns true when a real pipe coexists with a quoted pipe', () => {
+    expect(hasActualPipe('grep -E "foo|bar" file | head')).toBe(true);
   });
 });
 
 describe('tokenizeShellSegment', () => {
+  it('splits simple words on whitespace', () => {
+    expect(tokenizeShellSegment('npm run build')).toEqual(['npm', 'run', 'build']);
+  });
+
   it('keeps quoted strings as one token', () => {
-    expect(tokenizeShellSegment(`echo "hello world"`)).toEqual([
-      'echo',
-      '"hello world"',
+    expect(tokenizeShellSegment(`echo "hello world"`)).toEqual(['echo', '"hello world"']);
+    expect(tokenizeShellSegment("echo 'hello world'")).toEqual(['echo', "'hello world'"]);
+  });
+
+  it('keeps env assignments together, quoted or not', () => {
+    expect(tokenizeShellSegment(`PORT=3456 npm run dev`)).toEqual([
+      'PORT=3456', 'npm', 'run', 'dev',
+    ]);
+    expect(tokenizeShellSegment('FOO="bar baz" npm install')).toEqual([
+      'FOO="bar baz"', 'npm', 'install',
     ]);
   });
-  it('keeps env assignments together', () => {
-    expect(tokenizeShellSegment(`PORT=3456 npm run dev`)).toEqual([
-      'PORT=3456',
-      'npm',
-      'run',
-      'dev',
-    ]);
+
+  it('handles backslash escapes', () => {
+    expect(tokenizeShellSegment('echo hello\\ world')).toEqual(['echo', 'hello\\ world']);
+  });
+
+  it('handles mixed quote styles in one segment', () => {
+    expect(tokenizeShellSegment(`A="x y" B='1 2' cmd`)).toEqual(['A="x y"', "B='1 2'", 'cmd']);
+  });
+
+  it('returns [] for empty or whitespace-only input', () => {
+    expect(tokenizeShellSegment('')).toEqual([]);
+    expect(tokenizeShellSegment('   ')).toEqual([]);
+  });
+
+  it('collapses consecutive and surrounding whitespace', () => {
+    expect(tokenizeShellSegment('  npm   install  ')).toEqual(['npm', 'install']);
+  });
+
+  it('keeps an unclosed quote attached rather than dropping the token', () => {
+    expect(tokenizeShellSegment('echo "unclosed')).toEqual(['echo', '"unclosed']);
+    expect(tokenizeShellSegment("echo 'unclosed")).toEqual(['echo', "'unclosed"]);
+  });
+
+  it('treats adjacent quoted and unquoted text as one token', () => {
+    expect(tokenizeShellSegment('FOO="bar"baz')).toEqual(['FOO="bar"baz']);
   });
 });
 
