@@ -386,6 +386,62 @@ Project and feature lifecycles share three policies:
 
 ---
 
+## Writing Tests & Regression Guards
+
+The suite is large (≈640 files / ≈6,900 cases, ~35s) and that size is fine —
+it runs fast and 70%+ of commits touch it. What degrades it is a specific
+authoring habit: turning each incident into a new file that pins prose rather
+than behavior. These rules exist to stop that.
+
+### Where tests are gated
+
+| Surface | Gate |
+|---|---|
+| `packages/ant-cli/tests/**` | `pnpm test:cli` + `pnpm typecheck:tests` (CI) |
+| `packages/ant-ui/tests/**`, `src/**/__tests__/**` | `pnpm --filter @ant/ui test` (CI) |
+| `packages/cloud/tests/**` (ant-cloud) | `pnpm test:cloud` (ant-cloud PR CI) |
+| `tests/e2e-mock/**` | `pnpm test:e2e` — needs a live mock server, excluded from `test:cli` by design |
+
+**The build does NOT run tests** and no `prebuild` hook should be added — CI is
+the only gate. Test sources are excluded from `packages/ant-cli/tsconfig.json`
+because it ships into the runtime image; `tsconfig.test.json` is what
+typechecks them. Never add test globs to the shipped config.
+
+### ❌ Forbidden
+
+- **Pinning prompt prose.** `expect(rendered).toMatch(/ONE store instance/)`
+  locks an English sentence, so improving the wording fails the build. Assert
+  the **gate** instead: does this partial get injected when the gate is on, and
+  not when it is off? If the rule can't be expressed as a gate truth table, it
+  isn't a contract — don't test it.
+- **Testing a gitignored file.** `CLAUDE.md` / `.cursorrules` are gitignored, so
+  a test asserting their prose `it.skip`s in CI and on every fresh clone — it
+  looks green while checking nothing. Doc-prose sync is not a test's job.
+- **A new file per incident.** Add a row to the existing policy test for that
+  axis. Codename-named files (`regression-<codename>.test.ts`) fragment one
+  invariant across many near-duplicate regexes that then drift.
+- **Duplicating a rule in CI shell and in a test.** One owner. Prefer the test —
+  it can strip comments and reason about structure; a `grep -vE` heuristic can't.
+- **`expect(true).toBe(true)` as a soft skip**, or asserting a constant against
+  its own literal. If the case needs env state, stub it (`vi.stubEnv` +
+  `vi.resetModules()` + re-import) so the path actually executes.
+- **Reaching into another package** (`import … from '../../../ant-ui/src/…'`).
+  FE behavior is owned by the ant-ui suite, BE by ant-cli.
+
+### ✅ Correct
+
+- Table-driven policy tests: one file per axis, one row per case.
+- Tombstones (asserting a deleted file stays deleted) are valid **in the
+  deletion commit**. They accrue no signal afterwards — prune them once the
+  removal is a year old and nothing references the symbol.
+- Fixtures a test generates belong in `.gitignore`, not in git. A tracked file
+  that a test rewrites on every run produces a spurious diff forever.
+- When a test and the source disagree, decide which is stale before editing.
+  A test pinning a retired model id or a renamed field is usually the stale
+  one — but confirm against the commit that changed the behavior.
+
+---
+
 ## Prompt Engineering
 
 Rules for authoring Handlebars prompt templates under
@@ -400,7 +456,7 @@ as if it were one.
 
 | Policy | Enforced? | Guard |
 |--------|-----------|-------|
-| MECE / locality / partition gates | ✅ CI | `service-virtualization-vocabulary`, `domain-branching-locality`, `genre-coreloop-matrix`, `basis-partial-invariant`, `motion-locality`, … |
+| MECE / locality / partition gates | ✅ CI | `domain-branching-locality`, `domain-vocab-locality`, `domain-overlay-locality`, `domain-surface-boundary`, `asset-surface-boundary`, `basis-partial-invariant`, `motion-locality`, `service-virtualization`, … |
 | WHAT / HOW split (§1) | ⚠️ Guideline | reviewer judgement (transitional — legacy violations tolerated) |
 | FPOP (§4) | ⚠️ Guideline | reviewer judgement only — no CI lock |
 | SBS (§5) | ⚠️ Guideline | soft sanity grep only — not a build gate |

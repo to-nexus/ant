@@ -15,7 +15,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { join } from 'path';
 import { FilePromptAdapter, initPartials } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import { featureUiObservationVars } from '../../src/agents/architect/graph/code/tasks/_shared/helpers/featureUiObservation';
-import type { CodeTask } from '../../src/agents/architect/graph/code/types/task';
+import type { CodeTask } from '../../src/agents/architect/types/task';
 
 const TEMPLATES_DIR = join(__dirname, '../../src/core/prompt/templates');
 const PARTIAL = 'jobs/code/base/injections/feature-ui-observation';

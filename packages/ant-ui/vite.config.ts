@@ -238,5 +238,23 @@ export default defineConfig(({ mode }) => {
       open: false,
       proxy: PROXY_TABLE,
     },
+    // Vitest config lives HERE, not in a standalone vitest.config.ts: a sibling
+    // config file would shadow this one and drop the `@/*` + `@ant/shared`
+    // aliases above, which the suite imports through.
+    //
+    // Until this block existed the runner fell back to bare vitest defaults, so
+    // the include set was implicit. Spelling it out keeps both homes explicit —
+    // `tests/**` and the co-located `src/**/__tests__/**` (12 files) — so a new
+    // test in either place is picked up deliberately rather than by accident.
+    //
+    // environment stays 'node': there is no jsdom in this workspace and the
+    // component tests use react-test-renderer. Migrating to jsdom +
+    // @testing-library (which would also silence the `act(...)` warnings) is
+    // tracked separately — do not flip this without installing jsdom first.
+    test: {
+      include: ['tests/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.test.{ts,tsx}'],
+      environment: 'node',
+      testTimeout: 10000,
+    },
   };
 })

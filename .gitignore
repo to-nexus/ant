@@ -93,8 +93,16 @@ docs/tmp/
 CLAUDE.md
 .cursorrules
 
-# Verification scenario harness runtime (fixture source is in packages/ant-cli/tests/verification-scenarios)
+# Verification scenario harness runtime (fixture source is in packages/ant-cli/tests/verification/scenarios)
 /.ant-test/
+
+# Test-generated matrices. Written on every `pnpm test:cli` run by
+# tests/prompt/template-reverse-matrix.test.ts and
+# tests/artifacts/artifact-injection-e2e.test.ts, and read back only by those
+# same tests to self-verify the write — never a golden baseline. Tracking them
+# meant every local run produced a spurious diff with no CI step to regenerate
+# or compare them.
+/packages/ant-cli/tests/__generated__/
 
 # Editor / IDE multi-root workspace files (personal layout, not shipped)
 *.code-workspace

@@ -1,0 +1,19 @@
+// Typecheck-only config for the test suite.
+//
+// `tsconfig.json` is a PRODUCTION artifact — the Dockerfile copies it into the
+// runtime images because the server boots via `tsx src/composition/server.ts`,
+// and `tests/` is deliberately not copied. So test globs must never be added
+// there. This sibling config exists purely so `tsc --noEmit` can cover
+// `tests/**`, which `typecheck:cli` otherwise never sees (an `import type` from
+// a renamed path is erased by esbuild/vitest, so a stale test import passes
+// silently). Same split pattern as ant-ui's tsconfig.node.json / .electron.json.
+//
+// src is included alongside tests because the tests import src types directly.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

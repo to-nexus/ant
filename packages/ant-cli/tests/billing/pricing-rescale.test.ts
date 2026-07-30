@@ -14,7 +14,6 @@ import {
   creditsToMicroCredits,
   isBillableWorkTask,
 } from '@ant/shared';
-import { formatCredits } from '../../../ant-ui/src/shared/utils/tokenUtils';
 
 describe('pricing cutover — 1 credit = $1', () => {
   it('constants reflect par + sub-cent atomic unit', () => {
@@ -42,14 +41,9 @@ describe('pricing cutover — 1 credit = $1', () => {
     expect(microCreditsToCredits(creditsToMicroCredits(19.75))).toBeCloseTo(19.75, 8);
   });
 
-  it('formatCredits is currency-style (cents preserved, no compaction until huge)', () => {
-    expect(formatCredits(19.756)).toBe('19.76');
-    expect(formatCredits(0.1)).toBe('0.10');
-    expect(formatCredits(2)).toBe('2.00');
-    expect(formatCredits(0)).toBe('0.00');
-    // only very large balances compact
-    expect(formatCredits(250_000)).not.toContain('.');
-  });
+  // `formatCredits` display formatting lives in ant-ui and is owned by
+  // packages/ant-ui/tests/billing/formatCredits.test.ts — importing it from here
+  // crossed the package boundary. The credit MATH above stays in this suite.
 
   it('isBillableWorkTask excludes verification + error (batchSplit-safe)', () => {
     expect(isBillableWorkTask({ type: 'feature' })).toBe(true);

@@ -23,7 +23,7 @@ import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathRes
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
 import { gitAnchor } from '../../src/periphery/adapters/http/services/GitService/anchor/GitAnchorSSOT';
 import { isBranchBaseLocked, readBranchBase } from '../../src/periphery/adapters/http/services/GitService/anchor/branchBaseLifecycle';
-import type { GitHubAuthService } from '../../src/periphery/adapters/http/auth/GitHubAuthService';
+import type { GitHubAuthService } from '../../src/periphery/adapters/auth/GitHubAuthService';
 
 const uc = { userId: 'u', organizationId: 'o' };
 const PROJECT = 'proj';
