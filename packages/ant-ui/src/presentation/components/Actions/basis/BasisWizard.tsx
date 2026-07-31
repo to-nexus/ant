@@ -11,11 +11,12 @@ import { BasisSummaryBar } from './BasisSummaryBar';
 import { getTierDescriptor } from './constants';
 import type { BasisWizardProps, TierKey } from './types';
 
-export function BasisWizard({ basisSlot, onBack, lang, initialTier }: BasisWizardProps) {
-  const wizard = useBasisWizard(basisSlot, initialTier);
+export function BasisWizard({ basisSlot, onBack, lang, initialTier, allowSuppressedTiers }: BasisWizardProps) {
+  const wizard = useBasisWizard(basisSlot, initialTier, { allowSuppressedTiers });
   const dirRef = useRef<1 | -1>(1);
   const prevStepRef = useRef(wizard.state.stepIndex);
   const setBasisEditInitialTier = useStore(s => s.setBasisEditInitialTier);
+  const setBasisEditOverride = useStore(s => s.setBasisEditOverride);
 
   // The store's `basisEditInitialTier` is one-shot: it seeds the wizard's
   // activeTier on mount, then must be cleared so a subsequent global "Edit"
@@ -24,15 +25,15 @@ export function BasisWizard({ basisSlot, onBack, lang, initialTier }: BasisWizar
     setBasisEditInitialTier(undefined);
   }, [setBasisEditInitialTier]);
 
-  // Defensive routing: if live state turns the active tier unavailable
-  // (e.g. user picks stack=backend → Visual Tier collapses), hop to the
-  // first tier that is still available so we never render an empty active
-  // tier. Generic over `availableTiers` — no per-tier branching.
-  useEffect(() => {
-    if (wizard.availableTiers.includes(wizard.state.activeTier)) return;
-    const fallback = wizard.availableTiers[0];
-    if (fallback) wizard.switchTier(fallback);
-  }, [wizard.availableTiers, wizard.state.activeTier, wizard.switchTier]);
+  // `basisEditOverride` is consumed for as long as the wizard is mounted (it
+  // feeds the tier gate every render), so it is cleared on unmount instead —
+  // a later auto-routed entry must get the suppressed set again.
+  useEffect(() => () => setBasisEditOverride(false), [setBasisEditOverride]);
+
+  // No defensive hop effect here: `useBasisWizard` derives `activeTier`
+  // against `availableTiers` in the same render, so a tier that goes
+  // unavailable (user picks stack=backend → Visual Tier collapses, or a
+  // runtime suppressor closes it) can never be the active one.
 
   if (wizard.state.stepIndex !== prevStepRef.current) {
     dirRef.current = wizard.state.stepIndex > prevStepRef.current ? 1 : -1;

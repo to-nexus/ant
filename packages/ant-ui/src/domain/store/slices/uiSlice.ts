@@ -231,6 +231,7 @@ export interface UIActions {
   openActionsPanel: (actionId?: string) => void;
   setActionsStep: (step: 'pick-action' | 'pick-intent' | 'config' | 'basis-edit') => void;
   setBasisEditInitialTier: (tier: 'techTier' | 'visualTier' | 'gameArtTier' | undefined) => void;
+  setBasisEditOverride: (enabled: boolean) => void;
   selectAction: (actionId: string) => void;
   selectIntent: (intentId: string) => void;
   updateActionMetadata: (patch: Partial<ActionMetadata>) => void;
@@ -364,6 +365,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   mainPanelTabOrder: [],
   actionsStep: 'pick-action' as const,
   basisEditInitialTier: undefined,
+  basisEditOverride: false,
   selectedActionId: null,
   selectedIntentId: null,
   // Phase 2 (D22) — workspace project domain defaults to 'service' so the
@@ -1413,6 +1415,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         mainPanelTabOrder: newOrder,
         actionsStep: step,
         basisEditInitialTier: undefined,
+        basisEditOverride: false,
         selectedActionId: actionId || null,
         selectedIntentId,
         // D22: preserve sticky workspace-level domain across action navigation.
@@ -1431,6 +1434,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   setBasisEditInitialTier: (tier) => {
     set({ basisEditInitialTier: tier });
+  },
+
+  setBasisEditOverride: (enabled) => {
+    set({ basisEditOverride: enabled });
   },
 
   selectAction: (actionId: string) => {
@@ -1608,6 +1615,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             updates.selectedIntentId = null;
             updates.actionsStep = 'pick-action';
             updates.basisEditInitialTier = undefined;
+            updates.basisEditOverride = false;
             // Drop the now-orphaned per-intent fields too.
             next.intent = undefined;
             next.refs = undefined;
@@ -1677,6 +1685,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         selectedIntentId: null,
         actionsStep: 'pick-action' as const,
         basisEditInitialTier: undefined,
+        basisEditOverride: false,
         selectedActionId: null,
         mainPanelActiveTab: 'job',
         mainPanelOpenTabs: nextOpen,

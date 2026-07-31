@@ -59,6 +59,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const selectIntent = useStore(s => s.selectIntent);
   const setActionsStep = useStore(s => s.setActionsStep);
   const setBasisEditInitialTier = useStore(s => s.setBasisEditInitialTier);
+  const setBasisEditOverride = useStore(s => s.setBasisEditOverride);
   const figmaPopulated = useStore(s => s.figmaPopulated);
   const bridgeConnected = useStore(s => s.bridgeConnected);
   const figmaDesktopReachable = useStore(s => s.figmaDesktopReachable);
@@ -368,10 +369,14 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
                   basisSlot={slots.basis}
                   onEdit={() => {
                     setBasisEditInitialTier(undefined);
+                    // Deliberate entry — the wizard must expose the tiers the
+                    // codebase suppressor hides, else there is nothing to override.
+                    setBasisEditOverride(true);
                     setActionsStep('basis-edit');
                   }}
                   onEditTier={(tierKey) => {
                     setBasisEditInitialTier(tierKey);
+                    setBasisEditOverride(true);
                     setActionsStep('basis-edit');
                   }}
                   onResetTier={(tierKey) => {
