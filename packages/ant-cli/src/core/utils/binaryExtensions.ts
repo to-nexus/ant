@@ -21,28 +21,20 @@
  *     (read-on-demand vs path-only reference).
  *
  * Intentional divergence: `combineCodeContext.ts` uses a BROADER exclusion
- * set (adds `.svg`, `.br`, `.zst`) for the verification fast-path — that set
- * answers a different question ("what non-code assets should the verifier
- * ignore when listing codebase paths?") and is deliberately not unified here.
+ * set (adds `.svg`, `.br`, `.zst`; omits the 3D/audio additions) for the
+ * verification fast-path — that set answers a different question ("what
+ * non-code assets should the verifier ignore when listing codebase paths?")
+ * and is deliberately not unified here.
+ *
+ * The extension set itself lives in `@ant/shared` so the FE (editor routing)
+ * and BE gates share one list; this module re-exports it and owns the
+ * fs-dependent sniff tier.
  */
 
 import * as fs from 'fs';
 
-export const BINARY_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.tiff', '.tif',
-  '.woff', '.woff2', '.ttf', '.eot', '.otf',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2',
-  '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv', '.flv',
-  '.exe', '.dll', '.so', '.dylib', '.bin', '.dat',
-  '.sqlite', '.db', '.wasm',
-]);
-
-export function isBinaryPath(filePath: string): boolean {
-  const i = filePath.lastIndexOf('.');
-  if (i < 0) return false;
-  return BINARY_EXTENSIONS.has(filePath.slice(i).toLowerCase());
-}
+export { BINARY_EXTENSIONS, isBinaryPath } from '@ant/shared';
+import { isBinaryPath } from '@ant/shared';
 
 /** Head window for content sniffing (git uses the same 8000-byte heuristic). */
 const SNIFF_BYTES = 8000;

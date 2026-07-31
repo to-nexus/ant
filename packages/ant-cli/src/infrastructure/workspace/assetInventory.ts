@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { formatByteSize } from '../../core/utils/binaryExtensions';
+import { sniffCorruptedBinary } from '../../core/utils/binaryIntegrity';
 
 /**
  * Asset inventory — the single domain-scoped enumeration of a feature's asset
@@ -34,6 +35,13 @@ export interface AssetInventory {
    * file, bounded by the same `maxFiles` cap as the walk.
    */
   sizes: Record<string, number>;
+  /**
+   * Defect reason per corrupted binary asset (utf-8 round-trip mojibake /
+   * GLB header mismatch). A poisoned pool file consumed silently reproduces
+   * the Duck.glb incident — the inventory is the surface every job reads,
+   * so the warning lives here.
+   */
+  corrupted: Record<string, string>;
 }
 
 const DEFAULT_MAX = 200;
@@ -53,8 +61,8 @@ const DEFAULT_MAX = 200;
  * consuming job should DO with a fitting asset).
  */
 export function formatAssetInventoryBlock(
-  // Accepts the graph-state channel shape too (its `groups` / `sizes` are optional).
-  inv: { count: number; groups?: Record<string, string[]>; sizes?: Record<string, number> } | undefined,
+  // Accepts the graph-state channel shape too (its `groups` / `sizes` / `corrupted` are optional).
+  inv: { count: number; groups?: Record<string, string[]>; sizes?: Record<string, number>; corrupted?: Record<string, string> } | undefined,
   opts: { assetsRoot: string; usage: string },
 ): string {
   if (!inv?.count) return '';
@@ -69,9 +77,14 @@ export function formatAssetInventoryBlock(
     // quantifiable without inventing a number.
     const rendered = files.slice(0, 20).map((f) => {
       const bytes = inv.sizes?.[f];
-      return bytes !== undefined ? `${f} (${formatByteSize(bytes)})` : f;
+      const label = bytes !== undefined ? `${f} (${formatByteSize(bytes)})` : f;
+      return inv.corrupted?.[f] ? `${label} ⚠️ CORRUPTED — ${inv.corrupted[f]}` : label;
     });
     block += `- ${group}: ${rendered.join(', ')}${files.length > 20 ? ` … (+${files.length - 20})` : ''}\n`;
+  }
+  const corruptedCount = Object.keys(inv.corrupted ?? {}).length;
+  if (corruptedCount > 0) {
+    block += `⚠️ ${corruptedCount} asset(s) above are CORRUPTED on disk (see reasons). Do NOT consume or copy them as-is — report the defect and ask the user to re-upload the original file.\n`;
   }
   return block + '\n';
 }
@@ -82,7 +95,7 @@ export function indexAssetPool(params: {
   maxFiles?: number;
 }): AssetInventory {
   const { featurePath, assetsRoot } = params;
-  const empty: AssetInventory = { files: [], groups: {}, count: 0, sizes: {} };
+  const empty: AssetInventory = { files: [], groups: {}, count: 0, sizes: {}, corrupted: {} };
   if (!featurePath) return empty;
 
   const maxFiles = params.maxFiles
@@ -92,6 +105,7 @@ export function indexAssetPool(params: {
 
   const files: string[] = [];
   const sizes: Record<string, number> = {};
+  const corrupted: Record<string, string> = {};
   const walk = (dirAbs: string): void => {
     if (files.length >= maxFiles) return;
     let entries: fs.Dirent[] = [];
@@ -112,6 +126,9 @@ export function indexAssetPool(params: {
           // Same Dirent walk, one extra stat — a binary the model cannot read is
           // one it can only reason about by size.
           try { sizes[relToFeature] = fs.statSync(abs).size; } catch { /* raced away */ }
+          // Head-window corruption sniff (bounded by the same maxFiles cap).
+          const defect = sniffCorruptedBinary(abs);
+          if (defect) corrupted[relToFeature] = defect;
         }
       }
     }
@@ -128,5 +145,5 @@ export function indexAssetPool(params: {
     (groups[group] ||= []).push(f);
   }
 
-  return { files, groups, count: files.length, sizes };
+  return { files, groups, count: files.length, sizes, corrupted };
 }

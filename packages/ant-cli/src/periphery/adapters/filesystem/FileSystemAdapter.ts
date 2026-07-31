@@ -16,6 +16,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { FileSystemPort } from '../../../core/ports/filesystem';
+import { isBinaryPath } from '../../../core/utils/binaryExtensions';
 
 export class FileSystemAdapter implements FileSystemPort {
   private readonly basePath: string;
@@ -78,11 +79,25 @@ export class FileSystemAdapter implements FileSystemPort {
   
   async writeFile(relativePath: string, content: string): Promise<void> {
     const fullPath = this.resolveAbsolute(relativePath);
-    
+
+    // Single gate for every string-authoring surface (create_file, edit_file,
+    // <file>-tag streaming, design append, SharedFileBuffer flush): a utf-8
+    // string write to a binary-extension target can only produce garbage or —
+    // when the content came from a utf-8 read of real binary — a U+FFFD
+    // round-trip that destroys the file (the Duck.glb mojibake incident).
+    // Binary files enter the workspace via upload or download_asset only.
+    if (isBinaryPath(fullPath)) {
+      throw new Error(
+        `Cannot write binary file "${relativePath}" via a text tool. ` +
+        `Binary assets enter the workspace only through user upload or download_asset; ` +
+        `reference the existing file by path instead of authoring or editing its bytes.`
+      );
+    }
+
     // Ensure parent directory exists
     const dir = path.dirname(fullPath);
     await fs.promises.mkdir(dir, { recursive: true });
-    
+
     await fs.promises.writeFile(fullPath, content, 'utf-8');
   }
   

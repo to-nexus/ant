@@ -7,7 +7,7 @@
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { AdapterFactory } from '../../../../infrastructure/adapters/AdapterFactory';
-import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
+import { isBinaryPath, sniffFile } from '../../../../core/utils/binaryExtensions';
 import { getRefDeps, isRegistered, notRegisteredError } from '../reference/handlerSupport';
 import { resolveReferenceCodebase, ReferenceTargetError } from '../reference/resolve';
 import { refGitRead } from '../reference/refGit';
@@ -52,6 +52,16 @@ export async function handleReadReferenceFile(
         return {
           content: `Path is a directory: ${filePath}. Use list_reference_files({ project: "${project}", directory: "${filePath}" }).`,
         };
+      }
+      // Content sniff — parity with read_file's two-tier gate: catches binary
+      // formats the extension set doesn't know. Missing paths fall through to
+      // the canonical not-found reply below.
+      try {
+        if (sniffFile(adapter.resolveAbsolute(filePath)).binary) {
+          return { content: `[Binary file: ${filePath}] cannot be read as text.` };
+        }
+      } catch {
+        // resolveAbsolute failure → normal read path surfaces the error.
       }
       const read = await adapter.readFile(filePath);
       if (read == null) {

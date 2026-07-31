@@ -1,4 +1,5 @@
 import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiPatch, apiDelete, ApiError, featureSeg } from './client';
+import { isBinaryPath } from '@ant/shared';
 import type { FileNode, FileResource, FileResourceMeta, TemplateReason } from '@ant/shared';
 
 export type { FileNode, FileResource, FileResourceMeta, TemplateReason };
@@ -38,6 +39,18 @@ export function isHtmlFilePath(filePath: string | undefined | null): boolean {
 /** Binary image files (non-text). SVG is excluded because it is text-editable. */
 export function isBinaryImageFilePath(filePath: string | undefined | null): boolean {
   return isImageFilePath(filePath) && !isSvgFilePath(filePath);
+}
+
+/**
+ * Any binary file (shared `BINARY_EXTENSIONS` SSOT — images, archives,
+ * 3D models, audio, …). These must never be opened in the text editor:
+ * the text file API refuses them (422 BINARY_FILE), and a text round-trip
+ * would destroy the bytes. Images get the blob preview; everything else
+ * gets the read-only binary info panel.
+ */
+export function isBinaryFilePath(filePath: string | undefined | null): boolean {
+  if (!filePath) return false;
+  return isBinaryPath(filePath);
 }
 
 /** Fetch raw file as Blob (binary-safe). Uses /files-raw/ endpoint. */

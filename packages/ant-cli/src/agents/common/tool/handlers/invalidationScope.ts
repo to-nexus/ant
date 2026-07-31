@@ -134,6 +134,15 @@ export async function areDepsInstalled(featureRootPath: string): Promise<boolean
   // codebase is genuinely zero-dep → true.
   if (declarations.length === 0) return hasParseError ? null : true;
 
+  // Lockfile-sync check: a manifest edited after the lockfile was last
+  // written means an install never ran for that edit. node_modules presence
+  // alone cannot see this — a new dep that happens to resolve transitively
+  // (hoisted by another package) leaves the lockfile permanently stale and
+  // breaks every lockfile-strict consumer (`npm ci`, CI, deploy). The
+  // 1000ms tolerance absorbs EFS/NFS attribute-cache skew and same-tick
+  // fixture creation (mirrors DeployWorkspace's copy-freshness window).
+  if (await isLockfileStale(codebasePath, manifests)) return false;
+
   for (const { name, spec, declaringDir } of declarations) {
     const modPath = await resolveModulePath(codebasePath, name, declaringDir);
     if (!modPath) return false;
@@ -156,6 +165,52 @@ export async function areDepsInstalled(featureRootPath: string): Promise<boolean
     }
   }
   return true;
+}
+
+const JS_LOCKFILE_NAMES = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb'] as const;
+const LOCKFILE_MTIME_TOLERANCE_MS = 1000;
+
+/**
+ * True when any `package.json` is more than `LOCKFILE_MTIME_TOLERANCE_MS`
+ * newer than its governing lockfile (nearest lockfile walking up from the
+ * manifest's dir to the codebase root). Manifests with no lockfile anywhere
+ * are exempt — there is no lock to drift from. Deliberately mtime-based:
+ * parsing three lockfile formats would be a version-dependent contract.
+ */
+async function isLockfileStale(codebasePath: string, manifests: string[]): Promise<boolean> {
+  const mtimeOf = async (p: string): Promise<number | null> => {
+    try {
+      return (await fs.promises.stat(p)).mtimeMs;
+    } catch {
+      return null;
+    }
+  };
+
+  for (const absManifestPath of manifests) {
+    const manifestMtime = await mtimeOf(absManifestPath);
+    if (manifestMtime === null) continue;
+
+    let dir = path.dirname(absManifestPath);
+    let lockMtime: number | null = null;
+    // Walk up to (and including) the codebase root looking for the nearest lockfile.
+    for (;;) {
+      for (const lockName of JS_LOCKFILE_NAMES) {
+        const candidate = await mtimeOf(path.join(dir, lockName));
+        if (candidate !== null) {
+          lockMtime = lockMtime === null ? candidate : Math.max(lockMtime, candidate);
+        }
+      }
+      if (lockMtime !== null || dir === codebasePath) break;
+      const parent = path.dirname(dir);
+      if (parent === dir || !parent.startsWith(codebasePath)) break;
+      dir = parent;
+    }
+
+    if (lockMtime !== null && manifestMtime > lockMtime + LOCKFILE_MTIME_TOLERANCE_MS) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** True iff the spec is a semver range (version check is meaningful). */

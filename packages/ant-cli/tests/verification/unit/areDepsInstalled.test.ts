@@ -422,4 +422,82 @@ describe('areDepsInstalled', () => {
       expect(await areDepsInstalled(r)).toBe(false);
     });
   });
+
+  describe('lockfile staleness (valid-crating-prawn regression — three@transitive masked a never-run install)', () => {
+    // mtimes are set explicitly with utimes: temp-dir creation order would
+    // otherwise make manifest-vs-lockfile ordering nondeterministic. The rule
+    // uses a 1000ms tolerance, so deltas here are multiple seconds.
+    async function setMtime(p: string, epochMs: number): Promise<void> {
+      const d = new Date(epochMs);
+      await fs.promises.utimes(p, d, d);
+    }
+
+    it('L1 — manifest newer than lockfile beyond tolerance → false even though every dep resolves', async () => {
+      const r = await root({
+        pkg: { dependencies: { react: '^19.0.0' } },
+        installedModules: ['react'],
+      });
+      const codebase = path.join(r, 'codebase');
+      const lock = path.join(codebase, 'package-lock.json');
+      await fs.promises.writeFile(lock, JSON.stringify({ lockfileVersion: 3 }));
+      const t0 = Date.now() - 60_000;
+      await setMtime(lock, t0);
+      await setMtime(path.join(codebase, 'package.json'), t0 + 5_000);
+      expect(await areDepsInstalled(r)).toBe(false);
+    });
+
+    it('L2 — manifest and lockfile within the 1000ms tolerance → true (no flake on same-tick fixtures)', async () => {
+      const r = await root({
+        pkg: { dependencies: { react: '^19.0.0' } },
+        installedModules: ['react'],
+      });
+      const codebase = path.join(r, 'codebase');
+      const lock = path.join(codebase, 'package-lock.json');
+      await fs.promises.writeFile(lock, JSON.stringify({ lockfileVersion: 3 }));
+      const t0 = Date.now() - 60_000;
+      await setMtime(lock, t0);
+      await setMtime(path.join(codebase, 'package.json'), t0 + 500);
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('L3 — lockfile newer than manifest (normal post-install state) → true', async () => {
+      const r = await root({
+        pkg: { dependencies: { react: '^19.0.0' } },
+        installedModules: ['react'],
+      });
+      const codebase = path.join(r, 'codebase');
+      const lock = path.join(codebase, 'package-lock.json');
+      await fs.promises.writeFile(lock, JSON.stringify({ lockfileVersion: 3 }));
+      const t0 = Date.now() - 60_000;
+      await setMtime(path.join(codebase, 'package.json'), t0);
+      await setMtime(lock, t0 + 5_000);
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('L4 — no lockfile anywhere → rule is inert (resolution check governs)', async () => {
+      const r = await root({
+        pkg: { dependencies: { react: '^19.0.0' } },
+        installedModules: ['react'],
+      });
+      expect(await areDepsInstalled(r)).toBe(true);
+    });
+
+    it('L5 — member manifest newer than the ROOT lockfile (hoisted workspace) → false', async () => {
+      const r = await root({
+        pkg: { name: 'workspace-root' },
+        installedModules: ['react'],
+        members: [
+          { dir: 'apps/web', pkg: { dependencies: { react: '^19.0.0' } } },
+        ],
+      });
+      const codebase = path.join(r, 'codebase');
+      const lock = path.join(codebase, 'package-lock.json');
+      await fs.promises.writeFile(lock, JSON.stringify({ lockfileVersion: 3 }));
+      const t0 = Date.now() - 60_000;
+      await setMtime(lock, t0);
+      await setMtime(path.join(codebase, 'package.json'), t0 - 5_000);
+      await setMtime(path.join(codebase, 'apps/web/package.json'), t0 + 5_000);
+      expect(await areDepsInstalled(r)).toBe(false);
+    });
+  });
 });

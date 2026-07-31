@@ -1,4 +1,4 @@
-import { isBinaryImageFilePath } from '@/infrastructure/http/api';
+import { isBinaryFilePath, isBinaryImageFilePath } from '@/infrastructure/http/api';
 
 export type ViewMode = 'raw' | 'preview';
 
@@ -9,10 +9,12 @@ export function supportedViewModes(path: string | null | undefined): ReadonlySet
   if (!path) {
     return new Set<ViewMode>(['preview']);
   }
-  if (isBinaryImageFilePath(path)) {
+  // Binary files (images and otherwise) never offer a raw text view —
+  // the text file API refuses them (422 BINARY_FILE).
+  if (isBinaryImageFilePath(path) || isBinaryFilePath(path)) {
     return new Set<ViewMode>(['preview']);
   }
-  // Default policy: every non-image file supports both raw and preview.
+  // Default policy: every non-binary file supports both raw and preview.
   return new Set<ViewMode>(['raw', 'preview']);
 }
 

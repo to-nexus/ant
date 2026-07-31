@@ -1,8 +1,10 @@
 import { spawn, execSync, execFileSync } from 'child_process';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
 import { detectPackageManager, buildInstallCommand, findProjectRoot, type PackageManager } from '../../../../../../utils/packageManager';
+import { atomicWriteFile } from '../../../../../../core/utils/atomicWriteFile';
 import type { ProjectProfile } from '@ant/shared';
 import type { LogCallback } from '../types';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
@@ -18,8 +20,10 @@ const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
  * and runs npm/yarn/pnpm install as needed.
  */
 export class DependencyInstaller {
-  // Track which project roots have already been installed
-  private installedRoots: Set<string> = new Set();
+  // In-process memo: project root → manifest hash at last successful install.
+  // Keyed by hash (not mere presence) so a job that edits package.json between
+  // restarts is not short-circuited by a stale memo.
+  private installedRoots: Map<string, string> = new Map();
 
   /**
    * Install dependencies if needed.
@@ -65,62 +69,136 @@ export class DependencyInstaller {
     const nodeModulesPath = path.join(packagePath, 'node_modules');
     const projectRoot = this.findProjectRoot(packagePath);
     const isWorkspace = this.isWorkspaceProject(projectRoot);
-    
+
     // For workspace projects, only install once at root
     if (isWorkspace) {
-      if (this.installedRoots.has(projectRoot)) {
+      const expectedHash = this.manifestHash(projectRoot, this.listWorkspaceMemberManifests(projectRoot));
+      if (this.installedRoots.get(projectRoot) === expectedHash) {
         logger.debug(`Workspace already installed: ${projectRoot}`, { component: 'DependencyInstaller' });
         return;
       }
-      
+
       const rootNodeModules = path.join(projectRoot, 'node_modules');
-      if (!fs.existsSync(rootNodeModules)) {
+      const needsInstall =
+        !fs.existsSync(rootNodeModules)
+        || this.workspaceNeedsReinstall(projectRoot)
+        // Manifest changed since the last successful install (a job added a
+        // dep the critical-dep scan cannot see) — the stamp is the witness.
+        || (await this.readInstallStamp(projectRoot)) !== expectedHash;
+
+      if (needsInstall) {
         logger.info(`Installing workspace dependencies at root: ${projectRoot}`, { component: 'DependencyInstaller' });
         await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv, signal);
-        this.installedRoots.add(projectRoot);
+        await this.recordInstall(projectRoot, this.listWorkspaceMemberManifests(projectRoot));
         return;
       }
-      
-      // Check if workspace needs reinstall
-      if (this.workspaceNeedsReinstall(projectRoot)) {
-        logger.info(`Workspace needs reinstall: ${projectRoot}`, { component: 'DependencyInstaller' });
-        await this.runInstall(projectRoot, 'workspace root', onLog, credentialEnv, signal);
-        this.installedRoots.add(projectRoot);
-        return;
-      }
-      
-      this.installedRoots.add(projectRoot);
+
+      this.installedRoots.set(projectRoot, expectedHash);
       logger.debug(`Workspace dependencies OK: ${projectRoot}`, { component: 'DependencyInstaller' });
       return;
     }
-    
+
     // Non-workspace: install per package
     if (!fs.existsSync(nodeModulesPath)) {
       logger.info(`Installing dependencies (no node_modules): ${displayName}`, { component: 'DependencyInstaller' });
-      return this.runInstall(packagePath, displayName, onLog, credentialEnv, signal);
+      await this.runInstall(packagePath, displayName, onLog, credentialEnv, signal);
+      await this.recordInstall(packagePath);
+      return;
     }
-    
+
     // Verify critical dependencies are actually installed
     const packageJsonPath = path.join(packagePath, 'package.json');
     if (!fs.existsSync(packageJsonPath)) {
       logger.warn(`No package.json found at ${packagePath}`, { component: 'DependencyInstaller' });
       return;
     }
-    
+
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     const criticalDeps = this.identifyCriticalDeps(packageJson);
-    
-    const missingDeps = criticalDeps.filter(dep => 
+
+    const missingDeps = criticalDeps.filter(dep =>
       !fs.existsSync(path.join(nodeModulesPath, dep))
     );
-    
+
     if (missingDeps.length > 0) {
       logger.info(`Missing critical deps for ${displayName}: ${missingDeps.join(', ')} (re-install)`, { component: 'DependencyInstaller' });
       onLog('stdout', `⚠️  Missing critical dependencies: ${missingDeps.join(', ')}`);
-      return this.runInstall(packagePath, displayName, onLog, credentialEnv, signal);
+      await this.runInstall(packagePath, displayName, onLog, credentialEnv, signal);
+      await this.recordInstall(packagePath);
+      return;
     }
-    
+
+    // The critical-dep whitelist cannot see ordinary new deps (e.g. a job
+    // adding `three`): compare the manifest content-hash against the stamp
+    // written at the last successful install. Content-hash, not mtime —
+    // EFS attribute caching makes mtimes unreliable across pods.
+    const expectedHash = this.manifestHash(packagePath);
+    if ((await this.readInstallStamp(packagePath)) !== expectedHash) {
+      logger.info(`Manifest changed since last install: ${displayName} (re-install)`, { component: 'DependencyInstaller' });
+      onLog('stdout', `📦 package.json changed since last install — installing dependencies`);
+      await this.runInstall(packagePath, displayName, onLog, credentialEnv, signal);
+      await this.recordInstall(packagePath);
+      return;
+    }
+
     logger.debug(`Dependencies already installed: ${packagePath}`, { component: 'DependencyInstaller' });
+  }
+
+  // ── Install stamp (manifest content-hash under node_modules/) ──────────
+  //
+  // `node_modules/.ant-install-stamp` records the sha256 of package.json +
+  // lockfile(s) (+ workspace member manifests) at the last successful
+  // install. Lives inside node_modules so deleting node_modules deletes the
+  // stamp (fail-open to install) and generated .gitignore already covers it.
+
+  private stampPath(installRoot: string): string {
+    return path.join(installRoot, 'node_modules', '.ant-install-stamp');
+  }
+
+  private manifestHash(installRoot: string, extraManifests: string[] = []): string {
+    const parts: string[] = [];
+    const tryRead = (p: string) => {
+      try { parts.push(`${p}\n${fs.readFileSync(p, 'utf8')}`); } catch { /* absent */ }
+    };
+    tryRead(path.join(installRoot, 'package.json'));
+    for (const lock of ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb']) {
+      tryRead(path.join(installRoot, lock));
+    }
+    for (const m of extraManifests) tryRead(m);
+    return createHash('sha256').update(parts.join('\x00')).digest('hex');
+  }
+
+  /** `packages/*` member manifests — mirrors `workspaceNeedsReinstall`'s scan scope. */
+  private listWorkspaceMemberManifests(projectRoot: string): string[] {
+    const packagesDir = path.join(projectRoot, 'packages');
+    try {
+      return fs.readdirSync(packagesDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => path.join(packagesDir, e.name, 'package.json'))
+        .filter((p) => fs.existsSync(p));
+    } catch {
+      return [];
+    }
+  }
+
+  private async readInstallStamp(installRoot: string): Promise<string | null> {
+    try {
+      return (await fs.promises.readFile(this.stampPath(installRoot), 'utf-8')).trim();
+    } catch {
+      return null;
+    }
+  }
+
+  /** Write the stamp (atomic tmp+rename) and refresh the in-process memo. */
+  private async recordInstall(installRoot: string, extraManifests: string[] = []): Promise<void> {
+    const hash = this.manifestHash(installRoot, extraManifests);
+    try {
+      await atomicWriteFile(this.stampPath(installRoot), hash);
+    } catch (err) {
+      // Non-fatal: worst case the next restart re-installs.
+      logger.warn(`Failed to write install stamp at ${installRoot}: ${(err as Error).message}`, { component: 'DependencyInstaller' });
+    }
+    this.installedRoots.set(installRoot, hash);
   }
   
   /**
@@ -466,7 +544,9 @@ export class DependencyInstaller {
       onLog('stdout', `📦 Go workspace detected — running go work sync...`);
       logger.info(`Running go work sync in: ${workspaceRoot}`, { component: 'DependencyInstaller' });
       await this.runGoCommand(['work', 'sync'], workspaceRoot, onLog, '✅ Go workspace synced', credentialEnv, signal);
-      this.installedRoots.add(workspaceRoot);
+      // Go workspaces have no manifest-hash stamp (JS-only); the memo value
+      // is a sentinel — `has()` is the only read on this path.
+      this.installedRoots.set(workspaceRoot, 'go-work-synced');
       return;
     }
 

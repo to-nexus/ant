@@ -62,6 +62,18 @@
 
 **Constraint**: Do NOT skip a required gate — every required gate (type-check, build, test) MUST be observed clean before completion. Observing them in dependency order (type-check → build → test) is the efficient sequence (a build aborts early on type errors), but the sequencing is your judgment; completeness is not. Do not declare success while any required gate is unobserved (or has been invalidated by a later edit).
 
+### Binary Asset Integrity Gate
+
+**Principle**: When the work under verification placed or copied a binary runtime asset (model, audio, image, font — any non-text file the application loads at runtime), existence is NOT verification. A corrupted binary passes every listing, every source grep, and every build/type/test gate, then fails silently at runtime — and a graceful fallback in the consuming code makes that failure invisible.
+
+**Observable** — byte-level integrity IS machine-observable with shell commands, so this gate is NOT exempt under the machine-observability boundary:
+- Source↔destination byte equality when the asset was copied (`cmp` / byte-size comparison against the origin file).
+- Declared size vs. actual size, and the format's container header where the format declares one (magic bytes at a fixed offset).
+
+**Constraints**:
+- Do NOT count `list_files` presence or a source-text grep for the loading code as evidence the asset is loadable.
+- When any inventory or tool output marks an asset as CORRUPTED, that is an outstanding defect: report it as a violation requiring the original file to be re-supplied — do NOT resolve with the no-errors sentinel and do NOT re-copy the corrupted bytes.
+
 {{/if}}
 
 ## Diagnostic Protocol Rules

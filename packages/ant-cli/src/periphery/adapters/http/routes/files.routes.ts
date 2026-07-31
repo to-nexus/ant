@@ -11,6 +11,7 @@ import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
+import { writeBufferVerified } from '../../../../core/utils/binaryIntegrity';
 
 /**
  * File operations (read, write, delete, upload)
@@ -161,6 +162,8 @@ export function createFilesRoutes(deps: {
           res.status(404).json({ error: 'File not found' });
         } else if (error.code === 'EISDIR') {
           res.status(400).json({ error: 'Path is a directory, not a file' });
+        } else if (error.code === 'BINARY_FILE') {
+          res.status(422).json({ code: 'BINARY_FILE', message: error.message, size: error.size });
         } else {
           throw error;
         }
@@ -216,6 +219,9 @@ export function createFilesRoutes(deps: {
 
       res.json(resource);
     } catch (error: any) {
+      if (error.code === 'BINARY_TARGET') {
+        return res.status(422).json({ code: 'BINARY_TARGET', message: error.message });
+      }
       logger.error('Error creating/updating file', { component: 'Files' }, error);
       sendErrorResponse(res, 500, error, 'Files');
     }
@@ -274,14 +280,13 @@ export function createFilesRoutes(deps: {
         }
       }
 
-      // Write all uploaded files
+      // Write all uploaded files (shared byte-safe core: size + GLB header verification)
       const uploadedFiles: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const relPath = relativePaths[i] || file.originalname;
         const filePath = resolveSafePath(baseDir, relPath);
-        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-        await fs.promises.writeFile(filePath, file.buffer);
+        await writeBufferVerified(filePath, file.buffer);
         uploadedFiles.push(relPath);
       }
       

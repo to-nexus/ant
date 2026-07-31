@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   fetchFileBlob,
+  getDownloadUrl,
+  isBinaryFilePath,
   isBinaryImageFilePath,
   isHtmlFilePath,
   isSvgFilePath,
@@ -122,6 +124,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const fileStatus = useStore((s) => s.currentFile.status);
   const fileData = useStore((s) => s.currentFile.data);
   const fileBuffer = useStore((s) => s.currentFile.buffer);
+  const fileError = useStore((s) => s.currentFile.error);
   const savingStatus = useStore((s) => s.currentFile.savingStatus);
   const openFile = useStore((s) => s.openFile);
   const updateBuffer = useStore((s) => s.updateBuffer);
@@ -146,6 +149,14 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
 
   const isFigmaFile = selectedFile?.endsWith('figma.json') ?? false;
   const isBinaryImageFile = isBinaryImageFilePath(selectedFile);
+  // Non-image binary (3D model, audio, archive, …): never fetched as text —
+  // the text file API refuses binaries (422 BINARY_FILE), and a text
+  // round-trip would destroy the bytes. Rendered as a read-only info panel.
+  // The server sniff also 422s binary CONTENT behind an unknown extension;
+  // that fallback routes to the same panel instead of an error card.
+  const isOtherBinaryFile =
+    (!isBinaryImageFile && isBinaryFilePath(selectedFile)) ||
+    (fileStatus === 'error' && (fileError as any)?.code === 'BINARY_FILE');
 
   // Derived editor content: buffer when dirty, else the server ground truth.
   const editedContent = fileBuffer ?? fileData?.content ?? '';
@@ -156,9 +167,9 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   // Re-open / fetch when the selected path changes.
   useEffect(() => {
     if (!selectedProject || !selectedFeature || !selectedFile) return;
-    if (isBinaryImageFile) return;
+    if (isBinaryImageFile || isOtherBinaryFile) return;
     openFile(selectedFile);
-  }, [selectedProject, selectedFeature, selectedFile, isBinaryImageFile, openFile]);
+  }, [selectedProject, selectedFeature, selectedFile, isBinaryImageFile, isOtherBinaryFile, openFile]);
 
   // Binary image preview via blob.
   useEffect(() => {
@@ -356,7 +367,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
 
   const handleSave = useCallback(async () => {
     if (!selectedProject || !selectedFeature || !selectedFile) return;
-    if (isBinaryImageFile) return;
+    if (isBinaryImageFile || isOtherBinaryFile) return;
     if (notifyArtifactMutationBlocked()) return;
     try {
       await saveCurrentFile();
@@ -369,6 +380,7 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
     selectedFeature,
     selectedFile,
     isBinaryImageFile,
+    isOtherBinaryFile,
     notifyArtifactMutationBlocked,
     saveCurrentFile,
     showError,
@@ -575,6 +587,32 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
                 이미지 프리뷰를 불러오지 못했습니다.
               </div>
             )}
+          </div>
+        ) : isOtherBinaryFile ? (
+          <div className="flex-1 overflow-auto p-4" style={previewSurface}>
+            <div
+              className="w-full min-h-full flex flex-col items-center justify-center gap-2 text-sm"
+              style={{ color: 'var(--text-2)' }}
+            >
+              <span className="font-medium" style={{ color: 'var(--text-1)' }}>
+                {selectedFile?.split('/').pop()}
+              </span>
+              <span style={{ color: 'var(--text-3)' }}>{t('editor.binaryFileHint')}</span>
+              {selectedProject && selectedFeature && selectedFile && (
+                <a
+                  href={getDownloadUrl(selectedProject, selectedFeature, selectedFile)}
+                  className="inline-flex items-center justify-center h-6 px-2 text-[11px] transition-colors"
+                  style={{
+                    color: 'var(--text-2)',
+                    borderRadius: 'var(--r-md)',
+                    border: '1px solid var(--border-1)',
+                    background: 'var(--bg-surface-2)',
+                  }}
+                >
+                  {t('editor.binaryDownload')}
+                </a>
+              )}
+            </div>
           </div>
         ) : viewMode === 'preview' && isSvgFile ? (
           <div className="flex-1 overflow-auto p-4" style={previewSurface}>
