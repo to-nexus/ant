@@ -13,6 +13,7 @@ You are diagnosing build and test failures and creating a structured remediation
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}
+{{> jobs/code/base/injections/observable-fallback}}
 
 {{> jobs/code/base/injections/monorepo-install-locality}}
 
