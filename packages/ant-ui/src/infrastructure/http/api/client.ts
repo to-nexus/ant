@@ -225,6 +225,8 @@ export class ApiError extends Error {
   stage?: string;
   /** Leftover paths from a failed verification step (project deletion fsVerify). */
   leftovers?: string[];
+  /** Offending file basename (e.g. 422 CORRUPTED_FILE on upload). */
+  filename?: string;
 
   constructor(message: string, status: number, data?: Record<string, unknown>) {
     super(message);
@@ -240,6 +242,7 @@ export class ApiError extends Error {
     this.kind = data?.kind as string | undefined;
     this.stage = data?.stage as string | undefined;
     this.leftovers = data?.leftovers as string[] | undefined;
+    this.filename = data?.filename as string | undefined;
   }
 }
 

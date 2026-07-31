@@ -11,7 +11,7 @@ import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
-import { writeBufferVerified } from '../../../../core/utils/binaryIntegrity';
+import { writeBufferVerified, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
 
 /**
  * File operations (read, write, delete, upload)
@@ -280,6 +280,23 @@ export function createFilesRoutes(deps: {
         }
       }
 
+      // Integrity pre-validation, all-or-nothing like the policy loop above:
+      // a defect found mid-write would leave earlier files already ingested.
+      // A corrupted supplied file is the client's problem (422), never a 500.
+      for (let i = 0; i < files.length; i++) {
+        const relPath = (relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
+        const defect = verifyBufferIntegrity(relPath, files[i].buffer);
+        if (defect) {
+          const filename = path.basename(relPath);
+          logger.warn(`[Upload] Rejected corrupted file ${filename}: ${defect}`);
+          return res.status(422).json({
+            code: 'CORRUPTED_FILE',
+            message: `${filename} is corrupted and was not saved: ${defect}`,
+            filename,
+          });
+        }
+      }
+
       // Write all uploaded files (shared byte-safe core: size + GLB header verification)
       const uploadedFiles: string[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -318,12 +335,21 @@ export function createFilesRoutes(deps: {
         try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         uploadedFiles,
-        count: uploadedFiles.length 
+        count: uploadedFiles.length
       });
     } catch (error: any) {
+      // Backstop: the pre-validation above should have caught this, but a
+      // corrupted supplied file must never surface as a server error.
+      if (error?.code === 'CORRUPTED_FILE') {
+        return res.status(422).json({
+          code: 'CORRUPTED_FILE',
+          message: error.message,
+          filename: error.filename,
+        });
+      }
       logger.error('Upload error', { component: 'Files' }, error);
       sendErrorResponse(res, 500, error, 'Files');
     }

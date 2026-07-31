@@ -75,6 +75,8 @@
     "fetchSuggestionsFailed": "Unable to fetch suggestions.",
     "invalidExtension": "{{dir}} only accepts: {{allowed}}",
     "subdirsNotAllowed": "Subdirectories are not allowed in {{dir}}",
+    "corruptedFile": "{{filename}} is damaged and was not saved — its bytes no longer match the file format. Damage of this kind cannot be repaired; please upload the original file.",
+    "binaryTarget": "Binary files cannot be created or edited as text. Use file upload instead.",
     "uploadPartialBlocked": "{{blocked}} of {{total}} files were blocked (unsupported type)",
     "artifactBlockedTitle": "Cannot change artifacts",
     "artifactBlockedSignIn": "Sign in to upload or edit artifact files.",
