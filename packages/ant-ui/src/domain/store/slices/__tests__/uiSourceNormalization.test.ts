@@ -31,12 +31,17 @@ beforeEach(() => {
   updateProjectConfigMock.mockResolvedValue(undefined);
 });
 
-type TestStore = UISlice & ResetSlice;
+// An intent patch funnels the (agent, jobType) pair through authSlice's
+// `applyJobIdentity` SSOT writer. Stub it here — this file's contract is
+// UiSource exclusivity; the funnel itself is locked by
+// `tests/store/intentIdentityFunnel.test.ts`.
+type TestStore = UISlice & ResetSlice & { applyJobIdentity: (args: unknown) => void };
 
 function makeStore() {
   return create<TestStore>()((...args) => ({
     ...createUISlice(...args),
     ...createResetSlice(...args),
+    applyJobIdentity: () => {},
   }));
 }
 

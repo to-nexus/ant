@@ -46,9 +46,14 @@ beforeEach(() => {
 // `persistWorkspaceDomain` reads them off the same store; we don't pull
 // in the real `projectSlice` / `projectConfigSlice` since their fetch
 // machinery is irrelevant to the persistence contract under test.
+// `selectIntent` / an intent patch funnel the (agent, jobType) pair through
+// authSlice's `applyJobIdentity` SSOT writer. Stub it — this file's contract
+// is the domain transition; the funnel is locked by
+// `tests/store/intentIdentityFunnel.test.ts`.
 type TestStore = UISlice & ResetSlice & {
   selectedProject?: string;
   projectConfig?: { data?: ProjectConfig | null };
+  applyJobIdentity: (args: unknown) => void;
 };
 
 function makeStore(opts: {
@@ -60,6 +65,7 @@ function makeStore(opts: {
     ...createResetSlice(...args),
     selectedProject: opts.selectedProject,
     projectConfig: { data: opts.projectConfig ?? null },
+    applyJobIdentity: () => {},
   }));
 }
 

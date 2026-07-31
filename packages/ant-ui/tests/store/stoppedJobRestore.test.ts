@@ -14,6 +14,10 @@
  *    selection. Empty + no jobId now preserves the current selection.
  *  - F3: `handleInitialActiveJobs([])` (post-refresh, sealed job) gains the
  *    history fallback that auto-selects the latest same-type run.
+ *  - F5: the same identity guard on the job-COMPLETED branch. `isStaleJobUpdate`
+ *    above it requires BOTH ids truthy, so it does not fire for an incoming
+ *    `undefined` — the branch wrote `currentJobId` unconditionally. Both
+ *    branches now share `frameCarriesJobIdentity`.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -194,5 +198,86 @@ describe('F3 — bootstrap history fallback when activeJobs is empty', () => {
     await flush();
 
     expect(selectJobId).not.toHaveBeenCalled();
+  });
+});
+
+describe('F5 — completion branch shares the identity guard', () => {
+  // The completion branch fires on `!isJobRunning && state.isRunning`, i.e. a
+  // session frame arriving while the run is still marked active.
+  function completingState(overrides: Record<string, any> = {}) {
+    return {
+      currentJobId: 'code-old',
+      isRunning: true,
+      selectedProject: 'proj',
+      selectedFeature: 'main',
+      runningJobsByFeature: { 'proj/main': 'code-old' },
+      userStoppedJobId: undefined,
+      jobStartPending: false,
+      dismissedInterruptTimestamp: null,
+      activeJobs: {},
+      refreshFileTree: () => {},
+      refreshBalance: () => {},
+      refreshUsage: () => {},
+      ...overrides,
+    } as any;
+  }
+
+  it('preserves the selection when the completing frame carries no identity', async () => {
+    const { handleKanbanUpdate } = await import('../../src/domain/store/slices/sse/kanbanReducer');
+    const state = completingState();
+    let applied: any = {};
+    const set = (patch: any) => { applied = { ...applied, ...patch }; };
+    const get = () => ({ ...state, ...applied });
+
+    handleKanbanUpdate(
+      { todo: [], inProgress: [], completed: [], isEstimating: false, dataSource: 'session' } as any,
+      set as any,
+      get as any,
+    );
+
+    expect('currentJobId' in applied).toBe(false);
+    expect(applied.isRunning).toBe(false);
+  });
+
+  it('adopts the jobId of a real terminal board', async () => {
+    const { handleKanbanUpdate } = await import('../../src/domain/store/slices/sse/kanbanReducer');
+    const state = completingState();
+    let applied: any = {};
+    const set = (patch: any) => { applied = { ...applied, ...patch }; };
+    const get = () => ({ ...state, ...applied });
+
+    handleKanbanUpdate(
+      {
+        jobId: 'code-old',
+        todo: [],
+        inProgress: [],
+        completed: [{ id: 't1' }],
+        isEstimating: false,
+        dataSource: 'session',
+      } as any,
+      set as any,
+      get as any,
+    );
+
+    expect(applied.currentJobId).toBe('code-old');
+    expect(applied.isRunning).toBe(false);
+    expect(applied.kanban.completed).toHaveLength(1);
+  });
+
+  it('adopts a task-carrying board even when the frame omits jobId', async () => {
+    const { handleKanbanUpdate } = await import('../../src/domain/store/slices/sse/kanbanReducer');
+    const state = completingState();
+    let applied: any = {};
+    const set = (patch: any) => { applied = { ...applied, ...patch }; };
+    const get = () => ({ ...state, ...applied });
+
+    handleKanbanUpdate(
+      { todo: [], inProgress: [], completed: [{ id: 't1' }], isEstimating: false, dataSource: 'session' } as any,
+      set as any,
+      get as any,
+    );
+
+    expect(applied.currentJobId).toBeUndefined();
+    expect('currentJobId' in applied).toBe(true);
   });
 });

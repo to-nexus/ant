@@ -49,8 +49,12 @@ beforeEach(() => {
   updateProjectConfigMock.mockResolvedValue(undefined);
 });
 
+// Stubbed for the same reason as in `domainTransition.test.ts` — an intent
+// patch funnels the (agent, jobType) pair through authSlice's
+// `applyJobIdentity`, which this harness deliberately does not compose.
 type TestStore = UISlice & ResetSlice & ProjectConfigSlice & {
   selectedProject?: string;
+  applyJobIdentity: (args: unknown) => void;
 };
 
 function makeStore(selectedProject?: string) {
@@ -59,6 +63,7 @@ function makeStore(selectedProject?: string) {
     ...createResetSlice(...args),
     ...createProjectConfigSlice(...args),
     selectedProject,
+    applyJobIdentity: () => {},
   }));
 }
 

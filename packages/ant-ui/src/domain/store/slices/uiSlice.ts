@@ -1495,14 +1495,20 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
           domain: s.actionMetadata.domain,
           techTierByGroup: nextCache,
         },
-        selectedAgent: derived.agent,
-        selectedJobType: derived.jobType as any,
         pendingChatInput: { message: '', source: 'intent-change' },
       };
     });
+    // SSOT: `applyJobIdentity` owns the (agent, jobType) pair — writing it
+    // inline here skipped SELECTED_JOB_TYPE persistence and the SSE `job`
+    // param, so a reload asked for the previously-persisted jobType's board.
+    get().applyJobIdentity({ jobType: derived.jobType as any, agent: derived.agent });
   },
 
   updateActionMetadata: (patch: Partial<ActionMetadata>) => {
+    // Derived by the intent-change branch below, applied through
+    // `applyJobIdentity` after the reducer commits (same reason as in
+    // `selectIntent`).
+    const identityOut: { pair: { jobType: any; agent?: string } | null } = { pair: null };
     set((s: any) => {
       const next = { ...s.actionMetadata, ...patch };
       const updates: any = {};
@@ -1531,8 +1537,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
         if (patch.intent) {
           const derived = deriveFromIntent(patch.intent);
-          updates.selectedAgent = derived.agent;
-          updates.selectedJobType = derived.jobType;
+          identityOut.pair = { jobType: derived.jobType, agent: derived.agent };
           // Re-apply intent-level lockedStack so an IntentTabNav swap from
           // gen-sys-be → gen-sys-fe forces stack='frontend' immediately.
           next.basis = applyLockedStackToBasis(next.basis as Basis | undefined, patch.intent);
@@ -1660,6 +1665,9 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       updates.actionMetadata = next;
       return updates;
     });
+    if (identityOut.pair) {
+      get().applyJobIdentity(identityOut.pair);
+    }
   },
 
   resetActionMetadata: () => {
