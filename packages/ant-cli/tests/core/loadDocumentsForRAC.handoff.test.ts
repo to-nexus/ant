@@ -64,9 +64,10 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
       '{"color":{"bg":"#000"}}',
     );
 
-    // Game asset pool — binary format whose extension is NOT in
-    // BINARY_EXTENSIONS; the content sniff must classify it (GLB header:
-    // magic "glTF" + little-endian version, which contains NUL bytes).
+    // Game asset pool — .glb now sits in the shared BINARY_EXTENSIONS set
+    // (valid-crating-prawn fix); the content sniff remains the backstop for
+    // formats the set does not know (GLB header: magic "glTF" + little-endian
+    // version, which contains NUL bytes).
     const modelsDir = path.join(featurePath, 'assets/game/models');
     fs.mkdirSync(modelsDir, { recursive: true });
     fs.writeFileSync(
@@ -125,7 +126,7 @@ describe('loadResolvedArtifacts — handoff stub semantics', () => {
     expect(artifacts[0].content).not.toContain('#1a1a2e');
   });
 
-  it('classifies an attached .glb asset as a binary stub via content sniff (no extension whitelist)', () => {
+  it('classifies an attached .glb asset as a binary stub (extension fast-path + content sniff agree)', () => {
     const artifacts = loadResolvedArtifacts(
       rac([], ['assets/game/models/Duck.glb']),
       featurePath,

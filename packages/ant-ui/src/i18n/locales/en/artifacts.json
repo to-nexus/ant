@@ -89,6 +89,8 @@
     "raw": "Raw",
     "preview": "Preview",
     "svgPreviewFailed": "Failed to load SVG preview.",
+    "binaryFileHint": "Binary file — cannot be viewed or edited as text.",
+    "binaryDownload": "Download",
     "htmlPreviewFailed": "Failed to load HTML preview.",
     "parseError": "Parse error",
     "figmaEmpty": "No Figma URLs configured",

@@ -167,7 +167,10 @@ export async function handleDownloadAsset(
       buffer = Buffer.from(await response.arrayBuffer());
     }
 
-    await fsMod.writeFile(destPath, buffer);
+    // Shared byte-safe write core: size + GLB header verification (fail-loud
+    // instead of silently poisoning the asset pool).
+    const { writeBufferVerified } = await import('../../../../../../../core/utils/binaryIntegrity');
+    await writeBufferVerified(destPath, buffer);
 
     const sizeBytes = buffer.length;
     const sizeKB = (sizeBytes / 1024).toFixed(1);
@@ -262,6 +265,9 @@ export async function handleListAssets(
       filename: p.split('/').pop() ?? p,
       extension: (p.match(/\.[^./]+$/)?.[0] ?? '').toLowerCase(),
       ...(inventory.sizes?.[p] !== undefined ? { sizeBytes: inventory.sizes[p] } : {}),
+      ...(inventory.corrupted?.[p]
+        ? { corrupted: `CORRUPTED on disk (${inventory.corrupted[p]}) — do NOT consume; ask the user to re-upload the original file` }
+        : {}),
     }));
 
   // Tolerate the predictable domain-prefixed form (`game/models`) instead of

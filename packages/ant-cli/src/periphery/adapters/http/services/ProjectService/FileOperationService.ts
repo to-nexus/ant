@@ -6,6 +6,29 @@ import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import { computeFileMeta, shouldEvaluateTemplate } from '../../../../../core/utils/computeFileMeta';
+import { isBinaryPath, isBinaryFileSync, sniffFile } from '../../../../../core/utils/binaryExtensions';
+import { writeBufferVerified } from '../../../../../core/utils/binaryIntegrity';
+
+/**
+ * Thrown when the text file API is pointed at binary content. Routes map it
+ * to HTTP 422 so the FE can distinguish it from real failures.
+ * - 'BINARY_FILE'   — read refused (use /files-raw/)
+ * - 'BINARY_TARGET' — write refused (binary enters via the upload route only)
+ */
+export class BinaryFileOperationError extends Error {
+  readonly code: 'BINARY_FILE' | 'BINARY_TARGET';
+  readonly size?: number;
+
+  constructor(code: 'BINARY_FILE' | 'BINARY_TARGET', filePath: string, size?: number) {
+    super(
+      code === 'BINARY_FILE'
+        ? `Binary file cannot be read as text: ${filePath}`
+        : `Binary file cannot be written via the text file API: ${filePath}`,
+    );
+    this.code = code;
+    this.size = size;
+  }
+}
 
 const TREE_EXCLUDE = new Set([
   'node_modules',
@@ -45,8 +68,11 @@ export class FileOperationService {
 
   private resolveFullPath(projectId: string, featureName: string, filePath: string, userContext: UserContext): { featurePath: string; fullPath: string } {
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const fullPath = path.join(featurePath, filePath);
-    if (!fullPath.startsWith(featurePath)) {
+    const root = path.resolve(featurePath);
+    const fullPath = path.resolve(featurePath, filePath);
+    // Path-traversal guard: bare startsWith is prefix-collision-prone
+    // (`/a/b` vs sibling `/a/bc`) — require the separator boundary.
+    if (fullPath !== root && !fullPath.startsWith(root + path.sep)) {
       throw new Error('Invalid file path');
     }
     return { featurePath, fullPath };
@@ -155,14 +181,24 @@ export class FileOperationService {
   
   /**
    * Read file as a FileResource (content + ground-truth meta).
+   *
+   * Binary files are refused (`code: 'BINARY_FILE'` → HTTP 422): decoding
+   * them as utf-8 is lossy (every invalid byte → U+FFFD), and a subsequent
+   * save round-trips the replacement chars back to disk, destroying the
+   * file. Binary reads go through `/files-raw/` instead.
    */
   async readFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<FileResource> {
     const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
 
-    const [content, stats] = await Promise.all([
-      fs.promises.readFile(fullPath, 'utf-8'),
-      fs.promises.stat(fullPath),
-    ]);
+    const stats = await fs.promises.stat(fullPath);
+    if (stats.isFile()) {
+      const sniff = sniffFile(fullPath);
+      if (sniff.binary) {
+        throw new BinaryFileOperationError('BINARY_FILE', filePath, sniff.size ?? stats.size);
+      }
+    }
+
+    const content = await fs.promises.readFile(fullPath, 'utf-8');
 
     const meta = computeFileMeta({
       relativePath: filePath,
@@ -178,9 +214,18 @@ export class FileOperationService {
    * Write file content and return the ground-truth FileResource (normalized
    * content + recomputed meta). This is the single mutation surface for text
    * files; HTTP PUT routes MUST delegate here.
+   *
+   * Binary targets are refused (`code: 'BINARY_TARGET'` → HTTP 422): a
+   * string body re-encoded as utf-8 destroys binary content (the Duck.glb
+   * mojibake incident — U+FFFD round-trip). Binary files enter only via the
+   * Buffer-safe upload route.
    */
   async writeFile(projectId: string, featureName: string, filePath: string, content: string, userContext: UserContext): Promise<FileResource> {
     const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
+
+    if (isBinaryPath(filePath) || isBinaryFileSync(fullPath)) {
+      throw new BinaryFileOperationError('BINARY_TARGET', filePath);
+    }
 
     await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
 
@@ -238,18 +283,9 @@ export class FileOperationService {
     files: Array<{ path: string; content: Buffer }>,
     userContext: UserContext
   ): Promise<void> {
-    const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    
     for (const file of files) {
-      const fullPath = path.join(featurePath, file.path);
-      
-      if (!fullPath.startsWith(featurePath)) {
-        throw new Error(`Invalid file path: ${file.path}`);
-      }
-      
-      await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-      
-      await fs.promises.writeFile(fullPath, file.content);
+      const { fullPath } = this.resolveFullPath(projectId, featureName, file.path, userContext);
+      await writeBufferVerified(fullPath, file.content);
     }
   }
 }

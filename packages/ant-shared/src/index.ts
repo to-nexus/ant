@@ -55,6 +55,7 @@ export * from './codebase-presence';
 export * from './session-log';
 export * from './context-lens';
 export * from './file-resource';
+export * from './binary-extensions';
 export * from './folders-compressed';
 export * from './chat-status';
 export * from './chat-events';

@@ -14,6 +14,7 @@ import {
 } from './invalidationScope';
 import { enforceManifestPinPolicyForWrite } from './manifestPinPolicy';
 import { packageManagerMutex } from './runCommand';
+import { sniffFile } from '../../../../core/utils/binaryExtensions';
 
 const MAX_IO_RETRIES = 3;
 
@@ -43,6 +44,24 @@ export async function handleEditFile(
       const msg = `File does not exist: ${resolved.displayPath}. To create a new file use the create_file tool (or the <file> tag).`;
       await ctx.chatStatus.failFileEdit(filePath, msg);
       return { content: msg, error: msg };
+    }
+
+    // Binary gate — same two-tier verdict as read_file (extension set +
+    // content sniff). A utf-8 read→edit→write of binary content destroys
+    // the file via U+FFFD round-trip; the write gate in FileSystemAdapter
+    // is the backstop, this refusal is the early, cheap one.
+    try {
+      const sniffed = sniffFile(fileSystem.resolveAbsolute(resolved.fsPath));
+      if (sniffed.binary) {
+        const msg =
+          `Cannot edit binary file: ${resolved.displayPath}. ` +
+          `Binary assets are edited only by replacing the file (user upload or download_asset); ` +
+          `reference the path directly in code instead.`;
+        await ctx.chatStatus.failFileEdit(filePath, msg);
+        return { content: msg, error: msg };
+      }
+    } catch {
+      // resolveAbsolute failure → let the normal read path surface the error.
     }
 
     const { applySearchReplace } = await import('../../../../core/streaming/strategies/common/EditOperations');
