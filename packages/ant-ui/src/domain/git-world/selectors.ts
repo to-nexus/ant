@@ -67,6 +67,14 @@ export type GitMenu =
       cloneBlockedByFeatures: boolean;
     }
   | { kind: 'publish'; source: 'noFeatures' | 'noUpstream' }
+  /**
+   * Connected project (`hasGit && hasRemote`) with ZERO features. The bare
+   * anchor is the only repository, and `ensureGitRepository` rejects every
+   * worktree-scoped op without a feature — `fetch` is the sole operation
+   * that passes `allowAnchor`. Offering push/pull/publish/clone here would
+   * be a guaranteed BE rejection.
+   */
+  | { kind: 'anchorOnly'; canFetch: boolean }
   | {
       kind: 'synced';
       canPush: boolean;
@@ -100,6 +108,14 @@ export function deriveGitMenu(input: DeriveGitMenuInput): GitMenu {
       return { kind: 'setup', actions: [cta], cloneBlockedByFeatures: true };
     }
     return { kind: 'setup', actions: [cta], cloneBlockedByFeatures: false };
+  }
+
+  // Connected but featureless (e.g. every feature was deleted). Must sit
+  // AFTER the setup branch — an unconnected project still gets Clone /
+  // Publish — and BEFORE the `hasUpstream` check, which would otherwise
+  // route to Push, an operation the BE always rejects without a feature.
+  if (!snapshot.hasFeatures) {
+    return { kind: 'anchorOnly', canFetch: true };
   }
 
   if (snapshot.hasUpstream === false) {

@@ -62,6 +62,15 @@ export function useGitSnapshotRefreshing(): boolean {
   return useGitWorldStore((s) => s.snapshot.refreshing);
 }
 
+/**
+ * Last snapshot-fetch failure, or `null`. Consumers use this to distinguish
+ * "first fetch still pending" from "fetch failed and nothing will retry" —
+ * the latter needs a retry affordance, not a "checking…" label.
+ */
+export function useGitSnapshotError(): string | null {
+  return useGitWorldStore((s) => s.snapshot.error);
+}
+
 export function useGitOperation(): GitOperationState {
   return useGitWorldStore((s) => s.operation);
 }

@@ -98,7 +98,11 @@ export interface GitWorldActions {
   // Public writers — the only sanctioned mutation entry points.
   fetchGitWorldState: (
     projectId: string,
-    opts?: { feature?: string; fresh?: boolean },
+    /**
+     * `_converged` is internal: set only by the identity-mismatch re-dispatch
+     * inside `fetchGitWorldState` so the retry can never re-dispatch again.
+     */
+    opts?: { feature?: string; fresh?: boolean; _converged?: boolean },
   ) => Promise<void>;
   runGitOperation: (
     projectId: string,
@@ -167,6 +171,20 @@ export const createGitWorldSlice: StateCreator<any, [], [], GitWorldSlice> = (se
         // "확인중" until the lifecycle effect re-fires.
         if (fetchSeq === reqId) {
           set((s: any) => ({ snapshot: { ...s.snapshot, refreshing: false } }));
+
+          // We were the newest fetch, our identity is stale, and there is
+          // nothing to display. On a zero-feature surface the SSE stream is
+          // feature-scoped (so no `reconnectRefill` / `workingTreeChange`
+          // exists) and the lifecycle effect won't re-run — this bail would
+          // otherwise be absorbing, leaving a dead "확인중" chip until a
+          // manual page reload. Converge once against the live identity.
+          if (!opts?._converged && self.selectedProject && self.snapshot.data === null) {
+            void self.fetchGitWorldState(self.selectedProject, {
+              feature: self.selectedFeature ?? undefined,
+              fresh: opts?.fresh,
+              _converged: true,
+            });
+          }
         }
         return;
       }

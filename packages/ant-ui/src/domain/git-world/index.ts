@@ -44,6 +44,7 @@ export type { GitCta, GitMenu, GitBadge, GitSetupCta, DeriveGitMenuInput } from 
 export {
   useGitSnapshot,
   useGitSnapshotRefreshing,
+  useGitSnapshotError,
   useGitOperation,
   useGitPat,
   useGitPatRefreshing,

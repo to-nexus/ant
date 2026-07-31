@@ -71,7 +71,17 @@ export function useFeatureActions(
 
       const currentFeature = useStore.getState().selectedFeature;
       if (currentFeature === featureName) {
+        // Identity changes → `useProjectLifecycle` re-primes git-world.
         setSelectedFeature(undefined);
+      } else {
+        // No identity transition ⇒ no lifecycle refetch. Without this the
+        // snapshot keeps a stale `hasFeatures: true` (Clone stays blocked)
+        // until a manual page reload. `fresh` bypasses the BE remoteExists
+        // cache so the Clone-vs-Publish disambiguation is authoritative.
+        void useStore.getState().fetchGitWorldState?.(projectId, {
+          feature: currentFeature || undefined,
+          fresh: true,
+        });
       }
     } catch (error) {
       if (error instanceof ApiError && error.kind === 'featureDeletion' && error.stage) {

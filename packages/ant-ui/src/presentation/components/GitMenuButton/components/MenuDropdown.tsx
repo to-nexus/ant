@@ -134,6 +134,20 @@ export function MenuDropdown({
           </>
         );
       })()}
+      {menu.kind === 'anchorOnly' && (
+        <>
+          <div className="px-3 py-2 text-xs" style={{ color: 'var(--text-3)', borderBottom: '1px solid var(--border-1)' }}>
+            {t('config:git.createFeatureFirst')}
+          </div>
+          {renderItem({
+            onClick: handleFetch,
+            icon: <RefreshCw className="w-4 h-4" />,
+            title: t('config:git.fetch'),
+            desc: t('config:git.fetchDesc'),
+            disabled: !menu.canFetch,
+          })}
+        </>
+      )}
       {menu.kind === 'synced' && (
         <>
           {renderItem({
