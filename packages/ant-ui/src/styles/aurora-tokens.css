@@ -486,6 +486,19 @@ code, pre { font-family: var(--font-mono); }
   75%      { opacity: 1;    transform: translate(-2px, -1px) scale(1.3); }
 }
 
+/* ---- Settling chip farewell (worker-group dock) ----
+   A chip that reaches its terminal state is held briefly instead of vanishing,
+   so the transition registers. `--chip-settle-glow` carries the outcome colour. */
+@keyframes chip-settle-flash {
+  0%   { box-shadow: 0 0 0 0 var(--chip-settle-glow, transparent); }
+  30%  { box-shadow: 0 0 12px 2px var(--chip-settle-glow, transparent); }
+  100% { box-shadow: 0 0 0 0 var(--chip-settle-glow, transparent); }
+}
+@keyframes chip-settle-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.92); }
+}
+
 /* ============================================================================
    TYPE HELPERS
    ============================================================================ */
