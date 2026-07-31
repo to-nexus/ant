@@ -104,3 +104,18 @@ export function selectActiveUserRole(state: StoreState): 'owner' | 'member' | un
 export function selectCanViewUsdCost(_state: StoreState): boolean {
   return true;
 }
+
+/**
+ * Single visibility seam: may CREDITS (the ANT billing unit) be shown?
+ *
+ * Cloud only. Local mode calls the provider with the user's own API key and is
+ * never charged in credits, so every credit-flavoured label/row must disappear
+ * there — USD cost stays (it's the real provider bill).
+ *
+ * Reads `serverMode` rather than `billingEnabled` so it fails CLOSED during the
+ * first paint window: `billingEnabled` defaults to `true` before
+ * `/system/config` lands and would flash credits in local mode.
+ */
+export function selectCanViewCredits(state: StoreState): boolean {
+  return selectServerMode(state) === 'cloud';
+}

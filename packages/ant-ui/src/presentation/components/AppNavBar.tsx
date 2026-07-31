@@ -3,6 +3,7 @@ import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus } from 'lucide-
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
+import { LocalLlmBadge } from './pricing/LocalLlmBadge';
 import { Slot } from '@/presentation/extensions/slots';
 import { useStore } from '@/domain/store';
 import { OAUTH_BASE, API_BASE, switchOrg } from '@/infrastructure/http/api';
@@ -369,10 +370,13 @@ export function AppNavBar({}: AppNavBarProps) {
             <DesktopStatusIndicator />
 
             {/* User Section. Local launch has no remote identity — the
-                LocalUserBadge surfaces Account Configuration only. */}
+                LocalUserBadge surfaces Account Configuration only, and the
+                credit slot's local counterpart is the LLM badge (own API key,
+                no ledger) placed where cloud shows the credit balance. */}
             {serverMode === 'local' && (
               <>
                 <div className="w-px h-6" style={{ background: 'var(--border-1)' }}></div>
+                <LocalLlmBadge />
                 <LocalUserBadge />
               </>
             )}

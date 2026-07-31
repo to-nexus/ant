@@ -28,7 +28,18 @@
     "kind_topup": "충전",
     "kind_subscription": "구독",
     "kind_refund": "환불",
-    "kind_adjustment": "조정"
+    "kind_adjustment": "조정",
+    "pricingTitle": "모델 가격",
+    "pricingEyebrow": "참고",
+    "pricingSubtitle": "1M 토큰당 USD (MTok). 각 모델의 실제 과금에 쓰이는 요율입니다.",
+    "pricingModel": "모델",
+    "pricingInput": "입력",
+    "pricingOutput": "출력",
+    "pricingCacheWrite": "캐시 쓰기",
+    "pricingCacheRead": "캐시 읽기",
+    "pricingError": "가격 정보를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "pricingRateNote": "1 크레딧 = ${{usd}} USD. LLM API 비용은 제공사 리스트 가격 그대로(마진 없음, pass-through) 청구되며, 실행당 플랫폼 수수료가 별도로 부과됩니다.",
+    "pricingRateNoteLocal": "제공사 공식 리스트 가격입니다. 로컬 모드에서는 본인의 API 키로 제공사에 직접 청구되며, Ant 는 아무것도 청구하지 않습니다."
   },
   "projectConfig": {
     "title": "프로젝트 설정",

@@ -28,7 +28,18 @@
     "kind_topup": "Top-up",
     "kind_subscription": "Subscription",
     "kind_refund": "Refund",
-    "kind_adjustment": "Adjustment"
+    "kind_adjustment": "Adjustment",
+    "pricingTitle": "Model pricing",
+    "pricingEyebrow": "Reference",
+    "pricingSubtitle": "USD per 1M tokens (MTok). These are the exact rates used to bill each model.",
+    "pricingModel": "Model",
+    "pricingInput": "Input",
+    "pricingOutput": "Output",
+    "pricingCacheWrite": "Cache write",
+    "pricingCacheRead": "Cache read",
+    "pricingError": "Could not load pricing. Please try again.",
+    "pricingRateNote": "1 credit = ${{usd}} USD. LLM API cost is billed at provider list price with no margin (pass-through); a separate per-run platform fee applies.",
+    "pricingRateNoteLocal": "Provider public list price. In local mode these calls are billed directly to you by the provider using your own API key — Ant charges nothing."
   },
   "projectConfig": {
     "title": "Project Config",

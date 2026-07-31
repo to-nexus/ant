@@ -9,6 +9,13 @@
     "localOrg": "로컬 조직",
     "localUserTooltip": "셀프 호스팅 기동 — 외부 인증 없이 동작합니다"
   },
+  "billing": {
+    "llmBadge": "LLM",
+    "llmTooltipTitle": "로컬 LLM",
+    "llmTooltipBody": "로컬 모드에서는 모든 LLM 호출에 본인의 API 키를 사용합니다 — Ant 는 크레딧을 청구하지 않습니다.",
+    "llmEnvHint": "키는 .env 환경변수에서 설정합니다 (ANTHROPIC_API_KEY, OPENAI_API_KEY 등).",
+    "viewPricing": "가격정보 보기 →"
+  },
   "viewMode": {
     "agents": "에이전트",
     "code": "코드",
