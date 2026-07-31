@@ -414,6 +414,10 @@ export function generateChatStatusContent(
     case 'task_response':
       return metadata?.content ?? '';
 
+    // Body-less lifecycle marker — absorbed into TurnSection.outcome, never rendered.
+    case 'task_scope_end':
+      return '';
+
     case 'subagent_running': {
       const goal = metadata?.goal ?? 'investigation';
       return `Subagent exploring: ${goal}...`;

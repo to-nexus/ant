@@ -301,6 +301,9 @@ export class ChatService {
       cardId: string;
       statusType: ChatStatusType;
       metadata?: Record<string, unknown>;
+      /** Parallel-worker section this line belongs to (`worker-N#task-K[#pM]`). */
+      workerScope?: string;
+      taskName?: string;
       userContext?: UserContext;
     },
   ): Promise<void> {
@@ -320,6 +323,8 @@ export class ChatService {
       cardId: args.cardId,
       statusType: args.statusType,
       metadata: args.metadata,
+      ...(args.workerScope ? { workerScope: args.workerScope } : {}),
+      ...(args.taskName ? { taskName: args.taskName } : {}),
     };
     await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
   }
@@ -1249,6 +1254,73 @@ export class ChatService {
       );
     }
     return resolvedCount;
+  }
+
+  /**
+   * Close every worker-task chat section of `jobId` that never received a
+   * `task_scope_end` marker, stamping `{ outcome: 'cancelled' }`.
+   *
+   * The marker's owner is `TaskWorker.executeTask`'s task-scope `finally`;
+   * this is the backstop for the one case that `finally` cannot cover — the
+   * job-runner child dying outright (SIGKILL / cgroup OOM / server crash).
+   * Without it those sections would stay `active` forever and the FE
+   * worker-group dock would keep spinning for a job that is long dead.
+   *
+   * Returns the number of scopes closed.
+   */
+  async closeOpenWorkerScopes(
+    projectId: string,
+    featureName: string,
+    jobId: string,
+    userContext?: UserContext,
+  ): Promise<number> {
+    const ctx = userContext ?? this.defaultUserContext;
+    const adapter = this.makeAdapter(projectId, featureName, ctx);
+    if (!adapter) return 0;
+
+    let lines: ChatLine[];
+    try {
+      lines = await adapter.loadAllChat();
+    } catch (err) {
+      logger.warn(`closeOpenWorkerScopes: loadAllChat failed`, { component: COMPONENT }, err);
+      return 0;
+    }
+
+    // scope → { turnId, jobType, taskName }, minus the ones already closed.
+    const open = new Map<string, { turnId: string; jobType: LogJobType; taskName?: string }>();
+    for (const line of lines) {
+      if (line.collapsed) continue;
+      if (line.jobId !== jobId) continue;
+      const scope = line.workerScope;
+      if (!scope || !scope.startsWith('worker-')) continue;
+      if (line.type === 'chat_status' && line.statusType === 'task_scope_end') {
+        open.delete(scope);
+        continue;
+      }
+      if (open.has(scope)) continue;
+      open.set(scope, { turnId: line.turnId, jobType: line.jobType, taskName: line.taskName });
+    }
+    if (open.size === 0) return 0;
+
+    for (const [workerScope, meta] of open) {
+      await this.appendChatStatus(projectId, featureName, {
+        jobId,
+        turnId: meta.turnId,
+        jobType: meta.jobType,
+        cardId: `scope-end-${jobId}-${workerScope}`,
+        statusType: 'task_scope_end',
+        metadata: { outcome: 'cancelled' },
+        workerScope,
+        taskName: meta.taskName,
+        userContext: ctx,
+      });
+    }
+    logger.warn(
+      `Closed ${open.size} worker scope(s) with no task_scope_end marker`,
+      { component: COMPONENT, jobId },
+      { scopes: [...open.keys()] },
+    );
+    return open.size;
   }
 
   /**

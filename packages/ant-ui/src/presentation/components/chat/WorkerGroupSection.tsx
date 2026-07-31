@@ -60,6 +60,8 @@ function formatDuration(ms: number): string {
 
 export interface WorkerGroupSectionProps {
   turnId: string;
+  /** Owning turn's jobId — job-liveness input for the header glyph. */
+  turnJobId: string;
   section: TurnSection;
   /** Count of worker-scoped sections in this turn (collapse default input). */
   workerSectionCount: number;
@@ -69,6 +71,7 @@ export interface WorkerGroupSectionProps {
 
 export const WorkerGroupSection = memo(function WorkerGroupSection({
   turnId,
+  turnJobId,
   section,
   workerSectionCount,
   children,
@@ -77,18 +80,26 @@ export const WorkerGroupSection = memo(function WorkerGroupSection({
   const key = groupOverrideKey(turnId, section.workerScope);
   const override = useStore((s) => s.chatGroupOverrides[key]);
   const toggleChatGroup = useStore((s) => s.toggleChatGroup);
+  const isRunning = useStore((s) => s.isRunning);
+  const currentJobId = useStore((s) => s.currentJobId);
   const registerGroup = useRegisterGroup(turnId, section.workerScope);
 
   const parsed = useMemo(() => parseWorkerScope(section.workerScope), [section.workerScope]);
   // Section ref is per-turn-stable (selectTurns cache) — these recompute
   // only when this section actually changed.
   const status = useMemo(() => sectionStatus(section), [section]);
+  // A section with no terminal marker reads `active`. That is only true while
+  // the owning job is alive — a killed worker or a chat.jsonl recorded before
+  // the marker existed would otherwise spin forever in scrollback. When the
+  // job is dead we show no glyph rather than claim an outcome we never got.
+  const settledUnknown =
+    status === 'active' && !(isRunning && !!currentJobId && turnJobId === currentJobId);
   const hasChoice = useMemo(() => sectionHasUnresolvedChoice(section), [section]);
   const taskName = useMemo(() => sectionTaskName(section), [section]);
   const collapsed = resolveGroupCollapsed(section, workerSectionCount, override);
   const ticker = useMemo(
-    () => (collapsed && status === 'active' ? sectionTicker(section) : undefined),
-    [collapsed, status, section],
+    () => (collapsed && status === 'active' && !settledUnknown ? sectionTicker(section) : undefined),
+    [collapsed, status, settledUnknown, section],
   );
 
   const onToggle = useCallback(() => {
@@ -175,7 +186,7 @@ export const WorkerGroupSection = memo(function WorkerGroupSection({
             />
           )}
           <span className="flex-shrink-0 inline-flex items-center">
-            {status === 'active' && (
+            {status === 'active' && !settledUnknown && (
               <span style={{ color: workerTintFg(hue) }}>
                 <Spinner size="md" tone="inherit" />
               </span>

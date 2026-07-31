@@ -291,8 +291,8 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       console.log(`[QuickStart] Starting plan job with directive: ${trimmed.substring(0, 50)}...`);
       setRunning(true, undefined, 'generate');
       
-      await addChatUserMessage(projectId, feat, trimmed);
-      
+      const { turnId } = await addChatUserMessage(projectId, feat, trimmed);
+
       const jobExecution = executeCodeJob({
         projectId,
         featureName: feat,
@@ -300,6 +300,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
         agent: 'planner',
         overrideDirective: trimmed,
         chatSource: true,
+        seedTurnId: turnId,
       });
       setCurrentJob(jobExecution);
       jobExecution.onJobIdReady((jobId) => {

@@ -634,6 +634,27 @@ export class JobCleanupManager {
       }
     }
 
+    // Backstop for the worker-task terminal marker. `TaskWorker`'s
+    // task-scope `finally` owns `task_scope_end`, but a SIGKILLed /
+    // OOM-reaped job-runner child never runs it — those sections would
+    // stay `active` forever in the FE worker-group dock.
+    if (mapping.projectId && mapping.featureName) {
+      try {
+        await this.deps.chatService.closeOpenWorkerScopes(
+          mapping.projectId,
+          mapping.featureName,
+          jobId,
+          effectiveUserContext,
+        );
+      } catch (err) {
+        logger.warn(
+          `closeOpenWorkerScopes backstop failed`,
+          { component: 'JobCleanupManager', jobId },
+          err,
+        );
+      }
+    }
+
     logger.debug(`cleanupJobState completed`, {
       component: 'JobCleanupManager',
       jobId

@@ -63,14 +63,6 @@ export function parseWorkerScope(scope: string): ParsedWorkerScope | null {
 
 export type WorkerGroupStatus = 'active' | 'completed' | 'failed';
 
-function statusLineFailed(statusType: string, metadata?: Record<string, unknown>): boolean {
-  if (statusType.endsWith('_failed')) return true;
-  if (!metadata) return false;
-  if (metadata.error) return true;
-  if (metadata.success === false) return true;
-  return false;
-}
-
 export function sectionHasStreamingOverlay(section: TurnSection): boolean {
   return !!(
     section.activeText ||
@@ -80,23 +72,23 @@ export function sectionHasStreamingOverlay(section: TurnSection): boolean {
 }
 
 /**
- * Group tri-state:
- *  - `failed` — any folded status line landed as a failure.
- *  - `completed` — the terminal `task_response` card landed and nothing is
- *    streaming.
- *  - `active` — everything else. A quiet section (empty buffer between LLM
- *    calls, no terminal card yet) stays `active` — keying "completed" off
- *    buffer emptiness would flicker (see SectionStack's isStreaming).
+ * Group tri-state, decided ONLY by the BE task-lifecycle marker
+ * (`TurnSection.outcome`, absorbed from `task_scope_end`).
+ *
+ * Step cards deliberately do not participate. The previous version scanned
+ * them and got both halves wrong:
+ *  - any card carrying `metadata.error` flipped the group to `failed`
+ *    permanently — and `search_code` sets that on a benign zero-match, so
+ *    healthy tasks rendered ❌ and `resolveGroupCollapsed` force-expanded
+ *    them;
+ *  - "the terminal `task_response` card landed" stood in for completion, but
+ *    that card is an execute-phase artifact. Every non-execute exit
+ *    (batch-split Path A re-queue, Path B drop-and-replace, the empty-plan
+ *    verification shortcut) left the group `active` forever.
  */
 export function sectionStatus(section: TurnSection): WorkerGroupStatus {
-  let hasTerminalResponse = false;
-  for (const item of section.items) {
-    if (item.kind !== 'status') continue;
-    const md = item.line.metadata as Record<string, unknown> | undefined;
-    if (statusLineFailed(item.line.statusType, md)) return 'failed';
-    if (item.line.statusType === 'task_response') hasTerminalResponse = true;
-  }
-  if (hasTerminalResponse && !sectionHasStreamingOverlay(section)) return 'completed';
+  if (section.outcome === 'failed' || section.outcome === 'cancelled') return 'failed';
+  if (section.outcome) return 'completed'; // completed | superseded
   return 'active';
 }
 

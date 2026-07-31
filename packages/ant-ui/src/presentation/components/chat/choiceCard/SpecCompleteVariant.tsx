@@ -65,7 +65,11 @@ export function SpecCompleteVariant({ presented, resolved }: VariantProps) {
 
     try {
       // Post the user_turn first so the chat renders prose + badges.
-      await addChatUserMessage(
+      // The pre-allocated turnId MUST ride along to the job start: the BE's
+      // chat-copy dedup keys on turnId, so a worker that mints its own id
+      // appends a SECOND user_turn — the user sees their message twice and
+      // the extra turn is an orphan with no feature.jsonl record.
+      const { turnId } = await addChatUserMessage(
         state.selectedProject,
         state.selectedFeature,
         buildDirective,
@@ -81,6 +85,7 @@ export function SpecCompleteVariant({ presented, resolved }: VariantProps) {
         chatSource: true,
         skipTriage: true,
         actionMetadata: metadata,
+        seedTurnId: turnId,
       });
 
       store.setCurrentJob(jobExecution);

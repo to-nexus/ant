@@ -55,6 +55,7 @@ import type {
   PendingCardSnapshot,
   LogJobType,
   KanbanData,
+  TaskScopeOutcome,
 } from '@ant/shared';
 import type { FileStats } from '@/domain/models/chat';
 
@@ -103,6 +104,17 @@ export type TurnItem =
 export interface TurnSection {
   workerScope: string;
   items: TurnItem[];
+  /**
+   * Terminal outcome of this worker-task scope, absorbed from the BE's
+   * body-less `task_scope_end` marker. `undefined` = still open.
+   *
+   * This is the ONLY source of a worker group's settled state — see
+   * `workerGroupPolicy.sectionStatus`. Inferring it from step cards
+   * (a `task_response` having landed, a tool result carrying
+   * `metadata.error`) misread benign zero-match searches as failures and
+   * left every non-execute task exit spinning forever.
+   */
+  outcome?: TaskScopeOutcome;
   /** Active in-flight thinking text (overlay above any finalized thinking). */
   activeThinking?: string;
   /** Active in-flight assistant text (rendered before any final assistant_message). */
@@ -631,8 +643,15 @@ function foldSection(
   const emittedCards = new Set<string>();
   const items: TurnItem[] = [];
   const buf = buffersByScope.get(workerScope);
+  // Body-less lifecycle marker — absorbed into `outcome`, never an item.
+  let outcome: TaskScopeOutcome | undefined;
 
   for (const line of lines) {
+    if (line.type === 'chat_status' && line.statusType === 'task_scope_end') {
+      const o = (line.metadata as { outcome?: TaskScopeOutcome } | undefined)?.outcome;
+      if (o) outcome = o;
+      continue;
+    }
     if (line.type === 'chat_status') {
       if (emittedCards.has(line.cardId)) continue;
       emittedCards.add(line.cardId);
@@ -683,6 +702,7 @@ function foldSection(
   return {
     workerScope,
     items,
+    ...(outcome ? { outcome } : {}),
     activeText: buf?.text,
     activeThinking: buf?.thinking,
     pendingCards: buf?.pendingCards,

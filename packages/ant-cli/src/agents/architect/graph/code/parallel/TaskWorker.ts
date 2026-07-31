@@ -13,7 +13,7 @@
  * and exits the loop without requesting more tasks.
  */
 
-import type { BaseTask, TaskTokenUsage, TokenUsageByModel } from '@ant/shared';
+import type { BaseTask, TaskScopeOutcome, TaskTokenUsage, TokenUsageByModel } from '@ant/shared';
 import type { TaskOrchestrator } from './TaskOrchestrator';
 import type { WorkerGraphBuilder, WorkerSnapshot } from './types';
 import type { SharedFileBuffer } from './SharedFileBuffer';
@@ -82,6 +82,28 @@ export function shouldRestoreFromResumeState(task: BaseTask): boolean {
   if (task.interrupted !== true) return false;
   const resume = (task as { resumeState?: unknown }).resumeState;
   return resume != null;
+}
+
+/**
+ * Classify how a worker-task scope ended, from the subgraph's result state.
+ *
+ * Mirrors — one-to-one — the branch ladder in `TaskWorker.run`'s post-
+ * `executeTask` dispatch (batchSplit → unresolved violations → stopped →
+ * completed). The chat marker MUST agree with what the orchestrator is
+ * told, otherwise the FE worker-group would disagree with the kanban.
+ *
+ * A thrown subgraph never reaches here — the emit site seeds `'failed'`.
+ *
+ * Pure — table-driven guard in `tests/parallel/worker-cycle-seq-reentry.test.ts`.
+ */
+export function deriveScopeOutcome(result: any): TaskScopeOutcome {
+  if (!result) return 'failed';
+  // Path A re-queue and Path B drop-and-replace both close THIS scope; the
+  // work continues under a fresh scope key (`#p{cycleSeq}` / sub-task id).
+  if (result._batchSplitCompleted === true) return 'superseded';
+  if (result._taskCompleted !== true && (result.violations?.length ?? 0) > 0) return 'failed';
+  if (result._taskCompleted === true) return 'completed';
+  return 'cancelled';
 }
 
 /**
@@ -425,14 +447,37 @@ export class TaskWorker<T extends BaseTask> {
       }
     }
 
+    // Terminal marker — emitted from INSIDE the task scope so the line
+    // carries this cycle's `worker-N#task-K[#pM]`. This is the only exit
+    // every worker-scoped task passes through (success, batch-split,
+    // stop, throw), so it is the single owner of "this chat section is
+    // closed". Keying the FE off an execute-phase artifact
+    // (`task_response`) instead left every non-execute exit — batchSplit
+    // Path A/B, the empty-plan verification shortcut — spinning forever.
     const result = await runInWorkerScope(this.workerId, () =>
       runInTaskScope(
         taskKey,
         cycleSeq,
-        () =>
-          graph.invoke(workerState, {
-            recursionLimit: workerState.recursionLimit || envLimit,
-          }),
+        async () => {
+          let outcome: TaskScopeOutcome = 'failed';
+          try {
+            const r = await graph.invoke(workerState, {
+              recursionLimit: workerState.recursionLimit || envLimit,
+            });
+            outcome = deriveScopeOutcome(r);
+            return r;
+          } finally {
+            const llm = await getLLMResponseServiceOrNull();
+            await llm
+              ?.showChatStatus('task_scope_end', { outcome })
+              .catch((err: unknown) =>
+                console.warn(
+                  `[Worker ${this.workerId}] task_scope_end emit failed for ${taskKey}`,
+                  err,
+                ),
+              );
+          }
+        },
         task.name,
       ),
     );

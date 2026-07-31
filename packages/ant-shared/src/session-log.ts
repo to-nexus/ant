@@ -327,12 +327,32 @@ export type ChatStatusType =
   | 'figma_calling' | 'figma_called'
   | 'plan_generating' | 'plan'
   | 'task_response_streaming' | 'task_response'
+  /**
+   * Terminal marker for one worker-task scope. Body-less — the FE
+   * projector absorbs it into `TurnSection.outcome` instead of rendering
+   * a card. Single emitter: `TaskWorker.executeTask`'s task-scope
+   * `finally` (plus the `JobCleanupManager` sweep for scopes whose
+   * process died). See {@link TaskScopeEndMetadata}.
+   */
+  | 'task_scope_end'
   | 'refine_impact'
   | 'subagent_running' | 'subagent_report'
   | 'text';
 
 /** Terminal state of one explore-subagent run (`subagent_report` card). */
 export type SubagentTerminalState = 'done' | 'partial' | 'error' | 'aborted';
+
+/**
+ * How a worker-task scope ended. `superseded` covers a batch-split parent
+ * (Path B drop-and-replace) and a re-queued cycle (Path A) — the scope is
+ * closed even though the work continues under a different scope key.
+ */
+export type TaskScopeOutcome = 'completed' | 'superseded' | 'cancelled' | 'failed';
+
+/** Metadata for the body-less `task_scope_end` marker. */
+export interface TaskScopeEndMetadata {
+  outcome: TaskScopeOutcome;
+}
 
 /**
  * Metadata for the `subagent_running` progress card (pending-card channel —
