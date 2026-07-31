@@ -271,7 +271,6 @@ export class OpenAILLMClient implements LLMClient {
     const signal = options?.signal;
     if (signal?.aborted) return;
 
-    const isCodexModel = this.modelName.includes('codex') || this.modelName.startsWith('gpt-5');
     const openAIMessages = this.convertToOpenAIMessages(messages);
     const temperature = options?.temperature ?? this.temperature;
 
@@ -307,55 +306,30 @@ export class OpenAILLMClient implements LLMClient {
       ? { stop: options.stopSequences.slice(0, 4) }
       : {};
 
-    if (isCodexModel) {
-      const hasImage = messages.some(m =>
-        Array.isArray(m.content) && m.content.some(c => c.type === 'image')
-      );
-      if (hasImage) {
-        console.warn(`⚠️  [OpenAILLMClient] Multimodal input detected. Falling back to chat.completions stream for model=${this.modelName}.`);
-        const stream = await this.client.chat.completions.create({
-          model: this.modelName,
-          messages: openAIMessages,
-          ...toolsConfig,
-          ...toolChoiceParam,
-          ...stopParam,
-          temperature,
-          max_tokens: options?.maxTokens || 16000,
-          stream: true,
-          stream_options: { include_usage: true },
-        }, { signal });
-        yield* this._processChatCompletionsStream(stream);
-        return;
-      }
-
-      const stream = await (this.client as any).responses.create({
-        model: this.modelName,
-        messages: openAIMessages,
-        ...toolsConfig,
-        ...toolChoiceParam,
-        temperature,
-        max_tokens: options?.maxTokens || 16000,
-        stream: true,
-      }, { signal });
-      yield* this._processResponsesStream(stream);
-    } else {
-      // B1 (M2) — include_usage makes usage arrive in a final choices-empty
-      // chunk (DeepSeek's only usage delivery). providerExtra adds DeepSeek's
-      // thinking param and is empty for real OpenAI.
-      const stream = await this.client.chat.completions.create({
-        model: this.modelName,
-        messages: openAIMessages,
-        ...toolsConfig,
-        ...toolChoiceParam,
-        ...stopParam,
-        temperature,
-        max_tokens: options?.maxTokens || 16000,
-        stream: true,
-        stream_options: { include_usage: true },
-        ...providerExtra,
-      } as any, { signal });
-      yield* this._processChatCompletionsStream(stream);
-    }
+    // B1 (M2) — include_usage makes usage arrive in a final choices-empty
+    // chunk (DeepSeek's only usage delivery). providerExtra adds DeepSeek's
+    // thinking param and is empty for real OpenAI.
+    //
+    // Responses-API models are NOT handled here: they get their own adapter
+    // (OpenAIResponsesLLMClient), selected by `ModelSpec.apiSurface` in the
+    // factory. The former `isCodexModel` name heuristic that forked into a
+    // half-written `responses.create` call from this method is gone — it sent
+    // Chat-Completions field names (`messages`/`max_tokens`/nested tool shape)
+    // to an API that accepts none of them, and parsed the reply with a
+    // `chunk.choices` reader against an event protocol that has no `choices`.
+    const stream = await this.client.chat.completions.create({
+      model: this.modelName,
+      messages: openAIMessages,
+      ...toolsConfig,
+      ...toolChoiceParam,
+      ...stopParam,
+      temperature,
+      max_tokens: options?.maxTokens || 16000,
+      stream: true,
+      stream_options: { include_usage: true },
+      ...providerExtra,
+    } as any, { signal });
+    yield* this._processChatCompletionsStream(stream);
   }
 
   /**
@@ -618,15 +592,6 @@ export class OpenAILLMClient implements LLMClient {
     };
   }
   
-  /**
-   * Process responses API stream (newer API for Codex models)
-   * Similar to chat completions but with slightly different structure
-   */
-  private async *_processResponsesStream(stream: any): AsyncIterable<LLMStreamEvent> {
-    // Responses API uses same streaming format as chat completions
-    yield* this._processChatCompletionsStream(stream);
-  }
-
   async invokeStructured<T = any>(
     messages: Array<{ role: string; content: string }>,
     schema: Record<string, any>,

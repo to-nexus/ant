@@ -45,8 +45,26 @@ export const MODEL_RATE_CARD: Readonly<Record<string, ModelRate>> = Object.fromE
  * over-attribute cost (and log an alert to add the model) than silently
  * under-charge with a cheap default. Callers that prefer hard-fail use
  * {@link computeCallCostUsd} directly (it throws on unknown ids).
+ *
+ * DERIVED from the registry rather than pinned to a literal: a pinned id
+ * silently stops being the maximum the moment a pricier model is registered
+ * (adding `gpt-5.6-sol` at $30/MTok output already overtook Opus 5's $25), and
+ * the "never under-attribute" property would break without a single failing
+ * test. Ranked by output rate — the dominant term in agentic usage — with the
+ * input rate as tie-break and the model id last so the pick is deterministic.
+ *
+ * Image-generation models are excluded: their `output` rate prices a rendered
+ * image ($60–120/MTok), not text, so using one as the fallback for an unknown
+ * TEXT model would over-attribute by ~4x. "Conservative" means slightly over,
+ * not arbitrarily over.
  */
-export const MOST_EXPENSIVE_MODEL_ID = 'claude-opus-5';
+export const MOST_EXPENSIVE_MODEL_ID: string = Object.values(MODEL_REGISTRY)
+  .filter((m) => m.rate !== undefined && !m.capabilities?.includes('image-generation'))
+  .sort((a, b) =>
+    b.rate!.output - a.rate!.output ||
+    b.rate!.input - a.rate!.input ||
+    a.id.localeCompare(b.id),
+  )[0].id;
 
 /**
  * One row of the per-model pricing matrix (the "가격정보" surface). A flat

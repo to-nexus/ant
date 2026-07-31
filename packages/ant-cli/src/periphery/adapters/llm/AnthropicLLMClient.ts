@@ -16,6 +16,7 @@ import {
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
+import { isReasoningEnvelope } from '../../../core/llm/reasoningEnvelope';
 import { getModelContextWindow, getThinkingMode, canDisableThinking } from '@ant/shared';
 
 /**
@@ -852,7 +853,16 @@ export class AnthropicLLMClient implements LLMClient {
       role: m.role as 'user' | 'assistant',
       content: typeof m.content === 'string'
         ? m.content
-        : m.content.map(block => this.convertBlock(block)),
+        // Cross-provider guard: a conversation whose model was switched
+        // mid-flight can carry thinking blocks whose signature is ANOTHER
+        // provider's replay token (OpenAI Responses encodes its reasoning
+        // items there — see core/llm/reasoningEnvelope.ts). Anthropic
+        // validates signatures, so the block is dropped whole rather than
+        // forwarded with a signature it will reject.
+        : (m.content as Array<MessageContentBlock | CacheableContent>)
+            .filter(block => !(block.type === 'thinking'
+              && isReasoningEnvelope((block as ThinkingContentBlock).signature)))
+            .map(block => this.convertBlock(block)),
     }));
 
     // Anthropic API requires the conversation to end with a user message.

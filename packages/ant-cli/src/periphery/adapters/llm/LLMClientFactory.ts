@@ -13,10 +13,17 @@ import { LLMClient } from '../../../core/ports/llm';
 import { ImageGenerationPort } from '../../../core/ports/imageGeneration';
 import { AnthropicLLMClient } from './AnthropicLLMClient';
 import { OpenAILLMClient } from './OpenAILLMClient';
+import { OpenAIResponsesLLMClient } from './OpenAIResponsesLLMClient';
 import { GeminiLLMClient } from './GeminiLLMClient';
 import { GeminiImageClient } from './GeminiImageClient';
 import { MockLLMClient } from './MockLLMClient';
-import { DEFAULT_MODELS, PROVIDER_API_KEY_ENV, type ModelProvider, type ModelNodeKey } from '@ant/shared';
+import {
+  DEFAULT_MODELS,
+  MODEL_REGISTRY,
+  PROVIDER_API_KEY_ENV,
+  type ModelProvider,
+  type ModelNodeKey,
+} from '@ant/shared';
 import { LlmAuthError } from '../../../core/llm/isLlmAuthError';
 
 export type { ModelProvider };
@@ -210,14 +217,22 @@ export function createLLMClient(
         maxTokens,
       });
 
-    case 'openai':
-      return new OpenAILLMClient(agentJob, {
+    case 'openai': {
+      // Which OpenAI API surface a model speaks is registry data, never a name
+      // heuristic (the same discipline that replaced Anthropic's `claude-*`
+      // thinking heuristic with `getThinkingMode`). GPT-5.6 declares
+      // `apiSurface: 'responses'`; anything else stays on Chat Completions.
+      const OpenAIClient = MODEL_REGISTRY[modelName]?.apiSurface === 'responses'
+        ? OpenAIResponsesLLMClient
+        : OpenAILLMClient;
+      return new OpenAIClient(agentJob, {
         apiKey: resolveProviderApiKey('openai'),
         modelName,
         temperature,
         maxTokens,
         timeout,
       });
+    }
 
     case 'google':
       return new GeminiLLMClient(agentJob, {
