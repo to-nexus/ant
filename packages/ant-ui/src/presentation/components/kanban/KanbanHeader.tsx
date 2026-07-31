@@ -6,6 +6,7 @@ import { formatTokenCount, formatPercent, getTokenUsageMetrics, sumTokenUsages, 
 import { JobTiming, TaskTokenUsage, TokenUsageByModel, PhaseTokenUsage } from '@/domain/models/types';
 import { Tooltip } from '../common/Tooltip';
 import { useStore } from '@/domain/store';
+import { selectCanViewCredits } from '@/domain/store/selectors/auth';
 import { cn } from '@/shared/utils/design-system';
 
 /**
@@ -458,6 +459,9 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
   // ledger debits — defaults to 1 until the balance loads / billing disabled.
   const markup = useStore((s) => s.billingBalance?.data?.markup ?? 1);
   const modelRows = perModelCostRows(tokenUsageByModel, markup);
+  // Credits are the ANT billing unit — cloud only. Local mode bills the user's
+  // own API key directly, so USD stays and every credit label drops.
+  const canViewCredits = useStore(selectCanViewCredits);
   const tasksUsage = sumTokenUsages([
     ...(completedTasks?.map(t => t.tokenUsage) || []),
     ...(inProgressTasks?.map(t => t.tokenUsage) || []),
@@ -517,16 +521,19 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
           {costUsd !== undefined && costUsd > 0 && (
             <Section>
               <StatRow
-                labelColor="var(--text-3)"
-                valueColor="var(--text-3)"
+                strong={!canViewCredits}
+                labelColor={canViewCredits ? 'var(--text-3)' : undefined}
+                valueColor={canViewCredits ? 'var(--text-3)' : undefined}
                 label={t('tokenStats.estimatedCost', 'AI cost (USD)')}
                 value={formatUsd(costUsd)}
               />
-              <StatRow
-                strong
-                label={t('tokenStats.creditsConsumed', 'AI credits (pass-through)')}
-                value={formatCredits(creditsFromUsd(costUsd, markup))}
-              />
+              {canViewCredits && (
+                <StatRow
+                  strong
+                  label={t('tokenStats.creditsConsumed', 'AI credits (pass-through)')}
+                  value={formatCredits(creditsFromUsd(costUsd, markup))}
+                />
+              )}
             </Section>
           )}
 
@@ -541,7 +548,9 @@ export function TokenUsageBadge({ jobId, tokenUsage, tokenUsageByModel, estimati
                   <StatRow
                     strong
                     label={formatModelLabel(row.modelId)}
-                    value={`${formatUsd(row.usd)} · ${formatCredits(row.credits)} ${t('tokenStats.creditsUnit', 'credits')}`}
+                    value={canViewCredits
+                      ? `${formatUsd(row.usd)} · ${formatCredits(row.credits)} ${t('tokenStats.creditsUnit', 'credits')}`
+                      : formatUsd(row.usd)}
                   />
                   <div className="pl-2 text-[11px]" style={{ color: 'var(--text-3)' }}>
                     {formatTokenCount(row.inputTokens)} {t('tokenStats.inAbbr', 'in')} ·{' '}

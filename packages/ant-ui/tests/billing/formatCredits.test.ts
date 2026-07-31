@@ -12,6 +12,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { formatCredits } from '../../src/shared/utils/tokenUtils';
+import { selectCanViewCredits } from '../../src/domain/store/selectors/auth';
+import type { StoreState } from '../../src/domain/store/types';
 
 describe('formatCredits — currency-style credit display', () => {
   it('keeps two decimals so cents are never dropped', () => {
@@ -29,5 +31,23 @@ describe('formatCredits — currency-style credit display', () => {
 
   it('preserves the sign for negative balances', () => {
     expect(formatCredits(-3.5)).toBe('-3.50');
+  });
+});
+
+/**
+ * Credits are the ANT billing unit and exist only in cloud — local mode calls
+ * the provider with the user's own key. Fails CLOSED while `/system/config` is
+ * still in flight so no credit label flashes in a local launch.
+ */
+describe('selectCanViewCredits — credit-vocabulary gate', () => {
+  const withServerMode = (serverMode: StoreState['serverMode']) =>
+    ({ serverMode }) as StoreState;
+
+  it.each([
+    ['cloud', { status: 'ready', data: 'cloud' }, true],
+    ['local', { status: 'ready', data: 'local' }, false],
+    ['still loading', { status: 'loading' }, false],
+  ] as const)('%s → %s', (_label, serverMode, expected) => {
+    expect(selectCanViewCredits(withServerMode(serverMode as StoreState['serverMode']))).toBe(expected);
   });
 });

@@ -9,6 +9,13 @@
     "localOrg": "Local Org",
     "localUserTooltip": "Self-hosted launch — no remote auth needed"
   },
+  "billing": {
+    "llmBadge": "LLM",
+    "llmTooltipTitle": "Local LLM",
+    "llmTooltipBody": "In local mode every LLM call uses your own API key — Ant charges no credits.",
+    "llmEnvHint": "Set the keys as environment variables in .env (ANTHROPIC_API_KEY, OPENAI_API_KEY, …).",
+    "viewPricing": "View pricing →"
+  },
   "viewMode": {
     "agents": "Agents",
     "code": "Code",
