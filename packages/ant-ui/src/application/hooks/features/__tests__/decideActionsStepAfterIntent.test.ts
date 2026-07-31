@@ -130,22 +130,25 @@ describe('decideActionsStepAfterIntent — D27 SSOT routing', () => {
   });
 });
 
-describe('existing codebase short-circuits techTier AND visualTier (D27 SSOT runtime suppressor)', () => {
+describe('existing codebase short-circuits every tier (D27 SSOT runtime suppressor)', () => {
   // Pin spec §4.1 / §4.2 — when `gitSnapshot.hasCodebase === true`, the
-  // RUNTIME_SUPPRESSORS for BOTH `techTier` AND `visualTier` fire:
+  // RUNTIME_SUPPRESSORS for ALL THREE tiers fire:
   //   - techTier: an existing codebase implicitly locks the stack.
   //   - visualTier: an existing codebase implicitly locks visual identity
   //     (CSS / design tokens / component library are already chosen by
   //     the code on disk); re-prompting via BasisWizard would overwrite
   //     the user's existing visual choices.
+  //   - gameArtTier: the game-domain counterpart of visualTier (D28
+  //     vertical split) — existing sprites / palette fix the art direction
+  //     and the scene base class fixes the 2d/3d render dimension.
   //
-  // For service-domain code intents whose static tiers are
+  // Whatever the domain, a code intent whose static tiers are
   // ['techTier','visualTier','gameArtTier'] (gen-code-sys / gen-code-spec /
-  // gen-code-directive), the service matrix already closes gameArtTier, and
-  // hasCodebase now closes techTier + visualTier — so zero tiers stay active
-  // and the chip MUST route to `config`. Pinning all three intents prevents a
-  // future revert of the visualTier suppressor from silently re-introducing
-  // the wizard hop for any of them.
+  // gen-code-directive) ends with zero active tiers on an existing codebase
+  // — the matrix closes the wrong-domain tier and hasCodebase closes the
+  // rest — so the chip MUST route to `config`. Pinning every intent × domain
+  // prevents a future revert of any one suppressor from silently
+  // re-introducing the wizard hop.
 
   it('gen-code-sys + service + empty basis + hasCodebase=true → config (both techTier and visualTier suppressed)', () => {
     const slot = getConfigSlots('gen-code-sys')?.basis;
@@ -175,10 +178,30 @@ describe('existing codebase short-circuits techTier AND visualTier (D27 SSOT run
     ).toBe('config');
   });
 
-  it('gen-code-sys + game + hasCodebase=true → basis-edit (gameArtTier remains active)', () => {
+  // gameArtTier is the game domain's counterpart of visualTier (D28 vertical
+  // split), so it takes the same hasCodebase treatment: an existing game
+  // codebase already fixes the art direction AND the render dimension.
+  // This previously asserted 'basis-edit' — the asymmetry that made a game
+  // project with existing code skip techTier but still land on the game-art
+  // picker (polyhedron / feature/base repro).
+  it('gen-code-sys + game + hasCodebase=true → config (gameArtTier suppressed too)', () => {
     const slot = getConfigSlots('gen-code-sys')?.basis;
     expect(
       decideActionsStepAfterIntent(slot, empty({ domain: 'game' }), true),
+    ).toBe('config');
+  });
+
+  it('gen-code-directive + game + hasCodebase=true → config', () => {
+    const slot = getConfigSlots('gen-code-directive')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'game' }), true),
+    ).toBe('config');
+  });
+
+  it('gen-code-sys + game + hasCodebase=false → basis-edit (greenfield game unaffected)', () => {
+    const slot = getConfigSlots('gen-code-sys')?.basis;
+    expect(
+      decideActionsStepAfterIntent(slot, empty({ domain: 'game' }), false),
     ).toBe('basis-edit');
   });
 

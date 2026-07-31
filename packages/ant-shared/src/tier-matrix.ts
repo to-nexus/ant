@@ -110,16 +110,15 @@ export interface TierRuntimeContext {
   /**
    * Whether the workspace already contains a codebase (see
    * `GitSnapshot.hasCodebase` — true when `codebase/` is populated or the
-   * memory-index sentinel is present). When true, BOTH techTier AND
-   * visualTier are fixed implicitly by the existing code: the BasisWizard
-   * MUST NOT prompt the user to re-pick them, and the corresponding
-   * runtime suppressors (below) collapse those tiers out of
-   * `listActiveTiers` so downstream routing
-   * (`decideActionsStepAfterIntent`, `BasisSummaryBar`) reflects the
-   * implicit lock. The rationale for visualTier mirrors techTier — an
-   * existing codebase carries its own visual identity (CSS / design
-   * tokens / component library) that the BasisWizard re-prompt would
-   * conflict with.
+   * memory-index sentinel is present). When true, EVERY tier is fixed
+   * implicitly by the existing code: the BasisWizard MUST NOT prompt the
+   * user to re-pick them, and the corresponding runtime suppressors
+   * (below) collapse those tiers out of `listActiveTiers` so downstream
+   * routing (`decideActionsStepAfterIntent`, `BasisSummaryBar`) reflects
+   * the implicit lock. The rationale for visualTier / gameArtTier mirrors
+   * techTier — an existing codebase carries its own visual identity (CSS /
+   * design tokens / component library, or sprites / palette / render
+   * dimension) that the BasisWizard re-prompt would conflict with.
    *
    * Optional + compared with `=== true` in the suppressor, so existing
    * callers that omit the field (e.g. BE prompt-build) keep their prior
@@ -166,6 +165,25 @@ type RuntimeSuppressor = (ctx: TierRuntimeContext) => boolean;
  * `useActiveTiers`, `decideActionsStepAfterIntent`, `BasisSummaryBar`,
  * the ActionConfigView Edit gate, and the BE PromptBuilder visualTier
  * dispatch.
+ *
+ * gameArtTier SSOT (D28 vertical split) — gameArtTier is the game domain's
+ * counterpart of visualTier, so it takes the SAME `hasCodebase` treatment.
+ * An existing game codebase already fixes both the art direction (its
+ * sprites / palette / HUD tokens) and the render dimension (a Phaser
+ * `Scene` vs an enable3d `Scene3D` is written into the code), so the wizard
+ * MUST NOT re-prompt for `concept` / `perspective`. Suppressing only
+ * visualTier here left the split asymmetric: a game project with existing
+ * code skipped techTier but was still forced through the game-art picker.
+ *
+ * Do NOT read this as contradicting `shouldEmitGameArtConcept` below. That
+ * predicate is about `hasGameArtDoc` — a *reference document* pins the
+ * aesthetic but says nothing about the render dimension, so only the
+ * `concept` layer is withheld there. `hasCodebase` is a stronger signal:
+ * running code determines both axes, so the whole tier collapses.
+ *
+ * BE is unaffected by all three suppressors: `decompose`'s `_runtime` and
+ * `PromptBuilder.buildBasisSection`'s `runtime` both omit `hasCodebase` on
+ * purpose, keeping the `<techTier>` / `<gameArtTier>` emit contracts alive.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const RUNTIME_SUPPRESSORS: Partial<Record<TierKey, RuntimeSuppressor>> = {
@@ -174,6 +192,7 @@ const RUNTIME_SUPPRESSORS: Partial<Record<TierKey, RuntimeSuppressor>> = {
     ctx.hasUiDoc === true ||
     ctx.hasCodebase === true,
   techTier: (ctx) => ctx.hasCodebase === true,
+  gameArtTier: (ctx) => ctx.hasCodebase === true,
 };
 
 // ============================================
