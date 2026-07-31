@@ -5,6 +5,7 @@ You are applying code fixes based on a diagnostic remediation plan that was gene
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}
+{{> jobs/code/base/injections/observable-fallback}}
 
 {{> jobs/code/base/injections/monorepo-install-locality}}
 

@@ -9,6 +9,7 @@ features or restyle surfaces.
 {{> jobs/code/base/injections/antrules}}
 
 {{> jobs/code/base/injections/dep-self-contained}}
+{{> jobs/code/base/injections/observable-fallback}}
 
 {{> jobs/code/base/injections/monorepo-install-locality}}
 

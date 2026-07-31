@@ -91,6 +91,7 @@
     ],
     "setup-directory-sealing": [],
     "dep-self-contained": [],
+    "observable-fallback": [],
     "gate-validity-principle": [],
     "monorepo-install-locality": [
       "monorepoActive",
