@@ -5,6 +5,8 @@ import {
   useGitSnapshot,
   useGitOperation,
   useGitSnapshotRefreshing,
+  useGitSnapshotError,
+  useGitDispatch,
 } from '@/domain/git-world';
 import { useGitActions as useGitStoreActions } from './hooks/useGitActions';
 import { PlaceholderButton } from './components/PlaceholderButton';
@@ -46,6 +48,8 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
   const features = useStore((s) => s.features);
   const snapshot = useGitSnapshot();
   const snapshotRefreshing = useGitSnapshotRefreshing();
+  const snapshotError = useGitSnapshotError();
+  const { fetchGitWorldState } = useGitDispatch();
   const op = useGitOperation();
 
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
@@ -106,11 +110,28 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
   }
 
   if (!snapshot) {
+    // Three distinct states, not two: a failed fetch must not keep claiming
+    // "checking…". Nothing re-fires the fetch on a zero-feature surface (no
+    // SSE channel, no lifecycle transition), so the failure state owns the
+    // only in-app recovery affordance — otherwise a page reload is required.
     return (
       <div className="w-full flex gap-1.5 items-center">
-        {snapshotRefreshing
-          ? <LoadingButton />
-          : <PlaceholderButton message={t('common:status.checking')} />}
+        {snapshotRefreshing ? (
+          <LoadingButton />
+        ) : snapshotError ? (
+          <PlaceholderButton
+            message={t('git.statusUnavailable')}
+            retryLabel={t('async:retry')}
+            onRetry={() =>
+              void fetchGitWorldState(selectedProject, {
+                feature: selectedFeature || undefined,
+                fresh: true,
+              })
+            }
+          />
+        ) : (
+          <PlaceholderButton message={t('common:status.checking')} />
+        )}
         {menuSlot}
       </div>
     );
@@ -126,17 +147,26 @@ export function GitStatusButton({ menuSlot }: GitStatusButtonProps = {}) {
   }
 
   // Git connected (hasRemote) but no feature selected → every remaining git
-  // action (commit/push/pull/sync + the synced menu) is feature(worktree)-
-  // scoped. Rather than silently operating on branchBase, prompt the user to
-  // pick a feature. `menuSlot` is intentionally omitted here: the connected
-  // menu offers only feature-scoped ops, so there is nothing project-level to
-  // show. (Not-connected G0/G1 fall through to keep their onboarding CTAs.)
+  // action (commit/push/pull/sync) is feature(worktree)-scoped. Rather than
+  // silently operating on branchBase, prompt the user to pick a feature.
+  //
+  // `menuSlot` is kept ONLY in the zero-features case: there `deriveGitMenu`
+  // resolves to `anchorOnly` (fetch is the sole anchor-legal op), and hiding
+  // the menu there made the whole Git surface vanish for a connected project
+  // whose features were all deleted — which reads as "the GitHub link broke".
+  // With features present but unselected the menu would resolve to
+  // synced/publish and offer push/pull that the BE rejects without a
+  // feature, so it stays hidden and picking a feature is the only path.
+  // The slot gate reads `snapshot.hasFeatures` — the same field
+  // `deriveGitMenu` branches on — so the two can never disagree; the label
+  // stays on the store's list, which is what the user sees in the sidebar.
   if (snapshot.hasRemote && !selectedFeature) {
     return (
       <div className="w-full flex gap-1.5 items-center">
         <PlaceholderButton
           message={t(features.length === 0 ? 'config:git.createFeatureFirst' : 'config:git.selectFeature')}
         />
+        {!snapshot.hasFeatures && menuSlot}
       </div>
     );
   }

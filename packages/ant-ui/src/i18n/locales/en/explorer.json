@@ -74,6 +74,7 @@
     "discarding": "Discarding...",
     "publishing": "Publishing...",
     "checking": "Checking...",
+    "statusUnavailable": "Couldn't load Git status",
     "updatingStatus": "Updating Git status...",
     "commitFiles": "Commit ({{count}}) {{files}}",
     "commitAction": "Commit",

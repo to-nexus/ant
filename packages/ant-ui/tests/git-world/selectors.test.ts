@@ -19,12 +19,16 @@ import {
   deriveGitSetupCta,
 } from '../../src/domain/git-world/selectors';
 
+// Default = a normal operating project: `hasFeatures` is derived from the
+// `features/` dir on disk, so any snapshot carrying a branch / ahead-behind
+// counters / a working tree necessarily has at least one feature. Zero-feature
+// rows opt out explicitly.
 function snap(partial: Partial<GitSnapshot>): GitSnapshot {
   return {
     hasGit: true,
     hasRemote: true,
     hasUpstream: true,
-    hasFeatures: false,
+    hasFeatures: true,
     remoteExists: true,
     currentBranch: 'feature/x',
     staged: [],
@@ -150,6 +154,28 @@ describe('deriveGitMenu', () => {
     expect(deriveGitMenu({ snapshot: s, githubRepo: 'x' })).toEqual({
       kind: 'publish',
       source: 'noFeatures',
+    });
+  });
+
+  // Every feature of a CONNECTED project was deleted. The anchor is the only
+  // repo left, so the menu must offer fetch alone — push/pull/publish all
+  // require a feature worktree and would be rejected by the BE. Before this
+  // branch existed the state fell through to publish/noUpstream, which
+  // MenuDropdown maps to push → guaranteed "requires a feature" failure.
+  it('connected + zero features → anchorOnly (fetch only)', () => {
+    const s = snap({ hasGit: true, hasRemote: true, hasFeatures: false, hasUpstream: false });
+    expect(deriveGitMenu({ snapshot: s, githubRepo: 'x' })).toEqual({
+      kind: 'anchorOnly',
+      canFetch: true,
+    });
+  });
+
+  it('anchorOnly does not hijack the UNCONNECTED zero-feature setup state', () => {
+    const s = snap({ hasGit: true, hasRemote: false, hasFeatures: false, remoteExists: true });
+    expect(deriveGitMenu({ snapshot: s, githubRepo: 'x' })).toEqual({
+      kind: 'setup',
+      actions: ['clone'],
+      cloneBlockedByFeatures: false,
     });
   });
 });
