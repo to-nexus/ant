@@ -137,6 +137,52 @@ describe('Anthropic toolChoice mapping', () => {
   });
 });
 
+describe('OpenAI Responses toolChoice + stop mapping', () => {
+  async function captureResponsesPayload(options: Record<string, any>): Promise<any> {
+    const { OpenAIResponsesLLMClient } = await import(
+      '../../src/periphery/adapters/llm/OpenAIResponsesLLMClient'
+    );
+    const client = new OpenAIResponsesLLMClient(undefined, {
+      apiKey: 'test-key',
+      modelName: 'gpt-5.6-terra',
+    });
+    const create = vi
+      .fn()
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      .mockImplementation(async () => (async function* () {})());
+    (client as any).client = { responses: { create } };
+
+    const messages = [{ role: 'user', content: 'hi' }];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of client.stream(messages as any, options)) {
+      /* drain */
+    }
+    expect(create).toHaveBeenCalledTimes(1);
+    return create.mock.calls[0][0];
+  }
+
+  it("toolChoice:'none' with tools → tools kept AND tool_choice:'none'", async () => {
+    const payload = await captureResponsesPayload({ tools: TOOLS, toolChoice: 'none' });
+    expect(payload.tools).toHaveLength(1);
+    expect(payload.tool_choice).toBe('none');
+  });
+
+  it('toolChoice without tools → neither tools nor tool_choice (400 guard)', async () => {
+    const payload = await captureResponsesPayload({ toolChoice: 'none' });
+    expect(payload.tools).toBeUndefined();
+    expect(payload.tool_choice).toBeUndefined();
+  });
+
+  // The Responses API has no `stop` parameter at all — the port explicitly
+  // permits an adapter to ignore an option it cannot express. Locked so nobody
+  // "fixes" it by inventing a field the API will 400 on.
+  it('drops stopSequences — the Responses API has no `stop` parameter', async () => {
+    const payload = await captureResponsesPayload({ stopSequences: ['</plan>'] });
+    expect(payload.stop).toBeUndefined();
+    expect(payload.stop_sequences).toBeUndefined();
+  });
+});
+
 describe('Gemini toolChoice mapping', () => {
   async function captureGeminiPayload(options: Record<string, any>): Promise<any> {
     const { GeminiLLMClient } = await import(

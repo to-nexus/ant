@@ -101,6 +101,27 @@ export interface ModelSpec {
   rate?: ModelRate;
   thinkingMode: ThinkingMode;
   /**
+   * Which OpenAI API surface this model speaks. `'responses'` routes the
+   * factory to `OpenAIResponsesLLMClient` (reasoning items, `max_output_tokens`,
+   * event-protocol streaming); omitted/`'chat'` keeps the Chat Completions
+   * client shared with DeepSeek / GLM / Kimi. Meaningless for non-OpenAI
+   * providers. SSOT for the dispatch — never re-derive it from the model name.
+   */
+  apiSurface?: 'chat' | 'responses';
+  /**
+   * Output ceiling in tokens, INCLUDING reasoning tokens on reasoning models.
+   * The Responses client clamps `max_output_tokens` to it after adding the
+   * reasoning reserve, so a large requested budget can never exceed what the
+   * model accepts. Omit when the model is never sized here.
+   */
+  maxOutputTokens?: number;
+  /**
+   * `false` = never send `temperature` for this model. GPT-5-class reasoning
+   * models reject it; the same discipline Anthropic adaptive models follow
+   * (see AnthropicLLMClient.buildSamplingParams). Defaults to `true`.
+   */
+  supportsTemperature?: boolean;
+  /**
    * Adaptive models only: `true` = the API rejects an explicit
    * `thinking:{type:'disabled'}` with a 400 (Fable-class — thinking is always
    * on). Sonnet 5 / Opus 5 accept `disabled` (Opus 5 at effort ≤ high, which
@@ -158,6 +179,60 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     contextWindow: 200_000,
     rate: { input: 1, output: 5, cacheWrite5m: 1.25, cacheWrite1h: 2, cacheRead: 0.1 },
     thinkingMode: 'extended',
+  },
+  // OpenAI GPT-5.6 — spoken over the RESPONSES API (`apiSurface: 'responses'`),
+  // not Chat Completions: only that surface returns reasoning items whose
+  // encrypted content can be replayed across tool-call rounds. Reasoning depth
+  // is requested via `reasoning.effort` (never Anthropic thinking params, hence
+  // thinkingMode 'none'), and `temperature` is not accepted by this class of
+  // model. OpenAI has no separate cache-write fee and the Responses usage object
+  // reports no cacheCreationTokens, so cacheWrite* mirror input (inert) — same
+  // rationale as the DeepSeek / GLM / Kimi entries below. `cacheRead` is the
+  // cached-input list price.
+  'gpt-5.6-sol': {
+    id: 'gpt-5.6-sol',
+    displayName: 'GPT-5.6 Sol',
+    provider: 'openai',
+    description: 'OpenAI frontier model for complex professional work — 1.05M context (Responses API)',
+    recommended: false,
+    capabilities: ['coding', 'reasoning', 'large-context', 'complex-analysis'],
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    rate: { input: 5, output: 30, cacheWrite5m: 5, cacheWrite1h: 5, cacheRead: 0.5 },
+    thinkingMode: 'none',
+    apiSurface: 'responses',
+    supportsTemperature: false,
+    selectable: true,
+  },
+  'gpt-5.6-terra': {
+    id: 'gpt-5.6-terra',
+    displayName: 'GPT-5.6 Terra',
+    provider: 'openai',
+    description: 'OpenAI balanced tier — intelligence vs cost, 1.05M context (Responses API)',
+    recommended: false,
+    capabilities: ['coding', 'reasoning', 'large-context'],
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    rate: { input: 2, output: 12, cacheWrite5m: 2, cacheWrite1h: 2, cacheRead: 0.2 },
+    thinkingMode: 'none',
+    apiSurface: 'responses',
+    supportsTemperature: false,
+    selectable: true,
+  },
+  'gpt-5.6-luna': {
+    id: 'gpt-5.6-luna',
+    displayName: 'GPT-5.6 Luna',
+    provider: 'openai',
+    description: 'OpenAI cost-optimized tier — fast classification and triage, 1.05M context (Responses API)',
+    recommended: false,
+    capabilities: ['fast', 'classification', 'coding', 'large-context'],
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    rate: { input: 0.2, output: 1.2, cacheWrite5m: 0.2, cacheWrite1h: 0.2, cacheRead: 0.02 },
+    thinkingMode: 'none',
+    apiSurface: 'responses',
+    supportsTemperature: false,
+    selectable: true,
   },
   // DeepSeek — OpenAI-compatible API, reuses OpenAILLMClient with an injected
   // baseURL/provider (LLMClientFactory). Top-tier V4 model; 1M context.

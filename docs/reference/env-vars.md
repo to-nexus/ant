@@ -21,9 +21,19 @@ For deployment-specific recommendations, see
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANT_ANTHROPIC_API_KEY` | — | Primary supported model. Highly recommended. |
-| `ANT_OPENAI_API_KEY` | — | Optional fallback for some jobs. |
+Key names are unprefixed — the SSOT is `PROVIDER_API_KEY_ENV` in [`@ant/shared/models.ts`](../../packages/ant-shared/src/models.ts); the `/models` endpoint reports a provider as configured iff its variable is non-empty.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ANTHROPIC_API_KEY` | — | Primary supported provider. Highly recommended. |
+| `OPENAI_API_KEY` | — | GPT-5.6 family (Responses API). |
+| `GEMINI_API_KEY` | — | Gemini text + image models (visual / creator jobs). |
+| `DEEPSEEK_API_KEY` | — | DeepSeek (OpenAI-compatible endpoint). |
+| `GLM_API_KEY` | — | GLM / Z.ai (OpenAI-compatible endpoint). |
+| `KIMI_API_KEY` | — | Kimi / Moonshot (OpenAI-compatible endpoint). |
 | `ANT_LLM_MOCK` | `false` | Use the mock LLM adapter (for tests / CI). |
+
+Per-provider reasoning toggles (operator hard opt-outs): `DEEPSEEK_THINKING=disabled`, `GLM_THINKING=disabled`, `OPENAI_REASONING_EFFORT=low\|medium\|high\|xhigh`.
 
 ## Concurrency and limits
 
