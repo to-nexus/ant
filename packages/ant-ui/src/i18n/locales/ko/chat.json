@@ -317,7 +317,7 @@
     "retry": "재시도 {{n}}",
     "summary": "{{count}}개 스텝",
     "needsAttention": "입력이 필요합니다",
-    "dockLabel": "병렬 태스크 그룹",
+    "dockLabel": "진행 중인 태스크",
     "jumpTo": "{{label}}(으)로 이동"
   }
 }

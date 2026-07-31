@@ -33,7 +33,7 @@ import {
   runInTaskScope,
   runInWorkerScope,
 } from '../../src/core/parallel/workerScope';
-import { isTaskReentry } from '../../src/agents/architect/graph/code/parallel/TaskWorker';
+import { deriveScopeOutcome, isTaskReentry } from '../../src/agents/architect/graph/code/parallel/TaskWorker';
 
 // ─────────────────────────────────────────────────────────────────────
 // Test double — narrow StateStorePort surface
@@ -316,5 +316,43 @@ describe('verification re-entry — scope-key change isolates LLMResponseService
     // slots → fileCardByPath / commandCardByCommand / thinking caches
     // are isolated → no stale cardId carry-over.
     expect(key1).not.toBe(key2);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Scope CLOSE — `task_scope_end` outcome classification
+// ─────────────────────────────────────────────────────────────────────
+//
+// The scope key above decides WHERE a task's chat lines land; this table
+// decides WHEN that section is settled. `TaskWorker.executeTask` emits one
+// `task_scope_end` per scope from a `finally` inside `runInTaskScope`, so
+// every exit path is covered — that is the point. The FE previously
+// inferred settledness from an execute-phase `task_response` card, which
+// batch-split and empty-plan exits never emit, leaving those sections
+// spinning forever (valid-crating-prawn: bg-particle-layers, verification,
+// verification#p1).
+//
+// Rows MUST mirror `TaskWorker.run`'s post-executeTask branch ladder — a
+// marker that disagrees with what the orchestrator is told would put the
+// worker group and the kanban in conflict.
+
+describe('deriveScopeOutcome — task exit classification', () => {
+  const rows: Array<[string, any, string]> = [
+    ['batch-split (Path A re-queue / Path B drop)', { _batchSplitCompleted: true }, 'superseded'],
+    ['batch-split wins over a stale completion flag', { _batchSplitCompleted: true, _taskCompleted: true }, 'superseded'],
+    ['success', { _taskCompleted: true }, 'completed'],
+    ['unresolved violations (retries exhausted)', { _taskCompleted: false, violations: [{ type: 'x' }] }, 'failed'],
+    ['stopped before completion', { _taskCompleted: false }, 'cancelled'],
+    ['graph returned nothing', undefined, 'failed'],
+  ];
+
+  it.each(rows)('%s → %s', (_label, result, expected) => {
+    expect(deriveScopeOutcome(result)).toBe(expected);
+  });
+
+  it('a completed task with leftover non-blocking violations still reads completed', () => {
+    // `_taskCompleted === true` means checkTaskStatus cleared the gate;
+    // warning-only violations must not repaint the group red.
+    expect(deriveScopeOutcome({ _taskCompleted: true, violations: [{ type: 'warn' }] })).toBe('completed');
   });
 });

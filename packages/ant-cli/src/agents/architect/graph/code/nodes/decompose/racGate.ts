@@ -18,6 +18,7 @@
  */
 
 import type { ResolvedActionContext } from '@ant/shared';
+import { ARTIFACT_PREFIX } from '@ant/shared';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 
 export const RAC_DENY_MESSAGE =
@@ -89,18 +90,47 @@ export function isWithinRacWhitelist(
 }
 
 /**
+ * Is `target` inside (or a parent of) an asset pool root?
+ *
+ * The gate protects *authority documents* — PRD, system design, spec — from
+ * side-loading. Asset pools are not authority: they enter the artifact pool
+ * as existence-only path stubs and already ride along with every selection
+ * regardless of `task.include` (`ArtifactPipeline.isAssetPoolPath`). Gating
+ * the READ side while the injection side exempts them left the two layers
+ * disagreeing — a task told "the spec requires assets/game/models/X.glb"
+ * could not `list_files` it, and fell back to whole-filesystem `find`
+ * sweeps that time out. `run_command` was never gated, so the containment
+ * this denial bought was zero.
+ *
+ * Parent-of match mirrors `isWithinRacWhitelist`'s directory-listing rule so
+ * `list_files('assets')` can reach the pool roots.
+ */
+function isAssetPoolReach(target: string): boolean {
+  const t = target.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, '');
+  if (!t) return false;
+  for (const root of [ARTIFACT_PREFIX.ASSETS_SERVICE, ARTIFACT_PREFIX.ASSETS_GAME]) {
+    const r = root.replace(/\/$/, '');
+    if (t === r || t.startsWith(r + '/') || r.startsWith(t + '/')) return true;
+  }
+  return false;
+}
+
+/**
  * Decide whether a `read_file` / `list_files` tool call is allowed under
  * the active RAC scope.
  *
- * Codebase-tree paths (anything that normalizes to start with `codebase/`)
- * are RAC-orthogonal — the user's source code is always reachable. Sibling
- * artifact paths (`plan/`, `architecture/`, `visual/`, `assets/`, `meta/`,
- * `sessions/`) are gated through `isWithinRacWhitelist` when `racScope` is
- * set; infer pipelines (no `racScope`) allow everything.
+ * Two RAC-orthogonal families are always reachable:
+ *   - codebase-tree paths (anything that normalizes under `codebase/`) —
+ *     the user's source code;
+ *   - asset pools (`assets/{service,game}/**`) — see `isAssetPoolReach`.
  *
- * Decision is derived from `normalizeToCodebasePath` — the SAME SSOT every
- * other tool callsite uses for sibling-vs-codebase classification — so
- * the gate stays in lockstep with `CANONICAL_FEATURE_DIRS` instead of
+ * Every other sibling artifact path (`plan/`, `architecture/`, `visual/`,
+ * `meta/`, `sessions/`) is gated through `isWithinRacWhitelist` when
+ * `racScope` is set; infer pipelines (no `racScope`) allow everything.
+ *
+ * The codebase decision is derived from `normalizeToCodebasePath` — the SAME
+ * SSOT every other tool callsite uses for sibling-vs-codebase classification
+ * — so the gate stays in lockstep with `CANONICAL_FEATURE_DIRS` instead of
  * carrying its own prefix list.
  */
 export function decideRacGate(
@@ -112,6 +142,8 @@ export function decideRacGate(
   const normalized = normalizeToCodebasePath(target).normalized;
   const isCodebase = normalized === 'codebase' || normalized.startsWith('codebase/');
   if (isCodebase) return { allowed: true };
+
+  if (isAssetPoolReach(target)) return { allowed: true };
 
   if (isWithinRacWhitelist(target, racScope)) return { allowed: true };
   return { allowed: false, error: RAC_DENY_MESSAGE };

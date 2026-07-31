@@ -317,7 +317,7 @@
     "retry": "retry {{n}}",
     "summary": "{{count}} steps",
     "needsAttention": "Needs your input",
-    "dockLabel": "Parallel task groups",
+    "dockLabel": "Tasks in progress",
     "jumpTo": "Jump to {{label}}"
   }
 }

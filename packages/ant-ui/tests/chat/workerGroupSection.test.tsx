@@ -27,6 +27,8 @@ vi.mock('@/presentation/components/common/async', () => ({
 const mockState = {
   chatGroupOverrides: {} as Record<string, 'expanded' | 'collapsed'>,
   toggleChatGroup: vi.fn(),
+  isRunning: true,
+  currentJobId: 'j1' as string | undefined,
 };
 vi.mock('@/domain/store', () => ({
   useStore: (sel: (s: typeof mockState) => unknown) => sel(mockState),
@@ -37,6 +39,8 @@ import { WorkerGroupSection } from '../../src/presentation/components/chat/Worke
 beforeEach(() => {
   mockState.chatGroupOverrides = {};
   mockState.toggleChatGroup = vi.fn();
+  mockState.isRunning = true;
+  mockState.currentJobId = 'j1';
 });
 
 function section(overrides: Partial<TurnSection>): TurnSection {
@@ -71,9 +75,15 @@ const Body = () => <div data-testid={BODY_MARKER} />;
 
 function renderGroup(s: TurnSection, workerSectionCount: number) {
   return render(
-    <WorkerGroupSection turnId="t1" section={s} workerSectionCount={workerSectionCount}>
+    <WorkerGroupSection turnId="t1" turnJobId="j1" section={s} workerSectionCount={workerSectionCount}>
       <Body />
     </WorkerGroupSection>,
+  );
+}
+
+function tickers(tree: ReactTestRenderer) {
+  return tree.root.findAll(
+    (n) => typeof n.props?.className === 'string' && n.props.className.includes('shimmer-text'),
   );
 }
 
@@ -122,11 +132,22 @@ describe('WorkerGroupSection', () => {
 
   it('collapsed active group shows the live ticker at fixed height', () => {
     const tree = renderGroup(section({ activeText: 'streaming tail line' }), 3);
-    const ticker = tree.root.findAll(
-      (n) => typeof n.props?.className === 'string' && n.props.className.includes('shimmer-text'),
-    );
+    const ticker = tickers(tree);
     expect(ticker.length).toBe(1);
     expect(ticker[0].props.style.height).toBe(14);
     expect(ticker[0].props.children).toContain('streaming tail line');
+  });
+
+  // A section that never received its `task_scope_end` marker reads `active`.
+  // That is only believable while the owning job is alive — after it dies
+  // (killed worker, or a chat.jsonl recorded before the marker existed) the
+  // header must stop claiming live activity instead of spinning forever.
+  it('unmarked section stops claiming activity once the job is not live', () => {
+    mockState.isRunning = false;
+    expect(tickers(renderGroup(section({ activeText: 'stale tail' }), 3)).length).toBe(0);
+
+    mockState.isRunning = true;
+    mockState.currentJobId = 'some-other-job';
+    expect(tickers(renderGroup(section({ activeText: 'stale tail' }), 3)).length).toBe(0);
   });
 });

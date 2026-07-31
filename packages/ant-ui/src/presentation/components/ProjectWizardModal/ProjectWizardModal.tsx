@@ -528,11 +528,11 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         const jobType = mode === 'design' ? 'design' : 'code';
         setSelectedAgent('architect');
         setSelectedJobType(jobType);
-        await addChatUserMessage(projectId, effectiveFeature, effectiveDirective);
+        const { turnId } = await addChatUserMessage(projectId, effectiveFeature, effectiveDirective);
         setRunning(true, undefined, 'generate');
         const jobExec = executeCodeJob({
           projectId, featureName: effectiveFeature, jobType, agent: 'architect',
-          overrideDirective: effectiveDirective, chatSource: true,
+          overrideDirective: effectiveDirective, chatSource: true, seedTurnId: turnId,
         });
         setCurrentJob(jobExec);
         jobExec.onJobIdReady((jobId) => setRunning(true, jobId));

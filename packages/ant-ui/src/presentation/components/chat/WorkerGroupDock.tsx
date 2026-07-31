@@ -1,18 +1,19 @@
 /**
- * WorkerGroupDock — fixed strip above the chat input giving always-available
- * access to the latest parallel turn's worker groups (plan
- * curious-spinning-twilight, Part C Phase 2).
+ * WorkerGroupDock — fixed strip above the chat input giving one-click access
+ * to the parallel tasks that are RUNNING RIGHT NOW.
  *
- * Deliberately independent of the token ring gauge: rings live and die with
- * the workers, but the tasks' chat records persist — this dock's lifecycle
- * follows the chat record (the latest turn that has worker sections), so a
- * completed job's groups stay reachable until the next user turn replaces
- * them. Bottom placement keeps the top edge single-owner for PinnedQuery's
- * inset math.
+ * Live-only by design. A task's chip exists exactly while the task does:
+ * it appears when the worker opens the scope and leaves the moment the BE
+ * marks the scope terminal, so the dock empties itself as the job winds
+ * down and disappears with the last worker. Settled work is not duplicated
+ * here — it stays in the scrollback, where `WorkerGroupSection` renders its
+ * ✓ / ✗ and the group can be expanded in place.
+ *
+ * Bottom placement keeps the top edge single-owner for PinnedQuery's inset
+ * math.
  */
 
 import { memo, useMemo } from 'react';
-import { Check, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import type { Turn } from '@/domain/store/selectors/chat';
@@ -23,7 +24,6 @@ import {
   sectionStatus,
   sectionTaskName,
   workerHue,
-  workerTintBg,
   workerTintFg,
 } from './workerGroupPolicy';
 
@@ -36,51 +36,42 @@ interface DockChip {
   workerScope: string;
   label: string;
   workerId?: number;
-  status: ReturnType<typeof sectionStatus>;
 }
 
 function chipsOf(turn: Turn): DockChip[] {
   const chips: DockChip[] = [];
   for (const section of turn.sections) {
     if (!isWorkerGroupScope(section.workerScope)) continue;
+    // Live-only: a settled scope drops out of the dock entirely.
+    if (sectionStatus(section) !== 'active') continue;
     const parsed = parseWorkerScope(section.workerScope);
     chips.push({
       turnId: turn.turnId,
       workerScope: section.workerScope,
       label: sectionTaskName(section) ?? parsed?.taskKey ?? section.workerScope,
       workerId: parsed?.workerId,
-      status: sectionStatus(section),
     });
   }
   return chips;
-}
-
-function StatusGlyph({ status, hue }: { status: DockChip['status']; hue: number }) {
-  if (status === 'active') {
-    return (
-      <span className="inline-flex flex-shrink-0" style={{ color: workerTintFg(hue) }}>
-        <Spinner size="sm" tone="inherit" />
-      </span>
-    );
-  }
-  if (status === 'failed') {
-    return <XCircle className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--red-500)' }} />;
-  }
-  return <Check className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--status-done-fg)' }} />;
 }
 
 export const WorkerGroupDock = memo(function WorkerGroupDock({ turns }: WorkerGroupDockProps) {
   const { t } = useTranslation('chat');
   const expandChatGroup = useStore((s) => s.expandChatGroup);
   const requestChatJump = useStore((s) => s.requestChatJump);
+  const isRunning = useStore((s) => s.isRunning);
+  const currentJobId = useStore((s) => s.currentJobId);
 
-  // The dock mirrors the LATEST turn only: while a job runs that is the live
-  // parallel turn; after completion it stays until the next user turn
-  // replaces it (chat-record lifecycle, not worker lifecycle).
-  const chips = useMemo(() => {
-    const last = turns[turns.length - 1];
-    return last ? chipsOf(last) : [];
-  }, [turns]);
+  const last = turns[turns.length - 1];
+
+  // Job-liveness floor. `chipsOf` already drops settled scopes, but that
+  // depends on the BE marker having landed — a killed worker, a crashed
+  // server, or a chat.jsonl recorded before the marker existed would leave
+  // scopes permanently "open". Binding the dock to the live job makes its
+  // disappearance at job end structural rather than signal-dependent.
+  const live = isRunning && !!last && !!currentJobId && last.jobId === currentJobId;
+
+  const chips = useMemo(() => (live && last ? chipsOf(last) : []), [live, last]);
 
   if (chips.length === 0) return null;
 
@@ -107,30 +98,26 @@ export const WorkerGroupDock = memo(function WorkerGroupDock({ turns }: WorkerGr
               expandChatGroup(chip.turnId, chip.workerScope);
               requestChatJump(chip.turnId, chip.workerScope);
             }}
-            className="inline-flex items-center gap-1.5 px-2 flex-shrink-0 cursor-pointer min-w-0"
+            className="inline-flex items-center gap-1.5 pl-2 pr-2 flex-shrink-0 cursor-pointer min-w-0"
             style={{
               height: 24,
               maxWidth: 180,
               borderRadius: 'var(--r-pill)',
               border: '1px solid var(--border-1)',
+              // Worker identity survives as a left accent bar — the `W{n}`
+              // text badge carried no meaning the hue doesn't.
+              ...(chip.workerId !== undefined
+                ? { borderLeft: `3px solid ${workerTintFg(hue)}` }
+                : {}),
               background: 'var(--bg-surface-2)',
             }}
           >
-            <span
-              className="inline-flex items-center px-1 font-medium text-[10px] flex-shrink-0"
-              style={{
-                height: 14,
-                borderRadius: 'var(--r-pill)',
-                background: workerTintBg(hue),
-                color: workerTintFg(hue),
-              }}
-            >
-              {chip.workerId !== undefined ? `W${chip.workerId}` : '·'}
-            </span>
             <span className="text-[11px] truncate min-w-0" style={{ color: 'var(--text-2)' }}>
               {chip.label}
             </span>
-            <StatusGlyph status={chip.status} hue={hue} />
+            <span className="inline-flex flex-shrink-0" style={{ color: workerTintFg(hue) }}>
+              <Spinner size="sm" tone="inherit" />
+            </span>
           </button>
         );
       })}

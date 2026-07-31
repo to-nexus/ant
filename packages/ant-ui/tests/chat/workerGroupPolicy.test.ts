@@ -106,22 +106,43 @@ describe('scope parsing', () => {
 });
 
 describe('sectionStatus', () => {
-  it('is active while streaming or before the terminal task_response', () => {
+  // The BE `task_scope_end` marker (absorbed into `outcome`) is the ONLY input.
+  const OUTCOMES = [
+    [undefined, 'active'],
+    ['completed', 'completed'],
+    ['superseded', 'completed'], // batch-split parent — settled, not a failure
+    ['failed', 'failed'],
+    ['cancelled', 'failed'],
+  ] as const;
+
+  it.each(OUTCOMES)('outcome=%s → %s', (outcome, expected) => {
+    expect(sectionStatus(section({ outcome: outcome as TurnSection['outcome'] }))).toBe(expected);
+  });
+
+  it('stays active until the marker lands, whatever the step cards say', () => {
     expect(sectionStatus(section({ activeText: 'typing…' }))).toBe('active');
-    // Quiet section (no buffer, no terminal card) stays active — no flicker.
     expect(sectionStatus(section({ items: [statusItem('read')] }))).toBe('active');
+    // `task_response` is an execute-phase artifact, not a lifecycle signal:
+    // batch-split / empty-plan exits never emit one, so it must not settle
+    // the group on its own.
+    expect(
+      sectionStatus(section({ items: [statusItem('read'), statusItem('task_response')] })),
+    ).toBe('active');
   });
 
-  it('completes on task_response with no streaming overlay', () => {
-    const s = section({ items: [statusItem('read'), statusItem('task_response')] });
-    expect(sectionStatus(s)).toBe('completed');
-    expect(sectionStatus({ ...s, activeText: 'more' })).toBe('active');
-  });
-
-  it('fails on *_failed statusTypes or error metadata', () => {
-    expect(sectionStatus(section({ items: [statusItem('file_edit_failed')] }))).toBe('failed');
-    expect(sectionStatus(section({ items: [statusItem('command', { error: 'boom' })] }))).toBe('failed');
-    expect(sectionStatus(section({ items: [statusItem('command', { success: false })] }))).toBe('failed');
+  it('does NOT fail on step-level error metadata (search 0-match regression)', () => {
+    // `search_code` sets metadata.error on a benign zero-match. Treating that
+    // as a group failure painted healthy tasks ❌ and force-expanded them.
+    expect(
+      sectionStatus(
+        section({
+          outcome: 'completed',
+          items: [statusItem('searched_code', { error: 'No matches found for pattern "x"' })],
+        }),
+      ),
+    ).toBe('completed');
+    expect(sectionStatus(section({ items: [statusItem('file_edit_failed')] }))).toBe('active');
+    expect(sectionStatus(section({ items: [statusItem('command', { success: false })] }))).toBe('active');
   });
 });
 
@@ -144,9 +165,9 @@ describe('collapse policy', () => {
   it('defaults: parallel turns collapse, single-worker turns expand, failures expand', () => {
     expect(resolveGroupCollapsed(section({}), parallel, undefined)).toBe(true);
     expect(resolveGroupCollapsed(section({}), 1, undefined)).toBe(false);
-    expect(
-      resolveGroupCollapsed(section({ items: [statusItem('file_edit_failed')] }), parallel, undefined),
-    ).toBe(false);
+    expect(resolveGroupCollapsed(section({ outcome: 'failed' }), parallel, undefined)).toBe(false);
+    // A completed group stays collapsed — force-expand is for real failures.
+    expect(resolveGroupCollapsed(section({ outcome: 'completed' }), parallel, undefined)).toBe(true);
   });
 });
 

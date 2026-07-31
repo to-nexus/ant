@@ -92,7 +92,7 @@ function IntentVariant(_props: IntentFooterProps) {
       || t('footer.build');
 
     try {
-      await addChatUserMessage(
+      const { turnId } = await addChatUserMessage(
         selectedProject,
         selectedFeature,
         buildDirective,
@@ -107,6 +107,7 @@ function IntentVariant(_props: IntentFooterProps) {
         overrideDirective: buildDirective,
         chatSource: true,
         actionMetadata: hasMetadata ? metadata : undefined,
+        seedTurnId: turnId,
       });
 
       store.setCurrentJob(jobExecution);

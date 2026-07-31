@@ -104,6 +104,7 @@ export const TurnItem = memo(function TurnItem({ turn }: TurnItemProps) {
             <WorkerGroupSection
               key={`group:${turn.turnId}:${section.workerScope}:${idx}`}
               turnId={turn.turnId}
+              turnJobId={turn.jobId}
               section={section}
               workerSectionCount={workerSectionCount}
             >

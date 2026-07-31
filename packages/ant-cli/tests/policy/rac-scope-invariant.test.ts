@@ -67,6 +67,7 @@ describe('RAC scope invariant — state.artifacts ⊆ RAC', () => {
     const specDir = path.join(featurePath, 'architecture/spec');
     fs.mkdirSync(specDir, { recursive: true });
     fs.writeFileSync(path.join(specDir, 'spec-foo.md'), '# spec-foo\n\nFeature spec.');
+
   });
 
   afterAll(() => {
@@ -155,6 +156,9 @@ describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (202
     );
     fs.mkdirSync(path.join(workspacePath, 'architecture/spec'), { recursive: true });
     fs.writeFileSync(path.join(workspacePath, 'architecture/spec/spec-foo.md'), '# spec-foo');
+    // Asset-pool fixture — the second RAC-orthogonal family.
+    fs.mkdirSync(path.join(workspacePath, 'assets/game/models'), { recursive: true });
+    fs.writeFileSync(path.join(workspacePath, 'assets/game/models/Duck.glb'), 'glTF-binary');
     // Codebase fixture for orthogonality assertion.
     fs.mkdirSync(path.join(workspacePath, 'codebase/src'), { recursive: true });
     fs.writeFileSync(
@@ -286,6 +290,35 @@ describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (202
   // and lets `normalizeToCodebasePath` decide; the orthogonality
   // (codebase paths bypass RAC) is now implicit in the prefix the LLM
   // writes. Lock that promise.
+
+  // Asset pools are the SECOND orthogonal family. `ArtifactPipeline`'s
+  // existence-band exception already rides asset stubs along with every
+  // selection regardless of `task.include`; gating the READ side while the
+  // injection side exempts them made a spec-mandated asset unreachable by
+  // `list_files` and pushed the LLM into whole-filesystem `find` sweeps that
+  // time out (valid-crating-prawn: 2 × 60s + ~4min burned before it worked
+  // around the gate with an ungated `run_command cp`).
+  it('asset pools are orthogonal to RAC — read and list reach them under an explicit RAC', async () => {
+    const scope: RacScope = { refs: ['architecture/spec/spec-foo.md'], context: ['plan/prd.md'] };
+
+    expect(decideRacGate('assets/game/models/Duck.glb', scope).allowed).toBe(true);
+    expect(decideRacGate('assets/service/logo.svg', scope).allowed).toBe(true);
+    // Pool root and its parent — needed for discovery listing.
+    expect(decideRacGate('assets/game', scope).allowed).toBe(true);
+    expect(decideRacGate('assets', scope).allowed).toBe(true);
+
+    const listed = await gatedList({ directory: 'assets/game/models' }, scope);
+    expect(listed).not.toMatch(/outside the RAC selection/);
+    expect(listed).toContain('Duck.glb');
+  });
+
+  it('the asset exemption does NOT widen into authority artifacts', async () => {
+    // `mossy-nearing-gleam` invariant must survive the asset carve-out.
+    const scope: RacScope = { refs: ['architecture/spec/spec-foo.md'], context: ['plan/prd.md'] };
+    expect(decideRacGate('architecture/system/fe-system-main.md', scope).allowed).toBe(false);
+    const denied = await gatedRead({ path: 'architecture/system/fe-system-main.md' }, scope);
+    expect(denied).toMatch(/outside the RAC selection/);
+  });
 
   it('codebase paths are orthogonal to RAC (always allowed even with restrictive scope)', async () => {
     // Restrictive RAC excludes everything; a codebase path STILL reads
