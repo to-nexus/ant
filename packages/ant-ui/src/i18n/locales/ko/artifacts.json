@@ -75,6 +75,8 @@
     "fetchSuggestionsFailed": "수정 제안을 가져올 수 없습니다.",
     "invalidExtension": "{{dir}}은(는) 다음 파일만 허용합니다: {{allowed}}",
     "subdirsNotAllowed": "{{dir}}에는 하위 폴더를 생성할 수 없습니다",
+    "corruptedFile": "{{filename}} 파일이 손상되어 저장하지 않았습니다 — 파일 형식과 바이트가 일치하지 않습니다. 이런 손상은 복구할 수 없으니 원본 파일을 업로드해주세요.",
+    "binaryTarget": "바이너리 파일은 텍스트로 생성하거나 편집할 수 없습니다. 파일 업로드를 사용해주세요.",
     "uploadPartialBlocked": "{{total}}개 중 {{blocked}}개 파일이 차단되었습니다 (허용되지 않는 형식)",
     "artifactBlockedTitle": "아티팩트를 변경할 수 없음",
     "artifactBlockedSignIn": "아티팩트 파일을 업로드하거나 수정하려면 로그인하세요.",

@@ -137,6 +137,10 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       return t('error.invalidExtension', { dir: dirPath, allowed: error.allowed.join(', ') });
     if (error.code === 'SUBDIRS_NOT_ALLOWED')
       return t('error.subdirsNotAllowed', { dir: dirPath });
+    if (error.code === 'CORRUPTED_FILE')
+      return t('error.corruptedFile', { filename: error.filename ?? '' });
+    if (error.code === 'BINARY_TARGET')
+      return t('error.binaryTarget');
     return error.message;
   };
 

@@ -2,22 +2,67 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { isBinaryPath } from './binaryExtensions';
 
+const CORRUPTION_SNIFF_BYTES = 8000;
+
+/**
+ * A supplied file is itself corrupt (not a transport/disk failure). Routes map
+ * this to HTTP 422 — the caller must supply an intact file; retrying the same
+ * bytes cannot succeed.
+ */
+export class CorruptedFileError extends Error {
+  readonly code = 'CORRUPTED_FILE' as const;
+  readonly filename: string;
+  readonly reason: string;
+
+  constructor(filename: string, reason: string) {
+    super(`${filename} is corrupted and was not saved: ${reason}`);
+    this.filename = filename;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Pre-write verdict on a supplied binary buffer — pure, so callers can
+ * validate an ENTIRE batch before writing anything (partial writes would
+ * leave a half-ingested upload behind). Returns a defect reason or null.
+ *
+ * Two signals, both keyed on a known-binary extension:
+ *   - container header, where the format declares its own length (GLB);
+ *   - U+FFFD saturation, the fingerprint of a utf-8 decode→re-encode round
+ *     trip. Real binary payloads do not contain the 3-byte EF BF BD sequence
+ *     8+ times in their head window; a mojibake'd one is riddled with it.
+ *     This generalizes the protection to every binary format, not just GLB.
+ */
+export function verifyBufferIntegrity(filePathOrName: string, content: Buffer): string | null {
+  if (!isBinaryPath(filePathOrName)) return null;
+  const headerDefect = findGlbHeaderDefect(filePathOrName, content);
+  if (headerDefect) return headerDefect;
+  if (looksUtf8Corrupted(content.subarray(0, CORRUPTION_SNIFF_BYTES))) {
+    return 'utf-8 round-trip corruption (U+FFFD saturation) — the bytes were decoded as text and re-encoded, which is irreversible';
+  }
+  return null;
+}
+
 /**
  * Byte-safe write core for binary ingest (upload route, download_asset).
- * Verifies the written byte count and, for GLB, the container header —
- * a poisoned asset pool fails loudly here instead of at app runtime.
+ * Verifies the supplied bytes (see `verifyBufferIntegrity`) and the written
+ * byte count — a poisoned asset pool fails loudly here instead of at app
+ * runtime. Callers handling batches should pre-validate with
+ * `verifyBufferIntegrity` so a late defect does not leave earlier files written.
  */
 export async function writeBufferVerified(fullPath: string, content: Buffer): Promise<void> {
+  const supplied = verifyBufferIntegrity(fullPath, content);
+  if (supplied) throw new CorruptedFileError(path.basename(fullPath), supplied);
+
   await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.promises.writeFile(fullPath, content);
 
   const stats = await fs.promises.stat(fullPath);
-  const integrityFailure =
-    stats.size !== content.length ? `wrote ${stats.size} bytes, expected ${content.length}`
-    : findGlbHeaderDefect(fullPath, content);
-  if (integrityFailure) {
+  if (stats.size !== content.length) {
     await fs.promises.rm(fullPath, { force: true });
-    throw new Error(`File integrity check failed for ${path.basename(fullPath)}: ${integrityFailure}`);
+    throw new Error(
+      `File integrity check failed for ${path.basename(fullPath)}: wrote ${stats.size} bytes, expected ${content.length}`,
+    );
   }
 }
 
@@ -54,8 +99,6 @@ export function looksUtf8Corrupted(head: Buffer): boolean {
   }
   return false;
 }
-
-const CORRUPTION_SNIFF_BYTES = 8000;
 
 /**
  * On-disk corruption verdict for a known-binary-extension file. Returns a

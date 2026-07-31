@@ -21,6 +21,7 @@ import * as os from 'os';
 
 import {
   writeBufferVerified,
+  verifyBufferIntegrity,
   findGlbHeaderDefect,
   looksUtf8Corrupted,
   sniffCorruptedBinary,
@@ -101,6 +102,34 @@ describe('utf-8 round-trip corruption detection', () => {
   });
 });
 
+describe('verifyBufferIntegrity — pre-write verdict on supplied bytes', () => {
+  it('accepts an intact GLB and an intact PNG-shaped binary', () => {
+    expect(verifyBufferIntegrity('Duck.glb', makeValidGlb())).toBeNull();
+    expect(verifyBufferIntegrity('photo.png', makeHighByteBinary(2048))).toBeNull();
+  });
+
+  it('rejects the incident file shape: GLB whose declared length exceeds its size', () => {
+    const withBin = Buffer.concat([makeValidGlb(), makeHighByteBinary(256)]);
+    withBin.writeUInt32LE(withBin.length, 8);
+    const corrupted = utf8RoundTrip(withBin);
+    expect(verifyBufferIntegrity('assets/game/models/Duck.glb', corrupted)).toMatch(
+      /declared length/,
+    );
+  });
+
+  it('generalizes past GLB: a round-tripped PNG/OGG is rejected on U+FFFD saturation', () => {
+    const roundTripped = utf8RoundTrip(makeHighByteBinary(2048));
+    expect(verifyBufferIntegrity('sprite.png', roundTripped)).toMatch(/U\+FFFD/);
+    expect(verifyBufferIntegrity('theme.ogg', roundTripped)).toMatch(/U\+FFFD/);
+  });
+
+  it('does not police text files (extension-gated)', () => {
+    const suspicious = Buffer.from('�'.repeat(50), 'utf-8');
+    expect(verifyBufferIntegrity('notes.md', suspicious)).toBeNull();
+    expect(verifyBufferIntegrity('model.gltf', suspicious)).toBeNull();
+  });
+});
+
 describe('filesystem-level gates', () => {
   let tmp: string;
 
@@ -119,12 +148,16 @@ describe('filesystem-level gates', () => {
       expect(Buffer.compare(await fs.promises.readFile(dest), glb)).toBe(0);
     });
 
-    it('fails loudly on a mojibake GLB and removes the file (no silent poisoned pool)', async () => {
+    it('refuses a mojibake GLB with code CORRUPTED_FILE and never creates the file', async () => {
       const withBin = Buffer.concat([makeValidGlb(), makeHighByteBinary(256)]);
       withBin.writeUInt32LE(withBin.length, 8);
       const corrupted = utf8RoundTrip(withBin);
       const dest = path.join(tmp, 'Duck.glb');
-      await expect(writeBufferVerified(dest, corrupted)).rejects.toThrow(/integrity/);
+      // 422-shaped, not a 500: a corrupted supplied file is the caller's problem.
+      await expect(writeBufferVerified(dest, corrupted)).rejects.toMatchObject({
+        code: 'CORRUPTED_FILE',
+        filename: 'Duck.glb',
+      });
       expect(fs.existsSync(dest)).toBe(false);
     });
   });
