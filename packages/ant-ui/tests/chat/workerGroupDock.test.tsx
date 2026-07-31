@@ -2,21 +2,30 @@
  * WorkerGroupDock — live-only access strip for the parallel tasks that are
  * running right now.
  *
- * Locks: latest-turn mirroring, live-only chip membership (a settled scope
- * leaves the dock), the job-liveness floor (dock never survives job end even
- * if the BE marker is missing), absence of the `W{n}` text badge, and
+ * Locks: latest-turn mirroring, live-only chip membership, the settle
+ * farewell (a finished task is HELD briefly with its outcome glyph, then
+ * leaves — it must never blink out, and must never linger past the window),
+ * the job-liveness floor, absence of the `W{n}` text badge, and
  * expand-before-jump ordering.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type { Turn, TurnSection } from '../../src/domain/store/selectors/chat';
+import { SETTLE_FAREWELL_MS } from '../../src/presentation/components/common/motion/motionPresets';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }));
+vi.mock('framer-motion', () => ({
+  useReducedMotion: () => false,
+}));
+vi.mock('lucide-react', () => ({
+  Check: (p: Record<string, unknown>) => <i data-glyph="check" {...p} />,
+  XCircle: (p: Record<string, unknown>) => <i data-glyph="x" {...p} />,
+}));
 vi.mock('@/presentation/components/common/async', () => ({
-  Spinner: () => null,
+  Spinner: () => <i data-glyph="spinner" />,
 }));
 
 const mockState = {
@@ -36,6 +45,10 @@ beforeEach(() => {
   mockState.requestChatJump = vi.fn();
   mockState.isRunning = true;
   mockState.currentJobId = 'j1';
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 /** `scopes` entries are `scope` (open) or `[scope, outcome]` (settled). */
@@ -67,8 +80,27 @@ function render(node: React.ReactElement): ReactTestRenderer {
   return tree!;
 }
 
+function update(tree: ReactTestRenderer, node: React.ReactElement) {
+  act(() => {
+    tree.update(node);
+  });
+}
+
 function chipButtons(tree: ReactTestRenderer) {
   return tree.root.findAll((n) => n.type === 'button');
+}
+
+function glyphs(tree: ReactTestRenderer): string[] {
+  return tree.root
+    .findAll((n) => typeof n.props?.['data-glyph'] === 'string')
+    .map((n) => n.props['data-glyph'] as string);
+}
+
+function labels(tree: ReactTestRenderer): string[] {
+  return chipButtons(tree).map((b) => {
+    const span = b.findAll((n) => n.type === 'span')[0];
+    return String(span.props.children);
+  });
 }
 
 describe('WorkerGroupDock', () => {
@@ -82,7 +114,7 @@ describe('WorkerGroupDock', () => {
     expect(JSON.stringify(tree.toJSON())).not.toContain('task-old');
   });
 
-  it('drops settled scopes — completed work lives in the scrollback, not the dock', () => {
+  it('scopes already settled at mount get no chip — history, not a transition', () => {
     const tree = render(
       <WorkerGroupDock
         turns={[
@@ -95,32 +127,7 @@ describe('WorkerGroupDock', () => {
         ]}
       />,
     );
-    const chips = chipButtons(tree);
-    expect(chips.length).toBe(1);
-    // Chip labels fall back to the scope's task key.
-    const json = JSON.stringify(tree.toJSON());
-    expect(json).toContain('running');
-    for (const settled of ['done', 'split', 'bad']) expect(json).not.toContain(settled);
-  });
-
-  it('renders nothing once every scope has settled', () => {
-    const tree = render(
-      <WorkerGroupDock turns={[turn('t2', [['worker-0#done', 'completed']])]} />,
-    );
-    expect(tree.toJSON()).toBeNull();
-  });
-
-  it('job-liveness floor: hidden when the job is not running, or is a different job', () => {
-    // Scope never got its terminal marker (killed worker / legacy record).
-    const turns = [turn('t2', ['worker-1#task-a'])];
-    expect(render(<WorkerGroupDock turns={turns} />).toJSON()).not.toBeNull();
-
-    mockState.isRunning = false;
-    expect(render(<WorkerGroupDock turns={turns} />).toJSON()).toBeNull();
-
-    mockState.isRunning = true;
-    mockState.currentJobId = 'other-job';
-    expect(render(<WorkerGroupDock turns={turns} />).toJSON()).toBeNull();
+    expect(labels(tree)).toEqual(['running']);
   });
 
   it('renders nothing when the latest turn has no worker sections', () => {
@@ -148,5 +155,89 @@ describe('WorkerGroupDock', () => {
     expect(mockState.expandChatGroup).toHaveBeenCalledWith('t2', 'worker-1#task-a');
     expect(mockState.requestChatJump).toHaveBeenCalledWith('t2', 'worker-1#task-a');
     expect(order).toEqual(['expand', 'jump']);
+  });
+
+  // ── Settle farewell ────────────────────────────────────────────────────
+
+  describe('settle farewell', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    it('holds a completed chip with a check, then drops it after the window', () => {
+      const tree = render(<WorkerGroupDock turns={[turn('t2', ['worker-1#task-a'])]} />);
+      expect(glyphs(tree)).toEqual(['spinner']);
+
+      update(tree, <WorkerGroupDock turns={[turn('t2', [['worker-1#task-a', 'completed']])]} />);
+      // Still present — the completion has to be seen, not blinked away.
+      expect(chipButtons(tree).length).toBe(1);
+      expect(glyphs(tree)).toEqual(['check']);
+
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_FAREWELL_MS + 1);
+      });
+      expect(tree.toJSON()).toBeNull();
+    });
+
+    it('a failure gets the same hold, with its own glyph', () => {
+      const tree = render(<WorkerGroupDock turns={[turn('t2', ['worker-1#task-a'])]} />);
+      update(tree, <WorkerGroupDock turns={[turn('t2', [['worker-1#task-a', 'failed']])]} />);
+      expect(glyphs(tree)).toEqual(['x']);
+
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_FAREWELL_MS + 1);
+      });
+      expect(tree.toJSON()).toBeNull();
+    });
+
+    it('a batch-split parent settles as completed, not as a failure', () => {
+      const tree = render(<WorkerGroupDock turns={[turn('t2', ['worker-1#parent'])]} />);
+      update(tree, <WorkerGroupDock turns={[turn('t2', [['worker-1#parent', 'superseded']])]} />);
+      expect(glyphs(tree)).toEqual(['check']);
+    });
+
+    it('siblings keep running while one settles', () => {
+      const tree = render(
+        <WorkerGroupDock turns={[turn('t2', ['worker-1#task-a', 'worker-2#task-b'])]} />,
+      );
+      update(
+        tree,
+        <WorkerGroupDock
+          turns={[turn('t2', [['worker-1#task-a', 'completed'], 'worker-2#task-b'])]}
+        />,
+      );
+      expect(labels(tree)).toEqual(['task-a', 'task-b']);
+      expect(glyphs(tree)).toEqual(['check', 'spinner']);
+
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_FAREWELL_MS + 1);
+      });
+      expect(labels(tree)).toEqual(['task-b']);
+    });
+
+    it('job end forces the farewell too — the last task is still acknowledged', () => {
+      const tree = render(<WorkerGroupDock turns={[turn('t2', ['worker-1#task-a'])]} />);
+
+      // Job dies before the scope marker landed: hold the chip, but claim no
+      // outcome — no glyph at all rather than a check we never earned.
+      // (Fresh `turns` array so the component's `memo` does not bail out —
+      // in the app the store change is what re-renders it.)
+      mockState.isRunning = false;
+      update(tree, <WorkerGroupDock turns={[turn('t2', ['worker-1#task-a'])]} />);
+      expect(chipButtons(tree).length).toBe(1);
+      expect(glyphs(tree)).toEqual([]);
+
+      act(() => {
+        vi.advanceTimersByTime(SETTLE_FAREWELL_MS + 1);
+      });
+      expect(tree.toJSON()).toBeNull();
+    });
+
+    it('a dead job that was never observed live renders nothing at all', () => {
+      // Mount fresh on a stale record — baseline seeding means no farewell.
+      mockState.isRunning = false;
+      const tree = render(<WorkerGroupDock turns={[turn('t2', ['worker-1#task-a'])]} />);
+      expect(tree.toJSON()).toBeNull();
+    });
   });
 });
