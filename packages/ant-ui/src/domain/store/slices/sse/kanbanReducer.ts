@@ -2,6 +2,7 @@ import type { KanbanData } from '@/infrastructure/http/api';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
 import { removeFromStorage, STORAGE_KEYS } from '../../storage';
 import { isStaleJobUpdate } from './isStaleJobUpdate';
+import { frameCarriesJobIdentity } from './frameCarriesJobIdentity';
 
 /**
  * Core kanban state reducer. Handles field preservation (jobTiming, recursion,
@@ -200,13 +201,20 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
         ? { activeJobs: prunedActiveJobs }
         : {};
 
+    // `isStaleJobUpdate` above needs BOTH ids truthy, so it does not fire for
+    // an incoming `undefined` — this is what keeps an identity-less frame from
+    // erasing the selection here. Its board data still applies.
+    const identityUpdate = frameCarriesJobIdentity(data)
+      ? { currentJobId: kanbanJobId }
+      : {};
+
     set({
       kanban: { ...data, isEstimating: false, estimatingLabel: undefined, estimatingStartedAt: undefined, estimatingNodeId: undefined },
       runningJobsByFeature: updatedRunningJobs,
-      currentJobId: kanbanJobId,
       isRunning: false,
       currentMode: undefined,
       jobStartPending: false,
+      ...identityUpdate,
       ...activeJobsUpdate,
     });
 
@@ -260,11 +268,7 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
     };
 
     if (kanbanJobId !== state.currentJobId) {
-      const boardHasTasks =
-        (data.todo?.length ?? 0) > 0 ||
-        (data.inProgress?.length ?? 0) > 0 ||
-        (data.completed?.length ?? 0) > 0;
-      if (kanbanJobId || boardHasTasks) {
+      if (frameCarriesJobIdentity(data)) {
         console.log('[Store] 🔄 Job ID changed via Kanban update');
         newState.currentJobId = kanbanJobId;
       }
