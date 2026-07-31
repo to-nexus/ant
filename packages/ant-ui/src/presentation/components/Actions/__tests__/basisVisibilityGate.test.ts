@@ -90,20 +90,31 @@ describe('Basis visibility gate — static slot × domain matrix (no runtime sup
 
 describe('Codebase suppression — runtime gate feeding rows / steps / routing', () => {
   // The stack an existing project uses is a fact its manifests already
-  // encode, and its stylesheets / tokens already carry a visual identity —
-  // re-prompting for either is the "steps get tangled" bug.
+  // encode, its stylesheets / tokens already carry a visual identity, and a
+  // game codebase already fixes its art direction AND render dimension
+  // (Phaser `Scene` vs enable3d `Scene3D`). Re-prompting for any of them is
+  // the "steps get tangled" bug.
   it.each<[IntentId, Domain, string[]]>([
     ['gen-code-sys', 'service', []],
     ['gen-code-spec', 'service', []],
     ['gen-code-directive', 'service', []],
     ['gen-sys-fe', 'service', []],
     ['gen-ui-desc', 'service', []],
-    // game: techTier suppressed, visualTier domain-blocked, art survives —
-    // the wizard must land straight on gameArtTier, not walk techTier first.
-    ['gen-code-sys', 'game', ['gameArtTier']],
-    ['gen-game-art-desc', 'game', ['gameArtTier']],
+    // game domain: techTier + gameArtTier both collapse (visualTier is
+    // domain-blocked). `gen-code-directive` × game is the polyhedron repro —
+    // it used to skip techTier but still force the game-art picker, because
+    // gameArtTier had no hasCodebase suppressor while its service-domain
+    // twin `visualTier` did.
+    ['gen-code-directive', 'game', []],
+    ['gen-code-sys', 'game', []],
+    ['gen-game-art-desc', 'game', []],
   ])('%s on %s with an existing codebase → %j', (intent, domain, expected) => {
     expect(activeWithCodebase(intent, domain)).toEqual(expected);
+  });
+
+  it('greenfield game keeps techTier + gameArtTier', () => {
+    expect(listActiveTiers(getConfigSlots('gen-code-directive')?.basis, 'game', { hasCodebase: false }))
+      .toEqual(['techTier', 'gameArtTier']);
   });
 
   it('greenfield keeps the full static set (no suppression)', () => {
