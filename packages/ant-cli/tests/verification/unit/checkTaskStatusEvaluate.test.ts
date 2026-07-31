@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { evaluateTaskStatus } from '../../../src/agents/architect/graph/code/nodes/checkTaskStatus/evaluate';
 import type { ArchitectGraphState } from '../../../src/agents/architect/graph/code/state';
 
@@ -139,5 +142,86 @@ describe('nodes/checkTaskStatus/evaluate', () => {
     const result = await evaluateTaskStatus(state, { logPrefix: 'test' });
     expect(result.stopRequested).toBe(true);
     expect(result.batchSplitRequeued).toBe(true);
+  });
+
+  /**
+   * Completion output gate (level-dashing-plumb). A task must not complete
+   * claiming success while a placement its own plan declared has not happened —
+   * the code-job counterpart of design's `isNoOutputCompletion`.
+   *
+   * Scoped to `implementation.assets[]` on purpose: a placement is
+   * disk-verifiable, so the check cannot false-positive. "Plan declared a
+   * modify but nothing was written" is ambiguous (execute legitimately finds the
+   * change already present) and is deliberately NOT gated.
+   */
+  describe('unplaced-asset completion gate', () => {
+    let ws: string;
+
+    beforeEach(() => {
+      ws = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-unplaced-asset-'));
+      fs.mkdirSync(path.join(ws, 'assets/game/models'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'assets/game/models/Duck.glb'), Buffer.alloc(120));
+    });
+    afterEach(() => {
+      if (ws) fs.rmSync(ws, { recursive: true, force: true });
+    });
+
+    const planWithAsset = JSON.stringify({
+      task: { id: 't1', goal: 'replace boss model' },
+      implementation: {
+        create: [], modify: [], delete: [],
+        assets: [{ source: 'assets/game/models/Duck.glb', destination: 'codebase/public/models/Duck.glb' }],
+      },
+    });
+
+    function assetState(over: Partial<ArchitectGraphState> = {}) {
+      return makeState({ planText: planWithAsset, context: { featurePath: ws }, ...over } as any);
+    }
+
+    it('blocks completion when the declared destination was never written', async () => {
+      const result = await evaluateTaskStatus(assetState(), { logPrefix: 'test' });
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].type).toBe('asset_not_placed');
+      expect(result.violations[0].isRetryable).toBe(true);
+      expect(result.violations[0].suggestedFix).toContain('copy_file');
+    });
+
+    it('blocks completion when the destination holds stale bytes of a different size', async () => {
+      fs.mkdirSync(path.join(ws, 'codebase/public/models'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'codebase/public/models/Duck.glb'), Buffer.alloc(198));
+      const result = await evaluateTaskStatus(assetState(), { logPrefix: 'test' });
+      expect(result.violations[0]?.type).toBe('asset_not_placed');
+      expect(result.violations[0]?.message).toContain('stale/different bytes');
+    });
+
+    it('allows completion once the placement matches the source', async () => {
+      fs.mkdirSync(path.join(ws, 'codebase/public/models'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'codebase/public/models/Duck.glb'), Buffer.alloc(120));
+      const result = await evaluateTaskStatus(assetState(), { logPrefix: 'test' });
+      expect(result.violations).toEqual([]);
+    });
+
+    it('stays silent for a plan that declares no asset placements', async () => {
+      const plan = JSON.stringify({ implementation: { create: [], modify: [{ target: 'a.ts' }], delete: [] } });
+      const result = await evaluateTaskStatus(
+        makeState({ planText: plan, context: { featurePath: ws } } as any),
+        { logPrefix: 'test' },
+      );
+      expect(result.violations).toEqual([]);
+    });
+
+    it('stays silent when the source itself is gone — not this gate\'s failure to report', async () => {
+      fs.rmSync(path.join(ws, 'assets/game/models/Duck.glb'));
+      const result = await evaluateTaskStatus(assetState(), { logPrefix: 'test' });
+      expect(result.violations).toEqual([]);
+    });
+
+    it('does not fire before <done> — the no_done_signal guard owns that turn', async () => {
+      const result = await evaluateTaskStatus(
+        assetState({ llmResponse: { done: false } } as any),
+        { logPrefix: 'test' },
+      );
+      expect(result.violations.every((v) => v.type !== 'asset_not_placed')).toBe(true);
+    });
   });
 });

@@ -16,6 +16,8 @@
  */
 
 import { createHash } from "crypto";
+import { promises as fsPromises } from "fs";
+import * as path from "path";
 import { ArchitectGraphState } from "../../state";
 import type { CodeTask } from "../../../../types/task";
 import { featureUiObservationVars } from "../../tasks/_shared/helpers/featureUiObservation";
@@ -59,6 +61,9 @@ import { loadAntrules } from "../../../../../../core/artifact/antrules";
 import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormalizer";
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 import { resolveCodebaseRel } from "./codebaseRel";
+import { extractAssetPlacements } from "../../planContract/implementation";
+import { formatAssetInventoryBlock } from "../../../../../../infrastructure/workspace/assetInventory";
+import { formatByteSize } from "../../../../../../core/utils/binaryExtensions";
 import { TEMPLATE_PATHS } from "../../../../../../core/prompt/builder/templatePaths";
 
 const DEFAULT_EXECUTE_TEMPLATES = {
@@ -934,25 +939,88 @@ const MODIFY_CONTENT_PER_FILE_CAP = 30_000;
 const MODIFY_CONTENT_TOTAL_CAP = 80_000;
 
 /**
+ * Parse a plan-JSON string, tolerating code-fence wrapping. Returns `undefined`
+ * for absent or non-JSON text so callers can treat "no plan" and "unparseable
+ * plan" alike.
+ */
+function parsePlanJson(planText: string | undefined): unknown {
+  if (!planText) return undefined;
+  const stripped = planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Extract `implementation.modify[].target` paths from a plan-JSON string.
  * Tolerant of code-fence wrapping and non-JSON content (returns []).
  */
 function extractPlanModifyPaths(planText: string | undefined): string[] {
-  if (!planText) return [];
-  const stripped = planText.trim().replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
-  try {
-    const parsed = JSON.parse(stripped);
-    const modify = parsed?.implementation?.modify;
-    if (!Array.isArray(modify)) return [];
-    const paths: string[] = [];
-    for (const entry of modify) {
-      const target = typeof entry === 'string' ? entry : entry?.target;
-      if (typeof target === 'string' && target.length > 0) paths.push(target);
-    }
-    return paths;
-  } catch {
-    return [];
+  const parsed = parsePlanJson(planText) as any;
+  const modify = parsed?.implementation?.modify;
+  if (!Array.isArray(modify)) return [];
+  const paths: string[] = [];
+  for (const entry of modify) {
+    const target = typeof entry === 'string' ? entry : entry?.target;
+    if (typeof target === 'string' && target.length > 0) paths.push(target);
   }
+  return paths;
+}
+
+/**
+ * Render the `Asset Placements — Owed by Your Plan` section.
+ *
+ * `implementation.assets[]` is a plan mutation key (see
+ * `planContract/implementation.ts`) but it names work that no `<file>` tag can
+ * express: the source is usually a binary the text tools refuse outright. Before
+ * this section existed the field was documented on both sides of the plan→execute
+ * handoff and carried by neither, so the placement silently never happened
+ * (level-dashing-plumb).
+ *
+ * Status is read from disk per render, so a placement flips to `✅ done` once
+ * `copy_file` lands — which is why this belongs in the uncached turn-variable
+ * context alongside `buildModifyTargetsSection`, not in the invariant block.
+ */
+export async function buildAssetPlacementsSection(state: ArchitectGraphState): Promise<string | null> {
+  const placements = extractAssetPlacements(parsePlanJson(state.planText));
+  if (placements.length === 0) return null;
+
+  const featurePath = state.context?.featurePath;
+  const lines: string[] = [
+    `════════════════════════════════════════════════════════════════════════════════`,
+    `📦 Asset Placements — Owed by Your Plan`,
+    `════════════════════════════════════════════════════════════════════════════════`,
+    ``,
+    `Your plan declared these under \`implementation.assets\`. Each is a file placement:`,
+    `use the \`copy_file\` tool (source → destination, byte-for-byte + integrity-verified).`,
+    `Do NOT author these bytes with \`<file>\` / \`create_file\` / \`edit_file\` — binary targets`,
+    `are refused by those paths, and a text round-trip corrupts the file.`,
+    ``,
+  ];
+
+  for (const { source, destination } of placements) {
+    let status = 'pending';
+    if (featurePath) {
+      try {
+        const [srcStat, destStat] = await Promise.all([
+          fsPromises.stat(path.resolve(featurePath, source)).catch(() => null),
+          fsPromises.stat(path.resolve(featurePath, destination)).catch(() => null),
+        ]);
+        if (!srcStat) status = '⚠️ source not found';
+        else if (!destStat) status = 'pending — destination does not exist yet';
+        else if (destStat.size !== srcStat.size) status = `pending — destination differs (${destStat.size}B vs source ${srcStat.size}B)`;
+        else status = '✅ done — destination matches source size';
+      } catch {
+        /* status stays 'pending' */
+      }
+    }
+    lines.push(`  - \`${source}\` → \`${destination}\`  [${status}]`);
+  }
+
+  lines.push(``, `════════════════════════════════════════════════════════════════════════════════`, ``);
+  return lines.join('\n');
 }
 
 /**
@@ -1131,7 +1199,8 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     lines.push(`Inspect the list below and decide — for THIS task — which (if any) of these real assets are appropriate to use. If a design spec/catalog references one, honor that; if none is referenced, still use a fitting real asset over a placeholder when the task needs that kind of imagery/audio.`);
     lines.push(`If used: SVG (.svg) → ${dest.svgInstruction}`);
     lines.push(`Raster (png, jpg, webp) → ${dest.rasterInstruction}`);
-    lines.push(`Other formats (3D models, audio, data files) → same copy-to-servable-destination pattern; load with the format's loader. An explicitly attached/placed real file is a binding input — wire it, never substitute a placeholder for it.`);
+    lines.push(`Other formats (3D models, audio, data files) → same place-then-reference pattern; load with the format's loader. An explicitly attached/placed real file is a binding input — wire it, never substitute a placeholder for it.`);
+    lines.push(`Place every one of them with the \`copy_file\` tool (source → destination). Binary assets CANNOT be authored as text — \`<file>\` / \`create_file\` / \`edit_file\` refuse binary targets and a text round-trip corrupts the bytes.`);
     lines.push(``);
     if (state.context?.featurePath) {
       lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/assets/`);
@@ -1142,9 +1211,40 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
       lines.push(`Note: ${dest.note}`);
     }
     lines.push(``);
-    lines.push(`Available files (${idx.count} total):`);
-    idx.files.slice(0, 20).forEach((f) => lines.push(`  - ${f}`));
-    if (idx.count > 20) lines.push(`  ... and ${idx.count - 20} more`);
+    // Per-file SIZE and the ⚠️ CORRUPTED marks must reach a code job: the
+    // hand-rolled path-only list this replaces dropped both, so a code job
+    // could not tell a healthy source from a poisoned one and would place it
+    // anyway (valid-crating-prawn). Prefer the shared grouped formatter, but
+    // it enumerates `groups` only — fall back to the flat `files` array (which
+    // is the authoritative list) when grouping is absent, carrying the same
+    // enrichment so the guarantee does not depend on which shape arrived.
+    const groupedCount = Object.values(idx.groups ?? {}).reduce((n, f) => n + f.length, 0);
+    const inventoryBlock = groupedCount > 0
+      ? formatAssetInventoryBlock(idx, {
+          assetsRoot: isGame ? 'assets/game' : 'assets/service',
+          usage: 'Place the ones this task needs with `copy_file`, then reference the destination path.',
+        })
+      : '';
+    if (inventoryBlock) {
+      lines.push(inventoryBlock.trimEnd());
+    } else {
+      lines.push(`Available files (${idx.count} total):`);
+      idx.files.slice(0, 20).forEach((f) => {
+        const bytes = idx.sizes?.[f];
+        const defect = idx.corrupted?.[f];
+        lines.push(
+          `  - ${f}${bytes !== undefined ? ` (${formatByteSize(bytes)})` : ''}` +
+            (defect ? ` ⚠️ CORRUPTED — ${defect}` : ''),
+        );
+      });
+      if (idx.count > 20) lines.push(`  ... and ${idx.count - 20} more`);
+      const corruptedCount = Object.keys(idx.corrupted ?? {}).length;
+      if (corruptedCount > 0) {
+        lines.push(
+          `⚠️ ${corruptedCount} asset(s) above are CORRUPTED on disk. Do NOT copy them as-is — report the defect and ask for the original file.`,
+        );
+      }
+    }
     lines.push(``);
   }
   
@@ -1251,6 +1351,13 @@ export async function buildTurnVariableContext(state: ArchitectGraphState): Prom
   const modifyTargetsSection = await buildModifyTargetsSection(state);
   if (modifyTargetsSection) {
     lines.push(modifyTargetsSection);
+  }
+
+  // Asset placements owed by plan.assets — status is read from disk, so an
+  // entry flips to done once copy_file lands. Cannot be cached.
+  const assetPlacementsSection = await buildAssetPlacementsSection(state);
+  if (assetPlacementsSection) {
+    lines.push(assetPlacementsSection);
   }
 
   return lines.join('\n');

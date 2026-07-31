@@ -17,6 +17,7 @@ import {
   diagnosticBatchShape,
 } from './policy';
 import { BatchSplitSchemaViolation } from './schemaViolation';
+import { countPlanMutations } from '../../../planContract/implementation';
 
 /**
  * Detect an LLM-explicit fan-out plan and spawn the sub-tasks.
@@ -130,11 +131,11 @@ export function processDiagnosticBatchSplit(
       }
     }
 
-    const modifyArr: any[] = Array.isArray(parsed.implementation?.modify) ? parsed.implementation.modify : [];
-    const createArr: any[] = Array.isArray(parsed.implementation?.create) ? parsed.implementation.create : [];
-    const deleteArr: any[] = Array.isArray(parsed.implementation?.delete) ? parsed.implementation.delete : [];
     const hasExistingBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
-    const topLevelImplCount = modifyArr.length + createArr.length + deleteArr.length;
+    // Observability only — the fan-out decision below keys purely off
+    // `hasExistingBatches`. Counted via the plan-implementation SSOT so the
+    // logged figure covers every key the prompt teaches (incl. `assets`).
+    const topLevelImplCount = countPlanMutations(parsed);
 
     // SSOT for fan-out decision is the LLM's explicit `batches[]`. A flat
     // `implementation` block — regardless of entry count, package count, or

@@ -54,6 +54,9 @@ export enum ToolName {
   CREATE_FILE          = 'create_file',
   DELETE_FILE          = 'delete_file',
   MKDIR                = 'mkdir',
+  // Byte-faithful placement — the only write path that survives a binary
+  // payload (every authoring surface writes utf-8 and refuses binary targets).
+  COPY_FILE            = 'copy_file',
 
   // ── Execute ──
   RUN_COMMAND          = 'run_command',
@@ -113,6 +116,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   [ToolName.CREATE_FILE]:          '📄 Creating file',
   [ToolName.DELETE_FILE]:          '🗑️ Deleting file',
   [ToolName.MKDIR]:                '📁 Creating directory',
+  [ToolName.COPY_FILE]:            '📦 Placing file',
   // Execute
   [ToolName.RUN_COMMAND]:          '⚙️ Running command',
   [ToolName.HTTP_REQUEST]:         '🌐 HTTP request',
@@ -190,6 +194,9 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.CREATE_FILE,
     ToolName.DELETE_FILE,
     ToolName.MKDIR,
+    // Byte-faithful placement of an already-existing file (binary assets can
+    // enter the codebase ONLY this way — the authoring surfaces are utf-8).
+    ToolName.COPY_FILE,
     // Execute — (*) wrapped with CodeCommandPolicy
     ToolName.RUN_COMMAND,
     // Runtime route verification — only surfaced when persistent processes are
@@ -306,8 +313,12 @@ export const TOOL_SETS = {
   // stream documents via the `<file>` tag and deliberately expose no create
   // tool. Even in code execute, the `<file>` tag stays the preferred path
   // (real-time streaming); create_file is the tool-loop fallback.
+  // COPY_FILE sits beside the authoring tools here, not in planExplore: the
+  // plan phase is read-only and expresses a placement declaratively via
+  // `implementation.assets[]`; execute is what carries it out.
   codeBasic: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.CREATE_FILE,
+    ToolName.COPY_FILE,
     ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
     ToolName.EXPLORE,
@@ -449,6 +460,7 @@ import {
   handleDeleteFile,
   handleEditFile,
   handleCreateFile,
+  handleCopyFile,
   handleMkdir,
   handleSearchWeb,
   handleFetchUrl,
@@ -476,6 +488,7 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.DELETE_FILE,      handleDeleteFile],
     [ToolName.EDIT_FILE,        handleEditFile],
     [ToolName.CREATE_FILE,      handleCreateFile],
+    [ToolName.COPY_FILE,        handleCopyFile],
     [ToolName.RUN_COMMAND,      handleRunCommand],
     [ToolName.HTTP_REQUEST,     handleHttpRequest],
     // Delegate — ctx-dependent (requires ctx.subagent seam, like read_state's ctx.completedTasks)

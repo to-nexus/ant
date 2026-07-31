@@ -71,6 +71,7 @@ Generate a **concrete implementation plan** for this task.
   "implementation": {
     "create": [...],
     "modify": [...],
+    "delete": [...],
     "assets": [...]
   }
 }
@@ -94,10 +95,15 @@ it is a property of the plan node, not of any task type.
 <plan>
 {
   "task": { "id": "task-id", "goal": "Nothing to do" },
-  "implementation": { "create": [], "modify": [], "delete": [] }
+  "implementation": { "create": [], "modify": [], "delete": [], "assets": [] }
 }
 </plan>
 ```
+
+An empty plan means EVERY key of `implementation` is empty. A plan carrying
+entries under any single key — including `assets` alone — declares real work
+and is NOT an empty plan. Placing a file is work even when no source line
+changes: emit it under `assets` and let the plan proceed.
 
 Do NOT run a verification command (typecheck / build / lint / test) to
 "double-check" before emitting the empty plan — emitting a verification-
@@ -141,8 +147,8 @@ is done.
     ],
     "assets": [
       {
-        "source": "[source path from ui-assets.json]",
-        "destination": "[destination path]"
+        "source": "[REQUIRED — path of an asset file that already exists in the workspace asset pool, exactly as listed in the available-assets inventory or an asset manifest]",
+        "destination": "[REQUIRED — path the running application loads it from, under the framework's static-asset convention]"
       }
     ]
   },
@@ -508,7 +514,7 @@ Before outputting, verify:
 Before writing `<plan>`, internally cover:
 1. **Directory patterns** — What structure exists? Where do similar modules live?
 2. **Existing modules** — Does similar functionality already exist? → MODIFY, not CREATE
-3. **Asset requirements** — What assets does ui-assets.json specify for this task?
+3. **Asset requirements** — Which already-present asset files does this task need placed where the application loads them? (An asset manifest, when one exists for this surface, is the authority on what is available.)
 4. **Task scope** — Are all planned files within YOUR task's responsibility?
 
 **Constraint**: Do NOT copy example text. Reason about the ACTUAL project context provided.
@@ -520,8 +526,8 @@ Before writing `<plan>`, internally cover:
 **Constraints**:
 - {{> jobs/code/base/injections/entry-point-ownership-checklist}}
 - `location` must be derived from observed directory patterns
-- `assets` must match EXACT paths from ui-assets.json
-- Do NOT invent assets not in ui-assets.json
+- `assets[].source` must be a real file that already exists in the workspace asset pool — an EXACT path from the available-assets inventory or an asset manifest. Do NOT invent one, and do NOT name a file you have not seen listed.
+- Use `assets` for ANY file that must be placed rather than authored — a binary (model / audio / image / font) can only get into the app this way, because authoring its bytes as text corrupts it.
 
 ────────────────────────────────────────────────────────────────────────────────
 
