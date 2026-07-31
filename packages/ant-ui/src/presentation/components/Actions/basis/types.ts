@@ -70,4 +70,7 @@ export interface BasisWizardProps {
   /** Tier the wizard should land on. Falls back to the first configured tier
    * when omitted or when the requested tier isn't configured for this slot. */
   initialTier?: TierKey;
+  /** The user opened the wizard deliberately, so codebase-suppressed tiers
+   * (techTier / visualTier on an existing codebase) must stay reachable. */
+  allowSuppressedTiers?: boolean;
 }

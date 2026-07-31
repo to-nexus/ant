@@ -87,6 +87,7 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set, get
       mainPanelTabOrder: [],
       actionsStep: 'pick-action',
       basisEditInitialTier: undefined,
+      basisEditOverride: false,
       selectedActionId: null,
       selectedIntentId: null,
       // D22: project domain default seed (workspace-level sticky slot).

@@ -235,6 +235,12 @@ export interface UIState {
   // 'basis-edit'. Set by tier-specific edit buttons (BasisSummaryBar). Cleared
   // by the wizard itself or by global edit triggers that don't target a tier.
   basisEditInitialTier: 'techTier' | 'visualTier' | 'gameArtTier' | undefined;
+  // Ephemeral twin of `basisEditInitialTier`: the user reached 'basis-edit' by
+  // deliberately clicking an edit affordance, so the wizard must expose the
+  // tiers that `RUNTIME_SUPPRESSORS` hides on an existing codebase. Auto-routing
+  // (`decideActionsStepAfterIntent`) leaves this false and gets the suppressed
+  // set. Cleared wherever `basisEditInitialTier` is.
+  basisEditOverride: boolean;
   selectedActionId: string | null;
   selectedIntentId: string | null;
   actionMetadata: import('@ant/shared').ActionMetadata;

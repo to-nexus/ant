@@ -1,6 +1,6 @@
 import { Pencil, Settings2, Palette, Brush, RotateCcw } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import type { BasisSlotConfig, Basis, Domain } from '@ant/shared';
+import type { BasisSlotConfig, Basis, Domain, TierRuntimeContext } from '@ant/shared';
 import {
   STACK_OPTIONS, TECH_TIER_LANGUAGES, FRAMEWORK_LABELS,
   VISUAL_LANGUAGE_OPTIONS, SURFACE_SYSTEM_OPTIONS,
@@ -10,7 +10,9 @@ import {
   getEffectiveDomain,
   pathsContainUiDoc,
 } from '@ant/shared';
+import { useHasCodebase } from '@/application/hooks/features/useActiveTiers';
 import { TierBadge as TierBadgeComponent, type TierBadgeData } from './TierBadge';
+import { DetectedProfileRow } from './DetectedProfileRow';
 import type { TierKey } from './types';
 
 export interface TierBadgeRow {
@@ -51,10 +53,15 @@ export function getTierBadgeRows(
   basis: Basis | undefined,
   basisSlot: BasisSlotConfig,
   lang: 'en' | 'ko',
-  draftBasis?: Basis,
-  hasUiDoc: boolean = false,
-  domain?: Domain,
+  opts: {
+    draftBasis?: Basis;
+    /** Suppressor inputs. `techTier` is filled from the displayed basis when
+     *  omitted so callers only pass what they actually know. */
+    runtime?: Omit<TierRuntimeContext, 'techTier'>;
+    domain?: Domain;
+  } = {},
 ): TierBadgeRow[] {
+  const { draftBasis, runtime, domain } = opts;
   const rows: TierBadgeRow[] = [];
   const display = draftBasis ?? basis;
   const saved = basis;
@@ -63,7 +70,7 @@ export function getTierBadgeRows(
   // `isTierActive` calls that used to inline the gate computation. Active
   // set is queried once and consulted by membership below.
   const active = new Set(
-    listActiveTiers(basisSlot, effectiveDomain, { techTier: display?.techTier, hasUiDoc }),
+    listActiveTiers(basisSlot, effectiveDomain, { ...runtime, techTier: display?.techTier }),
   );
 
   if (active.has('techTier')) {
@@ -299,16 +306,36 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
     ...(actionMetadata.refs ?? []),
     ...(actionMetadata.context ?? []),
   ]);
-  const rows = getTierBadgeRows(basis, basisSlot, lang, draftBasis, hasUiDoc, actionMetadata.domain);
+  // D27 — an existing codebase implicitly fixes techTier (its manifests) and
+  // visualTier (its stylesheets / tokens). Inside the wizard (`inline`) the
+  // user is already overriding on purpose, so the suppressor stays off there.
+  const hasCodebase = useHasCodebase() && mode !== 'inline';
+  const rows = getTierBadgeRows(basis, basisSlot, lang, {
+    draftBasis,
+    runtime: { hasUiDoc, hasCodebase },
+    domain: actionMetadata.domain,
+  });
+  // Anything the codebase suppressor closed is represented by the detected
+  // project profile instead of a re-prompt. Compared on TIERS, not rows —
+  // a fullstack techTier renders two rows (FE / BE) for a single tier.
+  const runtimeWithoutCodebase = {
+    techTier: (draftBasis ?? basis)?.techTier,
+    hasUiDoc,
+  };
+  const effectiveDomain = getEffectiveDomain(actionMetadata.domain);
+  const suppressedByCodebase =
+    hasCodebase &&
+    listActiveTiers(basisSlot, effectiveDomain, runtimeWithoutCodebase).length >
+      listActiveTiers(basisSlot, effectiveDomain, { ...runtimeWithoutCodebase, hasCodebase }).length;
 
-  // Empty-rows fallback — when every tier is closed by the matrix or
-  // runtime suppressors there is nothing to enumerate as a row, so we
-  // surface a single dashed CTA that still hands the user into the
-  // wizard (manual override entry). When at least one tier row exists,
-  // render it as-is — its per-layer "Auto" badges and per-row edit
-  // pencil already convey the unset state without collapsing the
-  // whole bar into one anonymous button.
-  if (mode === 'default' && rows.length === 0) {
+  // Empty-rows fallback — when every tier is closed by the matrix (and the
+  // codebase suppressor is not the reason) there is nothing to enumerate, so
+  // we surface a single dashed CTA that still hands the user into the wizard
+  // (manual override entry). When at least one tier row exists, render it
+  // as-is — its per-layer "Auto" badges and per-row edit pencil already
+  // convey the unset state without collapsing the whole bar into one
+  // anonymous button.
+  if (mode === 'default' && rows.length === 0 && !suppressedByCodebase) {
     return (
       <button
         type="button"
@@ -351,6 +378,9 @@ export function BasisSummaryBar({ basisSlot, onEdit, onEditTier, onResetTier, la
           : { background: 'var(--bg-surface-2)', border: '1px solid var(--border-2)' }
       }
     >
+      {suppressedByCodebase && (
+        <DetectedProfileRow lang={lang} onOverride={mode === 'default' ? onEdit : undefined} />
+      )}
       {rows.map(row => (
         <TierRow
           key={`${row.tierKey}${row.subLabel ? `-${row.subLabel}` : ''}`}

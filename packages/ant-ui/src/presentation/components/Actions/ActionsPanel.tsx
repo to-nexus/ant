@@ -38,6 +38,7 @@ export function ActionsPanel() {
   const selectAction = useStore(s => s.selectAction);
   const selectIntent = useStore(s => s.selectIntent);
   const basisEditInitialTier = useStore(s => s.basisEditInitialTier);
+  const basisEditOverride = useStore(s => s.basisEditOverride);
 
   const stepDirRef = useRef<1 | -1>(1);
   const prevStepRef = useRef(step);
@@ -232,6 +233,7 @@ export function ActionsPanel() {
               onBack={() => setActionsStep('config')}
               lang={lang}
               initialTier={basisEditInitialTier}
+              allowSuppressedTiers={basisEditOverride}
             />
           </div>
         );

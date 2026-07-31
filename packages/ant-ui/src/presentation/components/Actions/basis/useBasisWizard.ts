@@ -26,11 +26,11 @@ import {
   // only; their _OPTIONS arrays remain in @ant/shared for the BE
   // decompose path but are no longer imported here.
   deriveInteractionGrammar,
-  listActiveTiers,
   getEffectiveDomain,
   pathsContainUiDoc,
   type VisualLanguageVariant,
 } from '@ant/shared';
+import { useActiveTiers } from '@/application/hooks/features/useActiveTiers';
 import {
   TECH_STEPS,
   FULLSTACK_STEPS,
@@ -229,6 +229,15 @@ function findNextGroupStart(steps: WizardStepDef[], currentIdx: number): number 
 export function useBasisWizard(
   basisSlot: BasisSlotConfig,
   initialTier?: TierKey,
+  opts?: {
+    /**
+     * The user opened the wizard deliberately (Basis section edit), so the
+     * codebase suppressor must not hide techTier / visualTier — otherwise the
+     * manual override has nothing to override. Auto-routed entries leave this
+     * false and see only the tiers that are still genuinely undecided.
+     */
+    allowSuppressedTiers?: boolean;
+  },
 ) {
   const actionMetadata = useStore(s => s.actionMetadata);
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
@@ -288,7 +297,6 @@ export function useBasisWizard(
     };
   });
 
-  const hasTechTier = !!basisSlot.tiers?.includes('techTier');
   const hasDefaultStack = !!basisSlot.defaults?.[effectiveDomain]?.stack;
   const hasLockedStack = !!basisSlot.lockedStack;
   const isFullstack = state.selections.techTier.stack === 'fullstack';
@@ -313,25 +321,28 @@ export function useBasisWizard(
     [actionMetadata.refs, actionMetadata.context],
   );
 
-  // SSOT D27 — `listActiveTiers` (in @ant/shared) is the single facade
-  // that combines slot opt-in, the domain × tier matrix, and runtime
-  // suppressors. The `TIER_REGISTRY.isConfigured` check is redundant with
-  // step 1 inside `isTierActive` (`slot.tiers?.includes(tier)`); we keep
-  // the registry as the canonical iteration order via `availableTiers`'s
-  // ordering downstream.
-  const availableTiers = useMemo<TierKey[]>(
-    () => listActiveTiers(basisSlot, effectiveDomain, {
-      techTier: currentTechTierForGate,
-      hasUiDoc,
-    }),
-    [basisSlot, effectiveDomain, currentTechTierForGate, hasUiDoc],
-  );
+  // SSOT D27 — `useActiveTiers` is the FE facade over `isTierActive`, which
+  // combines slot opt-in, the domain × tier matrix, and runtime suppressors
+  // (including `hasCodebase`, read from the git snapshot inside the hook).
+  // The overrides carry the two signals only the wizard knows: the *live*
+  // stack pick, and whether this is a manual override entry that must
+  // re-open the codebase-suppressed tiers.
+  const availableTiers = useActiveTiers(basisSlot, {
+    techTier: currentTechTierForGate,
+    hasUiDoc,
+    ...(opts?.allowSuppressedTiers ? { hasCodebase: false } : {}),
+  });
 
   const isTierAvailable = useCallback(
     (tier: TierKey): boolean => availableTiers.includes(tier),
     [availableTiers],
   );
 
+  // Every tier funnels through the same gate — a raw `slot.tiers.includes`
+  // check here would let `computeTechSteps` emit steps for a tier the matrix
+  // already closed (the asymmetry that kept the Tech Tier screen alive on
+  // existing codebases).
+  const hasTechTier = isTierAvailable('techTier');
   const hasVisualTier = isTierAvailable('visualTier');
   const hasGameArtTier = isTierAvailable('gameArtTier');
 
@@ -355,13 +366,22 @@ export function useBasisWizard(
     [state.selections, hasGameArtTier],
   );
 
+  // `state.activeTier` is seeded from the *static* registry order
+  // (`pickInitialTier`), so on a slot whose first configured tier is runtime-
+  // suppressed it would land on a tier with no steps. Deriving against
+  // `availableTiers` resolves that during the same render — no flash of a
+  // tab that is about to disappear, and no effect-driven hop.
+  const activeTier = availableTiers.includes(state.activeTier)
+    ? state.activeTier
+    : availableTiers[0] ?? state.activeTier;
+
   const activeSteps = useMemo<WizardStepDef[]>(() => {
-    switch (state.activeTier) {
+    switch (activeTier) {
       case 'techTier': return techSteps;
       case 'visualTier': return visualSteps;
       case 'gameArtTier': return gameArtSteps;
     }
-  }, [state.activeTier, techSteps, visualSteps, gameArtSteps]);
+  }, [activeTier, techSteps, visualSteps, gameArtSteps]);
 
   const currentStep = activeSteps[state.stepIndex];
 
@@ -540,7 +560,7 @@ export function useBasisWizard(
       const next = { ...prev, stepIndex: index, selections: { ...prev.selections } };
 
       if (index < prev.stepIndex) {
-        if (prev.activeTier === 'techTier') {
+        if (activeTier === 'techTier') {
           const techSel = { ...next.selections.techTier };
           const steps = techSteps;
           for (let i = index + 1; i < steps.length; i++) {
@@ -556,13 +576,13 @@ export function useBasisWizard(
             }
           }
           next.selections.techTier = techSel;
-        } else if (prev.activeTier === 'visualTier') {
+        } else if (activeTier === 'visualTier') {
           const visSel = { ...next.selections.visualTier };
           for (let i = index + 1; i < visualSteps.length; i++) {
             (visSel as Record<string, string | undefined>)[visualSteps[i].layerKey] = undefined;
           }
           next.selections.visualTier = visSel;
-        } else if (prev.activeTier === 'gameArtTier') {
+        } else if (activeTier === 'gameArtTier') {
           const gatSel = { ...next.selections.gameArtTier };
           for (let i = index + 1; i < gameArtSteps.length; i++) {
             (gatSel as Record<string, string | undefined>)[gameArtSteps[i].layerKey] = undefined;
@@ -573,7 +593,7 @@ export function useBasisWizard(
 
       return next;
     });
-  }, [techSteps, visualSteps, gameArtSteps]);
+  }, [activeTier, techSteps, visualSteps, gameArtSteps]);
 
   const switchTier = useCallback((tier: TierKey) => {
     setState(prev => ({
@@ -677,7 +697,9 @@ export function useBasisWizard(
   }, [nextGroupStartIdx]);
 
   return {
-    state,
+    // `activeTier` is the derived value, not the raw seed — consumers
+    // (tab highlight, step header) must agree with `activeSteps`.
+    state: state.activeTier === activeTier ? state : { ...state, activeTier },
     activeSteps,
     currentStep,
     isFullstack,

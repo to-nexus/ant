@@ -26,33 +26,52 @@ import { useStore } from '@/domain/store';
 import { useGitSnapshot } from '@/domain/git-world';
 import {
   listActiveTiers,
-  pathsContainUiDoc,
   type BasisSlotConfig,
   type TierKey,
+  type TierRuntimeContext,
 } from '@ant/shared';
+import { actionMetadataToTierRuntime } from './tierRouting';
 
 export {
   actionMetadataToTierRuntime,
   decideActionsStepAfterIntent,
 } from './tierRouting';
 
-export function useActiveTiers(slot: BasisSlotConfig | undefined): TierKey[] {
-  const domain = useStore(s => s.actionMetadata.domain);
-  const techTier = useStore(s => s.actionMetadata.basis?.techTier);
-  const refs = useStore(s => s.actionMetadata.refs);
-  const ctx = useStore(s => s.actionMetadata.context);
-  // D27 runtime suppressor input: when the workspace already has a codebase,
-  // techTier is implicit from the existing code and RUNTIME_SUPPRESSORS.techTier
-  // collapses it out of the active set. Falls back to `false` while the
-  // snapshot is still loading so greenfield behaviour is preserved.
+/**
+ * Whether the workspace already holds a real codebase (manifest-based —
+ * `GitSnapshot.hasCodebase`). Falls back to `false` while the snapshot is
+ * still loading so greenfield behaviour is the safe default.
+ */
+export function useHasCodebase(): boolean {
   const snapshot = useGitSnapshot();
-  const hasCodebase = snapshot?.hasCodebase ?? false;
+  return snapshot?.hasCodebase ?? false;
+}
+
+/**
+ * @param overrides Shallow-merged over the store-derived runtime context.
+ *   The BasisWizard needs this: its tier gate must react to the user's
+ *   *live* stack pick rather than the saved `basis.techTier`, and a manual
+ *   override entry re-opens the codebase-suppressed tiers with
+ *   `{ hasCodebase: false }`.
+ */
+export function useActiveTiers(
+  slot: BasisSlotConfig | undefined,
+  overrides?: Partial<TierRuntimeContext>,
+): TierKey[] {
+  const metadata = useStore(s => s.actionMetadata);
+  // D27 runtime suppressor input: when the workspace already has a codebase,
+  // techTier AND visualTier are implicit from the existing code and
+  // RUNTIME_SUPPRESSORS collapses them out of the active set.
+  const hasCodebase = useHasCodebase();
   return useMemo(
-    () => listActiveTiers(slot, domain, {
-      techTier,
-      hasUiDoc: pathsContainUiDoc([...(refs ?? []), ...(ctx ?? [])]),
-      hasCodebase,
+    () => listActiveTiers(slot, metadata.domain, {
+      ...actionMetadataToTierRuntime(metadata, hasCodebase),
+      ...overrides,
     }),
-    [slot, domain, techTier, refs, ctx, hasCodebase],
+    // `overrides` is an inline literal at every call site; depend on its
+    // fields rather than identity so the memo is not defeated every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slot, metadata, hasCodebase, overrides?.techTier, overrides?.hasUiDoc,
+      overrides?.hasGameArtDoc, overrides?.hasCodebase],
   );
 }
