@@ -50,6 +50,7 @@ export type ViolationType =
   | 'cross_worker_conflict'     // file owned by another parallel worker — checkTaskStatus/evaluate (parallel only)
   | 'no_done_signal'            // reached checkTaskStatus without <done> (Safety Net forced exit) — checkTaskStatus/evaluate
   | 'incomplete_implementation' // reserved: "test suite exists" is single-owned by the Final Verification gate, not per test-code batch (RCA: equal-nursing-drift). No active producer; retained for a future FV-level disk-scan owner.
+  | 'asset_not_placed'          // plan declared implementation.assets[] but a destination still lacks the source bytes — checkTaskStatus/evaluate (completion output gate)
   | 'other';                    // fallback for unclassified errors — _common/errorHandler.ts
 
 /**
@@ -366,10 +367,17 @@ export interface ArchitectGraphState extends TriageableState {
   // Shared shape with the design job (see infrastructure/workspace/assetInventory.ts).
   // In monorepos/multi-app repos, the correct static root is chosen by the LLM
   // and referenced files are copied by the ui/feature task that needs them.
+  // `sizes` / `corrupted` are produced by `indexAssetPool` and were simply not
+  // declared here, so a code job could not surface either — a poisoned asset
+  // looked identical to a healthy one in the execute prompt even after
+  // `valid-crating-prawn` added the detection. Declared now so the execute
+  // asset block can label size and defects (level-dashing-plumb).
   assetInventory?: {
     files: string[];                    // feature-relative, e.g. assets/game/entities/hero.png
     groups?: Record<string, string[]>;  // first-subdir grouping under the pool root
     count: number;
+    sizes?: Record<string, number>;     // byte size per file — quantifies a binary the LLM cannot read
+    corrupted?: Record<string, string>; // defect reason per corrupted binary (utf-8 round-trip / bad header)
   };
   
   // ✅ Revise Support (continue with new directive)

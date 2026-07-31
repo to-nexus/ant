@@ -82,10 +82,25 @@ edit_file(
 delete_file(path="codebase/src/old.tsx")
 ```
 
+#### Copy File
+```
+copy_file(
+  source="assets/game/models/model.glb",
+  destination="codebase/public/models/model.glb"
+)
+```
+**Use when**: A file must be PLACED rather than authored — moving an existing asset out of the workspace pool into where the running application loads it, or replacing an asset already in the app  
+**Requirements**:
+- The source must already exist; this tool copies bytes, it never authors them
+- Keep each path's own prefix — pool sources stay `assets/...`, app destinations take `codebase/...`
+- Overwrites the destination and creates parent directories; both sides are integrity-checked
+
 #### List Files
 ```
 list_files(directory="codebase/src", pattern="*.tsx")
 ```
+**Use when**: Discovering what exists, or confirming a specific file is present  
+**Requirements**: `pattern` is optional — a glob (`*.tsx`) if it contains `*` / `?` / `[`, otherwise a plain substring. Omit it to see everything, which is what you want when checking existence.
 
 ---
 
@@ -98,7 +113,12 @@ list_files(directory="codebase/src", pattern="*.tsx")
 | Modify existing | `edit_file` tool |
 | See content not in context | `read_file` tool |
 | Remove file | `delete_file` tool |
+| Place / replace a file whose bytes already exist (assets: models, audio, images, fonts) | `copy_file` tool |
 
 **CRITICAL**: Never use `<file>` on existing files - it overwrites everything!
+
+**CRITICAL**: Never author or edit a binary file as text. `<file>`, `create_file` and
+`edit_file` write utf-8 and will refuse a binary target; forcing bytes through a text
+round-trip destroys the file irreversibly. Placing an existing binary is `copy_file`'s job.
 
 

@@ -1,24 +1,24 @@
 import type { CodeTask } from '../../../../../types/task';
 import { stripMarkdownFences } from '../batchSplit/parse';
 import { isVerificationTask } from '../../verification';
+import { planDeclaresNoWork } from '../../../planContract/implementation';
 
 /**
- * Plan JSON whose implementation is literally empty (no modify/create/delete
- * and no batches). Lets the plan node flip `done:true` so planRouter
- * short-circuits to `checkTaskStatus` without an execute round-trip.
+ * Plan JSON that declares no work at all — no entry under any mutation key and
+ * no fan-out. Lets the plan node flip `done:true` so planRouter short-circuits
+ * to `checkTaskStatus` without an execute round-trip.
+ *
+ * The emptiness decision itself belongs to `planContract/implementation.ts`;
+ * this function only owns the "parse a planText string" half. Re-enumerating
+ * the keys here is what let this predicate go `assets`-blind while the prompt
+ * taught `assets` as legal (level-dashing-plumb).
  */
 export function hasEmptyImplementation(planText: string | undefined): boolean {
   if (!planText) return false;
   const body = stripMarkdownFences(planText);
   if (!body.length) return false;
   try {
-    const parsed = JSON.parse(body);
-    const impl = parsed.implementation || {};
-    const modifyCount = Array.isArray(impl.modify) ? impl.modify.length : 0;
-    const createCount = Array.isArray(impl.create) ? impl.create.length : 0;
-    const deleteCount = Array.isArray(impl.delete) ? impl.delete.length : 0;
-    const hasBatches = Array.isArray(parsed.batches) && parsed.batches.length > 0;
-    return !hasBatches && modifyCount === 0 && createCount === 0 && deleteCount === 0;
+    return planDeclaresNoWork(JSON.parse(body));
   } catch {
     return false;
   }

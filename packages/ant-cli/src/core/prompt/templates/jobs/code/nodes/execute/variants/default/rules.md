@@ -437,18 +437,21 @@ const speed = PADDLE_SPEED;
 ```
 
 ────────────────────────────────────────────────────────────────────────────────
-### 2. Static Assets: Copy BEFORE Reference
+### 2. Static Assets: Place BEFORE Reference
 
-**Source of truth: `ui-assets.json`** → `src` (source) → `dest` (runtime path)
-
-**Principle**: Assets have source and destination paths defined in ui-assets.json.
+**Principle**: An asset file already exists somewhere in the workspace; your job is to
+put it where the running application loads it from, then reference it. The authority on
+what is available is the available-assets inventory (and an asset manifest, where the
+surface has one) — plus any `assets` entries your own plan declared.
 
 **Workflow:**
-1. Copy to EXACT `dest` path (including filename changes)
-2. Reference `dest` path in code
-3. Verify file exists before code references it
+1. Place it with `copy_file(source, destination)` — the EXACT destination, including a filename change
+2. Reference the destination path in code
+3. Confirm the destination exists before code references it
 
-**Constraint**: Do NOT invent asset paths. Use ONLY what ui-assets.json specifies.
+**Constraints**:
+- Use `copy_file` for this. Do NOT author asset bytes with `<file>` / `create_file` / `edit_file`: those write utf-8 and refuse binary targets, and a text round-trip destroys the file.
+- Do NOT invent asset paths, and do NOT substitute a placeholder for an asset that was supplied. If the source is missing or reported corrupt, say so — do not paper over it.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Directory Consistency

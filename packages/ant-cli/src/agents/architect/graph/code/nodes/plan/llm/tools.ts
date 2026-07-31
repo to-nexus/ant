@@ -32,6 +32,7 @@ import { collectResolvedPartials } from "../../../../../../../periphery/adapters
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from "../../../../../../common/graph/llmConfig";
 import { hooksForTaskType } from "../../../tasks/_shared/registry";
 import { isVerifyModeActive } from "../../../tasks/_shared/verify";
+import { planDeclaresNoWork } from "../../../planContract/implementation";
 import { selectLLMForTask } from "./selectModel";
 import { runPlanWithTools } from "../../../../../../common/graph/nodes/plan";
 
@@ -195,14 +196,16 @@ export async function runPlanLLMWithTools(
     //   solar-coming-bough — verify-mode self-verify sentinel 처리,
     //   hidden-mooring-rivet — apply-mode task가 sibling work를 받았을 때
     //     즉시 종료할 수 있도록 함.
+    //
+    // "빈 implementation" 판정은 planContract/implementation.ts 가 단일 소유자다.
+    // 여기서 키를 직접 열거하면 프롬프트가 가르치는 키 집합과 조용히 어긋난다 —
+    // level-dashing-plumb 이 정확히 그 사고였다: `assets[]` 는 스키마에 문서화돼
+    // 있었지만 이 술어가 create/modify/delete 만 읽어서, 에셋 배치만 담은 정상
+    // 플랜이 empty sentinel 과 구분되지 않고 폐기됐다 (execute 미진입 + 0 writes
+    // 성공 보고). fan-out(batches/regions) 플랜은 SSOT 가 자체 가드한다.
     try {
       const parsed = JSON.parse(planText);
-      if (
-        parsed.diagnostics?.totalErrors === 0 ||
-        (parsed.implementation?.modify?.length === 0 &&
-          parsed.implementation?.create?.length === 0 &&
-          (parsed.implementation?.delete?.length ?? 0) === 0)
-      ) {
+      if (parsed.diagnostics?.totalErrors === 0 || planDeclaresNoWork(parsed)) {
         const reason = isVerifyModeActive(state) ? 'verify-mode' : `${task.type}-apply-mode`;
         console.log(`✅ [Plan] Empty-plan sentinel detected (${reason}) — returning empty planText for immediate done`);
         return { planText: '' };

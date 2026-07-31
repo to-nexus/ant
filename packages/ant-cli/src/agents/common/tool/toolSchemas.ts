@@ -106,6 +106,28 @@ export const ARCHITECT_TOOLS = {
     },
   },
 
+  copy_file: {
+    name: 'copy_file',
+    description:
+      'Place an EXISTING file at another path, byte-for-byte. Use this whenever a file must be PLACED rather than authored — most often moving a user-supplied asset out of the workspace asset pool (assets/game/**, assets/service/**) into the location the running app loads it from (e.g. a static-asset root). This is the ONLY way to write a binary file: `<file>`, create_file and edit_file all write utf-8 and refuse binary targets, and a text round-trip corrupts the bytes irreversibly. Overwrites the destination if it exists, creates parent directories, and verifies integrity on both sides — a corrupt source is refused rather than copied. Do NOT use it to author new content, and do NOT hand-copy bytes you read from a file.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        source: {
+          type: 'string',
+          description:
+            'Path of the existing file to copy, relative to feature root. Asset-pool sources keep their own prefix (e.g. assets/game/models/Duck.glb) — do NOT add a codebase/ prefix to them.',
+        },
+        destination: {
+          type: 'string',
+          description:
+            'Path to write to, relative to feature root. Code/app paths MUST use the codebase/ prefix (e.g. codebase/public/models/Duck.glb). Parent directories are created automatically.',
+        },
+      },
+      required: ['source', 'destination'],
+    },
+  },
+
   list_files: {
     name: 'list_files',
     description: 'List files in a directory',
@@ -118,7 +140,8 @@ export const ARCHITECT_TOOLS = {
         },
         pattern: {
           type: 'string',
-          description: 'Filename pattern to filter (optional)',
+          description:
+            'Optional filter on the entry name. A pattern containing glob metacharacters (*, ?, [...]) is matched as a glob ("*.tsx" → every .tsx entry); any other pattern is matched as a plain substring ("Button" → every name containing "Button"). Omit it to list everything — omitting is the right default when you are checking whether a directory or file exists.',
         },
       },
       required: [],

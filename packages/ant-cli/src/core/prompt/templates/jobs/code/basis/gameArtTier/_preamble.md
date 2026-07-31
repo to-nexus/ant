@@ -85,6 +85,8 @@ if (catalog._meta.audioScope === 'external-enabled') {
 
 `entry.src` (`assets/game/<category>/...`) is the **source-of-truth location** the design surface recorded — it is NOT assumed to be directly fetchable by the browser. At code-emission time the referenced file is made web-servable per the **framework's static-asset convention** (the code job's runtime asset-placement guidance commits the concrete destination for the active framework — e.g. a public static root vs a bundler source-tree import). The engine loader receives that derived servable URL, registered under `entry.id`. Do NOT hardcode `assets/game/...` as a fetch URL and do NOT assume a specific framework's folder here — the framework layer owns the physical destination.
 
+Making it servable is a real step, not a figure of speech: the file is physically placed at that destination with the `copy_file` tool (source → destination) during execute, and a plan records the pair under `implementation.assets`. Referencing a destination nothing was ever copied to yields a 404 at runtime. Binary assets can ONLY be placed this way — the text authoring surfaces refuse binary targets, and forcing bytes through them corrupts the file.
+
 The audio module wraps both subsystems behind a uniform `playSfx(id)` / `playBgm(id)` API so the gameplay code does not need a marker branch — only the loader does.
 
 ### 3b. Audio profile contract
