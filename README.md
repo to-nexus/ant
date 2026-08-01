@@ -3,7 +3,14 @@
 <p align="center"><b>The spec-driven AI engineering platform.</b></p>
 
 <p align="center">
-  PRD → System Design → Code → Verification, in one self-hosted system.
+  Build: <b>PRD → System & UI Design → Code</b><br>
+  Iterate: <b>Spec → Code</b> — every code job verifies itself. Self-hosted.
+</p>
+
+<p align="center">
+  <sub>Frontend · Backend · Extensible language/framework tiers · Service
+  connections & mock virtualization · Per-feature dev servers · Browser IDE ·
+  Deploy (managed cloud)</sub>
 </p>
 
 <p align="center">
@@ -36,16 +43,42 @@ Most AI coding tools are built around "vibe coding" — you tell the model
 what you want, it writes some code, you tell it what's wrong, repeat. That
 loop scales to demos and hobby projects, not to engineering.
 
-Ant takes the opposite stance. We made a pipeline that respects how
-engineering actually works:
+Ant takes the opposite stance. We made two loops that respect how
+engineering actually works.
+
+**The build loop** — greenfield, once per project:
 
 1. Write the **PRD**. The `planner` agent helps you clarify it.
-2. Generate the **system design** (architecture, contracts, system docs).
-3. Write **code** that the system can verify against the spec.
-4. Re-verify after every change.
+2. Generate the **system design** (architecture, API contracts, system docs).
+3. Design the **UI** (or **game art** for the game domain) — generated from
+   the PRD, or drop in your own Figma / Claude artifact
+   (see [Bring your own design](#bring-your-own-design)).
+4. Write **code** grounded in those designs.
 
-Each step is a separate agent with its own prompt surface, its own tools,
-and its own verification gate. The result is a system you can audit, not a
+**The iteration loop** — every change after that:
+
+5. Author a **spec** for the next unit of work, review it, and let a code
+   job implement exactly that one spec (`spec → code`). If you've used plan
+   mode in Claude Code, this is the same workflow — except the plan is a
+   persistent document you can diff, review, and revise
+   (`gen-spec` → `gen-code-spec` → `rev-spec` → repeat).
+
+<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
+<p align="center">
+  <img src="docs/assets/spec-iteration.gif" width="880"
+       alt="A spec document driving a code job: the spec on the left, tasks completing on the board, and the verification task gating the finish">
+</p>
+<p align="center"><sub>The iteration loop: author a spec, review it, and a
+code job implements exactly that — then proves it.</sub></p>
+-->
+
+Verification is not a stage you schedule — it is a property of **every code
+job**: work decomposes into tasks that run in parallel, and a final
+verification task gates completion. Failed gates spawn error tasks that fix
+and re-verify.
+
+Each step is a separate job with its own prompt surface, its own tools, and
+its own durable artifacts. The result is a system you can audit, not a
 black box that occasionally writes code.
 
 <!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
@@ -146,6 +179,15 @@ The full design-input guide is in
 
 <!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
 <p align="center">
+  <img src="docs/assets/design-handoff.png" width="880"
+       alt="A generated UI-design handoff bundle: the DESIGN.md document rendered beside the bundle tree with styles, tokens, and screens">
+</p>
+<p align="center"><sub>Greenfield output: the design job authors a
+DESIGN.md-anchored bundle the code job then builds against.</sub></p>
+-->
+
+<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
+<p align="center">
   <img src="docs/assets/basis-moodboard.png" width="880"
        alt="The visual-tier picker showing twenty miniature app mockups, each rendered in its own style's palette">
 </p>
@@ -202,6 +244,10 @@ which node is executing and how many parallel workers it fanned out.
 | `planner`   | `plan`                                        |
 | `creator`   | `visual`                                      |
 
+One `design` job, three surfaces — the intent picks one: system design
+(`gen-sys-*`), UI / game-art design (`gen-ui-*` / `gen-game-art-*`), or spec
+authoring (`gen-spec` / `rev-spec`).
+
 Read more: [docs/concepts/architecture.md](docs/concepts/architecture.md).
 
 ---
@@ -220,6 +266,10 @@ worktree — features are peers.
 Alongside `codebase/`, each feature holds the artifacts the agents produce:
 `plan/` (PRD), `architecture/` (system design + spec), `visual/` (UI and
 game-art design), `assets/`, plus agent-internal `sessions/` and `meta/`.
+
+Because features are equal worktrees, you can run several in parallel —
+each with its own branch, its own checkout, its own preview server, and its
+own artifact set — and merge them like any other branches.
 
 ---
 
@@ -240,6 +290,9 @@ new verticals is a domain-registry change — no fork required.
 
 ## Features
 
+- **Spec-sized iteration.** Author a spec, review it, and a code job
+  implements exactly that one spec — plan mode, except the plan is a
+  persistent artifact you can diff and revise.
 - **Drop-in Claude designs.** Paste your Claude.ai artifact (HTML/CSS/MD)
   into `visual/ui/handoff/` and Ant treats it as observable-only design
   source. No conversion, no schema. Often the single biggest reason teams
@@ -247,16 +300,28 @@ new verticals is a domain-registry change — no fork required.
 - **Figma MCP.** Live exploration via the Figma MCP server at prompt time —
   nothing is snapshotted to disk. Design tokens are emitted into the canonical
   `visual/ui/ant/` trio.
-- **Multi-agent pipeline.** Planner writes the PRD, architect generates the
-  system design and code, and a dedicated verification task proves it works
-  before the job can finish.
+- **Multi-agent pipeline.** Planner writes the PRD; architect generates the
+  system design, the UI design, and the code. Every code job ends with a
+  verification task that gates completion — failures spawn fix tasks and
+  re-verify.
 - **5 execution tiers.** From one-shot Q&A to refs-grounded multi-task
   projects, dispatched automatically based on the request.
-- **Live preview.** Per-feature dev server, hot reload, isolated workspace.
+- **Any stack.** Frontend, backend, or fullstack — the target language and
+  framework are described by extensible tech tiers, not hard-coded into the
+  prompts.
+- **Service connections & virtualization.** Declare the external services
+  your app talks to and Ant generates toggleable mock adapters, so the app
+  runs and demos before the real backend exists.
+- **Parallel features, live preview.** Each feature is a git worktree with
+  its own branch and its own hot-reloading dev server — work several
+  features at once, merge them like branches.
 - **Browser IDE.** Launch VSCode with your codebase in one click — a Docker
   container locally, a Kubernetes Pod when `ANT_K8S_NAMESPACE` is set.
-- **Self-hosted.** Bring your own LLM key from any of six providers. Runs on
-  your infrastructure, on your terms.
+- **Interruptible & resumable.** Jobs checkpoint after every phase — stop
+  it, crash it, or close the lid, and the job resumes where it stopped.
+- **Self-hosted, cost-transparent.** Bring your own LLM key from any of six
+  providers, and see per-model token / cost / cache-hit breakdowns for every
+  job.
 
 <!-- Drop the files into docs/assets/ and uncomment. See docs/assets/README.md.
 |  |  |

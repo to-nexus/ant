@@ -45,13 +45,15 @@ An **intent** narrows the job type. The intent determines:
 | Intent group | Examples                                              | Job type   | Status |
 |--------------|-------------------------------------------------------|------------|--------|
 | `gen-code-*` | `gen-code-sys`, `gen-code-spec`, `gen-code-directive`| `code`     | Stable |
-| `explain-*`  | `explain-code`, `explain-ui`                          | `code`     | Stable |
+| `gen-sys-*`  | `gen-sys-fe`, `gen-sys-be`, `gen-sys-full`, `rev-sys` | `design`   | Stable |
+| `gen-spec`   | `gen-spec`, `rev-spec` — flow specs in `architecture/spec/`, consumed one-at-a-time by `gen-code-spec` | `design` | Stable |
 | `gen-ui-*`   | `gen-ui-figma`, `gen-ui-desc`                         | `design`   | Stable |
 | `rev-ui`     | UI review                                             | `design`   | Stable |
 | `gen-game-art-*` | `gen-game-art-figma`, `gen-game-art-desc`         | `design`   | In development (game vertical) |
-| `gen-plan`   | PRD authoring                                         | `plan`     | Stable |
+| `gen-plan`   | `gen-plan`, `rev-plan` — PRD authoring / revision     | `plan`     | Stable |
 | `gen-learn`  | re-index codebase                                     | `learn`    | Stable |
 | `ask`        | open Q&A                                              | `ask`      | Stable |
+| `explain-*`  | `explain-code`, `explain-sys`, `explain-spec`, `explain-ui`, `explain-plan` — chat-only; each runs as its group's job type | mirrors its group | Stable |
 
 The full intent registry lives in
 [`packages/ant-shared/src/action-config-matrix.ts`](../../packages/ant-shared/src/action-config-matrix.ts).

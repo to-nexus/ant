@@ -3,7 +3,13 @@
 <p align="center"><b>스펙 기반 AI 엔지니어링 플랫폼.</b></p>
 
 <p align="center">
-  PRD → 시스템 설계 → 코드 → 검증, 한 시스템 안에서 self-host 합니다.
+  구축: <b>PRD → 시스템·UI 설계 → 코드</b><br>
+  이터레이션: <b>스펙 → 코드</b> — 모든 코드 잡은 스스로 검증합니다. Self-host.
+</p>
+
+<p align="center">
+  <sub>프론트엔드 · 백엔드 · 확장 가능한 언어/프레임워크 tier · 서비스 연결 &
+  mock 가상화 · 피처별 dev server · 브라우저 IDE · 배포 (매니지드 클라우드)</sub>
 </p>
 
 <p align="center">
@@ -37,14 +43,39 @@
 데모와 토이 프로젝트까진 가지만, 진짜 엔지니어링은 못 버팁니다.
 
 Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방식을 그대로
-파이프라인으로 만들었습니다:
+두 개의 루프로 만들었습니다.
+
+**구축 루프** — greenfield, 프로젝트당 한 번:
 
 1. **PRD**부터 적습니다. `planner` 에이전트가 명세를 다듬어 줍니다.
-2. **시스템 설계** (아키텍처, 컨트랙트, 시스템 문서)를 생성합니다.
-3. 시스템이 명세 대비 **검증할 수 있는 코드**를 작성합니다.
-4. 변경할 때마다 **재검증**합니다.
+2. **시스템 설계** (아키텍처, API 컨트랙트, 시스템 문서)를 생성합니다.
+3. **UI 디자인** (game 도메인이면 **game art**)을 만듭니다 — PRD에서
+   생성하거나, 갖고 있는 Figma / Claude artifact를 그대로 떨어뜨립니다
+   ([디자인을 그대로 가져오기](#디자인을-그대로-가져오기) 참고).
+4. 그 설계들을 근거로 **코드**를 작성합니다.
 
-각 단계는 별도의 에이전트, 별도의 프롬프트 표면, 별도의 검증 게이트를
+**이터레이션 루프** — 그 이후의 모든 변경:
+
+5. 다음 작업 단위의 **스펙**을 저작하고, 리뷰하고, 코드 잡이 정확히 그
+   스펙 하나를 구현합니다 (`스펙 → 코드`). Claude Code의 plan 모드를
+   써봤다면 같은 워크플로우입니다 — 단, plan이 diff 뜨고 리뷰하고 수정할
+   수 있는 영속 문서로 남습니다
+   (`gen-spec` → `gen-code-spec` → `rev-spec` → 반복).
+
+<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
+<p align="center">
+  <img src="docs/assets/spec-iteration.gif" width="880"
+       alt="스펙 문서가 코드 잡을 이끄는 모습: 왼쪽에 스펙, 보드에서 완료되는 태스크들, 완료를 게이팅하는 verification 태스크">
+</p>
+<p align="center"><sub>이터레이션 루프: 스펙을 쓰고 리뷰하면, 코드 잡이
+정확히 그것을 구현하고 — 증명합니다.</sub></p>
+-->
+
+검증은 일정에 넣는 단계가 아니라 **모든 코드 잡의 속성**입니다: 작업은
+태스크로 분해되어 병렬 실행되고, 마지막 verification 태스크가 완료를
+게이팅합니다. 게이트가 실패하면 error 태스크가 생겨 고치고 재검증합니다.
+
+각 단계는 별도의 잡이며, 각자의 프롬프트 표면, 도구, 영속 아티팩트를
 갖습니다. 결과는 감사 가능한 시스템이지, 가끔 코드를 토해내는 블랙박스가
 아닙니다.
 
@@ -146,6 +177,15 @@ native JSON은 schema-based.)
 
 <!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 <p align="center">
+  <img src="docs/assets/design-handoff.png" width="880"
+       alt="생성된 UI 디자인 handoff 번들: 렌더된 DESIGN.md 문서와 styles·tokens·screens 번들 트리">
+</p>
+<p align="center"><sub>Greenfield 산출물: design 잡이 DESIGN.md를 루트로
+하는 번들을 저작하고, 코드 잡이 그것을 근거로 빌드합니다.</sub></p>
+-->
+
+<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
+<p align="center">
   <img src="docs/assets/basis-moodboard.png" width="880"
        alt="각 스타일의 실제 팔레트로 그려진 20종 미니 앱 목업이 놓인 비주얼 티어 선택 화면">
 </p>
@@ -203,6 +243,10 @@ native JSON은 schema-based.)
 | `planner`   | `plan`                                        |
 | `creator`   | `visual`                                      |
 
+`design` 잡 하나가 세 표면을 담당하며 인텐트가 하나를 고릅니다:
+시스템 설계(`gen-sys-*`), UI · game-art 디자인(`gen-ui-*` /
+`gen-game-art-*`), 스펙 저작(`gen-spec` / `rev-spec`).
+
 자세히: [docs/ko/concepts/architecture.md](docs/ko/concepts/architecture.md).
 
 ---
@@ -221,6 +265,10 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
 `codebase/` 옆에는 에이전트 산출물이 함께 놓입니다: `plan/`(PRD),
 `architecture/`(시스템 설계 + 스펙), `visual/`(UI · game-art 디자인),
 `assets/`, 그리고 에이전트 내부용 `sessions/` · `meta/`.
+
+피처가 대등한 worktree이기 때문에 여러 피처를 병렬로 진행할 수 있습니다 —
+각자 자기 브랜치, 자기 체크아웃, 자기 프리뷰 서버, 자기 아티팩트 셋을
+갖고, 여느 브랜치처럼 머지하면 됩니다.
 
 ---
 
@@ -241,6 +289,9 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
 
 ## 주요 기능
 
+- **스펙 단위 이터레이션.** 스펙을 저작하고, 리뷰하고, 코드 잡이 정확히
+  그 스펙 하나를 구현합니다 — plan 모드와 같지만, plan이 diff 뜨고 수정할
+  수 있는 영속 아티팩트입니다.
 - **Claude 디자인 drop-in.** Claude.ai에서 만든 artifact (HTML/CSS/MD)을
   `visual/ui/handoff/`에 떨어뜨리면 Ant이 관찰 전용 디자인 소스로
   취급합니다. 변환도, 스키마도 불필요. 프롬프트 only 도구에서 갈아타는
@@ -249,15 +300,24 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
   디스크에 스냅샷을 남기지 않습니다. 디자인 토큰은 canonical
   `visual/ui/ant/` 3종으로 emit.
 - **멀티 에이전트 파이프라인.** Planner가 PRD를 쓰고, architect가 시스템
-  설계와 코드를 생성하며, 전용 verification 태스크가 동작을 입증해야
-  잡이 끝납니다.
+  설계·UI 디자인·코드를 생성합니다. 모든 코드 잡은 완료를 게이팅하는
+  verification 태스크로 끝납니다 — 실패하면 fix 태스크가 생겨 재검증합니다.
 - **5 실행 tier.** 원샷 Q&A부터 refs-grounded 멀티태스크 프로젝트까지
   요청에 따라 자동 dispatch.
-- **라이브 프리뷰.** feature별 dev server, 핫 리로드, 격리된 워크스페이스.
+- **스택 불문.** 프론트엔드, 백엔드, 풀스택 — 대상 언어와 프레임워크는
+  프롬프트에 하드코딩되지 않고 확장 가능한 tech tier로 기술됩니다.
+- **서비스 연결 & 가상화.** 앱이 통신하는 외부 서비스를 선언하면 Ant이
+  토글 가능한 mock 어댑터를 생성합니다 — 실제 백엔드가 생기기 전에 앱이
+  돌고 데모가 됩니다.
+- **병렬 피처 + 라이브 프리뷰.** 각 피처는 자기 브랜치와 핫 리로드 dev
+  server를 가진 git worktree — 여러 피처를 동시에 진행하고 브랜치처럼
+  머지합니다.
 - **브라우저 IDE.** VSCode + 코드베이스를 한 클릭으로 — 로컬에서는 Docker
   컨테이너, `ANT_K8S_NAMESPACE`를 설정하면 Kubernetes Pod.
-- **Self-host.** 6개 프로바이더 중 원하는 LLM 키를 직접 관리, 직접
-  인프라에서.
+- **중단 & 재개.** 잡은 phase마다 체크포인트를 남깁니다 — 멈추든, 죽든,
+  노트북을 덮든, 멈춘 지점에서 재개합니다.
+- **Self-host, 비용 투명성.** 6개 프로바이더 중 원하는 LLM 키를 직접 관리
+  하고, 잡마다 모델별 토큰 / 비용 / 캐시 적중 분해를 확인합니다.
 
 <!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 |  |  |

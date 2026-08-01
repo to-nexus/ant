@@ -43,8 +43,7 @@ This runs the `architect.design` job. It generates:
 - `architecture/system/fe-system-main.md` — frontend system design
 - `architecture/system/be-system-main.md` — backend system design (when
   applicable)
-- `architecture/spec/api-contract-main.md` — API contract
-- Spec files for individual flows in `architecture/spec/`
+- `architecture/system/api-contract-main.md` — API contract
 
 The design step produces **stable artifacts** that the code job will respect
 as immutable. If you want a change later, ask the architect to update the
@@ -84,6 +83,13 @@ Show a 404 page for unknown routes.
 
 Each becomes its own job. Smaller scopes hit lower tiers and finish in
 seconds; larger scopes decompose and verify themselves.
+
+For a bigger unit of work, go spec-first instead of prompting the code
+directly: *"Write a spec for tag filtering"* runs `gen-spec` and drops a
+reviewable spec into `architecture/spec/`. Read it, revise it
+(`rev-spec`), then *"Implement the tag-filter spec"* runs `gen-code-spec`
+against exactly that one document. This is the iteration loop from the
+README — plan mode with a persistent plan.
 
 Useful follow-ups:
 
