@@ -278,6 +278,13 @@
       }
     ]
   },
+  "cloudGate": {
+    "title": "ANT Cloud is coming soon",
+    "body": "The managed service isn't open yet. Everything ANT does is available today by self-hosting \u2014 same agents, same pipeline, your own infrastructure and your own LLM key.",
+    "selfHostCta": "Read the self-host guide",
+    "close": "Close",
+    "dismiss": "Dismiss"
+  },
   "pricing": {
     "sectionTitle": "Plans & credits",
     "sectionDesc": "Self-host is free forever. The managed cloud is metered in credits — pick the plan that fits your usage.",
