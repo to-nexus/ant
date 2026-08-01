@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="canvas" content="880x498">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_diagram.css">
+<style>
+  .canvas { height: 498px; }
+
+  .body { display: flex; align-items: stretch; height: 294px; }
+
+  .sources { width: 336px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+  .sources .node { flex: 1; gap: 7px; padding: 11px 13px 12px; }
+  .sources .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .sources .who { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+
+  /* three lanes merging into one */
+  .merge { width: 62px; flex: none; position: relative; }
+  .merge .h, .merge .v { position: absolute; background: var(--wire); }
+  .merge .h { height: 1.5px; }
+  .merge .v { width: 1.5px; }
+  .merge .h.arrow::after {
+    content: '';
+    position: absolute; right: -1px; top: 50%;
+    transform: translateY(-50%);
+    border-top: 4.5px solid transparent;
+    border-bottom: 4.5px solid transparent;
+    border-left: 6px solid var(--wire);
+  }
+
+  .out { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 0; }
+  .out .contract {
+    border-radius: 12px; padding: 1.5px;
+    background: var(--gradient-aurora);
+  }
+  .out .contract-inner {
+    border-radius: 10.5px;
+    background: oklch(16% 0.06 293);
+    padding: 13px 15px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .out .contract .name { font-size: 14.5px; font-weight: 800; letter-spacing: -0.015em; }
+  .out .contract .desc { font-size: 11.5px; font-weight: 500; color: var(--text-3); line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="head">
+    <div class="rule"></div>
+    <h1>Bring the design you already have</h1>
+    <p>Three inputs, one contract — you don't adopt a tool, you drop what exists.</p>
+  </div>
+
+  <div class="body">
+
+    <div class="sources">
+      <div class="node acc acc-pink">
+        <div class="top">
+          <span class="who">Claude artifacts</span>
+          <span class="chip pink">observe only</span>
+        </div>
+        <span class="path">visual/ui/handoff/</span>
+        <div class="desc">HTML, CSS, Markdown or PNG — read as-is</div>
+      </div>
+
+      <div class="node acc acc-teal">
+        <div class="top">
+          <span class="who">Figma</span>
+          <span class="chip teal">live fetch</span>
+        </div>
+        <span class="path">visual/ui/figma/figma.json</span>
+        <div class="desc">A URL only — explored live over MCP, never snapshotted</div>
+      </div>
+
+      <div class="node acc acc-violet">
+        <div class="top">
+          <span class="who">Nothing yet</span>
+          <span class="chip violet">ant authors it</span>
+        </div>
+        <span class="path">design job → visual/ui/ant/</span>
+        <div class="desc">Greenfield — a design job writes it from your PRD</div>
+      </div>
+    </div>
+
+    <div class="merge">
+      <div class="h" style="left:0; right:26px; top:15.31%"></div>
+      <div class="h" style="left:0; right:26px; top:50%"></div>
+      <div class="h" style="left:0; right:26px; bottom:15.31%"></div>
+      <div class="v" style="left:36px; top:15.31%; bottom:15.31%"></div>
+      <div class="h arrow" style="left:36px; right:0; top:50%"></div>
+    </div>
+
+    <div class="out">
+      <div class="contract">
+        <div class="contract-inner">
+          <div class="name">One UI design contract</div>
+          <div class="desc">Whichever source is present becomes the authority a code job builds
+            against — tokens, layout intent and assets.</div>
+        </div>
+      </div>
+      <div class="vwire" style="height:22px"></div>
+      <div class="node acc acc-orange">
+        <div class="name">code job</div>
+        <div class="desc">Builds screens against the contract, not against a screenshot</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="foot" style="margin-top:18px">
+    <div class="bar"></div>
+    <p><strong>Hard-exclusive per workspace.</strong> Exactly one source is active at a time,
+      because the three have genuinely different interpretation rules — mixing them is
+      rejected rather than merged.</p>
+  </div>
+
+</div>
+</body>
+</html>

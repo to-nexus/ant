@@ -1,19 +1,11 @@
-<p align="center">
-  <img src="docs/assets/logo.png" width="120" alt="ANT 로고">
-</p>
-
-<h1 align="center">ANT</h1>
-
-<p align="center"><b>스펙 기반 AI 엔지니어링 플랫폼.</b></p>
+<h1 align="center">
+  <img src="docs/assets/logo.png" width="48" align="center" alt=""> ANT
+</h1>
 
 <p align="center">
-  구축: <b>PRD → 시스템·UI 설계 → 코드</b><br>
-  이터레이션: <b>스펙 → 코드</b> — 모든 코드 잡은 스스로 검증합니다. Self-host.
-</p>
-
-<p align="center">
-  <sub>프론트엔드 · 백엔드 · 확장 가능한 언어/프레임워크 tier · 서비스 연결 &
-  mock 가상화 · 피처별 dev server · 브라우저 IDE · 배포 (매니지드 클라우드)</sub>
+  <b>스펙 기반 AI 엔지니어링 플랫폼.</b><br>
+  구축: <b>PRD → 시스템·UI 설계 → 코드</b> · 이터레이션: <b>스펙 → 코드</b> — 모든 코드 잡은 스스로 검증합니다. Self-host.<br>
+  <sub>프론트엔드 · 백엔드 · 확장 가능한 언어/프레임워크 tier · 서비스 연결 & mock 가상화 · 피처별 dev server · 브라우저 IDE · 배포 (매니지드 클라우드)</sub>
 </p>
 
 <p align="center">
@@ -25,18 +17,18 @@
 
 <!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 <p align="center">
-  <img src="docs/assets/hero-kanban.gif" width="880"
-       alt="코드 잡을 태스크로 분해하고 병렬 실행한 뒤 최종 검증 태스크로 완료를 게이팅하는 Ant">
+  <img src="docs/assets/code-job.gif" width="880"
+       alt="코드 잡이 태스크로 분해되어 보드를 가로질러 이동하고, 에이전트 채팅에 작업 카드가 흐르는 화면">
 </p>
-<p align="center"><sub><a href="">▶ 2분 워크스루 보기</a></sub></p>
+<p align="center"><sub>디렉티브 하나 → 병렬 실행되는 분해된 태스크, 그리고 마지막에
+큐된 verification 태스크. <a href="">▶ 2분 워크스루</a></sub></p>
 -->
 
-> ⚠️ **상태: pre-alpha, 1인 개발.** Ant는 한 사람이 만들었습니다. end-to-end로
-> 동작하지만 첫 정식 릴리즈 전까지 공개 API와 파일 레이아웃은 변경될 수 있고,
-> 이만큼의 범위를 혼자 만들었기에 표면마다 완성도 편차가 있습니다 — 기능별
-> 솔직한 상태는 **[성숙도](#성숙도)** 를 보세요. 이슈와 PR을 진심으로
-> 환영합니다. 어디에 도움이 가장 크게 닿는지는 **[기여하기](#기여하기)** 에
-> 정리해 두었습니다.
+> ⚠️ **상태: pre-alpha, 1인 개발.** end-to-end로 동작하지만 첫 정식 릴리즈
+> 전까지 공개 API와 파일 레이아웃은 변경될 수 있고, 이만큼의 범위를 혼자
+> 만들었기에 표면마다 완성도 편차가 있습니다 — 기능별 솔직한 상태는
+> **[성숙도](#성숙도)** 를 보세요. 이슈와 PR을 환영하며, 어디에 도움이 가장
+> 크게 닿는지는 **[기여하기](#기여하기)** 에 정리해 두었습니다.
 
 ---
 
@@ -66,15 +58,6 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
    수 있는 영속 문서로 남습니다
    (`gen-spec` → `gen-code-spec` → `rev-spec` → 반복).
 
-<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
-<p align="center">
-  <img src="docs/assets/spec-iteration.gif" width="880"
-       alt="스펙 문서가 코드 잡을 이끄는 모습: 왼쪽에 스펙, 보드에서 완료되는 태스크들, 완료를 게이팅하는 verification 태스크">
-</p>
-<p align="center"><sub>이터레이션 루프: 스펙을 쓰고 리뷰하면, 코드 잡이
-정확히 그것을 구현하고 — 증명합니다.</sub></p>
--->
-
 검증은 일정에 넣는 단계가 아니라 **모든 코드 잡의 속성**입니다: 작업은
 태스크로 분해되어 병렬 실행되고, 마지막 verification 태스크가 완료를
 게이팅합니다. 게이트가 실패하면 error 태스크가 생겨 고치고 재검증합니다.
@@ -83,24 +66,25 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
 갖습니다. 결과는 감사 가능한 시스템이지, 가끔 코드를 토해내는 블랙박스가
 아닙니다.
 
+<p align="center">
+  <img src="docs/assets/build-loop.png" width="880"
+       alt="두 개의 파이프라인. 구축 루프(greenfield 또는 대형 신규 피처)는 plan(plan/PRD.md) → 시스템 설계(architecture/system/) → UI·game art(visual/ui/) → code(codebase/) 순으로 흐르고, 그 이후 모든 변경을 담당하는 이터레이션 루프는 plan 과 시스템 설계를 건너뛰고 스펙(architecture/spec/) 에서 곧바로 code 로 가며 rev-spec 순환 화살표가 붙어 있는 다이어그램">
+</p>
+
 <!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 <p align="center">
-  <img src="docs/assets/spec-artifacts.png" width="880"
-       alt="워크스페이스 아티팩트 트리와 아키텍처 다이어그램이 렌더된 시스템 설계 문서">
+  <img src="docs/assets/design-job.gif" width="880"
+       alt="design 잡이 시스템 설계 문서를 렌더된 마크다운으로 워크스페이스에 실시간 스트리밍하고, 아키텍처 다이어그램에서 끝나는 화면">
 </p>
-<p align="center"><sub>모든 단계가 읽고, diff 뜨고, 반박할 수 있는 문서를
-남깁니다 — 커밋만이 아니라.</sub></p>
+<p align="center"><sub>모든 단계가 실제 경로에 실제 문서를 씁니다 — 읽고, diff 뜨고,
+반박할 수 있는. 커밋만이 아니라.</sub></p>
 -->
 
 ---
 
-## 요구 사항
-
-- **Node.js** >= 22.13 · **pnpm** 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`)
-- **Docker** + Compose — Redis(필수) 및 선택 사이드카용
-- **LLM 프로바이더 키** — [프로바이더](#프로바이더) 참고
-
 ## 빠른 시작
+
+**필요한 것** Node.js >= 22.13 · pnpm 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`) · Docker + Compose (Redis용) · [LLM 프로바이더 키](#프로바이더).
 
 ```bash
 git clone https://github.com/to-nexus/ant && cd ant
@@ -165,6 +149,11 @@ OpenAI 호환 어댑터를 경유하므로 프로바이더 고유 기능이 늦�
 Ant은 **세 가지 디자인 입력**을 1급 시민으로 취급합니다. 도구를 고를
 필요 없이, 가진 것을 그대로 떨어뜨리세요:
 
+<p align="center">
+  <img src="docs/assets/design-input.png" width="880"
+       alt="세 가지 디자인 입력 — visual/ui/handoff/ 에서 observation-only로 읽는 Claude artifacts, MCP로 실시간 조회하는 Figma URL, 아무것도 없으면 design 잡이 번들을 저작 — 이 하나의 UI 디자인 컨트랙트로 합쳐져 code 잡이 그것을 기준으로 구현하는 다이어그램">
+</p>
+
 | 소스                  | 무엇을 떨어뜨리는가                          | 언제 쓰나                                                                  |
 |-----------------------|----------------------------------------------|----------------------------------------------------------------------------|
 | **Claude artifacts**  | HTML/CSS/Markdown/PNG → `visual/ui/handoff/` | Claude.ai에서 디자인을 굴리던 분에게 가장 적합. 라이선스/셋업/스키마 불필요. |
@@ -175,60 +164,23 @@ Ant은 **세 가지 디자인 입력**을 1급 시민으로 취급합니다. 도
 (Claude handoff은 observation-only / FPOP, Figma는 live-fetched, ant
 native JSON은 schema-based.)
 
-**`design` 잡의 산출물은 어느 소스에서 출발했는지에 따라 달라집니다:**
-
-| 인텐트          | 출발점                        | 산출물                                                                 |
-|-----------------|-------------------------------|------------------------------------------------------------------------|
-| `gen-ui-desc`   | PRD (greenfield)              | `visual/ui/handoff/` — `DESIGN.md`를 루트로 하는 번들 (`styles.css`, `tokens/`, `components/`, `screens/`, `assets/`) |
-| `gen-ui-figma`  | `visual/ui/figma/figma.json`  | `visual/ui/ant/` — canonical 3종 `ui-tokens.json` + `ui-assets.json` + `ui-spec.json` |
+**`design` 잡의 산출물은 어느 소스에서 출발했는지에 따라 달라집니다.** PRD에서
+출발하면 (`gen-ui-desc`) `visual/ui/handoff/` 에 `DESIGN.md`를 루트로 하는 번들
+(`styles.css`, `tokens/`, `components/`, `screens/`, `assets/`) 을 쓰고,
+`figma.json` 에서 출발하면 (`gen-ui-figma`) `visual/ui/ant/` 에 canonical 3종
+`ui-tokens.json` + `ui-assets.json` + `ui-spec.json` 을 씁니다.
 
 풀 가이드:
 [docs/guides/design-input/claude-handoff.md](docs/guides/design-input/claude-handoff.md).
-
-<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
-<p align="center">
-  <img src="docs/assets/design-handoff.png" width="880"
-       alt="생성된 UI 디자인 handoff 번들: 렌더된 DESIGN.md 문서와 styles·tokens·screens 번들 트리">
-</p>
-<p align="center"><sub>Greenfield 산출물: design 잡이 DESIGN.md를 루트로
-하는 번들을 저작하고, 코드 잡이 그것을 근거로 빌드합니다.</sub></p>
--->
-
-<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
-<p align="center">
-  <img src="docs/assets/basis-moodboard.png" width="880"
-       alt="각 스타일의 실제 팔레트로 그려진 20종 미니 앱 목업이 놓인 비주얼 티어 선택 화면">
-</p>
-<p align="center"><sub>그린필드로 시작하나요? 비주얼 방향만 고르면 Ant이
-디자인 번들을 저작합니다.</sub></p>
--->
 
 ---
 
 ## 동작 방식
 
-```
-    ant-ui  4200          ant-site  4300         ← 브라우저 대면
-    React SPA (/app/*)    마케팅 (Next.js)
-         │
-─────────┼──────────────────────────────────────────────────────────
-         │
-┌────────┴─────────┐    ┌──────────────────┐    ┌──────────────────┐
-│   ant-api  4100  │    │  ant-realtime    │    │  ant-preview     │
-│  REST + IDE      │    │   4101 SSE       │    │   4102 dev srv   │
-└────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘
-         │                       │                       │
-         └─────────── Redis (Pub/Sub + BullMQ) ──────────┘
-                              │
-                     ┌────────┴─────────┐
-                     │   ant-job        │
-                     │   요청마다       │
-                     │   job-runner     │
-                     │   spawn          │
-                     └──────────────────┘
-
-  선택 사이드카:  ChromaDB (vector RAG)   visual-processor 4103
-```
+<p align="center">
+  <img src="docs/assets/architecture.png" width="880"
+       alt="Ant 런타임 토폴로지 — 브라우저의 ant-ui / ant-site 가 단일 HTTP + SSE 경계를 지나 ant-api · ant-realtime · ant-preview 로, 이들이 Pub/Sub · BullMQ · state 를 나르는 Redis 버스로만 통신하고, ant-job 이 잡마다 격리된 job-runner 자식 프로세스를 spawn 하며, ChromaDB / visual-processor 는 선택 사이드카인 다이어그램">
+</p>
 
 백엔드 4개 프로세스, 단일 코드베이스, 오직 Redis로만 통신. 로컬 모드와
 클라우드(K8s) 모드는 같은 데이터 플레인을 공유합니다 — 로컬은 단지
@@ -239,13 +191,10 @@ native JSON은 schema-based.)
 그리므로 지금 어떤 노드가 실행 중이고 병렬 워커가 몇 개 떠 있는지 볼 수
 있습니다.
 
-<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 <p align="center">
-  <img src="docs/assets/agent-graph.gif" width="880"
-       alt="실행 중인 노드가 강조되고 그 아래로 병렬 워커 칩이 펼쳐지는 라이브 에이전트 그래프">
+  <img src="docs/assets/job-anatomy.png" width="880"
+       alt="잡이 실행하는 그래프 — architect / planner / creator 에이전트와 담당 잡, resolve → triage → detect → decompose 를 거쳐 setup · feature · ui 태스크로 병렬 fan-out, 완료 전에 작업을 되돌릴 수 있는 Final Verification 으로 수렴한 뒤 learn 으로 끝나는 흐름">
 </p>
--->
-
 
 | 에이전트    | 담당 잡                                        |
 |-------------|-----------------------------------------------|
@@ -268,6 +217,11 @@ native JSON은 schema-based.)
 (`features/{feature}/codebase/`)이고, **브랜치 이름은 피처 이름과
 정확히 같습니다** — prefix 도, sanitize 도 없습니다. 피처 이름에 `/`를
 쓸 수 있어 `feature/base`, `release/1.0` 같은 이름이 그대로 동작합니다.
+
+<p align="center">
+  <img src="docs/assets/workspace.png" width="880"
+       alt="프로젝트의 숨겨진 bare 앵커 repo.git 이 세 개의 대등한 피처 worktree 로 뻗고, 각 피처가 codebase/ 와 plan/ · architecture/ · visual/ · assets/ 를 갖고 있으며 브랜치 이름이 피처 이름과 정확히 일치하는 다이어그램">
+</p>
 
 피처가 없는 프로젝트는 코드베이스가 없습니다. 특권을 가진 "main"
 worktree 는 존재하지 않고 모든 피처가 대등합니다.
@@ -333,15 +287,6 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
   관리합니다 — 런타임이 Anthropic, OpenAI 호환, Gemini를 네이티브로
   구사해 각 벤더 엔드포인트에 직접 통신, **라우터 마진 없음** — 그리고
   잡마다 모델별 토큰 / 비용 / 캐시 적중 분해를 확인합니다.
-
-<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
-|  |  |
-|---|---|
-| <img src="docs/assets/shell-3pane.png" alt="탐색기·태스크 보드·에이전트 채팅 3-pane 작업 화면"> | <img src="docs/assets/token-cost.png" alt="캐시 적중률을 포함한 모델별 토큰·비용 분해"> |
-| 탐색기 · 태스크 보드 · 에이전트 채팅을 한 화면에 | 잡 단위 모델별 비용과 캐시 효율 |
-| <img src="docs/assets/preview-console.png" alt="탐지된 서비스 연결과 빌드 로그가 흐르는 프리뷰 설정 화면"> | <img src="docs/assets/browser-ide.png" alt="피처 worktree 위에서 브라우저로 실행되는 VS Code"> |
-| 서비스 연결과 실시간 빌드 콘솔 | 피처 worktree 위의 브라우저 VS Code |
--->
 
 ### 클라우드 전용 영역
 

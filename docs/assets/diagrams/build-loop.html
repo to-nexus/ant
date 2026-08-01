@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="canvas" content="880x520">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_diagram.css">
+<style>
+  .canvas { height: 520px; }
+
+  .track { display: flex; align-items: stretch; }
+  .track .node { flex: none; gap: 7px; padding: 12px 12px 13px; }
+  .track .hwire { width: 18px; }
+
+  /* four across on the build track, the same width on the iteration track so
+     the shorter path is legible as a shorter path */
+  .track.build .node { width: 191.5px; }
+  .track.iterate .node { width: 191.5px; }
+
+  .step {
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--text-4);
+  }
+  .step code {
+    font-family: var(--font-mono); font-size: 9.5px;
+    letter-spacing: -0.01em; text-transform: none;
+    color: var(--text-3);
+  }
+  .what {
+    font-size: 11.5px; font-weight: 600; line-height: 1.3;
+    color: var(--text-2);
+  }
+  .path.sm { font-size: 9.5px; padding: 3px 6px; }
+
+  /* the band that separates "once" from "every time after" */
+  .split { position: relative; height: 40px; }
+  .split .line {
+    position: absolute; left: 0; right: 0; top: 50%;
+    height: 1px; background: var(--border-1);
+  }
+  .split .tag {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 0 13px; background: var(--bg-canvas);
+    font-size: 10.5px; font-weight: 600; color: var(--text-3);
+    white-space: nowrap;
+  }
+
+  /* right-hand callout on the iteration track */
+  .aside {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding-left: 24px;
+  }
+  .aside p {
+    margin: 0; font-size: 11.5px; font-weight: 500;
+    line-height: 1.45; color: var(--text-3);
+  }
+  .aside strong { color: var(--text-2); font-weight: 700; }
+
+  /* rev-spec return arc, under the two iteration nodes only */
+  .revloop { position: relative; height: 40px; }
+  .revloop svg { position: absolute; inset: 0; overflow: visible; }
+  .revloop path { fill: none; stroke: var(--wire); stroke-width: 1.5; }
+  .revloop polygon { fill: var(--wire); }
+  .revloop .tag {
+    position: absolute; left: 200px; top: 24px;
+    transform: translate(-50%, -50%);
+    padding: 0 10px; background: var(--bg-canvas);
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="head">
+    <div class="rule"></div>
+    <h1>Two loops, and every stage writes a real file</h1>
+    <p>You lay the ground once. After that, a change is a spec — not another conversation.</p>
+  </div>
+
+  <div class="band" style="margin-bottom:8px">Build loop &nbsp;·&nbsp; greenfield, or a major new feature</div>
+  <div class="track build">
+    <div class="node acc acc-violet">
+      <div class="step">Plan <code>gen-plan</code></div>
+      <div class="what">Product requirements</div>
+      <span class="path sm">plan/PRD.md</span>
+    </div>
+    <div class="hwire"></div>
+
+    <div class="node acc acc-pink">
+      <div class="step">Design <code>gen-sys-*</code></div>
+      <div class="what">System design and API contracts</div>
+      <span class="path sm">architecture/system/</span>
+    </div>
+    <div class="hwire"></div>
+
+    <div class="node acc acc-pink">
+      <div class="step">Design <code>gen-ui-*</code></div>
+      <div class="what">UI or game art — generated, or the design you already have</div>
+      <span class="path sm">visual/ui/</span>
+    </div>
+    <div class="hwire"></div>
+
+    <div class="node acc acc-orange">
+      <div class="step">Code <code>gen-code-sys</code></div>
+      <div class="what">Implementation on the feature branch</div>
+      <span class="path sm">codebase/</span>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="line"></div>
+    <div class="tag">once the first build lands, you stop returning to the row above</div>
+  </div>
+
+  <div class="band" style="margin-bottom:8px">Iteration loop &nbsp;·&nbsp; every change after that</div>
+  <div class="track iterate">
+    <div class="node acc acc-pink">
+      <div class="step">Design <code>gen-spec</code></div>
+      <div class="what">One unit of change, reviewed before any code runs</div>
+      <span class="path sm">architecture/spec/</span>
+    </div>
+    <div class="hwire"></div>
+
+    <div class="node acc acc-orange">
+      <div class="step">Code <code>gen-code-spec</code></div>
+      <div class="what">Implements exactly that one spec</div>
+      <span class="path sm">codebase/</span>
+    </div>
+
+    <div class="aside">
+      <p><strong>No PRD, no system design.</strong> The spec is the unit of change — the
+        same shape as plan mode, except the plan is a file you can diff, review and
+        revise instead of a message that scrolls away.</p>
+    </div>
+  </div>
+
+  <div class="revloop">
+    <svg viewBox="0 0 820 40" width="820" height="40" preserveAspectRatio="none">
+      <path d="M 305 0 V 16 Q 305 24 297 24 H 104 Q 96 24 96 16 V 9" />
+      <polygon points="96,0 91.5,8 100.5,8" />
+    </svg>
+    <div class="tag">rev-spec</div>
+  </div>
+
+  <div class="foot">
+    <div class="bar"></div>
+    <p>Because each stage is a file rather than a message, you can review it, argue
+      with it, and re-run only the stage you changed — the next stage reads the
+      corrected artifact, not a longer conversation.</p>
+  </div>
+
+</div>
+</body>
+</html>
