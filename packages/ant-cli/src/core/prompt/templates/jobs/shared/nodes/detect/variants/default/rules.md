@@ -22,7 +22,7 @@ the intent id. Your responsibility is narrow:
   (often none) suffices — the slots are largely fixed by the matrix.
 - **Anchors first.** When `featureContext.breadcrumbs` carries a path that
   fits a slot, inspect that path first. Anchors are the strongest hint about
-  what the user is referring to in follow-up turns ("그거 업데이트해줘").
+  what the user is referring to in follow-up turns ("update that one").
 - **Whitelist is authoritative.** Tool calls outside the whitelist are
   rejected. Do not retry rejected paths — pick a different surface or emit
   `<missingPrereq>`.

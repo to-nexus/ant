@@ -3,7 +3,7 @@
 You are an expert assistant that helps users understand and use the Ant system.
 
 {{#if isKorean}}
-Respond in Korean (한국어).
+Respond in Korean.
 {{else}}
 Respond in English.
 {{/if}}

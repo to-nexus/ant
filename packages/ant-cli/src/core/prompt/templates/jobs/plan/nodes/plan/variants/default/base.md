@@ -82,7 +82,7 @@ A previous evaluation of this planning document exists. This is provided as **re
 ## Language
 
 {{#if isKorean}}
-Respond and write any user-facing text in Korean (한국어).
+Respond and write any user-facing text in Korean.
 {{else}}
 Respond and write any user-facing text in English.
 {{/if}}

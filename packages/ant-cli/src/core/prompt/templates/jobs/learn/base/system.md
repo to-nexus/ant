@@ -38,9 +38,9 @@ You MUST respond with a JSON object wrapped in `<learn_command>` tags:
 Use when user explicitly mentions a branch name or wants to learn from a different branch.
 
 **Examples:**
-- "feature-login 브랜치를 학습해줘"
+- "Learn the feature-login branch"
 - "Learn the main branch"
-- "develop 브랜치 코드 분석해줘"
+- "Analyze the code on the develop branch"
 
 **Output:**
 ```xml
@@ -57,9 +57,9 @@ Use when user explicitly mentions a branch name or wants to learn from a differe
 Use when user wants to learn the entire current codebase.
 
 **Examples:**
-- "전체 코드베이스를 학습해줘"
+- "Learn the entire codebase"
 - "Learn all the code"
-- "이 프로젝트 전체를 분석해줘"
+- "Analyze this whole project"
 
 **Output:**
 ```xml
@@ -75,9 +75,9 @@ Use when user wants to learn the entire current codebase.
 Use when user specifies particular files or directories.
 
 **Examples:**
-- "src/Auth.ts 파일을 학습해줘"
+- "Learn the src/Auth.ts file"
 - "Learn the components directory"
-- "api/ 디렉토리 분석해줘"
+- "Analyze the api/ directory"
 
 **Output:**
 ```xml
@@ -93,8 +93,8 @@ Use when user specifies particular files or directories.
 Use when user provides raw text, documentation, or no specific code is mentioned.
 
 **Examples:**
-- "이 프로젝트는 React와 TypeScript를 사용합니다..."
-- "우리 팀의 코딩 컨벤션: ..."
+- "This project uses React and TypeScript..."
+- "Our team's coding conventions: ..."
 - (No code paths mentioned)
 
 **Output:**
@@ -152,7 +152,7 @@ Use when user provides raw text, documentation, or no specific code is mentioned
 ## Examples
 
 ### Example 1: Branch Learning
-**User:** "feature-login 브랜치의 코드를 학습해줘"
+**User:** "Learn the code on the feature-login branch"
 
 **Your Response:**
 ```xml
@@ -168,7 +168,7 @@ Use when user provides raw text, documentation, or no specific code is mentioned
 I'll learn the codebase from the `feature-login` branch.
 
 ### Example 2: Full Codebase
-**User:** "현재 프로젝트 전체를 학습해줘"
+**User:** "Learn the entire current project"
 
 **Your Response:**
 ```xml
@@ -183,7 +183,7 @@ I'll learn the codebase from the `feature-login` branch.
 I'll learn the entire codebase from the current branch.
 
 ### Example 3: Specific Files
-**User:** "src/Auth.ts와 src/api/ 디렉토리를 학습해줘"
+**User:** "Learn src/Auth.ts and the src/api/ directory"
 
 **Your Response:**
 ```xml
@@ -198,14 +198,14 @@ I'll learn the entire codebase from the current branch.
 I'll learn from the specified files and directory.
 
 ### Example 4: Documentation
-**User:** "이 프로젝트는 Next.js 14를 사용하고, App Router 구조를 따릅니다. TypeScript strict 모드를 사용합니다."
+**User:** "This project uses Next.js 14 and follows the App Router structure. It uses TypeScript strict mode."
 
 **Your Response:**
 ```xml
 <learn_command>
 {
   "action": "learn_text",
-  "text": "이 프로젝트는 Next.js 14를 사용하고, App Router 구조를 따릅니다. TypeScript strict 모드를 사용합니다."
+  "text": "This project uses Next.js 14 and follows the App Router structure. It uses TypeScript strict mode."
 }
 </learn_command>
 ```
@@ -217,7 +217,7 @@ I'll store this project information for future reference.
 ## Edge Cases
 
 ### Ambiguous Input
-**User:** "로그인 코드 학습해줘"
+**User:** "Learn the login code"
 
 **Your Response:**
 ```xml
@@ -232,14 +232,14 @@ I'll store this project information for future reference.
 I'll search for and learn from files related to login and authentication.
 
 ### No Specific Code
-**User:** "우리 팀은 prettier를 사용합니다"
+**User:** "Our team uses prettier"
 
 **Your Response:**
 ```xml
 <learn_command>
 {
   "action": "learn_text",
-  "text": "우리 팀은 prettier를 사용합니다"
+  "text": "Our team uses prettier"
 }
 </learn_command>
 ```

@@ -46,7 +46,7 @@ Produce a single JSON object with these fields:
 
 ## Blind Spots
 
-- Constraints often appear as asides ("아 그리고 X는 하지마") — scan the
+- Constraints often appear as asides ("oh, and don't touch X") — scan the
   directive fully, not just its main clause.
 - An exchange with no decisions and no constraints is valid: empty arrays
   with a meaningful outcome sentence.

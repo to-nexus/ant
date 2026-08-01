@@ -275,7 +275,7 @@ Wrap your JSON response in `<direct>` tags. Body is JSON only — no markdown fe
 When sketch images are available, you may use the provided tools to visually inspect them.
 
 **`selectedSketchIndex` determination**:
-- Parse from the user's text input (e.g., "sketch 2" or "2번" → index 1, 0-based)
+- Parse from the user's text input (e.g., "sketch 2" — or the equivalent ordinal in the user's language → index 1, 0-based)
 - If the user does not mention a specific sketch, do NOT set `selectedSketchIndex`
 
 **Visual inspection purpose**:
