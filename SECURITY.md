@@ -104,4 +104,15 @@ and uses your LLM credits. You are responsible for:
 - Auditing any code Ant writes before you merge it. Ant ships verifiers and a
   rubric system, but generated code is your responsibility.
 
+Two escape hatches disable a default protection. Both are **off unless you set
+them**, and neither should be enabled on a host you do not fully control:
+
+| Variable | Default | Effect when enabled |
+|---|---|---|
+| `ANT_UNSAFE_ALLOW_ALL_COMMANDS` | off | Disables the shell command allowlist entirely — agents may run any command the server process can run. |
+| `ANT_REDIS_TLS_SKIP_HOSTNAME_CHECK` | off | Accepts a `rediss://` certificate whose hostname does not match. Traffic stays encrypted, but a DNS-level MITM is no longer detected. |
+
+Reports that depend on one of these being enabled are treated as configuration
+choices, not vulnerabilities.
+
 Thank you for helping keep Ant and its users safe.

@@ -13,6 +13,7 @@
  */
 
 import { Redis } from 'ioredis';
+import { buildRedisTlsOptions } from '../../infrastructure/utils/redis';
 import { TaskQueueUpdatePort } from '../ports';
 import type { 
   BaseTask,
@@ -113,8 +114,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private static readonly METER_THROTTLE_MS = 2000;
 
   constructor(options: BroadcasterOptions) {
-    const isTLS = options.redisUrl.startsWith('rediss://');
-    const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
+    const tlsOptions = buildRedisTlsOptions(options.redisUrl);
     const redisOpts = {
       ...tlsOptions,
       maxRetriesPerRequest: 3,

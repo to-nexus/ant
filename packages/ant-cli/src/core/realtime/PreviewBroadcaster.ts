@@ -19,6 +19,7 @@
  */
 
 import { Redis } from 'ioredis';
+import { buildRedisTlsOptions } from '../../infrastructure/utils/redis';
 import type { ProjectProfile } from '@ant/shared';
 import { PreviewUpdatePort } from '../ports/preview';
 import { UserContext } from '../types/user';
@@ -32,8 +33,7 @@ export class PreviewBroadcaster implements PreviewUpdatePort {
   private readonly inflight = new InflightTracker();
 
   constructor(options: BroadcasterOptions) {
-    const isTLS = options.redisUrl.startsWith('rediss://');
-    const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
+    const tlsOptions = buildRedisTlsOptions(options.redisUrl);
     this.pubRedis = new Redis(options.redisUrl, {
       ...tlsOptions,
       maxRetriesPerRequest: 3,

@@ -41,7 +41,7 @@ import { handleGracefulShutdown } from './gracefulShutdown';
 import { abortJob, isJobAborted } from './jobAbort';
 import { REDIS_CHANNELS } from '../infrastructure/state/redisConstants';
 import { RedisStateStore } from '../infrastructure/state/RedisStateStore';
-import { createTLSOptions } from '../infrastructure/utils/redis';
+import { buildRedisTlsOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
 import { resolveKillReason, buildSigtermInterruption } from './sigtermInterruption';
 import { buildInfrastructureInterruption } from '@ant/shared';
@@ -312,7 +312,7 @@ async function main(): Promise<void> {
         maxRetriesPerRequest: 1,
         connectTimeout: 3000,
         lazyConnect: false,
-        ...createTLSOptions(redisUrl),
+        ...buildRedisTlsOptions(redisUrl),
       });
       killReasonRedis.on('error', () => {}); // suppress unhandled connection errors
     } catch { /* best-effort — resolveKillReason will fallback to server_shutdown */ }

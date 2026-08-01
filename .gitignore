@@ -6,15 +6,31 @@ node_modules/
 package-lock.json
 
 # Environment variables
+# NOTE: a blanket `.env.*` is deliberately NOT used — packages/ant-{site,ui}/
+# .env.{development,production} are tracked build config. Deployment-flavoured
+# env files are listed explicitly instead.
 .env
 .env.local
 .env.*.local
 !.env.example.local
 .env.backup
 .env.bak
+.env.prod
+.env.cloud
+.env.staging
 *.bak
 # Ad-hoc env copies (e.g. "env (1)" from editor/download dupes)
 env (*)
+
+# Keys & certificates — never tracked, in any package
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
 
 # Build outputs
 dist/
