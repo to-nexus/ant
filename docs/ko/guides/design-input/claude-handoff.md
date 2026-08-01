@@ -102,25 +102,25 @@ without design) 의 RAC면 handoff 콘텐츠가 안 읽힘.
 
 ### Claude로 변경사항 round-trip 하고 싶다
 
-현재 단방향. handoff 소스는 읽힘; Ant 산출물은 `codebase/` 에 떨어짐.
-미래 버전은 Claude에 다시 붙여넣을 "무엇이 바뀌었나" 리포트를 emit할
-수 있음.
+단방향입니다. handoff 소스는 읽히고 Ant 산출물은 `codebase/` 에
+떨어집니다. 번들로 되돌려 쓰는 동작은 없습니다.
 
 ## 비교
 
-| 질문                                   | `handoff`     | `figma`              | `ant`                |
-|----------------------------------------|---------------|----------------------|----------------------|
-| 라이선스 필요?                          | None          | Figma                | None                 |
-| 셋업 비용                              | 0             | MCP server           | design 잡 한 번      |
-| 스키마                                 | None (FPOP)   | Figma vars + styles  | `ui-tokens.json`     |
-| 적합                                   | 기존 Claude 디자인 | Figma 팀         | Greenfield           |
-| 소스로 round-trip                      | No            | Yes (Code Connect)   | Within Ant           |
+| 질문            | `handoff`                     | `figma`             | `ant`                    |
+|-----------------|-------------------------------|---------------------|---------------------------|
+| 라이선스 필요?   | None                          | Figma               | Figma (상류)              |
+| 셋업 비용        | 0, 또는 design 잡 한 번        | MCP server          | MCP server + design 잡 한 번 |
+| 스키마          | None (FPOP)                   | Figma vars + styles | canonical JSON 3종        |
+| 쓰는 주체        | 사용자, 또는 `gen-ui-desc`     | 사용자 (workfile)    | `gen-ui-figma`            |
+| 적합            | Greenfield, 또는 기존 Claude 디자인 | Figma 팀        | JSON 을 원하는 Figma 팀    |
+| 소스로 역기록?   | No                            | No                  | No                        |
 
 ## 다음으로 읽을 것
 
 - 영문 [figma-mcp.md](../../../guides/design-input/figma-mcp.md) —
-  양방향 Figma 소스.
+  읽기 전용 Figma 소스.
 - 영문 [ant-canonical.md](../../../guides/design-input/ant-canonical.md) —
-  design 잡으로 토큰 생성.
+  canonical JSON 3종.
 - [concepts/design-input-channels.md](../../concepts/design-input-channels.md)
   — 개념 배경.

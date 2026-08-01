@@ -12,11 +12,16 @@ For the lifecycle internals, see
 | Job type      | Agent     | Output                                    | Typical entry point                |
 |---------------|-----------|-------------------------------------------|------------------------------------|
 | `plan`        | planner   | `plan/prd.md`                              | "Plan a TODO app PRD"              |
-| `design`      | architect | `architecture/system/*.md`, `architecture/spec/*.md`, `visual/ui/ant/*.json` | "Design the system per the PRD"    |
+| `design`      | architect | `architecture/system/*.md`, `architecture/spec/*.md`, and one visual surface — `visual/ui/handoff/**` (`gen-ui-desc`) or `visual/ui/ant/*.json` (`gen-ui-figma`) | "Design the system per the PRD"    |
 | `code`        | architect | Files under `codebase/`                   | "Implement the system"             |
 | `learn`       | architect | Vector DB index of the codebase           | "Re-index the codebase"            |
 | `ask`         | architect | Chat answer (read-only)                    | "Why does X work this way?"        |
 | `inline-ask`  | architect | Inline chat answer (faster, narrower)      | Quick clarification                |
+| `visual`      | creator   | Generated images under `assets/`           | "Generate the hero illustration"   |
+
+The `learn` job is a no-op unless `ANT_VECTOR_DB_ENABLED=true`; without it,
+retrieval falls back to git-changes + keyword search and the job
+short-circuits.
 
 The job type is decided by **triage** based on the directive's intent. You
 can hint the intent with a prefix:

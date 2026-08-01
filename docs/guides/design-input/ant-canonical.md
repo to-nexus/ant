@@ -1,13 +1,16 @@
 # Ant-native canonical design
 
-When you don't have an existing design, ask Ant to generate one. The
-`design` job emits **canonical token + spec + assets** files under
-`visual/ui/ant/` (or `visual/game-art/ant/` for games), and subsequent
-code jobs read them as authoritative.
+The `visual/ui/ant/` surface holds **canonical token + spec + assets** JSON,
+which subsequent code jobs read as authoritative. This is the
+**schema-based** UI source — the agent treats
+`ui-tokens.json` / `ui-spec.json` / `ui-assets.json` as a structured contract.
 
-This is the **schema-based** UI source — the agent uses
-`ui-tokens.json` / `ui-spec.json` / `ui-assets.json` as a structured
-contract.
+> **Only the Figma pipeline writes here.** `gen-ui-figma` derives the canonical
+> trio from a Figma workfile. If you have no existing design, the greenfield
+> intent is `gen-ui-desc`, and it writes a **handoff bundle** to
+> `visual/ui/handoff/` instead — see
+> [claude-handoff.md](claude-handoff.md). Both are first-class; they differ in
+> shape (structured JSON vs. an observable HTML/CSS bundle), not in standing.
 
 ## What gets generated
 
@@ -36,28 +39,22 @@ whatever your stack uses).
 
 ## Generate the design
 
-Pick the right intent:
+Point Ant at a Figma workfile (`visual/ui/figma/figma.json`) and run a
+`design` job. Detect resolves the intent to `gen-ui-figma`, and the job:
 
-- `gen-ui-figma` — you have a Figma reference and want Ant to derive a
-  token system from it.
-- `gen-ui-desc` — you have a textual description ("modern dark dashboard,
-  navy + electric blue accents, generous spacing").
-
-```
-Design the UI for a finance dashboard.
-Style: modern dark, navy + electric blue accents, generous spacing.
-Inspiration: Linear, Vercel.
-```
-
-The design job runs:
-
-1. **resolve / triage / detect** — identifies this is a `design` job
-   with intent `gen-ui-desc`.
+1. **resolve / triage / detect** — identifies a `design` job with intent
+   `gen-ui-figma`.
 2. **decompose** — produces `design-system` and `feature` design tasks.
-3. **plan / execute** per task — generates the JSON artifacts.
+3. **plan / execute** per task — explores the workfile live over the Figma MCP
+   server and writes the JSON artifacts.
 4. **learn** — checkpoints the session.
 
-Outputs land in the canonical sub-source directory.
+Outputs land in `visual/ui/ant/`. Setting the workfile up is covered in
+[figma-mcp.md](figma-mcp.md).
+
+If you have only a textual description ("modern dark dashboard, navy +
+electric blue accents, generous spacing") and no Figma file, that is the
+`gen-ui-desc` path — it produces a handoff bundle, not this trio.
 
 ## Iterate on the design
 
@@ -130,12 +127,13 @@ migrations on existing files. For now, pin to a release.
 
 ## Comparison
 
-| Question                                  | `ant`                | `figma`              | `handoff`            |
-|-------------------------------------------|----------------------|----------------------|----------------------|
-| Schema                                     | `ui-tokens.json`     | Figma vars + styles  | None (FPOP)          |
-| Round-trip                                 | Within Ant           | Yes (Code Connect)   | No                   |
-| Best for                                   | Greenfield           | Existing Figma teams | Existing Claude/HTML designs |
-| Setup                                      | One design job       | MCP server           | Drop the files       |
+| Question            | `ant`                        | `figma`              | `handoff`                       |
+|---------------------|------------------------------|----------------------|----------------------------------|
+| Schema              | canonical JSON trio          | Figma vars + styles  | None (FPOP)                      |
+| Written by          | `gen-ui-figma`               | you (the workfile)   | `gen-ui-desc`, or you            |
+| Read direction      | one-way (design → code)      | one-way (read-only)  | one-way (design → code)          |
+| Best for            | Figma teams wanting JSON     | Existing Figma teams | Greenfield, or Claude/HTML designs |
+| Setup               | MCP server + one design job  | MCP server           | Drop the files, or one design job |
 
 ## Read next
 

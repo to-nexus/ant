@@ -47,7 +47,7 @@ UI 디자인을 굴리던 분에게:
 handoff 소스는 **디자인이 다른 도구에 살고** 그걸 옮기고 싶지 않을 때
 가장 가치 있습니다.
 
-### `figma` — 양방향 Figma MCP
+### `figma` — 실시간 Figma MCP (읽기 전용)
 
 Figma 프로젝트가 있다면, Ant이 그걸 가리키게 하고 **prompt 시점에**
 필요한 걸 fetch하게 두는 게 맞습니다. `visual/ui/figma/figma.json` 은
@@ -64,22 +64,20 @@ Figma MCP (로컬 모드는 desktop, 클라우드 모드는 HTTP bridge) 가 탐
 처리: variable, style, frame tree, component instance. 에이전트가 필요할
 때 `get_design_context`, `get_screenshot`, `get_metadata` 호출.
 
-역방향도 됩니다: design 잡이 `use_figma` (canvas write 도구) 로 Figma에
-역기록 가능하고, Code Connect 매핑이 component instance 를 코드와
-정합 유지.
+연동은 **읽기 전용** 입니다 — 역기록 도구가 없고 Code Connect 매핑도
+소비하지 않습니다. Figma가 권위이고 코드가 파생됩니다.
 
 ### `ant` — 생성된 토큰 + spec
 
-기존 디자인 시스템이 없는 greenfield 프로젝트라면, Ant에게 **디자인
-시스템 자체를 생성**하도록 요청합니다. design 잡 (`design` jobtype) 이
-다음 중 하나로 실행:
-
-- `gen-ui-figma` Figma 참조가 있으면.
-- `gen-ui-desc` 텍스트 묘사가 있으면.
-
+이 표면을 쓰는 것은 **`gen-ui-figma`** 입니다 — design 잡이 Figma
+workfile 에서 구조화된 토큰 시스템을 도출해
 `ui-tokens.json` (palette, spacing, type scale, radii, shadows),
 `ui-spec.json` (sections + components), `ui-assets.json` (asset catalog)
-을 produce.
+을 emit 합니다.
+
+greenfield 인텐트 `gen-ui-desc` 는 여기에 쓰지 **않습니다**. 텍스트
+묘사만 있을 때는 `visual/ui/handoff/` 아래 handoff 번들을 저작하며,
+이는 위의 `handoff` 소스로 해소됩니다.
 
 이후 코드 잡은 이를 **스키마 기반** 권위 입력으로 읽습니다. 토큰
 이름이 task 간 안정적이고, spec이 레이아웃 의도를 정의.

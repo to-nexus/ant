@@ -166,8 +166,8 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=http://localhost:4100/api/auth/google/callback
 
-FRONTEND_URL=http://localhost:5173
-ANT_CORS_ORIGINS=http://localhost:5173
+FRONTEND_URL=http://localhost:4200
+ANT_CORS_ORIGINS=http://localhost:4200
 ```
 
 ```bash
@@ -187,12 +187,12 @@ VITE_CLOUD_BACKEND_BASE=http://localhost:4100
 [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
 에서 **OAuth 2.0 Client ID** 생성:
 
-- **Authorized JavaScript origins**: `http://localhost:5173`,
+- **Authorized JavaScript origins**: `http://localhost:4200`,
   `http://localhost:4100`
 - **Authorized redirect URIs**:
   `http://localhost:4100/api/auth/google/callback`
 
-OAuth 시작은 FE (`:5173`), callback 은 BE (`:4100`) 로 복귀하기 때문에
+OAuth 시작은 FE (`:4200`), callback 은 BE (`:4100`) 로 복귀하기 때문에
 두 포트 모두 필요.
 
 #### 쿠키 정책
@@ -223,7 +223,7 @@ cross-site 쿠키 전송을 필요로 하면 (FE 가 BE 와 다른 registrable
 #### End-to-end 스모크
 
 위 클라우드 env 로 `pnpm dev:all` 후
-[http://localhost:5173](http://localhost:5173) 방문:
+[http://localhost:4200](http://localhost:4200) 방문:
 
 1. **Fresh consumer email 로 가입** (Google 테스트 계정, 예:
    `you@gmail.com`).
@@ -242,7 +242,7 @@ cross-site 쿠키 전송을 필요로 하면 (FE 가 BE 와 다른 registrable
 로컬 FE 를 원격 클라우드 BE 에 가리키는 것도 가능 — 실제 백엔드로 FE
 디버그용. [CORS 매트릭스](cloud-mode/install.md#cors-operating-matrix)
 의 ⚠️ 행 참고. 이 shape 은 fragile (원격 도메인 쿠키를
-`localhost:5173` 의 JS 가 못 읽음) 하므로 HTTP 요청 디버그 한정 사용;
+`localhost:4200` 의 JS 가 못 읽음) 하므로 HTTP 요청 디버그 한정 사용;
 실제 cloud-mode FE 작업은 단일 호스트 `pnpm dev:all` 권장.
 
 ## 코딩 컨벤션

@@ -1,20 +1,21 @@
 # Agents
 
-Ant has two production agents and two stubs reserved for upcoming
-roles. Every agent runs as a **LangGraph StateGraph** — a typed state
-machine with explicit phase nodes, channels, and routers.
+Ant has three agents. Every agent runs as a **LangGraph StateGraph** — a
+typed state machine with explicit phase nodes, channels, and routers.
 
 For the deep dive on each agent's graph, see
 [internals/11-agent-architecture.md](../internals/11-agent-architecture.md).
 
 ## Roster
 
-| Agent      | Production | Job types                          | Output                       |
-|------------|:----------:|------------------------------------|------------------------------|
-| `architect`| ✅          | `code`, `design`, `learn`, `ask`, `inline-ask` | source / design docs / index / chat |
-| `planner`  | ✅          | `plan`                              | PRD                          |
-| `reviewer` | stub       | `review`                            | (placeholder)                |
-| `doc`      | stub       | `doc`                               | (placeholder)                |
+| Agent      | Job types                                      | Output                              |
+|------------|------------------------------------------------|-------------------------------------|
+| `architect`| `code`, `design`, `learn`, `ask`, `inline-ask` | source / design docs / index / chat |
+| `planner`  | `plan`                                          | PRD                                 |
+| `creator`  | `visual`                                        | generated images                    |
+
+(`packages/ant-cli/src/agents/` also holds `common/`, which is shared graph
+machinery — triage, tool handlers, RAC loading — not an agent.)
 
 ## architect
 

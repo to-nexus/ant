@@ -173,7 +173,7 @@ Front Ant with a TLS-terminating reverse proxy (nginx / Caddy / Traefik):
 | `/api/*` | `:4100` | REST. |
 | `/realtime/*` | `:4101` | SSE. Disable proxy buffering; `proxy_read_timeout 1d`. |
 | `/preview/*` | `:4102` | Per-feature dev servers. Disable buffering. |
-| `/` | `:5173` or static `packages/ant-ui/dist` | The SPA. |
+| `/` | `:4200` or static `packages/ant-ui/dist` | The SPA. |
 
 OAuth in Google Cloud Console needs:
 
@@ -252,7 +252,7 @@ for the five-step priority — no Origin → `*` → self-origin → `FRONTEND_U
 | Managed same-origin (Persona B) | `https://ant.crosstoken.io` | (operations) | Self-origin auto-allow. |
 | Cloud↔Cloud same-origin (Persona C single-host) | `https://ant.mycompany.com` | unset | Self-origin auto-allow. No env beyond `FRONTEND_URL`. |
 | Cloud↔Cloud split-host | `https://app.mycompany.com` | (optional) | `FRONTEND_URL` allowlist. |
-| ⚠️ Local FE → Custom Cloud BE (dev) | (cloud FE value) | `'http://localhost:5173'` | See [develop.md § Local FE → remote cloud BE](../develop.md). |
+| ⚠️ Local FE → Custom Cloud BE (dev) | (cloud FE value) | `'http://localhost:4200'` | See [develop.md § Local FE → remote cloud BE](../develop.md). |
 
 In cloud mode with **both** `FRONTEND_URL` and `ANT_CORS_ORIGINS` unset,
 the BE emits a `[CORS]` startup warning so split-host deployments don't

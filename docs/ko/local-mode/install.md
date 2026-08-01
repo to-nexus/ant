@@ -131,7 +131,7 @@ pnpm dev:all
 ```
 
 `concurrently` 로 4 BE 프로세스 (`ant-api` :4100, `ant-realtime` :4101,
-`ant-job` worker, `ant-preview` :4102) + UI dev 서버 (`ui` :5173) +
+`ant-job` worker, `ant-preview` :4102) + UI dev 서버 (`ui` :4200) +
 마케팅 사이트 (`site`) 를 한 터미널에 띄웁니다.
 
 개별 백엔드 프로세스를 격리해서 띄우려면 (디버깅용):
@@ -166,7 +166,7 @@ pnpm start:all     # 4-프로세스 백엔드 + UI + site
 curl -s http://localhost:4100/health  | jq .   # ant-api
 curl -s http://localhost:4101/health  | jq .   # ant-realtime
 curl -s http://localhost:4102/health  | jq .   # ant-preview
-curl -s http://localhost:5173/        > /dev/null && echo ok
+curl -s http://localhost:4200/        > /dev/null && echo ok
 ```
 
 `ant-job`은 HTTP를 노출하지 않습니다 — `docker ps` 또는 BullMQ queue
@@ -199,11 +199,13 @@ ANT_WORKSPACE_BASE_PATH=/Volumes/work/ant-workspaces
 
 ## 트러블슈팅
 
-- **포트 충돌 (4100 / 4101 / 4102 / 5173)** — 각 프로세스는 `PORT`
-  env로 결정. npm 스크립트가 `PORT=4100`, `PORT=4101`, `PORT=4102`을
-  하드코드 ([`packages/ant-cli/package.json`](../../../packages/ant-cli/package.json)).
-  Override하려면 per-process 스크립트에 다른 `PORT` 부여:
-  `PORT=4200 pnpm dev:api-server`.
+- **포트 충돌 (4100 / 4101 / 4102 / 4200 / 4300)** — 백엔드 프로세스는
+  `PORT` env로 결정하며 npm 스크립트가 `PORT=4100` / `4101` / `4102` 을
+  하드코드합니다 ([`packages/ant-cli/package.json`](../../../packages/ant-cli/package.json)).
+  Override 하려면 비어 있는 포트를 주세요 — 예: `PORT=4110 pnpm dev:api-server`.
+  UI (`ANT_UI_PORT`, 기본 4200) 와 site (`ANT_SITE_PORT`, 기본 4300) 는
+  각자 변수를 씁니다. UI 는 `strictPort` 라 다른 포트로 흘러가지 않고
+  바로 실패합니다. 다섯 포트와 겹치지 않는 값을 고르세요.
 - **Redis 미기동** — `dev:all` 전에 `pnpm dev:infra:redis`가
   떠 있어야 합니다. **in-memory fallback 없음** — silent in-process
   queue 대신 fail-fast.

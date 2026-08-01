@@ -130,7 +130,7 @@ pnpm dev:all
 ```
 
 Boots the 4 backend processes (`ant-api` :4100, `ant-realtime` :4101,
-`ant-job` worker, `ant-preview` :4102) + UI dev server (`ui` :5173) +
+`ant-job` worker, `ant-preview` :4102) + UI dev server (`ui` :4200) +
 marketing site (`site`) in one terminal under `concurrently`.
 
 To run a backend process in isolation (debugging):
@@ -166,7 +166,7 @@ supervised slot.
 curl -s http://localhost:4100/health  | jq .   # ant-api
 curl -s http://localhost:4101/health  | jq .   # ant-realtime
 curl -s http://localhost:4102/health  | jq .   # ant-preview
-curl -s http://localhost:5173/        > /dev/null && echo ok
+curl -s http://localhost:4200/        > /dev/null && echo ok
 ```
 
 `ant-job` doesn't expose HTTP — check it via `docker ps` (its log stream
@@ -199,12 +199,15 @@ In local mode `<org>=local` and `<user>=local`.
 
 ## Troubleshooting
 
-- **Port collision (4100 / 4101 / 4102 / 5173)** — each process picks
-  its port from the `PORT` env var; the npm scripts hard-code
-  `PORT=4100`, `PORT=4101`, `PORT=4102` (see
+- **Port collision (4100 / 4101 / 4102 / 4200 / 4300)** — the backend
+  processes take their port from `PORT`, hard-coded per script as
+  `PORT=4100` / `4101` / `4102` (see
   [`packages/ant-cli/package.json`](../../packages/ant-cli/package.json)).
-  Override by running the per-process script with a different `PORT`:
-  `PORT=4200 pnpm dev:api-server`.
+  Override by running the per-process script with a free port, e.g.
+  `PORT=4110 pnpm dev:api-server`. The UI (`ANT_UI_PORT`, default 4200)
+  and the site (`ANT_SITE_PORT`, default 4300) have their own variables;
+  the UI uses `strictPort`, so it fails loudly instead of drifting to
+  another port. Pick a port none of the five already use.
 - **Redis not running** — `pnpm dev:infra:redis` must be up before
   `dev:all`. There is **no in-memory fallback** — Ant fails fast
   rather than silently using an in-process queue.

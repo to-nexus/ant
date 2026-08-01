@@ -1,72 +1,110 @@
 # @ant/cli
 
-ANT 백엔드 패키지. 단일 코드베이스에서 4개 프로세스(ant-api, ant-realtime, ant-job, ant-preview)로 분리 실행된다.
+Ant's backend: one codebase deployed as **four processes**. The entry point
+and environment decide each process's role; they communicate exclusively over
+Redis (Pub/Sub, key-value, BullMQ) — never directly over HTTP.
 
-## 디렉토리 구조
+## Processes
+
+| Process | Entry point | Port |
+|---|---|---|
+| ant-api | `composition/server.ts` | 4100 |
+| ant-realtime | `infrastructure/realtime/start-realtime-server.ts` | 4101 |
+| ant-job | `infrastructure/worker/start-job-worker.ts` | — |
+| ant-preview | `infrastructure/preview/start-preview-server.ts` | 4102 |
+
+Local and cloud mode share this same data plane. There are no in-memory
+fallbacks — if Redis is down, the process fails fast rather than degrading to
+an in-process queue.
+
+## Layout
+
+Hexagonal: `core` holds domain logic and port interfaces, `infrastructure`
+and `periphery` hold the adapters that implement them.
 
 ```
 src/
-    cli/                    CLI 명령 (init workspace, feature)
-    composition/            진입점 및 구성
-        server.ts           API 서버 진입점
-        job-runner.ts       Job 자식 프로세스 진입점
-        orchestrator.ts     에이전트 라우팅
-        gracefulShutdown.ts SIGTERM 처리
-    core/                   도메인 로직
-        adapters/           내부 어댑터
-        codebase/           코드 검색, 크기 추정
+    cli/                    CLI commands (init workspace / feature, index)
+    composition/            entry points & wiring
+        server.ts           API server
+        job-runner.ts       job child process
+        orchestrator.ts     composition root — agent routing, DI
+        gracefulShutdown.ts SIGTERM handling
+    core/                   domain logic — no I/O
+        adapters/           internal adapters
+        codebase/           code search, size estimation
         chat/               ContentMerger, MessageBroadcaster
-        llm-response/       LLMResponseService, 핸들러
-        ports/              포트 인터페이스 (queue, http, state, workflow)
-        prompt/             프롬프트 엔진, 템플릿
-        realtime/           KanbanBroadcaster, WorkflowBroadcaster
-        streaming/          XMLStreamParser, 렌더링 전략
-        types/              공유 타입, processEnv
-    agents/                 AI 에이전트 그래프
-        architect/          design, code, learn, ask 그래프
-        planner/            plan 그래프
-        reviewer/           (예정)
-        doc/                (예정)
-        common/             Triage, AgentRegistry
-    infrastructure/         인프라 구현체
+        llm-response/       LLMResponseService, decision-tag registry
+        ports/              port interfaces (queue, http, state, workflow)
+        prompt/             PromptBuilder + Handlebars templates
+        realtime/           Kanban / Workflow / Preview / Git broadcasters
+        streaming/          XMLStreamParser, SpecialTagTransformer
+        executionTier/      the 5-tier strategy matrix
+        types/              shared types, processEnv
+    agents/                 LangGraph agent graphs
+        architect/          code, design, learn, ask sub-graphs
+        planner/            plan graph
+        creator/            visual graph
+        common/             triage, shared tool handlers, RAC loading
+    infrastructure/         technical adapters
         adapters/           InfrastructureFactory, AdapterFactory
         queue/              BullMQJobQueue
-        state/              RedisStateStore, redisConstants
+        state/              RedisStateStore
         worker/             JobWorker
         realtime/           RealtimeServer
         preview/            PreviewServer
         workspace/          WorkspaceResolver, ArtifactService
         networking/         PortManager
-        ide/                IDE 오케스트레이터 (Docker/K8s)
-    periphery/              외부 어댑터
+        ide/                IDE orchestration (Docker / Kubernetes)
+    periphery/              external adapters
         adapters/
-            http/           Express 서버, 라우트, 서비스
+            http/           Express server, routes, services
             llm/            LLMClientFactory
             prompt/         FilePromptAdapter
-        integrations/       docker-compose (Redis, Chroma)
+            git/, memory/, auth/, command/
+        integrations/       docker-compose sidecars:
+                            cache-memory (Redis), vector-memory (ChromaDB),
+                            visual-processor
 ```
 
-## 프로세스 모델
+## Commands
 
-| 프로세스 | 진입점 | 기본 포트 |
-|----------|--------|----------|
-| ant-api | `composition/server.ts` | 4100 |
-| ant-realtime | `infrastructure/realtime/RealtimeServer.ts` | 4101 |
-| ant-job | `infrastructure/worker/JobWorker.ts` | - |
-| ant-preview | `infrastructure/preview/PreviewServer.ts` | 4102 |
+```bash
+# from the repo root
+pnpm dev:server            # all four processes
+pnpm dev:api-server        # or one at a time
+pnpm test:cli
+pnpm typecheck:cli
 
-## 주요 의존성
+# a single test file
+cd packages/ant-cli && pnpm vitest run tests/triage-parser.test.ts
+```
 
-| 카테고리 | 패키지 |
-|----------|--------|
-| AI | @anthropic-ai/sdk, @langchain/*, openai |
+Tests live in `tests/` and are **not** part of `tsconfig.json` — that file is
+a production artifact copied into the runtime image, since the server boots
+via `tsx src/composition/server.ts`. Test type-checking lives in the sibling
+`tsconfig.test.json`. Tests do not gate the build; CI is the only gate.
+
+## Dependencies
+
+| Category | Packages |
+|---|---|
+| AI | @anthropic-ai/sdk, @langchain/*, openai, @google/genai |
 | Queue | bullmq, ioredis |
 | Web | express, cors, http-proxy-middleware |
-| Template | handlebars |
+| Templates | handlebars |
 | Validation | zod |
 | VCS | simple-git |
-| Container | dockerode |
+| Containers | dockerode |
+| Search | @vscode/ripgrep |
 
-## 환경변수
+## Environment
 
-인프라 환경변수(`ANT_REDIS_URL`, `ANT_SERVER_MODE` 등)와 런타임 환경변수(`ANT_JOB_ID`, `ANT_USER_ID` 등)로 구분된다. 상세는 [01-infrastructure.md](../../docs/internals/02-infrastructure.md) 참조.
+Split between infrastructure variables (`ANT_REDIS_URL`, `ANT_SERVER_MODE`,
+`ANT_ENCRYPTION_KEY`, …) and per-job runtime variables (`ANT_JOB_ID`,
+`ANT_USER_ID`, …), which are passed to the job child through an explicit
+allowlist rather than inheriting the parent environment.
+
+Start from `.env.example.local` or `.env.example.cloud`. Full reference:
+[docs/reference/env-vars.md](../../docs/reference/env-vars.md) and
+[docs/internals/02-infrastructure.md](../../docs/internals/02-infrastructure.md).
