@@ -5,6 +5,7 @@ import { ArrowRight, Check } from 'lucide-react';
 import type { PlanInfo } from '@ant/shared';
 import { usePricingCatalog } from '@/lib/usePricingCatalog';
 import { getCloudBillingUrl } from '@/lib/AuthSessionProvider';
+import { useCloudGate } from '@/lib/CloudGateProvider';
 import { GlassCard } from '@/components/aurora/GlassCard';
 import { AuroraButton } from '@/components/aurora/AuroraButton';
 
@@ -15,6 +16,7 @@ const POPULAR_TIER = 'pro';
 
 function PlanCard({ plan, ctaHref }: { plan: PlanInfo; ctaHref: string }) {
   const { t } = useTranslation('site');
+  const { cloudBlocked, requestCloud } = useCloudGate();
   const tier = plan.tier;
   const popular = tier === POPULAR_TIER;
 
@@ -87,10 +89,19 @@ function PlanCard({ plan, ctaHref }: { plan: PlanInfo; ctaHref: string }) {
             </li>
           ))}
         </ul>
-        <AuroraButton href={ctaHref} external variant={popular ? 'primary' : 'secondary'} fullWidth>
-          {t('pricing.cta')}
-          <ArrowRight className="w-4 h-4" />
-        </AuroraButton>
+        {/* Prices stay visible in local mode (your LLM spend is real either
+            way); only the checkout deep-link is gated. */}
+        {cloudBlocked ? (
+          <AuroraButton onClick={requestCloud} variant={popular ? 'primary' : 'secondary'} fullWidth>
+            {t('pricing.cta')}
+            <ArrowRight className="w-4 h-4" />
+          </AuroraButton>
+        ) : (
+          <AuroraButton href={ctaHref} external variant={popular ? 'primary' : 'secondary'} fullWidth>
+            {t('pricing.cta')}
+            <ArrowRight className="w-4 h-4" />
+          </AuroraButton>
+        )}
       </div>
     </GlassCard>
   );

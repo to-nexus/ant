@@ -5,6 +5,7 @@ import { SiteFooter } from '@/components/SiteFooter';
 import { AuroraMesh } from '@/components/AuroraMesh';
 import { I18nProvider } from '@/lib/I18nProvider';
 import { AuthSessionProvider } from '@/lib/AuthSessionProvider';
+import { CloudGateProvider } from '@/lib/CloudGateProvider';
 import './globals.css';
 
 const jakarta = Plus_Jakarta_Sans({
@@ -53,9 +54,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuroraMesh />
         <I18nProvider>
           <AuthSessionProvider>
-            <SiteNavBar />
-            <main className="relative z-10 flex-1">{children}</main>
-            <SiteFooter />
+            <CloudGateProvider>
+              <SiteNavBar />
+              <main className="relative z-10 flex-1">{children}</main>
+              <SiteFooter />
+            </CloudGateProvider>
           </AuthSessionProvider>
         </I18nProvider>
       </body>

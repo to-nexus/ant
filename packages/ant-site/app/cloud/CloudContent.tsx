@@ -10,6 +10,7 @@ import { AuroraButton } from '@/components/aurora/AuroraButton';
 import { SectionHeading } from '@/components/aurora/SectionHeading';
 import { Reveal } from '@/components/aurora/Reveal';
 import { getCloudAppUrl } from '@/lib/AuthSessionProvider';
+import { useCloudGate } from '@/lib/CloudGateProvider';
 
 interface FaqEntry {
   q: string;
@@ -18,6 +19,7 @@ interface FaqEntry {
 
 export default function CloudContent() {
   const { t } = useTranslation('site');
+  const { cloudBlocked, requestCloud } = useCloudGate();
   const appEntryUrl = getCloudAppUrl();
 
   const includes = t('cloud.includes', { returnObjects: true }) as string[];
@@ -32,10 +34,20 @@ export default function CloudContent() {
         accent="purple"
       >
         <div className="flex flex-col items-center gap-4">
-          <AuroraButton href={appEntryUrl} external size="lg">
-            {t('cloud.ctaTry')}
-            <ArrowRight className="w-4 h-4" />
-          </AuroraButton>
+          {/* Local-mode builds cannot reach the hosted product — show the
+              coming-soon dialog instead of navigating. The page itself stays
+              readable either way. */}
+          {cloudBlocked ? (
+            <AuroraButton onClick={requestCloud} size="lg">
+              {t('cloud.ctaTry')}
+              <ArrowRight className="w-4 h-4" />
+            </AuroraButton>
+          ) : (
+            <AuroraButton href={appEntryUrl} external size="lg">
+              {t('cloud.ctaTry')}
+              <ArrowRight className="w-4 h-4" />
+            </AuroraButton>
+          )}
           <p style={{ fontSize: 12, color: 'var(--text-4)' }}>{t('cloud.pricingNote')}</p>
           <a
             href="#pricing"
