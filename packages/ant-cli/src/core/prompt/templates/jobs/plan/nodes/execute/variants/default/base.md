@@ -43,7 +43,7 @@ The observation phase resolved the following. Encode these decisions into the do
 ## Language
 
 {{#if isKorean}}
-Write the document in Korean (한국어).
+Write the document in Korean.
 {{else}}
 Write the document in English.
 {{/if}}

@@ -29,7 +29,8 @@ dependencies
 tsconfig.json
 ```
 
-**Korean Text:**
-- Keep particles attached: `api.ts`는, `response.ok`을
+**Non-English text:**
+- In languages with postpositional particles, keep the particle attached
+  directly to the inline-code token (no space in between)
 - No line breaks after inline code
 

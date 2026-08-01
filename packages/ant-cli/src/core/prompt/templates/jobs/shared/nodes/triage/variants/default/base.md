@@ -12,14 +12,14 @@ You map the user's directive to exactly one intent id from the matrix below.
 | Job | {{currentJob}} |
 
 {{#if featureContext.userTurns.length}}
-## PRIOR USER TURNS (Hard Reset 이후 전체, compaction 적용)
+## PRIOR USER TURNS (everything since the last hard reset, compaction applied)
 {{#each featureContext.userTurns}}
 - [intent={{this.actionMetadata.intent}} mode={{this.actionMetadata.mode}} domain={{this.actionMetadata.domain}}] {{this.text}}
 {{/each}}
 {{/if}}
 
 {{#if featureContext.breadcrumbs.length}}
-## PRIOR ARTIFACTS (잡 간 산출물 anchor)
+## PRIOR ARTIFACTS (cross-job artifact anchors)
 {{#each featureContext.breadcrumbs}}
 - [scope={{this.scope}}]{{#if this.consumption}}{{#if (eq this.consumption "pending")}} [pending — not yet consumed by any code job]{{else}} [consumed by a later code job]{{/if}}{{/if}} anchors: {{json this.anchors}} — {{this.summary}}
 {{/each}}
@@ -54,7 +54,7 @@ You map the user's directive to exactly one intent id from the matrix below.
 ### Codebase
 {{#if hasCodebase}}✅ Codebase indexed: {{indexedFileCount}} files{{else}}ℹ️ No codebase{{/if}}
 
-## INTENT CATALOG (매트릭스 — exactly 34 intents)
+## INTENT CATALOG (matrix — exactly 34 intents)
 {{{intentCatalog}}}
 
 ## RESPONSE FORMAT
