@@ -1,53 +1,61 @@
 # System Overview
 
-## 개요
+## Overview
 
-ANT는 AI 에이전트 기반 소프트웨어 개발 플랫폼이다. pnpm 모노레포로 구성되며, 단일 코드베이스(ant-cli)에서 4개 프로세스로 분리 배포되는 Modular Monolith 구조를 따른다.
+ANT is an AI-agent-based software development platform. It is organized as a pnpm
+monorepo and follows a Modular Monolith structure in which a single codebase
+(ant-cli) is deployed as 4 separate processes.
 
-## 패키지 구성
+## Package Layout
 
-| 패키지 | npm 이름 | 역할 |
+| Package | npm name | Role |
 |--------|----------|------|
-| `ant-cli` | `@ant/cli` | 백엔드. API 서버, Job Worker, Realtime 서버, Preview 서버 |
-| `ant-ui` | `@ant/ui` | 프론트엔드. React 19 + Vite SPA |
-| `ant-shared` | `@ant/shared` | 공유 타입. 패키지 간 계약 정의 |
-| `ant-site` | - | 마케팅 사이트. Next.js SSG |
+| `ant-cli` | `@ant/cli` | Backend. API server, Job Worker, Realtime server, Preview server |
+| `ant-ui` | `@ant/ui` | Frontend. React 19 + Vite SPA |
+| `ant-shared` | `@ant/shared` | Shared types. Defines contracts between packages |
+| `ant-site` | - | Marketing site. Next.js SSG |
 
-`ant-cli`는 배포 시 역할별로 4개 프로세스로 실행된다. 코드베이스는 하나이며, 진입점과 환경변수로 역할이 결정된다.
+At deployment time, `ant-cli` runs as 4 processes split by role. There is one
+codebase; the entry point and environment variables determine each process's role.
 
-## 프로세스 토폴로지
+## Process Topology
 
-| 프로세스 | 포트 (로컬) | 진입점 | 역할 |
+| Process | Port (local) | Entry point | Role |
 |----------|------------|--------|------|
-| ant-api | 4100 | `composition/server.ts` | REST API, IDE 프록시, 정적 파일 서빙 |
-| ant-realtime | 4101 | `infrastructure/realtime/start-realtime-server.ts` | SSE 연결 관리, Redis Pub/Sub 구독 |
-| ant-job | - | `infrastructure/worker/start-job-worker.ts` | BullMQ Worker, 자식 프로세스(job-runner) 스폰 |
-| ant-preview | 4102 | `infrastructure/preview/start-preview-server.ts` | Dev Server 생명주기, Preview 프록시 |
+| ant-api | 4100 | `composition/server.ts` | REST API, IDE proxy, static file serving |
+| ant-realtime | 4101 | `infrastructure/realtime/start-realtime-server.ts` | SSE connection management, Redis Pub/Sub subscription |
+| ant-job | - | `infrastructure/worker/start-job-worker.ts` | BullMQ Worker, spawns child processes (job-runner) |
+| ant-preview | 4102 | `infrastructure/preview/start-preview-server.ts` | Dev Server lifecycle, Preview proxy |
 
-프로세스 간 통신은 Redis를 통해 이루어진다. 직접적인 프로세스 간 HTTP 호출은 없다.
+Inter-process communication happens through Redis. There are no direct
+process-to-process HTTP calls.
 
-## 배포 모델
+## Deployment Model
 
-### Local 모드
+### Local mode
 
-단일 머신에서 4개 프로세스가 실행된다. Redis는 Docker Compose로 로컬에 기동한다. 인증은 `local:local` 고정 테넌트를 사용한다. 파일 저장은 로컬 파일시스템이다.
+All 4 processes run on a single machine. Redis is started locally via Docker
+Compose. Authentication uses the fixed `local:local` tenant. File storage is the
+local filesystem.
 
-### Cloud 모드
+### Cloud mode
 
-Kubernetes 환경에서 각 프로세스가 독립 Pod으로 배포된다. Redis는 ElastiCache, 파일 저장은 EFS(NFS)를 사용한다. 인증은 OAuth 기반이다.
+Each process is deployed as an independent Pod in a Kubernetes environment. Redis
+is ElastiCache, and file storage is EFS (NFS). Authentication is OAuth-based.
 
-| 서비스 | 스케일링 | LB 정책 |
+| Service | Scaling | LB policy |
 |--------|---------|---------|
 | ant-api | HPA (CPU) | Round-robin |
 | ant-realtime | KEDA (connections) | Round-robin |
-| ant-job | KEDA (queue depth) | N/A (큐 기반) |
+| ant-job | KEDA (queue depth) | N/A (queue-based) |
 | ant-preview | HPA (CPU) | Round-robin |
 
-모든 서비스가 Redis 기반 상태 관리를 사용하므로 Sticky Session이 불필요하다.
+Because every service uses Redis-based state management, sticky sessions are
+unnecessary.
 
-### Ingress 라우팅
+### Ingress Routing
 
-| 호스트 | 경로 | 대상 |
+| Host | Path | Target |
 |--------|------|------|
 | `ant.example.com` | `/realtime/*` | ant-realtime |
 | `ant.example.com` | `/bridge/*` | ant-realtime |
@@ -56,11 +64,12 @@ Kubernetes 환경에서 각 프로세스가 독립 Pod으로 배포된다. Redis
 | `ant.example.com` | `/*` | ant-api (default) |
 | `ant-preview.example.com` | `/*` | ant-preview |
 
-Preview는 별도 호스트를 사용한다. SSR 앱의 절대 경로 리소스가 URI 기반 라우팅을 우회하는 문제를 호스트 기반 라우팅으로 해결한다.
+Preview uses a separate host. Host-based routing solves the problem of SSR apps'
+absolute-path resources bypassing URI-based routing.
 
-## 기술 스택
+## Technology Stack
 
-### 백엔드 (ant-cli)
+### Backend (ant-cli)
 
 - Runtime: Node.js 18+, TypeScript 5.0+
 - Web: Express
@@ -70,36 +79,37 @@ Preview는 별도 호스트를 사용한다. SSR 앱의 절대 경로 리소스�
 - Validation: Zod
 - VCS: simple-git
 
-### 프론트엔드 (ant-ui)
+### Frontend (ant-ui)
 
 - Framework: React 19, Vite
 - State: Zustand
 - Styling: Tailwind CSS
 - UI: Radix UI, Lucide React, Framer Motion
-- Visualization: ReactFlow (워크플로우 그래프)
+- Visualization: ReactFlow (workflow graph)
 
-### 인프라
+### Infrastructure
 
 - Monorepo: pnpm workspaces
-- Container: Docker (로컬 IDE), Kubernetes (클라우드)
-- Storage: Redis (상태, Pub/Sub, 큐), EFS (파일)
+- Container: Docker (local IDE), Kubernetes (cloud)
+- Storage: Redis (state, Pub/Sub, queue), EFS (files)
 
-## 환경별 차이
+## Per-Environment Differences
 
-| 항목 | Local | Cloud |
+| Item | Local | Cloud |
 |------|-------|-------|
-| 인증 | `local:local` 자동 | OAuth |
-| 상태 저장 | Redis | Redis |
-| Job 큐 | BullMQ | BullMQ |
-| 파일 저장 | 로컬 FS | EFS |
-| IDE | Docker 컨테이너 | Kubernetes Pod |
-| Preview | 로컬 프로세스 | Pod 내 프로세스 |
+| Authentication | `local:local` automatic | OAuth |
+| State storage | Redis | Redis |
+| Job queue | BullMQ | BullMQ |
+| File storage | Local FS | EFS |
+| IDE | Docker container | Kubernetes Pod |
+| Preview | Local process | In-pod process |
 
-Local과 Cloud의 코드 경로는 동일하다. 인프라가 실행되는 위치만 다르다.
+Local and Cloud share the same code path. Only where the infrastructure runs
+differs.
 
-## 경계
+## Boundaries
 
-- 각 프로세스의 내부 구조: 해당 프로세스별 문서 참조
-- Redis 키/채널 규약: [02-infrastructure.md](02-infrastructure.md)
-- Job 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
-- 프론트엔드 아키텍처: [30-frontend-architecture.md](30-frontend-architecture.md)
+- Internal structure of each process: see the per-process documents
+- Redis key/channel conventions: [02-infrastructure.md](02-infrastructure.md)
+- Job execution flow: [10-job-lifecycle.md](10-job-lifecycle.md)
+- Frontend architecture: [30-frontend-architecture.md](30-frontend-architecture.md)

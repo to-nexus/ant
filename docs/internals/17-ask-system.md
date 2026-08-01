@@ -1,24 +1,24 @@
 # Ask System
 
-## 개요
+## Overview
 
-Ask 시스템은 사용자의 Ant 관련 질문에 **정적 지식**과 **동적 코드 탐색**을 결합하여 답변한다. Agentic Ask(독립 그래프)와 Inline Ask(중단된 Job 컨텍스트 내)로 구분된다.
+The Ask system answers users' Ant-related questions by combining **static knowledge** with **dynamic code exploration**. It comes in two forms: Agentic Ask (a standalone graph) and Inline Ask (inside an interrupted Job's context).
 
-## 2계층 지식 구조
+## Two-Layer Knowledge Structure
 
-### 계층 1: 정적 지식 (System Prompt)
+### Layer 1: Static Knowledge (System Prompt)
 
-LLM system prompt에 포함되어 tool call 없이 즉시 답변 가능한 지식.
+Knowledge included in the LLM system prompt that enables immediate answers without tool calls.
 
-**구성 요소:**
+**Components:**
 
-| 소스 | 내용 | 성격 |
+| Source | Content | Nature |
 |------|------|------|
-| `ask/base.md` 고정 섹션 | Ant 개요, 핵심 원칙, 제약사항, Feature/Session 개념, UI 구조 | 안정적, 변경 드묾 |
-| `{{{jobKnowledge}}}` | Job 타입 표, 모드별 설명/Outputs/Scope, Workflow Decision Principles | **YAML에서 런타임 생성** |
-| `ask/rules.md` | 도구 사용 정책, 평가 프로토콜, 보안 제약, 응답 원칙 | 안정적 |
+| `ask/base.md` fixed sections | Ant overview, core principles, constraints, Feature/Session concepts, UI structure | Stable, rarely changes |
+| `{{{jobKnowledge}}}` | Job type table, per-mode descriptions/Outputs/Scope, Workflow Decision Principles | **Generated at runtime from YAML** |
+| `ask/rules.md` | Tool usage policy, evaluation protocol, security constraints, response principles | Stable |
 
-**YAML 단일 소스 원칙**: Job/Mode 설명은 `core/data/triage/jobs/*.yaml`에 정의된다. `AgentRegistry.generateAskKnowledge()`가 YAML을 마크다운으로 렌더링하여 `{{{jobKnowledge}}}`에 주입한다. 동일한 YAML을 triage 라우팅(`generatePromptContext()`)과 ask 지식이 함께 사용하므로, YAML을 업데이트하면 양쪽 모두 반영된다.
+**YAML single-source principle**: Job/Mode descriptions are defined in `core/data/triage/jobs/*.yaml`. `AgentRegistry.generateAskKnowledge()` renders the YAML into markdown and injects it into `{{{jobKnowledge}}}`. Since the same YAML is used by both triage routing (`generatePromptContext()`) and ask knowledge, updating the YAML propagates to both.
 
 ```
 YAML (core/data/triage/jobs/*.yaml)
@@ -26,92 +26,92 @@ YAML (core/data/triage/jobs/*.yaml)
   └─ AgentRegistry.generateAskKnowledge()  → ask/base.md {{{jobKnowledge}}}
 ```
 
-### 계층 2: 동적 코드 탐색 (Tool Calls)
+### Layer 2: Dynamic Code Exploration (Tool Calls)
 
-정적 지식만으로 불충분할 때, LLM이 Ant 소스코드와 문서를 직접 읽어서 답변한다.
+When static knowledge alone is insufficient, the LLM reads Ant source code and documentation directly to answer.
 
-**판단 기준** (`rules.md`):
+**Decision criteria** (`rules.md`):
 
-| 질문 유형 | 동작 |
+| Question type | Behavior |
 |-----------|------|
-| "X가 뭐야?" (개념) | 정적 지식으로 답변 가능 |
-| "X가 어떻게 작동해?" | 반드시 도구로 검증 후 답변 |
-| "왜 X가 이렇게 되지?" | 반드시 도구로 검증 후 답변 |
-| 평가 요청 | 루브릭 + 대상 문서를 반드시 도구로 읽고 점수 매김 |
+| "What is X?" (concept) | Answerable from static knowledge |
+| "How does X work?" | Must verify with tools before answering |
+| "Why does X behave like this?" | Must verify with tools before answering |
+| Evaluation request | Must read the rubric + target document with tools before scoring |
 
 ## Agentic Ask
 
-Triage에서 `intent: ask, inScope: true`로 판정되면 Ask 그래프가 실행된다.
+When Triage classifies the input as `intent: ask, inScope: true`, the Ask graph runs.
 
-### LangGraph 워크플로우
+### LangGraph Workflow
 
 ```
 agent (LLM + system prompt) → [router]
-    +→ tool (코드 탐색) → agent (루프)
-    +→ respond (최종 답변, 채팅 스트리밍)
+    +→ tool (code exploration) → agent (loop)
+    +→ respond (final answer, chat streaming)
 ```
 
-### 노드 역할
+### Node Roles
 
-| 노드 | 역할 |
+| Node | Role |
 |------|------|
-| agent | base.md + rules.md + YAML 지식 로드, LLM 판단, tool call 결정 |
-| tool | 도구 실행, 보안 검증, 결과 반환 |
-| respond | 최종 응답을 Chat UI로 스트리밍 |
+| agent | Loads base.md + rules.md + YAML knowledge, LLM judgment, tool call decisions |
+| tool | Tool execution, security validation, result return |
+| respond | Streams the final response to the Chat UI |
 
-### 도구
+### Tools
 
-Ant 소스 탐색 도구와 워크스페이스 탐색 도구로 구분된다.
+Tools are split into Ant source exploration tools and workspace exploration tools.
 
-| 도구 | 카테고리 | 설명 |
+| Tool | Category | Description |
 |------|----------|------|
-| `read_ant_source` | Ant 소스 | 파일 읽기 (path, source: cli/ui/docs) |
-| `list_ant_files` | Ant 소스 | 디렉토리 목록 (source: cli/ui/docs) |
-| `search_ant_code` | Ant 소스 | 코드/문서 검색 (query, source, filePattern) |
-| `read_workspace_file` | 워크스페이스 | 피처 디렉토리 내 파일 읽기 |
-| `list_workspace_files` | 워크스페이스 | 피처 디렉토리 내 목록 |
+| `read_ant_source` | Ant source | Read file (path, source: cli/ui/docs) |
+| `list_ant_files` | Ant source | List directory (source: cli/ui/docs) |
+| `search_ant_code` | Ant source | Search code/docs (query, source, filePattern) |
+| `read_workspace_file` | Workspace | Read file inside the feature directory |
+| `list_workspace_files` | Workspace | List inside the feature directory |
 
-**Source 옵션:**
+**Source options:**
 
-| Source | 루트 | 대상 |
+| Source | Root | Target |
 |--------|------|------|
-| `cli` | ant-cli/src | 백엔드 소스 (agents, core, infrastructure) |
-| `ui` | ant-ui/src | 프론트엔드 소스 (components, stores) |
-| `docs` | docs/ | 루브릭, 아키텍처 문서, 가이드 |
+| `cli` | ant-cli/src | Backend source (agents, core, infrastructure) |
+| `ui` | ant-ui/src | Frontend source (components, stores) |
+| `docs` | docs/ | Rubrics, architecture docs, guides |
 
-### 접근 제어
+### Access Control
 
-Ant 소스 도구는 블랙리스트 패턴으로 민감 경로를 차단한다. 워크스페이스 도구는 `plan/`, `architecture/`, `visual/`, `assets/`, `meta/`, `sessions/` 디렉토리만 허용(화이트리스트)한다.
+Ant source tools block sensitive paths via blacklist patterns. Workspace tools allow only the `plan/`, `architecture/`, `visual/`, `assets/`, `meta/`, and `sessions/` directories (whitelist).
 
-**블랙리스트 (FORBIDDEN_PATTERNS)**: `.env`, `secret`, `credentials`, `password`, `private_key`, `api_key`, `infrastructure/auth/`, `infrastructure/networking/`, `node_modules/`, `.git/`, `dist/`
+**Blacklist (FORBIDDEN_PATTERNS)**: `.env`, `secret`, `credentials`, `password`, `private_key`, `api_key`, `infrastructure/auth/`, `infrastructure/networking/`, `node_modules/`, `.git/`, `dist/`
 
-### 보안 계층
+### Security Layers
 
-| 계층 | 위치 | 기능 |
+| Layer | Location | Function |
 |------|------|------|
-| 경로 검증 | tools.ts | 블랙리스트 매칭, traversal 방지, 워크스페이스 허용 디렉토리 검증 |
-| 출력 필터링 | tools.ts | Base64, API key 패턴 마스킹 |
-| LLM 가드레일 | rules.md | 민감 정보 금지, Ant 소스코드 사용자 노출 금지 |
+| Path validation | tools.ts | Blacklist matching, traversal prevention, workspace allowed-directory validation |
+| Output filtering | tools.ts | Masking of Base64 and API key patterns |
+| LLM guardrails | rules.md | No sensitive information, no exposing Ant source code to the user |
 
 ## Inline Ask
 
-중단(interrupted)된 Job 세션에서 사용자가 채팅할 때 실행된다 (`POST /inline-ask`). Agentic Ask와 동일한 도구와 보안 계층을 사용하되, 중단된 Job의 태스크 컨텍스트(`existingTaskSummary`)를 triage에 주입하여 작업 재개 여부를 판단한다.
+Runs when the user chats in an interrupted Job session (`POST /inline-ask`). It uses the same tools and security layers as Agentic Ask, but injects the interrupted Job's task context (`existingTaskSummary`) into triage to decide whether to resume the work.
 
-## Triage 연동
+## Triage Integration
 
 ```
-사용자 입력
-    → Triage (intent 판단)
+User input
+    → Triage (intent classification)
     → intent: ask + inScope → runAskGraph()
-    → 채팅 응답 스트리밍
+    → chat response streaming
 ```
 
-Ask 실행 중 Kanban, Workflow UI에는 변화가 없다. 채팅 응답만 스트리밍된다.
+While Ask runs, the Kanban and Workflow UI do not change. Only the chat response is streamed.
 
-## 경계
+## Boundaries
 
-- Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
-- Triage 분류: [12-triage-routing.md](12-triage-routing.md)
-- YAML Job 정의: `core/data/triage/jobs/*.yaml`
-- 프롬프트 구조: [13-prompt-system.md](13-prompt-system.md)
-- 채팅 스트리밍: [31-chat-system.md](31-chat-system.md)
+- Tool system (tool catalog, registry, orchestrator): [19-tool-system.md](19-tool-system.md)
+- Triage classification: [12-triage-routing.md](12-triage-routing.md)
+- YAML Job definitions: `core/data/triage/jobs/*.yaml`
+- Prompt structure: [13-prompt-system.md](13-prompt-system.md)
+- Chat streaming: [31-chat-system.md](31-chat-system.md)

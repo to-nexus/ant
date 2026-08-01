@@ -1,201 +1,217 @@
 # Agent Architecture
 
-## 개요
+## Overview
 
-ANT의 에이전트는 LangGraph StateGraph로 구현된다. 각 에이전트는 특화된 역할을 가지며, 공통 인프라(Triage, Broadcaster, Checkpoint)를 공유한다. 병렬 태스크 실행은 TaskOrchestrator/TaskWorker 패턴으로 처리한다.
+ANT's agents are implemented as LangGraph StateGraphs. Each agent has a
+specialized role and shares common infrastructure (Triage, Broadcaster,
+Checkpoint). Parallel task execution is handled by the TaskOrchestrator /
+TaskWorker pattern.
 
-## 에이전트 목록
+## Agent List
 
-| Agent | 역할 | Job 타입 |
+| Agent | Role | Job types |
 |-------|------|----------|
-| planner | PRD 작성/수정 | plan |
-| architect | 설계, 구현, 학습, 질의응답 | design, code, learn, ask, inline-ask |
-| creator | 크리에이티브 에셋 생산 (visual, audible, animation 등) | visual (향후 audible 등 확장) |
-| reviewer | 코드 리뷰 (예정) | review |
-| doc | 문서 생성 (예정) | doc |
+| planner | PRD authoring/revision | plan |
+| architect | Design, implementation, learning, Q&A | design, code, learn, ask, inline-ask |
+| creator | Creative asset production (visual, audible, animation, etc.) | visual (audible etc. planned) |
+| reviewer | Code review (planned) | review |
+| doc | Document generation (planned) | doc |
 
-### 에이전트 간 관계
+### Relationships between agents
 
-planner의 산출물(`plan/prd.md`)이 architect의 입력이 된다. creator는 독립적으로 동작하며, PRD나 directive를 참조하여 프로젝트 에셋을 생산한다. 현재 visual job이 구현되어 있으며, audible/animation 등은 향후 추가 예정이다. planner -> architect -> reviewer 순서로 워크플로우가 진행된다.
+The planner's output (`plan/prd.md`) becomes the architect's input. The creator
+operates independently, producing project assets with reference to the PRD or
+directive. The visual job is currently implemented; audible/animation and others
+are planned. The workflow proceeds in the order planner -> architect -> reviewer.
 
-## 디렉토리 규약
+## Directory Conventions
 
-### 배치 원칙
+### Placement principle
 
-> **2개 이상의 sub-graph에서 사용하면 agent root, 1개 sub-graph에서만 사용하면 해당 graph 내부.**
+> **If used by 2+ sub-graphs, place it at the agent root; if used by only 1
+> sub-graph, place it inside that graph.**
 
-### 정규 구조
+### Canonical structure
 
 ```
 agents/<agent>/
   index.ts              # Entry point
-  types/                # Agent-level types (2+ sub-graph에서 공유)
+  types/                # Agent-level types (shared by 2+ sub-graphs)
     index.ts
-    [domain].ts         # 도메인별 타입 (예: task.ts)
-  [memory/]             # Vector memory (optional, 2+ sub-graph에서 사용 시)
+    [domain].ts         # Per-domain types (e.g. task.ts)
+  [memory/]             # Vector memory (optional, when used by 2+ sub-graphs)
   graph/
     <jobType>/
-      graph.ts          # StateGraph 정의
+      graph.ts          # StateGraph definition
       runner.ts         # Graph runner
       state.ts          # State + Annotation
-      nodes/            # Graph 노드
-      [session/]        # Graph-specific (1개 graph 전용)
-      [utils/]          # Graph-specific (1개 graph 전용)
-      [parallel/]       # 병렬 실행
-      [routers/]        # 라우팅 로직
-      [config/]         # 설정
+      nodes/            # Graph nodes
+      [session/]        # Graph-specific (single-graph only)
+      [utils/]          # Graph-specific (single-graph only)
+      [parallel/]       # Parallel execution
+      [routers/]        # Routing logic
+      [config/]         # Configuration
 
 agents/common/
-  graph/                # 전 에이전트 공유 그래프 노드/헬퍼
-  tool/                 # 전 에이전트 공유 툴 시스템
+  graph/                # Graph nodes/helpers shared by all agents
+  tool/                 # Tool system shared by all agents
 ```
 
-`[]`로 표기된 디렉토리는 필요 시에만 생성한다.
+Directories marked with `[]` are created only when needed.
 
-### 배치 판정표
+### Placement decision table
 
-| 조건 | 위치 | 예시 |
+| Condition | Location | Example |
 |------|------|------|
-| 2+ sub-graph에서 import | `<agent>/` root | `memory/`, `types/task.ts` |
-| 1개 sub-graph에서만 import | `graph/<jobType>/` 내부 | `graph/code/session/`, `graph/code/utils/` |
-| 전 에이전트 공유 | `common/` | triage, tool handlers |
+| Imported by 2+ sub-graphs | `<agent>/` root | `memory/`, `types/task.ts` |
+| Imported by only 1 sub-graph | Inside `graph/<jobType>/` | `graph/code/session/`, `graph/code/utils/` |
+| Shared by all agents | `common/` | triage, tool handlers |
 
-### 금지 패턴
+### Forbidden patterns
 
-- `<agent>/types.ts`(파일)과 `<agent>/types/`(디렉토리) 공존 — `types/index.ts`로 통일
-- 1개 graph 전용 코드를 agent root에 배치 (참조 범위 원칙 위반)
+- Coexistence of `<agent>/types.ts` (file) and `<agent>/types/` (directory) — unify into `types/index.ts`
+- Placing single-graph-only code at the agent root (violates the reference-scope principle)
 
-## LangGraph 패턴
+## LangGraph Patterns
 
-### StateGraph 구조
+### StateGraph structure
 
-모든 에이전트 그래프는 다음 패턴을 따른다:
+Every agent graph follows this pattern:
 
-1. **State 정의**: channels에 모든 상태 필드를 선언
-2. **노드 등록**: 각 노드는 state를 받아 부분 state를 반환하는 함수
-3. **엣지 정의**: 조건부 라우팅으로 노드 간 전이를 결정
-4. **Runner**: 그래프를 컴파일하고 invoke. resume state 복원, recursion limit 설정
+1. **State definition**: declare all state fields in channels
+2. **Node registration**: each node is a function that takes state and returns partial state
+3. **Edge definition**: conditional routing determines transitions between nodes
+4. **Runner**: compiles and invokes the graph. Restores resume state, sets the recursion limit
 
-### 공통 노드
+### Common nodes
 
-| 노드 | 위치 | 역할 |
+| Node | Location | Role |
 |------|------|------|
-| triage | `agents/common/nodes/triage/` | 의도 분류, 라우팅 |
-| detect | `agents/common/nodes/detect/` | RAC 생성. explicit/infer 경로 모두 `resolveToRAC()` 단일 퍼널 |
-| resolve | 각 에이전트 graph 내 | 초기 상태 로드, resume 판정 |
-| learn | 각 에이전트 graph 내 | 세션 저장, 워크플로우 종료 |
+| triage | `agents/common/nodes/triage/` | Intent classification, routing |
+| detect | `agents/common/nodes/detect/` | RAC creation. Both explicit/infer paths go through the single `resolveToRAC()` funnel |
+| resolve | Inside each agent graph | Initial state loading, resume determination |
+| learn | Inside each agent graph | Session save, workflow termination |
 
 ### Progressive Basis (detect → decompose)
 
-basis는 detect와 decompose 구간에서 점진적으로 확정된다:
+The basis is finalized incrementally across the detect and decompose span:
 
-| 단계 | 확정 내용 | 소스 |
+| Stage | What is finalized | Source |
 |------|-----------|------|
-| detect | `RAC.basis.techTier` (preset) | UI BasisWizard → `ActionMetadata.basis` (explicit 경로만) |
+| detect | `RAC.basis.techTier` (preset) | UI BasisWizard → `ActionMetadata.basis` (explicit path only) |
 | detect | `RAC.basis.visualTier` (preset) | UI BasisWizard → `ActionMetadata.basis.visualTier` |
-| decompose | `RAC.basis.techTier` (final) | `mergeTechTierConfigs(preset, inferred)` — preset 필드 우선, 빈 필드는 LLM 추론으로 채움 |
-| decompose | `RAC.basis.visualTier` (final) | `resolveVisualTierFromDecompose(llmResponse, preset)` — `gen-code-directive` intent에서만 실행 |
+| decompose | `RAC.basis.techTier` (final) | `mergeTechTierConfigs(preset, inferred)` — preset fields win, empty fields filled by LLM inference |
+| decompose | `RAC.basis.visualTier` (final) | `resolveVisualTierFromDecompose(llmResponse, preset)` — runs only for the `gen-code-directive` intent |
 
-`getTechTier(state)` 헬퍼(`@ant/shared`)로 RAC에서 대표 TechTier를 읽는다.
+The `getTechTier(state)` helper (`@ant/shared`) reads the representative TechTier
+from the RAC.
 
-basis는 plan/execute 노드에서 `PromptBuilder`의 `buildBasisSection()`을 통해 프롬프트에 주입된다:
-- **techTier**: stack 템플릿 + language base + framework 템플릿 (`basis/techTier/stack/*.md`, `jobs/code/basis/techTier/framework/*.md`)
-- **visualTier**: 6개 레이어별 템플릿 (`basis/visualTier/{layer}/{variant}.md`)
+The basis is injected into prompts in the plan/execute nodes via
+`PromptBuilder`'s `buildBasisSection()`:
+- **techTier**: stack template + language base + framework template (`basis/techTier/stack/*.md`, `jobs/code/basis/techTier/framework/*.md`)
+- **visualTier**: per-layer templates for the 6 layers (`basis/visualTier/{layer}/{variant}.md`)
 
 ### Broadcaster
 
-Job 실행 중 상태 변경은 Redis Pub/Sub를 통해 실시간 전파된다.
+State changes during Job execution are propagated in real time via Redis Pub/Sub.
 
-| Broadcaster | 역할 | 채널 |
+| Broadcaster | Role | Channel |
 |-------------|------|------|
-| KanbanBroadcaster | 태스크 큐 상태 | `realtime:broadcast:{orgId}:{userId}` |
-| WorkflowBroadcaster | 그래프 노드 상태 | `realtime:workflow:{orgId}:{userId}` |
-| MessageBroadcaster | 채팅 메시지 | `realtime:broadcast:{orgId}:{userId}` |
-| FileTreeBroadcaster | 파일 변경 | `realtime:broadcast:{orgId}:{userId}` |
+| KanbanBroadcaster | Task queue state | `realtime:broadcast:{orgId}:{userId}` |
+| WorkflowBroadcaster | Graph node state | `realtime:workflow:{orgId}:{userId}` |
+| MessageBroadcaster | Chat messages | `realtime:broadcast:{orgId}:{userId}` |
+| FileTreeBroadcaster | File changes | `realtime:broadcast:{orgId}:{userId}` |
 
-## 병렬 태스크 실행
+## Parallel Task Execution
 
-`ANT_TASK_CONCURRENCY > 1`일 때 활성화된다 (기본값: 3).
+Activated when `ANT_TASK_CONCURRENCY > 1` (default: 3).
 
-### 컴포넌트
+### Components
 
-| 컴포넌트 | 역할 |
+| Component | Role |
 |----------|------|
-| TaskOrchestrator | 중앙 조정자. 태스크 할당, 충돌 검사, 체크포인트 |
-| TaskWorker | 독립 태스크 실행기. Worker Subgraph invoke |
-| Worker Subgraph | 메인 그래프의 경량 버전. 단일 태스크 실행 |
-| AsyncMutex | 공유 상태 보호를 위한 단일 프로세스 async mutex |
+| TaskOrchestrator | Central coordinator. Task assignment, conflict checks, checkpoints |
+| TaskWorker | Independent task executor. Invokes the Worker Subgraph |
+| Worker Subgraph | Lightweight version of the main graph. Executes a single task |
+| AsyncMutex | Single-process async mutex protecting shared state |
 
-### 태스크 속성
+### Task attributes
 
-| 필드 | 타입 | 역할 |
+| Field | Type | Role |
 |------|------|------|
-| `exclusive` | boolean | true면 단독 실행 (barrier) |
-| `parallelGroup` | string | 같은 그룹은 동시 실행 불가 |
-| `priority` | number | 낮을수록 먼저 실행. 윈도우 체계는 `TASK_PRIORITY` SSOT — [`41-task-priority-band-system.md`](41-task-priority-band-system.md) 참고 |
-| `packages` | string[] | 태스크가 속한 패키지 (설계 문서 split injection용) |
+| `exclusive` | boolean | If true, runs alone (barrier) |
+| `parallelGroup` | string | Tasks in the same group cannot run concurrently |
+| `priority` | number | Lower runs first. The window scheme is the `TASK_PRIORITY` SSOT — see [`41-task-priority-band-system.md`](41-task-priority-band-system.md) |
+| `packages` | string[] | Packages the task belongs to (for design-document split injection) |
 
-### 할당 알고리즘
+### Assignment algorithm
 
-1. 현재 실행 중인 parallelGroup 목록 수집
-2. taskQueue 순회:
-   - exclusive 태스크 -> barrier, 순회 중단
-   - parallelGroup 미지정 -> running이 0일 때만 할당
-   - parallelGroup이 running과 충돌 -> skip
-   - 충돌 없음 -> 할당
+1. Collect the list of currently running parallelGroups
+2. Iterate over the taskQueue:
+   - exclusive task -> barrier, stop iterating
+   - no parallelGroup -> assign only when running count is 0
+   - parallelGroup conflicts with running -> skip
+   - no conflict -> assign
 
-### Worker Subgraph 채널 정의 (SSOT 패턴)
+### Worker Subgraph Channel Definition (SSOT pattern)
 
-Worker Subgraph는 메인 그래프의 경량 버전이지만, LangGraph에서 **별도 StateGraph로 invoke**되므로 자체 Annotation이 필요하다. Annotation에 없는 채널은 `graph.invoke(workerState)` 시점에 자동으로 DROP된다.
+The Worker Subgraph is a lightweight version of the main graph, but LangGraph
+**invokes it as a separate StateGraph**, so it needs its own Annotation. Channels
+absent from the Annotation are silently DROPPED at `graph.invoke(workerState)`
+time.
 
-채널 누락을 방지하기 위해, 메인 그래프의 채널 정의를 export하고 Worker가 spread로 재사용한다:
+To prevent missing channels, the main graph exports its channel definition and
+the Worker reuses it via spread:
 
-| Job | 채널 SSOT | Worker Subgraph | 파일 |
+| Job | Channel SSOT | Worker Subgraph | Files |
 |-----|-----------|-----------------|------|
 | Code | `CodeGraphChannels` | `...CodeGraphChannels` + worker-only | `graph/code/graph.ts` → `graph/code/parallel/workerGraph.ts` |
 | Design | `DesignGraphChannels` | `...DesignGraphChannels` + worker-only | `graph/design/graph.ts` → `graph/design/parallel/workerGraph.ts` |
 
 ```typescript
-// graph.ts — 채널 정의 export
+// graph.ts — export the channel definition
 export const CodeGraphChannels = {
   ...DetectableFields,
-  // ... 모든 job-specific 필드
+  // ... all job-specific fields
 } as const;
 const MainAnnotation = Annotation.Root(CodeGraphChannels);
 
-// parallel/workerGraph.ts — spread로 재사용
+// parallel/workerGraph.ts — reuse via spread
 import { CodeGraphChannels } from '../graph';
 const WorkerAnnotation = Annotation.Root({
-  ...CodeGraphChannels,        // SSOT에서 자동 상속
+  ...CodeGraphChannels,        // inherited automatically from the SSOT
   _taskCompleted: Annotation<any>,  // worker-only
 });
 ```
 
-새 채널을 추가할 때 `*GraphChannels`에만 추가하면 메인 그래프와 Worker 모두 자동 반영된다.
+When adding a new channel, adding it only to `*GraphChannels` automatically
+propagates to both the main graph and the Worker.
 
-### 오류 처리
+### Error handling
 
-| 오류 분류 | 예시 | 재시도 |
+| Error class | Examples | Retry |
 |-----------|------|--------|
-| 결정적 (deterministic) | prompt too long, 400, 401, 403 | 즉시 실패 처리 |
-| 일시적 (transient) | timeout, rate limit, 5xx | 최대 2회 재시도 |
+| Deterministic | prompt too long, 400, 401, 403 | Fail immediately |
+| Transient | timeout, rate limit, 5xx | Retry up to 2 times |
 
-실패한 태스크가 있어도 다른 실행 중 태스크는 계속 완료를 허용한다. 모든 태스크 종료 후 failedTasks가 있으면 Job을 `interrupted` 상태로 마킹한다 (`canResume: true`).
+Even when a task fails, other running tasks are allowed to run to completion.
+After all tasks finish, if failedTasks exist, the Job is marked `interrupted`
+(`canResume: true`).
 
 ### Graceful Shutdown
 
 ```
 handleInterruption(reason)
-    1. drain = true, 주기적 체크포인트 중지
-    2. 모든 worker에 requestStop() 호출
-    3. running 태스크를 interrupted로 마킹, 큐에 복원
-    4. 체크포인트 저장
-    5. running 태스크가 0이면 run() resolve
+    1. drain = true, stop periodic checkpoints
+    2. call requestStop() on all workers
+    3. mark running tasks as interrupted, restore them to the queue
+    4. save checkpoint
+    5. resolve run() when running task count is 0
 ```
 
-## 세션 구조
+## Session Structure
 
-### 디렉토리 레이아웃
+### Directory layout
 
 ```
 sessions/
@@ -207,24 +223,24 @@ sessions/
         plan.json
     creator/
         visual.json
-    chat.json          (에이전트 무관, UI 레벨)
+    chat.json          (agent-independent, UI level)
 ```
 
-### 타입 계층
+### Type hierarchy
 
-| 타입 | 값 | 의미 |
+| Type | Values | Meaning |
 |------|---|------|
-| `JobType` | code, design, learn, ask, plan, inline-ask, visual | 전체 Job 타입 |
-| `DecomposableJobType` | code, design, learn | 태스크 분해가 있는 Job |
-| `SessionableJobType` | code, design, learn, plan, visual | 세션 파일을 가지는 Job |
+| `JobType` | code, design, learn, ask, plan, inline-ask, visual | All Job types |
+| `DecomposableJobType` | code, design, learn | Jobs with task decomposition |
+| `SessionableJobType` | code, design, learn, plan, visual | Jobs that have a session file |
 
-## 경계
+## Boundaries
 
-- Job 큐와 실행 흐름: [10-job-lifecycle.md](10-job-lifecycle.md)
-- Triage 분류: [12-triage-routing.md](12-triage-routing.md)
-- Code Job 상세: [14-code-job.md](14-code-job.md)
-- Design Job 상세: [15-design-job.md](15-design-job.md)
-- Planner Job 상세: [16-planner-job.md](16-planner-job.md)
-- Ask 시스템: [17-ask-system.md](17-ask-system.md)
-- Visual Job 상세: [18-visual-job.md](18-visual-job.md)
-- Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
+- Job queue and execution flow: [10-job-lifecycle.md](10-job-lifecycle.md)
+- Triage classification: [12-triage-routing.md](12-triage-routing.md)
+- Code Job details: [14-code-job.md](14-code-job.md)
+- Design Job details: [15-design-job.md](15-design-job.md)
+- Planner Job details: [16-planner-job.md](16-planner-job.md)
+- Ask system: [17-ask-system.md](17-ask-system.md)
+- Visual Job details: [18-visual-job.md](18-visual-job.md)
+- Tool system (tool catalog, registry, orchestrator): [19-tool-system.md](19-tool-system.md)

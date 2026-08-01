@@ -1,48 +1,48 @@
 # Design Job
 
-## 개요
+## Overview
 
-Design Job은 사용자의 directive를 받아 설계 문서를 생성하는 architect 에이전트의 LangGraph 그래프이다. Code Job과 동일한 resume 아키텍처를 공유하되, 코드 생성 대신 문서 생성(execute)을 수행한다.
+The Design Job is the architect agent's LangGraph graph that takes a user's directive and generates design documents. It shares the same resume architecture as the Code Job, but performs document generation (execute) instead of code generation.
 
-## Code Job과의 차이
+## Differences from the Code Job
 
-| 항목 | Code Job | Design Job |
+| Item | Code Job | Design Job |
 |------|----------|------------|
-| 실행 노드 | plan -> execute -> tool | plan -> execute -> tool |
-| plan 역할 | LLM+tools 로 planText 생성 (5단계 entry/shortcut/RAG/llm/outcome) | LLM+tools 로 sealed `<plan>` 생성 (lean per-doc; intentGroup ∈ {design-spec, design-system-design} 만 적용. ui-design / game-art-design 은 dispatcher-only fallback) |
-| 검증 루프 | enforce -> plan (violations) | 없음 |
-| 태스크 타입 | setup, feature, testgen, error, verification | doc |
-| 출력물 | 소스 코드 파일 | 설계 문서 (MD, JSON) |
-| 고유 속성 | - | workType, documentType |
-| 공유 헬퍼 | `agents/common/graph/nodes/plan/` 의 `runPlanWithTools` / `runPlanToolLoopPhase` / `extractPlanText` 를 두 job 모두 사용. 노드 본체는 각자 별도 구현 (구조 차이가 큼 — adapter/strategy 인터페이스는 만들지 않음) | 동일 |
+| Execution nodes | plan -> execute -> tool | plan -> execute -> tool |
+| plan role | Generates planText via LLM+tools (5 stages: entry/shortcut/RAG/llm/outcome) | Generates a sealed `<plan>` via LLM+tools (lean per-doc; applies only to intentGroup ∈ {design-spec, design-system-design}. ui-design / game-art-design are dispatcher-only fallback) |
+| Verification loop | enforce -> plan (violations) | None |
+| Task types | setup, feature, testgen, error, verification | doc |
+| Output | Source code files | Design documents (MD, JSON) |
+| Unique attributes | - | workType, documentType |
+| Shared helpers | Both jobs use `runPlanWithTools` / `runPlanToolLoopPhase` / `extractPlanText` from `agents/common/graph/nodes/plan/`. Each node body is implemented separately (structural differences are large — no adapter/strategy interface is introduced) | Same |
 
 ## workType
 
-`detect`에서 결정되며 문서 생성 전략을 결정한다.
+Decided at `detect`; determines the document-generation strategy.
 
-| workType | 조건 | 출력 파일 |
+| workType | Condition | Output files |
 |----------|------|----------|
-| `system-design` | PRD/directive만 있고 UI 입력 없음 | system-design.md, api-contract.md 등 |
-| `ui-design` | `visual/ui/figma/figma.json` populated **또는** description 디렉티브 | `visual/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` |
-| `spec` | spec 모드로 명시적 지정 시 | spec 문서 |
+| `system-design` | Only PRD/directive, no UI input | system-design.md, api-contract.md, etc. |
+| `ui-design` | `visual/ui/figma/figma.json` populated **or** a description directive | `visual/ui/ant/{ui-tokens,ui-assets,ui-spec}.json` |
+| `spec` | Explicitly designated as spec mode | spec documents |
 
 ## UI Design Pipeline Mode (Intent-Based)
 
-`ui-design` workType의 파이프라인 모드는 `resolvedAction.intent`로 결정된다. `isFigmaPipeline(intent, figmaPopulated)` 헬퍼가 분기 판정을 담당한다.
+The pipeline mode for the `ui-design` workType is determined by `resolvedAction.intent`. The `isFigmaPipeline(intent, figmaPopulated)` helper owns the branch decision.
 
-| Intent | 조건 | 방법론 | 도구 세트 |
+| Intent | Condition | Methodology | Tool set |
 |--------|------|--------|----------|
-| `gen-ui-figma` | `visual/ui/figma/figma.json` populated + MCP 가용 | Figma MCP 구조적 데이터 추출 → `visual/ui/ant/ui-*.json` 로 산출 | `TOOL_SETS.uiDesignFigma` |
-| `gen-ui-desc` | 디렉티브 + PRD | 텍스트 설명을 기반으로 직접 UI 문서 작성 | `TOOL_SETS.uiDesign` |
-| `rev-ui` | 기존 UI 문서 수정 | by-desc 변종 (디렉티브) — Figma 미선택 모드 공통 진입점 | `TOOL_SETS.uiDesign` |
+| `gen-ui-figma` | `visual/ui/figma/figma.json` populated + MCP available | Figma MCP structured-data extraction → output to `visual/ui/ant/ui-*.json` | `TOOL_SETS.uiDesignFigma` |
+| `gen-ui-desc` | Directive + PRD | Author UI documents directly from a textual description | `TOOL_SETS.uiDesign` |
+| `rev-ui` | Modify existing UI documents | by-desc variant (directive) — common entry point for non-Figma modes | `TOOL_SETS.uiDesign` |
 
-Figma intent(`gen-ui-figma`)가 합성되면 description 변종이 무시된다. 자유 형식 시각 자료(html/css/png)가 필요하면 `visual/ui/handoff/` 로 직접 배치하여 코드 잡 멀티모달 채널이 사용한다 (handoff 는 design-job 디컴포즈 입력이 아니라 코드 잡의 추가 컨텍스트). 상세 파이프라인은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
+When the Figma intent (`gen-ui-figma`) is synthesized, the description variant is ignored. If free-form visual material (html/css/png) is needed, place it directly under `visual/ui/handoff/` for the code job's multimodal channel to use (handoff is additional context for the code job, not a design-job decompose input). For the detailed pipeline, see [25-design-pipeline.md](25-design-pipeline.md).
 
 ## documentType (System Design)
 
-decompose가 프로젝트 환경 + LLM이 emit한 두 직교 필드 (`services` provider, `consumedApis` consumer)에 따라 문서 구조를 결정한다.
+decompose determines the document structure based on the project environment + two orthogonal fields emitted by the LLM (`services` provider, `consumedApis` consumer).
 
-| environment | services | consumedApis | documentType | 출력 |
+| environment | services | consumedApis | documentType | Output |
 |---|---|---|---|---|
 | frontend | empty | empty | `unified` | `fe-system-main.md` |
 | frontend | empty | non-empty | `contract-first` | `fe-system-main.md` + `api-contract-{c}.md` per consumer |
@@ -51,16 +51,16 @@ decompose가 프로젝트 환경 + LLM이 emit한 두 직교 필드 (`services` 
 | fullstack | empty | empty | `contract-first` | `api-contract-main.md` + `fe-system-main.md` + `be-system-main.md` |
 | fullstack | non-empty | any | `msa-contract-first` | `fe-system-main.md` + `api-contract-{s}.md` + `be-system-{s}.md` per service (+ `api-contract-{c}.md` per consumer) |
 
-**필드 의미 (provider ⊥ consumer)**:
+**Field semantics (provider ⊥ consumer)**:
 
-- `services` (provider) — 본 프로젝트가 owning하는 백엔드 서비스 경계. 각 entry당 `be-system-{s}.md` + `api-contract-{s}.md` 페어 생성. `gen-sys-fe`에서는 무시.
-- `consumedApis` (consumer) — 본 프로젝트가 외부에서 소비하는 API 호스트 (CONSUMER snapshot). 각 entry당 `api-contract-{c}.md`만 생성 (be-system 동반 안 함). 모든 system-design intent에서 의미 있음.
-- `services ∩ consumedApis` — 동명 충돌 시 provider 우세, consumer entry drop + 경고.
-- 다운스트림 코드 잡은 `api-contract-*.md`를 와일드카드로 모두 ref에 포함하므로 provider/consumer 구분은 디컴포즈 단계의 prompt-side 의미에 한정 (`api-contract-guide.md`의 `External Contract Discovery` 가 두 케이스 모두를 다룸).
+- `services` (provider) — the backend service boundaries this project owns. Each entry produces a `be-system-{s}.md` + `api-contract-{s}.md` pair. Ignored under `gen-sys-fe`.
+- `consumedApis` (consumer) — external API hosts this project consumes (CONSUMER snapshot). Each entry produces only `api-contract-{c}.md` (no accompanying be-system). Meaningful for all system-design intents.
+- `services ∩ consumedApis` — on a name collision, provider wins; the consumer entry is dropped with a warning.
+- Downstream code jobs include all `api-contract-*.md` in refs via wildcard, so the provider/consumer distinction is limited to prompt-side semantics at the decompose stage (`External Contract Discovery` in `api-contract-guide.md` covers both cases).
 
-## 그래프 노드 흐름
+## Graph Node Flow
 
-### 순차 실행 (ANT_TASK_CONCURRENCY = 1)
+### Sequential Execution (ANT_TASK_CONCURRENCY = 1)
 
 ```
 __start__ -> resolve -> [4-way router]
@@ -68,97 +68,97 @@ __start__ -> resolve -> [4-way router]
          +-> isFigmaPipeline(intent): figmaExplore -> decompose
          +-> otherwise: decompose
     +-> revise -> plan
-    +-> plan (직행)
-    +-> decompose (detectEnv 이후 중단 resume)
+    +-> plan (direct)
+    +-> decompose (resume after interruption post-detectEnv)
 
 plan -> [router]
-    +-> tool (plan↔tool 도구 루프, _activePhase='plan' + tool_use 있음)
-    +-> execute (sealed <plan> 또는 dispatchOnly fallthrough)
+    +-> tool (plan↔tool tool loop, _activePhase='plan' + tool_use present)
+    +-> execute (sealed <plan> or dispatchOnly fallthrough)
 
 execute -> [router]
-    +-> tool -> [router]  (도구 호출 루프, _activePhase 미설정)
+    +-> tool -> [router]  (tool-call loop, _activePhase unset)
     +-> checkTaskStatus (done=true)
     +-> execute (retry, done=false)
 
-tool -> [router]  (_activePhase 로 분기)
-    +-> plan (_activePhase='plan' → plan↔tool 루프)
-    +-> execute (그 외 → execute↔tool 루프)
+tool -> [router]  (branches on _activePhase)
+    +-> plan (_activePhase='plan' → plan↔tool loop)
+    +-> execute (otherwise → execute↔tool loop)
 
 checkTaskStatus -> [router]
-    +-> plan (다음 태스크)
+    +-> plan (next task)
     +-> learn -> __end__
 ```
 
-### figmaExplore 노드
+### figmaExplore Node
 
-Figma 모드 전용 노드. `detect` 이후, `decompose` 이전에 실행된다. LLM 호출 없이 프로그래밍적으로 Figma MCP 어댑터를 직접 호출하여 디자인 구조를 탐색하고 매트릭스(Variation, Component State)와 nodeSummary를 생성한다. 결과는 `state.figmaExplorationResult`에 저장되며 이후 decompose와 execute에서 참조한다. 상세 알고리즘은 [25-design-pipeline.md](25-design-pipeline.md) 참조.
+A Figma-mode-only node. Runs after `detect` and before `decompose`. Without any LLM call, it programmatically invokes the Figma MCP adapter directly to explore the design structure and produce matrices (Variation, Component State) and a nodeSummary. The result is stored in `state.figmaExplorationResult` and consumed later by decompose and execute. For the detailed algorithm, see [25-design-pipeline.md](25-design-pipeline.md).
 
-### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
+### Parallel Execution (ANT_TASK_CONCURRENCY > 1)
 
-decompose 이후 `parallelOrchestrator` 노드로 분기한다. Code Job과 동일한 TaskOrchestrator/TaskWorker 패턴을 사용한다.
+After decompose, flow branches to the `parallelOrchestrator` node. It uses the same TaskOrchestrator/TaskWorker pattern as the Code Job.
 
 ```
 decompose -> parallelOrchestrator -> learn -> __end__
 ```
 
-Worker Subgraph는 `DesignGraphChannels`를 spread하여 메인 그래프와 채널을 동기화한다. 새 채널 추가 시 `DesignGraphChannels`(`graph.ts`)에만 추가하면 Worker에 자동 반영된다. 상세: [11-agent-architecture.md](11-agent-architecture.md) "Worker Subgraph 채널 정의" 참조.
+The Worker Subgraph spreads `DesignGraphChannels` to keep channels in sync with the main graph. When adding a new channel, add it only to `DesignGraphChannels` (`graph.ts`) and Workers pick it up automatically. Details: see "Worker Subgraph Channel Definitions" in [11-agent-architecture.md](11-agent-architecture.md).
 
-## 주요 노드 특성
+## Key Node Characteristics
 
 ### plan
 
-intentGroup 분기로 두 동작을 가진다:
+Has two behaviors, branched by intentGroup:
 
-- **`design-spec` / `design-system-design`**: LLM+tools 의 lean plan↔tool 루프를 실행해 `<plan>{...}</plan>` JSON 을 생성한다. plan 결과는 `state.planText` 로 sealed 되어 execute 의 `runtimeContext` 상단 (`# Sealed Plan (from plan node)`) 에 주입된다. 도구 셋은 read-only 의 `TOOL_SETS.designPlanExplore` (Figma 활성화 시 `designPlanFigma`) — file-write / download_asset 은 노출하지 않는다 (작성·다운로드는 execute 의 책임).
-- **`design-ui` / `design-game-art`**: 기존 dispatcher-only 동작 유지. taskQueue 에서 pop, currentTask 설정, kanban / workflow / task_start 로그만 처리하고 즉시 execute 으로 라우팅한다. 향후 `variants/{ui-design,game-art-design}/` 프롬프트가 추가되면 진입 가드만 풀고 LLM+tools 흐름에 합류 가능.
+- **`design-spec` / `design-system-design`**: runs a lean LLM+tools plan↔tool loop to produce `<plan>{...}</plan>` JSON. The plan result is sealed into `state.planText` and injected at the top of execute's `runtimeContext` (`# Sealed Plan (from plan node)`). The tool set is the read-only `TOOL_SETS.designPlanExplore` (`designPlanFigma` when Figma is active) — file-write / download_asset are not exposed (writing/downloading is execute's responsibility).
+- **`design-ui` / `design-game-art`**: keeps the existing dispatcher-only behavior. Pops from the taskQueue, sets currentTask, handles only the kanban / workflow / task_start logging, and routes immediately to execute. Once `variants/{ui-design,game-art-design}/` prompts are added in the future, only the entry guard needs lifting to join the LLM+tools flow.
 
-re-entry 분기: `state._activePhase === 'plan' && NODE_PLAN.length > 0` 이면 plan↔tool 루프 한 라운드를 실행한다. plan↔tool 루프 자체에는 라운드 상한이 없다 — 폭주는 LangGraph `recursionLimit` 가 잡는다.
+Re-entry branch: when `state._activePhase === 'plan' && NODE_PLAN.length > 0`, one round of the plan↔tool loop is executed. The plan↔tool loop itself has no round cap — runaway is caught by LangGraph's `recursionLimit`.
 
-공유 헬퍼 (`agents/common/graph/nodes/plan/`) 를 사용한다. code 와 동일한 stream / `<plan>` 추출 로직을 함수형 utilities 로만 공유 — adapter/strategy 인터페이스는 의도적으로 두지 않음 (구조 차이가 큼; 자세한 정책은 해당 디렉토리 README 와 [NODE_GRAPH_LAYOUT.md](./NODE_GRAPH_LAYOUT.md) §2).
+Uses the shared helpers (`agents/common/graph/nodes/plan/`). The same stream / `<plan>` extraction logic as code is shared as functional utilities only — an adapter/strategy interface is deliberately not introduced (structural differences are large; for the full policy see the directory README and [NODE_GRAPH_LAYOUT.md](./NODE_GRAPH_LAYOUT.md) §2).
 
 ### execute
 
-XML 스트리밍 방식으로 설계 문서를 생성한다. `conversationHistory` 기반 멀티턴 대화로 tool calling을 포함한다. 완료 판단은 LLM이 `<done>true</done>`을 출력하는 시점이다. `done=false`면 자기 자신으로 재진입하여 LLM 응답을 이어간다. 파일은 즉시 디스크에 기록한다.
+Generates design documents via XML streaming. Multi-turn conversation based on `conversationHistory`, including tool calling. Completion is determined the moment the LLM emits `<done>true</done>`. If `done=false`, it re-enters itself and continues the LLM response. Files are written to disk immediately.
 
-**Tool-loop safety net 회수**: execute 의 call budget 안전망 (`_callLimitReached` / `MAX_NO_OUTPUT_CALLS=15` / `DOCGEN_MAX_CALLS=25`) 과 `call_budget_exhausted` terminal kind, `call_limit` interruption reason 은 모두 retire 되었다 (코드잡의 Safety Net D/E 회수와 동일한 사유 — 거짓양성 생성기). 무한 루프는 LangGraph `recursionLimit` 가 ultimate backstop 으로 잡고, 비생산적 스트릭은 LLM 에 advisory soft/hard warning 으로만 전달한다 (deterministic gate 없음). 디자인잡 plan 노드의 tool-loop round cap (`PLAN_TOOL_LOOP_MAX`) 도 같은 패턴으로 retire 된 상태.
+**Tool-loop safety net retirement**: execute's call-budget safety net (`_callLimitReached` / `MAX_NO_OUTPUT_CALLS=15` / `DOCGEN_MAX_CALLS=25`), the `call_budget_exhausted` terminal kind, and the `call_limit` interruption reason are all retired (for the same reason as the code job's Safety Net D/E retirement — false-positive generators). Infinite loops are caught by LangGraph's `recursionLimit` as the ultimate backstop, and unproductive streaks are conveyed to the LLM only as advisory soft/hard warnings (no deterministic gate). The design job plan node's tool-loop round cap (`PLAN_TOOL_LOOP_MAX`) was retired in the same pattern.
 
-**ui-spec append anchor**: `forceAppend=true` chapter 가 큰 `ui-spec.json` 에 신규 섹션을 추가할 때, 삽입 위치(`appendAnchor`)는 execute turn 시점에 디스크 상태에서 라이브 계산한다. SSOT 는 [`packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts`](../../packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts) 의 `extractLastSectionKey(content)`. 과거에는 decompose 시점에 pre-compute 했으나, 신축(new-build) 시나리오에서 target file 이 비어 있어 anchor 가 영구 null 로 묶이는 문제가 있었다 — 라이브 계산으로 전환하여 해소.
+**ui-spec append anchor**: when a `forceAppend=true` chapter adds a new section to a large `ui-spec.json`, the insertion point (`appendAnchor`) is computed live from disk state at execute-turn time. The SSOT is `extractLastSectionKey(content)` in [`packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts`](../../packages/ant-cli/src/agents/architect/graph/design/_shared/anchor.ts). It used to be pre-computed at decompose time, but in new-build scenarios the target file was empty and the anchor stayed permanently pinned to null — resolved by switching to live computation.
 
 ### decompose
 
-system-design은 LLM 기반 태스크 분해(documentType + targetFiles + profiles)를 수행한다. ui-design은 LLM 기반 UI 복잡도 분석 후 태스크를 분해한다. explain 모드는 단일 explain 태스크를 생성한다(LLM 호출 없음).
+For system-design, performs LLM-based task decomposition (documentType + targetFiles + profiles). For ui-design, decomposes tasks after LLM-based UI complexity analysis. Explain mode creates a single explain task (no LLM call).
 
-#### TechTier 설정
+#### TechTier Setup
 
-Design Job의 3개 decompose 함수 모두 RAC.basis.techTier를 설정한다 (`getTechTier(state)` 경유). Code Job과 달리 Design Job은 graph-level TechTier와 per-task TechTier를 분리한다.
+All 3 of the Design Job's decompose functions set RAC.basis.techTier (via `getTechTier(state)`). Unlike the Code Job, the Design Job separates graph-level TechTier from per-task TechTier.
 
 | workType | graph-level TechTier | per-task TechTier |
 |---|---|---|
-| system-design | `profiles` 맵의 대표 프로필 + intent에서 파생한 stack | `resolveTaskTechTier()`: targetFile → profiles 맵 lookup → `buildTechTier()` |
-| ui-design | `state.profile` + stack=`frontend` (항상) | 없음 (단일 tier) |
-| spec | `state.profile` + intent에서 파생한 stack | 없음 |
+| system-design | Representative profile from the `profiles` map + stack derived from the intent | `resolveTaskTechTier()`: targetFile → profiles map lookup → `buildTechTier()` |
+| ui-design | `state.profile` + stack=`frontend` (always) | None (single tier) |
+| spec | `state.profile` + stack derived from the intent | None |
 
-**system-design의 profiles 맵**: LLM이 decompose 응답에서 `profiles` 필드를 JSON으로 출력한다. 키는 `{tier}-{name}` 형식(`be-main`, `fe-main`, `be-auth` 등)이며 값은 `{ language, framework }`. 이 맵은 `resolveTaskTechTier()`에서 각 DesignTask의 `targetFile` → 태그 → profiles 2단계 lookup으로 per-task `techTier`를 빌드한다.
+**system-design's profiles map**: the LLM outputs a `profiles` field as JSON in the decompose response. Keys are in `{tier}-{name}` format (`be-main`, `fe-main`, `be-auth`, etc.) and values are `{ language, framework }`. `resolveTaskTechTier()` uses this map in a 2-step lookup — each DesignTask's `targetFile` → tag → profiles — to build the per-task `techTier`.
 
-**per-task TechTier 소비**: `ModeController.detectFrameworkAugmentation()`과 `systemDesignPrompt.detectUsedTemplates()`가 `currentTask.techTier`를 참조하여 프레임워크 augmentation(nextjs, go-api)을 결정론적으로 주입한다.
+**per-task TechTier consumption**: `ModeController.detectFrameworkAugmentation()` and `systemDesignPrompt.detectUsedTemplates()` consult `currentTask.techTier` to deterministically inject framework augmentation (nextjs, go-api).
 
-## UI Design 문서 의존 체인
+## UI Design Document Dependency Chain
 
-UI 문서는 챕터 기반으로 생성된다. tokens와 assets는 병렬 실행되며, spec만 양쪽에 의존한다.
+UI documents are generated chapter by chapter. tokens and assets run in parallel; only spec depends on both.
 
 ```
-ui-tokens.json (의존 없음)
-ui-assets.json (의존 없음, tokens와 병렬)
-    -> ui-spec.json (ui-tokens + ui-assets 참조)
+ui-tokens.json (no dependencies)
+ui-assets.json (no dependencies, parallel with tokens)
+    -> ui-spec.json (references ui-tokens + ui-assets)
 ```
 
-각 챕터 태스크는 자신의 범위만 생성한다. `lastSectionNumber`로 이전 섹션 번호를 추적하고, JSON `_meta.lastSection`으로 마지막 섹션을 기록한다. 이어쓰기 시 전체 파일을 프롬프트에 넣지 않고 `previousChaptersSummary`(키 이름 목록)만 주입하며, LLM이 필요하면 `read_file`로 드릴링한다.
+Each chapter task generates only its own scope. `lastSectionNumber` tracks the previous section number, and the last section is recorded in the JSON's `_meta.lastSection`. When appending, the full file is not put into the prompt — only `previousChaptersSummary` (a list of key names) is injected, and the LLM drills in via `read_file` when needed.
 
-## State 복원
+## State Restoration
 
-runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:
+runner.ts loads the session and restores state before graph invoke:
 - taskQueue, completedTasks, completedTasksDetails
-- resolvedAction (basis.techTier 포함)
+- resolvedAction (including basis.techTier)
 - figmaConfig, figmaExplorationResult, figmaAvailable, figmaFileKey, figmaStartNodeId
 - planText, conversationHistory
 - directive, overrideDirective, chatSource
@@ -166,90 +166,90 @@ runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다
 
 ## Plan Observability
 
-### planText 라이프사이클
+### planText Lifecycle
 
-| 단계 | 위치 | state.planText |
+| Stage | Location | state.planText |
 |---|---|---|
-| 진입 | `plan/index.ts` (fresh entry) | 빈 문자열 또는 이전 task 잔존값 (다음 단계에서 reset) |
-| `<plan>` emit | `plan/finalizeOutcome.ts:finalizePlanOutcome` | `outcome.planText` 로 set |
-| execute 주입 | `execute/intent/spec.ts:75-79` / `execute/intent/system.ts:375-379` | runtimeContext 상단에 `# Sealed Plan (from plan node)` 으로 prepend |
-| task 완료 | `graph.ts:checkTaskStatus` (sequential) / `parallel/workerGraph.ts:189-193` (parallel) | `''` 로 reset (다음 task 의 fresh planning 보장) |
-| session resume | `runner.ts:113-115` | 세션 파일에서 복원 (task 진행 중 재개 시 execute으로 직행) |
+| Entry | `plan/index.ts` (fresh entry) | Empty string or leftover from the previous task (reset in the next stage) |
+| `<plan>` emit | `plan/finalizeOutcome.ts:finalizePlanOutcome` | Set to `outcome.planText` |
+| Execute injection | `execute/intent/spec.ts:75-79` / `execute/intent/system.ts:375-379` | Prepended at the top of runtimeContext as `# Sealed Plan (from plan node)` |
+| Task completion | `graph.ts:checkTaskStatus` (sequential) / `parallel/workerGraph.ts:189-193` (parallel) | Reset to `''` (guaranteeing fresh planning for the next task) |
+| Session resume | `runner.ts:113-115` | Restored from the session file (goes straight to execute when resuming mid-task) |
 
-session 파일(`sessions/architect/design.json`)의 final state 에서 `planText: ""` 이 보이는 것은 **마지막 task 가 완료되어 reset 된 후 직렬화된 정상 상태**다. 진행 중 snapshot(checkpoint)에는 sealed plan 이 들어있다.
+Seeing `planText: ""` in the final state of the session file (`sessions/architect/design.json`) is **normal state serialized after the last task completed and was reset**. In-progress snapshots (checkpoints) do contain the sealed plan.
 
-### 로그 파일 매핑
+### Log File Mapping
 
-`{featurePath}/sessions/debug/` 하위 파일별 책임:
+Per-file responsibilities under `{featurePath}/sessions/debug/`:
 
-| 파일 | 작성자 | 내용 |
+| File | Writer | Content |
 |---|---|---|
-| `plans/plan-{jobId}.json` | `plan/finalizeOutcome.ts:savePlanForDebug` | task 별 sealed `<plan>` JSON 본문 (배열로 누적) |
-| `prompts/prompt-{jobId}.json` | `core/utils/promptLogger.ts:logPrompt` | execute 프롬프트 빌드 시점 메타데이터 — `injectedVariables.planText` 가 sealed plan 주입 여부를 길이로 표시 |
-| `logs/log-{jobId}.json` | `core/utils/executionLogger.ts:logPhaseComplete` | 구조화 phase 이벤트 (아래 표) |
-| `chat.jsonl` (workspace 루트) | `core/streaming/strategies/CommonRenderStrategy.ts` | 사용자 가시 SSE 이벤트 — `statusType: "plan"` 카드가 `<plan>` JSON 본문을 그대로 운반 |
+| `plans/plan-{jobId}.json` | `plan/finalizeOutcome.ts:savePlanForDebug` | Per-task sealed `<plan>` JSON bodies (accumulated as an array) |
+| `prompts/prompt-{jobId}.json` | `core/utils/promptLogger.ts:logPrompt` | Metadata at execute-prompt build time — `injectedVariables.planText` indicates by length whether the sealed plan was injected |
+| `logs/log-{jobId}.json` | `core/utils/executionLogger.ts:logPhaseComplete` | Structured phase events (table below) |
+| `chat.jsonl` (workspace root) | `core/streaming/strategies/CommonRenderStrategy.ts` | User-visible SSE events — the `statusType: "plan"` card carries the `<plan>` JSON body verbatim |
 
-### Phase 이벤트 (`log-{jobId}.json`)
+### Phase Events (`log-{jobId}.json`)
 
-`logPhaseComplete({ phase, elapsedMs, details })` 로 emit. design plan 단계에서 발생하는 3종:
+Emitted via `logPhaseComplete({ phase, elapsedMs, details })`. Three kinds occur in the design plan stage:
 
-| `phase` | 발생 조건 | `details` 주요 필드 |
+| `phase` | Trigger condition | Key `details` fields |
 |---|---|---|
-| `design-plan-sealed` | `intentGroup ∈ {design-spec, design-system-design}` 에서 `<plan>` 추출 성공 | `taskId`, `intentGroup`, `planTextLen`, `planParsed`, `candidatesCount`, `decisionSelected`, `outlineSectionCount` |
-| `design-plan-fallthrough` | plan 루프 round 가 `<plan>` 도 tool call 도 emit 하지 않은 경우 → execute 으로 빈 planText 진입 | `taskId`, `intentGroup`, `reason`, `nodePlanHistoryLen`, `recursionCount` |
-| `design-plan-dispatch-only` | `intentGroup ∈ {design-ui, design-game-art}` 에서 plan-LLM 건너뜀 (`dispatchOnly` 경로) | `taskId`, `intentGroup`, `reason: 'intent-group-not-plan-llm-enabled'` |
+| `design-plan-sealed` | `<plan>` extraction succeeded for `intentGroup ∈ {design-spec, design-system-design}` | `taskId`, `intentGroup`, `planTextLen`, `planParsed`, `candidatesCount`, `decisionSelected`, `outlineSectionCount` |
+| `design-plan-fallthrough` | A plan-loop round emitted neither `<plan>` nor a tool call → entering execute with empty planText | `taskId`, `intentGroup`, `reason`, `nodePlanHistoryLen`, `recursionCount` |
+| `design-plan-dispatch-only` | plan-LLM skipped for `intentGroup ∈ {design-ui, design-game-art}` (`dispatchOnly` path) | `taskId`, `intentGroup`, `reason: 'intent-group-not-plan-llm-enabled'` |
 
-### 진단 워크플로우
+### Diagnostic Workflow
 
-새로운 design job 트레이스를 분석할 때 권장 순서:
+Recommended order when analyzing a new design job trace:
 
-1. **`logs/log-{jobId}.json` grep `design-plan-`** — plan 단계의 결과(sealed / fallthrough / dispatch-only)와 candidate 수를 한 줄로 확인.
-2. **`plans/plan-{jobId}.json`** — sealed 된 경우 실제 JSON 내용으로 candidate 비교 / decision rationale 확인.
-3. **`prompts/prompt-{jobId}.json` 의 `execute-spec` 또는 `execute-systemDesign` 항목** — `injectedVariables.planText` 가 1번에서 본 길이와 일치하는지 검증 (plan→execute 핸드오프 무결성).
-4. **`chat.jsonl`** — 사용자 관점에서 thinking → `statusType: "plan"` → file_create 의 시간 분배 확인.
+1. **grep `logs/log-{jobId}.json` for `design-plan-`** — one line shows the plan stage's outcome (sealed / fallthrough / dispatch-only) and candidate count.
+2. **`plans/plan-{jobId}.json`** — if sealed, inspect the actual JSON to compare candidates / check the decision rationale.
+3. **The `execute-spec` or `execute-systemDesign` entry in `prompts/prompt-{jobId}.json`** — verify that `injectedVariables.planText` matches the length seen in step 1 (plan→execute handover integrity).
+4. **`chat.jsonl`** — from the user's perspective, check the time distribution across thinking → `statusType: "plan"` → file_create.
 
-`plan→execute` 핸드오프가 깨졌다는 가설이 있으면 1·3을 우선 비교한다 (1의 `planTextLen` 과 3의 `planText` 길이 표시가 동일해야 함).
+If the hypothesis is that the `plan→execute` handover broke, compare steps 1 and 3 first (the `planTextLen` in step 1 must equal the `planText` length indicator in step 3).
 
 ## Codebase mutation gate
 
-Design 잡의 산출물은 `architecture/`, `plan/`, `assets/`, `visual/`, `meta/`, `sessions/` 등 **아티팩트 경로**의 문서다. `codebase/` 산하 소스 코드 mutation 은 **architect/code 잡 `execute` phase 만**의 책임이다. Shell 명령 실행 (`run_command`) 은 별도 직교 책임으로, **architect/code 잡 (모든 phase)** 만이 정상 사용처를 가진다.
+The Design job's outputs are documents under **artifact paths** — `architecture/`, `plan/`, `assets/`, `visual/`, `meta/`, `sessions/`, etc. Mutating source code under `codebase/` is the responsibility of the **architect/code job's `execute` phase only**. Shell command execution (`run_command`) is a separate orthogonal responsibility, with legitimate use only in the **architect/code job (all phases)**.
 
-| 잡 / phase | `codebase/` mutate | `run_command` | 아티팩트 mutate | 강제 위치 |
+| Job / phase | `codebase/` mutate | `run_command` | Artifact mutate | Enforcement location |
 |---|---|---|---|---|
-| architect/design — plan / execute | 차단 | 차단 | 허용 | `allowMutateInCodebase = false` + `allowShellExecution = false` ([tool/index.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/tool/index.ts) buildContext) + design tool registry 에서 `RUN_COMMAND` 미등록 + FileRenderer XML 가드 (`jobType: 'design'`) |
-| architect/code — plan | 차단 | **허용** | 허용 | `allowMutateInCodebase = false` (`_activePhase === 'plan'` 분기) + `allowShellExecution = true` (always) + FileRenderer (`codePhase: 'plan'`) |
-| architect/code — execute | 허용 | 허용 | 허용 | `allowMutateInCodebase = true` (`_activePhase === 'execute'`) + `allowShellExecution = true` + FileRenderer 기존 가드 |
-| planner — plan (PRD/계획) | 차단 | n/a (도구 미등록) | 허용 | planner 도구 ([planner/graph/plan/nodes/tools.ts](../../packages/ant-cli/src/agents/planner/graph/plan/nodes/tools.ts) `isCodebasePathArg` 가드) + FileRenderer (`jobType: 'planner'`) |
+| architect/design — plan / execute | Blocked | Blocked | Allowed | `allowMutateInCodebase = false` + `allowShellExecution = false` ([tool/index.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/tool/index.ts) buildContext) + `RUN_COMMAND` unregistered in the design tool registry + FileRenderer XML guard (`jobType: 'design'`) |
+| architect/code — plan | Blocked | **Allowed** | Allowed | `allowMutateInCodebase = false` (`_activePhase === 'plan'` branch) + `allowShellExecution = true` (always) + FileRenderer (`codePhase: 'plan'`) |
+| architect/code — execute | Allowed | Allowed | Allowed | `allowMutateInCodebase = true` (`_activePhase === 'execute'`) + `allowShellExecution = true` + existing FileRenderer guard |
+| planner — plan (PRD/planning) | Blocked | n/a (tool unregistered) | Allowed | planner tools ([planner/graph/plan/nodes/tools.ts](../../packages/ant-cli/src/agents/planner/graph/plan/nodes/tools.ts) `isCodebasePathArg` guard) + FileRenderer (`jobType: 'planner'`) |
 
-**`codebase/` mutate 와 `run_command` 는 두 직교 책임이다.** 한 플래그로 묶지 않는다 (이 분리는 `agile-nodding-pouch` silent false-pass 회귀 — 코드잡 verification plan 이 typecheck 게이트조차 못 돌리고 빈 plan 으로 자동 done — 이후 도입). 코드잡의 plan 은 `<plan>` JSON 산출이 책임이지만 그 산출 *과정* 에서 build / typecheck / test 게이트 (verification task), 테스트 러너 설치 (test-code task), 에러 진단 (error task), design-prescribed dep 설치 후 API discovery (default plan) 같은 정상 사용처가 있다 — 이것이 `allowShellExecution = true` (always) 의 근거다.
+**`codebase/` mutate and `run_command` are two orthogonal responsibilities.** They are not bundled into one flag (this separation was introduced after the `agile-nodding-pouch` silent false-pass regression — the code job's verification plan couldn't even run the typecheck gate and auto-completed with an empty plan). The code job's plan is responsible for producing the `<plan>` JSON, but the *process* of producing it has legitimate uses — build / typecheck / test gates (verification task), test-runner installation (test-code task), error diagnosis (error task), API discovery after installing design-prescribed deps (default plan) — which is the rationale for `allowShellExecution = true` (always).
 
-차단 매커니즘은 세 축으로 작동한다:
+The blocking mechanism operates along three axes:
 
-1. **도구 핸들러 (codebase 쓰기)** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts) `rejectCodebaseMutate`) — `edit_file` / `delete_file` / `mkdir` / `create_file` 가 resolve 된 path 가 `codebase/` 산하면 거부.
-2. **도구 핸들러 (shell 실행)** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts) `rejectRunCommand`) — `run_command` 는 effective target path 가 args 에서 추론 불가하므로 binary 게이트로 outright 거부. design / planner ctx 에서만 fire.
-3. **FileRenderer XML 태그** ([FileRenderer.ts](../../packages/ant-cli/src/core/streaming/strategies/common/FileRenderer.ts) processFile) — `<file>` / `<append>` / `<edit>` / `<delete>` artifact 태그가 `codebase/` 를 가리키면 거부. design / planner / code-plan 모두 동일 정책. (이 가드는 `codebase/` 쓰기 책임이지 shell 과 무관.)
+1. **Tool handler (codebase writes)** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts) `rejectCodebaseMutate`) — `edit_file` / `delete_file` / `mkdir` / `create_file` are rejected when the resolved path is under `codebase/`.
+2. **Tool handler (shell execution)** ([codebaseGate.ts](../../packages/ant-cli/src/agents/common/tool/handlers/codebaseGate.ts) `rejectRunCommand`) — since the effective target path of `run_command` cannot be inferred from args, it is rejected outright as a binary gate. Fires only in design / planner ctx.
+3. **FileRenderer XML tags** ([FileRenderer.ts](../../packages/ant-cli/src/core/streaming/strategies/common/FileRenderer.ts) processFile) — `<file>` / `<append>` / `<edit>` / `<delete>` artifact tags pointing at `codebase/` are rejected. The same policy applies to design / planner / code-plan alike. (This guard covers the `codebase/`-write responsibility and is unrelated to shell.)
 
-거부 메시지는 LLM 에게 회복 경로를 안내한다 — 아티팩트 경로 사용 또는 spec/plan 문서에 변경 내용을 기술하라는 형태로, "You MUST" 훈계 없는 FPOP 친화적 톤. 차단된 시도는 다음 turn 에서 R5 self-check 와 결합되어 자연스럽게 task 완료(`<done>true</done>`)로 수렴한다.
+Rejection messages guide the LLM toward a recovery path — use an artifact path, or describe the change in a spec/plan document — in an FPOP-friendly tone with no "You MUST" admonitions. A blocked attempt combines with the R5 self-check on the next turn and naturally converges to task completion (`<done>true</done>`).
 
-회귀 가드: [tests/architect/mutate-gate.test.ts](../../packages/ant-cli/tests/architect/mutate-gate.test.ts) (두 플래그 매트릭스), [tests/architect/regression-design-spec-mutate-leak.test.ts](../../packages/ant-cli/tests/architect/regression-design-spec-mutate-leak.test.ts) (design execute → codebase mutate 차단 — 옛 이름 `total-drying-apron`), [tests/architect/regression-agile-nodding-pouch.test.ts](../../packages/ant-cli/tests/architect/regression-agile-nodding-pouch.test.ts) (코드잡 verification plan 의 `run_command` 통과).
+Regression guards: [tests/architect/mutate-gate.test.ts](../../packages/ant-cli/tests/architect/mutate-gate.test.ts) (two-flag matrix), [tests/architect/regression-design-spec-mutate-leak.test.ts](../../packages/ant-cli/tests/architect/regression-design-spec-mutate-leak.test.ts) (design execute → codebase mutate blocked — formerly named `total-drying-apron`), [tests/architect/regression-agile-nodding-pouch.test.ts](../../packages/ant-cli/tests/architect/regression-agile-nodding-pouch.test.ts) (the code job's verification plan passing `run_command`).
 
 ## R5 — artifact-mutation-then-no-done self-check
 
-execute 종료 트리거 (`<done>true</done>`) 는 LLM 출력에 의존한다. sealed plan 의 `decision` 이 처방형(예: "rename X to Y")이면 모델이 task 완료 조건을 "decision 실행" 으로 오해할 수 있고, 그 결과 done 을 미출력한 채 codebase 변경을 시도하다 R1/R6 가드에 차단되는 무한 루프 위험이 있다.
+The execute termination trigger (`<done>true</done>`) depends on LLM output. When the sealed plan's `decision` is prescriptive (e.g. "rename X to Y"), the model may misinterpret the task-completion condition as "executing the decision", risking an infinite loop where it never emits done and keeps attempting codebase changes that get blocked by the R1/R6 guards.
 
-이를 자율적으로 끊기 위해 execute 노드는 turn 종료부에서:
+To break this autonomously, the execute node, at the end of a turn:
 
-1. **artifact-mutation-intent 검출**: 이번 turn 에 (a) `<file>`/`<append>`/`<edit>`/`<delete>` 가 아티팩트 경로에서 성공했거나, (b) `edit_file`/`delete_file`/`create_file`/`mkdir` pending tool call 이 아티팩트 경로를 가리키면 mutation 의도로 판정. 자세한 truth table 은 [execute-mutation-intent-detector.test.ts](../../packages/ant-cli/tests/design/execute-mutation-intent-detector.test.ts) 가 SSOT.
-2. **`<done>` 미출력 시 플래그 세팅**: `state._pendingDoneCheck = true`, `_doneCheckEscalation` 카운트 증가. 둘은 [graph.ts](../../packages/ant-cli/src/agents/architect/graph/design/graph.ts) `DesignGraphChannels` 의 정식 채널.
-3. **다음 turn trailing message 변경**: [selfCheck.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/execute/intent/selfCheck.ts) 의 `buildSelfCheckTrailingMessage` 가 escalation 단계별로 자가 점검 문구 (1차: 부드러운 결정 요청 / 2차: 동일 의미의 firmer 톤) 를 반환. spec / system-design 두 변형이 공유.
+1. **Detects artifact-mutation intent**: mutation intent is determined when, in this turn, (a) a `<file>`/`<append>`/`<edit>`/`<delete>` succeeded on an artifact path, or (b) a pending `edit_file`/`delete_file`/`create_file`/`mkdir` tool call points at an artifact path. The detailed truth table has its SSOT in [execute-mutation-intent-detector.test.ts](../../packages/ant-cli/tests/design/execute-mutation-intent-detector.test.ts).
+2. **Sets flags when `<done>` was not emitted**: `state._pendingDoneCheck = true`, `_doneCheckEscalation` count incremented. Both are official channels in [graph.ts](../../packages/ant-cli/src/agents/architect/graph/design/graph.ts) `DesignGraphChannels`.
+3. **Changes the next turn's trailing message**: `buildSelfCheckTrailingMessage` in [selfCheck.ts](../../packages/ant-cli/src/agents/architect/graph/design/nodes/execute/intent/selfCheck.ts) returns a self-check phrase per escalation stage (1st: a gentle request for a decision / 2nd: the same meaning in a firmer tone). Shared by the spec / system-design variants.
 
-자가 점검 메시지는 **task scope 결정만** 묻고, codebase 차단 안내는 R1/R6 거부 메시지가 별도로 제공한다 (MECE). FPOP 준수 — 도구명 나열 / "You MUST" / 시스템 동작 설명 없음.
+The self-check message asks **only for the task-scope decision**; codebase-blocking guidance is provided separately by the R1/R6 rejection messages (MECE). FPOP-compliant — no tool-name listings / "You MUST" / system-behavior explanations.
 
-## 경계
+## Boundaries
 
-- 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
-- Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
+- Agent-common patterns: [11-agent-architecture.md](11-agent-architecture.md)
+- Tool system (tool catalog, registry, orchestrator): [19-tool-system.md](19-tool-system.md)
 - Code Job: [14-code-job.md](14-code-job.md)
-- 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
-- Design 파이프라인 상세 (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)
-- 문서 제약 맵(시스템설계/스펙/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)
+- Prompt templates: [13-prompt-system.md](13-prompt-system.md)
+- Design pipeline details (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)
+- Document constraint map (system design/spec/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)

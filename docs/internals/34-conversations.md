@@ -1,11 +1,11 @@
-# 34. Conversations Record — 통합 대화 상태
+# 34. Conversations Record — Unified Conversation State
 
-## 개요
+## Overview
 
-모든 에이전트 그래프의 대화 데이터를 단일 `conversations: Record<string, ConversationMessage[]>` 필드로 통합.
-키 규약 `level:id` 형식으로 세션 레벨과 노드 레벨 대화를 구분한다.
+Conversation data for all agent graphs is unified into a single `conversations: Record<string, ConversationMessage[]>` field.
+The key convention, in `level:id` form, distinguishes session-level from node-level conversations.
 
-## 구조
+## Structure
 
 ```typescript
 // packages/ant-cli/src/agents/common/graph/conversations.ts
@@ -14,25 +14,25 @@ type ConversationKey = `${ConversationLevel}:${string}`;
 
 interface ConversationMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string | MessageContentBlock[];  // session은 string, node는 string|ContentBlock[]
-  timestamp?: string;                       // session 레벨에서 사용
-  metadata?: { ... };                       // session 레벨에서 사용
+  content: string | MessageContentBlock[];  // session uses string, node uses string|ContentBlock[]
+  timestamp?: string;                       // used at the session level
+  metadata?: { ... };                       // used at the session level
 }
 ```
 
-## 키 상수 (CONV_KEYS)
+## Key Constants (CONV_KEYS)
 
-| 키 | 레벨 | 설명 | 생산자 | 소비자 |
+| Key | Level | Description | Producers | Consumers |
 |---|---|---|---|---|
-| `session:main` | session | 사용자-에이전트 의미적 대화 (cross-run) | planner resolve/generate, visual resolve/direct | planner generate (compaction), triage (sessionDigest) |
-| `node:execute` | node | Code job execute 도구 루프 | code execute, code tool | code execute, code checkTaskStatus |
-| `node:plan` | node | **code + design 공유**: plan↔tool 도구 루프. Code 는 항상 사용. Design 은 `intentGroup ∈ {design-spec, design-system-design}` 일 때만 사용 (ui-design / game-art-design 은 dispatcher-only path 로 NODE_PLAN 미사용) | code plan, code tool, design plan, design tool | code plan, design plan |
-| `node:execute` | node | Design job execute 도구 루프 | design execute, design tool | design execute, design checkTaskStatus |
-| `node:generate` | node | Planner generate 도구 루프 | planner generate, planner tool | planner generate |
-| `node:agent` | node | Ask job 에이전트 루프 | ask agent, ask tool | ask agent |
-| `node:direct` | node | Code job direct ReAct 루프 | code direct | code direct |
+| `session:main` | session | Semantic user-agent conversation (cross-run) | planner resolve/generate, visual resolve/direct | planner generate (compaction), triage (sessionDigest) |
+| `node:execute` | node | Code job execute tool loop | code execute, code tool | code execute, code checkTaskStatus |
+| `node:plan` | node | **Shared by code + design**: plan↔tool tool loop. Code always uses it. Design uses it only when `intentGroup ∈ {design-spec, design-system-design}` (ui-design / game-art-design take the dispatcher-only path and do not use NODE_PLAN) | code plan, code tool, design plan, design tool | code plan, design plan |
+| `node:execute` | node | Design job execute tool loop | design execute, design tool | design execute, design checkTaskStatus |
+| `node:generate` | node | Planner generate tool loop | planner generate, planner tool | planner generate |
+| `node:agent` | node | Ask job agent loop | ask agent, ask tool | ask agent |
+| `node:direct` | node | Code job direct ReAct loop | code direct | code direct |
 
-**Design tool 노드 분기**: `state._activePhase === 'plan'` 이면 NODE_PLAN, 아니면 NODE_EXECUTE 으로 라우팅한다. plan↔tool 과 execute↔tool 두 루프가 동일 물리 tool 노드를 공유하지만 conv 키는 분리된다. 자세한 그래프 구조는 [15-design-job.md](./15-design-job.md) 참고.
+**Design tool node branching**: routes to NODE_PLAN when `state._activePhase === 'plan'`, otherwise to NODE_EXECUTE. The plan↔tool and execute↔tool loops share the same physical tool node, but their conv keys are kept separate. See [15-design-job.md](./15-design-job.md) for the detailed graph structure.
 
 ## LangGraph Annotation
 
@@ -44,19 +44,19 @@ conversations: Annotation<Conversations>({
 })
 ```
 
-Shallow merge reducer로 동작하여, 노드가 자기 키만 반환하면 다른 키는 보존된다:
+Because it operates as a shallow-merge reducer, a node returning only its own key preserves the other keys:
 ```typescript
 return { conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedMessages } };
-// → session:main, node:plan 등 기존 키 유지
+// → existing keys like session:main, node:plan are retained
 ```
 
-## 헬퍼 함수
+## Helper Functions
 
-- `getConv(convs, key)` — 타입 안전 읽기 (없으면 빈 배열)
-- `setConv(key, entries)` — 반환 값 빌더
-- `isSessionEntry(msg)` / `isNodeMessage(msg)` — 타입 가드
+- `getConv(convs, key)` — type-safe read (empty array if absent)
+- `setConv(key, entries)` — return-value builder
+- `isSessionEntry(msg)` / `isNodeMessage(msg)` — type guards
 
-## 세션 파일 저장 형식
+## Session File Storage Format
 
 ```json
 {
@@ -69,11 +69,11 @@ return { conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedMessages } };
 }
 ```
 
-Legacy 호환: resolve 노드에서 `sessionData.state.conversation` (배열) 형식도 fallback으로 읽음.
+Legacy compatibility: the resolve node also reads the `sessionData.state.conversation` (array) format as a fallback.
 
 ## sessionDigest
 
-Triage 프롬프트에 최근 세션 대화 맥락을 주입하여 오탐을 방지한다:
-- `buildSessionDigest(entries)` — 최근 2-3턴을 truncate하여 compact string 생성
-- 각 에이전트 resolve에서 `conversations[session:main]`으로부터 도출
-- Triage base.md의 `{{#if hasSessionDigest}}` 섹션에 삽입
+Injects recent session conversation context into the triage prompt to prevent misclassification:
+- `buildSessionDigest(entries)` — builds a compact string by truncating the most recent 2-3 turns
+- Derived from `conversations[session:main]` in each agent's resolve
+- Inserted into the `{{#if hasSessionDigest}}` section of triage base.md

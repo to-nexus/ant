@@ -1,57 +1,63 @@
 # Job Lifecycle
 
-## 개요
+## Overview
 
-Job은 사용자의 작업 요청 단위이다. HTTP 요청으로 시작되어 BullMQ 큐를 통해 Worker에 전달되고, 자식 프로세스에서 에이전트 그래프가 실행된다. 중단과 재개를 지원한다.
+A Job is the unit of a user's work request. It starts with an HTTP request, is
+delivered to a Worker via the BullMQ queue, and the agent graph runs in a child
+process. Interruption and resumption are supported.
 
-## Job 타입
+## Job Types
 
-| JobType | Agent | 산출물 |
+| JobType | Agent | Output |
 |---------|-------|--------|
-| `code` | architect | 소스 코드 |
-| `design` | architect | 설계 문서 (MD, JSON) |
-| `learn` | architect | 벡터 DB 인덱스 |
+| `code` | architect | Source code |
+| `design` | architect | Design documents (MD, JSON) |
+| `learn` | architect | Vector DB index |
 | `plan` | planner | PRD |
-| `ask` | architect | 채팅 응답 |
-| `inline-ask` | architect | 채팅 응답 (Job 컨텍스트 내) |
-| `visual` | creator | 비주얼 에셋 (PNG, WebP, JPEG, SVG) |
+| `ask` | architect | Chat response |
+| `inline-ask` | architect | Chat response (within a Job context) |
+| `visual` | creator | Visual assets (PNG, WebP, JPEG, SVG) |
 
-## 실행 흐름
+## Execution Flow
 
 ### 1. Enqueue
 
-API Server가 HTTP 요청을 받아 BullMQ에 Job을 enqueue한다.
+The API Server receives the HTTP request and enqueues a Job to BullMQ.
 
 ```
 POST /api/projects/:id/features/:feature/execute
     -> createExecuteJob()
     -> BullMQJobQueue.enqueue(JobPayload)
-    -> Redis ant-jobs 큐에 저장
+    -> stored in the Redis ant-jobs queue
 ```
 
-Feature당 동시 실행 가능한 Job은 1개이다. 이미 실행 중인 Job이 있으면 409를 반환한다.
+Only 1 Job can run concurrently per Feature. If a Job is already running, 409 is
+returned.
 
 ### 2. Dequeue & Spawn
 
-Job Worker(BullMQ Worker)가 큐에서 Job을 dequeue하고 자식 프로세스를 스폰한다.
+The Job Worker (BullMQ Worker) dequeues the Job from the queue and spawns a child
+process.
 
 ```
 JobWorker.processJob(bullmqJob)
-    -> job-runner.ts를 자식 프로세스로 스폰
-    -> JobPayload를 환경변수로 전달 (화이트리스트 방식)
-    -> stdout/stderr 파이프로 로그 수집
+    -> spawns job-runner.ts as a child process
+    -> passes JobPayload via environment variables (whitelist approach)
+    -> collects logs through stdout/stderr pipes
 ```
 
-환경변수는 화이트리스트 방식으로 격리된다. `...process.env` spread를 사용하지 않는다.
+Environment variables are isolated via a whitelist. The `...process.env` spread
+is not used.
 
 ### 3. Orchestrate
 
-자식 프로세스 내에서 Orchestrator가 agent + jobType 조합에 따라 적절한 에이전트 그래프를 실행한다.
+Inside the child process, the Orchestrator runs the appropriate agent graph
+according to the agent + jobType combination.
 
 ```
 job-runner.ts
     -> orchestrator({ agent, jobType, ... })
-    -> agent/jobType 매핑:
+    -> agent/jobType mapping:
         architect + code   -> runCodeGraph()
         architect + design -> runDesignGraph()
         architect + learn  -> runLearnGraph()
@@ -62,133 +68,151 @@ job-runner.ts
 
 ### 4. Execute
 
-에이전트 그래프가 LangGraph StateGraph로 실행된다. 각 노드는 LLM 호출, 도구 실행, 파일 I/O 등을 수행한다. 실행 중 상태는 Redis에 실시간으로 반영되며 Pub/Sub로 브로드캐스트된다.
+The agent graph runs as a LangGraph StateGraph. Each node performs LLM calls,
+tool executions, file I/O, and so on. State during execution is reflected into
+Redis in real time and broadcast via Pub/Sub.
 
 ### 5. Complete
 
-Job 완료 시 `job:status:updates` 채널로 API Server에 알린다. API Server는 내부 상태를 갱신하고 프론트엔드에 반영한다.
+On Job completion, the API Server is notified via the `job:status:updates`
+channel. The API Server updates its internal state and propagates it to the
+frontend.
 
-## 중단 (Interruption)
+## Interruption
 
-### 중단 사유
+### Interruption reasons
 
-| 사유 | 트리거 |
+| Reason | Trigger |
 |------|--------|
-| `user_stopped` | 사용자가 중지 버튼 클릭 |
-| `recursion_limit` | LangGraph recursion limit 도달 |
-| `api_error` | LLM API 오류 |
-| `process_crash` | 자식 프로세스 비정상 종료 |
-| `server_crash` | Worker 크래시 또는 BullMQ lock 만료 (stalled 감지) |
-| `timeout` | 실행 시간 초과 |
-| `tasks_failed` | 병렬 실행 중 태스크 실패 |
-| `awaiting_choice` | 사용자 선택 대기 (Triage) |
+| `user_stopped` | User clicked the stop button |
+| `recursion_limit` | LangGraph recursion limit reached |
+| `api_error` | LLM API error |
+| `process_crash` | Abnormal child process exit |
+| `server_crash` | Worker crash or BullMQ lock expiry (stalled detection) |
+| `timeout` | Execution time exceeded |
+| `tasks_failed` | Task failure during parallel execution |
+| `awaiting_choice` | Waiting for user choice (Triage) |
 
-### 중단 처리 흐름
+### Interruption handling flow
 
-1. 중단 발생 시 현재 상태를 세션 파일에 checkpoint로 저장
-2. `interruption` 메타데이터(reason, canResume, timestamp) 기록
-3. Job 상태를 `paused`로 갱신
-4. API Server에 알림
-5. 프론트엔드에 중단 ChoiceCard 표시
+1. When an interruption occurs, the current state is checkpointed to the session file
+2. `interruption` metadata (reason, canResume, timestamp) is recorded
+3. Job status is updated to `paused`
+4. API Server is notified
+5. An interruption ChoiceCard is shown in the frontend
 
-### Kill Reason 추적 (Redis 기반)
+### Kill Reason Tracking (Redis-based)
 
-Worker가 child에 SIGTERM을 보내기 전에 Redis `ant:job:killReason:{jobId}` 키에 종료 사유를 기록한다. child의 SIGTERM handler가 이 값을 읽어 정확한 `InterruptionReason`을 결정한다.
+Before the Worker sends SIGTERM to the child, it records the termination reason
+under the Redis key `ant:job:killReason:{jobId}`. The child's SIGTERM handler
+reads this value to determine the exact `InterruptionReason`.
 
 ```
 Worker: setKillReason(jobId, reason) → Redis SET (TTL 60s) → child.kill('SIGTERM')
 Child:  SIGTERM → resolveKillReason(jobId) → Redis GET (100ms cap) → handleGracefulShutdown(reason)
 ```
 
-Redis 키가 없으면 인프라(Kubernetes)가 Worker를 거치지 않고 직접 프로세스를 종료한 것으로 판단하여 `server_crash`를 사용한다.
+If the Redis key is absent, it is assumed that the infrastructure (Kubernetes)
+terminated the process directly, bypassing the Worker, and `server_crash` is
+used.
 
-### Child Process 종료 시나리오
+### Child Process Termination Scenarios
 
-자식 프로세스가 종료되는 경로는 5가지이다. 1-4는 Worker가 `killChildGracefully()` 패턴(SIGTERM → grace period 대기 → SIGKILL)으로 종료하며, 5는 인프라가 직접 종료한다.
+There are 5 paths through which the child process terminates. In scenarios 1-4
+the Worker terminates it via the `killChildGracefully()` pattern (SIGTERM →
+grace-period wait → SIGKILL); in scenario 5 the infrastructure terminates it
+directly.
 
-**1. 사용자 중지 (user_stopped)**
+**1. User stop (user_stopped)**
 
 ```
-사용자 → 중지 버튼 → API Server → Redis job:stop 채널 publish
-→ Job Worker가 구독 중 → setKillReason(jobId, 'user_stopped')
+User → stop button → API Server → publish on the Redis job:stop channel
+→ Job Worker is subscribed → setKillReason(jobId, 'user_stopped')
 → killChildGracefully(child, 3s)
-→ Child SIGTERM 수신 → resolveKillReason → gracefulShutdown.ts
-→ orchestrator.handleInterruption() → 체크포인트 저장 → exit
+→ Child receives SIGTERM → resolveKillReason → gracefulShutdown.ts
+→ orchestrator.handleInterruption() → save checkpoint → exit
 ```
 
-병렬로 cancellation polling(5초 간격)도 `isUserStopped` 플래그를 확인하여 SIGTERM을 보낸다. stop 채널보다 느리지만 Pub/Sub 유실 시 백업 역할.
+In parallel, cancellation polling (5-second interval) also checks the
+`isUserStopped` flag and sends SIGTERM. Slower than the stop channel, but acts as
+a backup if a Pub/Sub message is lost.
 
-**2. BullMQ Lock 만료 임박 (lock extension 연속 실패)**
+**2. Imminent BullMQ lock expiry (consecutive lock extension failures)**
 
 ```
-Extension 2회 연속 실패 (5분 경과, lock 만료 직전)
-→ 모든 타이머 cleanup → setKillReason(jobId, 'server_crash')
+2 consecutive extension failures (5 minutes elapsed, just before lock expiry)
+→ cleanup of all timers → setKillReason(jobId, 'server_crash')
 → killChildGracefully(child, 3s)
-→ Child SIGTERM → graceful shutdown → 체크포인트 저장
-→ moveToFinished의 "Missing lock" 에러 방지
+→ Child SIGTERM → graceful shutdown → save checkpoint
+→ avoids moveToFinished's "Missing lock" error
 ```
 
-이 경로가 없으면: child가 lock 만료 모르고 계속 실행 → 정상 종료 후 moveToFinished 호출 → "Missing lock for job" 에러 → Job 상태 불일치.
+Without this path: the child keeps running unaware of the lock expiry → calls
+moveToFinished after a normal exit → "Missing lock for job" error → inconsistent
+Job state.
 
-**3. BullMQ Stalled 감지 (Worker/child 크래시)**
+**3. BullMQ stalled detection (Worker/child crash)**
 
 ```
-Worker/child 크래시 → lock extension 중단 → lock 만료
-→ BullMQ stalledInterval(1분)에 stalled 감지 → stalled 이벤트
+Worker/child crash → lock extension stops → lock expires
+→ BullMQ detects the stall on the stalledInterval (1 min) → stalled event
 → setKillReason(jobId, 'server_crash')
-→ killChildGracefully(child, 2.5s) (혹시 살아있을 경우)
-→ 상태를 paused로 갱신, server_crash interruption publish
+→ killChildGracefully(child, 2.5s) (in case it is still alive)
+→ status updated to paused, server_crash interruption published
 ```
 
-maxStalledCount=0이므로 stalled job은 재큐잉되지 않는다. 사용자가 resume으로 재개한다.
+Because maxStalledCount=0, stalled jobs are not re-queued. The user resumes them
+manually.
 
-**4. 동일 Job 재처리 (Mac sleep/resume race)**
-
-```
-processJob 시작 시 동일 jobId의 기존 child 발견
-→ killChildGracefully(existingChild, 3s) → 기존 child 종료
-→ 새 child 스폰
-```
-
-**5. 인프라 직접 종료 (K8s SIGTERM / KEDA scale-down / OOMKill)**
+**4. Reprocessing the same Job (Mac sleep/resume race)**
 
 ```
-Kubernetes → Pod에 SIGTERM 전송 (terminationGracePeriodSeconds: 300s)
-→ Worker가 SIGTERM 수신 → shutdown() 호출
-→ 모든 active job에 setKillReason(jobId, 'server_shutdown') 병렬 기록
-→ 각 child에 SIGTERM → child가 resolveKillReason → graceful shutdown
-→ 체크포인트 저장 → exit(143)
+At processJob start, an existing child with the same jobId is found
+→ killChildGracefully(existingChild, 3s) → existing child terminated
+→ new child spawned
 ```
 
-Worker를 거치지 않고 child가 직접 SIGTERM을 받는 경우(OOMKill 등), Redis에 killReason이 없으므로 `server_crash`로 분류된다.
+**5. Direct infrastructure termination (K8s SIGTERM / KEDA scale-down / OOMKill)**
 
-### Lock, Stall, Kill의 시간축 관계
+```
+Kubernetes → sends SIGTERM to the Pod (terminationGracePeriodSeconds: 300s)
+→ Worker receives SIGTERM → calls shutdown()
+→ setKillReason(jobId, 'server_shutdown') recorded in parallel for all active jobs
+→ SIGTERM to each child → child runs resolveKillReason → graceful shutdown
+→ save checkpoint → exit(143)
+```
+
+When the child receives SIGTERM directly without going through the Worker
+(OOMKill, etc.), there is no killReason in Redis, so it is classified as
+`server_crash`.
+
+### Timeline Relationship of Lock, Stall, and Kill
 
 ```
   lockDuration = 5min
   extensionInterval = 2.5min
   stalledInterval = 1min
 
-  ┌─── 정상 ──────────────────────────────────────────────┐
+  ┌─── Normal ────────────────────────────────────────────┐
   │  T+0     T+2.5m    T+5m      T+7.5m    ...   T+end   │
   │  lock    extend✓   extend✓   extend✓         finish   │
   └───────────────────────────────────────────────────────┘
 
-  ┌─── Lock 실패 ────────────────────────────────────────┐
+  ┌─── Lock failure ─────────────────────────────────────┐
   │  T+0     T+2.5m    T+5m                               │
   │  lock    fail(1/2) fail(2/2)→ cleanup + SIGTERM        │
-  │                     ↑ lock 만료 직전에 child 종료      │
+  │                     ↑ child killed just before lock expiry │
   └───────────────────────────────────────────────────────┘
 
   ┌─── Mac Sleep ──────────────────────────────────────────┐
   │  T+0     T+2.5m    ...sleep...  T+Xm (wake)           │
-  │  lock    extend✓   interval정지  첫 tick: elapsed>lock │
-  │                                  → 즉시 cleanup+kill   │
+  │  lock    extend✓   interval stops  first tick: elapsed>lock │
+  │                                  → immediate cleanup+kill   │
   └────────────────────────────────────────────────────────┘
 
-  ┌─── 크래시 ──────────────────────────────────────────┐
+  ┌─── Crash ───────────────────────────────────────────┐
   │  T+0     T+2.5m   T+5m    T+6m                      │
-  │  lock    💀crash   expire  stalled 감지 → paused     │
+  │  lock    💀crash   expire  stall detected → paused   │
   └──────────────────────────────────────────────────────┘
 
   ┌─── K8s Scale-Down ─────────────────────────────────┐
@@ -200,91 +224,96 @@ Worker를 거치지 않고 child가 직접 SIGTERM을 받는 경우(OOMKill 등)
   └────────────────────────────────────────────────────┘
 ```
 
-### SIGTERM 타이밍 예산
+### SIGTERM Timing Budget
 
-child가 SIGTERM을 받은 후 SIGKILL까지의 시간 예산 내에서 checkpoint가 완료되어야 한다.
+After the child receives SIGTERM, the checkpoint must complete within the time
+budget before SIGKILL.
 
 ```
   resolveKillReason: max 100ms (Promise.race cap)
   diagnostics log:   ~1ms (sync)
   gracefulShutdown:  max 1800ms (timeout)
   ─────────────────────────
-  합계:              ~1901ms
+  total:             ~1901ms
 
-  Stall handler grace: 2500ms → 여유 599ms
-  Stop/Lock grace:     3000ms → 여유 1099ms
-  K8s termination:     300s   → 여유 충분
+  Stall handler grace: 2500ms → 599ms headroom
+  Stop/Lock grace:     3000ms → 1099ms headroom
+  K8s termination:     300s   → ample headroom
 ```
 
-상세 타이밍과 설정값은 [02-infrastructure.md § BullMQ](02-infrastructure.md)를 참조한다.
+For detailed timing and configuration values, see
+[02-infrastructure.md § BullMQ](02-infrastructure.md).
 
-## 재개 (Resume)
+## Resume
 
-### Resume 판정
+### Resume determination
 
-`isResume` 플래그는 다음 조건에서 설정된다:
-- 세션에 interruption이 존재하고 taskQueue가 있는 경우
-- `/resume` 또는 `/continue` 엔드포인트 호출 시
-- Cloud 모드에서 `ANT_IS_RESUME` 환경변수로 전달
+The `isResume` flag is set under the following conditions:
+- The session has an interruption and a taskQueue exists
+- The `/resume` or `/continue` endpoint is called
+- Passed via the `ANT_IS_RESUME` environment variable in Cloud mode
 
-### Resume 라우팅 (Code/Design Job)
+### Resume routing (Code/Design Job)
 
-resolve 노드에서 4-way 분기:
+A 4-way branch in the resolve node:
 
-| 조건 | 라우팅 대상 |
+| Condition | Routing target |
 |------|-----------|
-| `!isResume` | triage (신규 Job) |
-| `isResume + hasTaskQueue + overrideDirective` | revise (태스크 재구성 판단) |
-| `isResume + hasTaskQueue` | plan (중단 지점부터 재개) |
-| `isResume + hasResolvedAction` | decompose (환경 감지 후 중단) |
+| `!isResume` | triage (new Job) |
+| `isResume + hasTaskQueue + overrideDirective` | revise (decide whether to restructure tasks) |
+| `isResume + hasTaskQueue` | plan (resume from the interruption point) |
+| `isResume + hasResolvedAction` | decompose (interrupted after environment detection) |
 
-### Resume 라우팅 (Plan Job)
+### Resume routing (Plan Job)
 
-세션에서 conversation이 존재하면 triage를 건너뛰고 generate 노드로 직행한다.
+If a conversation exists in the session, triage is skipped and execution goes
+straight to the generate node.
 
 ### directive / overrideDirective
 
-| 필드 | 역할 |
+| Field | Role |
 |------|------|
-| `directive` | 현재 유효한 지시사항 |
-| `overrideDirective` | 채팅으로 새로 입력된 지시사항 |
+| `directive` | The currently effective directive |
+| `overrideDirective` | A new directive entered via chat |
 
-Resume 시 overrideDirective가 있으면 revise 노드에서 기존 태스크 큐를 조정할지 LLM이 판단한다. 처리 후 overrideDirective는 소비되어 directive로 승격된다.
+On resume, if an overrideDirective is present, the LLM decides in the revise node
+whether to adjust the existing task queue. After processing, the
+overrideDirective is consumed and promoted to directive.
 
 ## Checkpoint
 
-### 저장 위치
+### Storage location
 
 `{featurePath}/sessions/{agent}/{jobType}.json`
 
-### 저장 시점 (Code/Design Job)
+### Save points (Code/Design Job)
 
-| 시점 | 저장 내용 |
+| Point | Saved content |
 |------|----------|
-| runner.ts (초기) | directive 조기 저장 |
+| runner.ts (initial) | Early save of directive |
 | detect | resolvedAction |
-| decompose ~ runtimeValidate | 전체 state (saveCheckpoint) |
-| runner.ts (recursion limit) | 전체 state + interruption |
-| learn | 최종 state |
+| decompose ~ runtimeValidate | Full state (saveCheckpoint) |
+| runner.ts (recursion limit) | Full state + interruption |
+| learn | Final state |
 
-### 저장 시점 (Plan Job)
+### Save points (Plan Job)
 
-| 시점 | 저장 내용 |
+| Point | Saved content |
 |------|----------|
-| generate 완료 | conversation + conversationHistory + directive + tokenUsage |
-| tool 완료 | conversationHistory + tokenUsage |
-| SIGTERM | stateSnapshot의 최신 상태 + interruption |
+| generate complete | conversation + conversationHistory + directive + tokenUsage |
+| tool complete | conversationHistory + tokenUsage |
+| SIGTERM | Latest state from stateSnapshot + interruption |
 
-### 세션 파일 동시 쓰기 보호
+### Concurrent-Write Protection for Session Files
 
-`FileSessionAdapter`는 두 가지 보호 메커니즘을 제공한다:
-- **Per-job FileMutex**: read-modify-write 작업을 job 타입별로 직렬화
-- **Atomic write**: temp 파일에 먼저 쓴 후 `fs.rename()`으로 원본 교체
+`FileSessionAdapter` provides two protection mechanisms:
+- **Per-job FileMutex**: serializes read-modify-write operations per job type
+- **Atomic write**: writes to a temp file first, then replaces the original via `fs.rename()`
 
-## 경계
+## Boundaries
 
-- BullMQ/Redis 인프라 규약: [02-infrastructure.md](02-infrastructure.md)
-- 에이전트 그래프 구조: [11-agent-architecture.md](11-agent-architecture.md)
-- Code Job 상세: [14-code-job.md](14-code-job.md)
-- Design Job 상세: [15-design-job.md](15-design-job.md)
-- Planner Job 상세: [16-planner-job.md](16-planner-job.md)
+- BullMQ/Redis infrastructure conventions: [02-infrastructure.md](02-infrastructure.md)
+- Agent graph structure: [11-agent-architecture.md](11-agent-architecture.md)
+- Code Job details: [14-code-job.md](14-code-job.md)
+- Design Job details: [15-design-job.md](15-design-job.md)
+- Planner Job details: [16-planner-job.md](16-planner-job.md)

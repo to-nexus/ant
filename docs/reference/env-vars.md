@@ -40,7 +40,8 @@ Per-provider reasoning toggles (operator hard opt-outs): `DEEPSEEK_THINKING=disa
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANT_TASK_CONCURRENCY` | `3` | Parallel tasks per worker process. |
-| `ANT_LLM_MAX_RETRIES` | `3` | LLM call retry budget on transient errors. |
+| `ANT_WORKER_CONCURRENCY` | `1` | Concurrent jobs per worker process. |
+| `RECURSION_LIMIT` | — | LangGraph recursion ceiling override. |
 
 ## Vector DB / RAG
 
@@ -63,37 +64,32 @@ gate sites.
 |----------|---------|---------|
 | `ANT_K8S_NAMESPACE` | unset | Namespace for IDE pods. If unset, falls back to Docker. |
 | `ANT_PREVIEW_WORKERS` | unset | Comma-separated preview-worker URLs. Required in cloud. |
-| `ANT_FIGMA_BRIDGE_URL` | unset | HTTP bridge to Figma MCP for cloud mode. |
-| `ANT_FIGMA_TOKEN` | unset | Figma Personal Access Token for the bridge. |
+| `ANT_PREVIEW_BASE_DOMAIN` | unset | Base domain for preview URL routing in cloud. |
+
+Figma MCP transport is selected by `ANT_SERVER_MODE` (desktop MCP locally,
+HTTP bridge in cloud) — there is no separate Figma env var.
 
 ## Auth
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANT_AUTH_PROVIDER` | `local` | `local` (single-tenant) or your OAuth provider id. |
-| `ANT_AUTH_CLIENT_ID` / `ANT_AUTH_CLIENT_SECRET` | — | OAuth credentials when `ANT_AUTH_PROVIDER` is set. |
 | `ANT_JWT_SECRET` | — | JWT signing secret. Required in cloud. |
 
-The current auth implementation is intentionally minimal. SAML / SCIM /
-fine-grained ACL is on the roadmap.
+Auth tenancy is driven by `ANT_SERVER_MODE`: `local` uses the single
+`local:local` tenant, `cloud` uses OAuth. The current implementation is
+intentionally minimal — SAML / SCIM / fine-grained ACL is on the roadmap.
 
 ## Logging
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANT_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. |
-| `ANT_LOG_FORMAT` | `pretty` | `pretty` (dev) or `json` (production). |
 
-## Per-process port overrides
+## Ports
 
-| Variable | Default |
-|----------|---------|
-| `ANT_API_PORT` | `4100` |
-| `ANT_REALTIME_PORT` | `4101` |
-| `ANT_PREVIEW_PORT` | `4102` |
-
-Local mode auto-detects the next free port if these conflict; cloud mode
-expects the listed port.
+Each backend process reads `PORT` (e.g. `PORT=4110 pnpm dev:api-server`);
+the defaults are 4100 (API), 4101 (realtime), 4102 (preview). There are no
+per-process `ANT_*_PORT` variables.
 
 ## Read next
 

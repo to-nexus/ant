@@ -1,97 +1,85 @@
 # 41. Task Priority & Band System (code job)
 
-> SSOT 코드: [`graph/code/state.ts`](../../packages/ant-cli/src/agents/architect/graph/code/state.ts) (`TASK_PRIORITY` 맵 + 헬퍼), [`state.priorityGuide.ts`](../../packages/ant-cli/src/agents/architect/graph/code/state.priorityGuide.ts) (프롬프트 가이드 렌더).
-> 3축 모델의 권위 기술은 `CLAUDE.md` §"Three-Axis Task Modeling SSOT" — 이 문서는 그 위에서 **우선순위 숫자 체계**만 다룬다.
+> SSOT code: [`graph/code/state.ts`](../../packages/ant-cli/src/agents/architect/graph/code/state.ts) (`TASK_PRIORITY` map + helpers), [`state.priorityGuide.ts`](../../packages/ant-cli/src/agents/architect/graph/code/state.priorityGuide.ts) (prompt guide render).
+> The authoritative description of the three-axis model is `CLAUDE.md` §"Three-Axis Task Modeling SSOT" — this document covers only the **priority numbering scheme** built on top of it.
 
-## 3축 복습 (type / band / priority)
+## Three-axis recap (type / band / priority)
 
-task 는 **type + band** 로 정의된다.
+A task is defined by **type + band**.
 
-| Axis | 관찰자 | 결정 |
+| Axis | Observer | Decides |
 |---|---|---|
-| `task.type` | LLM | 행동 모드 (feature / error / verification / seam / ui / design-system / test-code / doc / setup / explain) |
-| `task.band` | Orchestrator | type 안의 스케줄링 위치 — **feature**(foundation/platform/integration) 와 **setup**(root) 에만 존재 |
-| `task.priority` | TaskQueue | 정렬 키 (낮을수록 먼저). **의미 비교 금지** — `TaskQueue.push()` 정렬과 `deriveBandFromPriority` 만 숫자를 읽는다 |
+| `task.type` | LLM | Behavior mode (feature / error / verification / seam / ui / design-system / test-code / doc / setup / explain) |
+| `task.band` | Orchestrator | Scheduling position within a type — exists only for **feature** (foundation/platform/integration) and **setup** (root) |
+| `task.priority` | TaskQueue | Sort key (lower runs first). **Semantic comparison is forbidden** — only `TaskQueue.push()` sorting and `deriveBandFromPriority` read the number |
 
-## 우선순위 SSOT — `TASK_PRIORITY` (type → band → window)
+## Priority SSOT — `TASK_PRIORITY` (type → band → window)
 
-평면 상수는 폐기됐다. 단일 정규화 맵이 모든 윈도우 경계를 소유한다 (1차 키 = `TaskType`, 2차 키 = band, `default` = `band===undefined`):
+The flat constants are retired. A single normalized map owns every window boundary (primary key = `TaskType`, secondary key = band, `default` = `band===undefined`):
 
-| type | band | window | 예상 fan-out | 배리어 역할 |
+| type | band | window | expected fan-out | barrier role |
 |---|---|---|---|---|
 | setup | root | 100 | 1 | root-first; `blocksUi/Testgen/Doc` |
-| setup | default | 101–189 | 0–N | 동상 |
+| setup | default | 101–189 | 0–N | same as above |
 | design-system | — (TYPE) | 200–219 | 1–~20 | foundation phase (classify=type) |
-| feature | foundation | 220–259 | 여럿 | `hasPreFeatureWork` 생성 |
-| feature | platform | 260–299 | 0–N (런타임별) | `hasPrePlatformWork` 생성 |
-| feature | default | 300–599 | 다수(bulk) | integration gate 생성; foundation+platform 소비 |
-| feature | integration | 600–649 | 소수 | integration gate 소비 |
-| ui | — | 650–749 | 다수 | preUi 소비 |
-| seam | — | 750–799 | ref-모듈당 1 | post-ui 실행 |
-| test-code | — | 800–849 | 0–N | preTestgen 소비; `blocksDoc` |
-| doc | — | 850–899 | 0–N | preDoc 소비 |
-| error | — | 900–999 | 0–N | 반응형 |
+| feature | foundation | 220–259 | several | produces `hasPreFeatureWork` |
+| feature | platform | 260–299 | 0–N (per runtime) | produces `hasPrePlatformWork` |
+| feature | default | 300–599 | many (bulk) | produces the integration gate; consumes foundation+platform |
+| feature | integration | 600–649 | few | consumes the integration gate |
+| ui | — | 650–749 | many | consumes preUi |
+| seam | — | 750–799 | 1 per ref module | runs post-ui |
+| test-code | — | 800–849 | 0–N | consumes preTestgen; `blocksDoc` |
+| doc | — | 850–899 | 0–N | consumes preDoc |
+| error | — | 900–999 | 0–N | reactive |
 | verification | — | 1000 | 1 | terminal gate |
 
-윈도우는 연속·비중첩이며 회귀 가드 [`tests/policy/priority-constants.test.ts`](../../packages/ant-cli/tests/policy/priority-constants.test.ts) 가 단조성·`min≤max`·lane-offset 안전을 잠근다.
+Windows are contiguous and non-overlapping; the regression guard [`tests/policy/priority-constants.test.ts`](../../packages/ant-cli/tests/policy/priority-constants.test.ts) locks monotonicity, `min≤max`, and lane-offset safety.
 
-### 공개 헬퍼 (phase 코드는 숫자 직접 접근 금지 — 헬퍼만)
+### Public helpers (phase code must never touch the numbers directly — helpers only)
 
-- `windowFor(type, band?) → {min,max}` — band 없으면 type `default`. 미상/`explain` 타입은 ordinary feature 윈도우로 폴백.
-- `basePriorityFor(type, band?) → number` — 윈도우 base. **누락 priority 의 type별 기본값** (옛 단일 magic number 대체).
-- `deriveBandFromPriority(priority) → TaskBand | undefined` — `TASK_PRIORITY` 맵 **역조회**. priority→band 변환의 **유일한 phase 사이트** ([`decompose/responseParser.ts`](../../packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/responseParser.ts)).
-- `VERIFICATION_PRIORITY` — verification 단일점(1000), 맵에서 파생.
+- `windowFor(type, band?) → {min,max}` — without a band, the type's `default`. Unknown/`explain` types fall back to the ordinary feature window.
+- `basePriorityFor(type, band?) → number` — the window base. **The per-type default for a missing priority** (replaces the old single magic number).
+- `deriveBandFromPriority(priority) → TaskBand | undefined` — **reverse lookup** of the `TASK_PRIORITY` map. The **only phase site** for priority→band conversion ([`decompose/responseParser.ts`](../../packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/responseParser.ts)).
+- `VERIFICATION_PRIORITY` — the verification single point (1000), derived from the map.
 
-### 엄격 파생 (의도된 동작)
+### Strict derivation (intended behavior)
 
-design-system `[200,219]` 와 feature.foundation `[220,259]` 는 **별개 윈도우**다. `deriveBandFromPriority` 는 `[220,259]` 만 foundation 으로 파생한다 (엄격). design-system 은 TYPE 이므로 band 파생이 호출되지 않으며, 윈도우 안의 stray feature priority 는 `undefined`(ordinary)로 안전 강등된다.
+design-system `[200,219]` and feature.foundation `[220,259]` are **separate windows**. `deriveBandFromPriority` derives only `[220,259]` as foundation (strict). design-system is a TYPE, so band derivation is never invoked for it, and a stray feature priority inside that window is safely demoted to `undefined` (ordinary).
 
-### lane-mode offset 불변식
+### lane-mode offset invariant
 
-batchSplit lane-mode child priority = `parentPriority + offset` (부모는 윈도우 base 에서 emit, slice 가 위로 쌓임). `MAX_LANE_OFFSET = 39` 는 **가장 좁은 lane-fanning 윈도우**(feature foundation/platform, `max-min=39`)에 맞춰진 상한이며, [`batchSplit/process.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/batchSplit/process.ts) 가 offset 을 이 값으로 clamp 해 child 가 윈도우를 넘지 못하게 한다.
+batchSplit lane-mode child priority = `parentPriority + offset` (the parent emits at the window base; slices stack upward). `MAX_LANE_OFFSET = 39` is the ceiling matched to the **narrowest lane-fanning window** (feature foundation/platform, `max-min=39`), and [`batchSplit/process.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/batchSplit/process.ts) clamps the offset to this value so a child can never leave the window.
 
-## 프롬프트 단일 소스 — `renderPriorityBandGuide()`
+## Single prompt source — `renderPriorityBandGuide()`
 
-band 표는 손으로 베끼지 않는다. `renderPriorityBandGuide()` 가 `TASK_PRIORITY` 를 순회해 LLM-facing 표를 렌더하고, `decompose/variants/default/base.md` 가 `{{{priorityBandGuide}}}` 로 주입한다. 같은 함수를 회귀 테스트가 소비하므로 숫자가 drift 할 수 없다.
+The band table is never hand-copied. `renderPriorityBandGuide()` walks `TASK_PRIORITY` to render the LLM-facing table, and `decompose/variants/default/base.md` injects it via `{{{priorityBandGuide}}}`. The regression test consumes the same function, so the numbers cannot drift.
 
-## 우선순위 권위 — code-job 단일 권위자
+## Priority authority — a single authority for code jobs
 
-모든 code intent(`gen-code-sys` / `gen-code-spec` / `gen-code-directive`)는 **동일 canonical band** 를 쓴다. 옛 `gen-code-spec` 자유-우선순위 특례(`isPriorityFromSpec`)는 제거됐다.
+Every code intent (`gen-code-sys` / `gen-code-spec` / `gen-code-directive`) uses the **same canonical bands**. The old `gen-code-spec` free-priority carve-out (`isPriorityFromSpec`) has been removed.
 
-소스 문서(스펙/시스템 설계/directive)의 작업 순서는 **band 내부 상대 우선순위의 참고**일 뿐이다. band 배치는 의존성 분류를 따른다 — 공통/기반은 소스의 어느 위치든 foundation·platform 으로 추출해 앞단에, feature/ui/error 는 각자 band 에. 소스의 t1…tn 을 priority 숫자에 1:1 복사하지 않는다.
+The work ordering in the source document (spec / system design / directive) is only a **reference for relative priority within a band**. Band placement follows dependency classification — common/foundational work is extracted into foundation/platform up front no matter where it sits in the source, while feature/ui/error go to their respective bands. The source's t1…tn is never copied 1:1 into priority numbers.
 
-## design-job doc 우선순위는 별개 축
+## design-job doc priorities are a separate axis
 
-design job 은 모든 task 를 `type:'doc'` 로 emit 하고 우선순위 band(tokens 100–199 / assets 200–299 / spec 300+)로 스케줄링을 구분한다. 이 축은 code-job `TASK_PRIORITY` 와 **직교**하며 [`tasks/doc/hooks/scheduling.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/doc/hooks/scheduling.ts) 의 `DESIGN_DOC_BANDS` 가 SSOT 다. 둘을 통합하지 말 것.
+The design job emits every task as `type:'doc'` and distinguishes scheduling with priority bands (tokens 100–199 / assets 200–299 / spec 300+). This axis is **orthogonal** to the code-job `TASK_PRIORITY`, and `DESIGN_DOC_BANDS` in [`tasks/doc/hooks/scheduling.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/doc/hooks/scheduling.ts) is the SSOT. Do not merge the two.
 
 ## Deferred — game world-space Render sub-band (Phase 5+)
 
-**등록 이유**: 나중에 "버그"로 재발견되지 않게 지금 설계 방향을 못박는다. 아직 구현 대상 아님.
+**Why this is recorded**: to pin the design direction now so it is not rediscovered later as a "bug". Not an implementation target yet.
 
-현재 등록된 5개 게임 장르(match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake)는
-전부 single-screen 이라 캔버스(world-space) 렌더 레이어가 얇고, 모든 UI 가 screen-space React HUD 로
-collapse 한다 ([`jobs/code/domain/game.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/domain/game.md) §7).
-따라서 game 코드잡의 시각 작업이 서비스와 같은 `ui` 타입(단일 DOM 표면 = feature 스켈레톤 + 스타일
-패스 모델, [`tasks/ui/twin.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/ui/twin.ts))으로
-처리돼도 현재는 맞아떨어진다.
+The 5 currently registered game genres (match3 / slidingPuzzle / cardSolitaire / arcadePaddle / arcadeSnake) are all single-screen, so the canvas (world-space) render layer is thin and all UI collapses into the screen-space React HUD ([`jobs/code/domain/game.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/domain/game.md) §7). Therefore it currently works out that a game code job's visual work is handled with the same `ui` type as services (single DOM surface = feature skeleton + style-pass model, [`tasks/ui/twin.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/ui/twin.ts)).
 
-**트리거**: 애니메이션-헤비 / 카메라-패닝 장르가 매트릭스에 추가되면 world-space Render 저작(스프라이트
-tween / 파티클 / 씬 연출)이 고volume 이 되고, `ui` 윈도(650–749)가 world-space Render(Domain 의존)와
-screen-space HUD 를 한 윈도에 섞어 순서화하지 못한다. `ui` 타입의 twin/attestation/restyle 프레이밍도
-world-space 저작을 담지 못한다.
+**Trigger**: once animation-heavy / camera-panning genres are added to the matrix, world-space Render authoring (sprite tweens / particles / scene direction) becomes high-volume, and the `ui` window (650–749) can no longer order world-space Render (Domain-dependent) and screen-space HUD mixed within one window. The `ui` type's twin/attestation/restyle framing also cannot carry world-space authoring.
 
-**그때의 설계 결정 (미리 확정)**:
-- **새 도메인-결합 task type(`render`/`scene`) 신설 금지.** `task.type` 은 도메인-agnostic 이라는
-  직교성(도메인 축·스택 축 전수 sweep 으로 입증)을 깬다. 차별화는 **domain 축**(이미 존재·작동)에 둔다.
-- **band 경로**: `ui` 윈도 안에 sub-band 도입(예 `UiBand = 'world' | 'hud'`) — Three-Axis 의
-  "새 scheduling 위치 = band, not type" 규칙. world-space Render 를 screen-space HUD 앞에 순서화.
-  `TaskBand` union 확장 1줄 + decompose mapping + `tasks/ui/hooks/scheduling.ts` classify 분기.
-- **hook/variant**: `tasks/ui/` 번들이 domain 을 읽어 world-space Render task 에 twin/attestation 적용을
-  스왑하고, execute variant 에 domain-gated render-authoring 섹션을 얹는다 (`ui` 는 타입 유지, domain 분기).
+**Design decisions for that point (pre-committed)**:
+- **Do NOT create a new domain-coupled task type (`render`/`scene`).** That would break the orthogonality that `task.type` is domain-agnostic (proven by an exhaustive sweep across the domain and stack axes). Differentiation belongs on the **domain axis** (which already exists and works).
+- **Band path**: introduce a sub-band inside the `ui` window (e.g. `UiBand = 'world' | 'hud'`) — the Three-Axis rule "a new scheduling position = band, not type". Order world-space Render ahead of screen-space HUD. One line extending the `TaskBand` union + decompose mapping + a classify branch in `tasks/ui/hooks/scheduling.ts`.
+- **hook/variant**: the `tasks/ui/` bundle reads the domain to swap twin/attestation application for world-space Render tasks, and layers a domain-gated render-authoring section onto the execute variant (`ui` stays the type; the branch is on domain).
 
-## 관련 문서
+## Related documents
 
-- `CLAUDE.md` §"Three-Axis Task Modeling SSOT" — 권위 사양 + enforcement
-- [`NODE_GRAPH_LAYOUT.md`](NODE_GRAPH_LAYOUT.md) §R1 — phase 코드의 priority 의미 비교 격리
-- [`jobs/code/domain/game.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/domain/game.md) §7 — world-space/screen-space 렌더 경계 (위 seam 의 도메인-오버레이 쪽)
-- [`11-agent-architecture.md`](11-agent-architecture.md) — TaskOrchestrator / 배리어 메커니즘
+- `CLAUDE.md` §"Three-Axis Task Modeling SSOT" — authoritative spec + enforcement
+- [`NODE_GRAPH_LAYOUT.md`](NODE_GRAPH_LAYOUT.md) §R1 — isolating semantic priority comparison out of phase code
+- [`jobs/code/domain/game.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/domain/game.md) §7 — world-space/screen-space render boundary (the domain-overlay side of the seam above)
+- [`11-agent-architecture.md`](11-agent-architecture.md) — TaskOrchestrator / barrier mechanism

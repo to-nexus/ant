@@ -1,72 +1,72 @@
 # Debug Logging
 
-## 개요
+## Overview
 
-ANT는 Job 실행 시 LLM 프롬프트 구조, 토큰 사용량, 실행 이벤트, 도구 호출 등의 디버그 정보를 `sessions/{agent}/debug/` 디렉토리에 기록한다. 이 정보는 프롬프트 주입 누락 진단, 토큰 폭증 감지, 장애 원인 추적에 사용된다.
+During Job execution, ANT records debug information — LLM prompt structure, token usage, execution events, tool calls — under the `sessions/{agent}/debug/` directory. This information is used to diagnose missing prompt injections, detect token blow-ups, and trace failure causes.
 
-### 설계 원칙
+### Design Principles
 
-| 원칙 | 설명 |
+| Principle | Description |
 |------|------|
-| **MECE 카테고리** | 각 관심사는 정확히 하나의 로그 카테고리에만 기록된다. 중복 기록 금지. |
-| **교차참조 가능** | 모든 엔트리에 `correlationKey`(`jobId:taskId:callIndex`)를 포함하여 카테고리 간 연결이 가능하다. |
-| **Append-only** | 모든 로그는 append 전용이다. 기존 내용을 읽어 수정(prepend, truncate)하지 않는다. |
-| **에이전트 동적 해석** | 로그 경로에 에이전트 이름을 하드코딩하지 않는다. `getAgentForJob(jobType)`으로 결정한다. |
-| **Job Summary** | Job 완료 시 단일 요약 파일을 생성하여, 디렉토리 탐색 없이 전체 현황을 파악할 수 있다. |
-| **Non-blocking** | 로그 기록 실패가 Job 실행을 중단시키지 않는다. |
-| **JobId = 파일명** | 파일명은 `{jobId}.ext`만으로 구성한다. 디렉토리가 카테고리를 식별하므로 접두사를 붙이지 않는다. |
+| **MECE categories** | Each concern is recorded in exactly one log category. No duplicate recording. |
+| **Cross-referenceable** | Every entry includes a `correlationKey` (`jobId:taskId:callIndex`) so categories can be joined. |
+| **Append-only** | All logs are append-only. Existing content is never read and modified (no prepend, no truncate). |
+| **Dynamic agent resolution** | Agent names are never hard-coded into log paths. They are resolved via `getAgentForJob(jobType)`. |
+| **Job Summary** | On Job completion, a single summary file is generated so the overall picture can be grasped without directory traversal. |
+| **Non-blocking** | A logging failure never interrupts Job execution. |
+| **JobId = filename** | Filenames consist of `{jobId}.ext` only. The directory identifies the category, so no prefix is added. |
 
-## 디렉토리 구조
+## Directory Structure
 
 ```
 sessions/{agent}/debug/
-    summary/                  Job 종합 요약 (인덱스 + 핵심 지표)
+    summary/                  Job-wide summary (index + key metrics)
         {jobId}.json
-    prompts/                  LLM 프롬프트 구조 추적
+    prompts/                  LLM prompt structure trace
         {jobId}.jsonl
-    logs/                     Job/Task 라이프사이클 이벤트
+    logs/                     Job/Task lifecycle events
         {jobId}.jsonl
-    tokens/                   LLM 호출별 토큰 사용량
+    tokens/                   Per-LLM-call token usage
         {jobId}.jsonl
-    plans/                    코드 태스크 생성 플랜
+    plans/                    Code task generation plans
         {jobId}.json
-    figma/                    Figma MCP 호출 디버그
+    figma/                    Figma MCP call debug
         {jobId}.json
         screenshots/{nodeId}.*
 ```
 
-### 파일 명명 규칙
+### File Naming Convention
 
-디렉토리가 카테고리를 식별하므로 파일명에 카테고리 접두사를 붙이지 않는다. 파일명은 `{jobId}` + 확장자만으로 구성한다.
+Since the directory identifies the category, filenames carry no category prefix. A filename consists of `{jobId}` plus the extension only.
 
 ```
 sessions/architect/debug/tokens/abc-123.jsonl    (O)
-sessions/architect/debug/tokens/token-abc-123.json  (X — 접두사 중복, 확장자 불일치)
+sessions/architect/debug/tokens/token-abc-123.json  (X — redundant prefix, mismatched extension)
 ```
 
-이 규칙으로 모든 카테고리에서 동일한 `jobId`로 파일을 찾을 수 있다:
+With this rule, files can be found across all categories by the same `jobId`:
 
 ```bash
 ls sessions/architect/debug/*/{jobId}.*
 ```
 
-경로 SSOT: `DEBUG_SUBDIRS` in `sessionPaths.ts`. 캐논 디렉토리: `CANONICAL_DIR_DEFS` in `@ant/shared/canonical.ts`.
+Path SSOT: `DEBUG_SUBDIRS` in `sessionPaths.ts`. Canonical directories: `CANONICAL_DIR_DEFS` in `@ant/shared/canonical.ts`.
 
-에이전트별 디버그 하위 디렉토리:
+Per-agent debug subdirectories:
 
-| Agent | 하위 디렉토리 |
+| Agent | Subdirectories |
 |-------|--------------|
 | architect | summary, prompts, plans, logs, tokens, figma |
 | planner | summary, prompts |
 | creator | summary, prompts |
 
-## 로그 카테고리
+## Log Categories
 
-5개 카테고리로 관심사를 분리한다. 각 카테고리는 독립적이며, 다른 카테고리의 정보를 중복 기록하지 않는다.
+Concerns are separated into 5 categories. Each category is independent and never duplicates information from another category.
 
 ### 1. Job Summary (`summary/{jobId}.json`)
 
-Job 완료(정상/중단/실패) 시 자동 생성되는 단일 JSON 파일. "이 Job에서 무슨 일이 일어났는가"에 대한 진입점.
+A single JSON file generated automatically on Job completion (success/interruption/failure). The entry point for "what happened in this Job".
 
 ```json
 {
@@ -109,21 +109,21 @@ Job 완료(정상/중단/실패) 시 자동 생성되는 단일 JSON 파일. "�
 }
 ```
 
-`files` 필드는 이 Job에 대해 실제로 생성된 디버그 파일의 상대 경로 목록이다. 디렉토리 탐색 없이 관련 파일을 알 수 있다.
+The `files` field is a list of relative paths to the debug files actually generated for this Job. Related files can be identified without directory traversal.
 
-`issues` 배열은 실행 중 감지된 이상 징후를 요약한다:
+The `issues` array summarizes anomalies detected during execution:
 
-| Issue Type | 감지 조건 | 설명 |
+| Issue Type | Detection condition | Description |
 |------------|----------|------|
-| `low_cache_hit` | `cacheHitRatio < 0.5` (iterative 노드, callIndex > 0) | 프롬프트 캐시 불안정 |
-| `high_iteration` | `callIndex >= 15` (iterative 노드) | 태스크 수렴 실패 가능성 |
-| `contract_violation` | 템플릿 렌더링 시 누락 변수 감지 | 프롬프트 주입 누락 |
-| `task_failure` | 태스크 실행 실패 | 재시도 초과, 재귀 한도 등 |
-| `profile_missing` | 언어/프레임워크 프로파일 미발견 | 환경 감지 불완전 |
+| `low_cache_hit` | `cacheHitRatio < 0.5` (iterative node, callIndex > 0) | Prompt cache instability |
+| `high_iteration` | `callIndex >= 15` (iterative node) | Possible task convergence failure |
+| `contract_violation` | Missing variable detected during template rendering | Missing prompt injection |
+| `task_failure` | Task execution failure | Retry exhaustion, recursion limit, etc. |
+| `profile_missing` | Language/framework profile not found | Incomplete environment detection |
 
 ### 2. Prompt Trace (`prompts/{jobId}.jsonl`)
 
-LLM에 전송되는 프롬프트의 구조적 메타데이터. 프롬프트 본문은 기록하지 않는다 — 어떤 템플릿을 조합했고, 어떤 변수를 주입했는지만 추적한다.
+Structural metadata of the prompts sent to the LLM. Prompt bodies are NOT recorded — only which templates were composed and which variables were injected.
 
 ```jsonl
 {"correlationKey":"abc-123:triage:0","node":"triage","timestamp":"...","templatePath":"triage/base","usedTemplates":["triage/rules"],"promptLength":4200,"tokenEstimate":1200,"injectedVariables":{"workspaceState":"[STRING: 2340 chars]"},"contractViolations":[]}
@@ -131,27 +131,27 @@ LLM에 전송되는 프롬프트의 구조적 메타데이터. 프롬프트 본�
 {"correlationKey":"abc-123:task-1:1","node":"execute","taskId":"task-1","callIndex":1,"timestamp":"...","templatePath":"code/phases/execute/base","promptLength":12000,"tokenEstimate":3428}
 ```
 
-각 엔트리에 기록되는 필드:
+Fields recorded per entry:
 
-| 필드 | 필수 | 설명 |
+| Field | Required | Description |
 |------|------|------|
 | `correlationKey` | Y | `{jobId}:{taskId}:{callIndex}` |
-| `node` | Y | 그래프 노드 이름 (triage, decompose, execute, execute 등) |
-| `taskId` | N | 태스크 ID (triage는 태스크 없음) |
-| `callIndex` | N | 같은 태스크 내 n번째 LLM 호출 |
+| `node` | Y | Graph node name (triage, decompose, execute, etc.) |
+| `taskId` | N | Task ID (triage has no task) |
+| `callIndex` | N | n-th LLM call within the same task |
 | `timestamp` | Y | ISO 8601 |
-| `templatePath` | N | 메인 Handlebars 템플릿 경로 |
-| `usedTemplates` | N | 추가 사용된 템플릿 파일 |
-| `resolvedPartials` | N | 렌더링 중 해석된 Handlebars 파셜 |
-| `injectedVariables` | N | 주입된 변수 요약 (대용량 값은 `[STRING: N chars]`로 축약) |
-| `contractViolations` | N | 누락 변수/파셜 목록 |
-| `hardcodedContent` | N | 템플릿 외부에서 직접 주입된 콘텐츠 (2000자 제한) |
-| `promptLength` | N | 총 프롬프트 문자 수 |
-| `tokenEstimate` | N | 추정 토큰 수 (`chars / 3.5`) |
+| `templatePath` | N | Main Handlebars template path |
+| `usedTemplates` | N | Additional template files used |
+| `resolvedPartials` | N | Handlebars partials resolved during rendering |
+| `injectedVariables` | N | Summary of injected variables (large values abbreviated as `[STRING: N chars]`) |
+| `contractViolations` | N | List of missing variables/partials |
+| `hardcodedContent` | N | Content injected directly outside of templates (2000-char limit) |
+| `promptLength` | N | Total prompt character count |
+| `tokenEstimate` | N | Estimated token count (`chars / 3.5`) |
 
 ### 3. Execution Events (`logs/{jobId}.jsonl`)
 
-Job과 Task의 라이프사이클 이벤트를 기록한다. "무엇이 언제 시작/완료/실패했는가"에 집중한다.
+Records Job and Task lifecycle events. Focuses on "what started/completed/failed and when".
 
 ```jsonl
 {"correlationKey":"abc-123::0","type":"job_start","timestamp":"...","data":{"jobType":"code","taskCount":5}}
@@ -160,58 +160,58 @@ Job과 Task의 라이프사이클 이벤트를 기록한다. "무엇이 언제 �
 {"correlationKey":"abc-123::0","type":"job_complete","timestamp":"...","data":{"totalTasks":5,"elapsedMs":330000}}
 ```
 
-이벤트 타입:
+Event types:
 
-| 타입 | 스코프 | 설명 |
+| Type | Scope | Description |
 |------|--------|------|
-| `job_start` | Job | Job 시작, 환경 정보 |
-| `job_complete` | Job | 정상 완료, 집계 지표 |
-| `job_interrupted` | Job | 사용자 중단 |
-| `job_resumed` | Job | 중단된 Job 재개 |
-| `task_start` | Task | 태스크 실행 시작 |
-| `task_complete` | Task | 태스크 정상 완료 |
-| `task_fail` | Task | 태스크 실패 (재시도 초과, 재귀 한도) |
-| `task_retry` | Task | 검증 실패 후 재시도 |
-| `parallel_start` | Batch | 병렬 배치 시작 |
-| `parallel_complete` | Batch | 병렬 배치 완료 |
-| `violation_detected` | Task | 출력 검증 위반 감지 |
-| `tool_call` | Task | 도구 호출 (이름, 인자 요약, 결과 크기) |
-| `phase_complete` | Job | 그래프 페이즈 완료 (decompose, execute 등) |
-| `execute_interrupted` | Task | 태스크 내 실행 중단 (예산 소진) |
+| `job_start` | Job | Job start, environment info |
+| `job_complete` | Job | Normal completion, aggregate metrics |
+| `job_interrupted` | Job | User interruption |
+| `job_resumed` | Job | Interrupted Job resumed |
+| `task_start` | Task | Task execution start |
+| `task_complete` | Task | Task completed normally |
+| `task_fail` | Task | Task failure (retry exhaustion, recursion limit) |
+| `task_retry` | Task | Retry after verification failure |
+| `parallel_start` | Batch | Parallel batch start |
+| `parallel_complete` | Batch | Parallel batch completion |
+| `violation_detected` | Task | Output verification violation detected |
+| `tool_call` | Task | Tool call (name, argument summary, result size) |
+| `phase_complete` | Job | Graph phase completion (decompose, execute, etc.) |
+| `execute_interrupted` | Task | Execution interrupted within a task (budget exhaustion) |
 
 ### 4. Token Ledger (`tokens/{jobId}.jsonl`)
 
-LLM 호출 단위의 토큰 사용량. 비용 분석과 캐시 효율 모니터링에 사용된다.
+Token usage per LLM call. Used for cost analysis and cache efficiency monitoring.
 
 ```jsonl
 {"correlationKey":"abc-123:task-1:0","type":"call","taskId":"task-1","node":"execute","callIndex":0,"timestamp":"...","inputTokens":8500,"outputTokens":2100,"cacheReadTokens":6200,"cacheCreationTokens":2300,"billableInputTokens":3470,"cacheHitRatio":0.729,"taskCumulativeInput":8500,"taskCumulativeOutput":2100}
 {"correlationKey":"abc-123:task-1:1","type":"call","taskId":"task-1","node":"execute","callIndex":1,"timestamp":"...","inputTokens":9200,"outputTokens":1800,"cacheReadTokens":8700,"cacheCreationTokens":500,"billableInputTokens":1795,"cacheHitRatio":0.946,"taskCumulativeInput":17700,"taskCumulativeOutput":3900}
 ```
 
-엔트리 타입:
+Entry types:
 
-| 타입 | 설명 |
+| Type | Description |
 |------|------|
-| `call` | LLM 호출 1건의 토큰 상세 |
-| `resume_marker` | Job 재개 시점 구분자 (Run 경계 표시) |
+| `call` | Token detail for one LLM call |
+| `resume_marker` | Marker at Job resume point (marks a Run boundary) |
 
-`call` 엔트리의 필드:
+Fields of a `call` entry:
 
-| 필드 | 설명 |
+| Field | Description |
 |------|------|
-| `inputTokens` | 실제 전송된 입력 토큰 |
-| `outputTokens` | LLM 응답 토큰 |
-| `cacheReadTokens` | 캐시에서 읽은 토큰 |
-| `cacheCreationTokens` | 캐시 생성에 사용된 토큰 |
-| `billableInputTokens` | 비용 가중치 적용 (`input*1.0 + creation*1.25 + cacheRead*0.1`) |
+| `inputTokens` | Input tokens actually sent |
+| `outputTokens` | LLM response tokens |
+| `cacheReadTokens` | Tokens read from cache |
+| `cacheCreationTokens` | Tokens used for cache creation |
+| `billableInputTokens` | Cost-weighted (`input*1.0 + creation*1.25 + cacheRead*0.1`) |
 | `cacheHitRatio` | `cacheRead / (cacheRead + input)`, 0-1 |
-| `taskCumulativeInput` | 이 태스크의 누적 입력 토큰 |
-| `taskCumulativeOutput` | 이 태스크의 누적 출력 토큰 |
-| `taskCumulativeBillableInput` | 이 태스크의 누적 billable 입력 |
+| `taskCumulativeInput` | Cumulative input tokens for this task |
+| `taskCumulativeOutput` | Cumulative output tokens for this task |
+| `taskCumulativeBillableInput` | Cumulative billable input for this task |
 
 ### 5. Plan Dump (`plans/{jobId}.json`)
 
-코드 Job의 `planGeneration` 노드에서 태스크별로 생성한 실행 플랜. JSON 배열 형식으로 태스크가 누적된다.
+Per-task execution plans generated by the code Job's `planGeneration` node. Tasks accumulate in a JSON array format.
 
 ```json
 [
@@ -225,82 +225,82 @@ LLM 호출 단위의 토큰 사용량. 비용 분석과 캐시 효율 모니터�
 ]
 ```
 
-이 파일은 병렬 오케스트레이션 종료 후 패키지 커버리지 검사의 입력으로도 사용된다.
+This file is also used as input for the package coverage check after parallel orchestration ends.
 
 ### 6. Figma MCP (`figma/`)
 
-Figma MCP 호출의 캐시 히트, 중복 제거, rate limit, 에러 요약.
+Cache hits, deduplication, rate limits, and error summaries for Figma MCP calls.
 
-| 파일 | 형식 | 설명 |
+| File | Format | Description |
 |------|------|------|
-| `{jobId}.json` | Single JSON | 호출 요약 + 이벤트 배열 |
-| `screenshots/{nodeId}.*` | 바이너리 | Figma 노드 스크린샷 |
+| `{jobId}.json` | Single JSON | Call summary + event array |
+| `screenshots/{nodeId}.*` | Binary | Figma node screenshots |
 
-## 파일 포맷 규약
+## File Format Conventions
 
-| 카테고리 | 포맷 | 확장자 | 이유 |
+| Category | Format | Extension | Reason |
 |----------|------|--------|------|
-| Summary | JSON | `.json` | 단일 객체, 완전한 JSON으로 파싱 가능 |
-| Prompts | JSONL | `.jsonl` | Append-only, 행 단위 파싱 |
-| Logs | JSONL | `.jsonl` | Append-only, 행 단위 파싱 |
-| Tokens | JSONL | `.jsonl` | Append-only, 행 단위 파싱 |
-| Plans | JSON Array | `.json` | 태스크 누적 (read-modify-write 패턴) |
-| Figma MCP | JSON | `.json` | Job 종료 시 일괄 기록 |
+| Summary | JSON | `.json` | Single object, parseable as complete JSON |
+| Prompts | JSONL | `.jsonl` | Append-only, line-oriented parsing |
+| Logs | JSONL | `.jsonl` | Append-only, line-oriented parsing |
+| Tokens | JSONL | `.jsonl` | Append-only, line-oriented parsing |
+| Plans | JSON Array | `.json` | Task accumulation (read-modify-write pattern) |
+| Figma MCP | JSON | `.json` | Written in one batch at Job end |
 
-JSONL 규칙:
+JSONL rules:
 
-- 한 줄 = 하나의 완전한 JSON 객체 (compact, 줄 바꿈 없음)
-- 파일에 대한 유일한 쓰기 연산은 `appendFile(line + '\n')`
-- JSON Array를 유지하기 위한 truncate/rewrite 로직 없음
-- 확장자는 `.jsonl`로 통일하여 포맷과 확장자 불일치 방지
+- One line = one complete JSON object (compact, no line breaks)
+- The only write operation on the file is `appendFile(line + '\n')`
+- No truncate/rewrite logic to maintain a JSON Array
+- Extension is unified as `.jsonl` to prevent format/extension mismatches
 
-## 교차참조 체계
+## Cross-Reference Scheme
 
-모든 JSONL 엔트리에는 `correlationKey` 필드가 포함된다.
+Every JSONL entry includes a `correlationKey` field.
 
 ```
 {jobId}:{taskId}:{callIndex}
 ```
 
-| 상황 | correlationKey 예시 |
+| Situation | correlationKey example |
 |------|-------------------|
-| Job-level 이벤트 (job_start 등) | `abc-123::0` |
-| Triage (태스크 없음) | `abc-123:triage:0` |
-| Task-level, 첫 번째 LLM 호출 | `abc-123:task-1:0` |
-| Task-level, 세 번째 LLM 호출 | `abc-123:task-1:2` |
+| Job-level event (job_start, etc.) | `abc-123::0` |
+| Triage (no task) | `abc-123:triage:0` |
+| Task-level, first LLM call | `abc-123:task-1:0` |
+| Task-level, third LLM call | `abc-123:task-1:2` |
 
-동일한 `correlationKey`를 가진 엔트리를 카테고리 간에 조인하면, 하나의 LLM 호출에 대해 "어떤 프롬프트를 보냈고(`prompts/`), 토큰을 얼마 썼고(`tokens/`), 어떤 이벤트가 발생했는가(`logs/`)"를 연결할 수 있다.
+Joining entries with the same `correlationKey` across categories links, for a single LLM call, "what prompt was sent (`prompts/`), how many tokens were used (`tokens/`), and what events occurred (`logs/`)".
 
 ```
 prompts/{jobId}.jsonl  ──┐
-tokens/{jobId}.jsonl   ──┼── correlationKey로 JOIN
+tokens/{jobId}.jsonl   ──┼── JOIN on correlationKey
 logs/{jobId}.jsonl     ──┘
 ```
 
-## 로거 수명주기
+## Logger Lifecycle
 
-### 인스턴스 관리
+### Instance Management
 
-각 로거(`PromptLogger`, `ExecutionLogger`, `TokenLogger`)는 `jobId` 기준의 싱글턴 Map으로 관리된다.
+Each logger (`PromptLogger`, `ExecutionLogger`, `TokenLogger`) is managed as a `jobId`-keyed singleton Map.
 
 ```
-getXxxLogger(options)  →  Map<jobId, Logger>에서 조회/생성
+getXxxLogger(options)  →  look up/create in Map<jobId, Logger>
   ↓
-log(entry)             →  appendFile (JSONL 한 줄)
+log(entry)             →  appendFile (one JSONL line)
   ↓
-clearXxxLogger(jobId)  →  Map에서 제거 (finalize 후)
+clearXxxLogger(jobId)  →  remove from Map (after finalize)
 ```
 
-수명주기 보장 규칙:
+Lifecycle guarantee rules:
 
-1. **생성**: `get*Logger()` 호출 시 lazy 생성. 동일 `jobId`에 대해 하나만 존재.
-2. **사용**: `log()` 호출은 non-blocking. 실패 시 `console.warn` 후 계속 진행.
-3. **정리**: Job 완료/실패/중단 시 반드시 `clear*Logger(jobId)` 호출. `learn` 노드 또는 `job_complete` 핸들러에서 일괄 정리.
-4. **누수 방지**: Job Worker 프로세스는 Job당 자식 프로세스를 스폰하므로, 프로세스 종료 시 Map도 자동 해제된다. 그럼에도 명시적 `clear` 호출이 필수 — API 서버 프로세스에서 직접 실행되는 경우를 대비.
+1. **Creation**: lazily created on `get*Logger()` call. Exactly one exists per `jobId`.
+2. **Usage**: `log()` calls are non-blocking. On failure, `console.warn` and continue.
+3. **Cleanup**: `clear*Logger(jobId)` MUST be called on Job completion/failure/interruption. Cleaned up in bulk in the `learn` node or the `job_complete` handler.
+4. **Leak prevention**: the Job Worker process spawns a child process per Job, so the Map is automatically released on process exit. An explicit `clear` call is still required — in case execution happens directly in the API server process.
 
-### 쓰기 직렬화
+### Write Serialization
 
-동일 파일에 대한 동시 쓰기는 Promise 큐(`writeQueue`)로 직렬화한다.
+Concurrent writes to the same file are serialized with a Promise queue (`writeQueue`).
 
 ```typescript
 private enqueue(fn: () => Promise<void>): Promise<void> {
@@ -309,67 +309,67 @@ private enqueue(fn: () => Promise<void>): Promise<void> {
 }
 ```
 
-## Triage 로그 기록 규칙
+## Triage Logging Rules
 
-Triage 노드는 그래프에서 가장 먼저 실행되지만, 다른 노드와 동일한 `appendFile` 패턴을 사용한다.
+The Triage node runs first in the graph, but uses the same `appendFile` pattern as every other node.
 
-- Triage 로그는 `prompts/{jobId}.jsonl`에 append한다 (prepend 금지).
-- Triage가 가장 먼저 실행되므로 자연스럽게 파일의 첫 엔트리가 된다.
-- Job 재개 시에도 append 방식을 유지한다. `resume_marker`가 Run 경계를 표시한다.
-- 동기 I/O(`readFileSync`, `writeFileSync`) 대신 비동기 I/O를 사용한다.
+- Triage logs are appended to `prompts/{jobId}.jsonl` (prepend is forbidden).
+- Since Triage runs first, it naturally becomes the file's first entry.
+- The append approach is kept on Job resume as well. A `resume_marker` marks the Run boundary.
+- Asynchronous I/O is used instead of synchronous I/O (`readFileSync`, `writeFileSync`).
 
-## Summary 생성
+## Summary Generation
 
-### 생성 시점
+### Generation Timing
 
-`JobSummaryWriter`는 다음 시점에 `summary/{jobId}.json`을 기록한다:
+`JobSummaryWriter` writes `summary/{jobId}.json` at the following points:
 
-| 시점 | 트리거 |
+| Point | Trigger |
 |------|--------|
-| Job 정상 완료 | `learn` 노드 실행 후 |
-| Job 중단 | `job_interrupted` 이벤트 발생 후 |
-| Job 실패 | Worker의 `failed` 핸들러에서 |
+| Job completes normally | After the `learn` node runs |
+| Job interrupted | After the `job_interrupted` event fires |
+| Job failed | In the Worker's `failed` handler |
 
-### 집계 로직
+### Aggregation Logic
 
-Summary는 다른 로그 파일을 읽지 않는다. 실행 중 인메모리로 누적된 지표를 사용한다:
+The Summary does not read the other log files. It uses metrics accumulated in memory during execution:
 
-- 토큰 합계: `TokenLogger`의 `taskBillableCumulative` Map
-- 이슈 목록: `TokenLogger`의 모니터링 경고 + `PromptLogger`의 `contractViolations`
-- 태스크 현황: `ExecutionLogger`의 `task_complete`/`task_fail` 카운트
-- 파일 목록: 각 로거의 `getLogFilePath()`로 실제 경로 확인
+- Token totals: `TokenLogger`'s `taskBillableCumulative` Map
+- Issue list: `TokenLogger`'s monitoring warnings + `PromptLogger`'s `contractViolations`
+- Task status: `ExecutionLogger`'s `task_complete`/`task_fail` counts
+- File list: actual paths verified via each logger's `getLogFilePath()`
 
-## 소비 인터페이스
+## Consumption Interfaces
 
 ### API
 
-| Endpoint | Method | 설명 |
+| Endpoint | Method | Description |
 |----------|--------|------|
-| `/api/features/{featureId}/debug/summary/{jobId}` | GET | Job Summary JSON 반환 |
-| `/api/features/{featureId}/debug/{category}/{jobId}` | GET | 카테고리별 로그 파일 내용 반환 |
-| `/api/features/{featureId}/debug/summary/{jobId}/issues` | GET | Issues 배열만 반환 |
+| `/api/features/{featureId}/debug/summary/{jobId}` | GET | Returns the Job Summary JSON |
+| `/api/features/{featureId}/debug/{category}/{jobId}` | GET | Returns the per-category log file content |
+| `/api/features/{featureId}/debug/summary/{jobId}/issues` | GET | Returns only the Issues array |
 
 ### CLI
 
 ```bash
-ant debug summary <jobId>          # Summary 요약 출력
-ant debug tokens <jobId>           # 토큰 사용량 테이블
-ant debug issues <jobId>           # 감지된 이슈 목록
-ant debug prompts <jobId>          # 프롬프트 구조 목록
+ant debug summary <jobId>          # Print summary overview
+ant debug tokens <jobId>           # Token usage table
+ant debug issues <jobId>           # List of detected issues
+ant debug prompts <jobId>          # List of prompt structures
 ```
 
 ### UI
 
-Job 완료 후 디버그 패널에서 Summary의 `issues` 배열을 기반으로 경고를 표시한다.
+After Job completion, the debug panel shows warnings based on the Summary's `issues` array.
 
-- 캐시 히트율 저하 경고
-- 높은 반복 횟수 경고
-- 프롬프트 계약 위반 경고
-- 태스크 실패 상세
+- Low cache-hit-ratio warning
+- High iteration count warning
+- Prompt contract violation warning
+- Task failure details
 
-## 에이전트 경로 해석
+## Agent Path Resolution
 
-모든 로거는 생성 시 `getAgentForJob(jobType)`으로 에이전트를 결정한다.
+Every logger resolves its agent via `getAgentForJob(jobType)` at construction time.
 
 ```typescript
 constructor(options: { featurePath: string; jobId: string; jobType: string }) {
@@ -378,7 +378,7 @@ constructor(options: { featurePath: string; jobId: string; jobType: string }) {
 }
 ```
 
-| jobType | Agent | 디버그 경로 |
+| jobType | Agent | Debug path |
 |---------|-------|------------|
 | code | architect | `sessions/architect/debug/` |
 | design | architect | `sessions/architect/debug/` |
@@ -387,138 +387,138 @@ constructor(options: { featurePath: string; jobId: string; jobType: string }) {
 | plan | planner | `sessions/planner/debug/` |
 | visual | creator | `sessions/creator/debug/` |
 
-## Job 검증 프로토콜
+## Job Verification Protocol
 
-Job 실행 후 디버그 로그를 검증하는 표준 절차. 에이전트 또는 사람이 동일하게 따른다.
+The standard procedure for verifying debug logs after Job execution. Followed identically by agents and humans.
 
-### 입력
+### Inputs
 
-- `featurePath`: 피처 디렉토리 절대 경로
-- `jobId`: 검증 대상 Job ID
-- `agent`: 에이전트 이름 (architect / planner / creator)
+- `featurePath`: absolute path to the feature directory
+- `jobId`: Job ID under verification
+- `agent`: agent name (architect / planner / creator)
 
-디버그 루트: `{featurePath}/sessions/{agent}/debug/`
+Debug root: `{featurePath}/sessions/{agent}/debug/`
 
-### Step 1: Summary 확인 (진입점)
+### Step 1: Check Summary (entry point)
 
-`summary/{jobId}.json`을 읽는다.
+Read `summary/{jobId}.json`.
 
-| 확인 항목 | 판정 기준 | 심각도 |
+| Check | Criterion | Severity |
 |-----------|----------|--------|
-| `status` | `completed`가 아니면 즉시 보고 | CRITICAL |
-| `issues` 배열 | 비어있지 않으면 Step 2로 | WARNING ~ CRITICAL |
-| `tasks.failed` | 1 이상이면 `failedTaskIds`로 Step 4 진행 | CRITICAL |
-| `tokens.cacheHitRatio` | 0.5 미만이면 토큰 효율 이상 | WARNING |
-| `tokens.billableInput` | job 유형 대비 비정상적 크기 확인 | WARNING |
-| `files` | 기대하는 카테고리 파일이 모두 존재하는지 | WARNING |
+| `status` | Report immediately if not `completed` | CRITICAL |
+| `issues` array | If non-empty, go to Step 2 | WARNING ~ CRITICAL |
+| `tasks.failed` | If >= 1, proceed to Step 4 with `failedTaskIds` | CRITICAL |
+| `tokens.cacheHitRatio` | Below 0.5 indicates token efficiency anomaly | WARNING |
+| `tokens.billableInput` | Check for abnormal size relative to the job type | WARNING |
+| `files` | Whether all expected category files exist | WARNING |
 
-Summary가 없으면 Job이 비정상 종료된 것이다. Step 3부터 시작한다.
+If the Summary is missing, the Job terminated abnormally. Start from Step 3.
 
-### Step 2: Issues 분류
+### Step 2: Classify Issues
 
-`issues` 배열의 각 항목을 유형별로 분류하고, 해당 카테고리 로그로 이동한다.
+Classify each item in the `issues` array by type and move to the corresponding category log.
 
-| Issue Type | 다음 행동 | 로그 카테고리 |
+| Issue Type | Next action | Log category |
 |------------|----------|--------------|
-| `contract_violation` | Step 3 (프롬프트 추적) | `prompts/` |
-| `low_cache_hit` | Step 4 (토큰 상세) | `tokens/` |
-| `high_iteration` | Step 4 (토큰 상세) + Step 5 (실행 이벤트) | `tokens/` + `logs/` |
-| `task_failure` | Step 5 (실행 이벤트) | `logs/` |
-| `profile_missing` | Step 5 (실행 이벤트) | `logs/` |
+| `contract_violation` | Step 3 (prompt trace) | `prompts/` |
+| `low_cache_hit` | Step 4 (token detail) | `tokens/` |
+| `high_iteration` | Step 4 (token detail) + Step 5 (execution events) | `tokens/` + `logs/` |
+| `task_failure` | Step 5 (execution events) | `logs/` |
+| `profile_missing` | Step 5 (execution events) | `logs/` |
 
-### Step 3: 프롬프트 추적 (`prompts/{jobId}.jsonl`)
+### Step 3: Prompt Trace (`prompts/{jobId}.jsonl`)
 
-JSONL을 행 단위로 파싱한다. 각 행이 하나의 LLM 호출에 대한 프롬프트 메타데이터이다.
+Parse the JSONL line by line. Each line is prompt metadata for one LLM call.
 
-**확인 항목:**
+**Checks:**
 
-| 항목 | 무엇을 보는가 | 이상 징후 |
+| Item | What to look at | Anomaly signal |
 |------|-------------|----------|
-| `contractViolations` | 비어있지 않은 행 | 템플릿에 필요한 변수가 주입되지 않음 — 출력 품질 직접 영향 |
-| `templatePath` | null 또는 누락 | 하드코딩 프롬프트 사용 (템플릿 시스템 우회) |
-| `hardcodedContent` | 존재하는 행 | 템플릿 외부 직접 주입 — 유지보수 위험 |
-| `injectedVariables` | `[STRING: 0 chars]` 또는 기대 변수 키 누락 | 빈 컨텍스트 주입 — LLM이 정보 부족 상태로 실행 |
-| `tokenEstimate` | 극단적 값 (< 100 또는 > 100,000) | 프롬프트 구성 이상 |
-| 전체 행 수 | 기대 노드 수와 비교 | 누락된 노드가 있으면 그래프 실행 경로 이상 |
+| `contractViolations` | Non-empty lines | A variable required by the template was not injected — directly affects output quality |
+| `templatePath` | null or missing | A hard-coded prompt was used (template system bypassed) |
+| `hardcodedContent` | Lines where it exists | Direct injection outside templates — maintenance risk |
+| `injectedVariables` | `[STRING: 0 chars]` or expected variable keys missing | Empty context injected — LLM ran information-starved |
+| `tokenEstimate` | Extreme values (< 100 or > 100,000) | Prompt composition anomaly |
+| Total line count | Compare with expected node count | A missing node indicates a graph execution path anomaly |
 
-**검증 규칙:**
+**Verification rules:**
 
 ```
-FAIL  contractViolations가 1건이라도 있으면
-WARN  hardcodedContent가 있으면
-WARN  injectedVariables에서 기대 키가 빠져있으면
-PASS  위 조건 모두 해당 없으면
+FAIL  if there is even one contractViolation
+WARN  if hardcodedContent is present
+WARN  if expected keys are missing from injectedVariables
+PASS  if none of the above apply
 ```
 
-### Step 4: 토큰 상세 (`tokens/{jobId}.jsonl`)
+### Step 4: Token Detail (`tokens/{jobId}.jsonl`)
 
-JSONL을 행 단위로 파싱한다. `type: "call"` 행만 분석 대상이다 (`resume_marker`는 건너뛴다).
+Parse the JSONL line by line. Only `type: "call"` lines are analyzed (skip `resume_marker`).
 
-**확인 항목:**
+**Checks:**
 
-| 항목 | 무엇을 보는가 | 이상 징후 |
+| Item | What to look at | Anomaly signal |
 |------|-------------|----------|
-| `cacheHitRatio` | callIndex > 0인데 0.5 미만 | 프롬프트 prefix가 매 호출 변경됨 — 캐시 불안정 |
-| `callIndex` | 15 이상 | 태스크가 수렴하지 않음 — 무한 반복 가능성 |
-| `taskCumulativeBillableInput` | 마지막 행의 값 | 태스크당 누적 비용 — 예산 대비 확인 |
-| 같은 `taskId`의 `outputTokens` 추이 | 점점 줄어드는지 | 줄어들면 수렴 중, 변동 없으면 정체 |
-| `cacheCreationTokens` | callIndex > 0인데 높은 값 | prefix 변경으로 매번 캐시 재생성 — 비용 낭비 |
+| `cacheHitRatio` | Below 0.5 with callIndex > 0 | Prompt prefix changes on every call — cache instability |
+| `callIndex` | 15 or higher | Task not converging — possible infinite loop |
+| `taskCumulativeBillableInput` | Value on the last line | Cumulative cost per task — check against budget |
+| `outputTokens` trend for the same `taskId` | Whether it decreases | Decreasing means converging; no change means stalled |
+| `cacheCreationTokens` | High value with callIndex > 0 | Cache recreated on every call due to prefix changes — cost waste |
 
-**검증 규칙:**
+**Verification rules:**
 
 ```
-FAIL  callIndex >= 20인 태스크 존재
-FAIL  cacheHitRatio < 0.3인 행이 전체의 30% 초과
-WARN  callIndex >= 15인 태스크 존재
-WARN  cacheHitRatio < 0.5인 행이 연속 3회 이상
-PASS  위 조건 모두 해당 없으면
+FAIL  a task exists with callIndex >= 20
+FAIL  lines with cacheHitRatio < 0.3 exceed 30% of the total
+WARN  a task exists with callIndex >= 15
+WARN  3+ consecutive lines with cacheHitRatio < 0.5
+PASS  if none of the above apply
 ```
 
-### Step 5: 실행 이벤트 (`logs/{jobId}.jsonl`)
+### Step 5: Execution Events (`logs/{jobId}.jsonl`)
 
-JSONL을 행 단위로 파싱한다. `type` 필드로 필터링한다.
+Parse the JSONL line by line. Filter by the `type` field.
 
-**확인 항목:**
+**Checks:**
 
-| 필터 | 무엇을 보는가 | 이상 징후 |
+| Filter | What to look at | Anomaly signal |
 |------|-------------|----------|
-| `type: "task_fail"` | `data.reason`, `data.errorMessage` | 실패 원인 — `recursion_limit`이면 Step 4와 교차 확인 |
-| `type: "violation_detected"` | `data.violationType`, `data.retryCount` | 반복 위반 — 동일 violationType이 3회 이상이면 구조적 문제 |
-| `type: "tool_call"` | `data.error` 존재 여부, `data.wasTruncated` | 도구 실패, 결과 잘림 |
-| `type: "execute_interrupted"` | `data.reason` | 예산 소진으로 미완료 — 출력물 불완전 가능성 |
-| `type: "job_start"` ~ `type: "job_complete"` | `elapsedMs` 차이 | 비정상적 소요 시간 |
-| `type: "profile_missing"` | `data.profileType`, `data.profileName` | 환경 감지 불완전 — 부적절한 코드 생성 가능 |
+| `type: "task_fail"` | `data.reason`, `data.errorMessage` | Failure cause — if `recursion_limit`, cross-check with Step 4 |
+| `type: "violation_detected"` | `data.violationType`, `data.retryCount` | Repeated violations — the same violationType 3+ times indicates a structural problem |
+| `type: "tool_call"` | Presence of `data.error`, `data.wasTruncated` | Tool failures, truncated results |
+| `type: "execute_interrupted"` | `data.reason` | Incomplete due to budget exhaustion — output may be incomplete |
+| `type: "job_start"` ~ `type: "job_complete"` | `elapsedMs` difference | Abnormal elapsed time |
+| `type: "profile_missing"` | `data.profileType`, `data.profileName` | Incomplete environment detection — possibly inappropriate code generation |
 
-**검증 규칙:**
+**Verification rules:**
 
 ```
-FAIL  task_fail이 1건이라도 있으면
-FAIL  execute_interrupted이 있으면
-WARN  violation_detected이 동일 taskId에서 3회 이상
-WARN  tool_call에 error가 있으면
-WARN  profile_missing이 있으면
-PASS  위 조건 모두 해당 없으면
+FAIL  if there is even one task_fail
+FAIL  if execute_interrupted is present
+WARN  violation_detected 3+ times for the same taskId
+WARN  a tool_call has an error
+WARN  profile_missing is present
+PASS  if none of the above apply
 ```
 
-### Step 6: 교차 검증
+### Step 6: Cross-Verification
 
-`correlationKey`를 이용해 카테고리 간 연결한다.
+Join across categories using `correlationKey`.
 
-| 교차 확인 | 방법 | 의미 |
+| Cross-check | Method | Meaning |
 |-----------|------|------|
-| 실패 태스크의 프롬프트 | `task_fail`의 `taskId` → `prompts/`에서 같은 `taskId` 행 | 실패 원인이 프롬프트 주입 누락인지 확인 |
-| 실패 태스크의 토큰 추이 | `task_fail`의 `taskId` → `tokens/`에서 같은 `taskId` 행 | 캐시 불안정이 실패를 유발했는지 확인 |
-| 높은 반복의 프롬프트 | `callIndex >= 15`인 `tokens/` 행의 `correlationKey` → `prompts/` | 반복되는 호출에서 프롬프트가 달라지는지 확인 |
+| Prompts of the failed task | `taskId` from `task_fail` → same-`taskId` lines in `prompts/` | Check whether the failure cause was a missing prompt injection |
+| Token trend of the failed task | `taskId` from `task_fail` → same-`taskId` lines in `tokens/` | Check whether cache instability caused the failure |
+| Prompts of high-iteration calls | `correlationKey` of `tokens/` lines with `callIndex >= 15` → `prompts/` | Check whether the prompt changes across repeated calls |
 
-### 최종 판정
+### Final Verdict
 
-| 등급 | 조건 |
+| Grade | Condition |
 |------|------|
-| **PASS** | 모든 Step에서 FAIL/WARN 없음 |
-| **WARN** | FAIL 없음, WARN 1건 이상 |
-| **FAIL** | FAIL 1건 이상 |
+| **PASS** | No FAIL/WARN in any Step |
+| **WARN** | No FAIL, 1+ WARN |
+| **FAIL** | 1+ FAIL |
 
-판정 결과와 함께 발견된 항목을 다음 형식으로 보고한다:
+Report the verdict together with the findings in the following format:
 
 ```
 [FAIL] Step 3: contractViolation in node "execute" — missing: ["designTokens", "projectStructure"]
@@ -527,12 +527,10 @@ PASS  위 조건 모두 해당 없으면
 [PASS] Step 1, 2, 6: no issues
 ```
 
-## 경계
+## Boundaries
 
-- Feature 디렉토리 구조 SSOT: [01-shared-contracts.md](01-shared-contracts.md) (`canonical.ts`)
-- 워크스페이스 격리와 sessions 구조: [20-workspace-isolation.md](20-workspace-isolation.md)
-- Job 라이프사이클과 로거 호출 지점: [10-job-lifecycle.md](10-job-lifecycle.md)
-- 프롬프트 시스템 (템플릿 구조): [13-prompt-system.md](13-prompt-system.md)
-- Realtime 시스템 (SSE 이벤트): [21-realtime-system.md](21-realtime-system.md)
-- Observability (집계/분석/피드백 루프): [docs/observability/](../observability/README.md)
-- 검증 기준 지표: [docs/observability/01-baseline-metrics.md](../observability/01-baseline-metrics.md)
+- Feature directory structure SSOT: [01-shared-contracts.md](01-shared-contracts.md) (`canonical.ts`)
+- Workspace isolation and the sessions structure: [20-workspace-isolation.md](20-workspace-isolation.md)
+- Job lifecycle and logger call sites: [10-job-lifecycle.md](10-job-lifecycle.md)
+- Prompt system (template structure): [13-prompt-system.md](13-prompt-system.md)
+- Realtime system (SSE events): [21-realtime-system.md](21-realtime-system.md)

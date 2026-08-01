@@ -11,38 +11,38 @@ key types and their meaning.
 
 | Type | Source | Purpose |
 |------|--------|---------|
-| `JobType` | `task.ts` | `'code' \| 'design' \| 'learn' \| 'plan' \| 'ask' \| 'inline-ask'` |
-| `DecomposableJobType` | `task.ts` | Subset that produces task decompositions (`code`, `design`). |
-| `SessionableJobType` | `task.ts` | Jobs whose state checkpoints to disk. |
-| `BaseTask` | `task.ts` | Discriminated union by `task.type` — `feature` / `error` / `verification` / `ui` / `design-system` / `test-code` / `doc` / `setup` / `explain`. |
-| `TaskBand` | `task.ts` | `'foundation' \| 'integration' \| undefined` — orchestrator scheduling axis (FeatureTask only). |
-| `TaskStatus` | `task.ts` | `'pending' \| 'running' \| 'completed' \| 'failed' \| 'cancelled'`. |
+| `JobType` | `job.ts` | `'code' \| 'design' \| 'learn' \| 'ask' \| 'plan' \| 'inline-ask' \| 'visual'` |
+| `DecomposableJobType` | `job.ts` | Subset that produces task decompositions (`code`, `design`, `learn`). |
+| `SessionableJobType` | `job.ts` | Jobs whose state checkpoints to disk. |
+| `BaseTask` | `task.ts` | Discriminated union by `task.type` — `feature` / `error` / `verification` / `seam` / `ui` / `design-system` / `test-code` / `doc` / `setup` / `explain`. |
+| `TaskBand` | `task.ts` | `FeatureBand \| SetupBand` — orchestrator scheduling axis. `FeatureBand = 'foundation' \| 'platform' \| 'integration'` (FeatureTask), `SetupBand = 'root'` (SetupTask). |
+| `TaskStatus` | `task.ts` | `'todo' \| 'in-progress' \| 'completed'`. |
 | `KanbanData` | `task.ts` | The per-feature task queue snapshot. |
 
 ## Action / RAC
 
 | Type | Source | Purpose |
 |------|--------|---------|
-| `InferredAction` | `rac.ts` | Triage output: intent + tags. |
-| `Mode` | `rac.ts` | `'generate' \| 'refactor' \| 'explain'`. |
-| `IntentGroup` | `action-config-matrix.ts` | High-level intent grouping. |
+| `InferredAction` | `detection.ts` | Triage output: intent + tags. |
+| `Mode` | `detection.ts` | `'generate' \| 'refactor' \| 'explain'`. |
+| `IntentGroup` | `detection.ts` | High-level intent grouping. |
 | `ResolvedActionContext` | `rac.ts` | The complete RAC: `refs`, `context`, `target`, `mcpSources`, `basis`. |
 | `ResolvedArtifact` | `rac.ts` | One slot in the RAC with role (`'ref'` / `'context'`) and path. |
-| `TechTier` | `rac.ts` | Stack identification (frontend / backend / fullstack, framework, language). |
+| `TechTier` | `tech-tier-registry.ts` | Stack identification (frontend / backend / fullstack, framework, language). |
 
 ## Workflow / SSE
 
 | Type | Source | Purpose |
 |------|--------|---------|
 | `WorkflowRealtimeState` | `workflow.ts` | Live workflow event payload broadcast to the UI. |
-| `InterruptionDetails` | `workflow.ts` | Why a job was interrupted. |
-| `InterruptionReason` | `workflow.ts` | `'user-stopped' \| 'verification-terminal' \| 'budget-exhausted' \| ...`. |
+| `InterruptionDetails` | `interruption.ts` | Why a job was interrupted. |
+| `InterruptionReason` | `interruption.ts` | `'user-stopped' \| 'verification-terminal' \| 'budget-exhausted' \| ...`. |
 
 ## Domain / tier
 
 | Type | Source | Purpose |
 |------|--------|---------|
-| `Domain` | `tier-matrix.ts` | `'service' \| 'game'`. Workspace-level selector. |
+| `Domain` | `detection.ts` | `'game' \| 'service'`. Workspace-level selector. |
 | `TierKey` | `tier-matrix.ts` | `'techTier' \| 'visualTier' \| 'gameArtTier'`. |
 | `isTierActive(tier, slot, domain, runtime)` | `tier-matrix.ts` | The single tier-activation predicate. Used by FE wizard, FE summary, BE decompose, BE PromptBuilder. |
 

@@ -1,67 +1,67 @@
 # Planner Job
 
-## 개요
+## Overview
 
-Planner Job은 사용자의 directive를 받아 문서(PRD 등)를 생성하거나 수정하는 planner 에이전트의 LangGraph 그래프이다. Code/Design Job과 달리 태스크 분해가 없고, 단일 ReAct 루프(generate ↔ tool)로 동작한다. 멀티턴 대화와 clarifying question을 지원한다.
+The Planner Job is the planner agent's LangGraph graph that takes a user directive and generates or revises documents (PRD, etc.). Unlike the Code/Design Jobs, there is no task decomposition — it runs as a single ReAct loop (generate ↔ tool). It supports multi-turn conversation and clarifying questions.
 
-## Architect Job과의 차이
+## Differences from the Architect Job
 
-| 항목 | Architect (Code/Design) | Planner |
+| Aspect | Architect (Code/Design) | Planner |
 |------|------------------------|---------|
-| 태스크 분해 | 있음 | 없음 |
-| 병렬 실행 | 있음 | 없음 |
-| 산출물 | 복수 파일 | 단일 파일 |
-| 멀티턴 대화 | 미지원 | 지원 (session 기반) |
-| Clarifying questions | 미지원 | 지원 (`<clarify>` 태그) |
-| Resume 전략 | 태스크 단위 | Job 단위 (전체 재실행) |
+| Task decomposition | Yes | No |
+| Parallel execution | Yes | No |
+| Output | Multiple files | Single file |
+| Multi-turn conversation | Not supported | Supported (session-based) |
+| Clarifying questions | Not supported | Supported (`<clarify>` tag) |
+| Resume strategy | Per-task | Per-job (full re-run) |
 
-## Target 결정
+## Target Resolution
 
-Planner Job의 산출물 대상(target)은 `resolvedAction.target`으로 결정된다. 하드코딩된 `prd.md` 경로는 없다.
+The Planner Job's output target is determined by `resolvedAction.target`. There is no hardcoded `prd.md` path.
 
-### Explicit (Actions 패널)
+### Explicit (Actions panel)
 
-UI가 `actionMetadata.target`을 세팅한다. resolve에서 추론하지 않는다.
+The UI sets `actionMetadata.target`. Resolve does not infer it.
 
-| 패턴 | target 세팅 시점 | 예시 |
+| Pattern | When target is set | Example |
 |------|-----------------|------|
-| `mirrorRefs` (rev-plan) | refs 선택 시 | `['plan/api-spec.md']` |
-| `dir + expectedFiles` (gen-plan) | intent 선택 시 | `['plan/prd.md']` |
+| `mirrorRefs` (rev-plan) | When refs are selected | `['plan/api-spec.md']` |
+| `dir + expectedFiles` (gen-plan) | When the intent is selected | `['plan/prd.md']` |
 
-rev-plan은 `refsSingleSelect: true`로 단일 선택만 허용.
+rev-plan allows single selection only via `refsSingleSelect: true`.
 
-Explicit에서 target이 없으면 (codebase/emptyHint 제외) 시스템 오류로 처리한다. 추론 폴백 없음.
+In Explicit mode, a missing target (excluding codebase/emptyHint) is treated as a system error. No inference fallback.
 
-### Infer (채팅)
+### Infer (chat)
 
-resolve가 `workspaceState.sourceFileNames`를 활용하여 추론한다.
+Resolve infers the target using `workspaceState.sourceFileNames`.
 
-| 조건 | targets |
+| Condition | targets |
 |------|---------|
-| `prd.md` 있음 | `['plan/prd.md']` |
-| `prd.md` 없고 다른 파일 있음 | 전체 source 파일 (LLM clarify) |
-| 파일 없음 | `['plan/prd.md']` (gen-plan 기본값) |
+| `prd.md` exists | `['plan/prd.md']` |
+| No `prd.md`, other files exist | All source files (LLM clarify) |
+| No files | `['plan/prd.md']` (gen-plan default) |
 
-## 모드
+## Modes
 
-| Mode | 조건 | 행동 |
+| Mode | Condition | Behavior |
 |------|------|------|
-| `generate` | 기존 target 문서 없음, 또는 explicit gen-plan | `<file path="{targetPath}">` 태그로 전체 문서를 `plan/`에 직접 출력 |
-| `refine` | 기존 target 문서 존재 + LLM이 수정 의도 감지 | `edit_file(path="{targetPath}")` 도구로 targeted editing |
-| `explain` | 기존 문서 존재 + LLM이 분석/질의 의도 감지 | 읽기 전용 채팅 응답 |
+| `generate` | No existing target document, or explicit gen-plan | Outputs the whole document directly into `plan/` via a `<file path="{targetPath}">` tag |
+| `refine` | Existing target document + LLM detects revision intent | Targeted editing via the `edit_file(path="{targetPath}")` tool |
+| `explain` | Existing document + LLM detects analysis/query intent | Read-only chat response |
 
-## 문서 내용 주입
+## Document Content Injection
 
-`existingDocument` state 필드는 없다. 문서 내용은 architect와 동일한 패턴으로 `resolvedAction.documents`에 로드되고, `action-context.md` partial이 렌더링한다.
+There is no `existingDocument` state field. Document content is loaded into `resolvedAction.documents` using the same pattern as the architect, and rendered by the `action-context.md` partial.
 
-| 역할 | 출처 | 렌더링 위치 | 의미 (3축 모델) |
+| Role | Source | Render location | Meaning (3-axis model) |
 |------|------|-------------|----------------|
-| `ref` | `actionMetadata.refs` | `action-context.md` — `## Provided Documents` / `### [ref] ...` | 원본 (source of truth), 충돌 시 승자 |
-| `context` | `actionMetadata.context` | `action-context.md` — `## Provided Documents` / `### [context] ...` | 동등 권위의 추가 입력, `ref` 와 충돌 시에만 subordinate |
+| `ref` | `actionMetadata.refs` | `action-context.md` — `## Provided Documents` / `### [ref] ...` | Original (source of truth), wins on conflict |
+| `context` | `actionMetadata.context` | `action-context.md` — `## Provided Documents` / `### [context] ...` | Additional input of equal authority, subordinate only when conflicting with `ref` |
 
-role 의 3축 의미는 [jobs/shared/injections/role-guide.md](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/role-guide.md) SSOT 참조 — Authority (어느 입력을 따를지), Edit-scope (어느 파일을 write 할지), Task-scope (계획을 얼마나 넓게 가져갈지).
+For the 3-axis meaning of role, see the SSOT at [jobs/shared/injections/role-guide.md](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/role-guide.md) — Authority (which input to follow), Edit-scope (which file to write), Task-scope (how broad the plan goes).
 
-## 그래프 노드 흐름
+## Graph Node Flow
 
 ```
 __start__ -> resolve -> triage -> [router]
@@ -71,33 +71,33 @@ __start__ -> resolve -> triage -> [router]
     +-> proceed -> generate
 
 generate -> [router]
-    +-> tool_use -> tool -> generate (ReAct 루프)
-    +-> <clarify> 감지 -> ChoiceCard 발행 -> __end__
-    +-> <file> 감지 -> plan/에 직접 저장 -> __end__
-    +-> text only -> 대화 저장 -> __end__
+    +-> tool_use -> tool -> generate (ReAct loop)
+    +-> <clarify> detected -> emit ChoiceCard -> __end__
+    +-> <file> detected -> save directly to plan/ -> __end__
+    +-> text only -> save conversation -> __end__
 ```
 
 ## Clarifying Questions
 
-PRD 생성/수정 시 정보가 부족하면 LLM이 `<clarify>` 태그로 질문을 출력한다.
+When information is insufficient during PRD generation/revision, the LLM emits questions via the `<clarify>` tag.
 
-### 처리 흐름
+### Processing flow
 
-1. LLM 스트리밍 중 `XMLStreamParser`가 `<clarify>` 태그를 suppress
-2. generate 노드에서 `parseClarifyBlocks()`로 질문 추출
-3. Compound Clarifying ChoiceCard 발행
-4. 대화를 세션에 저장 후 종료
+1. During LLM streaming, `XMLStreamParser` suppresses the `<clarify>` tag
+2. The generate node extracts questions via `parseClarifyBlocks()`
+3. A Compound Clarifying ChoiceCard is emitted
+4. The conversation is saved to the session, then the job ends
 
-## 도구
+## Tools
 
-| 도구 | Generate | Refine | Explain |
+| Tool | Generate | Refine | Explain |
 |------|----------|--------|---------|
 | `read_workspace_file` | O | O | O |
 | `list_workspace_files` | O | O | O |
 | `search_web` (Tavily) | O | O | O |
 | `edit_file` | X | O | X |
 
-## 파일 구조
+## File Structure
 
 ```
 agents/planner/
@@ -107,33 +107,33 @@ agents/planner/
         plan/
             graph.ts            (buildPlanGraph)
             runner.ts           (runPlanGraph)
-            state.ts            (PlanGraphState — existingDocument 없음)
+            state.ts            (PlanGraphState — no existingDocument)
             nodes/
-                resolve.ts      (target 결정, documents 로드)
-                generate.ts     (ReAct 루프, target path로 직접 저장)
-                tool.ts         (도구 실행)
+                resolve.ts      (target resolution, documents loading)
+                generate.ts     (ReAct loop, saves directly to the target path)
+                tool.ts         (tool execution)
 ```
 
 ## State Persistence
 
-| 시점 | 저장 내용 |
+| Timing | Persisted content |
 |------|----------|
-| generate 완료 | conversation, conversationHistory, directive, mode, tokenUsage |
-| tool 완료 | conversationHistory, tokenUsage |
-| SIGTERM | stateSnapshot의 최신 상태 + interruption |
+| generate complete | conversation, conversationHistory, directive, mode, tokenUsage |
+| tool complete | conversationHistory, tokenUsage |
+| SIGTERM | Latest state from stateSnapshot + interruption |
 
-## 프롬프트 구조
+## Prompt Structure
 
-`planner/plan/base.md` + `planner/plan/rules.md`. PromptEngine 6단계 파이프라인을 타지 않고 `generate.ts`에서 직접 Handlebars 렌더링한다.
+`planner/plan/base.md` + `planner/plan/rules.md`. It does not go through the PromptEngine 6-stage pipeline; `generate.ts` renders Handlebars directly.
 
 - `base.md`: directive, mode, staging path, eval report, conversation context, `{{> common/injections/action-context}}`
-- `rules.md`: 출력 프로토콜 (target path 직접 참조), clarify 규칙, mode별 행동
+- `rules.md`: output protocol (direct target path reference), clarify rules, per-mode behavior
 
-## 경계
+## Boundaries
 
-- 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
-- Tool 시스템 (도구 카탈로그, 레지스트리, 오케스트레이터): [19-tool-system.md](19-tool-system.md)
-- Triage 분류: [12-triage-routing.md](12-triage-routing.md)
+- Common agent patterns: [11-agent-architecture.md](11-agent-architecture.md)
+- Tool system (tool catalog, registry, orchestrator): [19-tool-system.md](19-tool-system.md)
+- Triage classification: [12-triage-routing.md](12-triage-routing.md)
 - Chat/ChoiceCard UI: [31-chat-system.md](31-chat-system.md)
 - Action Config Matrix: [01-shared-contracts.md](01-shared-contracts.md)
-- 문서 제약 맵(시스템설계/스펙/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)
+- Document constraint map (system design/spec/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)

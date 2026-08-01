@@ -570,32 +570,33 @@ features/{feature}/meta/evals/ui-design/evaluidesign-{jobId}.md
 sessions/debug/prompts/prompt-design-{jobId}.md
 ```
 
-**필수 확인 항목:**
+**Required checks:**
 
 
-| 노드                 | 검증 포인트                                           |
-| ------------------ | ------------------------------------------------ |
-| detect  | directive, prdSpec 주입됨?                          |
-| decompose-uiDesign | uiContext, screenCount 주입됨?                      |
-| execute (ch1)       | taskDescription, documentType 주입됨?               |
-| execute (ch2+)      | previousChaptersSummary, existingDocContent 주입됨? |
+| Node               | What to verify                                        |
+| ------------------ | ----------------------------------------------------- |
+| detect             | `directive`, `prdSpec` injected?                       |
+| decompose-uiDesign | `uiContext`, `screenCount` injected?                   |
+| execute (ch1)      | `taskDescription`, `documentType` injected?            |
+| execute (ch2+)     | `previousChaptersSummary`, `existingDocContent` injected? |
 
 
-**판정:**
+**Verdict:**
 
-- ✅ 정상: 모든 변수가 상황에 맞게 주입됨
-- ⚠️ 의심: 주입되었으나 값이 비정상 (예: 빈 문자열)
-- ❌ 실패: 필수 변수 누락
+- ✅ Normal: every variable injected appropriately for the situation
+- ⚠️ Suspect: injected but the value is abnormal (e.g. empty string)
+- ❌ Fail: a required variable is missing
 
-### 9.2 문제 발생 시 조치
+### 9.2 When injection fails
 
-프롬프트 주입 실패 시 → 코드 수정 필요 (promptLogger로 추적)
+A prompt-injection failure means a code fix is needed — trace it with the
+prompt logger (debug prompts under `sessions/<agent>/debug/prompts/`).
 
 ---
 
 ## 10. Known Issues and Solutions
 
-### 9.1 Section Header Layout Misrecognition
+### 10.1 Section Header Layout Misrecognition
 
 **Symptom**: Title is on left, description on right (Row) in screenshot, but documented as Column
 
@@ -610,7 +611,7 @@ sessions/debug/prompts/prompt-design-{jobId}.md
 - Strengthen "explicit observation of element arrangement direction (row/column)" rule in prompts
 - Emphasize "describe exactly what you see in screenshot" principle
 
-### 9.2 Repeating Pattern Inconsistency
+### 10.2 Repeating Pattern Inconsistency
 
 **Symptom**: Multiple sections with identical layout documented differently
 

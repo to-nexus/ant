@@ -1,13 +1,9 @@
 # Security Posture — SSOT
 
-> **Why this file exists.** ANT was not built with security as a first-class
-> concern, and a company devsecops review (gitleaks / Trivy / Checkov /
-> actionlint / pnpm-audit / SAST) is incoming. Reacting to scanner symptoms one
-> at a time bakes in wrong designs. This document is the **single source of
-> truth for the security standard ANT holds itself to**, so remediation lands
-> on a stated baseline rather than ad-hoc patches.
->
-> This file is the durable *standard* — the baseline remediation lands on.
+> **Why this file exists.** Reacting to scanner findings one at a time bakes
+> in wrong designs. This document is the **single source of truth for the
+> security standard ANT holds itself to**, so hardening work lands on a
+> stated baseline rather than ad-hoc patches.
 
 The posture has **five axes**. Each names the invariant, the SSOT location, and
 the current enforcement state (✅ enforced / 🔄 remediation in progress /
@@ -32,14 +28,14 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   [CredentialsStore.ts](../../packages/ant-cli/src/utils/userConfig/CredentialsStore.ts)).
   The key must never be committed. 🔄 When the env var is set but the value is
   not a valid 32-byte hex key, the store **must fail-fast** (no silent fallback
-  to a file/random key) — see handoff O6.
+  to a file/random key).
 - **Scanning.** gitleaks runs in CI on both the working tree (`gitleaks dir .`)
   and the **HEAD git history** (`gitleaks git . --log-opts="HEAD"`), config in
   [.gitleaks.toml](../../.gitleaks.toml). The allowlist excludes deps/build/
   local-only trees and two self-evidently fake test fixtures — **never** real
   secrets. ✅ enforced ([ci.yml](../../.github/workflows/ci.yml) `oss-guard`).
 - **Rotation** of leaked local dev keys is user housekeeping; the in-tree
-  history was purged (see memory `reference_gitleaks_history_purge_2026-06`).
+  history has been purged and the HEAD-history scan keeps it clean.
 
 ## Axis 2 — Dependency policy
 
@@ -77,10 +73,9 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   [ci.yml](../../.github/workflows/ci.yml)). OSS-purity guards (no static
   `@ant/cloud` import, no cloud overlay source in the OSS tree, no cloud chunk
   in the OSS UI build) double as a supply-chain boundary.
-- **Incoming devsecops toolset** (run by the company, mirrored locally where
-  possible): Trivy (image/dep CVE), Checkov (IaC), actionlint (workflow lint),
-  pnpm audit, SAST. As these are wired into CI they extend this axis; each new
-  gate must be **fail-closed** (`--exit-code 1`).
+- **Planned additions**: Trivy (image/dep CVE), Checkov (IaC), actionlint
+  (workflow lint), pnpm audit, SAST. As these are wired into CI they extend
+  this axis; each new gate must be **fail-closed** (`--exit-code 1`).
 
 ## Axis 4 — Container / K8s hardening standard
 
@@ -89,17 +84,17 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   **local dev only**; production runs non-root.
 - **Image pinning.** Base images are pinned by **digest** (`@sha256:…`), not a
   floating tag. 🔄 [Dockerfile.ide](../../packages/ant-cli/Dockerfile.ide)
-  (`gitpod/openvscode-server`) is the remaining floating tag (handoff O3).
+  (`gitpod/openvscode-server`) is the remaining floating tag.
 - **No build-time secret echo.** Dockerfiles must not `cat` env files into build
-  logs (🔄 handoff O4). `.dockerignore` excludes `.git`/`node_modules`/`.env*`/
-  `tests`/`dist` (🔄 handoff O5).
+  logs (🔄). `.dockerignore` excludes `.git`/`node_modules`/`.env*`/
+  `tests`/`dist` (🔄).
 - **Pod security.** IDE pods set a `securityContext`
   (`runAsNonRoot:true`/`runAsUser:1000`/`allowPrivilegeEscalation:false`/
-  `capabilities.drop:['ALL']`) and `automountServiceAccountToken:false` (🔄
-  handoff O8/O12, [KubernetesIDEOrchestrator.ts](../../packages/ant-cli/src/infrastructure/ide/KubernetesIDEOrchestrator.ts)).
+  `capabilities.drop:['ALL']`) and `automountServiceAccountToken:false` (🔄,
+  [KubernetesIDEOrchestrator.ts](../../packages/ant-cli/src/infrastructure/ide/KubernetesIDEOrchestrator.ts)).
 - **NetworkPolicy / RBAC / PodSecurity** for IDE pods (shell egress to Redis/DB/
-  metadata `169.254.169.254`/other pods) is **cloud-infra IaC** owned by DevOps,
-  out of this repo's scope (handoff §H).
+  metadata `169.254.169.254`/other pods) is **cloud-infra IaC** owned by the
+  deployment operator, out of this repo's scope.
 
 ## Axis 5 — Auth / tenant model
 
@@ -115,23 +110,23 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   capabilities. The `/deploy/` proxy
   ([deployProxy.ts](../../packages/ant-cli/src/periphery/adapters/http/middleware/deployProxy.ts))
   is the **reference implementation**; IDE and Preview are 🔄 remediation
-  targets (handoff P1, O11/O13). Public deploy access is the only intentional
-  open path (visibility-gated).
+  targets. Public deploy access is the only intentional open path
+  (visibility-gated).
 - **Workspace filesystem isolation.** ✅ EFS `subPath` + `assertWorkspacePathInBase`/
   `stripBase` throw on any path outside the tenant base
   ([20-workspace-isolation.md](20-workspace-isolation.md)).
 - **CORS.** `ANT_CORS_ORIGINS=*` is **opt-in OFF by default** and **forbidden in
   production** ([corsConfig.ts](../../packages/ant-cli/src/periphery/adapters/http/middleware/corsConfig.ts)).
 - **Threat model notes.** `run_command` chaining is bounded by an allowlist with
-  an intentional `ANT_UNSAFE_*` escape hatch (accepted, O10). Multi-org/user
-  detection emits a one-shot `logger.warn` (O9). Local mode assumes a
+  an intentional `ANT_UNSAFE_*` escape hatch (accepted). Multi-org/user
+  detection emits a one-shot `logger.warn`. Local mode assumes a
   single-developer trust boundary.
 
 ---
 
 ## Out of scope / accepted (rationale recorded, no action)
 
-- OAuth secrets via K8s env-var (standard; file-mount is a DevOps follow-up, C7).
+- OAuth secrets via K8s env-var (standard; file-mount is a deployment follow-up).
 - `docker-compose` root + `docker.sock` (local dev only; prod is non-root).
 - ant `ant/` submodule SHA pin in ant-cloud (already correct).
 - Scanner-only reports without a working PoC (see [SECURITY.md](../../SECURITY.md)

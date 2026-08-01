@@ -1,141 +1,141 @@
-# 37. Context Management — Context Lens (크로스잡 컨텍스트)
+# 37. Context Management — Context Lens (cross-job context)
 
-> e2-humming-spindle 계획의 산출물. ANT의 크로스잡 컨텍스트가 어떻게 저장·증류·조립·주입되는지의 SSOT 문서.
-> 관련 코드: [`core/context/`](../../packages/ant-cli/src/core/context/), [`core/executionTier/contextProfile.ts`](../../packages/ant-cli/src/core/executionTier/contextProfile.ts)
+> SSOT document for how ANT's cross-job context is stored, distilled, assembled, and injected.
+> Related code: [`core/context/`](../../packages/ant-cli/src/core/context/), [`core/executionTier/contextProfile.ts`](../../packages/ant-cli/src/core/executionTier/contextProfile.ts)
 
-## 0. 3계층 모델 — "왜 링이 안 차는가"
+## 0. Three-layer model — "why the ring never fills"
 
-| 계층 | 단위 | 관리 메커니즘 |
+| Layer | Unit | Management mechanism |
 |---|---|---|
-| **per-call** | LLM 호출 1회의 프롬프트 | 토큰링이 보여주는 것: `(input + cacheCreation + cacheRead) / model context window`. 노드가 바뀌면 새 호출 기준으로 표시가 바뀐다 |
-| **in-job** | 한 잡 내부의 대화 히스토리 | `compactRun`/`compactTurns` (히스토리 예산 ~90% 시 압축, hot-tail 유지) — 이 문서의 범위 밖 |
-| **cross-job** | 잡 사이에 넘어가는 맥락 | **Context Lens** (이 문서) |
+| **per-call** | The prompt of a single LLM call | What the token ring shows: `(input + cacheCreation + cacheRead) / model context window`. When the node changes, the display switches to the new call's baseline |
+| **in-job** | Conversation history inside one job | `compactRun`/`compactTurns` (compacts when the history budget reaches ~90%, keeps the hot tail) — out of scope for this document |
+| **cross-job** | Context carried between jobs | **Context Lens** (this document) |
 
-**FAQ — 채팅이 아무리 길어져도 링이 차지 않는 이유**: 채팅 전사(chat.jsonl)는 구조적으로 LLM 프롬프트에 들어가지 않는다. 크로스잡 맥락은 feature.jsonl에서 증류된 **bounded** 조립물(프로파일별 4K~12K 토큰 캡)로만 주입되며, 1M급 컨텍스트 윈도우 대비 ~1%라 시각적으로 감지되지 않는다. 이는 결함이 아니라 설계다 — 대형 잡(Tier 3는 잡당 ~90-100 호출)에서 캐시가 task 경계마다 끊기므로, unbounded 채팅 주입은 토큰 비용과 context-rot 양쪽에서 해롭다.
+**FAQ — why the ring never fills no matter how long the chat gets**: the chat transcript (chat.jsonl) structurally never enters the LLM prompt. Cross-job context is injected only as a **bounded** assembly distilled from feature.jsonl (4K–12K token cap per profile), which is ~1% of a 1M-class context window and therefore visually undetectable. This is design, not a defect — in large jobs (Tier 3 makes ~90–100 calls per job) the cache breaks at every task boundary, so unbounded chat injection is harmful on both the token-cost and context-rot axes.
 
-## 1. 두 로그 — 저장은 무손실, 주입은 bounded
+## 1. Two logs — storage is lossless, injection is bounded
 
-| 파일 | 역할 | LLM 주입 |
+| File | Role | LLM injection |
 |---|---|---|
-| `sessions/chat.jsonl` | UI SSOT — 모든 표시 이벤트 (assistant_message, thinking, chat_status, choice 카드) | **금지** (아래 Chat Clear 불변식). 예외 2곳: P1 전환기 rich tail(ask/direct), 마이그레이션 backfill |
-| `sessions/feature.jsonl` | LLM 컨텍스트 SSOT | 유일한 소스 |
+| `sessions/chat.jsonl` | UI SSOT — every display event (assistant_message, thinking, chat_status, choice cards) | **Forbidden** (Chat Clear invariant below). Two exceptions: the P1 transitional rich tail (ask/direct), migration backfill |
+| `sessions/feature.jsonl` | LLM context SSOT | The only source |
 
-### feature.jsonl 라인 타입 (6종)
+### feature.jsonl line types (6 kinds)
 
-| 타입 | 기록 시점 | 수명 |
+| Type | Written at | Lifetime |
 |---|---|---|
-| `user_turn` | 잡 시작 (submit) | boundary까지. ask/inline-ask는 `ephemeral: true` |
-| `user_turn_meta` | triage(intent) / decompose(executionTier) 패치 | user_turn과 동일 |
-| `breadcrumb` | 잡 종료 — **파일 산출 흔적** (anchors + noun-form summary) | 반영구 (boundary 생존) |
-| `assistant_turn` | 잡 종료 — **대화 흔적** (`finalText` + `digest`) — P2 | boundary까지, recency 강등 |
-| `context_summary` | band-2 예산 초과 시 1회 — 체크포인트 (`summary` + `constraintLedger`) — P3 | 최신 것만 유효 |
-| `boundary` | Hard Reset만 (`user_reset`; auto boundary는 retired) | 커서 |
+| `user_turn` | Job start (submit) | Until boundary. ask/inline-ask are `ephemeral: true` |
+| `user_turn_meta` | triage (intent) / decompose (executionTier) patch | Same as user_turn |
+| `breadcrumb` | Job end — **file-output trace** (anchors + noun-form summary) | Semi-permanent (survives boundary) |
+| `assistant_turn` | Job end — **conversation trace** (`finalText` + `digest`) — P2 | Until boundary, recency demotion |
+| `context_summary` | Once when the band-2 budget is exceeded — checkpoint (`summary` + `constraintLedger`) — P3 | Only the latest is valid |
+| `boundary` | Hard Reset only (`user_reset`; auto boundary is retired) | Cursor |
 
-**breadcrumb vs assistant_turn 책임 분리**: breadcrumb은 "어떤 파일을 건드렸나"(내비게이션 앵커, 반영구), assistant_turn은 "무슨 대화를 했고 무엇이 결정됐나"(referent 해석, recency 강등). 수명이 다르므로 합치지 않는다.
+**breadcrumb vs assistant_turn responsibility split**: breadcrumb answers "which files were touched" (navigation anchors, semi-permanent); assistant_turn answers "what was discussed and what was decided" (referent resolution, recency demotion). Their lifetimes differ, so they are not merged.
 
-## 2. 증류 (write path) — 잡 종료 1회
+## 2. Distillation (write path) — once at job end
 
-[`core/context/assistantTurn.ts`](../../packages/ant-cli/src/core/context/assistantTurn.ts) `distillAssistantTurn` — breadcrumb과 같은 seam(code/design learn, inline-ask dispatch)에서 호출되나 BC 게이트(explain/touched=0 skip)와 **무관하게** 실행된다 (대화는 파일 안 바꿔도 맥락이다).
+[`core/context/assistantTurn.ts`](../../packages/ant-cli/src/core/context/assistantTurn.ts) `distillAssistantTurn` — called at the same seam as breadcrumbs (code/design learn, inline-ask dispatch), but runs **independently of** the BC gate (explain/touched=0 skip) — a conversation is context even when it changes no files.
 
-- `finalText`: 그 턴의 user-facing 최종 발화 — chat.jsonl에서 `assistant_message`(kind가 system_notice/rendered_payload/thinking_chunk면 제외) + `chat_status[task_response]`를 수확, tail-cap ~800tok. ask는 그래프의 `response`를 직접 사용.
-- `digest` (TurnDigest): `decisions[]` / `constraints[]`(유저 워딩 인용 필수) / `outcome` / `openQuestions?`.
-  - **choice_resolved 결정론 흡수**: clarify/choice 카드 응답은 이미 구조화되어 디스크에 있으므로 LLM 없이 decisions로 들어간다 (최고 신뢰 소스, 항상 선두).
-  - Tier 2+ 만 소형 LLM 콜 1회(`infra/turn-digest/system.md`, 8s timeout); Tier 0/1·ask는 템플릿 추출. 실패 시 템플릿 폴백 — 증류가 learn을 막는 일은 없다.
+- `finalText`: the turn's final user-facing utterance — harvested from chat.jsonl as `assistant_message` (excluded when kind is system_notice/rendered_payload/thinking_chunk) + `chat_status[task_response]`, tail-capped at ~800tok. ask uses the graph's `response` directly.
+- `digest` (TurnDigest): `decisions[]` / `constraints[]` (must quote the user's wording) / `outcome` / `openQuestions?`.
+  - **Deterministic absorption of choice_resolved**: clarify/choice card responses are already structured on disk, so they enter decisions without an LLM (the highest-confidence source, always leading).
+  - Only Tier 2+ makes one small LLM call (`infra/turn-digest/system.md`, 8s timeout); Tier 0/1 and ask use template extraction. On failure, fall back to the template — distillation never blocks learn.
 
-## 3. 조립 (read path) — 3밴드 Lens
+## 3. Assembly (read path) — 3-band Lens
 
-`hydrateFeatureContext` (resolve에서 잡당 1회, triage는 per-turn 재수화) → `FeatureContext`:
+`hydrateFeatureContext` (once per job in resolve; triage re-hydrates per turn) → `FeatureContext`:
 
-| 밴드 | 내용 | 소스 |
+| Band | Content | Source |
 |---|---|---|
-| **1 Verbatim** | 최근 K 교환: user 원문 + assistant finalText + 그 턴의 BC anchors | `exchanges[]` (user_turn ⋈ assistant_turn ⋈ breadcrumb by turnId) |
-| **2 Structured** | 밴드1 밖 턴들의 digest | `digests[]` |
-| **3 Compressed** | 롤링 summary + **Constraint Ledger** + (접힌) 옛 BC | `context_summary` 체크포인트 |
+| **1 Verbatim** | Most recent K exchanges: raw user text + assistant finalText + that turn's BC anchors | `exchanges[]` (user_turn ⋈ assistant_turn ⋈ breadcrumb by turnId) |
+| **2 Structured** | Digests of the turns outside band 1 | `digests[]` |
+| **3 Compressed** | Rolling summary + **Constraint Ledger** + (folded) old BCs | `context_summary` checkpoint |
 
-밴드 = 라인 타입이 아니라 **recency별 충실도**. 오버플로 캐스케이드: 밴드1 초과 → 디스크의 digest로 강등(LLM 0) → 밴드2 초과 → 체크포인트로 폴드(LLM 1회, 이후 공짜).
+A band is **fidelity by recency**, not a line type. Overflow cascade: band 1 overflow → demote to the on-disk digest (0 LLM calls) → band 2 overflow → fold into a checkpoint (1 LLM call, free afterwards).
 
-- **ephemeral 강등**: ask 턴은 K 트리밍 시 나이 무관 최우선 드롭, 밴드2 진입 금지.
-- **마이그레이션 backfill**: assistant_turn 없는 옛 턴은 trailing 6개에 한해 chat.jsonl에서 재구성 (`backfillExchangesFromChat`) — assistant_turn이 쌓이면 0으로 수렴.
+- **ephemeral demotion**: ask turns are dropped first during K trimming regardless of age, and never enter band 2.
+- **Migration backfill**: old turns without an assistant_turn are reconstructed from chat.jsonl for the trailing 6 only (`backfillExchangesFromChat`) — converges to 0 as assistant_turns accumulate.
 
-### Compaction 발동점 — `estimateCarryoverTokens` × `FEATURE_CONTEXT_THRESHOLD`
+### Compaction trigger — `estimateCarryoverTokens` × `FEATURE_CONTEXT_THRESHOLD`
 
-- **측정 SSOT**: `estimateCarryoverTokens(ctx)` (featureContextBuilder) — userTurns + breadcrumbs + assistant finals + digests + summary + ledger **전 채널** 합산 (2.8 chars/tok). compaction 트리거와 `GET context/estimate` 게이지가 같은 함수를 소비하므로 "게이지 숫자 = 발동 기준 수량"이 구조적으로 보장된다. (과거엔 두 인라인 식이 서로 다른 채널을 세어 게이지와 발동 기준이 어긋났다.)
-- **의미**: `FEATURE_CONTEXT_THRESHOLD`(24k)는 **주입 캡이 아니라 접기 발동점**. per-call 실주입은 §4 프로파일 캡이 별도로 바운드한다. 평가 시점은 **다음 잡 진입의 hydrate** (resolve; triage per-turn 재수화는 `skipCompaction=true`) — 잡 진행/종료 후 게이지가 발동점을 초과하는 것은 정상 상태이며, 수동 compaction은 없다.
-- **배선**: code/planner/visual/**design** resolve 모두 llm/promptPort를 전달해 compaction이 어느 잡 진입에서도 실행된다 (compaction은 체크포인트·원장 편입 등 **후속 모든 잡이 혜택보는 공용 유지보수** — 소비자 관점 스킵 금지). tier gate는 Tier 0 Reflex만 NoopCompact.
-- **이중 게이트 금지**: `compactJob`은 pre-partition 호출자(`recentWindowSize <= 0` — compactFeatureContext)에 대해 내부 threshold 재판정을 하지 않는다. 접기 결정의 단일 소유자는 저장소 측정을 한 compactFeatureContext다 (재판정 부활 시: 저장소는 초과인데 접힐-옛-부분합이 미만이라 영구 no-op 회귀).
+- **Measurement SSOT**: `estimateCarryoverTokens(ctx)` (featureContextBuilder) — sums **all channels**: userTurns + breadcrumbs + assistant finals + digests + summary + ledger (2.8 chars/tok). The compaction trigger and the `GET context/estimate` gauge consume the same function, so "gauge number = trigger quantity" is structurally guaranteed. (Previously two inline expressions counted different channels, so the gauge and the trigger diverged.)
+- **Meaning**: `FEATURE_CONTEXT_THRESHOLD` (24k) is a **fold trigger point, not an injection cap**. Actual per-call injection is bounded separately by the §4 profile caps. Evaluation happens at the **next job's hydrate on entry** (resolve; triage per-turn re-hydration uses `skipCompaction=true`) — the gauge exceeding the trigger point during/after a job is a normal state, and there is no manual compaction.
+- **Wiring**: code/planner/visual/**design** resolve all pass llm/promptPort so compaction runs at any job's entry (compaction is **shared maintenance that benefits every subsequent job** — checkpointing, ledger incorporation, etc.; consumer-perspective skipping is forbidden). The tier gate is NoopCompact only for Tier 0 Reflex.
+- **No double gate**: `compactJob` does not re-evaluate the threshold internally for pre-partition callers (`recentWindowSize <= 0` — compactFeatureContext). The single owner of the fold decision is compactFeatureContext, which measured the store (if re-evaluation is revived: the store exceeds the threshold but the to-be-folded old subtotal is below it, causing a permanent no-op regression).
 
 ### Recall escape hatch — `read_state` scope='history'
 
-접힌(folded) 턴의 원문은 프롬프트 표면에서만 사라질 뿐 feature.jsonl에 남는다. digest/롤링 summary가 불충분할 때 LLM은 `read_state`에 `scope: 'history'`로 boundary 이후의 user_turn/assistant_turn 원문을 roster/검색으로 열람할 수 있다 (`ctx.featureHistory` 시임 — code tool 노드가 SessionPort lazy closure로 주입; 새 도구 신설 없이 기존 read_state의 scope 확장). 원장(Standing Constraints)은 열람이 필요 없다 — 모든 프로파일에 무조건 주입되는 플로어다.
+The raw text of folded turns disappears only from the prompt surface — it stays in feature.jsonl. When the digest/rolling summary is insufficient, the LLM can call `read_state` with `scope: 'history'` to browse the raw user_turn/assistant_turn text since the boundary via roster/search (the `ctx.featureHistory` seam — the code tool node injects a SessionPort lazy closure; a scope extension of the existing read_state, no new tool). The ledger (Standing Constraints) never needs browsing — it is a floor injected unconditionally into every profile.
 
-### Constraint Ledger — "채팅에서 말한 제약은 조용히 사라지지 않는다"
+### Constraint Ledger — "constraints stated in chat do not silently disappear"
 
-체크포인트의 `constraintLedger`는 **결정론적 verbatim-carry**: 이전 원장 ∪ 접힌 digest들의 constraints, dedupe만. LLM이 원장을 재작성하지 않으므로 드롭이 구조적으로 불가능하다. supersession은 삭제가 아니라 read-time 규칙("현재 지시가 이긴다")으로 처리. **주입 플로어**: lean 포함 모든 프로파일이 원장을 항상 렌더한다.
+The checkpoint's `constraintLedger` is a **deterministic verbatim-carry**: previous ledger ∪ the constraints of the folded digests, dedupe only. The LLM never rewrites the ledger, so drops are structurally impossible. Supersession is handled not by deletion but by a read-time rule ("the current instruction wins"). **Injection floor**: every profile, including lean, always renders the ledger.
 
-## 4. 적응 프로파일 (SSOT: `contextProfileFor(node, tierId)`)
+## 4. Adaptive profiles (SSOT: `contextProfileFor(node, tierId)`)
 
-| 프로파일 | 밴드1 | assistant 캡 | 밴드2 |
+| Profile | Band 1 | assistant cap | Band 2 |
 |---|---|---|---|
 | rich | K=6 | 1680 chars (~600tok) | ≤12 digests |
 | standard | K=3 | 840 chars | ≤8 |
-| lean | K=6 (user만) | 0 (strip) | ≤1 |
+| lean | K=6 (user only) | 0 (strip) | ≤1 |
 
-| 노드 | 프로파일 | 근거 |
+| Node | Profile | Rationale |
 |---|---|---|
-| triage / detect | lean | 매 턴 실행 + 마지막 intent가 핵심 신호 (rot 민감) |
-| decompose | standard | 잡당 1회; 자기가 tier를 결정하므로 tier 조건 불가 |
-| plan | standard (Tier 4는 lean) | Tier 3 잡당 ~22회 수신; Tier 4는 refs가 ground truth |
-| direct (Tier 0/1) | rich | 대화형 rim, 1-3 호출 (전환기: P1 chat tail) |
-| ask agent | rich | P1 chat tail (`buildChatTail`) — Lens 전환은 후속. 도달 경로 2개: inline-ask dispatch (`orchestrator.ts`) + full-job ask 폴백 (`agents/architect/graph/ask/fullJobAskFallback.ts` — E2-5, 아래 §8 참고) |
+| triage / detect | lean | Runs every turn + the last intent is the key signal (rot-sensitive) |
+| decompose | standard | Once per job; it decides the tier itself, so tier-conditioning is impossible |
+| plan | standard (lean for Tier 4) | Receives ~22 calls per Tier 3 job; Tier 4's refs are the ground truth |
+| direct (Tier 0/1) | rich | Conversational rim, 1–3 calls (transitional: P1 chat tail) |
+| ask agent | rich | P1 chat tail (`buildChatTail`) — the Lens migration is a follow-up. Two arrival paths: inline-ask dispatch (`orchestrator.ts`) + full-job ask fallback (`agents/architect/graph/ask/fullJobAskFallback.ts` — E2-5, see §8 below) |
 
-렌더는 단일 partial [`jobs/shared/injections/context-lens.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/context-lens.md) — Recent Exchanges / Standing Constraints / Prior Exchange Digests.
+Rendering is a single partial [`jobs/shared/injections/context-lens.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/context-lens.md) — Recent Exchanges / Standing Constraints / Prior Exchange Digests.
 
 ## 5. Chat Clear vs Hard Reset
 
-| | Chat Clear (빗자루) | Hard Reset (휴지통 2-click) |
+| | Chat Clear (broom) | Hard Reset (trash can, 2-click) |
 |---|---|---|
-| 동작 | chat.jsonl collapse (화면만 정리) | feature.jsonl + chat.jsonl 물리 삭제 |
-| ANT 기억 | **유지** | **전부 소거** |
-| 유저 의도 | "스크롤 정리" | "새 출발 — 누적 맥락이 노이즈" |
+| Action | chat.jsonl collapse (clears the screen only) | Physically deletes feature.jsonl + chat.jsonl |
+| ANT's memory | **Kept** | **Fully erased** |
+| User intent | "Tidy up the scrollback" | "Fresh start — the accumulated context is noise" |
 
-**Chat Clear 불변식** (load-bearing): 컨텍스트 파이프라인은 chat.jsonl을 라이브 소싱하지 않는다 — 예외는 4곳으로 고정되며 [`tests/policy/chat-clear-invariant.test.ts`](../../packages/ant-cli/tests/policy/chat-clear-invariant.test.ts)가 강제한다. 따라서 Clear가 ANT의 기억을 건드릴 수 없다.
+**Chat Clear invariant** (load-bearing): the context pipeline never live-sources chat.jsonl — the exceptions are fixed at 4 sites and enforced by [`tests/policy/chat-clear-invariant.test.ts`](../../packages/ant-cli/tests/policy/chat-clear-invariant.test.ts). Therefore Clear cannot touch ANT's memory.
 
-## 6. triage 소비-상태 판별축 (P1b — green-padding-drake RCA)
+## 6. triage consumption-state discriminator axis (P1b — green-padding-drake RCA)
 
-design breadcrumb에는 파생 주석 `consumption: 'pending' | 'consumed'`가 붙는다 (이후 code 잡 user_turn 존재 여부로 결정론 계산, 현재 턴 제외). triage rules.md는 실패 보고의 라우팅을 이 상태로 이분한다:
+design breadcrumbs carry a derived annotation `consumption: 'pending' | 'consumed'` (computed deterministically from whether a subsequent code-job user_turn exists, excluding the current turn). triage rules.md bifurcates the routing of failure reports on this state:
 
-- 최신 같은-표면 스펙 **pending**(미소비) → 보고는 pending 스펙에 합류 (`rev-spec`) — 구현 전이니 "built behaviour"가 그 스펙과 무관하고, 병렬 두 번째 문서는 수동 병합을 강요한다.
-- **consumed** → 기존대로 새 remediation (`gen-spec`) — high-ironing-mouse 방향 유지.
+- Latest same-surface spec is **pending** (unconsumed) → the report joins the pending spec (`rev-spec`) — nothing has been implemented yet, so the "built behaviour" is unrelated to that spec, and a parallel second document would force manual merging.
+- **consumed** → a new remediation as before (`gen-spec`) — keeps the high-ironing-mouse direction.
 
-워딩락: [`tests/prompt/triage-rev-gen-discriminator.test.ts`](../../packages/ant-cli/tests/prompt/triage-rev-gen-discriminator.test.ts) (양방향).
+Wording lock: [`tests/prompt/triage-rev-gen-discriminator.test.ts`](../../packages/ant-cli/tests/prompt/triage-rev-gen-discriminator.test.ts) (both directions).
 
-## 7. 회귀 가드 인벤토리
+## 7. Regression guard inventory
 
-| 테스트 | 잠그는 것 |
+| Test | What it locks |
 |---|---|
-| `tests/parallel/worker-feature-context-propagation.test.ts` | P0 — 워커 sharedContext featureContext 전달 (code+design) |
-| `tests/prompt/triage-rev-gen-discriminator.test.ts` | P1b — 소비-상태 축 양방향 + pending 마커 렌더 |
-| `tests/context/chat-tail-builder.test.ts` | P1 — rich tail 수확/캡/제외 규칙 |
-| `tests/prompt/recent-conversation-injection.test.ts` | P1 — ask/direct 템플릿 렌더 |
-| `tests/context/assistant-turn-distill.test.ts` | P2 — 증류(수확/choice 흡수/LLM 폴백/no-throw) |
-| `tests/context/lens-projection.test.ts` | P2 — 밴드 조립 + 프로파일 캡 + ephemeral 강등 + II-3 매트릭스 |
-| `tests/prompt/context-lens-render.test.ts` | P2/P3 — partial 렌더 + plan 대체 + 원장 플로어 |
-| `tests/context/context-summary-checkpoint.test.ts` | P3 — 체크포인트 적용/재사용(LLM 0회)/원장 verbatim-carry |
-| `tests/policy/chat-clear-invariant.test.ts` | Chat Clear 불변식 (chat 읽기 4곳 고정) |
-| `tests/context/full-job-ask-fallback.test.ts` | E2-5 — full-job ask 폴백 (rich tail → runAskGraph → ephemeral distill, architect/index.ts 분기 배선) |
-| `tests/context/context-lens-endpoints.test.ts` | E2-4 BE — `GET context/lens` 밴드 본문 + `POST context/pin` 라우트 부재(404) 가드 |
-| ant-ui `tests/store/contextLensSlice.test.ts` | E2-4 FE — estimate/lens AsyncFields 전이 + feature-key 가드 |
-| `tests/verification/unit/featureContextBuilder.test.ts` | 측정 SSOT — `estimateCarryoverTokens` 전 채널 합산 + digest 토큰이 compaction 트리거에 계상 |
-| `tests/tools/read-state.test.ts` | read_state — run scope + history scope (roster/검색/미배선 graceful) |
+| `tests/parallel/worker-feature-context-propagation.test.ts` | P0 — worker sharedContext featureContext propagation (code+design) |
+| `tests/prompt/triage-rev-gen-discriminator.test.ts` | P1b — consumption-state axis in both directions + pending-marker render |
+| `tests/context/chat-tail-builder.test.ts` | P1 — rich tail harvesting/cap/exclusion rules |
+| `tests/prompt/recent-conversation-injection.test.ts` | P1 — ask/direct template render |
+| `tests/context/assistant-turn-distill.test.ts` | P2 — distillation (harvest / choice absorption / LLM fallback / no-throw) |
+| `tests/context/lens-projection.test.ts` | P2 — band assembly + profile caps + ephemeral demotion + II-3 matrix |
+| `tests/prompt/context-lens-render.test.ts` | P2/P3 — partial render + plan substitution + ledger floor |
+| `tests/context/context-summary-checkpoint.test.ts` | P3 — checkpoint apply/reuse (0 LLM calls)/ledger verbatim-carry |
+| `tests/policy/chat-clear-invariant.test.ts` | Chat Clear invariant (chat reads fixed at 4 sites) |
+| `tests/context/full-job-ask-fallback.test.ts` | E2-5 — full-job ask fallback (rich tail → runAskGraph → ephemeral distill, wired via the architect/index.ts branches) |
+| `tests/context/context-lens-endpoints.test.ts` | E2-4 BE — `GET context/lens` band bodies + `POST context/pin` route-absence (404) guard |
+| ant-ui `tests/store/contextLensSlice.test.ts` | E2-4 FE — estimate/lens AsyncFields transitions + feature-key guard |
+| `tests/verification/unit/featureContextBuilder.test.ts` | Measurement SSOT — `estimateCarryoverTokens` sums all channels + digest tokens count toward the compaction trigger |
+| `tests/tools/read-state.test.ts` | read_state — run scope + history scope (roster/search/unwired graceful) |
 
-## 8. 유저 가시화 (E2-4) + full-job ask 폴백 (E2-5)
+## 8. User-facing surfaces (E2-4) + full-job ask fallback (E2-5)
 
-- **Carry-over 게이지** — 채팅 헤더의 `FeatureContextGauge` 가 `GET context/estimate` 를 표시 (`estimatedTokens / capTokens`). **게이지 자체에는 툴팁이 없다** — 클릭이 여는 표면은 Context 패널 하나뿐 (과거 click-트리거 툴팁 + 패널 동시 팝업 결함의 구조적 제거). 발동점 초과 시 바가 amber로 전환. 갱신: feature 전환(`useFeatureLogSync`) + 잡 종료 SSE(`chatSseHandler`) — 폴링 없음.
-- **Context 패널** — 게이지 클릭 시 `ContextLensPanel` 이 `GET context/lens` 로 밴드 본문을 열람 (Standing Constraints + rolling summary / Recent Exchanges / Digests). 헤더에 **고정 상태줄**(`{tokens} / {cap}` + 초과 시 "다음 잡 시작 시 자동 압축") 이 항상 표시되고, 심층 의미(크로스잡 vs per-call 링, 링에는 이월분이 실사용 기준 항상 포함)는 hover **ⓘ 인포 툴팁**에 수납. **읽기 전용 표면** — user pin은 제거됐다 (원장은 잡 종료 증류 + compaction 결정론 편입으로만 자동 성장; `POST context/pin` 라우트/타입/액션 전부 retired).
-- **full-job ask 폴백 (E2-5)** — 일반 잡(learn/design/code)의 triage 가 `group==='ask'` 로 분류하면 그래프는 `__end__` 로 끝난다 (routeToAskGraph 미배선). `architect/index.ts` 의 세 ask 분기가 그래프 밖 seam 에서 `answerFullJobAsk` (`graph/ask/fullJobAskFallback.ts`) 를 실행 — inline-ask dispatch 와 동형 배선 (P1 rich tail → `runAskGraph` → ephemeral `assistant_turn` 증류, jobType `'ask'`). 실패 시 로그 + 플레이스홀더 메시지 폴백 (ask 실패가 잡 크래시가 되지 않음). learn 그래프에는 이를 위해 `turnId` 채널이 선언됨 (미선언 채널은 node 전이마다 drop).
+- **Carry-over gauge** — the `FeatureContextGauge` in the chat header displays `GET context/estimate` (`estimatedTokens / capTokens`). **The gauge itself has no tooltip** — clicking it opens exactly one surface, the Context panel (structural removal of the past defect where a click-triggered tooltip and the panel popped simultaneously). The bar turns amber when the trigger point is exceeded. Refresh: feature switch (`useFeatureLogSync`) + job-end SSE (`chatSseHandler`) — no polling.
+- **Context panel** — clicking the gauge opens `ContextLensPanel`, which browses the band bodies via `GET context/lens` (Standing Constraints + rolling summary / Recent Exchanges / Digests). The header always shows a **fixed status line** (`{tokens} / {cap}` + "auto-compacts when the next job starts" when exceeded); the deeper semantics (cross-job vs per-call ring; the ring always includes the carry-over in actual usage) live in a hover **ⓘ info tooltip**. **Read-only surface** — user pins were removed (the ledger grows only automatically, via job-end distillation + deterministic compaction incorporation; the `POST context/pin` route/types/actions are all retired).
+- **full-job ask fallback (E2-5)** — when a regular job's (learn/design/code) triage classifies `group==='ask'`, the graph ends at `__end__` (routeToAskGraph is not wired). The three ask branches in `architect/index.ts` run `answerFullJobAsk` (`graph/ask/fullJobAskFallback.ts`) at a seam outside the graph — wiring isomorphic to inline-ask dispatch (P1 rich tail → `runAskGraph` → ephemeral `assistant_turn` distillation, jobType `'ask'`). On failure: log + placeholder-message fallback (an ask failure never becomes a job crash). The learn graph declares a `turnId` channel for this (undeclared channels are dropped at every node transition).
 
-## 9. 명시적 스코프 밖
+## 9. Explicitly out of scope
 
-- **in-job 실행 품질 / 모델 생성 충실도** — Lens는 크로스잡 맥락만 담당.
-- **멀티탭 (E2-1/E2-2)** — 별도 에픽. 기반만 확보: `assistant_turn`/`context_summary` 스키마의 `scopeId?` 필드.
-- **P1 chat tail retire (E2-6)** — `assistant_turn` 라인이 실사용에서 충분히 쌓인 뒤 (P2 배포 후 수 주) ask/direct 를 Lens rich 프로파일로 전환하고 `chatTailBuilder` 본체를 제거. docs/tmp 핸드오프 §3 참고.
+- **In-job execution quality / model generation fidelity** — the Lens covers cross-job context only.
+- **Multi-tab** — a separate epic. Only the groundwork is in place: the `scopeId?` field in the `assistant_turn`/`context_summary` schemas.
+- **P1 chat tail retirement** — once `assistant_turn` lines have accumulated sufficiently in real use (a few weeks after P2 ships), switch ask/direct to the Lens rich profile and remove the `chatTailBuilder` body.

@@ -8,6 +8,10 @@ matching name and uncomment the block.
 localised, but a second set of images doubles the repo weight and guarantees
 the two drift.
 
+`logo.png` is not a capture slot — it is the product logo (copied from
+`packages/ant-ui/public/logo.png`), shown above the README title. If the
+brand asset changes, update both copies.
+
 ## Slots
 
 | File | Format | README location |

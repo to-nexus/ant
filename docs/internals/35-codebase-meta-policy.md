@@ -1,93 +1,93 @@
 # Codebase Meta Document Policy
 
-> 작성 목적: ant 가 워크스페이스 파일 시스템에서 관찰·생성하는 메타 문서의 경계를 정의한다. 컨벤션 / 런타임 산출물 / 에이전트 세션 상태가 같은 트리에 섞이면서 발생했던 파편화 (ex. "export style convention 을 `architecture/system/` 아티팩트로 기록하려는 초안") 를 구조적으로 막는다.
+> Purpose: defines the boundaries of the meta documents that ant observes and generates in the workspace file system. Structurally prevents the fragmentation that arose when conventions / runtime outputs / agent session state got mixed into the same tree.
 
-## 1. 도메인 레이어 분리 원칙
+## 1. Domain Layer Separation Principle
 
-피쳐 워크스페이스의 1차 분류 축은 **I/O 가 아닌 도메인 의미** (`plan` / `architecture` / `visual` / `assets` / `meta` / `sessions` / `codebase`). 각 파일은 정확히 하나의 도메인 디렉토리에 속해야 하며, 코드 vs 산출물 vs 세션 경계는 다음 표가 SSOT 다.
+The primary classification axis of a feature workspace is **domain meaning, not I/O** (`plan` / `architecture` / `visual` / `assets` / `meta` / `sessions` / `codebase`). Every file must belong to exactly one domain directory, and the following table is the SSOT for the code vs deliverable vs session boundary.
 
-| 디렉토리 | 성격 | 수명 | 읽는 주체 | 쓰는 주체 |
+| Directory | Nature | Lifetime | Readers | Writers |
 |---|---|---|---|---|
-| `codebase/` | 코드 + 코드의 메타 문서. git 추적. | 영속 | 사람 개발자 + ant 에이전트 | 코드 생성 태스크 (setup / feature / integration / ...) |
-| `plan/` · `architecture/` · `visual/` · `assets/` | 디자인·생성 **산출물** 도메인 분류. RAC 에서 참조. | 영속 (세션 간) | ant 에이전트 (프롬프트 주입 경유) | design / planner / 관련 태스크 |
-| `meta/` | 잡 메타 트랙 컨테이너 (`directives/`, `evals/`). | 영속 | ant 에이전트 + 사람 | design / code / 평가 잡 |
-| `sessions/` | 에이전트 **런타임 / 디버그 상태**. | 일시적 (한 job 또는 resume window) | ant 에이전트 (자율 조회) + 사람 (디버그) | 그래프 런타임 / 디버그 로거 |
+| `codebase/` | Code + the code's meta documents. Git-tracked. | Persistent | Human developers + ant agents | Code-generating tasks (setup / feature / integration / ...) |
+| `plan/` · `architecture/` · `visual/` · `assets/` | Domain classification of design/generation **deliverables**. Referenced from the RAC. | Persistent (across sessions) | ant agents (via prompt injection) | design / planner / related tasks |
+| `meta/` | Job meta-track container (`directives/`, `evals/`). | Persistent | ant agents + humans | design / code / evaluation jobs |
+| `sessions/` | Agent **runtime / debug state**. | Ephemeral (one job or resume window) | ant agents (autonomous lookup) + humans (debugging) | Graph runtime / debug loggers |
 
-### 왜 도메인 분류인가
+### Why domain classification
 
-- **코드 vs 산출물 구분**: `plan/` · `architecture/` · `visual/` 는 프롬프트 · 스펙 · 토큰 등 "무엇을 만들지" 를 기술. 실제 소스는 `codebase/` 에만. 컨벤션처럼 "파일을 만들 때 어떻게" 는 코드 작성 규칙이므로 `codebase/` 소속.
-- **코드 vs 세션 구분**: `sessions/` 는 재시작·디버그용. 컨벤션을 여기에 두면 세션이 바뀔 때마다 사라짐.
-- **산출물 vs 세션 구분**: 도메인 디렉토리는 "완성된 문서", `sessions/` 는 "진행 중 상태". 후자는 실패하면 덮어써도 되지만 전자는 축적된다.
+- **Code vs deliverable distinction**: `plan/` · `architecture/` · `visual/` describe "what to build" — prompts, specs, tokens, etc. Actual source lives only in `codebase/`. Conventions — "how to write files" — are code-authoring rules and therefore belong to `codebase/`.
+- **Code vs session distinction**: `sessions/` is for restart/debugging. Putting conventions there means they vanish every time the session changes.
+- **Deliverable vs session distinction**: the domain directories hold "finished documents", `sessions/` holds "in-progress state". The latter may be overwritten on failure, while the former accumulates.
 
-경계가 흐려지면 파편화 리스크가 생긴다. **새 파일을 추가할 때 반드시 위 표에서 1개 층을 지정** 하고 `codebase/` 에 속하면 아래 §2 정책을 따른다.
+When the boundary blurs, fragmentation risk emerges. **When adding a new file, always assign exactly one layer from the table above**, and if it belongs to `codebase/`, follow the §2 policy below.
 
-## 2. `codebase/ANTRULES.md` — 3-조건 필터 기반의 deviation ledger
+## 2. `codebase/ANTRULES.md` — Deviation Ledger Based on the 3-Condition Filter
 
-### 단일 목적
+### Single purpose
 
-`codebase/ANTRULES.md` 는 **이 코드베이스에서만 유효하고, 자동으로 유추되지 않으며, 후속 task 가 같은 결정을 반복해야 일관성이 유지되는 잔여 집합** 을 기록한다. 그 외의 책임 영역 (decompose / prompt / config file) 을 침범하지 않는다.
+`codebase/ANTRULES.md` records **the residual set of facts that are valid only in this codebase, cannot be automatically derived, and that subsequent tasks must repeat to preserve consistency**. It does not encroach on the other areas of responsibility (decompose / prompt / config files).
 
-### 3-조건 필터 (ALL 만족 시에만 기록)
+### The 3-condition filter (record only when ALL are satisfied)
 
-어떤 사실을 ANTRULES 에 기록할 자격은 아래 세 조건을 **모두** 만족할 때만 부여된다. 하나라도 빠지면 다른 SSOT 가 담당하고 ANTRULES 에는 들어가지 않는다.
+A fact qualifies for recording in ANTRULES only when it satisfies **all three** of the conditions below. If even one is missing, another SSOT is responsible and it does not go into ANTRULES.
 
-| # | 조건 | 실패 시 실제 담당 |
+| # | Condition | Actual owner on failure |
 |---|---|---|
-| 1 | **Codebase-local** — 이 프로젝트에서만 유효한 선택. system-wide default / techTier hint 로 커버되면 안 된다. | 시스템 prompt / techTier hints |
-| 2 | **Not auto-derivable** — `package.json`, `tsconfig.json`, lockfile, 프레임워크 관습, 명시적 config 파일, 기존 파일 구조 어디에도 기록되지 않는다. | 해당 config 파일 / 기존 코드 |
-| 3 | **Cross-task invariant** — 후속 task (또는 세션) 가 같은 선택을 반복해야 일관성이 유지된다. 이 task 만의 일회성 선택이면 제외. | 해당 task 의 plan / task description |
+| 1 | **Codebase-local** — a choice valid only in this project. It must not be covered by a system-wide default / techTier hint. | System prompt / techTier hints |
+| 2 | **Not auto-derivable** — recorded nowhere in `package.json`, `tsconfig.json`, the lockfile, framework conventions, explicit config files, or the existing file structure. | The relevant config file / existing code |
+| 3 | **Cross-task invariant** — subsequent tasks (or sessions) must repeat the same choice to preserve consistency. Excluded if it is a one-off choice for this task only. | That task's plan / task description |
 
-### 침범 금지 원칙
+### Non-encroachment principle
 
-ANTRULES 는 아래 세 영역의 책임을 **건드리지 않는다**:
+ANTRULES **does not touch** the responsibilities of these three areas:
 
-| 영역 | 담당 | 예시 |
+| Area | Owner | Example |
 |---|---|---|
-| "이번 task 는 무엇을 할지" | **decompose** | "hero-section.tsx 를 작성한다" |
-| "TypeScript / Next 에서 일반적으로 이렇게 해야 한다" | **prompt (system / techTier)** | "`moduleResolution: node` 필수" |
-| "기계가 읽는 사실" | **config 파일** | `package.json` 의 deps, `tsconfig.paths` |
+| "What this task will do" | **decompose** | "Write hero-section.tsx" |
+| "How things are generally done in TypeScript / Next" | **prompt (system / techTier)** | "`moduleResolution: node` required" |
+| "Machine-readable facts" | **config files** | deps in `package.json`, `tsconfig.paths` |
 
-ANTRULES 는 세 영역 어디에도 속하지 않는 **잔여 집합** 만 가져간다. decompose 가 매 task description 에 `techTier: nextjs` 를 이미 주입하는데 ANTRULES 에 "Framework: Next.js" 를 적으면 SSOT 가 둘이 되고 drift 의 씨앗이 된다.
+ANTRULES takes only the **residual set** that belongs to none of the three areas. If decompose already injects `techTier: nextjs` into every task description and ANTRULES also records "Framework: Next.js", there are now two SSOTs — the seed of drift.
 
-### 전형적인 허용 / 금지 사례
+### Typical allowed / prohibited cases
 
-#### ✅ 허용 — 2축
+#### ✅ Allowed — 2 axes
 
-- **프로젝트 고유 컨벤션 (decompose / prompt 로 표현 불가능한 미세 선택)**
-  - 파일 네이밍 case (`kebab-case.tsx`, `PascalCase.ts`)
-  - Hooks 파일명 prefix (`use-*.ts`)
-  - Export 스타일 선호 (named 우선, default 예외)
-  - 디렉토리 조직 규약 (e.g. "sections/ 는 top-level 페이지 블록만, components/ui 는 primitive 만")
-  - Lint rule 의 특정 해석 (`no-unused-vars: warn` 로 의도적 완화 + 이유)
-  - 커스텀 도메인 용어 매핑 (e.g. "`pulse` = project code name; code 에 `Pulse` 로 등장")
+- **Project-specific conventions (fine-grained choices inexpressible via decompose / prompt)**
+  - File naming case (`kebab-case.tsx`, `PascalCase.ts`)
+  - Hooks filename prefix (`use-*.ts`)
+  - Export style preference (named first, default as exception)
+  - Directory organization conventions (e.g. "sections/ holds only top-level page blocks, components/ui holds only primitives")
+  - Specific interpretation of a lint rule (`no-unused-vars: warn` as an intentional relaxation + reason)
+  - Custom domain terminology mapping (e.g. "`pulse` = project code name; appears as `Pulse` in code")
 
-- **시점-국지 (point-in-time) 패키지 호환 / pinning rationale**
-  - "`shadcn X v0.4` 가 `react@19` 와 충돌 — `react@18` 에 pin, upstream PR #NNN 머지 전까지"
-  - "Node 22.6 의 `--experimental-strip-types` 버그로 22.5 고정"
-  - "jest 30 migration 전까지 `jest.config.ts` 대신 `.js` 유지"
-  - "Tailwind v4 의 `@theme` 직접 선언 방식이 Next 15.1 과 호환성 이슈 — v3 고정"
+- **Point-in-time package compatibility / pinning rationale**
+  - "`shadcn X v0.4` conflicts with `react@19` — pinned to `react@18` until upstream PR #NNN merges"
+  - "Pinned to Node 22.5 due to the `--experimental-strip-types` bug in 22.6"
+  - "Keep `.js` instead of `jest.config.ts` until the jest 30 migration"
+  - "Tailwind v4's direct `@theme` declaration style has compatibility issues with Next 15.1 — pinned to v3"
 
-#### ❌ 금지 — 이미 다른 SSOT 가 담당
+#### ❌ Prohibited — another SSOT is already responsible
 
-| 금지 항목 | 실제 SSOT |
+| Prohibited entry | Actual SSOT |
 |---|---|
 | "Framework: Next.js 15, App Router" | `package.json` + techTier |
 | "Styling: Tailwind v3" | `package.json` + `tailwind.config.ts` |
 | "Test runner: Jest 29 via `next/jest`" | `package.json` + `jest.config.*` |
-| "Source root: `src/`" | `tsconfig paths` + 프레임워크 관습 |
+| "Source root: `src/`" | `tsconfig paths` + framework convention |
 | "`@/` alias resolves to `src/`" | `tsconfig paths` |
-| "Config file: `tailwind.config.ts` at codebase root" | 파일 시스템 |
+| "Config file: `tailwind.config.ts` at codebase root" | The file system |
 | "Icons: `lucide-react`" | `package.json` |
 | "TypeScript strict mode" | `tsconfig.json` |
-| "Scan path: `src/**/*.{ts,tsx}`" | `tailwind.config.ts` 본체 |
+| "Scan path: `src/**/*.{ts,tsx}`" | The body of `tailwind.config.ts` |
 
-이들을 ANTRULES 에 적는 순간 SSOT 가 둘이 된다. 코드 / 설정이 바뀌었을 때 ANTRULES 는 자동으로 업데이트되지 않으므로 stale 해지고, LLM 이 "authoritative" 로 믿으면 회귀가 발생한다.
+The moment these are written into ANTRULES, there are two SSOTs. ANTRULES is not automatically updated when code / config changes, so it goes stale, and if the LLM trusts it as "authoritative", regressions follow.
 
-### Before / After — `lapis-bonding-fruit` 실제 사례
+### Before / After — the real `lapis-bonding-fruit` case
 
-이 3-조건 필터 도입 전 setup-project 가 생성한 ANTRULES (933 chars) 중 필터를 통과하는 항목만 남기면 다음과 같다.
+Of the ANTRULES (933 chars) that setup-project generated before this 3-condition filter was introduced, keeping only the entries that pass the filter yields the following.
 
-**Before (933 chars, 7 섹션)**:
+**Before (933 chars, 7 sections)**:
 ```md
 # ANTRULES.md
 
@@ -121,12 +121,12 @@ ANTRULES 는 세 영역 어디에도 속하지 않는 **잔여 집합** 만 가�
 - Named exports preferred; default export only for Next.js page/layout files.
 ```
 
-**After (4 항목만 유효)**:
+**After (only 4 entries survive)**:
 ```md
 # ANTRULES.md
 
 ## Testing
-- Do NOT add `babel.config.js` — it disables SWC project-wide (next/jest 의 interaction hazard).
+- Do NOT add `babel.config.js` — it disables SWC project-wide (an interaction hazard of next/jest).
 
 ## File Naming
 - Components: `kebab-case.tsx`.
@@ -137,89 +137,89 @@ ANTRULES 는 세 영역 어디에도 속하지 않는 **잔여 집합** 만 가�
 - Named exports preferred; default export only for Next.js page/layout files.
 ```
 
-제거된 5 섹션 (`Framework`, `Styling`, `Icons`, `Aliases`, `Styling/Scan path` 등) 은 모두 `package.json` / `tsconfig.json` / `tailwind.config.ts` 에서 자동 유추되는 사실이었다. 남긴 항목:
-- `babel.config.js` 금지 — **조건 1·2·3 모두 만족** (next/jest 특유 hazard, 어떤 config 에도 안 적혀 있음, 후속 task 가 쉽게 실수할 수 있음)
-- 파일 네이밍 3종 — **조건 2 만족** (next.js 는 파일명에 무관심, tsconfig 에도 없음) + 조건 3 (후속 task 가 일관성을 유지해야 함)
-- Export style — 위와 동일
+The 5 removed sections (`Framework`, `Styling`, `Icons`, `Aliases`, `Styling/Scan path`, etc.) were all facts auto-derivable from `package.json` / `tsconfig.json` / `tailwind.config.ts`. Surviving entries:
+- The `babel.config.js` prohibition — **satisfies all of conditions 1·2·3** (a hazard specific to next/jest, written in no config file, easy for a subsequent task to trip over)
+- The 3 file-naming rules — **satisfies condition 2** (next.js is indifferent to file names; not in tsconfig either) + condition 3 (subsequent tasks must stay consistent)
+- Export style — same as above
 
-### 위치
+### Location
 
-- `codebase/ANTRULES.md` (루트 평탄 파일). 하위 디렉토리 / 숨김 디렉토리 사용 금지 — 사람 개발자가 저장소 루트에서 곧장 인지해야 하므로.
+- `codebase/ANTRULES.md` (a flat file at the root). Subdirectories / hidden directories are prohibited — a human developer must be able to spot it immediately at the repository root.
 
-### 크기 제약
+### Size constraint
 
-- 권장 상한: **1500자**. 초과 시 ant 파이프라인이 truncate + 경고 로깅.
-- 근거: 매 plan / execute 프롬프트에 자동 주입되므로 토큰 비용 · 캐시 안정성에 직접 영향.
-- 3-조건 필터를 제대로 적용하면 대부분의 프로젝트에서 500자 이하로 수렴한다. 1500자 에 근접한다면 필터 재검토 신호.
+- Recommended ceiling: **1500 characters**. On overflow, the ant pipeline truncates + logs a warning.
+- Rationale: it is auto-injected into every plan / execute prompt, directly affecting token cost and cache stability.
+- With the 3-condition filter properly applied, most projects converge below 500 characters. Approaching 1500 characters is a signal to re-examine the filter.
 
-### 섹션 구조 — 자유 형식, 고정 골격 없음
+### Section structure — free-form, no fixed skeleton
 
-고정 섹션은 **없다**. 3-조건 필터를 통과한 항목이 있는 경우에만 해당 제목으로 섹션을 만든다. 통과 항목이 없으면 **파일 자체를 생성하지 않는다** (empty skeleton 금지). `setup` task 는 더 이상 "모든 카테고리를 미리 시드" 하지 않는다 — 발견 기반으로만 append.
+There are **no** fixed sections. Create a section with the relevant heading only when an entry has passed the 3-condition filter. If no entry passes, **do not create the file at all** (no empty skeletons). The `setup` task no longer "pre-seeds all categories" — append only on a discovery basis.
 
-### 쓰기 / 읽기 소유권 — 모든 태스크가 write 가능
+### Write / read ownership — every task may write
 
-| 주체 | 권한 |
+| Party | Permission |
 |---|---|
-| 모든 code-job task (setup / feature / ui / integration / design-system / test-code / error / verification / doc) | read + write. 3-조건 필터를 통과한 cross-task 불변성 **만** 기록. 필터를 통과하지 못하면 기록 금지. |
-| verification task | 특히 중요 — 실증한 deviation (예: "jest 30 까지 `.ts` config 사용 금지, `.js` 유지") 을 append 하는 주 생산자. 단 "`setupFilesAfterEnv` 가 맞는 키" 같은 공식 schema 에서 derivable 한 사실은 techTier hint 대상이지 ANTRULES 대상이 아님. |
+| Every code-job task (setup / feature / ui / integration / design-system / test-code / error / verification / doc) | read + write. Record **only** cross-task invariants that pass the 3-condition filter. Recording is prohibited if the filter is not passed. |
+| verification task | Especially important — the primary producer appending empirically confirmed deviations (e.g. "do not use a `.ts` config until jest 30; keep `.js`"). But facts derivable from official schemas — like "`setupFilesAfterEnv` is the correct key" — belong to techTier hints, not ANTRULES. |
 
-**단일 writer 는 없다**. 각 태스크는 자기 관찰로 기록·수정할 수 있다. 충돌 (병렬 태스크가 동시에 수정) 은 SharedFileBuffer + LLM-merge 로직으로 자연 해소된다 (별도 lock 불필요 — 기존 `edit_file` / `<file>` 의 cross-worker conflict 메커니즘 재사용).
+**There is no single writer.** Each task may record and edit based on its own observations. Conflicts (parallel tasks editing concurrently) resolve naturally via SharedFileBuffer + LLM-merge logic (no separate lock needed — reuses the existing cross-worker conflict mechanism of `edit_file` / `<file>`).
 
-### 에이전트 디스패치
+### Agent dispatch
 
-`loadAntrules(featureRoot)` (`core/artifact/antrules.ts`) 가 단일 필드 `antrulesContent: string | undefined` 를 반환한다:
+`loadAntrules(featureRoot)` (`core/artifact/antrules.ts`) returns a single field `antrulesContent: string | undefined`:
 
-- `undefined` — 파일 없음 / 읽기 실패 / trim 후 빈 문자열
-- 비어있지 않은 문자열 — 컨텐츠 (1500자 초과 시 truncate + `read_file` 포인터 footer)
+- `undefined` — file missing / read failure / empty string after trim
+- Non-empty string — the content (truncated with a `read_file` pointer footer when over 1500 characters)
 
-공통 partial `jobs/code/base/injections/antrules.md` 가 `{{#if antrulesContent}}` 로 gate 하여 내용을 렌더한다. 파티얼 본문은 3-조건 필터를 매번 재노출 — content 존재 분기에서는 "이 block 의 stale 가능성을 의심하고 실제 code 를 신뢰하라" 는 완화 프레이밍으로, undefined 분기에서는 "새 파일 생성 전 3-조건 필터 통과 여부 확인" 으로 LLM 에게 상기시킨다.
+The shared partial `jobs/code/base/injections/antrules.md` gates on `{{#if antrulesContent}}` and renders the content. The partial's body re-surfaces the 3-condition filter every time — in the content-present branch, with softened framing ("suspect this block may be stale and trust the actual code"), and in the undefined branch, by reminding the LLM to "verify the 3-condition filter passes before creating a new file".
 
-partial 상단에 파일 경로를 명시하여, LLM 이 해당 섹션이 stale 하다고 판단하면 `read_file codebase/ANTRULES.md` 로 자율 조회할 수 있다. 즉 "매 프롬프트 주입 + 필요 시 자율 read + 의심 기반 SSOT 재확인" 의 삼중 전달.
+The file path is stated at the top of the partial, so if the LLM judges the section to be stale it can autonomously look it up with `read_file codebase/ANTRULES.md`. In other words, triple delivery: "injected into every prompt + autonomous read when needed + suspicion-driven SSOT re-verification".
 
-### 호출 경로 파편화 방지
+### Preventing call-path fragmentation
 
-각 plan hook (generic / verification / error) 이 개별적으로 `loadAntrules` 를 호출하면 hook 을 추가할 때마다 주입을 잊을 위험이 생긴다. `PlanPromptCtx.antrulesContent` 에 phase layer (`buildPlanPrompt` in `planGeneration.ts`) 가 미리 담아 넘기고, 모든 hook 은 `ctx.antrulesContent` 를 소비할 뿐이다. Execute 쪽도 `buildMessages.ts` 한 지점에서만 `loadAntrules` 를 호출 — 호출 경로는 plan 1곳, execute 1곳.
+If each plan hook (generic / verification / error) called `loadAntrules` individually, every new hook would risk forgetting the injection. The phase layer (`buildPlanPrompt` in `planGeneration.ts`) pre-populates `PlanPromptCtx.antrulesContent`, and every hook merely consumes `ctx.antrulesContent`. The execute side likewise calls `loadAntrules` at exactly one site, `buildMessages.ts` — one call site for plan, one for execute.
 
-### 의존성 자급자족 원칙 — ANTRULES 의 책임이 아니다
+### Dependency self-containment principle — not ANTRULES's responsibility
 
-"어떤 라이브러리를 쓰려면 설치해야 한다" 같은 **class-of-bug 차원의 기본 원칙** 은 ANTRULES 가 담당하지 않는다. 이는 `jobs/code/base/injections/dep-self-contained.md` 파티얼이 **모든 code-job execute / plan variant 에 고정 주입** 한다 (doc / explain 제외). ANTRULES 는 이 원칙에 의존하되 대체하지 않는다 — "이 프로젝트는 Jest 29 를 쓴다" 는 decompose / package.json SSOT, "이 프로젝트에서 쓰기로 한 Jest 는 `@types/jest` 를 요구한다" 는 dep-self-contained SSOT. ANTRULES 는 "이 프로젝트는 jest 30 migration 전까지 config 파일을 `.js` 로 유지한다" 같은 **점-국지 deviation** 만 담당.
+**Class-of-bug baseline principles** like "to use a library you must install it" are not ANTRULES's responsibility. The `jobs/code/base/injections/dep-self-contained.md` partial is **unconditionally injected into every code-job execute / plan variant** (except doc / explain). ANTRULES relies on this principle but does not replace it — "this project uses Jest 29" is the decompose / package.json SSOT; "the Jest this project chose requires `@types/jest`" is the dep-self-contained SSOT. ANTRULES owns only **point-in-time deviations** like "this project keeps its config file as `.js` until the jest 30 migration".
 
-## 3. 실무 가이드라인
+## 3. Practical Guidelines
 
-### 새 파일 / 디렉토리 추가 시 체크리스트
+### Checklist when adding a new file / directory
 
-1. 이 파일은 사람 개발자가 `ls codebase/` 에서 보게 해야 하는가? → `codebase/` 층.
-2. 이 파일은 코드 생성의 **입력** 스펙인가? → 도메인 매핑: PRD/GDD → `plan/`, system/spec → `architecture/`, UI/game-art 산출물 → `visual/`, 자산 풀 → `assets/`, directive/평가 리포트 → `meta/`.
-3. 이 파일은 다음 run 에 이어질 에이전트 내부 상태인가? → `sessions/` 층.
+1. Should a human developer see this file in `ls codebase/`? → the `codebase/` layer.
+2. Is this file an **input** spec for code generation? → domain mapping: PRD/GDD → `plan/`, system/spec → `architecture/`, UI/game-art deliverables → `visual/`, asset pools → `assets/`, directives/evaluation reports → `meta/`.
+3. Is this file internal agent state carried into the next run? → the `sessions/` layer.
 
-혼돈 사례:
-- ❌ "프로젝트 컨벤션" 을 `architecture/system/project-conventions.md` 로 만들기 — 1번이 맞는데 2번 선택한 실수. 컨벤션은 `codebase/ANTRULES.md` (단, 3-조건 필터 통과 시).
-- ❌ 런타임 로그를 `codebase/.ant/logs/` 에 기록 — 3번을 1번으로 섞음. `sessions/` 로.
-- ❌ PRD 를 `codebase/docs/PRD.md` 에 영구 저장 — 2번 성격을 1번에 두면 산출물 수명주기 (버전 · 갱신) 가 코드 git 이력과 섞인다.
+Confusion cases:
+- ❌ Creating "project conventions" as `architecture/system/project-conventions.md` — choosing 2 when 1 is correct. Conventions belong in `codebase/ANTRULES.md` (only if they pass the 3-condition filter).
+- ❌ Writing runtime logs to `codebase/.ant/logs/` — mixing 3 into 1. They go to `sessions/`.
+- ❌ Permanently storing the PRD at `codebase/docs/PRD.md` — putting something with nature 2 into 1 mixes the deliverable lifecycle (versioning · updates) into the code's git history.
 
-### ANTRULES 기록 전 self-check
+### Self-check before recording in ANTRULES
 
-어떤 사실을 ANTRULES 에 적기 전 다음 네 질문에 답한다. **모두 NO 일 때만** 기록 자격.
+Before writing a fact into ANTRULES, answer these four questions. It qualifies for recording **only when all are NO**.
 
-1. `package.json` / `tsconfig.json` / `*.config.*` / lockfile 에 이미 있는가?
-2. 프레임워크 공식 관습 / techTier 기본값으로 유추되는가?
-3. decompose 가 task description 에 이미 주입하는 정보인가?
-4. 이 task 만의 일회성 선택인가 (후속 task 가 반복할 필요 없는가)?
+1. Is it already in `package.json` / `tsconfig.json` / `*.config.*` / the lockfile?
+2. Can it be inferred from official framework conventions / techTier defaults?
+3. Is it information decompose already injects into the task description?
+4. Is it a one-off choice for this task only (no need for subsequent tasks to repeat it)?
 
-하나라도 YES 라면 ANTRULES 대신 **해당 SSOT** 에 기록하거나 기록하지 않는다.
+If any answer is YES, record it in **the corresponding SSOT** instead of ANTRULES, or do not record it at all.
 
-### 여러 에이전트 도구와의 공존
+### Coexistence with other agent tooling
 
-`CLAUDE.md`, `AGENTS.md`, `.cursorrules` 가 이미 있다면 ANTRULES.md 와 공존 가능. 에이전트별 설정은 **해당 에이전트만** 읽으므로 충돌 없음. 단, 동일 규칙이 여러 파일에 중복되면 drift 가 발생하니 ANTRULES.md 가 기준이면 다른 파일들은 ANTRULES.md 포인터만 두는 편을 권장.
+If `CLAUDE.md`, `AGENTS.md`, or `.cursorrules` already exist, they can coexist with ANTRULES.md. Per-agent configuration is read **only by that agent**, so there is no conflict. However, duplicating the same rule across multiple files causes drift, so if ANTRULES.md is the reference, prefer keeping only a pointer to ANTRULES.md in the other files.
 
-## 4. 관련 문서
+## 4. Related Documents
 
-- [.cursorrules](/.cursorrules) — ant 작업 기본 규약 + ANTRULES.md 요약 포인터
-- [14-code-job.md](14-code-job.md) — 코드 잡의 setup 태스크가 ANTRULES.md 를 어떻게 초기화하는지 (3-조건 필터 적용 후의 축소된 seed 범위)
-- [28-context-management.md](28-context-management.md) — ArtifactPipeline 이 pool 을 구성하는 방식
+- [.cursorrules](/.cursorrules) — ant's baseline working conventions + summary pointer for ANTRULES.md
+- [14-code-job.md](14-code-job.md) — how the code job's setup task initializes ANTRULES.md (the reduced seed scope after applying the 3-condition filter)
+- [28-context-management.md](28-context-management.md) — how the ArtifactPipeline constructs the pool
 
-## 5. 변경 이력
+## 5. Change History
 
-- 2026-04-22: 최초 작성 (policy 도입). `attempted-cycle-removal` 작업 중 `architecture/system/project-conventions.md` 초안이 경계 위반임을 발견하면서 원칙화.
-- 2026-04-23: §2 재작성. 원래 의도 (발견 기반 live log) 대비 현 구현 (setup 선제 skeleton, 4섹션 고정, 읽기 전용) 의 drift 가 `plum-molding-bench` 에서 setup 이 `Do not add test files` 같은 허위 금지 문구를 생성 → test-code 태스크 무한 루프로 드러났음. "4섹션 고정" 해제, "모든 태스크가 read+write 가능", "허위 금지 문구 금지", scope 를 광범위 cross-task 불변성으로 명시.
-- 2026-04-23 (dep-self-contained 리팩터): `lapis-bonding-fruit` 에서 setup-project 가 생성한 933자 ANTRULES 중 5/7 섹션이 `package.json` / `tsconfig.json` 재선언으로 밝혀지면서 SSOT drift 위험이 구조화됨. §2 를 3-조건 필터 기반으로 재작성. 파티얼 파일명을 `ant-md.md` → `antrules.md` 로 rename 하여 파일명과 대상이 일치하게 조정. "Treat them as authoritative" 프레이밍을 "stale 가능성을 의심, 실제 code 를 SSOT 로 신뢰" 로 완화. "의존성 자급자족 원칙" 은 별도 partial (`dep-self-contained`) 로 분리 — ANTRULES 의 책임에서 제외.
+- 2026-04-22: Initial version (policy introduced). Formalized as a principle upon discovering, during the `attempted-cycle-removal` work, that a draft `architecture/system/project-conventions.md` violated the boundary.
+- 2026-04-23: §2 rewritten. The drift between the original intent (a discovery-based live log) and the implementation at the time (setup pre-seeding a skeleton, 4 fixed sections, read-only) surfaced in `plum-molding-bench`, where setup generated fabricated prohibitions like `Do not add test files` → infinite loop in test-code tasks. Lifted the "4 fixed sections" restriction, made "every task can read+write" explicit, prohibited fabricated prohibitions, and stated the scope as broad cross-task invariants.
+- 2026-04-23 (dep-self-contained refactor): In `lapis-bonding-fruit`, 5 of the 7 sections in the 933-character ANTRULES generated by setup-project turned out to be re-declarations of `package.json` / `tsconfig.json`, structurally exposing the SSOT-drift risk. §2 rewritten around the 3-condition filter. Renamed the partial file `ant-md.md` → `antrules.md` so the filename matches its subject. Softened the "Treat them as authoritative" framing to "suspect staleness; trust the actual code as SSOT". Split the "dependency self-containment principle" into a separate partial (`dep-self-contained`) — removed from ANTRULES's responsibility.

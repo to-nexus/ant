@@ -1,126 +1,126 @@
 # Realtime System
 
-## 개요
+## Overview
 
-ANT의 실시간 통신은 Redis Pub/Sub와 Server-Sent Events(SSE)로 구성된다. Job Worker가 Redis에 publish하고, Realtime Server가 subscribe하여 SSE로 프론트엔드에 전달한다.
+ANT's realtime communication consists of Redis Pub/Sub and Server-Sent Events (SSE). The Job Worker publishes to Redis, and the Realtime Server subscribes and forwards to the frontend over SSE.
 
-## SSE 연결 구조
+## SSE Connection Structure
 
-두 개의 독립된 SSE 연결을 사용한다.
+Two independent SSE connections are used.
 
-| 연결 | 엔드포인트 | 키 단위 | 데이터 |
+| Connection | Endpoint | Keyed by | Data |
 |------|-----------|---------|--------|
 | Unified SSE | `/realtime/projects/:id/features/:feature/stream` | project + feature | kanban, chat, fileTree, preview, gitChange |
-| Workflow SSE | `/realtime/jobs/:jobId/workflow/stream` | jobId | 워크플로우 노드 상태 |
+| Workflow SSE | `/realtime/jobs/:jobId/workflow/stream` | jobId | Workflow node state |
 
-분리 이유: Unified SSE는 project/feature 단위로 항상 연결되지만, Workflow SSE는 실행 중인 Job이 있을 때만 해당 jobId로 연결된다.
+Reason for the split: the Unified SSE stays connected per project/feature at all times, while the Workflow SSE connects only when there is a running job, keyed by that jobId.
 
-## 이벤트 전파 흐름
+## Event Propagation Flow
 
 ```
 Publisher (Job Worker child / HTTP Server / Realtime Server)
-    -> Broadcaster 클래스
-    -> Redis PUBLISH (user-scoped 채널)
+    -> Broadcaster class
+    -> Redis PUBLISH (user-scoped channel)
     -> Realtime Server (subscribe)
-    -> SSE (클라이언트별 전송)
-    -> ant-ui (메시지 타입별 핸들러 라우팅)
+    -> SSE (per-client delivery)
+    -> ant-ui (per-message-type handler routing)
 ```
 
-Job Worker는 API Server를 거치지 않고 직접 Redis에 접근한다.
+The Job Worker accesses Redis directly without going through the API Server.
 
 ## Broadcaster
 
-모든 Pub/Sub 발행은 브로드캐스터 클래스를 통해서만 일어난다. raw `stateStore.publish`나 raw `redis.publish`를 SSE 목적으로 직접 호출하는 코드는 없다.
+All Pub/Sub publishing happens exclusively through broadcaster classes. No code calls raw `stateStore.publish` or raw `redis.publish` directly for SSE purposes.
 
-| 클래스 | 파일 | 발행 타입 | 실행 컨텍스트 |
+| Class | File | Published types | Execution context |
 |--------|------|-----------|---------------|
-| `KanbanBroadcaster` | `core/realtime/KanbanBroadcaster.ts` | `kanban` | Job Worker 자식 |
-| `WorkflowBroadcaster` | `core/realtime/WorkflowBroadcaster.ts` | `workflow` | Job Worker 자식 |
-| `FileTreeBroadcaster` | `core/realtime/FileTreeBroadcaster.ts` | `fileTree`, `unseenArtifacts` | Job Worker 자식 |
-| `PreviewBroadcaster` | `core/realtime/PreviewBroadcaster.ts` | `preview` | Job Worker 자식 / Preview Server |
-| `GitStateBroadcaster` | `core/realtime/GitStateBroadcaster.ts` | `gitState` | Job Worker 자식 · HTTP Server · Realtime Server |
-| `MessageBroadcaster` | `core/chat/MessageBroadcaster.ts` | `chat` | Job Worker 자식 |
+| `KanbanBroadcaster` | `core/realtime/KanbanBroadcaster.ts` | `kanban` | Job Worker child |
+| `WorkflowBroadcaster` | `core/realtime/WorkflowBroadcaster.ts` | `workflow` | Job Worker child |
+| `FileTreeBroadcaster` | `core/realtime/FileTreeBroadcaster.ts` | `fileTree`, `unseenArtifacts` | Job Worker child |
+| `PreviewBroadcaster` | `core/realtime/PreviewBroadcaster.ts` | `preview` | Job Worker child / Preview Server |
+| `GitStateBroadcaster` | `core/realtime/GitStateBroadcaster.ts` | `gitState` | Job Worker child · HTTP Server · Realtime Server |
+| `MessageBroadcaster` | `core/chat/MessageBroadcaster.ts` | `chat` | Job Worker child |
 
-`GitStateBroadcaster`는 `publisher: (channel, payload) => Promise<unknown>` 콜백을 생성자에서 받는 transport-agnostic 설계이다. Job Worker는 자체 ioredis 연결을 생성하고, HTTP/Realtime Server는 기존 `stateStore.publish`를 재사용한다. 단일 `gitState` SSE type 아래 `cause` discriminant (`workingTreeChange` | `operationComplete` | `reconnectRefill`) 로 세 가지 의미를 실어 나른다.
+`GitStateBroadcaster` has a transport-agnostic design, taking a `publisher: (channel, payload) => Promise<unknown>` callback in its constructor. The Job Worker creates its own ioredis connection, while the HTTP/Realtime Server reuses the existing `stateStore.publish`. Under the single `gitState` SSE type, a `cause` discriminant (`workingTreeChange` | `operationComplete` | `reconnectRefill`) carries three distinct meanings.
 
-### gitState 3-cause 발행 경로
+### gitState 3-cause Publish Paths
 
-- **`workingTreeChange`** — 가벼운 힌트. `FileTreeBroadcaster.notifyFileTreeUpdate`가 co-emit (Job 중 워킹트리 파일 변경), `GitWatcherService`가 `.git/index` mtime 폴링으로 co-emit (외부 터미널 Git 조작). FE는 디바운스 후 `fetchGitWorldState` 재실행.
-- **`operationComplete`** — 사용자-초기화 Git op 성공 후 `GitOperation.onSuccess` 에서 발행. full `GitSnapshot` + `GitOperationState` + `GitPatState` 를 탑재해 FE가 스냅샷을 즉시 교체.
-- **`reconnectRefill`** — SSE 구독(재)오픈 시 서버가 1회 자동 발행. 리로드 직후에도 stale UI 없이 정합 상태 진입.
+- **`workingTreeChange`** — a lightweight hint. Co-emitted by `FileTreeBroadcaster.notifyFileTreeUpdate` (working-tree file changes during a job) and by `GitWatcherService` via `.git/index` mtime polling (Git manipulation from an external terminal). The FE debounces and then re-runs `fetchGitWorldState`.
+- **`operationComplete`** — published from `GitOperation.onSuccess` after a user-initiated Git op succeeds. Carries the full `GitSnapshot` + `GitOperationState` + `GitPatState` so the FE can replace its snapshot immediately.
+- **`reconnectRefill`** — automatically published once by the server when an SSE subscription (re)opens. Ensures a consistent state right after a reload, with no stale UI.
 
-세 경로 모두 동일한 `GitStateBroadcaster` 인스턴스를 통해 **단일 `gitState` 이벤트 타입**으로 발행된다. 상세는 [24-git-operations.md §0](24-git-operations.md#0-git-world-계약-greenfield-ssot).
+All three paths publish through the same `GitStateBroadcaster` instance as a **single `gitState` event type**. Details: [24-git-operations.md §0 (Git World contract — greenfield SSOT)](24-git-operations.md).
 
-## Job Worker 환경변수 검증
+## Job Worker Environment Variable Validation
 
-브로드캐스터 초기화(`getBroadcasterOptionsFromEnv`)는 필수 env 7개 중 하나라도 누락되면 `logger.error`로 실패를 기록하고 `null`을 반환한다. 이 경우 Job은 실행되지만 실시간 업데이트는 전달되지 않으며, 누락된 키는 로그의 `missing` 배열에서 확인할 수 있다.
+Broadcaster initialization (`getBroadcasterOptionsFromEnv`) logs the failure via `logger.error` and returns `null` if any of the 7 required env vars is missing. In that case the job still runs, but realtime updates are not delivered; the missing keys can be found in the log's `missing` array.
 
-필수 env: `ANT_REDIS_URL`, `ANT_JOB_ID`, `ANT_PROJECT_ID`, `ANT_FEATURE_NAME`, `ANT_FEATURE_PATH`(또는 `ANT_PROJECT_PATH`), `ANT_USER_ID`, `ANT_ORG_ID`. Whitelist는 `JobWorker.spawnJobProcess`에서 관리한다.
+Required env: `ANT_REDIS_URL`, `ANT_JOB_ID`, `ANT_PROJECT_ID`, `ANT_FEATURE_NAME`, `ANT_FEATURE_PATH` (or `ANT_PROJECT_PATH`), `ANT_USER_ID`, `ANT_ORG_ID`. The whitelist is managed in `JobWorker.spawnJobProcess`.
 
-## 초기 상태 전달
+## Initial State Delivery
 
-SSE 연결 직후 서버가 초기 상태를 전송한다.
+Immediately after an SSE connection is established, the server sends the initial state.
 
-### Unified SSE 초기 상태
+### Unified SSE Initial State
 
-| 데이터 | 조회 소스 |
+| Data | Lookup source |
 |--------|----------|
-| Kanban | 세션 파일 + Redis (live TaskQueueSnapshot) |
-| Chat | 세션 파일 / Redis |
-| FileTree | 파일시스템 |
+| Kanban | Session file + Redis (live TaskQueueSnapshot) |
+| Chat | Session file / Redis |
+| FileTree | Filesystem |
 
-Kanban 초기 상태의 `dataSource` 우선순위:
-1. Redis에 live TaskQueueSnapshot -> `live`
-2. Job running이지만 snapshot 없음 -> `estimating`
-3. 그 외 -> `session` (세션 파일 기반)
+`dataSource` precedence for the initial Kanban state:
+1. Live TaskQueueSnapshot in Redis -> `live`
+2. Job running but no snapshot -> `estimating`
+3. Otherwise -> `session` (based on the session file)
 
-### Workflow SSE 초기 상태
+### Workflow SSE Initial State
 
-Redis `ant:job:workflow:{jobId}`에서 `WorkflowRealtimeState` 조회. Job Worker의 WorkflowBroadcaster가 노드 진입/퇴장 시마다 이 키를 갱신한다 (TTL 24h).
+Looks up `WorkflowRealtimeState` from Redis `ant:job:workflow:{jobId}`. The Job Worker's WorkflowBroadcaster refreshes this key on every node enter/exit (TTL 24h).
 
-## 연결 Lifecycle
+## Connection Lifecycle
 
 ### Unified SSE
 
 1. `projectSlice.setSelectedFeature()` -> `sseSlice.initializeSSE()` -> `sseManager.connect()`
-2. 핸들러 등록: kanban -> `updateKanban()`, chat -> `addChatMessage()`, fileTree -> `setFileTree()`
-3. 서버가 초기 상태 3건 전송
+2. Handler registration: kanban -> `updateKanban()`, chat -> `addChatMessage()`, fileTree -> `setFileTree()`
+3. Server sends the 3 initial-state payloads
 
 ### Workflow SSE
 
 1. `jobSlice.setRunning(true, jobId)` -> `sseManager.connectWorkflow(jobId)`
-2. 또는 `useWorkflowSSE(jobId)` 훅에서 연결 보장
-3. `connectWorkflow`는 idempotent (이미 연결되어 있으면 skip)
+2. Or the `useWorkflowSSE(jobId)` hook ensures the connection
+3. `connectWorkflow` is idempotent (skips if already connected)
 
-## 재연결 정책
+## Reconnection Policy
 
-| 단계 | 동작 |
+| Stage | Behavior |
 |------|------|
-| onerror 1~5회 | EventSource 브라우저 자동 재연결 (상태 변경 없음) |
-| onerror 5회 초과 | disconnect -> exponential backoff 재연결 |
-| 재연결 성공 | connectionStatus = connected |
+| onerror 1–5 times | EventSource browser auto-reconnect (no state change) |
+| onerror more than 5 times | disconnect -> exponential backoff reconnect |
+| Reconnect success | connectionStatus = connected |
 
-Backoff 공식: `min(30s, 1s * 2^(attempt - 5))`
+Backoff formula: `min(30s, 1s * 2^(attempt - 5))`
 
-Multi-Pod 환경에서 재연결 시 다른 Pod에 연결되어도 동일한 user-scoped 채널을 구독하므로 이벤트 수신에 문제가 없다.
+In a multi-pod environment, reconnecting to a different pod is fine — it subscribes to the same user-scoped channel, so event delivery is unaffected.
 
-### 재연결 시 스트리밍 메시지 유실 방지
+### Preventing Streaming Message Loss on Reconnect
 
-SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지의 중간 콘텐츠가 유실될 수 있다. 재연결 시 서버가 Redis에 저장된 현재 세션 스냅샷을 전송하고, 프론트엔드는 기존 메시지 상태와 병합하여 끊김 없이 복원한다.
+If the SSE connection drops and recovers, the in-flight content of a streaming assistant message can be lost. On reconnect the server sends the current session snapshot stored in Redis, and the frontend merges it with its existing message state for seamless restoration.
 
-## 페이지 새로고침 복원
+## Page Refresh Restoration
 
-1. Store 초기화 (currentJobId = undefined)
-2. 세션 복원 -> initializeSSE() -> Unified SSE 연결
-3. Unified SSE 초기 상태에서 Kanban의 jobId 수신 -> isRunning, currentJobId 설정
-4. useWorkflowSSE 반응 -> Workflow SSE 연결
-5. useJobRestoration (이중 안전장치) -> fetchQueuePosition -> setRunning
+1. Store initialization (currentJobId = undefined)
+2. Session restoration -> initializeSSE() -> Unified SSE connection
+3. Receive the Kanban jobId in the Unified SSE initial state -> set isRunning, currentJobId
+4. useWorkflowSSE reacts -> Workflow SSE connection
+5. useJobRestoration (a second safety net) -> fetchQueuePosition -> setRunning
 
-칸반 초기 상태가 실행 중인 Job의 jobId를 포함해야 전체 복원 체인이 동작한다.
+The initial Kanban state must include the running job's jobId for the full restoration chain to work.
 
-## 경계
+## Boundaries
 
-- Redis Pub/Sub 채널 규약: [02-infrastructure.md](02-infrastructure.md)
-- 채팅 메시지 처리: [31-chat-system.md](31-chat-system.md)
-- 프론트엔드 SSE 통합: [30-frontend-architecture.md](30-frontend-architecture.md)
-- Bridge WebSocket (Ant Desktop 연결·감지·인증): [26-figma-integration-infra.md](26-figma-integration-infra.md)
+- Redis Pub/Sub channel conventions: [02-infrastructure.md](02-infrastructure.md)
+- Chat message handling: [31-chat-system.md](31-chat-system.md)
+- Frontend SSE integration: [30-frontend-architecture.md](30-frontend-architecture.md)
+- Bridge WebSocket (Ant Desktop connection/detection/auth): [26-figma-integration-infra.md](26-figma-integration-infra.md)
