@@ -170,8 +170,8 @@ GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_REDIRECT_URI=http://localhost:4100/api/auth/google/callback
 
-FRONTEND_URL=http://localhost:5173
-ANT_CORS_ORIGINS=http://localhost:5173
+FRONTEND_URL=http://localhost:4200
+ANT_CORS_ORIGINS=http://localhost:4200
 ```
 
 ```bash
@@ -191,13 +191,13 @@ read-only in the GNB badge via `GET /system/config`.
 In [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials),
 create an **OAuth 2.0 Client ID**:
 
-- **Authorized JavaScript origins**: `http://localhost:5173`,
+- **Authorized JavaScript origins**: `http://localhost:4200`,
   `http://localhost:4100`
 - **Authorized redirect URIs**:
   `http://localhost:4100/api/auth/google/callback`
 
 Both ports are required because OAuth initiation runs from the FE
-(`:5173`) and the callback returns to the BE (`:4100`).
+(`:4200`) and the callback returns to the BE (`:4100`).
 
 #### Cookie policy
 
@@ -227,7 +227,7 @@ require a code change — there is no env switch today.
 #### End-to-end smoke test
 
 After `pnpm dev:all` with the cloud env above, visit
-[http://localhost:5173](http://localhost:5173):
+[http://localhost:4200](http://localhost:4200):
 
 1. **Sign Up with a fresh consumer email** (Google test account, e.g.
    `you@gmail.com`).
@@ -249,7 +249,7 @@ You can also point a local FE at a remote cloud BE for FE debugging
 against a real backend — see the ⚠️ row in the
 [CORS matrix](cloud-mode/install.md#cors-operating-matrix). This
 shape is fragile (cookies from the remote domain can't be read by JS
-on `localhost:5173`) and is suitable only for HTTP request
+on `localhost:4200`) and is suitable only for HTTP request
 debugging; for actual cloud-mode FE work, prefer the single-host
 `pnpm dev:all` setup.
 

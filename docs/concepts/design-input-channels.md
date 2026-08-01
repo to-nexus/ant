@@ -48,7 +48,7 @@ anything. You just drop the files.
 The handoff source is most valuable when **the design lives in a different
 tool** and you don't want to translate it.
 
-### `figma` — Bidirectional Figma MCP
+### `figma` — Live Figma MCP (read-only)
 
 When you have a Figma project, the right move is to point Ant at it and
 let the agent fetch what it needs **at prompt time**. The
@@ -66,22 +66,20 @@ discovery: variables, styles, frame trees, component instances. The agent
 issues `get_design_context`, `get_screenshot`, `get_metadata` calls as
 needed.
 
-You also get the reverse direction: design jobs can write back to Figma
-via `use_figma` (the canvas write tool), and Code Connect mappings keep
-component instances aligned with code.
+The integration is **read-only** — there is no write-back tool and Code
+Connect mappings are not consumed. Figma stays authoritative; code is
+derived.
 
 ### `ant` — Generated tokens and spec
 
-For a greenfield project (no existing design system), you ask Ant to
-**generate** the design system itself. The design job (`design` jobtype)
-runs with one of:
+This surface is written by **`gen-ui-figma`** — the design job derives a
+structured token system from a Figma workfile and emits `ui-tokens.json`
+(palette, spacing, type scale, radii, shadows), `ui-spec.json` (sections +
+components), and `ui-assets.json` (asset catalog).
 
-- `gen-ui-figma` if you have a Figma reference.
-- `gen-ui-desc` if you have a textual description.
-
-It produces `ui-tokens.json` (palette, spacing, type scale, radii, shadows),
-`ui-spec.json` (sections + components), and `ui-assets.json` (asset
-catalog).
+The greenfield intent `gen-ui-desc` does **not** write here. Given only a
+textual description it authors a handoff bundle under `visual/ui/handoff/`,
+which resolves to the `handoff` source above.
 
 Subsequent code jobs read these as **schema-based** authoritative inputs.
 The token names are stable across tasks; the spec defines layout intent.

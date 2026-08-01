@@ -108,23 +108,23 @@ Likely causes:
 
 ### I want to round-trip changes back to Claude
 
-Currently one-way only. The handoff source is read; Ant's outputs land
-in `codebase/`. Future versions may emit a "what changed" report you can
-paste back into Claude.
+One-way only. The handoff source is read; Ant's outputs land in `codebase/`.
+Nothing is written back to your bundle.
 
 ## Comparison
 
-| Question                                  | `handoff`     | `figma`              | `ant`                |
-|-------------------------------------------|---------------|----------------------|----------------------|
-| License needed?                            | None          | Figma                | None                 |
-| Setup cost                                 | Zero          | MCP server           | One design job       |
-| Schema                                     | None (FPOP)   | Figma vars + styles  | `ui-tokens.json`     |
-| Best for                                   | Existing Claude designs | Figma teams      | Greenfield           |
-| Round-trip to source                       | No            | Yes (Code Connect)   | Within Ant           |
+| Question         | `handoff`                          | `figma`             | `ant`                       |
+|------------------|------------------------------------|---------------------|------------------------------|
+| License needed?  | None                               | Figma               | Figma (upstream)             |
+| Setup cost       | Zero, or one design job            | MCP server          | MCP server + one design job  |
+| Schema           | None (FPOP)                        | Figma vars + styles | canonical JSON trio          |
+| Written by       | you, or `gen-ui-desc`              | you (the workfile)  | `gen-ui-figma`               |
+| Best for         | Greenfield, or existing Claude designs | Figma teams     | Figma teams wanting JSON     |
+| Writes back?     | No                                 | No                  | No                           |
 
 ## Read next
 
-- [figma-mcp](figma-mcp.md) — bidirectional Figma source.
-- [ant-canonical](ant-canonical.md) — generate tokens with the design job.
+- [figma-mcp](figma-mcp.md) — the read-only Figma source.
+- [ant-canonical](ant-canonical.md) — the canonical JSON trio.
 - [concepts/design-input-channels.md](../../concepts/design-input-channels.md)
   — the conceptual background.

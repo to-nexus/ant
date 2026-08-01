@@ -16,9 +16,11 @@ uphold it.
 
 ```
 packages/
-├── ant-cli/        Backend: API / Job worker / Realtime / Preview
-├── ant-ui/         Frontend: React + Vite SPA
-└── ant-shared/     Shared TypeScript types (no runtime code)
+├── ant-cli/          Backend: API / Job worker / Realtime / Preview
+├── ant-ui/           Frontend: React + Vite SPA
+├── ant-site/         Marketing site (Next.js, static export) — not part of the runtime
+├── ant-auth-client/  Shared browser auth helpers (ant-ui + ant-site)
+└── ant-shared/       Types + shared runtime used by every package
 docs/
 ├── local-mode/       install + develop on your own machine
 ├── cloud-mode/       install + develop for managed or self-host cloud
@@ -29,25 +31,29 @@ docs/
 └── internals/        contributor-only deep-dives (SSOT, debug logging)
 ```
 
-`ant-shared` is a source-only workspace package — no build step. Both
-`ant-cli` and `ant-ui` import from it directly through pnpm workspace
-resolution.
+`ant-shared` exports both types and runtime code (canonical paths, the
+action-config matrix, pricing, tier matrices). Consumers resolve `types` to
+`src/` directly through pnpm workspace resolution, so type changes need no
+build — but **runtime** changes do: run
+`pnpm --filter @ant/shared build` after editing them.
 
 ## Prerequisites
 
-- **Node.js** 18.17+ (LTS recommended)
-- **pnpm** 9 or 10 (`corepack enable && corepack prepare pnpm@10 --activate`)
-- **Docker** + Docker Compose for local infra (Redis, ChromaDB)
+- **Node.js** >= 22.13 (enforced by the root `engines` field)
+- **pnpm** 11.1.0 — pinned via `packageManager`
+  (`corepack enable && corepack prepare pnpm@11.1.0 --activate`)
+- **Docker** + Docker Compose — Redis is required; ChromaDB and the
+  visual-processor are optional sidecars
 - **Git** 2.40+
 - An LLM provider API key — Anthropic Claude is the primary supported model.
-  OpenAI works for most jobs.
+  Five other providers are wired; see the [README](README.md#providers).
 
 ## Local Setup
 
 - **Install** — [docs/local-mode/install.md](docs/local-mode/install.md)
 - **Develop conventions** — [docs/develop.md](docs/develop.md)
 
-Open http://localhost:5173 after `pnpm dev:all`.
+Open http://localhost:4200 after `pnpm dev:all`.
 
 ## Daily Loop
 

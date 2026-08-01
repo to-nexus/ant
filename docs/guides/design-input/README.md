@@ -6,19 +6,34 @@ how-to. For the conceptual background, read
 
 ## Pick your source
 
-| You have…                                              | Read                                       |
-|--------------------------------------------------------|--------------------------------------------|
-| A Claude.ai artifact / loose HTML / CSS / Markdown / PNG | [claude-handoff](claude-handoff.md)       |
-| A Figma project URL                                    | [figma-mcp](figma-mcp.md)                  |
-| Nothing yet (greenfield) — want Ant to generate tokens | [ant-canonical](ant-canonical.md)         |
+| You have…                                                | Read                                 |
+|----------------------------------------------------------|--------------------------------------|
+| A Claude.ai artifact / loose HTML / CSS / Markdown / PNG   | [claude-handoff](claude-handoff.md) |
+| A Figma project URL                                      | [figma-mcp](figma-mcp.md)            |
+| Nothing yet (greenfield) — want Ant to author the design | [claude-handoff](claude-handoff.md) — `gen-ui-desc` writes the same bundle shape |
 
 ## At a glance
 
-| Source     | Path                          | License needed | MCP setup | Schema | Round-trip |
-|------------|-------------------------------|:--------------:|:---------:|:------:|:----------:|
-| `handoff`  | `visual/ui/handoff/**`        | none           | no        | no     | no         |
-| `figma`    | `visual/ui/figma/figma.json` | Figma          | yes       | yes    | yes (Code Connect) |
-| `ant`      | `visual/ui/ant/`              | none           | no        | yes    | within Ant |
+| Source     | Path                          | License needed | MCP setup | Schema |
+|------------|-------------------------------|:--------------:|:---------:|:------:|
+| `handoff`  | `visual/ui/handoff/**`        | none           | no        | no     |
+| `figma`    | `visual/ui/figma/figma.json`  | Figma          | yes       | yes    |
+| `ant`      | `visual/ui/ant/`              | none           | no        | yes    |
+
+## Who writes what
+
+A `design` job's output directory depends on the intent, which in turn depends
+on the source you started from:
+
+| Intent         | Input                        | Writes to             | Shape                                     |
+|----------------|------------------------------|-----------------------|-------------------------------------------|
+| `gen-ui-desc`  | your PRD (`plan/`)           | `visual/ui/handoff/`  | `DESIGN.md` bundle — see [claude-handoff](claude-handoff.md) |
+| `gen-ui-figma` | `visual/ui/figma/figma.json` | `visual/ui/ant/`      | canonical JSON trio — see [ant-canonical](ant-canonical.md) |
+
+So `visual/ui/handoff/` is reachable two ways: you drop files there yourself,
+or Ant authors them for you from a PRD. Both produce the same `uiSource`
+(`handoff`) and the same downstream interpretation contract. The canonical
+`visual/ui/ant/` trio is produced **only** by the Figma pipeline.
 
 ## Hard-exclusivity
 
@@ -40,8 +55,9 @@ Game projects use `visual/game-art/` instead of `visual/ui/`. The
 sub-source structure mirrors UI:
 
 - `visual/game-art/ant/` — generated game-art tokens, assets, spec.
-- `visual/game-art/figma/` and `visual/game-art/handoff/` — reserved for
-  Phase 5+.
+- `visual/game-art/handoff/` — free-form handoff bundle, symmetric with the
+  UI handoff surface. Active: `gen-game-art-desc` writes here.
+- `visual/game-art/figma/` — reserved for Phase 5+ (parser-only hook).
 
 The HUD CSS tokens for game projects live inside `game-art-tokens.json`
 alongside the in-canvas categories — there's no parallel `ui-tokens.json`

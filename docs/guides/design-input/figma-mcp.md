@@ -11,9 +11,13 @@ Two reasons:
 - **Live data.** A persisted snapshot drifts the moment you edit Figma.
   MCP makes the agent fetch fresh data every prompt run, so you don't
   maintain a sync.
-- **Bidirectional.** With Code Connect, the agent can write back to
-  Figma — generate variables from code tokens, build component instances
-  from React components, etc.
+- **One source of truth.** With no stored copy there is nothing to refresh,
+  invalidate, or reconcile — the workfile stays authoritative and Ant reads it
+  on demand.
+
+The integration is **read-only**. Ant calls four MCP tools —
+`figma_get_metadata`, `figma_get_design_context`, `figma_get_screenshot`,
+`figma_get_variable_defs` — and never writes to your Figma file.
 
 The single piece of state Ant stores is a tiny `figma.json` with the URL
 and node id. **No frame dumps, no variable dumps, no screenshots persisted.**
@@ -72,39 +76,20 @@ The agent will:
 2. Fetch frame structure (`get_design_context` or `get_metadata`).
 3. Fetch screenshots when it needs them (`get_screenshot`).
 4. Fetch styles + variables to map design tokens to code tokens.
-5. Generate code that respects the layout, the variables, and any Code
-   Connect mappings.
+5. Generate code that respects the layout and the variables.
 
-For game projects, the same flow will use `visual/game-art/figma/`
-once the **game vertical exits development** (reserved for Phase 5+;
-the `visual/game-art/handoff/` and `figma/` sub-sources are not active
-yet).
+For game projects the same flow will use `visual/game-art/figma/`, which is a
+Phase 5+ hook and not active yet. (`visual/game-art/handoff/` *is* active —
+see [claude-handoff](claude-handoff.md).)
 
-## Code Connect
+## Not supported: writing back to Figma
 
-If your Figma library has Code Connect mappings, the agent picks up the
-mapped code components automatically. To set them up:
+The integration reads only. There is no tool that creates or edits Figma
+variables, frames, or components, and Code Connect mappings are not consumed —
+Ant sees your file exactly as the four `figma_get_*` MCP tools expose it.
 
-1. Author `*.figma.ts` files in your code repo.
-2. Run `figma connect publish` to register them.
-3. Ant's prompt path will surface mapped components when generating code.
-
-The full skill is documented in
-[`figma-code-connect`](https://www.figma.com/code-connect-docs/) (Figma's
-docs).
-
-## Bidirectional mode
-
-The `design` jobtype with intent `gen-ui-figma` can also write **into**
-Figma using the `use_figma` MCP tool. Use cases:
-
-- Mirror code tokens into Figma variables.
-- Build a Figma frame from a React component.
-- Update a Figma component to match the latest code.
-
-This is the "design library" workflow — see the
-[figma-generate-library](https://www.figma.com/plugins/code-connect)
-skill if you've installed the Figma plugin.
+Keeping Figma authoritative and code derived is the intended direction: to
+change a token, edit it in Figma and re-run the job.
 
 ## Troubleshooting
 
@@ -124,8 +109,8 @@ Figma's MCP server can be slow on large files. If you see timeout errors:
 
 ### Variables out of sync between Figma and code
 
-Run `figma connect publish` from your code repo to refresh mappings, then
-ask Ant to re-fetch.
+Ant re-reads variables on every run, so drift means the code was generated
+before the Figma edit. Re-run the job; there is no mapping cache to refresh.
 
 ### Persisted exploration results in `figma.json`
 
@@ -136,8 +121,8 @@ variables in there, delete them — Ant will regenerate the metadata.
 ## Read next
 
 - [claude-handoff](claude-handoff.md) — the no-license alternative.
-- [ant-canonical](ant-canonical.md) — generate tokens directly from a
-  description.
+- [ant-canonical](ant-canonical.md) — the canonical JSON trio this pipeline
+  writes.
 - [internals/26-figma-integration-infra.md](../../internals/26-figma-integration-infra.md)
   — MCP transport internals.
 - [internals/25-design-pipeline.md](../../internals/25-design-pipeline.md)

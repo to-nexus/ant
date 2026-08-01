@@ -163,7 +163,7 @@ TLS termination 리버스 프록시 (nginx / Caddy / Traefik) 뒤에 둡니다:
 | `/api/*` | `:4100` | REST. |
 | `/realtime/*` | `:4101` | SSE. 프록시 버퍼링 비활성; `proxy_read_timeout 1d`. |
 | `/preview/*` | `:4102` | 피처별 dev 서버. 버퍼링 비활성. |
-| `/` | `:5173` 또는 static `packages/ant-ui/dist` | SPA. |
+| `/` | `:4200` 또는 static `packages/ant-ui/dist` | SPA. |
 
 Google Cloud Console OAuth 설정:
 
@@ -239,7 +239,7 @@ UI를 별도 origin (CDN 호스팅 번들, BE가 다른 호스트)에서 서빙�
 | 매니지드 same-origin (페르소나 B) | `https://ant.crosstoken.io` | (운영) | Self-origin 자동 허용. |
 | Cloud↔Cloud same-origin (페르소나 C 단일 호스트) | `https://ant.mycompany.com` | unset | Self-origin 자동 허용. `FRONTEND_URL` 외 env 0. |
 | Cloud↔Cloud split-host | `https://app.mycompany.com` | (선택) | `FRONTEND_URL` allowlist. |
-| ⚠️ Local FE → Custom Cloud BE (dev) | (클라우드 FE 값) | `'http://localhost:5173'` | [develop.md § Local FE → 원격 클라우드 BE](../develop.md) 참조. |
+| ⚠️ Local FE → Custom Cloud BE (dev) | (클라우드 FE 값) | `'http://localhost:4200'` | [develop.md § Local FE → 원격 클라우드 BE](../develop.md) 참조. |
 
 클라우드 모드에서 **둘 다** 미설정이면 BE가 `[CORS]` 시작 warn —
 split-host 배포가 silent fail하지 않도록. Phase 2에서 추가.
