@@ -1,0 +1,32 @@
+version: 2
+
+# Grouped weekly updates. Minor/patch bumps arrive as one PR per ecosystem so a
+# single maintainer isn't reviewing a dozen dependency PRs a week; major bumps
+# stay separate because they need a real read.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(ci)"

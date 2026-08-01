@@ -90,11 +90,15 @@ pnpm dev:infra                # Redis + ChromaDB + visual-processor
 pnpm dev:all            # 4-process backend + UI + site, hot reload
 pnpm test:cli                 # ant-cli vitest suite
 pnpm typecheck                # all packages
-pnpm build                    # type-check + test + build
+pnpm typecheck:tests          # the test suite's own types
+pnpm build                    # build only — does NOT run tests
 ```
 
-`pnpm build` runs the full test suite as a prebuild gate — failing
-tests abort the build. Don't bypass it (`--no-verify`, `[skip ci]`).
+**`pnpm build` does not run tests.** There is no `prebuild` hook and none
+should be added — CI is the only gate
+([.github/workflows/ci.yml](../.github/workflows/ci.yml)). Run `pnpm test:cli`,
+`pnpm --filter @ant/ui test`, `pnpm typecheck`, and `pnpm typecheck:tests`
+locally before pushing. Don't bypass CI (`--no-verify`, `[skip ci]`).
 
 To run a single test file:
 
@@ -309,8 +313,8 @@ that's the team's working language, but `.md` templates are not.
 
 Quick checklist:
 
-- [ ] `pnpm build` succeeds locally (tests run as the prebuild gate).
-- [ ] `pnpm typecheck` is clean.
+- [ ] `pnpm test:cli` and `pnpm --filter @ant/ui test` pass locally.
+- [ ] `pnpm typecheck` and `pnpm typecheck:tests` are clean.
 - [ ] You added or updated tests when changing behavior.
 - [ ] No incident codenames or internal hostnames in code or docs.
 - [ ] If you touched prompts, you ran the relevant prompt-policy

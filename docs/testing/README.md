@@ -4,7 +4,7 @@
 
 | 구분 | 명령 | 인프라 | 용도 |
 |------|------|--------|------|
-| Unit/Snapshot | `pnpm test:cli` | 불필요 | 프롬프트·RAC·유틸 회귀 방지 (빌드 게이트) |
+| Unit/Snapshot | `pnpm test:cli` | 불필요 | 프롬프트·RAC·유틸 회귀 방지 (CI 게이트) |
 | Verification Scenarios | `pnpm --filter @ant/cli scenario [id\|--all]` | LLM mock (process-internal) | verification 루프 분기 회귀 |
 | E2E Mock | `pnpm test:e2e` | mock 서버 필요 | HTTP → 큐 → 워커 전체 경로 자동 검증 |
 | E2E Real | curl (수동) | 서버 + LLM API key | 실제 LLM 포함 전체 파이프라인 |
@@ -31,17 +31,23 @@ pnpm dev:infra               # Redis + ChromaDB
 pnpm dev:mock                # CLI 4개 프로세스 + LLM mock
 pnpm test:e2e                # 별도 터미널에서 실행
 
-# 3. 빌드 (유닛 테스트 자동 포함)
-pnpm build                   # prebuild → vitest run → esbuild
+# 3. 빌드 (테스트를 실행하지 않는다)
+pnpm build                   # esbuild only
 ```
 
-## Pre-build 게이트
+## CI 게이트
 
-`packages/ant-cli/package.json`의 `prebuild` 스크립트가 `vitest run`을 실행한다.
-`vitest.config.ts`에서 `tests/**/*.test.ts`를 include하므로, 해당 경로에 `.test.ts` 파일을 추가하면 자동으로 빌드 게이트에 포함된다.
+**빌드는 테스트를 실행하지 않는다.** `prebuild` 훅은 없으며 추가해서도 안 된다 —
+`packages/ant-cli/Dockerfile` 이 `pnpm build:cli` 로 빌드하므로 모든 이미지 빌드에 전체
+스위트를 물리는 것은 의도적 non-goal 이다.
+
+유일한 게이트는 CI ([.github/workflows/ci.yml](../../.github/workflows/ci.yml)) 이며
+`typecheck:cli` · `typecheck:ui` · `typecheck:tests` · `test:cli` · `@ant/ui test` 와
+`oss-guard` · `boot-smoke` 잡을 실행한다. `vitest.config.ts` 가 `tests/**/*.test.ts` 를
+include 하므로 해당 경로에 `.test.ts` 를 추가하면 자동으로 CI 게이트에 포함된다.
 
 ```
-prebuild: vitest run → FAIL이면 빌드 중단 (dist/ 미생성)
+CI: test:cli FAIL → PR 머지 차단
 ```
 
 ## Definition of green

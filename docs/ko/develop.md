@@ -86,11 +86,16 @@ pnpm dev:infra                # Redis + ChromaDB + visual-processor
 pnpm dev:all            # 4-프로세스 백엔드 + UI + site, hot reload
 pnpm test:cli                 # ant-cli vitest
 pnpm typecheck                # 모든 패키지
-pnpm build                    # 타입체크 + 테스트 + 빌드
+pnpm typecheck:tests          # 테스트 슈트 자체의 타입
+pnpm build                    # 빌드만 — 테스트를 실행하지 않습니다
 ```
 
-`pnpm build` 는 전체 테스트 슈트를 prebuild gate 로 실행 — 실패 테스트는
-빌드를 abort 합니다. 우회 금지 (`--no-verify`, `[skip ci]`).
+**`pnpm build` 는 테스트를 실행하지 않습니다.** `prebuild` 훅은 없으며 추가해서도
+안 됩니다 — CI 가 유일한 게이트입니다
+([.github/workflows/ci.yml](../../.github/workflows/ci.yml)). 푸시 전에
+`pnpm test:cli`, `pnpm --filter @ant/ui test`, `pnpm typecheck`,
+`pnpm typecheck:tests` 를 로컬에서 실행하세요. CI 우회 금지
+(`--no-verify`, `[skip ci]`).
 
 단일 테스트 파일 실행:
 
@@ -295,8 +300,8 @@ Prompt 파일은 **영어만**. 소스 코멘트는 한국어 OK 지만 `.md` �
 
 체크리스트:
 
-- [ ] `pnpm build` 로컬에서 성공 (테스트가 prebuild gate).
-- [ ] `pnpm typecheck` clean.
+- [ ] `pnpm test:cli` 와 `pnpm --filter @ant/ui test` 로컬 통과.
+- [ ] `pnpm typecheck` / `pnpm typecheck:tests` clean.
 - [ ] behavior 변경 시 테스트 추가/수정.
 - [ ] 코드/문서에 incident 코드네임 / 내부 호스트네임 0.
 - [ ] 프롬프트 변경 시 prompt-policy 테스트 실행

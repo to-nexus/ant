@@ -523,16 +523,17 @@ flowchart TD
 
 ```
 pnpm test:cli     → vitest run (인프라 불필요, ~0.3초)
-pnpm build        → prebuild(=test) → esbuild → cp templates to dist/
+pnpm build        → esbuild → cp templates to dist/   (테스트 실행 안 함)
 ```
 
 | 스크립트 | 위치 | 설명 |
 |----------|------|------|
 | `test` | ant-cli | vitest run (스모크 + RAC 감사 + injection 검증) |
-| `prebuild` | ant-cli | build 전 자동 실행 (= test) |
 | `test:cli` | root | `pnpm --filter @ant/cli test` |
 
-테스트가 실패하면 빌드가 중단된다.
+**빌드는 테스트를 실행하지 않으며 `prebuild` 훅을 추가해서도 안 된다** — Dockerfile 이
+`pnpm build:cli` 로 빌드하므로 모든 이미지 빌드에 전체 스위트를 물리는 것은 의도적
+non-goal 이다. CI 가 유일한 게이트다 ([.github/workflows/ci.yml](../../.github/workflows/ci.yml)).
 
 ## 안전 메커니즘
 

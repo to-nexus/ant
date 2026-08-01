@@ -13,9 +13,20 @@
   <a href="docs/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
-> ⚠️ **Status: pre-alpha.** Ant works end-to-end but the public API and
-> file layout will move until the first tagged release. Track
-> [milestones](../../milestones) for the roadmap.
+<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
+<p align="center">
+  <img src="docs/assets/hero-kanban.gif" width="880"
+       alt="Ant decomposing a code job into tasks, running them in parallel, and gating completion on a final verification task">
+</p>
+<p align="center"><sub><a href="">▶ Watch the 2-minute walkthrough</a></sub></p>
+-->
+
+> ⚠️ **Status: pre-alpha, solo-developed.** Ant is built by one person. It
+> works end-to-end, but the public API and file layout will move until the
+> first tagged release, and building this much breadth alone means some
+> surfaces are thinner than others — see **[Maturity](#maturity)** for an
+> honest per-feature breakdown. Issues and PRs are genuinely welcome; see
+> **[Contributing](#contributing)** for where help lands best.
 
 ---
 
@@ -36,6 +47,15 @@ engineering actually works:
 Each step is a separate agent with its own prompt surface, its own tools,
 and its own verification gate. The result is a system you can audit, not a
 black box that occasionally writes code.
+
+<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
+<p align="center">
+  <img src="docs/assets/spec-artifacts.png" width="880"
+       alt="The workspace artifact tree beside a generated system design document with a rendered architecture diagram">
+</p>
+<p align="center"><sub>Every stage leaves a document you can read, diff, and
+argue with — not just a commit.</sub></p>
+-->
 
 ---
 
@@ -92,6 +112,11 @@ Consent-gated providers require an explicit in-app data-privacy acknowledgement
 before they can be selected, because your prompts (which include your source
 code) leave for a third-party jurisdiction.
 
+Two caveats worth knowing before you pick: DeepSeek, GLM, and Kimi are wired
+through the OpenAI-compatible adapter rather than first-class clients, so
+provider-specific features may lag. And **image generation is Google-only** —
+the `visual` job needs `GEMINI_API_KEY` regardless of what you use elsewhere.
+
 ---
 
 ## Bring your own design
@@ -118,6 +143,15 @@ is live-fetched, ant-native JSON is schema-based).
 
 The full design-input guide is in
 [docs/guides/design-input/](docs/guides/design-input/).
+
+<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
+<p align="center">
+  <img src="docs/assets/basis-moodboard.png" width="880"
+       alt="The visual-tier picker showing twenty miniature app mockups, each rendered in its own style's palette">
+</p>
+<p align="center"><sub>Starting greenfield? Pick a visual direction and Ant
+authors the design bundle from it.</sub></p>
+-->
 
 ---
 
@@ -151,7 +185,16 @@ and cloud (Kubernetes) mode share the same data plane — local is just "all
 processes on one machine".
 
 Each job runs an agent **LangGraph** state machine: `resolve` → `triage` →
-job-specific phases → `learn`.
+job-specific phases → `learn`. The UI draws that graph live, so you can watch
+which node is executing and how many parallel workers it fanned out.
+
+<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
+<p align="center">
+  <img src="docs/assets/agent-graph.gif" width="880"
+       alt="The live agent graph, with the executing node highlighted and parallel worker chips fanning out beneath it">
+</p>
+-->
+
 
 | Agent       | Jobs it owns                                  |
 |-------------|-----------------------------------------------|
@@ -185,13 +228,9 @@ game-art design), `assets/`, plus agent-internal `sessions/` and `meta/`.
 | Domain                   | Status         | Examples                                     |
 |--------------------------|----------------|----------------------------------------------|
 | **Service** (web/backend)| Stable         | Full-stack SaaS, dashboards, REST APIs       |
-| **Game**                 | In development | Phaser/Web games with sprites + HUD + audio  |
+| **Game**                 | Experimental   | Phaser/Web games with sprites + HUD + audio  |
 
-> The **game vertical** is scaffolded — domain registry, the `gameArtTier`
-> visual surface, and the `design-game-art` intent set are all wired — but
-> is **not production ready** yet. Expect rough edges and breaking changes
-> until it's marked Stable. Service-domain workflows are the supported path
-> today.
+See [Maturity](#maturity) for what "Experimental" means here in concrete terms.
 
 The two domains share the same agents but ship different prompt overlays,
 different design templates, and different visual-tier catalogs. Adding
@@ -219,13 +258,45 @@ new verticals is a domain-registry change — no fork required.
 - **Self-hosted.** Bring your own LLM key from any of six providers. Runs on
   your infrastructure, on your terms.
 
+<!-- Drop the files into docs/assets/ and uncomment. See docs/assets/README.md.
+|  |  |
+|---|---|
+| <img src="docs/assets/shell-3pane.png" alt="The three-pane workspace: file explorer, task board, and agent chat"> | <img src="docs/assets/token-cost.png" alt="Per-model token and cost breakdown, including cache hit rate"> |
+| Explorer, task board, and agent chat in one window | Per-model cost and cache efficiency, per job |
+| <img src="docs/assets/preview-console.png" alt="Preview configuration with detected service connections and a streaming build console"> | <img src="docs/assets/browser-ide.png" alt="VS Code running in the browser against the feature worktree"> |
+| Service connections and a live build console | VS Code in the browser, on the feature's worktree |
+-->
+
 ### What is cloud-only
 
 The repository contains the seams for the managed service — billing/credits,
 organizations, deploy, and custom domains. In a self-hosted deployment these
 are **inert**: capability gates leave no-op implementations in place, and you
 pay your LLM provider directly rather than buying credits. Nothing in the
-self-host path phones home.
+self-host path phones home. CI enforces this — the build fails if a
+cloud-only symbol reaches the open-source bundle.
+
+---
+
+## Maturity
+
+Ant covers a lot of ground for a one-person project, and that breadth is
+uneven. This table is the honest version. Nothing here is hidden in a changelog
+footnote.
+
+| Surface | Status | What that means in practice |
+|---|---|---|
+| `code` / `design` / `plan` jobs — service domain | **Stable** | The supported path. This is what gets used daily. |
+| Live preview, browser IDE | **Stable** | Well covered by tests and exercised constantly. |
+| Service connections & virtualization | **Beta** | Connection config, auto-detection, and mock adapters all ship and are tested. What's missing is a **verification gate proving a generated adapter matches the real service** — so test generated integration code against your actual backend before trusting it. |
+| `creator` agent / `visual` job | **Experimental** | **Google Gemini only** — needs `GEMINI_API_KEY` no matter which provider you use elsewhere. Background removal needs an optional sidecar. **No mid-graph resume**: an interruption restarts the job. The graph nodes have no execution tests. |
+| Game domain | **Experimental** | **Greenfield only** — the game-art tier is suppressed on existing codebases. Phaser only (3D is the `enable3d` extension, not a separate engine). The sprite-atlas hand-off between the design and visual jobs isn't closed, so production art is user-placed. |
+| `learn` job (vector indexing / RAG) | **Incomplete** | Off by default (`ANT_VECTOR_DB_ENABLED=false`), needs a ChromaDB sidecar, and is **hidden from every UI surface** — reachable by direct API call only. Retrieval degrades to git-changes + keyword search, which is the normal path and works fine. |
+| Team / org workspaces | **Not shipped** | Account switching works. Team creation and invites do not. |
+| Managed cloud (billing, credits, deploy quota, custom domains) | **Not open** | Inert no-op seams in a self-hosted deployment. |
+
+If something in the Experimental rows blocks you, say so in an issue — knowing
+what people actually hit is more useful than a roadmap guess.
 
 ---
 
@@ -262,18 +333,41 @@ shared workspace volumes in cloud mode.
 
 ## Contributing
 
-Ant ships with detailed internal architecture docs and an extensive test
-suite. PRs welcome.
+**Ant is solo-developed.** One person wrote the agents, the prompts, the
+frontend, and the docs, which means reviews are best-effort rather than
+same-day, and the roadmap is a judgement call rather than a committee decision.
+If a PR or issue has had no reply after a week, bump it — that's helpful, not
+rude.
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md). For binding architectural
-rules, read [AGENTS.md](AGENTS.md) — it is the public source of truth that
-both human and AI contributors must follow.
+It also means outside help is genuinely useful. These are the places where a
+contribution lands with the least required context:
+
+| Area | Why it's a good entry point |
+|---|---|
+| **Docs & the Korean↔English mirror** | [`docs/ko/`](docs/ko/) is a partial translation and its README lists exactly what's missing. Reading a doc and fixing what confused you is the highest-value first PR there is. |
+| **LLM provider adapters** | Three of the six providers run through an OpenAI-compatible shim. Promoting one to a first-class client is well-scoped and self-contained. |
+| **Tests for the `visual` job** | The `creator` agent's graph has no execution tests. Anything here is net-new coverage. |
+| **Frontend tests** | `ant-ui` is thinly covered relative to the backend. |
+| **Bug reports with a reproduction** | Reproductions are worth more than patches. A report that lets the bug be re-created is already most of the fix. |
+
+Before a deep change to the agent graphs, open an issue first. The LangGraph
+core carries invariants that aren't visible in a diff — a design conversation
+up front saves a rewrite later.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup and the PR workflow, and
+[AGENTS.md](AGENTS.md) for the binding architectural rules. AGENTS.md matters
+more than it looks: most of those rules have regression-guard tests behind
+them, so violating one fails CI rather than review.
 
 ---
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE). Third-party dependency notices are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Contributions are accepted under the same license (Apache-2.0 §5). There is no
+CLA to sign and no DCO sign-off required.
 
 ---
 

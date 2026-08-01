@@ -134,8 +134,10 @@ Second most common: the test suite expects a clean `workspaces/`. Run
 
 ### `pnpm build` finds typecheck errors only on first run
 
-The build runs the test suite as a prebuild gate. The first build after a
-fresh checkout has cold caches; just re-run.
+The first build after a fresh checkout has cold caches; just re-run. Note that
+`pnpm build` does **not** run the test suite — CI is the gate. To reproduce what
+CI checks, run `pnpm typecheck`, `pnpm typecheck:tests`, `pnpm test:cli`, and
+`pnpm --filter @ant/ui test`.
 
 ## Where to look next
 

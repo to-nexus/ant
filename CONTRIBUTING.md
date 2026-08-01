@@ -60,13 +60,20 @@ Open http://localhost:4200 after `pnpm dev:all`.
 | Task                          | Command                                       |
 |-------------------------------|-----------------------------------------------|
 | Run all tests (CLI)           | `pnpm test:cli`                               |
+| Run all tests (UI)            | `pnpm --filter @ant/ui test`                  |
 | Run a single test file        | `cd packages/ant-cli && pnpm vitest run tests/<path>` |
 | Type-check everything         | `pnpm typecheck`                              |
+| Type-check the test suite     | `pnpm typecheck:tests`                        |
 | Build the project             | `pnpm build`                                  |
 | Tear down infra               | `pnpm dev:infra:down`                         |
 
-The build runs the full test suite as a prebuild gate — failing tests abort
-the build.
+**`pnpm build` does not run tests, and no `prebuild` hook should be added** —
+the Dockerfile builds with `pnpm build:cli`, and charging every image build the
+full suite is a deliberate non-goal. **CI is the only gate**
+([.github/workflows/ci.yml](.github/workflows/ci.yml)): `typecheck:cli`,
+`typecheck:ui`, `typecheck:tests`, `test:cli`, `@ant/ui test`, plus the
+`oss-guard` and `boot-smoke` jobs. Run those four commands locally before you
+push.
 
 ## Coding Conventions
 
@@ -141,8 +148,8 @@ Key disciplines:
 
 Before opening a PR, please confirm:
 
-- [ ] `pnpm build` succeeds locally (this also runs the tests)
-- [ ] `pnpm typecheck` is clean
+- [ ] `pnpm typecheck` and `pnpm typecheck:tests` are clean
+- [ ] `pnpm test:cli` and `pnpm --filter @ant/ui test` pass
 - [ ] You added or updated tests when changing behaviour
 - [ ] No incident codenames or internal hostnames in code, comments, or docs
 - [ ] If you touched prompts, you ran the relevant prompt-policy tests (see
@@ -186,8 +193,9 @@ refactor(preview): drop mock:* annotation tokens
 - We use **squash merge** by default — your branch's commit history will be
   squashed into one commit on `main`.
 - CI must be green. Don't `[skip ci]` to bypass.
-- If a review takes more than 5 days to get a response, ping in Discord
-  (link in the README).
+- Ant is maintained by one person, so reviews are best-effort. If a PR has had
+  no response after a week, bump it with a comment — that is not rude, it is
+  helpful.
 
 ## Reporting Bugs
 
@@ -204,10 +212,22 @@ refactor(preview): drop mock:* annotation tokens
 - For changes that affect cross-package contracts (`@ant/shared` types, SSE
   events, Redis keys), include a short design note in the issue.
 
+## License
+
+By contributing you agree that your contributions are licensed under the
+[Apache License 2.0](LICENSE), the same license that covers the project. This
+is the default Apache-2.0 §5 behaviour — there is **no CLA to sign and no DCO
+sign-off required**.
+
+If you add a dependency whose license is not MIT / ISC / Apache-2.0 / BSD, note
+it in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) in the same PR.
+
 ## Getting Help
 
 - **Documentation**: start with `docs/local-mode/install.md` and `docs/concepts/`.
-- **Discussions**: for open-ended questions, use GitHub Discussions.
-- **Real-time chat**: see the Discord invite in the README.
+- **Discussions**: for open-ended questions, use
+  [GitHub Discussions](../../discussions). There is no Discord or other chat
+  channel — a one-person project cannot staff one, and a dead server is worse
+  than none.
 
 Thanks again for contributing.

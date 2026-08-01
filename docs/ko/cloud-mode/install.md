@@ -75,7 +75,7 @@ Docker를 선택.
 
 ### 사전 준비
 
-- Node 18.17+, pnpm 10+, Docker (단일 호스트, 또는 K8s 이미지 빌드용).
+- Node >= 22.13, pnpm 11.1.0, Docker (단일 호스트, 또는 K8s 이미지 빌드용).
 - 등록된 **Google OAuth Client** (다른 provider는 pluggable, 인트리
   기본값은 Google).
 - 클라우드 배포 시 매니지드 Redis (ElastiCache, Memorystore, Upstash);
@@ -137,7 +137,7 @@ Frontend build-time:
 작은 팀에 적합.
 
 ```bash
-git clone https://github.com/<org>/ant
+git clone https://github.com/to-nexus/ant
 cd ant
 pnpm install
 

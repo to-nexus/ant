@@ -1,6 +1,6 @@
 {
   "name": "ant",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "ANT (AI-Native Transformation) - Monorepo",
   "packageManager": "pnpm@11.1.0",

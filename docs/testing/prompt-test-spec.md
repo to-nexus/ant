@@ -1,6 +1,6 @@
 # Prompt System Test Specification
 
-프롬프트 시스템 자동 테스트 사양. `pnpm test:cli` 한 줄로 전부 실행. 빌드 시 `prebuild`에서 자동 게이트.
+프롬프트 시스템 자동 테스트 사양. `pnpm test:cli` 한 줄로 전부 실행. 게이트는 빌드가 아니라 CI 다.
 
 ---
 

@@ -83,7 +83,7 @@ when `ANT_K8S_NAMESPACE` is set, Docker otherwise.
 
 ### Prerequisites
 
-- Node 18.17+, pnpm 10+, Docker (for the single-host shape, or to build
+- Node >= 22.13, pnpm 11.1.0, Docker (for the single-host shape, or to build
   images for Kubernetes).
 - A registered **Google OAuth Client** (other providers are pluggable
   but Google is the in-tree default).
@@ -147,7 +147,7 @@ One VM, all four backend processes, Docker for Redis. Suitable for a
 small team that needs OAuth but not Kubernetes.
 
 ```bash
-git clone https://github.com/<org>/ant
+git clone https://github.com/to-nexus/ant
 cd ant
 pnpm install
 

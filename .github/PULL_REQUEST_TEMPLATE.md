@@ -41,8 +41,8 @@ How did you verify this works?
 
 ## Checklist
 
-- [ ] `pnpm build` succeeds locally (this also runs the tests).
-- [ ] `pnpm typecheck` is clean.
+- [ ] `pnpm typecheck` and `pnpm typecheck:tests` are clean.
+- [ ] `pnpm test:cli` and `pnpm --filter @ant/ui test` pass (CI is the gate — `pnpm build` does not run tests).
 - [ ] I added or updated tests when changing behaviour.
 - [ ] I updated documentation (`docs/`, README, AGENTS.md) if my change affects users or contributors.
 - [ ] No internal hostnames, incident codenames, or personal identifiers in this diff.
