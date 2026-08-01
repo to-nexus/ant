@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="canvas" content="880x656">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_diagram.css">
+<style>
+  .canvas { height: 656px; }
+
+  .agents .node { gap: 7px; padding: 10px 12px 11px; }
+  .agents .jobs { display: flex; flex-wrap: wrap; gap: 4px; }
+  .agents .jobs span {
+    font-family: var(--font-mono); font-size: 9.5px;
+    color: var(--text-3);
+    background: oklch(28% 0.075 290 / 0.5);
+    border: 1px solid oklch(36% 0.07 290 / 0.5);
+    border-radius: 5px; padding: 2px 5px;
+  }
+
+  .sep {
+    display: flex; align-items: center; gap: 12px;
+    margin: 16px 0 13px;
+  }
+  .sep .line { flex: 1; height: 1px; background: var(--border-1); }
+
+  .phase {
+    flex: 1;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-2);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-1);
+    border-radius: 999px;
+    padding: 7px 0 8px;
+  }
+  .phase.on {
+    color: var(--text-1);
+    border-color: oklch(64% 0.20 290 / 0.55);
+    background: oklch(64% 0.20 290 / 0.13);
+  }
+
+  .task .desc { color: var(--text-4); }
+
+  .gate {
+    display: flex; align-items: center; gap: 13px;
+    border: 1px solid oklch(75% 0.15 155 / 0.42);
+    background: oklch(75% 0.15 155 / 0.09);
+    border-radius: 12px;
+    padding: 12px 15px;
+  }
+  .gate .title { font-family: var(--font-mono); font-size: 13px; color: var(--emerald); }
+  .gate .desc { font-size: 11px; font-weight: 500; color: var(--text-3); line-height: 1.35; }
+
+  .aside {
+    position: absolute; right: 30px;
+    font-size: 10.5px; font-weight: 600; color: var(--text-4);
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="head">
+    <div class="rule"></div>
+    <h1>What a job actually runs</h1>
+    <p>Three agents, one graph shape — and the UI draws it live while it executes.</p>
+  </div>
+
+  <div class="band" style="margin-bottom:8px">Agents</div>
+  <div class="row eq agents">
+    <div class="node acc acc-violet">
+      <div class="name">architect</div>
+      <div class="jobs"><span>code</span><span>design</span><span>learn</span><span>ask</span><span>inline-ask</span></div>
+    </div>
+    <div class="node acc acc-pink">
+      <div class="name">planner</div>
+      <div class="jobs"><span>plan</span></div>
+    </div>
+    <div class="node acc acc-orange">
+      <div class="name">creator</div>
+      <div class="jobs"><span>visual</span></div>
+    </div>
+  </div>
+
+  <div class="sep">
+    <div class="band" style="flex:none">One graph shape</div>
+    <div class="line"></div>
+  </div>
+
+  <div class="row" style="gap:9px; align-items:center">
+    <div class="phase">resolve</div>
+    <div class="hwire" style="width:14px"></div>
+    <div class="phase">triage</div>
+    <div class="hwire" style="width:14px"></div>
+    <div class="phase">detect</div>
+    <div class="hwire" style="width:14px"></div>
+    <div class="phase on">decompose</div>
+  </div>
+
+  <!-- stem drops from decompose's centre (89%); drops land on the task centres (16.2 / 50 / 83.8%) -->
+  <div class="bracket" style="height:34px">
+    <div class="stem" style="left:89%; top:0; height:16px"></div>
+    <div class="rail" style="left:16.2%; right:11%; top:16px"></div>
+    <div class="drop" style="left:16.2%; top:16px; height:18px"></div>
+    <div class="drop" style="left:50%;   top:16px; height:18px"></div>
+    <div class="drop" style="left:83.8%; top:16px; height:18px"></div>
+  </div>
+
+  <div class="band" style="margin-bottom:8px">Tasks, running in parallel</div>
+  <div class="row eq">
+    <div class="node task"><div class="name">setup</div><div class="desc">Scaffolding and dependencies</div></div>
+    <div class="node task"><div class="name">feature</div><div class="desc">The behaviour itself</div></div>
+    <div class="node task"><div class="name">ui</div><div class="desc">Screens against the design source</div></div>
+  </div>
+
+  <div class="bracket" style="height:32px">
+    <div class="stem" style="left:16.2%; top:0; height:16px"></div>
+    <div class="stem" style="left:50%;   top:0; height:16px"></div>
+    <div class="stem" style="left:83.8%; top:0; height:16px"></div>
+    <div class="rail" style="left:16.2%; right:16.2%; top:16px"></div>
+    <div class="drop" style="left:50%; top:16px; height:16px"></div>
+  </div>
+
+  <div class="gate">
+    <span class="title">Final Verification</span>
+    <span class="desc">A queued, first-class task — it can send work back before the job is
+      allowed to complete. Not a checklist item at the end.</span>
+  </div>
+
+  <div class="bracket" style="height:20px">
+    <div class="drop" style="left:50%; top:0; height:20px"></div>
+  </div>
+
+  <div class="row" style="align-items:center; gap:12px">
+    <div class="node soft" style="flex:1">
+      <div class="name">learn</div>
+      <div class="desc">Session checkpointed, workspace re-indexed, job closed out</div>
+    </div>
+  </div>
+
+  <div class="foot" style="margin-top:16px">
+    <div class="bar"></div>
+    <p><strong>Interruptible and resumable.</strong> Every phase checkpoints, so a job
+      that is stopped — or whose machine sleeps — picks up from the last node instead
+      of starting the conversation again.</p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,20 +1,11 @@
-<p align="center">
-  <img src="docs/assets/logo.png" width="120" alt="ANT logo">
-</p>
-
-<h1 align="center">ANT</h1>
-
-<p align="center"><b>The spec-driven AI engineering platform.</b></p>
+<h1 align="center">
+  <img src="docs/assets/logo.png" width="48" align="center" alt=""> ANT
+</h1>
 
 <p align="center">
-  Build: <b>PRD → System & UI Design → Code</b><br>
-  Iterate: <b>Spec → Code</b> — every code job verifies itself. Self-hosted.
-</p>
-
-<p align="center">
-  <sub>Frontend · Backend · Extensible language/framework tiers · Service
-  connections & mock virtualization · Per-feature dev servers · Browser IDE ·
-  Deploy (managed cloud)</sub>
+  <b>The spec-driven AI engineering platform.</b><br>
+  Build: <b>PRD → System & UI Design → Code</b> · Iterate: <b>Spec → Code</b> — every code job verifies itself. Self-hosted.<br>
+  <sub>Frontend · Backend · Extensible language/framework tiers · Service connections & mock virtualization · Per-feature dev servers · Browser IDE · Deploy (managed cloud)</sub>
 </p>
 
 <p align="center">
@@ -26,18 +17,18 @@
 
 <!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
 <p align="center">
-  <img src="docs/assets/hero-kanban.gif" width="880"
-       alt="Ant decomposing a code job into tasks, running them in parallel, and gating completion on a final verification task">
+  <img src="docs/assets/code-job.gif" width="880"
+       alt="A code job decomposed into tasks moving across Ant's board while the agent chat streams work cards">
 </p>
-<p align="center"><sub><a href="">▶ Watch the 2-minute walkthrough</a></sub></p>
+<p align="center"><sub>One directive → decomposed tasks running in parallel, with
+a verification task queued last. <a href="">▶ 2-minute walkthrough</a></sub></p>
 -->
 
-> ⚠️ **Status: pre-alpha, solo-developed.** Ant is built by one person. It
-> works end-to-end, but the public API and file layout will move until the
-> first tagged release, and building this much breadth alone means some
-> surfaces are thinner than others — see **[Maturity](#maturity)** for an
-> honest per-feature breakdown. Issues and PRs are genuinely welcome; see
-> **[Contributing](#contributing)** for where help lands best.
+> ⚠️ **Status: pre-alpha, solo-developed.** It works end-to-end, but the public
+> API and file layout will move until the first tagged release, and building this
+> much breadth alone means some surfaces are thinner than others — see
+> **[Maturity](#maturity)** for an honest per-feature breakdown. Issues and PRs
+> are welcome; **[Contributing](#contributing)** says where help lands best.
 
 ---
 
@@ -67,15 +58,6 @@ engineering actually works.
    persistent document you can diff, review, and revise
    (`gen-spec` → `gen-code-spec` → `rev-spec` → repeat).
 
-<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
-<p align="center">
-  <img src="docs/assets/spec-iteration.gif" width="880"
-       alt="A spec document driving a code job: the spec on the left, tasks completing on the board, and the verification task gating the finish">
-</p>
-<p align="center"><sub>The iteration loop: author a spec, review it, and a
-code job implements exactly that — then proves it.</sub></p>
--->
-
 Verification is not a stage you schedule — it is a property of **every code
 job**: work decomposes into tasks that run in parallel, and a final
 verification task gates completion. Failed gates spawn error tasks that fix
@@ -85,24 +67,25 @@ Each step is a separate job with its own prompt surface, its own tools, and
 its own durable artifacts. The result is a system you can audit, not a
 black box that occasionally writes code.
 
+<p align="center">
+  <img src="docs/assets/build-loop.png" width="880"
+       alt="Two pipelines. The build loop, for greenfield or a major new feature, runs plan (plan/PRD.md) then system design (architecture/system/) then UI or game art (visual/ui/) then code (codebase/). The iteration loop, for every change after that, skips both plan and system design and runs spec (architecture/spec/) straight into code, with a rev-spec return arc">
+</p>
+
 <!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
 <p align="center">
-  <img src="docs/assets/spec-artifacts.png" width="880"
-       alt="The workspace artifact tree beside a generated system design document with a rendered architecture diagram">
+  <img src="docs/assets/design-job.gif" width="880"
+       alt="A design job streaming a system design document into the workspace as rendered markdown, ending on an architecture diagram">
 </p>
-<p align="center"><sub>Every stage leaves a document you can read, diff, and
-argue with — not just a commit.</sub></p>
+<p align="center"><sub>Every stage writes a real document at a real path — read it,
+diff it, argue with it. Not just a commit.</sub></p>
 -->
 
 ---
 
-## Requirements
-
-- **Node.js** >= 22.13 · **pnpm** 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`)
-- **Docker** + Compose — for Redis (required) and the optional sidecars
-- **An LLM provider key** — see [Providers](#providers)
-
 ## Quickstart
+
+**Requires** Node.js >= 22.13 · pnpm 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`) · Docker + Compose (for Redis) · an [LLM provider key](#providers).
 
 ```bash
 git clone https://github.com/to-nexus/ant && cd ant
@@ -167,6 +150,11 @@ the `visual` job needs `GEMINI_API_KEY` regardless of what you use elsewhere.
 Ant accepts **three kinds of design input** as first-class citizens. You
 don't pick a tool — you drop what you have:
 
+<p align="center">
+  <img src="docs/assets/design-input.png" width="880"
+       alt="Three design inputs — Claude artifacts read observation-only from visual/ui/handoff/, a Figma URL fetched live over MCP, or nothing yet, in which case a design job authors the bundle — merging into one UI design contract that a code job builds against">
+</p>
+
 | Source               | What you drop                                   | When to use                                                              |
 |----------------------|-------------------------------------------------|--------------------------------------------------------------------------|
 | **Claude artifacts** | HTML/CSS/Markdown/PNG into `visual/ui/handoff/` | You've been iterating in Claude.ai. No license, no setup, no schema.     |
@@ -177,60 +165,23 @@ The three sources are hard-exclusive per workspace and have different
 interpretation contracts (Claude handoff is observation-only / FPOP, Figma
 is live-fetched, ant-native JSON is schema-based).
 
-**What a `design` job emits depends on the source you started from:**
-
-| Intent          | Started from            | Output                                                              |
-|-----------------|-------------------------|----------------------------------------------------------------------|
-| `gen-ui-desc`   | a PRD (greenfield)      | `visual/ui/handoff/` — a `DESIGN.md`-anchored bundle with `styles.css`, `tokens/`, `components/`, `screens/`, `assets/` |
-| `gen-ui-figma`  | `visual/ui/figma/figma.json` | `visual/ui/ant/` — the canonical trio `ui-tokens.json` + `ui-assets.json` + `ui-spec.json` |
+**What a `design` job emits depends on where you started.** From a PRD
+(`gen-ui-desc`) it writes a `DESIGN.md`-anchored bundle into `visual/ui/handoff/`
+(`styles.css`, `tokens/`, `components/`, `screens/`, `assets/`). From
+`figma.json` (`gen-ui-figma`) it writes the canonical trio `ui-tokens.json` +
+`ui-assets.json` + `ui-spec.json` into `visual/ui/ant/`.
 
 The full design-input guide is in
 [docs/guides/design-input/](docs/guides/design-input/).
-
-<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
-<p align="center">
-  <img src="docs/assets/design-handoff.png" width="880"
-       alt="A generated UI-design handoff bundle: the DESIGN.md document rendered beside the bundle tree with styles, tokens, and screens">
-</p>
-<p align="center"><sub>Greenfield output: the design job authors a
-DESIGN.md-anchored bundle the code job then builds against.</sub></p>
--->
-
-<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
-<p align="center">
-  <img src="docs/assets/basis-moodboard.png" width="880"
-       alt="The visual-tier picker showing twenty miniature app mockups, each rendered in its own style's palette">
-</p>
-<p align="center"><sub>Starting greenfield? Pick a visual direction and Ant
-authors the design bundle from it.</sub></p>
--->
 
 ---
 
 ## How it works
 
-```
-    ant-ui  4200          ant-site  4300         ← browser-facing
-    React SPA (/app/*)    marketing (Next.js)
-         │
-─────────┼──────────────────────────────────────────────────────────
-         │
-┌────────┴─────────┐    ┌──────────────────┐    ┌──────────────────┐
-│   ant-api  4100  │    │  ant-realtime    │    │  ant-preview     │
-│  REST + IDE      │    │   4101 SSE       │    │   4102 dev srv   │
-└────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘
-         │                       │                       │
-         └─────────── Redis (Pub/Sub + BullMQ) ──────────┘
-                              │
-                     ┌────────┴─────────┐
-                     │   ant-job        │
-                     │   spawns         │
-                     │   job-runner     │
-                     │   per request    │
-                     └──────────────────┘
-
-  optional sidecars:  ChromaDB (vector RAG)   visual-processor 4103
-```
+<p align="center">
+  <img src="docs/assets/architecture.png" width="880"
+       alt="Ant's runtime topology — ant-ui and ant-site in the browser over one HTTP and SSE edge, then ant-api, ant-realtime and ant-preview, all talking through a Redis bus carrying Pub/Sub, BullMQ and state, with ant-job spawning one isolated job-runner child process per job, plus optional ChromaDB and visual-processor sidecars">
+</p>
 
 Four backend processes, one codebase, communicating over Redis only. Local mode
 and cloud (Kubernetes) mode share the same data plane — local is just "all
@@ -240,13 +191,10 @@ Each job runs an agent **LangGraph** state machine: `resolve` → `triage` →
 job-specific phases → `learn`. The UI draws that graph live, so you can watch
 which node is executing and how many parallel workers it fanned out.
 
-<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
 <p align="center">
-  <img src="docs/assets/agent-graph.gif" width="880"
-       alt="The live agent graph, with the executing node highlighted and parallel worker chips fanning out beneath it">
+  <img src="docs/assets/job-anatomy.png" width="880"
+       alt="The graph a job runs — the architect, planner and creator agents with the jobs they own, then resolve, triage, detect and decompose, fanning out to setup, feature and ui tasks running in parallel, converging on a Final Verification task that can send work back before the job completes, then learn">
 </p>
--->
-
 
 | Agent       | Jobs it owns                                  |
 |-------------|-----------------------------------------------|
@@ -269,6 +217,11 @@ A **project** has exactly one git repository: a hidden bare anchor at
 `features/{feature}/codebase/`, and **the branch name is the feature name** —
 no prefix, no sanitising. Feature names may contain `/`, so `feature/base` and
 `release/1.0` work as you would expect.
+
+<p align="center">
+  <img src="docs/assets/workspace.png" width="880"
+       alt="A project's hidden bare anchor at repo.git fanning out to three peer feature worktrees, each holding codebase/ plus plan/, architecture/, visual/ and assets/, with the branch name matching the feature name exactly">
+</p>
 
 A project with no features has no codebase. There is no privileged "main"
 worktree — features are peers.
@@ -336,15 +289,6 @@ new verticals is a domain-registry change — no fork required.
   providers — the runtime speaks Anthropic, OpenAI-compatible, and Gemini
   natively, straight to each vendor's endpoint with **no router markup** —
   and see per-model token / cost / cache-hit breakdowns for every job.
-
-<!-- Drop the files into docs/assets/ and uncomment. See docs/assets/README.md.
-|  |  |
-|---|---|
-| <img src="docs/assets/shell-3pane.png" alt="The three-pane workspace: file explorer, task board, and agent chat"> | <img src="docs/assets/token-cost.png" alt="Per-model token and cost breakdown, including cache hit rate"> |
-| Explorer, task board, and agent chat in one window | Per-model cost and cache efficiency, per job |
-| <img src="docs/assets/preview-console.png" alt="Preview configuration with detected service connections and a streaming build console"> | <img src="docs/assets/browser-ide.png" alt="VS Code running in the browser against the feature worktree"> |
-| Service connections and a live build console | VS Code in the browser, on the feature's worktree |
--->
 
 ### What is cloud-only
 

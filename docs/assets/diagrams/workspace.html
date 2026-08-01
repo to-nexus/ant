@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="canvas" content="880x452">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_diagram.css">
+<style>
+  .canvas { height: 452px; }
+
+  .body { display: flex; gap: 0; align-items: stretch; }
+
+  .anchor { width: 244px; flex: none; display: flex; flex-direction: column; justify-content: center; }
+  .anchor .node { gap: 7px; }
+  .anchor .note { margin-top: 10px; line-height: 1.45; }
+
+  /* horizontal fan: stem out of the anchor, rail, one arrow per feature */
+  .fan { width: 54px; flex: none; position: relative; }
+  .fan .h, .fan .v { position: absolute; background: var(--wire); }
+  .fan .h { height: 1.5px; }
+  .fan .v { width: 1.5px; }
+  .fan .h.arrow::after {
+    content: '';
+    position: absolute; right: -1px; top: 50%;
+    transform: translateY(-50%);
+    border-top: 4.5px solid transparent;
+    border-bottom: 4.5px solid transparent;
+    border-left: 6px solid var(--wire);
+  }
+
+  .features { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+
+  .feat { padding: 11px 13px 12px; gap: 8px; }
+  .feat .top { display: flex; align-items: center; gap: 9px; }
+  .feat .dir { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-1); }
+  .feat .tree { display: flex; flex-wrap: wrap; gap: 5px; }
+  .feat .tree span {
+    font-family: var(--font-mono); font-size: 9.5px;
+    color: var(--text-3);
+    background: oklch(28% 0.075 290 / 0.5);
+    border: 1px solid oklch(36% 0.07 290 / 0.5);
+    border-radius: 5px; padding: 2px 6px;
+  }
+  .feat .tree span.code { color: var(--violet-300); border-color: oklch(64% 0.20 290 / 0.42); }
+
+  /* branch names are case-sensitive — never let the chip uppercase them */
+  .chip code {
+    font-family: var(--font-mono); font-size: 10px;
+    text-transform: none; letter-spacing: -0.01em;
+  }
+
+  .slug {
+    margin-top: 11px;
+    font-size: 10.5px; font-weight: 500; color: var(--text-4);
+  }
+  .slug code { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="head">
+    <div class="rule"></div>
+    <h1>One repository, features as peers</h1>
+    <p>No privileged main checkout — every feature is an equal worktree on its own branch.</p>
+  </div>
+
+  <div class="body">
+
+    <div class="anchor">
+      <div class="node acc acc-violet">
+        <span class="chip violet">bare anchor</span>
+        <div class="name">{project}/repo.git</div>
+        <div class="desc">The project's only git repository, hidden from the workspace tree</div>
+      </div>
+      <div class="note">A project with no features<br>has no codebase.</div>
+    </div>
+
+    <div class="fan">
+      <div class="v" style="left:20px; top:38px; bottom:38px"></div>
+      <div class="h" style="left:0; right:34px; top:50%"></div>
+      <div class="h arrow" style="left:20px; right:0; top:38px"></div>
+      <div class="h arrow" style="left:20px; right:0; top:50%"></div>
+      <div class="h arrow" style="left:20px; right:0; bottom:38px"></div>
+    </div>
+
+    <div class="features">
+      <div class="node feat">
+        <div class="top">
+          <span class="dir">features/feature~base/</span>
+          <span class="chip violet">branch <code>feature/base</code></span>
+        </div>
+        <div class="tree">
+          <span class="code">codebase/</span><span>plan/</span><span>architecture/</span><span>visual/</span><span>assets/</span>
+        </div>
+      </div>
+      <div class="node feat">
+        <div class="top">
+          <span class="dir">features/checkout/</span>
+          <span class="chip violet">branch <code>checkout</code></span>
+        </div>
+        <div class="tree">
+          <span class="code">codebase/</span><span>plan/</span><span>architecture/</span><span>visual/</span><span>assets/</span>
+        </div>
+      </div>
+      <div class="node feat">
+        <div class="top">
+          <span class="dir">features/release~1.0/</span>
+          <span class="chip violet">branch <code>release/1.0</code></span>
+        </div>
+        <div class="tree">
+          <span class="code">codebase/</span><span>plan/</span><span>architecture/</span><span>visual/</span><span>assets/</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="slug">A <code>/</code> in a feature name is stored as <code>~</code> on disk — the directory is a projection, the branch keeps the name you gave it.</div>
+
+  <div class="foot" style="margin-top:18px">
+    <div class="bar"></div>
+    <p><strong>The branch name is the feature name</strong> — no prefix, no sanitising, so
+      <span style="font-family:var(--font-mono);font-size:11px">feature/base</span> and
+      <span style="font-family:var(--font-mono);font-size:11px">release/1.0</span> work as you
+      would expect. Run several features at once, each with its own checkout, preview and artifacts.</p>
+  </div>
+
+</div>
+</body>
+</html>

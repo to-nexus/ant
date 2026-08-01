@@ -1,0 +1,341 @@
+/*
+ * Shared design system for the README diagrams.
+ *
+ * Colours are copied from packages/ant-ui/src/styles/aurora-tokens.css (dark theme).
+ * Do not invent values here, and do not source from
+ * packages/ant-ui/src/shared/utils/design-system.ts — that module is pre-Aurora.
+ *
+ * Canvas contract: 880 CSS px wide, rendered at 2x, displayed at width="880".
+ * What you lay out is what the reader sees at 100% zoom.
+ */
+
+:root {
+  --bg-canvas: oklch(13% 0.05 295);
+  --bg-surface: oklch(19% 0.062 295);
+  --bg-surface-2: oklch(23% 0.07 290);
+  --bg-surface-3: oklch(28% 0.075 290);
+
+  --text-1: oklch(98% 0.012 290);
+  --text-2: oklch(84% 0.025 290);
+  --text-3: oklch(68% 0.04 290);
+  --text-4: oklch(54% 0.05 290);
+
+  --border-1: oklch(28% 0.06 290);
+  --border-2: oklch(36% 0.07 290);
+  --border-3: oklch(45% 0.08 290);
+
+  --violet: oklch(64% 0.20 290);
+  --violet-300: oklch(80% 0.12 290);
+  --pink: oklch(66% 0.22 350);
+  --orange: oklch(75% 0.16 50);
+  --teal: oklch(75% 0.13 195);
+  --emerald: oklch(75% 0.15 155);
+
+  --mesh-1: oklch(60% 0.30 290 / 0.55);
+  --mesh-2: oklch(62% 0.32 340 / 0.48);
+  --mesh-3: oklch(68% 0.24 50 / 0.40);
+  --mesh-4: oklch(60% 0.22 195 / 0.35);
+
+  --gradient-aurora: linear-gradient(135deg, oklch(60% 0.26 285) 0%, oklch(64% 0.28 340) 50%, oklch(72% 0.22 50) 100%);
+
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --wire: oklch(38% 0.07 290);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-display);
+  color: var(--text-1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------- canvas */
+
+.canvas {
+  position: relative;
+  width: 880px;
+  border-radius: 20px;
+  border: 1px solid var(--border-1);
+  background: var(--bg-canvas);
+  overflow: hidden;
+  padding: 26px 30px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* the signature aurora mesh, held well back so labels stay legible */
+.canvas::before {
+  content: '';
+  position: absolute;
+  inset: -80px;
+  background:
+    radial-gradient(at 16% 12%, var(--mesh-1) 0%, transparent 45%),
+    radial-gradient(at 88% 8%, var(--mesh-2) 0%, transparent 48%),
+    radial-gradient(at 78% 96%, var(--mesh-3) 0%, transparent 45%),
+    radial-gradient(at 6% 88%, var(--mesh-4) 0%, transparent 45%);
+  filter: blur(30px);
+  opacity: 0.30;
+}
+
+.canvas::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, oklch(13% 0.05 295 / 0.55) 0%, oklch(13% 0.05 295 / 0.78) 100%);
+}
+
+.canvas > * { position: relative; z-index: 1; }
+
+/* ------------------------------------------------------------- headings */
+
+.head { margin-bottom: 18px; }
+
+.head h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-1);
+}
+
+.head p {
+  margin: 5px 0 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: -0.005em;
+}
+
+.head .rule {
+  width: 44px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--gradient-aurora);
+  margin-bottom: 11px;
+}
+
+/* band captions down the left edge of a row */
+.band {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+/* ---------------------------------------------------------------- nodes */
+
+.node {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 12px;
+  padding: 11px 13px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.node.soft { background: oklch(19% 0.062 295 / 0.55); }
+
+.node.dashed {
+  border-style: dashed;
+  border-color: var(--border-2);
+  background: oklch(19% 0.062 295 / 0.4);
+}
+
+.node .name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-1);
+  letter-spacing: -0.01em;
+}
+
+.node .name.plain {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.node .desc {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+
+/* left accent stripe, used to carry the colour semantics */
+.node.acc { border-left-width: 3px; padding-left: 12px; }
+.node.acc-violet  { border-left-color: var(--violet); }
+.node.acc-pink    { border-left-color: var(--pink); }
+.node.acc-orange  { border-left-color: var(--orange); }
+.node.acc-teal    { border-left-color: var(--teal); }
+.node.acc-emerald { border-left-color: var(--emerald); }
+
+/* ---------------------------------------------------------------- chips */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 2.5px 8px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-2);
+  color: var(--text-3);
+  background: oklch(23% 0.07 290 / 0.7);
+  white-space: nowrap;
+}
+
+.chip.violet  { color: var(--violet-300); border-color: oklch(64% 0.20 290 / 0.45); background: oklch(64% 0.20 290 / 0.14); }
+.chip.pink    { color: oklch(78% 0.16 350); border-color: oklch(66% 0.22 350 / 0.45); background: oklch(66% 0.22 350 / 0.14); }
+.chip.orange  { color: var(--orange); border-color: oklch(75% 0.16 50 / 0.45); background: oklch(75% 0.16 50 / 0.13); }
+.chip.teal    { color: var(--teal); border-color: oklch(75% 0.13 195 / 0.45); background: oklch(75% 0.13 195 / 0.13); }
+.chip.emerald { color: var(--emerald); border-color: oklch(75% 0.15 155 / 0.45); background: oklch(75% 0.15 155 / 0.13); }
+
+/* monospace file paths / identifiers */
+.path {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--text-2);
+  background: oklch(28% 0.075 290 / 0.55);
+  border: 1px solid oklch(36% 0.07 290 / 0.6);
+  border-radius: 6px;
+  padding: 3px 7px;
+  align-self: flex-start;
+  white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+.path.bare {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-3);
+}
+
+/* --------------------------------------------------------------- wiring */
+
+/* vertical connector between stacked bands */
+.vwire {
+  width: 1.5px;
+  background: var(--wire);
+  margin: 0 auto;
+  position: relative;
+  flex: none;
+}
+
+.vwire::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  transform: translateX(-50%);
+  border-left: 4.5px solid transparent;
+  border-right: 4.5px solid transparent;
+  border-top: 6px solid var(--wire);
+}
+
+.vwire.plain::after { display: none; }
+
+/* horizontal connector between nodes in a row */
+.hwire {
+  flex: none;
+  height: 1.5px;
+  background: var(--wire);
+  align-self: center;
+  position: relative;
+}
+
+.hwire::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -1px;
+  transform: translateY(-50%);
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  border-left: 6px solid var(--wire);
+}
+
+/* fan-out bracket: a rail with drops to each child */
+.bracket { position: relative; flex: none; }
+.bracket .rail,
+.bracket .drop,
+.bracket .stem { position: absolute; background: var(--wire); }
+.bracket .rail { height: 1.5px; }
+.bracket .stem,
+.bracket .drop { width: 1.5px; }
+.bracket .drop::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  transform: translateX(-50%);
+  border-left: 4.5px solid transparent;
+  border-right: 4.5px solid transparent;
+  border-top: 6px solid var(--wire);
+}
+
+svg.wires { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+svg.wires path,
+svg.wires line { fill: none; stroke: var(--wire); stroke-width: 1.5; }
+
+/* --------------------------------------------------------------- footer */
+
+.foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: oklch(23% 0.07 290 / 0.55);
+  border: 1px solid var(--border-1);
+}
+
+.foot .bar {
+  flex: none;
+  width: 3px;
+  align-self: stretch;
+  border-radius: 999px;
+  background: var(--gradient-aurora);
+}
+
+.foot p {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.foot strong { color: var(--text-1); font-weight: 700; }
+
+/* --------------------------------------------------------------- layout */
+
+.row { display: flex; gap: 12px; }
+.row.eq > .node { flex: 1; }
+.col { display: flex; flex-direction: column; }
+.note {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-4);
+  letter-spacing: -0.005em;
+}
