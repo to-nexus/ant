@@ -1,8 +1,17 @@
 {
   "name": "@ant/cli",
   "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "ANT CLI - AI-native development framework",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/to-nexus/ant.git",
+    "directory": "packages/ant-cli"
+  },
+  "bugs": "https://github.com/to-nexus/ant/issues",
+  "homepage": "https://github.com/to-nexus/ant#readme",
   "main": "dist/index.js",
   "bin": {
     "aidev": "./dist/index.js"

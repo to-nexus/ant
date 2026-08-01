@@ -39,7 +39,7 @@ body:
     attributes:
       label: Environment
       description: OS, Node version, pnpm version, browser if relevant.
-      placeholder: "macOS 14.5, Node 20.11, pnpm 10.4, Chrome 130"
+      placeholder: "macOS 14.5, Node 22.13, pnpm 11.1.0, Chrome 130"
     validations:
       required: true
 

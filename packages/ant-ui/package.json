@@ -1,8 +1,16 @@
 {
   "name": "@ant/ui",
   "version": "1.0.0",
+  "private": true,
   "license": "Apache-2.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/to-nexus/ant.git",
+    "directory": "packages/ant-ui"
+  },
+  "bugs": "https://github.com/to-nexus/ant/issues",
+  "homepage": "https://github.com/to-nexus/ant#readme",
   "scripts": {
     "dev": "vite",
     "build": "pnpm legacy:sweep && vite build",

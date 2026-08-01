@@ -18,17 +18,17 @@ code job의 verification 태스크는 `plan → execute ↔ tool → checkTaskSt
 ┌─ L4 전체 E2E              수동           smoke only ───┐
 │  L3 실제 LLM resume       반결정론       nightly/선택  │
 │  L2 LLM-mock resume       결정론         메인 (runner) │
-└─ L1 노드 유닛 (vitest)    완전 결정론    빌드 게이트   ┘
+└─ L1 노드 유닛 (vitest)    완전 결정론    CI 게이트     ┘
 ```
 
 | 레이어 | 입력 통제 | LLM | 실행 시간 | CI | 커버 대상 |
 |---|---|---|---|---|---|
-| **L1 유닛** | 가짜 state 직조립 | 없음 | ms | ✅ prebuild | 순수 분기 함수 |
+| **L1 유닛** | 가짜 state 직조립 | 없음 | ms | ✅ CI | 순수 분기 함수 |
 | **L2 시나리오** | seed 세션 + commandInject + LLM mock | mock | 초 | opt-in | verification 루프 전체 |
 | **L3 실제 LLM** | 동일하되 실제 LLM | 실제 | 분 | 수동/nightly | L2 결과의 회귀 확인 |
 | **L4 전체 E2E** | `e2e-runbook.md` | 실제 | 분+ | 수동 | 사용자 경험 스모크 |
 
-**이 문서의 초점은 L1과 L2**. L1은 빌드 게이트에 포함되어 있고(`pnpm test:cli`), L2는 `pnpm scenario [--list | Sxx | --all]`로 10개 시나리오(S00~S09) 전체가 재현 가능하다 (§8 참조).
+**이 문서의 초점은 L1과 L2**. L1은 CI 게이트에 포함되어 있고(`pnpm test:cli`), L2는 `pnpm scenario [--list | Sxx | --all]`로 10개 시나리오(S00~S09) 전체가 재현 가능하다 (§8 참조).
 
 ## 3. 용어표
 

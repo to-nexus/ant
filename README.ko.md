@@ -13,8 +13,20 @@
   <a href="docs/ko/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
-> ⚠️ **상태: pre-alpha.** Ant는 end-to-end로 동작하지만, 첫 정식 릴리즈
-> 전까지 공개 API와 파일 레이아웃은 변경될 수 있습니다.
+<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
+<p align="center">
+  <img src="docs/assets/hero-kanban.gif" width="880"
+       alt="코드 잡을 태스크로 분해하고 병렬 실행한 뒤 최종 검증 태스크로 완료를 게이팅하는 Ant">
+</p>
+<p align="center"><sub><a href="">▶ 2분 워크스루 보기</a></sub></p>
+-->
+
+> ⚠️ **상태: pre-alpha, 1인 개발.** Ant는 한 사람이 만들었습니다. end-to-end로
+> 동작하지만 첫 정식 릴리즈 전까지 공개 API와 파일 레이아웃은 변경될 수 있고,
+> 이만큼의 범위를 혼자 만들었기에 표면마다 완성도 편차가 있습니다 — 기능별
+> 솔직한 상태는 **[성숙도](#성숙도)** 를 보세요. 이슈와 PR을 진심으로
+> 환영합니다. 어디에 도움이 가장 크게 닿는지는 **[기여하기](#기여하기)** 에
+> 정리해 두었습니다.
 
 ---
 
@@ -35,6 +47,15 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
 각 단계는 별도의 에이전트, 별도의 프롬프트 표면, 별도의 검증 게이트를
 갖습니다. 결과는 감사 가능한 시스템이지, 가끔 코드를 토해내는 블랙박스가
 아닙니다.
+
+<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
+<p align="center">
+  <img src="docs/assets/spec-artifacts.png" width="880"
+       alt="워크스페이스 아티팩트 트리와 아키텍처 다이어그램이 렌더된 시스템 설계 문서">
+</p>
+<p align="center"><sub>모든 단계가 읽고, diff 뜨고, 반박할 수 있는 문서를
+남깁니다 — 커밋만이 아니라.</sub></p>
+-->
 
 ---
 
@@ -91,6 +112,11 @@ pnpm dev:all              # API + Realtime + Worker + Preview + UI + site
 필요합니다 — 프롬프트(= 여러분의 소스 코드)가 제3국 사업자로 나가기
 때문입니다.
 
+고르기 전에 알아둘 두 가지: DeepSeek · GLM · Kimi는 1급 클라이언트가 아니라
+OpenAI 호환 어댑터를 경유하므로 프로바이더 고유 기능이 늦게 반영될 수
+있습니다. 그리고 **이미지 생성은 Google 전용**입니다 — `visual` 잡은 다른
+곳에서 무엇을 쓰든 `GEMINI_API_KEY`가 필요합니다.
+
 ---
 
 ## 디자인을 그대로 가져오기
@@ -117,6 +143,15 @@ native JSON은 schema-based.)
 
 풀 가이드:
 [docs/ko/guides/design-input/claude-handoff.md](docs/ko/guides/design-input/claude-handoff.md).
+
+<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
+<p align="center">
+  <img src="docs/assets/basis-moodboard.png" width="880"
+       alt="각 스타일의 실제 팔레트로 그려진 20종 미니 앱 목업이 놓인 비주얼 티어 선택 화면">
+</p>
+<p align="center"><sub>그린필드로 시작하나요? 비주얼 방향만 고르면 Ant이
+디자인 번들을 저작합니다.</sub></p>
+-->
 
 ---
 
@@ -150,7 +185,17 @@ native JSON은 schema-based.)
 "모든 프로세스가 한 머신에" 일 뿐입니다.
 
 각 잡은 LangGraph 에이전트 상태 머신으로 실행됩니다:
-`resolve` → `triage` → 잡별 phase → `learn`.
+`resolve` → `triage` → 잡별 phase → `learn`. UI가 이 그래프를 실시간으로
+그리므로 지금 어떤 노드가 실행 중이고 병렬 워커가 몇 개 떠 있는지 볼 수
+있습니다.
+
+<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
+<p align="center">
+  <img src="docs/assets/agent-graph.gif" width="880"
+       alt="실행 중인 노드가 강조되고 그 아래로 병렬 워커 칩이 펼쳐지는 라이브 에이전트 그래프">
+</p>
+-->
+
 
 | 에이전트    | 담당 잡                                        |
 |-------------|-----------------------------------------------|
@@ -184,14 +229,9 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
 | 도메인                    | 상태       | 예시                                            |
 |---------------------------|------------|-------------------------------------------------|
 | **Service** (웹/백엔드)   | Stable     | 풀스택 SaaS, 대시보드, REST API                |
-| **Game**                  | 개발 중     | Phaser/Web 게임 (sprite + HUD + audio)          |
+| **Game**                  | Experimental | Phaser/Web 게임 (sprite + HUD + audio)        |
 
-> **게임 vertical** 은 모드 골격이 준비되어 있습니다 — 도메인 레지스트리,
-> `gameArtTier` visual surface, `design-game-art` intent set 이 모두
-> 와이어링되어 있습니다 — 그러나
-> **아직 프로덕션 준비 상태가 아닙니다**. Stable 표시될 때까지 거친
-> 부분과 breaking change 가 있을 수 있습니다. 현재 지원되는 경로는
-> service 도메인 워크플로입니다.
+여기서 "Experimental"이 구체적으로 무슨 뜻인지는 [성숙도](#성숙도)를 보세요.
 
 두 도메인은 같은 에이전트를 공유하지만 다른 프롬프트 오버레이, 다른
 디자인 템플릿, 다른 visual-tier 카탈로그를 갖습니다. 새 도메인 추가는
@@ -219,13 +259,44 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
 - **Self-host.** 6개 프로바이더 중 원하는 LLM 키를 직접 관리, 직접
   인프라에서.
 
+<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
+|  |  |
+|---|---|
+| <img src="docs/assets/shell-3pane.png" alt="탐색기·태스크 보드·에이전트 채팅 3-pane 작업 화면"> | <img src="docs/assets/token-cost.png" alt="캐시 적중률을 포함한 모델별 토큰·비용 분해"> |
+| 탐색기 · 태스크 보드 · 에이전트 채팅을 한 화면에 | 잡 단위 모델별 비용과 캐시 효율 |
+| <img src="docs/assets/preview-console.png" alt="탐지된 서비스 연결과 빌드 로그가 흐르는 프리뷰 설정 화면"> | <img src="docs/assets/browser-ide.png" alt="피처 worktree 위에서 브라우저로 실행되는 VS Code"> |
+| 서비스 연결과 실시간 빌드 콘솔 | 피처 worktree 위의 브라우저 VS Code |
+-->
+
 ### 클라우드 전용 영역
 
 리포지토리에는 매니지드 서비스용 seam(빌링/크레딧, 조직, 배포, 커스텀
 도메인)이 함께 들어 있습니다. self-host 배포에서는 **전부 inert** 입니다 —
 capability 게이트가 no-op 구현을 유지하며, 크레딧을 구매하는 대신 LLM
 프로바이더에 직접 결제합니다. self-host 경로에서 외부로 신호를 보내는
-코드는 없습니다.
+코드는 없습니다. 이건 CI가 강제합니다 — 클라우드 전용 심볼이 오픈소스
+번들에 새어 들어가면 빌드가 실패합니다.
+
+---
+
+## 성숙도
+
+Ant은 1인 프로젝트치고 다루는 범위가 넓고, 그만큼 완성도가 고르지
+않습니다. 아래가 솔직한 버전입니다. 체인지로그 각주에 숨겨둔 것은 없습니다.
+
+| 표면 | 상태 | 실제로 무슨 뜻인가 |
+|---|---|---|
+| `code` / `design` / `plan` 잡 — service 도메인 | **Stable** | 지원되는 경로. 매일 쓰이는 부분입니다. |
+| 라이브 프리뷰, 브라우저 IDE | **Stable** | 테스트 커버리지가 두껍고 상시 사용됩니다. |
+| 서비스 연결 & 가상화 | **Beta** | 연결 설정 · 자동 탐지 · mock 어댑터 모두 출하돼 있고 테스트도 있습니다. 빠진 것은 **생성된 어댑터가 실제 서비스와 일치함을 증명하는 검증 게이트** 입니다 — 생성된 연동 코드는 실제 백엔드로 테스트한 뒤 신뢰하세요. |
+| `creator` 에이전트 / `visual` 잡 | **Experimental** | **Google Gemini 전용** — 다른 곳에서 무엇을 쓰든 `GEMINI_API_KEY`가 필요합니다. 배경 제거는 선택 사이드카가 필요합니다. **그래프 중간 재개 불가**: 중단되면 잡이 처음부터 다시 시작됩니다. 그래프 노드에 실행 테스트가 없습니다. |
+| Game 도메인 | **Experimental** | **그린필드 전용** — 기존 코드베이스에서는 game-art 티어가 억제됩니다. Phaser 전용(3D는 별도 엔진이 아니라 `enable3d` 확장). design 잡과 visual 잡 사이의 스프라이트 아틀라스 인계가 닫혀 있지 않아 프로덕션 아트는 직접 배치해야 합니다. |
+| `learn` 잡 (벡터 인덱싱 / RAG) | **Incomplete** | 기본 비활성(`ANT_VECTOR_DB_ENABLED=false`), ChromaDB 사이드카 필요, **모든 UI 표면에서 숨겨져 있습니다** — 직접 API 호출로만 도달 가능. 검색은 git-changes + 키워드로 degrade 되며 그쪽이 정상 경로이고 충분히 동작합니다. |
+| 팀 / 조직 워크스페이스 | **미출시** | 계정 전환은 동작합니다. 팀 생성과 초대는 동작하지 않습니다. |
+| 매니지드 클라우드 (빌링, 크레딧, 배포 쿼터, 커스텀 도메인) | **미공개** | self-host 배포에서는 무력화된 no-op seam. |
+
+Experimental 항목이 발목을 잡으면 이슈로 알려주세요 — 사람들이 실제로 어디에
+부딪히는지 아는 게 로드맵 추측보다 훨씬 쓸모 있습니다.
 
 ---
 
@@ -244,6 +315,52 @@ capability 게이트가 no-op 구현을 유지하며, 크레딧을 구매하는 
 
 ---
 
+## 스택
+
+**백엔드** — Node.js 22+, TypeScript(strict), Express, LangGraph,
+Anthropic / OpenAI / Google SDK, BullMQ, ioredis, Handlebars, Zod.
+
+**프론트엔드** — React 18, Vite, Zustand, Tailwind CSS, Radix UI, ReactFlow.
+마케팅 사이트(`ant-site`)는 정적 export 된 Next.js 앱입니다.
+
+**인프라** — pnpm 워크스페이스, Redis, Docker, Kubernetes, 클라우드 모드의
+공유 워크스페이스 볼륨용 EFS.
+
+---
+
+## 기여하기
+
+**Ant은 1인 개발입니다.** 한 사람이 에이전트, 프롬프트, 프론트엔드, 문서를
+전부 썼습니다. 그래서 리뷰는 당일이 아니라 best-effort 이고, 로드맵은
+위원회 결정이 아니라 판단입니다. PR이나 이슈에 일주일째 답이 없으면 코멘트로
+찔러 주세요 — 무례한 게 아니라 도움이 됩니다.
+
+동시에 외부의 도움이 실제로 유용하다는 뜻이기도 합니다. 필요한 맥락이 가장
+적으면서 기여가 가장 크게 닿는 지점들입니다:
+
+| 영역 | 왜 좋은 진입점인가 |
+|---|---|
+| **문서 · 한↔영 미러** | [`docs/ko/`](docs/ko/)는 부분 번역이고 자체 README에 무엇이 빠졌는지 적혀 있습니다. 문서를 읽다가 헷갈린 부분을 고치는 게 가장 가치 있는 첫 PR입니다. |
+| **LLM 프로바이더 어댑터** | 6개 중 3개가 OpenAI 호환 shim 경유입니다. 하나를 1급 클라이언트로 승격하는 작업은 범위가 명확하고 독립적입니다. |
+| **`visual` 잡 테스트** | `creator` 에이전트 그래프에 실행 테스트가 없습니다. 여기 추가되는 건 전부 순증 커버리지입니다. |
+| **프론트엔드 테스트** | `ant-ui`는 백엔드에 비해 커버리지가 얇습니다. |
+| **재현 절차가 있는 버그 리포트** | 재현 절차는 패치보다 가치 있습니다. 버그를 재현하게 해주는 리포트는 이미 수정의 대부분입니다. |
+
+에이전트 그래프를 깊이 건드리기 전에는 이슈부터 열어 주세요. LangGraph
+코어에는 diff에 드러나지 않는 불변식이 있어서, 먼저 설계를 이야기하는 편이
+나중의 재작업을 아낍니다.
+
+셋업과 PR 워크플로는 [CONTRIBUTING.md](CONTRIBUTING.md), 구속력 있는 아키텍처
+규칙은 [AGENTS.md](AGENTS.md)를 보세요. AGENTS.md는 보이는 것보다 중요합니다 —
+대부분의 규칙에 회귀 가드 테스트가 붙어 있어, 위반하면 리뷰가 아니라 CI가
+실패합니다.
+
+---
+
 ## 라이선스
 
-Apache-2.0 — [LICENSE](LICENSE) 참조.
+Apache-2.0 — [LICENSE](LICENSE) 참조. 서드파티 의존성 고지는
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)에 있습니다.
+
+기여는 동일 라이선스(Apache-2.0 §5)로 받습니다. 서명할 CLA도, DCO
+sign-off도 필요 없습니다.

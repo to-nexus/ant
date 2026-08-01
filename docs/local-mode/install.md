@@ -13,8 +13,8 @@ see [develop.md](../develop.md) instead.
 
 | Requirement | Version | Notes |
 |-------------|---------|-------|
-| Node.js     | 18.17+  | LTS recommended; 20.x works. |
-| pnpm        | 10+     | `corepack enable && corepack prepare pnpm@10 --activate` |
+| Node.js     | >= 22.13 | Enforced by the root `engines` field. |
+| pnpm        | 11.1.0  | Pinned via `packageManager`. `corepack enable && corepack prepare pnpm@11.1.0 --activate` |
 | Docker      | 24+     | Used for Redis. Docker Desktop on macOS/Windows. |
 | Git         | 2.40+   |  |
 | LLM key     | —       | Anthropic Claude (primary) or OpenAI / Gemini. |
@@ -31,7 +31,7 @@ git --version
 ## Clone and install
 
 ```bash
-git clone https://github.com/<org>/ant
+git clone https://github.com/to-nexus/ant
 cd ant
 pnpm install
 ```

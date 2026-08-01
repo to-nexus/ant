@@ -12,8 +12,8 @@ OAuth 없음, Kubernetes 없음, 매니지드 계정 없음. Docker로 Redis 하
 
 | 요구사항 | 버전 | 메모 |
 |---|---|---|
-| Node.js | 18.17+ | LTS 권장; 20.x OK. |
-| pnpm | 10+ | `corepack enable && corepack prepare pnpm@10 --activate` |
+| Node.js | >= 22.13 | 루트 `engines` 필드로 강제. |
+| pnpm | 11.1.0 | `packageManager` 로 고정. `corepack enable && corepack prepare pnpm@11.1.0 --activate` |
 | Docker | 24+ | Redis 용. macOS/Windows는 Docker Desktop. |
 | Git | 2.40+ | |
 | LLM 키 | — | Anthropic Claude (1차) 또는 OpenAI / Gemini. |
@@ -30,7 +30,7 @@ git --version
 ## 클론 + 설치
 
 ```bash
-git clone https://github.com/<org>/ant
+git clone https://github.com/to-nexus/ant
 cd ant
 pnpm install
 ```
