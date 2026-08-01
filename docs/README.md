@@ -10,7 +10,9 @@ Welcome. The docs are organized into four tiers based on what you want to do.
 | Customizing / integrating                         | **[Guides](guides/)**                               |
 | Looking up an API / env var / file format         | **[Reference](reference/)**                         |
 | Contributing to Ant itself                        | **[Internals](internals/)** + [AGENTS.md](../AGENTS.md) |
-| Reading in Korean                                 | **[한국어](ko/)**                                    |
+
+Korean is available for the top-level [README.ko.md](../README.ko.md) only;
+all docs under `docs/` are English.
 
 ## Documentation map
 
@@ -24,10 +26,8 @@ docs/
 │   └── design-input/   The killer feature: Claude / Figma / native design sources
 ├── reference/          CLI, env vars, API, shared types, Redis keys
 ├── internals/          Contributor deep-dives — incident-grade SSOT documents
-├── observability/      Logging, metrics, debugging
 ├── rubric/             Evaluation rubrics for AI-generated code / PRD / design
-├── testing/            Test strategy, e2e runbook, verification scenarios
-└── ko/                 Korean mirror (selected docs)
+└── testing/            Test strategy, e2e runbook, verification scenarios
 ```
 
 ## Where to start
@@ -43,9 +43,10 @@ docs/
 
 ## Conventions
 
-- All template / prompt examples in the docs are **English only** even on
-  Korean pages. Prompts are part of Ant's runtime behaviour and must stay in
-  English. See [AGENTS.md § Prompt Engineering](../AGENTS.md#prompt-engineering).
+- The docs are **English only** (Korean exists only as the top-level
+  [README.ko.md](../README.ko.md)). Prompt/template examples must stay in
+  English in any case — prompts are part of Ant's runtime behaviour. See
+  [AGENTS.md § Prompt Engineering](../AGENTS.md#prompt-engineering).
 - Cross-references use relative links from the `docs/` root.
 - Code blocks specify the language. Shell snippets default to `bash`.
 

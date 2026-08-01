@@ -1,49 +1,49 @@
 # Kanban Board Components
 
-리팩토링된 Kanban Board 컴포넌트 구조
+Refactored Kanban Board component structure
 
-## 📁 파일 구조
+## 📁 File Structure
 
 ```
 kanban/
-├── KanbanBoard.tsx         # 메인 orchestrator (SSE, 상태 관리)
-├── KanbanHeader.tsx        # 헤더 액션 (데이터 소스, 게이지)
-├── KanbanEstimating.tsx    # Estimating 상태 디스플레이
-├── KanbanColumns.tsx       # 3칼럼 레이아웃 (To Do, In Progress, Completed)
-├── index.ts               # Export 정리
-└── README.md              # 이 파일
+├── KanbanBoard.tsx         # Main orchestrator (SSE, state management)
+├── KanbanHeader.tsx        # Header actions (data source, gauges)
+├── KanbanEstimating.tsx    # Estimating state display
+├── KanbanColumns.tsx       # 3-column layout (To Do, In Progress, Completed)
+├── index.ts               # Export barrel
+└── README.md              # This file
 ```
 
-## 🧩 컴포넌트 역할
+## 🧩 Component Roles
 
 ### KanbanBoard (Main Orchestrator)
-- SSE 연결 관리
-- 전역 상태 관리 (Zustand)
-- 애니메이션 상태 관리
-- Resume Task 로직
-- 서브 컴포넌트 조합
+- SSE connection management
+- Global state management (Zustand)
+- Animation state management
+- Resume Task logic
+- Sub-component composition
 
 ### KanbanHeader
 - Data Source indicator (Live/Session/Estimating)
-- Recursion Limit 게이지
-- Tasks 진행률 게이지
+- Recursion Limit gauge
+- Tasks progress gauge
 
 ### KanbanEstimating (KanbanEstimatingSkeleton)
-- decompose/revise 단계에서 스켈레톤 카드 3컬럼 표시
-- NodeActivityBanner와 함께 사용
+- Shows 3 columns of skeleton cards during the decompose/revise phase
+- Used together with NodeActivityBanner
 
 ### NodeActivityBanner
-- 현재 실행 중인 비-태스크 노드의 활동 라벨 + 실시간 타이머 표시
-- estimatingLabel/estimatingStartedAt 기반 자동 마운트/해제
+- Shows the activity label + live timer of the currently running non-task node
+- Auto mount/unmount based on estimatingLabel/estimatingStartedAt
 
 ### KanbanColumns
-- 3칼럼 레이아웃
-- TaskCard 렌더링
-- Framer Motion 애니메이션 처리
+- 3-column layout
+- TaskCard rendering
+- Framer Motion animation handling
   - Shine effect (completed)
   - Slide animation (in-progress)
 
-## 🔄 데이터 흐름
+## 🔄 Data Flow
 
 ```
 SSE Stream → KanbanBoard (state) → Sub Components
@@ -62,20 +62,20 @@ SSE Stream → KanbanBoard (state) → Sub Components
   }
 ```
 
-## 🎨 애니메이션
+## 🎨 Animations
 
 - **Completed**: Slide from right + Shine effect
 - **In Progress**: Slide from left (delayed)
 - **Layout**: Smooth card repositioning (Framer Motion)
 
-## 🔌 재사용 가능한 Base 컴포넌트
+## 🔌 Reusable Base Component
 
 **BoardContainer** (`../BoardContainer.tsx`)
-- Kanban Board, Workflow 등에 재사용 가능
-- 일관된 Card 스타일
-- Header actions 지원
+- Reusable for the Kanban Board, Workflow, etc.
+- Consistent Card styling
+- Header actions support
 
-## 📦 사용 예시
+## 📦 Usage Example
 
 ```tsx
 import { KanbanBoard } from '@/components/kanban';
@@ -85,9 +85,9 @@ function App() {
 }
 ```
 
-## 🚀 향후 확장
+## 🚀 Future Extensions
 
-동일한 패턴으로 **WorkflowBoard** 구현 가능:
+A **WorkflowBoard** can be implemented with the same pattern:
 ```
 workflow/
 ├── WorkflowBoard.tsx
@@ -96,5 +96,5 @@ workflow/
 └── WorkflowEdges.tsx
 ```
 
-모두 `BoardContainer`를 base로 사용.
+All built on `BoardContainer` as the base.
 

@@ -1,4 +1,8 @@
-<h1 align="center">Ant</h1>
+<p align="center">
+  <img src="docs/assets/logo.png" width="120" alt="ANT 로고">
+</p>
+
+<h1 align="center">ANT</h1>
 
 <p align="center"><b>스펙 기반 AI 엔지니어링 플랫폼.</b></p>
 
@@ -16,7 +20,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg"></a>
   <a href="https://github.com/to-nexus/ant/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/to-nexus/ant/actions/workflows/ci.yml/badge.svg"></a>
   <a href="README.md"><img alt="English" src="https://img.shields.io/badge/lang-English-blue"></a>
-  <a href="docs/ko/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
+  <a href="docs/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
 <!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
@@ -119,9 +123,9 @@ pnpm dev:all              # API + Realtime + Worker + Preview + UI + site
 꺼져 있고(RAG는 git-changes + 키워드 검색으로 degrade), visual-processor는
 `visual` 잡에서만 씁니다.
 
-자세한 셋업: [docs/ko/local-mode/install.md](docs/ko/local-mode/install.md).
+자세한 셋업: [docs/local-mode/install.md](docs/local-mode/install.md).
 클라우드 (매니지드 또는 self-host)로 가시려면
-[docs/ko/cloud-mode/install.md](docs/ko/cloud-mode/install.md).
+[docs/cloud-mode/install.md](docs/cloud-mode/install.md).
 
 ---
 
@@ -142,6 +146,12 @@ pnpm dev:all              # API + Realtime + Worker + Preview + UI + site
 동의 게이트가 걸린 프로바이더는 선택 전에 앱 내 데이터 처리 동의가
 필요합니다 — 프롬프트(= 여러분의 소스 코드)가 제3국 사업자로 나가기
 때문입니다.
+
+Ant은 에이전트 런타임을 직접 구성했으므로 **중간에 라우터가 없습니다**.
+세 어댑터 계열 — Anthropic, OpenAI 호환, Gemini — 이 각 벤더의 API에
+여러분의 키로 직접 통신합니다. 프로바이더 정가 그대로입니다: 토큰당
+마진도, 요청 미터링도 없고, 프롬프트가 여러분이 고르지 않은 제3자를
+경유하지 않습니다.
 
 고르기 전에 알아둘 두 가지: DeepSeek · GLM · Kimi는 1급 클라이언트가 아니라
 OpenAI 호환 어댑터를 경유하므로 프로바이더 고유 기능이 늦게 반영될 수
@@ -173,7 +183,7 @@ native JSON은 schema-based.)
 | `gen-ui-figma`  | `visual/ui/figma/figma.json`  | `visual/ui/ant/` — canonical 3종 `ui-tokens.json` + `ui-assets.json` + `ui-spec.json` |
 
 풀 가이드:
-[docs/ko/guides/design-input/claude-handoff.md](docs/ko/guides/design-input/claude-handoff.md).
+[docs/guides/design-input/claude-handoff.md](docs/guides/design-input/claude-handoff.md).
 
 <!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 <p align="center">
@@ -247,7 +257,7 @@ native JSON은 schema-based.)
 시스템 설계(`gen-sys-*`), UI · game-art 디자인(`gen-ui-*` /
 `gen-game-art-*`), 스펙 저작(`gen-spec` / `rev-spec`).
 
-자세히: [docs/ko/concepts/architecture.md](docs/ko/concepts/architecture.md).
+자세히: [docs/concepts/architecture.md](docs/concepts/architecture.md).
 
 ---
 
@@ -316,8 +326,13 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
   컨테이너, `ANT_K8S_NAMESPACE`를 설정하면 Kubernetes Pod.
 - **중단 & 재개.** 잡은 phase마다 체크포인트를 남깁니다 — 멈추든, 죽든,
   노트북을 덮든, 멈춘 지점에서 재개합니다.
-- **Self-host, 비용 투명성.** 6개 프로바이더 중 원하는 LLM 키를 직접 관리
-  하고, 잡마다 모델별 토큰 / 비용 / 캐시 적중 분해를 확인합니다.
+- **프롬프트 커스터마이징.** 모든 에이전트 프롬프트는 디스크 위의
+  Handlebars 템플릿이고 기동 시 자동 등록됩니다 — 여러분 코드베이스에
+  맞게 에이전트를 튜닝하세요 ([가이드](docs/guides/custom-prompts.md)).
+- **Self-host, 비용 투명성.** 6개 프로바이더 중 원하는 LLM 키를 직접
+  관리합니다 — 런타임이 Anthropic, OpenAI 호환, Gemini를 네이티브로
+  구사해 각 벤더 엔드포인트에 직접 통신, **라우터 마진 없음** — 그리고
+  잡마다 모델별 토큰 / 비용 / 캐시 적중 분해를 확인합니다.
 
 <!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 |  |  |
@@ -351,7 +366,7 @@ Ant은 1인 프로젝트치고 다루는 범위가 넓고, 그만큼 완성도�
 | 서비스 연결 & 가상화 | **Beta** | 연결 설정 · 자동 탐지 · mock 어댑터 모두 출하돼 있고 테스트도 있습니다. 빠진 것은 **생성된 어댑터가 실제 서비스와 일치함을 증명하는 검증 게이트** 입니다 — 생성된 연동 코드는 실제 백엔드로 테스트한 뒤 신뢰하세요. |
 | `creator` 에이전트 / `visual` 잡 | **Experimental** | **Google Gemini 전용** — 다른 곳에서 무엇을 쓰든 `GEMINI_API_KEY`가 필요합니다. 배경 제거는 선택 사이드카가 필요합니다. **그래프 중간 재개 불가**: 중단되면 잡이 처음부터 다시 시작됩니다. 그래프 노드에 실행 테스트가 없습니다. |
 | Game 도메인 | **Experimental** | **그린필드 전용** — 기존 코드베이스에서는 game-art 티어가 억제됩니다. Phaser 전용(3D는 별도 엔진이 아니라 `enable3d` 확장). design 잡과 visual 잡 사이의 스프라이트 아틀라스 인계가 닫혀 있지 않아 프로덕션 아트는 직접 배치해야 합니다. |
-| `learn` 잡 (벡터 인덱싱 / RAG) | **Incomplete** | 기본 비활성(`ANT_VECTOR_DB_ENABLED=false`), ChromaDB 사이드카 필요, **모든 UI 표면에서 숨겨져 있습니다** — 직접 API 호출로만 도달 가능. 검색은 git-changes + 키워드로 degrade 되며 그쪽이 정상 경로이고 충분히 동작합니다. |
+| Vector DB / RAG (`learn` 잡) | **Experimental** | end-to-end로 연결돼 있지만 **기본 비활성 — 그리고 끄는 것을 권장합니다** (`ANT_VECTOR_DB_ENABLED=false`; ChromaDB 사이드카 필요; UI 미노출). 청킹 / 인덱싱 전략이 아직 튜닝되지 않아 인덱싱의 실익이 없습니다 — 프레임워크는 향후 조직 공유 vector DB 수요를 내다보고 미리 갖춰둔 것입니다. 꺼도 저하되는 것은 없습니다: 조회는 3단 체인(vector → git-changes → 키워드)입니다. `learn` 노드 자체는 DB가 꺼져 있어도 몫을 합니다 — 모든 잡이 끝날 때의 LLM 잡 요약과 세션 증류를 이 노드가 씁니다. |
 | 팀 / 조직 워크스페이스 | **미출시** | 계정 전환은 동작합니다. 팀 생성과 초대는 동작하지 않습니다. |
 | 매니지드 클라우드 (빌링, 크레딧, 배포 쿼터, 커스텀 도메인) | **미공개** | self-host 배포에서는 무력화된 no-op seam. |
 
@@ -362,10 +377,10 @@ Experimental 항목이 발목을 잡으면 이슈로 알려주세요 — 사람�
 
 ## 문서
 
-- **[로컬 모드](docs/ko/local-mode/)** — 자기 머신에서 설치 + 개발 (페르소나 A)
-- **[클라우드 모드](docs/ko/cloud-mode/)** — 매니지드 (페르소나 B) 또는 self-host (페르소나 C) 설치 + 개발
-- **[개념](docs/ko/concepts/)** — 아키텍처, 에이전트, 잡, 실행 tier, spec-driven 철학
-- **[가이드](docs/ko/guides/)** — 디자인 입력, 커스텀 프롬프트, 옵저버빌리티
+- **[로컬 모드](docs/local-mode/)** — 자기 머신에서 설치 + 개발 (페르소나 A)
+- **[클라우드 모드](docs/cloud-mode/)** — 매니지드 (페르소나 B) 또는 self-host (페르소나 C) 설치 + 개발
+- **[개념](docs/concepts/)** — 아키텍처, 에이전트, 잡, 실행 tier, spec-driven 철학
+- **[가이드](docs/guides/)** — 디자인 입력, 커스텀 프롬프트, 옵저버빌리티
 - **[English documentation](README.md)** — 영어 본문
 
 기여자용 (영문):
@@ -400,7 +415,7 @@ Anthropic / OpenAI / Google SDK, BullMQ, ioredis, Handlebars, Zod.
 
 | 영역 | 왜 좋은 진입점인가 |
 |---|---|
-| **문서 · 한↔영 미러** | [`docs/ko/`](docs/ko/)는 부분 번역이고 자체 README에 무엇이 빠졌는지 적혀 있습니다. 문서를 읽다가 헷갈린 부분을 고치는 게 가장 가치 있는 첫 PR입니다. |
+| **문서** | 문서를 읽다가 헷갈린 부분을 고치는 게 가장 가치 있는 첫 PR입니다. 문서는 영어로만 유지합니다 — 한국어는 최상위 [README.ko.md](README.ko.md) 하나뿐입니다. |
 | **LLM 프로바이더 어댑터** | 6개 중 3개가 OpenAI 호환 shim 경유입니다. 하나를 1급 클라이언트로 승격하는 작업은 범위가 명확하고 독립적입니다. |
 | **`visual` 잡 테스트** | `creator` 에이전트 그래프에 실행 테스트가 없습니다. 여기 추가되는 건 전부 순증 커버리지입니다. |
 | **프론트엔드 테스트** | `ant-ui`는 백엔드에 비해 커버리지가 얇습니다. |

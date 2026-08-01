@@ -1,4 +1,8 @@
-<h1 align="center">Ant</h1>
+<p align="center">
+  <img src="docs/assets/logo.png" width="120" alt="ANT logo">
+</p>
+
+<h1 align="center">ANT</h1>
 
 <p align="center"><b>The spec-driven AI engineering platform.</b></p>
 
@@ -144,6 +148,12 @@ are selectable per job and per node.
 Consent-gated providers require an explicit in-app data-privacy acknowledgement
 before they can be selected, because your prompts (which include your source
 code) leave for a third-party jurisdiction.
+
+Ant ships its own agent runtime, so there is **no router in the middle**.
+Three adapter families — Anthropic, OpenAI-compatible, and Gemini — speak to
+each vendor's API directly with your own key. You pay the provider's list
+price: no per-token markup, no request metering, and your prompts never
+transit a third party you didn't choose.
 
 Two caveats worth knowing before you pick: DeepSeek, GLM, and Kimi are wired
 through the OpenAI-compatible adapter rather than first-class clients, so
@@ -319,9 +329,13 @@ new verticals is a domain-registry change — no fork required.
   container locally, a Kubernetes Pod when `ANT_K8S_NAMESPACE` is set.
 - **Interruptible & resumable.** Jobs checkpoint after every phase — stop
   it, crash it, or close the lid, and the job resumes where it stopped.
+- **Hackable prompt surface.** Every agent prompt is a Handlebars template
+  on disk, auto-registered at startup — tune the agents for your codebase
+  ([guide](docs/guides/custom-prompts.md)).
 - **Self-hosted, cost-transparent.** Bring your own LLM key from any of six
-  providers, and see per-model token / cost / cache-hit breakdowns for every
-  job.
+  providers — the runtime speaks Anthropic, OpenAI-compatible, and Gemini
+  natively, straight to each vendor's endpoint with **no router markup** —
+  and see per-model token / cost / cache-hit breakdowns for every job.
 
 <!-- Drop the files into docs/assets/ and uncomment. See docs/assets/README.md.
 |  |  |
@@ -356,7 +370,7 @@ footnote.
 | Service connections & virtualization | **Beta** | Connection config, auto-detection, and mock adapters all ship and are tested. What's missing is a **verification gate proving a generated adapter matches the real service** — so test generated integration code against your actual backend before trusting it. |
 | `creator` agent / `visual` job | **Experimental** | **Google Gemini only** — needs `GEMINI_API_KEY` no matter which provider you use elsewhere. Background removal needs an optional sidecar. **No mid-graph resume**: an interruption restarts the job. The graph nodes have no execution tests. |
 | Game domain | **Experimental** | **Greenfield only** — the game-art tier is suppressed on existing codebases. Phaser only (3D is the `enable3d` extension, not a separate engine). The sprite-atlas hand-off between the design and visual jobs isn't closed, so production art is user-placed. |
-| `learn` job (vector indexing / RAG) | **Incomplete** | Off by default (`ANT_VECTOR_DB_ENABLED=false`), needs a ChromaDB sidecar, and is **hidden from every UI surface** — reachable by direct API call only. Retrieval degrades to git-changes + keyword search, which is the normal path and works fine. |
+| Vector DB / RAG (`learn` job) | **Experimental** | Wired end-to-end but **off by default — and we recommend leaving it off** (`ANT_VECTOR_DB_ENABLED=false`; needs a ChromaDB sidecar; hidden from the UI). The chunking / indexing strategy isn't tuned enough for indexing to pay off yet — the framework exists ahead of a future org-shared vector DB. Nothing degrades without it: retrieval is a 3-tier chain (vector → git-changes → keyword). The `learn` node itself still earns its keep with the DB off — it writes the LLM job summary and the session distillation every job ends with. |
 | Team / org workspaces | **Not shipped** | Account switching works. Team creation and invites do not. |
 | Managed cloud (billing, credits, deploy quota, custom domains) | **Not open** | Inert no-op seams in a self-hosted deployment. |
 
@@ -374,7 +388,7 @@ what people actually hit is more useful than a roadmap guess.
 - **[Reference](docs/reference/)** — CLI, env vars, API, shared types
 - **[First feature](docs/getting-started/first-feature.md)** — PRD → Design → Code walkthrough
 - **[Troubleshooting](docs/getting-started/troubleshooting.md)** — install-time and runtime hiccups
-- **[한국어 문서](docs/ko/)** — Korean mirror
+- **[한국어 README](README.ko.md)** — Korean readme (docs are English-only)
 
 For contributors:
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup, conventions, PR workflow
@@ -409,7 +423,7 @@ contribution lands with the least required context:
 
 | Area | Why it's a good entry point |
 |---|---|
-| **Docs & the Korean↔English mirror** | [`docs/ko/`](docs/ko/) is a partial translation and its README lists exactly what's missing. Reading a doc and fixing what confused you is the highest-value first PR there is. |
+| **Docs** | Reading a doc and fixing what confused you is the highest-value first PR there is. Docs are English-only — Korean exists only as the top-level [README.ko.md](README.ko.md). |
 | **LLM provider adapters** | Three of the six providers run through an OpenAI-compatible shim. Promoting one to a first-class client is well-scoped and self-contained. |
 | **Tests for the `visual` job** | The `creator` agent's graph has no execution tests. Anything here is net-new coverage. |
 | **Frontend tests** | `ant-ui` is thinly covered relative to the backend. |

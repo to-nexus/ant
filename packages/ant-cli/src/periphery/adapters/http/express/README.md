@@ -1,135 +1,135 @@
 # ExpressServerAdapter Refactoring
 
-## 개요
+## Overview
 
-ExpressServerAdapter를 서브모듈로 분할하여 각 모듈이 단일 책임을 가지도록 리팩토링했습니다.
+ExpressServerAdapter was refactored into submodules so that each module has a single responsibility.
 
-## 디렉토리 구조
+## Directory Structure
 
 ```
 express/
-├── ExpressServerAdapter.ts          # 메인 어댑터 (조합 클래스)
-├── index.ts                          # Export 파일
+├── ExpressServerAdapter.ts          # Main adapter (composition class)
+├── index.ts                          # Export file
 ├── types/
-│   └── index.ts                      # 공유 타입 정의
+│   └── index.ts                      # Shared type definitions
 ├── config/
-│   ├── ServerConfigurator.ts         # HTTP 서버 설정 (CORS, middleware, auth)
-│   ├── RouteConfigurator.ts          # 라우트 설정 및 등록
+│   ├── ServerConfigurator.ts         # HTTP server configuration (CORS, middleware, auth)
+│   ├── RouteConfigurator.ts          # Route configuration and registration
 │   └── index.ts
 ├── managers/
-│   ├── JobStateTracker.ts            # Job 상태 추적 (in-memory state)
-│   ├── JobExecutionManager.ts        # Job 실행 관리 (child process)
-│   ├── JobCleanupManager.ts          # Job 정리 및 세션 영속화
-│   ├── SessionFileWatcher.ts         # 세션 파일 감시
+│   ├── JobStateTracker.ts            # Job state tracking (in-memory state)
+│   ├── JobExecutionManager.ts        # Job execution management (child process)
+│   ├── JobCleanupManager.ts          # Job cleanup and session persistence
+│   ├── SessionFileWatcher.ts         # Session file watching
 │   └── index.ts
 ├── bridges/
-│   ├── WorkflowBridge.ts             # 워크플로우 상태 업데이트 브리지
+│   ├── WorkflowBridge.ts             # Workflow state update bridge
 │   └── index.ts
 ├── lifecycle/
-│   ├── ServerLifecycleManager.ts     # 서버 생명주기 (graceful shutdown)
+│   ├── ServerLifecycleManager.ts     # Server lifecycle (graceful shutdown)
 │   └── index.ts
 └── services/
-    └── ServiceInitializer.ts         # 서비스 의존성 초기화
+    └── ServiceInitializer.ts         # Service dependency initialization
 ```
 
-## 모듈별 책임
+## Responsibilities per Module
 
-### 1. ExpressServerAdapter (메인 어댑터)
-- 모든 서브모듈을 조합하여 Port 인터페이스 구현
-- 얇은 위임 레이어 (thin delegation layer)
-- 싱글톤 인스턴스 관리
+### 1. ExpressServerAdapter (main adapter)
+- Composes all submodules to implement the Port interface
+- Thin delegation layer
+- Singleton instance management
 
-### 2. ServerConfigurator (서버 설정)
-- CORS 설정
-- Body parser 설정
+### 2. ServerConfigurator (server configuration)
+- CORS configuration
+- Body parser configuration
 - Dev server & IDE proxy middleware
-- Cloud mode 인증 middleware
+- Cloud mode authentication middleware
 
-### 3. RouteConfigurator (라우트 설정)
-- 모든 API 엔드포인트 등록
-- Mode별 root route 처리
-- Internal endpoint 설정
+### 3. RouteConfigurator (route configuration)
+- Registers all API endpoints
+- Per-mode root route handling
+- Internal endpoint setup
 
-### 4. JobStateTracker (상태 추적)
-- Job 상태 in-memory 저장
-- Task queue snapshot 관리
-- Job-to-project mapping 관리
-- 상태 조회 및 업데이트 API
+### 4. JobStateTracker (state tracking)
+- In-memory storage of job state
+- Task queue snapshot management
+- Job-to-project mapping management
+- State query and update API
 
-### 5. JobExecutionManager (실행 관리)
-- Job 실행 시작 (executeJob)
-- Child process 생성 및 모니터링
+### 5. JobExecutionManager (execution management)
+- Starts job execution (executeJob)
+- Child process creation and monitoring
 - Log streaming
-- Exit handler (성공/실패/중단)
+- Exit handler (success/failure/interruption)
 
-### 6. JobCleanupManager (정리 관리)
-- Job 종료 시 cleanup
-- 세션 파일 업데이트
-- 중단된 task queue 복원
-- Interruption 정보 저장
-- 최종 Kanban broadcast
+### 6. JobCleanupManager (cleanup management)
+- Cleanup on job termination
+- Session file updates
+- Restoring interrupted task queues
+- Persisting interruption info
+- Final Kanban broadcast
 
-### 7. SessionFileWatcher (파일 감시)
-- 세션 파일 변경 감시
-- SSE 클라이언트 확인
+### 7. SessionFileWatcher (file watching)
+- Watches session file changes
+- Checks SSE clients
 
-### 8. WorkflowBridge (Kanban/FileTree 브리지)
+### 8. WorkflowBridge (Kanban/FileTree bridge)
 - Task queue update → Kanban broadcast (via Redis Pub/Sub)
-- File tree update 알림 (via Redis Pub/Sub)
-- Note: Workflow state 추적 (enterNode, exitNode 등)은 Job Worker의 WorkflowBroadcaster가 직접 처리
+- File tree update notifications (via Redis Pub/Sub)
+- Note: Workflow state tracking (enterNode, exitNode, etc.) is handled directly by the Job Worker's WorkflowBroadcaster
 
-### 9. ServerLifecycleManager (생명주기)
+### 9. ServerLifecycleManager (lifecycle)
 - Graceful shutdown
-- 실행 중인 job 저장
-- Child process 종료
-- 서비스 cleanup
-- Timeout 및 force shutdown
+- Saving running jobs
+- Terminating child processes
+- Service cleanup
+- Timeout and force shutdown
 
-### 10. ServiceInitializer (서비스 초기화)
-- 모든 의존성 서비스 생성
-- Mode별 서비스 구성
-- WorkspaceService, PortManager, IDEService 등 초기화
+### 10. ServiceInitializer (service initialization)
+- Creates all dependent services
+- Per-mode service composition
+- Initializes WorkspaceService, PortManager, IDEService, etc.
 
-## 장점
+## Benefits
 
-### 1. 단일 책임 원칙 (SRP)
-- 각 모듈이 하나의 명확한 책임을 가짐
-- 기능 추가/수정 시 관련 모듈만 변경
+### 1. Single Responsibility Principle (SRP)
+- Each module has one clear responsibility
+- Adding/modifying a feature only touches the relevant module
 
-### 2. 테스트 용이성
-- 각 모듈을 독립적으로 테스트 가능
-- Mock 의존성 주입 용이
+### 2. Testability
+- Each module can be tested independently
+- Easy to inject mock dependencies
 
-### 3. 가독성 향상
-- 2177줄 → 각 모듈 100-400줄
-- 기능별로 파일이 분리되어 이해하기 쉬움
+### 3. Readability
+- 2,177 lines → 100–400 lines per module
+- Files split by feature are easier to understand
 
-### 4. 확장성
-- 새로운 기능을 새 모듈로 추가 가능
-- 기존 코드에 영향 최소화
+### 4. Extensibility
+- New features can be added as new modules
+- Minimal impact on existing code
 
-### 5. 유지보수성
-- 버그 수정 시 관련 모듈만 확인
-- 의존성이 명확하게 정의됨
+### 5. Maintainability
+- Bug fixes only require inspecting the relevant module
+- Dependencies are clearly defined
 
-## 마이그레이션
+## Migration
 
-기존 코드:
+Old code:
 ```typescript
 import { ExpressServerAdapter } from '../periphery/adapters/http/ExpressServerAdapter';
 ```
 
-새 코드:
+New code:
 ```typescript
 import { ExpressServerAdapter } from '../periphery/adapters/http/express';
 ```
 
-기존 파일은 `ExpressServerAdapter.ts.backup`으로 백업되어 있습니다.
+The original file is backed up as `ExpressServerAdapter.ts.backup`.
 
-## 향후 개선 사항
+## Future Improvements
 
-1. **세션 파일 콜백 연결**: SessionService의 onSessionChange 콜백을 ExpressServerAdapter에서 제대로 연결
-2. **더 나은 타입 안정성**: `any` 타입을 구체적인 타입으로 대체
-3. **에러 처리 표준화**: 각 모듈의 에러 처리 패턴 통일
-4. **로깅 일관성**: 모든 모듈에서 동일한 로깅 패턴 사용
-5. **유닛 테스트**: 각 모듈별 테스트 케이스 작성
+1. **Wire up session file callbacks**: properly connect SessionService's onSessionChange callback in ExpressServerAdapter
+2. **Better type safety**: replace `any` types with concrete types
+3. **Standardized error handling**: unify error-handling patterns across modules
+4. **Logging consistency**: use the same logging pattern in all modules
+5. **Unit tests**: write test cases per module

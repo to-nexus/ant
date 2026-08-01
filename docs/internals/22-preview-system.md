@@ -1,130 +1,130 @@
 # Preview System
 
-## 개요
+## Overview
 
-Preview 시스템은 생성된 코드의 실시간 미리보기를 제공한다. 피처별로 독립된 Dev Server를 실행하고, 통합 프록시를 통해 브라우저에서 접근한다. Redis 기반 상태 관리로 Multi-Pod 환경을 지원한다.
+The Preview system provides a live preview of generated code. It runs an independent Dev Server per feature, accessed from the browser through a unified proxy. Redis-based state management supports multi-pod environments.
 
-## 키 구조
+## Key Structure
 
-| 형식 | 용도 | 예시 |
+| Format | Purpose | Example |
 |------|------|------|
-| Internal Key (Redis) | 내부 상태 관리 | `org:user:project:feature` |
-| URL Key (HTTP, 4-part) | 단일 frontend / 4-part 라우팅 | `org--user--project--feature` |
-| URL Key (HTTP, 5-part) | 멀티 frontend 패키지 / `ant-project` serviceName | `org--user--project--feature--apps-web` |
+| Internal Key (Redis) | Internal state management | `org:user:project:feature` |
+| URL Key (HTTP, 4-part) | Single frontend / 4-part routing | `org--user--project--feature` |
+| URL Key (HTTP, 5-part) | Multi-frontend packages / `ant-project` serviceName | `org--user--project--feature--apps-web` |
 
-URL Key는 콜론 대신 더블대시(`--`)를 사용한다. `toUrlKey()` / `toUrlKeyWithService()` / `fromUrlKey()` / `parseUrlKey()`가 SSOT이며 모두 `packages/ant-cli/src/periphery/adapters/http/services/PreviewService/utils/serverKeyUtils.ts`에 있다. `fromUrlKey()`는 항상 앞 4개만 internal key로 변환하며 `parseUrlKey()`가 5번째 세그먼트를 `serviceName`으로 추출한다.
+URL Keys use double dashes (`--`) instead of colons. `toUrlKey()` / `toUrlKeyWithService()` / `fromUrlKey()` / `parseUrlKey()` are the SSOT, all located in `packages/ant-cli/src/periphery/adapters/http/services/PreviewService/utils/serverKeyUtils.ts`. `fromUrlKey()` always converts only the first 4 segments into the internal key, and `parseUrlKey()` extracts the 5th segment as `serviceName`.
 
-### 5번째 세그먼트의 두 용도
+### Two Uses of the 5th Segment
 
-5-part URL Key는 두 시나리오에 동일 형식으로 쓰인다:
+The 5-part URL Key is used in the same format for two scenarios:
 
-1. **멀티 프런트엔드 패키지 접근**: 한 피처에 frontend 패키지가 2개 이상이면 각 패키지가 자체 5-part urlKey를 가진다. 하나는 entry, 나머지도 모두 자체 dev server에 직접 접근할 수 있어야 한다.
-2. **`ant-project` 서비스 연결**: 다른 피처의 특정 패키지를 호출할 때 (`@connection ... ant-project:{pid}:{feat}:{svc}`).
+1. **Multi-frontend package access**: when a feature has 2 or more frontend packages, each package gets its own 5-part urlKey. One is the entry, but all the others must also be directly reachable at their own dev servers.
+2. **`ant-project` service connections**: when calling a specific package of another feature (`@connection ... ant-project:{pid}:{feat}:{svc}`).
 
-두 용도 모두 5번째 세그먼트는 **반드시 `packageSlug(name)`이 만든 슬러그**여야 한다. 프록시는 슬러그로 정확 일치(exact match)만 시도하므로 raw name(`apps/web`)을 그대로 쓰면 매치되지 않는다. `PreviewServer.createDeployProxyMiddleware` / `previewProxy`는 입력단에서 `packageSlug()`로 정규화하여 legacy 입력도 자동 보정한다.
+In both uses, the 5th segment **must be the slug produced by `packageSlug(name)`**. The proxy attempts an exact match on the slug only, so using the raw name (`apps/web`) as-is will not match. `PreviewServer.createDeployProxyMiddleware` / `previewProxy` normalize inputs with `packageSlug()` at ingress, so legacy inputs are auto-corrected.
 
-### `packageSlug()` 규칙 (SSOT)
+### `packageSlug()` Rules (SSOT)
 
-| 입력 | 출력 |
+| Input | Output |
 |------|------|
 | `web` | `web` |
 | `apps/web` | `apps-web` |
 | `@scope/ui` | `scope-ui` |
-| `apps_web` | `appsweb` (밑줄은 strip) |
-| `apps---web` | `apps-web` (연속 하이픈 collapse) |
-| 빈 문자열 | `pkg` |
+| `apps_web` | `appsweb` (underscores are stripped) |
+| `apps---web` | `apps-web` (consecutive hyphens collapsed) |
+| Empty string | `pkg` |
 
-알고리즘: 슬래시 → `-`, 영숫자/하이픈 외 strip, 연속 하이픈 collapse, 양끝 trim, 빈 결과는 `pkg`로 폴백. `--` 출현이 절대 불가능하도록 보장하므로 5-part urlKey 파싱이 깨지지 않는다.
+Algorithm: slashes → `-`, strip anything other than alphanumerics/hyphens, collapse consecutive hyphens, trim both ends, fall back to `pkg` for an empty result. It guarantees `--` can never occur, so 5-part urlKey parsing never breaks.
 
-### Slug 충돌 처리
+### Slug Collision Handling
 
-`PreviewService.assignPackageUrlIdentity` / `DeployService.assignDeployIdentity`가 frontend 패키지 목록을 한 번에 받아 슬러그를 결정한다. 이미 사용된 슬러그가 또 나오면 `slug-2`, `slug-3`, … 단일 하이픈 접미사로 dedupe한다 (`--` 절대 미사용). 결과적으로 한 피처 내 모든 frontend는 unique slug를 갖는다.
+`PreviewService.assignPackageUrlIdentity` / `DeployService.assignDeployIdentity` receive the frontend package list all at once and decide the slugs. If an already-used slug appears again, it is deduped with single-hyphen suffixes `slug-2`, `slug-3`, … (`--` is never used). As a result, every frontend within a feature has a unique slug.
 
-## Redis 키 분리
+## Redis Key Separation
 
-Preview 상태는 두 개의 독립된 Redis 키에 저장된다:
+Preview state is stored in two independent Redis keys:
 
-| Redis 키 | 용도 | 수명 | 포함 데이터 |
+| Redis key | Purpose | Lifetime | Contained data |
 |----------|------|------|------------|
-| `PREVIEW` (`ant:infra:preview:{portKey}`) | 런타임 상태 | Preview 실행 중에만 존재. `stopPreview` 시 삭제 | running, phase, port, host, podId, packages, connections (w/ status), issues, restartRequired |
-| `PREVIEW_CONFIG` (`ant:infra:preview-config:{portKey}`) | 파생 캐시 | Preview 중지 후에도 유지 (TTL) | connections (status 없음), structureType, projectProfile (provenance 태그 포함) |
+| `PREVIEW` (`ant:infra:preview:{portKey}`) | Runtime state | Exists only while the preview is running. Deleted on `stopPreview` | running, phase, port, host, podId, packages, connections (w/ status), issues, restartRequired |
+| `PREVIEW_CONFIG` (`ant:infra:preview-config:{portKey}`) | Derived cache | Retained after the preview stops (TTL) | connections (without status), structureType, projectProfile (with provenance tag) |
 
-설계 원칙:
-- `PREVIEW`: 런타임 전용. connection의 `status` (active/unreachable/not-started)는 여기에만 저장.
-- `PREVIEW_CONFIG`: **파생 캐시이며 authority 가 아니다.** connections 는 `.env.example` / `.env` 에서, projectProfile / structureType 은 코드베이스 매니페스트에서 매 read 마다 재도출된다. 캐시값은 cross-pod read 와 워크스페이스 일시 unavailable 구간만 커버한다. **런타임 status 는 저장하지 않는다.**
-- 프론트엔드는 connections 만 merge (`config.connections` base + `previewStatus.connections` 의 status overlay). projectProfile 은 **merge 하지 않고 pick** — 아래 Project Profile 절 참고.
+Design principles:
+- `PREVIEW`: runtime-only. Connection `status` (active/unreachable/not-started) is stored here only.
+- `PREVIEW_CONFIG`: **a derived cache, not an authority.** Connections are re-derived on every read from `.env.example` / `.env`, and projectProfile / structureType from the codebase manifests. Cached values only cover cross-pod reads and windows where the workspace is temporarily unavailable. **Runtime status is never stored.**
+- The frontend merges connections only (`config.connections` base + status overlay from `previewStatus.connections`). projectProfile is **picked, not merged** — see the Project Profile section below.
 
-## 호스트 분리
+## Host Separation
 
-Preview는 별도 호스트(`ant-preview.example.com`)를 사용한다. 프레임워크가 네이티브 base path를 사용하더라도 일부 리소스(`<img src="/logo.svg">` 등)는 base path 없이 요청된다. 별도 호스트를 사용하면 호스트 기반 라우팅으로 이러한 요청도 ant-preview에 도달한다.
+Preview uses a dedicated host (`ant-preview.example.com`). Even when a framework uses its native base path, some resources (`<img src="/logo.svg">`, etc.) are requested without the base path. With a dedicated host, host-based routing ensures those requests still reach ant-preview.
 
-## 프록시 전략
+## Proxy Strategy
 
-모든 프레임워크가 네이티브 base path를 사용한다. 프록시는 단일 경로로 동작한다.
+All frameworks use their native base path. The proxy operates on a single path.
 
-### Main 경로
+### Main Path
 
-1. URL에서 urlKey 파싱 → `parseUrlKey()` → `{ tenantId, userId, projectId, feature, serviceName? }`
-2. Redis에서 `PreviewState`(host/port + `packages[]`) 조회
-3. 라우팅 우선순위(아래 표) 적용 → 최종 `{targetPort, targetPath}` 결정
-4. 응답 body를 stream pipe (변환/재작성 없음)
-5. preview cookie 설정 (`Path=/{urlKey}`)
+1. Parse urlKey from the URL → `parseUrlKey()` → `{ tenantId, userId, projectId, feature, serviceName? }`
+2. Look up `PreviewState` (host/port + `packages[]`) in Redis
+3. Apply the routing precedence (table below) → determine the final `{targetPort, targetPath}`
+4. Stream-pipe the response body (no transformation/rewriting)
+5. Set the preview cookie (`Path=/{urlKey}`)
 
-### 라우팅 우선순위
+### Routing Precedence
 
-| 우선순위 | 조건 | targetPort | targetPath |
+| Precedence | Condition | targetPort | targetPath |
 |---------|------|-----------|-----------|
-| 1 | `/{urlKey}/api/*` (4-part 또는 5-part 무관) | `getBackendPort()` 결과 | prefix strip |
-| 2-a | 5-part `serviceName`이 frontend pkg.slug와 일치 | 해당 `pkg.port` | prefix 유지 (frontend는 자체 basePath 보유) |
-| 2-b | 5-part `serviceName`이 backend/other pkg.slug와 일치 | 해당 `pkg.port` | prefix strip (basePath 없음) |
-| 2-c | 5-part `serviceName`이 어떤 pkg.slug와도 불일치 | (3)으로 fall-through | (3)으로 fall-through |
-| 3 | 4-part urlKey, frontend 존재 | entry frontend port | prefix 유지 |
-| 4 | frontend 없음 (backend-only deploy 등) | entry port | prefix strip |
+| 1 | `/{urlKey}/api/*` (regardless of 4-part or 5-part) | Result of `getBackendPort()` | prefix stripped |
+| 2-a | 5-part `serviceName` matches a frontend pkg.slug | that `pkg.port` | prefix kept (frontends have their own basePath) |
+| 2-b | 5-part `serviceName` matches a backend/other pkg.slug | that `pkg.port` | prefix stripped (no basePath) |
+| 2-c | 5-part `serviceName` matches no pkg.slug | fall through to (3) | fall through to (3) |
+| 3 | 4-part urlKey, frontend exists | entry frontend port | prefix kept |
+| 4 | No frontend (backend-only deploy, etc.) | entry port | prefix stripped |
 
-`/api/*`가 항상 (2)보다 우선한다. 사용자가 만든 슬러그는 영숫자+하이픈으로 제한되므로 `api`라는 리터럴 세그먼트와 충돌하지 않으며, `/api/*`는 fullstack 보편 계약이다.
+`/api/*` always takes precedence over (2). User-created slugs are restricted to alphanumerics + hyphens, so they cannot collide with the literal `api` segment, and `/api/*` is a universal fullstack contract.
 
-### Fallback 경로
+### Fallback Path
 
-urlKey가 없는 요청 (리소스 누출):
-1. Referer 헤더에서 urlKey 추출
-2. 실패 시: `__ant_preview_sk` 쿠키에서 추출
-3. `/{urlKey}` prepend 후 프록시
+Requests without a urlKey (leaked resources):
+1. Extract the urlKey from the Referer header
+2. On failure: extract it from the `__ant_preview_sk` cookie
+3. Prepend `/{urlKey}` and proxy
 
-## Base Path 설정
+## Base Path Configuration
 
-| 프레임워크 | 환경변수 | 설정 위치 |
+| Framework | Environment variable | Configured at |
 |-----------|---------|----------|
 | Vite (React/Vue) | `VITE_BASE_PATH` | `vite.config.ts` → `base` |
 | Next.js | `NEXT_PUBLIC_BASE_PATH` | `next.config.js` → `basePath` |
-| 공통 | `ANT_BASE_PATH` | 사용자 코드/플러그인용 fallback |
+| Common | `ANT_BASE_PATH` | Fallback for user code/plugins |
 
-`ProcessSpawner`가 Dev Server 프로세스 생성 시 환경변수를 자동 주입한다. 주입값은 `SpawnOptions.packageUrlKey`(SSOT)에서 파생되며, 단일 frontend는 4-part urlKey, 멀티 frontend는 각자 자기 패키지의 5-part urlKey가 된다. 따라서 멀티 frontend 시에도 각 패키지는 **자기 자신의 basePath만** 알며, 프록시가 동일한 5-part prefix를 그대로 보존(라우팅 표 우선순위 2-a)하여 동작한다.
+`ProcessSpawner` injects the environment variables automatically when spawning the Dev Server process. The injected value derives from `SpawnOptions.packageUrlKey` (SSOT): a single frontend gets the 4-part urlKey, while in multi-frontend setups each package gets its own 5-part urlKey. So even with multiple frontends, each package knows **only its own basePath**, and the proxy preserves the same 5-part prefix as-is (routing table precedence 2-a) to make it work.
 
-## 프로젝트 설정 검증 (Validator)
+## Project Configuration Validation (Validator)
 
-Preview 시작 시 프록시 환경 설정을 검증한다.
+Validates the proxy environment configuration at preview start.
 
-| Validator | 검증 항목 |
+| Validator | Checks |
 |-----------|----------|
 | ReactValidator | vite.config base + React Router basename |
 | VueValidator | vite.config base + Vue Router base |
-| NextValidator | next.config basePath + 환경변수 참조 |
+| NextValidator | next.config basePath + env var references |
 
-검증 실패 시: 서버 중단 → Redis에 issues 기록 → SSE로 UI에 브로드캐스트 → UI에 Fix 버튼 표시 → Fix 클릭 시 suggestedFix를 채팅에 자동 입력.
+On validation failure: stop the server → record issues in Redis → broadcast to the UI over SSE → show a Fix button in the UI → on Fix click, the suggestedFix is auto-inserted into chat.
 
-### 멀티 frontend 검증 범위
+### Multi-frontend Validation Scope
 
-`frontendCount > 1`이면 entry frontend뿐 아니라 **모든 frontend 패키지**에 대해 validator를 실행한다. Entry는 fatal severity로 실패 시 서버 중단을 유발하지만, 비-entry 패키지의 실패는 `severity: 'warning'`으로 격하되어 동일 Fix UI를 그대로 활용하면서 다른 frontend의 기동을 막지 않는다. 사용자는 멀티 frontend에서도 secondary 패키지의 잘못된 base path를 즉시 인지하고 고칠 수 있다.
+When `frontendCount > 1`, validators run not just for the entry frontend but for **every frontend package**. The entry fails with fatal severity, causing server shutdown, but non-entry package failures are downgraded to `severity: 'warning'` — reusing the same Fix UI while not blocking the other frontends from starting. Even in multi-frontend setups, users can immediately notice and fix a secondary package's wrong base path.
 
-## 코드 생성 가이드 (예방)
+## Code Generation Guidance (Prevention)
 
-프롬프트 템플릿이 AI의 올바른 설정을 유도한다:
-- `preview-setup.md`: 프레임워크별 base path 설정 원칙
-- `preview-env-contract.md`: 플랫폼 런타임 계약 (환경변수, 포트 바인딩)
+Prompt templates steer the AI toward correct configuration:
+- `preview-setup.md`: per-framework base path configuration principles
+- `preview-env-contract.md`: platform runtime contract (env vars, port binding)
 
-## 생명주기
+## Lifecycle
 
-### 상태 전이
+### State Transitions
 
 ```
 idle -> installing -> starting -> running -> stopped
@@ -133,59 +133,59 @@ idle -> installing -> starting -> running -> stopped
                       error <----- error
 ```
 
-### 시작 흐름
+### Start Flow
 
 1. POST /preview/projects/:id/start
-2. 분산 락 획득 (Redis SET NX, TTL 120s)
-3. Stale registry 정리 (이전 실행 잔재가 있으면 Docker infra 포함 정리)
-4. Orphan 프로세스 kill
-5. Redis에 초기 상태 등록 (phase: installing)
-6. 프로젝트 구조 감지
+2. Acquire distributed lock (Redis SET NX, TTL 120s)
+3. Clean up stale registry (if leftovers from a previous run exist, clean them up including Docker infra)
+4. Kill orphan processes
+5. Register initial state in Redis (phase: installing)
+6. Detect project structure
 7. npm install
-8. Docker infrastructure 시작 (docker compose up)
-9. Connection 상태 enrichment (docker running → status: active)
-10. Dev Server 기동 (`npm run dev --host 0.0.0.0`) — `spawnWithConflictRetry` 가 각 패키지마다 6s settling window 동안 조기 종료 여부를 감시
-11. Redis에 최종 상태 등록 (running, connections, packages)
-12. Validator 검증
-13. **Status summary 라인 emit** — `summarizePreviewSpawnOutcome(orderedPackages)` 가 settling window 동안 비-zero exit 한 패키지를 검사:
-    - 전부 살아있으면 `'✅ All preview servers started successfully!'` (stdout)
-    - 일부 죽었으면 `'❌ Preview started with N failed package(s): <list>'` (stderr)
-14. Health Check (최대 60초)
+8. Start Docker infrastructure (docker compose up)
+9. Connection status enrichment (docker running → status: active)
+10. Start the Dev Server (`npm run dev --host 0.0.0.0`) — `spawnWithConflictRetry` watches each package for early exit during a 6s settling window
+11. Register final state in Redis (running, connections, packages)
+12. Validator checks
+13. **Emit the status summary line** — `summarizePreviewSpawnOutcome(orderedPackages)` checks for packages that exited non-zero during the settling window:
+    - If all are alive: `'✅ All preview servers started successfully!'` (stdout)
+    - If some died: `'❌ Preview started with N failed package(s): <list>'` (stderr)
+14. Health check (up to 60 seconds)
 
-### Status summary 라인 contract (FE 상태 머신과의 계약)
+### Status Summary Line Contract (contract with the FE state machine)
 
-FE 의 preview 상태 머신 ([packages/ant-ui/.../FeatureSection/utils/preview.ts](../../packages/ant-ui/src/presentation/components/FeatureSection/utils/preview.ts)) 은 로그 스트림에서 `'All preview servers started'` 부분 문자열을 매치해 패키지 상태를 `'running'` 으로 전이한다. 이 라인이 모든 패키지가 healthy 한 경우에만 emit 되도록 게이트되어 있어, 일부 패키지가 settling window 안에 죽은 부분-실패 상태에서는 FE 가 잘못된 `'running'` 으로 가지 않는다 (per-package `'❌ <pkg> crashed within ${SETTLING_MS}ms (code N)'` 라인은 FE 가 별도로 추적). emit 결정의 SSOT 는 [`summarizePreviewSpawnOutcome`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/PreviewService.ts).
+The FE preview state machine ([packages/ant-ui/.../FeatureSection/utils/preview.ts](../../packages/ant-ui/src/presentation/components/FeatureSection/utils/preview.ts)) matches the `'All preview servers started'` substring in the log stream to transition package state to `'running'`. Because this line is gated to emit only when all packages are healthy, the FE does not incorrectly go to `'running'` in a partial-failure state where some packages died within the settling window (the per-package `'❌ <pkg> crashed within ${SETTLING_MS}ms (code N)'` lines are tracked separately by the FE). The SSOT for the emit decision is [`summarizePreviewSpawnOutcome`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/PreviewService.ts).
 
-### 중지 흐름
+### Stop Flow
 
 1. POST /preview/projects/:id/stop
-2. stoppingServers에 등록 (프로세스 exit를 "expected"로 분류하기 위함)
-3. Docker infrastructure 중지 (docker compose down -v)
-4. App 프로세스 kill (SIGTERM → wait for exit → SIGKILL fallback)
-5. **포트 기반 kill** (`lsof -i :port -t` → kill) — shell:true로 spawn하면 `sh → make → go binary` 트리가 생기므로, shell만 죽여서는 실제 바이너리가 포트를 계속 점유함. 각 패키지 포트에 바인딩된 프로세스를 직접 kill하여 OS 레벨 포트 해제 보장.
-6. Redis에서 connections 읽기 + 모든 패키지 포트 해제 (PortManager)
-7. Redis PREVIEW 키 삭제 (unregisterPreview)
-8. 로컬 상태 정리 (previewServers, previewServerPaths)
-9. SSE broadcast (connections를 not-started로 리셋하여 포함)
+2. Register in stoppingServers (to classify process exits as "expected")
+3. Stop Docker infrastructure (docker compose down -v)
+4. Kill app processes (SIGTERM → wait for exit → SIGKILL fallback)
+5. **Port-based kill** (`lsof -i :port -t` → kill) — spawning with shell:true creates an `sh → make → go binary` tree, so killing only the shell leaves the actual binary holding the port. Directly kill the processes bound to each package port to guarantee OS-level port release.
+6. Read connections from Redis + release all package ports (PortManager)
+7. Delete the Redis PREVIEW key (unregisterPreview)
+8. Clean up local state (previewServers, previewServerPaths)
+9. SSE broadcast (including connections reset to not-started)
 
-### 프로세스 크래시 흐름 (cleanupIfAllDead)
+### Process Crash Flow (cleanupIfAllDead)
 
-모든 프로세스가 예기치 않게 종료된 경우:
-1. Health check abort
-2. Docker infrastructure 중지
-3. 포트 해제
-4. Redis에서 connections를 not-started로 리셋 후 updatePreview
-5. updatePhase(error) → Redis에서 full state 읽어 SSE broadcast (connections 포함)
+When all processes have exited unexpectedly:
+1. Abort health check
+2. Stop Docker infrastructure
+3. Release ports
+4. Reset connections to not-started in Redis, then updatePreview
+5. updatePhase(error) → read full state from Redis and SSE-broadcast it (connections included)
 
 ### Graceful Shutdown (SIGTERM)
 
-Pod 종료 시 `PreviewServer.stop()` → `PreviewService.cleanup()` → 모든 실행 중인 preview에 대해 `stopPreview()` 호출.
+On pod termination: `PreviewServer.stop()` → `PreviewService.cleanup()` → call `stopPreview()` for every running preview.
 
-### EFS 파일 감시
+### EFS File Watching
 
-EFS(NFS)에서는 `inotify`가 작동하지 않는다. `ProcessSpawner`가 Dev Server 프로세스에 `CHOKIDAR_USEPOLLING=true`, `WATCHPACK_POLLING=true`를 자동 주입하여 해결한다.
+`inotify` does not work on EFS (NFS). `ProcessSpawner` solves this by automatically injecting `CHOKIDAR_USEPOLLING=true` and `WATCHPACK_POLLING=true` into Dev Server processes.
 
-## Fullstack 지원
+## Fullstack Support
 
 ```
 /{urlKey}/        -> Frontend (entry port)
@@ -195,272 +195,272 @@ EFS(NFS)에서는 `inotify`가 작동하지 않는다. `ProcessSpawner`가 Dev S
 
 ## Docker Infrastructure
 
-`InfrastructureManager`가 프로젝트의 docker-compose.yml을 감지하고 관리한다.
+`InfrastructureManager` detects and manages the project's docker-compose.yml.
 
-### 프로젝트 격리
+### Project Isolation
 
-Docker Compose 프로젝트 이름: `ant-{projectId}-{feature}`. 서로 다른 preview 인스턴스의 컨테이너가 충돌하지 않는다.
+Docker Compose project name: `ant-{projectId}-{feature}`. Containers of different preview instances never collide.
 
-### 시작 (startInfrastructure)
+### Start (startInfrastructure)
 
-1. docker-compose.yml 탐색 (yml, yaml, compose.yml, compose.yaml)
-2. Docker 가용성 확인 (docker info)
-3. Pre-cleanup: `docker compose down -v --remove-orphans` (이전 실행 잔재 제거, best-effort)
+1. Locate docker-compose.yml (yml, yaml, compose.yml, compose.yaml)
+2. Check Docker availability (docker info)
+3. Pre-cleanup: `docker compose down -v --remove-orphans` (remove leftovers from previous runs, best-effort)
 4. `docker compose up -d --wait --quiet-pull --force-recreate --remove-orphans`
-5. 타임아웃: 60초. 실패해도 앱 프로세스 시작은 계속 진행 (best-effort)
+5. Timeout: 60 seconds. Even on failure, app process startup continues (best-effort)
 
-### 중지 (stopInfrastructure)
+### Stop (stopInfrastructure)
 
-1. `docker compose down -v` (컨테이너 + 볼륨 모두 제거)
-2. 타임아웃: 30초. best-effort.
+1. `docker compose down -v` (remove both containers and volumes)
+2. Timeout: 30 seconds. Best-effort.
 
-### 상태 조회 (getInfraStatus)
+### Status Lookup (getInfraStatus)
 
-`docker compose ps --format json` → 서비스별 running/stopped/unhealthy 상태 반환.
+`docker compose ps --format json` → returns per-service running/stopped/unhealthy status.
 
-### 볼륨 전략
+### Volume Strategy
 
-`-v` 플래그로 매번 볼륨을 삭제한다. 개발 환경용이므로 데이터 영속성보다 깨끗한 시작을 우선한다.
+The `-v` flag deletes volumes on every run. Since this is a development environment, a clean start is prioritized over data persistence.
 
 ## Service Connections
 
-Preview Config UI의 "Service Connections" 섹션은 프로젝트의 모든 외부 서비스 의존성을 관리한다.
+The "Service Connections" section of the Preview Config UI manages all external service dependencies of a project.
 
-> 이 문서는 **런타임 connection 감지·관리**를 다룬다. 그 연결들이 어떻게 **생성**되고 (production+mock 어댑터 쌍), 토글로 mock 기동이 어떻게 **보장**되는지는 [38-service-virtualization.md](38-service-virtualization.md) 참고. `@connection` 문법·토글 네이밍·스캔은 단일 SSOT `core/serviceVirtualization/connectionModel.ts` 가 소유하며 본 시스템도 이를 소비한다.
+> This document covers **runtime connection detection and management**. For how those connections are **created** (production+mock adapter pairs) and how the toggle **guarantees** mock startup, see [38-service-virtualization.md](38-service-virtualization.md). The `@connection` syntax, toggle naming, and scanning are owned by the single SSOT `core/serviceVirtualization/connectionModel.ts`, which this system also consumes.
 
-### 감지 메커니즘
+### Detection Mechanism
 
-`ConnectionDetector`가 `.env.example`의 `@connection` 어노테이션을 파싱한다:
+`ConnectionDetector` parses `@connection` annotations in `.env.example`:
 
 ```env
-# @connection {category} {name}                              -- 외부 서비스
-# @connection {category} {name} self                         -- 동일 프로젝트 내부 연결
-# @connection {category} {name} ant-project:{pid}:{feat}     -- 크로스 프로젝트
-# @connection {category} {name} ant-project:{pid}:{feat}:{svc} -- 크로스 프로젝트 특정 서비스
+# @connection {category} {name}                              -- external service
+# @connection {category} {name} self                         -- internal connection within the same project
+# @connection {category} {name} ant-project:{pid}:{feat}     -- cross-project
+# @connection {category} {name} ant-project:{pid}:{feat}:{svc} -- cross-project, specific service
 ```
 
-- `self` 키워드: 같은 프로젝트의 다른 패키지를 참조 (fullstack FE→BE, 모노레포 내부). 프록시 경로가 자동 계산됨.
-- `enrichWithCompose()`: docker-compose.yml에서 infrastructure connection의 resolution을 `docker`로 업그레이드.
+- `self` keyword: references another package of the same project (fullstack FE→BE, intra-monorepo). The proxy path is computed automatically.
+- `enrichWithCompose()`: upgrades an infrastructure connection's resolution to `docker` based on docker-compose.yml.
 
-### Connection Status 라이프사이클
+### Connection Status Lifecycle
 
-Status 값: `active` | `unreachable` | `not-started` | undefined
+Status values: `active` | `unreachable` | `not-started` | undefined
 
-| 시점 | 동작 | 저장 위치 |
+| Moment | Behavior | Stored in |
 |------|------|----------|
-| ConnectionDetector.detect() | status 없이 생성 | - |
-| startPreview (infraStatus enrichment) | docker running → active | PREVIEW (런타임) |
-| detect-connections API | docker status로 enrichment, 응답에만 포함 | PREVIEW (런타임). PREVIEW_CONFIG에는 status 제외 |
-| stopPreview | 모든 connections → not-started | SSE broadcast |
-| cleanupIfAllDead | 모든 connections → not-started | PREVIEW (Redis update) → SSE broadcast |
+| ConnectionDetector.detect() | Created without status | - |
+| startPreview (infraStatus enrichment) | docker running → active | PREVIEW (runtime) |
+| detect-connections API | Enriched with docker status, included in the response only | PREVIEW (runtime). Status excluded from PREVIEW_CONFIG |
+| stopPreview | All connections → not-started | SSE broadcast |
+| cleanupIfAllDead | All connections → not-started | PREVIEW (Redis update) → SSE broadcast |
 
-프론트엔드 merge 규칙 (PreviewConfigEditor):
+Frontend merge rule (PreviewConfigEditor):
 ```
-base = config.connections (PREVIEW_CONFIG, status 없음)
-live = previewStatus.connections (PREVIEW/SSE, status 있음)
-display = live가 있으면 base에 live.status overlay, 없으면 base 그대로
+base = config.connections (PREVIEW_CONFIG, no status)
+live = previewStatus.connections (PREVIEW/SSE, with status)
+display = if live exists, overlay live.status onto base; otherwise base as-is
 ```
 
-### Resolution 타입 제약
+### Resolution Type Constraints
 
-| 카테고리 | 허용 resolution | 예시 |
+| Category | Allowed resolutions | Examples |
 |---------|----------------|------|
 | `infrastructure` | `url`, `docker` | DB, Redis, MQ |
-| `business` | `url`, `ant-project` | API, MSA 서비스 |
+| `business` | `url`, `ant-project` | API, MSA services |
 
-### 패키지별 스코핑
+### Per-package Scoping
 
-연결은 `source` 필드로 패키지에 소속된다. 모노레포에서 각 패키지는 자체 `.env.example`을 가진다.
+Connections belong to a package via the `source` field. In a monorepo, each package has its own `.env.example`.
 
-- Dedup 키: `${source}:${envVar}` (동일 envVar이 다른 패키지에서 공존 가능)
-- Env 주입: `ProcessSpawner`가 spawn 시 해당 패키지의 `source`에 맞는 connections만 필터링하여 주입
-- Config UI: 패키지별 그룹핑, 카테고리 뱃지(business/infrastructure), resolution 뱃지(url/docker/ant-project) 표시
+- Dedup key: `${source}:${envVar}` (the same envVar can coexist across different packages)
+- Env injection: at spawn time, `ProcessSpawner` filters and injects only the connections matching that package's `source`
+- Config UI: grouped per package, showing category badges (business/infrastructure) and resolution badges (url/docker/ant-project)
 
-### 감지 타이밍
+### Detection Timing
 
-- **자동 감지**: Config Panel 최초 열 때 레지스트리가 비어있으면 1회 실행 후 Redis에 캐싱
-- **수동 재감지**: "Auto Detect" 버튼 → POST /detect-connections → 파일시스템 재스캔. **소스 기준 재설정**(`preserveUserEdits=false`).
-- **Preview Start**: Redis 레지스트리에서만 읽기 (감지 실행 안 함)
-- **코드잡 완료 후 자동 새로고침**: `CONNECTIONS_REFRESH` pub/sub → 재감지. 단 `preserveUserEdits=true` — 사용자가 패널에서 바꿨지만 아직 `.env.example`에 영속 안 된(`userModified`) 편집을 덮어쓰지 않는다([`mergeDetectedWithSaved`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/mergeUserEdits.ts)). 소스가 편집을 따라잡으면(detected == saved) `userModified`를 해제해 "변경됨" 뱃지를 정리한다.
+- **Auto detection**: when the Config Panel is first opened and the registry is empty, runs once and caches to Redis
+- **Manual re-detection**: "Auto Detect" button → POST /detect-connections → filesystem re-scan. **Resets to source** (`preserveUserEdits=false`).
+- **Preview Start**: reads only from the Redis registry (no detection run)
+- **Auto refresh after code-job completion**: `CONNECTIONS_REFRESH` pub/sub → re-detect. But with `preserveUserEdits=true` — edits the user made in the panel that are not yet persisted to `.env.example` (`userModified`) are not overwritten ([`mergeDetectedWithSaved`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/mergeUserEdits.ts)). Once the source catches up with the edit (detected == saved), `userModified` is cleared, tidying up the "changed" badge.
 
-## Project Profile (구조유형 / 언어 / 프레임워크)
+## Project Profile (structure type / language / framework)
 
-**코드베이스가 SSOT다.** 감지는 매니페스트 (`package.json` / `pnpm-workspace.yaml` / `go.mod` / `go.work` / `requirements.txt` / `pyproject.toml` / `Cargo.toml` / `pom.xml` / `build.gradle` / `Makefile`) 만 읽는다 — 소스 트리나 `node_modules` 는 절대 walk 하지 않으므로 매 HTTP read 마다 실행해도 충분히 싸다. 별도 fingerprint 캐시는 두지 않는다 (`PREVIEW_CONFIG` 가 이미 캐시).
+**The codebase is the SSOT.** Detection reads only manifests (`package.json` / `pnpm-workspace.yaml` / `go.mod` / `go.work` / `requirements.txt` / `pyproject.toml` / `Cargo.toml` / `pom.xml` / `build.gradle` / `Makefile`) — it never walks the source tree or `node_modules`, so it is cheap enough to run on every HTTP read. No separate fingerprint cache is kept (`PREVIEW_CONFIG` already caches).
 
-| 레이어 | 파일 | 책임 |
+| Layer | File | Responsibility |
 |---|---|---|
-| 매니페스트 프리미티브 | [`detectors/manifest/`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/manifest) | `readManifests` / `languageFromManifests` / `frameworkFromManifests` / `canStartFromManifests` — language·framework·runnability 테이블의 단일 소유자 |
-| 단일 owner | [`ProjectProfileDetector`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ProjectProfileDetector.ts) | `detectFacts(root, fallback?)` → `{ structureType, profile, canStart, structure? }`. `structure` 를 되돌려주어 호출자가 구조 감지를 재실행하지 않는다 (요청당 파일시스템 1 pass) |
-| precedence | [`utils/projectFacts.ts`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/utils/projectFacts.ts) | `resolveProjectFacts` — `GET /status` 와 `GET /preview-config` 가 공유하므로 두 엔드포인트가 어긋날 수 없다 |
-| 계약 | [`@ant/shared/preview.ts`](../../packages/ant-shared/src/preview.ts) | `ProjectProfile` / `PreviewStructureType` / `isMoreAuthoritativeProfile` (BE·FE 공용 rank 규칙) |
+| Manifest primitives | [`detectors/manifest/`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/manifest) | `readManifests` / `languageFromManifests` / `frameworkFromManifests` / `canStartFromManifests` — the single owner of the language·framework·runnability tables |
+| Single owner | [`ProjectProfileDetector`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ProjectProfileDetector.ts) | `detectFacts(root, fallback?)` → `{ structureType, profile, canStart, structure? }`. Returns `structure` back so callers do not re-run structure detection (1 filesystem pass per request) |
+| Precedence | [`utils/projectFacts.ts`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/utils/projectFacts.ts) | `resolveProjectFacts` — shared by `GET /status` and `GET /preview-config`, so the two endpoints cannot diverge |
+| Contract | [`@ant/shared/preview.ts`](../../packages/ant-shared/src/preview.ts) | `ProjectProfile` / `PreviewStructureType` / `isMoreAuthoritativeProfile` (rank rules shared by BE and FE) |
 
-### Provenance 우선순위
+### Provenance Precedence
 
-`manifest` ⟩ `techtier-hint` ⟩ 없음. 프로파일은 **atomic bundle** 이며 provenance 를 넘어 field-merge 하지 않는다 — 매니페스트 결과에 framework 가 없으면 "framework 가 없다"는 뜻이고, hint 의 framework 를 빌려오지 않는다 (`language: go` + `framework: nextjs` 같은 키메라의 원인).
+`manifest` ⟩ `techtier-hint` ⟩ none. A profile is an **atomic bundle**; there is no field-merge across provenances — if the manifest result has no framework, that means "there is no framework", and the hint's framework is never borrowed (the cause of chimeras like `language: go` + `framework: nextjs`).
 
-- `techtier-hint` = 코드잡 decompose 의 `<techTier>` 추론. **그린필드 전용 stand-in** 으로, 코드가 생기는 순간 매니페스트가 이긴다. `PreviewBroadcaster` 는 provenance 없는 top-level `structureType` 을 발행하지 않는다 (`||` fallback 으로 부활해 진실을 덮는다).
-- FE 는 [`previewSlice.mergePreviewStatus`](../../packages/ant-ui/src/domain/store/slices/previewSlice.ts) 한 곳에서 rank 규칙을 적용한다 (strictly 낮은 provenance patch 만 거부; 동일 provenance 는 fresher 관측이므로 반영).
+- `techtier-hint` = the code job decompose's `<techTier>` inference. It is a **greenfield-only stand-in**; the moment code exists, the manifest wins. `PreviewBroadcaster` never publishes a provenance-less top-level `structureType` (it would resurrect via `||` fallback and mask the truth).
+- The FE applies the rank rules in a single place, [`previewSlice.mergePreviewStatus`](../../packages/ant-ui/src/domain/store/slices/previewSlice.ts) (only strictly-lower-provenance patches are rejected; same-provenance is a fresher observation and is applied).
 
-### 감지 타이밍
+### Detection Timing
 
-- **읽을 때마다**: `GET /status` · `GET /preview-config` 양쪽 모두 실행 여부와 무관하게 감지한다. `canStart` 만 busy (running/installing/starting) 로 게이팅된다.
-- **코드잡 완료 후 / Auto Detect**: `refreshProjectFacts` 가 connections 와 함께 프로파일·structureType 을 갱신하고 SSE status patch 로 푸시한다 (`CONNECTIONS_REFRESH` 채널 상수는 cross-process 계약이라 이름을 유지한다 — 핸들러 책임만 확장됐다).
-- **Preview Start**: 캐시된 프로파일을 authority 가 아닌 **fallback** 으로만 넘긴다.
+- **On every read**: both `GET /status` and `GET /preview-config` detect regardless of whether a preview is running. Only `canStart` is gated by busy (running/installing/starting).
+- **After code-job completion / Auto Detect**: `refreshProjectFacts` refreshes the profile and structureType along with connections and pushes an SSE status patch (the `CONNECTIONS_REFRESH` channel constant is a cross-process contract, so the name stays — only the handler's responsibility has grown).
+- **Preview Start**: the cached profile is passed only as a **fallback**, not as authority.
 
-### 다른 축과 혼동하지 말 것
+### Do Not Confuse with Other Axes
 
-- `CodebaseAnalyzer` / `EnvironmentDetector` — techTier **결정** 축. `SupportedLanguage = ['typescript','go']` 닫힌 enum 으로 prompt basis partial 을 키잉하므로 `python` 을 흘리면 존재하지 않는 partial 을 선택한다.
-- `BuildRunner.detectFramework` — 빌드 산출물 / env-var prefix 분류기 (`vite` → `VITE_`, `nextjs` → `NEXT_PUBLIC_`, `cra` → `REACT_APP_`). `vite` · `static` 은 프레임워크가 아니다.
+- `CodebaseAnalyzer` / `EnvironmentDetector` — the techTier **decision** axis. `SupportedLanguage = ['typescript','go']` is a closed enum that keys prompt basis partials, so leaking `python` selects a nonexistent partial.
+- `BuildRunner.detectFramework` — a build-artifact / env-var-prefix classifier (`vite` → `VITE_`, `nextjs` → `NEXT_PUBLIC_`, `cra` → `REACT_APP_`). `vite` and `static` are not frameworks.
 
-### Env 주입 우선순위 (ProcessSpawner)
+### Env Injection Precedence (ProcessSpawner)
 
-`spawn` 시 dev 서버에 넘기는 env는 다음 우선순위로 합성된다 (낮음 → 높음). 시작 시점에만 읽히므로, 저장된 변경을 반영하려면 재시작이 필요하다.
+The env passed to the dev server at `spawn` is composed with the following precedence (low → high). It is read only at start time, so applying saved changes requires a restart.
 
-| 순위 | 레이어 | 비고 |
+| Rank | Layer | Notes |
 |---|---|---|
-| 1 | `process.env` | 시스템 |
-| 2 | **mock 토글 기본값** (`USE_MOCK_<NAME>=true`) | SV §6 — business 연결마다 per-connection 주입. `.env`가 덮어쓸 수 있어 greenfield는 mock-on, 사용자 `=false`는 real |
-| 3 | `.env` / `.env.local` | 프로젝트/패키지 레벨 |
-| 4 | connection 값 (`envVar=value`) | url=실제 URL, ant-project=`/프록시경로` |
-| 5 | 플랫폼 강제 (`PORT`/`NODE_ENV`/폴링/basePath) | `.env`를 덮어씀 |
-| 6 | `extraEnv` | 호출자 오버라이드 |
+| 1 | `process.env` | System |
+| 2 | **Mock toggle defaults** (`USE_MOCK_<NAME>=true`) | SV §6 — injected per-connection for every business connection. `.env` can override, so greenfield is mock-on and a user's `=false` means real |
+| 3 | `.env` / `.env.local` | Project/package level |
+| 4 | Connection values (`envVar=value`) | url=actual URL, ant-project=`/proxy-path` |
+| 5 | Platform-enforced (`PORT`/`NODE_ENV`/polling/basePath) | Overrides `.env` |
+| 6 | `extraEnv` | Caller override |
 
-### 변경 반영 (재시작하여 적용)
+### Applying Changes (restart to apply)
 
-real↔virtual 토글(`PUT /virtualization-toggle`, `.env` 직접 기록)과 연결 설정 변경(`PUT /preview-config`, Redis 기록)은 모두 영속되지만, **구동 중 dev 서버는 spawn 시점 env를 캡처**했으므로 재-spawn 전까지 반영되지 않는다. 두 핸들러는 구동 중이면 `PreviewState.restartRequired=true`로 표시하고, FE는 기존 Restart 컨트롤에 "재시작하여 적용" 신호를 띄운다. `startPreview`가 신선한 env로 재기동하며 `restartRequired=false`로 클리어한다. (별도 재시작 버튼 없음 — 기존 Restart를 재사용.)
+Both the real↔virtual toggle (`PUT /virtualization-toggle`, written directly to `.env`) and connection config changes (`PUT /preview-config`, written to Redis) are persisted, but **a running dev server captured its env at spawn time**, so nothing takes effect until a re-spawn. Both handlers set `PreviewState.restartRequired=true` if a server is running, and the FE surfaces a "restart to apply" signal on the existing Restart control. `startPreview` restarts with fresh env and clears `restartRequired=false`. (No separate restart button — the existing Restart is reused.)
 
-### Cross-Project / Internal 연결
+### Cross-Project / Internal Connections
 
-- **Cross-Project**: `ant-project` resolution에 다른 프로젝트의 projectId/feature 지정 → 프록시 경로 자동 계산
-- **Same-Project (self)**: `ant-project` resolution에 자기 자신의 projectId/feature 지정 → 내부 프록시 경로 자동 계산. `.env.example`에서 `@connection business backend-api self`로 선언.
-- **Multi-package serviceName**: `ant-project` resolution에 serviceName을 추가로 지정하면 대상 프로젝트의 특정 패키지(서비스)로 라우팅. URL Key에 5번째 세그먼트로 인코딩됨. 사용자가 입력한 `serviceName`은 producer(`PreviewServer`의 preview-config 응답 빌더)에서 `packageSlug()`로 정규화되어 5-part urlKey에 박힌다. 따라서 `[serviceName=apps/web]`이라 적어도 실제 라우팅 슬러그는 `apps-web`이며, 해당 피처가 같은 슬러그로 자기 패키지를 등록해 두기만 하면 매치된다.
+- **Cross-project**: specify another project's projectId/feature in the `ant-project` resolution → the proxy path is computed automatically
+- **Same-project (self)**: specify its own projectId/feature in the `ant-project` resolution → the internal proxy path is computed automatically. Declared in `.env.example` as `@connection business backend-api self`.
+- **Multi-package serviceName**: additionally specifying a serviceName in the `ant-project` resolution routes to a specific package (service) of the target project. It is encoded as the 5th segment of the URL Key. The user-entered `serviceName` is normalized with `packageSlug()` at the producer (the preview-config response builder in `PreviewServer`) and baked into the 5-part urlKey. So even if you write `[serviceName=apps/web]`, the actual routing slug is `apps-web`, and it matches as long as that feature has registered its package under the same slug.
 
 ## Multi-Pod (K8s)
 
-### 기본 원칙
+### Basic Principles
 
-모든 상태는 Redis에만 존재한다 (Single Source of Truth). Dev Server는 `0.0.0.0`에서 listen하여 다른 Pod에서도 접근 가능하다. 어떤 Pod가 요청을 받아도 Redis에서 실제 Dev Server Pod IP를 조회하여 프록시한다. Sticky Session 불필요.
+All state lives only in Redis (Single Source of Truth). Dev Servers listen on `0.0.0.0` so they are reachable from other pods. Whichever pod receives a request looks up the actual Dev Server pod IP in Redis and proxies to it. No sticky sessions required.
 
-### 분산 락
+### Distributed Lock
 
-Preview start는 Redis 분산 락(SET NX, TTL 120s)으로 보호된다. ALB 라운드 로빈으로 동일 preview의 start 요청이 여러 Pod에 도달해도 하나만 실행된다.
+Preview start is protected by a Redis distributed lock (SET NX, TTL 120s). Even if ALB round-robin delivers start requests for the same preview to multiple pods, only one executes.
 
-### 프로세스 소유권
+### Process Ownership
 
-Preview의 실제 프로세스는 start를 실행한 Pod에서만 존재한다 (in-memory: `previewServers`, `previewServerPaths`).
+A preview's actual processes exist only on the pod that executed start (in-memory: `previewServers`, `previewServerPaths`).
 
-| 데이터 | 저장 위치 | Pod 크래시 시 |
+| Data | Stored in | On pod crash |
 |--------|----------|-------------|
-| ChildProcess 핸들 | In-memory (`previewServers`) | 소실 |
-| 프로젝트 경로 | In-memory (`previewServerPaths`) | 소실 |
-| PreviewState (port, host, podId) | Redis (`PREVIEW`) | 잔존 (TTL까지) |
-| Preview Config (connections 설정) | Redis (`PREVIEW_CONFIG`) | 잔존 (TTL까지) |
-| Docker 컨테이너 | Pod 로컬 Docker daemon | 고아로 잔존 |
+| ChildProcess handles | In-memory (`previewServers`) | Lost |
+| Project paths | In-memory (`previewServerPaths`) | Lost |
+| PreviewState (port, host, podId) | Redis (`PREVIEW`) | Survives (until TTL) |
+| Preview Config (connections settings) | Redis (`PREVIEW_CONFIG`) | Survives (until TTL) |
+| Docker containers | Pod-local Docker daemon | Left orphaned |
 
-### Cross-Pod Stop 시나리오
+### Cross-Pod Stop Scenario
 
-ALB 라운드 로빈으로 인해 stop 요청이 start를 실행한 Pod가 아닌 다른 Pod로 갈 수 있다:
+Due to ALB round-robin, a stop request may reach a pod other than the one that executed start:
 
-1. Stop Pod는 `previewServers`에 프로세스가 없음
-2. Redis에서 `running=true` 확인 → stop 진행
-3. `previewServerPaths`에 localPath 없음 → **Docker 인프라 중지 불가**
-4. Redis 상태만 정리 (unregisterPreview)
+1. The stop pod has no process in `previewServers`
+2. Confirms `running=true` in Redis → proceeds with stop
+3. No localPath in `previewServerPaths` → **cannot stop Docker infrastructure**
+4. Cleans up only the Redis state (unregisterPreview)
 
-이를 보완하기 위해 `startInfrastructure`에 pre-cleanup이 포함되어 있다. 다음 start 시 이전 실행의 stale Docker 컨테이너/볼륨을 자동 정리한다.
+To compensate, `startInfrastructure` includes a pre-cleanup. On the next start, stale Docker containers/volumes from the previous run are cleaned up automatically.
 
-### Pod 크래시/Rolling Update
+### Pod Crash / Rolling Update
 
-1. SIGTERM 수신 → `cleanup()` → 모든 preview에 `stopPreview()` (Docker 포함 정리)
-2. OOMKill/강제종료 → cleanup 미실행 → Docker 컨테이너와 Redis 상태가 고아로 잔존
-3. 복구: 다음 startPreview 시 stale registry 감지 → Docker infra 정리 + unregisterPreview
+1. SIGTERM received → `cleanup()` → `stopPreview()` for all previews (cleanup including Docker)
+2. OOMKill/forced termination → cleanup not executed → Docker containers and Redis state left orphaned
+3. Recovery: the next startPreview detects the stale registry → cleans up Docker infra + unregisterPreview
 
-### Pod 인덱스
+### Pod Index
 
-`PREVIEW_BY_POD:{podId}` Set으로 Pod별 preview 목록을 관리한다. Pod 정리 작업에서 활용 가능.
+A `PREVIEW_BY_POD:{podId}` Set tracks the previews per pod. Usable in pod cleanup tasks.
 
-## 포트 범위
+## Port Ranges
 
-| 용도 | 범위 |
+| Purpose | Range |
 |------|------|
 | Preview Dev Server | 30000-39999 |
 | Cloud IDE | 40000-49999 |
 | Deploy Static Server | 50000-54999 |
 
-`PortManager`가 동적 할당을 관리한다.
+`PortManager` manages dynamic allocation.
 
 ## Deploy (Static Build Serving)
 
-Deploy는 Preview와 별개의 서빙 경로다. 사용자가 "Deploy" 버튼을 누르면 피처의 프로덕션 빌드를 실행하고, 그 산출물을 정적 서버로 서빙한다. URL은 `/deploy/{urlKey}/...` 형식이며 동일한 `ant-preview` 프로세스 안의 별도 프록시 미들웨어가 처리한다.
+Deploy is a serving path separate from Preview. When the user clicks the "Deploy" button, the feature's production build runs and the artifacts are served by a static server. The URL takes the form `/deploy/{urlKey}/...` and is handled by a separate proxy middleware within the same `ant-preview` process.
 
-Deploy는 Preview와 동일한 멀티 패키지 모델을 따른다 — 슬러그 SSOT(`packageSlug()`), 5-part urlKey, `packages[]` 데이터 모델, 라우팅 우선순위까지 공유한다. 차이는 (1) 정적 산출물을 띄운다는 것, (2) `.deploy/meta.json`이 source of truth라는 점뿐이다.
+Deploy follows the same multi-package model as Preview — sharing the slug SSOT (`packageSlug()`), 5-part urlKeys, the `packages[]` data model, and even the routing precedence. The only differences are (1) it serves static artifacts, and (2) `.deploy/meta.json` is the source of truth.
 
 ### Visibility (public / private)
 
-각 배포는 `visibility: 'public' | 'private'` 를 가진다 (기본 `public`, individual·team 공통). `.deploy/meta.json` 과 `DeployState` 에 영속되어 rehydrate 후에도 유지된다. `private` 이면 deploy 프록시가 접근을 게이팅한다 — urlKey 에 박힌 소유자 `(tenantId,userId)` 와 JWT 쿠키의 `org`/`sub` 가 일치할 때만 통과. 불일치/무쿠키/무효 토큰은 **진짜 not-found 와 바이트 동일한 404** 를 반환한다 (403 금지 — 존재 유출 방지). 로컬 모드(jwtService 부재)는 단일 테넌트이므로 owner-accessible 로 간주. HTTP 프록시와 WS 업그레이드 경로 양쪽에 대칭 적용된다. 전체 정책: [40-org-model.md](40-org-model.md).
+Each deploy has `visibility: 'public' | 'private'` (default `public`, common to individual and team). It is persisted in `.deploy/meta.json` and `DeployState`, surviving rehydration. If `private`, the deploy proxy gates access — passing only when the owner `(tenantId,userId)` baked into the urlKey matches the JWT cookie's `org`/`sub`. A mismatch / missing cookie / invalid token returns a **404 byte-identical to a genuine not-found** (no 403 — prevents existence leakage). Local mode (no jwtService) is single-tenant and thus treated as owner-accessible. This applies symmetrically to both the HTTP proxy and the WS upgrade path. Full policy: [40-org-model.md](40-org-model.md).
 
-### Phase 모델
+### Phase Model
 
-| Phase | 의미 | 프로세스 | 메타 | 자동 복구 |
+| Phase | Meaning | Process | Meta | Auto recovery |
 |-------|------|---------|------|----------|
-| `idle` | 배포 이력 없음 | - | - | 사용자가 deploy |
-| `building` | `npm run build` 진행 중 | 빌드 프로세스 | - | - |
-| `deploying` | 빌드 완료 → static server 기동 중 (최초 배포) | - | - | - |
-| `running` | 정상 서빙 | static server alive | meta.json 존재 | - |
-| `hibernated` | 산출물은 있으나 프로세스 없음 | - | meta.json 존재 | URL 접근 시 자동 기동 |
-| `starting` | Lazy re-hydration 중 | spawn 진행 | meta.json 존재 | - |
-| `unavailable` | 산출물도 없음 | - | - | 사용자가 재배포 |
-| `error` | 빌드/서빙 실패 | - | 불확실 | 사용자가 재배포 |
-| `stopped` | 사용자가 중지 | - | 삭제됨 | 사용자가 재배포 |
+| `idle` | No deploy history | - | - | User deploys |
+| `building` | `npm run build` in progress | Build process | - | - |
+| `deploying` | Build done → static server starting (first deploy) | - | - | - |
+| `running` | Serving normally | static server alive | meta.json exists | - |
+| `hibernated` | Artifacts exist but no process | - | meta.json exists | Auto-start on URL access |
+| `starting` | Lazy re-hydration in progress | spawn in progress | meta.json exists | - |
+| `unavailable` | No artifacts either | - | - | User redeploys |
+| `error` | Build/serving failure | - | Uncertain | User redeploys |
+| `stopped` | Stopped by the user | - | Deleted | User redeploys |
 
-### 사망 경로
+### Death Paths
 
-멀티 패키지에서는 `activeDeploys[key]`가 N개의 `StaticServerHandle` 배열이다. 사망/복구 경로는 모두 패키지 단위로 적용된다.
+With multiple packages, `activeDeploys[key]` is an array of N `StaticServerHandle`s. Death/recovery paths all apply per package.
 
-| 경로 | 트리거 | 결과 | 복구 |
+| Path | Trigger | Result | Recovery |
 |------|-------|------|------|
-| Pod rolling update | `ant-preview` 배포 시 (`main/dev/ci/*` push) | 모든 패키지의 `activeDeploys` 핸들 + static server 프로세스 소실 | `cleanupStaleDeploys()`가 시작 시 `pkg.phase: running→hibernated` (또는 `error`) 전환 |
-| Process crash / OOM | 특정 패키지 static server 자식 프로세스만 죽음 | Redis entry는 남지만 해당 패키지 fetch 실패 | 프록시가 fetch 실패 시 `hibernated` 표시 + 1회 `ensureRunning` 재시도 |
-| Idle eviction | `ANT_DEPLOY_IDLE_TTL_MS` 초과 | `startIdleEviction`이 **모든 패키지** 핸들 정리 + 각 패키지 포트 해제 + phase `hibernated` broadcast | URL 접근 시 `ensureRunning`이 모든 패키지 재기동 |
-| Redis TTL 만료 | 7일 무접근 | Redis entry 삭제 | meta.json이 남아있다면 `ensureRunning`이 모든 패키지 재등록 |
+| Pod rolling update | On `ant-preview` deployment (`main/dev/ci/*` push) | All packages' `activeDeploys` handles + static server processes lost | `cleanupStaleDeploys()` at startup transitions `pkg.phase: running→hibernated` (or `error`) |
+| Process crash / OOM | Only a specific package's static server child dies | Redis entry remains but fetches to that package fail | On fetch failure the proxy marks `hibernated` + retries `ensureRunning` once |
+| Idle eviction | `ANT_DEPLOY_IDLE_TTL_MS` exceeded | `startIdleEviction` cleans up **all packages'** handles + releases each package's port + broadcasts phase `hibernated` | On URL access, `ensureRunning` restarts all packages |
+| Redis TTL expiry | 7 days without access | Redis entry deleted | If meta.json remains, `ensureRunning` re-registers all packages |
 
 ### Lazy Re-hydration
 
-EFS `/mnt/workspaces`가 ReadWriteMany이므로 각 `pkg.buildOutputDir`는 pod 교체 후에도 살아있다. 재빌드 없이 static server만 다시 띄우면 복구 가능하다.
+Since EFS `/mnt/workspaces` is ReadWriteMany, each `pkg.buildOutputDir` survives pod replacement. Recovery is possible by just restarting the static server, without rebuilding.
 
 ```
-Browser → /deploy/{urlKey}/*  또는  /deploy/{urlKey}--{slug}/*
+Browser → /deploy/{urlKey}/*  or  /deploy/{urlKey}--{slug}/*
   PreviewServer.createDeployProxyMiddleware
     → parseUrlKey() → {projectId, feature, serviceName?}
     → DeployService.ensureRunning()
-        1) Redis + activeDeploys 체크 → hit 시 그대로 프록시
-        2) miss 시 per-key in-memory lock 획득
-        3) workspacePath/.deploy/meta.json 읽기 (v1은 v2로 자동 lift)
-           - 없으면 phase='unavailable' broadcast → 404
-           - 있으면 phase='starting' broadcast
-        4) meta.packages[]를 모두 순회: 각 패키지마다 포트 할당 + startStaticServer
+        1) Check Redis + activeDeploys → on hit, proxy as-is
+        2) On miss, acquire a per-key in-memory lock
+        3) Read workspacePath/.deploy/meta.json (v1 is auto-lifted to v2)
+           - if absent: phase='unavailable' broadcast → 404
+           - if present: phase='starting' broadcast
+        4) Iterate all meta.packages[]: allocate a port + startStaticServer per package
         5) registerDeploy + phase='running' broadcast
-    → resolvePackagePort: serviceName(slug) 매치 → 그 패키지 port. 미매치/4-part는 entry pkg port.
-    → fetch → 성공 시 touchDeploy (lastAccessedAt + TTL 갱신)
-    → 실패 시 phase='hibernated' 갱신 + 1회 ensureRunning 재시도 → 여전히 실패면 phase='unavailable' + 502
+    → resolvePackagePort: serviceName(slug) match → that package's port. No match/4-part → entry pkg port.
+    → fetch → on success touchDeploy (refresh lastAccessedAt + TTL)
+    → on failure: update phase='hibernated' + retry ensureRunning once → if still failing, phase='unavailable' + 502
 ```
 
-### 멀티 패키지 Deploy
+### Multi-package Deploy
 
-`DeployService.startDeploy`는 `ProjectStructureDetector`를 재사용해 모든 frontend 패키지를 찾고 `assignDeployIdentity`로 슬러그/urlKey를 부여한다. 각 패키지마다 별도 포트를 할당하고 빌드/static server를 **직렬로** 띄운다. 빌드 실패 패키지는 자기 phase만 `error`가 되고 나머지는 진행한다.
+`DeployService.startDeploy` reuses `ProjectStructureDetector` to find all frontend packages and assigns slugs/urlKeys via `assignDeployIdentity`. Each package gets its own port, and build/static server startup runs **serially** per package. A package whose build fails gets `error` only for its own phase; the rest proceed.
 
-| 항목 | 단일 패키지 | 멀티 패키지 |
+| Item | Single package | Multi-package |
 |------|-------------|-------------|
-| URL Key | 4-part `{urlKey}` | 패키지마다 5-part `{urlKey}--{slug}` |
-| basePath | `/deploy/{4-part}` | `/deploy/{5-part}` (패키지별) |
-| 포트 | 1개 | N개 (각 패키지) |
-| 최상위 `status.url` | 그 url | `null` (FE는 `packages[].url` 사용) |
-| `aggregatePhase` | 패키지 phase 그대로 | error 우선 → building → deploying → starting → all-running 등 |
+| URL Key | 4-part `{urlKey}` | 5-part `{urlKey}--{slug}` per package |
+| basePath | `/deploy/{4-part}` | `/deploy/{5-part}` (per package) |
+| Ports | 1 | N (one per package) |
+| Top-level `status.url` | that url | `null` (FE uses `packages[].url`) |
+| `aggregatePhase` | package phase as-is | error first → building → deploying → starting → all-running, etc. |
 
-FE는 `DeployStatus.packages[]`를 받아 패키지별 "Open" 버튼을 그린다. 단일 패키지는 기존 단일 버튼 UX 유지.
+The FE receives `DeployStatus.packages[]` and renders a per-package "Open" button. Single-package deploys keep the existing single-button UX.
 
-### 영속 저장소: `.deploy/meta.json` (v2)
+### Persistent Store: `.deploy/meta.json` (v2)
 
-`workspacePath/.deploy/meta.json`이 재기동에 필요한 모든 정보를 담는다. Redis는 캐시일 뿐, meta.json이 **source of truth**다.
+`workspacePath/.deploy/meta.json` holds everything needed for restart. Redis is only a cache; meta.json is the **source of truth**.
 
 ```json
 {
@@ -486,30 +486,30 @@ FE는 `DeployStatus.packages[]`를 받아 패키지별 "Open" 버튼을 그린�
 }
 ```
 
-`DeployMetaStore.write`는 tmp 파일로 쓴 뒤 atomic rename으로 교체한다. `stopDeploy`는 meta.json을 삭제한다. `ensureRunning`은 meta.json이 있어도 각 `pkg.buildOutputDir`이 실제로 존재하는지 별도로 확인한다 — 없으면 `unavailable`로 전환하고 meta도 제거.
+`DeployMetaStore.write` writes to a tmp file and swaps it in with an atomic rename. `stopDeploy` deletes meta.json. `ensureRunning` separately verifies that each `pkg.buildOutputDir` actually exists even when meta.json is present — if not, it transitions to `unavailable` and removes the meta as well.
 
-#### v1 → v2 in-memory 자동 lift
+#### v1 → v2 In-memory Auto-lift
 
-기존 단일 패키지 deploy는 `version: 1`로 저장되어 있다. `DeployMetaStore.read()`가 v1을 읽으면 메모리에서 v2 형태로 변환해 반환한다 (디스크는 v1 그대로). slug는 `'root'`로 고정 — v1은 정의상 단일 패키지라 충돌 가능성이 없다. 다음 `write()` 시점에 v2로 덮어쓰여 forward-only 마이그레이션이 완료된다.
+Existing single-package deploys are stored as `version: 1`. When `DeployMetaStore.read()` reads a v1, it converts it to v2 shape in memory and returns that (the disk stays v1). The slug is fixed to `'root'` — a v1 is by definition single-package, so no collision is possible. On the next `write()`, it is overwritten as v2, completing the forward-only migration.
 
-### Per-feature UI 상태 분리
+### Per-feature UI State Separation
 
-프론트엔드의 `deploySlice`는 `Record<featureKey, PerFeatureDeployState>` 구조다. `featureKey = "${projectId}:${featureName}"`. 피처를 전환해도 각 피처의 `status/logs/isLoading`이 독립적으로 유지되어 **다른 피처의 빌드 로그가 보이는 현상이 발생하지 않는다**.
+The frontend's `deploySlice` is structured as `Record<featureKey, PerFeatureDeployState>`, with `featureKey = "${projectId}:${featureName}"`. Switching features keeps each feature's `status/logs/isLoading` independent, so **another feature's build logs never bleed through**.
 
-SSE 핸들러는 이중 안전장치를 둔다:
-1. `SSEManager.connect(projectId, feature)`의 EventSource URL이 피처 단위로 재연결되므로 서버가 이미 피처별로 필터링.
-2. 추가로 핸들러 콜백에서 `selectedProject/Feature`와 비교하여 과도기 이벤트 차단.
+The SSE handler has a double safety net:
+1. The EventSource URL of `SSEManager.connect(projectId, feature)` reconnects per feature, so the server already filters per feature.
+2. Additionally, the handler callback compares against `selectedProject/Feature` to block transitional events.
 
-또한 탭 포커스가 돌아올 때(`visibilitychange`) `getDeployStatus`를 호출해 stale `running`을 교정한다 (pod이 재기동 되었거나 idle evict 되었을 수 있음).
+Also, when tab focus returns (`visibilitychange`), `getDeployStatus` is called to correct a stale `running` (the pod may have restarted or been idle-evicted).
 
-### 환경 변수
+### Environment Variables
 
-| 변수 | 기본값 | 설명 |
+| Variable | Default | Description |
 |------|--------|------|
-| `ANT_DEPLOY_IDLE_TTL_MS` | `86400000` (24시간) | 이 시간 동안 트래픽이 없으면 static server 프로세스만 정리하고 phase='hibernated' 전환 |
+| `ANT_DEPLOY_IDLE_TTL_MS` | `86400000` (24 hours) | If no traffic for this duration, only the static server process is cleaned up and the phase transitions to 'hibernated' |
 
-## 경계
+## Boundaries
 
-- Redis 상태 규약: [02-infrastructure.md](02-infrastructure.md)
-- 프롬프트 템플릿: [13-prompt-system.md](13-prompt-system.md)
+- Redis state conventions: [02-infrastructure.md](02-infrastructure.md)
+- Prompt templates: [13-prompt-system.md](13-prompt-system.md)
 - Cloud IDE: [23-cloud-ide.md](23-cloud-ide.md)

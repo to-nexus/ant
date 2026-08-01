@@ -1,99 +1,99 @@
 # Code Job
 
-## 개요
+## Overview
 
-Code Job은 사용자의 directive를 받아 소스 코드를 생성하는 architect 에이전트의 LangGraph 그래프이다. 태스크 분해 -> 계획 -> 코드 생성 -> 검증의 흐름으로 동작하며, 태스크 단위 중단/재개를 지원한다.
+The Code Job is the architect agent's LangGraph graph that takes a user's directive and generates source code. It operates in the flow task decomposition -> planning -> code generation -> verification, and supports task-level interruption/resumption.
 
-### 인텐트와 mode — rev-code 폐기 (2026-07)
+### Intents and Mode — rev-code Retired (2026-07)
 
-코드 패밀리 인텐트는 `gen-code-sys` / `gen-code-spec` / `gen-code-directive` / `explain-code` 4개다. `rev-code`(refactor mode)는 폐기됐다 — 코드잡의 target은 항상 codebase 하나라 "새 문서 vs 기존 문서 편집"이라는 rev/gen 축이 존재하지 않고, generate/refactor는 티어·툴셋·태스크 shape 전 층위에서 동일 취급이었다. 코드잡의 mode는 사실상 **write(`generate`) vs read-only(`explain`)** 2값이다 (`Mode` 타입 자체는 design/plan rev-* 용으로 3값 유지).
+The code-family intents are the 4 of `gen-code-sys` / `gen-code-spec` / `gen-code-directive` / `explain-code`. `rev-code` (refactor mode) was retired — the code job's target is always the single codebase, so the rev/gen axis ("new document vs editing an existing document") doesn't exist, and generate/refactor were treated identically at every layer: tiers, tool sets, and task shape. The code job's mode is effectively a 2-value **write (`generate`) vs read-only (`explain`)** (the `Mode` type itself keeps 3 values for design/plan rev-* intents).
 
-기존 코드 처우는 인텐트가 아닌 **워크스페이스 presence**가 결정한다:
+Treatment of existing code is decided by **workspace presence**, not by intent:
 
-- `hasCodebase=true`면 code gen 인텐트에 `codebaseSlot('context', {auto:true})`가 동적 주입되고 (`CODEBASE_CONTEXT_INTENTS`), `codebase-channel` + [`existing-code-discipline`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/existing-code-discipline.md) partial(동작 보존 / blast radius 최소화 / 인터페이스 유지)이 decompose(existing-code-check wrapper 경유)·plan(base.md include)·execute(AutoInjectionResolver)에 주입된다.
-- **fresh-build clarify 게이트**: 기존 코드가 있는데 directive가 "처음부터 새로"를 요구하고 기존 코드 처우를 명시하지 않으면, decompose의 existing-code-check가 `<clarify>`로 extend vs replace를 질문한다 (기존 decompose clarify 배관 재사용, `clarifyActive` 게이트).
-- 레거시 호환: 영속 상태의 `rev-code`는 `LEGACY_INTENT_ALIASES`(`@ant/shared/actions.ts`)가 `deriveFromIntent`/`resolveToRAC` 진입부에서 `gen-code-directive`로 정규화한다.
+- When `hasCodebase=true`, code gen intents get `codebaseSlot('context', {auto:true})` dynamically injected (`CODEBASE_CONTEXT_INTENTS`), and the `codebase-channel` + [`existing-code-discipline`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/existing-code-discipline.md) partial (behavior preservation / minimal blast radius / interface preservation) is injected into decompose (via the existing-code-check wrapper), plan (base.md include), and execute (AutoInjectionResolver).
+- **Fresh-build clarify gate**: when existing code is present but the directive demands "start over from scratch" without specifying how the existing code should be treated, decompose's existing-code-check asks extend vs replace via `<clarify>` (reusing the existing decompose clarify plumbing, gated by `clarifyActive`).
+- Legacy compatibility: `rev-code` in persisted state is normalized to `gen-code-directive` by `LEGACY_INTENT_ALIASES` (`@ant/shared/actions.ts`) at the entry points of `deriveFromIntent`/`resolveToRAC`.
 
-회귀 가드: [`tests/prompt/existing-code-discipline.test.ts`](../../packages/ant-cli/tests/prompt/existing-code-discipline.test.ts), [`tests/core/rac.test.ts`](../../packages/ant-cli/tests/core/rac.test.ts) (alias), [`tests/prompt/injection-resolution-matrix.test.ts`](../../packages/ant-cli/tests/prompt/injection-resolution-matrix.test.ts) (presence 주입 + retired mode trigger).
+Regression guards: [`tests/prompt/existing-code-discipline.test.ts`](../../packages/ant-cli/tests/prompt/existing-code-discipline.test.ts), [`tests/core/rac.test.ts`](../../packages/ant-cli/tests/core/rac.test.ts) (alias), [`tests/prompt/injection-resolution-matrix.test.ts`](../../packages/ant-cli/tests/prompt/injection-resolution-matrix.test.ts) (presence injection + retired mode trigger).
 
-## 그래프 노드 흐름
+## Graph Node Flow
 
-### 순차 실행 (ANT_TASK_CONCURRENCY = 1)
+### Sequential Execution (ANT_TASK_CONCURRENCY = 1)
 
 ```
 __start__ -> resolve -> [4-way router]
-    +-> triage -> detect -> decompose -> plan (순차 루프)
+    +-> triage -> detect -> decompose -> plan (sequential loop)
     +-> revise -> plan
-    +-> plan (직행, plain resume)
-    +-> decompose (detectEnv 이후 중단 resume)
+    +-> plan (direct, plain resume)
+    +-> decompose (resume after interruption post-detectEnv)
 
 plan -> [router]
     +-> tool -> plan (plan exploring)
     +-> execute (planText ready)
-    +-> checkTaskStatus (batch split 완료, done=true)
+    +-> checkTaskStatus (batch split complete, done=true)
 
 execute -> [router]
-    +-> tool -> execute (도구 호출 루프)
+    +-> tool -> execute (tool-call loop)
     +-> checkTaskStatus (done=true)
     +-> execute (self-loop retry)
 
 checkTaskStatus -> [router]
-    +-> enforce -> plan (violations + retries 남음)
+    +-> enforce -> plan (violations + retries remaining)
     +-> learn -> [router]
-        +-> plan (다음 태스크)
+        +-> plan (next task)
         +-> __end__
 ```
 
-### 병렬 실행 (ANT_TASK_CONCURRENCY > 1)
+### Parallel Execution (ANT_TASK_CONCURRENCY > 1)
 
-decompose 이후 `parallelOrchestrator` 노드로 분기한다. TaskOrchestrator가 N개의 TaskWorker를 관리하며, 각 Worker는 독립적인 Worker Subgraph를 실행한다.
+After decompose, flow branches to the `parallelOrchestrator` node. The TaskOrchestrator manages N TaskWorkers, each of which runs an independent Worker Subgraph.
 
-Worker Subgraph는 `CodeGraphChannels`를 spread하여 메인 그래프와 채널을 동기화한다. 새 채널 추가 시 `CodeGraphChannels`(`graph.ts`)에만 추가하면 Worker에 자동 반영된다. 상세: [11-agent-architecture.md](11-agent-architecture.md) "Worker Subgraph 채널 정의" 참조.
+The Worker Subgraph spreads `CodeGraphChannels` to keep channels in sync with the main graph. When adding a new channel, add it only to `CodeGraphChannels` (`graph.ts`) and Workers pick it up automatically. Details: see "Worker Subgraph Channel Definitions" in [11-agent-architecture.md](11-agent-architecture.md).
 
-`TaskWorker.executeTask`는 `runInWorkerScope(workerId, …)` 안에서 `runInTaskScope(task.id, …)`로 한 번 더 감싸 모든 chat 이벤트가 `worker-N#task-K` 식별자를 자동 부여받게 한다. long-lived worker가 barrier cohort 사이를 가로질러 task를 직렬 실행해도 FE 섹션이 task별로 분리되고 시간순 정렬되어 chronology가 보존된다. 식별자/정렬 규약 상세: [31-chat-system.md](31-chat-system.md) "Worker Scope · Task Scope · Section Ordering".
+`TaskWorker.executeTask` wraps once more with `runInTaskScope(task.id, …)` inside `runInWorkerScope(workerId, …)` so that every chat event automatically carries a `worker-N#task-K` identifier. Even when a long-lived worker executes tasks serially across barrier cohorts, FE sections stay separated per task and time-ordered, preserving chronology. For identifier/ordering conventions, see "Worker Scope · Task Scope · Section Ordering" in [31-chat-system.md](31-chat-system.md).
 
-## 주요 노드
+## Key Nodes
 
 ### resolve
 
-초기 상태 로드 및 resume 분기를 결정한다. 세션에서 taskQueue, resolvedAction, directive 등을 복원한다.
+Loads initial state and decides the resume branch. Restores taskQueue, resolvedAction, directive, etc. from the session.
 
 ### triage
 
-공유 Triage 노드. 의도 분류, work status 판정, 선택지 제공.
+The shared Triage node. Intent classification, work-status determination, choice presentation.
 
 ### detect
 
-사용자 의도를 분석하여 `resolvedAction` (RAC)을 생성한다. explicit 경로는 metadata에서 직접, infer 경로는 LLM이 `InferredAction`을 반환한 뒤 `resolveToRAC()`로 변환. 프롬프트 구성과 ModeController에서 소비.
+Analyzes user intent and produces the `resolvedAction` (RAC). The explicit path builds it directly from metadata; the infer path has the LLM return an `InferredAction`, then converts via `resolveToRAC()`. Consumed by prompt construction and the ModeController.
 
 ### decompose
 
-directive와 resolvedAction을 기반으로 태스크를 분해한다. 각 태스크에 type, priority, exclusive, parallelGroup을 지정한다.
+Decomposes tasks based on the directive and resolvedAction. Assigns type, priority, exclusive, and parallelGroup to each task.
 
-#### TechTier 판별
+#### TechTier Determination
 
-decompose는 LLM에게 태스크 분해와 함께 `<techTier>` 태그로 기술 스택 정보를 출력하도록 요구한다. 프롬프트 템플릿(`code/nodes/decompose/variants/default/base.md` + `techTier-rules.md`)이 관찰 우선순위와 제약 조건을 정의한다.
+decompose asks the LLM to output tech-stack information via a `<techTier>` tag alongside the task decomposition. The prompt templates (`code/nodes/decompose/variants/default/base.md` + `techTier-rules.md`) define the observation priority and constraints.
 
-**Preset vs Inferred 이중 경로:**
+**Dual path — Preset vs Inferred:**
 
 ```
 UI BasisWizard → ActionMetadata.basis → detect → RAC.basis.techTier (preset)
                                                        ↓
-                                             decompose prompt에 주입
+                                          injected into the decompose prompt
                                                        ↓
-                                        LLM이 preset 필드 보존 + 빈 필드 추론
+                                LLM preserves preset fields + infers empty fields
                                                        ↓
                                            mergeTechTier(preset, inferred)
                                                        ↓
                                               RAC.basis.techTier (final)
 ```
 
-사용자가 UI에서 techTier preset을 설정한 경우(`gen-code-directive` 인텐트의 BasisWizard), decompose 프롬프트에 사전 결정 필드가 주입되어 LLM이 해당 값을 그대로 사용한다. 미설정 필드만 추론한다.
+When the user sets a techTier preset in the UI (BasisWizard for the `gen-code-directive` intent), the pre-decided fields are injected into the decompose prompt and the LLM uses those values verbatim. Only unset fields are inferred.
 
-**LLM 응답 → TechTier 변환 흐름:**
+**LLM response → TechTier conversion flow:**
 
 ```
-LLM 출력 <techTier>             코드 파싱               mergeTechTier(preset, inferred)
+LLM output <techTier>           code parsing            mergeTechTier(preset, inferred)
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
 │ stack            │───>│ parsed           │───>│ RAC.basis        │
 │ language         │    │   .stack         │    │   .techTier      │
@@ -104,293 +104,293 @@ LLM 출력 <techTier>             코드 파싱               mergeTechTier(pres
                         └──────────────────┘
 ```
 
-> fullstack 잡은 `frontend` / `backend` 서브오브젝트로 각 런타임 framework 를 독립 전달한다 (FE/BE 런타임 분리상 framework 가 한 값으로 붕괴하면 안 된다). 단일-스택 잡은 두 서브오브젝트를 생략하고 top-level `framework` 만 쓴다.
+> Fullstack jobs pass each runtime's framework independently via the `frontend` / `backend` sub-objects (given the FE/BE runtime split, the framework must not collapse into a single value). Single-stack jobs omit the two sub-objects and use only the top-level `framework`.
 
-| TechTier 필드 | 판별 소스 | 정규화 |
+| TechTier field | Determination source | Normalization |
 |---|---|---|
-| `language` | LLM constrained response (enum 제시) | `resolveLanguage()`: `javascript` → `typescript`, `golang` → `go` |
-| `framework` | LLM constrained response (예시 제시, null 허용) | `resolveFramework()`: `Next.js` → `nextjs` 등 |
-| `stack` | LLM constrained response | `frontend` / `backend` / `fullstack` 직접 매핑 |
-| `runtime` | 시스템 파생 (LLM 판단 없음) | `resolveRuntime(stack, language)`: `frontend→browser`, `backend+go→go-api` |
-| `packageManager` | 현재 code decompose에서 미설정 | `CodebaseAnalyzer.analyzeAsTechTier()`에서 설정 가능 |
+| `language` | LLM constrained response (enum given) | `resolveLanguage()`: `javascript` → `typescript`, `golang` → `go` |
+| `framework` | LLM constrained response (examples given, null allowed) | `resolveFramework()`: `Next.js` → `nextjs`, etc. |
+| `stack` | LLM constrained response | Direct mapping to `frontend` / `backend` / `fullstack` |
+| `runtime` | System-derived (no LLM judgment) | `resolveRuntime(stack, language)`: `frontend→browser`, `backend+go→go-api` |
+| `packageManager` | Currently unset in code decompose | Can be set by `CodebaseAnalyzer.analyzeAsTechTier()` |
 
-**LLM 관찰 우선순위** (preset이 없을 때):
+**LLM observation priority** (when there is no preset):
 
-1. 디자인 문서 존재 여부 — 문서명 접두어로 tier scope 결정
-2. 디자인 문서 내용 — 명시된 기술 스택
-3. directive/PRD — 디자인 문서 부재 시에만 참조
+1. Presence of design documents — the document-name prefix decides tier scope
+2. Design document content — explicitly stated tech stack
+3. directive/PRD — consulted only when design documents are absent
 
-**TechTier 접근**: `getTechTier(state)` 헬퍼로 RAC.basis.techTier를 읽는다. 레거시 `state.techTier` 직접 접근 대신 이 헬퍼를 사용한다.
+**TechTier access**: read RAC.basis.techTier via the `getTechTier(state)` helper. Use this helper instead of legacy direct access to `state.techTier`.
 
 ### plan
 
-taskQueue에서 태스크를 pop하여 currentTask로 설정하고 planText를 생성한다. LLM에 키워드 검색과 RAG 결과를 제공하여 구현 계획을 수립한다.
+Pops a task from the taskQueue, sets it as currentTask, and generates planText. Provides the LLM with keyword search and RAG results to formulate an implementation plan.
 
-**태스크 레벨 Resume**: `interrupted === true`이고 유효한 planText가 존재하면 plan 생성을 건너뛴다(canSkipPlan).
+**Task-level resume**: if `interrupted === true` and a valid planText exists, plan generation is skipped (canSkipPlan).
 
 ### execute
 
-LLM이 도구 호출(read_file, write_file, search 등)을 통해 코드를 생성한다. `conversationHistory`가 복원되면 이전 대화 위에 이어서 작업한다.
+The LLM generates code through tool calls (read_file, write_file, search, etc.). When `conversationHistory` is restored, work continues on top of the previous conversation.
 
 ### tool
 
-execute/plan의 도구 호출을 배치 실행하고 결과를 대화 히스토리에 추가한다. Code job은 `RUN_COMMAND`에 `CodeCommandPolicy`(Go build 차단, verification loop guard 등)를 적용한다. 도구 카탈로그, 핸들러 아키텍처, 오케스트레이터 상세는 [19-tool-system.md](19-tool-system.md) 참조.
+Batch-executes execute/plan tool calls and appends results to the conversation history. The Code job applies `CodeCommandPolicy` (Go build blocking, verification loop guard, etc.) to `RUN_COMMAND`. For the tool catalog, handler architecture, and orchestrator details, see [19-tool-system.md](19-tool-system.md).
 
 ### checkTaskStatus
 
-완료된 태스크에 timing과 tokenUsage를 기록하고 checkpoint를 저장한다. planText와 conversationHistory를 초기화하여 다음 태스크 오염을 방지한다.
+Records timing and tokenUsage for the completed task and saves a checkpoint. Resets planText and conversationHistory to prevent contaminating the next task.
 
 ### enforce
 
-violations 목록과 함께 plan으로 재진입한다. `checkTaskStatus`에서 violation이 있고 retries가 남아 있을 때 활성화된다.
+Re-enters plan together with the violations list. Activated when `checkTaskStatus` finds violations and retries remain.
 
 ### learn
 
-태스크 완료 후 cleanup을 수행한다. 서버 프로세스 종료, 인프라 정리(`stopInfrastructure`) 등을 담당한다.
+Performs cleanup after task completion. Responsible for shutting down server processes, infrastructure teardown (`stopInfrastructure`), etc.
 
 ### revise
 
-resume 시 새 directive(overrideDirective)가 있으면 기존 태스크 큐를 조정할지 LLM이 판단한다. `continue` 또는 `modify`(tasksToRemove + tasksToAdd) 결정.
+On resume, when a new directive (overrideDirective) exists, the LLM decides whether to adjust the existing task queue. The decision is `continue` or `modify` (tasksToRemove + tasksToAdd).
 
-## 인프라 기동 (Final Verification)
+## Infrastructure Startup (Final Verification)
 
-프로젝트가 외부 서비스(DB, Redis, MQ 등)에 의존하는 경우, verification 태스크 실행 중 LLM이 `run_command` 도구를 사용하여 인프라를 직접 기동하는 것이 유일한 흐름이다.
+When the project depends on external services (DB, Redis, MQ, etc.), the only flow is for the LLM to start the infrastructure directly using the `run_command` tool during the verification task.
 
-LLM은 `<done>true</done>` 출력 **전에** 다음 단계를 완료한다:
+The LLM completes the following steps **before** emitting `<done>true</done>`:
 
-1. **Discover**: 프로젝트 설정 파일을 읽어 빌드/실행 커맨드와 인프라 정의를 파악
-2. **Infrastructure**: `docker compose up -d --wait` 실행. compose 파일의 서비스 정의를 읽어 앱 환경변수에 매핑
-3. **Build**: 빌드/컴파일 커맨드 실행 (PRIMARY 검증 기준)
-4. **Runtime**: 빌드 성공 시 dev/start 서버를 1회 실행하여 전체 스택 검증
+1. **Discover**: read project config files to identify build/run commands and infrastructure definitions
+2. **Infrastructure**: run `docker compose up -d --wait`. Read the compose file's service definitions and map them to the app's environment variables
+3. **Build**: run the build/compile command (the PRIMARY verification criterion)
+4. **Runtime**: on build success, run the dev/start server once to verify the full stack
 
-`learn` 노드에서 `stopInfrastructure()`를 호출하여 기동된 Docker 서비스를 정리한다.
+The `learn` node calls `stopInfrastructure()` to clean up the Docker services that were started.
 
 ## Error Diagnostics System
 
-`diagnostics/` 디렉토리의 멀티언어 에러 파서가 빌드/테스트 실패 출력을 파싱하여 파일 단위로 분리한다.
+The multi-language error parsers in the `diagnostics/` directory parse build/test failure output and split it per file.
 
-- `verification` 태스크 = **진단 + fan-out 전담**. plan tool-loop 가 build/test 를 직접 실행해 root cause 를 분리하고, 1+ 수정 항목이 발견되면 무조건 per-target error sub-task 로 fan-out 한다. verification 자체는 fix 를 시도하지 않는다(execute phase 가 사실상 호출되지 않음 — fan-out 후 즉시 `done:true`).
-- `error` 태스크 = **fix 전담**. fan-out 으로 spawn 된 1-entry sub-task 는 `prePlanText` fast-path 를 타고 plan 단계를 건너뛴 채 execute 로 진입해 단일 파일을 고친다.
-- `test-code` 태스크: 모든 feature 태스크 완료 후 테스트 코드 생성
+- `verification` task = **diagnosis + fan-out only**. The plan tool-loop runs build/test directly to isolate root causes, and whenever 1+ fix items are found, it unconditionally fans out into per-target error sub-tasks. Verification itself never attempts a fix (the execute phase is effectively never invoked — immediately `done:true` after fan-out).
+- `error` task = **fix only**. A 1-entry sub-task spawned by fan-out takes the `prePlanText` fast-path, skips the plan stage, and enters execute to fix a single file.
+- `test-code` task: generates test code after all feature tasks complete
 
-`processDiagnosticBatchSplit` 의 **always-fan-out 정책**: top-level `implementation.{modify,create,delete}` 는 자동으로 per-target batches[] 로 변환. 기존 `batches[]` 가 있으면 그대로 존중. 분할 임계 환경변수(`ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES`) 와 `forceByRepeat` 분기는 폐지(verification 책임이 fix 가 아니라 fan-out 으로 양극화되면서 임계 게이팅 자체가 의미 없음). 분할 cycle 의 하드 캡은 `MAX_BATCH_SPLIT_CYCLES = 10` 으로 보장.
+The **always-fan-out policy** of `processDiagnosticBatchSplit`: a top-level `implementation.{modify,create,delete}` is automatically converted into per-target batches[]. If `batches[]` already exists, it is respected as-is. The split-threshold environment variables (`ANT_VERIFICATION_SPLIT_ERRORS` / `ANT_VERIFICATION_SPLIT_FILES`) and the `forceByRepeat` branch were retired (with verification's responsibility polarized to fan-out rather than fixing, threshold gating itself became meaningless). The hard cap on split cycles is guaranteed by `MAX_BATCH_SPLIT_CYCLES = 10`.
 
-> **Verification task 의 책임/불변식/안티패턴 전체**는 [17-code-verification-task.md](./17-code-verification-task.md) 참조 (SSOT — Session, gates, commandGuard, snapshot, terminal 등 12 책임 매트릭스).
+> **The full set of verification-task responsibilities/invariants/anti-patterns** lives in [17-code-verification-task.md](./17-code-verification-task.md) (SSOT — the 12-responsibility matrix: Session, gates, commandGuard, snapshot, terminal, etc.).
 
 ## Deep-think Fan-out (feature / ui)
 
-Decompose 가 솔루션을 모르는 directive (Tier 2 / 3 — 디자인 ref 부재) 에서는 deep-think 책임을 plan node 로 위임한다. plan 의 tool-loop 가 사고를 마친 후 작업이 N 개의 물리적으로 분리된 자식으로 갈라져야 한다고 판단하면 `<plan>` 본문에 `batches[]` 를 출력한다. `processDiagnosticBatchSplit` 가 동일 인프라로 fan-out 한다.
+For directives whose solution decompose doesn't know (Tier 2 / 3 — no design ref), the deep-think responsibility is delegated to the plan node. When the plan tool-loop finishes thinking and decides the work must split into N physically separated children, it emits `batches[]` in the `<plan>` body. `processDiagnosticBatchSplit` fans out using the same infrastructure.
 
 | Parent type | Policy `kind` | Sub `subType` | Children plan-loop | parentReasoning |
 |---|---|---|---|---|
 | `verification` | `requeue-parent` | `error` | **skip** (`acceptsPrePlanText:true` — identity-shortcut) | n/a (diagnostics) |
 | `error` | `drop-and-replace` | `error` | **skip** (`acceptsPrePlanText:true` — identity-shortcut) | n/a (diagnostics) |
-| `test-code` | `drop-and-replace` | `test-code` | **maintained** — `prePlanText` 가 plan-tool-loop INPUT 으로 surface (`nodes/plan/injections/parent-pre-plan.md`), LLM 이 sibling export 와 대조 후 `planText` emit | n/a |
-| `feature` | `drop-and-replace` | `feature` | **maintained** — 동일 INPUT 컨트랙트. parent 가 emit 한 `parentReasoning` 의 예측 export 가 실제 sibling 산출과 어긋났는지 plan layer 가 drift 검출 | 부모의 cross-batch decisions (이름/시그니처/계약) — 모든 batch 에 동일 복제 |
-| `ui` | `drop-and-replace` | `ui` | **maintained** — 동일 INPUT 컨트랙트 | 동일 — ui 자식은 plan-tool-loop 로 정밀화 후 execute |
+| `test-code` | `drop-and-replace` | `test-code` | **maintained** — `prePlanText` surfaces as plan-tool-loop INPUT (`nodes/plan/injections/parent-pre-plan.md`); the LLM cross-checks against sibling exports and then emits `planText` | n/a |
+| `feature` | `drop-and-replace` | `feature` | **maintained** — same INPUT contract. The plan layer detects drift when the predicted exports in the parent-emitted `parentReasoning` diverge from the actual sibling output | Parent's cross-batch decisions (names/signatures/contracts) — replicated identically to every batch |
+| `ui` | `drop-and-replace` | `ui` | **maintained** — same INPUT contract | Same — ui children refine via the plan-tool-loop, then execute |
 
-**Tier 2 escalate**: `selfVerifyOnDone:true` 가 박힌 Tier 2 단일 task 가 plan 에서 `batches[]` 를 내면 `process.ts` 의 `isTier2EscalateCandidate` 분기가 자동 활성화돼 동일 fan-out 경로 (`drop-and-replace` + Final Verification 보충) 를 탄다. 자식들에는 `selfVerifyOnDone` 을 박지 않는다 — 게이트 책임은 새로 추가된 FV 가 가져간다.
+**Tier 2 escalate**: when a single Tier 2 task stamped with `selfVerifyOnDone:true` emits `batches[]` at plan, the `isTier2EscalateCandidate` branch in `process.ts` activates automatically and takes the same fan-out path (`drop-and-replace` + supplemental Final Verification). Children are not stamped with `selfVerifyOnDone` — the gate responsibility is taken over by the newly added FV.
 
-**Lineage cycle 방어**: `process.ts` 가 자식 sub-task 에 `batchSplitCount = parent + 1` 을 carry 한다. 자식이 다시 fan-out 하면 누적 카운트가 부모 lineage 에 따라 증가하므로 `MAX_BATCH_SPLIT_CYCLES` 가 grand-child 차원까지 보장된다. 특히 `error` 외 모든 자식 (plan-tool-loop 유지: feature / ui / test-code) 에서 무한 확장을 차단하는 핵심 안전망 — identity-shortcut 을 타지 않으므로 자식이 다시 `batches[]` 를 emit 할 가능성이 열려 있다.
+**Lineage cycle defense**: `process.ts` carries `batchSplitCount = parent + 1` to child sub-tasks. When a child fans out again, the accumulated count increases along the parent lineage, so `MAX_BATCH_SPLIT_CYCLES` is guaranteed even at grandchild depth. This is the key safety net blocking unbounded expansion, especially for all non-`error` children (those that keep the plan-tool-loop: feature / ui / test-code) — since they don't take the identity-shortcut, a child may well emit `batches[]` again.
 
-**parallelGroup 정합성**: 자식 `parallelGroup` 은 부모 group 을 base 로 상속한다 (없으면 `{type}-batch-{ts}` 새로 생성). 부모와 같은 큐의 형제 task 들과 file overlap 이 있을 수 있는 시나리오를 보수적으로 직렬화한다. 자식 batches 간 file overlap 은 `computeBatchFileOverlap` 가 별도로 검사해 overlap 있으면 그룹을 비우고 `exclusive:true` 로 강등한다.
+**parallelGroup consistency**: a child's `parallelGroup` inherits the parent's group as its base (or a new `{type}-batch-{ts}` is created if absent). This conservatively serializes scenarios where file overlap with sibling tasks in the same queue as the parent is possible. File overlap among the child batches is checked separately by `computeBatchFileOverlap`; if overlap exists, the group is cleared and the tasks are demoted to `exclusive:true`.
 
-**parentReasoning 의미**: feature / ui fan-out 에서만 사용. plan 이 결정한 "이 batch 묶음을 관통하는 큰 그림" — 공유 API 이름, 계약, 타입, 통합 지점. 모든 batch 의 `prePlanText` JSON 안에 동일하게 직렬화돼 형제 자식 간 시그니처 drift (한 자식이 `connect()`, 다른 자식이 `connectWallet()` 식) 를 방지한다. 명칭은 코드상 `featureBatchShape` 이 emit 하는 JSON 의 `parentReasoning` 필드.
+**Meaning of parentReasoning**: used only in feature / ui fan-out. The "big picture spanning this set of batches" decided by plan — shared API names, contracts, types, integration points. It is serialized identically into every batch's `prePlanText` JSON to prevent signature drift among sibling children (one child using `connect()`, another `connectWallet()`). In code, this is the `parentReasoning` field of the JSON emitted by `featureBatchShape`.
 
 ## Cache Invalidation Scope
 
-편집된 파일의 영향 범위에 따라 `VerificationSession._passed` 를 선택적으로 무효화한다. `decideInvalidationScope()` (`agents/common/tool/handlers/invalidationScope.ts`)가 경로와 diff를 관찰해 scope를 결정하고, `tool` 노드의 `verificationInvalidated` side effect 처리기가 해당 scope를 `Session.onFileChanged` 로 전달해 해당 gate 만 떨어뜨린다.
+`VerificationSession._passed` is selectively invalidated based on the impact scope of an edited file. `decideInvalidationScope()` (`agents/common/tool/handlers/invalidationScope.ts`) observes the path and diff to decide the scope, and the `tool` node's `verificationInvalidated` side-effect handler passes that scope to `Session.onFileChanged` to drop only the affected gates.
 
-| 편집 대상 | scope | 근거 |
+| Edit target | scope | Rationale |
 |---|---|---|
-| 테스트 파일 (`*.test.*`, `tests/**` 등) | `test` | 타입/빌드 캐시와 무관 |
-| 정적 자산 (`.css`, `.md`, 이미지, 폰트 등) | `build` | 번들링에만 영향 |
-| 소스 코드 (`.ts`/`.tsx`/`.js`/`.jsx`/`.mjs`/`.cjs`) | `all` | 타입·빌드·테스트 모두 재검증 필요 |
-| 매니페스트 `package.json` — devDependencies 단독 변경 | `test` + install | 테스트 도구 체인만 교체 |
-| 매니페스트 `package.json` — dependencies / peerDependencies 변경 | `all` + install | 런타임 import 그래프 변동 |
-| 매니페스트 `package.json` — scripts / engines / exports / packageManager 등 | `all` + install | 빌드 파이프라인 / 타입 해석 변동 가능 |
-| 매니페스트 `package.json` — 필드 변화 없음 | `test` | formatting 등 무해 변경 |
-| lockfile (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock` / `cargo.lock` / …) | `build` + install | 의존성 버전 고정 — 타입 캐시는 보존, 빌드·테스트만 재검증 |
-| 타 매니페스트 (`pyproject.toml` / `Cargo.toml` / `go.mod` 등) | `all` + install | diff 파서 없음 → conservative fallback |
-| 알 수 없는 확장자 / 경로 | `all` | conservative fallback |
+| Test files (`*.test.*`, `tests/**`, etc.) | `test` | Irrelevant to type/build caches |
+| Static assets (`.css`, `.md`, images, fonts, etc.) | `build` | Affects bundling only |
+| Source code (`.ts`/`.tsx`/`.js`/`.jsx`/`.mjs`/`.cjs`) | `all` | Types, build, and tests all need re-verification |
+| Manifest `package.json` — devDependencies-only change | `test` + install | Only the test toolchain changes |
+| Manifest `package.json` — dependencies / peerDependencies change | `all` + install | Runtime import graph changes |
+| Manifest `package.json` — scripts / engines / exports / packageManager, etc. | `all` + install | Build pipeline / type resolution may change |
+| Manifest `package.json` — no field changes | `test` | Harmless change such as formatting |
+| Lockfile (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock` / `cargo.lock` / …) | `build` + install | Dependency version pinning — type cache preserved, only build/test re-verified |
+| Other manifests (`pyproject.toml` / `Cargo.toml` / `go.mod`, etc.) | `all` + install | No diff parser → conservative fallback |
+| Unknown extension / path | `all` | Conservative fallback |
 
-**보수성 원칙**: diff 부재 / 판별 실패 시 항상 `scope:'all'`로 안전 쪽으로 폴백한다. Narrowing은 캐시 최적화이지 정확성의 전제가 아니다.
+**Conservatism principle**: when the diff is absent or classification fails, always fall back to the safe side with `scope:'all'`. Narrowing is a cache optimization, not a precondition for correctness.
 
-런타임 측면에서 `commandGuard`는 `Session.passed()` 를 독립 조건으로 먼저 관찰하기 때문에, invalidation이 실제로 `Session.onFileChanged` 로 `_passed` 비트를 떨어뜨리지 않는 한 retry/reverify 경계를 넘어서도 이미 통과한 gate의 재실행을 `[Policy] ALREADY PASSED`로 결정론적으로 차단한다. 이는 프롬프트의 stochastic hint(`cachedPassedSteps`)에 의존하지 않고 관찰 가능한 Session 상태를 SSOT로 삼는 FPOP Constraints-over-Instructions 원칙의 적용이다.
+At runtime, because `commandGuard` observes `Session.passed()` first as an independent condition, unless invalidation actually drops the `_passed` bit via `Session.onFileChanged`, re-running an already-passed gate is deterministically blocked with `[Policy] ALREADY PASSED` even across retry/reverify boundaries. This applies the FPOP Constraints-over-Instructions principle: the observable Session state is the SSOT, rather than relying on the prompt's stochastic hint (`cachedPassedSteps`).
 
-## State 복원
+## State Restoration
 
-runner.ts는 graph invoke 이전에 세션을 로드하여 state를 복원한다:
+runner.ts loads the session and restores state before graph invoke:
 - taskQueue, completedTasks, completedTasksDetails
-- resolvedAction (basis.techTier 포함)
+- resolvedAction (including basis.techTier)
 - referenceRequests
 - planText, conversationHistory
 - directive, overrideDirective, chatSource
 - jobTiming, tokenUsage, recursionCount
 
-Plan 단계의 RAG 결과(`PlanCodeContext` — files / filePaths / directoryTree / gitDiff)는 task 진입 시 1회 생성되는 plan-local 값으로 state에 저장되지 않는다. 재개 시 다음 plan 노드가 새로 RAG를 수행한다. Execute 는 plan.json 의 modify/create 경로만 `read_file` 툴로 on-demand 조회한다.
+The plan phase's RAG result (`PlanCodeContext` — files / filePaths / directoryTree / gitDiff) is a plan-local value generated once at task entry and is not stored in state. On resume, the next plan node performs RAG afresh. Execute only fetches the modify/create paths from plan.json on demand via the `read_file` tool.
 
 ## Split Injection
 
-병렬 실행 시 태스크의 `include` 필드(단일 주입 SSOT)에 나열된 풀 경로만 선주입한다. `include`는 decompose/revise LLM이 직접 저작하고 `createTaskQueue`가 RAC 교집합으로 검증한다. 예:
-- `include = ['architecture/system/fe-system-main.md']` -> 해당 FE 설계문서만
-- cross-tier 태스크 -> `architecture/system/api-contract-*` 경로를 include 에 추가
-- `include` 미설정 -> 선주입 0; 필요한 doc 은 execute `read_file` 로 on-demand 조회 (RAC 스코프 게이트 통과)
+During parallel execution, only the pool paths listed in a task's `include` field (the single injection SSOT) are pre-injected. `include` is authored directly by the decompose/revise LLM and validated against the RAC intersection by `createTaskQueue`. Examples:
+- `include = ['architecture/system/fe-system-main.md']` -> only that FE design document
+- Cross-tier task -> add `architecture/system/api-contract-*` paths to include
+- `include` unset -> zero pre-injection; needed docs are fetched on demand via execute `read_file` (passing the RAC scope gate)
 
-plan 노드는 RAG 결과를 파일 경로 목록만 주입한다. 실제 파일 읽기는 execute `read_file` 도구로 수행한다.
+The plan node injects only the file-path list from the RAG result. Actual file reading is done with the execute `read_file` tool.
 
 ## UI Design Document Consumption
 
-Design Job이 생성한 UI 문서(ui-tokens.json, ui-assets.json, ui-spec.json)를 Code Job이 소비하는 메커니즘이다.
+This is the mechanism by which the Code Job consumes UI documents produced by the Design Job (ui-tokens.json, ui-assets.json, ui-spec.json).
 
-### 로딩
+### Loading
 
-`resolve` 노드에서 `ArtifactService.loadParsedUiContext()`를 호출한다. `visual/ui/ant/` 디렉터리에서 세 파일을 읽어 `ParsedUiDocs` 구조로 파싱한다:
+The `resolve` node calls `ArtifactService.loadParsedUiContext()`. It reads the three files from the `visual/ui/ant/` directory and parses them into a `ParsedUiDocs` structure:
 
 ```typescript
 interface ParsedUiDocs {
-  tokens?: string;              // ui-tokens.json 전체 (문자열)
+  tokens?: string;              // full ui-tokens.json (string)
   tokensTokenEstimate?: number;
-  assets?: string;              // ui-assets.json 전체 (문자열)
+  assets?: string;              // full ui-assets.json (string)
   assetsTokenEstimate?: number;
-  specSections: Map<string, UiSpecSection>;  // ui-spec.json 논리 분할
-  specToc: UiSpecTocEntry[];                 // 섹션 목차
+  specSections: Map<string, UiSpecSection>;  // logical split of ui-spec.json
+  specToc: UiSpecTocEntry[];                 // section table of contents
   specTotalTokens: number;
 }
 ```
 
-### 섹션 분할
+### Section Splitting
 
-단일 `ui-spec.json` 파일을 `UiDocParser.parseJsonSections()`가 **메모리상에서** 논리적 섹션으로 분할한다. 디스크에 별도 파일을 만들지 않는다.
+`UiDocParser.parseJsonSections()` splits the single `ui-spec.json` file into logical sections **in memory**. No separate files are created on disk.
 
-분할 규칙:
-- `_meta` 키 제외
-- 최상위 키의 값이 "컨테이너"(모든 자식이 비배열 객체)이면: 각 자식에 대해 `{parentKey}-{childKey}` 섹션 생성 (예: `pages-events`, `modals-connectModal`)
-- 그 외 리프 객체는 키를 그대로 섹션 ID로 사용 (예: `layout`, `meta`)
+Split rules:
+- The `_meta` key is excluded
+- If a top-level key's value is a "container" (all children are non-array objects): create a `{parentKey}-{childKey}` section per child (e.g. `pages-events`, `modals-connectModal`)
+- Other leaf objects use the key as-is for the section ID (e.g. `layout`, `meta`)
 
-### 태스크별 주입
+### Per-Task Injection
 
-`ArtifactPipeline`이 태스크별 문서 선택 + 컴팩션을 처리한다:
+`ArtifactPipeline` handles per-task document selection + compaction:
 
-1. 풀은 RAC 부분집합 — `loadResolvedArtifacts(resolvedAction, featurePath)`가 `refs ∪ context`만 적재한다 (`state.artifacts Post-RAC SSOT`).
-2. `resolveArtifacts(pool, { taskType, include }, { threshold })` — `task.include` 의 path-prefix 매칭으로 필터링 + 컴팩션.
+1. The pool is a RAC subset — `loadResolvedArtifacts(resolvedAction, featurePath)` loads only `refs ∪ context` (the `state.artifacts Post-RAC SSOT`).
+2. `resolveArtifacts(pool, { taskType, include }, { threshold })` — filter by path-prefix matching against `task.include` + compaction.
 
-선택 규칙은 단일 SSOT다 — `task.include` 매칭이 전부이고 taskType 기본 분기는 없다:
+The selection rule is a single SSOT — `task.include` matching is everything; there is no taskType default branching:
 
-| 조건 | 선택 결과 |
+| Condition | Selection result |
 |-----------|---------------|
-| `taskType === 'verification'` | 빈 배열 (방어적 가드) |
-| `include` 지정 | include path-prefix 에 매칭되는 풀 아티팩트 (role 은 풀 RAC 주석에서 상속) |
-| `include` 미설정/빈 값 | 빈 배열 (taskType 기본 규칙 없음 — 명시적 빈 주입) |
+| `taskType === 'verification'` | Empty array (defensive guard) |
+| `include` specified | Pool artifacts matching the include path-prefixes (role inherited from the pool's RAC annotations) |
+| `include` unset/empty | Empty array (no taskType default rules — explicit empty injection) |
 
-`include`는 decompose/revise LLM이 직접 저작한다 (RAC 검증). UI 경로는 uiSource 게이트 가이드(`visual/ui/ant/spec/<section>` 등), spec-driven 태스크는 활성 spec(`ArtifactPoolView.activeSpecRefFilename()`)을 include 에 포함하도록 프롬프트가 안내한다. 옛 `packages`/`uiSections`/`artifactPolicy` 자동 유도는 제거됐다.
+`include` is authored directly by the decompose/revise LLM (RAC-validated). For UI paths, uiSource-gated guidance applies (`visual/ui/ant/spec/<section>` etc.); for spec-driven tasks, the prompt guides the LLM to include the active spec (`ArtifactPoolView.activeSpecRefFilename()`). The old automatic derivations `packages`/`uiSections`/`artifactPolicy` were removed.
 
 ### Document Authority
 
-- **ui-tokens.json**: SSOT — 시각적 값의 유일한 원천
-- **ui-assets.json**: SSOT — 에셋 경로의 유일한 원천
-- **ui-spec.json**: Primary — 레이아웃의 1차 참조. spec이 침묵하는 세부사항은 프레임워크 best practices 적용
+- **ui-tokens.json**: SSOT — the sole source of visual values
+- **ui-assets.json**: SSOT — the sole source of asset paths
+- **ui-spec.json**: Primary — the primary reference for layout. Details on which the spec is silent follow framework best practices
 
 ### Post-RAC template flags (Gate / Contract / Background)
 
-post-RAC 페이즈(decompose/plan/execute)의 템플릿은 **3-카테고리 flag**로 분기한다. 어떤 category를 쓸지는 "해당 블록의 copy가 무엇을 강제하는가?"로 판단한다 — artifact가 오늘 가진 role이 아니라.
+Templates in post-RAC phases (decompose/plan/execute) branch on **3-category flags**. Which category to use is judged by "what does this block's copy enforce?" — not by the role the artifact happens to have today.
 
-| Category | Naming | 판단 기준 | 대표 use-site |
+| Category | Naming | Criterion | Representative use-sites |
 |---|---|---|---|
-| **Gate** | `hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources` | 블록이 ref/context 여부와 무관하게 동일하게 발동해야 함 | decompose의 `design-system` 태스크 생성 분기, plan의 TOKEN/ASSET/LAYOUT 인벤토리, execute의 visual-source hint |
-| **Contract** | `hasUiRef`, `hasSystemDesignRef`, `hasSpecRef`, `hasSourcesRef` | 블록 copy가 "IMMUTABLE / MUST conform" 을 명시 | plan base의 "API Contract IMMUTABLE" (`hasSystemDesignRef`) |
-| **Background** | `hasUiContext`, `hasSystemDesignContext`, … | 블록이 "참고 자료"로 명시 | 현재 use-site 없음 (헬퍼만 보존) |
+| **Gate** | `hasUi`, `hasSystemDesign`, `hasSpec`, `hasSources` | The block must fire identically regardless of ref/context | decompose's `design-system` task-creation branch, plan's TOKEN/ASSET/LAYOUT inventory, execute's visual-source hint |
+| **Contract** | `hasUiRef`, `hasSystemDesignRef`, `hasSpecRef`, `hasSourcesRef` | The block's copy explicitly states "IMMUTABLE / MUST conform" | plan base's "API Contract IMMUTABLE" (`hasSystemDesignRef`) |
+| **Background** | `hasUiContext`, `hasSystemDesignContext`, … | The block is explicitly "reference material" | No current use-site (helper preserved only) |
 
-**Gate-first 원칙**: 모호하면 Gate가 기본. Contract는 블록 copy가 명시적으로 "IMMUTABLE/MUST"를 쓸 때만.
+**Gate-first principle**: when in doubt, Gate is the default. Contract only when the block's copy explicitly says "IMMUTABLE/MUST".
 
-왜 이렇게 해야 하는가? Intent matrix([`@ant/shared/action-config-matrix.ts`](../../packages/ant-shared/src/action-config-matrix.ts))는 같은 artifact kind에 intent별로 다른 role을 배정한다:
+Why does it have to be this way? The intent matrix ([`@ant/shared/action-config-matrix.ts`](../../packages/ant-shared/src/action-config-matrix.ts)) assigns different roles to the same artifact kind per intent:
 
 - `gen-code-sys`: UI=ref / SYS=ref
-- `gen-code-spec`: UI=**context** / SYS=context (SPEC이 ref)
+- `gen-code-spec`: UI=**context** / SYS=context (SPEC is ref)
 - `rev-ui`: UI=ref
 
-`hasUiRef`만으로 gating하면 `gen-code-spec`에서 UI 가이드가 **침묵하는 회귀**가 발생한다. 토큰 인벤토리·design-system 태스크 사다리는 intent와 무관하게 "UI 문서가 있으면 활성" 이 옳은 semantics이므로 Gate(`hasUi`)로 갈라야 한다. 이 invariant은 [`tests/role-flag-intent-matrix.test.ts`](../../packages/ant-cli/tests/role-flag-intent-matrix.test.ts)가 런타임으로 보호한다.
+Gating on `hasUiRef` alone produces a **regression where UI guidance goes silent** under `gen-code-spec`. The token inventory and the design-system task ladder have the correct semantics of "active whenever a UI document exists", regardless of intent, so they must branch on Gate (`hasUi`). This invariant is protected at runtime by [`tests/role-flag-intent-matrix.test.ts`](../../packages/ant-cli/tests/role-flag-intent-matrix.test.ts).
 
-규약·금지 사항 전체는 `.cursorrules`의 **Post-RAC Template Condition SSOT** 섹션 참조.
+For the full conventions and prohibitions, see the **Post-RAC Template Condition SSOT** section of `.cursorrules`.
 
 ## Visual Source Authority
 
-Code Job의 모든 시각 소스(UI Design Documents, Figma MCP)에 대한 우선순위와 충돌 해결 규칙은 `visual-source-authority.md` 단일 문서에 정의된다. 이 문서는 `ModeController`가 프론트엔드 프로젝트(`detectedEnv !== 'backend'`)에 대해 항상 주입한다(uiDoc 유무 무관).
+The priority and conflict-resolution rules for all of the Code Job's visual sources (UI Design Documents, Figma MCP) are defined in the single document `visual-source-authority.md`. The `ModeController` always injects this document for frontend projects (`detectedEnv !== 'backend'`), regardless of whether a uiDoc exists.
 
 ## Figma MCP Supplementation
 
-Code Job은 Figma Desktop MCP에 직접 연결하여 디자인 정보를 보충할 수 있다. Design Job의 MCP 연동과 동일한 인프라(`MCPTransport`, `FigmaMCPAdapter`)를 공유하지만, 사용 목적과 범위가 다르다.
+The Code Job can connect directly to the Figma Desktop MCP to supplement design information. It shares the same infrastructure as the Design Job's MCP integration (`MCPTransport`, `FigmaMCPAdapter`), but the purpose and scope of use differ.
 
-### 가용성 감지 (resolve 노드)
+### Availability Detection (resolve node)
 
-2단계 감지:
+Two-stage detection:
 
-1. **figma.json 검증**: `visual/ui/figma/figma.json` (canonical) 을 로드하고 `detectFigmaSource` 헬퍼가 `migrateFigmaConfig` → `isFigmaDataPopulated` → MCP 가용성까지 단일 경로로 판정
-2. **MCP 연결 확인**: local은 `checkLocalMCPAvailability()`, cloud는 `BridgeMCPTransport.isAvailable()`
+1. **figma.json validation**: load `visual/ui/figma/figma.json` (canonical); the `detectFigmaSource` helper decides in a single path through `migrateFigmaConfig` → `isFigmaDataPopulated` → MCP availability
+2. **MCP connection check**: local uses `checkLocalMCPAvailability()`, cloud uses `BridgeMCPTransport.isAvailable()`
 
-감지 결과는 `ArchitectGraphState`에 저장:
-- `figmaAvailable: boolean` — MCP 연결 가능 여부
-- `figmaFileKey: string` — Figma URL에서 추출한 file key
-- `figmaStartNodeId?: string` — URL의 `node-id` 파라미터에서 추출한 시작 노드
+Detection results are stored in `ArchitectGraphState`:
+- `figmaAvailable: boolean` — whether MCP connection is possible
+- `figmaFileKey: string` — file key extracted from the Figma URL
+- `figmaStartNodeId?: string` — starting node extracted from the URL's `node-id` parameter
 
-`fileKey` 추출 실패 시 `figmaAvailable = false`로 설정하여 도구 호출 시 런타임 오류를 방지한다.
+When `fileKey` extraction fails, `figmaAvailable = false` is set to prevent runtime errors at tool-call time.
 
-### 사용 가능 도구
+### Available Tools
 
-| 도구 | 조건 |
+| Tool | Condition |
 |------|------|
-| `figma_get_design_context` | 항상 (프론트엔드 태스크 + figmaAvailable) |
-| `figma_get_screenshot` | 항상 (프론트엔드 태스크 + figmaAvailable) |
-| `figma_get_variable_defs` | UI 문서 없을 때만 (Scenario C) |
-| `figma_get_metadata` | `figmaStartNodeId` 없을 때만 (노드 탐색용) |
+| `figma_get_design_context` | Always (frontend task + figmaAvailable) |
+| `figma_get_screenshot` | Always (frontend task + figmaAvailable) |
+| `figma_get_variable_defs` | Only when there are no UI documents (Scenario C) |
+| `figma_get_metadata` | Only when `figmaStartNodeId` is absent (for node discovery) |
 
-### fileKey 자동 주입
+### fileKey Auto-Injection
 
-도구 스키마에서 `fileKey`를 제거(`removeFigmaFileKeyFromSchema`)하여 LLM이 제공하지 않도록 한다. tool handler가 `state.figmaFileKey`를 런타임에 자동 주입한다.
+`fileKey` is removed from the tool schema (`removeFigmaFileKeyFromSchema`) so the LLM never provides it. The tool handler auto-injects `state.figmaFileKey` at runtime.
 
-### 시나리오 매트릭스
+### Scenario Matrix
 
-| Scenario | UI Docs | Figma MCP | 전략 |
+| Scenario | UI Docs | Figma MCP | Strategy |
 |----------|---------|-----------|------|
 | A | O | O | UI docs primary, Figma supplements gaps |
 | B | O | X | UI docs only |
-| C | X | O | Figma primary — tokens, layout, screenshot 직접 조회 |
+| C | X | O | Figma primary — fetch tokens, layout, screenshots directly |
 | D | X | X | Plan hints + framework best practices |
 
-### On-demand 접근 (feature 태스크)
+### On-demand Access (feature tasks)
 
-`feature` 태스크에서는 UI 문서를 eager injection하지 않고, LLM이 `read_file`로 필요한 시점에 조회한다. 프롬프트에 artifact 경로(`visual/ui/ant/ui-tokens.json` 등)를 안내한다.
+For `feature` tasks, UI documents are not eagerly injected; the LLM fetches them via `read_file` when needed. The prompt provides the artifact paths (`visual/ui/ant/ui-tokens.json`, etc.).
 
-### Redis 의존성 (Cloud mode)
+### Redis Dependency (Cloud mode)
 
-Cloud mode에서 `BridgeMCPTransport`는 Redis Pub/Sub을 사용한다. `orchestrator.ts`에서 Code Job 전용 Redis 클라이언트를 생성하여 `deps.redis`로 전달하고, Job 완료 시 `quit()`한다.
+In cloud mode, `BridgeMCPTransport` uses Redis Pub/Sub. `orchestrator.ts` creates a Code-Job-dedicated Redis client, passes it as `deps.redis`, and calls `quit()` on job completion.
 
-## Verification 사이클 상세
+## Verification Cycle Details
 
-Code job 의 verification 사이클(필드·리셋 규칙·gate·정책·snapshot·terminal·composeBundle 합성·불변식·안티패턴) 은 [17-code-verification-task.md](./17-code-verification-task.md) 가 SSOT. 본 문서에는 다음 high-level 만 남긴다:
+The code job's verification cycle (fields, reset rules, gates, policies, snapshot, terminal, composeBundle composition, invariants, anti-patterns) has its SSOT in [17-code-verification-task.md](./17-code-verification-task.md). This document keeps only the following high-level points:
 
-- **책임 양극화**: verification = 진단 + fan-out, error = fix (위 `Error Diagnostics System` 섹션 참조).
-- **Session SSOT**: 진단 상태는 `state.verification: VerificationSession` ([`tasks/_shared/verify/Session.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/verify/Session.ts)) 에 인캡슐.
-- **gate 통과는 LLM `verifies` 선언 + exit 0** 이 SSOT (regex 명령 추론 폐지).
-- **terminal 종료**는 `VerificationTerminalError` typed kind 4종 + `MAX_BATCH_SPLIT_CYCLES = 10` 하드캡 + orchestrator `_failedAttempts >= 2` + `recursionLimit` 로 보장.
+- **Responsibility polarization**: verification = diagnosis + fan-out; error = fix (see the `Error Diagnostics System` section above).
+- **Session SSOT**: diagnostic state is encapsulated in `state.verification: VerificationSession` ([`tasks/_shared/verify/Session.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/verify/Session.ts)).
+- **Gate passage** has the LLM's `verifies` declaration + exit 0 as its SSOT (regex command inference retired).
+- **Terminal exit** is guaranteed by the 4 `VerificationTerminalError` typed kinds + the `MAX_BATCH_SPLIT_CYCLES = 10` hard cap + orchestrator `_failedAttempts >= 2` + `recursionLimit`.
 
-> 새 verification 필드 추가, gate 추가, commandGuard 정책 변경, snapshot 필드 변경, terminal kind 추가 시 — 17-code-verification-task.md 의 책임 매트릭스 / 불변식 / 안티패턴 섹션을 먼저 갱신하고, 본 문서에는 cross-link 만 둔다.
+> When adding a new verification field, adding a gate, changing commandGuard policy, changing snapshot fields, or adding a terminal kind — first update the responsibility matrix / invariants / anti-patterns sections of 17-code-verification-task.md, and keep only a cross-link in this document.
 
 ## Codebase mutation gate
 
-Code job 은 두 직교 권한을 phase 별로 다르게 갖는다:
+The code job holds two orthogonal permissions that differ per phase:
 
-- **`codebase/` 쓰기** (`allowMutateInCodebase`) — `execute` phase 만 정당. `plan` phase 는 sealed `<plan>` JSON 산출이 책임이며 source mutation 은 차단된다 (도구 핸들러 `allowMutateInCodebase = (state._activePhase === 'execute')`, FileRenderer `codePhase: 'plan' | 'execute'` 분기).
-- **`run_command` shell 실행** (`allowShellExecution`) — `plan` 과 `execute` **양쪽 모두 허용**. plan tool-loop 는 verification 게이트 (build/typecheck/test), 테스트 러너 설치 (test-code), 에러 진단 (error), design-prescribed dep 설치 후 API discovery (default plan) 등 정상 사용처가 있다. wiring 은 `allowShellExecution: true` (always) — 이 플래그는 `allowMutateInCodebase` 와 직교 책임이며, plan 의 sealed-plan-only 산출 책임은 `allowMutateInCodebase = false` 만으로 충분히 강제된다.
+- **`codebase/` writes** (`allowMutateInCodebase`) — legitimate only in the `execute` phase. The `plan` phase is responsible for producing the sealed `<plan>` JSON, and source mutation is blocked (tool handler `allowMutateInCodebase = (state._activePhase === 'execute')`, FileRenderer `codePhase: 'plan' | 'execute'` branch).
+- **`run_command` shell execution** (`allowShellExecution`) — allowed in **both** `plan` and `execute`. The plan tool-loop has legitimate uses: verification gates (build/typecheck/test), test-runner installation (test-code), error diagnosis (error), and API discovery after installing design-prescribed deps (default plan). Wiring is `allowShellExecution: true` (always) — this flag is an orthogonal responsibility to `allowMutateInCodebase`, and plan's sealed-plan-only output responsibility is sufficiently enforced by `allowMutateInCodebase = false` alone.
 
-정책 SSOT 와 다른 잡과의 매트릭스는 [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate) 참고. 두 권한을 단일 플래그로 묶었던 이전 설계는 코드잡 verification plan 이 typecheck 게이트조차 못 돌리고 silent false-pass 하는 회귀 (`agile-nodding-pouch`) 를 만들었으며, 그 분리가 현 SSOT 다.
+For the policy SSOT and the matrix against other jobs, see [15-design-job.md "Codebase mutation gate"](15-design-job.md#codebase-mutation-gate). The earlier design that bundled the two permissions into a single flag produced a regression where the code job's verification plan couldn't even run the typecheck gate and silently false-passed (`agile-nodding-pouch`); that separation is the current SSOT.
 
-## 경계
+## Boundaries
 
-- Verification task 책임/불변식/안티패턴 (SSOT): [17-code-verification-task.md](17-code-verification-task.md)
-- 에이전트 공통 패턴: [11-agent-architecture.md](11-agent-architecture.md)
-- Job 실행/중단/재개: [10-job-lifecycle.md](10-job-lifecycle.md)
-- Tool 시스템 (도구 카탈로그, 레지스트리, CodeCommandPolicy): [19-tool-system.md](19-tool-system.md)
+- Verification task responsibilities/invariants/anti-patterns (SSOT): [17-code-verification-task.md](17-code-verification-task.md)
+- Agent-common patterns: [11-agent-architecture.md](11-agent-architecture.md)
+- Job execution/interruption/resume: [10-job-lifecycle.md](10-job-lifecycle.md)
+- Tool system (tool catalog, registry, CodeCommandPolicy): [19-tool-system.md](19-tool-system.md)
 - Design Job: [15-design-job.md](15-design-job.md)
-- Design 파이프라인 상세 (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)
-- 문서 제약 맵(시스템설계/스펙/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)
+- Design pipeline details (UI + Game-Art): [25-design-pipeline.md](25-design-pipeline.md)
+- Document constraint map (system design/spec/PRD): [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)

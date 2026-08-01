@@ -2,8 +2,8 @@
 
 ## 📐 Layout Structure
 
-### Vertical Split (Default - 상하 분할)
-**기본 레이아웃**: 항상 2개의 보드를 상하로 표시
+### Vertical Split (Default - top/bottom split)
+**Default layout**: always shows the two boards stacked top/bottom
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                   GlobalNavBar                          │
@@ -22,8 +22,8 @@
 └──────────┴─────────────────────────┴────────────────────┘
 ```
 
-### Horizontal Split (좌우 분할)
-**토글 옵션**: 2개의 보드를 좌우로 표시
+### Horizontal Split (left/right split)
+**Toggle option**: shows the two boards side by side
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                   GlobalNavBar                          │
@@ -70,7 +70,7 @@
 **Top-level navigation bar**
 
 - Location: Fixed at top of screen
-- **Note**: GNB는 일반 Bar가 아닌 독립적인 네비게이션 바입니다
+- **Note**: the GNB is an independent navigation bar, not a regular Bar
 - Responsibilities:
   - App branding (Ant)
   - Theme toggle (light/dark mode)
@@ -119,8 +119,8 @@
   - Current context (project, feature, mode, task ID)
   - **Layout toggle buttons** (horizontal/vertical split)
 - Features:
-  - **Vertical (상하) button**: Top/bottom split (default)
-  - **Horizontal (좌우) button**: Left/right split
+  - **Vertical button**: Top/bottom split (default)
+  - **Horizontal button**: Left/right split
   - Click to switch between layouts (always split, no single view)
 - Similar to IDE status bars
 
@@ -185,7 +185,7 @@
 
 ```
 components/
-├── GlobalNavBar.tsx          # Top navigation bar (독립적)
+├── GlobalNavBar.tsx          # Top navigation bar (standalone)
 ├── Bar.tsx                   # Base component for all bars ⭐
 ├── MainPanel.tsx             # Central viewport
 ├── MainPanelBar.tsx          # Status bar + view-mode toggles
@@ -205,22 +205,22 @@ components/
 ## 🏷️ Terminology
 
 ### "Bar" Components
-특정 영역의 상단 또는 하단에 위치하며 제목, 액션, 상태 정보를 표시하는 영역입니다.
+A region positioned at the top or bottom of a specific area that displays a title, actions, and status information.
 
 #### Base Component
-- **Bar**: 모든 bar의 공통 base component (높이, 패딩, 텍스트 스타일 통일)
+- **Bar**: the common base component for all bars (unified height, padding, and text styling)
 
 #### Application Bars
-- **GlobalNavBar**: 앱 최상위 네비게이션 바 (독립적, Bar를 사용하지 않음)
-- **ExplorerBar**: Explorer 상단 바 (Bar 사용)
-- **MainPanelBar**: MainPanel 상단의 상태 표시 바 (Bar 사용)
-- **TerminalBar**: MainPanel 하단의 터미널 출력 바 (Bar 사용)
+- **GlobalNavBar**: the app's top-level navigation bar (standalone, does not use Bar)
+- **ExplorerBar**: bar at the top of the Explorer (uses Bar)
+- **MainPanelBar**: status bar at the top of MainPanel (uses Bar)
+- **TerminalBar**: terminal output bar at the bottom of MainPanel (uses Bar)
 
-#### 설계 원칙
-- 모든 일반 Bar는 `Bar` base component를 사용하여 **일관된 높이와 스타일** 유지
-- GlobalNavBar는 앱 수준의 특수한 네비게이션이므로 독립적으로 설계
+#### Design Principles
+- All regular Bars use the `Bar` base component to maintain a **consistent height and style**
+- GlobalNavBar is app-level, special-purpose navigation, so it is designed independently
 
-이는 IDE에서 일반적으로 사용되는 용어입니다:
+This follows terminology commonly used in IDEs:
 - VS Code: Activity Bar, Status Bar, Side Bar
 - IntelliJ: Navigation Bar, Status Bar, Tool Window Bar
 
@@ -258,15 +258,15 @@ components/
 ## 🎨 Design Principles
 
 1. **Bar base component** = Single source of truth for all bar styling
-   - 일관된 높이 (`h-10`)
-   - 일관된 패딩 (`px-4`)
-   - 일관된 텍스트 크기 (`text-sm`)
+   - Consistent height (`h-10`)
+   - Consistent padding (`px-4`)
+   - Consistent text size (`text-sm`)
 2. **MainPanel** = Single active view
    - Kanban and Workflow are **mutually exclusive** — driven by `taskViewMode`
    - When in Kanban: `splitLayout` decides column arrangement (horizontal = stacked, vertical = grid-cols-3)
    - When in Workflow: graph is fixed LR (left → right), split toggle is hidden
 3. **BoardContainer** = Minimal wrapper (no padding/borders, compact header)
-4. **Board equality** = KanbanBoard와 AgentWorkflowBoard는 동일한 위계
+4. **Board equality** = KanbanBoard and AgentWorkflowBoard sit at the same hierarchy level
 5. **Feature folders** = Self-contained board implementations (kanban/, workflow/)
 6. **Composition** = Mix and match components
 

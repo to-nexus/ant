@@ -1,21 +1,21 @@
 # visual-processor
 
-AI 배경 제거 서버. [rembg](https://github.com/danielgatis/rembg) + [BiRefNet](https://github.com/ZhengPeng7/BiRefNet) 기반 Python FastAPI 서비스.
+AI background-removal server. Python FastAPI service based on [rembg](https://github.com/danielgatis/rembg) + [BiRefNet](https://github.com/ZhengPeng7/BiRefNet).
 
-이미지를 받아 배경을 제거한 투명 PNG를 반환한다.
+Takes an image and returns a transparent PNG with the background removed.
 
 ## Quick Start
 
 ```bash
-# 프로젝트 루트에서 (Redis, ChromaDB 등과 함께)
+# From the project root (together with Redis, ChromaDB, etc.)
 pnpm dev:infra
 
-# 또는 단독 실행
+# Or run standalone
 cd packages/ant-cli/src/periphery/integrations/visual-processor
 docker compose up -d
 ```
 
-최초 기동 시 기본 모델(~1.2 GB)을 다운로드한다. Docker volume에 캐시되어 이후 재시작은 즉시 완료된다.
+On first startup it downloads the default model (~1.2 GB). The model is cached in a Docker volume, so subsequent restarts complete immediately.
 
 ---
 
@@ -23,25 +23,25 @@ docker compose up -d
 
 ### POST /remove-bg
 
-이미지의 배경을 제거하고 투명 PNG를 반환한다.
+Removes the background from an image and returns a transparent PNG.
 
 **Request:**
 
 ```
 POST /remove-bg?model={model_name}
 Content-Type: multipart/form-data
-X-Request-Id: {uuid}          (선택, 없으면 서버가 생성)
+X-Request-Id: {uuid}          (optional; the server generates one if absent)
 ```
 
 | Parameter | Location | Type | Required | Default | Description |
 |-----------|----------|------|----------|---------|-------------|
-| `file` | body (form) | binary | Yes | — | 입력 이미지 |
-| `model` | query | string | No | `birefnet-general` | rembg 모델명 |
+| `file` | body (form) | binary | Yes | — | Input image |
+| `model` | query | string | No | `birefnet-general` | rembg model name |
 
-입력 제한:
-- 최대 파일 크기: `MAX_FILE_SIZE_MB` (기본 20 MB)
-- 최대 픽셀 수: `MAX_PIXELS` (기본 4096x4096 = 16,777,216)
-- 지원 포맷: JPEG, PNG, WebP, BMP, TIFF (PIL이 열 수 있는 모든 포맷)
+Input limits:
+- Max file size: `MAX_FILE_SIZE_MB` (default 20 MB)
+- Max pixel count: `MAX_PIXELS` (default 4096x4096 = 16,777,216)
+- Supported formats: JPEG, PNG, WebP, BMP, TIFF (any format PIL can open)
 
 **Response (200):**
 
@@ -52,30 +52,30 @@ X-Processing-Time-Ms: 3421
 X-Request-Id: abc-123
 ```
 
-Body: 투명 배경 PNG 바이너리
+Body: PNG binary with transparent background
 
 **Error Responses:**
 
-모든 에러는 `{"detail": "...", "request_id": "..."}` 형식.
+All errors use the shape `{"detail": "...", "request_id": "..."}`.
 
 | Status | Condition | detail |
 |--------|-----------|--------|
-| 400 | 유효하지 않은 이미지 파일 | `Invalid image file` |
-| 400 | 픽셀 수 초과 | `Image too large: {w}x{h} ({n} pixels, max {m})` |
-| 400 | 존재하지 않는 모델명 | `Unknown model: '{x}'. Use GET /models for available options.` |
-| 413 | 파일 크기 초과 | `File too large: {n} bytes (max {m} bytes)` |
-| 503 | 처리 슬롯 없음 | `At capacity ({n} concurrent). Retry later.` |
-| 504 | 처리 타임아웃 | `Processing timeout ({n}s exceeded)` |
-| 500 | 기타 내부 오류 | `Processing error: {exception}` |
+| 400 | Invalid image file | `Invalid image file` |
+| 400 | Pixel count exceeded | `Image too large: {w}x{h} ({n} pixels, max {m})` |
+| 400 | Unknown model name | `Unknown model: '{x}'. Use GET /models for available options.` |
+| 413 | File size exceeded | `File too large: {n} bytes (max {m} bytes)` |
+| 503 | No processing slot available | `At capacity ({n} concurrent). Retry later.` |
+| 504 | Processing timeout | `Processing timeout ({n}s exceeded)` |
+| 500 | Other internal error | `Processing error: {exception}` |
 
-**curl 예시:**
+**curl examples:**
 
 ```bash
 curl -X POST http://localhost:4103/remove-bg \
   -F "file=@input.jpg" \
   -o output.png
 
-# 특정 모델 + request ID
+# Specific model + request ID
 curl -X POST "http://localhost:4103/remove-bg?model=birefnet-portrait" \
   -H "X-Request-Id: my-trace-123" \
   -F "file=@portrait.jpg" \
@@ -84,7 +84,7 @@ curl -X POST "http://localhost:4103/remove-bg?model=birefnet-portrait" \
 
 ### GET /health
 
-서비스 상태 확인. K8s readiness/liveness probe 겸용.
+Service health check. Doubles as a K8s readiness/liveness probe.
 
 ```json
 {
@@ -98,16 +98,16 @@ curl -X POST "http://localhost:4103/remove-bg?model=birefnet-portrait" \
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | string | 항상 `"ok"` |
-| `default_model` | string | 기동 시 프리로드된 모델 |
-| `loaded_models` | string[] | 현재 메모리에 로드된 모델 목록 |
-| `memory_mb` | number | 프로세스 RSS 메모리 (MB) |
-| `concurrency.max` | number | worker당 최대 동시 처리 수 |
-| `concurrency.active` | number | 현재 처리 중인 요청 수 |
+| `status` | string | Always `"ok"` |
+| `default_model` | string | Model preloaded at startup |
+| `loaded_models` | string[] | Models currently loaded in memory |
+| `memory_mb` | number | Process RSS memory (MB) |
+| `concurrency.max` | number | Max concurrent requests per worker |
+| `concurrency.active` | number | Requests currently being processed |
 
 ### GET /models
 
-사용 가능한 rembg 모델 목록 반환.
+Returns the list of available rembg models.
 
 ```json
 {
@@ -120,81 +120,81 @@ curl -X POST "http://localhost:4103/remove-bg?model=birefnet-portrait" \
 
 ## Server Architecture
 
-### 모듈 구조
+### Module structure
 
 ```
 server/
-├── config.py         # 환경변수 기반 설정 상수 (순수 데이터, 의존 없음)
-├── processor.py      # ImageProcessor: 모델 세션 + 이미지 처리 + 동시성 제어
-├── app.py            # FastAPI 앱 팩토리, 라우트, request-id 미들웨어
+├── config.py         # Environment-variable-driven config constants (pure data, no dependencies)
+├── processor.py      # ImageProcessor: model sessions + image processing + concurrency control
+├── app.py            # FastAPI app factory, routes, request-id middleware
 ├── Dockerfile
 └── requirements.txt
 ```
 
-의존 방향: `config` → `processor` → `app` (단방향).
+Dependency direction: `config` → `processor` → `app` (one-way).
 
-### 요청 수명주기
+### Request lifecycle
 
 ```
 POST /remove-bg
   │
-  ├─ middleware: X-Request-Id 부여 (수신 또는 UUID4 생성)
+  ├─ middleware: assign X-Request-Id (received or generated as UUID4)
   │
-  ├─ app.py: 입력 검증
-  │   ├─ 파일 크기 > MAX_FILE_SIZE → 413
+  ├─ app.py: input validation
+  │   ├─ file size > MAX_FILE_SIZE → 413
   │   └─ model not in AVAILABLE_MODELS → 400
   │
   ├─ processor.try_acquire() — BoundedSemaphore non-blocking
-  │   └─ 실패 → 503
+  │   └─ failure → 503
   │
   ├─ processor.submit(data, model, request_id)
-  │   ├─ ThreadPoolExecutor에 _process 제출
+  │   ├─ submit _process to ThreadPoolExecutor
   │   ├─ asyncio.wait_for(timeout=PROCESSING_TIMEOUT_S)
-  │   └─ _process 내부:
-  │       ├─ PIL.Image.open → 픽셀 검증 (> MAX_PIXELS → ValueError → 400)
+  │   └─ inside _process:
+  │       ├─ PIL.Image.open → pixel validation (> MAX_PIXELS → ValueError → 400)
   │       ├─ img.convert("RGBA")
   │       ├─ rembg.remove(img, session=model_session)
   │       ├─ output.save(format="PNG")
-  │       └─ finally: _release() (semaphore 해제)
+  │       └─ finally: _release() (release semaphore)
   │
   └─ 200 PNG + X-Request-Id + X-Processing-Time-Ms
 ```
 
-### 동시성 모델 — 단일 게이트
+### Concurrency model — single gate
 
-`BoundedSemaphore`와 `ThreadPoolExecutor`가 동일한 `MAX_CONCURRENCY`를 공유하되, **semaphore release는 스레드 내부 `finally`에서만** 수행한다.
+The `BoundedSemaphore` and the `ThreadPoolExecutor` share the same `MAX_CONCURRENCY`, but **the semaphore is released only in the thread's internal `finally`**.
 
-- **타임아웃 후 동작**: `wait_for`가 504를 반환해도 스레드는 계속 실행 중이고 semaphore도 점유 중. 다음 요청은 정확히 503을 받는다. 스레드 완료 시 `finally`에서 해제되어 다음 요청 수락.
-- **프로세스 병렬성**: `UVICORN_WORKERS=N`으로 프로세스 복제. 각 worker가 독립 `ImageProcessor` 인스턴스를 보유.
-- **총 동시성** = `UVICORN_WORKERS` × `MAX_CONCURRENCY`. 총 메모리 = workers × ~1.5 GB.
+- **Behavior after timeout**: even after `wait_for` returns a 504, the thread keeps running and still holds the semaphore. The next request correctly receives a 503. When the thread completes, the `finally` releases the slot and the next request is accepted.
+- **Process parallelism**: replicate processes with `UVICORN_WORKERS=N`. Each worker holds an independent `ImageProcessor` instance.
+- **Total concurrency** = `UVICORN_WORKERS` × `MAX_CONCURRENCY`. Total memory = workers × ~1.5 GB.
 
-### 모델 세션 관리
+### Model session management
 
-| 전략 | 설명 |
+| Strategy | Description |
 |------|------|
-| Startup preload | `REMBG_MODEL` 기본 모델을 서버 기동 시 프리로드 (cold-start 회피) |
-| Lazy-load + cache | 비기본 모델은 첫 요청 시 로드. `threading.Lock` 기반 double-checked locking |
-| 가중치 경로 | `~/.u2net/` (Docker volume `rembg-models`로 영속화) |
+| Startup preload | Preload the `REMBG_MODEL` default model at server startup (avoids cold-start) |
+| Lazy-load + cache | Non-default models load on first request. Double-checked locking via `threading.Lock` |
+| Weights path | `~/.u2net/` (persisted via the `rembg-models` Docker volume) |
 
 ---
 
 ## Models
 
-| 모델 | 품질 | 속도 | 적합 용도 |
+| Model | Quality | Speed | Suited for |
 |------|------|------|----------|
-| `birefnet-general` | Highest (SOTA) | Moderate | 로고, 아이콘, 제품 사진 (고품질) |
-| `birefnet-general-lite` | High | Fast | 속도 우선 시 |
-| `birefnet-portrait` | Highest | Moderate | 인물/초상화 |
-| `birefnet-dis` | High | Moderate | 고밀도 객체 (DIS 특화) |
-| `birefnet-massive` | Highest | Slow | 최대 정밀도 필요 시 |
-| `u2net` | Good | Fast | **기본값** — 경량 범용 |
-| `u2netp` | Fair | Fastest | 최소 리소스 |
-| `u2net_human_seg` | Good | Fast | 인물 세그멘테이션 |
-| `isnet-general-use` | Good | Fast | 경량 범용 |
-| `isnet-anime` | Good | Fast | 애니메이션/일러스트 |
-| `sam` | High | Very Slow | SAM 기반 (ViT-H) |
+| `birefnet-general` | Highest (SOTA) | Moderate | Logos, icons, product photos (high quality) |
+| `birefnet-general-lite` | High | Fast | When speed matters most |
+| `birefnet-portrait` | Highest | Moderate | People/portraits |
+| `birefnet-dis` | High | Moderate | Dense objects (DIS-specialized) |
+| `birefnet-massive` | Highest | Slow | When maximum precision is required |
+| `u2net` | Good | Fast | **Default** — lightweight general-purpose |
+| `u2netp` | Fair | Fastest | Minimal resources |
+| `u2net_human_seg` | Good | Fast | Human segmentation |
+| `isnet-general-use` | Good | Fast | Lightweight general-purpose |
+| `isnet-anime` | Good | Fast | Animation/illustration |
+| `sam` | High | Very Slow | SAM-based (ViT-H) |
 
-전체 목록은 `GET /models` 응답에서 확인.
+See the `GET /models` response for the full list.
 
 ---
 
@@ -202,55 +202,55 @@ POST /remove-bg
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REMBG_MODEL` | `u2net` | 기동 시 프리로드할 기본 모델 |
-| `MAX_FILE_SIZE_MB` | `20` | 업로드 파일 크기 제한 (MB) |
-| `MAX_PIXELS` | `16777216` | 최대 이미지 픽셀 수 (기본 4096×4096) |
-| `MAX_INFERENCE_DIM` | `768` | 추론 전 축소할 최대 차원. 큰 이미지는 이 크기로 줄여서 처리 |
-| `MAX_CONCURRENCY` | `1` | worker당 동시 처리 가능 요청 수 |
-| `PROCESSING_TIMEOUT_S` | `60` | 단일 요청 처리 타임아웃 (초) |
-| `UVICORN_WORKERS` | `1` | 프로세스 수. worker × MAX_CONCURRENCY = 총 동시성 |
+| `REMBG_MODEL` | `u2net` | Default model to preload at startup |
+| `MAX_FILE_SIZE_MB` | `20` | Upload file size limit (MB) |
+| `MAX_PIXELS` | `16777216` | Max image pixel count (default 4096×4096) |
+| `MAX_INFERENCE_DIM` | `768` | Max dimension to downscale to before inference. Larger images are shrunk to this size for processing |
+| `MAX_CONCURRENCY` | `1` | Concurrent requests allowed per worker |
+| `PROCESSING_TIMEOUT_S` | `60` | Per-request processing timeout (seconds) |
+| `UVICORN_WORKERS` | `1` | Process count. workers × MAX_CONCURRENCY = total concurrency |
 
 ---
 
 ## Resource Requirements
 
-| 항목 | 값 | 비고 |
+| Item | Value | Notes |
 |------|---|------|
-| 모델 다운로드 | ~170 MB (u2net) / ~1.2 GB (birefnet) | 최초 1회, volume에 영속화 |
-| 모델 메모리 | ~0.2–1.5 GB × workers | 모델에 따라 다름, worker별 독립 로드 |
-| 처리 시간 (CPU) | 3–5s | 1024×1024 이미지 기준 |
-| 처리 시간 (GPU) | <1s | CUDA 12.x 기준 (미구현) |
-| 기본 동시성 | 1 req | 1 worker × 1 concurrent |
+| Model download | ~170 MB (u2net) / ~1.2 GB (birefnet) | First run only, persisted in volume |
+| Model memory | ~0.2–1.5 GB × workers | Varies by model, loaded independently per worker |
+| Processing time (CPU) | 3–5s | For a 1024×1024 image |
+| Processing time (GPU) | <1s | With CUDA 12.x (not implemented) |
+| Default concurrency | 1 req | 1 worker × 1 concurrent |
 
 ---
 
 ## Deployment
 
-Pod 리소스, Kubernetes 매니페스트, 스케일링 전략, GPU 지원 등 배포 관련 내용은 각자의 배포 인프라 범위다 (OSS 트리에 포함되지 않음).
+Pod resources, Kubernetes manifests, scaling strategy, GPU support, and other deployment concerns are the scope of each operator's deployment infrastructure (not included in the OSS tree).
 
-**로컬 개발 시:**
+**For local development:**
 
 ```bash
-# 프로젝트 루트에서 (Redis, ChromaDB 등과 함께)
+# From the project root (together with Redis, ChromaDB, etc.)
 pnpm dev:infra
 
-# 또는 단독 실행
+# Or run standalone
 docker compose up -d
 ```
 
-`rembg-models` named volume이 `~/.u2net`에 마운트되어 모델 가중치가 컨테이너 리빌드 후에도 영속된다.
+The `rembg-models` named volume is mounted at `~/.u2net`, so model weights persist across container rebuilds.
 
 ---
 
 ## Future Extensions
 
-이 서비스는 `visual-processor`라는 범용 이름으로, 향후 이미지 처리 엔드포인트를 점진적으로 추가한다:
+This service carries the general-purpose name `visual-processor`; image-processing endpoints will be added incrementally over time:
 
 | Endpoint | Purpose | Priority |
 |----------|---------|----------|
-| `POST /upscale` | AI 업스케일링 (Real-ESRGAN 등) | Medium |
-| `POST /optimize` | 웹 최적화 (압축, 리사이즈) | Low |
-| `POST /segment` | 세그멘테이션 마스크 반환 | Low |
+| `POST /upscale` | AI upscaling (Real-ESRGAN, etc.) | Medium |
+| `POST /optimize` | Web optimization (compression, resizing) | Low |
+| `POST /segment` | Return segmentation masks | Low |
 
 ---
 
@@ -258,14 +258,14 @@ docker compose up -d
 
 ```
 visual-processor/
-├── README.md               # ← 이 문서 (서버 기능 명세)
-├── docker-compose.yml       # 서비스 정의, volume 마운트
+├── README.md               # ← This document (server functional spec)
+├── docker-compose.yml       # Service definition, volume mounts
 └── server/
     ├── Dockerfile           # python:3.10-slim, uvicorn --factory
     ├── requirements.txt     # rembg[cpu], fastapi, uvicorn, pillow
-    ├── config.py            # 환경변수 기반 설정 상수
-    ├── processor.py         # ImageProcessor 클래스
-    └── app.py               # FastAPI 앱 팩토리 + 라우트
+    ├── config.py            # Environment-variable-driven config constants
+    ├── processor.py         # ImageProcessor class
+    └── app.py               # FastAPI app factory + routes
 ```
 
-ant-cli와의 통합 아키텍처는 [docs/internals/27-visual-processor.md](../../../../../../../docs/internals/27-visual-processor.md) 참조.
+For the integration architecture with ant-cli, see [docs/internals/27-visual-processor.md](../../../../../../docs/internals/27-visual-processor.md).

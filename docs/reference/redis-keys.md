@@ -5,9 +5,8 @@ canonical state (kanban, job status, user-stopped flags), pub/sub
 channels for streaming, and locks for clone/init/fetch.
 
 The canonical SSOT for keys is
-[`packages/ant-cli/src/infrastructure/state/RedisKeys.ts`](../../packages/ant-cli/src/infrastructure/state/RedisKeys.ts)
-(file path stable across releases). This page is the operator-friendly
-catalog.
+[`packages/ant-cli/src/core/constants/redis.ts`](../../packages/ant-cli/src/core/constants/redis.ts)
+(`REDIS_KEYS`). This page is the operator-friendly catalog.
 
 For the deep dive (TLS, cluster topology, retry semantics) see
 [internals/02-infrastructure.md](../internals/02-infrastructure.md).

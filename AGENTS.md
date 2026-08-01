@@ -18,7 +18,7 @@ the user-facing concepts live in [`docs/concepts/`](docs/concepts/).
 | You want to…                              | Read                                                |
 |-------------------------------------------|-----------------------------------------------------|
 | Understand the system in 5 minutes        | [docs/concepts/architecture.md](docs/concepts/architecture.md) |
-| Run the project locally                   | [docs/getting-started/quickstart.md](docs/getting-started/quickstart.md) |
+| Run the project locally                   | [docs/local-mode/install.md](docs/local-mode/install.md) |
 | Add a new agent / job / phase node        | This file, then `docs/internals/`                   |
 | Author or edit a prompt template          | [Prompt Engineering](#prompt-engineering)           |
 | Touch the LangGraph state machine         | [LangGraph State Management](#langgraph-state-management) |

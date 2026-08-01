@@ -1,12 +1,12 @@
 # 28. Context Management Architecture
 
-Context Window 관리 전략: 4단 계층 정의, 메커니즘 인벤토리, Job별 pruning/compaction 매트릭스.
+Context window management strategy: 4-tier hierarchy definition, mechanism inventory, and per-job pruning/compaction matrix.
 
-> ⚠️ **부분 대체 (2026-04-20)**: code/design 경로의 "Context Isolation" 모델(§2 Inter-Job Context Bridge · `jobConversation` · heavyweight/lightweight compaction · `CODE_JOB_COMPACTION_*` / `DESIGN_JOB_COMPACTION_*` 상수 · `job-history` 템플릿)은 [`18-session-redesign.md`](./18-session-redesign.md)로 **완전 대체**됐다. code/design에서는 `feature.jsonl` + `featureContext` + `FEATURE_CONTEXT_THRESHOLD(12000)`을 사용한다.
+> ⚠️ **Partially superseded (2026-04-20)**: The "Context Isolation" model for the code/design paths (§2 Inter-Job Context Bridge · `jobConversation` · heavyweight/lightweight compaction · the `CODE_JOB_COMPACTION_*` / `DESIGN_JOB_COMPACTION_*` constants · the `job-history` templates) has been **fully replaced** by [`18-session-redesign.md`](./18-session-redesign.md). code/design now use `feature.jsonl` + `featureContext` + `FEATURE_CONTEXT_THRESHOLD(12000)`.
 >
-> 본 문서 중 **유효한 범위**: (a) 4-Tier conversation hierarchy(Session/Job/Run/Turn) 정의 · (b) `compactRun` 2단계 파이프라인 (`compactTurns` → `pruneTurns`) · (c) **plan / visual** 경로의 `compactJob` + `applyCompactionToConversation` (Continuity 모델) · (d) `retentionPolicy` (Task boundary, code/design 공용).
+> **Still-valid scope** of this document: (a) the 4-Tier conversation hierarchy (Session/Job/Run/Turn) definitions · (b) the `compactRun` 2-stage pipeline (`compactTurns` → `pruneTurns`) · (c) `compactJob` + `applyCompactionToConversation` for the **plan / visual** paths (Continuity model) · (d) `retentionPolicy` (Task boundary, shared by code/design).
 >
-> 본 문서 중 **제거된 심볼** (grep 시 0건이어야 함): `jobConversation` / `compressHeavyweightEntries` / `CODE_JOB_COMPACTION_THRESHOLD` / `CODE_JOB_COMPACTION_WINDOW` / `DESIGN_JOB_COMPACTION_THRESHOLD` / `DESIGN_JOB_COMPACTION_WINDOW` / `common/compaction/job-summary.md` / `code/base/injections/job-history.md` / `design/base/injections/job-history.md`. 아래 본문의 해당 서술은 역사적 배경으로만 읽는다.
+> **Removed symbols** covered by this document (grep must return 0 hits): `jobConversation` / `compressHeavyweightEntries` / `CODE_JOB_COMPACTION_THRESHOLD` / `CODE_JOB_COMPACTION_WINDOW` / `DESIGN_JOB_COMPACTION_THRESHOLD` / `DESIGN_JOB_COMPACTION_WINDOW` / `common/compaction/job-summary.md` / `code/base/injections/job-history.md` / `design/base/injections/job-history.md`. Read the corresponding passages below as historical background only.
 
 ---
 
@@ -14,10 +14,10 @@ Context Window 관리 전략: 4단 계층 정의, 메커니즘 인벤토리, Job
 
 | Term | Definition |
 |---|---|
-| **Session** | Feature 단위 개발 세션. 하나의 feature 디렉토리 = 하나의 Session. 여러 JobType의 세션 파일들을 포괄하는 최상위 컨테이너. |
-| **Job** | 하나의 목표를 가진 작업 단위. `httpJobId`로 식별(Isolation) 또는 파일 경로로 식별(Continuity). N개의 Run을 포함. |
-| **Run** | 한 번의 BullMQ job 실행 = 한 프로세스 스폰. 세션 로드 → 처리 → 세션 저장의 한 사이클. 코드에서 `SessionRun`으로 기록. |
-| **Turn** | Run 내 ReAct 루프의 한 LLM 호출-응답 쌍. `groupMessagesIntoTurns()` 반환 단위. `tool_use` 포함 가능. |
+| **Session** | A feature-scoped development session. One feature directory = one Session. The top-level container spanning the session files of multiple JobTypes. |
+| **Job** | A unit of work with a single goal. Identified by `httpJobId` (Isolation) or by file path (Continuity). Contains N Runs. |
+| **Run** | One BullMQ job execution = one process spawn. One cycle of session load → processing → session save. Recorded as `SessionRun` in code. |
+| **Turn** | One LLM call-response pair of the ReAct loop within a Run. The unit returned by `groupMessagesIntoTurns()`. May contain `tool_use`. |
 
 ### Code Mapping
 
@@ -57,33 +57,33 @@ Session (feature: "my-sns-app")
 
 #### Inter-Job Context Bridge
 
-Code/Design의 Context Isolation을 유지하면서 Job 간 맥락을 전달하는 메커니즘.
+A mechanism for carrying context between Jobs while preserving Code/Design's Context Isolation.
 
-**핵심 개념:**
-- `session.state.jobConversation: ConversationEntry[]` — Job 완료 기록의 누적 배열
-- 각 Job 완료 시 2개 entry 추가 (user: directive, assistant: result)
-- 기존 `conversationHistory` 폐기 정책은 불변 — jobConversation은 별도 채널
+**Core concepts:**
+- `session.state.jobConversation: ConversationEntry[]` — a cumulative array of Job completion records
+- On each Job completion, 2 entries are appended (user: directive, assistant: result)
+- The existing `conversationHistory` discard policy is unchanged — jobConversation is a separate channel
 
 **Boundary Classification:**
 
-| 분류 | 의미 | 결정 시점 |
+| Classification | Meaning | Decided at |
 |---|---|---|
-| **Heavyweight** | 복잡한 작업, inter-task isolation 적용. raw context 보존 가치 낮음 | decompose (pre-determined 또는 LLM 판정) |
-| **Lightweight** | 응집적 작업, raw context가 그 자체로 가치 있음 | decompose (pre-determined 또는 LLM 판정) |
+| **Heavyweight** | Complex work with inter-task isolation applied. Low value in preserving raw context | decompose (pre-determined or LLM judgment) |
+| **Lightweight** | Cohesive work whose raw context is valuable as-is | decompose (pre-determined or LLM judgment) |
 
-**Dual-Trigger Compaction (모든 압축은 다음 Job의 resolve에서 수행):**
-- **Trigger 2 (Heavyweight)**: 미압축 heavyweight entries를 LLM 요약으로 교체 (`compressHeavyweightEntries`)
-- **Trigger 1 (Threshold)**: 전체 `jobConversation` 토큰이 threshold 초과 시 `compactJob`으로 MECE 압축
+**Dual-Trigger Compaction (all compression happens in the next Job's resolve):**
+- **Trigger 2 (Heavyweight)**: replace uncompressed heavyweight entries with an LLM summary (`compressHeavyweightEntries`)
+- **Trigger 1 (Threshold)**: when total `jobConversation` tokens exceed the threshold, MECE-compress via `compactJob`
 
-**데이터 흐름:**
-1. learn: raw record만 append (LLM 호출 없음)
-2. 다음 Job resolve: jobConversation 로드 → Trigger 2 → Trigger 1 → persist
-3. decompose: 압축된 jobConversation을 `job-history` partial로 프롬프트에 주입
+**Data flow:**
+1. learn: append the raw record only (no LLM call)
+2. Next Job's resolve: load jobConversation → Trigger 2 → Trigger 1 → persist
+3. decompose: inject the compacted jobConversation into the prompt via the `job-history` partial
 
-**프롬프트:**
-- `common/compaction/job-summary.md` — Trigger 2 heavyweight 요약용
-- `code/base/injections/job-history.md` — Code decompose에 주입
-- `design/base/injections/job-history.md` — Design decompose에 주입
+**Prompts:**
+- `common/compaction/job-summary.md` — for Trigger 2 heavyweight summarization
+- `code/base/injections/job-history.md` — injected into Code decompose
+- `design/base/injections/job-history.md` — injected into Design decompose
 
 ### Context Continuity (Plan, Visual)
 
@@ -103,171 +103,171 @@ Session (feature: "my-sns-app")
 
 ---
 
-## 3. 데이터 포맷
+## 3. Data Formats
 
-| 포맷 | 계층 | 사용처 | 구조 |
+| Format | Tier | Used by | Structure |
 |---|---|---|---|
 | `ConversationMessage[]` | Run (Turn) | `conversationHistory` graph state, `historyManager` | `{ role, content: string \| MessageContentBlock[] }` |
 | `ConversationEntry[]` | Job (semantic) | Plan/Visual `state.conversation` | `{ role: 'user'\|'assistant'\|'system', content, timestamp, metadata? }` |
 
-`ConversationMessage[]`는 LLM 메시지 포맷(tool_use/tool_result block 포함)이고, `ConversationEntry[]`는 사람 읽기 가능한 요약 포맷. `system` role은 chapter marker(Visual deliver)와 compaction summary(persist pruning)에 사용.
+`ConversationMessage[]` is the LLM message format (including tool_use/tool_result blocks); `ConversationEntry[]` is a human-readable summary format. The `system` role is used for chapter markers (Visual deliver) and compaction summaries (persist pruning).
 
 ---
 
-## 4. Pruning 메커니즘 인벤토리
+## 4. Pruning Mechanism Inventory
 
-| 메커니즘 | 계층 | LLM? | 대상 데이터 포맷 | 역할 |
+| Mechanism | Tier | LLM? | Target data format | Role |
 |---|---|---|---|---|
-| `compactTurns` | Turn | No | `ConversationMessage[]` | cold turns → fact 요약 교체 |
-| `pruneTurns` | Turn | No | `ConversationMessage[]` | 우선순위 기반 turn 삭제 |
-| `compactRun` | Run (오케스트레이터) | No | `ConversationMessage[]` | 위 2개를 순서대로 실행 |
-| `compactJob` | Job (prompt) | **Yes** | `ConversationEntry[]` 등 | LLM-based 세션 대화 요약 |
-| `applyCompactionToConversation` | Job (persist) | No | `ConversationEntry[]` | compactJob 결과를 세션 파일에 반영 |
-| `retentionPolicy` | Task | No | - | task 전환 시 보존/폐기 결정 |
+| `compactTurns` | Turn | No | `ConversationMessage[]` | Replace cold turns with fact summaries |
+| `pruneTurns` | Turn | No | `ConversationMessage[]` | Priority-based turn deletion |
+| `compactRun` | Run (orchestrator) | No | `ConversationMessage[]` | Runs the two above in order |
+| `compactJob` | Job (prompt) | **Yes** | `ConversationEntry[]` etc. | LLM-based session conversation summarization |
+| `applyCompactionToConversation` | Job (persist) | No | `ConversationEntry[]` | Apply compactJob results to the session file |
+| `retentionPolicy` | Task | No | - | Retain/discard decision on task transition |
 
 ### 4.1 compactTurns (Turn)
 
-토큰 임계값 초과 시 cold turns를 rule-based fact 요약으로 교체. LLM 호출 없이 tool_use/tool_result 블록에서 구조적 사실(파일 생성/편집, 명령 실행, 에러) 추출.
+When the token threshold is exceeded, replaces cold turns with rule-based fact summaries. Extracts structural facts (file creation/edits, command executions, errors) from tool_use/tool_result blocks without any LLM call.
 
-- 임계값: 50,000 tokens
-- Hot tail: 최근 5 turns 보존
-- 요약은 assistant+user 메시지 쌍으로 삽입 (API alternation 유지)
+- Threshold: 50,000 tokens
+- Hot tail: preserves the 5 most recent turns
+- Summaries are inserted as assistant+user message pairs (preserving API alternation)
 
 ### 4.2 pruneTurns (Turn)
 
-우선순위 기반 turn 삭제. 최소 N개 최근 turn 보존, 에러/setup turn 우선순위 부여.
+Priority-based turn deletion. Preserves a minimum of N recent turns; error/setup turns get priority.
 
-- 기본 예산: 75,000 tokens
-- 최소 보존: 3 turns
-- 우선순위: 에러(+10), setup(+5), 대형 결과(-5)
+- Default budget: 75,000 tokens
+- Minimum retention: 3 turns
+- Priority: error (+10), setup (+5), large result (-5)
 
-### 4.3 compactRun (Run 오케스트레이터)
+### 4.3 compactRun (Run orchestrator)
 
-위 2단계를 순서대로 실행하는 파이프라인:
+A pipeline that runs the two stages above in order:
 1. compactTurns → 2. pruneTurns
 
 ### 4.4 compactJob (Job — prompt)
 
-LLM-based 세션 대화 요약. `ConversationEntry[]`를 대상으로 오래된 항목을 LLM이 요약.
-- Plan/Visual에서 사용 (기존 `pruneSession` rule-based 대체)
+LLM-based session conversation summarization. Targets `ConversationEntry[]`; older entries are summarized by the LLM.
+- Used by Plan/Visual (replaces the former rule-based `pruneSession`)
 - `CompactionResult<T>`: `{ entries, summary?, wasCompacted, tokensBefore, tokensAfter }`
-- 호출자가 summary 렌더링 포맷 결정 → 기존 프롬프트 포맷 호환
-- 프롬프트: `common/compaction/system.md` (PromptPort를 통해 주입, MECE 보존 전략)
-- MECE 보존 카테고리: **Agreements** (확정), **Artifacts** (산출물), **Open Items** (미결)
-- Claude Code 벤치마크 기반 설계: "structured checklist → working state" 패턴
+- The caller decides the summary rendering format → compatible with existing prompt formats
+- Prompt: `common/compaction/system.md` (injected via PromptPort, MECE preservation strategy)
+- MECE preservation categories: **Agreements** (confirmed), **Artifacts** (deliverables), **Open Items** (unresolved)
+- Design based on the Claude Code benchmark: the "structured checklist → working state" pattern
 
 ### 4.4b applyCompactionToConversation (Job — persist)
 
-compactJob 결과를 세션 저장 시 conversation 배열에 반영. 추가 LLM 호출 없음.
-- `ConversationCompaction { summary, summarizedCount }` 메타데이터를 받아
-- conversation 앞 `summarizedCount`개 항목을 하나의 `system` summary entry로 대체
-- Progressive summarization 지원: 이전 summary entry가 다시 compactJob 대상이 될 수 있음
+Applies the compactJob result to the conversation array on session save. No additional LLM call.
+- Receives `ConversationCompaction { summary, summarizedCount }` metadata
+- Replaces the first `summarizedCount` entries of the conversation with a single `system` summary entry
+- Supports progressive summarization: a previous summary entry can itself become a compactJob target again
 
 ### 4.5 retentionPolicy (Task)
 
-Context Isolation 전용. Task 전환 시 대화 이력 보존/압축/폐기 결정.
-- Code: 항상 discard
-- Design system-design (같은 targetFile): compact
-- Design ui-design: discard (disk-based loadPreviousUiDocs 사용)
+Context Isolation only. Decides whether to preserve/compact/discard conversation history on task transition.
+- Code: always discard
+- Design system-design (same targetFile): compact
+- Design ui-design: discard (uses disk-based loadPreviousUiDocs)
 
 ---
 
-## 5. Job별 적용 매트릭스
+## 5. Per-Job Application Matrix
 
-### 현재 상태
+### Current State
 
 |  | compactRun | compactJob (prompt) | applyCompactionToConversation (persist) | retentionPolicy | Inter-Job Context Bridge |
 |---|---|---|---|---|---|
 | Code (Isolation) | O | O (jobConversation, 8K threshold) | O (jobConversation) | O | O (resolve: Trigger 2 + Trigger 1) |
-| Design (Isolation) | O | O (jobConversation, 8K threshold) | O (jobConversation) | O (spec 명시적 discard) | O (resolve: Trigger 2 + Trigger 1) |
+| Design (Isolation) | O | O (jobConversation, 8K threshold) | O (jobConversation) | O (spec: explicit discard) | O (resolve: Trigger 2 + Trigger 1) |
 | Plan (Continuation) | O (50K budget) | O (LLM-based, 12K threshold) | O | - | - |
 | Visual (Continuation) | X (tool loop ephemeral) | O (LLM-based, 6.4K threshold) | O | - | - |
 
-Visual에 compactRun이 불필요한 이유: `streamWithToolLoop`의 `currentMessages`는 함수 로컬 변수로 최대 5라운드 후 소멸. graph state/세션에 저장되지 않으므로 cross-invocation 성장 없음.
+Why Visual does not need compactRun: `streamWithToolLoop`'s `currentMessages` is a function-local variable that vanishes after at most 5 rounds. It is never stored in graph state or the session, so there is no cross-invocation growth.
 
-### 향후 개선
+### Future Improvements
 
-| 항목 | 현재 | 목표 | 비고 |
+| Item | Current | Goal | Notes |
 |---|---|---|---|
-| Job Type별 압축 잔여량 UI | 미적용 | 채팅창에 circular progress 게이지 표시 | estimateTokens(jobConversation) / threshold |
-| 수동 압축 (Manual Trigger 1) | 미적용 | UI에서 "압축하기" 버튼 | API endpoint 추가 필요 |
+| Per-JobType compaction headroom UI | Not applied | Show a circular progress gauge in the chat panel | estimateTokens(jobConversation) / threshold |
+| Manual compaction (Manual Trigger 1) | Not applied | A "Compact" button in the UI | Requires a new API endpoint |
 
 ---
 
-## 6. 공통 파이프라인: compactRun
+## 6. Common Pipeline: compactRun
 
 ```
 compactTurns (Turn)
   → pruneTurns (Turn)
 ```
 
-`compactRun`은 `ConversationMessage[]` (LLM 메시지 포맷)를 입력받아 2단계 파이프라인을 순서대로 실행. TokenBudgetManager의 예산을 반영.
+`compactRun` takes `ConversationMessage[]` (the LLM message format) as input and runs the 2-stage pipeline in order. Respects the TokenBudgetManager budget.
 
-### 사용처
+### Call Sites
 
-| 사용처 | 데이터 | 호출 시점 |
+| Call site | Data | When |
 |---|---|---|
-| Code/Design prompt builders | `conversationHistory` | LLM 호출 전 |
-| Plan generateNode | `conversationHistory` | LLM 호출 전 + 세션 저장 전 |
-| `applyRetention` (Isolation) | `conversationHistory` | Task 전환 시 |
+| Code/Design prompt builders | `conversationHistory` | Before LLM call |
+| Plan generateNode | `conversationHistory` | Before LLM call + before session save |
+| `applyRetention` (Isolation) | `conversationHistory` | On task transition |
 
 ---
 
-## 7. 분화 메커니즘
+## 7. Differentiation Mechanisms
 
 ### retentionPolicy (Context Isolation)
 
-Task 전환 시 대화 이력 보존/폐기 결정. `compactRun`을 내부적으로 호출 (compact 결정 시).
+Decides whether to preserve/discard conversation history on task transition. Calls `compactRun` internally (when the decision is compact).
 
-| 조건 | 결정 |
+| Condition | Decision |
 |---|---|
-| Code (모든 경우) | discard |
+| Code (all cases) | discard |
 | Design + no next task | discard |
 | Design + system-design + same targetFile | compact |
 | Design + system-design + different file | discard |
 | Design + ui-design | discard |
-| Design + spec | discard (목표: 명시적 분기) |
+| Design + spec | discard (goal: explicit branch) |
 
 ### compactJob (Context Continuity)
 
-Job-level LLM-based 대화 요약. PromptPort를 통해 `common/compaction/system.md` 템플릿을 주입받아 사용.
+Job-level LLM-based conversation summarization. Receives the `common/compaction/system.md` template via PromptPort.
 
-| Job | 임계값 | Window | 비고 |
+| Job | Threshold | Window | Notes |
 |---|---|---|---|
-| Plan | 12,000 tokens | 최근 4 entries | system prompt 내 conversation context |
-| Visual | 6,400 tokens | 최근 3 entries | user prompt 내 conversation context |
+| Plan | 12,000 tokens | 4 most recent entries | conversation context inside the system prompt |
+| Visual | 6,400 tokens | 3 most recent entries | conversation context inside the user prompt |
 
-**MECE 보존 전략**: Claude Code 벤치마크 기반. 모든 유의미한 정보를 3 카테고리로 분류:
+**MECE preservation strategy**: based on the Claude Code benchmark. All meaningful information is classified into 3 categories:
 
-| 카테고리 | 보존 대상 | Claude Code 대응 |
+| Category | What is preserved | Claude Code equivalent |
 |---|---|---|
-| **Agreements** | 결정, 제약조건, 요구사항, 스코프 | User intent + Technical decisions + Errors & fixes |
-| **Artifacts** | 생성 파일, 저장 에셋, 문서, 경로 | Files touched & why |
-| **Open Items** | 미해결 질문, 보류 결정, 다음 작업 | Pending tasks + Next step |
+| **Agreements** | Decisions, constraints, requirements, scope | User intent + Technical decisions + Errors & fixes |
+| **Artifacts** | Created files, saved assets, documents, paths | Files touched & why |
+| **Open Items** | Unresolved questions, pending decisions, next work | Pending tasks + Next step |
 
-**Persist Pruning**: `applyCompactionToConversation`을 세션 저장 시 적용하여 conversation 무한 성장 방지.
-- Visual: `graph.ts`에서 `finalState._conversationCompaction` 메타데이터 사용
-- Plan: `generateNode` 내부의 `compactionMeta` 로컬 변수를 `saveConversationToSession`에 전달
+**Persist Pruning**: `applyCompactionToConversation` is applied on session save to prevent unbounded conversation growth.
+- Visual: uses the `finalState._conversationCompaction` metadata in `graph.ts`
+- Plan: the `compactionMeta` local variable inside `generateNode` is passed to `saveConversationToSession`
 
-**Progressive Summarization**: 이전 summary entry(role='system')가 다시 compactJob 대상이 되어 자연스러운 다단계 요약 동작.
+**Progressive Summarization**: a previous summary entry (role='system') becomes a compactJob target again, yielding natural multi-stage summarization behavior.
 
 ---
 
-## 8. core/context/ 모듈 구조
+## 8. core/context/ Module Structure
 
 ```
 packages/ant-cli/src/core/context/
-├── types.ts              ← 타입 + 공유 헬퍼 (groupMessagesIntoTurns, isErrorContent)
-├── constants.ts          ← 모든 상수
+├── types.ts              ← types + shared helpers (groupMessagesIntoTurns, isErrorContent)
+├── constants.ts          ← all constants
 ├── compactTurns.ts       ← (Turn)
 ├── pruneTurns.ts         ← (Turn) TurnPruner
-├── compactRun.ts         ← (Run) 오케스트레이터
+├── compactRun.ts         ← (Run) orchestrator
 ├── compactJob.ts         ← (Job) LLM compaction
 ├── retentionPolicy.ts    ← (Task) retention
 └── index.ts              ← barrel
 ```
 
-### 의존 그래프
+### Dependency Graph
 
 ```
 compactTurns → types
@@ -277,35 +277,35 @@ compactJob → types, constants, llmPort, promptPort
 retentionPolicy → compactRun, types, tokenBudget
 ```
 
-순환 의존 없음.
+No circular dependencies.
 
-### Re-export 브릿지
+### Re-export Bridges
 
-기존 외부 import를 유지하기 위해 브릿지 파일 제공:
+Bridge files are provided to keep existing external imports working:
 
-- `core/utils/historyManager.ts` → `compactRun`, `compactTurns`, 타입 re-export
-- `core/utils/conversationRetention.ts` → `retentionPolicy` re-export
+- `core/utils/historyManager.ts` → re-exports `compactRun`, `compactTurns`, and types
+- `core/utils/conversationRetention.ts` → re-exports `retentionPolicy`
 
 ---
 
-## 9. 토큰 상수
+## 9. Token Constants
 
-| 상수 | 값 | 사용처 |
+| Constant | Value | Used for |
 |---|---|---|
-| `DEFAULT_COMPACT_TURNS_THRESHOLD` | 50,000 | compactTurns 트리거 임계값 |
-| `DEFAULT_COMPACT_TURNS_HOT_TAIL` | 5 | compactTurns 기본 hot tail |
-| `DEFAULT_PRUNE_TURNS_MAX_TOKENS` | 75,000 | pruneTurns 기본 예산 |
-| `DEFAULT_PRUNE_TURNS_MIN_KEEP` | 3 | pruneTurns 최소 보존 turn |
-| `PLAN_CONVERSATION_HISTORY_BUDGET` | 50,000 | Plan conversationHistory 예산 |
-| `PLAN_COMPACTION_THRESHOLD` | 12,000 | Plan compactJob 트리거 |
-| `PLAN_COMPACTION_WINDOW` | 4 | Plan compactJob 최근 window |
-| `VISUAL_COMPACTION_THRESHOLD` | 6,400 | Visual compactJob 트리거 |
-| `VISUAL_COMPACTION_WINDOW` | 3 | Visual compactJob 최근 window |
-| `COMPACTION_MAX_OUTPUT_TOKENS` | 16,384 | compactJob LLM 최대 출력 |
-| `CODE_JOB_COMPACTION_THRESHOLD` | 8,000 | Code Inter-Job Context compactJob 트리거 |
-| `CODE_JOB_COMPACTION_WINDOW` | 3 | Code Inter-Job Context 최근 window |
-| `DESIGN_JOB_COMPACTION_THRESHOLD` | 8,000 | Design Inter-Job Context compactJob 트리거 |
-| `DESIGN_JOB_COMPACTION_WINDOW` | 3 | Design Inter-Job Context 최근 window |
+| `DEFAULT_COMPACT_TURNS_THRESHOLD` | 50,000 | compactTurns trigger threshold |
+| `DEFAULT_COMPACT_TURNS_HOT_TAIL` | 5 | compactTurns default hot tail |
+| `DEFAULT_PRUNE_TURNS_MAX_TOKENS` | 75,000 | pruneTurns default budget |
+| `DEFAULT_PRUNE_TURNS_MIN_KEEP` | 3 | pruneTurns minimum retained turns |
+| `PLAN_CONVERSATION_HISTORY_BUDGET` | 50,000 | Plan conversationHistory budget |
+| `PLAN_COMPACTION_THRESHOLD` | 12,000 | Plan compactJob trigger |
+| `PLAN_COMPACTION_WINDOW` | 4 | Plan compactJob recent window |
+| `VISUAL_COMPACTION_THRESHOLD` | 6,400 | Visual compactJob trigger |
+| `VISUAL_COMPACTION_WINDOW` | 3 | Visual compactJob recent window |
+| `COMPACTION_MAX_OUTPUT_TOKENS` | 16,384 | compactJob LLM max output |
+| `CODE_JOB_COMPACTION_THRESHOLD` | 8,000 | Code Inter-Job Context compactJob trigger |
+| `CODE_JOB_COMPACTION_WINDOW` | 3 | Code Inter-Job Context recent window |
+| `DESIGN_JOB_COMPACTION_THRESHOLD` | 8,000 | Design Inter-Job Context compactJob trigger |
+| `DESIGN_JOB_COMPACTION_WINDOW` | 3 | Design Inter-Job Context recent window |
 
 ---
 
@@ -314,15 +314,15 @@ retentionPolicy → compactRun, types, tokenBudget
 | File | Role |
 |---|---|
 | `core/context/types.ts` | ConversationMessage, HistoryPruneConfig, CompactionResult, CompactionConfig |
-| `core/context/constants.ts` | 모든 토큰 상수 |
-| `core/context/compactTurns.ts` | Turn-level rule-based 요약 |
-| `core/context/pruneTurns.ts` | Turn-level 우선순위 기반 삭제 |
-| `core/context/compactRun.ts` | Run-level 2단계 오케스트레이터 |
+| `core/context/constants.ts` | All token constants |
+| `core/context/compactTurns.ts` | Turn-level rule-based summarization |
+| `core/context/pruneTurns.ts` | Turn-level priority-based deletion |
+| `core/context/compactRun.ts` | Run-level 2-stage orchestrator |
 | `core/context/compactJob.ts` | Job-level LLM compaction + applyCompactionToConversation + ConversationCompaction |
-| `core/prompt/templates/common/compaction/system.md` | compactJob 프롬프트 (MECE 보존 전략) |
-| `core/prompt/templates/common/compaction/job-summary.md` | Trigger 2 heavyweight job 요약 프롬프트 |
-| `core/prompt/templates/code/base/injections/job-history.md` | Code decompose에 주입되는 job history partial |
-| `core/prompt/templates/design/base/injections/job-history.md` | Design decompose에 주입되는 job history partial |
+| `core/prompt/templates/common/compaction/system.md` | compactJob prompt (MECE preservation strategy) |
+| `core/prompt/templates/common/compaction/job-summary.md` | Trigger 2 heavyweight job summarization prompt |
+| `core/prompt/templates/code/base/injections/job-history.md` | Job history partial injected into Code decompose |
+| `core/prompt/templates/design/base/injections/job-history.md` | Job history partial injected into Design decompose |
 | `core/context/retentionPolicy.ts` | Task-boundary retention (Isolation) |
 | `core/utils/tokenBudget.ts` | TokenBudgetManager (model-aware area budgets — auto-scales to `getModelContextWindow(modelId)`, 200K fallback for unknown models) |
 | `core/types/session.ts` | Session, SessionRun, ConversationEntry types |

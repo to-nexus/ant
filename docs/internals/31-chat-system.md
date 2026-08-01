@@ -1,202 +1,202 @@
 # Chat System
 
-## 개요
+## Overview
 
-Chat 시스템은 사용자와 AI 에이전트 간의 대화를 관리한다. LLM 스트리밍 응답 처리, 콘텐츠 병합, Choice Card, Activity Indicator로 구성된다. Job Worker가 직접 Redis에 접근하여 채팅 상태를 관리한다.
+The Chat system manages the conversation between the user and the AI agents. It consists of LLM streaming response handling, content merging, Choice Cards, and the Activity Indicator. The Job Worker accesses Redis directly to manage chat state.
 
-## 서비스 분리
+## Service Separation
 
-| 서비스 | 위치 | 역할 |
+| Service | Location | Role |
 |--------|------|------|
-| LLMResponseService | Job Worker (자식 프로세스) | LLM 스트리밍 처리, 콘텐츠 병합, Redis 저장/publish |
-| ChatService | API Server | 메시지 CRUD, triage 처리, 유저 메시지 추가 |
-| MessageBroadcaster | Job Worker | user-scoped Redis Pub/Sub 래퍼 |
+| LLMResponseService | Job Worker (child process) | LLM streaming handling, content merging, Redis save/publish |
+| ChatService | API Server | Message CRUD, triage handling, appending user messages |
+| MessageBroadcaster | Job Worker | user-scoped Redis Pub/Sub wrapper |
 
-### 데이터 흐름
+### Data Flow
 
 ```
-LLM API -> LLM 스트리밍 청크
-    -> LLMResponseService (자식 프로세스 내 직접 처리)
-        -> ContentMerger (콘텐츠 병합)
-        -> SessionStore -> Redis SET (세션 저장)
-        -> MessageBroadcaster -> Redis PUBLISH (user-scoped 채널)
+LLM API -> LLM streaming chunks
+    -> LLMResponseService (handled directly inside the child process)
+        -> ContentMerger (content merging)
+        -> SessionStore -> Redis SET (session save)
+        -> MessageBroadcaster -> Redis PUBLISH (user-scoped channel)
     -> Realtime Server (subscribe) -> SSE -> ant-ui
 
 API Server (ChatService):
-    GET  /chat/messages        (메시지 조회)
-    DELETE /chat/messages      (메시지 삭제)
-    POST /chat/user-message    (유저 메시지 추가)
-    POST /chat/triage-choice   (사용자 선택 처리)
-    GET  /chat/pending-choice  (펜딩 선택 확인)
+    GET  /chat/messages        (fetch messages)
+    DELETE /chat/messages      (delete messages)
+    POST /chat/user-message    (append user message)
+    POST /chat/triage-choice   (handle user choice)
+    GET  /chat/pending-choice  (check pending choice)
 ```
 
-Job Worker는 API Server를 거치지 않고 직접 Redis에 접근한다.
+The Job Worker accesses Redis directly without going through the API Server.
 
-## 통합 메시지 콘텐츠 타입
+## Unified Message Content Types
 
-`MessageContent.type`은 단일 유니온 타입으로 모든 채팅 콘텐츠를 표현한다.
+`MessageContent.type` is a single union type expressing all chat content.
 
-| 카테고리 | 타입 |
+| Category | Types |
 |----------|------|
-| Chat Status (진행 표시) | `placeholder`, `thinking`, `exploring`/`explored`, `retrieving`/`retrieved`, `grepping`/`grepped`, `reading`/`read`, `reading_source`/`read_source`, `indexing`/`indexed`, `analyzing`/`analyzed`, `loading`/`loaded`, `storing`/`stored`, `learning`/`learned`, `processing`/`processed`, `downloading`/`downloaded`, `figma_calling`/`figma_called` |
-| 일반 콘텐츠 | `text`, `cancelled`, `triage_choice`, `choice_card`, `context_loaded`, `task_response` |
-| 파일 연산 (실시간) | `file_creating`/`file_writing`/`file_create`/`file_create_failed`, `file_editing`/`file_updating`/`file_edit`/`file_edit_failed`, `file_deleting`/`file_delete`/`file_delete_failed`, `file_conflict`/`file_conflict_retry` |
-| 도구 연산 | `tool_action`, `listing_files`/`listed_files`, `searching_code`/`searched_code`, `searching_reference`/`searched_reference` |
-| 명령 실행 | `command_running`/`command_streaming`/`command` |
-| Plan 스트리밍 | `plan_generating`/`plan` |
+| Chat Status (progress indication) | `placeholder`, `thinking`, `exploring`/`explored`, `retrieving`/`retrieved`, `grepping`/`grepped`, `reading`/`read`, `reading_source`/`read_source`, `indexing`/`indexed`, `analyzing`/`analyzed`, `loading`/`loaded`, `storing`/`stored`, `learning`/`learned`, `processing`/`processed`, `downloading`/`downloaded`, `figma_calling`/`figma_called` |
+| General content | `text`, `cancelled`, `triage_choice`, `choice_card`, `context_loaded`, `task_response` |
+| File operations (realtime) | `file_creating`/`file_writing`/`file_create`/`file_create_failed`, `file_editing`/`file_updating`/`file_edit`/`file_edit_failed`, `file_deleting`/`file_delete`/`file_delete_failed`, `file_conflict`/`file_conflict_retry` |
+| Tool operations | `tool_action`, `listing_files`/`listed_files`, `searching_code`/`searched_code`, `searching_reference`/`searched_reference` |
+| Command execution | `command_running`/`command_streaming`/`command` |
+| Plan streaming | `plan_generating`/`plan` |
 
-진행 중/완료 쌍(예: `exploring`→`explored`)은 ContentMerger의 fallback merge로 자동 매칭된다. `INFORMATIONAL_TYPES`(`context_loaded`)는 placeholder와 공존할 수 있다.
+In-progress/completed pairs (e.g. `exploring`→`explored`) are matched automatically by ContentMerger's fallback merge. `INFORMATIONAL_TYPES` (`context_loaded`) can coexist with a placeholder.
 
 ## ContentMerger
 
-새 콘텐츠 추가 시 Universal Placeholder System에 따른 8단계 처리 파이프라인:
+An 8-stage processing pipeline, per the Universal Placeholder System, applied when new content is added:
 
-| 우선순위 | 케이스 | 동작 |
+| Priority | Case | Behavior |
 |----------|--------|------|
-| 1 | 새 placeholder + 기존 placeholder 존재 | 기존 위치에서 in-place 교체 |
-| 2 | 비-informational 콘텐츠 + placeholder 존재 | placeholder와 병합 (placeholder 소멸) |
-| 3 | `_mergeIndex` 메타데이터 | 명시적 인덱스에 직접 병합 |
-| 4 | 완료 상태 (`explored`, `read` 등) | 역방향 검색으로 대응하는 진행 중 상태와 병합 |
-| 5 | 완료 타입 중복 | 무시 (dedup) |
-| 6 | thinking 블록 전환 | duration 계산, collapse 브로드캐스트 |
-| 7 | 같은 타입 스트리밍 | 내용 append (`text`, `thinking`, `plan_generating`, `task_response`, 동일 파일) |
-| 8 | 파일 연산 완료 | `activeFileOperations` 또는 타입 기반 검색으로 진행 중 카드 업데이트 |
+| 1 | New placeholder + existing placeholder present | In-place replacement at the existing position |
+| 2 | Non-informational content + placeholder present | Merge with the placeholder (placeholder disappears) |
+| 3 | `_mergeIndex` metadata | Merge directly at the explicit index |
+| 4 | Completion states (`explored`, `read`, etc.) | Backward search to merge with the matching in-progress state |
+| 5 | Duplicate completion types | Ignore (dedup) |
+| 6 | Thinking block transition | Compute duration, broadcast collapse |
+| 7 | Same-type streaming | Append content (`text`, `thinking`, `plan_generating`, `task_response`, same file) |
+| 8 | File operation completion | Update the in-progress card via `activeFileOperations` or type-based search |
 
-Placeholder는 contents[] 배열의 **어느 위치에나** 존재할 수 있다 (informational 타입이 뒤에 추가될 수 있기 때문). 모든 콘텐츠 추가는 반드시 `ContentMerger.addContent()`를 경유해야 한다.
+A placeholder may exist at **any position** in the contents[] array (because informational types may be appended after it). All content additions MUST go through `ContentMerger.addContent()`.
 
-## Markdown 렌더링 (UI)
+## Markdown Rendering (UI)
 
-chat/카드/파일 프리뷰는 공통 markdown renderer를 사용하며, fenced code block의 `language-mermaid`는 Mermaid SVG로 렌더된다. Mermaid 렌더 실패 시 원문 코드블록 fallback을 유지한다.
+Chat/cards/file previews use a common markdown renderer, and fenced code blocks with `language-mermaid` render as Mermaid SVG. If Mermaid rendering fails, the raw code block fallback is kept.
 
-| 표면 | 경로 |
+| Surface | Path |
 |---|---|
 | Turn assistant text | `packages/ant-ui/src/presentation/components/chat/TurnItem.tsx` |
 | Task response card | `packages/ant-ui/src/presentation/components/chat/TaskResponseCard.tsx` |
 | Choice card title | `packages/ant-ui/src/presentation/components/chat/choiceCard/shared.tsx` |
 | File markdown preview | `packages/ant-ui/src/presentation/components/FileEditorPanel.tsx` |
-| 공통 renderer | `packages/ant-ui/src/presentation/components/markdown/createMarkdownComponents.tsx` / `MermaidBlock.tsx` |
+| Common renderer | `packages/ant-ui/src/presentation/components/markdown/createMarkdownComponents.tsx` / `MermaidBlock.tsx` |
 
 ## Chat Activity Indicator (CAI)
 
-사용자에게 "시스템이 작업 중"임을 알려주는 시각적 피드백 시스템.
+A visual feedback system telling the user "the system is working".
 
-### 설계 원칙
+### Design Principles
 
-- Zero-Gap Feedback: Job 시작부터 첫 LLM 토큰까지 빈 화면 없음
-- Auto-Inject / Auto-Remove: placeholder 자동 삽입/제거
-- Single Source of Truth: ContentMerger가 placeholder 수명주기 단독 관리
+- Zero-Gap Feedback: no blank screen from Job start until the first LLM token
+- Auto-Inject / Auto-Remove: placeholders are inserted/removed automatically
+- Single Source of Truth: ContentMerger solely manages the placeholder lifecycle
 
-### Placeholder 자동 주입 시점
+### Placeholder Auto-Injection Points
 
-| 시점 | 호출 경로 |
+| Point | Call path |
 |------|----------|
-| 새 assistant 메시지 시작 | `LLMResponseService.startMessage()` -> `showChatStatus('placeholder')` |
-| `<clarify>` 태그 감지 | `XMLStreamParser` -> `clarify_start` -> `showChatStatus('placeholder')` |
-| 환경 감지 시작 | `detect()` -> `showChatStatus('placeholder')` |
+| New assistant message starts | `LLMResponseService.startMessage()` -> `showChatStatus('placeholder')` |
+| `<clarify>` tag detected | `XMLStreamParser` -> `clarify_start` -> `showChatStatus('placeholder')` |
+| Environment detection starts | `detect()` -> `showChatStatus('placeholder')` |
 
-### 프론트엔드 TypingIndicator 출현 조건
+### Frontend TypingIndicator Appearance Conditions
 
-| 위치 | 조건 |
+| Location | Condition |
 |------|------|
 | ChatHistory Footer | isRunning && !hasActiveStreamingAssistant |
-| MessageItem (빈 메시지) | isStreaming && contents.length === 0 |
+| MessageItem (empty message) | isStreaming && contents.length === 0 |
 | ShimmerCard (placeholder) | content.type === 'placeholder' && isStreaming |
 
-isStreaming이 아닌 메시지의 잔여 placeholder는 렌더링하지 않는다 (방어적 필터링).
+Leftover placeholders on non-streaming messages are not rendered (defensive filtering).
 
-## SSE 재연결 시 메시지 유실 방지
+## Preventing Message Loss on SSE Reconnection
 
-SSE 연결이 끊겼다 복구되면, 스트리밍 중이던 assistant 메시지의 중간 콘텐츠가 유실될 수 있다. 이를 방지하기 위해 재연결 시 Redis에 저장된 현재 세션 스냅샷과 프론트엔드 상태를 동기화한다.
+When the SSE connection drops and recovers, the intermediate content of an in-flight streaming assistant message can be lost. To prevent this, the current session snapshot stored in Redis is synchronized with the frontend state on reconnection.
 
 ## Worker Scope · Task Scope · Section Ordering
 
-채팅 이벤트의 `workerScope`는 **세 차원**을 합성한 식별자다. `core/parallel/workerScope.ts`의 AsyncLocalStorage가 세 dimension을 모두 들고 있으며, `TurnContext.getWorkerScopeKey()`가 단일 키 형태로 직렬화한다.
+The `workerScope` of a chat event is an identifier composed of **three dimensions**. The AsyncLocalStorage in `core/parallel/workerScope.ts` holds all three dimensions, and `TurnContext.getWorkerScopeKey()` serializes them into a single key.
 
-| 상황 | scope key |
+| Situation | scope key |
 |------|-----------|
-| 메인 그래프 (no worker) | `_main_` |
-| 병렬 worker, task 외부 | `worker-N` |
-| 병렬 worker, task 실행 중 (첫 시도) | `worker-N#task-K` |
-| 병렬 worker, task 실행 중 (re-entry cycle) | `worker-N#task-K#p{cycleSeq}` |
-| cancelled choice card | `_cancelled_:{cardId}` |
+| Main graph (no worker) | `_main_` |
+| Parallel worker, outside a task | `worker-N` |
+| Parallel worker, executing a task (first attempt) | `worker-N#task-K` |
+| Parallel worker, executing a task (re-entry cycle) | `worker-N#task-K#p{cycleSeq}` |
+| Cancelled choice card | `_cancelled_:{cardId}` |
 
-`task-K`는 `task.id`(또는 `task.name` fallback)로 안정적이다. `TaskWorker.executeTask`가 `runInWorkerScope(workerId, …)` 안에서 `runInTaskScope(taskKey, cycleSeq, …)`로 task 별 scope를 overlay한다. 이 두 단계 wrapping 덕에 LLM emit, file ops, tool 호출 등 모든 chat 이벤트가 자동으로 정확한 식별자를 부여받는다.
+`task-K` is stable via `task.id` (or `task.name` as fallback). `TaskWorker.executeTask` overlays the per-task scope with `runInTaskScope(taskKey, cycleSeq, …)` inside `runInWorkerScope(workerId, …)`. Thanks to this two-level wrapping, every chat event — LLM emits, file ops, tool calls — automatically receives the correct identifier.
 
 ### `cycleSeq` SSOT — task lifecycle entry cycle
 
-`cycleSeq`는 **task 의 lifecycle entry index** 다. `TaskWorker.executeTask` 가 task 를 잡을 때 re-entry marker(`task.interrupted === true` 또는 `task._failedAttempts > 0`) 가 있으면 `StateStorePort.nextWorkerCycleSeq(turnId, taskKey)` 로 INCR + 받고, marker 가 없는 fresh entry 면 `getCurrentWorkerCycleSeq` 로 peek 만 한다. Redis key 는 `ant:chat:cycleSeq:{turnId}:{taskKey}` (per-(turn, task) 격리, 24h TTL).
+`cycleSeq` is the **lifecycle entry index of a task**. When `TaskWorker.executeTask` picks up a task, if a re-entry marker is present (`task.interrupted === true` or `task._failedAttempts > 0`) it INCRs and receives via `StateStorePort.nextWorkerCycleSeq(turnId, taskKey)`; on a fresh entry with no marker it only peeks via `getCurrentWorkerCycleSeq`. The Redis key is `ant:chat:cycleSeq:{turnId}:{taskKey}` (per-(turn, task) isolation, 24h TTL).
 
-INCR 트리거 source 3 개가 모두 `task.interrupted = true` marker 를 set 하므로 호출 site 한 곳 (TaskWorker.executeTask) 이 SSOT 가 된다:
+All 3 INCR trigger sources set the `task.interrupted = true` marker, so the single call site (TaskWorker.executeTask) is the SSOT:
 
-| Source | Marker set 위치 |
+| Source | Where the marker is set |
 |--------|----------------|
-| 사용자 Stop + Resume | `handleInterruption` / checkpoint path 가 `interrupted: true` 로 task 를 큐에 보존 |
-| batchSplit Path A 재큐 (verification) | [`tasks/_shared/batchSplit/process.ts`](packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/batchSplit/process.ts) 의 `requeuedTask = { ...nextTask, interrupted: !!snapshot ? true : undefined, ... }` |
-| TaskOrchestrator transient retry | [`parallel/TaskOrchestrator.ts`](packages/ant-cli/src/agents/architect/graph/code/parallel/TaskOrchestrator.ts) 의 `task.interrupted = true; this.taskQueue.push(task)` |
+| User Stop + Resume | `handleInterruption` / the checkpoint path preserves the task in the queue with `interrupted: true` |
+| batchSplit Path A requeue (verification) | `requeuedTask = { ...nextTask, interrupted: !!snapshot ? true : undefined, ... }` in [`tasks/_shared/batchSplit/process.ts`](packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/batchSplit/process.ts) |
+| TaskOrchestrator transient retry | `task.interrupted = true; this.taskQueue.push(task)` in [`parallel/TaskOrchestrator.ts`](packages/ant-cli/src/agents/architect/graph/code/parallel/TaskOrchestrator.ts) |
 
-첫 시도(no marker)에는 cycleSeq=0 이 반환되고 suffix 가 생략되어 키가 `worker-N#task-K` 로 두 차원 form 과 동형이다 — chat.jsonl 라인의 schema BC 가 보존된다.
+On the first attempt (no marker), cycleSeq=0 is returned and the suffix is omitted, so the key `worker-N#task-K` is identical to the two-dimension form — the schema BC of chat.jsonl lines is preserved.
 
-### `pauseSeq` ↔ `cycleSeq` — 의도적 분리 (코드 스멜 아님)
+### `pauseSeq` ↔ `cycleSeq` — intentional separation (not a code smell)
 
-두 카운터는 monotonic INCR 이라는 외형만 비슷하고 책임이 다르다 — 통합하지 않는다.
+The two counters only look alike in being monotonic INCRs; their responsibilities differ — do not merge them.
 
 | | `pauseSeq` (`CANCELLED_PAUSE_SEQ`) | `cycleSeq` (`WORKER_CYCLE_SEQ`) |
 |---|---|---|
 | Redis key | `ant:chat:pauseSeq:{turnId}` | `ant:chat:cycleSeq:{turnId}:{taskKey}` |
-| 책임 | cancelled cardId uniqueness | worker scope suffix → FE section + WorkerLocalState slot 격리 |
-| INCR 트리거 | 사용자 Stop (`ChatService.appendChoicePresentedCancelled`) | 모든 task re-entry (`TaskWorker.executeTask`) |
-| 격리 단위 | turn 전체 | (turn, task) pair |
+| Responsibility | cancelled cardId uniqueness | worker scope suffix → FE section + WorkerLocalState slot isolation |
+| INCR trigger | User Stop (`ChatService.appendChoicePresentedCancelled`) | Every task re-entry (`TaskWorker.executeTask`) |
+| Isolation unit | Whole turn | (turn, task) pair |
 
-cancelled cardId 는 한 turn 안의 모든 task 에 걸쳐 unique 해야 하므로 turn-level 카운터로 충분하지만, worker scope 격리는 task 별로 독립적이어야 하므로 (turn, task) composite key 가 필요하다. 두 책임을 한 카운터에 묶으면 (이전 설계) Stop 외의 re-entry source (batchSplit / orchestrator retry) 가 cycleSeq 를 못 올려 stale `WorkerLocalState` slot 을 carry 한다 — 이 RCA 가 verification 재진입 시 file/command/thinking 카드가 채팅 위쪽에서 update 되던 버그였다.
+A cancelled cardId must be unique across all tasks within one turn, so a turn-level counter suffices; but worker scope isolation must be independent per task, so a (turn, task) composite key is needed. If the two responsibilities were bound to one counter (the previous design), re-entry sources other than Stop (batchSplit / orchestrator retry) could not bump cycleSeq and would carry a stale `WorkerLocalState` slot — this RCA was the bug where file/command/thinking cards updated near the top of the chat on verification re-entry.
 
 ### `_cancelled_:{cardId}`
 
-`_cancelled_:{cardId}` 는 AsyncLocalStorage 가 아니라 `ChatService.appendChoicePresentedCancelled` 가 직접 stamping 하는 합성 scope 다. cardId 가 pauseSeq 를 포함하므로 한 turn 안에서 여러 번 pause-resume 이 발생해도 각 cancellation 이 독립 섹션으로 분리된다. 짝이 되는 `choice_resolved` 는 `findTurnIdByCardId` 가 원본 presented 라인에서 scope 를 surfacing 해 동일 섹션에 머무른다. cardId 는 cycleSeq 와 무관 (pauseSeq 만 사용) — 두 카운터의 책임 분리가 cardId schema BC 를 자연스럽게 보존한다.
+`_cancelled_:{cardId}` is a synthetic scope stamped directly by `ChatService.appendChoicePresentedCancelled`, not by AsyncLocalStorage. Because the cardId includes pauseSeq, each cancellation is separated into an independent section even when pause-resume happens multiple times within one turn. The paired `choice_resolved` stays in the same section because `findTurnIdByCardId` surfaces the scope from the original presented line. The cardId is independent of cycleSeq (it uses pauseSeq only) — the separation of the two counters' responsibilities naturally preserves the cardId schema BC.
 
-### 왜 세 차원인가
+### Why Three Dimensions
 
-- **`workerId` (1축)**: long-lived TaskWorker 루프 식별자.
-- **`taskKey` (2축)**: 한 worker가 cohort 1의 task A를 끝내고 cohort 2의 task B를 이어 잡을 때 cohort 별 섹션 분리. 누락 시 cohort 2 메시지가 이미 끝난 다른 worker의 cohort 1 메시지보다 위쪽 스크롤에 나타나는 시간 역전이 발생한다(`rigid-fanning-faith` 회귀).
-- **`cycleSeq` (3축)**: 한 task가 re-entry (Stop/Resume, batchSplit Path A, orchestrator transient retry) 를 거쳐도 `task.id` 는 동일하므로 누락 시 두 가지 회귀가 동시에 발생한다 —
-  1. **FE section anchoring** (`even-getting-knave`): 모든 cycle 의 events 가 한 section 에 누적되어 first ts 가 첫 시도 시점에 영구 anchor 된다. cancelled card 의 first ts (=Stop 시점) 가 항상 더 늦으므로 chronological sort 결과 cancelled section 이 worker section *아래* 로 가서 채팅 입력창 바로 위에 "고정" 된다.
-  2. **WorkerLocalState slot reuse** (verification 재진입 stale-card RCA): `LLMResponseService.workerStates: Map<workerScopeKey, WorkerLocalState>` 가 같은 키로 이전 cycle 의 `fileCardByPath` / `commandCardByCommand` / `thinking` cardId cache 를 재사용한다. 다음 cycle 의 terminal `chat_status` 가 옛 cardId 로 emit 되어 FE 가 같은 cardId 를 한 카드로 fold (last-write-wins, 첫 등장 위치) → 채팅 위쪽 (스크롤 히스토리) 의 file/command/thinking 카드가 새 cycle 의 결과로 업데이트되어 보임. cycleSeq 가 새 값을 받으면 `Map.get` 이 새 슬롯을 만들어 자동으로 격리된다.
+- **`workerId` (axis 1)**: the identifier of the long-lived TaskWorker loop.
+- **`taskKey` (axis 2)**: per-cohort section separation when one worker finishes task A of cohort 1 and picks up task B of cohort 2. Without it, cohort 2 messages appear higher in the scroll than cohort 1 messages of another worker that already finished — a time inversion (the `rigid-fanning-faith` regression).
+- **`cycleSeq` (axis 3)**: even after a task goes through re-entry (Stop/Resume, batchSplit Path A, orchestrator transient retry), `task.id` stays the same, so omitting it causes two regressions simultaneously —
+  1. **FE section anchoring** (`even-getting-knave`): events from all cycles accumulate in one section, so the first ts is permanently anchored at the first attempt. The cancelled card's first ts (= the Stop moment) is always later, so after chronological sorting the cancelled section lands *below* the worker section and gets "pinned" right above the chat input.
+  2. **WorkerLocalState slot reuse** (the verification re-entry stale-card RCA): `LLMResponseService.workerStates: Map<workerScopeKey, WorkerLocalState>` reuses the previous cycle's `fileCardByPath` / `commandCardByCommand` / `thinking` cardId cache under the same key. The next cycle's terminal `chat_status` is emitted with the old cardId, and the FE folds the same cardId into one card (last-write-wins, first-appearance position) → file/command/thinking cards higher up in the chat (scroll history) appear to update with the new cycle's results. When cycleSeq receives a new value, `Map.get` creates a new slot and isolation is automatic.
 
-### FE 섹션 정렬
+### FE Section Ordering
 
-`selectTurns`는 turn 안에서 `workerScope` 단위로 섹션을 만들고 다음 규칙으로 정렬한다:
+`selectTurns` builds sections per `workerScope` within a turn and orders them with these rules:
 
-1. `_main_`은 항상 첫 위치(turn-level orchestration narrative).
-2. 그 외 섹션은 첫 이벤트 timestamp 오름차순.
-3. 동률은 `workerScope.localeCompare`로 결정.
-4. cancelled choice card는 BE에서 합성 `_cancelled_:{cardId}` scope를 받는다. 이 scope의 첫 이벤트 ts는 곧 사용자가 Stop을 누른 시점이므로 규칙 2에 의해 그 이전 worker 출력 **아래**에 자연 배치된다. 재개(`Resume`) 직후 worker가 다음 task 시도를 시작하면 `cycleSeq` 가 1 증가하여 worker scope가 `worker-N#task-K#p1` 로 바뀌고, 그 새 scope 의 첫 ts 는 cancelled scope 보다 더 늦으므로 추가 출력이 들어올수록 cancelled 카드는 위로 밀려난다. 즉 cycleSeq 가 없으면 이 규칙이 성립하지 않는다 — `even-getting-knave` 회귀의 본질이 이 의존성이었다.
+1. `_main_` always comes first (turn-level orchestration narrative).
+2. All other sections are ordered by first event timestamp, ascending.
+3. Ties are broken by `workerScope.localeCompare`.
+4. A cancelled choice card receives the synthetic `_cancelled_:{cardId}` scope from the BE. Its first event ts is exactly the moment the user pressed Stop, so by rule 2 it naturally lands **below** the earlier worker output. Right after Resume, when the worker starts its next task attempt, `cycleSeq` increments by 1 and the worker scope becomes `worker-N#task-K#p1`; that new scope's first ts is later than the cancelled scope's, so as more output arrives the cancelled card is pushed upward. In other words, this rule does not hold without cycleSeq — that dependency was the essence of the `even-getting-knave` regression.
 
-`TurnItem.parseScope`는 `_main_`과 `_cancelled_:` 프리픽스 두 합성 scope의 worker label 헤더를 억제한다. cancelled 카드 자체가 시각적으로 self-contained ChoiceCard이므로 scope 라벨 노출은 노이즈일 뿐이다. cycleSeq suffix(`#p{n}`)는 worker label 의 일부로 그대로 통과시켜 디버그 시 어느 cycle 의 출력인지 판별 가능하다.
+`TurnItem.parseScope` suppresses the worker label header for the two synthetic scopes, `_main_` and the `_cancelled_:` prefix. The cancelled card is itself a visually self-contained ChoiceCard, so exposing a scope label would only be noise. The cycleSeq suffix (`#p{n}`) passes through as part of the worker label so that which cycle produced the output can be identified when debugging.
 
 ## Choice Card
 
-### Variant
+### Variants
 
-| Variant | 용도 |
+| Variant | Purpose |
 |---------|------|
-| `triage_choice` | 작업 라우팅 선택 |
-| `cancelled` | 작업 취소 후 재개/무시 |
-| `eval_save` | 평가 리포트 저장 |
-| `spec_complete` | 스펙 완료 확인 |
-| `clarifying` | PRD 생성 시 다수 질문 (Compound Card) |
+| `triage_choice` | Work routing choice |
+| `cancelled` | Resume/ignore after work cancellation |
+| `eval_save` | Save an evaluation report |
+| `spec_complete` | Confirm spec completion |
+| `clarifying` | Multiple questions during PRD generation (Compound Card) |
 
 ### Compound Clarifying Card
 
-N개 질문을 하나의 카드에 묶어 표시한다. 질문별 옵션 버튼과 인라인 직접입력을 지원한다. 1개 이상 응답 시 제출 가능(partial 허용). 모든 선택은 Zustand `pendingClarifyAnswers`에 저장되며 ChatInput과 공유된다.
+Bundles N questions into a single card. Supports per-question option buttons and inline free-text input. Submittable once 1+ responses are given (partial allowed). All selections are stored in the Zustand `pendingClarifyAnswers` and shared with ChatInput.
 
 ### Cancelled Card NX semantics — release-on-failure
 
-`ChatService.appendChoicePresentedCancelled` 의 `ant:chat:cancelled-emitted:job:{jobId}` NX guard 는 **"한 번 SUCCESSFULLY emit 됐으면 두 번째 시도 skip"** 의 의미다 — 단순히 "한 번 시도했으면 skip" 이 아니다. acquire 후 emission 이 throw 하면 (Redis blip / chat.jsonl write race / `autoResolveStaleCancelledCards` 실패 등) try/finally 에서 lock 을 즉시 release 해 다음 pause source 가 재시도 가능. 성공 path 에서는 24h NX 가 그대로 유지되어 multi-source idempotency contract (StaleJobRecovery / BullMQ stalled handler / ServerLifecycleManager 동시 fire 시 중복 카드 방지) 가 보존된다.
+The `ant:chat:cancelled-emitted:job:{jobId}` NX guard in `ChatService.appendChoicePresentedCancelled` means **"skip the second attempt once it has been SUCCESSFULLY emitted"** — not simply "skip once attempted". If emission throws after acquire (Redis blip / chat.jsonl write race / `autoResolveStaleCancelledCards` failure, etc.), the lock is released immediately in try/finally so the next pause source can retry. On the success path, the 24h NX remains intact, preserving the multi-source idempotency contract (preventing duplicate cards when StaleJobRecovery / the BullMQ stalled handler / ServerLifecycleManager fire concurrently).
 
-Release 누락 시 회귀: 이전 버그 (cleanupJobState 의 단일 outer try/catch 가 emit throw 를 swallow 했던 시점) 가 NX 만 set 하고 line emit 못 한 케이스를 만들면, 24h TTL 동안 같은 jobId 의 모든 cancelled card 시도가 silent skip 됨 (`cancelled-card-stale-NX` RCA — `vast-curling-perch` 에서 관측됨, fixed in commit `8ea931b8` + ChatService release-on-failure). 회귀 가드: [`tests/http/chatService.test.ts`](packages/ant-cli/tests/http/chatService.test.ts) 의 `release-on-failure (a~d)` 4 cases.
+Regression when the release is missing: if a case arises where NX was set but the line emit failed (as when the previous bug — a single outer try/catch in cleanupJobState swallowing the emit throw — was present), every cancelled card attempt for the same jobId is silently skipped for the 24h TTL (the `cancelled-card-stale-NX` RCA — observed in `vast-curling-perch`, fixed in commit `8ea931b8` + the ChatService release-on-failure). Regression guard: the 4 `release-on-failure (a~d)` cases in [`tests/http/chatService.test.ts`](packages/ant-cli/tests/http/chatService.test.ts).
 
-## 경계
+## Boundaries
 
-- Redis Pub/Sub 채널: [02-infrastructure.md](02-infrastructure.md)
-- SSE 연결과 브로드캐스팅: [21-realtime-system.md](21-realtime-system.md)
+- Redis Pub/Sub channels: [02-infrastructure.md](02-infrastructure.md)
+- SSE connections and broadcasting: [21-realtime-system.md](21-realtime-system.md)
 - Triage Choice: [12-triage-routing.md](12-triage-routing.md)
 - Planner Clarify: [16-planner-job.md](16-planner-job.md)

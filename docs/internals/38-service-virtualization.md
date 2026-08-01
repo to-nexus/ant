@@ -89,10 +89,12 @@ It owns:
 - **`frameworkAwareToggleVars(name, framework)`** → the framework-correct toggle name(s) + master, the runtime codification of the naming table (server → `USE_MOCK_*`; Next.js client → `NEXT_PUBLIC_USE_MOCK_*`; Vite → `VITE_USE_MOCK_*`; CRA → `REACT_APP_USE_MOCK_*`);
 - `resolveActivation(bareToggle, envMap)` → per-connection toggle > master > false, **framework-prefix-agnostic** (checks the bare name plus every client prefix — `NEXT_PUBLIC_` / `VITE_` / `REACT_APP_` — so a prefixed client toggle is not misread as `false`).
 
-The naming table itself is documented once in the shared partial
-[`jobs/shared/injections/sv-toggle-naming.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/sv-toggle-naming.md),
-included by both the design SV content and the code `preview-env-contract`, so
-neither job reaches across the job boundary to the other's templates.
+The naming table's runtime codification is `frameworkAwareToggleVars` above;
+on the prompt side the same table is restated in the design SV templates and
+in the code job's
+[`preview-env-contract`](../../packages/ant-cli/src/core/prompt/templates/jobs/code/base/injections/preview-env-contract.md)
+injection, so neither job reaches across the job boundary to the other's
+templates.
 
 ```mermaid
 flowchart TD
@@ -100,7 +102,7 @@ flowchart TD
   CM --> SNAP["snapshot.ts (SV-partial gate detect)"]
   CM --> DET["preview ConnectionDetector"]
   CM --> SPAWN["preview ProcessSpawner (toggle inject)"]
-  NAME["sv-toggle-naming.md (shared partial)"]
+  NAME["toggle naming table (restated per job)"]
   NAME --> DPROMPT["design SV templates"]
   NAME --> CPROMPT["code preview-env-contract"]
 ```

@@ -1,37 +1,37 @@
-# Visual Processor 통합
+# Visual Processor Integration
 
-## 개요
+## Overview
 
-Visual Job의 deliver 노드에서 최종 이미지에 후처리(배경 제거, 포맷 변환)를 적용하는 파이프라인. 실제 이미지 처리는 Python FastAPI 사이드카(`visual-processor`)에 위임하며, ant-cli는 Hexagonal Architecture 포트/어댑터를 통해 사이드카와 통신한다.
+The pipeline that applies post-processing (background removal, format conversion) to the final image in the Visual Job's deliver node. The actual image processing is delegated to a Python FastAPI sidecar (`visual-processor`), and ant-cli communicates with the sidecar through Hexagonal Architecture ports/adapters.
 
-서버 자체의 기능 명세(API 스펙, 내부 아키텍처)는 [visual-processor/README.md](../../packages/ant-cli/src/periphery/integrations/visual-processor/README.md) 참조. 배포(Pod 리소스, K8s, 스케일링)는 각자의 배포 인프라 범위다.
+For the server's own functional specification (API spec, internal architecture), see [visual-processor/README.md](../../packages/ant-cli/src/periphery/integrations/visual-processor/README.md). Deployment (Pod resources, K8s, scaling) is in the scope of each deployment infrastructure.
 
-## 아키텍처 결정
+## Architecture Decisions
 
-### 왜 별도 사이드카인가
+### Why a separate sidecar
 
-| 대안 | 기각 사유 |
+| Alternative | Reason for rejection |
 |------|----------|
-| Node.js 네이티브 (ONNX Runtime) | PyTorch/ONNX 바인딩이 Python 생태계에 비해 불안정, BiRefNet 구현 부재 |
-| 브라우저 WASM (Transformers.js) | 서버사이드 일관 품질 보장 불가, 사용자 디바이스 성능 의존 |
-| ant-cli 프로세스 내 Python 호출 | 메모리 격리 불가, ~1.5 GB 모델이 job worker 프로세스에 상주 |
+| Node.js native (ONNX Runtime) | PyTorch/ONNX bindings are unstable compared to the Python ecosystem; no BiRefNet implementation |
+| Browser WASM (Transformers.js) | Cannot guarantee consistent server-side quality; depends on user device performance |
+| Python call inside the ant-cli process | No memory isolation; a ~1.5 GB model would reside in the job worker process |
 
-rembg + BiRefNet은 Python 생태계에서만 안정적으로 작동한다. Docker 컨테이너로 메모리와 CPU를 독립 관리하여 job worker의 안정성에 영향을 주지 않는다.
+rembg + BiRefNet works reliably only in the Python ecosystem. Managing memory and CPU independently in a Docker container avoids affecting job worker stability.
 
-### 왜 rembg + BiRefNet인가
+### Why rembg + BiRefNet
 
-| 모델 | 품질 (DIS5K mAE) | 속도 (CPU) | 라이선스 |
+| Model | Quality (DIS5K mAE) | Speed (CPU) | License |
 |------|-----------------|-----------|---------|
 | **BiRefNet-general** | **0.023** (SOTA) | 3–5s | MIT |
 | ISNet | 0.041 | 1–2s | MIT |
 | U2Net | 0.044 | ~1s | Apache-2.0 |
 | SAM (ViT-H) | 0.031 | 10s+ | Apache-2.0 |
 
-BiRefNet이 품질과 라이선스 양면에서 최적이다. rembg 라이브러리가 세션 관리, 이미지 전처리/후처리, 모델 다운로드를 추상화한다.
+BiRefNet is optimal on both quality and license. The rembg library abstracts session management, image pre/post-processing, and model downloads.
 
-## 처리 파이프라인
+## Processing Pipeline
 
-### deliver 노드 호출 흐름
+### The deliver node call flow
 
 ```
 classify → assetType (logo/icon/hero/illustration/general)
@@ -45,23 +45,23 @@ render → finalImage (JPEG buffer)
                 ▼
 deliver ─── spec.requiresBgRemoval? ─── Y ── isAvailable()? ─── Y ── POST /remove-bg ── PNG buffer
                 │                        │                        │
-                │                        N                        N (sidecar 미실행)
+                │                        N                        N (sidecar not running)
                 │                        │                        │
                 │                        ▼                        ▼
-                │                   원본 유지                  원본 유지 (graceful)
+                │                   keep original             keep original (graceful)
                 │
                 ▼
-         imageMime ≠ spec.format? ─── Y ── sharp 포맷 변환
+         imageMime ≠ spec.format? ─── Y ── sharp format conversion
                 │                     │
                 N                     ▼
-                │              변환된 buffer
+                │              converted buffer
                 ▼
-        writeFileSync (단일 디스크 쓰기)
+        writeFileSync (single disk write)
 ```
 
-deliver 노드는 최종 이미지(finalImage)에만 후처리를 적용한다. 드래프트(draftImages)는 사용자 선택용 미리보기이므로 원본 그대로 저장한다.
+The deliver node applies post-processing only to the final image (finalImage). Drafts (draftImages) are previews for user selection, so they are saved untouched.
 
-### 에셋 타입별 출력 스펙
+### Output Specs per Asset Type
 
 | assetType | format | requiresBgRemoval | quality |
 |-----------|--------|-------------------|---------|
@@ -71,13 +71,13 @@ deliver 노드는 최종 이미지(finalImage)에만 후처리를 적용한다. 
 | `hero` | jpeg | false | 90 |
 | `general` | jpeg | false | 85 |
 
-이 매핑은 `ASSET_OUTPUT_SPECS` 상수로 `types.ts`에 정의된다. deliver 노드가 `state.assetType`으로 조회한다.
+This mapping is defined as the `ASSET_OUTPUT_SPECS` constant in `types.ts`. The deliver node looks it up by `state.assetType`.
 
-### 실패 정책
+### Failure Policy
 
-bg-removal 또는 포맷 변환의 어떤 단계에서든 실패 시, 원본 이미지를 그대로 저장한다 (graceful degradation). 사이드카가 실행되지 않은 환경에서도 Visual Job은 정상 작동한다. 단, 투명 배경 처리가 생략될 뿐이다.
+If any stage of bg-removal or format conversion fails, the original image is saved as-is (graceful degradation). The Visual Job works normally even in environments where the sidecar is not running — only the transparent-background processing is skipped.
 
-## Hexagonal Architecture 통합
+## Hexagonal Architecture Integration
 
 ### Port
 
@@ -88,18 +88,18 @@ core/ports/backgroundRemoval.ts
 └── BackgroundRemovalOptions    ({ model?: string })
 ```
 
-`BackgroundRemovalPort`는 두 메서드를 정의한다:
-- `removeBackground(imageData, mimeType, options?)` — 배경 제거 실행
-- `isAvailable()` — 서비스 도달 가능 여부 확인 (graceful fallback에 사용)
+`BackgroundRemovalPort` defines two methods:
+- `removeBackground(imageData, mimeType, options?)` — perform background removal
+- `isAvailable()` — check whether the service is reachable (used for graceful fallback)
 
 ### Adapters
 
-| 어댑터 | 위치 | 역할 | isAvailable() |
+| Adapter | Location | Role | isAvailable() |
 |--------|------|------|---------------|
-| `VisualProcessorClient` | `periphery/adapters/visualProcessor/` | HTTP로 사이드카 `/remove-bg` 호출 | `/health` 200이면 true |
-| `NoopBackgroundRemoval` | 동일 | 패스스루 (원본 반환) | 항상 false |
+| `VisualProcessorClient` | `periphery/adapters/visualProcessor/` | Calls the sidecar's `/remove-bg` over HTTP | true when `/health` returns 200 |
+| `NoopBackgroundRemoval` | Same | Pass-through (returns the original) | Always false |
 
-`VisualProcessorClient`는 에러 시 서버의 `detail` 필드를 파싱하여 에러 메시지에 포함한다. 타임아웃은 60초 (BiRefNet CPU 대형 이미지 대응).
+`VisualProcessorClient` parses the server's `detail` field on error and includes it in the error message. The timeout is 60 seconds (accommodating BiRefNet on CPU with large images).
 
 ### DI (orchestrator.ts)
 
@@ -109,9 +109,9 @@ configData.visualSettings.removeBackground !== false
   → else new NoopBackgroundRemoval()
 ```
 
-기본값은 활성화(true). `VisualSettings.removeBackground = false`로 명시 비활성화 가능.
+The default is enabled (true). Can be explicitly disabled with `VisualSettings.removeBackground = false`.
 
-### deps 전달 경로
+### deps Passing Path
 
 ```
 orchestrator.ts
@@ -121,34 +121,34 @@ orchestrator.ts
               └→ state.deps.backgroundRemoval.removeBackground(...)
 ```
 
-## 인프라 구성
+## Infrastructure Configuration
 
-### 포트 번호
+### Port Numbers
 
-| 서비스 | 포트 |
+| Service | Port |
 |--------|------|
 | ant-api | 4100 |
 | ant-realtime | 4101 |
 | ant-preview | 4102 |
 | **visual-processor** | **4103** |
 
-### pnpm 스크립트
+### pnpm Scripts
 
-| 스크립트 | 동작 |
+| Script | Behavior |
 |---------|------|
-| `pnpm dev:infra` | Redis + ChromaDB + Embedder + **visual-processor** 일괄 기동 |
-| `pnpm dev:infra:visual` | visual-processor만 단독 기동 |
-| `pnpm dev:infra:visual:down` | visual-processor만 중지 |
+| `pnpm dev:infra` | Starts Redis + ChromaDB + Embedder + **visual-processor** together |
+| `pnpm dev:infra:visual` | Starts visual-processor alone |
+| `pnpm dev:infra:visual:down` | Stops visual-processor alone |
 
-### 환경변수 (ant-cli 측)
+### Environment Variables (ant-cli side)
 
-| 변수 | 기본값 | 용도 |
+| Variable | Default | Purpose |
 |------|--------|------|
-| `ANT_VISUAL_PROCESSOR_URL` | `http://localhost:4103` | 사이드카 접속 URL |
+| `ANT_VISUAL_PROCESSOR_URL` | `http://localhost:4103` | Sidecar connection URL |
 
-서버 측 환경변수는 [visual-processor/README.md](../../packages/ant-cli/src/periphery/integrations/visual-processor/README.md) 참조.
+For server-side environment variables, see [visual-processor/README.md](../../packages/ant-cli/src/periphery/integrations/visual-processor/README.md).
 
-## 파일 구조
+## File Structure
 
 ```
 packages/ant-cli/src/
@@ -158,7 +158,7 @@ packages/ant-cli/src/
 │   ├── VisualProcessorClient.ts          # HTTP adapter
 │   └── NoopBackgroundRemoval.ts          # Noop adapter
 ├── periphery/integrations/visual-processor/
-│   ├── README.md                         # 서버 기능 명세
+│   ├── README.md                         # Server functional specification
 │   ├── docker-compose.yml
 │   └── server/
 │       ├── Dockerfile
@@ -166,13 +166,13 @@ packages/ant-cli/src/
 │       └── server.py
 ├── agents/creator/graph/visual/
 │   ├── types.ts                          # VisualOutputSpec, ASSET_OUTPUT_SPECS
-│   └── nodes/deliver.ts                  # 후처리 파이프라인
-└── composition/orchestrator.ts           # DI 주입
+│   └── nodes/deliver.ts                  # Post-processing pipeline
+└── composition/orchestrator.ts           # DI wiring
 ```
 
-## 경계
+## Boundaries
 
-- Visual Job 워크플로우: [18-visual-job.md](18-visual-job.md)
-- 에이전트 아키텍처: [11-agent-architecture.md](11-agent-architecture.md)
-- 인프라스트럭처 (Redis, BullMQ): [02-infrastructure.md](02-infrastructure.md)
-- 시스템 개요: [00-system-overview.md](00-system-overview.md)
+- Visual Job workflow: [18-visual-job.md](18-visual-job.md)
+- Agent architecture: [11-agent-architecture.md](11-agent-architecture.md)
+- Infrastructure (Redis, BullMQ): [02-infrastructure.md](02-infrastructure.md)
+- System overview: [00-system-overview.md](00-system-overview.md)

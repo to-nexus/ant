@@ -356,5 +356,5 @@ but the recovery is faster with snapshots.
   IDE internals (orchestrator, EFS mount topology, lifecycle).
 - [../internals/02-infrastructure.md](../internals/02-infrastructure.md) —
   Redis key layout, queues, channels.
-- [../observability/](../observability/) — logging and metrics
+- [../guides/observability.md](../guides/observability.md) — logging and metrics
   strategy.

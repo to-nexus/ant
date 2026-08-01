@@ -15,27 +15,26 @@
 5. [Dependency Rules](#dependency-rules)
 6. [Implementation Rules](#implementation-rules)
 7. [Comparison with ant-cli](#comparison-with-ant-cli)
-8. [Migration Plan](#migration-plan)
 
 ---
 
 ## Architecture Overview
 
-ANT-UI는 **Clean Architecture**를 기반으로 설계되었습니다. React와 SSE(Server-Sent Events)의 특성을 고려한 변형 구조를 사용합니다.
+ANT-UI is designed around **Clean Architecture**, adapted to account for the characteristics of React and SSE (Server-Sent Events).
 
 ### Why Clean Architecture?
 
-**문제점 (기존):**
-- SSE가 React 생명주기에 종속 → 무한 리렌더링
-- 비즈니스 로직이 UI 컴포넌트에 분산
-- 테스트 어려움, 재사용 불가능
-- 의존성 방향 불명확
+**Problems (previous design):**
+- SSE was bound to the React lifecycle → infinite re-renders
+- Business logic scattered across UI components
+- Hard to test, impossible to reuse
+- Unclear dependency direction
 
-**해결책 (Clean Architecture):**
-- 명확한 레이어 분리
-- 단방향 의존성 규칙
-- 독립적인 비즈니스 로직
-- 외부 시스템 교체 가능 (Ports & Adapters)
+**Solution (Clean Architecture):**
+- Clear layer separation
+- Unidirectional dependency rule
+- Independent business logic
+- Swappable external systems (Ports & Adapters)
 
 ### Architecture Diagram
 
@@ -86,7 +85,7 @@ ANT-UI는 **Clean Architecture**를 기반으로 설계되었습니다. React와
 
 ### 1. Dependency Inversion
 
-> **"의존성은 항상 안쪽(Domain)으로만 향한다"**
+> **"Dependencies always point inward (toward Domain)"**
 
 ```
 Presentation → Application → Domain ← Infrastructure
@@ -96,26 +95,26 @@ Presentation → Application → Domain ← Infrastructure
 
 ### 2. Single Responsibility
 
-> **"각 레이어는 하나의 책임만 갖는다"**
+> **"Each layer has exactly one responsibility"**
 
-- **Presentation**: 렌더링, 사용자 이벤트
-- **Application**: Use Case 조율
-- **Domain**: 비즈니스 로직, 상태 관리
-- **Infrastructure**: 외부 시스템 접근
+- **Presentation**: rendering, user events
+- **Application**: use-case orchestration
+- **Domain**: business logic, state management
+- **Infrastructure**: access to external systems
 
 ### 3. Framework Independence
 
-> **"비즈니스 로직은 프레임워크와 독립적이다"**
+> **"Business logic is independent of frameworks"**
 
-- Domain Layer는 React를 import하지 않음
-- Store는 Zustand로 구현되지만, 인터페이스는 framework-agnostic
+- The Domain Layer does not import React
+- The Store is implemented with Zustand, but its interface is framework-agnostic
 
 ### 4. Testability
 
-> **"각 레이어는 독립적으로 테스트 가능하다"**
+> **"Each layer is testable in isolation"**
 
-- Infrastructure를 mocking 없이 Domain 테스트 가능
-- Presentation을 분리하여 Use Case 테스트 가능
+- The Domain can be tested without mocking Infrastructure
+- Use cases can be tested with Presentation detached
 
 ---
 
@@ -123,17 +122,17 @@ Presentation → Application → Domain ← Infrastructure
 
 ### Layer 1: Presentation (UI)
 
-**책임:**
-- 사용자에게 정보 표시
-- 사용자 입력 수집
-- Application Layer의 Use Case 호출
+**Responsibilities:**
+- Display information to the user
+- Collect user input
+- Invoke Application Layer use cases
 
-**금지사항:**
-- ❌ 비즈니스 로직 포함
-- ❌ Infrastructure 직접 접근
-- ❌ Domain Store 직접 조작 (Application Hook 경유)
+**Prohibited:**
+- ❌ Containing business logic
+- ❌ Accessing Infrastructure directly
+- ❌ Manipulating the Domain Store directly (go through Application hooks)
 
-**예시:**
+**Example:**
 ```typescript
 // ✅ GOOD: Presentation Layer
 function KanbanBoard() {
@@ -143,9 +142,9 @@ function KanbanBoard() {
 
 // ❌ BAD: Presentation Layer
 function KanbanBoard() {
-  const store = useStore(); // ❌ Store 직접 접근
+  const store = useStore(); // ❌ direct Store access
   const kanban = store.kanban;
-  return <div>{kanban.todo.length}</div>; // ❌ 로직 포함
+  return <div>{kanban.todo.length}</div>; // ❌ contains logic
 }
 ```
 
@@ -153,24 +152,24 @@ function KanbanBoard() {
 
 ### Layer 2: Application (Use Cases)
 
-**책임:**
-- Domain Layer와 Presentation Layer 연결
-- UI에 필요한 데이터 형태로 가공
-- 복잡한 파생 상태 계산
+**Responsibilities:**
+- Connect the Domain Layer to the Presentation Layer
+- Shape data into the form the UI needs
+- Compute complex derived state
 
-**금지사항:**
-- ❌ 비즈니스 규칙 정의 (Domain의 역할)
-- ❌ Infrastructure 직접 접근
-- ❌ UI 렌더링 로직 포함
+**Prohibited:**
+- ❌ Defining business rules (that is the Domain's job)
+- ❌ Accessing Infrastructure directly
+- ❌ Containing UI rendering logic
 
-**예시:**
+**Example:**
 ```typescript
 // ✅ GOOD: Application Layer (Hook)
 export function useKanban() {
-  // Domain에서 데이터 가져오기
+  // Fetch data from the Domain
   const kanban = useStore(state => state.kanban);
   
-  // UI용 파생 상태 계산
+  // Compute derived state for the UI
   const stats = useMemo(() => ({
     todoCount: kanban.todo?.length ?? 0,
     completedCount: kanban.completed?.length ?? 0,
@@ -184,17 +183,17 @@ export function useKanban() {
 
 ### Layer 3: Domain (Business Logic)
 
-**책임:**
-- 애플리케이션의 핵심 비즈니스 규칙
-- 상태 관리 (Zustand Store)
-- 도메인 모델 정의 (Types)
-- 비즈니스 액션 정의
+**Responsibilities:**
+- The application's core business rules
+- State management (Zustand Store)
+- Domain model definitions (Types)
+- Business action definitions
 
-**금지사항:**
-- ❌ UI 로직 포함
-- ❌ Infrastructure 구현 상세 의존
+**Prohibited:**
+- ❌ Containing UI logic
+- ❌ Depending on Infrastructure implementation details
 
-**예시:**
+**Example:**
 ```typescript
 // ✅ GOOD: Domain Layer (Store)
 export const useStore = create<Store>((set, get) => ({
@@ -206,11 +205,11 @@ export const useStore = create<Store>((set, get) => ({
     set({ kanban: data });
   },
   
-  // Lifecycle Management (Infrastructure 조율)
+  // Lifecycle Management (orchestrates Infrastructure)
   initializeSSE: () => {
     const state = get();
     sseManager.connect('kanban', url, (data) => {
-      get().updateKanban(data); // ✅ Store 액션 호출
+      get().updateKanban(data); // ✅ invokes a Store action
     });
   },
 }));
@@ -220,16 +219,16 @@ export const useStore = create<Store>((set, get) => ({
 
 ### Layer 4: Infrastructure (External Systems)
 
-**책임:**
-- 외부 시스템과의 실제 통신
-- SSE, HTTP, LocalStorage 등 구현
-- Framework-specific 코드
+**Responsibilities:**
+- Actual communication with external systems
+- Implementations of SSE, HTTP, LocalStorage, etc.
+- Framework-specific code
 
-**금지사항:**
-- ❌ 비즈니스 로직 포함
-- ❌ Domain 상태 직접 조작
+**Prohibited:**
+- ❌ Containing business logic
+- ❌ Manipulating Domain state directly
 
-**예시:**
+**Example:**
 ```typescript
 // ✅ GOOD: Infrastructure Layer
 class SSEManager {
@@ -237,7 +236,7 @@ class SSEManager {
     const es = new EventSource(url);
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      onMessage(data); // ✅ 콜백으로 Domain에 전달
+      onMessage(data); // ✅ hands data to the Domain via callback
     };
   }
 }
@@ -246,20 +245,6 @@ class SSEManager {
 ---
 
 ## Directory Structure
-
-### Before (기존 - 혼재)
-
-```
-src/
-├── components/
-├── hooks/              # Application + Infrastructure 혼재
-├── lib/
-│   ├── store.ts        # Domain + Infrastructure 혼재
-│   └── api.ts
-└── services/           # 새로 추가됨
-```
-
-### After (Clean Architecture)
 
 ```
 src/
@@ -326,18 +311,6 @@ src/
     └── constants/                   # Constants
 ```
 
-### 파일 매핑
-
-| 기존 경로 | 새 경로 (Clean Architecture) |
-|----------|----------------------------|
-| `/components/KanbanBoard.tsx` | `/presentation/components/kanban/KanbanBoard.tsx` |
-| `/hooks/useKanbanSSE.ts` | ❌ 삭제 (SSE는 Infrastructure로) |
-| `/hooks/useKanban.ts` | `/application/hooks/features/useKanban.ts` |
-| `/lib/store.ts` | `/domain/store/index.ts` |
-| `/services/SSEManager.ts` | `/infrastructure/sse/SSEManager.ts` |
-| `/lib/api.ts` | `/infrastructure/http/api.ts` |
-| `/types/kanban.ts` | `/domain/models/kanban.ts` |
-
 ---
 
 ## Dependency Rules
@@ -369,48 +342,49 @@ import { useStore } from '@/domain/store';
 import { api } from '@/infrastructure/http/api';
 ```
 
-### 의존성 방향 검증
+### Verifying Dependency Direction
+
+There is no automated dependency-check script today — layer direction is a
+review convention. A quick manual sweep:
 
 ```bash
-# 의존성 검사 스크립트
-pnpm check:dependencies
-
-# 예상 결과:
-# ✅ presentation → application: OK
-# ✅ application → domain: OK
-# ✅ domain → infrastructure: OK (IoC)
-# ❌ presentation → infrastructure: VIOLATION!
+# List presentation files importing infrastructure directly
+rg "from '.*infrastructure/" src/presentation --type ts -l
 ```
+
+Presentation should reach the backend through application hooks; the direct
+infrastructure imports this sweep surfaces are legacy exceptions to shrink
+over time, not a pattern to extend.
 
 ---
 
 ## Implementation Rules
 
-### Rule 1: Presentation는 Application Hook만 사용
+### Rule 1: Presentation uses Application hooks only
 
 ```typescript
 // ❌ BAD
 function MyComponent() {
-  const kanban = useStore(s => s.kanban); // ❌ Store 직접 접근
+  const kanban = useStore(s => s.kanban); // ❌ direct Store access
   return <div>{kanban.todo.length}</div>;
 }
 
 // ✅ GOOD
 function MyComponent() {
-  const { stats } = useKanban(); // ✅ Application Hook 사용
+  const { stats } = useKanban(); // ✅ uses an Application hook
   return <div>{stats.todoCount}</div>;
 }
 ```
 
-### Rule 2: Application Hook은 View Adapter만 담당
+### Rule 2: Application hooks act only as view adapters
 
 ```typescript
 // ✅ GOOD: Application Hook
 export function useKanban() {
-  // Domain에서 데이터 가져오기
+  // Fetch data from the Domain
   const kanban = useStore(state => state.kanban);
   
-  // 파생 상태 계산
+  // Compute derived state
   const stats = useMemo(() => ({
     todoCount: kanban.todo?.length ?? 0,
   }), [kanban]);
@@ -419,7 +393,7 @@ export function useKanban() {
 }
 ```
 
-### Rule 3: Domain Store는 Infrastructure를 조율만 함
+### Rule 3: The Domain Store only orchestrates Infrastructure
 
 ```typescript
 // ✅ GOOD: Domain Store
@@ -431,15 +405,15 @@ export const useStore = create<Store>((set, get) => ({
   },
   
   initializeSSE: () => {
-    // Infrastructure를 호출하되, 콜백으로 Domain 액션 전달
+    // Call Infrastructure, but hand it a Domain action as the callback
     sseManager.connect('kanban', url, (data) => {
-      get().updateKanban(data); // ✅ Domain 액션
+      get().updateKanban(data); // ✅ Domain action
     });
   },
 }));
 ```
 
-### Rule 4: Infrastructure는 순수 Adapter
+### Rule 4: Infrastructure is a pure adapter
 
 ```typescript
 // ✅ GOOD: Infrastructure Adapter
@@ -447,23 +421,23 @@ class SSEManager {
   connect(key: string, url: string, onMessage: (data: any) => void) {
     const es = new EventSource(url);
     es.onmessage = (event) => {
-      onMessage(JSON.parse(event.data)); // ✅ 콜백만 호출
+      onMessage(JSON.parse(event.data)); // ✅ only invokes the callback
     };
     this.connections.set(key, es);
   }
 }
 ```
 
-### Rule 5: 레이어 간 통신은 Interface로
+### Rule 5: Cross-layer communication goes through interfaces
 
 ```typescript
-// Domain: Port 정의 (암묵적)
+// Domain: Port definition (implicit)
 interface SSEPort {
   connect(key: string, url: string, onMessage: (data: any) => void): void;
   disconnect(key: string): void;
 }
 
-// Infrastructure: Adapter 구현
+// Infrastructure: Adapter implementation
 class SSEManager implements SSEPort {
   connect(key, url, onMessage) { /* ... */ }
   disconnect(key) { /* ... */ }
@@ -487,18 +461,18 @@ class SSEManager implements SSEPort {
 
 ### Similarities
 
-1. **의존성 방향**: 둘 다 안쪽(Core/Domain)으로 향함
-2. **Port/Adapter 패턴**: Infrastructure는 교체 가능
-3. **비즈니스 로직 독립**: Framework와 분리
+1. **Dependency direction**: both point inward (toward Core/Domain)
+2. **Port/Adapter pattern**: Infrastructure is replaceable
+3. **Independent business logic**: separated from frameworks
 
 ### Differences
 
-1. **Ports 정의**: 
-   - ant-cli: 명시적 인터페이스 파일
-   - ant-ui: Store 액션이 암묵적 port
+1. **Port definitions**: 
+   - ant-cli: explicit interface files
+   - ant-ui: Store actions serve as implicit ports
 
 2. **State Management**:
-   - ant-cli: LangGraph 상태
+   - ant-cli: LangGraph state
    - ant-ui: Zustand Store
 
 3. **UI Layer**:
@@ -507,96 +481,28 @@ class SSEManager implements SSEPort {
 
 ---
 
-## Migration Plan
-
-### Phase 1: Directory Restructure
-
-```bash
-# 1. 디렉토리 생성
-mkdir -p src/{presentation,application,domain,infrastructure}
-
-# 2. 파일 이동
-mv src/components/* src/presentation/components/
-mv src/hooks/* src/application/hooks/
-mv src/lib/store.ts src/domain/store/index.ts
-mv src/services/* src/infrastructure/
-```
-
-### Phase 2: Import Path Update
-
-```typescript
-// 모든 파일의 import 경로 업데이트
-// Before:
-import { useStore } from '@/lib/store';
-
-// After:
-import { useStore } from '@/domain/store';
-```
-
-### Phase 3: Layer Separation
-
-```typescript
-// 1. Infrastructure 분리
-// src/hooks/useKanbanSSE.ts 삭제
-// SSE 로직을 SSEManager + Store로 이동
-
-// 2. Application Hook 생성
-// src/application/hooks/features/useKanban.ts
-```
-
-### Phase 4: Dependency Check
-
-```bash
-# tsconfig paths 설정
-{
-  "compilerOptions": {
-    "paths": {
-      "@/presentation/*": ["src/presentation/*"],
-      "@/application/*": ["src/application/*"],
-      "@/domain/*": ["src/domain/*"],
-      "@/infrastructure/*": ["src/infrastructure/*"]
-    }
-  }
-}
-```
-
-### Phase 5: Validation
-
-```bash
-# 빌드 성공 확인
-pnpm build
-
-# 의존성 규칙 검증
-pnpm check:dependencies
-
-# 테스트 실행
-pnpm test
-```
-
----
-
 ## Anti-Patterns
 
-### ❌ Anti-Pattern 1: Presentation이 Infrastructure 접근
+### ❌ Anti-Pattern 1: Presentation accessing Infrastructure
 
 ```typescript
 // ❌ BAD
 function MyComponent() {
   useEffect(() => {
-    sseManager.connect(...); // ❌ Infrastructure 직접 접근
+    sseManager.connect(...); // ❌ direct Infrastructure access
   }, []);
 }
 
 // ✅ GOOD
 function MyComponent() {
-  // Infrastructure는 Store의 initializeSSE에서 관리
+  // Infrastructure is managed by the Store's initializeSSE
   useEffect(() => {
     useStore.getState().initializeSSE();
   }, []);
 }
 ```
 
-### ❌ Anti-Pattern 2: Infrastructure가 Domain 조작
+### ❌ Anti-Pattern 2: Infrastructure manipulating the Domain
 
 ```typescript
 // ❌ BAD
@@ -604,7 +510,7 @@ class SSEManager {
   connect(key, url) {
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      useStore.getState().updateKanban(data); // ❌ Domain 직접 조작
+      useStore.getState().updateKanban(data); // ❌ direct Domain manipulation
     };
   }
 }
@@ -613,20 +519,20 @@ class SSEManager {
 class SSEManager {
   connect(key, url, onMessage) {
     es.onmessage = (event) => {
-      onMessage(JSON.parse(event.data)); // ✅ 콜백으로 전달
+      onMessage(JSON.parse(event.data)); // ✅ hands off via callback
     };
   }
 }
 ```
 
-### ❌ Anti-Pattern 3: Application이 비즈니스 로직 포함
+### ❌ Anti-Pattern 3: Application containing business logic
 
 ```typescript
 // ❌ BAD: Application Hook
 export function useKanban() {
   const kanban = useStore(s => s.kanban);
   
-  // ❌ 비즈니스 로직 (Domain의 역할)
+  // ❌ business logic (the Domain's job)
   const addTask = (task: Task) => {
     if (task.priority > 5) {
       // ...complex business rule
@@ -639,9 +545,9 @@ export function useKanban() {
 // ✅ GOOD: Application Hook
 export function useKanban() {
   const kanban = useStore(s => s.kanban);
-  const addTask = useStore(s => s.addTask); // ✅ Domain 액션 위임
+  const addTask = useStore(s => s.addTask); // ✅ delegates to a Domain action
   
-  // ✅ View 최적화만
+  // ✅ view optimization only
   const stats = useMemo(() => ({
     todoCount: kanban.todo?.length ?? 0,
   }), [kanban]);
@@ -657,7 +563,7 @@ export function useKanban() {
 ### 1. Testability
 
 ```typescript
-// Domain Layer 테스트 (Infrastructure 없이)
+// Testing the Domain Layer (without Infrastructure)
 describe('Store', () => {
   it('should update kanban data', () => {
     const store = useStore.getState();
@@ -670,44 +576,44 @@ describe('Store', () => {
 ### 2. Flexibility
 
 ```typescript
-// Infrastructure 교체 가능
+// Infrastructure is swappable
 // Before: EventSource
 // After: WebSocket
-// → Domain/Application 코드 변경 없음
+// → No changes to Domain/Application code
 ```
 
 ### 3. Maintainability
 
 ```typescript
-// 레이어별 독립적 수정 가능
-// UI 변경 → Presentation만
-// 비즈니스 로직 변경 → Domain만
-// SSE → WebSocket → Infrastructure만
+// Each layer can be modified independently
+// UI change → Presentation only
+// Business logic change → Domain only
+// SSE → WebSocket → Infrastructure only
 ```
 
 ### 4. Scalability
 
 ```typescript
-// 새 기능 추가 시 레이어별 확장
-// 1. Domain: 새 state + action
-// 2. Infrastructure: 새 adapter
-// 3. Application: 새 hook
-// 4. Presentation: 새 component
+// New features extend each layer independently
+// 1. Domain: new state + action
+// 2. Infrastructure: new adapter
+// 3. Application: new hook
+// 4. Presentation: new component
 ```
 
 ---
 
 ## Conclusion
 
-ANT-UI는 **Clean Architecture**를 통해:
+Through **Clean Architecture**, ANT-UI achieves:
 
-1. ✅ **무한 리렌더링 해결** - SSE가 React 외부에서 동작
-2. ✅ **명확한 책임 분리** - 각 레이어의 역할 명확
-3. ✅ **테스트 용이성** - 레이어별 독립 테스트
-4. ✅ **유지보수성** - 변경 영향 최소화
-5. ✅ **확장성** - 새 기능 추가 용이
+1. ✅ **No infinite re-renders** — SSE runs outside React
+2. ✅ **Clear separation of responsibilities** — each layer's role is explicit
+3. ✅ **Testability** — layers can be tested in isolation
+4. ✅ **Maintainability** — change impact is minimized
+5. ✅ **Scalability** — new features are easy to add
 
-**이 아키텍처를 준수하면 안정적이고 확장 가능한 시스템이 보장됩니다.**
+**Adhering to this architecture keeps the system stable and extensible.**
 
 ---
 
@@ -715,5 +621,5 @@ ANT-UI는 **Clean Architecture**를 통해:
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 2.0 | 2025-01-10 | Clean Architecture로 재설계 |
-| 1.0 | 2024-XX-XX | 초기 Flux 패턴 |
+| 2.0 | 2025-01-10 | Redesigned around Clean Architecture |
+| 1.0 | 2024-XX-XX | Initial Flux pattern |

@@ -583,7 +583,7 @@ environment variable not set / DATABASE_URL / REDIS_URL
 **Solution Principle**:
 - Verification should only READ and RUN existing scripts
 - Dev servers are long-running - verify startup, don't wait for exit
-- If docker-compose.yml exists, LLM must start infrastructure and derive environment variables before runtime verification (see 05-code-job.md "인프라 기동" section)
+- If docker-compose.yml exists, LLM must start infrastructure and derive environment variables before runtime verification (see [internals/14-code-job.md](../internals/14-code-job.md))
 - Build success is primary indicator; dev server issues are secondary
 
 ### 9.2 Component Created But Not Integrated

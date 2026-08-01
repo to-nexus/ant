@@ -61,8 +61,6 @@ For binding rules with regression-guard test names, see
 - [27-visual-processor.md](27-visual-processor.md)
 - [28-context-management.md](28-context-management.md)
 - [29-debug-logging.md](29-debug-logging.md)
-- [42-custom-domains.md](42-custom-domains.md) — deploy-only custom domains (NLB+Caddy on-demand TLS); infra + developer tasks
-- [43-explore-subagent.md](43-explore-subagent.md) — async read-only explore subagent pipeline (all jobs): launch/drain/join, registry, chat card + report overlay
 
 ### Frontend
 
@@ -79,10 +77,13 @@ For binding rules with regression-guard test names, see
 - [36-output-tag-matrix.md](36-output-tag-matrix.md)
 - [36-prompt-document-constraint-map.md](36-prompt-document-constraint-map.md)
 - [37-auth-unified-procedure.md](37-auth-unified-procedure.md)
+- [37-context-management.md](37-context-management.md) — Context Lens: cross-job band model, distillation, checkpoint ledger
 - [38-service-virtualization.md](38-service-virtualization.md)
 - [39-code-job-prompt-injection-matrix.md](39-code-job-prompt-injection-matrix.md)
 - [40-org-model.md](40-org-model.md) — kind axis, shared `individual` org, account switch, visibility
 - [41-task-priority-band-system.md](41-task-priority-band-system.md) — type / band / priority three-axis SSOT
+- [42-custom-domains.md](42-custom-domains.md) — deploy-only custom domains (NLB+Caddy on-demand TLS); infra + developer tasks
+- [43-explore-subagent.md](43-explore-subagent.md) — async read-only explore subagent pipeline (all jobs): launch/drain/join, registry, chat card + report overlay
 
 ### Layout
 

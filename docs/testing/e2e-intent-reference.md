@@ -1,15 +1,17 @@
 # Intent E2E Reference
 
-수동 E2E 테스트 시 참조용. 실제 서버를 띄운 상태에서 각 intent별로 API를 호출한다.
+Reference for manual E2E testing. With a live server running, call the API for each intent.
 
-## 사전 조건
+## Prerequisites
 
 ```bash
 pnpm dev:infra        # Redis + ChromaDB
 pnpm dev:all    # API + Realtime + Job + Preview + UI + site
 ```
 
-워크스페이스와 피처가 미리 생성되어 있어야 함.
+A workspace and a feature must already exist.
+
+> Note on directive strings: several `directive` values below are kept in Korean **verbatim** because the test fixture `packages/ant-cli/tests/intents/documents/directives.json` references those exact strings. Each such example carries an English gloss in a `#` comment line. All other directives are translated.
 
 ---
 
@@ -18,6 +20,7 @@ pnpm dev:all    # API + Realtime + Job + Preview + UI + site
 ### gen-plan
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Plan a team-collaboration project management web service"
 curl -X POST http://localhost:4100/api/jobs \
   -H "Content-Type: application/json" \
   -d '{
@@ -29,13 +32,14 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=planner, jobType=plan
-- **예상 산출물**: `plan/prd.md`
-- **PASS 기준**: prd.md 생성되고 "프로젝트 관리" 키워드 포함
+- **Expected triage**: agent=planner, jobType=plan
+- **Expected output**: `plan/prd.md`
+- **PASS criteria**: prd.md is created and contains the "project management" keyword
 
 ### rev-plan
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Add social login and remove guest mode"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "소셜 로그인을 추가하고 게스트 모드를 삭제해줘",
@@ -47,9 +51,9 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=planner, jobType=plan, mode=refactor
-- **예상 산출물**: `plan/prd.md` (수정)
-- **PASS 기준**: 소셜 로그인 관련 내용 추가, 게스트 모드 삭제
+- **Expected triage**: agent=planner, jobType=plan, mode=refactor
+- **Expected output**: `plan/prd.md` (revised)
+- **PASS criteria**: social-login content added, guest mode removed
 
 ---
 
@@ -60,7 +64,7 @@ curl -X POST http://localhost:4100/api/jobs \
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "React로 프론트엔드 시스템 설계해줘",
+    "directive": "Design the frontend system with React",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-sys-fe",
@@ -69,16 +73,16 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, workType=system-design, environment=frontend
-- **예상 산출물**: `architecture/system/fe-system-*.md`
-- **PASS 기준**: fe-system-main.md 생성, React/frontend 관련 내용 포함
+- **Expected triage**: agent=architect, jobType=design, workType=system-design, environment=frontend
+- **Expected output**: `architecture/system/fe-system-*.md`
+- **PASS criteria**: fe-system-main.md created, contains React/frontend-related content
 
 ### gen-sys-be
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "Express 백엔드 시스템 설계해줘",
+    "directive": "Design the backend system with Express",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-sys-be",
@@ -87,13 +91,14 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, workType=system-design, environment=backend
-- **예상 산출물**: `architecture/system/be-system-*.md`, `architecture/system/api-contract-*.md`
-- **PASS 기준**: be-system-main.md 및 api-contract-main.md 생성
+- **Expected triage**: agent=architect, jobType=design, workType=system-design, environment=backend
+- **Expected output**: `architecture/system/be-system-*.md`, `architecture/system/api-contract-*.md`
+- **PASS criteria**: be-system-main.md and api-contract-main.md created
 
 ### gen-sys-full
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Design the full-stack system"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "풀스택 시스템 설계해줘",
@@ -105,13 +110,14 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, workType=system-design, environment=fullstack
-- **예상 산출물**: `architecture/system/fe-system-*.md`, `architecture/system/be-system-*.md`, `architecture/system/api-contract-*.md`
-- **PASS 기준**: 프론트엔드 + 백엔드 + API 계약 문서 모두 생성
+- **Expected triage**: agent=architect, jobType=design, workType=system-design, environment=fullstack
+- **Expected output**: `architecture/system/fe-system-*.md`, `architecture/system/be-system-*.md`, `architecture/system/api-contract-*.md`
+- **PASS criteria**: frontend + backend + API contract documents all created
 
 ### rev-sys
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Change the authentication method to OAuth"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "인증 방식을 OAuth로 변경해줘",
@@ -123,9 +129,9 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=system-design
-- **예상 산출물**: `architecture/system/fe-system-main.md` (수정)
-- **PASS 기준**: OAuth 관련 내용으로 수정
+- **Expected triage**: agent=architect, jobType=design, mode=refactor, workType=system-design
+- **Expected output**: `architecture/system/fe-system-main.md` (revised)
+- **PASS criteria**: revised with OAuth-related content
 
 ---
 
@@ -134,6 +140,7 @@ curl -X POST http://localhost:4100/api/jobs \
 ### gen-ui-figma
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Extract the UI design from the Figma file"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "Figma 파일에서 UI 설계를 추출해줘",
@@ -145,17 +152,17 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, workType=ui-design
-- **예상 산출물**: `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json`, `visual/ui/ant/ui-spec.json`
-- **PASS 기준**: 3개 UI 설계 파일 생성
-- **참고**: figma.json은 `{ "file": "<figma-url>" }` 형식의 설정 파일. 프롬프트에 내용 주입 없음.
+- **Expected triage**: agent=architect, jobType=design, workType=ui-design
+- **Expected output**: `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json`, `visual/ui/ant/ui-spec.json`
+- **PASS criteria**: 3 UI design files created
+- **Note**: figma.json is a config file of the form `{ "file": "<figma-url>" }`. Its content is not injected into the prompt.
 
 ### gen-ui-desc
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "PRD 기반으로 UI 설계해줘",
+    "directive": "Design the UI based on the PRD",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-ui-desc",
@@ -164,13 +171,14 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, workType=ui-design
-- **예상 산출물**: `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json`, `visual/ui/ant/ui-spec.json`
-- **PASS 기준**: 3개 UI 설계 파일 생성
+- **Expected triage**: agent=architect, jobType=design, workType=ui-design
+- **Expected output**: `visual/ui/ant/ui-tokens.json`, `visual/ui/ant/ui-assets.json`, `visual/ui/ant/ui-spec.json`
+- **PASS criteria**: 3 UI design files created
 
 ### rev-ui
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Change the color palette to a dark theme"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "색상 팔레트를 다크 테마로 변경해줘",
@@ -182,9 +190,9 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=ui-design
-- **예상 산출물**: `visual/ui/ant/ui-tokens.json` (수정)
-- **PASS 기준**: 다크 테마 색상으로 변경
+- **Expected triage**: agent=architect, jobType=design, mode=refactor, workType=ui-design
+- **Expected output**: `visual/ui/ant/ui-tokens.json` (revised)
+- **PASS criteria**: changed to dark-theme colors
 
 ---
 
@@ -195,7 +203,7 @@ curl -X POST http://localhost:4100/api/jobs \
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "설계 문서 기반으로 태스크 검색 API 스펙을 작성해줘",
+    "directive": "Write the task search API spec based on the design documents",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-spec",
@@ -204,13 +212,14 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, workType=spec
-- **예상 산출물**: `architecture/spec/spec-*.md`
-- **PASS 기준**: 스펙 파일 생성
+- **Expected triage**: agent=architect, jobType=design, workType=spec
+- **Expected output**: `architecture/spec/spec-*.md`
+- **PASS criteria**: spec file created
 
 ### rev-spec
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Change pagination from offset to cursor"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "페이지네이션을 offset에서 cursor로 변경해줘",
@@ -222,9 +231,9 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=design, mode=refactor, workType=spec
-- **예상 산출물**: `architecture/spec/spec-search-api.md` (수정)
-- **PASS 기준**: cursor 기반 페이지네이션으로 변경
+- **Expected triage**: agent=architect, jobType=design, mode=refactor, workType=spec
+- **Expected output**: `architecture/spec/spec-search-api.md` (revised)
+- **PASS criteria**: changed to cursor-based pagination
 
 ---
 
@@ -233,6 +242,7 @@ curl -X POST http://localhost:4100/api/jobs \
 ### gen-code-sys
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Generate code based on the design documents"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "설계 문서 기반으로 코드 생성해줘",
@@ -245,13 +255,14 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, mode=generate
-- **예상 산출물**: 코드베이스에 소스 코드 파일
-- **PASS 기준**: 프론트엔드 코드 생성 (React 컴포넌트, 라우팅 등)
+- **Expected triage**: agent=architect, jobType=code, mode=generate
+- **Expected output**: source code files in the codebase
+- **PASS criteria**: frontend code generated (React components, routing, etc.)
 
 ### gen-code-spec
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Implement the task search API based on the spec"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "스펙 기반으로 태스크 검색 API를 구현해줘",
@@ -264,13 +275,14 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, mode=generate
-- **예상 산출물**: 코드베이스에 API 엔드포인트 코드
-- **PASS 기준**: 태스크 검색 API 엔드포인트 구현
+- **Expected triage**: agent=architect, jobType=code, mode=generate
+- **Expected output**: API endpoint code in the codebase
+- **PASS criteria**: task search API endpoint implemented
 
 ### gen-code-directive
 
 ```bash
+# directive kept verbatim (test fixture) — gloss: "Build a simple TODO app"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
     "directive": "간단한 TODO 앱을 만들어줘",
@@ -281,16 +293,16 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, mode=generate
-- **예상 산출물**: 코드베이스에 소스 코드 파일
-- **PASS 기준**: 지시문만으로 앱 골격 또는 요청 범위에 맞는 코드 생성
+- **Expected triage**: agent=architect, jobType=code, mode=generate
+- **Expected output**: source code files in the codebase
+- **PASS criteria**: from the directive alone, generates an app skeleton or code matching the requested scope
 
-### gen-code-spec (기존 코드베이스 위 스펙 기반 수정)
+### gen-code-spec (spec-based modification on an existing codebase)
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "스펙 문서 기반으로 코드를 리팩토링해줘",
+    "directive": "Refactor the code based on the spec document",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-code-spec",
@@ -299,16 +311,16 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, mode=generate
-- **예상 산출물**: 기존 코드 수정
-- **PASS 기준**: 스펙에 맞게 코드 수정, 기존 코드베이스에서 existing-code-discipline injection 포함
+- **Expected triage**: agent=architect, jobType=code, mode=generate
+- **Expected output**: existing code modified
+- **PASS criteria**: code modified to match the spec; on an existing codebase the existing-code-discipline injection is included
 
-### gen-code-directive (기존 코드베이스 위 지시문 delta)
+### gen-code-directive (directive delta on an existing codebase)
 
 ```bash
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "성능 최적화를 위해 코드를 리팩토링해줘",
+    "directive": "Refactor the code for performance optimization",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-code-directive"
@@ -316,16 +328,16 @@ curl -X POST http://localhost:4100/api/jobs \
   }'
 ```
 
-- **예상 Triage**: agent=architect, jobType=code, mode=generate
-- **예상 산출물**: 기존 코드 최적화 (existing-code discipline 적용, 무관 코드 무변경)
-- **PASS 기준**: refactor-guidance injection 포함
+- **Expected triage**: agent=architect, jobType=code, mode=generate
+- **Expected output**: existing code optimized (existing-code discipline applied, unrelated code untouched)
+- **PASS criteria**: refactor-guidance injection included
 
 ---
 
-## 디버그 절차
+## Debug Procedure
 
-자동 테스트 실패 시:
-1. vitest 스냅샷 diff 확인 (어떤 injection이 바뀌었는지)
-2. 실제 서버에서 해당 intent 실행
-3. `sessions/{agent}/debug/prompts/prompt-{jobId}.md` 확인
-4. `sessions/{agent}/debug/logs/log-{jobId}.json` 확인
+When an automated test fails:
+1. Check the vitest snapshot diff (which injections changed)
+2. Run the intent on a real server
+3. Inspect `sessions/{agent}/debug/prompts/prompt-{jobId}.md`
+4. Inspect `sessions/{agent}/debug/logs/log-{jobId}.json`

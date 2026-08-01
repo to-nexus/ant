@@ -1,46 +1,46 @@
 # 18. Session Redesign (Three Orthogonal Axes + 5-Tier Execution)
 
-> **Status**: §3 Phase B~E 구현 완료 (2026-04-20). 본 문서는 실행 SSOT([`docs/tmp/session-redesign-handoff.md`](../tmp/session-redesign-handoff.md))를 `docs/internals/` 톤으로 정착시킨 **아키텍처 SSOT**. 인수 시점 이후의 설계/배선 변경은 이 문서를 먼저 갱신한다.
-> **코드 기준**: `8277b313` + §1~§19
+> **Status**: §3 Phases B–E implemented (2026-04-20). This document is the **architecture SSOT** for the session redesign, written in the `docs/internals/` tone. Any design/wiring change after that point updates this document first.
+> **Code baseline**: `8277b313`
 
 ---
 
-## 0. 한 줄 요약
+## 0. One-Line Summary
 
-Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집합**을 **5-Tier**로 라우팅한다. 세션 저장은 `feature.jsonl`(프롬프트 맥락 SSOT) + `trace.jsonl`(UI 렌더 SSOT) **2-파일 분리**. 이전의 `jobConversation` Inter-Job Context Bridge (28-context-management.md §2)는 본 재설계로 **완전히 대체**됐다.
+The **product set of three orthogonal axes** — Context (structure) × Mode (intent) × Complexity (scale) — is routed into **5 tiers**. Session storage is split into **2 files**: `feature.jsonl` (prompt-context SSOT) + `trace.jsonl` (UI-render SSOT). The previous `jobConversation` Inter-Job Context Bridge (28-context-management.md §2) has been **fully replaced** by this redesign.
 
 ---
 
-## 1. 세 직교 축
+## 1. The Three Orthogonal Axes
 
-| 축 | 값 | 결정자 | 결정 시점 |
+| Axis | Values | Decider | Decision point |
 |---|---|---|---|
-| **Context** (구조) | T1 Artifact / T2 user_turn / T3 Breadcrumb | 구조적 (파일 저장 레이어) | `feature.jsonl` append 시점 |
-| **Mode** (의도) | `generate` / `refactor` / `explain` | **Detect 노드** (`ResolvedAction.mode`) | Triage 직전 |
-| **Complexity** (규모) | `oneshot` / `exploratory` / `task` | **Decompose 노드** (LLM 3-way 판정) | decompose LLM 1회 호출 |
+| **Context** (structure) | T1 Artifact / T2 user_turn / T3 Breadcrumb | Structural (file storage layer) | At `feature.jsonl` append time |
+| **Mode** (intent) | `generate` / `refactor` / `explain` | **Detect node** (`ResolvedAction.mode`) | Just before Triage |
+| **Complexity** (scale) | `oneshot` / `exploratory` / `task` | **Decompose node** (LLM 3-way classification) | Single decompose LLM call |
 
-설계 제약:
-- 세 축은 서로 **교환 불가**. 한 축이 다른 축을 함의하지 않는다. (예: `explain`도 `task`가 될 수 있고 `generate`도 `oneshot`일 수 있음)
-- Heuristic/Overrule은 **제외**. MVP는 LLM 판정만 신뢰 (D10)
-- Tier 내부는 균일 — 같은 Tier 셀에 도달한 실행은 **동일 파이프라인 + 동일 프롬프트**를 쓴다 (D11). 프롬프트가 `taskQueue.size`, `touched 수` 같은 런타임 관측치로 if/else 분기하지 않는다.
+Design constraints:
+- The three axes are **not interchangeable**. No axis implies another. (E.g. `explain` can be `task`, and `generate` can be `oneshot`.)
+- Heuristics/overrules are **excluded**. The MVP trusts the LLM classification only (D10).
+- Tier internals are uniform — executions landing in the same tier cell use the **same pipeline + same prompts** (D11). Prompts do not if/else-branch on runtime observations like `taskQueue.size` or touched counts.
 
 ---
 
-## 2. Mode × Complexity 매트릭스 → 5-Tier
+## 2. Mode × Complexity Matrix → 5 Tiers
 
-### 2.1 5-Tier 정의
+### 2.1 5-Tier definition
 
-| Tier | 이름 | Mode | Complexity | 경로 | 특징 |
+| Tier | Name | Mode | Complexity | Path | Characteristics |
 |---|---|---|---|---|---|
-| 0 | Reflex | `explain` | oneshot + tool 0~1 | `direct` (read-only) | 최소 비용, read-only tools만 |
-| 1 | One-shot | 모두 | oneshot | `direct` | 1~2 step ReAct |
-| 2 | Exploratory | 모두 | exploratory | `direct` (ReAct) | 최대 `ANT_DIRECT_MAX_STEPS`(=10) step |
-| 3 | Task | 모두 | task | `decompose → plan → execute` | 기존 full pipeline (mode별 Breadcrumb/Boundary 분기는 Tier 내부 구성자에서만) |
-| 4 | Plan | — | — | `design` / `plan` (별도 jobtype) | Mode×Complexity 미적용 (D5) |
+| 0 | Reflex | `explain` | oneshot + 0–1 tools | `direct` (read-only) | Minimal cost, read-only tools only |
+| 1 | One-shot | all | oneshot | `direct` | 1–2 step ReAct |
+| 2 | Exploratory | all | exploratory | `direct` (ReAct) | Up to `ANT_DIRECT_MAX_STEPS` (=10) steps |
+| 3 | Task | all | task | `decompose → plan → execute` | Existing full pipeline (per-mode Breadcrumb/Boundary branching lives only inside the tier constructors) |
+| 4 | Plan | — | — | `design` / `plan` (separate job types) | Mode×Complexity not applied (D5) |
 
-> **용어**: 리터럴 `'task'` 는 이전 `'todo'` 를 대체한 이름이다. `TaskStatus='todo'` (Kanban 카드 상태)와 구별하기 위해 2026-04-21 rename. 기존 `feature.jsonl` 라인의 `'todo'` 리터럴은 `FileSessionAdapter.normalizeLegacyComplexity` 에서 읽기 시점에 `'task'` 로 매핑된다.
+> **Terminology**: the literal `'task'` is the name that replaced the earlier `'todo'`. Renamed on 2026-04-21 to disambiguate from `TaskStatus='todo'` (the Kanban card state). `'todo'` literals in existing `feature.jsonl` lines are mapped to `'task'` at read time in `FileSessionAdapter.normalizeLegacyComplexity`.
 
-### 2.2 판정 매트릭스 (Decompose 프롬프트 출력 shape)
+### 2.2 Classification matrix (Decompose prompt output shape)
 
 | Mode | Complexity | `<tasks>` | `<directHints>` |
 |---|---|---|---|
@@ -49,32 +49,32 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
 | `explain` | task | 1 explain task (priority 200) | `{}` |
 | `generate`/`refactor` | oneshot | `[]` | `{ "targetFiles": [...] }` |
 | `generate`/`refactor` | exploratory | `[]` | `{ "explorationScope": "..." }` |
-| `generate`/`refactor` | task | 전체 breakdown | `{}` |
+| `generate`/`refactor` | task | full breakdown | `{}` |
 
-### 2.3 메타데이터 정책 매트릭스 (feature.jsonl 기록)
+### 2.3 Metadata policy matrix (feature.jsonl records)
 
 | Mode | Complexity | T2 (user_turn) | T3 (breadcrumb) | Boundary |
 |---|---|---|---|---|
-| `explain` | 모두 | 기록 | ❌ (T1 무수정) | `task`만 ✅ |
-| `generate`/`refactor` | oneshot | 기록 | ❌ | ❌ |
-| `generate`/`refactor` | exploratory | 기록 | `touched ≥ 3` → mini-BC | ❌ |
-| `generate`/`refactor` | task | collapse(boundary 시) | ✅ bubble-up | ✅ `auto_job_complete_todo` (on-disk 리터럴은 legacy 호환 유지) |
-| `ask`/`inline-ask` | — | **미기록** (feature.jsonl 안 감) | ❌ | ❌ |
+| `explain` | all | recorded | ❌ (T1 untouched) | ✅ for `task` only |
+| `generate`/`refactor` | oneshot | recorded | ❌ | ❌ |
+| `generate`/`refactor` | exploratory | recorded | `touched ≥ 3` → mini-BC | ❌ |
+| `generate`/`refactor` | task | collapse (at boundary) | ✅ bubble-up | ✅ `auto_job_complete_todo` (on-disk literal kept for legacy compatibility) |
+| `ask`/`inline-ask` | — | **not recorded** (never enters feature.jsonl) | ❌ | ❌ |
 
-**Hard Reset**은 축에 무관한 별도 이벤트 — boundary 라인을 추가하는 in-place collapse 가 아니라, `sessions/` 트리의 모든 세션 파일(`feature.jsonl` · `trace.jsonl` · `architect/*.json` · `planner/*.json` · debug/runtime 잔여물)을 **물리적으로 unlink** 한다 (`clearCanonicalDirectory`). 다음 job 은 완전히 빈 상태에서 시작한다.
+**Hard Reset** is a separate event independent of the axes — it is not an in-place collapse that appends a boundary line; instead it **physically unlinks** every session file in the `sessions/` tree (`feature.jsonl` · `trace.jsonl` · `architect/*.json` · `planner/*.json` · debug/runtime leftovers) via `clearCanonicalDirectory`. The next job starts from a completely empty state.
 
 ---
 
-## 3. 파일 구조 & SSOT 분리
+## 3. File Structure & SSOT Separation
 
-### 3.1 디렉토리 레이아웃
+### 3.1 Directory layout
 
 ```
 {featurePath}/sessions/
-├── feature.jsonl            ← NEW: 맥락 SSOT (T2 + T3 + boundary)
-├── trace.jsonl              ← NEW: UI 채팅 렌더 SSOT (모든 이벤트)
+├── feature.jsonl            ← NEW: context SSOT (T2 + T3 + boundary)
+├── trace.jsonl              ← NEW: UI chat-render SSOT (all events)
 ├── architect/
-│   ├── code.json            ← 기존 — 재개 체크포인트 전용 (§14에서 jobConversation 필드 제거)
+│   ├── code.json            ← existing — resume checkpoint only (jobConversation field removed in legacy cleanup)
 │   ├── design.json
 │   └── learn.json
 ├── planner/
@@ -83,35 +83,35 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
     └── visual.json
 ```
 
-### 3.2 책임 MECE
+### 3.2 Responsibility MECE
 
-| 파일 | 책임 | 생명주기 | 소비자 | 기록자 |
+| File | Responsibility | Lifecycle | Consumer | Writer |
 |---|---|---|---|---|
-| `feature.jsonl` | LLM 프롬프트 주입용 맥락 SSOT | 영속 (append-only, Collapse 마킹) | `resolve` 노드 → `featureContextBuilder` | `FileSessionAdapter.appendUserTurn/Meta/Breadcrumb/Boundary` |
-| `trace.jsonl` | UI 채팅 렌더 SSOT | 영속 (append-only) | UI(`/trace` HTTP GET) | tool 노드 / direct 노드 / learn 노드 |
-| `architect/code.json` 등 | 재개 체크포인트 (세션 state) | job 완료/실패 시 갱신 | LangGraph runner (resume 경로) | `FileSessionAdapter.save/updateArtifacts` |
+| `feature.jsonl` | Context SSOT for LLM prompt injection | Persistent (append-only, Collapse marking) | `resolve` node → `featureContextBuilder` | `FileSessionAdapter.appendUserTurn/Meta/Breadcrumb/Boundary` |
+| `trace.jsonl` | UI chat-render SSOT | Persistent (append-only) | UI (`/trace` HTTP GET) | tool node / direct node / learn node |
+| `architect/code.json` etc. | Resume checkpoint (session state) | Updated on job completion/failure | LangGraph runner (resume path) | `FileSessionAdapter.save/updateArtifacts` |
 
-**user_turn만 양쪽 복제**. feature.jsonl은 `text + mode`, trace.jsonl은 `text + sourceRef`로 링크.
+**Only user_turn is duplicated in both files.** feature.jsonl stores `text + mode`; trace.jsonl links via `text + sourceRef`.
 
-### 3.3 라우트 매핑
+### 3.3 Route mapping
 
-| HTTP 엔드포인트 | 파일 | 연결 |
+| HTTP endpoint | File | Connected to |
 |---|---|---|
-| `GET /api/projects/:id/features/:feature/trace` | `trace.jsonl` | Activity 뷰 |
-| `GET .../breadcrumbs` | `feature.jsonl` breadcrumb 라인 | Timeline 뷰 |
-| `GET .../user-turn-meta` | `feature.jsonl` user_turn + user_turn_meta | turn 헤더 배지 |
-| `POST .../context/reset` | `clearCanonicalDirectory(sessions/)` + Redis/Kanban cleanup | Hard Reset 버튼 (채팅 헤더 🗑️) |
-| `DELETE .../chat/messages` | `collapseTraceOnly` (UI 채팅만 정리) | Sweep 버튼 (채팅 헤더 🔄) |
-| `POST .../chat/decompose-choice` | session state | Spec Clarify 3-way 응답 |
+| `GET /api/projects/:id/features/:feature/trace` | `trace.jsonl` | Activity view |
+| `GET .../breadcrumbs` | `feature.jsonl` breadcrumb lines | Timeline view |
+| `GET .../user-turn-meta` | `feature.jsonl` user_turn + user_turn_meta | Turn header badges |
+| `POST .../context/reset` | `clearCanonicalDirectory(sessions/)` + Redis/Kanban cleanup | Hard Reset button (chat header 🗑️) |
+| `DELETE .../chat/messages` | `collapseTraceOnly` (cleans UI chat only) | Sweep button (chat header 🔄) |
+| `POST .../chat/decompose-choice` | session state | Spec Clarify 3-way response |
 
 ---
 
-## 4. JSONL 스키마 예시
+## 4. JSONL Schema Examples
 
-### 4.1 feature.jsonl 라인 타입
+### 4.1 feature.jsonl line types
 
 ```jsonc
-// user_turn — 사용자 원본 directive
+// user_turn — user's original directive
 {
   "type": "user_turn",
   "ts": "2026-04-20T09:12:03.421Z",
@@ -122,7 +122,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
   "mode": "generate"
 }
 
-// user_turn_meta — complexity 판정 패치 (decompose 후 learn에서 append)
+// user_turn_meta — complexity classification patch (appended by learn after decompose)
 {
   "type": "user_turn_meta",
   "ts": "2026-04-20T09:12:45.108Z",
@@ -134,7 +134,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
   "reason": "multi-file feature spanning UI + theme context"
 }
 
-// breadcrumb — bubble-up된 작업 흔적 앵커
+// breadcrumb — bubbled-up work-trace anchors
 {
   "type": "breadcrumb",
   "ts": "2026-04-20T09:18:22.910Z",
@@ -156,7 +156,7 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
   }
 }
 
-// boundary — 맥락 경계 (todo 완료 시점)
+// boundary — context boundary (at todo completion)
 {
   "type": "boundary",
   "ts": "2026-04-20T09:18:23.001Z",
@@ -166,63 +166,63 @@ Context(구조) × Mode(의도) × Complexity(규모) **세 직교 축의 곱집
   "reason": "auto_job_complete_todo"
 }
 
-// Hard Reset은 boundary를 추가하지 않는다 — 대신 `sessions/` 트리의 모든
-// 세션 파일을 물리적으로 삭제한다. 상세는 §2.3 참고.
+// Hard Reset does not append a boundary — instead it physically deletes every
+// session file in the `sessions/` tree. See §2.3 for details.
 ```
 
-### 4.2 trace.jsonl 라인 타입 (요약)
+### 4.2 trace.jsonl line types (summary)
 
-| `type` | 필드 | 기록자 |
+| `type` | Fields | Writer |
 |---|---|---|
 | `user_turn` | `text`, `sourceRef` (`feature.jsonl#<turnId>` \| `ask-only`) | orchestrator `recordUserTurn` |
-| `assistant_thinking` | `text` | direct/execute LLM 스트리밍 |
+| `assistant_thinking` | `text` | direct/execute LLM streaming |
 | `tool_call` | `tool`, `args`, `result`, `error?` | `ToolOrchestrator` (TraceAppender) |
-| `file_write` | `path`, `operation: create\|update\|delete`, `content?`, `diffBefore?`, `diffAfter?`, `error?` | `FileOperationHandler` (chat SSE + trace 동시 발행 SSOT) |
+| `file_write` | `path`, `operation: create\|update\|delete`, `content?`, `diffBefore?`, `diffAfter?`, `error?` | `FileOperationHandler` (SSOT emitting chat SSE + trace simultaneously) |
 | `run_command` | `cmd`, `stdout`, `stderr`, `exitCode` | run_command tool handler |
 | `job_status` | `phase`, `progress?`, `message?` | LLMResponseService |
 | `assistant_message` | `text` | LLMResponseService (finalize) |
-| `choice_presented` | `cardId`, `cardType`, `prompt?`, `payload?` | triage/decompose-clarify/eval-save 등 |
-| `choice_resolved` | `cardId`, `choiceSelected`, `resolvedLabel`, `answer?` | choice 라우트 핸들러 |
+| `choice_presented` | `cardId`, `cardType`, `prompt?`, `payload?` | triage/decompose-clarify/eval-save etc. |
+| `choice_resolved` | `cardId`, `choiceSelected`, `resolvedLabel`, `answer?` | choice route handler |
 
-공통 필드: `ts`, `jobId`, `turnId`, `jobType`, `collapsed?: true`.
+Common fields: `ts`, `jobId`, `turnId`, `jobType`, `collapsed?: true`.
 
-전체 타입 정의: [`packages/ant-shared/src/session-log.ts`](../../packages/ant-shared/src/session-log.ts).
+Full type definitions: [`packages/ant-shared/src/session-log.ts`](../../packages/ant-shared/src/session-log.ts).
 
 ---
 
-## 5. 런타임 메커니즘
+## 5. Runtime Mechanisms
 
 ### 5.1 Collapse vs Compact (orthogonal)
 
-> **2026 update — job-context-bridge T2/T5**: auto-boundary (`reason: 'auto_job_complete_todo'`)는 폐기됨. 자동 cut이 다음 job에 직전 작업 맥락을 0으로 만들던 회귀를 회복하기 위함. 남은 boundary는 Hard Reset (`reason: 'user_reset'`) 한 종류. 동시에 Compact의 응축 대상에 breadcrumb이 포함됨 — 이전 "Breadcrumb는 응축 안 함" 정책 폐기.
+> **2026 update**: the auto-boundary (`reason: 'auto_job_complete_todo'`) is retired. This recovers from a regression where the automatic cut zeroed out the immediately-preceding work context for the next job. The only remaining boundary kind is Hard Reset (`reason: 'user_reset'`). At the same time, breadcrumbs were added to Compact's condensation targets — the earlier "breadcrumbs are never condensed" policy is retired.
 
 | | Collapse | Compact |
 |---|---|---|
-| **트리거** | Hard Reset (`user_reset` boundary) append 시점 (쓰기) | resolve 노드 읽기 시점 (user_turn + breadcrumb 합산 토큰 > `FEATURE_CONTEXT_THRESHOLD`) |
-| **대상** | Hard Reset 이전의 모든 user_turn / meta / breadcrumb | window 외 옛 user_turn + window-cutoff 이전 breadcrumb |
-| **수단** | `collapsed=true` 마킹 (파일 보존) | LLM 요약 (MECE Agreements/Artifacts/Open items) → `FeatureContext.summary` 별도 필드. Breadcrumb은 `Artifact` 카테고리로 응축 |
-| **비용** | I/O만 (LLM 없음) | 1회 LLM call (graceful degradation: 실패 시 원형 반환) |
-| **구현** | `FileSessionAdapter.appendBoundary` (+ Sweep 전용 `collapseTraceOnly` / Job 탭 X 전용 `collapseByJobId`) | `core/context/featureContextBuilder.ts#compactFeatureContext` |
+| **Trigger** | At Hard Reset (`user_reset` boundary) append time (write) | At resolve-node read time (user_turn + breadcrumb combined tokens > `FEATURE_CONTEXT_THRESHOLD`) |
+| **Target** | All user_turn / meta / breadcrumb lines before the Hard Reset | Old user_turns outside the window + breadcrumbs before the window cutoff |
+| **Means** | Marking `collapsed=true` (file preserved) | LLM summary (MECE Agreements/Artifacts/Open items) → separate `FeatureContext.summary` field. Breadcrumbs condense into the `Artifact` category |
+| **Cost** | I/O only (no LLM) | 1 LLM call (graceful degradation: returns raw form on failure) |
+| **Implementation** | `FileSessionAdapter.appendBoundary` (+ Sweep-only `collapseTraceOnly` / Job-tab-X-only `collapseByJobId`) | `core/context/featureContextBuilder.ts#compactFeatureContext` |
 
-레거시 `auto_job_complete_todo` boundary가 이미 적힌 feature.jsonl은 `loadSinceBoundary`가 그 reason을 무시하므로 자동 복원된다 (마이그레이션 불필요).
+For a feature.jsonl that already contains legacy `auto_job_complete_todo` boundaries, `loadSinceBoundary` ignores that reason, so context is restored automatically (no migration needed).
 
-### 5.1.1 Tier-별 strategy 매트릭스 (operation-per-strategy + Tier facade)
+### 5.1.1 Per-tier strategy matrix (operation-per-strategy + Tier facade)
 
-> **2026 update — job-context-bridge T2/T3/T8**: tier facade 의 4채널(breadcrumb/boundary/collapse/compact) 중 **boundary와 collapse는 폐기**되어 facade 인터페이스에서 제거됐다. 남은 채널은 `breadcrumb` (단일 FullBreadcrumb dispatch + `mode='explain'` / `touched=0` 가드는 writeBreadcrumb 내부에 내장) + `compact` (ThresholdLLM 또는 NoopCompact) 두 개.
+> **2026 update**: of the tier facade's original 4 channels (breadcrumb/boundary/collapse/compact), **boundary and collapse are retired** and removed from the facade interface. The remaining channels are `breadcrumb` (single FullBreadcrumb dispatch; the `mode='explain'` / `touched=0` guards are built into writeBreadcrumb) + `compact` (ThresholdLLM or NoopCompact) — two in total.
 
 | Tier | Breadcrumb | Compact |
 |---|---|---|
-| 0 Reflex (`explain` × oneshot) | Full → 자동 skip(`mode=explain`) | Noop |
-| 1 OneShot (any × oneshot) | Full (touched>0 이면 emit) | ThresholdLLM |
-| 2 Exploratory (any × exploratory) | Full (touched>0 이면 emit) | ThresholdLLM |
+| 0 Reflex (`explain` × oneshot) | Full → auto-skipped (`mode=explain`) | Noop |
+| 1 OneShot (any × oneshot) | Full (emitted if touched>0) | ThresholdLLM |
+| 2 Exploratory (any × exploratory) | Full (emitted if touched>0) | ThresholdLLM |
 | 3 Task — `generate`/`refactor` | Full (bubble-up) | ThresholdLLM |
 | 3 Task — `explain` | Noop | ThresholdLLM |
 | 4 Plan — `generate`/`refactor` | Full (bubble-up) | ThresholdLLM |
 | 4 Plan — `explain` | Noop | ThresholdLLM |
 
-이전 매트릭스의 "Mini-BC (touched ≥ 3)" 게이트는 폐기됨 — 작은 변경(touched 1~2)도 다음 job의 navigation pointer 가치가 충분하다는 판단(T3).
+The earlier matrix's "Mini-BC (touched ≥ 3)" gate is retired — the judgment was that even small changes (touched 1–2) provide enough navigation-pointer value for the next job.
 
-**D11 불변식**: 위 표의 "mode 분기"는 `Tier3Task`/`Tier4Plan` 생성자 **두 곳에서만** 수행된다. 검증:
+**D11 invariant**: the "mode branching" in the table above happens **only in two places** — the `Tier3Task`/`Tier4Plan` constructors. Verification:
 
 ```bash
 rg "mode === '(explain|generate|refactor)'|complexity === '(oneshot|exploratory|task)'" \
@@ -231,7 +231,7 @@ rg "mode === '(explain|generate|refactor)'|complexity === '(oneshot|exploratory|
 # expect: 0
 ```
 
-**폐기 심볼 grep 검증** (모두 0 매칭이어야 함):
+**Retired-symbol grep verification** (all must match 0):
 
 ```bash
 rg "MINI_BREADCRUMB_TOUCHED_THRESHOLD|DEFAULT_BREADCRUMB_WINDOW" packages/ant-cli/src
@@ -241,188 +241,187 @@ rg "MiniBreadcrumb|miniBreadcrumb" packages/ant-cli/src
 rg "BoundaryStrategy|CollapseStrategy" packages/ant-cli/src
 ```
 
-### 5.1.2 BC 적기 게이트 (`learn` 노드 outer policy)
+### 5.1.2 BC-write gate (`learn` node outer policy)
 
-**BC 적기 결정은 turn 단위(`turnTouchedAny`) 신호를 사용**한다. verification/error tail의 `state.violations` 잔존(=`taskFailed`)은 `interruption` 마킹용이며 BC 적기에는 영향을 주지 않는다. 코드를 한 건이라도 변경한 turn이라면 마지막 task가 verification이어도 BC가 기록된다.
+**The BC-write decision uses the turn-level signal (`turnTouchedAny`)**. Residual `state.violations` from a verification/error tail (=`taskFailed`) is for `interruption` marking only and does not affect BC writing. Any turn that changed even a single piece of code gets a BC recorded, even if its last task was a verification.
 
-| 게이트 | SSOT | 영향 |
+| Gate | SSOT | Effect |
 |---|---|---|
-| `isLastTask` | `nodes/learn/index.ts` | turn 경계 1회 제한 |
-| `turnTouchedAny = touchedForLearn.all.size > 0` | `core/context/breadcrumb.ts#collectTouchedFilesFromChatLog` (chat.jsonl `file_*` SSOT) | turn 안에서 코드 변경이 발생한 사실 자체 |
-| `taskFailed = state.violations.length > 0` | — | **BC 적기에는 미사용** (interruption 마킹 전용) |
+| `isLastTask` | `nodes/learn/index.ts` | Once per turn boundary |
+| `turnTouchedAny = touchedForLearn.all.size > 0` | `core/context/breadcrumb.ts#collectTouchedFilesFromChatLog` (chat.jsonl `file_*` SSOT) | The fact that code changed anywhere within the turn |
+| `taskFailed = state.violations.length > 0` | — | **Not used for BC writing** (interruption marking only) |
 
-게이트는 [`nodes/learn/bcGate.ts`](../../packages/ant-cli/src/agents/architect/graph/code/nodes/learn/bcGate.ts) 의 순수 함수 `evaluateBcGate` 로 분리되어 있고, 같은 함수가 `📝 [Learn] BC eval — …` 한 줄 진단 로그도 함께 산출한다 — "BC 0개" 보고가 들어왔을 때 가장 먼저 grep 할 SSOT. 내부 4 skip 사유(`mode='explain'` / `touched=0` / session 누락 / context 누락)는 [`writeBreadcrumb`](../../packages/ant-cli/src/core/executionTier/strategies/breadcrumb.ts) 안쪽에 그대로 남아 있고, `appendBreadcrumb` 자체가 실패한 silent failure는 `⚠️ [Tier] appendBreadcrumb failed (jobId=…, turnId=…, touched=…)` warn으로 분리 식별된다 — 회귀 테스트는 [`learn-bc-gate.test.ts`](../../packages/ant-cli/tests/graph/learn-bc-gate.test.ts) + [`silentSkipDiagnostics.test.ts`](../../packages/ant-cli/tests/core/executionTier/silentSkipDiagnostics.test.ts) 두 파일이 lock한다.
+The gate is factored into the pure function `evaluateBcGate` in [`nodes/learn/bcGate.ts`](../../packages/ant-cli/src/agents/architect/graph/code/nodes/learn/bcGate.ts), which also emits a one-line `📝 [Learn] BC eval — …` diagnostic log — the first SSOT to grep when a "zero BCs" report comes in. The 4 internal skip reasons (`mode='explain'` / `touched=0` / missing session / missing context) remain inside [`writeBreadcrumb`](../../packages/ant-cli/src/core/executionTier/strategies/breadcrumb.ts), and a silent failure of `appendBreadcrumb` itself is separately identified via the `⚠️ [Tier] appendBreadcrumb failed (jobId=…, turnId=…, touched=…)` warn — regression coverage is locked by the two files [`learn-bc-gate.test.ts`](../../packages/ant-cli/tests/graph/learn-bc-gate.test.ts) + [`silentSkipDiagnostics.test.ts`](../../packages/ant-cli/tests/core/executionTier/silentSkipDiagnostics.test.ts).
 
 ### 5.2 Breadcrumb Bubble-up (T3)
 
 `core/context/breadcrumb.ts#buildBreadcrumb`:
 
-| touched 수 | 앵커 shape |
+| Touched count | Anchor shape |
 |---|---|
-| `≤ BREADCRUMB_THRESHOLDS.SMALL` (10) | `files[]` 그대로 (최대 10) |
-| `≤ BREADCRUMB_THRESHOLDS.MEDIUM` (50) | top-level `paths[]` 패턴 승격 (최대 5) |
-| `≤ BREADCRUMB_THRESHOLDS.LARGE` (200) | `specs[]` + top-level `paths[]` (각 ≤ 3 / ≤ 5) |
-| `> LARGE` | `initial_creation` scope로 승격, `summary` 중심 |
+| `≤ BREADCRUMB_THRESHOLDS.SMALL` (10) | `files[]` verbatim (max 10) |
+| `≤ BREADCRUMB_THRESHOLDS.MEDIUM` (50) | Promoted top-level `paths[]` patterns (max 5) |
+| `≤ BREADCRUMB_THRESHOLDS.LARGE` (200) | `specs[]` + top-level `paths[]` (≤ 3 / ≤ 5 each) |
+| `> LARGE` | Promoted to `initial_creation` scope, `summary`-centric |
 
-scope 판정: `mode === 'refactor'` → `refactor` 우선 / `touched > LARGE` → `initial_creation` / 그 외 → `modification`. touched SSOT은 **`trace.jsonl`의 `file_write` 라인**.
+Scope determination: `mode === 'refactor'` → `refactor` takes precedence / `touched > LARGE` → `initial_creation` / otherwise → `modification`. The touched SSOT is the **`file_write` lines in `trace.jsonl`**.
 
-### 5.3 Runtime Escalate (direct → decompose 승격)
+### 5.3 Runtime Escalate (direct → decompose promotion)
 
-direct 노드 ReAct 루프 내부에서 `shouldEscalate(state, touchedFiles)` 게이트:
+The `shouldEscalate(state, touchedFiles)` gate inside the direct node's ReAct loop:
 
-- 조건: `touched.size > PROMOTION_TOUCHED_THRESHOLD` (=3) **또는** LLM `<needsEscalation>true</needsEscalation>` 태그
-- 상한: **job당 1회** (`state._promotedThisJob` 플래그) — 재승격 시 `routeAfterDirect`가 `learn`으로 안전 복귀
-- 3중 가드: `_promotedThisJob` / LangGraph `recursionLimit` / `recursionCount` tracking
-- 구현: [`nodes/direct/shouldEscalate.ts`](../../packages/ant-cli/src/agents/architect/graph/code/nodes/direct/shouldEscalate.ts), `routeAfterDirect` at [`code/routing.ts`](../../packages/ant-cli/src/agents/architect/graph/code/routing.ts)
+- Condition: `touched.size > PROMOTION_TOUCHED_THRESHOLD` (=3) **or** LLM `<needsEscalation>true</needsEscalation>` tag
+- Cap: **once per job** (`state._promotedThisJob` flag) — on re-promotion, `routeAfterDirect` safely falls back to `learn`
+- Triple guard: `_promotedThisJob` / LangGraph `recursionLimit` / `recursionCount` tracking
+- Implementation: [`nodes/direct/shouldEscalate.ts`](../../packages/ant-cli/src/agents/architect/graph/code/nodes/direct/shouldEscalate.ts), `routeAfterDirect` at [`code/routing.ts`](../../packages/ant-cli/src/agents/architect/graph/code/routing.ts)
 
-### 5.4 Spec Clarify (Decompose가 소유)
+### 5.4 Spec Clarify (owned by Decompose)
 
-`generate/refactor + todo` 요청인데 spec 부재 시 Decompose가 `<specClarify>` emit → LangGraph `__end__` 경유 → UI가 3-way choice 카드 렌더:
+When a `generate/refactor + todo` request has no spec, Decompose emits `<specClarify>` → exits via LangGraph `__end__` → the UI renders a 3-way choice card:
 
-| action | 효과 |
+| action | Effect |
 |---|---|
-| `redirect_to_design` | 현 code job → failed, 동일 directive로 design job enqueue |
-| `proceed_without_spec` | `_specClarifyBypassed=true` 기록 → `isResume: true` 재개 |
+| `redirect_to_design` | Current code job → failed, design job enqueued with the same directive |
+| `proceed_without_spec` | Records `_specClarifyBypassed=true` → resumes with `isResume: true` |
 | `cancel` | `markUserStopped` + failed + idempotency lock release |
 
-발동 조건 4-AND: `mode ∈ {generate, refactor}` ∧ `complexity === 'task'` ∧ spec 부재 ∧ system-design 부재. Triage에서 처리하던 design redirect 책임은 Decompose로 **완전히 이관**됐다 (§4 `triage_scope_cleanup` 참조).
+Trigger condition (4-way AND): `mode ∈ {generate, refactor}` ∧ `complexity === 'task'` ∧ no spec ∧ no system-design. The design-redirect responsibility formerly handled in Triage has been **fully moved** to Decompose (the `triage_scope_cleanup` change).
 
 ---
 
-## 6. 핵심 상수 (SSOT)
+## 6. Key Constants (SSOT)
 
-모두 [`packages/ant-shared/src/session-log.ts`](../../packages/ant-shared/src/session-log.ts)에서 export.
+All exported from [`packages/ant-shared/src/session-log.ts`](../../packages/ant-shared/src/session-log.ts).
 
-| 상수 | 값 | 용도 |
+| Constant | Value | Purpose |
 |---|---|---|
-| `FEATURE_CONTEXT_THRESHOLD` | 12000 (tokens) | Compact 트리거 임계값 (user_turn + breadcrumb 합산. T5 이후 BC도 응축 대상) |
-| `FEATURE_CONTEXT_WINDOW` | 6 | Compact 시 보존할 최신 user_turn 개수 (BC는 윈도우-cutoff timestamp 기준으로 함께 보존) |
-| `BREADCRUMB_THRESHOLDS` | `{SMALL:10, MEDIUM:50, LARGE:200}` | bubble-up 경계 |
-| `BREADCRUMB_LIMITS` | `{specs:3, paths:5, files:10}` | 앵커 개수 상한 |
-| `DIRECT_LOOP_LIMITS` | `{oneshot:2, exploratory:10}` | direct 노드 ReAct 루프 상한 (후자는 `ANT_DIRECT_MAX_STEPS`로 override) |
-| `PROMOTION_TOUCHED_THRESHOLD` | 3 | direct → decompose 승격 touched 임계 |
-| `BREADCRUMB_SUMMARY_TIMEOUT_MS` | 5000 | LLM 요약 호출 timeout (T4 fallback 발동) |
+| `FEATURE_CONTEXT_THRESHOLD` | 12000 (tokens) | Compact trigger threshold (user_turn + breadcrumb combined; BCs are now condensation targets as well) |
+| `FEATURE_CONTEXT_WINDOW` | 6 | Number of latest user_turns preserved on Compact (BCs are preserved alongside, keyed on the window-cutoff timestamp) |
+| `BREADCRUMB_THRESHOLDS` | `{SMALL:10, MEDIUM:50, LARGE:200}` | Bubble-up boundaries |
+| `BREADCRUMB_LIMITS` | `{specs:3, paths:5, files:10}` | Anchor count caps |
+| `DIRECT_LOOP_LIMITS` | `{oneshot:2, exploratory:10}` | Direct-node ReAct loop caps (the latter overridable via `ANT_DIRECT_MAX_STEPS`) |
+| `PROMOTION_TOUCHED_THRESHOLD` | 3 | Touched threshold for direct → decompose promotion |
+| `BREADCRUMB_SUMMARY_TIMEOUT_MS` | 5000 | LLM summary call timeout (triggers the fallback) |
 
-**폐기된 상수 (T2/T3/T5)**: `MINI_BREADCRUMB_TOUCHED_THRESHOLD` (BC가 모든 코드 변경에서 emit), `DEFAULT_BREADCRUMB_WINDOW` (compact 토큰 예산이 단일 cut 기준).
+**Retired constants**: `MINI_BREADCRUMB_TOUCHED_THRESHOLD` (BCs are now emitted for every code change), `DEFAULT_BREADCRUMB_WINDOW` (the compact token budget is the single cut criterion).
 
 ---
 
-## 7. 코드 랜드마크
+## 7. Code Landmarks
 
-| 파일 | 역할 |
+| File | Role |
 |---|---|
-| `packages/ant-shared/src/session-log.ts` | 전체 FeatureLine / TraceLine 타입 + 상수 SSOT |
+| `packages/ant-shared/src/session-log.ts` | Full FeatureLine / TraceLine types + constants SSOT |
 | `packages/ant-cli/src/core/utils/sessionPaths.ts` | `getFeatureJsonlPath` / `getTraceJsonlPath` |
 | `packages/ant-cli/src/core/ports/session.ts` | `SessionPort` (append* / load* / collapse*) |
-| `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts` | 유일 구현체. per-file mutex 동시성 안전 |
+| `packages/ant-cli/src/periphery/adapters/session/FileSessionAdapter.ts` | Sole implementation. Per-file mutex concurrency safety |
 | `packages/ant-cli/src/composition/recordUserTurn.ts` | orchestrator → 2-file user_turn atomic append |
 | `packages/ant-cli/src/core/context/featureContextBuilder.ts` | `buildFeatureContext` / `mergeFeatureContext` / `compactFeatureContext` / `hydrateFeatureContext` |
 | `packages/ant-cli/src/core/context/breadcrumb.ts` | `buildBreadcrumb` / `buildBreadcrumbSummary` / `collectTouchedFilesFromTrace` |
-| `packages/ant-cli/src/core/executionTier/` | 5-Tier Execution Strategy. Decompose LLM 이 `<executionTier>N</executionTier>` 를 emit → `parseExecutionTierTag` 파싱 → `validateExecutionTier(parsed, { mode })` 로 계약 검증 (MISSING_TAG / FORBIDDEN_TIER_FOR_MODE 시 `ExecutionTierViolation` throw, decompose retry loop 가 소비). `Tier0Reflex` / `Tier1OneShot` / `Tier2Exploratory` / `Tier3Task` / `Tier4Plan` facade. Phase 노드는 `getExecutionTier(state)` 로만 접근 (§5.1.1) |
-| `packages/ant-cli/src/core/utils/featureBiases.ts` | `recordClassification` / `readClassifications` (misclassify 계측 §19) |
-| `packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/` | 3-way complexity 판정 + `<specClarify>` emit |
-| `packages/ant-cli/src/agents/architect/graph/code/nodes/direct/` | ReAct 루프 + `shouldEscalate` |
-| `packages/ant-cli/src/agents/architect/graph/code/nodes/{resolve,learn}/index.ts` | feature.jsonl 소비/생산 |
+| `packages/ant-cli/src/core/executionTier/` | 5-Tier Execution Strategy. The decompose LLM emits `<executionTier>N</executionTier>` → parsed by `parseExecutionTierTag` → contract-validated by `validateExecutionTier(parsed, { mode })` (throws `ExecutionTierViolation` on MISSING_TAG / FORBIDDEN_TIER_FOR_MODE, consumed by the decompose retry loop). `Tier0Reflex` / `Tier1OneShot` / `Tier2Exploratory` / `Tier3Task` / `Tier4Plan` facades. Phase nodes access only via `getExecutionTier(state)` (§5.1.1) |
+| `packages/ant-cli/src/core/utils/featureBiases.ts` | `recordClassification` / `readClassifications` (misclassification instrumentation, §9) |
+| `packages/ant-cli/src/agents/architect/graph/code/nodes/decompose/` | 3-way complexity classification + `<specClarify>` emit |
+| `packages/ant-cli/src/agents/architect/graph/code/nodes/direct/` | ReAct loop + `shouldEscalate` |
+| `packages/ant-cli/src/agents/architect/graph/code/nodes/{resolve,learn}/index.ts` | feature.jsonl consumption/production |
 | `packages/ant-cli/src/agents/architect/graph/code/routing.ts` | `routeAfterDecompose` 4-way / `routeAfterDirect` |
-| `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/decompose/variants/default/rules.md` | Complexity Classification + Spec Clarify 섹션 |
-| `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/plan/base.md` | `{{#if featureContext}}` 주입 블록 |
-| `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/direct/variants/default/{base,rules}.md` | WHAT/HOW 분리 |
+| `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/decompose/variants/default/rules.md` | Complexity Classification + Spec Clarify sections |
+| `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/plan/base.md` | `{{#if featureContext}}` injection block |
+| `packages/ant-cli/src/core/prompt/templates/jobs/code/nodes/direct/variants/default/{base,rules}.md` | WHAT/HOW split |
 | `packages/ant-cli/src/periphery/adapters/http/routes/feature-log.routes.ts` | `/trace` `/breadcrumbs` `/user-turn-meta` `/context/reset` |
-| `packages/ant-ui/src/domain/store/slices/featureLogSlice.ts` | UI Zustand 슬라이스 |
+| `packages/ant-ui/src/domain/store/slices/featureLogSlice.ts` | UI Zustand slice |
 | `packages/ant-ui/src/presentation/components/chat/feature-log/` | `TraceActivityView` / `BreadcrumbTimeline` / `useFeatureLogSync` |
 
 ---
 
-## 8. 마이그레이션 노트 (무엇이 대체됐는가)
+## 8. Migration Notes (what was replaced)
 
-| 이전 (28-context-management.md) | 현재 (본 문서) | 상태 |
+| Before (28-context-management.md) | Now (this document) | Status |
 |---|---|---|
-| `session.state.jobConversation: ConversationEntry[]` | `feature.jsonl` + `featureContext` state 채널 | **필드 제거 완료** (§14 legacy_cleanup) |
-| `compressHeavyweightEntries` (Trigger 2) | — (heavyweight boundary 개념 폐기) | **함수 삭제** |
-| `compactJob` on jobConversation (Trigger 1) | `compactFeatureContext` on `FeatureContext.userTurns` | 함수는 재사용, caller 교체 |
-| `CODE_JOB_COMPACTION_THRESHOLD` / `DESIGN_JOB_COMPACTION_*` | `FEATURE_CONTEXT_THRESHOLD` (12000) | **상수 삭제** (code/design 경로만) |
-| `jobs/code/base/injections/job-history.md` | `{{#if featureContext}}` block in `plan/base.md`, `direct/base.md` | **파일 삭제** |
-| `jobs/design/base/injections/job-history.md` | (동일, design은 채널만 주입 — 서브그래프 프롬프트 미수정, D5) | **파일 삭제** |
-| `infra/compaction/job-summary.md` | — | **파일 삭제** |
-| `chat.json` (agent-side 쓰기) | `trace.jsonl` | **agent 쓰기 제거 완료** (§14). ChatService HTTP 레이어는 §16.2에서 치환 예정 |
-| `saveToChatFile` / `flushToChatFile` / `getChatSessionPath` | — | **삭제** |
-| `ChatStatusReporter.flush()` | — | 인터페이스에서 제거 |
-| Triage Step 6 "Scope Routing" | Decompose `<specClarify>` | 프롬프트 단계 이관 (§4 `triage_scope_cleanup`) |
+| `session.state.jobConversation: ConversationEntry[]` | `feature.jsonl` + `featureContext` state channel | **Field removed** (legacy cleanup) |
+| `compressHeavyweightEntries` (Trigger 2) | — (heavyweight-boundary concept retired) | **Function deleted** |
+| `compactJob` on jobConversation (Trigger 1) | `compactFeatureContext` on `FeatureContext.userTurns` | Function reused, caller replaced |
+| `CODE_JOB_COMPACTION_THRESHOLD` / `DESIGN_JOB_COMPACTION_*` | `FEATURE_CONTEXT_THRESHOLD` (12000) | **Constants deleted** (code/design paths only) |
+| `jobs/code/base/injections/job-history.md` | `{{#if featureContext}}` block in `plan/base.md`, `direct/base.md` | **File deleted** |
+| `jobs/design/base/injections/job-history.md` | (same; design only injects the channel — subgraph prompts unmodified, D5) | **File deleted** |
+| `infra/compaction/job-summary.md` | — | **File deleted** |
+| `chat.json` (agent-side writes) | `trace.jsonl` | **Agent-side writes removed** (legacy cleanup). The ChatService HTTP layer is slated to be replaced with a trace.jsonl-based implementation |
+| `saveToChatFile` / `flushToChatFile` / `getChatSessionPath` | — | **Deleted** |
+| `ChatStatusReporter.flush()` | — | Removed from the interface |
+| Triage Step 6 "Scope Routing" | Decompose `<specClarify>` | Prompt stage moved (`triage_scope_cleanup`) |
 
-**28-context-management.md**의 "Inter-Job Context Bridge" 섹션은 본 문서로 **완전 대체**됐다. Plan/Visual (Context Continuity) 경로의 `compactJob` 사용은 유지된다 — 세 직교 축은 아직 code/design에만 적용.
+The "Inter-Job Context Bridge" section of **28-context-management.md** has been **fully replaced** by this document. The Plan/Visual (Context Continuity) path's use of `compactJob` is retained — the three orthogonal axes currently apply only to code/design.
 
-**plan/visual의 `sessionDigest`** (buildSessionDigest → triage 프롬프트 `{{#if hasSessionDigest}}` 섹션)는 잔존한다. code/design은 `state.conversations[SESSION_MAIN]`을 더 이상 채우지 않기 때문에 해당 경로의 triage는 항상 sessionDigest 없이 렌더된다. plan/visual은 여전히 `conversation` continuity 모델을 쓰므로 sessionDigest가 활성 상태. 자세한 계측은 §9 부록 참조.
+**plan/visual's `sessionDigest`** (buildSessionDigest → the `{{#if hasSessionDigest}}` section of the triage prompt) survives. Because code/design no longer populate `state.conversations[SESSION_MAIN]`, triage on those paths always renders without a sessionDigest. plan/visual still use the `conversation` continuity model, so sessionDigest stays active for them. See the appendix in §9 for detailed instrumentation.
 
 ---
 
-## 9. 부록 — 주입 현황 진단 (diagnose_injection)
+## 9. Appendix — Injection Status Diagnosis (diagnose_injection)
 
-> **목적**: 본 재설계가 실제로 프롬프트에 얼마나의 "이전 맥락"을 주입하는지, legacy 채널(sessionDigest / jobConversation)이 어디까지 비활성화됐는지 실측 가능한 형태로 문서화한다.
+> **Purpose**: document, in a measurable form, how much "prior context" this redesign actually injects into prompts, and how far the legacy channels (sessionDigest / jobConversation) have been deactivated.
 
-### 9.1 주입 채널 인벤토리 (2026-04-20 기준)
+### 9.1 Injection channel inventory (as of 2026-04-20)
 
-| 채널 | 현재 상태 | 주입 위치 | 상한 |
+| Channel | Current state | Injection site | Cap |
 |---|---|---|---|
-| `state.jobConversation` → `job-history` partial | **완전 제거** | — (템플릿 파일 삭제) | 0 bytes |
-| `FeatureContext.userTurns` | **활성** (code/design resolve) | `plan/base.md`, `direct/variants/default/base.md` — `{{#each featureContext.userTurns}}` | window 6 until Compact 트리거 |
-| `FeatureContext.breadcrumbs` | **활성** (code/design resolve) | 위 템플릿 — `{{#each featureContext.breadcrumbs}}` | `DEFAULT_BREADCRUMB_WINDOW` = 5 (각 summary 수십~수백 chars) |
-| `FeatureContext.summary` | **활성** (Compact 발동 시) | 위 템플릿 — "Earlier Context (summary)" 블록 | `COMPACTION_MAX_OUTPUT_TOKENS` = 16384 |
-| `sessionDigest` (triage) | **code/design: dead / plan/visual: 활성** | `jobs/shared/nodes/triage/variants/default/base.md` — `{{#if hasSessionDigest}}` | 최근 3 entries × 300/200 chars |
+| `state.jobConversation` → `job-history` partial | **Fully removed** | — (template file deleted) | 0 bytes |
+| `FeatureContext.userTurns` | **Active** (code/design resolve) | `plan/base.md`, `direct/variants/default/base.md` — `{{#each featureContext.userTurns}}` | window 6 until Compact triggers |
+| `FeatureContext.breadcrumbs` | **Active** (code/design resolve) | Same templates — `{{#each featureContext.breadcrumbs}}` | `DEFAULT_BREADCRUMB_WINDOW` = 5 (each summary tens to hundreds of chars) |
+| `FeatureContext.summary` | **Active** (when Compact fires) | Same templates — "Earlier Context (summary)" block | `COMPACTION_MAX_OUTPUT_TOKENS` = 16384 |
+| `sessionDigest` (triage) | **code/design: dead / plan/visual: active** | `jobs/shared/nodes/triage/variants/default/base.md` — `{{#if hasSessionDigest}}` | Latest 3 entries × 300/200 chars |
 
-### 9.2 계측 방법
+### 9.2 Measurement method
 
-Ant는 `ANT_PROMPT_DEBUG=true` 환경변수로 모든 렌더된 프롬프트를 `{featurePath}/sessions/architect/debug/prompts/*.md`에 저장한다. 각 Tier별 단일 job을 기동한 뒤 해당 디렉터리에서 다음을 측정:
+Ant saves every rendered prompt to `{featurePath}/sessions/architect/debug/prompts/*.md` when the `ANT_PROMPT_DEBUG=true` environment variable is set. Start a single job per tier, then measure in that directory:
 
 ```bash
-# sessionDigest 섹션 크기
+# sessionDigest section size
 awk '/^## SESSION CONTEXT$/,/^##|^---/' <prompt.md> | wc -c
 
-# featureContext 섹션 크기
-awk '/^## 이전 맥락/,/^## |^---/' <prompt.md> | wc -c
+# featureContext section size
+awk '/^## Prior Context/,/^## |^---/' <prompt.md> | wc -c
 
-# jobConversation / job-history 잔재 체크 (항상 0이어야 함)
+# jobConversation / job-history residue check (must always be 0)
 rg -c '## (Previous Work|Completed Work Boundary|Job History)' <prompt.md>
 ```
 
-### 9.3 기대 범위 (분석적 상한)
+### 9.3 Expected range (analytical upper bounds)
 
-`user_turn.text`를 평균 200 chars로 가정:
+Assuming `user_turn.text` averages 200 chars:
 
-| Tier | 시나리오 | featureContext 예상 주입량 |
+| Tier | Scenario | Expected featureContext injection |
 |---|---|---|
-| 0/1 Reflex/Oneshot | 첫 요청 (공 feature.jsonl) | 0 chars (블록 자체 미렌더) |
-| 2 Exploratory | 최근 5 turn + 3 mini-BC | `5 × 200 + 3 × 120 ≈ 1.4 KB` |
-| 3 Todo (첫 실행) | 최근 6 turn + 5 breadcrumb | `6 × 200 + 5 × 120 ≈ 1.8 KB` |
-| 3 Todo (Compact 발동) | summary + 6 turn + 5 BC | summary ≤ 64 KB (16384 tokens × 4) + 1.8 KB. 실측 평균은 2~5 KB |
-| 4 Plan/Visual (sessionDigest 활성) | 3 recent entries | ≤ 900 chars (300+200+200 + 구분자) |
+| 0/1 Reflex/Oneshot | First request (empty feature.jsonl) | 0 chars (block not rendered at all) |
+| 2 Exploratory | Latest 5 turns + 3 mini-BCs | `5 × 200 + 3 × 120 ≈ 1.4 KB` |
+| 3 Todo (first run) | Latest 6 turns + 5 breadcrumbs | `6 × 200 + 5 × 120 ≈ 1.8 KB` |
+| 3 Todo (Compact fired) | summary + 6 turns + 5 BCs | summary ≤ 64 KB (16384 tokens × 4) + 1.8 KB. Measured average is 2–5 KB |
+| 4 Plan/Visual (sessionDigest active) | 3 recent entries | ≤ 900 chars (300+200+200 + separators) |
 
-### 9.4 관측 포인트
+### 9.4 Observation points
 
-| 메트릭 | 의미 | 정상 범위 |
+| Metric | Meaning | Normal range |
 |---|---|---|
-| feature.jsonl 이후 triage 프롬프트에서 `## SESSION CONTEXT` 섹션 | code/design 요청에서 0 bytes여야 함 (`sessionMain`이 비어있음) | 0 bytes |
-| plan/visual 요청에서 `## SESSION CONTEXT` | `buildSessionDigest`가 채움 | 0~900 chars |
-| plan/direct 프롬프트에서 `## 이전 맥락` 블록 | 첫 요청 0, 이후 incremental | turn 수에 비례 |
-| Compact 발동 빈도 | T2 누적 토큰 > 12000일 때만 | 일반 feature에서 수십 turn 이상 축적 시 |
-| legacy "Job History" / "Completed Work Boundary" 섹션 | 완전 dead | **항상 0 bytes** (회귀 감지 시 §14 cleanup 위반) |
+| `## SESSION CONTEXT` section in triage prompts after feature.jsonl | Must be 0 bytes for code/design requests (`sessionMain` is empty) | 0 bytes |
+| `## SESSION CONTEXT` on plan/visual requests | Populated by `buildSessionDigest` | 0–900 chars |
+| `## Prior Context` block in plan/direct prompts | 0 on the first request, incremental afterwards | Proportional to turn count |
+| Compact trigger frequency | Only when accumulated T2 tokens > 12000 | Only after dozens of turns accumulate on a typical feature |
+| Legacy "Job History" / "Completed Work Boundary" sections | Fully dead | **Always 0 bytes** (any regression indicates a legacy-cleanup violation) |
 
-### 9.5 열려 있는 항목
+### 9.5 Open items
 
-- triage의 `sessionDigest` 섹션을 feature.jsonl 기반으로 재설계할지 별도 티켓 필요. 현재 plan/visual이 `session.state.conversation` 모델을 유지하는 한 legacy sessionDigest는 그대로 둔다.
-- buildSessionDigest가 `entries.length === 0`이면 `undefined` 반환 → code/design triage 렌더에서 블록 자체가 미노출되므로 "dead 채널"이 프롬프트를 오염시키지 않는다. 이를 회귀 감지용 프롬프트 스냅샷 테스트에 고정하는 것이 바람직 (후속 티켓).
+- Whether to redesign triage's `sessionDigest` section around feature.jsonl needs a separate ticket. As long as plan/visual keep the `session.state.conversation` model, the legacy sessionDigest stays as-is.
+- When `entries.length === 0`, buildSessionDigest returns `undefined` → the block is never rendered in code/design triage, so the "dead channel" cannot pollute prompts. Pinning this in a regression-detecting prompt snapshot test would be desirable (follow-up ticket).
 
 ---
 
-## 경계
+## Boundaries
 
-- **직접적 후속**: [`docs/tmp/session-redesign-handoff.md`](../tmp/session-redesign-handoff.md) — 실행 SSOT (각 todo별 카드 + 검증 결과)
-- **대체한 문서**: [`28-context-management.md`](./28-context-management.md) — §2 "Context Isolation" / "Inter-Job Context Bridge" 섹션은 본 문서로 대체됨. Continuity(plan/visual)·`compactRun`·`retentionPolicy` 부분은 여전히 유효.
-- **연관 문서**:
-  - [`11-agent-architecture.md`](./11-agent-architecture.md) — LangGraph StateGraph 배선
-  - [`12-triage-routing.md`](./12-triage-routing.md) — Detect / Triage intent 판정
-  - [`13-prompt-system.md`](./13-prompt-system.md) — Handlebars 템플릿 엔진
-  - [`14-code-job.md`](./14-code-job.md) — code 그래프 세부
-  - [`15-design-job.md`](./15-design-job.md) — design 그래프 (Mode×Complexity 미적용, D5)
-  - [`19-tool-system.md`](./19-tool-system.md) — tool 사이드이펙트 → trace.jsonl file_write
-  - [`31-chat-system.md`](./31-chat-system.md) — ChatService / chat.routes (§16.2에서 trace.jsonl 기반으로 치환 예정)
+- **Replaced document**: [`28-context-management.md`](./28-context-management.md) — its §2 "Context Isolation" / "Inter-Job Context Bridge" sections are replaced by this document. The Continuity (plan/visual), `compactRun`, and `retentionPolicy` parts remain valid.
+- **Related documents**:
+  - [`11-agent-architecture.md`](./11-agent-architecture.md) — LangGraph StateGraph wiring
+  - [`12-triage-routing.md`](./12-triage-routing.md) — Detect / Triage intent classification
+  - [`13-prompt-system.md`](./13-prompt-system.md) — Handlebars template engine
+  - [`14-code-job.md`](./14-code-job.md) — code graph details
+  - [`15-design-job.md`](./15-design-job.md) — design graph (Mode×Complexity not applied, D5)
+  - [`19-tool-system.md`](./19-tool-system.md) — tool side-effects → trace.jsonl file_write
+  - [`31-chat-system.md`](./31-chat-system.md) — ChatService / chat.routes (slated to be replaced with a trace.jsonl-based implementation)
   - [`NODE_GRAPH_LAYOUT.md`](./NODE_GRAPH_LAYOUT.md) — Phase node task-type blindness (R1)

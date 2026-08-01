@@ -76,7 +76,7 @@ Presentation -> Application -> Domain <- Infrastructure
 inline), plus an ambient nav-bar progress bar. `Loader2`, `animate-spin`, and
 `animate-pulse` are confined to `common/async/primitives/`; ESLint and
 `pnpm legacy:sweep` enforce the boundary. Read
-[docs/architecture/ui-async-policy.md](../../docs/architecture/ui-async-policy.md)
+[docs/internals/ui-async-policy.md](../../docs/internals/ui-async-policy.md)
 before adding a fetch, spinner, or status indicator.
 
 ## Backend communication

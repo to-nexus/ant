@@ -1,8 +1,8 @@
 # PreviewService Module
 
-**개발서버 관리 서비스 - 모듈화된 구조**
+**Dev-server management service — modularized structure**
 
-## 📂 디렉토리 구조
+## 📂 Directory Structure
 
 ```
 PreviewService/
@@ -21,71 +21,71 @@ PreviewService/
     └── LogManager.ts            # Log storage & retrieval
 ```
 
-## 🎯 책임 분리 (Separation of Concerns)
+## 🎯 Separation of Concerns
 
 ### **PreviewService.ts** (Main Orchestrator - ~800 lines)
-- 개발서버 라이프사이클 관리
-- 프로세스 관리 (spawn, kill, health check)
-- 프로젝트 구조 감지 (fullstack, monorepo)
-- 의존성 설치
-- SSE 통합
+- Dev-server lifecycle management
+- Process management (spawn, kill, health check)
+- Project structure detection (fullstack, monorepo)
+- Dependency installation
+- SSE integration
 
 ### **PackageDetector** (~100 lines)
-- `isFrontendPackage()`: Frontend 프로젝트 감지
-- `isBackendPackage()`: Backend 프로젝트 감지
-- `detectFrameworkType()`: React/Vue/Next 등 프레임워크 감지
+- `isFrontendPackage()`: detects frontend projects
+- `isBackendPackage()`: detects backend projects
+- `detectFrameworkType()`: detects frameworks such as React/Vue/Next
 
 ### **ProjectValidator** (~70 lines)
-- Frontend 프로젝트의 basename 설정 검증
-- Framework별 validator로 위임
+- Validates the basename configuration of frontend projects
+- Delegates to per-framework validators
 
 ### **ReactValidator** (~100 lines)
-- React Router의 `<BrowserRouter basename>` 검증
-- `window.__BASENAME__` 타입 선언 검증
-- 누락 시 상세한 수정 가이드 제공
+- Validates React Router's `<BrowserRouter basename>`
+- Validates the `window.__BASENAME__` type declaration
+- Provides a detailed fix guide when missing
 
 ### **VueValidator** (~70 lines)
-- Vue Router의 `createWebHistory` basename 검증
-- 누락 시 상세한 수정 가이드 제공
+- Validates the Vue Router `createWebHistory` basename
+- Provides a detailed fix guide when missing
 
 ### **LogManager** (~50 lines)
-- 로그 저장 (최대 1000줄, FIFO)
-- 로그 조회
-- 로그 정리
+- Log storage (max 1000 lines, FIFO)
+- Log retrieval
+- Log cleanup
 
 ### **serverKeyUtils** (~20 lines)
-- `createServerKey()`: tenantId:userId:projectId:feature 형식 생성
-- `parseServerKey()`: 서버 키 파싱
+- `createServerKey()`: builds the tenantId:userId:projectId:feature format
+- `parseServerKey()`: parses server keys
 
-## 🔄 리팩토링 전후 비교
+## 🔄 Before/After Refactoring
 
-### Before (1개 파일)
+### Before (1 file)
 ```
 PreviewService.ts  (1,075 lines)
 ```
 
-### After (8개 파일)
+### After (8 files)
 ```
-PreviewService.ts       (~800 lines)  ✅ 25% 감소
+PreviewService.ts       (~800 lines)  ✅ 25% reduction
 + 7 module files          (~410 lines)
 ────────────────────────────────────
 Total:                    (~1,210 lines)
 ```
 
-**추가된 라인은 명확한 책임 분리와 재사용성을 위한 투자입니다.**
+**The added lines are an investment in clear separation of concerns and reusability.**
 
-## 🚀 사용 예제
+## 🚀 Usage Examples
 
 ```typescript
-// Before (모든 로직이 PreviewService에)
+// Before (all logic inside PreviewService)
 const service = new PreviewService(portManager, portRegistry, callbacks, sseService);
 const isValid = await service.validateDevServerSetup(codebasePath);
 
-// After (동일한 API, 내부는 모듈화)
+// After (same API, internals modularized)
 const service = new PreviewService(portManager, portRegistry, callbacks, sseService);
-const isValid = await service.validateDevServerSetup(codebasePath);  // ProjectValidator로 위임
+const isValid = await service.validateDevServerSetup(codebasePath);  // delegates to ProjectValidator
 
-// 개별 모듈 직접 사용 가능
+// Individual modules can also be used directly
 import { PackageDetector, ProjectValidator, LogManager } from './PreviewService';
 
 const detector = new PackageDetector();
@@ -95,24 +95,24 @@ if (detector.isFrontendPackage(packageJson)) {
 }
 ```
 
-## ✅ 이점
+## ✅ Benefits
 
-1. **가독성**: 각 파일이 단일 책임 (SRP)
-2. **테스트 용이성**: 각 모듈을 독립적으로 테스트 가능
-3. **재사용성**: `PackageDetector`, `LogManager` 등을 다른 서비스에서도 사용 가능
-4. **유지보수성**: 특정 기능 수정 시 해당 파일만 수정
-5. **확장성**: 새로운 프레임워크 validator 추가가 쉬움 (e.g., `SvelteValidator`)
+1. **Readability**: each file has a single responsibility (SRP)
+2. **Testability**: each module can be tested independently
+3. **Reusability**: `PackageDetector`, `LogManager`, etc. can be used by other services
+4. **Maintainability**: modifying a specific feature only touches that file
+5. **Extensibility**: adding a new framework validator is easy (e.g., `SvelteValidator`)
 
-## 📝 향후 개선 계획
+## 📝 Future Improvement Plans
 
-- [ ] `ProcessManager` 분리 (spawn, health check, 프로세스 관리)
-- [ ] `ProjectStructureDetector` 분리 (monorepo, fullstack 감지)
-- [ ] `DependencyInstaller` 분리 (npm/pnpm/yarn 설치)
+- [ ] Extract `ProcessManager` (spawn, health check, process management)
+- [ ] Extract `ProjectStructureDetector` (monorepo, fullstack detection)
+- [ ] Extract `DependencyInstaller` (npm/pnpm/yarn installation)
 - [ ] Unit tests for each module
-- [ ] `SvelteValidator`, `AngularValidator` 추가
+- [ ] Add `SvelteValidator`, `AngularValidator`
 
-## 🔗 관련 문서
+## 🔗 Related Documentation
 
-- [Dev Server Management Architecture](../../../../../docs/internals/22-preview-system.md)
-- [Preview Setup Guide](../../core/prompt/templates/code/base/injections/preview-setup.md)
+- [Dev Server Management Architecture](../../../../../../../../docs/internals/22-preview-system.md)
+- [Preview Setup Guide](../../../../../core/prompt/templates/jobs/code/base/injections/preview-setup.md)
 
