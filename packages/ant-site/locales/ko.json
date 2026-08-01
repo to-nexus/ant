@@ -296,7 +296,8 @@
     "popular": "가장 인기",
     "cta": "시작하기",
     "creditsPerMonth": "월 {{credits}} 크레딧",
-    "error": "지금 가격 정보를 불러오지 못했습니다.",
+    "error": "실시간 가격을 불러오지 못했습니다 — 플랜 구성은 아래에 표시됩니다.",
+    "creditsUnknown": "월 크레딧 정보 없음",
     "retry": "다시 시도",
     "plans": {
       "free": {

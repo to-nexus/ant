@@ -296,7 +296,8 @@
     "popular": "Most popular",
     "cta": "Get started",
     "creditsPerMonth": "{{credits}} credits / month",
-    "error": "Couldn't load pricing right now.",
+    "error": "Couldn't load live prices right now — plan details are shown below.",
+    "creditsUnknown": "Monthly credits unavailable",
     "retry": "Retry",
     "plans": {
       "free": {
