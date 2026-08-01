@@ -14,6 +14,7 @@
  */
 
 import { Redis } from 'ioredis';
+import { buildRedisTlsOptions } from '../../infrastructure/utils/redis';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FileNode } from '@ant/shared';
@@ -58,8 +59,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
     options: BroadcasterOptions & { projectPath: string },
     gitStateBroadcaster?: GitStateBroadcaster
   ) {
-    const isTLS = options.redisUrl.startsWith('rediss://');
-    const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
+    const tlsOptions = buildRedisTlsOptions(options.redisUrl);
     this.pubRedis = new Redis(options.redisUrl, {
       ...tlsOptions,
       maxRetriesPerRequest: 3,

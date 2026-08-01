@@ -38,6 +38,7 @@
  */
 
 import { Redis } from 'ioredis';
+import { buildRedisTlsOptions } from '../../infrastructure/utils/redis';
 import type {
   GitSnapshot,
   GitOperationState,
@@ -89,10 +90,7 @@ export class GitStateBroadcaster {
       return;
     }
 
-    const isTLS = options.redisUrl.startsWith('rediss://');
-    const tlsOptions = isTLS
-      ? { tls: { checkServerIdentity: () => undefined as undefined } }
-      : {};
+    const tlsOptions = buildRedisTlsOptions(options.redisUrl);
     const redis = new Redis(options.redisUrl, {
       ...tlsOptions,
       maxRetriesPerRequest: 3,

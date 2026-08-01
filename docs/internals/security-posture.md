@@ -13,6 +13,10 @@ The posture has **five axes**. Each names the invariant, the SSOT location, and
 the current enforcement state (✅ enforced / 🔄 remediation in progress /
 📋 documented policy only).
 
+> **Point-in-time sweeps** against this standard are recorded separately. The
+> most recent is [oss-release-audit.md](oss-release-audit.md) (2026-08-01),
+> covering what had to be true before `ant` / `ant-desktop` went public.
+
 ---
 
 ## Axis 1 — Secrets

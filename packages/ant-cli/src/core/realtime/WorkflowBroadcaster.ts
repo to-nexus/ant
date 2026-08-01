@@ -20,6 +20,7 @@
  */
 
 import { Redis } from 'ioredis';
+import { buildRedisTlsOptions } from '../../infrastructure/utils/redis';
 import { WorkflowStateUpdatePort, TaskInfo, LLMInfo } from '../ports/workflow';
 import type { WorkflowRealtimeState, NodeHistoryEntry } from '../ports/stateStore';
 import { 
@@ -96,8 +97,7 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   private state: WorkflowRealtimeState;
   
   constructor(options: BroadcasterOptions) {
-    const isTLS = options.redisUrl.startsWith('rediss://');
-    const tlsOptions = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
+    const tlsOptions = buildRedisTlsOptions(options.redisUrl);
     const redisOpts = {
       ...tlsOptions,
       maxRetriesPerRequest: 3,

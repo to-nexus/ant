@@ -17,6 +17,9 @@ paths = [
   '''(^|/)\.openvscode-server/''',
   '''(^|/)docs/tmp/''',
   '''(^|/)workspace/''',
+  # Next.js build output for ant-site — gitignored, but `gitleaks dir` also
+  # walks untracked files and its manifests trip generic-api-key on build hashes.
+  '''(^|/)\.next/''',
 ]
 regexes = [
   # Placeholder key in packages/ant-cli/tests/http/cookie-domain-derivation.test.ts

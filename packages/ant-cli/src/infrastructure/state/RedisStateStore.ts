@@ -30,6 +30,7 @@ import {
 } from '../../core/ports/stateStore';
 import type { TaskQueueSnapshot, JobProjectMapping } from '../../core/types/task';
 import type { TransferRequest } from '../../core/types/transfer';
+import { buildRedisTlsOptions } from '../utils/redis';
 import { 
   PortRegistryPort, 
   PreviewState, 
@@ -68,30 +69,10 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   private subscriptions = new Map<string, Set<(message: unknown) => void>>();
 
   constructor(options: RedisStateStoreOptions) {
-    
-    // Check if TLS is enabled (rediss:// URL)
-    const isTLS = options.url.startsWith('rediss://');
-    
-    /**
-     * TLS options for AWS ElastiCache Serverless with custom CNAME
-     * 
-     * When using a custom domain (e.g., redis.mycompany.com) pointing to ElastiCache,
-     * the TLS certificate is issued for *.serverless.*.cache.amazonaws.com, not the custom domain.
-     * This causes hostname verification to fail.
-     * 
-     * Security Note: Skipping hostname verification is acceptable when:
-     * 1. Network is trusted (VPC, private subnet, security groups)
-     * 2. DNS is trusted (Route53, no risk of DNS spoofing)
-     * 3. Connection is still encrypted (TLS encrypts data in transit)
-     * 
-     * @see infrastructure/utils/redis.ts for detailed documentation
-     */
-    const tlsOptions = isTLS ? {
-      tls: {
-        checkServerIdentity: () => undefined
-      }
-    } : {};
-    
+    // Hostname-verification policy is owned by buildRedisTlsOptions (opt-in skip
+    // via ANT_REDIS_TLS_SKIP_HOSTNAME_CHECK) — never decided per call site.
+    const tlsOptions = buildRedisTlsOptions(options.url);
+
     // Main connection for commands
     this.redis = new Redis(options.url, {
       ...tlsOptions,

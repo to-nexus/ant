@@ -47,10 +47,12 @@ async function getJobCreditLedger(): Promise<CreditLedgerPort | undefined> {
     _jobCreditLedger = undefined;
     return undefined;
   }
-  const tls = url.startsWith("rediss://")
-    ? { tls: { checkServerIdentity: () => undefined as undefined } }
-    : {};
-  const client = new Redis(url, { ...tls, maxRetriesPerRequest: 3, lazyConnect: true });
+  const { buildRedisTlsOptions } = await import('../infrastructure/utils/redis');
+  const client = new Redis(url, {
+    ...buildRedisTlsOptions(url),
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+  });
   _jobCreditLedger = cloud.createCreditLedger({ redis: client });
   return _jobCreditLedger;
 }
@@ -322,10 +324,9 @@ export async function orchestrator(params: {
           if (process.env.ANT_SERVER_MODE === 'cloud') {
             try {
               const { default: Redis } = await import('ioredis');
+              const { buildRedisTlsOptions } = await import('../infrastructure/utils/redis');
               const url = process.env.ANT_REDIS_URL;
-              const isTLS = url.startsWith('rediss://');
-              const tlsOpts = isTLS ? { tls: { checkServerIdentity: () => undefined as undefined } } : {};
-              redis = new Redis(url, { ...tlsOpts, maxRetriesPerRequest: 3, lazyConnect: true });
+              redis = new Redis(url, { ...buildRedisTlsOptions(url), maxRetriesPerRequest: 3, lazyConnect: true });
               await redis.connect();
               console.log('✅ Redis client created for Figma MCP bridge [Design]');
             } catch (error: any) {
@@ -419,9 +420,9 @@ export async function orchestrator(params: {
           if (process.env.ANT_SERVER_MODE === 'cloud') {
             try {
               const Redis = (await import('ioredis')).default;
-              const { createTLSOptions } = await import('../infrastructure/utils/redis');
+              const { buildRedisTlsOptions } = await import('../infrastructure/utils/redis');
               const url = process.env.ANT_REDIS_URL;
-              codeRedis = new Redis(url, { ...createTLSOptions(url), maxRetriesPerRequest: 3, lazyConnect: true });
+              codeRedis = new Redis(url, { ...buildRedisTlsOptions(url), maxRetriesPerRequest: 3, lazyConnect: true });
               await codeRedis.connect();
               console.log('✅ Redis client created for Code Job Figma MCP [Cloud]');
             } catch (error: any) {
