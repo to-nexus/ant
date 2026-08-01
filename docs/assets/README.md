@@ -13,7 +13,9 @@ the two drift.
 | File | Format | README location |
 |---|---|---|
 | `hero-kanban.gif` | GIF | Top, under the badges |
+| `spec-iteration.gif` | GIF | `## Why Ant?`, after the iteration-loop item |
 | `spec-artifacts.png` | still | End of `## Why Ant?` |
+| `design-handoff.png` | still | `## Bring your own design`, after the guide link |
 | `basis-moodboard.png` | still | End of `## Bring your own design` |
 | `agent-graph.gif` | GIF | `## How it works`, after the LangGraph paragraph |
 | `shell-3pane.png` | still | `## Features` grid |
@@ -48,7 +50,26 @@ todo-agent GIF and the whole shot is wasted.
 
 10–12 seconds, looping.
 
-## 2. `spec-artifacts.png` — the thesis shot
+## 2. `spec-iteration.gif` — the iteration-loop shot
+
+**What to run.** A project that already has a codebase and a spec document
+(`gen-spec` output under `architecture/spec/`). Kick off a `gen-code-spec`
+job with that spec selected as the ref.
+
+**Framing.** Split view: the spec document readable on the left, the task
+board on the right. The point of the shot is *causality* — the viewer should
+see that the tasks on the board are the spec's sections becoming real.
+
+**When to start recording.** With the spec on screen, then the job starting:
+decompose → tasks appearing → cards moving → the verification card
+completing last. One loop = one spec becoming verified code.
+
+This is the README's "plan mode, but persistent" claim in motion — if the
+spec text isn't legible enough to be recognisably a plan, reshoot.
+
+8–10 seconds, looping.
+
+## 3. `spec-artifacts.png` — the thesis shot
 
 Explorer expanded on `plan/` and `architecture/`, centre pane showing a
 generated system design document scrolled to a **rendered architecture
@@ -58,7 +79,18 @@ This is the most argument-aligned image in the set. "Not vibe coding" is a
 claim; a readable design document that the code was checked against is the
 evidence.
 
-## 3. `basis-moodboard.png` — the wow shot
+## 4. `design-handoff.png` — the design-output shot
+
+Explorer expanded on `visual/ui/handoff/`, centre pane showing the generated
+`DESIGN.md` with the bundle tree (`styles.css`, `tokens/`, `components/`,
+`screens/`) visible beside it. A rendered screen HTML in a second tab is a
+bonus if it fits without shrinking the document below readability.
+
+This backs the "UI design is a pipeline stage" claim: `basis-moodboard.png`
+shows the *input* (picking a direction); this shows the *output* the code
+job builds against. Don't swap their roles.
+
+## 5. `basis-moodboard.png` — the wow shot
 
 Actions panel → an action that carries a visual tier → the **Visual Tier** tab →
 the full grid of style variants, one selected so the ring and check mark show,
@@ -68,7 +100,7 @@ Caption it as **input selection**. It is not a gallery of generated output —
 there is no such screen, and implying one would be a promise the product
 doesn't keep.
 
-## 4. `agent-graph.gif`
+## 6. `agent-graph.gif`
 
 Same job as the hero, switched to the workflow view. Aim for the moment
 `execute` is running with **two or more parallel workers**, so the worker chips
@@ -77,7 +109,7 @@ execution advances is the point of the shot — let it move at least twice.
 
 8 seconds, looping.
 
-## 5–8. Feature grid stills
+## 7–10. Feature grid stills
 
 - **`shell-3pane.png`** — the full three-pane workspace. Shoot this one in
   **light theme** so the README shows both. Try to have a file card with
@@ -91,8 +123,8 @@ execution advances is the point of the shot — let it move at least twice.
 
 ## Video
 
-A full PRD → design → code → verification → preview walkthrough runs a couple
-of minutes. **Do not make that a GIF** — the file size and frame rate both fall
+A full walkthrough — build loop (PRD → design → code), then one spec-driven
+iteration, ending on the preview — runs a couple of minutes. **Do not make that a GIF** — the file size and frame rate both fall
 apart. Host it (YouTube, Loom) and fill in the link next to the hero. Embedded
 MP4 is not worth attempting: GitHub won't autoplay it and repo-relative video
 paths are unreliable.
@@ -110,8 +142,10 @@ paths are unreliable.
   account identity appears. Keep the explorer narrow enough that your home
   directory path isn't legible.
 - **Size budget**: hero GIF ≤ 4 MB, other GIFs ≤ 1.5 MB, stills ≤ 300 KB,
-  **≤ 8 MB total.** These files live in git history permanently; past this line
-  they become a clone-time tax on everyone.
+  **≤ 10 MB total** (ten slots now — the previous 8 MB line predates
+  `spec-iteration.gif` and `design-handoff.png`). These files live in git
+  history permanently; past this line they become a clone-time tax on
+  everyone.
 
 ```bash
 # recording → GIF

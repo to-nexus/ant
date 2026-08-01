@@ -32,34 +32,52 @@ vibe-coding 도구로 의미 있는 feature를 ship하려 해본 사람은 이�
 
 ## Spec-driven은 이렇게 생겼습니다
 
-Ant의 루프:
+Ant은 두 개의 루프를 돌립니다:
 
 ```
+구축 루프 — greenfield, 프로젝트당 한 번
+
 PRD                  ← planner 에이전트가 작성을 도움
  │
  ▼
-시스템 설계           ← architect.design 이 PRD에서 생성
- │
+시스템 · UI 설계      ← architect.design 이 PRD에서 생성
+ │                     (UI 디자인: 생성, 또는 Figma / Claude handoff)
  ▼
-코드                 ← architect.code 가 설계대로 구현
- │
+코드                 ← architect.code 가 설계들대로 구현
+
+
+이터레이션 루프 — 그 이후의 모든 변경
+
+스펙                 ← architect.design 이 architecture/spec/<flow>.md 저작
+ │                     (gen-spec; rev-spec 으로 리뷰·수정)
  ▼
-검증                 ← architect 가 코드를 설계 대비 검증
- │
- ▼  (변경 시 반복)
+코드                 ← architect.code 가 정확히 그 스펙 하나를 구현
+                       (gen-code-spec — 그리고 반복)
 ```
 
+AI 코딩 도구의 plan 모드를 써봤다면 이터레이션 루프가 바로 그
+워크플로우입니다 — 단, plan이 diff 뜨고 리뷰하고 수정할 수 있는
+영속 문서로 남습니다.
+
+검증이 두 다이어그램 어디에도 박스로 없는 이유는 단계가 아니기
+때문입니다: 검증은 **모든 코드 잡의 속성**입니다. 작업은 태스크로
+분해되고 마지막 verification task가 완료를 게이팅합니다
+([execution-tiers](../../concepts/execution-tiers.md) 참고).
+
 스펙이 **명시적, 영속적, 감사 가능**합니다. 매 잡이 상위 산출물을
-구속력 있는 컨텍스트로 읽습니다. 코드 잡이 끝나면 검증 단계가
-결과가 스펙과 일치함을 입증합니다. 무언가를 바꾸면 합의된 것을
+구속력 있는 컨텍스트로 읽습니다. 코드 잡이 끝나면 그 잡의 verification
+task가 결과가 스펙과 일치함을 입증합니다. 무언가를 바꾸면 합의된 것을
 잃지 않고 delta만 재생성합니다.
 
 구체적으로:
 
 - PRD는 `plan/prd.md` 에 살고 재생성 가능. 수정하면 design과 code에
   파급이 흐름.
-- 시스템 설계는 `architecture/system/*.md` + API 컨트랙트
-  `architecture/spec/`. 이는 코드 잡이 존중해야 할 *불변 컨트랙트*.
+- 시스템 설계는 `architecture/system/*.md` — API 컨트랙트
+  (`api-contract-*.md`) 포함. 이는 코드 잡이 존중해야 할 *불변 컨트랙트*.
+- 플로우 스펙은 `architecture/spec/*.md` — `gen-spec` 이 저작하고
+  `rev-spec` 이 수정. `gen-code-spec` 잡은 한 번에 정확히 스펙 하나를
+  구현 — 그것이 이터레이션의 단위.
 - 코드는 `codebase/`. 변경은 feature task가 만들고 verification task가
   입증.
 - 각 단계의 산출물이 다음 단계의 입력. 단계를 빼면 체인이 깨짐 —

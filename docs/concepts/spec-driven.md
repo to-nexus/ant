@@ -34,26 +34,41 @@ code, and the wall is structural — more prompting won't break through it.
 
 ## What spec-driven looks like
 
-Ant's loop is:
+Ant runs two loops:
 
 ```
+Build loop — greenfield, once per project
+
 PRD                  ← planner agent helps you write it
  │
  ▼
-System Design        ← architect.design generates from the PRD
- │
+System & UI Design   ← architect.design generates from the PRD
+ │                     (UI design: generated, or your Figma / Claude handoff)
  ▼
-Code                 ← architect.code implements per the design
- │
+Code                 ← architect.code implements per the designs
+
+
+Iteration loop — every change after that
+
+Spec                 ← architect.design authors architecture/spec/<flow>.md
+ │                     (gen-spec; review and revise it with rev-spec)
  ▼
-Verification         ← architect verifies code against the design
- │
- ▼  (loop on changes)
+Code                 ← architect.code implements exactly that one spec
+                       (gen-code-spec — then loop)
 ```
 
+If you've used plan mode in an AI coding tool, the iteration loop is that
+workflow — except the plan is a persistent document you can diff, review,
+and revise.
+
+Verification is not a box in either diagram, because it is not a stage: it
+is a property of **every code job**. Work decomposes into tasks and a final
+verification task gates completion (see
+[execution-tiers](execution-tiers.md)).
+
 The spec is **explicit, persistent, and inspectable**. Every job reads its
-upstream artifacts as binding context. When the code job is done, the
-verification step proves that the result matches the spec. When you change
+upstream artifacts as binding context. When the code job is done, its
+verification task proves that the result matches the spec. When you change
 something, you don't lose what was already agreed; you just regenerate the
 delta.
 
@@ -61,9 +76,12 @@ Concretely:
 
 - The PRD lives in `plan/prd.md` and is regenerable. Editing it triggers
   rippled changes in design and code.
-- The system design lives in `architecture/system/*.md` plus the API
-  contract in `architecture/spec/`. These are the *immutable contracts* the
+- The system design lives in `architecture/system/*.md` — including the API
+  contract (`api-contract-*.md`). These are the *immutable contracts* the
   code job must respect.
+- Flow specs live in `architecture/spec/*.md`, authored by `gen-spec` and
+  revised by `rev-spec`. A `gen-code-spec` job implements exactly one spec
+  at a time — that is the unit of iteration.
 - The code lives in `codebase/`. Changes are made by feature tasks and
   proven by verification tasks.
 - Each step's output is the next step's input. Removing a step breaks the
