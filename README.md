@@ -1,9 +1,9 @@
-<h1 align="center">
-  <img src="docs/assets/logo.png" width="48" align="center" alt=""> ANT
-</h1>
+<p align="center">
+  <img src="docs/assets/wordmark.png" width="524"
+       alt="ANT — The spec-driven AI engineering platform">
+</p>
 
 <p align="center">
-  <b>The spec-driven AI engineering platform.</b><br>
   Build: <b>PRD → System & UI Design → Code</b> · Iterate: <b>Spec → Code</b> — every code job verifies itself. Self-hosted.<br>
   <sub>Frontend · Backend · Extensible language/framework tiers · Service connections & mock virtualization · Per-feature dev servers · Browser IDE · Deploy (managed cloud)</sub>
 </p>

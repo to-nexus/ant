@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="canvas" content="524x108">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /*
+   * README hero lockup: logo left, wordmark over tagline on the right.
+   *
+   * Deliberately NOT on the shared diagram canvas — this sits on the README's
+   * own background, so it renders transparent and every colour has to survive
+   * both the light and the dark GitHub theme:
+   *   - "ANT" uses the aurora gradient, which is vivid on either
+   *   - the tagline uses a mid-slate that clears 3:1 on white AND on #0d1117
+   */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+
+  body {
+    width: 524px; height: 108px;
+    display: flex; align-items: center; gap: 22px;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  img { width: 96px; height: 96px; flex: none; }
+
+  .lockup { display: flex; flex-direction: column; gap: 3px; }
+
+  .word {
+    font-size: 54px; font-weight: 800;
+    letter-spacing: -0.035em; line-height: 1.05;
+    background: linear-gradient(100deg, oklch(60% 0.26 285) 0%, oklch(64% 0.28 340) 52%, oklch(72% 0.22 50) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .tag {
+    font-size: 17.5px; font-weight: 600;
+    letter-spacing: -0.012em;
+    color: #807d93;
+  }
+</style>
+</head>
+<body>
+  <img src="../logo.png" alt="">
+  <div class="lockup">
+    <div class="word">ANT</div>
+    <div class="tag">The spec-driven AI engineering platform.</div>
+  </div>
+</body>
+</html>

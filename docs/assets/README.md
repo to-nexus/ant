@@ -9,11 +9,12 @@ with **opposite** rules, and the distinction is the whole point of this guide:
 | **Diagrams** (5 PNGs) | Authored HTML, baked to PNG | Cheap. Re-rendered from committed source, so they don't go stale on a UI change. |
 
 `logo.png` is neither — it is the product logo (copied from
-`packages/ant-ui/public/logo.png`), shown inline in the README title. If the
-brand asset changes, update both copies.
+`packages/ant-ui/public/logo.png`). It is no longer placed in the README
+directly; the hero uses the wordmark lockup below, which composes it. If the
+brand asset changes, update both copies and re-run `pnpm docs:diagrams`.
 
-`README.ko.md` reuses every file here. Do not produce a Korean set — only `alt`
-text and captions are localised.
+`README.ko.md` reuses every file here **except the wordmark** — only `alt` text
+and captions are localised. Do not produce a Korean set of anything else.
 
 ---
 
@@ -169,10 +170,31 @@ and re-run one command rather than re-shooting anything.
 | `job-anatomy.png` | `## How it works` | Parallel tasks, gated by a first-class verification task |
 | `workspace.png` | `## Workspace model` | One bare anchor, features as peer worktrees |
 
+### The wordmark is the one localised pair
+
+`wordmark.png` / `wordmark.ko.png` are the README hero: the logo on the left,
+`ANT` over the tagline on the right. They are rendered by the same command but
+break two of the rules below on purpose, so they are called out here rather than
+hidden as an exception:
+
+- **They are a localised pair**, because the tagline is prose and the Korean
+  README should not open in English. Nothing else here may be duplicated per
+  language.
+- **They render on transparency, not on the dark card**, because they sit on the
+  README's own background. Every colour therefore has to clear 3:1 on *both*
+  GitHub themes — the aurora gradient on `ANT` does, and the tagline uses a
+  mid-slate (`#807d93`) chosen for that reason. Verify against white **and**
+  `#0d1117` before committing a change to either file.
+
+This layout is an image rather than markup because GitHub gives HTML tables
+visible cell borders and floats a `<h1>` rule straight across the logo — neither
+produces a clean side-by-side lockup.
+
 ### Rules
 
-- **English only.** Both READMEs embed the same file; only `alt` and captions
-  are localised. A Korean render would fork the asset.
+- **English only** (the wordmark pair above is the sole exception). Both READMEs
+  embed the same file; only `alt` and captions are localised. A Korean render
+  would fork the asset.
 - **Colours come from [`aurora-tokens.css`](../../packages/ant-ui/src/styles/aurora-tokens.css)**
   (dark theme), via [`diagrams/_diagram.css`](diagrams/_diagram.css). Do not
   invent values, and do not source from
