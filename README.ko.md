@@ -1,9 +1,9 @@
-<h1 align="center">
-  <img src="docs/assets/logo.png" width="48" align="center" alt=""> ANT
-</h1>
+<p align="center">
+  <img src="docs/assets/wordmark.ko.png" width="450"
+       alt="ANT — 스펙 기반 AI 엔지니어링 플랫폼">
+</p>
 
 <p align="center">
-  <b>스펙 기반 AI 엔지니어링 플랫폼.</b><br>
   구축: <b>PRD → 시스템·UI 설계 → 코드</b> · 이터레이션: <b>스펙 → 코드</b> — 모든 코드 잡은 스스로 검증합니다. Self-host.<br>
   <sub>프론트엔드 · 백엔드 · 확장 가능한 언어/프레임워크 tier · 서비스 연결 & mock 가상화 · 피처별 dev server · 브라우저 IDE · 배포 (매니지드 클라우드)</sub>
 </p>

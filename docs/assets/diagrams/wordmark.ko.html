@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="canvas" content="450x108">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Korean twin of wordmark.html — the ONE localised asset pair. See wordmark.html
+     for the colour rationale; the only differences here are the tagline string,
+     the canvas width it needs, and the Hangul fallback face. */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+
+  body {
+    width: 450px; height: 108px;
+    display: flex; align-items: center; gap: 22px;
+    font-family: 'Plus Jakarta Sans', 'Apple SD Gothic Neo', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  img { width: 96px; height: 96px; flex: none; }
+
+  .lockup { display: flex; flex-direction: column; gap: 3px; }
+
+  .word {
+    font-size: 54px; font-weight: 800;
+    letter-spacing: -0.035em; line-height: 1.05;
+    background: linear-gradient(100deg, oklch(60% 0.26 285) 0%, oklch(64% 0.28 340) 52%, oklch(72% 0.22 50) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .tag {
+    font-size: 17.5px; font-weight: 600;
+    letter-spacing: -0.012em;
+    color: #807d93;
+  }
+</style>
+</head>
+<body>
+  <img src="../logo.png" alt="">
+  <div class="lockup">
+    <div class="word">ANT</div>
+    <div class="tag">스펙 기반 AI 엔지니어링 플랫폼.</div>
+  </div>
+</body>
+</html>
