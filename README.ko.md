@@ -71,14 +71,12 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
        alt="두 개의 파이프라인. 구축 루프(greenfield 또는 대형 신규 피처)는 plan(plan/PRD.md) → 시스템 설계(architecture/system/) → UI·game art(visual/ui/) → code(codebase/) 순으로 흐르고, 그 이후 모든 변경을 담당하는 이터레이션 루프는 plan 과 시스템 설계를 건너뛰고 스펙(architecture/spec/) 에서 곧바로 code 로 가며 rev-spec 순환 화살표가 붙어 있는 다이어그램">
 </p>
 
-<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 <p align="center">
-  <img src="docs/assets/design-job.gif" width="880"
-       alt="design 잡이 시스템 설계 문서를 렌더된 마크다운으로 워크스페이스에 실시간 스트리밍하고, 아키텍처 다이어그램에서 끝나는 화면">
+  <img src="docs/assets/design-job.webp" width="880"
+       alt="planner 잡이 제품 요구사항 문서를 렌더된 마크다운으로 워크스페이스에 실시간 스트리밍하고, 패널 헤더에 파일 경로와 Streaming 표시가 함께 보이는 화면">
 </p>
 <p align="center"><sub>모든 단계가 실제 경로에 실제 문서를 씁니다 — 읽고, diff 뜨고,
 반박할 수 있는. 커밋만이 아니라.</sub></p>
--->
 
 ---
 
