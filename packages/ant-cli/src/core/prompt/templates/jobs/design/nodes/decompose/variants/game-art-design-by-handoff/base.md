@@ -62,7 +62,7 @@ You are decomposing game-art design work into file-authoring tasks for a **hando
 |----------|-------|
 | Asset files (`assets/`) | {{assetCount}} |
 
-⚠️ **Blind spot**: real asset files already placed in the workspace are referenced by their existing path; missing imagery is authored as svg INSIDE the bundle's `assets/` — never as a dangling path. Production-quality sprites/audio remain user placement — bundle demos stay at vector/primitive fidelity.
+⚠️ **Blind spot**: real asset files already placed in the workspace are referenced by their existing path; missing imagery is authored INSIDE the bundle — never as a dangling path, never in a workspace directory outside the bundle root. Shared marks and state illustrations go to `assets/`; per-content normal-state imagery is authored by its consuming page. An empty-state illustration planned as "the" image asset will end up in every normal slot — plan imagery per state, not per "needs an image". Production-quality sprites/audio remain user placement — bundle demos stay at vector/primitive fidelity.
 {{/if}}
 
 ---

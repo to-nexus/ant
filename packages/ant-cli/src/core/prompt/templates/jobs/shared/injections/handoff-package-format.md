@@ -13,7 +13,7 @@ A handoff bundle is a structured design package rooted at `DESIGN.md`. Producer 
 | `tokens/<concern>.css` | Design tokens as CSS custom properties under `:root`, split by concern (e.g. colors, typography, spacing). Declare base values AND semantic aliases. The single value source — no other file restates a token value. It also owns the token **identifiers**: the names every other file binds to. |
 | `components/<name>.css` + `components/<name>.html` | Reusable primitives. The `.css` defines the component's classes built ONLY on token variables (no literal values a token owns) — those class names are the component's public API. The `.html` is a specimen page that **consumes** the `.css`: it composes the class names that file declares and contributes nothing to the shared layer. |
 | `screens/<name>.html` | Full-screen prototypes composing the components. Only screen-local layout rules live here — never restated tokens, never duplicated component styles. |
-| `assets/<name>.svg` | Shared vector assets, referenced by relative path. |
+| `assets/<name>.svg` | Shared vector assets (brand marks, icons, state illustrations), referenced by relative path. A needed asset no user-placed file provides is authored HERE, inside the bundle — never in a workspace directory outside the bundle root. |
 
 **Ring 2 — domain-biased** (present when the domain needs it):
 
@@ -42,6 +42,14 @@ Consumers of a shared layer REFERENCE it (css variable, class, relative path); t
 ## Reading order (consumers)
 
 `DESIGN.md` first — its Artifacts manifest is the authoritative index. Then tokens, then the shared layers the current task needs, then individual screens on demand.
+
+## Imagery state semantic
+
+**An asset carries ONE state semantic.** Before filling a media slot, observe which state the surrounding markup expresses — the imagery must depict THAT state.
+
+- An empty/unavailable-state illustration appears ONLY where the design shows that state. Placing it in a normal-state slot is a defect, not a shortcut.
+- A normal-state media slot renders imagery depicting its content: an inline `<svg>` mock in the consuming page (single-referencer scaffolding under Ownership closure), or a dedicated `assets/<name>.svg` when two or more pages show the same content.
+- ⚠️ One empty-state asset tends to become the default for every slot that needs an image — each additional consumer feels cheaper than authoring a content mock. Resist it: the cost asymmetry is the trap, not a license.
 
 ## Medium constraints
 

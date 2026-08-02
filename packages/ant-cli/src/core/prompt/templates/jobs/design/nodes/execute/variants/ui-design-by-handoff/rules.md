@@ -51,14 +51,17 @@ Apply the contract matching the target file's kind.
 ### `components/<name>.html`
 - A specimen page rendering every meaningful state/variant, composed from the class names `components/<name>.css` declares — `read_file` it first; links `../styles.css`.
 - A `<style>` block may hold ONLY this demo page's own scaffolding (page frame, section headings, state labels, swatch framing). A rule for the component under demonstration, or for any class another bundle file also composes, is a defect.
+- State variants keep their state's imagery: an empty-state asset appears only in the variant demonstrating that state.
 
 ### `screens/<name>.html`
 - Links `../styles.css` (single stylesheet entry). Composes component classes; references `assets/` by relative path.
 - A `<style>` block may hold ONLY screen-local layout (grid/placement unique to this screen). Restating a token value or duplicating a component rule is a defect.
 - Realistic content per the PRD — no lorem-ipsum when the PRD names real concepts.
+- Realism covers imagery: a normal-state media slot renders imagery depicting its content (inline `<svg>` mock, or a dedicated content asset when shared). An empty-state illustration in a normal slot is a defect — it belongs only where the screen demonstrates that state.
 
 ### `assets/<name>.svg`
 - Self-contained vector (no external refs); colors via the palette values the tokens define.
+- One state semantic per asset — an asset drawn as "unavailable / empty" never doubles as normal content.
 
 ---
 

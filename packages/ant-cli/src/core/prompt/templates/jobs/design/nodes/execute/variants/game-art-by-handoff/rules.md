@@ -50,6 +50,7 @@ Apply the contract matching the target file's kind.
 ### `components/<name>.html`
 - A specimen page rendering every meaningful state/variant, composed from the class names `components/<name>.css` declares — `read_file` it first; links `../styles.css`.
 - A `<style>` block may hold ONLY this demo page's own scaffolding (page frame, section headings, state labels). A rule for the component under demonstration, or for any class another bundle file also composes, is a defect.
+- State variants keep their state's imagery: an empty-state asset appears only in the variant demonstrating that state.
 
 ### `entities/<name>.css`
 - Engine-rendered visual units (characters, enemies, props, particles, projectile looks) — vector/primitive fidelity (svg shapes, css-driven motion) that carries silhouette, palette, and motion-tone. Classes built ONLY on token variables.
@@ -62,9 +63,11 @@ Apply the contract matching the target file's kind.
 
 ### `screens/<name>.html`
 - Title / menu / in-game HUD state / results compositions. Links `../styles.css`; composes component classes; screen-local layout only; realistic content per the PRD.
+- Realism covers imagery: a normal-state media slot renders imagery depicting its content (inline `<svg>` mock, or a dedicated content asset when shared). An empty-state illustration in a normal slot is a defect — it belongs only where the screen demonstrates that state.
 
 ### `assets/<name>.svg`
 - Self-contained vector; colors via the palette values the tokens define.
+- One state semantic per asset — an asset drawn as "unavailable / empty" never doubles as normal content.
 
 ---
 
