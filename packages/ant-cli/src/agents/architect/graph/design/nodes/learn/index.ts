@@ -17,6 +17,9 @@ import {
   getExecutionLogger,
 } from '../../../../../../core/utils/executionLogger';
 
+/** Root guide of a generated handoff bundle (there is no separate README). */
+const HANDOFF_ROOT_GUIDE = 'DESIGN.md';
+
 interface DesignBreadcrumbOptions {
   forceEmit?: boolean;
   summaryOverride?: string;
@@ -189,6 +192,12 @@ function buildDesignFailureBreadcrumbSummary(state: DesignGraphState): string | 
  * 5. End workflow visualization
  * 
  * Note: File writing is handled by separate writeFiles node (consistency with code job)
+ *
+ * SCOPE CONTRACT — this node is job-terminal in the main graph AND per-task in the
+ * parallel worker subgraph (`state.workerId != null`). Job-level assertions must sit
+ * behind `!_isWorkerContext` and read the disk, never `loadedFiles` (that set is only
+ * the current turn's outputs); otherwise they fail every worker task the invariant
+ * does not happen to describe (heavy-bearing-panda, velvet-feeding-ghost).
  */
 export async function learn(state: DesignGraphState): Promise<DesignGraphState> {
   state.recursionCount = (state.recursionCount || 0) + 1;
@@ -272,6 +281,8 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // Resolved to the intent-group's canonical output dir below; used in the
   // no-output error so a future domain gap points at the right location.
   let expectedOutputDir = 'the design output directory';
+  // Job-level floor's only input; `undefined` = not probed (non-handoff / no fs dep).
+  let handoffRootGuideOnDisk: boolean | undefined;
 
   if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
@@ -327,6 +338,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       const filesToProcess: { filename: string; dir: string }[] = [];
 
       if ((isUiDesign || isGameArtDesign) && isHandoffOutput) {
+        handoffRootGuideOnDisk = await fileSystem.fileExists(path.join(subDirRel, HANDOFF_ROOT_GUIDE));
         // Handoff bundle: the file set is dynamic (PRD-driven), so the
         // dir-scan allowlist cannot enumerate it and a plain dir walk would
         // absorb stale user uploads. Recognize the JOB-SCOPED set — the
@@ -401,25 +413,27 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
     }
   }
 
+  // SCOPE: per-task — the current task's own output is absent from disk.
   if (loadedFiles.length === 0 && !hasEarlyTermination) {
     throw new Error(
       `No design files found under ${expectedOutputDir} — execute nodes must have run`
     );
   }
 
-  // Handoff floor: a freshly GENERATED bundle without its DESIGN.md root guide
-  // is unreadable by the code job's handoff reader (the guide carries the
-  // Artifacts manifest). Revise flows may legitimately touch only a subset,
-  // so the floor applies to generate mode only.
+  // SCOPE: job-level — a freshly GENERATED bundle without its root guide is
+  // unreadable by the code job's handoff reader (the guide carries the Artifacts
+  // manifest); revise may touch a subset, so generate mode only. Keyed on disk, not
+  // `loadedFiles`: the guide shares the first barrier window, so mid-run no worker
+  // sees it, and a resumed turn never rewrites a guide authored earlier.
   if (
+    !_isWorkerContext &&
     !hasEarlyTermination &&
     state.resolvedAction?.mode === 'generate' &&
-    loadedFiles.length > 0 &&
     (state.resolvedAction?.intent === 'gen-ui-desc' || state.resolvedAction?.intent === 'gen-game-art-desc') &&
-    !loadedFiles.some(f => f.path.endsWith('/DESIGN.md'))
+    handoffRootGuideOnDisk === false
   ) {
     throw new Error(
-      `Handoff bundle under ${expectedOutputDir} is missing DESIGN.md — the root guide task must have run`
+      `Handoff bundle under ${expectedOutputDir} is missing ${HANDOFF_ROOT_GUIDE} — the root guide task must have run`
     );
   }
   

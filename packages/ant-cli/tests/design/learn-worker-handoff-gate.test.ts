@@ -63,6 +63,35 @@ function workerHandoffState(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
+const UI_BUNDLE = 'visual/ui/handoff';
+
+/**
+ * `gen-ui-desc` / mode `generate` — the intent×mode pair the DESIGN.md root-guide
+ * floor applies to. `workerId` decides the scope: worker (per task) vs job-terminal.
+ */
+function generateHandoffState(overrides: Record<string, unknown> = {}) {
+  return {
+    recursionCount: 0,
+    taskQueue: { getAll: () => [] },
+    artifacts: [],
+    resolvedAction: { intent: 'gen-ui-desc', intentGroup: 'design-ui', mode: 'generate' },
+    context: { featurePath: '/root/feat', project: 'ant-showcase', featureFolder: 'main' },
+    currentTask: {
+      id: 'ui-handoff-tokens-foundation',
+      name: 'Foundation Design Tokens',
+      type: 'doc',
+      priority: 110,
+      description: 'author the foundation token layer',
+      targetFile: 'tokens/foundation.css',
+      targetDir: UI_BUNDLE,
+      docFormat: 'handoff',
+    },
+    completedTasksDetails: [],
+    deps: { fileSystem: fsWith({ [`${UI_BUNDLE}/tokens/foundation.css`]: ':root{}\n' }) },
+    ...overrides,
+  } as never;
+}
+
 describe('learn — worker-context handoff gate (heavy-bearing-panda RCA)', () => {
   it('passes for a worker task whose targetFile exists on disk, even with empty completedTasksDetails', async () => {
     const result = (await learn(workerHandoffState())) as { files?: Array<{ path: string }> };
@@ -106,5 +135,50 @@ describe('learn — worker-context handoff gate (heavy-bearing-panda RCA)', () =
     const paths = (result.files || []).map((f) => f.path);
     expect(paths).toContain('visual/game-art/handoff/README.md');
     expect(paths.some((p) => p.endsWith('project/design/README.md'))).toBe(false);
+  });
+});
+
+/**
+ * DESIGN.md root-guide floor scope (velvet-feeding-ghost RCA).
+ *
+ * The floor is a JOB-level bundle-completeness invariant, but `learn` is also the
+ * parallel worker subgraph's terminal node — where the loaded file set is just the
+ * one task that finished. Evaluated there it asked "did THIS task write DESIGN.md?"
+ * and failed every task except the root-guide one, killing the whole job. The
+ * invariant belongs at job scope and reads the disk, not this turn's file set.
+ */
+describe('learn — handoff DESIGN.md floor scope (velvet-feeding-ghost RCA)', () => {
+  it('a worker task that wrote its own file passes even though it is not the root guide', async () => {
+    const result = (await learn(generateHandoffState({ workerId: 2 }))) as { files?: Array<{ path: string }> };
+    const paths = (result.files || []).map((f) => f.path);
+    expect(paths).toContain(`${UI_BUNDLE}/tokens/foundation.css`);
+  });
+
+  it('a worker task passes even when DESIGN.md is not on disk yet (guide task still running)', async () => {
+    // Concurrency: the root-guide task shares the first barrier window, so an
+    // absent DESIGN.md is the normal mid-run state, not a bundle defect.
+    await expect(learn(generateHandoffState({ workerId: 2 }))).resolves.toBeDefined();
+  });
+
+  it('job scope passes when DESIGN.md exists on disk but was written in an earlier turn', async () => {
+    const state = generateHandoffState({
+      deps: {
+        fileSystem: fsWith({
+          [`${UI_BUNDLE}/tokens/foundation.css`]: ':root{}\n',
+          [`${UI_BUNDLE}/DESIGN.md`]: '# Guide\n',
+        }),
+      },
+      // Resume shape: this turn only re-ran the tokens task.
+      completedTasksDetails: [{ id: 'ui-handoff-tokens-foundation', targetFile: 'tokens/foundation.css' }],
+    });
+    const result = (await learn(state)) as { files?: Array<{ path: string }> };
+    expect((result.files || []).length).toBeGreaterThan(0);
+  });
+
+  it('job scope still fails loud when the bundle has no DESIGN.md on disk', async () => {
+    const state = generateHandoffState({
+      completedTasksDetails: [{ id: 'ui-handoff-tokens-foundation', targetFile: 'tokens/foundation.css' }],
+    });
+    await expect(learn(state)).rejects.toThrow(/missing DESIGN\.md/);
   });
 });
