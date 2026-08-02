@@ -244,3 +244,130 @@ describe('FileRenderer codebase mutation gate (XML artifact tags)', () => {
     });
   });
 });
+
+/**
+ * Deferred terminal file cards — `writeImmediately: false` phases.
+ *
+ * The terminal `file_create` line is the FE's "the bytes are readable at
+ * `metadata.filePath`" contract: for plan/design jobs it promotes the
+ * streaming preview into a real editor tab, which immediately GETs that path.
+ * A renderer that wrote nothing must therefore not emit it — the planner's
+ * execute node writes AFTER the stream (its `<file>` bodies are only complete
+ * once the parser flushes), so an eager card made the preview fetch a file
+ * that did not exist yet and render blank forever.
+ *
+ * The card also has to name the path actually written: the planner maps the
+ * LLM-emitted path onto a declared target by basename, so `prd.md` lands at
+ * `plan/prd.md`.
+ */
+describe('FileRenderer deferred terminal cards', () => {
+  const deferredRenderer = (chatAPI: any) =>
+    new FileRenderer({
+      chatAPI,
+      fileSystem: makeFsStub({}),
+      writeImmediately: false,
+      jobType: 'plan',
+    });
+
+  const terminalCalls = (chatAPI: any) =>
+    chatAPI.calls.filter(
+      (c: any) => c.method === 'completeFileCreation' || c.method === 'failFileCreation',
+    );
+
+  it('emits no terminal card at </file> when nothing was written', async () => {
+    const chatAPI = makeChatAPIStub();
+    const renderer = deferredRenderer(chatAPI);
+    const registry = new FileRegistry(new Set(), makeFsStub({}), 'codebase');
+
+    await streamCreate(renderer, registry, 'prd.md', '# PRD\nbody\n');
+    await renderer.waitForAllFileOperations();
+
+    expect(chatAPI.calls.some((c: any) => c.method === 'startFileCreation')).toBe(true);
+    expect(terminalCalls(chatAPI)).toEqual([]);
+  });
+
+  it('flush reports the WRITTEN path while finalizing the card opened under the emitted path', async () => {
+    const chatAPI = makeChatAPIStub();
+    const renderer = deferredRenderer(chatAPI);
+    const registry = new FileRegistry(new Set(), makeFsStub({}), 'codebase');
+
+    await streamCreate(renderer, registry, 'prd.md', '# PRD\nbody\n');
+    await renderer.waitForAllFileOperations();
+    renderer.claimDeferredFileCardSettlement();
+    await renderer.flushDeferredFileCards(new Map([['prd.md', 'plan/prd.md']]));
+
+    const settled = terminalCalls(chatAPI);
+    expect(settled).toHaveLength(1);
+    expect(settled[0].method).toBe('completeFileCreation');
+    // [reported path, content, stats] — `cardPath` keeps the pending card
+    // registered at `<file>` open as the one finalized (no duplicate card).
+    expect(settled[0].args[0]).toBe('plan/prd.md');
+    expect(settled[0].args[1]).toContain('# PRD');
+    expect(settled[0].args[2]?.cardPath).toBe('prd.md');
+  });
+
+  it('flush fails an unresolved path instead of claiming success', async () => {
+    const chatAPI = makeChatAPIStub();
+    const renderer = deferredRenderer(chatAPI);
+    const registry = new FileRegistry(new Set(), makeFsStub({}), 'codebase');
+
+    await streamCreate(renderer, registry, 'stray.md', 'body\n');
+    await renderer.waitForAllFileOperations();
+    renderer.claimDeferredFileCardSettlement();
+    await renderer.flushDeferredFileCards(new Map([['stray.md', null]]));
+
+    const settled = terminalCalls(chatAPI);
+    expect(settled).toHaveLength(1);
+    expect(settled[0].method).toBe('failFileCreation');
+    expect(settled[0].args[0]).toBe('stray.md');
+  });
+
+  it('finalize fails an unclaimed owed card so the pending card never hangs', async () => {
+    const chatAPI = makeChatAPIStub();
+    const renderer = deferredRenderer(chatAPI);
+    const registry = new FileRegistry(new Set(), makeFsStub({}), 'codebase');
+
+    await streamCreate(renderer, registry, 'plan/prd.md', 'body\n');
+    await renderer.waitForAllFileOperations();
+    await renderer.finalize();
+
+    const settled = terminalCalls(chatAPI);
+    expect(settled).toHaveLength(1);
+    expect(settled[0].method).toBe('failFileCreation');
+  });
+
+  it('a claim defers past finalize so the writer still settles it as success', async () => {
+    const chatAPI = makeChatAPIStub();
+    const renderer = deferredRenderer(chatAPI);
+    const registry = new FileRegistry(new Set(), makeFsStub({}), 'codebase');
+
+    await streamCreate(renderer, registry, 'prd.md', 'body\n');
+    await renderer.waitForAllFileOperations();
+    renderer.claimDeferredFileCardSettlement();
+    await renderer.finalize();
+    expect(terminalCalls(chatAPI)).toEqual([]);
+
+    await renderer.flushDeferredFileCards(new Map([['prd.md', 'plan/prd.md']]));
+    expect(terminalCalls(chatAPI).map((c: any) => c.method)).toEqual(['completeFileCreation']);
+  });
+
+  it('writeImmediately renderers still emit their terminal card inline', async () => {
+    const chatAPI = makeChatAPIStub();
+    const files: Record<string, string> = {};
+    const fs = makeFsStub(files);
+    const renderer = new FileRenderer({
+      chatAPI,
+      gitPort: makeGitStub(),
+      fileSystem: fs,
+      writeImmediately: true,
+      jobType: 'code',
+      codebasePath: '/ws/codebase',
+    });
+    const registry = new FileRegistry(new Set(), fs, 'codebase');
+
+    await streamCreate(renderer, registry, 'codebase/src/foo.tsx', 'export const x = 1;\n');
+    await renderer.waitForAllFileOperations();
+
+    expect(terminalCalls(chatAPI).map((c: any) => c.method)).toEqual(['completeFileCreation']);
+  });
+});

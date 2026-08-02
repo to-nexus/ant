@@ -27,6 +27,23 @@ export const makeVirtualEditorTabId = (cardId: string): `editor:virtual:${string
 export const makeReportEditorTabId = (cardId: string): `editor:report:${string}` =>
   `editor:report:${cardId}`;
 
+/**
+ * Whether `selectedFile` (the document-fetch SSOT) must be re-pointed at the
+ * active tab. `uiSlice` owns the active tab, `fileSlice` owns `selectedFile`,
+ * and only the UNPINNED tab had a reconciliation — a pinned tab could diverge
+ * with nothing to converge it, leaving the preview blank until the user
+ * unpinned. Streaming tabs are excluded: `VirtualDocumentViewer` renders those
+ * from the SSE buffer, not from a fetched file.
+ */
+export function shouldSyncActiveEditorTabFile(
+  tab: Pick<EditorTab, 'kind' | 'path' | 'status'> | undefined,
+  selectedFile: string | undefined,
+): boolean {
+  if (!tab || tab.kind !== 'real' || !tab.path) return false;
+  if (tab.status === 'streaming') return false;
+  return selectedFile !== tab.path;
+}
+
 export function sanitizeEditorTabOrder(
   order: readonly string[],
   tabs: readonly EditorTab[],

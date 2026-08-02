@@ -142,7 +142,25 @@ export class FileRenderer {
   private completionPromises: Map<string, Promise<void>> = new Map();
   private completionResolvers: Map<string, (value: void | PromiseLike<void>) => void> = new Map();
   private completionRejectors: Map<string, (reason?: any) => void> = new Map();
-  
+
+  /**
+   * Terminal file cards owed but not yet emitted, keyed by the LLM-emitted
+   * path. Populated only when `writeImmediately === false` — this renderer
+   * wrote nothing, so it must not claim `file_create` (that status is the
+   * FE's "the bytes are readable at this path" contract; the editor-tab
+   * preview fetches the path the moment it sees one). Whoever performs the
+   * deferred write settles these via `flushDeferredFileCards`; anything left
+   * at `finalize()` is failed so the pending card never hangs.
+   */
+  private deferredTerminalCards: Map<string, { content: string; diffBeforeLines?: number }> = new Map();
+  /**
+   * Set by a phase that writes AFTER `finalize()` (the parser buffer must
+   * flush before its registry is complete), promising to call
+   * `flushDeferredFileCards` itself. Without the claim, `finalize()` fails
+   * every owed card — the correct default for phases that never write.
+   */
+  private deferredSettlementClaimed = false;
+
   constructor(config: FileRendererConfig) {
     this.chatAPI = config.chatAPI;
     this.gitPort = config.gitPort;
@@ -749,14 +767,61 @@ export class FileRenderer {
         `[FileRenderer] <file path="${filePath}"> body contains cross-axis tags: ${codeFileLeaks.join(', ')}. Stripped from card preview. (See docs/internals/36-output-tag-matrix.md Invariant 2.)`,
       );
     }
+    const strippedContent = stripRegisteredTags(fileInfo.contentBuffer);
+
+    // Nothing was written above (no `writeImmediately` / no gitPort), so this
+    // renderer has no standing to emit a success terminal — the deferred
+    // writer settles it. See `deferredTerminalCards`.
+    if (!(this.writeImmediately && this.gitPort)) {
+      this.deferredTerminalCards.set(filePath, {
+        content: strippedContent,
+        ...(diffBeforeLines !== undefined ? { diffBeforeLines } : {}),
+      });
+      return;
+    }
+
     await this.chatAPI.completeFileCreation(
       filePath,
-      stripRegisteredTags(fileInfo.contentBuffer),
+      strippedContent,
       diffBeforeLines !== undefined ? { diffBeforeLines } : undefined,
     );
     this.onFileTouched?.(filePath);
   }
-  
+
+  /**
+   * Declare that this caller will settle the deferred terminal cards itself
+   * (see `deferredSettlementClaimed`). Must be called before `finalize()`.
+   */
+  claimDeferredFileCardSettlement(): void {
+    this.deferredSettlementClaimed = true;
+  }
+
+  /**
+   * Settle the terminal cards owed for a deferred-write phase. Total: every
+   * owed card is either completed or failed, so nothing is left dangling.
+   *
+   * `resolution` maps each LLM-emitted path to the path it was actually
+   * written to (or `null` / absent when it was not persisted). The card is
+   * looked up by the emitted path so the pending card registered at `<file>`
+   * open is the one finalized — one card per file op, no duplicate.
+   */
+  async flushDeferredFileCards(resolution: Map<string, string | null>): Promise<void> {
+    this.deferredSettlementClaimed = false;
+    for (const [emittedPath, owed] of Array.from(this.deferredTerminalCards)) {
+      this.deferredTerminalCards.delete(emittedPath);
+      const writtenPath = resolution.get(emittedPath) ?? null;
+      if (!writtenPath) {
+        await this.chatAPI.failFileCreation(emittedPath, `"${emittedPath}" was not persisted to disk.`);
+        continue;
+      }
+      await this.chatAPI.completeFileCreation(writtenPath, owed.content, {
+        ...(owed.diffBeforeLines !== undefined ? { diffBeforeLines: owed.diffBeforeLines } : {}),
+        cardPath: emittedPath,
+      });
+      this.onFileTouched?.(writtenPath);
+    }
+  }
+
   /**
    * Handle design job append with structured merge for JSON
    * 
@@ -1095,10 +1160,25 @@ export class FileRenderer {
       }
     }
     
+    // Unclaimed owed cards mean this phase writes nothing, so the `<file>`
+    // produced no artifact. Fail rather than leave the pending card open — an
+    // unclosed pending card strands the FE's streaming preview tab forever.
+    // NOT pushed to `fileErrors`: that drives execute's self-heal retries.
+    if (!this.deferredSettlementClaimed) {
+      for (const emittedPath of Array.from(this.deferredTerminalCards.keys())) {
+        this.deferredTerminalCards.delete(emittedPath);
+        console.warn(`⚠️  [FileRenderer] <file path="${emittedPath}"> was never persisted — reporting as failed.`);
+        await this.chatAPI.failFileCreation(
+          emittedPath,
+          `"${emittedPath}" was not persisted — this phase does not write files.`,
+        );
+      }
+    }
+
     this.activeFiles.clear();
     this.lineBuffers.clearAll();
     this.completionPromises.clear();
-    
+
     // ✅ Flush pending file tree notification on finalize
     this.flushFileTreeNotification();
   }
@@ -1140,6 +1220,10 @@ export class FileRenderer {
     this.completionRejectors.clear();
     this.fileErrors = [];
     this.fileConflicts = [];
+    // The retried stream re-emits its `<file>` tags, so owed cards from the
+    // discarded attempt would double-settle against the new pending cards.
+    this.deferredTerminalCards.clear();
+    this.deferredSettlementClaimed = false;
     
     // ✅ Cancel pending file tree notification on reset
     if (this.fileTreeNotifyTimer) {

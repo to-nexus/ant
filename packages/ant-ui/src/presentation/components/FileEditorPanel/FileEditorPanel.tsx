@@ -33,6 +33,7 @@ import { SmartEditEditor } from '../smartEdit/SmartEditEditor';
 import { LineNumberedEditor } from './LineNumberedEditor';
 import { EditorLangChip } from './EditorLangChip';
 import { EDITOR_BODY_SURFACE } from './types';
+import { ErrorFallback } from '@/presentation/components/common/async';
 
 interface FileEditorPanelProps {
   onClose?: () => void;
@@ -163,6 +164,9 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
   const hasChanges = fileBuffer !== null;
   const saving = savingStatus === 'saving';
   const loading = fileStatus === 'loading';
+  // `BINARY_FILE` is not a failure — `isOtherBinaryFile` already routes it to
+  // the read-only binary panel, which is the correct surface for it.
+  const fetchFailed = fileStatus === 'error' && !isOtherBinaryFile && !isBinaryImageFile;
 
   // Re-open / fetch when the selected path changes.
   useEffect(() => {
@@ -566,6 +570,16 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
             style={{ color: 'var(--text-3)' }}
           >
             {t('common:status.loading')}
+          </div>
+        ) : fetchFailed ? (
+          // A failed read must not fall through to the body renderers below —
+          // they would paint `editedContent === ''` as a blank document,
+          // indistinguishable from an empty file and with no way to retry.
+          <div className="flex-1 overflow-auto" style={previewSurface}>
+            <ErrorFallback
+              error={fileError ?? new Error('Failed to load file')}
+              retry={() => selectedFile && void openFile(selectedFile)}
+            />
           </div>
         ) : isBinaryImageFile ? (
           <div className="flex-1 overflow-auto p-4" style={previewSurface}>

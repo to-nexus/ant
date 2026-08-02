@@ -247,6 +247,10 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     };
   }
 
+  // This phase writes AFTER finalize (the registry is only complete once the
+  // parser buffer flushes), so claim the deferred terminal file cards before
+  // finalize sweeps them as failures. Every exit below settles them.
+  renderStrategy.claimDeferredFileCardSettlement();
   await orchestrator.finalize(true);
 
   // ── Join barrier (explore subagent): the LLM finished authoring while
@@ -277,6 +281,9 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
           state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', 0);
         }
         console.log(`🔀 [Planner:Execute] Finalization withheld — subagent reports delivered, re-entering execute`);
+        // Nothing was written this pass and the re-entry re-emits the
+        // document, so the owed cards resolve to nothing.
+        await renderStrategy.flushDeferredFileCards(new Map());
         return {
           conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory },
           pendingToolCalls: [],
@@ -300,6 +307,12 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   //    safe LLM-emitted path (dusk-mounding-pilot fallback). ──
   const boundTargets = state.resolvedAction?.target ?? [];
   const writtenFiles: Array<{ relPath: string; content: string }> = [];
+  // LLM-emitted path → the path it actually lands on (null = rejected). The
+  // FileRenderer deferred its terminal file cards (this phase runs with
+  // `writeImmediately: false`), and settles them against this map below —
+  // so the card the FE promotes into an editor tab names the written path,
+  // not the emitted one, and only after the bytes exist.
+  const cardResolution = new Map<string, string | null>();
   let resolvedTargetRelPath = getTargetPath(state);
   let generatedDocument: string | undefined;
 
@@ -315,8 +328,10 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       }
       if (!relPath) {
         console.warn(`⚠️ [Planner:Execute] Skipping <file> "${f.path}" — not a declared target / unsafe path.`);
+        cardResolution.set(f.path, null);
         continue;
       }
+      cardResolution.set(f.path, relPath);
       writtenFiles.push({ relPath, content: f.content });
     }
     generatedDocument = writtenFiles.length > 0 ? writtenFiles.map(w => w.content).join('\n\n') : undefined;
@@ -331,23 +346,38 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     }
   }
 
-  if (writtenFiles.length > 0 && planMode !== 'refactor') {
-    if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-      state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
-    }
-    for (const { relPath, content } of writtenFiles) {
-      const targetAbsPath = path.join(state.featurePath, relPath);
-      try {
-        await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
-        await fsPromises.writeFile(targetAbsPath, content, 'utf-8');
-        console.log(`📝 [Planner:Execute] Written ${content.length} chars to ${relPath}`);
-      } catch (error: any) {
-        console.error(`❌ [Planner:Execute] Failed to write document: ${error.message}`);
-        throw error;
+  const persistedRelPaths = new Set<string>();
+  try {
+    if (writtenFiles.length > 0 && planMode !== 'refactor') {
+      if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
+        state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
       }
-      notifyFileTree(state, relPath);
+      for (const { relPath, content } of writtenFiles) {
+        const targetAbsPath = path.join(state.featurePath, relPath);
+        try {
+          await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
+          await fsPromises.writeFile(targetAbsPath, content, 'utf-8');
+          persistedRelPaths.add(relPath);
+          console.log(`📝 [Planner:Execute] Written ${content.length} chars to ${relPath}`);
+        } catch (error: any) {
+          console.error(`❌ [Planner:Execute] Failed to write document: ${error.message}`);
+          throw error;
+        }
+        notifyFileTree(state, relPath);
+      }
+      resolvedTargetRelPath = writtenFiles[0].relPath; // primary for session record
     }
-    resolvedTargetRelPath = writtenFiles[0].relPath; // primary for session record
+  } finally {
+    // Settle the deferred terminal file cards against what actually reached
+    // disk — the FE promotes a `file_create` straight into an editor tab and
+    // fetches the path, so a card may only name a file that now exists.
+    // `finally` so a mid-loop write failure still settles instead of
+    // stranding the streaming preview tab.
+    const settled = new Map<string, string | null>();
+    for (const [emittedPath, relPath] of cardResolution) {
+      settled.set(emittedPath, relPath && persistedRelPaths.has(relPath) ? relPath : null);
+    }
+    await renderStrategy.flushDeferredFileCards(settled);
   }
 
   if (generatedDocument && resolvedTargetRelPath) {

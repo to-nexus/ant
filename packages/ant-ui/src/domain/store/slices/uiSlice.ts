@@ -1290,6 +1290,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     set((s: any) => {
       const tabs = [...((s.editorTabs ?? []) as EditorTab[])];
       const removedIds = new Set<string>();
+      let repairedStreamingTab = false;
       const nextTabs = tabs
         .filter((tab) => {
           const shouldRemove = tab.kind === 'virtual' && tab.jobId === jobId;
@@ -1298,6 +1299,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         })
         .map((tab) => {
           if (tab.kind !== 'real' || tab.jobId !== jobId || tab.status !== 'streaming') return tab;
+          repairedStreamingTab = true;
           return {
             ...tab,
             status: 'ready' as const,
@@ -1305,7 +1307,10 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
             streamingSourceCardId: undefined,
           };
         });
-      if (removedIds.size === 0 && nextTabs.length === tabs.length) return {};
+      // `.map` preserves length, so a `nextTabs.length === tabs.length` test
+      // would always be true here and throw away the streaming→ready repair
+      // above whenever nothing was filtered.
+      if (removedIds.size === 0 && !repairedStreamingTab) return {};
 
       const nextActive = removedIds.has(s.activeEditorTabId)
         ? (nextTabs.find((tab) => tab.id === UNPINNED_EDITOR_TAB_ID)?.id ?? nextTabs[0]?.id ?? null)

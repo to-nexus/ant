@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import type { ChatStatusLine, ChatStatusType } from '@ant/shared';
 import { getEditorTabActionPolicy } from '../../src/presentation/components/MainPanelTabsBar/components/editorTabUiPolicy';
+import { shouldSuppressPreviewOnlyStatusCard } from '../../src/presentation/components/chat/statusCardVisibility';
 
 describe('editorTabUiPolicy', () => {
   it('hides close for pinned tabs', () => {
@@ -40,5 +42,44 @@ describe('editorTabUiPolicy', () => {
     expect(policy.isStreaming).toBe(true);
     expect(policy.showPinToggle).toBe(false);
     expect(policy.showCloseButton).toBe(false);
+  });
+});
+
+/**
+ * Which surface renders a file status.
+ *
+ * `plan` / `design` artifact writes render in the main-panel editor tab, so
+ * their success/progress cards are suppressed in chat as duplicates. Failures
+ * are NOT: the preview surface has no failure renderer (promotion fires on
+ * `file_create` / `file_edit` only), so suppressing them left a failed
+ * artifact write invisible everywhere — the tab just disappeared.
+ *
+ * Boundary: preview owns the success path, chat owns the failure path.
+ */
+describe('shouldSuppressPreviewOnlyStatusCard — surface boundary', () => {
+  const line = (jobType: string, statusType: ChatStatusType): ChatStatusLine =>
+    ({ jobType, statusType } as ChatStatusLine);
+
+  const PREVIEW_OWNED: ChatStatusType[] = [
+    'file_creating', 'file_writing', 'file_create',
+    'file_editing', 'file_updating', 'file_edit',
+    'file_deleting', 'file_delete',
+    'plan_generating', 'plan',
+    'task_response_streaming', 'task_response',
+  ];
+  const FAILURES: ChatStatusType[] = ['file_create_failed', 'file_edit_failed', 'file_delete_failed'];
+
+  for (const jobType of ['plan', 'design']) {
+    it.each(PREVIEW_OWNED)(`${jobType}: suppresses %s (preview renders it)`, (statusType) => {
+      expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType))).toBe(true);
+    });
+
+    it.each(FAILURES)(`${jobType}: keeps %s in chat (preview cannot render it)`, (statusType) => {
+      expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType))).toBe(false);
+    });
+  }
+
+  it.each([...PREVIEW_OWNED, ...FAILURES])('code: keeps %s in chat (no editor tab)', (statusType) => {
+    expect(shouldSuppressPreviewOnlyStatusCard(line('code', statusType))).toBe(false);
   });
 });

@@ -930,13 +930,18 @@ export class LLMResponseService {
   async completeFileCreation(
     filePath: string,
     content: string,
-    stats?: { diffBeforeLines?: number },
+    stats?: { diffBeforeLines?: number; cardPath?: string },
   ): Promise<void> {
-    await this.completeFileOp(filePath, 'file_create', {
+    await this.completeFileOp(
       filePath,
-      content,
-      ...(stats?.diffBeforeLines !== undefined ? { diffBeforeLines: stats.diffBeforeLines } : {}),
-    });
+      'file_create',
+      {
+        filePath,
+        content,
+        ...(stats?.diffBeforeLines !== undefined ? { diffBeforeLines: stats.diffBeforeLines } : {}),
+      },
+      stats?.cardPath,
+    );
   }
 
   async startFileEdit(filePath: string): Promise<string> {
@@ -1275,15 +1280,25 @@ export class LLMResponseService {
     return cardId;
   }
 
+  /**
+   * `cardPath` is the key the pending card was registered under (the path the
+   * LLM emitted); `filePath` is the path the terminal line reports. They differ
+   * when the writer maps the emitted path onto a different on-disk path — the
+   * planner's basename binding is the live case. Looking the card up by the
+   * emitted path keeps ONE card per file op; reporting the written path keeps
+   * the FE's "readable at this path" contract true.
+   */
   private async completeFileOp(
     filePath: string,
     terminalType: ChatStatusType,
     metadata: Record<string, unknown>,
+    cardPath?: string,
   ): Promise<void> {
     if (!this.enabled || !filePath || !this.getTurnId()) return;
     const ws = this.getWorkerState();
-    const cardId = ws.fileCardByPath.get(filePath) ?? this.mintCardId('file');
-    ws.fileCardByPath.delete(filePath);
+    const lookupPath = cardPath ?? filePath;
+    const cardId = ws.fileCardByPath.get(lookupPath) ?? this.mintCardId('file');
+    ws.fileCardByPath.delete(lookupPath);
     await this.appendChatStatus(cardId, terminalType, metadata);
   }
 
