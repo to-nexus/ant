@@ -84,7 +84,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
             mimeType: generated[0].mimeType,
             prompt: composedPrompt,
             modelConfig: {
-              model: (imageClient as any).modelName || 'gemini-3.1-flash-image',
+              model: imageClient.modelName,
               aspectRatio,
             },
             modelResponseMetadata: generated[0].modelResponseMetadata || {},
@@ -118,7 +118,7 @@ export async function sketchNode(state: VisualGraphState): Promise<Partial<Visua
           mimeType: generated[i].mimeType,
           prompt: generated[i].prompt,
           modelConfig: {
-            model: (imageClient as any).modelName || 'gemini-3.1-flash-image',
+            model: imageClient.modelName,
             aspectRatio,
           },
           modelResponseMetadata: generated[i].modelResponseMetadata || {},

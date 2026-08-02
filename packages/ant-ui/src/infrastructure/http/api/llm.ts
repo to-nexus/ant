@@ -41,7 +41,7 @@ export function fetchAvailableModels(): Promise<AvailableModelsResponse> {
   return apiGet<AvailableModelsResponse>(`${API_BASE()}/models`).catch(() => ({
     models: [],
     // Mirror the BE /models default (DEFAULT_MODELS SSOT) on fetch failure.
-    default: DEFAULT_MODELS.opusTier,
+    default: DEFAULT_MODELS.anthropic.opus,
     configuredProviders: undefined,
   }));
 }

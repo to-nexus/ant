@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { MODEL_REGISTRY, DEFAULT_MODELS, PROVIDER_API_KEY_ENV, type ModelProvider } from '@ant/shared';
+import { MODEL_REGISTRY, PROVIDER_API_KEY_ENV, type ModelProvider } from '@ant/shared';
 import { StaticModelPricingAdapter } from '../../pricing/StaticModelPricingAdapter';
 import type { ModelPricingPort } from '../../../../core/ports/modelPricing';
+import { getFallbackModel } from '../../../../core/config/defaultModels';
 
 /**
  * Available LLM Models API
@@ -62,7 +63,7 @@ export function createModelsRoutes(
     try {
       res.json({
         models: AVAILABLE_MODELS,
-        default: DEFAULT_MODELS.opusTier,
+        default: getFallbackModel(),
         configuredProviders: getConfiguredProviders(),
       });
     } catch (error) {

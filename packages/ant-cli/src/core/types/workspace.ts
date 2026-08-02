@@ -59,7 +59,8 @@ export function getModelDisplayName(modelName: string): string {
 }
 
 import type { Domain, GameArtTier, VisualTier } from '@ant/shared';
-import { DEFAULT_MODELS, sanitizeGameArtTier, sanitizeVisualTier } from '@ant/shared';
+import { sanitizeGameArtTier, sanitizeVisualTier } from '@ant/shared';
+import { getDefaultJobModels, getDefaultLlmModels } from '../config/defaultModels';
 
 /**
  * Workspace-persisted visual basis (settled tiers).
@@ -208,96 +209,25 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
 }
 
 /**
- * Default workspace config
- * If AI_MODEL_NAME env var is set, all jobs use that model (override).
- * Otherwise, plan/design/code default to the Sonnet tier; learn defaults to
- * the Haiku tier; reviewer/doc default to the Opus tier. Tier ids come from
- * the DEFAULT_MODELS SSOT (@ant/shared/models.ts) — never hardcode a model id here.
- */
-/**
- * Get the minimal default LLM config for merging during load-time.
- * This provides ONLY the job-level `default` for each job, no node-specific overrides.
- * This ensures that existing projects that have only customized a job's `default`
- * can genuinely fall through to that `default` for all node types via `resolveModelForContext`.
+ * Job-level default LLM config for the load-time merge — ONLY each job's `default`,
+ * no node-specific overrides, so a project that customized just `job.default` falls
+ * through to it for every node via `resolveModelForContext`. Node-specific opinionated
+ * defaults belong to the creation-time snapshot (`getDefaultWorkspaceConfig`) only.
  *
- * Node-specific opinionated defaults (decompose=Opus, plan=Opus) MUST be part of the
- * creation-time snapshot only (getDefaultWorkspaceConfig), not the load-time merge base.
+ * Both are derived from the single binding table in `core/config/defaultModels.ts` —
+ * never re-list model ids here.
  */
 export function getConfigMergeDefaults(): LLMModels {
-  const envModel = process.env.AI_MODEL_NAME;
-  const modelOpus = envModel || DEFAULT_MODELS.opusTier;
-  const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
-  const modelHaiku = envModel || DEFAULT_MODELS.haikuTier;
-
-  return {
-    design: { default: modelSonnet },
-    code: { default: modelSonnet },
-    learn: { default: modelHaiku },
-    plan: { default: modelSonnet },
-    visual: {
-      default: 'gemini-3-flash',
-    },
-    reviewer: { default: modelOpus },
-    doc: { default: modelOpus },
-    // Auxiliary (non-graph) one-shot calls (e.g. ant-authored commit messages)
-    // default to the Sonnet tier — cheap enough for a short call, but capable
-    // enough to write a coherent commit message from a diff.
-    commit: { default: modelSonnet },
-  };
+  return getDefaultJobModels();
 }
 
 export function getDefaultWorkspaceConfig(projectName: string): WorkspaceConfig {
-  const envModel = process.env.AI_MODEL_NAME;
-  const modelOpus = envModel || DEFAULT_MODELS.opusTier;
-  const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
-
   return {
     projectName,
     // Phase 2 (D22): default project domain is 'service'.
     domain: 'service',
     repoType: 'local',
-    llmModels: {
-      design: {
-        default: modelSonnet,
-        decompose: modelSonnet,
-        plan: modelOpus,
-        execute: modelSonnet,
-      },
-      code: {
-        default: modelSonnet,
-        decompose: modelOpus,
-        plan: modelSonnet,
-        execute: modelSonnet,
-      },
-      learn: {
-        default: modelSonnet,
-      },
-      plan: {
-        // plan job split into plan (observe/clarify/seal) + execute (author):
-        // the plan node reasons over the codebase → Opus; execute authors the
-        // document from the sealed brief → Sonnet (job default).
-        default: modelSonnet,
-        plan: modelOpus,
-        execute: modelSonnet,
-      },
-      visual: {
-        default: 'gemini-3-flash',
-        direct: 'gemini-3.1-pro-preview',
-        explain: 'gemini-3.1-pro-preview',
-        sketch: 'gemini-3.1-flash-image',
-        render: 'gemini-3-pro-image',
-        engrave: 'gemini-3.1-pro-preview',
-      },
-      reviewer: {
-        default: modelOpus,
-      },
-      doc: {
-        default: modelOpus,
-      },
-      commit: {
-        default: modelSonnet,
-      },
-    },
+    llmModels: getDefaultLlmModels(),
     visualSettings: {
       candidateCount: 3,
       defaultAspectRatio: '1:1',

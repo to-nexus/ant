@@ -19,8 +19,6 @@ For deployment-specific recommendations, see
 
 ## LLM providers
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
 Key names are unprefixed — the SSOT is `PROVIDER_API_KEY_ENV` in [`@ant/shared/models.ts`](../../packages/ant-shared/src/models.ts); the `/models` endpoint reports a provider as configured iff its variable is non-empty.
 
 | Variable | Default | Purpose |
@@ -32,8 +30,45 @@ Key names are unprefixed — the SSOT is `PROVIDER_API_KEY_ENV` in [`@ant/shared
 | `GLM_API_KEY` | — | GLM / Z.ai (OpenAI-compatible endpoint). |
 | `KIMI_API_KEY` | — | Kimi / Moonshot (OpenAI-compatible endpoint). |
 | `ANT_LLM_MOCK` | `false` | Use the mock LLM adapter (for tests / CI). |
+| `ANT_LLM_MOCK_RESPONSE_DIR` | — | Directory the mock adapter replays canned responses from. |
 
 Per-provider reasoning toggles (operator hard opt-outs): `DEEPSEEK_THINKING=disabled`, `GLM_THINKING=disabled`, `OPENAI_REASONING_EFFORT=low\|medium\|high\|xhigh`.
+
+## System default models
+
+Two decisions, deliberately split:
+
+- **tier → concrete model id** (`anthropic:opus` → `claude-opus-5`) is **code-owned** via `ModelSpec.tier` in [`@ant/shared/models.ts`](../../packages/ant-shared/src/models.ts). It changes when a provider ships a model, so it is a code update — there is no env var for it.
+- **job/node default → tier** is env-configurable per slot. SSOT: [`core/config/defaultModels.ts`](../../packages/ant-cli/src/core/config/defaultModels.ts) — never read these variables anywhere else.
+
+Variable: `ANT_DEFAULT_MODEL_<JOB>[_<NODE>]`, value `"<provider>:<tier>"` (an abstract model, never a concrete id). Names are derived from the binding table, so a new slot gets its variable automatically.
+
+| Provider | Tiers |
+|----------|-------|
+| `anthropic` | `sonnet` · `opus` · `haiku` |
+| `openai` | `sol` · `terra` · `luna` |
+| `google` | `pro` · `flash` · `proImage` · `flashImage` |
+| `deepseek` | `pro` · `flash` |
+| `glm` | `flagship` · `fast` |
+| `kimi` | `flagship` · `code` · `codeHighspeed` |
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ANT_DEFAULT_MODEL_DESIGN`, `..._DESIGN_{DECOMPOSE,PLAN,EXECUTE}` | `anthropic:sonnet`, `plan`→`anthropic:opus` | Design job. |
+| `ANT_DEFAULT_MODEL_CODE`, `..._CODE_{DECOMPOSE,PLAN,EXECUTE}` | `anthropic:sonnet`, `decompose`→`anthropic:opus` | Code job. |
+| `ANT_DEFAULT_MODEL_PLAN`, `..._PLAN_{PLAN,EXECUTE}` | `anthropic:sonnet`, `plan`→`anthropic:opus` | Plan job (planner). |
+| `ANT_DEFAULT_MODEL_LEARN` | `anthropic:sonnet` | Learn job (codebase indexing). |
+| `ANT_DEFAULT_MODEL_VISUAL`, `..._VISUAL_{DIRECT,EXPLAIN,ENGRAVE,SKETCH,RENDER}` | `google:flash`; `pro` for text nodes, `flashImage`/`proImage` for sketch/render | Visual job. `SKETCH`/`RENDER` must bind to an image-generation tier. |
+| `ANT_DEFAULT_MODEL_REVIEWER`, `ANT_DEFAULT_MODEL_DOC` | `anthropic:opus` | Reviewer / doc agents. |
+| `ANT_DEFAULT_MODEL_COMMIT` | `anthropic:sonnet` | Auxiliary one-shot: the ant-authored commit message. |
+| `ANT_DEFAULT_MODEL_FALLBACK` | `anthropic:opus` | Used only when a call maps to no slot at all. |
+
+A per-project override in the UI still wins over these. An unknown provider, unknown tier, malformed value, or a text tier on an image slot is logged and ignored in favour of the built-in binding — a typo cannot brick a deployment.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AI_MODEL_TEMPERATURE`, `{JOB}_MODEL_TEMPERATURE` | `0.7` | Fallback only — per-call sampling policy is the SSOT ([`llmSampling.ts`](../../packages/ant-cli/src/core/ports/llmSampling.ts)). |
+| `{JOB}_MODEL_MAX_TOKENS` | `16000` | Fallback output ceiling per agent job, e.g. `CODE_MODEL_MAX_TOKENS`. |
 
 ## Concurrency and limits
 

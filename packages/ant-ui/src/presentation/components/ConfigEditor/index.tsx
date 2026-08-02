@@ -48,7 +48,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   // onClose is handled by MainPanel tab close button (kept for API compatibility)
   void onClose;
   const { t } = useTranslation('config');
-  const { availableModels, isLoadingModels, defaultModelId, configuredProviders } = useAvailableModels();
+  const { availableModels, isLoadingModels, configuredProviders } = useAvailableModels();
   const {
     editedConfig,
     setEditedConfig,
@@ -56,7 +56,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     setErrors,
     hasChanges,
     serverMode,
-  } = useConfigEditor(config, defaultModelId);
+  } = useConfigEditor(config);
 
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);

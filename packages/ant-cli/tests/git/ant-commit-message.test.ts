@@ -13,7 +13,7 @@
  *   4. `loadWorkspaceConfigFromPath` (the env-free loader used by the API-server
  *      git-op path) must inject the auxiliary `commit` model default even when
  *      the user's config.json omits it — so model resolution never silently
- *      falls back to AI_MODEL_NAME/opus.
+ *      falls back to the global fallback binding (opus).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -177,8 +177,6 @@ describe('withAntCoAuthor — ANT co-author attribution', () => {
 
 describe('loadWorkspaceConfigFromPath injects the aux commit default', () => {
   it('supplies commit.default even when config.json omits it', async () => {
-    const prev = process.env.AI_MODEL_NAME;
-    delete process.env.AI_MODEL_NAME;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-cfg-'));
     try {
       // User config with NO commit key (mirrors real pre-feature configs).
@@ -187,10 +185,9 @@ describe('loadWorkspaceConfigFromPath injects the aux commit default', () => {
         JSON.stringify({ llmModels: { code: { default: 'claude-sonnet-5' } } }),
       );
       const config = await loadWorkspaceConfigFromPath(dir);
-      expect(config.llmModels.commit?.default).toBe(DEFAULT_MODELS.sonnetTier);
+      expect(config.llmModels.commit?.default).toBe(DEFAULT_MODELS.anthropic.sonnet);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
-      if (prev !== undefined) process.env.AI_MODEL_NAME = prev;
     }
   });
 });

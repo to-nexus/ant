@@ -12,7 +12,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { AUXILIARY_MODEL_KEYS, OVERRIDABLE_MODEL_SLOTS, MODEL_JOB_AGENT, DEFAULT_MODELS } from '@ant/shared';
-import { getConfigMergeDefaults } from '../../src/core/types/workspace';
+import { getConfigMergeDefaults, getDefaultWorkspaceConfig } from '../../src/core/types/workspace';
+import { getDefaultLlmModels, envVarForSlot, listBindingEnvVars } from '../../src/core/config/defaultModels';
 import type { LLMContext } from '../../src/periphery/adapters/llm/LLMClientFactory';
 
 describe('auxiliary model slots', () => {
@@ -23,17 +24,26 @@ describe('auxiliary model slots', () => {
     }
   });
 
-  it('the commit aux slot defaults to the Sonnet tier', () => {
-    // Without AI_MODEL_NAME the merge base resolves to the tier default; with it
-    // set, the env override wins. Assert the tier default here.
-    const prev = process.env.AI_MODEL_NAME;
-    delete process.env.AI_MODEL_NAME;
-    try {
-      const defaults = getConfigMergeDefaults();
-      expect(defaults.commit?.default).toBe(DEFAULT_MODELS.sonnetTier);
-    } finally {
-      if (prev !== undefined) process.env.AI_MODEL_NAME = prev;
+  it('every auxiliary key is in the binding table every default surface derives from', () => {
+    // The `commit` chip rendered blank because the creation snapshot, the config
+    // heal map and the FE seed each carried their own copy of the default table
+    // and only two of five had this key. They now all derive from
+    // `getDefaultLlmModels()`, so covering it here covers all of them.
+    const full = getDefaultLlmModels();
+    for (const key of AUXILIARY_MODEL_KEYS) {
+      expect(full[key]?.default, `missing from binding table: "${key}"`).toBeTruthy();
+      expect(getDefaultWorkspaceConfig('p').llmModels?.[key]?.default).toBe(full[key]!.default);
     }
+  });
+
+  it('every auxiliary key is bindable by env like any job slot', () => {
+    for (const key of AUXILIARY_MODEL_KEYS) {
+      expect(listBindingEnvVars()).toContain(envVarForSlot(key, 'default'));
+    }
+  });
+
+  it('the commit aux slot defaults to the Sonnet tier', () => {
+    expect(getConfigMergeDefaults().commit?.default).toBe(DEFAULT_MODELS.anthropic.sonnet);
   });
 
   it('auxiliary keys stay OUT of the graph slot maps (drift-test isolation)', () => {

@@ -54,8 +54,8 @@ export async function authorAntCommitPlan(
   // The git-op commit runs in the shared API-server process, which has NO
   // `ANT_PROJECT_PATH` (that env var is set only for job-runner children). So
   // resolve the project path explicitly and load config via the env-free loader
-  // — otherwise the merged `commit` aux-model default is never seen and the
-  // model silently falls back to `AI_MODEL_NAME`/opus.
+  // — otherwise the merged `commit` aux-model default is never seen and the model
+  // silently falls back to the global fallback binding (opus).
   const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
   const workspaceConfig = await loadWorkspaceConfigFromPath(projectPath, projectId).catch((e) => {
     console.warn('⚠️  [AntCommit] config load failed, model resolution will use env defaults:', e);

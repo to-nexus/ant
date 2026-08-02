@@ -24,7 +24,7 @@ const ACTOR_INFO_MAP: Record<string, ActorInfo> = {
     id: 'llm',
     displayName: 'LLM',
     provider: 'Anthropic',  // Default (overridden by config)
-    model: DEFAULT_MODELS.sonnetTier,     // Default (overridden by config)
+    model: DEFAULT_MODELS.anthropic.sonnet,     // Default (overridden by config)
     icon: '🤖'
   },
   'embedding-model': {
