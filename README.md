@@ -15,14 +15,13 @@
   <a href="docs/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
-<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
 <p align="center">
-  <img src="docs/assets/code-job.gif" width="880"
-       alt="A code job decomposed into tasks moving across Ant's board while the agent chat streams work cards">
+  <img src="docs/assets/code-job.webp" width="880"
+       alt="A directive decomposed into fourteen tasks on Ant's board, then documents and token files streaming into the workspace, then the board again with three tasks moved to Completed">
 </p>
-<p align="center"><sub>One directive → decomposed tasks running in parallel, with
-a verification task queued last. <a href="">▶ 2-minute walkthrough</a></sub></p>
--->
+<p align="center"><sub>One directive → decomposed tasks running in parallel, each
+writing a real file at a real path — read it, diff it, argue with it. Not just a
+commit.</sub></p>
 
 > ⚠️ **Status: pre-alpha, solo-developed.** It works end-to-end, but the public
 > API and file layout will move until the first tagged release, and building this
@@ -71,13 +70,6 @@ black box that occasionally writes code.
   <img src="docs/assets/build-loop.png" width="880"
        alt="Two pipelines. The build loop, for greenfield or a major new feature, runs plan (plan/PRD.md) then system design (architecture/system/) then UI or game art (visual/ui/) then code (codebase/). The iteration loop, for every change after that, skips both plan and system design and runs spec (architecture/spec/) straight into code, with a rev-spec return arc">
 </p>
-
-<p align="center">
-  <img src="docs/assets/design-job.webp" width="880"
-       alt="A planner job streaming a product requirements document into the workspace as rendered markdown, with the file path and a live Streaming indicator in the panel header">
-</p>
-<p align="center"><sub>Every stage writes a real document at a real path — read it,
-diff it, argue with it. Not just a commit.</sub></p>
 
 ---
 
