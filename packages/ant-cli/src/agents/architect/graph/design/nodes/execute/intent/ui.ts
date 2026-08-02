@@ -455,7 +455,7 @@ function buildResourcesSummary(state: DesignGraphState): string {
     resourcesSummary += '\n';
   } else {
     resourcesSummary += handoffAssets
-      ? 'No real asset files placed yet — author needed vector assets as svg files inside the bundle\'s `assets/` directory instead of pointing at missing files.\n\n'
+      ? 'No real asset files placed yet — author needed vector assets inside the bundle, never in a workspace directory outside the bundle root: shared marks / state illustrations as svg files in the bundle\'s `assets/`, per-content normal-state imagery inline in the consuming page.\n\n'
       : 'No real asset files placed yet — document needed slots as placeholder `src` paths under `assets/service/<category>/`.\n\n';
   }
 

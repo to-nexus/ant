@@ -46,7 +46,7 @@ You are decomposing UI design work into file-authoring tasks for a **handoff bun
 - **Screens**: identify the distinct pages/views from the PRD's Information Architecture and Screen Composition sections — `SC-XXX` identifiers, when present, are the SSOT for the screen list. One task per screen file. Cap at 8 screen tasks — merge minor screens into their parent flow's file.
 - **Components**: derive the shared class layer per CRITICAL RULE 5 (class-ownership closure) — one `.css` task at stage 2 plus its specimen `.html` task at stage 3.
 - **Tokens**: split `tokens/` by concern only as far as the design warrants (a small product may need a single `tokens/tokens.css`).
-- **Assets**: emit an `assets/` task only when the design needs shared vector assets that screens/components reference.
+- **Assets**: emit an `assets/` task only when the design needs shared vector assets that screens/components reference. Per-content normal-state imagery (a listing's screenshot, a record's photo) is NOT a shared asset — the consuming page authors it inline, or it becomes a dedicated per-content asset file when multiple pages show the same content.
 
 ### Available Resources
 
@@ -54,7 +54,7 @@ You are decomposing UI design work into file-authoring tasks for a **handoff bun
 |----------|-------|
 | Asset files (`assets/`) | {{assetCount}} |
 
-⚠️ **Blind spot**: real asset files already placed in the workspace are referenced by their existing path; missing imagery is authored as svg INSIDE the bundle's `assets/` — never as a dangling path.
+⚠️ **Blind spot**: real asset files already placed in the workspace are referenced by their existing path; missing imagery is authored INSIDE the bundle — never as a dangling path, never in a workspace directory outside the bundle root. Shared marks and state illustrations go to `assets/`; per-content normal-state imagery is authored by its consuming page. An empty-state illustration planned as "the" image asset will end up in every normal slot — plan imagery per state, not per "needs an image".
 {{/if}}
 
 ---
