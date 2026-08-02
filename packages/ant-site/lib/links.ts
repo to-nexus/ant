@@ -19,7 +19,7 @@ export const DOCS_URL = `${GITHUB_URL}/tree/main/docs`;
 // URL below 404s for everyone, owners included. Bump ANT_DESKTOP_VERSION per release.
 export const ANT_DESKTOP_REPO = 'to-nexus/ant-desktop';
 export const ANT_DESKTOP_RELEASES_URL = `https://github.com/${ANT_DESKTOP_REPO}/releases`;
-export const ANT_DESKTOP_VERSION = '0.1.4';
+export const ANT_DESKTOP_VERSION = '1.0.0';
 // Tag is `v${version}`; asset filenames use the bare version.
 const antDesktopAsset = (file: string) =>
   `https://github.com/${ANT_DESKTOP_REPO}/releases/download/v${ANT_DESKTOP_VERSION}/${file}`;
