@@ -66,11 +66,19 @@ export async function runDesignGraph(initial: DesignGraphState) {
       
       // Project the last checkpoint's in-flight tasks onto the queue head with
       // `interrupted:true`. Two boundaries land tasks here:
-      //   - Graceful interrupt (handleInterruption → captureWorkerSnapshots)
-      //     leaves them marked + carrying `resumeState`.
-      //   - Hard-kill orphan (process died between save and resume) leaves
-      //     them unmarked; the mark is applied here.
-      // The map is idempotent so the graceful case is a no-op spread.
+      //   - Graceful interrupt (handleInterruption) requeues them into
+      //     `taskQueue` and empties `runningTasks`, so this read is a no-op.
+      //   - Hard-kill orphan (process died between the last periodic
+      //     orchestrator checkpoint — which persists live `runningTasks` —
+      //     and any graceful teardown) leaves them here unmarked; the mark
+      //     is applied so they surface as resumable.
+      // NOTE (oat-choosing-horse): design tasks carry NO `resumeState` —
+      // `captureWorkerSnapshots` exists only in the code job's orchestrator
+      // hooks, and `DesignTask.resumeState` is never populated. The design
+      // resume contract is TASK-granularity: an interrupted task restarts
+      // from call index 0 with an empty conversation (its already-written
+      // document sections survive on disk). See
+      // docs/internals/15-design-job.md "Interruption & resume".
       const persistedRunning: any[] = (session?.state as any)?.runningTasks ?? [];
       const runningMarked = persistedRunning.map((t: any) => ({ ...t, interrupted: true }));
 

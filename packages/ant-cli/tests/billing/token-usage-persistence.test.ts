@@ -15,6 +15,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { projectSessionStateToKanban } from '../../src/core/realtime/projectSessionStateToKanban';
 import type { SessionState } from '../../src/core/types/session';
 import type { TokenUsageByModel } from '@ant/shared';
@@ -77,5 +79,56 @@ describe('per-model usage survives the session→kanban projection (post-complet
       false,
     );
     expect(kanban.tokenUsageByModel).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Twin-channel publication pairing — design graph (oat-choosing-horse RCA).
+//
+// `accumulateTokenUsage` / `rollUpTaskUsageToJob` MUTATE the per-model maps on
+// the node's state snapshot; LangGraph only persists what a node RETURNS. The
+// design execute node returned the aggregate twins (`tokenUsage`,
+// `_currentTaskTokenUsage`) but not the per-model twins, so every parallel
+// worker's per-model usage was dropped from the checkpoint (3 of 29 calls
+// attributed; the resumed model was missing entirely). These static pairing
+// guards keep every publication site honest without simulating a full graph
+// run.
+// ---------------------------------------------------------------------------
+describe('design graph publishes per-model twins wherever it publishes aggregates', () => {
+  const read = (rel: string) =>
+    readFileSync(join(__dirname, '../../src', rel), 'utf-8');
+
+  const count = (s: string, needle: string) => s.split(needle).length - 1;
+
+  it('design execute returns pair _currentTaskTokenUsage with its per-model twin', () => {
+    for (const rel of [
+      'agents/architect/graph/design/nodes/execute/index.ts',
+      'agents/architect/graph/design/nodes/execute/explain.ts',
+    ]) {
+      const src = read(rel);
+      const agg = count(src, '_currentTaskTokenUsage: state._currentTaskTokenUsage');
+      const perModel = count(src, '_currentTaskTokenUsageByModel: state._currentTaskTokenUsageByModel');
+      expect(agg, `${rel}: aggregate returns`).toBeGreaterThan(0);
+      expect(perModel, `${rel}: per-model twin must be returned at every site`).toBe(agg);
+    }
+  });
+
+  it('design worker completion returns the per-task per-model delta', () => {
+    const src = read('agents/architect/graph/design/parallel/workerGraph.ts');
+    expect(src).toContain('_currentTaskTokenUsageByModel: state._currentTaskTokenUsageByModel');
+    // The cumulative map must NOT be returned from the worker — TaskWorker's
+    // fallback would report the sharedContext seed as a per-task figure.
+    expect(src).not.toContain('tokenUsageByModel: state.tokenUsageByModel');
+  });
+
+  it('design serial checkTaskStatus publishes the rolled-up job map after every rollup', () => {
+    const src = read('agents/architect/graph/design/graph.ts');
+    // One publication per serial rollUpTaskUsageToJob site (figma pause,
+    // no-output pause, task completion). The parallel path publishes via
+    // `result.tokenUsageByModel` from the orchestrator instead.
+    const rollups = count(src, 'rollUpTaskUsageToJob(state)');
+    const published = count(src, 'tokenUsageByModel: state.tokenUsageByModel');
+    expect(rollups).toBeGreaterThanOrEqual(3);
+    expect(published, 'each serial rollup site must publish the mutated map').toBeGreaterThanOrEqual(rollups);
   });
 });

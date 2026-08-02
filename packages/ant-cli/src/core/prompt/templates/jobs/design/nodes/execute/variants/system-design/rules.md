@@ -135,9 +135,9 @@ Use `<append>` tag:
 **Include `<!-- LAST_SECTION: N -->` at the end.**
 {{/if}}
 
-**❌ FATAL ERROR - Using <file> on existing document:**
+**❌ WRONG - Using <file> on existing document:**
 ```xml
-<file path="architecture/system/be-system-main.md">  ← WRONG! Will OVERWRITE!
+<file path="architecture/system/be-system-main.md">  ← WRONG for continuation
 ## N. [Topic]
 ...
 </file>
@@ -150,6 +150,8 @@ Use `<append>` tag:
 ...
 </append>
 ```
+
+(Content is never lost either way — the system converts a `<file>` tag on an existing document into an append as a safety net — but the correct tag keeps section numbering and metadata clean, so treat the tag choice as binding.)
 
 ### Scenario 3: Modifying Existing Sections (Rare)
 
@@ -183,12 +185,7 @@ edit_file(
 ## Tag Selection Decision Tree
 ════════════════════════════════════════════════════════════════════════════════
 
-```
-Is lastSectionNumber provided in context?
-├─ NO  → Use <file> (creating new document)
-└─ YES → Use <append> (continuing existing document)
-           ⚠️ Using <file> will cause FATAL ERROR!
-```
+The **Target Document** block in your context states authoritatively whether the document exists and which tag to use — follow it. Do NOT verify document existence with tool calls (no `edit_file`/`read_file` existence probes) before writing.
 
 **Summary:**
 - ✅ `<file>` → First task only (new document)

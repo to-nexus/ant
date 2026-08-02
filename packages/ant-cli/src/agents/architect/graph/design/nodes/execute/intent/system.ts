@@ -61,6 +61,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     // ✅ Load existing design document's last section number and pattern
     let lastSectionNumber = 0;
     let sectionPattern = '';  // 'top-level' or 'nested'
+    let documentExists = false;
     
     const targetFile = state.currentTask.targetFile || 'be-system-main.md';
     console.log(`📄 [Execute] Target file: ${targetFile}`);
@@ -103,6 +104,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
         }
         
         const fileExists = await state.deps.fileSystem.fileExists(designDocPath);
+        documentExists = fileExists;
         if (fileExists) {
           const fullContent = await state.deps.fileSystem.readFile(designDocPath) || '';
           if (fullContent) {
@@ -213,7 +215,7 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     // (mirrors code job's `state.planText` naming). The remaining
     // runtimeContext carries Target / Task / Directive at the prompt
     // tail. See `.claude/plans/plan-execute-parallel-spring.md`.
-    const { planText, runtimeContext } = buildRuntimeContext(state);
+    const { planText, runtimeContext } = buildRuntimeContext(state, { documentExists, lastSectionNumber });
 
     // Reference-codebase usage vars — sibling-project catalog for the usage
     // partial (register + read mid-execute).
@@ -433,21 +435,48 @@ export interface RuntimeContextBlocks {
   runtimeContext: string;
 }
 
-export function buildRuntimeContext(state: DesignGraphState): RuntimeContextBlocks {
+export interface RuntimeContextDocState {
+  /** Target document already exists on disk (checked at prompt-build time). */
+  documentExists?: boolean;
+  /** Highest section number found in the existing document (0 when none). */
+  lastSectionNumber?: number;
+}
+
+export function buildRuntimeContext(
+  state: DesignGraphState,
+  docState: RuntimeContextDocState = {},
+): RuntimeContextBlocks {
   const task = state.currentTask;
   const planText = state.planText && state.planText.trim().length > 0 ? state.planText : '';
 
   // Task / directive / existing-design details.
   const lines: string[] = [];
 
-  // 1. Target File
+  // 1. Target File — single owner of the <file>-vs-<append> decision.
+  // Disk state is read at prompt-build time (same-document tasks are
+  // serialized within a parallelGroup, so it cannot go stale mid-task);
+  // stating it here removes the model's incentive to probe the
+  // filesystem with no-op edit_file calls before writing
+  // (oat-choosing-horse RCA).
   if (task?.targetFile) {
     lines.push(`# Target Document`);
     const outputDir = designDirOf(task.targetFile);
-    lines.push(`Write to: \`${outputDir}/${task.targetFile}\``);
+    const targetPath = `${outputDir}/${task.targetFile}`;
+    lines.push(`Write to: \`${targetPath}\``);
     lines.push('');
-    lines.push(`⚠️ CRITICAL: You MUST write to this file in your XML output!`);
-    lines.push(`Use: <file path="${outputDir}/${task.targetFile}">...</file>`);
+    if (state.resolvedAction?.mode === 'refactor' && docState.documentExists) {
+      lines.push(`This document already exists. Modify the relevant sections with \`edit_file\` (use <append path="${targetPath}"> only to add new sections at the end).`);
+    } else if (docState.documentExists) {
+      const sectionNote = docState.lastSectionNumber
+        ? ` (last section: ${docState.lastSectionNumber})`
+        : '';
+      lines.push(`This document already exists${sectionNote}.`);
+      lines.push(`⚠️ CRITICAL: Continue it with: <append path="${targetPath}">...</append>`);
+    } else {
+      lines.push(`This document does not exist yet.`);
+      lines.push(`⚠️ CRITICAL: Create it with: <file path="${targetPath}">...</file>`);
+    }
+    lines.push(`The existence state above is authoritative — do NOT verify it with tool calls (no edit_file/read_file existence probes) before writing.`);
     lines.push('');
   }
 

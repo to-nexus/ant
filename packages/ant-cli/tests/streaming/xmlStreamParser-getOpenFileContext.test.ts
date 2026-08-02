@@ -105,3 +105,20 @@ describe('XMLStreamParser.getOpenFileContext', () => {
     expect(open!.tailContent).toContain('partial = 42 +');
   });
 });
+
+// Whitespace tolerance parity (oat-choosing-horse hardening): the <file>
+// pattern always allowed `\s*>` before the closer, but <append> required
+// `"` immediately followed by `>` — one stray space demoted the whole
+// append body to plain text with zero error signal.
+describe('XMLStreamParser <append> whitespace tolerance', () => {
+  it('opens an append block when a space precedes the closing >', () => {
+    const parser = new XMLStreamParser();
+    const state = new StreamState();
+    feed(parser, state, '<append path="architecture/system/be-system-main.md" >\n');
+    feed(parser, state, '## 4. Topic\n');
+    const open = parser.getOpenFileContext();
+    expect(open).not.toBeNull();
+    expect(open!.kind).toBe('append');
+    expect(open!.path).toBe('architecture/system/be-system-main.md');
+  });
+});
