@@ -18,7 +18,7 @@ body:
     attributes:
       label: Ant version / commit
       description: Output of `git rev-parse HEAD` or the npm package version.
-      placeholder: "e.g. 0.1.0 or commit a1b2c3d"
+      placeholder: "e.g. 1.0.0 or commit a1b2c3d"
     validations:
       required: true
 

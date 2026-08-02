@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-03
+
 ### Added
 
 - Initial OSS release scaffolding: `LICENSE` (Apache-2.0), `SECURITY.md`,
@@ -33,7 +35,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Corrected the install docs' Node/pnpm requirements (Node >= 22.13,
   pnpm 11.1.0) and replaced `<org>` placeholder clone URLs.
 - Workspace packages are marked `private` and carry `repository` / `bugs` /
-  `homepage` metadata; the root version now reads `0.1.0`.
+  `homepage` metadata; the root version now reads `1.0.0`.
 - `README.md` / `README.ko.md`: `Contributing` rewritten to state that the
   project is solo-developed and to name the areas where outside help lands
   best. `README.ko.md` gained the `Stack` and `Contributing` sections it was
