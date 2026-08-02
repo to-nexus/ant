@@ -18,7 +18,12 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DEFAULT_MODELS } from '@ant/shared';
-import { listBindingEnvVars } from '../../src/core/config/defaultModels';
+import {
+  FALLBACK_BINDING,
+  FALLBACK_ENV_VAR,
+  listBindingEnvVars,
+  listDefaultBindings,
+} from '../../src/core/config/defaultModels';
 
 const cliRoot = path.resolve(__dirname, '../..');
 const OWNER = 'src/core/config/defaultModels.ts';
@@ -104,6 +109,25 @@ describe('default-model single owner', () => {
           DEFAULT_MODELS[provider as keyof typeof DEFAULT_MODELS]?.[tier],
           `${file}: ${m[1]}=${m[2]} does not resolve`,
         ).toBeDefined();
+      }
+    }
+  });
+
+  it('every binding value shown in the examples equals its built-in', () => {
+    // The examples are commented out and captioned "Leave commented to use the
+    // built-ins shown", so each line doubles as documentation of the code default.
+    // `ANT_DEFAULT_MODEL_FALLBACK` drifted (shown sonnet, bound opus) precisely
+    // because the row above only checks that a value resolves, not that it matches.
+    const builtin = new Map<string, string>([
+      [FALLBACK_ENV_VAR, FALLBACK_BINDING],
+      ...listDefaultBindings().map(({ envVar, ref }) => [envVar, ref] as [string, string]),
+    ]);
+    for (const file of ['.env.example.local', '.env.example.cloud']) {
+      const text = fs.readFileSync(path.join(cliRoot, file), 'utf8');
+      for (const line of text.split('\n')) {
+        const m = line.match(/^#?\s*(ANT_DEFAULT_MODEL_[A-Z_]+)=(.+)$/);
+        if (!m) continue;
+        expect(m[2].trim(), `${file}: ${m[1]} shown as a non-built-in value`).toBe(builtin.get(m[1]));
       }
     }
   });
