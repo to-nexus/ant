@@ -31,10 +31,16 @@ export function usePreviewConfig(
   const [isLoading, setIsLoading] = useState(true);
 
   const loadConfig = useCallback(async () => {
-    if (!selectedProject) return;
+    // Config is feature-scoped; with nothing selected there is nothing to load
+    // (and no phantom `main` to fall back on). Settle the loading flag so the
+    // panel renders its empty state instead of spinning forever.
+    if (!selectedProject || !selectedFeature) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
-      const configData = await getPreviewConfig(selectedProject, selectedFeature || 'main');
+      const configData = await getPreviewConfig(selectedProject, selectedFeature);
       setConfig(configData);
     } catch (error) {
       console.error('[PreviewConfig] Failed to load config:', error);

@@ -4,7 +4,9 @@ export function useDismissedErrors(
   selectedProject: string | undefined,
   selectedFeature: string | undefined,
 ) {
-  const dismissedKey = `ant-ui:dismissed-preview-errors:${selectedProject || ''}:${selectedFeature || 'main'}`;
+  // `''` for "nothing selected" — never `'main'`, which is a real feature name
+  // and would share a namespace with it.
+  const dismissedKey = `ant-ui:dismissed-preview-errors:${selectedProject || ''}:${selectedFeature || ''}`;
   const [dismissedSet, setDismissedSet] = useState<Set<string>>(new Set());
 
   useEffect(() => {

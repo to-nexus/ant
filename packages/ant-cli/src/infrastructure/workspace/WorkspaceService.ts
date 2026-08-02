@@ -96,10 +96,12 @@ export class WorkspaceService implements WorkspaceServicePort {
     if (!fs.existsSync(workspacePath)) {
       await fs.promises.mkdir(workspacePath, { recursive: true });
       
-      // Create standard subdirectories
+      // Features only. A project has no codebase of its own — every codebase is
+      // a linked worktree at `features/{slug}/codebase`, so a project-level
+      // `codebase/` is a ghost that makes a misrouted path silently "succeed"
+      // onto an empty directory instead of failing loudly.
       await fs.promises.mkdir(path.join(workspacePath, 'features'), { recursive: true });
-      await fs.promises.mkdir(path.join(workspacePath, 'codebase'), { recursive: true });
-      
+
       console.log(`[WorkspaceService] Created workspace: ${tenantId}/${projectId}`);
     }
     

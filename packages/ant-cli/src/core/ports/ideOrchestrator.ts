@@ -21,7 +21,7 @@ export interface IDEParams {
   tenantId: string;
   userId: string;
   projectId: string;
-  feature?: string;  // Default: 'main'
+  feature?: string;
   workspacePath: string;
   userContext: UserContext;
 }

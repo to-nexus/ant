@@ -11,32 +11,31 @@ export type { CustomDomain, CustomDomainStatus, CustomDomainCertStatus, CustomDo
 
 export function startDeploy(
   projectId: string,
-  feature?: string,
+  feature: string,
   visibility: DeployVisibility = 'public',
 ): Promise<{ success: boolean; url?: string; message: string }> {
   return apiPost(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/deploy`,
-    { feature: feature || 'main', visibility },
+    { feature, visibility },
   );
 }
 
 export function stopDeploy(
   projectId: string,
-  feature?: string,
+  feature: string,
 ): Promise<{ success: boolean; message: string }> {
   return apiPost(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/deploy/stop`,
-    { feature: feature || 'main' },
+    { feature },
   );
 }
 
 export function getDeployStatus(
   projectId: string,
-  feature?: string,
+  feature: string,
 ): Promise<DeployStatus> {
-  const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
   return apiGet(
-    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/deploy/status${featureParam}`,
+    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/deploy/status?feature=${encodeURIComponent(feature)}`,
   );
 }
 

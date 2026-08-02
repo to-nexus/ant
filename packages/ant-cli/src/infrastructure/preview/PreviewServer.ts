@@ -19,7 +19,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import * as path from 'path';
-import { featureNameToSlug, type ProjectProfile } from '@ant/shared';
+import { type ProjectProfile } from '@ant/shared';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as net from 'net';
@@ -44,6 +44,7 @@ import { CustomDomainService } from '../deploy/customDomain/CustomDomainService'
 import { isBillingEnabled } from '../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { extractUserContext } from '../../periphery/adapters/http/routes/helpers/userContext';
+import { UnifiedWorkspaceResolver, type WorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
@@ -245,6 +246,22 @@ export function openRawTunnel(
   });
 }
 
+/**
+ * Every preview/deploy operation is feature-scoped — a project has no codebase
+ * of its own. Returns the feature name, or sends 400 and returns null.
+ *
+ * Replaces the old `req.body?.feature || 'main'` defaults, which synthesized a
+ * feature that may not exist instead of rejecting an incomplete request.
+ */
+function requireFeature(req: Request, res: Response): string | null {
+  const feature = (req.body?.feature ?? req.query.feature) as string | undefined;
+  if (!feature) {
+    res.status(400).json({ success: false, error: 'feature is required' });
+    return null;
+  }
+  return feature;
+}
+
 // ============================================
 // PreviewServer
 // ============================================
@@ -258,11 +275,15 @@ export class PreviewServer {
   private stateStore!: StateStorePort & PortRegistryPort;
   private server: any;
   private options: PreviewServerOptions;
+  private workspaceResolver: WorkspaceResolver;
   private cleanupUnsubscribe?: () => void;
   private connectionsRefreshUnsubscribe?: () => void;
 
   constructor(options: PreviewServerOptions) {
     this.options = options;
+    this.workspaceResolver = new UnifiedWorkspaceResolver(
+      options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces',
+    );
     this.app = express();
   }
 
@@ -375,7 +396,7 @@ export class PreviewServer {
         const msg = raw as
           | { organizationId?: string; userId?: string; projectId?: string; feature?: string }
           | undefined;
-        if (!msg || !msg.organizationId || !msg.userId || !msg.projectId) {
+        if (!msg || !msg.organizationId || !msg.userId || !msg.projectId || !msg.feature) {
           logger.warn('[PreviewServer] Ignored malformed connections-refresh request', { component: 'PreviewServer' }, { msg });
           return;
         }
@@ -383,10 +404,10 @@ export class PreviewServer {
           const connections = await this.refreshProjectFacts(
             { organizationId: msg.organizationId, userId: msg.userId },
             msg.projectId,
-            msg.feature || 'main',
+            msg.feature,
           );
           logger.info(
-            `[PreviewServer] Connections refreshed post-job: ${connections.length} for ${msg.projectId}/${msg.feature || 'main'}`,
+            `[PreviewServer] Connections refreshed post-job: ${connections.length} for ${msg.projectId}/${msg.feature}`,
             { component: 'PreviewServer' },
           );
         } catch (err: any) {
@@ -435,22 +456,25 @@ export class PreviewServer {
   }
 
   /**
-   * Resolve workspace path for a project (feature-aware)
+   * Resolve a feature's codebase path.
+   *
+   * Delegates to the `WorkspaceResolver` SSOT: a project has no codebase of its
+   * own (bare anchor + linked worktrees), so `feature` is required, and the
+   * resolver owns slugging, the single-segment backstop, and the
+   * `repoType:'local'` short-circuit to the user-owned path.
+   *
+   * This used to fork on `feature !== 'main'` and fall back to a project-level
+   * `{project}/codebase` — a layout the bare-anchor model removed. Since clone
+   * auto-creates a feature named after the remote HEAD branch (`main` for most
+   * repos), that fork pointed the modal case at a nonexistent directory and
+   * preview died with a misleading "No recognized project files found".
    */
   private resolveWorkspacePath(
     userContext: { organizationId: string; userId: string },
     projectId: string,
-    feature?: string
+    feature: string
   ): string {
-    const basePath = this.options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
-    
-    if (feature && feature !== 'main') {
-      // Feature worktree path: basePath/org/user/projectId/features/{feature}/codebase
-      return path.join(basePath, userContext.organizationId, userContext.userId, projectId, 'features', featureNameToSlug(feature), 'codebase');
-    }
-    
-    // Main codebase path: basePath/org/user/projectId/codebase
-    return path.join(basePath, userContext.organizationId, userContext.userId, projectId, 'codebase');
+    return this.workspaceResolver.getCodebasePath(userContext, projectId, feature);
   }
 
   /**
@@ -796,7 +820,8 @@ export class PreviewServer {
       try {
         const projectId = req.params.id;
         const userContext = extractUserContext(req);
-        const feature = req.body?.feature || 'main';
+        const feature = requireFeature(req, res);
+        if (!feature) return;
         const port = req.body?.port;
         const forceRestart = req.body?.forceRestart !== false;
 
@@ -835,7 +860,8 @@ export class PreviewServer {
       try {
         const projectId = req.params.id;
         const userContext = extractUserContext(req);
-        const feature = req.body?.feature || 'main';
+        const feature = requireFeature(req, res);
+        if (!feature) return;
 
         logger.warn(`[PreviewServer] POST /projects/${projectId}/stop (user=${userContext.userId}, feature=${feature})`, {
           component: 'PreviewServer'
@@ -863,7 +889,8 @@ export class PreviewServer {
       try {
         const projectId = req.params.id;
         const userContext = extractUserContext(req);
-        const feature = req.query.feature as string || 'main';
+        const feature = requireFeature(req, res);
+        if (!feature) return;
         // getPreviewStatus reads from Redis (source of truth), with local memory fallback.
         // This guarantees consistent state across pods in multi-pod deployments.
         // status.url and status.packages[].url already obey the multi-frontend
@@ -938,7 +965,8 @@ export class PreviewServer {
         const projectId = req.params.id;
         const userContext = extractUserContext(req);
 
-        const feature = req.query.feature as string || 'main';
+        const feature = requireFeature(req, res);
+        if (!feature) return;
         const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
         const result = await this.previewService.validatePreviewSetup(workspacePath);
 
@@ -970,7 +998,8 @@ export class PreviewServer {
       try {
         const projectId = req.params.id;
         const userContext = extractUserContext(req);
-        const feature = req.query.feature as string || 'main';
+        const feature = requireFeature(req, res);
+        if (!feature) return;
         const serverKey = `${userContext.organizationId}:${userContext.userId}:${projectId}:${feature}`;
 
         const config = await this.stateStore.getPreviewConfig(
@@ -1035,7 +1064,8 @@ export class PreviewServer {
       try {
         const projectId = req.params.id;
         const userContext = extractUserContext(req);
-        const feature = req.body.feature || 'main';
+        const feature = requireFeature(req, res);
+        if (!feature) return;
         const { connections } = req.body;
 
         // Validate resolution type constraints
@@ -1132,7 +1162,8 @@ export class PreviewServer {
       try {
         const projectId = req.params.id;
         const userContext = extractUserContext(req);
-        const feature = req.body.feature || req.query.feature as string || 'main';
+        const feature = requireFeature(req, res);
+        if (!feature) return;
 
         const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
         if (!fs.existsSync(workspacePath)) {
@@ -1158,10 +1189,12 @@ export class PreviewServer {
      * Start build and deploy (non-blocking). Returns 202 immediately;
      * build progress and final status are delivered via SSE 'deploy' events.
      *
-     * Only feature branches are deployable. Requests without a feature (or
-     * with `feature === 'main'`) are rejected with 400. Requests issued
-     * while a code job is writing files on this feature are rejected with
-     * 409 — DeployService surfaces this via `reason === 'code-job-active'`.
+     * Deploy is feature-scoped, so a request without a feature is rejected with
+     * 400. No feature NAME is privileged — under the bare-anchor model branch ==
+     * feature, so `main` is an ordinary feature (and is the one clone
+     * auto-creates). Requests issued while a code job is writing files on this
+     * feature are rejected with 409 — DeployService surfaces this via
+     * `reason === 'code-job-active'`.
      */
     this.app.post('/projects/:id/deploy', async (req: Request, res: Response) => {
       try {
@@ -1169,11 +1202,11 @@ export class PreviewServer {
         const userContext = extractUserContext(req);
         const feature = req.body?.feature;
 
-        if (!feature || feature === 'main') {
+        if (!feature) {
           res.status(400).json({
             success: false,
-            reason: 'base-branch-not-allowed',
-            message: 'Deploy is only available on feature branches',
+            reason: 'feature-required',
+            message: 'A feature is required — deploy is feature-scoped',
           });
           return;
         }
@@ -1243,11 +1276,11 @@ export class PreviewServer {
         const userContext = extractUserContext(req);
         const feature = req.body?.feature;
 
-        if (!feature || feature === 'main') {
+        if (!feature) {
           res.status(400).json({
             success: false,
-            reason: 'base-branch-not-allowed',
-            message: 'Deploy is only available on feature branches',
+            reason: 'feature-required',
+            message: 'A feature is required — deploy is feature-scoped',
           });
           return;
         }
@@ -1276,11 +1309,11 @@ export class PreviewServer {
         const userContext = extractUserContext(req);
         const feature = req.query.feature as string | undefined;
 
-        if (!feature || feature === 'main') {
+        if (!feature) {
           res.status(400).json({
             success: false,
-            reason: 'base-branch-not-allowed',
-            message: 'Deploy is only available on feature branches',
+            reason: 'feature-required',
+            message: 'A feature is required — deploy is feature-scoped',
           });
           return;
         }
@@ -1312,8 +1345,8 @@ export class PreviewServer {
       res: Response,
       feature: string | undefined,
     ): { organizationId: string; userId: string; projectId: string; feature: string } | null => {
-      if (!feature || feature === 'main') {
-        res.status(400).json({ success: false, reason: 'base-branch-not-allowed', message: 'Custom domains are only available on feature branches' });
+      if (!feature) {
+        res.status(400).json({ success: false, reason: 'feature-required', message: 'A feature is required — custom domains are feature-scoped' });
         return null;
       }
       const userContext = extractUserContext(req);
