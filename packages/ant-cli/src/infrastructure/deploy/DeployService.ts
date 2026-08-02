@@ -28,7 +28,6 @@ import { PortManager } from '../networking/PortManager';
 import { StateStorePort, DeployState, DeployPackage, DeployPhase } from '../../core/ports/stateStore';
 import type { ServiceConnection } from '../../core/ports/portRegistry';
 import type { DeployVisibility } from '@ant/shared';
-import { featureNameToSlug } from '@ant/shared';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
 import { startProcessServer } from './ProcessServer';
@@ -49,6 +48,7 @@ import { ProjectStructureDetector } from '../../periphery/adapters/http/services
 import type { PackageInfo } from '../../periphery/adapters/http/services/PreviewService/types';
 import { logger } from '../../utils/logger';
 import { resolveCrossPodLiveness } from '../../core/utils/crossPodLiveness';
+import { UnifiedWorkspaceResolver, type WorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 
 /**
  * Structured reason codes returned from startDeploy so the HTTP layer can
@@ -56,7 +56,7 @@ import { resolveCrossPodLiveness } from '../../core/utils/crossPodLiveness';
  * conflict with an active job, 500 for infrastructure failures).
  */
 export type DeployFailureReason =
-  | 'base-branch-not-allowed'
+  | 'feature-required'
   | 'code-job-active'
   | 'no-deployable-package'
   | 'port-allocation-failed'
@@ -130,7 +130,7 @@ function aggregatePhase(packages: Array<{ phase: DeployPhase }>): DeployPhase {
 export class DeployService {
   private portManager: PortManager;
   private stateStore: StateStorePort;
-  private workspacesBasePath: string;
+  private workspaceResolver: WorkspaceResolver;
   private metaStore = new DeployMetaStore();
   /** Language-aware dependency install for backend (`process`) packages — SSOT shared with preview. */
   private dependencyInstaller = new DependencyInstaller();
@@ -153,8 +153,9 @@ export class DeployService {
   constructor(options: DeployServiceOptions) {
     this.portManager = options.portManager;
     this.stateStore = options.stateStore;
-    this.workspacesBasePath =
-      options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces';
+    this.workspaceResolver = new UnifiedWorkspaceResolver(
+      options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces',
+    );
   }
 
   private makeKey(tenantId: string, userId: string, projectId: string, feature: string): string {
@@ -162,17 +163,19 @@ export class DeployService {
   }
 
   /**
-   * Mirror of PreviewServer.resolveWorkspacePath — needed when we must
-   * rehydrate from scratch and don't have `workspacePath` on the Redis state.
-   *
-   * Deploy is only allowed on feature branches (see startDeploy), so the
-   * `main` branch is never a valid input here; callers should not reach this
-   * path with `feature === 'main'`.
+   * Needed when we must rehydrate from scratch and don't have `workspacePath`
+   * on the Redis state. Shares the `WorkspaceResolver` SSOT with
+   * PreviewServer, so slugging, the single-segment backstop and the
+   * `repoType:'local'` short-circuit all behave identically.
    */
   private guessCodebasePath(
     tenantId: string, userId: string, projectId: string, feature: string
   ): string {
-    return path.join(this.workspacesBasePath, tenantId, userId, projectId, 'features', featureNameToSlug(feature), 'codebase');
+    return this.workspaceResolver.getCodebasePath(
+      { organizationId: tenantId, userId },
+      projectId,
+      feature,
+    );
   }
 
   /**
@@ -400,12 +403,13 @@ export class DeployService {
     codebasePath: string,
     visibility: DeployVisibility = 'public'
   ): Promise<StartDeployResult> {
-    // 1) Base branch guard — main is not deployable. Features only.
-    if (!feature || feature === 'main') {
+    // 1) Deploy is feature-scoped. No feature NAME is privileged — branch ==
+    //    feature, so `main` is an ordinary (and usually the first) feature.
+    if (!feature) {
       return {
         success: false,
-        reason: 'base-branch-not-allowed',
-        message: 'Deploy is only available on feature branches',
+        reason: 'feature-required',
+        message: 'A feature is required — deploy is feature-scoped',
       };
     }
 

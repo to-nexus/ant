@@ -69,10 +69,10 @@ export function useConnectionEditor(
   const isSinglePackage = packageGroups.size <= 1;
 
   const handleAutoDetect = useCallback(async () => {
-    if (!selectedProject) return;
+    if (!selectedProject || !selectedFeature) return;
     setIsDetecting(true);
     try {
-      const result = await detectConnections(selectedProject, selectedFeature || 'main');
+      const result = await detectConnections(selectedProject, selectedFeature);
       if (result.success) {
         setLocalConns(result.connections);
         setConfig(prev => prev
@@ -101,10 +101,10 @@ export function useConnectionEditor(
   }, [selectedProject, selectedFeature, setConfig, mergePreviewStatus]);
 
   const handleSaveConnections = useCallback(async () => {
-    if (!selectedProject) return;
+    if (!selectedProject || !selectedFeature) return;
     setIsSaving(true);
     try {
-      const result = await updatePreviewConfig(selectedProject, selectedFeature || 'main', { connections: localConns });
+      const result = await updatePreviewConfig(selectedProject, selectedFeature, { connections: localConns });
       if (result.success && result.connections) {
         setLocalConns(result.connections);
         setConfig(prev => prev

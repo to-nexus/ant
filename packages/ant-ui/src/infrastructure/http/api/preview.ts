@@ -114,14 +114,14 @@ export interface PreviewConfig {
  */
 export async function startPreview(
   projectId: string,
-  feature?: string,
+  feature: string,
   port?: number,
 ): Promise<{ success: boolean; message: string; script?: string; status?: any }> {
   const response = await authFetch(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/start`,
     {
       method: 'POST',
-      body: JSON.stringify({ feature: feature || 'main', port }),
+      body: JSON.stringify({ feature, port }),
     },
   );
 
@@ -142,25 +142,23 @@ export async function startPreview(
 
 export function stopPreview(
   projectId: string,
-  feature?: string,
+  feature: string,
 ): Promise<{ success: boolean; message: string }> {
   return apiPost(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/stop`,
-    { feature: feature || 'main' },
+    { feature },
   );
 }
 
-export function getPreviewStatus(projectId: string, feature?: string): Promise<PreviewStatus> {
-  const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
+export function getPreviewStatus(projectId: string, feature: string): Promise<PreviewStatus> {
   return apiGet(
-    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/status${featureParam}`,
+    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/status?feature=${encodeURIComponent(feature)}`,
   );
 }
 
-export function getPreviewConfig(projectId: string, feature?: string): Promise<PreviewConfig> {
-  const featureParam = feature ? `?feature=${encodeURIComponent(feature)}` : '';
+export function getPreviewConfig(projectId: string, feature: string): Promise<PreviewConfig> {
   return apiGet(
-    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/preview-config${featureParam}`,
+    `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/preview-config?feature=${encodeURIComponent(feature)}`,
   );
 }
 
@@ -171,16 +169,16 @@ export function updatePreviewConfig(
 ): Promise<{ success: boolean; connections?: ServiceConnection[]; restartRequired?: boolean }> {
   return apiPut(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/preview-config`,
-    { feature: feature || 'main', connections: config.connections },
+    { feature, connections: config.connections },
   );
 }
 
 export function detectConnections(
   projectId: string,
-  feature?: string,
+  feature: string,
 ): Promise<{ success: boolean; connections: ServiceConnection[] }> {
   return apiPost(
     `${PREVIEW_BASE()}/projects/${encodeURIComponent(projectId)}/detect-connections`,
-    { feature: feature || 'main' },
+    { feature },
   );
 }

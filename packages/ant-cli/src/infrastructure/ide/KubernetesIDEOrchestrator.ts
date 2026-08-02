@@ -1217,7 +1217,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             tenantId: '',
             userId: '',
             projectId: instanceKey,
-            feature: 'main'
+            feature: NO_FEATURE_KEY
           };
         }
 
