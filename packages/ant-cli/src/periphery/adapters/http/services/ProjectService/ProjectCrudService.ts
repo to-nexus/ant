@@ -7,7 +7,8 @@ import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/
 import { logger } from '../../../../../utils/logger';
 import { GitHelper } from '../GitService/helper/GitHelper';
 import { DeletionVerificationError } from './errors';
-import { DEFAULT_MODELS, MODEL_REGISTRY } from '@ant/shared';
+import { MODEL_REGISTRY } from '@ant/shared';
+import { getDefaultLlmModels } from '../../../../../core/config/defaultModels';
 
 /**
  * ProjectCrudService
@@ -107,20 +108,16 @@ export class ProjectCrudService {
     // Create config with proper defaults
     const configPath = path.join(projectPath, 'config.json');
     
-    // ✅ Get LLM config from environment variables
-    const envModel = process.env.AI_MODEL_NAME;
-    const modelOpus = envModel || DEFAULT_MODELS.opusTier;
-    const modelSonnet = envModel || DEFAULT_MODELS.sonnetTier;
-    
     // ✅ Read effective GitHub owner: user override > org config
     const effectiveOwner = await this.resolveEffectiveGitHubOwner(userContext);
     const defaultGithubRepo = effectiveOwner
       ? buildDefaultGitHubRepoUrl({ github: { owner: effectiveOwner } }, sanitizedName)
       : undefined;
 
+    const llmModels = getDefaultLlmModels();
+
     logger.debug('Creating project config', { component: 'ProjectCrudService', organizationId: userContext.organizationId, userId: userContext.userId, projectId: id }, {
-      modelOpus,
-      modelSonnet,
+      llmModels,
       defaultGithubRepo,
     });
 
@@ -137,42 +134,7 @@ export class ProjectCrudService {
       repositoryName: sanitizedName,
       repoType: 'cloud',
       ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
-      llmModels: {
-        design: {
-          default: modelSonnet,
-          decompose: modelSonnet,
-          plan: modelOpus,
-          execute: modelSonnet,
-        },
-        code: {
-          default: modelSonnet,
-          decompose: modelOpus,
-          plan: modelSonnet,
-          execute: modelSonnet,
-        },
-        learn: {
-          default: modelSonnet,
-        },
-        plan: {
-          default: modelSonnet,
-          plan: modelOpus,
-          execute: modelSonnet,
-        },
-        visual: {
-          default: 'gemini-3-flash',
-          direct: 'gemini-3.1-pro-preview',
-          explain: 'gemini-3.1-pro-preview',
-          sketch: 'gemini-3.1-flash-image',
-          render: 'gemini-3-pro-image',
-          engrave: 'gemini-3.1-pro-preview',
-        },
-        reviewer: {
-          default: modelOpus,
-        },
-        doc: {
-          default: modelOpus,
-        },
-      }
+      llmModels,
     };
 
     // branchBase is intentionally omitted — a fresh project has NO git and NO
@@ -388,11 +350,9 @@ export class ProjectCrudService {
     const projectPath = this.workspaceResolver.getProjectPath(userContext, id);
     const configPath = path.join(projectPath, 'config.json');
     
-    // Get environment variable defaults for LLM (per-job)
-    const envModel = process.env.AI_MODEL_NAME || process.env.MODEL_NAME;
-    const fallbackOpus = envModel || DEFAULT_MODELS.opusTier;
-    const fallbackSonnet = envModel || DEFAULT_MODELS.sonnetTier;
-    
+    // Single owner of the default table (env bindings already applied).
+    const defaults = getDefaultLlmModels();
+
     try {
       const configData = await fs.promises.readFile(configPath, 'utf-8');
       const config = JSON.parse(configData);
@@ -411,15 +371,14 @@ export class ProjectCrudService {
         llmModelsChanged = true;
       }
 
-      // Text jobs → single tier default per job.
-      const textJobDefaults: Record<string, string> = {
-        design: fallbackSonnet,
-        code: fallbackSonnet,
-        learn: fallbackSonnet,
-        plan: fallbackSonnet,
-        reviewer: fallbackOpus,
-        doc: fallbackOpus,
-      };
+      // Single-default jobs (everything except `visual`, which heals per node
+      // below). Derived from the binding table, so a newly-added slot — the
+      // `commit` aux key was the one this missed — heals automatically.
+      const textJobDefaults: Record<string, string> = Object.fromEntries(
+        Object.entries(defaults)
+          .filter(([job]) => job !== 'visual')
+          .map(([job, cfg]) => [job, cfg!.default!]),
+      );
       for (const [job, def] of Object.entries(textJobDefaults)) {
         const jobCfg = config.llmModels[job];
         if (!jobCfg) {
@@ -442,14 +401,9 @@ export class ProjectCrudService {
         }
       }
 
-      // Visual job → per-node gemini defaults.
-      const visualDefaults: Record<string, string> = {
-        default: 'gemini-3.1-pro-preview',
-        direct: 'gemini-3.1-pro-preview',
-        sketch: 'gemini-3.1-flash-image',
-        render: 'gemini-3-pro-image',
-        engrave: 'gemini-3.1-pro-preview',
-      };
+      // Visual job → per-node defaults, from the same binding table (which also
+      // supplies the `explain` node this map used to omit).
+      const visualDefaults: Record<string, string> = { ...(defaults.visual as Record<string, string>) };
       if (!config.llmModels.visual) {
         config.llmModels.visual = { ...visualDefaults };
         llmModelsChanged = true;
@@ -490,33 +444,7 @@ export class ProjectCrudService {
       return {
         repositoryName: this.sanitizeProjectName(id),
         repoType: 'cloud',
-        llmModels: {
-          design: {
-            default: fallbackSonnet,
-          },
-          code: {
-            default: fallbackSonnet,
-          },
-          learn: {
-            default: fallbackSonnet,
-          },
-          plan: {
-            default: fallbackSonnet,
-          },
-          visual: {
-            default: 'gemini-3.1-pro-preview',
-            direct: 'gemini-3.1-pro-preview',
-            sketch: 'gemini-3.1-flash-image',
-            render: 'gemini-3-pro-image',
-            engrave: 'gemini-3.1-pro-preview',
-          },
-          reviewer: {
-            default: fallbackOpus,
-          },
-          doc: {
-            default: fallbackOpus,
-          },
-        }
+        llmModels: defaults,
       };
     }
   }

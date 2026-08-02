@@ -18,7 +18,7 @@ import { readBranchBase } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
-import { getConfigSlots, DEFAULT_MODELS, featureNameToSlug } from '@ant/shared';
+import { getConfigSlots, featureNameToSlug } from '@ant/shared';
 import { isBillingEnabled } from '../../../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
@@ -26,6 +26,7 @@ import type { JobStateTracker } from '../express/managers/JobStateTracker';
 import type { KanbanService } from '../services';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { setSessionDismissed } from './helpers/sessionCleanup';
+import { getFallbackModel } from '../../../../core/config/defaultModels';
 
 /**
  * Pre-flight credit gate for STARTING / RESUMING a job. Returns a 402 payload
@@ -538,9 +539,7 @@ export function createJobRoutes(deps: {
     const refsRaw = req.query.refs;
     const contextRaw = req.query.context;
     const modelId =
-      (req.query.modelId as string | undefined) ||
-      process.env.AI_MODEL_NAME ||
-      DEFAULT_MODELS.opusTier;
+      (req.query.modelId as string | undefined) || getFallbackModel();
 
     if (!intent || !projectId || !featureName) {
       res.status(400).json({ error: 'intent, projectId, featureName are required' });

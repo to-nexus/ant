@@ -18,13 +18,13 @@ import { GeminiLLMClient } from './GeminiLLMClient';
 import { GeminiImageClient } from './GeminiImageClient';
 import { MockLLMClient } from './MockLLMClient';
 import {
-  DEFAULT_MODELS,
   MODEL_REGISTRY,
   PROVIDER_API_KEY_ENV,
   type ModelProvider,
   type ModelNodeKey,
 } from '@ant/shared';
 import { LlmAuthError } from '../../../core/llm/isLlmAuthError';
+import { getDefaultLlmModels, getFallbackModel } from '../../../core/config/defaultModels';
 
 export type { ModelProvider };
 
@@ -104,14 +104,17 @@ export function detectProviderFromModel(modelName: string): ModelProvider {
  * Priority:
  *   1. workspaceConfig.llmModels[job][node]
  *   2. workspaceConfig.llmModels[job].default
- *   3. env var (AI_MODEL_NAME)
- *   4. hardcoded default
+ *   3. `getFallbackModel()` — the ANT_DEFAULT_MODEL_FALLBACK binding
+ *
+ * Steps 1-2 already carry the per-slot ANT_DEFAULT_MODEL_* bindings, because the
+ * config that reaches here was merged over `getConfigMergeDefaults()`. Step 3 only
+ * fires for a context that maps to no slot at all.
  */
 export function resolveModelForContext(
   context: LLMContext | undefined,
   workspaceConfig: any
 ): string {
-  const defaultModel = process.env.AI_MODEL_NAME || DEFAULT_MODELS.opusTier;
+  const defaultModel = getFallbackModel();
   
   // If no context provided, use default
   if (!context) {
@@ -316,7 +319,7 @@ export function createImageGenerationClient(
 
   const modelName = modelNameOverride
     || workspaceConfig?.llmModels?.visual?.sketch
-    || 'gemini-3.1-flash-image';
+    || getDefaultLlmModels().visual!.sketch!;
 
   return new GeminiImageClient({
     apiKey: process.env.GEMINI_API_KEY,

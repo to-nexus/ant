@@ -7,7 +7,8 @@
  *   - {@link MODEL_RATE_CARD} (pricing.ts)     ← entries with a `rate`
  *   - the `/models` endpoint registry (models.routes.ts) ← `selectable` entries
  *   - {@link AnthropicLLMClient.buildThinkingParams} ← `thinkingMode`
- *   - workspace/project defaults ← {@link DEFAULT_MODELS}
+ *   - built-in per-tier defaults ← {@link DEFAULT_MODELS} (via `tier`); the EFFECTIVE
+ *     defaults add env pins on top in `ant-cli/src/core/config/defaultModels.ts`
  *
  * Add or swap a model HERE and every consumer follows. This is what lets a
  * future model change be a one-line edit instead of a scatter across ~6 files.
@@ -91,6 +92,15 @@ export interface ModelSpec {
   /** Human-readable label shown in the model picker, e.g. "Sonnet 5". */
   displayName: string;
   provider: ModelProvider;
+  /**
+   * This model's family within its provider, abstracted ABOVE version — `opus`
+   * means "the Opus-class Anthropic model, whatever version". `(provider, tier)`
+   * is unique across the registry and is the key operators pin by env
+   * (`ANT_DEFAULT_MODEL_<PROVIDER>_<TIER>`), so swapping Opus 5 → Opus 5.1 is a
+   * config change rather than a code change. Tier names are provider-native: a
+   * tier NEVER represents another provider's model.
+   */
+  tier: string;
   description?: string;
   /** Highlighted with a ★ in the picker. */
   recommended?: boolean;
@@ -146,6 +156,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'claude-sonnet-5',
     displayName: 'Sonnet 5',
     provider: 'anthropic',
+    tier: 'sonnet',
     description: 'Latest Claude Sonnet — best combination of speed and intelligence',
     recommended: true,
     capabilities: ['coding', 'reasoning', 'large-context'],
@@ -160,6 +171,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'claude-opus-5',
     displayName: 'Opus 5',
     provider: 'anthropic',
+    tier: 'opus',
     description: 'Most capable Claude model for complex agentic coding and reasoning',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context', 'complex-analysis'],
@@ -167,13 +179,15 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     rate: { input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 },
     thinkingMode: 'adaptive',
   },
-  // Latest Haiku — fastest Anthropic tier, offered as a selectable choice and
-  // the default for the learn job. Haiku 4.5 uses legacy `budget_tokens`
-  // thinking (`extended`), not adaptive — do not switch this to `adaptive`.
+  // Latest Haiku — fastest Anthropic tier, offered as a selectable choice. No job
+  // default binds to it today (learn uses sonnet), but it stays env-pinnable like
+  // any other tier. Haiku 4.5 uses legacy `budget_tokens` thinking (`extended`),
+  // not adaptive — do not switch this to `adaptive`.
   'claude-haiku-4-5-20251001': {
     id: 'claude-haiku-4-5-20251001',
     displayName: 'Haiku 4.5',
     provider: 'anthropic',
+    tier: 'haiku',
     description: 'Fastest model with near-frontier intelligence',
     capabilities: ['fast', 'classification'],
     contextWindow: 200_000,
@@ -193,6 +207,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'gpt-5.6-sol',
     displayName: 'GPT-5.6 Sol',
     provider: 'openai',
+    tier: 'sol',
     description: 'OpenAI frontier model for complex professional work — 1.05M context (Responses API)',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context', 'complex-analysis'],
@@ -208,6 +223,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'gpt-5.6-terra',
     displayName: 'GPT-5.6 Terra',
     provider: 'openai',
+    tier: 'terra',
     description: 'OpenAI balanced tier — intelligence vs cost, 1.05M context (Responses API)',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context'],
@@ -223,6 +239,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'gpt-5.6-luna',
     displayName: 'GPT-5.6 Luna',
     provider: 'openai',
+    tier: 'luna',
     description: 'OpenAI cost-optimized tier — fast classification and triage, 1.05M context (Responses API)',
     recommended: false,
     capabilities: ['fast', 'classification', 'coding', 'large-context'],
@@ -240,6 +257,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'deepseek-v4-pro',
     displayName: 'DeepSeek V4 Pro',
     provider: 'deepseek',
+    tier: 'pro',
     description: 'DeepSeek V4 Pro — top-tier reasoning + coding, 1M context (OpenAI-compatible API)',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context'],
@@ -257,6 +275,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'deepseek-v4-flash',
     displayName: 'DeepSeek V4 Flash',
     provider: 'deepseek',
+    tier: 'flash',
     description: 'DeepSeek V4 Flash — fast, low-cost reasoning + coding, 1M context (OpenAI-compatible API)',
     recommended: false,
     capabilities: ['fast', 'coding', 'reasoning', 'large-context'],
@@ -276,6 +295,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'glm-5.2',
     displayName: 'GLM-5.2',
     provider: 'glm',
+    tier: 'flagship',
     description: 'GLM-5.2 — Zhipu flagship, top-tier coding + agentic reasoning, 1M context (OpenAI-compatible API)',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context'],
@@ -291,6 +311,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'glm-4.7',
     displayName: 'GLM-4.7',
     provider: 'glm',
+    tier: 'fast',
     description: 'GLM-4.7 — cost-effective coding + multi-step reasoning, 200K context (OpenAI-compatible API)',
     recommended: false,
     capabilities: ['fast', 'coding', 'reasoning'],
@@ -309,6 +330,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'kimi-k3',
     displayName: 'Kimi K3',
     provider: 'kimi',
+    tier: 'flagship',
     description: 'Kimi K3 — Moonshot flagship, long-horizon coding + agentic reasoning, 1M context (OpenAI-compatible API)',
     recommended: false,
     capabilities: ['coding', 'reasoning', 'large-context'],
@@ -322,6 +344,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'kimi-k2.7-code',
     displayName: 'Kimi K2.7 Code',
     provider: 'kimi',
+    tier: 'code',
     description: 'Kimi K2.7 Code — cost-effective coding model, 256K context (OpenAI-compatible API)',
     recommended: false,
     capabilities: ['coding', 'fast'],
@@ -335,6 +358,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'kimi-k2.7-code-highspeed',
     displayName: 'Kimi K2.7 Code (High-speed)',
     provider: 'kimi',
+    tier: 'codeHighspeed',
     description: 'Kimi K2.7 Code high-speed variant — ~180 tok/s output, 256K context (OpenAI-compatible API)',
     recommended: false,
     capabilities: ['coding', 'fast'],
@@ -361,6 +385,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'gemini-3.1-pro-preview',
     displayName: 'Gemini 3.1 Pro',
     provider: 'google',
+    tier: 'pro',
     description: 'Advanced reasoning and prompt engineering for visual jobs',
     recommended: true,
     capabilities: ['reasoning', 'prompt-engineering'],
@@ -375,6 +400,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'gemini-3-flash',
     displayName: 'Gemini 3 Flash',
     provider: 'google',
+    tier: 'flash',
     description: 'Fast classification and triage for visual jobs',
     recommended: false,
     capabilities: ['fast', 'classification'],
@@ -388,6 +414,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'gemini-3-pro-image',
     displayName: 'Gemini 3 Pro Image (Nano Banana Pro)',
     provider: 'google',
+    tier: 'proImage',
     description: 'High-quality image generation for final renders',
     recommended: true,
     capabilities: ['image-generation', 'high-quality'],
@@ -401,6 +428,7 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
     id: 'gemini-3.1-flash-image',
     displayName: 'Gemini 3.1 Flash Image (Nano Banana 2)',
     provider: 'google',
+    tier: 'flashImage',
     description: 'Fast image generation for draft exploration',
     recommended: false,
     capabilities: ['image-generation', 'fast'],
@@ -411,18 +439,38 @@ export const MODEL_REGISTRY: Readonly<Record<string, ModelSpec>> = {
   },
 };
 
+/** provider → tier → model id. */
+export type ModelTierMap = Readonly<Record<ModelProvider, Readonly<Record<string, string>>>>;
+
 /**
- * Default model per job tier — the SSOT the scattered hardcodes collapse into.
- * `AI_MODEL_NAME` env still overrides both at workspace-default time.
+ * Built-in default model per (provider, tier), DERIVED from {@link MODEL_REGISTRY} —
+ * registering a model is the only way to declare a tier, so there is no second table
+ * to forget a provider in.
+ *
+ * This map is deliberately code-owned and NOT env-configurable: which concrete id an
+ * abstract tier points at changes when a provider ships a model, which is a code
+ * update. What operators configure by env is the other direction — which (provider,
+ * tier) each job/node default BINDS to — and that lives in
+ * `ant-cli/src/core/config/defaultModels.ts`.
  */
-export const DEFAULT_MODELS = {
-  /** plan / design / code job defaults. */
-  sonnetTier: 'claude-sonnet-5',
-  /** learn job default — fastest/cheapest tier for codebase indexing. */
-  haikuTier: 'claude-haiku-4-5-20251001',
-  /** reviewer / doc defaults + global fallback when nothing else resolves. */
-  opusTier: 'claude-opus-5',
-} as const;
+function buildDefaultModels(registry: Readonly<Record<string, ModelSpec>>): ModelTierMap {
+  const out = {} as Record<ModelProvider, Record<string, string>>;
+  for (const spec of Object.values(registry)) {
+    const byTier = (out[spec.provider] ??= {});
+    const existing = byTier[spec.tier];
+    if (existing) {
+      // Last-wins would make the default silently depend on registry key order.
+      throw new Error(
+        `MODEL_REGISTRY: duplicate tier "${spec.provider}.${spec.tier}" ` +
+          `(${existing} and ${spec.id}) — a tier identifies one model per provider.`,
+      );
+    }
+    byTier[spec.tier] = spec.id;
+  }
+  return out;
+}
+
+export const DEFAULT_MODELS: ModelTierMap = buildDefaultModels(MODEL_REGISTRY);
 
 /** Thinking mode for a model id, defaulting to `adaptive` for unknown Anthropic
  * ids (safe for future models — never re-introduces the rejected `budget_tokens`

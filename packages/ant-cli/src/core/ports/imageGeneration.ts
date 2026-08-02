@@ -36,6 +36,13 @@ export interface ImageGenerationOptions {
 
 export interface ImageGenerationPort {
   /**
+   * The resolved model id this client generates with. Declared on the port so
+   * callers that record which model produced an image read it directly instead of
+   * casting and carrying their own fallback literal.
+   */
+  readonly modelName: string;
+
+  /**
    * Generate images from a text prompt
    * @returns Array of generated images (1 or more depending on numberOfImages)
    */

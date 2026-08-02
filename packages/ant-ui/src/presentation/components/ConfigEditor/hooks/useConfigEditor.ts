@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
-import { DEFAULT_MODELS } from '@ant/shared';
 import { ProjectConfig } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { selectServerMode } from '@/domain/store/selectors/auth';
 
-export function useConfigEditor(
-  config: ProjectConfig,
-  defaultModelId: string
-) {
+/**
+ * Editor state for a `ProjectConfig`.
+ *
+ * There is deliberately NO local "seed empty llmModels with defaults" step: the BE
+ * `GET /projects/:id/config` heals every job slot from the single binding table
+ * (`ant-cli/src/core/config/defaultModels.ts`) before responding, so a config that
+ * reaches here always carries a complete table. A parallel FE copy of those defaults
+ * is what let the `commit` slot go missing from the picker.
+ */
+export function useConfigEditor(config: ProjectConfig) {
   const serverMode = useStore((state) => selectServerMode(state));
   const [editedConfig, setEditedConfig] = useState<ProjectConfig>(config);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -28,51 +33,6 @@ export function useConfigEditor(
     }
     setHasChanges(false);
   }, [config, serverMode]);
-
-  // Set default model from backend if config has empty llmModels
-  useEffect(() => {
-    if (defaultModelId && editedConfig.llmModels) {
-      const hasEmptyModels = Object.keys(editedConfig.llmModels)
-        .filter(k => editedConfig.llmModels![k as keyof typeof editedConfig.llmModels])
-        .length === 0;
-
-      if (hasEmptyModels) {
-        setEditedConfig(prev => ({
-          ...prev,
-          llmModels: {
-            design: {
-              default: defaultModelId,
-              decompose: defaultModelId,
-              plan: DEFAULT_MODELS.opusTier,
-              execute: defaultModelId,
-            },
-            code: {
-              default: defaultModelId,
-              decompose: DEFAULT_MODELS.opusTier,
-              plan: defaultModelId,
-              execute: defaultModelId,
-            },
-            learn: { default: defaultModelId },
-            plan: {
-              default: defaultModelId,
-              plan: DEFAULT_MODELS.opusTier,
-              execute: defaultModelId,
-            },
-            visual: {
-              default: 'gemini-3-flash',
-              direct: 'gemini-3.1-pro-preview',
-              explain: 'gemini-3.1-pro-preview',
-              sketch: 'gemini-3.1-flash-image',
-              render: 'gemini-3-pro-image',
-              engrave: 'gemini-3.1-pro-preview',
-            },
-            reviewer: { default: DEFAULT_MODELS.opusTier },
-            doc: { default: DEFAULT_MODELS.opusTier },
-          }
-        }));
-      }
-    }
-  }, [defaultModelId, editedConfig.llmModels]);
 
   // Check for changes whenever editedConfig updates
   useEffect(() => {
