@@ -35,6 +35,10 @@ export const PlanAnnotation = Annotation.Root({
   _subagentJoinRedo: Annotation<any>,
   // No-output window (tool-strip salvage trigger) — see _noOutputCallCount.
   _noOutputCallCount: Annotation<any>,
+  // Feature-relative paths execute actually wrote this turn. The runner's
+  // output gate reads it: a sealed brief with zero authored docs is a broken
+  // turn, not a success. See `isUnrealizedBrief` in runner.ts.
+  _authoredDocPaths: Annotation<any>,
 } as const);
 
 /**
@@ -187,6 +191,14 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
    * not touch this channel (last-write-wins preserves it across the hop).
    */
   _noOutputCallCount?: number;
+
+  /**
+   * Feature-relative paths the execute node wrote to disk this turn. The
+   * runner's output gate (`isUnrealizedBrief`) reads it so a sealed brief that
+   * authored nothing pauses resumably (`plan_no_output`) instead of reporting
+   * a phantom success. Empty by design in refactor mode (`edit_file` path).
+   */
+  _authoredDocPaths?: string[];
 }
 
 /** Helper to read planMode from resolvedAction */

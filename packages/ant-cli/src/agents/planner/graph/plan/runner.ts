@@ -32,6 +32,74 @@ function nodeHistoryLen(convs?: Conversations): number {
   return (convs[CONV_KEYS.NODE_PLAN]?.length ?? 0) + (convs[CONV_KEYS.NODE_EXECUTE]?.length ?? 0);
 }
 
+/**
+ * Output gate — a sealed brief that authored nothing is a broken turn, not a
+ * success. `such-catching-motif`: the plan node sealed a 10K-char brief, the
+ * router discarded it (stale `awaitingClarify`), and the job still reported
+ * `success: true` with an empty `plan/` directory and zero artifacts.
+ *
+ * Only `generate` is gated: `refactor` writes through `edit_file`, so
+ * `_authoredDocPaths` is empty by design there, and `explain` never seals.
+ */
+export function isUnrealizedBrief(
+  s: Pick<PlanGraphState, 'planText' | '_authoredDocPaths'>,
+  planMode: string,
+): boolean {
+  return planMode === 'generate'
+    && !!s.planText?.trim()
+    && (s._authoredDocPaths?.length ?? 0) === 0;
+}
+
+interface InterruptionSaveContext {
+  deps: PlanGraphState['deps'];
+  projectId: string;
+  featureName: string;
+  initialState: PlanGraphState;
+  stateSnapshot?: NonNullable<PlanGraphState['deps']>['stateSnapshot'];
+  jobTiming?: import('../../../common/graph/timing/JobTimingManager').JobTiming;
+  recursionCount: number;
+  recursionLimit: number;
+  httpJobId?: string;
+}
+
+/**
+ * Persist a terminal interruption so `JobCleanupManager` can raise the
+ * Resume/Dismiss card and a resume finds the conversations intact. Shared by
+ * the recursion-limit branch and the output gate — the two differ only in the
+ * interruption payload.
+ */
+async function saveInterruptionToSession(
+  ctx: InterruptionSaveContext,
+  interruption: NonNullable<PlanRunnerResult['interruption']>,
+): Promise<void> {
+  if (!ctx.deps?.session) return;
+  try {
+    const session = await ctx.deps.session.load(ctx.projectId, ctx.featureName, 'plan');
+    await ctx.deps.session.updateArtifacts(ctx.projectId, ctx.featureName, 'plan', {
+      state: {
+        ...session.state,
+        directive: ctx.initialState.directive,
+        overrideDirective: ctx.initialState.overrideDirective || ctx.initialState.directive,
+        chatSource: ctx.initialState.chatSource,
+        resolvedAction: ctx.initialState.resolvedAction,
+        tokenUsage: ctx.stateSnapshot?.tokenUsage || ctx.initialState.tokenUsage,
+        jobTiming: ctx.jobTiming || session.state?.jobTiming,
+        // Latest conversations from stateSnapshot so resume picks up progress.
+        conversations: nodeHistoryLen(ctx.stateSnapshot?.conversations)
+          ? ctx.stateSnapshot!.conversations
+          : session.state?.conversations,
+        recursionCount: ctx.recursionCount,
+        recursionLimit: ctx.recursionLimit,
+        jobId: ctx.httpJobId || session.state?.jobId,
+        interruption,
+      },
+    });
+    console.log(`💾 [PlanRunner] Saved interruption state to session (${interruption.reason})`);
+  } catch (err) {
+    console.warn('⚠️ [PlanRunner] Failed to save interruption state:', err);
+  }
+}
+
 export interface PlanRunnerParams {
   directive: string;
   language: 'ko' | 'en';
@@ -382,40 +450,27 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
       // ✅ Save session state on recursion limit (enables resume)
       // Without this, the session only has what saveConversationToSession saved during
       // the last completed generate cycle. The interruption must be persisted.
-      if (params.deps?.session) {
-        try {
-          const session = await params.deps.session.load(projectId, featureName, 'plan');
-          await params.deps.session.updateArtifacts(projectId, featureName, 'plan', {
-            state: {
-              ...session.state,
-              directive: initialState.directive,
-              overrideDirective: initialState.overrideDirective || initialState.directive,
-              chatSource: initialState.chatSource,
-              resolvedAction: initialState.resolvedAction,
-              tokenUsage: stateSnapshot?.tokenUsage || initialState.tokenUsage,
-              jobTiming: jobTimingRef || session.state?.jobTiming,
-              // ✅ Save latest conversations from stateSnapshot for resume
-              conversations: nodeHistoryLen(stateSnapshot?.conversations)
-                ? stateSnapshot!.conversations
-                : session.state?.conversations,
-              recursionCount: recursionLimit,  // Hit the limit
-              recursionLimit,
-              jobId: params._httpJobId || session.state?.jobId,
-              interruption: {
-                reason: 'recursion_limit',
-                message: `PRD editing paused: recursion limit reached (${recursionLimit} node executions)`,
-                timestamp: new Date().toISOString(),
-                canResume: true,
-                metadata: { recursionLimit },
-              },
-            }
-          });
-          console.log(`💾 [PlanRunner] Saved interruption state to session (recursion limit)`);
-        } catch (err) {
-          console.warn('⚠️ [PlanRunner] Failed to save interruption state:', err);
-        }
-      }
-      
+      await saveInterruptionToSession(
+        {
+          deps: params.deps,
+          projectId,
+          featureName,
+          initialState,
+          stateSnapshot,
+          jobTiming: jobTimingRef,
+          recursionCount: recursionLimit,  // Hit the limit
+          recursionLimit,
+          httpJobId: params._httpJobId,
+        },
+        {
+          reason: 'recursion_limit',
+          message: `PRD editing paused: recursion limit reached (${recursionLimit} node executions)`,
+          timestamp: new Date().toISOString(),
+          canResume: true,
+          metadata: { recursionLimit },
+        },
+      );
+
       // Return with interruption — JobWorker sets status='paused',
       // then JobCleanupManager creates the Resume/Dismiss choice card automatically.
       // This matches the code job pattern (architectAgent → interruption → paused).
@@ -479,9 +534,40 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
   }
 
   const planMode = getPlanMode(finalState);
+
+  // ── Output gate: never report success on a sealed-but-unrealized brief ──
+  if (isUnrealizedBrief(finalState, planMode)) {
+    console.error(
+      `❌ [PlanRunner] Brief was sealed (${finalState.planText!.trim().length} chars) but NO document was authored `
+      + `— raising a resumable plan_no_output pause instead of reporting success.`,
+    );
+    const interruption = {
+      reason: 'plan_no_output' as const,
+      message: 'Planning finished but no document was written. Resume to author it from the sealed brief.',
+      timestamp: new Date().toISOString(),
+      canResume: true,
+      metadata: { planMode, briefLength: finalState.planText!.trim().length },
+    };
+    await saveInterruptionToSession(
+      {
+        deps: params.deps,
+        projectId,
+        featureName,
+        initialState,
+        stateSnapshot,
+        jobTiming: jobTimingRef,
+        recursionCount: finalState.recursionCount ?? 0,
+        recursionLimit: finalState.recursionLimit ?? recursionLimit,
+        httpJobId: params._httpJobId,
+      },
+      interruption,
+    );
+    return { planMode, tokenUsage: finalState.tokenUsage, interruption };
+  }
+
   console.log('\n✅ Planner Agent completed');
   console.log(`   Plan mode: ${planMode}`);
-  
+
   return {
     planMode,
     tokenUsage: finalState.tokenUsage,

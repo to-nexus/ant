@@ -22,9 +22,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { shouldSuppressCancelledCardForClarify } from '../../src/periphery/adapters/http/express/managers/JobCleanupManager';
 import {
   consumeAwaitingClarify,
@@ -222,6 +222,98 @@ describe('consumeAwaitingClarify', () => {
     expect(state.conversations[CONV_KEYS.NODE_GENERATE]).toEqual([
       { role: 'user', content: 'answer' },
     ]);
+  });
+
+  // The mutation above is node-LOCAL: LangGraph builds the next state from the
+  // keys a node RETURNS, so the channel keeps its previous value unless the
+  // node returns the patch. Dropping it routed a sealed plan brief to __end__
+  // instead of execute (such-catching-motif) and left the session permanently
+  // stuck in continuation mode.
+  it('returns the channel patch when it consumes', () => {
+    const state = makeState({
+      awaitingClarify: true,
+      overrideDirective: 'answer',
+      conversations: {},
+    });
+
+    expect(consumeAwaitingClarify(state, CONV_KEYS.NODE_GENERATE)).toEqual({
+      awaitingClarify: false,
+    });
+  });
+
+  it('returns an empty patch on every no-op path (falsy flag / empty answer / repeat call)', () => {
+    expect(
+      consumeAwaitingClarify(makeState({ awaitingClarify: false, overrideDirective: 'x' })),
+    ).toEqual({});
+    expect(
+      consumeAwaitingClarify(makeState({ awaitingClarify: true, overrideDirective: '' })),
+    ).toEqual({});
+
+    const state = makeState({ awaitingClarify: true, overrideDirective: 'answer' });
+    consumeAwaitingClarify(state, CONV_KEYS.NODE_GENERATE);
+    expect(consumeAwaitingClarify(state, CONV_KEYS.NODE_GENERATE)).toEqual({});
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Channel-write discipline (static locks). Behavioural coverage of the node
+// returns would need a full LLM/stream/promptBuilder mock, which exercises the
+// mocks rather than the invariant — the invariant IS "the patch reaches the
+// return object".
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('awaitingClarify channel-write discipline', () => {
+  const src = (rel: string) => readFileSync(resolve(__dirname, '../../src', rel), 'utf8');
+
+  const CONSUMERS = [
+    'agents/planner/graph/plan/nodes/plan/index.ts',
+    'agents/architect/graph/design/nodes/execute/index.ts',
+  ];
+
+  it.each(CONSUMERS)('%s assigns the helper result and spreads it (never discards it)', (rel) => {
+    const source = src(rel);
+    expect(source).toMatch(/clarifyPatch\s*=\s*consumeAwaitingClarify\(/);
+    expect(source).toMatch(/\.\.\.clarifyPatch/);
+    // A bare `consumeAwaitingClarify(...)` statement drops the patch.
+    expect(source).not.toMatch(/^\s*consumeAwaitingClarify\(/m);
+  });
+
+  it('planner plan node spreads the patch into every non-pause return', () => {
+    const source = src('agents/planner/graph/plan/nodes/plan/index.ts');
+    // tool-round, explain and seal returns — the clarify-pause return keeps `true`.
+    expect(source.match(/\.\.\.clarifyPatch/g) ?? []).toHaveLength(3);
+    expect(source).toMatch(/awaitingClarify:\s*true/);
+  });
+
+  it('no new `awaitingClarify =` assignment writer appears outside the known set', () => {
+    // A bare assignment is only safe where it is paired with a channel return
+    // (the helper, design decompose) or where it targets a plain object rather
+    // than live graph state (runner restores, session writers).
+    const ALLOWED = new Set([
+      'agents/common/clarify/continuation.ts',
+      'agents/architect/graph/design/nodes/decompose/systemDesignDecompose.ts',
+      'agents/planner/graph/plan/runner.ts',
+      'agents/planner/graph/plan/nodes/sessionWriter.ts',
+      'agents/architect/graph/design/runner.ts',
+      'agents/architect/graph/design/session/checkpoint.ts',
+    ]);
+    const SRC_ROOT = resolve(__dirname, '../../src');
+    const found: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const abs = resolve(dir, entry.name);
+        if (entry.isDirectory()) walk(abs);
+        else if (entry.name.endsWith('.ts') && /awaitingClarify\s*=[^=]/.test(readFileSync(abs, 'utf8'))) {
+          found.push(relative(SRC_ROOT, abs).split(sep).join('/'));
+        }
+      }
+    };
+    walk(SRC_ROOT);
+    expect(found.filter((f) => !ALLOWED.has(f))).toEqual([]);
+
+    // The design decompose mutation must keep its paired channel return.
+    expect(src('agents/architect/graph/design/nodes/decompose/systemDesignDecompose.ts'))
+      .toMatch(/awaitingClarify:\s*false/);
   });
 });
 

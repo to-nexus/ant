@@ -36,7 +36,7 @@ import { measurePromptChars } from '../../../../../../core/utils/promptLogger';
 import { getTools } from './tools';
 import { resolveLLMClient } from './llmClient';
 import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
-import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
+import { applyClarifyGate, consumeAwaitingClarify, type ClarifyConsumePatch } from '../../../../../common/clarify';
 import type { IntentId } from '@ant/shared';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
@@ -133,9 +133,13 @@ export async function execute(
   // via the shared helper. Gated on `intentGroup === 'design-spec'` because
   // only spec clarify writes the execute-kind checkpoint; other intent groups
   // never set `awaitingClarify` on this state.
+  // `clarifyPatch` is what actually clears the channel — the helper's mutation
+  // is node-local, so a return that omits it leaves `awaitingClarify` true and
+  // the guard re-appends the answer on every re-entry (from `tool` / join redo).
+  let clarifyPatch: ClarifyConsumePatch = {};
   if (intentGroup === 'design-spec' && state.awaitingClarify && state.overrideDirective) {
     console.log(`📋 [Execute/Spec] Clarify continuation — appending user response to conversation`);
-    consumeAwaitingClarify(state, CONV_KEYS.NODE_EXECUTE);
+    clarifyPatch = consumeAwaitingClarify(state, CONV_KEYS.NODE_EXECUTE);
   }
   
   let messages;
@@ -595,6 +599,7 @@ export async function execute(
             recursionLimit: state.recursionLimit,
             llmResponse: { textResponse, done: false },
             ...(joined.tokenDelta as any),
+            ...clarifyPatch,
           };
         }
       }
@@ -635,6 +640,7 @@ export async function execute(
         textResponse,
         done: explicitDone,
       },
+      ...clarifyPatch,
     };
   } catch (error) {
     console.error('❌ [Execute] Error during reasoning:', error);

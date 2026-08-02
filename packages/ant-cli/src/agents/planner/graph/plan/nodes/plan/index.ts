@@ -47,7 +47,7 @@ import { LLM_MAX_TOKENS, LLM_TEMPERATURE } from '../../../../../common/graph/llm
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { buildPlanSystemPrompt } from './buildSystemPrompt';
 import { applyPlanDrainFinalization } from '../drainFinalize';
-import { applyClarifyGate, consumeAwaitingClarify } from '../../../../../common/clarify';
+import { applyClarifyGate, consumeAwaitingClarify, type ClarifyConsumePatch } from '../../../../../common/clarify';
 import { sanitizeDocSlug, collisionFreeDocFilename } from '../../../../../common/naming/docSlug';
 import { isTemplateContent } from '../../../../../../core/utils/templateDetector';
 import { getCanonicalPlanPath } from '@ant/shared';
@@ -63,9 +63,15 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   // Clarify continuation: if the previous run paused on a `<clarify>` card,
   // append the user's answer (overrideDirective) to NODE_PLAN before building
   // messages. No-op when awaitingClarify is falsy.
+  //
+  // `clarifyPatch` is what actually clears the channel — the helper's in-place
+  // mutation is node-local, so every non-pause return below MUST spread it.
+  // Without it `routeAfterPlan` reads a stale `true` and discards the sealed
+  // brief (execute never runs) while the session stays stuck in continuation.
+  let clarifyPatch: ClarifyConsumePatch = {};
   if (state.awaitingClarify && state.overrideDirective) {
     console.log(`📋 [Planner:Plan] Clarify continuation — appending user response to conversation`);
-    consumeAwaitingClarify(state, CONV_KEYS.NODE_PLAN);
+    clarifyPatch = consumeAwaitingClarify(state, CONV_KEYS.NODE_PLAN);
   }
 
   const planMode = getPlanMode(state);
@@ -290,6 +296,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       // No forward output this round (research only) — advance the no-output
       // window; at CAP − MARGIN the next call's tools are stripped.
       _noOutputCallCount: (state._noOutputCallCount || 0) + 1,
+      ...clarifyPatch,
     };
   }
 
@@ -364,6 +371,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       tokenUsage: state.tokenUsage,
       tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
+      ...clarifyPatch,
     };
   }
 
@@ -414,6 +422,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     // Brief sealed = forward progress; hand execute a fresh no-output budget.
     _noOutputCallCount: 0,
     ...(resolvedAction ? { resolvedAction } : {}),
+    ...clarifyPatch,
   };
 }
 
