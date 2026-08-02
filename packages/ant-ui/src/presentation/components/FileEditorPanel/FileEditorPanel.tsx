@@ -5,6 +5,7 @@ import { useStore } from '@/domain/store';
 import {
   fetchFileBlob,
   getDownloadUrl,
+  getRawFileDirUrl,
   isBinaryFilePath,
   isBinaryImageFilePath,
   isHtmlFilePath,
@@ -16,6 +17,7 @@ import {
   resolveViewMode,
   type ViewMode,
 } from '@/domain/file/viewMode';
+import { withBaseHref } from '@/domain/file/htmlPreviewDocument';
 import { Button } from '@/presentation/components/aurora';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -275,28 +277,30 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSvgFile, viewMode, editedContent]);
 
-  // HTML preview — blob document in sandboxed iframe.
+  // HTML preview — blob document in a sandboxed iframe. The blob keeps the
+  // live (unsaved) buffer as the preview source; an injected `<base href>`
+  // pointing at the file's real directory is what lets its relative `<link>` /
+  // `<img>` references resolve, since a blob URL carries no directory context.
   useEffect(() => {
-    if (!isHtmlFile) {
+    if (!isHtmlFile || viewMode !== 'preview') {
       setHtmlPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
       return;
     }
-    if (viewMode !== 'preview') {
-      setHtmlPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      return;
-    }
+    const baseHref =
+      selectedProject && selectedFeature && selectedFile
+        ? getRawFileDirUrl(selectedProject, selectedFeature, selectedFile)
+        : '';
     setHtmlPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
-      const blob = new Blob([editedContent], { type: 'text/html;charset=utf-8' });
+      const blob = new Blob([withBaseHref(editedContent, baseHref)], {
+        type: 'text/html;charset=utf-8',
+      });
       return URL.createObjectURL(blob);
     });
-  }, [isHtmlFile, viewMode, editedContent]);
+  }, [isHtmlFile, viewMode, editedContent, selectedProject, selectedFeature, selectedFile]);
 
   // ── Smart edit ───────────────────────────────────────
   const smartEditConfig = useMemo(
@@ -683,7 +687,12 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
               <iframe
                 title={selectedFile || 'html-preview'}
                 src={htmlPreviewUrl}
-                sandbox=""
+                // `allow-same-origin` without `allow-scripts`: no JS can run in
+                // the frame, so the normal origin grants no reachable
+                // capability — it only restores the session cookie the
+                // stylesheet / image subresource requests need. Never add
+                // `allow-scripts` here; the document is LLM-authored.
+                sandbox="allow-same-origin"
                 className="h-full min-h-[70vh] w-full"
                 style={{ border: 'none', background: 'var(--bg-canvas)' }}
               />
