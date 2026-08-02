@@ -36,12 +36,49 @@ export function createFilesRoutes(deps: {
         return 'image/gif';
       case '.webp':
         return 'image/webp';
+      case '.avif':
+        return 'image/avif';
+      case '.ico':
+        return 'image/x-icon';
       case '.svg':
         return 'image/svg+xml';
+      // Text types matter beyond cosmetics: a design handoff bundle is browsed
+      // as a mini static site (screens link `../styles.css`), and a stylesheet
+      // served as octet-stream is refused outright by strict MIME checking.
+      case '.html':
+      case '.htm':
+        return 'text/html; charset=utf-8';
+      case '.css':
+        return 'text/css; charset=utf-8';
+      case '.js':
+      case '.mjs':
+        return 'text/javascript; charset=utf-8';
+      case '.json':
+        return 'application/json; charset=utf-8';
+      case '.txt':
+      case '.md':
+        return 'text/plain; charset=utf-8';
+      case '.woff':
+        return 'font/woff';
+      case '.woff2':
+        return 'font/woff2';
+      case '.ttf':
+        return 'font/ttf';
+      case '.otf':
+        return 'font/otf';
       default:
         return 'application/octet-stream';
     }
   };
+
+  /**
+   * Workspace HTML is LLM-authored. Serving it inline on the app origin would
+   * otherwise be stored XSS, so scripts are cut at the response level — the
+   * policy still allows everything a design specimen needs (sibling stylesheets,
+   * inline `<style>`, svg/data images, fonts).
+   */
+  const HTML_PREVIEW_CSP =
+    "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'self'";
 
   const resolveSafePath = (rootDir: string, relativeFilePath: string): string => {
     const root = path.resolve(rootDir);
@@ -123,8 +160,13 @@ export function createFilesRoutes(deps: {
         }
 
         const buf = await fs.promises.readFile(fullPath);
-        res.setHeader('Content-Type', getMimeTypeFromPath(filePath));
+        const mimeType = getMimeTypeFromPath(filePath);
+        res.setHeader('Content-Type', mimeType);
         res.setHeader('Cache-Control', 'no-store');
+        if (mimeType.startsWith('text/html')) {
+          res.setHeader('Content-Security-Policy', HTML_PREVIEW_CSP);
+          res.setHeader('X-Content-Type-Options', 'nosniff');
+        }
         // Inline rendering in browser (useful for images)
         res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
         res.status(200).send(buf);

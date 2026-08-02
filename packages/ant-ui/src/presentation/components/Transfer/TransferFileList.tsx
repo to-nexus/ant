@@ -19,6 +19,7 @@ import type { FileNode } from '@/infrastructure/http/api';
  *   json → orange
  *   ts/tsx/js/jsx → teal
  *   image (png/jpg/jpeg/gif/svg/webp) → pink
+ *   html/htm → HTML5 orange (matches the artifact tree and the shared map)
  *   default → text-3
  */
 function fileAccentColor(name: string): string {
@@ -27,6 +28,7 @@ function fileAccentColor(name: string): string {
   if (ext === 'json') return 'var(--orange-500)';
   if (ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx') return 'var(--teal-500)';
   if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return 'var(--pink-500)';
+  if (ext === 'html' || ext === 'htm') return '#E34F26';
   return 'var(--text-3)';
 }
 

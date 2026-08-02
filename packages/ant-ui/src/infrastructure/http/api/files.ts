@@ -231,6 +231,22 @@ export function createDirectory(
   );
 }
 
+/**
+ * Absolute URL of the directory holding `filePath`, under the raw-bytes
+ * endpoint. Absolute on purpose: it is consumed as an HTML `<base href>` inside
+ * a blob document, which cannot resolve the root-relative form `API_BASE()`
+ * returns in local mode.
+ */
+export function getRawFileDirUrl(
+  projectId: string,
+  featureName: string,
+  filePath: string,
+): string {
+  const dir = filePath.replace(/\\/g, '/').replace(/[^/]*$/, '');
+  const relative = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/files-raw/${dir}`;
+  return new URL(relative, window.location.origin).href;
+}
+
 export function getDownloadUrl(
   projectId: string,
   featureName: string,

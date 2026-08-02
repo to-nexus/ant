@@ -1,6 +1,10 @@
 
 import type { ReactElement } from 'react';
 import { FileText, Database, Terminal, Palette, File } from 'lucide-react';
+import { SiHtml5 } from 'react-icons/si';
+
+/** HTML5 orange — same value the shared `file-icons` map binds `.html` to. */
+const HTML_BRAND_COLOR = '#E34F26';
 
 /**
  * ArtifactFileIcon — artifact-tree row file icon using the reference
@@ -17,7 +21,12 @@ import { FileText, Database, Terminal, Palette, File } from 'lucide-react';
  *   • ts / tsx / js / jsx / sh                   → Terminal  + teal-500
  *   • svg / png / jpg / jpeg / gif / webp        → Palette   + pink-500
  *     css / scss
+ *   • html / htm                                 → SiHtml5   + #E34F26
  *   • (default)                                  → File      + text-3
+ *
+ * `html` breaks the flat palette on purpose: the HTML5 shield is the
+ * conventional extension icon, and the shared map already binds `.html` to it —
+ * matching here keeps one file from wearing two icons across surfaces.
  */
 export function ArtifactFileIcon({ name, size = 12 }: { name: string; size?: number }): ReactElement {
   const dot = name.lastIndexOf('.');
@@ -49,6 +58,9 @@ export function ArtifactFileIcon({ name, size = 12 }: { name: string; size?: num
     case 'css':
     case 'scss':
       return <Palette size={size} style={{ color: 'var(--pink-500)', flexShrink: 0 }} />;
+    case 'html':
+    case 'htm':
+      return <SiHtml5 size={size} style={{ color: HTML_BRAND_COLOR, flexShrink: 0 }} />;
     default:
       return <File size={size} style={{ color: 'var(--text-3)', flexShrink: 0 }} />;
   }
