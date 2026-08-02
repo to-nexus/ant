@@ -1,4 +1,4 @@
-import type { GitCloneResult } from '@ant/shared';
+import type { GitCloneResult, GitInitResult } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../auth/GitHubAuthService';
@@ -62,7 +62,7 @@ export class RemoteService {
     const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
 
     this.cloneOp = new CloneOperation(workspaceResolver, worktreeService, githubAuthService);
-    this.initOp = new InitOperation(workspaceResolver, githubAuthService, onIndexingTrigger);
+    this.initOp = new InitOperation(workspaceResolver, worktreeService, githubAuthService, onIndexingTrigger);
     this.pushOp = new PushOperation(workspaceResolver, worktreeService, githubAuthService);
     this.pullOp = new PullOperation(workspaceResolver, worktreeService, githubAuthService);
     this.fetchOp = new FetchOperation(workspaceResolver, worktreeService, githubAuthService);
@@ -118,7 +118,7 @@ export class RemoteService {
     );
   }
 
-  async initializeGitHubRepo(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
+  async initializeGitHubRepo(projectId: string, userContext: UserContext): Promise<GitInitResult> {
     return this.withLock(
       REDIS_KEYS.LOCK.INIT(userContext.organizationId, userContext.userId, projectId),
       LOCK_TTL_INIT_SEC,

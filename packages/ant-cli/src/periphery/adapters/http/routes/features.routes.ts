@@ -118,7 +118,11 @@ export function createFeaturesRoutes(deps: {
       if (error.message === 'Feature already exists') {
         res.status(409).json({ error: error.message });
       } else if (error instanceof GitOperationError) {
-        res.status(error.statusCode).json({ error: error.message });
+        // `gitError` carries the classification (auth / conflict / …) so the
+        // wizard can route a PAT failure to the Configure-PAT dialog. Feature
+        // creation converges the anchor's origin, so GitAuthError is reachable
+        // here, not just from the git-ops route.
+        res.status(error.statusCode).json({ error: error.message, gitError: error.toShape() });
       } else {
         sendErrorResponse(res, 500, error, 'Features');
       }

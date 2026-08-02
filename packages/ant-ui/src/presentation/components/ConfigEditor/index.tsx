@@ -628,7 +628,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
 
               {/* Base branch — a pointer into the feature set (branch == feature
                   name). Locked after remote connection; before that, a dropdown
-                  of existing features; with zero features, the ant default. */}
+                  of existing features; with zero features there is nothing to
+                  point at, so it is free text seeding the feature Publish
+                  materializes (the first feature created overwrites it). */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <FieldLabel>{t('schema.baseBranch')}</FieldLabel>
                 <p style={{ margin: '-2px 0 8px', fontSize: 11, color: 'var(--text-4)' }}>
@@ -638,7 +640,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                       ? t('schema.baseBranchPickDesc')
                       : t('schema.baseBranchNoFeatures')}
                 </p>
-                {isBranchBaseLocked || features.length === 0 ? (
+                {isBranchBaseLocked ? (
                   <div
                     style={{
                       width: '100%',
@@ -653,6 +655,13 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
                   >
                     {editedConfig.branchBase || 'main'}
                   </div>
+                ) : features.length === 0 ? (
+                  <AuroraInput
+                    value={editedConfig.branchBase || ''}
+                    onChange={(v) => handleChange('branchBase', v)}
+                    placeholder="main"
+                    mono
+                  />
                 ) : (
                   <AuroraSelect
                     value={editedConfig.branchBase || features[0]?.name || 'main'}

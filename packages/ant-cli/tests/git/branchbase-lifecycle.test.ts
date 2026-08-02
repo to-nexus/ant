@@ -122,6 +122,16 @@ describe('branchBase lifecycle', () => {
     expect(readBranchBase(projectPath)).toBe('login');
   });
 
+  it('manual set is free text while there are ZERO features (publish seed)', async () => {
+    await setBranchBaseManual(ctx, 'dev');
+    expect(readBranchBase(projectPath)).toBe('dev');
+
+    // …and the first feature created still overwrites it (0→1 rule).
+    mkFeature('login');
+    await applyAfterFeatureCreate(ctx, 'login');
+    expect(readBranchBase(projectPath)).toBe('login');
+  });
+
   it('manual set rejects invalid names', async () => {
     // `feat/x` is now a valid name; use a genuinely-illegal one.
     await expect(setBranchBaseManual(ctx, 'a//b')).rejects.toThrow(/invalid/i);

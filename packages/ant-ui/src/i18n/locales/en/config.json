@@ -206,7 +206,7 @@
     "baseBranch": "Base Branch",
     "baseBranchLockedDesc": "Locked — determined by the connected GitHub repository",
     "baseBranchPickDesc": "Choose which feature acts as the base branch (branch name = feature name)",
-    "baseBranchNoFeatures": "No features yet — defaults to 'main' until the first feature is created"
+    "baseBranchNoFeatures": "No features yet — Publish creates a feature with this name (defaults to 'main'); creating a feature first replaces it"
   },
   "domain": {
     "title": "Domain",

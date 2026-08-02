@@ -206,7 +206,7 @@
     "baseBranch": "기본 브랜치",
     "baseBranchLockedDesc": "잠김 — 연결된 GitHub 저장소가 결정합니다",
     "baseBranchPickDesc": "base branch로 사용할 feature를 선택하세요 (브랜치 이름 = feature 이름)",
-    "baseBranchNoFeatures": "아직 feature가 없습니다 — 첫 feature를 만들면 자동 적용됩니다 (기본값 'main')"
+    "baseBranchNoFeatures": "아직 feature가 없습니다 — publish 시 이 이름으로 feature가 생성됩니다 (기본값 'main'). feature를 먼저 만들면 그 이름으로 대체됩니다"
   },
   "domain": {
     "title": "도메인",
