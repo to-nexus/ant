@@ -148,7 +148,7 @@ This is a **continuation section**. The document already exists. Use `<append>` 
 </append>
 ```
 
-⚠️ **CRITICAL: Do NOT use `<file>` tag — it will OVERWRITE the existing document!**
+⚠️ **CRITICAL: Use `<append>`, NOT `<file>`, for a continuation section.** (Content is never lost — the system converts a stray `<file>` on an existing document into an append as a safety net — but the correct tag keeps the document structure clean, so treat this as binding.) The existence state stated here is authoritative — do NOT verify it with tool calls before writing.
 
 {{/if}}
 {{/if}}

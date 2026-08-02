@@ -162,7 +162,26 @@ runner.ts loads the session and restores state before graph invoke:
 - figmaConfig, figmaExplorationResult, figmaAvailable, figmaFileKey, figmaStartNodeId
 - planText, conversationHistory
 - directive, overrideDirective, chatSource
-- jobTiming, tokenUsage
+- jobTiming, tokenUsage, tokenUsageByModel
+
+### Interruption & resume — task granularity (official contract)
+
+Design resume operates at **task granularity**, not worker-conversation
+granularity:
+
+- Completed tasks (`completedTasks` / `completedTasksDetails`) and their
+  already-written document sections are never re-executed — the interrupt
+  checkpoint's `taskQueue` holds only in-flight + pending tasks.
+- An interrupted in-flight task **restarts from call index 0 with an empty
+  conversation**. `DesignTask.resumeState` is declared as a future seam but is
+  never populated: `captureWorkerSnapshots` exists only in the code job's
+  orchestrator hooks, and the design graph has no snapshot-capture site. Do
+  not read `resumeState` on design paths expecting mid-task conversation
+  recovery (oat-choosing-horse RCA, 2026-08-02).
+- `SessionState.runningTasks` is populated only by the periodic orchestrator
+  checkpoint (60s interval) while workers are live; graceful interrupts
+  requeue in-flight tasks into `taskQueue` and empty it. The runner's
+  `persistedRunning` read exists solely for the hard-kill orphan case.
 
 ## Plan Observability
 

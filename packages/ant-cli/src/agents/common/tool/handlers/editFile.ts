@@ -41,7 +41,15 @@ export async function handleEditFile(
 
     const exists = await fileSystem.fileExists(resolved.fsPath);
     if (!exists) {
-      const msg = `File does not exist: ${resolved.displayPath}. To create a new file use the create_file tool (or the <file> tag).`;
+      // Recovery hint must only name affordances this phase actually
+      // advertises: `create_file` is exposed in the code-execute tool set
+      // only (same phase that sets allowMutateInCodebase — see
+      // toolCatalog.ts CREATE_FILE note); document-producing phases
+      // (design/plan) stream new files via the <file> tag.
+      const createHint = ctx.allowMutateInCodebase
+        ? 'To create a new file use the create_file tool (or the <file> tag).'
+        : 'To create a new file use the <file> tag.';
+      const msg = `File does not exist: ${resolved.displayPath}. ${createHint}`;
       await ctx.chatStatus.failFileEdit(filePath, msg);
       return { content: msg, error: msg };
     }

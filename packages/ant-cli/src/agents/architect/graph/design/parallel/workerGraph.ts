@@ -305,6 +305,15 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       files: [],
       fileErrors: undefined,
       tokenUsage: state.tokenUsage,
+      // Per-model delta — execute accumulates it via state mutation and (as
+      // of the oat-choosing-horse fix) publishes it as a channel; re-return
+      // it here so the worker's invoke() result carries it to
+      // TaskWorker.reportCompletion (orchestrator sums deltas job-level).
+      // Deliberately NOT returning the cumulative `tokenUsageByModel`: the
+      // worker inherits the job-cumulative map from sharedContext, and
+      // TaskWorker's fallback would report it as a per-task figure —
+      // double-counting the seed (see TaskWorker workerState comment).
+      _currentTaskTokenUsageByModel: state._currentTaskTokenUsageByModel,
       _executeCallIndex: 0,
       _noOutputCallCount: 0,
       _toolResultCache: undefined,

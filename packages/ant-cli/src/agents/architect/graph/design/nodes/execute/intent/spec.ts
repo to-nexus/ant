@@ -95,10 +95,14 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // Directive only. The sealed plan was previously prepended here;
   // it now renders separately near the top of base.md via {{#if
   // planText}}.
+  // Tag choice (<file> vs <append>) is owned by the template's Output
+  // Format block (base.md dispatches on detectedMode/isFirstSection) —
+  // repeating an unconditional `Use: <file …>` here contradicted the
+  // continuation branch and taught the model to distrust the prompt
+  // (oat-choosing-horse probe RCA). Only the target path lives here.
   const runtimeLines: string[] = [];
   runtimeLines.push(`# Target Document`);
-  runtimeLines.push(`Write to: \`${specDir}/${targetFile}\``);
-  runtimeLines.push(`Use: <file path="${specDir}/${targetFile}">...</file>`);
+  runtimeLines.push(`Write to: \`${specDir}/${targetFile}\` (tag choice: see Output Format)`);
   runtimeLines.push('');
   if (task) {
     // Name only — the task's scope (description) renders exactly once, in the

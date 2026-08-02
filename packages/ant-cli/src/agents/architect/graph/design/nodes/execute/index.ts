@@ -549,6 +549,11 @@ export async function execute(
           _doneCheckEscalation: 0,
           _activePhase: 'execute' as const,
           _currentTaskTokenUsage: state._currentTaskTokenUsage,
+          // Per-model twin — accumulateTokenUsage mutates it on the node's
+          // state snapshot; a mutation is NOT a channel write, so omitting
+          // it here dropped every parallel worker's per-model usage from
+          // the checkpoint (oat-choosing-horse: 3 of 29 calls attributed).
+          _currentTaskTokenUsageByModel: state._currentTaskTokenUsageByModel,
           tokenUsage: state.tokenUsage,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -594,6 +599,10 @@ export async function execute(
             _doneCheckEscalation: 0,
             _activePhase: 'execute' as const,
             _currentTaskTokenUsage: state._currentTaskTokenUsage,
+            // Per-model twin (see the clarify return above). tokenDelta's
+            // spread stays after this line on purpose — the subagent join
+            // merges its own per-model delta on top.
+            _currentTaskTokenUsageByModel: state._currentTaskTokenUsageByModel,
             tokenUsage: state.tokenUsage,
             recursionCount: state.recursionCount,
             recursionLimit: state.recursionLimit,
@@ -623,6 +632,9 @@ export async function execute(
       // informational.
       _activePhase: 'execute' as const,
       _currentTaskTokenUsage: state._currentTaskTokenUsage,
+      // Per-model twin — same mutation-is-not-a-channel-write rationale as
+      // recursionCount below (oat-choosing-horse per-model attribution loss).
+      _currentTaskTokenUsageByModel: state._currentTaskTokenUsageByModel,
       tokenUsage: state.tokenUsage,
       // recursionCount is a last-value channel: the mutation at the top of this
       // node is dropped unless returned here. Omitting it starved the

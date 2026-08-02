@@ -245,3 +245,38 @@ describe('safe defaults (both flags omitted) → both gates closed', () => {
     expect(result.content).toMatch(/not available in this job/);
   });
 });
+
+// ---------------------------------------------------------------------
+// Missing-file recovery hint — the edit_file "File does not exist" error
+// must only name affordances the phase actually advertises. `create_file`
+// is exposed in the code-execute tool set only (the same phase that sets
+// allowMutateInCodebase); document-producing phases (design/plan) stream
+// new files via the <file> tag. The old unconditional create_file hint
+// misled design LLMs toward a tool they do not have
+// (oat-choosing-horse probe RCA).
+// ---------------------------------------------------------------------
+describe('edit_file missing-file hint is phase-aware', () => {
+  it('recommends create_file in code-execute ctx (mutate: true)', async () => {
+    const ctx = makeCtx(workspacePath, { mutate: true, shell: true });
+    const result = await handleEditFile(ctx, {
+      path: 'codebase/nope.ts',
+      old_str: 'x',
+      new_str: 'y',
+    });
+    expect(result.error).toMatch(/does not exist/);
+    expect(result.error).toContain('create_file');
+    expect(result.error).toContain('<file>');
+  });
+
+  it('recommends only the <file> tag in document-producing ctx (mutate: false)', async () => {
+    const ctx = makeCtx(workspacePath, { mutate: false, shell: false });
+    const result = await handleEditFile(ctx, {
+      path: 'architecture/system/nope.md',
+      old_str: 'x',
+      new_str: 'y',
+    });
+    expect(result.error).toMatch(/does not exist/);
+    expect(result.error).not.toContain('create_file');
+    expect(result.error).toContain('<file>');
+  });
+});

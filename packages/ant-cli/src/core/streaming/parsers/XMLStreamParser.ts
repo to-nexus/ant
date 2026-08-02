@@ -734,7 +734,10 @@ export class XMLStreamParser implements IStreamParser {
       
       // 18. Check for <append path="..."> opening
       if (!this.context.insideAppend) {
-        const appendMatch = this.buffer.match(/<append\s+path="([^"]+)">/);
+        // `\s*>` tolerance mirrors the <file> pattern above — without it a
+        // single stray space before `>` demoted the whole append body to
+        // plain text with zero error signal.
+        const appendMatch = this.buffer.match(/<append\s+path="([^"]+)"\s*>/);
         if (appendMatch) {
           const fullMatch = appendMatch[0];
           const filePath = appendMatch[1];

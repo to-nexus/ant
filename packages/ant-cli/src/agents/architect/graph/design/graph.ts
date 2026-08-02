@@ -163,6 +163,10 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       fileErrors: undefined,
       interruption,
       tokenUsage: state.tokenUsage,
+      // rollUpTaskUsageToJob above mutates the per-model map on the state
+      // snapshot; a mutation is not a channel write — publish it or the
+      // rolled-up per-model attribution is dropped (oat-choosing-horse).
+      tokenUsageByModel: state.tokenUsageByModel,
       _assetValidationFailed: false,
       _assetValidationRetried: 0,
       _specRevisionFailed: false,
@@ -326,6 +330,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       fileErrors: undefined,
       interruption,
       tokenUsage: state.tokenUsage,
+      // Publish the rolled-up per-model map (mutation ≠ channel write).
+      tokenUsageByModel: state.tokenUsageByModel,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;
@@ -471,6 +477,9 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       artifacts: updatedPool,
       fileErrors: undefined,
       tokenUsage: state.tokenUsage,
+      // Publish the rolled-up per-model map (mutation ≠ channel write —
+      // oat-choosing-horse per-model attribution loss).
+      tokenUsageByModel: state.tokenUsageByModel,
       _executeCallIndex: 0,
       _noOutputCallCount: 0,
       _toolResultCache: undefined,

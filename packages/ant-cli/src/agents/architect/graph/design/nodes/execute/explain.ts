@@ -156,6 +156,8 @@ export async function renderExplainResponse(
     _doneCheckEscalation: 0,
     _activePhase: 'execute' as const,
     _currentTaskTokenUsage: state._currentTaskTokenUsage,
+    // Per-model twin — mutation is not a channel write (oat-choosing-horse).
+    _currentTaskTokenUsageByModel: state._currentTaskTokenUsageByModel,
     tokenUsage: state.tokenUsage,
     llmResponse: {
       textResponse,
