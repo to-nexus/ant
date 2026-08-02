@@ -5,7 +5,7 @@ with **opposite** rules, and the distinction is the whole point of this guide:
 
 | Kind | What it is | Rule of thumb |
 |---|---|---|
-| **Captures** (2 GIFs) | Screenshots of the running product | Scarce. They go stale every time the UI moves. |
+| **Captures** (2 clips) | Screenshots of the running product | Scarce. They go stale every time the UI moves. |
 | **Diagrams** (5 PNGs) | Authored HTML, baked to PNG | Cheap. Re-rendered from committed source, so they don't go stale on a UI change. |
 
 `logo.png` is neither — it is the product logo (copied from
@@ -18,10 +18,11 @@ and captions are localised. Do not produce a Korean set of anything else.
 
 ---
 
-# Part 1 — captures (the two GIF slots)
+# Part 1 — captures (the two capture slots)
 
-Both slots are currently an HTML comment in [`README.md`](../../README.md); drop
-a file here with the matching name and uncomment the block.
+Slot 2 (`design-job.webp`) is shipped. Slot 1 (`code-job.gif`) is still an HTML
+comment in [`README.md`](../../README.md); drop a file here with the matching
+name and uncomment the block.
 
 There are **two slots, on purpose.** A GitHub visitor gives the page seconds and
 watches one thing. Every extra image competes with the first for that attention,
@@ -36,7 +37,7 @@ and each proves a different half of the pitch:
 | File | Format | README location | The one claim it carries |
 |---|---|---|---|
 | `code-job.gif` | GIF | Top, under the badges | A directive becomes decomposed, parallel, visibly-tracked work |
-| `design-job.gif` | GIF | End of `## Why Ant?` | Every stage writes a real document at a real path — live |
+| `design-job.webp` | animated WebP | End of `## Why Ant?` | Every stage writes a real document at a real path — live |
 
 Total budget: **≤ 4 MB**. These files live in git history permanently.
 
@@ -74,7 +75,7 @@ caption and the prose around it. Frame for legible motion, not for a card title.
 
 8–10 seconds, looping, **≤ 2.5 MB**.
 
-## 2. `design-job.gif` — the document being written
+## 2. `design-job.webp` — the document being written
 
 **What to run.** A `design` job with the system-design intent (`gen-sys-*`) on a
 project that has a PRD. The plan job (PRD authoring) is the fallback if the
@@ -104,6 +105,33 @@ as clean prose and reads better in motion than a dense document does.
 
 8 seconds, looping, **≤ 1.5 MB**.
 
+**What shipped.** A plan job streaming `plan/prd.md` — the fallback documented
+above. 1280×657, 112 frames at 14fps, 1.37 MB. The loop opens on ~1s of the
+workflow graph before the document panel takes over, then runs as pure text
+accumulation with no scroll.
+
+It keeps **all three panes**, chat included — deliberately, against the
+"main panel only" guidance above. The cost is real and worth knowing before you
+reshoot: the full window is 3000px wide, so at `width="880"` the body text lands
+around 7px and reads as texture rather than prose. Headings, the file path, and
+the status chips stay legible, which is what the claim rests on.
+
+```bash
+ffmpeg -ss 7 -t 8 -i in.mov \
+  -vf "fps=14,scale=1280:-1:flags=lanczos" frames/f_%04d.png
+img2webp -loop 0 -lossy -q 90 -d 71 frames/f_*.png -o design-job.webp
+```
+
+**Why WebP rather than GIF.** Not because GIF cannot fit — at this geometry it
+can, at 128 colours (1.34 MB). But the frame is mostly a large dark gradient, and
+any palette small enough to fit lays visible bayer crosshatch across it. WebP q90
+is 1.37 MB — the same weight as the GIF that fits — at full colour, verified
+against source on both gradient and text. The committed palettegen command below
+(192 colours) comes to 1.56 MB, just over the cap.
+
+q90 is also the ceiling: q94 jumps to 2.38 MB. Homebrew's current `ffmpeg` bottle
+is built without `libwebp`, hence `img2webp` from the `webp` formula for pass two.
+
 ## Video
 
 A full walkthrough — build loop (PRD → design → code), then one spec-driven
@@ -119,7 +147,7 @@ paths are unreliable.
 
 ---
 
-## Capture and encoding — GIFs only
+## Capture and encoding — GIF or animated WebP, never video
 
 - Record a 1440×900 logical viewport at 2× DPI, downscale to **1280px wide**.
 - **Dark theme for both.** The background gradient is most of the visual
@@ -141,9 +169,16 @@ ffmpeg -i in.mov -vf "fps=14,scale=1280:-1:flags=lanczos" \
 ```
 
 If a GIF refuses to fit the budget, shorten the loop before lowering the frame
-rate — a 7-second clip at 14fps reads better than 12 seconds at 8fps. Streaming
-text is mostly static pixels in a small area, so `design-job.gif` should come in
-well under its cap; if it doesn't, you started recording too early.
+rate — a 7-second clip at 14fps reads better than 12 seconds at 8fps.
+
+**Scrolling, not duration, is what breaks the budget.** Appending text changes
+few pixels and costs little; a panel that auto-scrolls repaints every pixel and
+defeats inter-frame compression. Measured on the shipped `design-job` capture,
+same geometry and encoder: 8 s is 1.37 MB, but 10 s is 2.62 MB — 25% more
+duration for 92% more bytes, because the extra two seconds scroll. So when a
+capture blows the cap, find out whether the window scrolls before reaching for
+duration or frame rate. Trimming to just before the scroll is worth more than any
+amount of palette tuning.
 
 ---
 

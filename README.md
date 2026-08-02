@@ -72,14 +72,12 @@ black box that occasionally writes code.
        alt="Two pipelines. The build loop, for greenfield or a major new feature, runs plan (plan/PRD.md) then system design (architecture/system/) then UI or game art (visual/ui/) then code (codebase/). The iteration loop, for every change after that, skips both plan and system design and runs spec (architecture/spec/) straight into code, with a rev-spec return arc">
 </p>
 
-<!-- Drop the file into docs/assets/ and uncomment. See docs/assets/README.md.
 <p align="center">
-  <img src="docs/assets/design-job.gif" width="880"
-       alt="A design job streaming a system design document into the workspace as rendered markdown, ending on an architecture diagram">
+  <img src="docs/assets/design-job.webp" width="880"
+       alt="A planner job streaming a product requirements document into the workspace as rendered markdown, with the file path and a live Streaming indicator in the panel header">
 </p>
 <p align="center"><sub>Every stage writes a real document at a real path — read it,
 diff it, argue with it. Not just a commit.</sub></p>
--->
 
 ---
 
