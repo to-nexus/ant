@@ -1,4 +1,4 @@
-import type { GitCloneResult, GitUserOperation } from '@ant/shared';
+import type { GitCloneResult, GitInitResult, GitUserOperation } from '@ant/shared';
 import { UserContext } from '../../../../../../../core/types/user';
 import {
   GitOperation,
@@ -47,7 +47,7 @@ type FullDeps = GitOperationDeps & UserOpExtraDeps;
  * to `pushToGitHub` for the S4 branch-publish variant. The pre-check lets us
  * reject the "already on upstream" case with a conflict error.
  */
-export class PublishOperation extends GitOperation<FeatureInput, { warnings?: string[] }> {
+export class PublishOperation extends GitOperation<FeatureInput, Partial<GitInitResult>> {
   private readonly remote: RemoteService;
   constructor(deps: FullDeps) {
     super(deps);
@@ -58,7 +58,7 @@ export class PublishOperation extends GitOperation<FeatureInput, { warnings?: st
     return { kind: 'publish' };
   }
 
-  protected async run(ctx: GitOperationContext<FeatureInput>): Promise<{ warnings?: string[] }> {
+  protected async run(ctx: GitOperationContext<FeatureInput>): Promise<Partial<GitInitResult>> {
     const { projectId, userContext, input } = ctx;
     const snapshot = await this.deps.statusService.getSnapshot(projectId, userContext, input?.feature);
     if (!snapshot.hasGit || !snapshot.hasRemote) {

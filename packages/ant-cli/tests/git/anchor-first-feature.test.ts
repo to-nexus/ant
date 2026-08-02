@@ -7,8 +7,9 @@
  *   .gitignore/README with a normal commit.
  * - a second feature forks from the branchBase feature's branch.
  * - a feature named after an existing local branch attaches to it.
- * - clone/init preconditions: InitOperation requires ≥1 feature; the clone
- *   zero-feature hard guard rejects a project with features.
+ * - clone/init preconditions: the clone zero-feature hard guard rejects a
+ *   project with features; init's `ensureBaseFeature` does the mirror image —
+ *   it materializes the base-branch feature when there is none.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -20,7 +21,8 @@ import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathRes
 import { WorktreeService } from '../../src/periphery/adapters/http/services/GitService/worktree';
 import { GitHelper } from '../../src/periphery/adapters/http/services/GitService/helper/GitHelper';
 import { CloneOperation } from '../../src/periphery/adapters/http/services/GitService/remote/operations/CloneOperation';
-import { InitOperation } from '../../src/periphery/adapters/http/services/GitService/remote/operations/InitOperation';
+import { ensureBaseFeature } from '../../src/periphery/adapters/http/services/GitService/remote/operations/helpers/ensureBaseFeature';
+import { readBranchBase } from '../../src/core/utils/branchUtils';
 
 const uc = { userId: 'u', organizationId: 'o' };
 const PROJECT = 'proj';
@@ -146,13 +148,56 @@ describe('bare anchor first-feature bootstrap', () => {
     await expect(clone.execute(PROJECT, uc)).rejects.toThrow(/no features/i);
   });
 
-  it('init precondition: requires at least one feature', async () => {
-    fs.writeFileSync(
-      path.join(projectPath, 'config.json'),
-      JSON.stringify({ repoType: 'cloud', githubRepo: 'https://github.com/x/y' }),
-      'utf-8',
-    );
-    const init = new InitOperation(resolver, {} as any);
-    await expect(init.execute(PROJECT, uc)).rejects.toThrow(/at least one feature/i);
+  describe('ensureBaseFeature (init precondition)', () => {
+    const ctx = () => ({
+      projectId: PROJECT,
+      projectPath,
+      anchorPath,
+      userContext: uc,
+      branchBase: readBranchBase(projectPath),
+      worktreeService: worktrees,
+    });
+
+    it('zero features → materializes the base-branch feature + pointer', async () => {
+      const res = await ensureBaseFeature(ctx());
+
+      expect(res).toEqual({ created: true, feature: 'main' });
+      const wt = resolver.getCodebasePath(uc, PROJECT, 'main');
+      expect(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('main');
+      expect(GitHelper.isWorktreeStructureValid(wt)).toEqual({ valid: true });
+      expect(readBranchBase(projectPath)).toBe('main');
+      expect(anchorGit('symbolic-ref', '--short', 'HEAD')).toBe('main');
+    });
+
+    it('honours a configured base branch', async () => {
+      fs.writeFileSync(
+        path.join(projectPath, 'config.json'),
+        JSON.stringify({ repoType: 'cloud', branchBase: 'dev' }),
+        'utf-8',
+      );
+      const res = await ensureBaseFeature(ctx());
+
+      expect(res).toEqual({ created: true, feature: 'dev' });
+      const wt = resolver.getCodebasePath(uc, PROJECT, 'dev');
+      expect(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('dev');
+    });
+
+    it('no-op when a feature already exists', async () => {
+      await worktrees.createWorktree(PROJECT, 'login', uc);
+      const before = fs.readdirSync(path.join(projectPath, 'features'));
+
+      expect(await ensureBaseFeature(ctx())).toEqual({ created: false });
+      expect(fs.readdirSync(path.join(projectPath, 'features'))).toEqual(before);
+    });
+
+    it('rejects an unusable base branch name', async () => {
+      fs.writeFileSync(
+        path.join(projectPath, 'config.json'),
+        JSON.stringify({ repoType: 'cloud', branchBase: 'a//b' }),
+        'utf-8',
+      );
+      await expect(ensureBaseFeature(ctx())).rejects.toThrow(/not a usable branch name/i);
+      expect(fs.existsSync(anchorPath)).toBe(false);
+    });
   });
 });

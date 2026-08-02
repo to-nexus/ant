@@ -117,6 +117,23 @@ export interface GitCloneResult {
 }
 
 /**
+ * `result` payload of a successful `{kind:'publish'}` operation that took the
+ * init variant (no remote yet).
+ *
+ * Mirror of {@link GitCloneResult}: a project without features has no
+ * codebase and no branch to push, so init materializes a feature named after
+ * `branchBase` before creating the GitHub repo. `feature` is set ONLY in that
+ * case — the FE uses it to adopt/select the newly created feature.
+ */
+export interface GitInitResult {
+  /** Base branch pushed as the GitHub default branch. */
+  defaultBranch: string;
+  /** Set only when init had to auto-create the base feature. */
+  feature?: string;
+  warnings?: string[];
+}
+
+/**
  * Error classification for Git operations. Drives UI branching (retry,
  * suggestedAction) and is stable across transport boundaries.
  */

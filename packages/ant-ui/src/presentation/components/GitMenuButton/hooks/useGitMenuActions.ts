@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { GitCloneResult } from '@ant/shared';
+import type { GitCloneResult, GitInitResult } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import {
   useGitDispatch,
@@ -66,6 +66,20 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
     [selectedProject, runGitOperation, showError, handleGitError, toast, onClose],
   );
 
+  /**
+   * Select a feature the BE auto-created during the operation (clone's
+   * remote-HEAD feature, or init's base-branch feature). Without this the
+   * user lands on the "Create a feature to start" placeholder right after a
+   * successful op. `preferred` absent → fall back to the sole listed feature
+   * (both auto-create paths require zero features beforehand).
+   */
+  const adoptCreatedFeature = useCallback(async (projectId: string, preferred?: string) => {
+    const store = useStore.getState();
+    await store.fetchFeatures(projectId);
+    const adopted = preferred ?? useStore.getState().features[0]?.name;
+    if (adopted) store.setSelectedFeature(adopted);
+  }, []);
+
   const handleClone = useCallback(() => {
     if (!selectedProject) return;
     onClose();
@@ -92,63 +106,57 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
           if (!outcome.success) return;
           // Adopt the auto-created base feature (named after the remote
           // default branch) so the user immediately sees the cloned code.
-          // Fallback: clone requires zero features, so the sole listed
-          // feature is the auto-created one.
           const cloneResult = outcome.result as Partial<GitCloneResult> | undefined;
-          let adopted = cloneResult?.feature;
-          const store = useStore.getState();
-          await store.fetchFeatures(projectId);
-          if (!adopted) {
-            const features = useStore.getState().features;
-            adopted = features[0]?.name;
-          }
-          if (adopted) {
-            store.setSelectedFeature(adopted);
-          }
+          await adoptCreatedFeature(projectId, cloneResult?.feature);
         })();
       },
     });
-  }, [selectedProject, snapshot, onClose, showConfirm, showError, runMenuOp, t]);
+  }, [selectedProject, snapshot, onClose, showConfirm, showError, runMenuOp, adoptCreatedFeature, t]);
+
+  /**
+   * Initialize / Publish share one BE op (`publish`) and differ only in copy.
+   * On the init variant the BE may have materialized the base-branch feature
+   * (featureless project) — adopt it so the user isn't left on the
+   * "Create a feature to start" placeholder.
+   */
+  const confirmAndPublish = useCallback(
+    (copy: { confirm: string; title: string }) => {
+      if (!selectedProject) return;
+      onClose();
+      showConfirm(copy.confirm, {
+        title: copy.title,
+        type: 'info',
+        confirmText: copy.title,
+        onConfirm: () => {
+          void (async () => {
+            const projectId = selectedProject;
+            const outcome = await runMenuOp(
+              { kind: 'publish', feature: selectedFeature || undefined },
+              {
+                successToast: t('git.repoInitialized'),
+                reloadIde: true,
+                failureFallback: t('git.actionFailed', { action: 'init' }),
+              },
+            );
+            if (!outcome.success) return;
+            const initResult = outcome.result as Partial<GitInitResult> | undefined;
+            if (initResult?.feature) {
+              await adoptCreatedFeature(projectId, initResult.feature);
+            }
+          })();
+        },
+      });
+    },
+    [selectedProject, selectedFeature, onClose, showConfirm, runMenuOp, adoptCreatedFeature, t],
+  );
 
   const handleInitialize = useCallback(() => {
-    if (!selectedProject) return;
-    onClose();
-    showConfirm(t('config:git.confirmInit'), {
-      title: t('config:git.initialize'),
-      type: 'info',
-      confirmText: t('config:git.initialize'),
-      onConfirm: () => {
-        void runMenuOp(
-          { kind: 'publish', feature: selectedFeature || undefined },
-          {
-            successToast: t('git.repoInitialized'),
-            reloadIde: true,
-            failureFallback: t('git.actionFailed', { action: 'init' }),
-          },
-        );
-      },
-    });
-  }, [selectedProject, selectedFeature, onClose, showConfirm, runMenuOp, t]);
+    confirmAndPublish({ confirm: t('config:git.confirmInit'), title: t('config:git.initialize') });
+  }, [confirmAndPublish, t]);
 
   const handlePublish = useCallback(() => {
-    if (!selectedProject) return;
-    onClose();
-    showConfirm(t('config:git.confirmPublish'), {
-      title: t('config:git.publish'),
-      type: 'info',
-      confirmText: t('config:git.publish'),
-      onConfirm: () => {
-        void runMenuOp(
-          { kind: 'publish', feature: selectedFeature || undefined },
-          {
-            successToast: t('git.repoInitialized'),
-            reloadIde: true,
-            failureFallback: t('git.actionFailed', { action: 'init' }),
-          },
-        );
-      },
-    });
-  }, [selectedProject, selectedFeature, onClose, showConfirm, runMenuOp, t]);
+    confirmAndPublish({ confirm: t('config:git.confirmPublish'), title: t('config:git.publish') });
+  }, [confirmAndPublish, t]);
 
   const handlePush = useCallback(() => {
     void runMenuOp(

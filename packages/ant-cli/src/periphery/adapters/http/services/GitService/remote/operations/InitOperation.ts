@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SimpleGit } from 'simple-git';
+import type { GitInitResult } from '@ant/shared';
 import { WorkspaceResolver, resolveLocalPath } from '../../../../../../../core/config/WorkspacePathResolver';
 import { isVectorDbEnabled } from '../../../../../../../core/config/vectorDbCapability';
 import { UserContext } from '../../../../../../../core/types/user';
@@ -9,8 +10,9 @@ import { GitHubAuthService, GitHubRepoCreateError } from '../../../../../auth/Gi
 import { GitHelper } from '../../helper/GitHelper';
 import { resolveCommitIdentity } from '../../helper/resolveCommitIdentity';
 import { gitAnchor } from '../../anchor/GitAnchorSSOT';
-import { listFeatureDirsByCreation } from '../../anchor/branchBaseLifecycle';
+import { WorktreeService } from '../../worktree';
 import { RemoteChecker } from '../helpers/RemoteChecker';
+import { ensureBaseFeature } from './helpers/ensureBaseFeature';
 import {
   GitAuthError,
   GitConfigError,
@@ -30,12 +32,16 @@ import {
  *   create GitHub repo → add origin → push branchBase (-u) → set remote HEAD
  *
  * The user-chosen `branchBase` (a feature's branch) becomes the repository
- * default branch. Requires ≥1 feature; after init the branchBase pointer is
- * locked (origin remote present).
+ * default branch. A project with NO features has no branch to push, so init
+ * materializes one named after `branchBase` first (`ensureBaseFeature`) —
+ * the mirror of Clone's auto-create from the remote HEAD. Only `branchBase`
+ * is pushed; other features publish individually afterwards. After init the
+ * branchBase pointer is locked (origin remote present).
  */
 export class InitOperation {
   constructor(
     private readonly workspaceResolver: WorkspaceResolver,
+    private readonly worktreeService: WorktreeService,
     private readonly githubAuthService?: GitHubAuthService,
     private readonly onIndexingTrigger?: (projectId: string, codebasePath: string, userContext: UserContext, feedbackFeature?: string) => void
   ) {}
@@ -44,7 +50,7 @@ export class InitOperation {
     return 'InitOperation';
   }
 
-  async execute(projectId: string, userContext: UserContext): Promise<{ warnings?: string[] }> {
+  async execute(projectId: string, userContext: UserContext): Promise<GitInitResult> {
     if (!this.githubAuthService) {
       throw new GitOperationError('GitHub integration not configured');
     }
@@ -67,28 +73,20 @@ export class InitOperation {
     const branchBase = readBranchBase(projectPath);
     const anchorPath = this.workspaceResolver.getGitAnchorPath(userContext, projectId);
 
-    // Publish requires at least one feature — branchBase must be a real branch.
-    const features = await listFeatureDirsByCreation(projectPath);
-    if (features.length === 0) {
-      throw new GitConfigError(
-        'Publish requires at least one feature — create a feature first.',
-        { retryable: false }
-      );
-    }
-
-    const git = GitHelper.getBareGitInstance(anchorPath);
-    if (!git || !(await gitAnchor.branchExists(anchorPath, branchBase))) {
-      // Structurally impossible when features exist (first feature always
-      // creates the anchor + an initial commit) — fail loud instead of
-      // half-initializing.
-      throw new GitConfigError(
-        `Local repository is not ready (anchor or base branch '${branchBase}' missing). ` +
-          'Recreate a feature to self-heal, then retry.',
-        { retryable: false }
-      );
-    }
-
-    // Validations: not already connected; remote repo must not exist.
+    // Validations run BEFORE the base feature is materialized, and the base
+    // feature is materialized BEFORE the GitHub repo is created. Both halves
+    // of that ordering are load-bearing:
+    //   - materializing first would let the "use Clone instead" conflict below
+    //     fire after a feature exists — and a feature makes Clone permanently
+    //     unavailable (CloneOperation's zero-feature hard guard), so the error
+    //     would contradict the state it just created. RemoteChecker also
+    //     throws GitAuthError on 401/403, surfacing a bad PAT with nothing
+    //     written yet.
+    //   - materializing after createGitHubRepo would leave an orphan remote
+    //     repo when feature creation fails, and every retry would then die on
+    //     the same conflict.
+    // hasOriginRemote is safe here: it returns false when the anchor is absent
+    // (a featureless project has no anchor yet).
     if (await gitAnchor.hasOriginRemote(anchorPath)) {
       throw new GitConflictError('Git repository already initialized. Use push/pull instead.');
     }
@@ -96,6 +94,27 @@ export class InitOperation {
     const repoExists = await RemoteChecker.exists(config.githubRepo, userContext, this.githubAuthService);
     if (repoExists) {
       throw new GitConflictError(`Remote repository already exists at ${config.githubRepo}. Please use Clone instead to download the existing repository.`);
+    }
+
+    const base = await ensureBaseFeature({
+      projectId,
+      projectPath,
+      anchorPath,
+      userContext,
+      branchBase,
+      worktreeService: this.worktreeService,
+    });
+
+    const git = GitHelper.getBareGitInstance(anchorPath);
+    if (!git || !(await gitAnchor.branchExists(anchorPath, branchBase))) {
+      // Structurally impossible now that a feature is guaranteed (the first
+      // feature always creates the anchor + an initial commit) — fail loud
+      // instead of half-initializing.
+      throw new GitConfigError(
+        `Local repository is not ready (anchor or base branch '${branchBase}' missing). ` +
+          'Recreate a feature to self-heal, then retry.',
+        { retryable: false }
+      );
     }
 
     await this.createGitHubRepo(config.githubRepo, projectId, userContext);
@@ -138,7 +157,7 @@ export class InitOperation {
 
     const baseCodebasePath = this.workspaceResolver.getCodebasePath(userContext, projectId, branchBase);
     await this.triggerIndexing(projectId, baseCodebasePath, userContext, branchBase);
-    return {};
+    return { defaultBranch: branchBase, feature: base.feature };
   }
 
   /**
@@ -149,7 +168,7 @@ export class InitOperation {
     projectId: string,
     userContext: UserContext,
     config: any
-  ): Promise<{ warnings?: string[] }> {
+  ): Promise<GitInitResult> {
     const codebasePath = resolveLocalPath(config.localPath);
     const git = GitHelper.getGitInstanceSafe(codebasePath);
     if (!git) {
@@ -182,10 +201,9 @@ export class InitOperation {
     await GitHelper.ensureSafeDirectory(codebasePath);
     await GitHelper.ensureUserConfig(git, userContext, await resolveCommitIdentity(this.githubAuthService, userContext));
     await this.addRemoteAndPushCurrent(git, userContext, authenticatedUrl);
-    await this.triggerIndexing(projectId, codebasePath, userContext, readBranchBase(
-      this.workspaceResolver.getProjectPath(userContext, projectId)
-    ));
-    return {};
+    const branchBase = readBranchBase(this.workspaceResolver.getProjectPath(userContext, projectId));
+    await this.triggerIndexing(projectId, codebasePath, userContext, branchBase);
+    return { defaultBranch: branchBase };
   }
 
   private async addRemoteAndPushCurrent(

@@ -37,6 +37,10 @@ export async function createFeature(
       `Failed to create feature: ${response.statusText}`;
     const err: any = new Error(message);
     if (errBody?.code) err.code = errBody.code;
+    // Structured git classification when the failure came from the anchor /
+    // origin convergence (see features.routes.ts) — lets callers route
+    // PAT-class failures through useGitErrorRouting.
+    if (errBody?.gitError) err.gitError = errBody.gitError;
     throw err;
   }
 }

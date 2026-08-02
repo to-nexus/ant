@@ -21,8 +21,13 @@ export { readBranchBase };
  * - feature count 0→1                      → auto-set to that feature name
  * - base feature deleted                   → reassign to oldest remaining feature
  *                                            (creation order), or 'main' if none
- * - manual selection (ConfigEditor)        → must be an existing feature; only
+ * - manual selection, features exist       → must be an existing feature; only
  *                                            while no remote is connected
+ * - manual selection, ZERO features        → free text (valid branch name), a
+ *                                            SEED for the feature Publish(init)
+ *                                            materializes; the first feature
+ *                                            created still overwrites it via
+ *                                            the 0→1 rule above
  * - remote connected (clone/init)          → LOCKED (clone writes remote HEAD once)
  *
  * Callers serialize mutations with `REDIS_KEYS.LOCK.FEATURE_LIFECYCLE`.
@@ -200,8 +205,11 @@ export async function applyAfterRemoteConverge(ctx: BranchBaseContext): Promise<
 }
 
 /**
- * Manual selection from the ConfigEditor dropdown. Rejected when the remote
- * lock is on or the value is not an existing feature.
+ * Manual selection from the ConfigEditor. Rejected when the remote lock is on
+ * or the name is invalid. With features present the value must be one of them
+ * (it is a pointer into the feature set); with ZERO features there is nothing
+ * to point at, so any valid branch name is accepted as the SEED that
+ * Publish(init) materializes.
  */
 export async function setBranchBaseManual(
   ctx: BranchBaseContext,
@@ -223,7 +231,7 @@ export async function setBranchBaseManual(
   }
 
   const features = await listFeatureDirsByCreation(ctx.projectPath);
-  if (!features.some((f) => f.name === value)) {
+  if (features.length > 0 && !features.some((f) => f.name === value)) {
     throw new GitConfigError(
       `Base branch must be an existing feature — "${value}" not found`,
       { retryable: false }

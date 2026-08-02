@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { useStore } from '@/domain/store';
 import { selectServerMode, selectUserOrgKind } from '@/domain/store/selectors/auth';
-import { useGitSnapshot, useGitPat, useGitPatDispatch, useGitDispatch } from '@/domain/git-world';
+import { useGitSnapshot, useGitPat, useGitPatDispatch, useGitDispatch, type GitOperationError } from '@/domain/git-world';
 import {
   createProject, createFeature, createProjectConfig, updateProjectConfig,
   deleteProject, uploadFiles, type UploadFileEntry,
@@ -340,11 +340,19 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
       : '';
     const shouldStartJob = startJob && effectiveDirective;
 
+    // Clone requires ZERO features and auto-creates one from the remote HEAD,
+    // so it must run before the feature step. Init is the mirror: it publishes
+    // `branchBase`, and a project with no features has no branch to push — so
+    // the feature goes FIRST, making the name chosen in step 1 the branchBase
+    // (0→1 auto-apply) and the GitHub default branch.
+    const cloneFlowExec = hasGitAction && gitAction === 'clone';
+
     const steps: ExecStepState[] = [];
     if (needsProject) steps.push({ id: 'project', status: 'pending' });
     if (needsProject) steps.push({ id: 'config', status: 'pending' });
+    if (!cloneFlowExec) steps.push({ id: 'feature', status: 'pending' });
     if (hasGitAction) steps.push({ id: gitAction === 'clone' ? 'gitClone' : 'gitInit', status: 'pending' });
-    steps.push({ id: 'feature', status: 'pending' });
+    if (cloneFlowExec) steps.push({ id: 'feature', status: 'pending' });
     if (hasFiles) steps.push({ id: 'upload', status: 'pending' });
     if (shouldStartJob) steps.push({ id: 'job', status: 'pending' });
     setExecSteps(steps);
@@ -414,6 +422,44 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
       let cloneSucceeded = false;
       let cloneOpResult: unknown;
+      let effectiveFeature = featureName.trim();
+
+      const runFeatureStep = async () => {
+        updateExecStep('feature', 'active');
+        if (cloneSucceeded) {
+          // Adopt the BE-auto-created base feature (named after the remote
+          // default branch) instead of creating one — clone requires zero
+          // features, so the sole listed feature is the auto-created one.
+          const adopted = (cloneOpResult as Partial<GitCloneResult> | undefined)?.feature;
+          if (adopted) {
+            effectiveFeature = adopted;
+          } else {
+            const fetched = await useStore.getState().fetchFeatures(projectId);
+            effectiveFeature = fetched[0]?.name ?? '';
+          }
+          if (!effectiveFeature) throw new Error('Clone finished but no feature was created');
+          useStore.getState().addFeatureOptimistic(effectiveFeature, projectId);
+        } else {
+          try {
+            await createFeature(projectId, effectiveFeature, language);
+          } catch (featErr) {
+            // Creating the first feature converges the anchor's origin from
+            // config.githubRepo, so a bad PAT fails loud here. Route it to the
+            // Configure-PAT dialog rather than aborting with a raw message.
+            const msg = featErr instanceof Error ? featErr.message : String(featErr);
+            if (handleGitError((featErr as { gitError?: GitOperationError })?.gitError).handled) {
+              updateExecStep('feature', 'error', msg);
+            }
+            throw featErr;
+          }
+          useStore.getState().addFeatureOptimistic(effectiveFeature);
+          await delay(500);
+        }
+        updateExecStep('feature', 'done');
+      };
+
+      if (!cloneFlowExec) await runFeatureStep();
+
       if (hasGitAction) {
         const gitStepId: ExecStepId = gitAction === 'clone' ? 'gitClone' : 'gitInit';
         let gitDone = false;
@@ -471,27 +517,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         }
       }
 
-      updateExecStep('feature', 'active');
-      let effectiveFeature = featureName.trim();
-      if (cloneSucceeded) {
-        // Adopt the BE-auto-created base feature (named after the remote
-        // default branch) instead of creating one — clone requires zero
-        // features, so the sole listed feature is the auto-created one.
-        const adopted = (cloneOpResult as Partial<GitCloneResult> | undefined)?.feature;
-        if (adopted) {
-          effectiveFeature = adopted;
-        } else {
-          const fetched = await useStore.getState().fetchFeatures(projectId);
-          effectiveFeature = fetched[0]?.name ?? '';
-        }
-        if (!effectiveFeature) throw new Error('Clone finished but no feature was created');
-        useStore.getState().addFeatureOptimistic(effectiveFeature, projectId);
-      } else {
-        await createFeature(projectId, effectiveFeature, language);
-        useStore.getState().addFeatureOptimistic(effectiveFeature);
-        await delay(500);
-      }
-      updateExecStep('feature', 'done');
+      if (cloneFlowExec) await runFeatureStep();
 
       if (hasFiles) {
         updateExecStep('upload', 'active');
