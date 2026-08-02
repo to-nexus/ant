@@ -152,8 +152,8 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
   });
 
   // generate → `<file>` write path (no edit_file); refactor → edit_file.
-  const activeTools = plannerToolsForMode(planMode);
-  const toolDefinitions = activeTools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
+  // Already wire-shaped (shared catalog schemas + bespoke edit_file reshaped).
+  const toolDefinitions = plannerToolsForMode(planMode);
 
   // No-output salvage: after NO_OUTPUT_HARD_CAP − MARGIN tool rounds with no
   // <file> write, strip tools so the model must author now (a tool-less round

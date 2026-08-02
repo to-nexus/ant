@@ -13,7 +13,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import { executeFetchUrl, handleFetchUrl } from '../../src/agents/common/tool/handlers/fetchUrl';
-import { PLANNER_TOOLS, PLANNER_EXPLAIN_TOOLS } from '../../src/agents/planner/graph/plan/nodes/tools';
+import { plannerObserveTools, plannerToolsForMode } from '../../src/agents/planner/graph/plan/nodes/tools';
 import {
   ToolName,
   JOB_TOOL_MATRIX,
@@ -65,11 +65,11 @@ describe('handleFetchUrl — plan-phase cap (mirrors search_web)', () => {
 });
 
 describe('fetch_url exposure matrix — mirrors search_web where it lives', () => {
-  it('is advertised to the planner (both generate and explain sets)', () => {
-    expect(PLANNER_TOOLS.map(t => t.name)).toContain('fetch_url');
-    expect(PLANNER_EXPLAIN_TOOLS.map(t => t.name)).toContain('fetch_url');
+  it('is advertised to the planner (observe set and every mode set)', () => {
+    expect(plannerObserveTools().map(t => t.name)).toContain('fetch_url');
+    expect(plannerToolsForMode('refactor').map(t => t.name)).toContain('fetch_url');
     // sibling: search_web stays too.
-    expect(PLANNER_TOOLS.map(t => t.name)).toContain('search_web');
+    expect(plannerObserveTools().map(t => t.name)).toContain('search_web');
   });
 
   it('is registered with a handler and present in CODE/DESIGN/PLAN matrices', () => {

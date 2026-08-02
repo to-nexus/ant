@@ -280,8 +280,9 @@ describe('awaitingClarify channel-write discipline', () => {
 
   it('planner plan node spreads the patch into every non-pause return', () => {
     const source = src('agents/planner/graph/plan/nodes/plan/index.ts');
-    // tool-round, explain and seal returns — the clarify-pause return keeps `true`.
-    expect(source.match(/\.\.\.clarifyPatch/g) ?? []).toHaveLength(3);
+    // tool-round, subagent-join-redo, explain and seal returns — the
+    // clarify-pause return keeps `true`.
+    expect(source.match(/\.\.\.clarifyPatch/g) ?? []).toHaveLength(4);
     expect(source).toMatch(/awaitingClarify:\s*true/);
   });
 

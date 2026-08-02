@@ -99,11 +99,12 @@ export function buildPlanGraph() {
     { plan: 'plan', __end__: END } as any,
   );
 
-  // plan ⟷ tool; seal → execute; clarify paused / explain done → END.
+  // plan ⟷ tool; join-barrier redo → plan; seal → execute;
+  // clarify paused / explain done → END.
   graph.addConditionalEdges(
     'plan' as any,
     routeAfterPlan as any,
-    { tool: 'tool', execute: 'execute', __end__: END } as any,
+    { tool: 'tool', plan: 'plan', execute: 'execute', __end__: END } as any,
   );
 
   // execute ⟷ tool; join-barrier redo → execute; done → END.
