@@ -49,7 +49,13 @@ isFigmaPipeline(resolvedAction.intent, isFigmaDataPopulated(figmaConfig))
 
 The Figma pipeline takes precedence. Figma mode is entered when the intent is `gen-ui-figma`, or when figma.json is populated for `rev-ui`.
 
-`visual/ui/handoff/` (free-form visual materials) is used only as additional context for the code job's multimodal channel, not as a design-job decompose input. The design job itself proceeds in by-desc mode with directive + PRD only.
+`gen-ui-desc` / `gen-game-art-desc` **produce** a handoff bundle under `visual/ui/handoff/` (respectively `visual/game-art/handoff/`) — they are not by-desc JSON authors. `resolveDesignOutputFormat` (`design/_shared/outputFormat.ts`) picks the output format, and `handoff` selects the `by-handoff` decompose/execute variants. The shape is the produce↔consume SSOT in [`jobs/shared/injections/handoff-package-format.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/handoff-package-format.md): `DESIGN.md` root guide → `tokens/*.css` → `components|entities/*.css` → pages (`screens/*.html` plus the specimen `*.html` files).
+
+**Medium constraint — HTML + CSS + SVG only, no framework code.** Three reasons, all stated in the producer templates: (a) every page must open directly in a browser with no build step, so it works as a design reference; (b) the bundle is a design reference, not production code — it dictates visual decisions, not technology choices; (c) structurally, `gen-ui-desc` carries no `techTier` and no codebase slot ([`action-config-matrix.ts`](../../packages/ant-shared/src/action-config-matrix.ts)), so the design job cannot know the target framework and must not pre-empt it. Emitting `.jsx`/`.tsx` would also flip the token layer from directly-transcribable CSS custom properties to code-shaped content the consumer must re-derive.
+
+`.jsx`/`.tsx` remain first-class **inputs**: `visual/ui/handoff` is deliberately the one extension-unrestricted artifact directory ([`artifact-dir-policy.ts`](../../packages/ant-shared/src/artifact-dir-policy.ts)), so a user-dropped framework bundle is read via the code job's `uiSource='handoff'` path under [`handoff-code-shape-discipline.md`](../../packages/ant-cli/src/core/prompt/templates/jobs/shared/injections/handoff-code-shape-discipline.md) (observe intent, reimplement — never transplant).
+
+Because name binding across bundle files has no compile step to catch it, the producer enforces it at two altitudes: a per-task gate (`design/nodes/checkTaskStatus/bundleCoherence.ts`, retryable, cap 2) and a job-level report in `learn` (`bundleCoherenceReport.ts`, never throws). Rules live in [`handoffBundleCoherence.ts`](../../packages/ant-cli/src/infrastructure/workspace/handoffBundleCoherence.ts).
 
 ### Input/Output Summary
 

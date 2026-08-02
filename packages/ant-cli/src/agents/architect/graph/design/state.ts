@@ -82,6 +82,8 @@ export interface DesignGraphState extends TriageableState {
     name: string;
     description?: string;
     targetFile?: string;
+    /** Dependency stage window — orders the handoff bundle file map. */
+    priority?: number;
   }>;
   currentTask?: DesignTask;
   completedTasks?: string[];  // Task IDs
@@ -228,6 +230,15 @@ export interface DesignGraphState extends TriageableState {
   /** Retry counter for the revision-preservation gate (max 2 retries, then
    * completion proceeds with the restored pre-revision original) */
   _specRevisionRetried?: number;
+
+  /** Set by checkTaskStatus when a handoff bundle file references css custom
+   * properties or class names nothing in the bundle declares — signals router
+   * to retry via execute. Single writer: the Gate 2.8 branch in both nodes. */
+  _bundleCoherenceFailed?: boolean;
+
+  /** Retry counter for the bundle name-binding gate (max 2 retries, then
+   * completion proceeds and the job-level report in learn lists the misses) */
+  _bundleCoherenceRetried?: number;
 
   /** Consecutive Figma MCP failure counter (reset on success, persists across tool→execute loop) */
   _figmaConsecutiveErrors?: number;

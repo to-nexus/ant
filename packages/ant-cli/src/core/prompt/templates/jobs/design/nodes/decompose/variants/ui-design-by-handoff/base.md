@@ -44,7 +44,7 @@ You are decomposing UI design work into file-authoring tasks for a **handoff bun
 **Derive the file set from the PRD** using the directory family above — instantiate only what this product needs (the family is vocabulary, not a checklist).
 
 - **Screens**: identify the distinct pages/views from the PRD's Information Architecture and Screen Composition sections — `SC-XXX` identifiers, when present, are the SSOT for the screen list. One task per screen file. Cap at 8 screen tasks — merge minor screens into their parent flow's file.
-- **Components**: components used by 2+ screens get their own `components/<name>` task; a component used by exactly one screen is authored inside that screen's task.
+- **Components**: derive the shared class layer per CRITICAL RULE 5 (class-ownership closure) — one `.css` task at stage 2 plus its specimen `.html` task at stage 3.
 - **Tokens**: split `tokens/` by concern only as far as the design warrants (a small product may need a single `tokens/tokens.css`).
 - **Assets**: emit an `assets/` task only when the design needs shared vector assets that screens/components reference.
 

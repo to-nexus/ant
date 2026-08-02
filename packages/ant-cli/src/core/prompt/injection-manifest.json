@@ -47,6 +47,7 @@
     ],
     "handoff-code-shape-discipline": [],
     "handoff-package-format": [],
+    "handoff-name-binding": [],
     "handoff-bundle-revision": [],
     "reference-codebase-register": [
       "hasReferenceCatalog",

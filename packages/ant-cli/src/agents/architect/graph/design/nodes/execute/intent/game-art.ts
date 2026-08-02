@@ -243,11 +243,22 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
     }
   }
 
-  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = state._allTasksSummary || [];
+  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string; priority?: number }> = state._allTasksSummary || [];
   const siblingTasks = allTasks
     .filter(t => t.targetFile === actualTargetFile && t.id !== taskId)
     .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 200) || ''}`)
     .join('\n');
+
+  // Handoff bundles guarantee one writer per file, so `siblingTasks` (same target)
+  // is always empty there. The bundle's OTHER files are what a task must be able to
+  // address for the read-before-bind contract to be actionable.
+  const bundleFileMap = isHandoff
+    ? allTasks
+        .filter(t => t.targetFile && t.targetFile !== actualTargetFile)
+        .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
+        .map(t => `- \`${t.targetFile}\` — ${t.name}`)
+        .join('\n')
+    : '';
 
   // Merge-then-delete carrier → full workspace-relative paths for delete_file.
   const removeFilePaths = (designTask?.removeFiles ?? []).map((rf) => `${targetDirRel}/${rf}`);
@@ -262,6 +273,7 @@ export async function buildGameArtSystemPrompt(state: DesignGraphState): Promise
     isLastTaskForDocument,
     forceAppend,
     siblingTasks: siblingTasks || '',
+    bundleFileMap: bundleFileMap || undefined,
     appendAnchor: liveAnchor,
     removeFilePaths: removeFilePaths.length > 0 ? removeFilePaths : undefined,
     detectedMode: state.resolvedAction?.mode,

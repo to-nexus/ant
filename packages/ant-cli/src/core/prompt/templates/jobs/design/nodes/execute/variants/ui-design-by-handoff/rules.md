@@ -6,6 +6,10 @@
 
 ---
 
+{{> jobs/shared/injections/handoff-name-binding}}
+
+---
+
 ## OUTPUT FORMAT
 
 Generate mode: emit the complete file inside ONE `<file>` block whose `path` is the pinned target path — nothing else writes to disk.
@@ -29,19 +33,24 @@ Apply the contract matching the target file's kind.
 ### `DESIGN.md`
 - The nine system sections in order, each carrying value + reasoning (why the rule exists), grounded in the PRD and the visual policy for this run.
 - Final **Artifacts** section: a table of every bundle file (exact relative paths from the task plan) with one-line purpose and the reading order (DESIGN.md → tokens → components/assets → screens).
-- State token names (e.g. `--color-primary`) when referencing values that `tokens/` will own — the css file is the value source, DESIGN.md is the reasoning source.
+- Name the ROLE a value plays (page canvas, muted body text, subtle divider) alongside the value and its reasoning. Do NOT coin `--variable` or class identifiers: `tokens/` and `components/` are authored concurrently with this file and cannot be bound to a name coined here.
 
 ### `tokens/<concern>.css`
 - CSS custom properties under `:root` only — no selectors beyond `:root`, no component rules.
 - Base values first, then semantic aliases referencing them (`--text-body: var(--fg-1)`).
 - Cover the concern completely (a screen must never need a value this concern owns but doesn't declare).
+- The property names declared here ARE the bundle's token API; every later file binds to them by reading this file.
 
 ### `styles.css`
 - `@import` lines ONLY — tokens first, then component css, in the exact file set the task description enumerates. No rules of its own.
 
-### `components/<name>.css` / `components/<name>.html`
-- `.css`: the component's classes and states, built ONLY on token variables — a literal value that a token owns is a defect.
-- `.html`: a specimen page rendering every meaningful state/variant of the component; links `../styles.css`.
+### `components/<name>.css`
+- The component's classes and states, built ONLY on token variables — a literal value that a token owns is a defect.
+- The class names declared here are the component's public API. Every state/variant a specimen or screen will need must exist here — a consumer cannot add one.
+
+### `components/<name>.html`
+- A specimen page rendering every meaningful state/variant, composed from the class names `components/<name>.css` declares — `read_file` it first; links `../styles.css`.
+- A `<style>` block may hold ONLY this demo page's own scaffolding (page frame, section headings, state labels, swatch framing). A rule for the component under demonstration, or for any class another bundle file also composes, is a defect.
 
 ### `screens/<name>.html`
 - Links `../styles.css` (single stylesheet entry). Composes component classes; references `assets/` by relative path.
@@ -55,7 +64,7 @@ Apply the contract matching the target file's kind.
 
 ## CONSTRAINTS
 
-- Every value decision must be traceable to DESIGN.md/tokens or the PRD — do NOT invent values downstream of stage 1.
+- Every value decision must be traceable to DESIGN.md/tokens or the PRD, and every cross-file NAME must trace to the file that declares it. Inventing either downstream of its owner is a defect.
 - Every page opens directly in a browser: relative paths only, no external network dependencies, no build step, no framework runtime.
 - These files are design references, NOT production code — do not add application logic beyond what demonstrating the design requires.
 

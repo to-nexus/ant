@@ -13,6 +13,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { learn } from '../../src/agents/architect/graph/design/nodes/learn';
 
 const BUNDLE_README = 'visual/game-art/handoff/project/design/README.md';
@@ -23,6 +25,12 @@ function fsWith(files: Record<string, string>) {
     getRootPath: () => '/root',
     async fileExists(p: string): Promise<boolean> {
       return has(p);
+    },
+    /** Workspace-relative recursive listing (featurePath '/root/feat' ⇒ 'feat/…'). */
+    async listFiles(dir: string): Promise<string[]> {
+      return Object.keys(files)
+        .map((k) => (k.startsWith('feat/') ? k : `feat/${k}`))
+        .filter((p) => p.startsWith(`${dir.replace(/\/+$/, '')}/`));
     },
     async readFile(p: string): Promise<string> {
       const hit = Object.keys(files).find((k) => p.endsWith(k));
@@ -180,5 +188,65 @@ describe('learn — handoff DESIGN.md floor scope (velvet-feeding-ghost RCA)', (
       completedTasksDetails: [{ id: 'ui-handoff-tokens-foundation', targetFile: 'tokens/foundation.css' }],
     });
     await expect(learn(state)).rejects.toThrow(/missing DESIGN\.md/);
+  });
+});
+
+/**
+ * Bundle coherence report severity.
+ *
+ * Unlike the DESIGN.md floor above, this report NEVER throws: the floor's throw
+ * is justified because a guide-less bundle is unreadable at all, whereas "real
+ * files whose names don't bind" must not destroy a completed job's session
+ * checkpoint and usage flush (the throw sits before saveSessionRun / endJob /
+ * flushUsageSnapshot). The signal goes to console + execution log + chat + digest.
+ */
+describe('learn — bundle coherence report severity', () => {
+  /** DESIGN.md present (floor satisfied) but a page references classes nothing declares. */
+  const incoherentBundle = () => ({
+    [`${UI_BUNDLE}/DESIGN.md`]: '# Guide\ncite `--ghost-token` here\n',
+    [`${UI_BUNDLE}/tokens/foundation.css`]: ':root{--real:1px}\n',
+    [`${UI_BUNDLE}/screens/home.html`]: `<div class="${Array.from({ length: 20 }, (_, i) => `ghost${i}`).join(' ')}"></div>`,
+  });
+
+  it('an incoherent bundle completes rather than throwing', async () => {
+    const state = generateHandoffState({
+      deps: { fileSystem: fsWith(incoherentBundle()) },
+      currentTask: {
+        id: 'ui-handoff-screen-home',
+        name: 'Screen: Home',
+        type: 'doc',
+        priority: 300,
+        description: 'author the home screen',
+        targetFile: 'screens/home.html',
+        targetDir: UI_BUNDLE,
+        docFormat: 'handoff',
+      },
+      completedTasksDetails: [{ id: 'ui-handoff-screen-home', targetFile: 'screens/home.html' }],
+    });
+    await expect(learn(state)).resolves.toBeDefined();
+  });
+
+  it('an interrupted job is not reported on (a half-built bundle is expected to be incoherent)', async () => {
+    const state = generateHandoffState({
+      deps: { fileSystem: fsWith(incoherentBundle()) },
+      interruption: { reason: 'tasks_failed', message: 'x', timestamp: '', canResume: true },
+      completedTasksDetails: [{ id: 'ui-handoff-tokens-foundation', targetFile: 'tokens/foundation.css' }],
+    });
+    await expect(learn(state)).resolves.toBeDefined();
+  });
+
+  it('the call site is gated to job scope and non-interrupted turns', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../../src/agents/architect/graph/design/nodes/learn/index.ts'),
+      'utf-8',
+    );
+    expect(src).toContain('reportHandoffBundleCoherence(');
+    expect(src).toMatch(
+      /!_isWorkerContext && !hasEarlyTermination && handoffBundleDirRel/,
+    );
+    // The report must follow the floor, so a guide-less bundle still throws first.
+    expect(src.indexOf('reportHandoffBundleCoherence(')).toBeGreaterThan(
+      src.indexOf('is missing ${HANDOFF_ROOT_GUIDE}'),
+    );
   });
 });
