@@ -10,7 +10,10 @@
 
 import { describe, it, expect } from 'vitest';
 import type { ChatLine } from '@ant/shared';
-import { capSnapshotProcessEvents } from '../../src/periphery/adapters/http/services/ChatService';
+import {
+  capSnapshotProcessEvents,
+  selectUnclosedWorkerScopes,
+} from '../../src/periphery/adapters/http/services/ChatService';
 
 const CAP = 400;
 
@@ -20,6 +23,25 @@ function line(type: ChatLine['type'], i: number): ChatLine {
   // compare == numeric order.
   const ts = String(i).padStart(9, '0');
   return { type, ts, jobId: 'j', turnId: 't', jobType: 'code' } as unknown as ChatLine;
+}
+
+function scopeEnd(i: number, workerScope: string, outcome = 'completed'): ChatLine {
+  return {
+    ...(line('chat_status', i) as any),
+    statusType: 'task_scope_end',
+    cardId: `c${i}`,
+    metadata: { outcome },
+    workerScope,
+  } as unknown as ChatLine;
+}
+
+function scopeLine(i: number, workerScope: string, statusType = 'tool_action'): ChatLine {
+  return {
+    ...(line('chat_status', i) as any),
+    statusType,
+    cardId: `c${i}`,
+    workerScope,
+  } as unknown as ChatLine;
 }
 
 describe('capSnapshotProcessEvents', () => {
@@ -61,5 +83,64 @@ describe('capSnapshotProcessEvents', () => {
     // Chronological order preserved across the whole result
     const ts = out.map((l) => l.ts);
     expect([...ts].sort()).toEqual(ts);
+  });
+
+  // `task_scope_end` is the ONLY input to the FE's `TurnSection.outcome`.
+  // Dropping one leaves a worker group spinning forever — the badge never
+  // resolves, and after the job dies it lingers as an empty row.
+  it('never drops task_scope_end markers, however old', () => {
+    const markers = Array.from({ length: 50 }, (_, i) => scopeEnd(i, `worker-${i}#task-${i}`));
+    const trail = Array.from({ length: 1000 }, (_, i) => scopeLine(1000 + i, 'worker-99#task-x'));
+    const out = capSnapshotProcessEvents([...markers, ...trail]);
+
+    const kept = out.filter(
+      (l) => l.type === 'chat_status' && (l as any).statusType === 'task_scope_end',
+    );
+    expect(kept).toHaveLength(50);
+  });
+
+  it('does not spend the cap budget on structural markers', () => {
+    // CAP cappable lines + markers interleaved → nothing is dropped.
+    const lines: ChatLine[] = [];
+    for (let i = 0; i < CAP; i++) {
+      lines.push(scopeLine(i, 'worker-1#task-a'));
+      if (i % 10 === 0) lines.push(scopeEnd(10_000 + i, `worker-${i}#task-${i}`));
+    }
+    const out = capSnapshotProcessEvents(lines);
+    expect(out).toBe(lines); // same reference — untouched
+  });
+});
+
+describe('selectUnclosedWorkerScopes', () => {
+  it('reports a scope that never received a terminal marker', () => {
+    const open = selectUnclosedWorkerScopes(
+      [scopeLine(0, 'worker-1#task-a'), scopeLine(1, 'worker-2#task-b'), scopeEnd(2, 'worker-2#task-b')],
+      'j',
+    );
+    expect([...open.keys()]).toEqual(['worker-1#task-a']);
+  });
+
+  // Regression: trailing lines under an already-closed scope used to re-open
+  // it, so the cleanup backstop re-stamped `cancelled` over `completed` /
+  // `superseded` scopes of a fully successful job → red ✗ in the FE.
+  it('keeps a closed scope closed when later lines carry the same workerScope', () => {
+    const open = selectUnclosedWorkerScopes(
+      [
+        scopeLine(0, 'worker-1#task-a'),
+        scopeEnd(1, 'worker-1#task-a', 'superseded'),
+        scopeLine(2, 'worker-1#task-a'),
+        { ...(line('assistant_message', 3) as any), workerScope: 'worker-1#task-a' } as ChatLine,
+      ],
+      'j',
+    );
+    expect(open.size).toBe(0);
+  });
+
+  it('ignores other jobs, collapsed lines and non-worker scopes', () => {
+    const foreign = { ...(scopeLine(0, 'worker-9#task-z') as any), jobId: 'other' } as ChatLine;
+    const collapsed = { ...(scopeLine(1, 'worker-8#task-y') as any), collapsed: true } as ChatLine;
+    const main = scopeLine(2, '_main_');
+    const open = selectUnclosedWorkerScopes([foreign, collapsed, main], 'j');
+    expect(open.size).toBe(0);
   });
 });
