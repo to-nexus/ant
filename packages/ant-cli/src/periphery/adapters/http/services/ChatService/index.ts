@@ -77,6 +77,21 @@ const SNAPSHOT_PROCESS_TYPES: ReadonlySet<ChatLine['type']> = new Set([
 ]);
 
 /**
+ * Structural lifecycle markers — body-less, one per worker scope, and the ONLY
+ * input to the FE's `TurnSection.outcome` / `sectionStatus()`. Dropping one
+ * leaves a section permanently `active` (spinner on a finished task, then an
+ * unresolvable empty group in scrollback), so they are exempt from the
+ * process-event cap AND from its budget.
+ */
+const SNAPSHOT_STRUCTURAL_STATUS_TYPES: ReadonlySet<string> = new Set(['task_scope_end']);
+
+function isCappableProcessLine(line: ChatLine): boolean {
+  if (!SNAPSHOT_PROCESS_TYPES.has(line.type)) return false;
+  if (line.type !== 'chat_status') return true;
+  return !SNAPSHOT_STRUCTURAL_STATUS_TYPES.has((line as ChatStatusLine).statusType);
+}
+
+/**
  * Cap on transient process events shipped in a single `chat_initial_state`
  * snapshot. Conversation + choice lines are never capped, so the readable
  * chat is fully preserved; only the older process trail of a long-lived turn
@@ -92,20 +107,56 @@ const MAX_SNAPSHOT_PROCESS_EVENTS = 400;
  */
 export function capSnapshotProcessEvents(lines: ChatLine[]): ChatLine[] {
   let processCount = 0;
-  for (const l of lines) if (SNAPSHOT_PROCESS_TYPES.has(l.type)) processCount++;
+  for (const l of lines) if (isCappableProcessLine(l)) processCount++;
   if (processCount <= MAX_SNAPSHOT_PROCESS_EVENTS) return lines;
 
   // Drop the oldest (processCount - cap) process lines; keep all others.
   let toDrop = processCount - MAX_SNAPSHOT_PROCESS_EVENTS;
   const out: ChatLine[] = [];
   for (const l of lines) {
-    if (toDrop > 0 && SNAPSHOT_PROCESS_TYPES.has(l.type)) {
+    if (toDrop > 0 && isCappableProcessLine(l)) {
       toDrop--;
       continue;
     }
     out.push(l);
   }
   return out;
+}
+
+export interface UnclosedWorkerScope {
+  turnId: string;
+  jobType: LogJobType;
+  taskName?: string;
+}
+
+/**
+ * Worker scopes of `jobId` that never received a `task_scope_end` marker.
+ *
+ * A scope's terminal marker is immutable: once seen, later lines carrying the
+ * same `workerScope` (trailing flushes, late buffer drains) must NOT re-open
+ * it. The earlier re-opening behaviour re-stamped `cancelled` over
+ * `completed` / `superseded` scopes of a fully successful job, painting them ✗.
+ */
+export function selectUnclosedWorkerScopes(
+  lines: ChatLine[],
+  jobId: string,
+): Map<string, UnclosedWorkerScope> {
+  const open = new Map<string, UnclosedWorkerScope>();
+  const closed = new Set<string>();
+  for (const line of lines) {
+    if (line.collapsed) continue;
+    if (line.jobId !== jobId) continue;
+    const scope = line.workerScope;
+    if (!scope || !scope.startsWith('worker-')) continue;
+    if (line.type === 'chat_status' && line.statusType === 'task_scope_end') {
+      open.delete(scope);
+      closed.add(scope);
+      continue;
+    }
+    if (closed.has(scope) || open.has(scope)) continue;
+    open.set(scope, { turnId: line.turnId, jobType: line.jobType, taskName: line.taskName });
+  }
+  return open;
 }
 
 export class ChatService {
@@ -1286,20 +1337,7 @@ export class ChatService {
       return 0;
     }
 
-    // scope → { turnId, jobType, taskName }, minus the ones already closed.
-    const open = new Map<string, { turnId: string; jobType: LogJobType; taskName?: string }>();
-    for (const line of lines) {
-      if (line.collapsed) continue;
-      if (line.jobId !== jobId) continue;
-      const scope = line.workerScope;
-      if (!scope || !scope.startsWith('worker-')) continue;
-      if (line.type === 'chat_status' && line.statusType === 'task_scope_end') {
-        open.delete(scope);
-        continue;
-      }
-      if (open.has(scope)) continue;
-      open.set(scope, { turnId: line.turnId, jobType: line.jobType, taskName: line.taskName });
-    }
+    const open = selectUnclosedWorkerScopes(lines, jobId);
     if (open.size === 0) return 0;
 
     for (const [workerScope, meta] of open) {

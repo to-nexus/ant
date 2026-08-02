@@ -566,7 +566,12 @@ function projectSingleTurn(
 
   // Sections that exist only as a streaming buffer (no events for that
   // worker scope yet) — rare but keeps live workers visible immediately.
+  // Gated on actual content: a drained-but-not-deleted buffer entry (nothing
+  // in the FE calls `clearStreamingBuffer`, and the BE only sweeps buffers on
+  // the cancelled path) would otherwise mint an empty, outcome-less section
+  // that reads as a worker running forever.
   for (const [scope, buf] of buffersByScope) {
+    if (!hasBufferContent(buf)) continue;
     if (sections.some((s) => s.workerScope === scope)) continue;
     sections.push({
       workerScope: scope,
@@ -577,13 +582,23 @@ function projectSingleTurn(
     });
   }
 
+  // A worker group with nothing to show is noise, not history: its steps were
+  // dropped by the snapshot cap, or it never produced any. The Kanban / job
+  // tab owns the task inventory; scrollback only renders work that has a body.
+  const rendered = sections.filter(
+    (s) =>
+      s.workerScope === MAIN_WORKER_SCOPE ||
+      s.items.length > 0 ||
+      hasBufferContent(buffersByScope.get(s.workerScope)),
+  );
+
   return {
     turnId,
     jobId,
     jobType,
     ts,
     user,
-    sections,
+    sections: rendered,
   };
 }
 
@@ -648,8 +663,12 @@ function foldSection(
 
   for (const line of lines) {
     if (line.type === 'chat_status' && line.statusType === 'task_scope_end') {
+      // First marker wins — a task scope's terminal state is decided once, by
+      // `TaskWorker`'s task-scope `finally`. A later duplicate (e.g. the
+      // job-cleanup backstop firing on an already-closed scope) must never
+      // downgrade a completed group to ✗.
       const o = (line.metadata as { outcome?: TaskScopeOutcome } | undefined)?.outcome;
-      if (o) outcome = o;
+      if (o && !outcome) outcome = o;
       continue;
     }
     if (line.type === 'chat_status') {

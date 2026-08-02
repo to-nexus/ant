@@ -1176,3 +1176,81 @@ describe('selectTurns — incremental cache (per-turn reference stability)', () 
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. Worker-scope terminal marker — `TurnSection.outcome`
+//
+// `task_scope_end` is the ONLY input to `sectionStatus()`. Two rules
+// protect the worker-group badge from resolving wrongly or never:
+//  - the FIRST marker wins (terminal state is immutable);
+//  - a section with nothing to show is not rendered at all, so a
+//    drained-but-undeleted streaming buffer or a snapshot-capped scope
+//    cannot mint a group that spins forever.
+// ─────────────────────────────────────────────────────────────────────
+
+describe('selectTurns — worker-scope outcome', () => {
+  const SCOPE = 'worker-1#task-a';
+
+  function scopeEnd(turnId: string, outcome: string, cardId = `end-${outcome}`) {
+    return status(turnId, cardId, 'task_scope_end' as any, { outcome }, SCOPE);
+  }
+
+  it('absorbs task_scope_end into outcome instead of rendering it', () => {
+    const events: ChatLine[] = [
+      userTurn('t-1'),
+      status('t-1', 'c1', 'tool_action', { toolName: 'read_file' }, SCOPE),
+      scopeEnd('t-1', 'completed'),
+    ];
+    const [turn] = selectTurns({ chatEvents: events, streamingBuffers: emptyBuffers() });
+    const section = turn.sections.find((s) => s.workerScope === SCOPE)!;
+    expect(section.outcome).toBe('completed');
+    expect(section.items).toHaveLength(1);
+  });
+
+  // Regression: the job-cleanup backstop re-closed already-closed scopes,
+  // and last-write-wins turned a succeeded group into a red ✗.
+  it('keeps the first outcome when a duplicate marker arrives later', () => {
+    const events: ChatLine[] = [
+      userTurn('t-1'),
+      status('t-1', 'c1', 'tool_action', {}, SCOPE),
+      scopeEnd('t-1', 'completed'),
+      scopeEnd('t-1', 'cancelled', 'end-late'),
+    ];
+    const [turn] = selectTurns({ chatEvents: events, streamingBuffers: emptyBuffers() });
+    expect(turn.sections.find((s) => s.workerScope === SCOPE)!.outcome).toBe('completed');
+  });
+
+  it('renders a worker section that has items but no marker yet (live worker)', () => {
+    const events: ChatLine[] = [
+      userTurn('t-1'),
+      status('t-1', 'c1', 'tool_action', {}, SCOPE),
+    ];
+    const [turn] = selectTurns({ chatEvents: events, streamingBuffers: emptyBuffers() });
+    const section = turn.sections.find((s) => s.workerScope === SCOPE);
+    expect(section).toBeDefined();
+    expect(section!.outcome).toBeUndefined();
+  });
+
+  it('does not mint a section from a drained (content-free) streaming buffer', () => {
+    const buffers: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-1', SCOPE)]: { turnId: 't-1', workerScope: SCOPE, text: '' },
+    };
+    const [turn] = selectTurns({ chatEvents: [userTurn('t-1')], streamingBuffers: buffers });
+    expect(turn.sections.some((s) => s.workerScope === SCOPE)).toBe(false);
+  });
+
+  it('still mints a section from a streaming buffer that has content', () => {
+    const buffers: Record<BufferKey, StreamingBuffer> = {
+      [makeBufferKey('t-1', SCOPE)]: { turnId: 't-1', workerScope: SCOPE, text: 'typing…' },
+    };
+    const [turn] = selectTurns({ chatEvents: [userTurn('t-1')], streamingBuffers: buffers });
+    expect(turn.sections.find((s) => s.workerScope === SCOPE)?.activeText).toBe('typing…');
+  });
+
+  it('drops a worker section whose only line was the (absorbed) marker', () => {
+    // Snapshot-cap shape: the progress trail is gone, the marker survives.
+    const events: ChatLine[] = [userTurn('t-1'), scopeEnd('t-1', 'completed')];
+    const [turn] = selectTurns({ chatEvents: events, streamingBuffers: emptyBuffers() });
+    expect(turn.sections.some((s) => s.workerScope === SCOPE)).toBe(false);
+  });
+});
