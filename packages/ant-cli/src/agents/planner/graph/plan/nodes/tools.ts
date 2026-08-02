@@ -1,19 +1,28 @@
 /**
  * Planner Tools
  *
- * Tools available to the planner agent for research:
- * - read_workspace_file: Read files from user workspace
- * - list_workspace_files: List files in workspace directories
- * - search_web: Search the web for technical information
- * - edit_file: Edit files via search-replace
- * - write_file / append_file: Shadow tools for LLM hallucination recovery
+ * The planner's OBSERVE surface (read / list / code-search / web) is the
+ * SHARED tool catalog: `TOOL_SETS.plannerObserve` advertised via
+ * `getToolsByNames`, dispatched by the matrix-built plan registry
+ * (`createPlanToolRegistry`). Sharing the catalog names is what makes the
+ * common infrastructure apply — duplicate-read elision keys on `read_file`,
+ * empty-directory clarity + glob patterns live in the shared `list_files`
+ * handler, and `search_code` exists only there (frank-losing-rugby: the
+ * former bespoke `read_workspace_file` / `list_workspace_files` fork was
+ * excluded from all of it).
+ *
+ * This file keeps only the planner-BESPOKE write tools:
+ * - edit_file: search-replace edits with the planner's codebase write gate
+ * - write_file / append_file: shadow tools for LLM hallucination recovery
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FileTreeUpdatePort } from '../../../../../core/ports/fileTree';
 import type { ChatStatusReporter } from '../../../../common/tool/types';
-import { ARCHITECT_TOOLS } from '../../../../common/tool/toolSchemas';
+import type { ToolDefinition as LlmToolSchema } from '../../../../../core/ports/llm';
+import { TOOL_SETS } from '../../../../common/tool/toolCatalog';
+import { getToolsByNames } from '../../../../common/tool/toolSchemas';
 
 interface ToolDefinition {
   name: string;
@@ -50,99 +59,9 @@ function isCodebasePathArg(rel: string): boolean {
   return normalized === 'codebase' || normalized.startsWith('codebase/');
 }
 
-const readWorkspaceFile: ToolDefinition = {
-  name: 'read_workspace_file',
-  description: 'Read a file from the user workspace. Use relative paths from feature root (e.g., "plan/prd.md").',
-  parameters: {
-    type: 'object',
-    properties: {
-      path: { type: 'string', description: 'Relative path from feature root' },
-    },
-    required: ['path'],
-  },
-  execute: async (args, ctx) => {
-    const filePath = path.join(ctx.featurePath, args.path);
-
-    if (!filePath.startsWith(ctx.featurePath)) {
-      return 'Error: Path traversal not allowed';
-    }
-
-    try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const maxLen = 10000;
-      if (content.length > maxLen) {
-        return content.substring(0, maxLen) + `\n\n... (truncated, ${content.length} total chars)`;
-      }
-      return content;
-    } catch (error: any) {
-      return `Error reading file: ${error.message}`;
-    }
-  },
-};
-
-const listWorkspaceFiles: ToolDefinition = {
-  name: 'list_workspace_files',
-  description: 'List files in a workspace directory. Use relative paths from feature root.',
-  parameters: {
-    type: 'object',
-    properties: {
-      directory: { type: 'string', description: 'Relative directory path from feature root' },
-    },
-    required: ['directory'],
-  },
-  execute: async (args, ctx) => {
-    const dirPath = path.join(ctx.featurePath, args.directory);
-
-    if (!dirPath.startsWith(ctx.featurePath)) {
-      return 'Error: Path traversal not allowed';
-    }
-
-    try {
-      const items = fs.readdirSync(dirPath, { withFileTypes: true });
-      return items.map(item =>
-        `${item.isDirectory() ? '📁' : '📄'} ${item.name}`
-      ).join('\n');
-    } catch (error: any) {
-      return `Error listing directory: ${error.message}`;
-    }
-  },
-};
-
-const searchWeb: ToolDefinition = {
-  name: 'search_web',
-  description: 'Search the web by KEYWORD for technical information, SDK documentation, API references, or technology comparisons. Use when you need current information about technologies, frameworks, or best practices. This is a keyword search — to read a SPECIFIC URL\'s page content, use fetch_url instead.',
-  parameters: {
-    type: 'object',
-    properties: {
-      query: { type: 'string', description: 'Search query' },
-    },
-    required: ['query'],
-  },
-  execute: async (args) => {
-    const { executeSearchWeb } = await import('../../../../common/tool/handlers/searchWeb');
-    return executeSearchWeb(args as { query: string });
-  },
-};
-
-const fetchUrl: ToolDefinition = {
-  name: 'fetch_url',
-  description: 'Fetch and read the page content of a SPECIFIC URL. Use when the directive names a concrete URL, live site, or deployed page to analyze — this retrieves that page\'s actual content so you can plan from observed reality. NOT a keyword search: discover pages by keyword with search_web, read a known URL with fetch_url.',
-  parameters: {
-    type: 'object',
-    properties: {
-      url: { type: 'string', description: 'The absolute URL to fetch (e.g., "https://example.com/pricing")' },
-    },
-    required: ['url'],
-  },
-  execute: async (args) => {
-    const { executeFetchUrl } = await import('../../../../common/tool/handlers/fetchUrl');
-    return executeFetchUrl(args as { url: string });
-  },
-};
-
 const editFile: ToolDefinition = {
   name: 'edit_file',
-  description: 'Edit a file by replacing exact text. Provide the relative path from feature root, the exact text to find (old_str), and its replacement (new_str). The old_str must match character-for-character. Use read_workspace_file first if needed.',
+  description: 'Edit a file by replacing exact text. Provide the relative path from feature root, the exact text to find (old_str), and its replacement (new_str). The old_str must match character-for-character. Use read_file first if needed.',
   parameters: {
     type: 'object',
     properties: {
@@ -181,7 +100,7 @@ const editFile: ToolDefinition = {
       if (error.code === 'ENOENT') {
         return `Error: File not found: ${args.path}`;
       }
-      return `Error editing file: ${error.message}\n\nTip: Use read_workspace_file to re-read the current content.`;
+      return `Error editing file: ${error.message}\n\nTip: Use read_file to re-read the current content.`;
     }
   },
 };
@@ -278,69 +197,49 @@ async function handleHallucinatedFileWrite(
   }
 }
 
-/** Tools advertised to the LLM (tool definitions sent in API call) */
-export const PLANNER_TOOLS: ToolDefinition[] = [
-  readWorkspaceFile,
-  listWorkspaceFiles,
-  searchWeb,
-  fetchUrl,
+/**
+ * Bespoke write tools registered as registry OVERLAYS on top of the shared
+ * matrix handlers (`nodes/tool.ts::getRegistry`). `edit_file` overrides the
+ * shared handler to enforce the planner's codebase write gate; the shadow
+ * tools exist only here.
+ */
+export const PLANNER_BESPOKE_TOOLS: ToolDefinition[] = [
   editFile,
-];
-
-/** Read-only tools for explain mode (no write/edit capabilities) */
-export const PLANNER_EXPLAIN_TOOLS: ToolDefinition[] = [
-  readWorkspaceFile,
-  listWorkspaceFiles,
-  searchWeb,
-  fetchUrl,
-];
-
-/** All tools including shadow tools for hallucination recovery */
-export const ALL_PLANNER_TOOLS: ToolDefinition[] = [
-  ...PLANNER_TOOLS,
   writeFile,
   appendFile,
 ];
 
 /** Map-based dispatch for efficient tool lookup */
 export const PLANNER_TOOL_MAP: ReadonlyMap<string, ToolDefinition> = new Map(
-  ALL_PLANNER_TOOLS.map(t => [t.name, t]),
+  PLANNER_BESPOKE_TOOLS.map(t => [t.name, t]),
 );
 
-/**
- * `explore` adapter — schema SSOT lives in `common/tool/toolSchemas.ts`
- * (ARCHITECT_TOOLS.explore); this only reshapes it into the planner's bespoke
- * ToolDefinition. Deliberately NOT in ALL_PLANNER_TOOLS / PLANNER_TOOL_MAP:
- * dispatch flows through the shared registry preset (`handleExplore`, which
- * needs the full ToolExecutionContext + subagent seam), never through the
- * planner-local execute path.
- */
-function plannerExploreTool(): ToolDefinition {
-  const schema = ARCHITECT_TOOLS.explore;
-  return {
-    name: schema.name,
-    description: schema.description,
-    parameters: schema.input_schema,
-    execute: async () =>
-      'Error: explore is dispatched through the shared tool registry, not the planner-local executor.',
-  };
+/** Reshape a bespoke ToolDefinition into the LLM wire schema. */
+function toWireSchema(t: ToolDefinition): LlmToolSchema {
+  return { name: t.name, description: t.description, input_schema: t.parameters } as LlmToolSchema;
 }
 
 /**
- * Tools advertised to the LLM by plan mode. Only `refactor` (rev-plan) edits an
- * EXISTING document via `edit_file`. `generate` authors a NEW document solely
- * through the `<file>` output tag (create-capable), so it must NOT be handed
- * `edit_file` — that tool cannot create a missing file and any tool call
- * short-circuits the generate node before the `<file>` writer runs, silently
- * producing no output. `explain` is read-only. SSOT for the generate/refactor
- * split — the generate node consumes this, never re-derives it.
- *
- * `explore` (async read-only subagent) is mode-universal — appended to every
- * mode's advertised list.
+ * The planner's read-only observe surface (shared catalog names, wire-shaped).
+ * Advertised by the plan node for ALL modes, and by execute for
+ * generate/explain.
+ */
+export function plannerObserveTools(): LlmToolSchema[] {
+  return getToolsByNames(TOOL_SETS.plannerObserve) as LlmToolSchema[];
+}
+
+/**
+ * Tools advertised to the LLM by the execute node, per mode. Only `refactor`
+ * (rev-plan) edits an EXISTING document via `edit_file`. `generate` authors a
+ * NEW document solely through the `<file>` output tag (create-capable), so it
+ * must NOT be handed `edit_file` — that tool cannot create a missing file and
+ * any tool call short-circuits the execute node before the `<file>` writer
+ * runs, silently producing no output. `explain` is read-only. SSOT for the
+ * generate/refactor split — the execute node consumes this, never re-derives it.
  */
 export function plannerToolsForMode(
   planMode: 'generate' | 'refactor' | 'explain',
-): ToolDefinition[] {
-  const base = planMode === 'refactor' ? PLANNER_TOOLS : PLANNER_EXPLAIN_TOOLS;
-  return [...base, plannerExploreTool()];
+): LlmToolSchema[] {
+  const base = plannerObserveTools();
+  return planMode === 'refactor' ? [...base, toWireSchema(editFile)] : base;
 }

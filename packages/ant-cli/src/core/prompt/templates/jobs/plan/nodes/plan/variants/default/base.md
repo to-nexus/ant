@@ -4,6 +4,8 @@ You are in the **observation phase** of authoring this workspace's planning docu
 
 {{> jobs/shared/injections/action-context}}
 
+{{> jobs/shared/injections/workspace-state}}
+
 {{#if codebaseRole}}
 ## Existing Codebase Awareness
 

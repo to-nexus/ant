@@ -426,6 +426,18 @@ export const TOOL_SETS = {
     ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
   ] as ToolName[],
 
+  // Planner observe/research surface (plan job — plan node all modes, execute
+  // node generate/explain). Shared catalog names so duplicate-read elision,
+  // empty-listing clarity, glob patterns, and search_code apply
+  // (frank-losing-rugby). Writes stay bespoke (planner edit_file codebase
+  // gate) — appended per-mode by `plannerToolsForMode`.
+  plannerObserve: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+    ToolName.SEARCH_WEB, ToolName.FETCH_URL,
+    ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
+  ] as ToolName[],
+
   // ── Explore-subagent child sets — strictly read-only, and NEVER contain
   // EXPLORE itself (depth-1: a child cannot launch children). Guarded by
   // tests/subagent/catalog-drift.test.ts.

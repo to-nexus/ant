@@ -1,8 +1,8 @@
 import type { JobType } from '@ant/shared';
 import { ARCHITECT_TOOLS } from '../../agents/common/tool/toolSchemas';
 import {
-  PLANNER_TOOLS,
-  PLANNER_EXPLAIN_TOOLS,
+  plannerObserveTools,
+  plannerToolsForMode,
 } from '../../agents/planner/graph/plan/nodes/tools';
 import { VISUAL_SKETCH_TOOLS } from '../../agents/creator/graph/visual/nodes/sketchTools';
 import { ASK_TOOLS, WORKSPACE_TOOLS } from '../../agents/architect/graph/ask/tools';
@@ -39,8 +39,10 @@ const DESIGN_TOOLS: LooseToolDef[] = ARCH_LIST.filter(t =>
 );
 
 const ASK_COMBINED: LooseToolDef[] = [...ASK_TOOLS, ...WORKSPACE_TOOLS].map(normalize);
-const PLANNER_TOOLS_N: LooseToolDef[] = PLANNER_TOOLS.map(normalize);
-const PLANNER_EXPLAIN_TOOLS_N: LooseToolDef[] = PLANNER_EXPLAIN_TOOLS.map(normalize);
+// Widest planner surface (observe set + refactor's edit_file) for non-detect
+// nodes; detect advertises the read-only observe set.
+const PLANNER_TOOLS_N: LooseToolDef[] = plannerToolsForMode('refactor').map(normalize);
+const PLANNER_EXPLAIN_TOOLS_N: LooseToolDef[] = plannerObserveTools().map(normalize);
 const VISUAL_SKETCH_TOOLS_N: LooseToolDef[] = VISUAL_SKETCH_TOOLS.map(normalize);
 
 export function getToolDefsFor(job: JobType, node: string): LooseToolDef[] {

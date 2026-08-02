@@ -31,7 +31,8 @@ import {
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { TEMPLATE_PATHS } from '../../../../../../core/prompt/builder/templatePaths';
 import { v4 as uuidv4 } from 'uuid';
-import { PLANNER_EXPLAIN_TOOLS } from '../tools';
+import { plannerObserveTools } from '../tools';
+import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
 import { getEstimatingLabel } from '../../../../../common/graph/timing/estimatingLabels';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
@@ -56,6 +57,16 @@ import { saveConversationToSession } from '../sessionWriter';
 import { extractPlanText } from '../../../../../common/graph/nodes/plan/extractPlanText';
 
 const MIN_BRIEF_LENGTH = 40;
+
+/**
+ * Per-round output budget for the plan (observe) loop. Research rounds are
+ * capped at PLAN_TOOL_LOOP (code-job parity — gentle-leaping-lathe: a
+ * research round's legitimate output is small, only the sealed brief is
+ * large); `explain` streams a user-facing `<reply>` and keeps DEFAULT.
+ */
+export function basePlanRoundMaxTokens(planMode: 'generate' | 'refactor' | 'explain'): number {
+  return planMode === 'explain' ? LLM_MAX_TOKENS.DEFAULT : LLM_MAX_TOKENS.PLAN_TOOL_LOOP;
+}
 
 export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
   const recursionCount = (state.recursionCount || 0) + 1;
@@ -200,9 +211,11 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   });
 
   // Plan phase is read-only research for ALL modes — the edit_file write path
-  // belongs to execute (refactor). Explain is read-only too.
-  const activeTools = PLANNER_EXPLAIN_TOOLS;
-  const toolDefinitions = activeTools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
+  // belongs to execute (refactor). Shared catalog names (read_file /
+  // list_files / search_code / explore …) so duplicate-read elision, the
+  // common list/search handlers, and explore delegation all apply
+  // (frank-losing-rugby).
+  const toolDefinitions = plannerObserveTools();
 
   // No-output salvage: after NO_OUTPUT_HARD_CAP − MARGIN tool rounds with no
   // <plan> seal, strip tools so the model must seal now (a tool-less round
@@ -210,11 +223,14 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   const { tools: streamToolDefinitions, toolChoice: drainToolChoice } = applyPlanDrainFinalization(state, messages, toolDefinitions, 'plan');
 
   const chatAPI = getChatAPIClient();
-  const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(
-    chatAPI, state.language === 'ko' ? 'ko' : 'en', undefined, undefined, false, 'plan',
-  );
-  const orchestrator = new StreamOrchestrator({ parser, renderStrategy, existingFiles: new Set() });
+  const makeOrchestrator = () => new StreamOrchestrator({
+    parser: new XMLStreamParser(),
+    renderStrategy: new CommonRenderStrategy(
+      chatAPI, state.language === 'ko' ? 'ko' : 'en', undefined, undefined, false, 'plan',
+    ),
+    existingFiles: new Set(),
+  });
+  let orchestrator = makeOrchestrator();
 
   let responseText = '';
   const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
@@ -222,45 +238,76 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
 
   await chatAPI.showChatStatus('placeholder');
 
+  // Round-shape budget: research rounds run at PLAN_TOOL_LOOP; exactly one
+  // escalation retry at DEFAULT when a real `<plan>` was cut off mid-emit.
+  let roundMaxTokens = basePlanRoundMaxTokens(planMode);
+  let escalated = false;
+  let capturedStopReason: string | undefined;
+
   try {
-    applyEstimatedInputTokensFromMessages(state as any, messages);
-    for await (const event of llm.stream(messages, {
-      tools: streamToolDefinitions,
-      ...(drainToolChoice && streamToolDefinitions.length > 0 ? { toolChoice: drainToolChoice } : {}),
-      maxTokens: LLM_MAX_TOKENS.DEFAULT,
-      temperature: LLM_TEMPERATURE.PLAN_GENERATION,
-      enableThinking: isFirstCall,
-      signal: getJobAbortSignal(),
-    })) {
-      if (event.type === 'retry') {
-        responseText = '';
-        toolCalls.length = 0;
+    for (;;) {
+      responseText = '';
+      toolCalls.length = 0;
+      capturedStopReason = undefined;
+      applyEstimatedInputTokensFromMessages(state as any, messages);
+      for await (const event of llm.stream(messages, {
+        tools: streamToolDefinitions,
+        ...(drainToolChoice && streamToolDefinitions.length > 0 ? { toolChoice: drainToolChoice } : {}),
+        maxTokens: roundMaxTokens,
+        temperature: LLM_TEMPERATURE.PLAN_GENERATION,
+        enableThinking: isFirstCall,
+        signal: getJobAbortSignal(),
+      })) {
+        if (event.type === 'retry') {
+          responseText = '';
+          toolCalls.length = 0;
+          capturedStopReason = undefined;
+          continue;
+        }
+        maybeUpdatePhaseTokenUsage(state, event);
+        await orchestrator.processEvent(event);
+        if (event.type === 'text' && event.text) responseText += event.text;
+        if (event.type === 'tool_use' && event.toolUse) {
+          const { id, name, input } = event.toolUse;
+          await chatAPI.sendLLMEvent(event);
+          toolCalls.push({ id: id || uuidv4(), name, args: input });
+        }
+        if (event.type === 'done') {
+          capturedStopReason = (event as any).stopReason as string | undefined;
+          const capturedUsage = extractTokenUsageFromStreamEvent(event);
+          if (capturedUsage) {
+            accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true, modelId: (llm as any).modelName });
+            upsertPhaseTokenUsage(state, 'plan', capturedUsage);
+          }
+          if (state.deps?.kanbanUpdate?.updateTaskQueue && state._httpJobId) {
+            broadcastTokenUsageByModel(state as any);
+            state.deps.kanbanUpdate.updateTaskQueue(
+              state._httpJobId, null, [], [], recursionCount, state.recursionLimit, state.tokenUsage,
+            );
+          }
+          if (state.phaseTokenUsages && state.deps?.kanbanUpdate?.updatePhaseTokenUsages) {
+            state.deps.kanbanUpdate.updatePhaseTokenUsages(state.phaseTokenUsages);
+          }
+        }
+      }
+
+      // Bounded single escalation (gentle-leaping-lathe): a max_tokens cut
+      // mid-`<plan>` is a legitimate large brief — rerun the round once at
+      // DEFAULT. Any other truncation (degenerate monologue) terminates at
+      // the cap and falls through to the best-effort seal below.
+      const truncatedMidPlan = capturedStopReason === 'max_tokens'
+        && responseText.includes('<plan>') && !responseText.includes('</plan>');
+      if (truncatedMidPlan && !escalated && roundMaxTokens < LLM_MAX_TOKENS.DEFAULT) {
+        escalated = true;
+        roundMaxTokens = LLM_MAX_TOKENS.DEFAULT;
+        orchestrator = makeOrchestrator();
+        console.warn(
+          `📋 [Planner:Plan] round truncated mid-<plan> at ${basePlanRoundMaxTokens(planMode)} tokens — ` +
+          `escalating to ${LLM_MAX_TOKENS.DEFAULT} for one retry (large brief emission).`,
+        );
         continue;
       }
-      maybeUpdatePhaseTokenUsage(state, event);
-      await orchestrator.processEvent(event);
-      if (event.type === 'text' && event.text) responseText += event.text;
-      if (event.type === 'tool_use' && event.toolUse) {
-        const { id, name, input } = event.toolUse;
-        await chatAPI.sendLLMEvent(event);
-        toolCalls.push({ id: id || uuidv4(), name, args: input });
-      }
-      if (event.type === 'done') {
-        const capturedUsage = extractTokenUsageFromStreamEvent(event);
-        if (capturedUsage) {
-          accumulateTokenUsage(state, capturedUsage, { taskLevel: false, jobLevel: true, modelId: (llm as any).modelName });
-          upsertPhaseTokenUsage(state, 'plan', capturedUsage);
-        }
-        if (state.deps?.kanbanUpdate?.updateTaskQueue && state._httpJobId) {
-          broadcastTokenUsageByModel(state as any);
-          state.deps.kanbanUpdate.updateTaskQueue(
-            state._httpJobId, null, [], [], recursionCount, state.recursionLimit, state.tokenUsage,
-          );
-        }
-        if (state.phaseTokenUsages && state.deps?.kanbanUpdate?.updatePhaseTokenUsages) {
-          state.deps.kanbanUpdate.updatePhaseTokenUsages(state.phaseTokenUsages);
-        }
-      }
+      break;
     }
   } catch (error: any) {
     console.error(`❌ [Planner:Plan] LLM error: ${error.message}`);
@@ -293,6 +340,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
       _activePhase: 'plan',
+      _subagentJoinRedo: false,
       // No forward output this round (research only) — advance the no-output
       // window; at CAP − MARGIN the next call's tools are stripped.
       _noOutputCallCount: (state._noOutputCallCount || 0) + 1,
@@ -303,6 +351,48 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   // No tool calls — the model produced a terminal text turn. Keep the message
   // open so a clarify card can flush its lead-in before the card.
   await orchestrator.finalize(true);
+
+  // ── Join barrier (explore subagent): the research turn concluded while
+  // reports are still owed. Withhold the terminal outcome (clarify / reply /
+  // seal), deliver the reports as a user turn, and re-enter plan so the brief
+  // incorporates them. Mirrors execute's barrier (round-grading-sable axis:
+  // never conclude a phase with reports outstanding).
+  {
+    const joined = await maybeJoinSubagents(state as any, ownerKeyFor(state._httpJobId), { history: updatedHistory });
+    if (joined) {
+      updatedHistory.push({
+        role: 'assistant',
+        content: responseText || '(terminal turn withheld — subagent reports pending)',
+      });
+      updatedHistory.push({
+        role: 'user',
+        content: [
+          ...joined.blocks,
+          {
+            type: 'text',
+            text: 'All pending subagent reports are delivered above. Incorporate them and conclude the observation phase now (seal the brief, or ask your clarify question if one is still needed).',
+          },
+        ] as any,
+      });
+      if (state.deps?.workflowUpdate && state._httpJobId) {
+        state.deps.workflowUpdate.exitNode(state._httpJobId, 'plan', 0);
+      }
+      console.log(`🔀 [Planner:Plan] Terminal turn withheld — subagent reports delivered, re-entering plan`);
+      return {
+        conversations: { [CONV_KEYS.NODE_PLAN]: updatedHistory },
+        pendingToolCalls: [],
+        tokenUsage: state.tokenUsage,
+        tokenUsageByModel: state.tokenUsageByModel,
+        recursionCount,
+        _activePhase: 'plan',
+        _subagentJoinRedo: true,
+        // Subagent reports delivered = forward progress; reset the window.
+        _noOutputCallCount: 0,
+        ...(joined.tokenDelta as any),
+        ...clarifyPatch,
+      };
+    }
+  }
 
   // ── Clarify gate ──
   const clarifyIntent = state.resolvedAction?.intent as IntentId | undefined;
@@ -350,6 +440,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
       awaitingClarify: true,
+      _subagentJoinRedo: false,
       ...clarifyGate.stateUpdates,
     };
   }
@@ -371,6 +462,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
       tokenUsage: state.tokenUsage,
       tokenUsageByModel: state.tokenUsageByModel,
       recursionCount,
+      _subagentJoinRedo: false,
       ...clarifyPatch,
     };
   }
@@ -419,6 +511,7 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
     tokenUsageByModel: state.tokenUsageByModel,
     recursionCount,
     recursionLimit: state.recursionLimit,
+    _subagentJoinRedo: false,
     // Brief sealed = forward progress; hand execute a fresh no-output budget.
     _noOutputCallCount: 0,
     ...(resolvedAction ? { resolvedAction } : {}),
@@ -500,8 +593,11 @@ async function resolvePlanTargetFromBrief(
 }
 
 /** Router: decide next node after plan. */
-export function routeAfterPlan(state: PlanGraphState): 'tool' | 'execute' | '__end__' {
+export function routeAfterPlan(state: PlanGraphState): 'tool' | 'execute' | 'plan' | '__end__' {
   if (state.pendingToolCalls && state.pendingToolCalls.length > 0) return 'tool';
+  // Join-barrier redo (explore subagent): reports were delivered as a user
+  // turn; re-enter plan so the brief incorporates them (routeAfterExecute mirror).
+  if (state._subagentJoinRedo) return 'plan';
   if (state.awaitingClarify) return '__end__';
   if (state._activePhase === 'execute') return 'execute';
   return '__end__';

@@ -57,7 +57,10 @@
       "referenceCatalog"
     ],
     "shared-source-diagnosis": [],
-    "explore-delegation": []
+    "explore-delegation": [],
+    "workspace-state": [
+      "workspaceState"
+    ]
   },
   "jobs/code/base/injections": {
     "text-format-compact": [],

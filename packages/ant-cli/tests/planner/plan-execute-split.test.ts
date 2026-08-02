@@ -16,7 +16,8 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { routeAfterPlan } from '../../src/agents/planner/graph/plan/nodes/plan';
+import { routeAfterPlan, basePlanRoundMaxTokens } from '../../src/agents/planner/graph/plan/nodes/plan';
+import { LLM_MAX_TOKENS } from '../../src/agents/common/graph/llmConfig';
 import { routeAfterExecute, buildAuthoringMessage } from '../../src/agents/planner/graph/plan/nodes/execute';
 import { buildPlanGraph } from '../../src/agents/planner/graph/plan/graph';
 import { isUnrealizedBrief } from '../../src/agents/planner/graph/plan/runner';
@@ -31,7 +32,7 @@ const read = (p: string) => fs.readFileSync(path.join(TEMPLATES, p), 'utf-8');
 
 describe('routeAfterPlan — plan node outcomes', () => {
   it('pending tool calls → tool (stay in plan research loop)', () => {
-    expect(routeAfterPlan(base({ pendingToolCalls: [{ id: '1', name: 'read_workspace_file', args: {} }] }))).toBe('tool');
+    expect(routeAfterPlan(base({ pendingToolCalls: [{ id: '1', name: 'read_file', args: {} }] }))).toBe('tool');
   });
 
   it('clarify paused (awaitingClarify) → __end__', () => {
@@ -49,11 +50,21 @@ describe('routeAfterPlan — plan node outcomes', () => {
   it('tool calls win over a stale execute phase (still in loop)', () => {
     expect(routeAfterPlan(base({ _activePhase: 'execute', pendingToolCalls: [{ id: '1', name: 'x', args: {} }] }))).toBe('tool');
   });
+
+  // frank-losing-rugby: explore reports delivered by the plan node's join
+  // barrier re-enter plan (never conclude a phase with reports outstanding).
+  it('subagent join redo → plan (self-edge)', () => {
+    expect(routeAfterPlan(base({ _subagentJoinRedo: true, _activePhase: 'plan' }))).toBe('plan');
+  });
+
+  it('seal clears the join-redo flag, so execute still wins after a redo cycle', () => {
+    expect(routeAfterPlan(base({ _subagentJoinRedo: false, _activePhase: 'execute' }))).toBe('execute');
+  });
 });
 
 describe('routeAfterExecute — execute node outcomes', () => {
   it('pending tool calls → tool (execute may read mid-author)', () => {
-    expect(routeAfterExecute(base({ pendingToolCalls: [{ id: '1', name: 'read_workspace_file', args: {} }] }))).toBe('tool');
+    expect(routeAfterExecute(base({ pendingToolCalls: [{ id: '1', name: 'read_file', args: {} }] }))).toBe('tool');
   });
 
   it('done (no tool calls) → __end__ (execute finalizes inline, no learn tail)', () => {
@@ -107,6 +118,19 @@ describe('brief seal — reuses the registered <plan> artifact tag', () => {
 describe('graph topology', () => {
   it('buildPlanGraph compiles with the plan→execute spine', () => {
     expect(() => buildPlanGraph()).not.toThrow();
+  });
+});
+
+// gentle-leaping-lathe parity: research rounds are shape-budgeted like the
+// code job's plan tool loop; only explain (user-facing <reply>) keeps DEFAULT.
+describe('basePlanRoundMaxTokens — research-round budget', () => {
+  it('generate/refactor research rounds run at PLAN_TOOL_LOOP', () => {
+    expect(basePlanRoundMaxTokens('generate')).toBe(LLM_MAX_TOKENS.PLAN_TOOL_LOOP);
+    expect(basePlanRoundMaxTokens('refactor')).toBe(LLM_MAX_TOKENS.PLAN_TOOL_LOOP);
+  });
+
+  it('explain streams a user-facing reply at DEFAULT', () => {
+    expect(basePlanRoundMaxTokens('explain')).toBe(LLM_MAX_TOKENS.DEFAULT);
   });
 });
 
@@ -177,5 +201,17 @@ describe('prompt re-partition — plan observes, execute authors', () => {
 
   it('plan deliverable is a brief, NOT the document (drift guard)', () => {
     expect(read('plan/variants/default/rules.md')).toMatch(/deliverable is a sealed brief/i);
+  });
+
+  // frank-losing-rugby: the plan node's LLM must see the artifact-tree state
+  // upfront (single shared partial — same table detect renders) instead of
+  // discovering empty directories with repeated list calls.
+  it('plan base injects the shared workspace-state partial (detect stays converged)', () => {
+    expect(read('plan/variants/default/base.md')).toMatch(/\{\{>\s*jobs\/shared\/injections\/workspace-state\}\}/);
+    const detectBase = fs.readFileSync(
+      path.resolve(__dirname, '../../src/core/prompt/templates/jobs/shared/nodes/detect/variants/default/base.md'),
+      'utf-8',
+    );
+    expect(detectBase).toMatch(/\{\{>\s*jobs\/shared\/injections\/workspace-state\}\}/);
   });
 });

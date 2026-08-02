@@ -46,19 +46,7 @@ outside the whitelist return an error message — do not retry them.
 - `{{this}}`
 {{/each}}
 
-## WORKSPACE STATE
-
-{{#if workspaceState}}
-- Plan: {{#if workspaceState.hasPlan}}✅ {{workspaceState.planPath}}{{else}}❌{{/if}}
-- Architecture/System: {{#if workspaceState.hasArchitectureSystem}}✅ {{json workspaceState.systemDesignFileNames}}{{else}}❌{{/if}}
-- Architecture/Spec: {{#if workspaceState.hasArchitectureSpec}}✅ {{json workspaceState.specDocNames}}{{else}}❌{{/if}}
-- Visual/UI: {{#if workspaceState.hasVisualUi}}✅{{else}}❌{{/if}}
-- Visual/GameArt: {{#if workspaceState.hasVisualGameArt}}✅{{else}}❌{{/if}}
-- Assets: {{#if workspaceState.hasAssets}}✅ ({{workspaceState.assetCount}} files){{else}}❌{{/if}}
-- Codebase: {{#if workspaceState.hasCodebase}}✅{{else}}❌{{/if}}
-{{else}}
-(no workspace state available)
-{{/if}}
+{{> jobs/shared/injections/workspace-state}}
 
 {{#if featureContext.userTurns.length}}
 ## PRIOR USER TURNS

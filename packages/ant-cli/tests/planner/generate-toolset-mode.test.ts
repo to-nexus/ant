@@ -30,11 +30,28 @@ describe('plannerToolsForMode', () => {
     expect(names('refactor')).toContain('edit_file');
   });
 
-  it('all modes keep read tools for workspace/codebase orientation', () => {
+  it('all modes keep shared read tools for workspace/codebase orientation', () => {
     for (const mode of ['generate', 'refactor', 'explain'] as const) {
       expect(names(mode)).toEqual(
-        expect.arrayContaining(['read_workspace_file', 'list_workspace_files']),
+        expect.arrayContaining(['read_file', 'list_files', 'search_code']),
       );
+    }
+  });
+
+  // frank-losing-rugby: the bespoke read/list fork bypassed duplicate-read
+  // elision (keyed on `read_file`), empty-listing clarity, glob patterns, and
+  // search_code. The shared catalog names are the SSOT — the fork must not
+  // come back.
+  it('bespoke workspace read/list tool names are gone from every mode', () => {
+    for (const mode of ['generate', 'refactor', 'explain'] as const) {
+      expect(names(mode)).not.toContain('read_workspace_file');
+      expect(names(mode)).not.toContain('list_workspace_files');
+    }
+  });
+
+  it('all modes advertise explore + subagent_report (delegation prompt parity)', () => {
+    for (const mode of ['generate', 'refactor', 'explain'] as const) {
+      expect(names(mode)).toEqual(expect.arrayContaining(['explore', 'subagent_report']));
     }
   });
 });
