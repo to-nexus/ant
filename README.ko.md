@@ -15,14 +15,12 @@
   <a href="docs/local-mode/install.md"><img alt="Quickstart" src="https://img.shields.io/badge/docs-quickstart-success"></a>
 </p>
 
-<!-- 파일을 docs/assets/ 에 넣고 주석을 해제하세요. docs/assets/README.md 참고.
 <p align="center">
-  <img src="docs/assets/code-job.gif" width="880"
-       alt="코드 잡이 태스크로 분해되어 보드를 가로질러 이동하고, 에이전트 채팅에 작업 카드가 흐르는 화면">
+  <img src="docs/assets/code-job.webp" width="880"
+       alt="디렉티브가 14개 태스크로 분해되어 Ant 보드에 오르고, 문서와 토큰 파일이 워크스페이스로 스트리밍된 뒤, 다시 보드에서 3개 태스크가 Completed 로 옮겨진 화면">
 </p>
-<p align="center"><sub>디렉티브 하나 → 병렬 실행되는 분해된 태스크, 그리고 마지막에
-큐된 verification 태스크. <a href="">▶ 2분 워크스루</a></sub></p>
--->
+<p align="center"><sub>디렉티브 하나 → 병렬 실행되는 분해된 태스크, 각각이 실제 경로에
+실제 파일을 씁니다 — 읽고, diff 뜨고, 반박할 수 있는. 커밋만이 아니라.</sub></p>
 
 > ⚠️ **상태: pre-alpha, 1인 개발.** end-to-end로 동작하지만 첫 정식 릴리즈
 > 전까지 공개 API와 파일 레이아웃은 변경될 수 있고, 이만큼의 범위를 혼자
@@ -70,13 +68,6 @@ Ant은 정반대 입장입니다. 엔지니어링이 실제로 굴러가는 방�
   <img src="docs/assets/build-loop.png" width="880"
        alt="두 개의 파이프라인. 구축 루프(greenfield 또는 대형 신규 피처)는 plan(plan/PRD.md) → 시스템 설계(architecture/system/) → UI·game art(visual/ui/) → code(codebase/) 순으로 흐르고, 그 이후 모든 변경을 담당하는 이터레이션 루프는 plan 과 시스템 설계를 건너뛰고 스펙(architecture/spec/) 에서 곧바로 code 로 가며 rev-spec 순환 화살표가 붙어 있는 다이어그램">
 </p>
-
-<p align="center">
-  <img src="docs/assets/design-job.webp" width="880"
-       alt="planner 잡이 제품 요구사항 문서를 렌더된 마크다운으로 워크스페이스에 실시간 스트리밍하고, 패널 헤더에 파일 경로와 Streaming 표시가 함께 보이는 화면">
-</p>
-<p align="center"><sub>모든 단계가 실제 경로에 실제 문서를 씁니다 — 읽고, diff 뜨고,
-반박할 수 있는. 커밋만이 아니라.</sub></p>
 
 ---
 
