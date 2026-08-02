@@ -209,6 +209,63 @@ describe('chatSseHandler virtual editor tab bridge', () => {
     });
 
     expect(h.state().clearPendingCardFromBuffers).toHaveBeenCalledWith('card-1');
+    // …and a non-document artifact never steals the main panel: promotion
+    // runs `openFile` + `setFileViewMode('preview')`, so it is gated on the
+    // same predicate that mints the virtual tab.
+    expect(h.state().promoteVirtualEditorTabToReal).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'visual/ui/handoff/tokens/colors.css',
+    'visual/game-art/ant/game-art-assets.json',
+  ])('design file_create for %s does not promote a tab', (filePath) => {
+    const h = createHarness();
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'chat_event_appended',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+      event: {
+        type: 'chat_status',
+        ts: new Date().toISOString(),
+        jobId: 'job-1',
+        turnId: 'turn-1',
+        jobType: 'design',
+        cardId: 'card-3',
+        statusType: 'file_create',
+        metadata: { filePath },
+      },
+    });
+
+    expect(h.state().promoteVirtualEditorTabToReal).not.toHaveBeenCalled();
+  });
+
+  it('design file_create for an html handoff specimen still promotes', () => {
+    const h = createHarness();
+    const handler = createChatSseHandler(h.set as any, h.get as any);
+    handler({
+      type: 'chat_event_appended',
+      producedAt: new Date().toISOString(),
+      projectId: 'proj',
+      featureName: 'base',
+      event: {
+        type: 'chat_status',
+        ts: new Date().toISOString(),
+        jobId: 'job-1',
+        turnId: 'turn-1',
+        jobType: 'design',
+        cardId: 'card-4',
+        statusType: 'file_create',
+        metadata: { filePath: 'visual/ui/handoff/screens/home.html' },
+      },
+    });
+
+    expect(h.state().promoteVirtualEditorTabToReal).toHaveBeenCalledWith({
+      cardId: 'card-4',
+      filePath: 'visual/ui/handoff/screens/home.html',
+      source: 'design',
+    });
   });
 
   it('non-file chat_status (e.g. tool_action) also clears its pending card', () => {

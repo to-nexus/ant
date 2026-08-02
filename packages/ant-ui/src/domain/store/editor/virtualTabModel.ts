@@ -45,6 +45,29 @@ export function isFileStreamingPendingCard(card: PendingCardSnapshot): boolean {
   return FILE_STREAMING_STATUS_TYPES.has(card.statusType);
 }
 
+/**
+ * Single owner of "does the preview surface render this artifact?".
+ *
+ * The preview surface exists for documents a human reads. `VirtualDocumentViewer`
+ * markdown-renders `.md`; everything else lands in a monospace `<pre>`, so a
+ * tokens/spec JSON or a handoff stylesheet would take over the main panel to
+ * scroll a blob nobody watches. Those belong in a chat file card — the code-job
+ * behaviour. A path-less file op is never preview-worthy either: no path means
+ * no tab can be minted, and suppressing its card would hide it on every surface.
+ *
+ * Consumed by `shouldRenderVirtualPreviewCard` (tab minting), `chatSseHandler`
+ * (terminal promotion) and `statusCardVisibility` (chat suppression) — the three
+ * sites must agree, so the rule lives here once.
+ */
+const PREVIEW_SURFACE_EXTENSIONS = /\.(md|markdown|html|htm)$/i;
+
+export function isPreviewSurfaceArtifactPath(path?: string): path is string {
+  return !!path && PREVIEW_SURFACE_EXTENSIONS.test(path.trim());
+}
+
 export function shouldRenderVirtualPreviewCard(card: PendingCardSnapshot): boolean {
-  return isFileStreamingPendingCard(card) && !!getPendingCardFilePath(card);
+  return (
+    isFileStreamingPendingCard(card) &&
+    isPreviewSurfaceArtifactPath(getPendingCardFilePath(card))
+  );
 }

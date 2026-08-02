@@ -82,6 +82,33 @@ describe('uiSlice editor tab transitions', () => {
     expect(h.state().mainPanelTabOrder).toContain('editor:virtual:card-1');
   });
 
+  // The preview surface only renders documents — a tokens/spec JSON or a
+  // handoff stylesheet stays a chat file card and must not take the panel.
+  it('mints no virtual tab for a non-document artifact', () => {
+    const h = createHarness({
+      selectedJobType: 'design',
+      chatEvents: [{ turnId: 'turn-1', jobType: 'design', jobId: 'job-1' }],
+    } as Partial<HarnessState>);
+
+    h.state().syncVirtualEditorTabsFromBuffers({
+      'turn-1:_main_': {
+        turnId: 'turn-1',
+        pendingCards: {
+          'card-1': {
+            cardId: 'card-1',
+            statusType: 'file_creating',
+            metadata: { filePath: 'visual/ui/ant/ui-tokens.json' },
+            streamedOutput: '{ "color": {',
+          },
+        },
+      } as any,
+    });
+
+    expect(h.state().editorTabs).toHaveLength(0);
+    expect(h.state().activeEditorTabId).toBeNull();
+    expect(h.state().mainPanelOpenTabs.fileEdit).toBe(false);
+  });
+
   it('creates virtual tabs for parallel worker outputs in one turn', () => {
     const h = createHarness({
       selectedJobType: 'design',
