@@ -134,8 +134,8 @@ describe('per-slot env override', () => {
 });
 
 describe('global fallback slot', () => {
-  it('defaults to the opus tier', () => {
-    expect(getFallbackModel()).toBe(DEFAULT_MODELS.anthropic.opus);
+  it('defaults to the sonnet tier', () => {
+    expect(getFallbackModel()).toBe(DEFAULT_MODELS.anthropic.sonnet);
   });
 
   it('is env-rebindable', () => {
@@ -146,7 +146,7 @@ describe('global fallback slot', () => {
   it('ignores an invalid value with a warn', () => {
     const warn = captureWarn();
     vi.stubEnv(FALLBACK_ENV_VAR, 'bogus');
-    expect(getFallbackModel()).toBe(DEFAULT_MODELS.anthropic.opus);
+    expect(getFallbackModel()).toBe(DEFAULT_MODELS.anthropic.sonnet);
     expect(warn).toHaveBeenCalled();
   });
 });

@@ -90,7 +90,7 @@ const DEFAULT_BINDINGS: Record<BindingJobKey, Partial<Record<ModelNodeKey, TierR
  * all. Declared as a named slot so the three call sites point at something explicit
  * rather than re-picking a tier each.
  */
-const FALLBACK_BINDING: TierRef = 'anthropic:opus';
+export const FALLBACK_BINDING: TierRef = 'anthropic:sonnet';
 
 const SCREAM = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
 
