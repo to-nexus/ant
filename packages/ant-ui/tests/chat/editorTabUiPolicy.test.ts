@@ -48,38 +48,62 @@ describe('editorTabUiPolicy', () => {
 /**
  * Which surface renders a file status.
  *
- * `plan` / `design` artifact writes render in the main-panel editor tab, so
- * their success/progress cards are suppressed in chat as duplicates. Failures
- * are NOT: the preview surface has no failure renderer (promotion fires on
- * `file_create` / `file_edit` only), so suppressing them left a failed
- * artifact write invisible everywhere — the tab just disappeared.
+ * `plan` / `design` writes of a DOCUMENT (`.md` / `.html`) render in the
+ * main-panel editor tab, so their success/progress cards are suppressed in
+ * chat as duplicates. Three classes are NOT suppressed, all for the same
+ * reason — the preview surface cannot render them, so chat is the only
+ * surface left:
+ *   - failures (promotion fires on `file_create` / `file_edit` only),
+ *   - deletions (no preview renderer at all),
+ *   - non-document artifacts (`.json` / `.css` / …), which fall back to the
+ *     code-job file card.
  *
- * Boundary: preview owns the success path, chat owns the failure path.
+ * Boundary: preview owns the document create/edit success path, chat owns
+ * everything else.
  */
 describe('shouldSuppressPreviewOnlyStatusCard — surface boundary', () => {
-  const line = (jobType: string, statusType: ChatStatusType): ChatStatusLine =>
-    ({ jobType, statusType } as ChatStatusLine);
+  const DOC = 'architecture/spec/spec-main.md';
+  const ASSET = 'visual/ui/ant/ui-tokens.json';
+  const line = (jobType: string, statusType: ChatStatusType, filePath?: string): ChatStatusLine =>
+    ({ jobType, statusType, metadata: filePath ? { filePath } : {} } as ChatStatusLine);
 
-  const PREVIEW_OWNED: ChatStatusType[] = [
+  const PREVIEW_OWNED_FILE: ChatStatusType[] = [
     'file_creating', 'file_writing', 'file_create',
     'file_editing', 'file_updating', 'file_edit',
-    'file_deleting', 'file_delete',
+  ];
+  const PREVIEW_OWNED_PATHLESS: ChatStatusType[] = [
     'plan_generating', 'plan',
     'task_response_streaming', 'task_response',
   ];
+  const DELETES: ChatStatusType[] = ['file_deleting', 'file_delete'];
   const FAILURES: ChatStatusType[] = ['file_create_failed', 'file_edit_failed', 'file_delete_failed'];
 
   for (const jobType of ['plan', 'design']) {
-    it.each(PREVIEW_OWNED)(`${jobType}: suppresses %s (preview renders it)`, (statusType) => {
+    it.each(PREVIEW_OWNED_FILE)(`${jobType}: suppresses %s for a document (preview renders it)`, (statusType) => {
+      expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType, DOC))).toBe(true);
+    });
+
+    it.each(PREVIEW_OWNED_FILE)(`${jobType}: keeps %s in chat for a non-document artifact`, (statusType) => {
+      expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType, ASSET))).toBe(false);
+    });
+
+    it.each(PREVIEW_OWNED_PATHLESS)(`${jobType}: suppresses %s (preview renders it)`, (statusType) => {
       expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType))).toBe(true);
     });
 
+    it.each(DELETES)(`${jobType}: keeps %s in chat (preview cannot render it)`, (statusType) => {
+      expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType, DOC))).toBe(false);
+    });
+
     it.each(FAILURES)(`${jobType}: keeps %s in chat (preview cannot render it)`, (statusType) => {
-      expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType))).toBe(false);
+      expect(shouldSuppressPreviewOnlyStatusCard(line(jobType, statusType, DOC))).toBe(false);
     });
   }
 
-  it.each([...PREVIEW_OWNED, ...FAILURES])('code: keeps %s in chat (no editor tab)', (statusType) => {
-    expect(shouldSuppressPreviewOnlyStatusCard(line('code', statusType))).toBe(false);
-  });
+  it.each([...PREVIEW_OWNED_FILE, ...PREVIEW_OWNED_PATHLESS, ...DELETES, ...FAILURES])(
+    'code: keeps %s in chat (no editor tab)',
+    (statusType) => {
+      expect(shouldSuppressPreviewOnlyStatusCard(line('code', statusType, DOC))).toBe(false);
+    },
+  );
 });

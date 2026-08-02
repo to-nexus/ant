@@ -26,6 +26,7 @@ import {
   flushStreamingDeltaBatch,
 } from './streamingDeltaBatch';
 import { isStaleJobUpdate } from './isStaleJobUpdate';
+import { isPreviewSurfaceArtifactPath } from '@/domain/store/editor/virtualTabModel';
 
 const MAIN_WORKER_SCOPE = '_main_';
 const STREAMING_FILE_STATUS = new Set(['file_create', 'file_edit']);
@@ -121,10 +122,14 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
           const filePath = typeof statusLine.metadata?.filePath === 'string'
             ? (statusLine.metadata?.filePath as string)
             : undefined;
+          // Promotion opens the file and focuses the main panel, so it must
+          // fire only for artifacts the preview surface actually renders —
+          // same gate `shouldRenderVirtualPreviewCard` applies when minting
+          // the virtual tab this promotes.
           if (
             VIRTUAL_TAB_JOB_TYPES.has(statusLine.jobType) &&
             STREAMING_FILE_STATUS.has(statusLine.statusType) &&
-            filePath
+            isPreviewSurfaceArtifactPath(filePath)
           ) {
             get().promoteVirtualEditorTabToReal?.({
               cardId: statusLine.cardId,

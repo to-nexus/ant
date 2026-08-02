@@ -17,17 +17,68 @@ function makeLine(partial: Partial<ChatStatusLine>): ChatStatusLine {
 }
 
 describe('turn item preview-only policy', () => {
-  it('suppresses file card statuses for plan/design jobs', () => {
+  it('suppresses document file card statuses for plan/design jobs', () => {
     expect(
       shouldSuppressPreviewOnlyStatusCard(
-        makeLine({ jobType: 'plan', statusType: 'file_create' }),
+        makeLine({
+          jobType: 'plan',
+          statusType: 'file_create',
+          metadata: { filePath: 'plan/prd.md' },
+        }),
       ),
     ).toBe(true);
     expect(
       shouldSuppressPreviewOnlyStatusCard(
-        makeLine({ jobType: 'design', statusType: 'file_editing' }),
+        makeLine({
+          jobType: 'design',
+          statusType: 'file_editing',
+          metadata: { filePath: 'architecture/spec/spec-main.md' },
+        }),
       ),
     ).toBe(true);
+  });
+
+  // Non-document artifacts have no preview renderer, so the chat card is the
+  // only surface — same as the code job.
+  it.each([
+    ['file_creating', 'visual/ui/ant/ui-tokens.json'],
+    ['file_create', 'visual/ui/ant/ui-spec.json'],
+    ['file_edit', 'visual/ui/handoff/tokens/colors.css'],
+  ])('keeps %s in chat for a non-document artifact', (statusType, filePath) => {
+    expect(
+      shouldSuppressPreviewOnlyStatusCard(
+        makeLine({ jobType: 'design', statusType: statusType as any, metadata: { filePath } }),
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps a path-less file status in chat', () => {
+    expect(
+      shouldSuppressPreviewOnlyStatusCard(
+        makeLine({ jobType: 'design', statusType: 'file_create', metadata: {} }),
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps delete statuses in chat — the preview never renders them', () => {
+    expect(
+      shouldSuppressPreviewOnlyStatusCard(
+        makeLine({
+          jobType: 'design',
+          statusType: 'file_delete',
+          metadata: { filePath: 'architecture/spec/spec-main.md' },
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldSuppressPreviewOnlyStatusCard(
+        makeLine({
+          jobType: 'design',
+          statusType: 'file_deleting',
+          metadata: { filePath: 'architecture/spec/spec-main.md' },
+        }),
+      ),
+    ).toBe(false);
   });
 
   it('suppresses plan and task response statuses for plan/design jobs', () => {
@@ -46,7 +97,11 @@ describe('turn item preview-only policy', () => {
   it('does not suppress statuses for code jobs', () => {
     expect(
       shouldSuppressPreviewOnlyStatusCard(
-        makeLine({ jobType: 'code', statusType: 'file_create' }),
+        makeLine({
+          jobType: 'code',
+          statusType: 'file_create',
+          metadata: { filePath: 'src/index.md' },
+        }),
       ),
     ).toBe(false);
   });
