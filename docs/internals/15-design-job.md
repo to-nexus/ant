@@ -33,10 +33,12 @@ The pipeline mode for the `ui-design` workType is determined by `resolvedAction.
 | Intent | Condition | Methodology | Tool set |
 |--------|------|--------|----------|
 | `gen-ui-figma` | `visual/ui/figma/figma.json` populated + MCP available | Figma MCP structured-data extraction → output to `visual/ui/ant/ui-*.json` | `TOOL_SETS.uiDesignFigma` |
-| `gen-ui-desc` | Directive + PRD | Author UI documents directly from a textual description | `TOOL_SETS.uiDesign` |
+| `gen-ui-desc` | Directive + PRD | Author a **handoff bundle** (`DESIGN.md` + `tokens/` + `components/` + `screens/`) under `visual/ui/handoff/` — `by-handoff` variants | `TOOL_SETS.uiDesign` |
 | `rev-ui` | Modify existing UI documents | by-desc variant (directive) — common entry point for non-Figma modes | `TOOL_SETS.uiDesign` |
 
-When the Figma intent (`gen-ui-figma`) is synthesized, the description variant is ignored. If free-form visual material (html/css/png) is needed, place it directly under `visual/ui/handoff/` for the code job's multimodal channel to use (handoff is additional context for the code job, not a design-job decompose input). For the detailed pipeline, see [25-design-pipeline.md](25-design-pipeline.md).
+When the Figma intent (`gen-ui-figma`) is synthesized, the description variant is ignored.
+
+`visual/ui/handoff/` is **both** a design-job output and a user-supplied input. `gen-ui-desc` produces a bundle there (HTML + CSS + SVG only — no framework code, because the design job carries no `techTier` and must not pre-empt the code job's stack choice); a user may also drop a framework bundle (`.jsx`/`.tsx`/`.vue`/…) there, which the code job reads as design intent to reimplement, never to transplant. For the format, the medium rationale, and the coherence gates, see [25-design-pipeline.md](25-design-pipeline.md).
 
 ## documentType (System Design)
 

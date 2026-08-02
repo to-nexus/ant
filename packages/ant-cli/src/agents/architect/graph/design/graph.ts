@@ -34,6 +34,11 @@ import { getExecutionLogger } from '../../../../core/utils/executionLogger';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from './nodes/checkTaskStatus/assetValidation';
 import { reconcileSpecDoc, buildSpecRevisionRetryMessage } from './nodes/checkTaskStatus/specDocIntegrity';
 import { isNoOutputCompletion, buildDesignNoOutputInterruption } from './nodes/checkTaskStatus/outputVerification';
+import {
+  isHandoffBundleTask,
+  validateTaskBundleCoherence,
+  buildBundleCoherenceRetryMessage,
+} from './nodes/checkTaskStatus/bundleCoherence';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
 
@@ -171,6 +176,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _assetValidationRetried: 0,
       _specRevisionFailed: false,
       _specRevisionRetried: 0,
+      _bundleCoherenceFailed: false,
+      _bundleCoherenceRetried: 0,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,
     } as any;
@@ -337,6 +344,54 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
     } as any;
   }
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 2.8: Handoff bundle name-binding coherence.
+  // Runs AFTER the zero-output guard — a task that wrote nothing must raise
+  // design_no_output, not a coherence violation. generate mode only: in refactor
+  // the on-disk bundle may have arrived hand-dropped and already broken, and
+  // retrying a task for breakage it did not cause burns tokens on user input.
+  // Shared single-owner helper — `workerCheckTaskStatus` calls the same functions.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (
+    isHandoffBundleTask(state.currentTask as any) &&
+    (state.resolvedAction?.mode || 'generate') === 'generate'
+  ) {
+    if ((state._bundleCoherenceRetried || 0) >= 2) {
+      console.warn(
+        `⚠️  [checkTaskStatus] Bundle coherence retry limit reached (${state._bundleCoherenceRetried}). ` +
+        `Completing "${state.currentTask!.name}" with unbound names — the job-level report will list them.`,
+      );
+    } else {
+      const coherence = await validateTaskBundleCoherence(
+        state.deps?.fileSystem as any,
+        state.context?.featurePath,
+        state.currentTask as any,
+      );
+      if (!coherence.ok) {
+        for (const f of coherence.findings) {
+          console.warn(`⚠️  [checkTaskStatus] ${f.code} in ${f.file}: ${f.reason}`);
+        }
+        return {
+          conversations: {
+            [CONV_KEYS.NODE_EXECUTE]: [
+              ...getConv(state.conversations, CONV_KEYS.NODE_EXECUTE),
+              {
+                role: 'user' as const,
+                content: buildBundleCoherenceRetryMessage(coherence, state.currentTask!.targetFile || ''),
+              },
+            ],
+          },
+          _bundleCoherenceFailed: true,
+          _bundleCoherenceRetried: (state._bundleCoherenceRetried || 0) + 1,
+          _executeCallIndex: 0,
+          _noOutputCallCount: 0,
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+        };
+      }
+    }
+  }
+
   // ✅ Current task completed successfully
   if (state.currentTask) {
     // Subagent leak guard — mirrors code checkTaskStatus: undelivered explore
@@ -487,6 +542,8 @@ async function checkTaskStatus(state: DesignGraphState): Promise<Partial<DesignG
       _assetValidationRetried: 0,
       _specRevisionFailed: false,
       _specRevisionRetried: 0,
+      _bundleCoherenceFailed: false,
+      _bundleCoherenceRetried: 0,
       _taskFilesWritten: 0,
       _turnToolWrites: 0,
       recursionCount: state.recursionCount,
@@ -587,6 +644,7 @@ async function parallelOrchestrator(state: DesignGraphState): Promise<Partial<De
       name: t.name,
       description: t.description,
       targetFile: (t as any).targetFile,
+      priority: t.priority,
     })),
   };
 
@@ -884,6 +942,8 @@ export const DesignGraphChannels = {
   _assetValidationRetried: Annotation<any>,
   _specRevisionFailed: Annotation<any>,
   _specRevisionRetried: Annotation<any>,
+  _bundleCoherenceFailed: Annotation<any>,
+  _bundleCoherenceRetried: Annotation<any>,
   awaitingDetectClarify: Annotation<any>,
   awaitingClarify: Annotation<any>,
   clarifyRoundsUsed: Annotation<any>,

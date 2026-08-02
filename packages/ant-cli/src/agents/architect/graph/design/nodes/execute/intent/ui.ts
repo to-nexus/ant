@@ -570,11 +570,22 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
   }
   
   // Build sibling tasks summary for MECE awareness in parallel chapters
-  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string }> = state._allTasksSummary || [];
+  const allTasks: Array<{ id: string; name: string; description?: string; targetFile?: string; priority?: number }> = state._allTasksSummary || [];
   const siblingTasks = allTasks
     .filter(t => t.targetFile === actualTargetFile && t.id !== taskId)
     .map(t => `- ${t.id}: ${t.name} — ${t.description?.substring(0, 200) || ''}`)
     .join('\n');
+
+  // Handoff bundles guarantee one writer per file, so `siblingTasks` (same target)
+  // is always empty there. The bundle's OTHER files are what a task must be able to
+  // address for the read-before-bind contract to be actionable.
+  const bundleFileMap = isHandoff
+    ? allTasks
+        .filter(t => t.targetFile && t.targetFile !== actualTargetFile)
+        .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))
+        .map(t => `- \`${t.targetFile}\` — ${t.name}`)
+        .join('\n')
+    : '';
 
   // Merge-then-delete carrier → full workspace-relative paths for delete_file.
   const removeFilePaths = (uiDesignTask?.removeFiles ?? []).map((rf) => `${targetDirRel}/${rf}`);
@@ -589,6 +600,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     isLastTaskForDocument,
     forceAppend,
     siblingTasks: siblingTasks || '',
+    bundleFileMap: bundleFileMap || undefined,
     // Live anchor: last section identifier in the current target file, computed
     // this turn against disk state. Null when the file does not exist yet, is not
     // a section-keyed JSON, or is unparseable. The execute template's anchor

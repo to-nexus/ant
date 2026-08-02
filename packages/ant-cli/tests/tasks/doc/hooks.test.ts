@@ -128,6 +128,19 @@ describe('tasks/doc/hooks/scheduling', () => {
       });
     });
 
+    it('priority 300–349 ⇒ no flags — the consumer stage is gated by the spec barrier', () => {
+      // Handoff specimens moved from 200–249 to 300–349 so a specimen is
+      // authored after the component css whose classes it composes. That fix
+      // relies on 300+ falling outside BOTH bands, so `hasPreSpecWork`
+      // (running.some(tokens ∪ assets)) is what holds it back.
+      for (const priority of [300, 320, 349]) {
+        expect(schedClassify(task(`consumer-${priority}`, { priority }))).toEqual({
+          isTokens: false,
+          isFoundation: false,
+        });
+      }
+    });
+
     it('code-job doc@800 ⇒ no classify flags set (inert)', () => {
       expect(schedClassify(task('doc-800', { priority: 800 }))).toEqual({
         isTokens: false,

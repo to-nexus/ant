@@ -5,6 +5,7 @@ import { ARTIFACT_PREFIX, getDirDescription } from '@ant/shared';
 
 import { saveSessionRun } from './sessionWriter';
 import { extractDesignLessons, storeLessonsToMemory, stripMetaFromContent } from './lessonExtractor';
+import { reportHandoffBundleCoherence, coherenceOutcomeHint } from './bundleCoherenceReport';
 import {
   buildBreadcrumb,
   collectTouchedFilesFromChatLog,
@@ -283,6 +284,8 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   let expectedOutputDir = 'the design output directory';
   // Job-level floor's only input; `undefined` = not probed (non-handoff / no fs dep).
   let handoffRootGuideOnDisk: boolean | undefined;
+  // Resolved bundle dir for the job-level coherence report; `undefined` = non-handoff.
+  let handoffBundleDirRel: string | undefined;
 
   if (state.deps?.fileSystem && state.context.featurePath) {
     const path = await import('path');
@@ -339,6 +342,7 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
 
       if ((isUiDesign || isGameArtDesign) && isHandoffOutput) {
         handoffRootGuideOnDisk = await fileSystem.fileExists(path.join(subDirRel, HANDOFF_ROOT_GUIDE));
+        handoffBundleDirRel = subDirRel;
         // Handoff bundle: the file set is dynamic (PRD-driven), so the
         // dir-scan allowlist cannot enumerate it and a plain dir walk would
         // absorb stale user uploads. Recognize the JOB-SCOPED set — the
@@ -436,7 +440,21 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       `Handoff bundle under ${expectedOutputDir} is missing ${HANDOFF_ROOT_GUIDE} — the root guide task must have run`
     );
   }
-  
+
+  // SCOPE: job-level — whole-bundle name binding. Unlike the floor above this
+  // NEVER throws (see bundleCoherenceReport.ts for why). `!hasEarlyTermination`
+  // is essential: a half-built bundle from an interrupted job is EXPECTED to be
+  // incoherent and is the biggest available false-positive source.
+  let bundleCoherence: Awaited<ReturnType<typeof reportHandoffBundleCoherence>> = null;
+  if (!_isWorkerContext && !hasEarlyTermination && handoffBundleDirRel) {
+    bundleCoherence = await reportHandoffBundleCoherence({
+      fileSystem: state.deps?.fileSystem as any,
+      bundleDirRel: handoffBundleDirRel,
+      featurePath: state.context?.featurePath,
+      jobId: state._httpJobId,
+    });
+  }
+
   state.files = loadedFiles;
   
   // Extract lessons from design process
@@ -640,6 +658,31 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
   // bounded at JOB_SUMMARY_TIMEOUT_MS, so the card needs no guard here; a
   // SIGTERM inside that window loses the card, which is recoverable — the
   // job is already durably complete and the card re-derives from the spec.
+  // Bundle coherence warning — emitted AFTER the job's wrap-up prose so it is
+  // not buried by it, and before the spec CTA. Blocking findings only; `warn`
+  // stays on the console/log channels.
+  if (bundleCoherence && bundleCoherence.hardCount > 0 && !_isWorkerContext) {
+    try {
+      const { getChatAPIClient } = await import('../../../../../../core/adapters/ChatAPIClient');
+      const chatAPI = getChatAPIClient();
+      const isKo = state._uiLocale === 'ko' || state._uiLocale !== 'en';
+      const files = [...new Set(bundleCoherence.findings.filter(f => f.severity === 'hard').map(f => f.file))];
+      const heading = isKo
+        ? `⚠️ **핸드오프 번들 이름 바인딩 문제 (${files.length}개 파일)** — 선언되지 않은 CSS 변수/클래스를 참조합니다. 브라우저에서 열면 스타일이 적용되지 않습니다.`
+        : `⚠️ **Handoff bundle name-binding issues in ${files.length} file(s)** — they reference css variables / classes nothing declares, so those pages render unstyled in a browser.`;
+      const detail = bundleCoherence.findings
+        .filter(f => f.severity === 'hard')
+        .map(f => {
+          const sample = f.symbols.slice(0, 6).join(', ');
+          const more = f.count > 6 ? ` (+${f.count - 6} more)` : '';
+          return `- \`${f.file}\` — ${f.count}/${f.total}: ${sample}${more}`;
+        })
+        .join('\n');
+      await chatAPI.sendLLMEvent({ type: 'text', text: `${heading}\n\n${detail}` });
+      await chatAPI.finalizeMessage();
+    } catch { /* non-blocking */ }
+  }
+
   if (!_isWorkerContext && !hasEarlyTermination) {
     await emitSpecCompleteCard(state);
   }
@@ -664,7 +707,13 @@ export async function learn(state: DesignGraphState): Promise<DesignGraphState> 
       llm: state.deps.llm,
       promptPort: state.deps.promptBuilder,
       onUsage: onSeamUsage,
-      ...(jobSummaryText ? { outcomeHint: jobSummaryText.slice(0, 200) } : {}),
+      ...(() => {
+        // Coherence misses outlive the turn — the next resolve must see them.
+        const coherenceHint = coherenceOutcomeHint(bundleCoherence);
+        const base = jobSummaryText ? jobSummaryText.slice(0, 200) : '';
+        const merged = [base, coherenceHint].filter(Boolean).join(' · ');
+        return merged ? { outcomeHint: merged } : {};
+      })(),
     });
   }
 

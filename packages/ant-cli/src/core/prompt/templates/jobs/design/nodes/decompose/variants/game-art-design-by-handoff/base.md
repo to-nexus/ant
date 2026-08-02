@@ -43,8 +43,8 @@ You are decomposing game-art design work into file-authoring tasks for a **hando
 
 **Derive the file set from the PRD** (aesthetic, entities, scenes, HUD) using the directory family above — instantiate only what this game needs.
 
-- **Entities** (`entities/`): engine-rendered visual units — playable characters, enemies, props, particles, projectile looks — as specimen demos grouped by family (one file per coherent group). Derived from the PRD's entity/mechanic sections.
-- **Components** (`components/`): web-rendered game UI — menus, HUD widgets, dialogs, overlays. Shared across 2+ screens → own task; single-screen → inside that screen's task.
+- **Entities** (`entities/`): engine-rendered visual units — playable characters, enemies, props, particles, projectile looks — grouped by family (one pair per coherent group), derived from the PRD's entity/mechanic sections. Per CRITICAL RULE 6 (class-ownership closure): one `.css` task at stage 2 plus its specimen `.html` task at stage 3.
+- **Components** (`components/`): web-rendered game UI — menus, HUD widgets, dialogs, overlays. Derive the shared class layer per CRITICAL RULE 6 — one `.css` task at stage 2 plus its specimen `.html` task at stage 3.
 - **Screens** (`screens/`): title / menu / in-game HUD state / results — one task per screen file. Cap at 8; merge minor states.
 - **Tokens**: palette / silhouette / lighting / motion-tone + HUD tokens as CSS custom properties, split by concern only as far as the design warrants.
 - In-canvas motion vocabulary (sprite movement feel, particle behavior, projectile arcs) belongs to entity demos and DESIGN.md — NOT to web UI interaction rules.

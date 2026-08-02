@@ -45,7 +45,7 @@ describe('gate wiring — both completion nodes call the one reconcile owner', (
 
   it('worker router mirrors the serial _specRevisionFailed branch', () => {
     expect(worker).toMatch(
-      /_assetValidationFailed \|\| state\._specRevisionFailed \? 'execute' : 'learn'/,
+      /_assetValidationFailed \|\| state\._specRevisionFailed \|\| state\._bundleCoherenceFailed \? 'execute' : 'learn'/,
     );
   });
 
@@ -64,5 +64,56 @@ describe('gate wiring — both completion nodes call the one reconcile owner', (
   it('legacy enforceSpecDocIntegrity call sites are gone', () => {
     expect(serial).not.toContain('enforceSpecDocIntegrity');
     expect(worker).not.toContain('enforceSpecDocIntegrity');
+  });
+});
+
+/**
+ * Same dual-node hazard for the bundle name-binding gate. `assetValidation.ts`'s
+ * header records the incident where a gate lived in the serial node only and
+ * therefore never ran under the default `ANT_TASK_CONCURRENCY > 1`.
+ */
+describe('bundle coherence gate wiring — both completion nodes', () => {
+  const serial = read('graph.ts');
+  const worker = read('parallel/workerGraph.ts');
+
+  it('serial + worker call the one coherence owner with the shared retry builder', () => {
+    for (const body of [serial, worker]) {
+      expect(body).toContain('validateTaskBundleCoherence(');
+      expect(body).toContain('buildBundleCoherenceRetryMessage(');
+      expect(body).toContain('isHandoffBundleTask(');
+      expect(body).toContain('_bundleCoherenceRetried');
+    }
+  });
+
+  it('both nodes gate on generate mode only', () => {
+    for (const body of [serial, worker]) {
+      expect(body).toMatch(/state\.resolvedAction\?\.mode \|\| 'generate'\) === 'generate'/);
+    }
+  });
+
+  it('completion returns reset both coherence flags (serial + worker)', () => {
+    for (const body of [serial, worker]) {
+      expect(body).toContain('_bundleCoherenceFailed: false');
+      expect(body).toContain('_bundleCoherenceRetried: 0');
+    }
+  });
+
+  it('channels declare the coherence flags (worker subgraph spreads them)', () => {
+    expect(serial).toContain('_bundleCoherenceFailed: Annotation<any>');
+    expect(serial).toContain('_bundleCoherenceRetried: Annotation<any>');
+  });
+
+  it('serial router routes _bundleCoherenceFailed back to execute', () => {
+    const base = { taskQueue: { isEmpty: () => true } } as unknown as DesignGraphState;
+    expect(routeAfterCheckTaskStatus({ ...base, _bundleCoherenceFailed: true } as any)).toBe('execute');
+  });
+
+  it('the gate sits AFTER the zero-output guard in both nodes', () => {
+    // A task that wrote nothing must raise design_no_output, not a coherence miss.
+    for (const body of [serial, worker]) {
+      expect(body.indexOf('validateTaskBundleCoherence(')).toBeGreaterThan(
+        body.indexOf('isNoOutputCompletion('),
+      );
+    }
   });
 });

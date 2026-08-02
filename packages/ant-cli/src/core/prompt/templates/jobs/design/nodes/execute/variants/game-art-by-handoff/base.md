@@ -33,8 +33,10 @@
 {{/each}}
 {{/if}}
 
-{{#if siblingTasks}}
-### 🤝 Sibling Tasks (same bundle, other files — do NOT author their content)
+{{#if bundleFileMap}}
+### 🗂 Bundle File Map (every other file in this bundle — inputs, never your output)
 
-{{{siblingTasks}}}
+{{{bundleFileMap}}}
+
+Read the ones your file depends on before authoring; author none of them.
 {{/if}}

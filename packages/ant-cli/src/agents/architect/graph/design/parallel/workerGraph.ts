@@ -31,6 +31,11 @@ import { CONV_KEYS, getConv } from '../../../../common/graph/conversations';
 import { validateAssetReferences, buildAssetRetryMessage, isAssetTask } from '../nodes/checkTaskStatus/assetValidation';
 import { reconcileSpecDoc, buildSpecRevisionRetryMessage } from '../nodes/checkTaskStatus/specDocIntegrity';
 import { isNoOutputCompletion, buildDesignNoOutputInterruption } from '../nodes/checkTaskStatus/outputVerification';
+import {
+  isHandoffBundleTask,
+  validateTaskBundleCoherence,
+  buildBundleCoherenceRetryMessage,
+} from '../nodes/checkTaskStatus/bundleCoherence';
 import { DesignNoOutputError } from '../errors';
 
 const INTERNAL_MARKER_RE = /\n?<!-- (?:SECTION_PATTERN|LAST_SECTION)[^>]*-->\s*/g;
@@ -234,6 +239,56 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Gate 2.8: Handoff bundle name-binding coherence (mirror of the serial gate).
+  // Runs AFTER the zero-output guard so a task that wrote nothing raises
+  // design_no_output instead. generate mode only — a hand-dropped refactor
+  // bundle may already be incoherent through no fault of this task.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  if (
+    isHandoffBundleTask(state.currentTask as any) &&
+    (state.resolvedAction?.mode || 'generate') === 'generate'
+  ) {
+    if ((state._bundleCoherenceRetried || 0) >= 2) {
+      console.warn(
+        `⚠️  [Worker checkTaskStatus] Bundle coherence retry limit reached (${state._bundleCoherenceRetried}). ` +
+        `Completing "${state.currentTask!.name}" with unbound names — the job-level report will list them.`,
+      );
+    } else {
+      const coherence = await validateTaskBundleCoherence(
+        state.deps?.fileSystem as any,
+        state.context?.featurePath,
+        state.currentTask as any,
+      );
+      if (!coherence.ok) {
+        for (const f of coherence.findings) {
+          console.warn(`⚠️  [Worker checkTaskStatus] ${f.code} in ${f.file}: ${f.reason}`);
+        }
+        if (state.deps?.workflowUpdate && state._httpJobId) {
+          await state.deps.workflowUpdate.exitNode(state._httpJobId, 'checkTaskStatus', workerId);
+        }
+        return {
+          conversations: {
+            [CONV_KEYS.NODE_EXECUTE]: [
+              ...getConv(state.conversations, CONV_KEYS.NODE_EXECUTE),
+              {
+                role: 'user' as const,
+                content: buildBundleCoherenceRetryMessage(coherence, state.currentTask!.targetFile || ''),
+              },
+            ],
+          },
+          _bundleCoherenceFailed: true,
+          _bundleCoherenceRetried: (state._bundleCoherenceRetried || 0) + 1,
+          _executeCallIndex: 0,
+          _noOutputCallCount: 0,
+          _taskCompleted: false,
+          recursionCount: state.recursionCount,
+          recursionLimit: state.recursionLimit,
+        } as any;
+      }
+    }
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Normal completion
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if (state.currentTask) {
@@ -321,6 +376,8 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
       _assetValidationRetried: 0,
       _specRevisionFailed: false,
       _specRevisionRetried: 0,
+      _bundleCoherenceFailed: false,
+      _bundleCoherenceRetried: 0,
       _taskFilesWritten: 0,
       _turnToolWrites: 0,
       recursionCount: state.recursionCount,
@@ -346,7 +403,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
  * back to execute for a re-prompt; otherwise the worker task is done → learn.
  */
 function routeAfterWorkerCheckTaskStatus(state: DesignGraphState): string {
-  return state._assetValidationFailed || state._specRevisionFailed ? 'execute' : 'learn';
+  return state._assetValidationFailed || state._specRevisionFailed || state._bundleCoherenceFailed ? 'execute' : 'learn';
 }
 
 /**

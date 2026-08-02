@@ -123,7 +123,7 @@ export function routeAfterRevise(s: DesignGraphState): string {
 }
 
 export function routeAfterCheckTaskStatus(s: DesignGraphState): string {
-  if (s._assetValidationFailed || s._specRevisionFailed) {
+  if (s._assetValidationFailed || s._specRevisionFailed || s._bundleCoherenceFailed) {
     return 'execute';
   }
   if (s.interruption) {
