@@ -125,6 +125,18 @@ function resolveTierRef(ref: string): { id?: string; reason?: string } {
   return { id };
 }
 
+/**
+ * A rejected binding is constant for the process lifetime, but this table is
+ * rebuilt per request (`getProjectConfig` heals config against it). Warn once per
+ * `envVar=value` so a typo stays loud without burying every other log line.
+ */
+const warned = new Set<string>();
+function warnOnce(key: string, message: string): void {
+  if (warned.has(key)) return;
+  warned.add(key);
+  console.warn(message);
+}
+
 /** Resolve one slot: env binding → built-in binding, both via the tier map. */
 function resolveSlot(job: BindingJobKey, node: ModelNodeKey, builtin: TierRef): string {
   const envVar = envVarForSlot(job, node);
@@ -133,11 +145,12 @@ function resolveSlot(job: BindingJobKey, node: ModelNodeKey, builtin: TierRef): 
   if (raw) {
     const { id, reason } = resolveTierRef(raw);
     if (!id) {
-      console.warn(`⚠️  [DefaultModels] ${envVar}="${raw}" ignored — ${reason}.`);
+      warnOnce(`${envVar}=${raw}`, `⚠️  [DefaultModels] ${envVar}="${raw}" ignored — ${reason}.`);
     } else if (requiresImageModel(job, node) && !MODEL_REGISTRY[id]?.capabilities?.includes('image-generation')) {
       // A text model here reaches GeminiImageClient and fails at render time —
       // far from the misconfiguration. Reject at resolve time instead.
-      console.warn(
+      warnOnce(
+        `${envVar}=${raw}`,
         `⚠️  [DefaultModels] ${envVar}="${raw}" ignored — ${job}.${node} needs an ` +
           `image-generation model, and "${id}" is not one.`,
       );
@@ -188,7 +201,7 @@ export function getFallbackModel(): string {
   if (raw) {
     const { id, reason } = resolveTierRef(raw);
     if (id) return id;
-    console.warn(`⚠️  [DefaultModels] ${FALLBACK_ENV_VAR}="${raw}" ignored — ${reason}.`);
+    warnOnce(`${FALLBACK_ENV_VAR}=${raw}`, `⚠️  [DefaultModels] ${FALLBACK_ENV_VAR}="${raw}" ignored — ${reason}.`);
   }
   return resolveTierRef(FALLBACK_BINDING).id!;
 }
