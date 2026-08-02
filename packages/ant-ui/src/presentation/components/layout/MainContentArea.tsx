@@ -13,6 +13,7 @@ import { VirtualDocumentViewer } from '../VirtualDocumentViewer';
 import { useStore } from '@/domain/store';
 import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
 import { selectActiveEditorTab } from '@/domain/store/selectors/editorTabs';
+import { useActiveEditorTabFileSync } from '@/application/hooks/ui/useActiveEditorTabFileSync';
 import { selectIsAuthBlocked } from '@/domain/store/selectors';
 import type { ProjectConfig } from '@/infrastructure/http/api';
 import type { KanbanData } from '@/infrastructure/http/api';
@@ -67,6 +68,10 @@ export function MainContentArea({
     activeEditorTabId,
     editorTabs,
   });
+  // The active real tab drives the document fetch. Without this the
+  // `selectedFile !== tab.path` branch below is a dead end — nothing else
+  // re-issues `openFile` for a pinned tab.
+  useActiveEditorTabFileSync(activeEditorTab);
   const shouldRenderStreamingPreView =
     activeEditorTab?.status === 'streaming' &&
     (activeEditorTab.source === 'design' || activeEditorTab.source === 'plan');

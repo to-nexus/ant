@@ -136,7 +136,17 @@ export const createFileSlice: StateCreator<any, [], [], FileSlice> = (set, get) 
     // file was mutated by a foreign source — mark stale so the editor refetches.
     const { currentFile, markCurrentFileStale } = get();
     const openPath = currentFile?.data?.path;
-    if (!openPath) return;
+    if (!openPath) {
+      // An errored fetch leaves `data` null, so the mtime path below can never
+      // repair it. If the file has since appeared in the tree, retry once —
+      // the safety net for a fetch that raced ahead of the write (or a
+      // transient failure). Without this the preview stays blank forever.
+      const { selectedFile, openFile } = get();
+      if (currentFile?.status === 'error' && selectedFile && findNodeByPath(tree, selectedFile)) {
+        void openFile(selectedFile);
+      }
+      return;
+    }
     const node = findNodeByPath(tree, openPath);
     const currentMtime = currentFile.data?.meta.mtime ?? 0;
     const nodeMtime = node?.meta?.mtime ?? 0;

@@ -288,6 +288,24 @@ export class CommonRenderStrategy implements IRenderStrategy {
   }
 
   /**
+   * Take ownership of the deferred terminal file cards — required before
+   * `finalize()` for a phase that writes afterwards, otherwise finalize
+   * fails them. Pairs with `flushDeferredFileCards`.
+   */
+  claimDeferredFileCardSettlement(): void {
+    this.fileRenderer.claimDeferredFileCardSettlement();
+  }
+
+  /**
+   * Settle the terminal file cards this renderer deferred because it wrote
+   * nothing (`writeImmediately === false`). Called by the phase that performs
+   * the deferred disk write, once the write is done.
+   */
+  async flushDeferredFileCards(resolution: Map<string, string | null>): Promise<void> {
+    await this.fileRenderer.flushDeferredFileCards(resolution);
+  }
+
+  /**
    * Set task title for plan card header display
    */
   setPlanTaskTitle(title: string): void {

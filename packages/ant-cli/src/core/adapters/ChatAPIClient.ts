@@ -304,7 +304,7 @@ export class ChatAPIClient {
   async completeFileCreation(
     filePath: string,
     content: string,
-    stats?: { diffBeforeLines?: number },
+    stats?: { diffBeforeLines?: number; cardPath?: string },
   ): Promise<void> {
     if (!this.enabled) return;
     const service = await getLLMResponseService();
