@@ -19,6 +19,7 @@ import * as path from 'node:path';
 import { routeAfterPlan } from '../../src/agents/planner/graph/plan/nodes/plan';
 import { routeAfterExecute, buildAuthoringMessage } from '../../src/agents/planner/graph/plan/nodes/execute';
 import { buildPlanGraph } from '../../src/agents/planner/graph/plan/graph';
+import { isUnrealizedBrief } from '../../src/agents/planner/graph/plan/runner';
 import { extractPlanText } from '../../src/agents/common/graph/nodes/plan/extractPlanText';
 import type { PlanGraphState } from '../../src/agents/planner/graph/plan/state';
 
@@ -106,6 +107,56 @@ describe('brief seal — reuses the registered <plan> artifact tag', () => {
 describe('graph topology', () => {
   it('buildPlanGraph compiles with the plan→execute spine', () => {
     expect(() => buildPlanGraph()).not.toThrow();
+  });
+});
+
+// such-catching-motif: the plan node sealed a 10K-char brief, a stale
+// `awaitingClarify` channel routed it to __end__, and the job still reported
+// `success: true` with an empty plan/ directory. Two locks:
+//   1. the seal must write `awaitingClarify: false` so the route survives
+//   2. a sealed-but-unauthored turn must never report success
+describe('sealed brief must reach execute (clarify continuation)', () => {
+  const PLAN_NODE_SRC = fs.readFileSync(
+    path.resolve(__dirname, '../../src/agents/planner/graph/plan/nodes/plan/index.ts'),
+    'utf-8',
+  );
+
+  it('the seal return clears the clarify channel (mutation alone is node-local)', () => {
+    const seal = PLAN_NODE_SRC.slice(PLAN_NODE_SRC.indexOf('_noOutputCallCount: 0,'));
+    expect(seal).toMatch(/\.\.\.clarifyPatch/);
+  });
+
+  it('the clarify-pause return still sets the flag true', () => {
+    expect(PLAN_NODE_SRC).toMatch(/awaitingClarify:\s*true/);
+  });
+
+  it('routeAfterPlan sends a sealed brief to execute once the channel is clean', () => {
+    expect(routeAfterPlan(base({ _activePhase: 'execute', awaitingClarify: false }))).toBe('execute');
+  });
+});
+
+describe('isUnrealizedBrief — output gate (no phantom success)', () => {
+  it('sealed brief with zero authored docs in generate mode → gated', () => {
+    expect(isUnrealizedBrief({ planText: '{"proposedOutline":["x"]}', _authoredDocPaths: [] }, 'generate')).toBe(true);
+    // Channel never written (execute never ran) — the production signature.
+    expect(isUnrealizedBrief({ planText: '{"proposedOutline":["x"]}' }, 'generate')).toBe(true);
+  });
+
+  it('sealed brief WITH an authored doc → not gated', () => {
+    expect(
+      isUnrealizedBrief({ planText: '{"proposedOutline":["x"]}', _authoredDocPaths: ['plan/prd.md'] }, 'generate'),
+    ).toBe(false);
+  });
+
+  it('no sealed brief (clarify pause / triage exit) → not gated', () => {
+    expect(isUnrealizedBrief({ _authoredDocPaths: [] }, 'generate')).toBe(false);
+    expect(isUnrealizedBrief({ planText: '   ', _authoredDocPaths: [] }, 'generate')).toBe(false);
+  });
+
+  it('refactor (edit_file path) and explain are exempt', () => {
+    const sealed = { planText: '{"proposedOutline":["x"]}', _authoredDocPaths: [] };
+    expect(isUnrealizedBrief(sealed, 'refactor')).toBe(false);
+    expect(isUnrealizedBrief(sealed, 'explain')).toBe(false);
   });
 });
 

@@ -28,6 +28,6 @@ export {
 } from './gate';
 export type { IntentCommittedState } from './gate';
 export { consumeAwaitingClarify } from './continuation';
-export type { ClarifyContinuableState } from './continuation';
+export type { ClarifyContinuableState, ClarifyConsumePatch } from './continuation';
 export { applyClarifyGate } from './phaseGate';
 export type { ClarifyGateInput, ClarifyGateResult } from './phaseGate';

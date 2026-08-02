@@ -397,6 +397,8 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     tokenUsageByModel: state.tokenUsageByModel,
     recursionCount,
     _subagentJoinRedo: false,
+    // Output-gate evidence — see `isUnrealizedBrief` in runner.ts.
+    _authoredDocPaths: writtenFiles.map(w => w.relPath),
   };
 }
 
