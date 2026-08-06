@@ -180,7 +180,7 @@ For each dependency, two decisions must be made in order: (1) local vs external,
 
 **Constraints**:
 - All `go` commands MUST use `working_directory: "codebase"`. The default working directory is the feature root (parent of `codebase/`), where no `go.mod` exists. Do NOT use `cd codebase &&` — use the `working_directory` parameter.
-- `go get` requires `go.mod` to exist in `codebase/`. Create `go.mod` first (via `<file>` tag), THEN run `go get` for packages with unknown versions.
+- `go get` requires `go.mod` to exist in `codebase/`. Create `go.mod` first (via the `create_file` tool), THEN run `go get` for packages with unknown versions.
 
 #### Design-Prescribed Dependency API Discovery
 
@@ -190,7 +190,7 @@ For each dependency, two decisions must be made in order: (1) local vs external,
 
 **Protocol** (via `run_command` with `working_directory: "codebase"`):
 
-1. Create `go.mod` via `<file>` tag with ONLY packages whose version you know (from training data or design doc). Do NOT include packages with unknown versions — `go get` will add them with the correct version automatically.
+1. Create `go.mod` via the `create_file` tool with ONLY packages whose version you know (from training data or design doc). Do NOT include packages with unknown versions — `go get` will add them with the correct version automatically.
 2. For each package with an unknown version:
    a. **Observe**: Search the design document for the literal import path — look for `import "github.com/..."` statements or backtick-quoted module paths in usage examples.
    b. **Extract**: Quote the observed import path verbatim. If the import contains subpackages (e.g., `github.com/org/lib/sub/pkg`), the base Go module is the path up to the repository name (e.g., `github.com/org/lib`).

@@ -8,7 +8,7 @@ import { getTargetPath } from '../plan/buildSystemPrompt';
  *
  * The execute node AUTHORS the document from `directive + planText` on a fresh
  * NODE_EXECUTE channel — the plan-loop research transcript is severed. This
- * prompt carries the Output Protocol (`<file>` / `edit_file`), document quality
+ * prompt carries the Output Protocol (`create_file` / `append_file` / `edit_file`), document quality
  * rules, and the domain-overlay document skeleton — but NOT the codebase
  * "MUST inspect" observation block (that was the plan node's job).
  *
@@ -59,7 +59,7 @@ export async function buildExecuteSystemPrompt(
       targetPath: targetPath || '',
       // Multi-file plan output — the sealed brief may split the plan into
       // several MECE docs under `plan/`. `targetPaths` is the full list; the
-      // template lists them and instructs one `<file>` per file when >1.
+      // template lists them and instructs one `create_file` per file when >1.
       targetPaths,
       hasMultipleTargets,
       // The sealed brief from the plan node — the authoring anchor. Rendered

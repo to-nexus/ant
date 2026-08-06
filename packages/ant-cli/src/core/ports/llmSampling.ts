@@ -2,7 +2,7 @@
  * LLM sampling policy — the single source of truth for per-call temperature.
  *
  * Ant's pipeline is dominated by STRUCTURED emission (decision tags, JSON,
- * `<tasks>`/`<file>` blocks, tool calls) where a format violation costs a
+ * `<tasks>` blocks, tool calls) where a format violation costs a
  * typed retry, so the table biases hard toward determinism. Every LLM call
  * site passes one of these keys explicitly; the client-constructor default
  * ({JOB}_MODEL_TEMPERATURE / AI_MODEL_TEMPERATURE env → 0.7) is only a

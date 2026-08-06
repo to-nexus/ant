@@ -11,4 +11,3 @@
 export { handleReadSourceDoc } from './sourceDoc';
 export { handleDownloadAsset, handleListAssets, pickAssetsRoot } from './assets';
 export type { AssetsRootInput } from './assets';
-export { handleAppendFile } from './hallucinatedAppend';

@@ -88,22 +88,22 @@ The code job must be able to render this behavior with a **primitive stand-in** 
 ### Output Format
 
 {{#if forceAppend}}
-**Parallel category task**: use `<append>` to merge your category.
+**Parallel category task**: call `append_file` to merge your category.
 
-```xml
-<append path="visual/game-art/ant/game-art-spec.json">
+```
+append_file(path="visual/game-art/ant/game-art-spec.json", content="""
 {
   "<your-category>": {
     "<entry-id>": { /* spec */ }
   }
 }
-</append>
+""")
 ```
 {{else}}
-**First task**: use `<file>` with `_meta`.
+**First task**: call `create_file` with `_meta`.
 
-```xml
-<file path="visual/game-art/ant/game-art-spec.json">
+```
+create_file(path="visual/game-art/ant/game-art-spec.json", content="""
 {
   "_meta": {
     "genre": "...", "coreLoop": "..."
@@ -112,7 +112,7 @@ The code job must be able to render this behavior with a **primitive stand-in** 
     "<entry-id>": { /* spec */ }
   }
 }
-</file>
+""")
 ```
 {{/if}}
 

@@ -302,13 +302,13 @@ export async function buildMessages(state: DesignGraphState): Promise<BuildMessa
     // Assemble blocks via CacheBlockMapper
     blocks = buildCacheableBlocks(promptResult);
 
-    // ✅ Validate: Ensure XML output format instructions are present
+    // ✅ Validate: Ensure the file-authoring output instructions are present
     const allContent = blocks
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map(b => b.text)
       .join('');
-    const hasMarkdownFormat = allContent.includes('<file path=') || allContent.includes('Markdown File Output Format');
-    
+    const hasMarkdownFormat = allContent.includes('create_file') || allContent.includes('Markdown File Output Format');
+
     if (!hasMarkdownFormat) {
       console.warn(`⚠️  WARNING: Markdown output format NOT found in prompt! (length: ${allContent.length} chars)`);
     }
@@ -452,7 +452,7 @@ export function buildRuntimeContext(
   // Task / directive / existing-design details.
   const lines: string[] = [];
 
-  // 1. Target File — single owner of the <file>-vs-<append> decision.
+  // 1. Target File — single owner of the create_file-vs-append_file decision.
   // Disk state is read at prompt-build time (same-document tasks are
   // serialized within a parallelGroup, so it cannot go stale mid-task);
   // stating it here removes the model's incentive to probe the
@@ -465,16 +465,16 @@ export function buildRuntimeContext(
     lines.push(`Write to: \`${targetPath}\``);
     lines.push('');
     if (state.resolvedAction?.mode === 'refactor' && docState.documentExists) {
-      lines.push(`This document already exists. Modify the relevant sections with \`edit_file\` (use <append path="${targetPath}"> only to add new sections at the end).`);
+      lines.push(`This document already exists. Modify the relevant sections with \`edit_file\` (use append_file on \`${targetPath}\` only to add new sections at the end).`);
     } else if (docState.documentExists) {
       const sectionNote = docState.lastSectionNumber
         ? ` (last section: ${docState.lastSectionNumber})`
         : '';
       lines.push(`This document already exists${sectionNote}.`);
-      lines.push(`⚠️ CRITICAL: Continue it with: <append path="${targetPath}">...</append>`);
+      lines.push(`⚠️ CRITICAL: Continue it with: append_file { "path": "${targetPath}", "content": "..." }`);
     } else {
       lines.push(`This document does not exist yet.`);
-      lines.push(`⚠️ CRITICAL: Create it with: <file path="${targetPath}">...</file>`);
+      lines.push(`⚠️ CRITICAL: Create it with: create_file { "path": "${targetPath}", "content": "..." }`);
     }
     lines.push(`The existence state above is authoritative — do NOT verify it with tool calls (no edit_file/read_file existence probes) before writing.`);
     lines.push('');

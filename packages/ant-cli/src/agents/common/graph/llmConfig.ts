@@ -37,7 +37,7 @@ export const LLM_MAX_TOKENS = {
   // The legacy 32K cap caused silent mid-stream truncation in plan (parent
   // emits batches[] with full per-batch detail) and execute (single LLM
   // round emits a >20KB file). On `stop_reason: max_tokens` the closing
-  // `</plan>` / `</file>` never arrives, the partial output is discarded,
+  // `</plan>` / the tool-args terminator never arrives, the partial output is discarded,
   // and the orchestrator falls through to a fresh tool-loop — billing the
   // tokens twice with zero progress. See
   // `.claude/plans/safe-braking-eagle-id-code-enchanted-dongarra.md`.

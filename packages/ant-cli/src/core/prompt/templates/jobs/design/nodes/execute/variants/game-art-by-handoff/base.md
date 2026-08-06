@@ -23,7 +23,7 @@
 {{#if targetExists}}
 **Write strategy**: REVISE — `{{targetPath}}` exists on disk and is the authority. Read it with `read_file`, apply the requested change surgically with `edit_file` (precise `old_str`/`new_str`), and preserve everything else. Do NOT regenerate the whole file unless the task explicitly says so.
 {{else}}
-**Write strategy**: GENERATE — `{{targetPath}}` does not exist yet. Author it in full, then emit it as a single `<file>` block (see OUTPUT FORMAT above).
+**Write strategy**: GENERATE — `{{targetPath}}` does not exist yet. Author it in full and write it with a single `create_file` tool call (see OUTPUT FORMAT above).
 {{/if}}
 
 {{#if removeFilePaths}}

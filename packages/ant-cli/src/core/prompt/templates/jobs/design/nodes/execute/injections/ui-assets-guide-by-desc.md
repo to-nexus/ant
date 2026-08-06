@@ -11,7 +11,7 @@ Emit a JSON catalog of the **logical** asset surface — what each asset is, how
 
 **When to use `list_assets`**:
 - Inputs already placed under `assets/` (icons, images, fonts, ...) ground the catalog in real files
-- If `assets/` is empty, document the asset slots the project needs and use placeholder `src` paths under `assets/<category>/<file>`
+- If `assets/` is empty, document the asset slots the project needs and use placeholder `src` paths under `assets/<category>/<name>`
 
 ### Core Principles
 
@@ -63,8 +63,10 @@ Emit a JSON catalog of the **logical** asset surface — what each asset is, how
 
 ### Example Output
 
-```xml
-<file path="visual/ui/ant/ui-assets.json">
+Write the catalog via a `create_file` tool call:
+
+```
+create_file(path="visual/ui/ant/ui-assets.json", content="""
 {
   "icons": {
     "icon-id": {
@@ -84,7 +86,7 @@ Emit a JSON catalog of the **logical** asset surface — what each asset is, how
     }
   }
 }
-</file>
+""")
 ```
 
 ### 🎨 SVG Color Theming (CRITICAL for dark/light mode)

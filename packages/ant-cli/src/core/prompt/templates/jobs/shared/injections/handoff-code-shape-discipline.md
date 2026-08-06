@@ -62,6 +62,7 @@ on top of that, for handoff specifically:
 
 ⚠️ Reading one framework-component file in the handoff invites pasting the
 whole component into the target codebase in one shot. This is the dominant
-failure mode and the entire reason this discipline exists. If your `<file>`
-output mirrors a handoff code-shaped file's structure line-by-line, you
-are transplanting — re-derive from the intent extraction above instead.
+failure mode and the entire reason this discipline exists. If the file body you write
+(`create_file` content) mirrors a handoff code-shaped file's structure
+line-by-line, you are transplanting — re-derive from the intent
+extraction above instead.

@@ -1,18 +1,17 @@
 /**
  * Execute Node - 문서 생성 추론 (Design Job용 LLM)
- * 
+ *
  * 책임:
  * - LLM 호출 및 스트리밍
- * - XML 파싱 (<file> 태그로 Markdown 실시간 렌더링)
  * - Thinking/Text 수집
- * - Tool Call 감지 (실행은 하지 않음!)
- * 
+ * - Tool Call 감지 (실행은 하지 않음! 파일 쓰기는 create_file /
+ *   append_file / edit_file 도구 채널 전용 — ToolFileStreamer가 라이브 렌더)
+ *
  * 하지 않는 것:
  * - Tool 실행
  * - 파일 쓰기 (tool 노드가 담당)
  * - 루프 (LangGraph가 관리)
- * 
- * ✅ XML 파서 통합 for Markdown 실시간 렌더링
+ *
  * ✅ UI Design 모드 지원 (detectedIntentGroup === 'design-ui')
  *     - by-figma: Figma MCP 구조적 데이터 추출
  *     - by-desc: directive + PRD 기반 직접 작성
@@ -28,6 +27,7 @@ import { designTargetExists } from '../checkTaskStatus/outputVerification';
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
+import { ToolFileStreamer } from '../../../../../../core/streaming/ToolFileStreamer';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
@@ -40,8 +40,7 @@ import { applyClarifyGate, consumeAwaitingClarify, type ClarifyConsumePatch } fr
 import type { IntentId } from '@ant/shared';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { saveClarifyCheckpoint } from '../../session/checkpoint';
-import { ARTIFACT_PREFIX, designDirOf, isPrdSyncTask } from '@ant/shared';
-import type { DesignTask } from '../../../../types/task';
+import { isPrdSyncTask } from '@ant/shared';
 
 // ✅ Import prompt builders from sub-modules
 import { buildMessages } from './intent/system';
@@ -50,31 +49,6 @@ import { buildGameArtMessages } from './intent/game-art';
 import { buildSpecMessages } from './intent/spec';
 import { buildPrdSyncMessages } from './intent/prd-sync';
 import { renderExplainResponse } from './explain';
-
-const CODEBASE_LIKE = (p: string): boolean => p === 'codebase' || p.startsWith('codebase/');
-
-/**
- * Detect "the LLM updated an artifact this turn" — for the
- * `_pendingDoneCheck` trigger (R5 of the codebase mutation gate plan).
- *
- * XML channel ONLY: `files` holds artifact-axis writes (file/append/edit/
- * delete) that FileRenderer already landed on disk this turn (codebase paths
- * never reach `files` — rejected upstream), so intent == success here.
- *
- * The tool channel (edit_file / delete_file / create_file) is deliberately
- * NOT counted from pending calls: a pending call has not executed yet, and
- * counting intent forged the R5 self-check after every FAILED write —
- * sharp-baking-bride RCA: 3× `edit_file` on a nonexistent target each
- * injected "the previous turn updated the artifact" while suppressing the
- * correct <file>-tag deadline hint. Tool-channel mutations enter the gate
- * one round later via `_turnToolWrites` (success-only, folded from
- * sideEffects by the tool node) — see the upgrade at the top of `execute`.
- */
-function turnHadArtifactMutationIntent(
-  files: Array<{ path: string }>,
-): boolean {
-  return files.some(f => f.path && !CODEBASE_LIKE(f.path));
-}
 
 export async function execute(
   state: DesignGraphState
@@ -189,10 +163,10 @@ export async function execute(
     let warningText: string;
     if (noOutputCount >= hardWarnAt) {
       warningText = `\n\n[no-output streak: ${noOutputCount} turns]\n` +
-        `You have been reading without producing output. Emit the <append>/<file> body using the conversation history — continued read-only calls just consume your turn budget without progress.`;
+        `You have been reading without producing output. Write the document body NOW via create_file / append_file (or edit_file for an existing target) using the conversation history — continued read-only calls just consume your turn budget without progress.`;
     } else if (noOutputCount >= softWarnAt) {
       warningText = `\n\n[no-output streak: ${noOutputCount} turns]\n` +
-        `Begin writing the document body using <append>/<file> tags. Further reads are unlikely to add necessary information.`;
+        `Begin writing the document body via create_file / append_file tool calls. Further reads are unlikely to add necessary information.`;
     } else {
       warningText = `\n\n[no-output streak: ${noOutputCount} turns]\n` +
         `Reminder: prefer broad reads (300-500+ lines) and start writing by call ${softWarnAt}.`;
@@ -214,11 +188,11 @@ export async function execute(
 
   // Tool activation: delegate to the per-node tools.ts selector so the
   // execute node body stays focused on streaming / parsing.
-  // Drain-time forced finalization (see ./drainFinalize.ts) may strip the
+  // Drain-time forced finalization (see ./drainFinalize.ts) may narrow the
   // tool list and append a "emit final output now" note to the messages.
   // `targetExists` dispatches the drain exit affordance: an existing target
-  // keeps write tools (REVISE exit), a not-yet-created one forces the <file>
-  // tag by stripping everything (sharp-baking-bride RCA).
+  // keeps edit/append (REVISE exit), a not-yet-created one advertises
+  // create/append instead (sharp-baking-bride RCA).
   const targetExists = await designTargetExists(
     state.deps?.fileSystem as any,
     state.context?.featurePath,
@@ -250,55 +224,21 @@ export async function execute(
     );
   }
   
-  // ✅ Setup XML Parser + StreamOrchestrator
+  // ✅ Setup XML Parser + StreamOrchestrator (thinking / clarify /
+  // task_response rendering — file writes go through the tool channel)
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
-  
+
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
     state.context.userLanguage,  // ✅ Pass user language for localized messages
-    state.deps?.git,  // ✅ Pass gitPort for immediate file writes
-    state.deps?.fileSystem,  // ✅ Pass fileSystem for file operations
-    !isExplainMode,  // ✅ writeImmediately gated by mode — explain returns earlier, this is defence-in-depth.
-    'design',  // ✅ jobType: 'design' (for LAST_SECTION metadata handling)
-    state.context.featurePath,  // ✅ Feature path for absolute path resolution
-    undefined,  // ✅ Design job: no codebasePath
-    state.deps?.fileTreeUpdate  // ✅ For real-time file tree updates via Redis Pub/Sub
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
-  // Cross-intent PRD sync: grant the FileRenderer Guard-1 exception for the
-  // plan doc this task is authorized to rewrite. Empty for every ordinary
-  // design task, so sibling-dir writes stay closed by default.
-  renderStrategy.setPrdSyncTargets(state.currentTask?.prdSyncTargets);
 
-  // ✅ Pin the expected output filename for this task — guards against the
-  // execute LLM emitting `<file path="...">` with a hallucinated filename
-  // when the prompt is internally inconsistent (e.g. decompose mis-assigned
-  // a foreign catalog's sections to this task). Legacy JSON UI mode skipped
-  // because it writes multiple artifacts per turn (ui-tokens.json,
-  // ui-assets.json, ui-spec.json) rather than a single targetFile; handoff
-  // UI tasks author exactly one bundle file each, so they ARE pinned. A
-  // PRD-sync task is pinned regardless of host intentGroup (its targetDir
-  // 'plan' + targetFile resolve to the granted `plan/<doc>.md`).
-  const isHandoffTask = (state.currentTask as DesignTask | undefined)?.docFormat === 'handoff';
-  if ((isPrdSync || intentGroup !== 'design-ui' || isHandoffTask) && state.currentTask?.targetFile) {
-    const targetFile = state.currentTask.targetFile;
-    // Spec tasks (since the spec- prefix was dropped) ship an explicit
-    // `targetDir`; other artifact kinds still derive their dir from the
-    // filename prefix via designDirOf().
-    const targetDir = state.currentTask.targetDir ?? designDirOf(targetFile);
-    const expectedTargetFile = `${targetDir}/${targetFile}`;
-    renderStrategy.setExpectedTargetFile(expectedTargetFile);
-  }
-
-  // ✅ Design job: Check actual disk files, not state.files (which accumulates across tasks)
-  const existingFiles = await scanExistingFiles(state, intentGroup === 'design-ui');
-  
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
-    existingFiles,
   });
   
   // ✅ Collect LLM output
@@ -327,6 +267,10 @@ export async function execute(
     // (GLM/DeepSeek unbounded) whose every-round reasoning overflows max_tokens.
     // Thinking blocks are preserved in conversation history by the tool node so
     // the API accepts them on subsequent turns.
+    // Live rendering of file-writing TOOL CALLS (create_file / append_file /
+    // edit_file) into the chat/editor surface.
+    let toolStreamer = new ToolFileStreamer(chatAPI);
+
     for await (const event of llmClient.stream(messages, {
       tools: tools && tools.length > 0 ? tools : undefined,
       ...(toolChoice && tools && tools.length > 0 ? { toolChoice } : {}),
@@ -343,13 +287,15 @@ export async function execute(
         textResponse = '';
         capturedUsage = undefined;
         pendingToolCalls = [];
+        toolStreamer = new ToolFileStreamer(chatAPI);
         continue;
       }
 
       maybeUpdatePhaseTokenUsage(state, event);
 
-      // ✅ Pass to orchestrator for XML parsing (<file>, <append>, <edit>)
+      // ✅ Pass to orchestrator for XML parsing (thinking / clarify / plan tags)
       await orchestrator.processEvent(event);
+      toolStreamer.handleEvent(event);
       
       // Thinking
       if (event.type === 'thinking') {
@@ -388,32 +334,14 @@ export async function execute(
       }
     }
     
-    // ✅ Wait for all file operations to complete BEFORE finalizing
-    // (parity with code job execute/index.ts — detects incomplete <file> tags)
-    try {
-      await orchestrator.waitForAllFileOperations();
-    } catch (fileError) {
-      const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
-      console.error(`⚠️  [Execute] File operation failed: ${errorMsg}`);
-    }
-    
-    // ✅ Finalize orchestrator (flush buffer and save files)
+    // ✅ Flush queued tool-channel live-card emissions BEFORE finalizing
+    // (parity with code job execute/index.ts)
+    await toolStreamer.settle();
+
+    // ✅ Finalize orchestrator (flush buffer)
     const hasToolCalls = pendingToolCalls.length > 0;
     const finalizeResult = await orchestrator.finalize(hasToolCalls);  // Don't flush if tool calls pending
-    
-    // ✅ CRITICAL: Extract file errors from finalize result for output validation
-    const fileErrors = finalizeResult.fileErrors || [];
-    if (fileErrors.length > 0) {
-      console.error(`⚠️  [Execute] ${fileErrors.length} file error(s) detected:`);
-      for (const error of fileErrors) {
-        console.error(`   - ${error.substring(0, 200)}`);
-      }
-    }
-    
-    // ✅ Get generated files from registry (in-memory tracking)
-    const registry = orchestrator.getRegistry();
-    const files = registry.getAllFiles();
-    
+
     // Extract explicitDone from finalize result
     const explicitDone = finalizeResult.explicitDone || false;
     
@@ -451,30 +379,28 @@ export async function execute(
       );
     }
     
-    console.log(`✅ [Execute] Complete: ${files.length} files, ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
-    console.log(`   Telemetry: callIndex=${newCallIndex}, noOutputStreak=${state._noOutputCallCount || 0}, newFiles=${files.length}`);
-    
+    const toolWrites = state._turnToolWrites || 0;
+    console.log(`✅ [Execute] Complete: ${toolWrites} tool write(s), ${pendingToolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
+    console.log(`   Telemetry: callIndex=${newCallIndex}, noOutputStreak=${state._noOutputCallCount || 0}, toolWrites=${toolWrites}`);
+
     // No-output streak tracker (feeds the advisory soft/hard warnings near
     // the top of this function; no longer a terminal gate — recursionLimit
     // is the ultimate backstop).
     //
-    // Channel-complete output signal: XML `<file>` registry writes PLUS the
-    // just-run tool batch's successful artifact writes (edit_file/create_file
-    // — `_turnToolWrites`, folded by the tool node from sideEffects). Without
-    // the tool channel, REVISE-mode handoff tasks write via edit_file, keep
-    // `_taskFilesWritten === 0` forever, and loop as "tool calls only"
-    // (outer-blending-prism 90s self-re-read RCA).
-    const toolWrites = state._turnToolWrites || 0;
-    const hasNewFileOutput = files.length > 0 || toolWrites > 0;
+    // Output signal: the just-run tool batch's successful artifact writes
+    // (create_file/append_file/edit_file — `_turnToolWrites`, folded by the
+    // tool node from sideEffects). Success-based on purpose: failed writes
+    // must not register as output (outer-blending-prism / sharp-baking-bride).
+    const hasNewFileOutput = toolWrites > 0;
     const hasToolCallsOnly = hasToolCalls && !hasNewFileOutput;
     const prevNoOutputCount = state._noOutputCallCount || 0;
 
     // Per-task artifact-write accumulator. `0` at completion = the model never
-    // emitted a <file> (or landed a successful artifact tool write) this run;
-    // the completion output-gate reads this to fail loud (design_no_output)
-    // instead of reporting a phantom success. Reset to 0 on task boundary
-    // alongside _noOutputCallCount/_executeCallIndex.
-    const newTaskFilesWritten = (state._taskFilesWritten || 0) + files.length + toolWrites;
+    // landed a successful artifact tool write this run; the completion
+    // output-gate reads this to fail loud (design_no_output) instead of
+    // reporting a phantom success. Reset to 0 on task boundary alongside
+    // _noOutputCallCount/_executeCallIndex.
+    const newTaskFilesWritten = (state._taskFilesWritten || 0) + toolWrites;
 
     // drainFinalizing MUST count toward the streak: once the strip persists
     // (drainFinalize.ts header) the tool node stops running, so without this
@@ -486,19 +412,16 @@ export async function execute(
       drainFinalizing,
     });
 
-    // R5 — artifact-mutation-then-no-done detection. When this turn
-    // produced an artifact mutation (XML <file>/<append>/<edit>/<delete>
-    // landing on an artifact path) but the LLM did NOT emit
-    // `<done>true</done>`, set the pending-done-check flag so the next
-    // execute turn's trailing user message can ask the LLM whether the
-    // assigned scope is satisfied. Tool-channel writes join one round later
-    // via the success-based `_turnToolWrites` upgrade at the top of this
-    // node. Cleared on any turn that either emits done or has no artifact
-    // mutation. See `docs/internals/15-design-job.md` "Codebase mutation gate".
-    const turnArtifactMutated = turnHadArtifactMutationIntent(files);
-    const nextPendingDoneCheck = !explicitDone && turnArtifactMutated;
-    const prevEscalation = state._doneCheckEscalation || 0;
-    const nextDoneCheckEscalation = nextPendingDoneCheck ? prevEscalation + 1 : 0;
+    // R5 — artifact-mutation-then-no-done detection is tool-channel-only:
+    // successful writes fold into `_turnToolWrites` (tool node, success-based
+    // sideEffects) and upgrade `_pendingDoneCheck` at the top of the NEXT
+    // execute turn, so the trailing user message can ask the LLM whether the
+    // assigned scope is satisfied. This turn therefore never sets the flag
+    // itself; it only clears it when the LLM emits done. Escalation resets
+    // whenever the flag is down. See `docs/internals/15-design-job.md`
+    // "Codebase mutation gate".
+    const nextPendingDoneCheck = false;
+    const nextDoneCheckEscalation = 0;
 
     // Spec clarify detection via the shared gate (policy + budget + turn-
     // terminating). The matrix enables the `execute` phase only for `gen-spec`,
@@ -534,7 +457,6 @@ export async function execute(
         }
 
         return {
-          files,
           conversations: { [CONV_KEYS.NODE_EXECUTE]: nodeHistory },
           awaitingClarify: true,
           ...clarifyGate.stateUpdates,
@@ -588,9 +510,7 @@ export async function execute(
           ];
           console.log(`🔀 [Execute] <done> withheld — subagent reports delivered, re-entering execute`);
           return {
-            files,
             conversations: { [CONV_KEYS.NODE_EXECUTE]: joinHistory },
-            fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
             _executeCallIndex: newCallIndex,
             _noOutputCallCount: newNoOutputCount,
             _taskFilesWritten: newTaskFilesWritten,
@@ -615,9 +535,7 @@ export async function execute(
     }
 
     return {
-      files,
       conversations: { [CONV_KEYS.NODE_EXECUTE]: nodeHistory },
-      fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _executeCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
       _taskFilesWritten: newTaskFilesWritten,
@@ -658,70 +576,6 @@ export async function execute(
     console.error('❌ [Execute] Error during reasoning:', error);
     throw error;
   }
-}
-
-/**
- * Scan existing files on disk for the target directory
- */
-async function scanExistingFiles(state: DesignGraphState, isUiDesign: boolean): Promise<Set<string>> {
-  const existingFiles = new Set<string>();
-  
-  if (state.deps?.fileSystem && state.context.featurePath) {
-    const path = await import('path');
-    const rootPath = state.deps.fileSystem.getRootPath?.() || '';
-
-    const scanDir = async (dirRel: string, prefix: string) => {
-      try {
-        if (!(await state.deps!.fileSystem!.fileExists(dirRel))) return;
-        const entries = await state.deps!.fileSystem!.readDirectory(dirRel);
-        for (const entry of entries) {
-          if (!entry.isDirectory && (entry.name.endsWith('.md') || entry.name.endsWith('.json'))) {
-            existingFiles.add(`${prefix}/${entry.name}`);
-          }
-        }
-      } catch { /* continue */ }
-    };
-
-    // Handoff bundles nest one level (tokens/ components/ entities/ screens/
-    // assets/) and carry css/html/svg — scan root + first-level subdirs.
-    const scanHandoffDir = async (dirRel: string, prefix: string) => {
-      try {
-        if (!(await state.deps!.fileSystem!.fileExists(dirRel))) return;
-        const entries = await state.deps!.fileSystem!.readDirectory(dirRel);
-        for (const entry of entries) {
-          if (entry.isDirectory) {
-            const subEntries = await state.deps!.fileSystem!.readDirectory(path.join(dirRel, entry.name));
-            for (const sub of subEntries) {
-              if (!sub.isDirectory) existingFiles.add(`${prefix}/${entry.name}/${sub.name}`);
-            }
-          } else {
-            existingFiles.add(`${prefix}/${entry.name}`);
-          }
-        }
-      } catch { /* continue */ }
-    };
-
-    const featureRel = rootPath
-      ? path.relative(rootPath, state.context.featurePath)
-      : state.context.featurePath.replace(/^\//, '');
-
-    const visualUiAnt = ARTIFACT_PREFIX.UI_ANT.replace(/\/$/, '');
-    const archSystem = ARTIFACT_PREFIX.SYSTEM_DESIGN.replace(/\/$/, '');
-    const archSpec = ARTIFACT_PREFIX.SPEC.replace(/\/$/, '');
-
-    await scanDir(path.join(featureRel, visualUiAnt), visualUiAnt);
-    await scanDir(path.join(featureRel, archSystem), archSystem);
-    await scanDir(path.join(featureRel, archSpec), archSpec);
-
-    if ((state.currentTask as DesignTask | undefined)?.docFormat === 'handoff') {
-      const uiHandoff = ARTIFACT_PREFIX.UI_HANDOFF.replace(/\/$/, '');
-      const gameArtHandoff = ARTIFACT_PREFIX.GAME_ART_HANDOFF.replace(/\/$/, '');
-      await scanHandoffDir(path.join(featureRel, uiHandoff), uiHandoff);
-      await scanHandoffDir(path.join(featureRel, gameArtHandoff), gameArtHandoff);
-    }
-  }
-  
-  return existingFiles;
 }
 
 /**

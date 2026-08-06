@@ -207,7 +207,7 @@ Follow the framework/language-specific setup instructions from:
 - ❌ DO NOT set `container_name` for any service in docker-compose.yml. The platform namespaces containers using a project-scoped `-p` flag. An explicit `container_name` bypasses that namespace and causes container name conflicts across runs or projects.
 
 **⚠️ SETUP EFFICIENCY CONSTRAINTS:**
-- ❌ DO NOT `read_file` on a file you just created with `<file>` — you already know its content
+- ❌ DO NOT `read_file` on a file you just created with `create_file` — you already know its content
 - ❌ DO NOT create a file and then immediately `edit_file` to fix it — create it correctly the first time
 - ✅ Variable names come from the design specification or project conventions. Do NOT derive variable names from format examples in injected prompts
 
@@ -508,6 +508,6 @@ Already registered this job:
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 
-**For XML tag syntax and output format details, see execute/rules.md**
+**For tool-call protocol and output format details, see execute/rules.md**
 
 {{{runtimeContext}}}

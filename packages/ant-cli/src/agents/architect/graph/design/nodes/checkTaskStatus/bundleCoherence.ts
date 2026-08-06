@@ -122,6 +122,6 @@ export function buildBundleCoherenceRetryMessage(
     }
   }
 
-  parts.push('Rewrite the complete file with every name bound, then emit it in a single <file> block.');
+  parts.push('Rewrite the complete file with every name bound, then emit it in a single create_file call (overwrite: true).');
   return parts.join('\n');
 }

@@ -99,8 +99,10 @@ canvas-only game with no HTML overlay.
 
 ### Output Format
 
-```xml
-<file path="visual/game-art/ant/game-art-tokens.json">
+Write the catalog via a `create_file` tool call:
+
+```
+create_file(path="visual/game-art/ant/game-art-tokens.json", content="""
 {
   "_meta": { "gameArtTier": { "concept": "...", "perspective": "2d" } },
   "palette": { "primary": "...", "accent": "...", "danger": "...", "background": ["...","..."], "outline": "...", "entities": { "...": "..." } },
@@ -109,7 +111,7 @@ canvas-only game with no HTML overlay.
   "motionTone": { ... },
   "hud": { ... }
 }
-</file>
+""")
 ```
 
 ### Quality Criteria

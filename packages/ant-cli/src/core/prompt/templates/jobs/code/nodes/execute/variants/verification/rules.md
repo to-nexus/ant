@@ -110,8 +110,8 @@ Valid values:
 | value | precondition | required emit shape |
 |---|---|---|
 | `none` | No 3-condition-passing entry found during this job | `<antrules-decision>none</antrules-decision>` + `<reply>` explaining why every candidate failed the filter |
-| `write` | `codebase/ANTRULES.md` does NOT exist AND a filter-passing entry was found | `<file path="codebase/ANTRULES.md">` with the new entry, then `<antrules-decision>write</antrules-decision>` + `<reply>` summarizing the entry |
-| `update` | `codebase/ANTRULES.md` exists AND a filter-passing entry was found | `edit_file codebase/ANTRULES.md` (replace the placeholder line OR append your entry below existing ones), then `<antrules-decision>update</antrules-decision>` + `<reply>` summarizing the entry |
+| `write` | `codebase/ANTRULES.md` does NOT exist AND a filter-passing entry was found | `create_file` on `codebase/ANTRULES.md` with the new entry, then — after the tool result confirms the write — `<antrules-decision>write</antrules-decision>` + `<reply>` summarizing the entry |
+| `update` | `codebase/ANTRULES.md` exists AND a filter-passing entry was found | `edit_file codebase/ANTRULES.md` (replace the placeholder line OR append your entry below existing ones), then — after the tool result confirms the write — `<antrules-decision>update</antrules-decision>` + `<reply>` summarizing the entry |
 
 Example — no deviation found:
 
@@ -121,13 +121,19 @@ Example — no deviation found:
 <done>true</done>
 ```
 
-Example — deviation found:
+Example — deviation found. First call the `edit_file` tool (there is NO `<edit>` tag — an `<edit>` tag in text modifies nothing):
+
+```
+edit_file {
+  "path": "codebase/ANTRULES.md",
+  "old_str": "(no project-local deviations recorded yet — sibling tasks will append as they emerge)",
+  "new_str": "- jsdom pinned at v24 — v25 incompatible with current jest 29 transformer (upstream issue #NNN). Bumping jsdom alone breaks the test runner; bump must be paired with jest upgrade."
+}
+```
+
+Then, after the tool result confirms the write, emit as text:
 
 ```xml
-<edit path="codebase/ANTRULES.md">
-  <search>(no project-local deviations recorded yet — sibling tasks will append as they emerge)</search>
-  <replace>- jsdom pinned at v24 — v25 incompatible with current jest 29 transformer (upstream issue #NNN). Bumping jsdom alone breaks the test runner; bump must be paired with jest upgrade.</replace>
-</edit>
 <antrules-decision>update</antrules-decision>
 <reply>Recorded jsdom v24 pin rationale — not derivable from package.json (which only shows the version number), and any sibling test-config task would otherwise re-encounter the same incompatibility.</reply>
 <done>true</done>
@@ -139,14 +145,14 @@ Example — deviation found:
 
 ## Interaction Methods
 
-**`<file>`, `<append>` are XML streaming tags. File editing uses tool calls.**
+**ALL file writes are TOOL CALLS. There is no XML file tag — file content placed in text output is NOT saved.** Content streams to the user live as the tool call's arguments generate.
 
-### XML Streaming (Content Generation)
+### File Writing (Content Generation)
 
-| Tag | Purpose |
-|-----|---------|
-| `<file path="...">` | Create NEW file (first chunk of a chunked emission, too) |
-| `<append path="...">` | Add to end of EXISTING file — OR continue a `<file>` you opened earlier |
+| Tool | Purpose |
+|------|---------|
+| `create_file` | Create NEW file (first chunk of a chunked emission, too). `path` first, then `content`. |
+| `append_file` | Add to end of EXISTING file — OR continue a file you started with `create_file` (chunked authoring, or resuming a write cut off by the output limit) |
 
 {{> jobs/code/nodes/execute/injections/chunked-emission}}
 
@@ -156,6 +162,8 @@ Example — deviation found:
 |------|---------|
 | `read_file` | Read file content |
 | `edit_file` | Modify EXISTING file (search/replace) |
+| `create_file` | Create NEW file |
+| `append_file` | Extend a file at its physical end / continue a chunked write |
 | `search_code` | Search codebase |
 | `list_files` | List directory contents |
 | `delete_file` | Delete single file |
@@ -170,14 +178,11 @@ Example — deviation found:
 - Include 3-5 lines of context for uniqueness
 - If `edit_file` fails with "not found": call `read_file` on that specific file to refresh, then retry.
 
-### XML Tag Safety
+### Write-Content Safety
 
-**NEVER nest file tags. Each is independent.**
+**⚠️ One file per write call. Do NOT concatenate multiple files into one `create_file` content.**
 
-**DO NOT include closing tags in code strings:**
-```typescript
-// Use: "</" + "file>" instead of "</file>" in string literals
-```
+**⚠️ File content goes in the tool's `content`/`new_str` argument — NEVER in your text output.** Text-channel file bodies are discarded silently.
 
 ---
 

@@ -12,15 +12,13 @@
 
 ## OUTPUT FORMAT
 
-Generate mode: emit the complete file inside ONE `<file>` block whose `path` is the pinned target path — nothing else writes to disk.
+Generate mode: write the complete file via ONE `create_file` tool call whose `path` is the pinned target path — nothing else writes to disk. The content streams to the user live as the call's arguments generate.
 
 ```
-<file path="{{targetPath}}">
-...complete file content...
-</file>
+create_file(path="{{targetPath}}", content="...complete file content...")
 ```
 
-- ❌ NO other `<file>` blocks, NO `<append>`, NO markdown fences around the block
+- ❌ NO other `create_file` calls, NO `append_file`
 - ❌ NEVER write to a path other than the pinned target
 - Revise mode uses `read_file` + `edit_file` instead; structural removals listed in the task use `delete_file` (see task section)
 
@@ -84,7 +82,7 @@ Apply the contract matching the target file's kind.
 ```
 
 **Rules:**
-1. GENERATE (target file does not exist): emit it right after the single `<file>` block.
+1. GENERATE (target file does not exist): emit it in the turn AFTER the tool result confirms your single `create_file` call landed.
 2. REVISE (target file exists): emit it in the turn AFTER the tool results confirm your `edit_file` changes landed — never in the same turn as a tool call.
 3. ⚠️ Do NOT keep re-reading the file to verify — a successful `edit_file` result IS the confirmation.
 

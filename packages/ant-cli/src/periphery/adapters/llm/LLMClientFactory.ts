@@ -20,6 +20,7 @@ import { MockLLMClient } from './MockLLMClient';
 import {
   MODEL_REGISTRY,
   PROVIDER_API_KEY_ENV,
+  getToolArgStreaming,
   type ModelProvider,
   type ModelNodeKey,
 } from '@ant/shared';
@@ -114,27 +115,36 @@ export function resolveModelForContext(
   context: LLMContext | undefined,
   workspaceConfig: any
 ): string {
+  const resolved = resolveModelForContextInner(context, workspaceConfig);
+  warnIfCompleteOnlyOnFileWritingNode(context, resolved);
+  return resolved;
+}
+
+function resolveModelForContextInner(
+  context: LLMContext | undefined,
+  workspaceConfig: any
+): string {
   const defaultModel = getFallbackModel();
-  
+
   // If no context provided, use default
   if (!context) {
     return defaultModel;
   }
-  
+
   const llmModels = workspaceConfig?.llmModels;
-  
+
   // If no llmModels config, fall back to env var
   if (!llmModels) {
     return defaultModel;
   }
-  
+
   // Get job-level config
   const jobConfig = llmModels[context.jobType];
-  
+
   if (!jobConfig) {
     return defaultModel;
   }
-  
+
   // Try node-specific model first
   if (context.nodeType && jobConfig[context.nodeType]) {
     return jobConfig[context.nodeType];
@@ -142,6 +152,35 @@ export function resolveModelForContext(
 
   // Fall back to job default
   return jobConfig.default || defaultModel;
+}
+
+/**
+ * UX policy binding guard (§ tool-arg streaming): file-writing execute nodes
+ * render file cards live from `tool_use_delta` fragments. A model whose wire
+ * protocol delivers tool arguments complete-only (Gemini) still WORKS, but
+ * every file card degrades to terminal-only rendering — warn once per
+ * (job, node, model) so the binding choice is a visible tradeoff, not a
+ * silent UX regression. Never blocks.
+ */
+const FILE_WRITING_NODE_JOBS = new Set(['code', 'design', 'plan']);
+const warnedCompleteOnlyBindings = new Set<string>();
+
+function warnIfCompleteOnlyOnFileWritingNode(
+  context: LLMContext | undefined,
+  modelName: string,
+): void {
+  if (!context || context.nodeType !== 'execute') return;
+  if (!FILE_WRITING_NODE_JOBS.has(context.jobType)) return;
+  if (getToolArgStreaming(modelName) !== 'complete') return;
+  const key = `${context.jobType}:${context.nodeType}:${modelName}`;
+  if (warnedCompleteOnlyBindings.has(key)) return;
+  warnedCompleteOnlyBindings.add(key);
+  console.warn(
+    `⚠️  [LLMClientFactory] ${context.jobType}/${context.nodeType} bound to "${modelName}", ` +
+    `whose tool-call arguments arrive complete-only (no streaming fragments). ` +
+    `File writes will render terminally instead of live. ` +
+    `Bind an incremental-streaming model for live file rendering.`,
+  );
 }
 
 /**

@@ -267,9 +267,9 @@ const toolNodeFn = createToolNode<DesignGraphState>({
     // Successful artifact tool writes this batch (edit_file / create_file /
     // delete_file sideEffects — success-based, `fileNotChanged` excluded).
     // Execute folds this into `_taskFilesWritten` + `hasNewFileOutput` so
-    // REVISE-mode (tool-write) tasks register output exactly like XML
-    // `<file>` writes: the no-output breaker resets on productive edits and
-    // the design_no_output gate sees tool-written files. Plan-phase batches
+    // every write channel registers output: the no-output breaker resets on
+    // productive edits and the design_no_output gate sees tool-written
+    // files. Plan-phase batches
     // never count (exploration, not document writing). SideEffects are the
     // SSOT of "a write happened" — same pattern as the figma error counter.
     const turnToolWrites = countArtifactToolWrites(state._activePhase, executionEvents as any);

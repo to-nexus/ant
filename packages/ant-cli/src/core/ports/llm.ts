@@ -109,11 +109,12 @@ export type MessageContentBlock =
  * - file_deleting, file_delete: File deletion
  * - command_running, command_streaming, command: Command execution
  */
-export type LLMStreamEventType = 
+export type LLMStreamEventType =
   // Core LLM events
   | 'thinking'
   | 'text'
   | 'tool_use'
+  | 'tool_use_delta'  // ✅ Incremental tool-call argument fragment (Anthropic input_json_delta, OpenAI tool_calls/function_call_arguments deltas). Enables live rendering of file-writing tool inputs. Gemini never emits it (complete-only args).
   | 'error'
   | 'done'
   | 'retry'
@@ -158,6 +159,17 @@ export interface LLMStreamEvent {
     type?: 'function' | 'command';  // Optional classification
     thoughtSignature?: string;  // Gemini 3 thought signature (must be preserved in tool loop)
   };
+
+  // ---- Tool call argument fragment (type === 'tool_use_delta') ----
+  // Streamed BEFORE the complete `tool_use` event for the same toolUseId.
+  // `partialInput` is a raw JSON string fragment — NOT valid JSON on its own;
+  // consumers accumulate fragments (or feed them to PartialToolInputParser)
+  // and must still treat the terminal `tool_use` event as authoritative.
+  toolUseDelta?: {
+    toolUseId: string;        // Matches the eventual toolUse.id
+    name: string;             // Tool name (known from block/call start)
+    partialInput: string;     // Raw JSON argument fragment (append-only)
+  };
   
   // ---- Error ----
   error?: {
@@ -193,11 +205,48 @@ export interface LLMStreamEvent {
 }
 
 /**
+ * Per-round tool-call constraint (see the `stream()` JSDoc for the full
+ * contract). `'auto'` = model decides; `'none'` = tools declared but not
+ * callable; `{ allow }` = only the named tools are advertised this round.
+ */
+export type LLMToolChoice = 'auto' | 'none' | { allow: string[] };
+
+/**
+ * Resolve the EFFECTIVE tool list + native choice mode for a round.
+ * Shared by all adapters so `{ allow }` semantics can't drift per provider.
+ */
+export function resolveToolChoice(
+  tools: ToolDefinition[] | undefined,
+  toolChoice: LLMToolChoice | undefined,
+): { tools: ToolDefinition[] | undefined; mode: 'auto' | 'none' | undefined } {
+  if (!tools || tools.length === 0) return { tools, mode: undefined };
+  if (!toolChoice) return { tools, mode: undefined };
+  if (toolChoice === 'auto' || toolChoice === 'none') return { tools, mode: toolChoice };
+  const allowed = new Set(toolChoice.allow);
+  const filtered = tools.filter(t => allowed.has(t.name));
+  if (filtered.length === 0) {
+    // Empty result = caller bug; degrade to 'none' with tools declared
+    // (never delete declarations — OpenAI-compat degeneration RCAs).
+    return { tools, mode: 'none' };
+  }
+  return { tools: filtered, mode: 'auto' };
+}
+
+/**
  * Tool definition for LLM function calling
  */
 export interface ToolDefinition {
   name: string;
   description: string;
+  /**
+   * Request eager (unbuffered) streaming of this tool's argument JSON where
+   * the provider supports it (Anthropic fine-grained tool streaming — the
+   * adapter maps this to `eager_input_streaming: true` on the wire tool
+   * definition). Set on file-writing tools so `tool_use_delta` fragments
+   * arrive with minimal server-side buffering for live rendering.
+   * Providers without the concept ignore it.
+   */
+  eagerInputStreaming?: boolean;
   input_schema: {
     type: 'object';
     properties: Record<string, {
@@ -265,6 +314,17 @@ export interface LLMClient {
    *   - `toolChoice`      → tool-call constraint for THIS round. `'none'`
    *                          means the tools stay DECLARED but the model
    *                          must not call one (forced-final-answer rounds).
+   *                          `{ allow: [...] }` restricts the ADVERTISED
+   *                          tool set to the named tools for this round
+   *                          (drain-finalize salvage: exploration tools
+   *                          gone, write tools stay callable; the model may
+   *                          still answer in text). Restriction rewrites the
+   *                          tools block, so it invalidates the tools+system
+   *                          cache tiers — reserve it for rare terminal
+   *                          rounds. At least one declared tool always
+   *                          survives (empty allow-lists are a caller bug —
+   *                          adapters treat an allow-list that matches
+   *                          nothing as `'none'` with tools declared).
    *                          Contract: only meaningful when `tools` is
    *                          non-empty — callers MUST omit it otherwise
    *                          (OpenAI-compat 400s on tool_choice without
@@ -284,7 +344,7 @@ export interface LLMClient {
       tools?: ToolDefinition[];
       maxTokens?: number;
       stopSequences?: string[];
-      toolChoice?: 'auto' | 'none';
+      toolChoice?: LLMToolChoice;
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent>;

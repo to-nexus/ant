@@ -88,7 +88,7 @@ export const TEMPLATE_PATHS = {
     system: 'jobs/code/base/system',
   },
   // PRD-sync — a `doc` task carrying a `prdSyncTargets` grant. Reuses the doc
-  // bundle's no-tool-loop `<file>` execution model, but the prompt reframes the
+  // bundle's no-exploration-loop full-write execution model, but the prompt reframes the
   // task as a surgical FULL-rewrite of the named plan doc(s) to match the code
   // changes (NOT README/API docgen). Selected via the doc bundle's per-task
   // `templatePaths` resolver on `isPrdSyncTask`.
@@ -127,7 +127,8 @@ export const TEMPLATE_PATHS = {
   // directive asks to keep a `plan/*.md` doc in sync. Reframes the task as a
   // surgical FULL-rewrite of the named plan doc (NOT a design artifact).
   // Selected in design execute via `isPrdSyncTask(currentTask)` regardless of
-  // intentGroup. The FileRenderer design branch overwrites granted plan paths.
+  // intentGroup. The write lands via the file tool handlers on the granted
+  // plan path.
   designPrdSync: {
     base: 'jobs/design/nodes/execute/variants/prd-sync/base',
     rules: 'jobs/design/nodes/execute/variants/prd-sync/rules',

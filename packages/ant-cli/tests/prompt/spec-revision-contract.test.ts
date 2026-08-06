@@ -49,7 +49,7 @@ describe('plan variants — refactor disposition contract', () => {
 });
 
 describe('execute spec variant — single output-format framing per mode', () => {
-  it('refactor branch owns the <file> contract; generate blocks live in the else', () => {
+  it('refactor branch owns the create_file contract; generate blocks live in the else', () => {
     const outputIdx = EXEC_SPEC.indexOf('## Output Format');
     const refactorGate = EXEC_SPEC.indexOf('{{#if (eq detectedMode "refactor")}}', outputIdx);
     const elseIdx = EXEC_SPEC.indexOf('{{else}}', refactorGate);
@@ -67,7 +67,7 @@ describe('execute spec variant — single output-format framing per mode', () =>
     expect(EXEC_SPEC).toMatch(/directive does not affect MUST be reproduced verbatim/);
     expect(EXEC_SPEC).toContain('Only drop a section when the directive sanctions its removal.');
     // Retained locked strings (spec-depth-calibration.test.ts guards these too).
-    expect(EXEC_SPEC).toContain('`<append>` is FORBIDDEN in refactor mode');
+    expect(EXEC_SPEC).toContain('`append_file` is FORBIDDEN in refactor mode');
     expect(EXEC_SPEC).toMatch(/second complete document below the first/);
   });
 });

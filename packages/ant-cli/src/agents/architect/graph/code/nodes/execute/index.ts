@@ -22,6 +22,7 @@ import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { extractLLMInfo } from '../../../../../../core/ports/workflow';
 import { getChatAPIClient } from '../../../../../../core/adapters/ChatAPIClient';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
+import { ToolFileStreamer } from '../../../../../../core/streaming/ToolFileStreamer';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 
@@ -40,9 +41,8 @@ import { logger } from '../../../../../../utils/logger';
 import { ArtifactService } from '../../../../../../infrastructure/workspace/ArtifactService';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
 import { resolveCodebaseRel } from './codebaseRel';
-import { cleanFileContentFromResponse, cleanFileContentWithConflicts } from '../../utils/responseCleaners';
+import { cleanFileContentFromResponse } from '../../utils/responseCleaners';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
-import { buildMergeUserContent } from './mergeUserContent';
 import { LLM_MAX_TOKENS, LLM_THINKING_BUDGET, LLM_TEMPERATURE } from '../../../../../common/graph/llmConfig';
 import { getJobAbortSignal } from '../../../../../../composition/jobAbort';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../../../common/subagent';
@@ -163,10 +163,10 @@ export async function execute(
   const allTools = await getTools(state);
 
   // No-progress salvage (rocky-beating-coral RCA): once `_noProgressStreak`
-  // nears the router breaker, forbid tool calls (toolChoice='none' — tools
-  // stay declared) and append a persistent "apply your changes now" note to
-  // the trailing user message (post-composeMessages — never inside a cached
-  // prefix).
+  // nears the router breaker, narrow the advertised tools to the write set
+  // (toolChoice={allow: create/append/edit} — declarations never deleted)
+  // and append a persistent "apply your changes now" note to the trailing
+  // user message (post-composeMessages — never inside a cached prefix).
   const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(state, messages, allTools);
   
   if (!state.resolvedAction?.mode) {
@@ -202,54 +202,24 @@ export async function execute(
   // ✅ UI streaming
   const chatAPI = getChatAPIClient();
   await chatAPI.showChatStatus('placeholder');
-  
-  // ✅ Code jobs must write into repoRoot (codebase directory)
-  const repoRootForWrites = state.deps?.git ? await state.deps.git.getRepoRoot() : undefined;
 
-  // ✅ Setup XML Parser + StreamOrchestrator for MD file streaming
+  // ✅ Setup XML Parser + StreamOrchestrator (thinking / plan / task_response
+  // rendering — file writes go through the tool channel exclusively)
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
     chatAPI,
     state.context.userLanguage,  // ✅ Pass user language for localized messages
-    state.deps?.git,  // ✅ Pass gitPort for actual file editing
-    state.deps?.fileSystem,  // ✅ Pass fileSystem for file operations
-    true,  // ✅ writeImmediately: true for code job (no separate writeFiles node)
-    'code',  // ✅ jobType: 'code' (no LAST_SECTION handling needed)
-    undefined,  // ✅ Code job: no featurePath
-    repoRootForWrites,  // ✅ Code job: write files under repoRoot (codebase)
-    state.deps?.fileTreeUpdate,  // ✅ For real-time file tree updates via Redis Pub/Sub
-    // Per-task touched-files SSOT — mirrors the tool-handler path
-    // (`ToolExecutionContext.recordFileTouch`) so `<file>` XML streaming
-    // and `create_file`/`edit_file` tool calls converge on the same
-    // `CodeTask.touchedFiles` array that checkTaskStatus then persists
-    // into `code.json.state.completedTasksDetails[i]`.
-    (filePath) => {
-      if (!state.currentTask) return;
-      const arr = (state.currentTask.touchedFiles ??= []);
-      if (!arr.includes(filePath)) arr.push(filePath);
-    },
-    'execute',  // ✅ codePhase: execute — codebase/ writes allowed via the FileRenderer gate
   );
   renderStrategy.setParallelTaskName(state.currentTask?.name || 'Task');
-  // Cross-intent PRD sync: grant the FileRenderer Guard-1 exception for the
-  // plan docs this task (a `doc` sync task) is authorized to rewrite. Empty for
-  // every ordinary task, so sibling-dir writes stay closed by default.
-  renderStrategy.setPrdSyncTargets(state.currentTask?.prdSyncTargets);
-  
-  // existingFiles guardrail: FileRegistry distinguishes overwrite vs new-create
-  // at `<file>` tag emit time. Seed from a one-shot disk listing of `codebase/`
-  // so sequential-mode runs still catch overwrites without SharedFileBuffer.
-  // In parallel mode SharedFileBuffer appends cross-worker writes below.
-  //
-  // The same disk listing is captured into `_existingCodebaseFiles` so
-  // `buildTaskInvariantContext` can surface a path manifest to the LLM.
-  // This is the file-awareness channel that replaced the
-  // `projectCodeContext` injection removed in commit cbb4d924 — guardrail
-  // + prompt share one source of truth so they never drift.
+
+  // One-shot disk listing of `codebase/`, captured into
+  // `_existingCodebaseFiles` so `buildTaskInvariantContext` can surface a
+  // path manifest to the LLM. This is the file-awareness channel that
+  // replaced the `projectCodeContext` injection removed in commit cbb4d924.
   //
   // All paths are normalised via normalizeToCodebasePath to stay consistent
-  // with what FileRenderer writes (`"src/app/x"` vs `"codebase/src/app/x"`).
-  const existingFiles = new Set<string>();
+  // with what the file tool handlers write (`"src/app/x"` vs
+  // `"codebase/src/app/x"`).
   const existingCodebaseDiskFiles: string[] = [];
 
   const codebaseRel = await resolveCodebaseRel(state);
@@ -264,15 +234,14 @@ export async function execute(
       ]);
       for (const p of diskPaths) {
         const { normalized } = normalizeToCodebasePath(p, codebaseRel);
-        existingFiles.add(normalized);
         existingCodebaseDiskFiles.push(normalized);
       }
     } catch (err) {
-      console.warn(`⚠️  [CodeGen] listFiles('codebase') failed — existingFiles guardrail will rely on SharedFileBuffer only:`, err instanceof Error ? err.message : err);
+      console.warn(`⚠️  [CodeGen] listFiles('codebase') failed — existing-file manifest will be empty this turn:`, err instanceof Error ? err.message : err);
     }
   }
 
-  logger.debug(`📊 [CodeGen] existingFiles seeded from disk: ${existingFiles.size} path(s)`);
+  logger.debug(`📊 [CodeGen] existing codebase files listed from disk: ${existingCodebaseDiskFiles.length} path(s)`);
 
   // Publish the disk listing to state so `buildTaskInvariantContext` can
   // render the `Existing Codebase Files` manifest. Cross-worker writes are
@@ -280,35 +249,9 @@ export async function execute(
   // must NOT be mixed in here.
   state._existingCodebaseFiles = existingCodebaseDiskFiles;
 
-
-  // ✅ Cross-worker awareness: Track other workers' files SEPARATELY.
-  // These paths are added to existingFiles so FileRegistry sees them as
-  // pre-existing, but also tracked in otherWorkerPaths so
-  // FileRegistry.isKnownAtStart() returns false for them. This forces the
-  // writeNewFile() path in FileRenderer, triggering SharedFileBuffer's
-  // ownership check instead of a silent overwrite. The LLM-facing manifest
-  // for these paths is produced separately via `_otherWorkerFiles`.
-  const otherWorkerPaths = new Set<string>();
-  const workerFS = state.deps?.fileSystem as any;
-  if (workerFS?.sharedBuffer && typeof workerFS.sharedBuffer.getAllWrittenPaths === 'function') {
-    const sharedPaths: string[] = workerFS.sharedBuffer.getAllWrittenPaths();
-    for (const p of sharedPaths) {
-      existingFiles.add(p);
-      otherWorkerPaths.add(p);
-    }
-    if (sharedPaths.length > 0) {
-      console.log(`📁 [CodeGen] Added ${sharedPaths.length} path(s) from SharedFileBuffer (${otherWorkerPaths.size} as otherWorkerPaths)`);
-    }
-  }
-  
-  // existingFiles Set initialized (prevents duplicate file creation)
-  
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
-    existingFiles,
-    codebaseRel,  // ✅ Pass to FileRegistry for consistent path normalization
-    otherWorkerPaths,  // ✅ Other workers' paths — forces writeNewFile() path for conflict detection
   });
   
   // Collect LLM output
@@ -316,7 +259,7 @@ export async function execute(
   let thinkingSignature = '';
   let textResponse = '';
   let isDone = false;  // ✅ Track done event (don't propagate immediately)
-  // max_tokens truncation with NO open <file> block — the discarded-output
+  // max_tokens truncation with NO open file write — the discarded-output
   // flavor (see the stopReason handler). Read by the no-progress streak
   // computation and the history-hygiene stub in the return section.
   let maxTokensTruncatedNoFile = false;
@@ -350,6 +293,11 @@ export async function execute(
   // `estimating` flag cleared) by the first usage event from the LLM.
   applyEstimatedInputTokensFromMessages(state, messages);
 
+  // Live rendering of file-writing TOOL CALLS (create_file / append_file /
+  // edit_file): tool_use_delta fragments open the card shell on `path` and
+  // stream content line-by-line into the live file card.
+  let toolStreamer = new ToolFileStreamer(chatAPI);
+
   try {
     // ✅ Single stream (no loop!)
     for await (const event of llmToUse.stream(messages, {
@@ -368,6 +316,9 @@ export async function execute(
         isDone = false;
         toolCalls.length = 0;
         capturedUsage = undefined;
+        // Fresh streamer per attempt — a retried stream re-sends the tool
+        // call from scratch, and stale card state would double-render.
+        toolStreamer = new ToolFileStreamer(chatAPI);
         continue;
       }
 
@@ -376,6 +327,7 @@ export async function execute(
       maybeUpdatePhaseTokenUsage(state, event);
 
       await orchestrator.processEvent(event);
+      toolStreamer.handleEvent(event);
       
       if (event.type === 'thinking') {
         thinking += event.thinking || '';
@@ -431,32 +383,38 @@ export async function execute(
 
         // safe-braking-eagle: observe `max_tokens` truncation that the
         // executeRouter would otherwise route over as a normal completion.
-        // A logs the event; C-2/C-3 snapshot the in-flight `<file>` /
-        // `<append>` context (BEFORE finalize wipes it) so the next round
-        // can resume from exactly where the LLM stopped.
+        // Log the event and snapshot the in-flight tool-channel write (a
+        // create_file/append_file call truncated mid-arguments — the
+        // ToolFileStreamer salvage context) so the next round can resume
+        // from exactly where the LLM stopped.
         const stopReason = (event as any).stopReason as string | undefined;
         if (stopReason === 'max_tokens') {
           const taskId = state.currentTask?.id || 'unknown';
           const taskName = state.currentTask?.name || 'unknown';
           const callIdx = newCallIndex - 1;
 
-          // Capture the open file block BEFORE finalize discards it.
-          // The partial content was already streamed to disk via
-          // FileRenderer's incremental writes; this hint just tells the
-          // LLM where to resume with `<append>`.
-          const openFile = orchestrator.getOpenFileContext();
-          if (openFile) {
+          const openToolFile = toolStreamer.getOpenToolFile();
+          if (openToolFile?.path && openToolFile.toolName !== 'edit_file') {
+            // A truncated tool call never executes, so (unlike the tag
+            // channel's buffered partial) nothing reached disk. Settle the
+            // live card as failed and hand the next round a resume hint —
+            // it re-issues the write with the tail as its continuity anchor.
+            const salvagePath = openToolFile.path;
+            void chatAPI.failFileCreation(
+              salvagePath,
+              'Output token limit hit mid-write — the next round re-issues this file.',
+            ).catch(() => {});
             state._maxTokensTruncation = {
-              kind: openFile.kind,
-              path: openFile.path,
-              tailContent: openFile.tailContent,
+              kind: openToolFile.toolName === 'append_file' ? 'append' : 'file',
+              path: salvagePath,
+              tailContent: openToolFile.tailContent,
             };
           } else {
             // The whole output budget went to text/thinking without even
-            // opening a <file> block. Feeds the drain-truncation breaker
-            // escalation and the history-hygiene stub below
-            // (vivid-orbiting-dodge call 219: 64K tokens / 17 min of one
-            // repeated sentence, truncated with zero salvageable output).
+            // opening a file write on either channel. Feeds the
+            // drain-truncation breaker escalation and the history-hygiene
+            // stub below (vivid-orbiting-dodge call 219: 64K tokens / 17 min
+            // of one repeated sentence, truncated with zero salvageable output).
             maxTokensTruncatedNoFile = true;
           }
 
@@ -464,10 +422,10 @@ export async function execute(
             `⚠️  [CodeGen/execute] max_tokens truncated (callIndex=${callIdx}, ` +
             `output=${capturedUsage?.outputTokens ?? LLM_MAX_TOKENS.DEFAULT}) ` +
             `for task "${taskName}" (${taskId})` +
-            (openFile
-              ? `. Open <${openFile.kind} path="${openFile.path}"> block detected — ` +
-                `next round will receive a resume hint with the trailing ${openFile.tailContent.length} chars.`
-              : `. No open <file>/<append> block — the LLM was emitting text/thinking; ` +
+            (openToolFile?.path && openToolFile.toolName !== 'edit_file'
+              ? `. Truncated ${openToolFile.toolName} call for "${openToolFile.path}" ` +
+                `(${openToolFile.contentSoFar.length} chars parsed) — next round receives a resume hint.`
+              : `. No open file write — the LLM was emitting text/thinking; ` +
                 `consider raising LLM_MAX_TOKENS.DEFAULT.`),
           );
           const featurePath = state.context?.featurePath;
@@ -484,44 +442,28 @@ export async function execute(
                 maxTokens: LLM_MAX_TOKENS.DEFAULT,
                 taskName,
                 taskType: state.currentTask?.type,
-                openFilePath: openFile?.path,
-                openFileKind: openFile?.kind,
-                tailCharsCaptured: openFile?.tailContent.length ?? 0,
-                recoveryHint: openFile ? 'continue-via-append' : 'partial-output-discarded',
+                openFilePath: openToolFile?.path,
+                tailCharsCaptured: openToolFile?.tailContent.length ?? 0,
+                recoveryHint: openToolFile?.path ? 'reissue-truncated-write' : 'partial-output-discarded',
               }, taskId)
               .catch(() => { /* non-blocking */ });
           }
         }
       }
     }
-    
-    // Wait for all file operations to complete BEFORE finalizing
-    try {
-      await orchestrator.waitForAllFileOperations();
-    } catch (fileError) {
-      // Do NOT throw! Let validation handle it
-      const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
-      console.error(`⚠️ [CodeGen] File operation failed: ${errorMsg}`);
-    }
-    
-    // Propagate done event (files are guaranteed to be saved OR errors recorded)
+
+    // Flush queued tool-channel live-card emissions BEFORE finalizing.
+    await toolStreamer.settle();
+
+    // Propagate done event
     if (isDone) {
       await chatAPI.sendLLMEvent({ type: 'done' });
     }
-    
+
     // ✅ Finalize orchestrator (flush buffer)
     // Pass hasToolCalls flag to prevent premature message finalization
     const hasToolCalls = toolCalls.length > 0;
     const finalizeResult = await orchestrator.finalize(hasToolCalls);
-    
-    // ✅ CRITICAL: Extract file errors from finalize result for self-healing
-    const fileErrors = finalizeResult.fileErrors || [];
-    if (fileErrors.length > 0) {
-      console.error(`⚠️  [CodeGen] ${fileErrors.length} file error(s) detected for self-healing`);
-      for (const error of fileErrors) {
-        console.error(`   - ${error}`);
-      }
-    }
 
     // Output-side no-progress signal (vivid-orbiting-dodge RCA). Computed
     // once here; every return path below commits the updated ring alongside
@@ -536,222 +478,16 @@ export async function execute(
     );
 
     // Files newly written this turn surface to the LLM via conversation
-    // tool_results (edit_file / create_file / delete_file) and via streamed
-    // `<file>` tag markers in the assistant message — no state channel
-    // carries file snapshots.
+    // tool_results (create_file / append_file / edit_file / delete_file) —
+    // no state channel carries file snapshots.
 
-    // ✅ DIRECT MERGE: Handle cross-worker file conflicts without enforce/plan/read_file
-    // Instead of: execute → checkTaskStatus → enforce → plan → execute → read_file → tool → codexecuteeGen (4-5 LLM calls)
-    // Optimized:  execute → execute with merge instruction (1 LLM call)
-    const fileConflicts = finalizeResult.fileConflicts || [];
-    if (fileConflicts.length > 0) {
-      console.log(`🔀 [execute] ${fileConflicts.length} cross-worker conflict(s) — injecting direct merge instruction`);
-
-      // 1. Authorize worker for post-merge writes (prevents re-conflict on next write)
-      const workerFSForAuth = state.deps?.fileSystem as any;
-      const currentWorkerId = state.workerId ?? 0;
-      if (workerFSForAuth?.sharedBuffer?.authorizeWriter) {
-        for (const conflict of fileConflicts) {
-          workerFSForAuth.sharedBuffer.authorizeWriter(conflict.path, currentWorkerId);
-          console.log(`   🔑 Authorized worker ${currentWorkerId} for merge-write: ${conflict.path}`);
-        }
-      }
-
-      // 2. Build merge instruction — smart diff to reduce token usage
-      // Full file contents for both versions can be 50-100K+ tokens.
-      // Instead, show only the differing sections with context.
-      const mergeBlocks = fileConflicts.map(c => {
-        const ownerInfo = c.ownerTask ? ` (by task "${c.ownerTask}")` : '';
-        const currentLines = (c.currentContent || '').split('\n');
-        const intendedLines = (c.intendedContent || '').split('\n');
-
-        // For small files (< 150 lines each), inline full content is acceptable
-        if (currentLines.length < 150 && intendedLines.length < 150) {
-          return [
-            `### FILE MERGE: ${c.path}`,
-            `This file was already created by another parallel task${ownerInfo}.`,
-            ``,
-            `CURRENT content (from other task):`,
-            '```',
-            c.currentContent,
-            '```',
-            ``,
-            `YOUR intended content:`,
-            '```',
-            c.intendedContent,
-            '```',
-            ``,
-            `Output the MERGED result as <file path="${c.path}">merged content</file>.`,
-            `Do NOT call read_file — you already have both versions above.`,
-          ].join('\n');
-        }
-
-        // For large files: show CURRENT in full (it's the on-disk version the LLM
-        // hasn't seen), and only the differing regions of YOUR intended version
-        // (the LLM wrote this content earlier, so shared sections are redundant).
-        const CONTEXT = 5;
-        const diffRegions: string[] = [];
-        const maxLen = Math.max(currentLines.length, intendedLines.length);
-        let regionStart = -1;
-
-        for (let i = 0; i <= maxLen; i++) {
-          const same = i < maxLen && i < currentLines.length && i < intendedLines.length
-            && currentLines[i] === intendedLines[i];
-          if (!same && regionStart === -1) {
-            regionStart = i;
-          }
-          if ((same || i === maxLen) && regionStart !== -1) {
-            const from = Math.max(0, regionStart - CONTEXT);
-            const to = Math.min(maxLen, i + CONTEXT);
-            diffRegions.push(
-              `--- YOUR intended lines ${from + 1}-${to} ---\n` +
-              intendedLines.slice(from, Math.min(to, intendedLines.length)).map((l, idx) => `${from + idx + 1}| ${l}`).join('\n')
-            );
-            regionStart = -1;
-          }
-        }
-
-        return [
-          `### FILE MERGE: ${c.path}`,
-          `This file was already created by another parallel task${ownerInfo}.`,
-          ``,
-          `CURRENT content on disk (${currentLines.length} lines, from other task — FULL):`,
-          '```',
-          c.currentContent,
-          '```',
-          ``,
-          `YOUR intended changes (only differing sections from your ${intendedLines.length}-line version):`,
-          ``,
-          diffRegions.join('\n\n'),
-          ``,
-          `Merge: start from the CURRENT content above, then apply YOUR intended changes into it.`,
-          `Output the MERGED result as <file path="${c.path}">merged content</file>.`,
-          `Do NOT call read_file — you have the full current version and your changes above.`,
-        ].join('\n');
-      }).join('\n\n---\n\n');
-
-      const mergeInstruction = [
-        `FILE MERGE REQUIRED — ${fileConflicts.length} file(s) need merging.`,
-        ``,
-        mergeBlocks,
-        ``,
-        `After outputting all merged files, output <done>true</done>. Files marked [file written to disk: ...] are already saved — do NOT regenerate them.`,
-      ].join('\n');
-
-      // 3. Inject into conversation and loop back (no enforce/plan needed)
-      // Distinguish conflict vs successfully-written files so LLM doesn't regenerate everything
-      const conflictPaths = new Set(fileConflicts.map(c => c.path));
-      const cleanedResponse = cleanFileContentWithConflicts(textResponse, conflictPaths);
-
-      // Assistant turn: when tool_use blocks are present in the LLM response
-      // they MUST be included in history. Otherwise the tool node's trailing
-      // `user(tool_result)` has no matching tool_use in the preceding
-      // assistant and Anthropic API rejects with 400
-      // `messages.N.content.M: unexpected tool_use_id`. The mirror of this
-      // invariant lives in the normal execute-return path a few hundred
-      // lines below (search for the other `buildAssistantMessage` call) —
-      // keep them aligned. Regression: job `bitter-looping-nurse`
-      // (2026-04-22). Plain-string assistant is only valid when no tool_use
-      // exists.
-      const assistantMessage = toolCalls.length > 0
-        ? buildAssistantMessage({
-            thinking: thinking || undefined,
-            thinkingSignature: thinkingSignature || undefined,
-            text: cleanedResponse || undefined,
-            toolCalls,
-          })
-        : (cleanedResponse ? { role: 'assistant' as const, content: cleanedResponse } : null);
-
-      // User turn: Anthropic requires that `assistant(tool_use)` be followed
-      // by a user message whose content STARTS with `tool_result` blocks —
-      // one per `tool_use_id`. If we inject merge instructions as plain
-      // text here we leave the tool_use blocks orphaned and the next
-      // execute LLM call rejects with 400
-      // `tool_use ids were found without tool_result blocks immediately after`.
-      // Regression: job `ivory-fanning-knoll` (2026-04-24). See
-      // `mergeUserContent.ts` for the shared invariant + rationale.
-      const mergeUserContent = buildMergeUserContent(toolCalls, mergeInstruction);
-
-      const newHistory = [
-        ...nodeExecute,
-        ...(assistantMessage ? [assistantMessage] : []),
-        { role: 'user' as const, content: mergeUserContent },
-      ];
-
-      // Workflow exit
-      if (state.deps?.workflowUpdate && state._httpJobId) {
-        await state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', state.workerId ?? 0);
-      }
-
-      // Suppress fileErrors while merge is in progress — returning them
-      // would cause execute to route to checkTaskStatus, losing the
-      // merge instruction injected above.  Any genuine non-conflict errors
-      // will resurface after the LLM processes the merge.
-      if (fileErrors.length > 0) {
-        console.log(`   🔇 [CodeGen] Suppressing ${fileErrors.length} fileError(s) during merge — will resurface after merge completes`);
-      }
-
-      return {
-        llmResponse: {
-          thinking,
-          thinkingSignature: thinkingSignature || undefined,
-          textResponse,
-          // Clear toolCalls: synthetic tool_result blocks above already
-          // closed the tool_use pairing in history. Leaving toolCalls
-          // non-empty would route to the `tool` node which would append
-          // ANOTHER `user(tool_result)` and produce a malformed trailing
-          // sequence (see ivory-fanning-knoll regression comment above).
-          toolCalls: [],
-          done: false,
-          tokenUsage: capturedUsage,
-        },
-        conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
-        // Phase declaration — execute MUST commit `_activePhase: 'execute'`
-        // on every return so a stale `'plan'` from `plan-toolLoop` cannot
-        // leak into the downstream `tool` node / `routeAfterTool`. The leak
-        // would route the next `tool_result` into NODE_PLAN, leaving the
-        // `tool_use` in NODE_EXECUTE orphaned and producing Anthropic 400
-        // `tool_use ids were found without tool_result blocks immediately
-        // after`. Regression: job `wild-flying-scout` (2026-04-30).
-        _activePhase: 'execute' as const,
-        fileErrors: undefined,
-        _executeCallIndex: newCallIndex,
-        // Reset turn-scoped signal so the next execute turn (which won't
-        // immediately follow another tool batch) starts with a clean slate.
-        _lastToolBatchMutatedFiles: false,
-        _lastToolBatchAllDupReads: false,
-        // Merge instruction injected = productive turn, not a degenerate loop.
-        _noProgressStreak: 0,
-        _noOutputStreak: 0,
-        _recentExecuteTextHashes: nextTextRing,
-        recursionCount: state.recursionCount,
-        recursionLimit: state.recursionLimit,
-        profile: state.profile,
-      };
-    }
-
-    // ✅ CRITICAL: Extract files from FileRegistry for state.files
-    const files: Array<{ path: string; content: string; actionType: 'create' | 'edit' | 'append' | 'delete' }> = [];
-    if (finalizeResult?.streamedFiles) {
-      for (const filePath of finalizeResult.streamedFiles) {
-        // Try to get file info from registry (has actionType)
-        const fileInfo = (orchestrator as any).registry?.getFileInfo?.(filePath);
-        if (fileInfo) {
-          files.push({
-            path: filePath,
-            content: fileInfo.contentBuffer || '',
-            actionType: fileInfo.actionType as any
-          });
-        }
-      }
-    }
     // Finalize chat message if no tool calls (task/reasoning complete)
     if (toolCalls.length === 0) {
       const chatAPI = getChatAPIClient();
       await chatAPI.finalizeMessage();
     }
-    
-    logger.debug(`✅ [CodeGen] Complete: ${toolCalls.length} tools, ${files.length} files${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
+
+    logger.debug(`✅ [CodeGen] Complete: ${toolCalls.length} tools${capturedUsage ? `, ${capturedUsage.totalTokens} tokens` : ''}`);
     
     // ✅ Workflow instrumentation: Exit node (success path)
     if (state.deps?.workflowUpdate && state._httpJobId) {
@@ -766,16 +502,17 @@ export async function execute(
     // Previously: done = toolCalls.length === 0 (caused premature completion on truncated responses)
     let explicitDone = finalizeResult.explicitDone || false;
 
-    // AUTO-COMPLETE: verification/error tasks that created files via <file> tag
-    // without tool calls or <done> tag. Without this, the router sees no tools
-    // and no done → routes back to execute → infinite file_create loop.
-    // Uses `streamedFiles` (scoped to THIS iteration) so prior turns'
-    // mutations cannot mistakenly auto-complete an empty turn.
-    const streamedInThisCall = finalizeResult?.streamedFiles || [];
-    if (!explicitDone && toolCalls.length === 0 && streamedInThisCall.length > 0
+    // AUTO-COMPLETE: verification/error tasks whose previous tool batch
+    // mutated files but whose follow-up turn emitted neither tool calls nor
+    // a <done> tag. Without this, the router sees no tools and no done →
+    // routes back to execute → infinite loop. `_lastToolBatchMutatedFiles`
+    // is turn-scoped (reset on every execute return), so a stale mutation
+    // from an earlier round cannot auto-complete an empty turn.
+    if (!explicitDone && toolCalls.length === 0
+        && state._lastToolBatchMutatedFiles === true
         && isRemediationTask) {
       explicitDone = true;
-      console.log(`✅ [execute] Auto-completing ${state.currentTask?.type} task: ${streamedInThisCall.length} file(s) created via <file> tag`);
+      console.log(`✅ [execute] Auto-completing ${state.currentTask?.type} task: previous tool batch mutated files`);
     }
 
     // Runaway is bounded by Safety Net A (recursionLimit, verification-gated)
@@ -786,35 +523,35 @@ export async function execute(
     // `_noProgressStreak` below.
     const isVerification = state.currentTask ? isVerificationTask(state.currentTask) : false;
     const toolMutatedThisTurn = state._lastToolBatchMutatedFiles === true;
+    const progressed = toolMutatedThisTurn || explicitDone;
 
     // No-progress streak (single computation; committed on every return path
-    // below). Progress = streamed files, tool mutation, or explicit <done>.
+    // below). Progress = tool mutation or explicit <done>.
     const nextNoProgressStreak = computeNextNoProgressStreak(state, {
-      progressed: streamedInThisCall.length > 0 || toolMutatedThisTurn || explicitDone,
+      progressed,
       drainFinalizing,
       toolCallCount: toolCalls.length,
       repeatedIdenticalText,
       // Drain turn that burned its whole output budget on text without even
-      // opening a <file> block → escalate straight to the router breaker
+      // opening a file write → escalate straight to the router breaker
       // instead of granting the remaining drain turns (each is a potential
       // repeat of vivid-orbiting-dodge's 64K-token / 17-minute call 219).
       drainTruncatedNoFile: drainFinalizing && maxTokensTruncatedNoFile,
     });
 
     // No-forward-output streak (cyan-catching-cedar RCA): counts consecutive
-    // execute turns with tool calls but zero <file>/mutation/<done>, regardless
+    // execute turns with tool calls but zero mutation/<done>, regardless
     // of read/search novelty — the "rounds since forward output" signal that
     // `_noProgressStreak` (info-gain only) cannot see. Reuses the same
     // `progressed` disjunction; committed on every return path below.
     const nextNoOutputStreak = computeNextNoOutputStreak(state, {
-      progressed: streamedInThisCall.length > 0 || toolMutatedThisTurn || explicitDone,
+      progressed,
       toolCallCount: toolCalls.length,
       drainFinalizing,
     });
 
     console.log(
       `[diag] execute return: ` +
-      `streamed=${streamedInThisCall.length} ` +
       `toolMut=${toolMutatedThisTurn} ` +
       `noProgress=${nextNoProgressStreak} ` +
       `noOutput=${nextNoOutputStreak} ` +
@@ -858,23 +595,14 @@ export async function execute(
       // Without this, execute→execute loop loses all memory of previous response,
       // causing the LLM to repeat the same work indefinitely.
       let cleanedResponse = cleanFileContentFromResponse(textResponse);
-      
-      // Defensive: if textResponse cleaning yields empty but files were streamed,
-      // synthesize markers so the LLM knows which files exist on disk.
-      const streamedFilePaths = finalizeResult?.streamedFiles || [];
-      if (!cleanedResponse && streamedFilePaths.length > 0) {
-        cleanedResponse = streamedFilePaths
-          .map(fp => `[file written to disk: ${fp}]`)
-          .join('\n');
-      }
 
       // dim-beating-brass RCA — "marker mimicry": the model can type the
-      // literal status text `[file written to disk: X]` instead of a real
-      // <file> tag, so nothing is written. `cleanFileContentFromResponse`
-      // strips real <file> bodies, so a marker SURVIVING in the cleaned text
-      // while ZERO files were streamed can only have been typed by the model.
+      // literal status text `[file written to disk: X]` instead of issuing a
+      // real file-writing tool call, so nothing is written. A marker in the
+      // text while this turn issued zero tool calls and the previous batch
+      // mutated nothing can only have been typed by the model.
       const typedPhantomMarker =
-        streamedFilePaths.length === 0 &&
+        !toolMutatedThisTurn &&
         /\[file (?:written to disk|edited|appended):\s*[^\]]+\]/.test(cleanedResponse);
       if (typedPhantomMarker) {
         // Neutralize the hallucinated marker before it enters history — left
@@ -902,42 +630,33 @@ export async function execute(
         cleanedResponse =
           `${cleanedResponse.slice(0, 500)}\n` +
           `[response truncated at ${capturedUsage?.outputTokens ?? 'the maximum'} output tokens ` +
-          `without producing any <file> output — the rest was repetitive text and has been ` +
-          `discarded. Do NOT restart that narration; emit the intended <file> tags directly.]`;
+          `without producing any file output — the rest was repetitive text and has been ` +
+          `discarded. Do NOT restart that narration; issue the intended create_file / edit_file ` +
+          `tool calls directly.]`;
       }
       
       if (cleanedResponse) {
-        // Build re-entry message with specific file list so the LLM doesn't
-        // have to search through history to find which files already exist.
+        // Build the re-entry message.
         const reentryParts: string[] = [];
         if (typedPhantomMarker) {
           // Truthful correction. The previous "files already saved — do NOT
           // recreate" guidance is exactly what spiralled the model on
           // dim-beating-brass: it confirmed the false belief that typing the
-          // marker had saved the file. Tell it the truth and show the real tag.
+          // marker had saved the file. Tell it the truth and show the real channel.
           reentryParts.push(
             '⚠️ NO file was written. Your previous response contained literal text like',
-            '"[file written to disk: ...]" but NOT a real <file> tag.',
+            '"[file written to disk: ...]" but NOT a real file-writing tool call.',
             '',
-            'That bracket is a status RECORD the system shows AFTER a real tag is saved —',
-            'typing it yourself writes nothing. To create a file, your output must contain a',
-            'real tag whose first token is `<`:',
+            'That bracket is a status RECORD the system shows AFTER a real write lands —',
+            'typing it yourself writes nothing. To create or modify a file, you must CALL a',
+            'tool: create_file (new file), append_file (tail concat), or edit_file (partial change).',
             '',
-            '  <file path="src/...">...the full file content, verbatim...</file>',
-            '',
-            'Emit the real <file> tag now for the file you intended to write.',
+            'Issue the real tool call now for the file you intended to write.',
           );
         } else {
           reentryParts.push(
             'Your previous response did not include any tool calls or <done>true</done>.',
           );
-          if (streamedFilePaths.length > 0) {
-            reentryParts.push(
-              '',
-              `The following ${streamedFilePaths.length} file(s) are already saved to disk — do NOT recreate them:`,
-              ...streamedFilePaths.map(fp => `  - ${fp}`),
-            );
-          }
           const doneHint = isRemediationTask
             ? 'If you have applied all fixes from the remediation plan, output <done>true</done> now. Do NOT run build/test — a separate diagnostic phase re-verifies automatically.'
             : 'If you have completed all work for this task, output <done>true</done> now.';
@@ -965,7 +684,6 @@ export async function execute(
           },
           conversations: { [CONV_KEYS.NODE_EXECUTE]: newHistory },
           _activePhase: 'execute' as const,
-          fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
           _executeCallIndex: newCallIndex,
           // Reset the turn-scoped tool-mutation signal — execute consumed
           // it; the next turn starts fresh and only re-flips when another
@@ -1025,7 +743,6 @@ export async function execute(
             },
             conversations: { [CONV_KEYS.NODE_EXECUTE]: joinHistory },
             _activePhase: 'execute' as const,
-            fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
             _executeCallIndex: newCallIndex,
             _lastToolBatchMutatedFiles: false,
             _lastToolBatchAllDupReads: false,
@@ -1069,7 +786,6 @@ export async function execute(
       },
       ...(toolCallHistory ? { conversations: { [CONV_KEYS.NODE_EXECUTE]: toolCallHistory } } : {}),
       _activePhase: 'execute' as const,
-      fileErrors: fileErrors.length > 0 ? fileErrors : undefined,
       _executeCallIndex: newCallIndex,
       // Reset turn-scoped tool-mutation signal (see top of execute return
       // section for rationale).

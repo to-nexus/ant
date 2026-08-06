@@ -9,8 +9,7 @@
  * full-rewrite prompt instead of that intent's authoring prompt.
  *
  * The current on-disk content of the target doc is injected as a context block
- * so the LLM can re-emit the COMPLETE updated document — the FileRenderer
- * anti-clobber guard rejects a truncated body.
+ * so the LLM can re-emit the COMPLETE updated document via create_file.
  */
 
 import { DesignGraphState } from '../../../state';
@@ -55,7 +54,7 @@ export async function buildPrdSyncMessages(state: DesignGraphState): Promise<Arr
   const runtimeLines: string[] = [];
   runtimeLines.push(`# Target Planning Document`);
   runtimeLines.push(`Write the COMPLETE updated document to: \`${targetPath}\``);
-  runtimeLines.push(`Use: <file path="${targetPath}">...</file>`);
+  runtimeLines.push(`Use: create_file { "path": "${targetPath}", "content": "...", "overwrite": true }`);
   runtimeLines.push('');
   if (task) {
     runtimeLines.push(`# Current Task`);
@@ -101,7 +100,7 @@ export async function buildPrdSyncMessages(state: DesignGraphState): Promise<Arr
   const { messages } = composeMessages({
     initialBlocks: blocks,
     priorTurns: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE) as any,
-    trailingUserMessage: 'Re-emit the COMPLETE updated planning document now via the <file> tag, then output <done>true</done>.',
+    trailingUserMessage: 'Re-emit the COMPLETE updated planning document now via a create_file call (overwrite: true), then output <done>true</done>.',
     compactParams: deriveExecuteCompactParams(state),
   });
 

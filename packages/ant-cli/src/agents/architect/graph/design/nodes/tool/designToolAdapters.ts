@@ -25,7 +25,6 @@ import {
   handleReadSourceDoc,
   handleDownloadAsset,
   handleListAssets,
-  handleAppendFile,
 } from './handlers';
 
 const FIGMA_TOOLS = [
@@ -45,19 +44,11 @@ export function createDesignToolHandlers(): Map<string, ToolHandler> {
   handlers.set('download_asset', handleDownloadAsset as ToolHandler);
   handlers.set('list_assets', handleListAssets as ToolHandler);
 
-  // Hallucinated shadow-aliases. `write_file` reuses the common
-  // create_file handler (overwrites or creates). `append_file` is the
-  // design-only appender — common has no equivalent.
+  // Hallucinated shadow-alias: `write_file` reuses the common create_file
+  // handler (overwrites or creates). `append_file` / `create_file` are REAL
+  // catalog tools for design (tool-call authoring protocol) and route to the
+  // common handlers via the catalog-derived registry — no override here.
   handlers.set('write_file', handleCreateFile as ToolHandler);
-  handlers.set('append_file', handleAppendFile as ToolHandler);
-
-  // `create_file` is deliberately NOT advertised in the design tool sets
-  // (documents stream via the <file> tag — toolCatalog.ts), but the shared
-  // edit_file handler's missing-file error points the model at it. Register
-  // the handler so that guidance is actionable instead of an unknown-tool
-  // dead end (sharp-baking-bride RCA: drain-time edit_file on a nonexistent
-  // target left no working tool channel).
-  handlers.set('create_file', handleCreateFile as ToolHandler);
 
   // Figma tools — design pre-check + common handler.
   for (const toolName of FIGMA_TOOLS) {

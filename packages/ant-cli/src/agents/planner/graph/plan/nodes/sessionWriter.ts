@@ -161,8 +161,8 @@ export async function saveConversationToSession(
 
 /**
  * Writer-fallback safety whitelist (dusk-mounding-pilot). Validates a
- * feature-relative path emitted by the LLM in a `<file>` tag before it is used
- * as the disk-write target when RAC.target is empty.
+ * feature-relative path the LLM authored via a file-writing tool call before
+ * it is used as the disk-write target when RAC.target is empty.
  */
 export function isSafeStagingPath(relPath: string): boolean {
   if (!relPath) return false;

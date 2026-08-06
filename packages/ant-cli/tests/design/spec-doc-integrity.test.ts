@@ -392,6 +392,6 @@ describe('buildSpecRevisionRetryMessage', () => {
     expect(msg).toContain('REVISION VALIDATION FAILED');
     expect(msg).toContain('- 2. Root Cause Analysis');
     expect(msg).toContain('restored to the pre-revision original');
-    expect(msg).toContain('<file>');
+    expect(msg).toContain('create_file');
   });
 });

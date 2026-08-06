@@ -38,12 +38,12 @@ export function renderViolationGuidance(
       'Another parallel task already created these files:',
       fileList,
       '',
-      '⛔ DO NOT use <file> tag to overwrite these files directly.',
+      '⛔ DO NOT call create_file to overwrite these files blindly.',
       '',
       '✅ REQUIRED (2 steps):',
       '1. Call read_file("path") to get the CURRENT content and version',
       '2. Then EITHER:',
-      '   a. Use <file path="path"> with MERGED content (full rewrite)',
+      '   a. Call create_file with overwrite: true and the MERGED content (full rewrite)',
       '   b. Use edit_file tool to partially modify',
     ].join('\n');
   }

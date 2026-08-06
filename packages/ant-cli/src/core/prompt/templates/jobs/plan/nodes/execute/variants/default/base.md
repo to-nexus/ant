@@ -15,7 +15,7 @@ Mode: **{{mode}}**
 {{#if hasMultipleTargets}}
 ## 3. Target Paths (multi-document plan)
 
-This plan is split into the following documents — author EACH one, emitting a separate `<file path="...">...</file>` tag per file. Partition the sections across them (MECE — no overlap); every file must be complete:
+This plan is split into the following documents — author EACH one with a separate `create_file` call at its path (continue a long document with `append_file` calls for the same path). Partition the sections across them (MECE — no overlap); every file must be complete:
 
 {{#each targetPaths}}
 - `{{this}}`
@@ -26,7 +26,7 @@ This plan is split into the following documents — author EACH one, emitting a 
 
 Target document path: `{{targetPath}}`
 
-In **generate** mode, author the document by emitting it inside a `<file path="{{targetPath}}">...</file>` tag (the only write path). In **refactor** mode, edit the existing document in place with `edit_file` at this path.
+In **generate** mode, author the document with a `create_file` call at exactly `{{targetPath}}` (the only write path; continue a long document with `append_file` calls for the same path). In **refactor** mode, edit the existing document in place with `edit_file` at this path.
 {{/if}}
 {{/if}}
 

@@ -17,6 +17,7 @@ import {
   MessageContentBlock,
   ToolResultContentBlock,
   ToolUseContentBlock,
+  resolveToolChoice,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetry } from '../../../core/utils/retry';
@@ -146,6 +147,8 @@ export class GeminiLLMClient implements LLMClient {
         // Port `toolChoice` → Gemini functionCallingConfig (native support).
         // Only alongside declared tools; `'none'` keeps the declarations in
         // the request while forbidding calls (forced-final-answer rounds).
+        // `{ allow }` maps to allowedFunctionNames under AUTO — the model may
+        // still answer in text, but only the named tools are callable.
         ...(geminiTools && options?.toolChoice
           ? {
               toolConfig: {
@@ -154,6 +157,9 @@ export class GeminiLLMClient implements LLMClient {
                     options.toolChoice === 'none'
                       ? FunctionCallingConfigMode.NONE
                       : FunctionCallingConfigMode.AUTO,
+                  ...(typeof options.toolChoice === 'object' && options.toolChoice.allow?.length
+                    ? { allowedFunctionNames: options.toolChoice.allow }
+                    : {}),
                 },
               },
             }

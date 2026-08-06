@@ -9,6 +9,7 @@ export { handleSearchCode } from './searchCode';
 export { handleDeleteFile } from './deleteFile';
 export { handleEditFile } from './editFile';
 export { handleCreateFile } from './createFile';
+export { handleAppendFile } from './appendFile';
 export { handleCopyFile } from './copyFile';
 export { handleMkdir } from './mkdir';
 export { handleSearchWeb, executeSearchWeb } from './searchWeb';

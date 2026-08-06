@@ -129,10 +129,29 @@ const toolNodeFn = createToolNode<PlanGraphState>({
     },
   },
 
-  buildReturn(state, { updatedHistory }) {
+  buildReturn(state, { updatedHistory, executionEvents }) {
+    // Tool-protocol authoring: a successful write this round IS forward
+    // output. Reset the no-output window and record the authored paths so
+    // the execute node's writer-integrity guard / session record / output
+    // gate (`_authoredDocPaths`) see tool-channel writes.
+    const writtenPaths: string[] = [];
+    for (const ev of executionEvents || []) {
+      if (ev.toolName !== 'create_file' && ev.toolName !== 'append_file' && ev.toolName !== 'edit_file') continue;
+      const content = String(ev.result?.content ?? '');
+      if (ev.result?.error || content.startsWith('Error')) continue;
+      const p = ev.args?.path;
+      if (typeof p === 'string' && p) writtenPaths.push(p);
+    }
+    const prevAuthored = state._authoredDocPaths || [];
     return {
       conversations: { [activeConvKey(state)]: updatedHistory },
       pendingToolCalls: [],
+      ...(writtenPaths.length > 0
+        ? {
+            _noOutputCallCount: 0,
+            _authoredDocPaths: [...new Set([...prevAuthored, ...writtenPaths])],
+          }
+        : {}),
     };
   },
 

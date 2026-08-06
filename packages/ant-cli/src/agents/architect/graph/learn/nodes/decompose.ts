@@ -57,11 +57,10 @@ export async function decompose(state: LearnGraphState): Promise<Partial<LearnGr
   const userLanguage = detectUserLanguage(state.directive || '');
   
   const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, userLanguage, undefined, undefined, false, undefined);
+  const renderStrategy = new CommonRenderStrategy(chatAPI, userLanguage);
   const orchestrator = new StreamOrchestrator({
     parser,
     renderStrategy,
-    existingFiles: new Set(),
   });
   
   const { maybeUpdatePhaseTokenUsage, applyEstimatedInputTokens } = await import('../../../../common/graph/llmHelpers');

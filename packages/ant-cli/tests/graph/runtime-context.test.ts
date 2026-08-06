@@ -152,35 +152,35 @@ describe('buildRuntimeContext (design)', () => {
     expect(runtimeContext).toContain('Existing Design');
   });
 
-  // Tag-choice dispatch truth table (oat-choosing-horse RCA): the Target
-  // Document block is the single owner of the <file>-vs-<append> decision.
-  // The old unconditional `Use: <file …>` line contradicted the variant
-  // rules' continuation contract and taught the model to probe the disk
-  // with no-op edit_file calls. Assertions are structural (which tag is
-  // instructed), not prose locks.
-  describe('tag-choice dispatch (docState)', () => {
-    it('instructs <file> when the document does not exist', () => {
+  // Write-tool dispatch truth table (oat-choosing-horse RCA): the Target
+  // Document block is the single owner of the create_file-vs-append_file
+  // decision. The old unconditional create-style line contradicted the
+  // variant rules' continuation contract and taught the model to probe the
+  // disk with no-op edit_file calls. Assertions are structural (which tool
+  // is instructed), not prose locks.
+  describe('write-tool dispatch (docState)', () => {
+    it('instructs create_file when the document does not exist', () => {
       const { runtimeContext } = buildDesignRuntimeContext(makeDesignState(), {
         documentExists: false,
         lastSectionNumber: 0,
       });
-      expect(runtimeContext).toContain('<file path="architecture/system/be-system-main.md">');
-      expect(runtimeContext).not.toContain('<append path=');
+      expect(runtimeContext).toContain('create_file { "path": "architecture/system/be-system-main.md"');
+      expect(runtimeContext).not.toContain('append_file {');
     });
 
-    it('defaults to the not-exists (<file>) branch when docState is omitted', () => {
+    it('defaults to the not-exists (create_file) branch when docState is omitted', () => {
       const { runtimeContext } = buildDesignRuntimeContext(makeDesignState());
-      expect(runtimeContext).toContain('<file path=');
-      expect(runtimeContext).not.toContain('<append path=');
+      expect(runtimeContext).toContain('create_file {');
+      expect(runtimeContext).not.toContain('append_file {');
     });
 
-    it('instructs <append> (never <file>) when the document exists', () => {
+    it('instructs append_file (never create_file) when the document exists', () => {
       const { runtimeContext } = buildDesignRuntimeContext(makeDesignState(), {
         documentExists: true,
         lastSectionNumber: 3,
       });
-      expect(runtimeContext).toContain('<append path="architecture/system/be-system-main.md">');
-      expect(runtimeContext).not.toContain('<file path=');
+      expect(runtimeContext).toContain('append_file { "path": "architecture/system/be-system-main.md"');
+      expect(runtimeContext).not.toContain('create_file {');
       expect(runtimeContext).toContain('last section: 3');
     });
 
@@ -189,7 +189,7 @@ describe('buildRuntimeContext (design)', () => {
         resolvedAction: { mode: 'refactor', source: 'infer', hasExplicitFields: false },
       }), { documentExists: true, lastSectionNumber: 2 });
       expect(runtimeContext).toContain('edit_file');
-      expect(runtimeContext).not.toContain('<file path=');
+      expect(runtimeContext).not.toContain('create_file {');
     });
 
     it('carries the no-probe constraint in every branch', () => {

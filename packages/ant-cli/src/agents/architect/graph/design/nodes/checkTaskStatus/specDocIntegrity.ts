@@ -10,7 +10,7 @@
  * blocks / YAML frontmatter. Legitimate multi-section authoring appends only
  * `##`-level sections, so the invariant holds for every well-formed spec.
  * A second root means a full document was appended below the first (the
- * refactor-mode `<append>` failure): the consuming code job would read two —
+ * refactor-mode append failure): the consuming code job would read two —
  * possibly contradictory — specs as one authoritative ref.
  *
  * Two modes, one owner:
@@ -20,13 +20,14 @@
  *   segment is not a plausible full document (no `##` sections), the file is
  *   left untouched and flagged loudly.
  *
- * - refactor (`reconcileSpecDoc`): the revision-preservation gate. The
- *   FileRenderer auto-converts `<file>` on an existing design doc to an
- *   append, so mid-task the file holds `original + candidate` — a free
- *   write-ahead log. At completion we validate the candidate against the
- *   pre-revision section headings: pass → candidate REPLACES the file
- *   (the "<file> replaces atomically" contract lands here, at the validated
- *   moment); fail → the original is ROLLED BACK to disk and a retryable
+ * - refactor (`reconcileSpecDoc`): the revision-preservation gate. A
+ *   revision run appends the candidate to the existing design doc
+ *   (append_file on an existing target), so mid-task the file holds
+ *   `original + candidate` — a free write-ahead log. At completion we
+ *   validate the candidate against the pre-revision section headings:
+ *   pass → candidate REPLACES the file (the "revision replaces atomically"
+ *   contract lands here, at the validated moment); fail → the original is
+ *   ROLLED BACK to disk and a retryable
  *   violation is returned so the phase node can re-prompt execute. Retry
  *   authority is declared here at the violation-creation site
  *   (`isRetryable`), never re-judged by phase nodes.
@@ -382,7 +383,7 @@ export function buildSpecRevisionRetryMessage(
     `Your revised document dropped ${missingHeadings.length} section(s) that nothing sanctioned removing:`,
     ...missingHeadings.map((h) => `- ${h}`),
     `The document on disk (${targetFile}) has been restored to the pre-revision original.`,
-    'Re-emit the FULL revised document in a single <file> tag: apply the directive as a delta, ' +
+    'Re-emit the FULL revised document in a single create_file call (overwrite: true): apply the directive as a delta, ' +
       'preserve every section the directive does not affect verbatim, and include the sections listed above.',
     'Only drop a section when the user directive sanctions its removal.',
   ].join('\n');

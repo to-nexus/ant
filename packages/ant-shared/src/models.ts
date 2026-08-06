@@ -145,6 +145,20 @@ export interface ModelSpec {
    * it still work) but no longer selectable. Defaults to `true`.
    */
   selectable?: boolean;
+  /**
+   * How this model's wire protocol delivers tool-call arguments (UX policy
+   * SSOT for live file rendering — render policy reads THIS, never the
+   * provider name):
+   *   - 'incremental': argument JSON streams as fragments (Anthropic
+   *     input_json_delta, OpenAI-compat tool_calls / function_call_arguments
+   *     deltas) → live file-card rendering.
+   *   - 'complete': arguments arrive whole (Gemini functionCall.args) →
+   *     terminal-only rendering; binding such a model to a file-writing
+   *     execute node logs a one-time warning.
+   * Omitted = derived from provider via {@link getToolArgStreaming}
+   * ('complete' for google, 'incremental' otherwise).
+   */
+  toolArgStreaming?: 'incremental' | 'complete';
 }
 
 /**
@@ -492,4 +506,18 @@ export function getThinkingMode(modelId: string): ThinkingMode {
  */
 export function canDisableThinking(modelId: string): boolean {
   return MODEL_REGISTRY[modelId]?.rejectsDisabledThinking !== true;
+}
+
+/**
+ * Tool-call argument streaming capability for a model id (UX policy SSOT —
+ * decides live vs terminal-only file-card rendering; see ModelSpec.toolArgStreaming).
+ *
+ * Resolution: explicit spec field → provider derivation (google = complete,
+ * everything else = incremental) → unknown ids fall back by name prefix.
+ */
+export function getToolArgStreaming(modelId: string): 'incremental' | 'complete' {
+  const spec = MODEL_REGISTRY[modelId];
+  if (spec?.toolArgStreaming) return spec.toolArgStreaming;
+  const provider = spec?.provider ?? (modelId.startsWith('gemini') ? 'google' : undefined);
+  return provider === 'google' ? 'complete' : 'incremental';
 }

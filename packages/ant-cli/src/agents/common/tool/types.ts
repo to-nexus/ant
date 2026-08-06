@@ -164,9 +164,8 @@ export interface ToolExecutionContext {
    *
    * All document- or plan-producing phases (architect/design plan +
    * execute, architect/code plan, planner/plan) leave this `false` so
-   * `<file>`/`<append>`/`<edit>`/`<delete>` writes still flow through
-   * the FileRenderer guard but the tool handlers cannot touch
-   * source code under `codebase/`. See
+   * artifact writes still flow through the file tool handlers but those
+   * handlers cannot touch source code under `codebase/`. See
    * `docs/internals/15-design-job.md` "Codebase mutation gate" for the
    * policy SSOT.
    *

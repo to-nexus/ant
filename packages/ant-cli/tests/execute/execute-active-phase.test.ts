@@ -98,10 +98,11 @@ describe('execute node — `_activePhase: \'execute\'` declared on every return'
     return blocks;
   })();
 
-  it('finds the four known return blocks (matches grep results)', () => {
-    // 3 original (no-progress re-entry / tool-call / final) + the subagent
-    // join-barrier return (done withheld while reports are owed).
-    expect(returnBlocks.length).toBe(4);
+  it('finds the three known return blocks (matches grep results)', () => {
+    // no-progress re-entry / subagent join-barrier (done withheld while
+    // reports are owed) / final. The fileConflicts merge return was deleted
+    // in the tag→tool authoring migration.
+    expect(returnBlocks.length).toBe(3);
   });
 
   it('every return block declares `_activePhase: \'execute\' as const`', () => {

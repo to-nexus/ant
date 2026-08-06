@@ -529,7 +529,7 @@ overlay enumerates them. In general, do NOT add:
     - ✅ If no → diagram intentionally omitted (the omission itself is a decision, not a default).
     - ❌ Decorative diagrams added "to look complete" are FORBIDDEN.
 
-**If YES to all → Output using XML tags per rules.md. If NO → Fix first!**
+**If YES to all → Write the document via the file-writing tools per rules.md. If NO → Fix first!**
 
 {{> jobs/shared/injections/reference-codebase}}
 

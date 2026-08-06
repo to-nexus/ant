@@ -72,10 +72,10 @@ LLMs generate plausible but outdated API structures and framework constraints wi
 
 ════════════════════════════════════════════════════════════════════════════════
 
-**CRITICAL: You MUST use XML tags for ALL file operations!**
+**CRITICAL: ALL file operations are tool calls (`create_file` / `append_file` / `edit_file`)!**
 
 ════════════════════════════════════════════════════════════════════════════════
-## XML Tag Reference
+## File-Writing Tool Reference
 ════════════════════════════════════════════════════════════════════════════════
 
 ### Scenario 1: Creating New Document (First Task)
@@ -84,10 +84,10 @@ LLMs generate plausible but outdated API structures and framework constraints wi
 **You are in this scenario right now.**
 {{/unless}}
 
-Use `<file>` tag:
+Call `create_file`:
 
-```xml
-<file path="architecture/system/[FILENAME]">
+```
+create_file(path="architecture/system/[FILENAME]", content="""
 # [Document Type] Document: [Project Name]
 
 ## 1. Overview
@@ -95,7 +95,7 @@ Use `<file>` tag:
 
 <!-- SECTION_PATTERN: top-level -->
 <!-- LAST_SECTION: 1 -->
-</file>
+""")
 ```
 
 {{#unless isLastTaskForDocument}}
@@ -112,18 +112,18 @@ Use `<file>` tag:
 **⚠️ You are in this scenario right now! Last section was: {{lastSectionNumber}}**
 {{/if}}
 
-**⚠️ CRITICAL: If document exists, you MUST use <append>, NOT <file>!**
+**⚠️ CRITICAL: If document exists, you MUST call `append_file`, NOT `create_file`!**
 
-Use `<append>` tag:
+Call `append_file`:
 
-```xml
-<append path="architecture/system/[FILENAME]">
+```
+append_file(path="architecture/system/[FILENAME]", content="""
 ## N. [Topic]    <!-- N = lastSectionNumber + 1 -->
 
 ...
 
 <!-- LAST_SECTION: N -->
-</append>
+""")
 ```
 
 {{#if lastSectionNumber}}
@@ -135,23 +135,17 @@ Use `<append>` tag:
 **Include `<!-- LAST_SECTION: N -->` at the end.**
 {{/if}}
 
-**❌ WRONG - Using <file> on existing document:**
-```xml
-<file path="architecture/system/be-system-main.md">  ← WRONG for continuation
-## N. [Topic]
-...
-</file>
+**❌ WRONG - Calling create_file on existing document:**
+```
+create_file(path="architecture/system/be-system-main.md", ...)  ← WRONG for continuation
 ```
 
-**✅ CORRECT - Using <append> for continuation:**
-```xml
-<append path="architecture/system/be-system-main.md">  ← CORRECT! Adds at end
-## N. [Topic]
-...
-</append>
+**✅ CORRECT - Calling append_file for continuation:**
+```
+append_file(path="architecture/system/be-system-main.md", content="## N. [Topic]\n...")  ← CORRECT! Adds at end
 ```
 
-(Content is never lost either way — the system converts a `<file>` tag on an existing document into an append as a safety net — but the correct tag keeps section numbering and metadata clean, so treat the tag choice as binding.)
+(`create_file` on an existing document conflicts — `append_file` is what adds a section at the document's end, and it keeps section numbering and metadata clean, so treat the tool choice as binding.)
 
 ### Scenario 3: Modifying Existing Sections (Rare)
 
@@ -182,47 +176,41 @@ edit_file(
 **Your target document:** `architecture/system/{{currentTask.targetFile}}`
 
 ════════════════════════════════════════════════════════════════════════════════
-## Tag Selection Decision Tree
+## Tool Selection Decision Tree
 ════════════════════════════════════════════════════════════════════════════════
 
-The **Target Document** block in your context states authoritatively whether the document exists and which tag to use — follow it. Do NOT verify document existence with tool calls (no `edit_file`/`read_file` existence probes) before writing.
+The **Target Document** block in your context states authoritatively whether the document exists and which tool to use — follow it. Do NOT verify document existence with tool calls (no `edit_file`/`read_file` existence probes) before writing.
 
 **Summary:**
-- ✅ `<file>` → First task only (new document)
-- ✅ `<append>` → Continuation tasks (existing document)
-- ✅ `edit_file` tool → Modifying existing content (rare)
-- ❌ NEVER use `<file>` when lastSectionNumber exists
+- ✅ `create_file` → First task only (new document)
+- ✅ `append_file` → Continuation tasks (existing document)
+- ✅ `edit_file` → Modifying existing content (rare)
+- ❌ NEVER call `create_file` when lastSectionNumber exists
 
 ════════════════════════════════════════════════════════════════════════════════
 ## Content Formatting Rules
 ════════════════════════════════════════════════════════════════════════════════
 
-### Inside XML Tags
+### Inside the `content` Argument
 
 **✅ DO:**
-- Write markdown content directly inside tags
+- Write markdown content directly as the `content` argument
 - Use proper markdown formatting (headers, lists, code blocks)
 - Include the `<!-- LAST_SECTION: N -->` metadata comment at end
 
 **❌ DON'T:**
-- Add markdown code fences inside XML tags
-- Output text outside XML tags
+- Wrap the whole `content` in markdown code fences
+- Output narrative text instead of making the tool call
 - Forget the LAST_SECTION metadata comment
 
 ### Multiple Operations
 
-If you need multiple file operations, use multiple XML tags:
+If you need multiple file operations, make multiple tool calls:
 
-```xml
-<append path="architecture/system/be-system-main.md">
-## 4. Technology Stack
-...
-</append>
+```
+append_file(path="architecture/system/be-system-main.md", content="## 4. Technology Stack\n...")
 
-<append path="architecture/system/be-system-main.md">
-## 5. Non-Functional Requirements
-...
-</append>
+append_file(path="architecture/system/be-system-main.md", content="## 5. Non-Functional Requirements\n...")
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -230,8 +218,8 @@ If you need multiple file operations, use multiple XML tags:
 ════════════════════════════════════════════════════════════════════════════════
 
 ### Critical Rules:
-1. **lastSectionNumber exists?** → Use `<append>`, NOT `<file>`
-2. **NO markdown fences inside XML** (just write markdown directly)
+1. **lastSectionNumber exists?** → Call `append_file`, NOT `create_file`
+2. **NO markdown fences wrapping the content argument** (just write markdown directly)
 3. **Path MUST start with** `architecture/system/`
 {{#if isLastTaskForDocument}}
 4. **OMIT** `<!-- LAST_SECTION: N -->` (this is the LAST task)
@@ -245,17 +233,17 @@ If you need multiple file operations, use multiple XML tags:
 
 Before generating output, verify:
 
-**XML Tag Selection:**
-- ✅ Used `<file>` only if this is first task (no lastSectionNumber)?
-- ✅ Used `<append>` if continuing document (lastSectionNumber exists)?
-- ✅ NO text outside XML tags?
+**File-Writing Tool Selection:**
+- ✅ Called `create_file` only if this is first task (no lastSectionNumber)?
+- ✅ Called `append_file` if continuing document (lastSectionNumber exists)?
+- ✅ Document content written via a tool call, not as narrative text?
 
 **Path Correctness:**
 - ✅ Path starts with `architecture/system/`?
 - ✅ Filename is `{{currentTask.targetFile}}`?
 
 **Content Format:**
-- ✅ Valid markdown inside XML tags?
+- ✅ Valid markdown in the `content` argument?
 - ✅ NO markdown code fences wrapping the content?
 - ✅ Section numbering correct?
 {{#if lastSectionNumber}}
@@ -543,7 +531,7 @@ Before generating output, verify:
 ```
 
 **Rules:**
-1. Output `<done>true</done>` ONLY after document content has been generated with `<file>` or `<append>` tag
+1. Output `<done>true</done>` ONLY after document content has been written via `create_file` or `append_file`
 2. **Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

@@ -70,34 +70,34 @@ For the categories specified in YOUR task description, document the full set the
 ### Output Format
 
 {{#if forceAppend}}
-**Parallel chapter**: Use `<append>` tag to merge your categories into the shared JSON.
+**Parallel chapter**: Call `append_file` to merge your categories into the shared JSON.
 The system serializes concurrent writes via mutex and deep-merges automatically.
 {{else}}
 **First chapter**: Create complete JSON structure.
-Use `<file>` tag to create the initial JSON file.
+Call `create_file` to create the initial JSON file.
 {{/if}}
 
 ### Example Output
 
 {{#if forceAppend}}
-**Parallel chapter** — use `<append>` to add YOUR categories:
+**Parallel chapter** — call `append_file` to add YOUR categories:
 
-```xml
-<append path="visual/ui/ant/ui-tokens.json">
+```
+append_file(path="visual/ui/ant/ui-tokens.json", content="""
 {
   "YOUR_CATEGORY": { /* tokens derived from directive / PRD / visualTier */ }
 }
-</append>
+""")
 ```
 {{else}}
-**First task** — use `<file>` to create the document:
+**First task** — call `create_file` to create the document:
 
-```xml
-<file path="visual/ui/ant/ui-tokens.json">
+```
+create_file(path="visual/ui/ant/ui-tokens.json", content="""
 {
   "YOUR_CATEGORY": { /* tokens derived from directive / PRD / visualTier */ }
 }
-</file>
+""")
 ```
 {{/if}}
 

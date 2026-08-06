@@ -2,7 +2,7 @@
  * copy_file handler — byte-faithful file placement.
  *
  * The ONLY path by which an agent can put a binary file into the codebase.
- * Every authoring surface (`<file>` tag, `create_file`, `edit_file`) funnels
+ * Every authoring surface (`create_file`, `append_file`, `edit_file`) funnels
  * through `FileSystemAdapter.writeFile(content: string)` and writes as utf-8,
  * so binary targets are hard-refused there — and a utf-8 decode→re-encode round
  * trip is irreversible (valid-crating-prawn: a 119KB `.glb` came back 198KB,

@@ -7,8 +7,8 @@
  * spec file (currently `architecture/spec/{slug}.md`, no `spec-` prefix; legacy
  * workspaces may still hold `spec-{slug}.md` from before the prefix was dropped).
  *
- * - sectionIndex === 0 (first): uses <file> tag to create the document
- * - sectionIndex > 0: uses <append> tag, provides previous sections as context
+ * - sectionIndex === 0 (first): uses create_file to create the document
+ * - sectionIndex > 0: uses append_file, provides previous sections as context
  * - totalSections === 1 (no decomposition): identical to original behaviour
  */
 
@@ -95,14 +95,14 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   // Directive only. The sealed plan was previously prepended here;
   // it now renders separately near the top of base.md via {{#if
   // planText}}.
-  // Tag choice (<file> vs <append>) is owned by the template's Output
-  // Format block (base.md dispatches on detectedMode/isFirstSection) —
-  // repeating an unconditional `Use: <file …>` here contradicted the
-  // continuation branch and taught the model to distrust the prompt
-  // (oat-choosing-horse probe RCA). Only the target path lives here.
+  // Write-tool choice (create_file vs append_file) is owned by the
+  // template's Output Format block (base.md dispatches on
+  // detectedMode/isFirstSection) — repeating an unconditional choice here
+  // contradicted the continuation branch and taught the model to distrust
+  // the prompt (oat-choosing-horse probe RCA). Only the target path lives here.
   const runtimeLines: string[] = [];
   runtimeLines.push(`# Target Document`);
-  runtimeLines.push(`Write to: \`${specDir}/${targetFile}\` (tag choice: see Output Format)`);
+  runtimeLines.push(`Write to: \`${specDir}/${targetFile}\` (write-tool choice: see Output Format)`);
   runtimeLines.push('');
   if (task) {
     // Name only — the task's scope (description) renders exactly once, in the
@@ -279,11 +279,11 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
     scope: task?.description ?? '',
   });
 
-  // Section-correct write tag: refactor-mode and first-section tasks must
-  // replace via <file>; only continuation sections (sectionIndex > 0) may
-  // <append>. Offering both unconditionally let refactor runs append a full
-  // second document below the first (duplicate-root corruption).
-  const writeTag = isFirstSection ? '<file>' : '<append>';
+  // Section-correct write tool: refactor-mode and first-section tasks must
+  // replace via create_file; only continuation sections (sectionIndex > 0)
+  // may append_file. Offering both unconditionally let refactor runs append
+  // a full second document below the first (duplicate-root corruption).
+  const writeTool = isFirstSection ? 'create_file' : 'append_file';
 
   let trailingUserMessage = 'Continue.';
   if (selfCheck) {
@@ -291,7 +291,7 @@ export async function buildSpecMessages(state: DesignGraphState): Promise<Array<
   } else if (callIndex >= HARD_DEADLINE) {
     trailingUserMessage =
       `Continue.\n\n⚠️ WRITING DEADLINE: You have used ${callIndex} turns exploring. ` +
-      `Write the spec document now using the ${writeTag} tag, then output <done>true</done>. ` +
+      `Write the spec document now using the ${writeTool} tool, then output <done>true</done>. ` +
       `No more tool calls — write the document with what you have gathered so far.`;
   } else if (callIndex >= SOFT_DEADLINE) {
     trailingUserMessage =

@@ -1,6 +1,6 @@
 /**
  * Core types for the streaming system
- * 
+ *
  * NOTE: LLMStreamEvent is now in core/ports/llm.ts (unified with LLM interface)
  */
 
@@ -11,9 +11,6 @@
 export type ParsedActionType =
   | 'thinking'
   | 'response'
-  | 'file_start'
-  | 'file_content'
-  | 'file_end'
   | 'plan_start'
   | 'plan_content'
   | 'plan_end'
@@ -27,17 +24,6 @@ export interface ParsedAction {
   type: ParsedActionType;
   data: {
     content?: string;
-    filePath?: string;
-    actionType?: 'create' | 'append' | 'edit' | 'delete';
-    /**
-     * `<file path="..." overwrite="true">` attribute.
-     * - undefined / false: caller declared NEW file intent — SharedFileBuffer
-     *   will conflict if the file was already committed by a sibling task.
-     * - true: caller declared deliberate overwrite intent — SharedFileBuffer
-     *   accepts the takeover.
-     * Populated by XMLStreamParser for `<file>` opening tags.
-     */
-    overwrite?: boolean;
     metadata?: Record<string, any>;
     blockStart?: boolean;  // For thinking: marks <thinking> tag opened (new block)
     blockEnd?: boolean;    // ✅ For thinking: marks </thinking> tag closed (duration calc)
@@ -56,31 +42,8 @@ export interface ParsedAction {
 // Stream Result
 // ============================================================================
 
-/** Cross-worker file conflict with both contents for direct merge */
-export interface FileConflict {
-  path: string;
-  intendedContent: string;
-  currentContent: string;
-  ownerTask?: string;
-}
-
 export interface StreamResult {
   raw: string;
-  streamedFiles: string[];
   completedActions: ParsedAction[];
-  fileErrors?: string[];  // ✅ File operation errors for self-healing
-  fileConflicts?: FileConflict[];  // ✅ Cross-worker conflicts for direct merge (bypasses enforce/plan)
   explicitDone?: boolean; // ✅ True if LLM output <done>true</done> explicitly
 }
-
-// ============================================================================
-// File Stream Info
-// ============================================================================
-
-export interface FileStreamInfo {
-  filePath: string;
-  actionType: 'create' | 'append' | 'edit' | 'delete';
-  startedAt: number;
-  contentBuffer: string;
-}
-

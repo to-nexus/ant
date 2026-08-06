@@ -46,8 +46,13 @@ export function createChatStatusReporter(): ChatStatusReporter {
       await client.addReadSourceComplete(filename, cardId, opts);
     },
 
-    startFileEdit(_path) {
-      // Currently no separate start event in ChatAPIClient
+    startFileEdit(path) {
+      // Fire-and-forget: opens the `file_editing` pending card shell so the
+      // live diff stream (ToolFileStreamer → streamFileDiff) has a card to
+      // land on. Failures must never block the tool handler.
+      void getClient()
+        .then((client) => client.startFileEdit(path))
+        .catch(() => {});
     },
     async completeFileEdit(path, oldStr, newStr) {
       const client = await getClient();

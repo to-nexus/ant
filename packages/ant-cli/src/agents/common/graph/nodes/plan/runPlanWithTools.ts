@@ -76,7 +76,7 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   const { StreamOrchestrator } = await import('../../../../../core/streaming/StreamOrchestrator');
 
   const createStrategy = () => {
-    const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, jobType, undefined);
+    const strategy = new CommonRenderStrategy(chatAPI, 'en');
     strategy.setPlanTaskTitle(taskName);
     return strategy;
   };
@@ -84,7 +84,6 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   let orchestrator = new StreamOrchestrator({
     parser: new XMLStreamParser(),
     renderStrategy: createStrategy(),
-    existingFiles: new Set(),
   });
 
   const toolCalls: PlanToolCall[] = [];
@@ -117,7 +116,6 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
     orchestrator = new StreamOrchestrator({
       parser: new XMLStreamParser(),
       renderStrategy: createStrategy(),
-      existingFiles: new Set(),
     });
     applyEstimatedInputTokensFromMessages(state as any, messages);
 
@@ -144,7 +142,6 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
         orchestrator = new StreamOrchestrator({
           parser: new XMLStreamParser(),
           renderStrategy: createStrategy(),
-          existingFiles: new Set(),
         });
         continue;
       }

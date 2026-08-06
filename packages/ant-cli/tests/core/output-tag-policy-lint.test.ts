@@ -9,9 +9,12 @@
  *      `output-tag-policy.md` partial. Every other site that needs to
  *      restate the rule MUST cite the contract — never duplicate it.
  *
- *   2. The canonical partial itself MUST contain the two strict
- *      invariants (first-token discipline + no cross-axis nesting) and
- *      MUST list `<reply>` as the narrative tag. If any of these
+ *   2. The canonical partial itself MUST declare the two-channel
+ *      contract (tool calls = actions, text tags = signals) and its
+ *      invariant set: Invariant 1 (files are written by TOOLS, never by
+ *      text), 1b (status markers are records, not actions), 1c (tags
+ *      are text, not tools) and Invariant 2 (no cross-axis nesting),
+ *      and MUST list `<reply>` as the narrative tag. If any of these
  *      sentinels disappear, the contract has drifted.
  *
  * Catches the regression class where a node prompt re-introduces
@@ -48,9 +51,33 @@ const NON_POLICY_TEMPLATES = ALL_TEMPLATES.filter((p) => p !== POLICY_PATH);
 describe('Output Tag Policy — partial content invariants', () => {
   const body = readFileSync(POLICY_PATH, 'utf8');
 
-  it('declares first-token discipline (Invariant 1)', () => {
-    expect(body).toMatch(/Invariant 1.*First-token discipline/i);
-    expect(body).toMatch(/very first.*output token MUST be `<`/i);
+  it('declares the two-channel split (tools = actions, tags = signals)', () => {
+    expect(body).toMatch(/## Output Channel Contract/);
+    expect(body).toMatch(/exactly two channels/i);
+    expect(body).toMatch(/There is no third channel/);
+  });
+
+  it('declares Invariant 1 — files are written by TOOLS, never by text', () => {
+    expect(body).toMatch(/Invariant 1 — Files are written by TOOLS, never by text/);
+    // Intent → tool routing table: every write intent has a named tool.
+    for (const tool of ['create_file', 'append_file', 'edit_file', 'delete_file']) {
+      expect(body).toContain(`\`${tool}\``);
+    }
+    // The retired tag channel is named as NONEXISTENT (not merely discouraged).
+    expect(body).toMatch(/no `<file>`, `<append>`, `<edit>`, or `<delete>` tag/);
+  });
+
+  it('declares Invariant 1b — status markers are records, not actions', () => {
+    expect(body).toMatch(/Invariant 1b — Status markers are records, not actions/);
+    expect(body).toMatch(/Only a tool call writes/);
+  });
+
+  it('declares Invariant 1c — tags are text, not tools (both fatal directions)', () => {
+    expect(body).toMatch(/Invariant 1c — Tags are text, not tools/);
+    // Direction A: sealing a plan is a TEXT tag, not a plan() tool call.
+    expect(body).toMatch(/there is no `?plan`? function to call/i);
+    // Direction B: writing a file is a tool call, not a <file> tag.
+    expect(body).toMatch(/Call `create_file` instead/);
   });
 
   it('declares no cross-axis nesting (Invariant 2)', () => {

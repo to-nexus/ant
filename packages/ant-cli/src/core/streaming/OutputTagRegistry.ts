@@ -23,7 +23,8 @@
  *   - Chat-line persistence (SSE / Redis / chat.jsonl) — that stays in
  *     `core/llm-response/LLMResponseService.ts`. It reads `chatLineKind`
  *     from this registry to discriminate `assistant_message` lines.
- *   - Disk writes — `FileRenderer` / `FileRegistry` (artifact tags only).
+ *   - Disk writes — tool-call-only (`create_file` / `append_file` /
+ *     `edit_file` handlers); no registered tag persists to disk.
  *   - LangGraph state mutation — each node, using `extract` hook results.
  *
  * Status:
@@ -74,7 +75,6 @@ export type TagAxisProcessing =
 
 /** Axis C — where the result is persisted. Multiple allowed. */
 export type TagAxisPersistence =
-  | 'disk-file' // filesystem (FileRenderer / FileRegistry)
   | 'sealed-state' // LangGraph state.* channel
   | 'chat-line' // chat.jsonl line (type + kind)
   | 'kanban' // task queue UI
@@ -334,8 +334,8 @@ export function tagsByIntent(intent: TagAxisIntent): readonly OutputTagSpec[] {
  *
  * Used by surfaces that bypass `SpecialTagTransformer` — parallel
  * `task_response` cards, `plan` card metadata, file-card previews,
- * thinking cards — to make sure raw `<reply>` / `<done>` / `<plan>` /
- * `<file>` strings never reach `chat.jsonl` or the card viewer.
+ * thinking cards — to make sure raw `<reply>` / `<done>` / `<plan>`
+ * strings never reach `chat.jsonl` or the card viewer.
  *
  * This is a defensive net for the `LLM emitted a tag inside a surface
  * that doesn't run it through the transformer` class of bug. The
@@ -366,7 +366,7 @@ export function stripRegisteredTags(content: string): string {
  * when the content is well-formed).
  *
  * Used by surface-side defensive guards that hold an `artifact` body
- * (e.g. `<file>`, `<plan>`) — finding a `narrative` or `control` tag
+ * (e.g. `<plan>`) — finding a `narrative` or `control` tag
  * inside is a contract violation per the Output Tag Matrix Invariant 2
  * ("no nesting across intent axes"). The strip surfaces above hide the
  * marker from the user; this helper lets callers also surface a dev-mode
@@ -448,62 +448,12 @@ function extractTagBody(text: string, name: string): string | undefined {
 }
 
 // ── artifact axis ──────────────────────────────────────────────────────────
-
-register({
-  name: 'file',
-  pattern: /<file\s+[^>]*>([\s\S]*?)<\/file>/i,
-  axis: {
-    intent: 'artifact',
-    processing: ['stream-action'],
-    persistence: ['disk-file'],
-    blocking: 'non-blocking',
-  },
-  streamAction: 'file_start',
-  promptContract:
-    'Use `<file path="...">body</file>` to write a NEW file. The body becomes the COMPLETE file content. If the file already exists (e.g. a sibling task already wrote it), you MUST emit `<file path="..." overwrite="true">` to confirm deliberate replacement — without `overwrite="true"`, the write conflicts to prevent silent clobber. For partial modification use `<edit>`; for tail concat use `<append>`.',
-});
-
-register({
-  name: 'append',
-  pattern: /<append\s+[^>]*>([\s\S]*?)<\/append>/i,
-  axis: {
-    intent: 'artifact',
-    processing: ['stream-action'],
-    persistence: ['disk-file'],
-    blocking: 'non-blocking',
-  },
-  streamAction: 'file_start',
-  promptContract:
-    'Use `<append path="...">body</append>` to append to an existing file. The body is appended verbatim. No commentary inside.',
-});
-
-register({
-  name: 'edit',
-  pattern: /<edit\s+[^>]*>([\s\S]*?)<\/edit>/i,
-  axis: {
-    intent: 'artifact',
-    processing: ['stream-action'],
-    persistence: ['disk-file'],
-    blocking: 'non-blocking',
-  },
-  streamAction: 'file_start',
-  promptContract:
-    'Use `<edit path="..." search="..." replace="...">` for targeted replacements in an existing file. Use only when the surgical change is clearer than rewriting the whole file.',
-});
-
-register({
-  name: 'delete',
-  pattern: /<delete\s+[^>]*\/>/i,
-  axis: {
-    intent: 'artifact',
-    processing: ['stream-action'],
-    persistence: ['disk-file'],
-    blocking: 'non-blocking',
-  },
-  streamAction: 'file_start',
-  promptContract:
-    'Use `<delete path="..." />` to remove a file. Self-closing. Use sparingly — only when the file is genuinely obsolete.',
-});
+//
+// File mutation is tool-call-only (`create_file` / `append_file` /
+// `edit_file` / `delete_file`, live-rendered by ToolFileStreamer). The
+// historical `<file>`/`<append>` streaming entries were removed with the
+// tag channel; `<edit>`/`<delete>` never had a parser at all. The only
+// artifact-axis tag left is `<plan>`.
 
 register({
   name: 'plan',

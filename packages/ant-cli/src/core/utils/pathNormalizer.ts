@@ -4,9 +4,7 @@
  * Single source of truth for normalizing file paths to be under the codebase directory.
  * 
  * Used by:
- * - Tool handlers (resolveToolPath) for read operations
- * - FileRenderer (resolveFileSystemPath) for write operations
- * - FileRegistry for existence checks
+ * - Tool handlers (resolveToolPath) for read and write operations
  * - CodeGen for tracking created file paths
  * 
  * KEY PRINCIPLES:

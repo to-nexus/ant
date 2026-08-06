@@ -9,7 +9,7 @@
  * visibility and preventing blind overwrites.
  *
  * Path normalization uses normalizeToCodebasePath() for consistency with
- * existingFiles Set, tool handlers, and FileRegistry.
+ * the tool handlers.
  */
 
 import { AsyncMutex } from '../../../../../core/utils/AsyncMutex';
@@ -42,18 +42,19 @@ export interface WriteOptions {
   expectedVersion?: number;
   /** True for new file creation. Fails if another worker owns the file. */
   isNewFile?: boolean;
-  /** True for <file> tag overwrite of a pre-existing file. Fails if another worker modified it. */
+  /** True for a create_file overwrite of a pre-existing file. Fails if another worker modified it. */
   isOverwrite?: boolean;
   /** Task name for conflict messages. */
   taskName?: string;
 }
 
 /**
- * Build the conflict message shown to the LLM when a `<file>` write collides
- * with a prior committed write (cross-worker OR cross-task on same worker).
+ * Build the conflict message shown to the LLM when a `create_file` write
+ * collides with a prior committed write (cross-worker OR cross-task on same
+ * worker).
  *
- * The message presents three channel choices with `<edit>` as the DEFAULT
- * for cross-task continuation. `<append>` is narrowed to physical-tail-concat
+ * The message presents three channel choices with the `edit_file` tool as the DEFAULT
+ * for cross-task continuation. `append_file` is narrowed to physical-tail-concat
  * use cases (CSS cascade / .gitignore / log entry) so the LLM does not
  * mistakenly append to JSON/config files where middle-insert is the correct
  * shape.
@@ -80,7 +81,7 @@ function buildClobberConflictMessage(params: {
   const ownerLabel = priorTaskName ? `task "${priorTaskName}"` : 'a sibling writer';
   const tailHintLine =
     emittedSize > 0 && emittedSize < priorSize
-      ? `\nHint: your body (${emittedSize} bytes) is smaller than the existing content (${priorSize} bytes) — you are likely modifying middle content or extending the tail, not replacing the whole file. Use <edit>, not <file overwrite="true">.`
+      ? `\nHint: your body (${emittedSize} bytes) is smaller than the existing content (${priorSize} bytes) — you are likely modifying middle content or extending the tail, not replacing the whole file. Call the edit_file tool, do NOT call create_file with overwrite.`
       : '';
   return (
     `File "${filePath}" was already committed by ${ownerLabel} ` +
@@ -89,24 +90,23 @@ function buildClobberConflictMessage(params: {
     `Your emitted body is ${emittedSize} bytes. Before retry, choose ONE channel:\n\n` +
     `1. PARTIAL modification of existing content (DEFAULT — most cross-task ` +
     `continuation falls here: adding an import, inserting a JSON property, ` +
-    `changing a value, adjusting a block):\n` +
-    `       <edit path="${filePath}">\n` +
-    `         <search>...existing snippet to match...</search>\n` +
-    `         <replace>...new snippet...</replace>\n` +
-    `       </edit>\n\n` +
+    `changing a value, adjusting a block) — call the edit_file TOOL:\n` +
+    `       edit_file { "path": "${filePath}",\n` +
+    `                   "old_str": "...existing snippet to match...",\n` +
+    `                   "new_str": "...new snippet..." }\n\n` +
     `2. ADDITION that physically concatenates at the file's END without ` +
     `affecting prior content (ONLY for tail-naturally-extending files — ` +
-    `CSS cascade tail layers, .gitignore line, log entry):\n` +
-    `       <append path="${filePath}">\n` +
-    `         ...new tail content...\n` +
-    `       </append>\n\n` +
+    `CSS cascade tail layers, .gitignore line, log entry) — call append_file:\n` +
+    `       append_file { "path": "${filePath}",\n` +
+    `                     "content": "...new tail content..." }\n\n` +
     `3. COMPLETE rewrite — your body intentionally REPLACES all ${priorSize} ` +
-    `existing bytes (rare; verify this is your true intent):\n` +
-    `       <file path="${filePath}" overwrite="true">\n` +
-    `         ...complete new file content...\n` +
-    `       </file>\n\n` +
-    `Hint: <edit> is the default for cross-task continuation. Use <append> ` +
-    `ONLY when content naturally belongs at the file's physical end.` +
+    `existing bytes (rare; verify this is your true intent) — call create_file ` +
+    `with explicit overwrite:\n` +
+    `       create_file { "path": "${filePath}",\n` +
+    `                     "content": "...complete new file content...",\n` +
+    `                     "overwrite": true }\n\n` +
+    `Hint: the edit_file tool is the default for cross-task continuation. ` +
+    `Use append_file ONLY when content naturally belongs at the file's physical end.` +
     tailHintLine
   );
 }
@@ -195,8 +195,8 @@ export class SharedFileBuffer {
    * All file writes go through this single method:
    * 1. Acquire per-file mutex (serialize concurrent writes)
    * 2. If expectedVersion provided: check for stale content (editFile path)
-   * 3. If isOverwrite: check if another worker modified the file (<file> tag on pre-existing file)
-   * 4. If isNewFile: check for cross-worker ownership conflict (<file> tag on new file)
+   * 3. If isOverwrite: check if another worker modified the file (create_file overwrite of a pre-existing file)
+   * 4. If isNewFile: check for cross-worker ownership conflict (create_file on a new file)
    * 5. Write to buffer + disk
    * 6. Release mutex
    */
@@ -254,7 +254,7 @@ export class SharedFileBuffer {
         }
       }
 
-      // 2. Overwrite-without-explicit-intent check (<file> tag on pre-existing file)
+      // 2. Overwrite-without-explicit-intent check (create_file on a pre-existing file)
       // The worker is overwriting a file that another worker OR a prior task on
       // the same worker has committed. Without explicit `overwrite="true"`, the
       // overwriter's content would silently discard the other writer's changes.

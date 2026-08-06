@@ -66,10 +66,10 @@ describe('SharedFileBuffer — cross-task <file> conflict (L1 mechanical guard)'
     expect(second.success).toBe(false);
     expect(second.conflict).toBe(true);
     expect(second.ownerTask).toBe('ds-tokens');
-    // Conflict message must guide LLM to three channels with <edit> default.
-    expect(second.error).toContain('<edit');
-    expect(second.error).toContain('<append');
-    expect(second.error).toContain('overwrite="true"');
+    // Conflict message must guide LLM to three channels with the edit_file tool as default.
+    expect(second.error).toContain('edit_file');
+    expect(second.error).toContain('append_file');
+    expect(second.error).toContain('"overwrite": true');
     expect(second.error).toMatch(/edit.*default/i);
     // Disk content from ds-tokens must remain intact (no silent clobber).
     expect(fs.written.get('codebase/src/app/globals.css')).toContain('--violet-600');
@@ -178,7 +178,7 @@ describe('SharedFileBuffer — cross-task <file> conflict (L1 mechanical guard)'
 });
 
 describe('SharedFileBuffer conflict message — L2b three-option hint', () => {
-  it('presents <edit> as DEFAULT and includes file size + tail preview + M < N hint', async () => {
+  it('presents edit_file tool as DEFAULT and includes file size + tail preview + M < N hint', async () => {
     const buf = new SharedFileBuffer('codebase');
     const fs = new FakeFS();
     const priorContent = ':root { --x: 1; }\n'.repeat(50);
@@ -201,14 +201,16 @@ describe('SharedFileBuffer conflict message — L2b three-option hint', () => {
     expect(msg).toMatch(/size:\s*\d+\s*bytes/i);
     expect(msg).toContain('version:');
     expect(msg).toContain('tail:');
-    // Three options shown with <edit> as DEFAULT.
+    // Three options shown with the edit_file TOOL as DEFAULT.
     expect(msg).toMatch(/DEFAULT/);
-    expect(msg).toContain('<edit');
-    expect(msg).toContain('<append');
-    expect(msg).toContain('overwrite="true"');
+    expect(msg).toContain('edit_file');
+    // No tag exemplar may appear — the channels are tool calls now.
+    expect(msg).not.toMatch(/<(edit|file|append)\s+path=/);
+    expect(msg).toContain('append_file');
+    expect(msg).toContain('"overwrite": true');
     // M < N hint fires when emitted body is smaller than prior.
     expect(msg).toMatch(/smaller than the existing content/i);
-    expect(msg).toMatch(/use\s+<edit>,\s+not\s+<file overwrite/i);
+    expect(msg).toMatch(/call the edit_file tool, do NOT call create_file with overwrite/i);
   });
 
   it('omits the M < N hint when emitted body is >= prior size', async () => {

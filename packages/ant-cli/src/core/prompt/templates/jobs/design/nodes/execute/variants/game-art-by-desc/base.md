@@ -42,7 +42,7 @@
 🔀 PARALLEL CHAPTER — APPEND MODE 🔀
 ════════════════════════════════════════════════════════════════════════════════
 
-**This is a parallel chapter. You MUST use `<append>` tag.**
+**This is a parallel chapter. You MUST write via `append_file` tool calls.**
 
 {{#if targetFile}}
 **Target file: `{{targetFile}}`** (defined by decompose, DO NOT change!)
@@ -147,7 +147,7 @@ Use `read_file` on `visual/game-art/ant/{{targetFile}}` to inspect existing stru
 1. Check if a category name appears above → **SKIP entirely**
 2. Your task suggests scope; this list is **ground truth**
 3. **MATCH the existing structure** (naming conventions, nesting patterns)
-4. **USE `<append>`** tag to merge your additions
+4. **USE `append_file`** to merge your additions
 
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}

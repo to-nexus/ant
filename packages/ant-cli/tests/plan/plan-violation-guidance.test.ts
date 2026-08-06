@@ -35,8 +35,13 @@ describe('renderViolationGuidance — type-specific actionable guidance', () => 
     expect(guidance).toContain('CROSS-WORKER FILE CONFLICT');
     expect(guidance).toContain('src/a.ts');
     expect(guidance).toContain('src/b.ts');
+    // Tool-protocol merge contract: read the current content first, then
+    // either a deliberate full rewrite (create_file + overwrite: true with
+    // the MERGED content) or a partial merge via edit_file.
+    expect(guidance).toContain('DO NOT call create_file to overwrite these files blindly');
     expect(guidance).toContain('read_file');
-    expect(guidance).toContain('DO NOT use <file> tag to overwrite');
+    expect(guidance).toContain('create_file with overwrite: true and the MERGED content');
+    expect(guidance).toContain('edit_file');
   });
 
   it('file_operation_failed + Search-block mismatch → emits read-then-edit guidance', () => {

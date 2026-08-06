@@ -512,7 +512,7 @@ export async function buildUiDesignSystemPrompt(state: DesignGraphState): Promis
     console.log(`📄 [Execute UI] This is the LAST task for ${actualTargetFile} - will NOT output metadata`);
   }
   if (forceAppend) {
-    console.log(`📄 [Execute UI] forceAppend=true for ${taskId} — parallel chapter, will use <append>`);
+    console.log(`📄 [Execute UI] forceAppend=true for ${taskId} — parallel chapter, will use append_file`);
   }
   
   // ✅ Check if file exists and extract last section number + existing sections

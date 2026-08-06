@@ -188,39 +188,15 @@ When Plan doesn't anticipate everything needed:
 ## 🔧 Interaction Methods
 ════════════════════════════════════════════════════════════════════════════════
 
-**⚠️ File creation defaults to the `<file>` streaming tag (content streams to the user live); the `create_file` tool is the fallback when emitting the tag is impractical. File editing uses the `edit_file` tool call.**
+**⚠️ ALL file writes are TOOL CALLS. There is no XML file tag — file content placed in text output is NOT saved.** Your content streams to the user live as you generate the tool call's arguments, so tool authoring loses nothing over the old streaming tag.
 
-### XML Streaming (Content Generation) — channel matrix
+### File-writing channel matrix
 
-| Channel | Body semantic | Use when |
+| Tool | Content semantic | Use when |
 |-----|---------------|----------|
-| `<file path="...">` | COMPLETE new content; any existing content is REPLACED | **Default for creating a NEW file** (or first chunk of chunked emission) — streams to the user in real time. If the file already exists, you MUST emit `<file path="..." overwrite="true">` to confirm deliberate replacement — otherwise the write conflicts to prevent silent clobber. |
-| `<append path="...">` | ADDITION only, concatenated at the file's *physical end* | ONLY when content naturally extends the file's tail without affecting prior content (CSS cascade tail layer, .gitignore line, log entry, barrel re-export at bottom). NOT a default for "sibling task already wrote this file" — that's `edit_file`. |
-| `edit_file` (tool) | Search/replace targeted pairs | **Default channel for modifying an existing file** — adding an import, inserting a JSON property, changing a value, adjusting a block. Most cross-task continuation falls here. |
-| `create_file` (tool) | COMPLETE content of a NEW file | **Fallback** for creating a NEW file when emitting the `<file>` tag is not practical in the current turn (e.g. mid tool-loop). Prefer the `<file>` tag — it streams. Fails if the file already exists. |
-
-**🚨 CRITICAL: `<file>` and `<append>` tags are SELF-CONTAINED XML, NOT tool calls!**
-
-```xml
-<!-- ✅ CORRECT: Self-contained XML tags -->
-<file path="codebase/src/App.tsx">
-code content here...
-</file>
-<done>true</done>
-
-<!-- ❌ WRONG: NEVER close with </parameter> or </invoke> -->
-<file path="codebase/src/App.tsx">
-code...
-</parameter>   ← WRONG! This breaks the parser!
-</invoke>      ← WRONG! These are NOT tool call tags!
-```
-
-**⚠️ NEVER USE:**
-- `</parameter>` - This is NOT how to close a `<file>` tag
-- `</invoke>` - This is NOT how to end file streaming
-- ANY tool call wrapping around `<file>` or `<append>` tags
-
-**The ONLY valid closing for `<file>` is `</file>`. The ONLY valid closing for `<append>` is `</append>`.**
+| `create_file` | COMPLETE content of a NEW file | **Default for creating a NEW file.** Emit `path` first, then the content. If the file already exists, the call conflicts to prevent silent clobber — pass `overwrite: true` ONLY for a deliberate full replacement. |
+| `append_file` | ADDITION only, concatenated at the file's *physical end* | Continuing a large file you started with `create_file` (chunked authoring), resuming a write cut off by the output limit, or content that naturally extends the tail (CSS cascade tail layer, .gitignore line, log entry, barrel re-export at bottom). NOT a default for "sibling task already wrote this file" — that's `edit_file`. |
+| `edit_file` | Search/replace targeted pairs | **Default channel for modifying an existing file** — adding an import, inserting a JSON property, changing a value, adjusting a block. Most cross-task continuation falls here. |
 
 {{> jobs/code/nodes/execute/injections/chunked-emission}}
 
@@ -230,7 +206,8 @@ code...
 |------|---------|
 | `read_file` | Read file content |
 | `edit_file` | Modify EXISTING file (search/replace) |
-| `create_file` | Create NEW file — fallback; prefer the `<file>` tag |
+| `create_file` | Create NEW file (default authoring channel) |
+| `append_file` | Continue a large file / extend at physical tail |
 | `search_code` | Search codebase |
 | `list_files` | List directory contents |
 | `delete_file` | Delete single file |
@@ -242,12 +219,12 @@ code...
 
 | Operation | Method |
 |-----------|--------|
-| Create NEW file (small enough for one round) | `<file path="...">` tag — default. `create_file` tool only when the tag is impractical in the current turn |
-| Create NEW file (expected ≥ ~20 KB) | First chunk: `<file path="...">` + `<done>false</done>`; rest: `<append path="...">` in next rounds |
-| Continue a file truncated by a previous round | `<append path="...">` (do NOT re-emit content already written) |
-| Modify existing file (most cross-task continuation — adding import / JSON property / value change / block adjust) | `edit_file` tool |
-| Extend existing file at its *physical tail* (CSS cascade tail / .gitignore line / log entry — line-based natural concat) | `<append path="...">` tag |
-| Deliberately REPLACE all content of an existing file with a complete new body | `<file path="..." overwrite="true">` tag |
+| Create NEW file (small enough for one call) | `create_file` |
+| Create NEW file (expected ≥ ~20 KB) | First chunk: `create_file` (+ `<done>false</done>`); rest: `append_file` calls |
+| Resume a write cut off by the output limit | Follow the resume message — `create_file` if the file was never created, `append_file` from the file's current end |
+| Modify existing file (most cross-task continuation — adding import / JSON property / value change / block adjust) | `edit_file` |
+| Extend existing file at its *physical tail* (CSS cascade tail / .gitignore line / log entry — line-based natural concat) | `append_file` |
+| Deliberately REPLACE all content of an existing file with a complete new body | `create_file` with `overwrite: true` |
 | Delete single file | `delete_file` tool |
 | Delete directory / multiple files | `run_command` with `rm` |
 
@@ -270,26 +247,16 @@ code...
 **Constraint**: Include 3-5 lines of context in `old_str` for uniqueness.
 
 ────────────────────────────────────────────────────────────────────────────────
-### 2. XML Tag Safety
+### 2. Write-Content Safety
 
-**⚠️ NEVER nest file tags. Each is independent:**
-```xml
-<!-- ✅ CORRECT -->
-<file path="codebase/src/a.ts">...</file>
-<append path="codebase/src/b.ts">...</append>
-```
+**⚠️ One file per write call. Do NOT concatenate multiple files into one `create_file` content.**
 
-**⚠️ DO NOT include closing tags in code:**
-```typescript
-// ❌ Parser will break on these strings:
-const x = "</file>";      // Use: "</" + "file>"
-const y = "</append>";    // Use: "</" + "append>"
-```
+**⚠️ File content goes in the tool's `content`/`new_str` argument — NEVER in your text output.** Text-channel file bodies are discarded silently.
 
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Before Any CREATE: Check First
 
-**Constraint**: Plain `<file path="...">` (without `overwrite="true"`) is for NEW files only. If the file already exists, the write conflicts to prevent silent clobber. Choose channel by *what your body represents*:
+**Constraint**: `create_file` (without `overwrite: true`) is for NEW files only. If the file already exists, the write conflicts to prevent silent clobber. Choose channel by *what your content represents*:
 
 | Check | Source |
 |-------|--------|
@@ -299,11 +266,11 @@ const y = "</append>";    // Use: "</" + "append>"
 | Uncertain (path not in either section)? | `list_files` to verify |
 
 If any check hits (existing file), pick channel by body shape:
-- **`edit_file` (DEFAULT)** — body modifies existing content (adding an import, inserting a JSON property, changing a value, adjusting a block). Most cross-task continuation falls here.
-- **`<append path="...">`** — body extends the file's *physical tail* without affecting prior content (CSS cascade tail, .gitignore line, log entry).
-- **`<file path="..." overwrite="true">`** — body REPLACES all existing content (rare; verify your body is truly the complete new file).
+- **`edit_file` (DEFAULT)** — content modifies existing content (adding an import, inserting a JSON property, changing a value, adjusting a block). Most cross-task continuation falls here.
+- **`append_file`** — content extends the file's *physical tail* without affecting prior content (CSS cascade tail, .gitignore line, log entry).
+- **`create_file` with `overwrite: true`** — content REPLACES all existing content (rare; verify it is truly the complete new file).
 
-New files (no check hits): plain `<file path="...">`.
+New files (no check hits): plain `create_file`.
 
 **Constraint**: Only create/modify files within YOUR task's scope.
 
@@ -450,7 +417,7 @@ surface has one) — plus any `assets` entries your own plan declared.
 3. Confirm the destination exists before code references it
 
 **Constraints**:
-- Use `copy_file` for this. Do NOT author asset bytes with `<file>` / `create_file` / `edit_file`: those write utf-8 and refuse binary targets, and a text round-trip destroys the file.
+- Use `copy_file` for this. Do NOT author asset bytes with `create_file` / `append_file` / `edit_file`: those write utf-8 and refuse binary targets, and a text round-trip destroys the file.
 - Do NOT invent asset paths, and do NOT substitute a placeholder for an asset that was supplied. If the source is missing or reported corrupt, say so — do not paper over it.
 
 ────────────────────────────────────────────────────────────────────────────────
@@ -515,7 +482,7 @@ surface has one) — plus any `assets` entries your own plan declared.
 
 | ❌ Wrong | ✅ Correct |
 |----------|-----------|
-| `<file>` on existing file | `edit_file` tool |
+| `create_file` on existing file | `edit_file` tool (or `overwrite: true` for a deliberate full replacement) |
 | Hardcoded values when constants exist | Import and use constants |
 | Create module but never import it | Import and use within your task's files |
 | Asset TODO placeholders | Copy asset file, then reference |
@@ -536,25 +503,17 @@ surface has one) — plus any `assets` entries your own plan declared.
 ```
 
 **Rules:**
-1. Output `<done>true</done>` ONLY after ALL file operations are complete (`<file>`, `<append>`, or tool results received)
-2. **Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first)**
-3. **After `<file>` or `<append>` tag, output `<done>true</done>` immediately in the SAME response**
+1. Output `<done>true</done>` ONLY after ALL file operations are complete (every write tool's result received)
+2. **Do NOT output `<done>true</done>` in the same response as a tool call (wait for the result first)**
 
-**Typical flows:**
+**Typical flow:**
 
 ```
-Flow A (XML streaming only):
-   <file path="...">content</file>
-   <done>true</done>  ← SAME response!
-
-Flow B (Tool calls):
-   Turn 1: edit_file(...) → Wait for result
-   Turn 2: <done>true</done>  ← After result received
-
-Flow C (Multiple files):
-   <file path="a.ts">...</file>
-   <file path="b.ts">...</file>
-   <done>true</done>  ← After ALL files
+Turn 1: create_file(...) / edit_file(...) → wait for results
+Turn 2: results confirm success → <done>true</done>
+Chunked file:
+Turn 1: create_file(first chunk) + <done>false</done> intent noted
+Turn 2: append_file(next chunk) ... until complete → <done>true</done>
 ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

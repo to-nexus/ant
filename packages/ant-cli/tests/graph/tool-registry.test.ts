@@ -154,34 +154,56 @@ describe('Catalog helpers', () => {
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// create_file advertisement boundary
+// create_file / append_file advertisement matrix
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-// create_file is a first-class advertised tool for the CODE execute phase
-// only. plan/design jobs stream documents via the `<file>` tag and must not
-// advertise a create tool (real-time document streaming is the core UX).
+// Under the tool-call authoring protocol, create_file/append_file are THE
+// document-writing channel (the `<file>`/`<append>` streaming tags are
+// retired), so every AUTHORING set — code execute AND design/plan execute —
+// must advertise both. Read-only surfaces (plan exploration, explain modes,
+// planner observe, explore-subagent children) must advertise neither: they
+// produce no artifacts by contract.
 
-describe('create_file advertisement boundary', () => {
-  it('create_file has a schema (advertisable) and is in the code execute set', async () => {
-    const { ARCHITECT_TOOLS, TOOL_SETS } = await import('../../src/agents/common/tool/toolSchemas');
+describe('create_file/append_file advertisement matrix', () => {
+  it('create_file and append_file have schemas (advertisable)', async () => {
+    const { ARCHITECT_TOOLS } = await import('../../src/agents/common/tool/toolSchemas');
     expect((ARCHITECT_TOOLS as any).create_file).toBeDefined();
     expect((ARCHITECT_TOOLS as any).create_file.input_schema.required).toEqual(['path', 'content']);
-    expect(TOOL_SETS.codeBasic).toContain(ToolName.CREATE_FILE);
+    expect((ARCHITECT_TOOLS as any).append_file).toBeDefined();
+    expect((ARCHITECT_TOOLS as any).append_file.input_schema.required).toEqual(['path', 'content']);
   });
 
-  it('create_file is NOT advertised to plan/design phases (streaming contract)', async () => {
-    const { TOOL_SETS } = await import('../../src/agents/common/tool/toolSchemas');
-    const nonCodeExecuteSets = [
-      'planExplore', 'designPlanExplore', 'designPlanFigma',
-      'design', 'uiDesignBase', 'uiDesign', 'codeExplain', 'designExplain',
-    ] as const;
-    for (const key of nonCodeExecuteSets) {
-      expect(
-        (TOOL_SETS as any)[key],
-        `${key} must not advertise create_file`,
-      ).not.toContain(ToolName.CREATE_FILE);
-    }
-  });
+  // set → [advertises create_file, advertises append_file]
+  const MATRIX: Array<[string, boolean, boolean]> = [
+    // Authoring sets — the write channel MUST be advertised.
+    ['codeBasic', true, true],
+    ['design', true, true],
+    ['uiDesignBase', true, true],
+    ['uiDesign', true, true],
+    ['uiDesignFigma', true, true],
+    ['specFigma', true, true],
+    // Read-only exploration / explain / observe sets — neither.
+    ['planExplore', false, false],
+    ['designPlanExplore', false, false],
+    ['designPlanFigma', false, false],
+    ['codeExplain', false, false],
+    ['designExplain', false, false],
+    ['plannerObserve', false, false],
+    // Explore-subagent children are strictly read-only (depth-1 contract).
+    ['subagentCode', false, false],
+    ['subagentDesign', false, false],
+    ['subagentPlanner', false, false],
+  ];
+
+  for (const [setName, hasCreate, hasAppend] of MATRIX) {
+    it(`${setName}: create_file=${hasCreate} append_file=${hasAppend}`, async () => {
+      const { TOOL_SETS } = await import('../../src/agents/common/tool/toolSchemas');
+      const set = (TOOL_SETS as any)[setName];
+      expect(set, `${setName} missing from TOOL_SETS`).toBeDefined();
+      expect(set.includes(ToolName.CREATE_FILE)).toBe(hasCreate);
+      expect(set.includes(ToolName.APPEND_FILE)).toBe(hasAppend);
+    });
+  }
 });
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

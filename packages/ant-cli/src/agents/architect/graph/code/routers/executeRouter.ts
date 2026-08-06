@@ -130,13 +130,13 @@ export function routeAfterExecute(state: ArchitectGraphState): string {
   // blind; read-only — `_noOutputStreak` is computed by the execute node, see
   // `computeNextNoOutputStreak`). Where Safety Net C bounds provably-zero-
   // information loops (duplicate reads), C2 bounds loops whose rounds each
-  // carry a genuinely NOVEL read/search yet produce no `<file>` / mutation /
+  // carry a genuinely NOVEL read/search yet produce no mutation /
   // `<done>` (cyan-catching-cedar: 156 novel-range-read rounds that never
   // moved `_noProgressStreak` off 0). Same placement rationale as C — ABOVE
   // the toolCalls route, since the degenerate turn always carries a pending
   // read/search call — and same landing: checkTaskStatus' `no_done_signal`
   // retryable violation → fresh-conversation retry via `handleRetryEntry`.
-  // Execute-only: the plan tool-loop never emits `<file>`, so `_noOutputStreak`
+  // Execute-only: the plan tool-loop never writes files, so `_noOutputStreak`
   // is neither written nor read there (no planRouter counterpart).
   const noOutputStreak = state._noOutputStreak || 0;
   if (noOutputStreak >= NO_OUTPUT_HARD_CAP) {

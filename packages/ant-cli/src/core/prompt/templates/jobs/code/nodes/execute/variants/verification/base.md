@@ -23,7 +23,7 @@ This prompt surfaces two file-awareness channels — consult them before calling
 
 | Channel | What it carries | Use for |
 |---------|-----------------|---------|
-| `Existing Codebase Files` section (below) | Path list of every file under `codebase/` at task start | Dispatch: path present → `edit_file`; path absent → `<file>` |
+| `Existing Codebase Files` section (below) | Path list of every file under `codebase/` at task start | Dispatch: path present → `edit_file`; path absent → `create_file` |
 | `Modify Targets — Current Content` section (below) | Current on-disk content of every `plan.modify` target | Build exact `edit_file` `old_str` without a prior `read_file` |
 
 Fall back to `list_files` / `read_file` only when a path is not covered by either section (e.g. config or entry-point files not listed in the remediation plan's modify set).
@@ -117,6 +117,6 @@ All paths are relative to the feature root.
 Use `search_reference_code` tool to query these projects. See rules for constraints.
 {{/if}}
 
-**For XML tag syntax and output format details, see execute/tasks/verification/rules.md**
+**For tool-call protocol and output format details, see execute/tasks/verification/rules.md**
 
 {{{runtimeContext}}}

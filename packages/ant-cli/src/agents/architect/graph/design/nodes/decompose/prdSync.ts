@@ -16,9 +16,8 @@
  *      to `architecture/system`; the explicit `targetDir` places the write under
  *      `plan/` (the same override spec / handoff tasks use).
  *
- * The FileRenderer write path is already design-safe: a granted `plan/*.md`
- * write OVERWRITES (not auto-appends) and is length-guarded against a truncated
- * body. See `FileRenderer.setPrdSyncTargets` / `isGrantedPrdSyncPath`.
+ * The write lands via the file tool handlers on the granted `plan/*.md`
+ * path as a full overwrite of the current doc.
  */
 
 import type { DesignTask, TaskQueue } from '../../../../types/task';
@@ -55,8 +54,7 @@ export function resolvePrdSyncTargets(
 /**
  * Append one single-owner PRD-sync `doc` task per target file to the design
  * task queue. Each task:
- *   - carries the write grant (`prdSyncTargets`) scoped to its own doc, so
- *     `FileRenderer.isGrantedPrdSyncPath` relaxes Guard-1 for exactly that path;
+ *   - carries the write grant (`prdSyncTargets`) scoped to its own doc;
  *   - includes its target so the current doc content is injected for a surgical
  *     full rewrite;
  *   - is `exclusive` and priced ABOVE every existing task, so the orchestrator
