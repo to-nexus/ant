@@ -3,7 +3,7 @@
  *
  * Chat-only response path for design-job explain intents
  * (`explain-sys` / `explain-spec` / `explain-ui` / `explain-game-art` /
- * `explain-visual`). Never emits XML `<file>` blocks and never writes to
+ * `explain-visual`). Never writes files and never writes to
  * disk — the entire response is streamed to the chat surface.
  *
  * Entry: `execute()` early-returns to this helper when

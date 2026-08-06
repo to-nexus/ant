@@ -8,7 +8,7 @@
 | Candidate enumeration & comparison | **plan** (this phase) |
 | Document outline (which sections, in what order, what each contains) | **plan** (this phase) |
 | Detail precision (exact paths, function signatures, conventions) | execute (next phase) |
-| Final wording / formatting / file-write XML tags | execute (next phase) |
+| Final wording / formatting / file-write tool calls | execute (next phase) |
 
 The plan handed to execute is **sealed**: execute MUST follow the
 `documentOutline` and `decision`. If execute finds new evidence that

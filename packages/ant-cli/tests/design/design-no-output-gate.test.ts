@@ -13,8 +13,9 @@
  *   2. `buildDesignNoOutputInterruption` — resumable `design_no_output` shape.
  *   3. `DesignNoOutputError` / `isDesignNoOutputError` — orchestrator classifier.
  *   4. `routeAfterExecute` — diverts to checkTaskStatus at NO_OUTPUT_HARD_CAP.
- *   5. `applyDrainFinalization` — one salvage turn on the no-output streak,
- *      one step before the breaker.
+ *   5. `applyDrainFinalization` — salvage engages on the no-output streak
+ *      one margin before the breaker: tools stay declared, the write-tool
+ *      allow-list carries the narrowing (tool-call authoring protocol).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -84,7 +85,7 @@ describe('designTargetExists (drain affordance dispatch signal)', () => {
     expect(await designTargetExists(fs, '/feat', SPEC_TASK)).toBe(true);
   });
 
-  it('false when the declared target is absent (fresh doc — <file> tag only)', async () => {
+  it('false when the declared target is absent (fresh doc — create_file/append_file allow-list)', async () => {
     const fs = existsWith([]);
     expect(await designTargetExists(fs, '/feat', SPEC_TASK)).toBe(false);
   });
@@ -156,15 +157,20 @@ describe('routeAfterExecute — no-output circuit breaker', () => {
 describe('applyDrainFinalization — no-output trigger', () => {
   const NO_OUTPUT_SALVAGE_AT = NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN;
 
-  it('fires one salvage turn on the no-output streak, one step before the breaker', () => {
+  it('fires salvage on the no-output streak, one margin before the breaker (allow-list, tools intact)', () => {
     const messages = [{ role: 'user', content: 'go' }];
-    const { tools, drainFinalizing } = applyDrainFinalization(
+    const declared = [{ name: 'read_file' }];
+    const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       { _noOutputCallCount: NO_OUTPUT_SALVAGE_AT } as any,
       messages,
-      [{ name: 'read_file' }],
+      declared,
     );
     expect(drainFinalizing).toBe(true);
-    expect(tools).toEqual([]);
+    // Declarations survive; the narrowing rides toolChoice (default
+    // targetExists=true → edit/append) so resolveToolChoice keeps the
+    // tool_calls-laden history self-consistent at the adapter.
+    expect(tools).toBe(declared);
+    expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
     expect((messages[0].content as unknown as any[])[1].text).toContain('without writing anything');
   });
 

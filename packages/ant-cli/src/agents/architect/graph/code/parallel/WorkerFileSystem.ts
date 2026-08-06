@@ -7,7 +7,7 @@
  * Features:
  * - readFile: checks SharedFileBuffer first, falls back to disk
  * - writeFile: delegates to SharedFileBuffer.write() with OCC (version check)
- * - writeNewFile: for <file> tag / createFile — uses isNewFile flag for ownership check
+ * - writeNewFile: for the create_file handler — uses isNewFile flag for ownership check
  * - Tracks read versions in readVersions map for stale detection
  */
 
@@ -92,11 +92,11 @@ export class WorkerFileSystem implements FileSystemPort {
     this.readVersions.delete(normalized);
   }
 
-  // ─── Write New File (<file> tag / createFile — ownership check) ──
+  // ─── Write New File (create_file handler — ownership check) ──
 
   /**
    * Write a new file. Returns result instead of throwing to allow graceful
-   * error collection in FileRenderer (fileErrors array).
+   * error collection in the create_file tool handler.
    */
   async writeNewFile(path: string, content: string): Promise<NewFileWriteResult> {
     const result = await this.sharedBuffer.write(
@@ -122,11 +122,11 @@ export class WorkerFileSystem implements FileSystemPort {
     return { success: true };
   }
 
-  // ─── Write Overwrite (<file> tag on pre-existing file — cross-worker check) ──
+  // ─── Write Overwrite (create_file on a pre-existing file — cross-worker check) ──
 
   /**
    * Overwrite a pre-existing file. Returns result instead of throwing to allow
-   * graceful error collection in FileRenderer (fileConflicts array).
+   * graceful error collection in the create_file tool handler.
    * Detects when another worker has modified the file since task start.
    */
   async writeOverwrite(path: string, content: string): Promise<NewFileWriteResult> {

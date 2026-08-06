@@ -50,6 +50,6 @@ Do NOT write any documentation file before understanding what already exists.
 | **docs/architecture/ exists** | Update or add sections for new components. Preserve existing sections. |
 | **No docs/ directory** | Create `docs/architecture/overview.md` from scratch |
 
-**Constraint**: When updating existing documentation, use `edit_file` to modify specific sections. Do NOT recreate the entire file with `<file>` tag.
+**Constraint**: When updating existing documentation, use `edit_file` to modify specific sections. Do NOT recreate the entire file with `create_file` (`overwrite: true`).
 
 {{> jobs/shared/injections/explore-delegation}}

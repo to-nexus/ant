@@ -90,7 +90,7 @@ export async function generatePlanText(
   const { StreamOrchestrator } = await import('../../../../../../../core/streaming/StreamOrchestrator');
 
   const createStrategy = () => {
-    const strategy = new CommonRenderStrategy(chatAPI, 'en', undefined, undefined, false, 'code', undefined, undefined, undefined, undefined, 'plan');
+    const strategy = new CommonRenderStrategy(chatAPI, 'en');
     strategy.setPlanTaskTitle(task.name);
     return strategy;
   };
@@ -98,7 +98,6 @@ export async function generatePlanText(
   let orchestrator = new StreamOrchestrator({
     parser: new XMLStreamParser(),
     renderStrategy: createStrategy(),
-    existingFiles: new Set()
   });
 
   let response = '';
@@ -129,7 +128,6 @@ export async function generatePlanText(
       orchestrator = new StreamOrchestrator({
         parser: new XMLStreamParser(),
         renderStrategy: createStrategy(),
-        existingFiles: new Set()
       });
       continue;
     }

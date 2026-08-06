@@ -16,7 +16,8 @@
  *   6. The [VERIFY] marking contract + acceptance-criteria gate contract exist.
  *   7. RETENTION — the identifier requirements and self-contained identity
  *      were rescoped, NOT deleted.
- *   8. Refactor mode forbids <append> (duplicate-root corruption cause).
+ *   8. Refactor mode forbids append_file — replacement is create_file with
+ *      overwrite: true (duplicate-root corruption cause).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -95,18 +96,22 @@ describe('spec depth calibration — contract axis vs realization axis', () => {
 });
 
 describe('spec refactor mode — append prohibition (duplicate-root cause removal)', () => {
-  it('refactor block forbids <append>', () => {
-    expect(EXEC_BASE).toContain('`<append>` is FORBIDDEN in refactor mode');
+  it('refactor block forbids append_file and mandates create_file with overwrite: true', () => {
+    expect(EXEC_BASE).toContain('`append_file` is FORBIDDEN in refactor mode');
+    expect(EXEC_BASE).toMatch(/`create_file` with `overwrite: true` replaces it atomically/);
     expect(EXEC_BASE).toMatch(/second complete document below the first/);
+    // The prohibition holds even for additive changes — full re-emit.
+    expect(EXEC_BASE).toMatch(/even when the requested change is an addition/);
   });
 
-  it('rules Rule 3 is section-correct (refactor → <file>; continuation only → <append>)', () => {
-    expect(EXEC_RULES).toContain('Spec body via the section-correct tag');
-    expect(EXEC_RULES).toMatch(/ANY refactor-mode task: `<file>`/);
-    expect(EXEC_RULES).toMatch(/Continuation sections \(section 2\+\) ONLY: `<append>`/);
+  it('rules Rule 3 is section-correct (refactor/first → create_file; continuation only → append_file)', () => {
+    expect(EXEC_RULES).toContain('Spec body via the section-correct file-writing tool');
+    expect(EXEC_RULES).toMatch(/ANY refactor-mode task: `create_file`/);
+    expect(EXEC_RULES).toMatch(/with `overwrite: true` in refactor mode/);
+    expect(EXEC_RULES).toMatch(/Continuation sections \(section 2\+\) ONLY: `append_file`/);
   });
 
-  it('spec.ts deadline message names only the section-correct tag', () => {
+  it('spec.ts deadline message names only the section-correct write tool', () => {
     const specTs = readFileSync(
       path.resolve(
         __dirname,
@@ -114,7 +119,10 @@ describe('spec refactor mode — append prohibition (duplicate-root cause remova
       ),
       'utf8',
     );
-    expect(specTs).toMatch(/const writeTag = isFirstSection \? '<file>' : '<append>'/);
+    expect(specTs).toMatch(/const writeTool = isFirstSection \? 'create_file' : 'append_file'/);
+    // Offering both channels unconditionally is the duplicate-root cause —
+    // no residual "either tool"/tag phrasing may survive.
+    expect(specTs).not.toMatch(/'<file>'|'<append>'/);
     expect(specTs).not.toMatch(/using <file> or <append> tag/);
   });
 });

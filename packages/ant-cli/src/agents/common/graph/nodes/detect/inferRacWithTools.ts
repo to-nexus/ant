@@ -464,7 +464,7 @@ export function renderSlotSummaries(
   // path(s) from the matrix SSOT (`getDefaultTargetPaths`) rather than the raw
   // `dir`, but only when they are concrete files (extension present, no `*`
   // glob). Otherwise the LLM echoes a directory as the target and the planner
-  // renders `<file path="plan">` → prose, nothing saved (grey-leaving-nurse).
+  // writes against a bare dir → nothing saved (grey-leaving-nurse).
   // Patterns (gen-sys `*-*.md`, gen-spec `*.md`) and outputs-less dirs (visual
   // gen) legitimately have no single file, so fall back to the dir.
   if (slots.target.kind === 'generate') {

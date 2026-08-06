@@ -71,8 +71,8 @@ describe('computeNextNoOutputCount with the tool-write channel', () => {
   });
 });
 
-describe('drain finalization keeps write tools (REVISE exit path)', () => {
-  it('strips exploration tools but keeps edit_file/create_file', () => {
+describe('drain finalization keeps the write channel open (REVISE exit path)', () => {
+  it('narrows via toolChoice allow-list (edit/append) — the tools array is returned unchanged', () => {
     const tools = [
       { name: 'read_file' },
       { name: 'search_code' },
@@ -81,19 +81,23 @@ describe('drain finalization keeps write tools (REVISE exit path)', () => {
       { name: 'list_files' },
     ];
     const messages = [{ role: 'user', content: 'Continue.' }];
-    const { tools: drained, drainFinalizing } = applyDrainFinalization(
+    const { tools: drained, toolChoice, drainFinalizing } = applyDrainFinalization(
       { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: 999 } as any,
       messages as any,
       tools as any,
     );
     expect(drainFinalizing).toBe(true);
-    expect(drained.map((t: any) => t.name).sort()).toEqual(['create_file', 'edit_file']);
-    // note mentions the edit_file path, not just <file> regeneration
+    // Declarations stay intact (deleting them while the history carries
+    // tool_calls is the GLM degeneration trigger); resolveToolChoice narrows
+    // the callable set to the REVISE exit tools at the adapter.
+    expect(drained).toBe(tools);
+    expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
+    // note teaches the edit_file exit as a tool call
     const appended = JSON.stringify(messages);
     expect(appended).toContain('edit_file');
   });
 
-  it('does NOT keep mkdir — a sideEffect-less tool can never satisfy the drain exit (oat-judging-mound RCA)', () => {
+  it('mkdir is NOT in the allow-list — a sideEffect-less tool can never satisfy the drain exit (oat-judging-mound RCA)', () => {
     const tools = [
       { name: 'read_file' },
       { name: 'edit_file' },
@@ -101,16 +105,20 @@ describe('drain finalization keeps write tools (REVISE exit path)', () => {
       { name: 'mkdir' },
     ];
     const messages = [{ role: 'user', content: 'Continue.' }];
-    const { tools: drained, drainFinalizing } = applyDrainFinalization(
+    const { tools: drained, toolChoice, drainFinalizing } = applyDrainFinalization(
       { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: 999 } as any,
       messages as any,
       tools as any,
     );
     expect(drainFinalizing).toBe(true);
-    expect(drained.map((t: any) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
+    // Exclusion is expressed by the allow-list, not by filtering the array:
+    // mkdir stays declared but is never callable during the salvage window.
+    expect(drained).toBe(tools);
+    expect((toolChoice as any).allow).not.toContain('mkdir');
+    expect((toolChoice as any).allow).not.toContain('delete_file');
   });
 
-  it('forbids ALL calls when the target does not exist yet — toolChoice=none, declarations kept (sharp-baking-bride + sage-causing-rover RCAs)', () => {
+  it('missing target → allow-list flips to create_file/append_file, never edit_file (sharp-baking-bride + sage-causing-rover RCAs)', () => {
     const tools = [
       { name: 'read_file' },
       { name: 'edit_file' },
@@ -123,24 +131,35 @@ describe('drain finalization keeps write tools (REVISE exit path)', () => {
       tools as any,
       { targetExists: false },
     );
-    // sharp-baking-bride's requirement was "no tool CALL can happen" (a
-    // surviving edit_file out-competes the <file> tag and can never succeed
-    // against a missing file). That is now enforced by the provider-level
-    // constraint; the DECLARATIONS stay so the tool_calls-laden history stays
-    // self-consistent (deleting them is the GLM degeneration trigger).
+    // sharp-baking-bride's requirement: edit_file can never succeed against a
+    // missing file, so it must not be callable — but with the tag channel
+    // retired the WRITE channel must stay open (create_file/append_file), or
+    // the salvage window has no way to produce the artifact at all. The
+    // DECLARATIONS stay so the tool_calls-laden history stays self-consistent.
     expect(drained).toBe(tools);
-    expect(toolChoice).toBe('none');
+    expect(toolChoice).toEqual({ allow: ['create_file', 'append_file'] });
   });
 });
 
-describe('design tool registry — create_file is handled (unadvertised)', () => {
-  it('createDesignToolHandlers maps create_file so the shared edit_file missing-file guidance is actionable', async () => {
+describe('design tool registry — create_file/append_file come from the catalog', () => {
+  it('design overrides do NOT shadow the catalog create_file/append_file handlers', async () => {
     const { createDesignToolHandlers } = await import(
       '../../src/agents/architect/graph/design/nodes/tool/designToolAdapters'
     );
     const handlers = createDesignToolHandlers();
-    expect(handlers.has('create_file')).toBe(true);
-    expect(handlers.has('write_file')).toBe(true); // existing shadow-alias stays
+    // The real authoring tools route to the common catalog handlers — a
+    // design-local shadow here would bypass conflict gating and sideEffects.
+    expect(handlers.has('create_file')).toBe(false);
+    expect(handlers.has('append_file')).toBe(false);
+    expect(handlers.has('write_file')).toBe(true); // hallucination shadow-alias stays
+
+    const { JOB_TOOL_MATRIX, JobType, ToolName, TOOL_HANDLERS } = await import(
+      '../../src/agents/common/tool/toolCatalog'
+    );
+    expect(JOB_TOOL_MATRIX[JobType.DESIGN]).toContain(ToolName.CREATE_FILE);
+    expect(JOB_TOOL_MATRIX[JobType.DESIGN]).toContain(ToolName.APPEND_FILE);
+    expect(TOOL_HANDLERS.has(ToolName.CREATE_FILE)).toBe(true);
+    expect(TOOL_HANDLERS.has(ToolName.APPEND_FILE)).toBe(true);
   });
 });
 

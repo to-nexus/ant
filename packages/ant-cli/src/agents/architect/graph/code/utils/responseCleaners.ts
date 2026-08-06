@@ -1,63 +1,29 @@
 /**
  * Response Cleaners
- * 
- * Shared utilities for cleaning LLM responses before storing in conversation history.
- * Replaces file content XML tags with compact markers so the LLM retains awareness
- * of which files were written without bloating the context window.
+ *
+ * Shared utilities for cleaning LLM responses before storing in conversation
+ * history. File authoring is tool-call-only (`create_file` / `append_file` /
+ * `edit_file`); no parser consumes `<file>` / `<append>` / `<edit>` tags, so
+ * a tag body in the text is a hallucination that wrote NOTHING. This scrubber
+ * collapses such bodies into truthful "NOT written — use the tool" markers so
+ * the history stays compact and never confirms a phantom write.
  */
 
 /**
- * Replace file content XML tags with `[file written to disk: path]` markers.
- * Used by all three conversation history paths (conflict, no-done, tool-call)
- * to ensure the LLM knows which files are already saved.
+ * Replace hallucinated file-tag bodies with truthful compact markers.
+ * Used by the execute conversation-history paths (no-done, tool-call,
+ * subagent-join) before a response enters NODE_EXECUTE history.
  */
 export function cleanFileContentFromResponse(text: string): string {
+  const marker = (tag: string, tool: string) => (match: string): string => {
+    const pathMatch = match.match(/path=["']([^"']+)["']/);
+    return pathMatch
+      ? `[<${tag}> tag is not supported - file NOT written: ${pathMatch[1]} - use the ${tool} tool]`
+      : `[<${tag}> tag is not supported - no file written - use the ${tool} tool]`;
+  };
   let cleaned = text;
-  // Pass 1: Extract file paths from well-formed tags
-  cleaned = cleaned.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g, '[file written to disk: $1]');
-  cleaned = cleaned.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
-  cleaned = cleaned.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-  // Pass 2: Safety net for malformed tags that Pass 1 didn't match.
-  // Try to salvage path from partially malformed tags (e.g. single-quoted path attr)
-  // before falling back to a pathless marker.
-  cleaned = cleaned.replace(/<file[^>]*>[\s\S]*?<\/file>/g, (match) => {
-    const pathMatch = match.match(/path=["']([^"']+)["']/);
-    return pathMatch ? `[file written to disk: ${pathMatch[1]}]` : '[file creation removed]';
-  });
-  cleaned = cleaned.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, (match) => {
-    const pathMatch = match.match(/path=["']([^"']+)["']/);
-    return pathMatch ? `[file edited: ${pathMatch[1]}]` : '[code edit removed]';
-  });
-  cleaned = cleaned.replace(/<append[^>]*>[\s\S]*?<\/append>/g, (match) => {
-    const pathMatch = match.match(/path=["']([^"']+)["']/);
-    return pathMatch ? `[file appended: ${pathMatch[1]}]` : '[code append removed]';
-  });
-  return cleaned.trim();
-}
-
-/**
- * Variant for the conflict path: marks conflicting files differently from successful ones.
- */
-export function cleanFileContentWithConflicts(text: string, conflictPaths: Set<string>): string {
-  let cleaned = text;
-  cleaned = cleaned.replace(/<file\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/file>/g,
-    (_match: string, filePath: string) => conflictPaths.has(filePath)
-      ? `[file NOT written - conflict: ${filePath}]`
-      : `[file written to disk: ${filePath}]`
-  );
-  cleaned = cleaned.replace(/<edit\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/edit>/g, '[file edited: $1]');
-  cleaned = cleaned.replace(/<append\s[^>]*path="([^"]*)"[^>]*>[\s\S]*?<\/append>/g, '[file appended: $1]');
-  cleaned = cleaned.replace(/<file[^>]*>[\s\S]*?<\/file>/g, (match) => {
-    const pathMatch = match.match(/path=["']([^"']+)["']/);
-    return pathMatch ? `[file written to disk: ${pathMatch[1]}]` : '[file creation removed]';
-  });
-  cleaned = cleaned.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, (match) => {
-    const pathMatch = match.match(/path=["']([^"']+)["']/);
-    return pathMatch ? `[file edited: ${pathMatch[1]}]` : '[code edit removed]';
-  });
-  cleaned = cleaned.replace(/<append[^>]*>[\s\S]*?<\/append>/g, (match) => {
-    const pathMatch = match.match(/path=["']([^"']+)["']/);
-    return pathMatch ? `[file appended: ${pathMatch[1]}]` : '[code append removed]';
-  });
+  cleaned = cleaned.replace(/<file[^>]*>[\s\S]*?<\/file>/g, marker('file', 'create_file'));
+  cleaned = cleaned.replace(/<append[^>]*>[\s\S]*?<\/append>/g, marker('append', 'append_file'));
+  cleaned = cleaned.replace(/<edit[^>]*>[\s\S]*?<\/edit>/g, marker('edit', 'edit_file'));
   return cleaned.trim();
 }

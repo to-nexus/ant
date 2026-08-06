@@ -174,11 +174,15 @@ export function buildRetryContext(state: ArchitectGraphState) {
 
 /**
  * Build a one-shot user-content paragraph that tells the LLM how to resume
- * after a `max_tokens` truncation that cut off a `<file>` / `<append>`
- * block mid-stream. The partial body has already been written to disk by
- * FileRenderer's incremental emit; this block just names the path + tail
- * so the LLM can continue with `<append path="same">` instead of
- * re-emitting content the disk already has.
+ * after a `max_tokens` truncation that cut off a file-writing tool call
+ * (create_file / append_file) mid-arguments. A truncated tool call never
+ * executes, so NOTHING reached disk:
+ *  - kind 'file'   (create_file cut off) → the file does not exist; re-issue
+ *    create_file, chunked this time (first chunk + append_file continuations).
+ *  - kind 'append' (append_file cut off) → the file exists WITHOUT the lost
+ *    chunk; re-issue append_file from the file's current end.
+ * The tail preview is continuity context ("what you had written before the
+ * cut"), not a disk anchor.
  *
  * Pure function — no state read/mutate. Caller (buildMessages) reads
  * `state._maxTokensTruncation`, passes it in, and clears the slot.
@@ -187,22 +191,26 @@ export function buildMaxTokensResumeHint(
   info: { kind: 'file' | 'append'; path: string; tailContent: string },
 ): string {
   const previewSafe = info.tailContent.replace(/`/g, '\\`');
+  const resumeInstruction = info.kind === 'append'
+    ? `The target file exists WITHOUT the lost chunk. Re-issue \`append_file\` for\n` +
+      `\`${info.path}\` starting from the file's current end. Keep each call's\n` +
+      `content well under the output ceiling — emit a coherent chunk and continue\n` +
+      `with further \`append_file\` calls if more remains.`
+    : `The file was NOT created. Re-issue \`create_file\` for \`${info.path}\` —\n` +
+      `this time keep the first call's content comfortably under the output\n` +
+      `ceiling (a coherent opening chunk), then continue with \`append_file\`\n` +
+      `calls until the file is complete.`;
   return (
     `──────────────────────────────────────────────────────────────\n` +
-    `🪓  PREVIOUS RESPONSE TRUNCATED MID-FILE — RESUME REQUIRED\n` +
+    `🪓  PREVIOUS RESPONSE TRUNCATED MID-WRITE — RESUME REQUIRED\n` +
     `──────────────────────────────────────────────────────────────\n\n` +
-    `The previous response hit the LLM output ceiling while emitting a\n` +
-    `\`<${info.kind} path="${info.path}">\` block. The content streamed up to the\n` +
-    `cut point was already written to disk; the closing tag and everything\n` +
-    `after it was lost.\n\n` +
-    `Last \`${info.tailContent.length}\` characters written to disk (verbatim — match\n` +
-    `exactly to find the resume point):\n\n` +
+    `The previous response hit the LLM output ceiling while generating a\n` +
+    `${info.kind === 'append' ? 'append_file' : 'create_file'} call for \`${info.path}\`. ` +
+    `A truncated tool call never executes.\n\n` +
+    `Last \`${info.tailContent.length}\` characters you had generated before the cut\n` +
+    `(context only — they are NOT on disk):\n\n` +
     `\`\`\`\n${previewSafe}\n\`\`\`\n\n` +
-    `Resume by emitting \`<append path="${info.path}">\` with the content that\n` +
-    `should come immediately after the tail above. Do NOT re-emit any content\n` +
-    `that is already on disk. Keep this round's output well under the ceiling —\n` +
-    `emit only the next chunk and end with \`<done>false</done>\` if more chunks\n` +
-    `remain.\n\n` +
+    `${resumeInstruction}\n\n` +
     `──────────────────────────────────────────────────────────────`
   );
 }
@@ -219,7 +227,7 @@ export function buildMaxTokensResumeHint(
  *
  * File awareness (after commit cbb4d924 removed `projectCodeContext`):
  * - Path manifest: `_existingCodebaseFiles` (seeded in execute/index.ts
- *   from the same disk listing that seeds `FileRegistry.existingFiles`)
+ *   from a one-shot disk listing of `codebase/`)
  *   is rendered as the `Existing Codebase Files` section so the LLM can
  *   distinguish new creation from modification without a `list_files`
  *   round-trip.
@@ -410,10 +418,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
 
   // safe-braking-eagle option C: one-shot truncation-recovery hint.
   // Set by execute when the previous round's stream ended with
-  // `stopReason === 'max_tokens'` while a `<file>` / `<append>` block was
-  // still open. The hint names the path + last ~240 chars already written
-  // to disk so the LLM resumes with `<append>` instead of re-emitting.
-  // Cleared after consumption (per-attempt only).
+  // `stopReason === 'max_tokens'` while a create_file / append_file call
+  // was still generating. The hint names the path + last ~240 chars the
+  // model had produced so the next round re-issues the write from a known
+  // anchor. Cleared after consumption (per-attempt only).
   if (state._maxTokensTruncation) {
     runtimeContextParts.push(buildMaxTokensResumeHint(state._maxTokensTruncation));
     state._maxTokensTruncation = undefined;
@@ -973,8 +981,8 @@ function extractPlanModifyPaths(planText: string | undefined): string[] {
  * Render the `Asset Placements — Owed by Your Plan` section.
  *
  * `implementation.assets[]` is a plan mutation key (see
- * `planContract/implementation.ts`) but it names work that no `<file>` tag can
- * express: the source is usually a binary the text tools refuse outright. Before
+ * `planContract/implementation.ts`) but it names work that no text-authoring
+ * tool can express: the source is usually a binary the text tools refuse outright. Before
  * this section existed the field was documented on both sides of the plan→execute
  * handoff and carried by neither, so the placement silently never happened
  * (level-dashing-plumb).
@@ -995,7 +1003,7 @@ export async function buildAssetPlacementsSection(state: ArchitectGraphState): P
     ``,
     `Your plan declared these under \`implementation.assets\`. Each is a file placement:`,
     `use the \`copy_file\` tool (source → destination, byte-for-byte + integrity-verified).`,
-    `Do NOT author these bytes with \`<file>\` / \`create_file\` / \`edit_file\` — binary targets`,
+    `Do NOT author these bytes with \`create_file\` / \`edit_file\` — binary targets`,
     `are refused by those paths, and a text round-trip corrupts the file.`,
     ``,
   ];
@@ -1036,11 +1044,12 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
   const fileSystem = state.deps?.fileSystem;
   if (!fileSystem) return null;
 
-  // Align with FileRenderer / execute/index.ts — plan targets may be written
-  // as bare `src/...` paths while the workspace-rooted fileSystem needs the
-  // `codebase/` prefix. Without this normalization every modify target reads
-  // as "file not found", which used to emit "treat as new creation" and
-  // pushed the LLM into `<file>` (overwrite) instead of `edit_file`.
+  // Align with the file tool handlers / execute/index.ts — plan targets may
+  // be written as bare `src/...` paths while the workspace-rooted fileSystem
+  // needs the `codebase/` prefix. Without this normalization every modify
+  // target reads as "file not found", which used to emit "treat as new
+  // creation" and pushed the LLM into create_file (overwrite) instead of
+  // `edit_file`.
   const codebaseRel = await resolveCodebaseRel(state);
 
   const blocks: string[] = [];
@@ -1062,8 +1071,8 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
       blocks.push(
         `### ${p}\n\n` +
         `[file not found on disk at \`${normalized}\` — call \`read_file\` to verify the current location before deciding. ` +
-        `If the file truly does not exist, create it with the \`<file>\` tag (or the \`create_file\` tool). ` +
-        `If it exists at a different path, call \`edit_file\` on that path — do NOT use \`<file>\` on existing files.]`
+        `If the file truly does not exist, create it with the \`create_file\` tool. ` +
+        `If it exists at a different path, call \`edit_file\` on that path — do NOT create_file-overwrite existing files.]`
       );
       continue;
     }
@@ -1087,7 +1096,7 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
     `════════════════════════════════════════════════════════════════════════════════`,
     ``,
     `The following files are listed in plan.modify. Their current on-disk content is below.`,
-    `Use \`edit_file\` for partial changes. Do NOT re-emit these via \`<file>\` tag — that would overwrite.`,
+    `Use \`edit_file\` for partial changes. Do NOT re-emit these via \`create_file\` — that would overwrite.`,
     ``,
     blocks.join('\n\n'),
     ``,
@@ -1200,7 +1209,7 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     lines.push(`If used: SVG (.svg) → ${dest.svgInstruction}`);
     lines.push(`Raster (png, jpg, webp) → ${dest.rasterInstruction}`);
     lines.push(`Other formats (3D models, audio, data files) → same place-then-reference pattern; load with the format's loader. An explicitly attached/placed real file is a binding input — wire it, never substitute a placeholder for it.`);
-    lines.push(`Place every one of them with the \`copy_file\` tool (source → destination). Binary assets CANNOT be authored as text — \`<file>\` / \`create_file\` / \`edit_file\` refuse binary targets and a text round-trip corrupts the bytes.`);
+    lines.push(`Place every one of them with the \`copy_file\` tool (source → destination). Binary assets CANNOT be authored as text — \`create_file\` / \`edit_file\` refuse binary targets and a text round-trip corrupts the bytes.`);
     lines.push(``);
     if (state.context?.featurePath) {
       lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/assets/`);
@@ -1265,7 +1274,7 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     lines.push(``);
     lines.push(`The following files ALREADY EXIST on disk at task start.`);
     lines.push(`For changes to these files: use \`edit_file\` tool (search/replace).`);
-    lines.push(`Do NOT use \`<file>\` tag on any of these paths — it overwrites all content.`);
+    lines.push(`Do NOT call \`create_file\` on any of these paths — it overwrites all content.`);
     lines.push(``);
     for (const p of shown) lines.push(`  - ${p}`);
     if (existingFiles.length > MANIFEST_MAX_ENTRIES) {

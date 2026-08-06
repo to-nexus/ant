@@ -4,22 +4,23 @@
 
 ### Generate Mode (full document creation)
 
-Output each target document wrapped in its OWN `<file>` XML tag, using the target path(s) from the system prompt:
+Author each target document with its OWN `create_file` call, using the target path(s) from the system prompt:
 
 ```
-<file path="{target_path}">
-# Document Title
-...full content...
-</file>
+create_file {
+  "path": "{target_path}",
+  "content": "# Document Title\n...full content..."
+}
 ```
 
-- The `path` attribute MUST match a target path listed in the "Target Path(s)" section above. Do NOT emit a `<file>` for any other path.
-- Most plans are a SINGLE document. When the system prompt lists MULTIPLE target paths, emit one `<file>` per path and partition the sections across them with NO overlap (MECE); each file must be complete.
-- Everything inside the `<file>` tag is the document content. Do NOT wrap it in code fences — output raw markdown inside the tag.
-- In generate mode the `<file>` tag is the ONLY write path; there is no other way to persist the document.
+- The `path` argument MUST match a target path listed in the "Target Path(s)" section above. Do NOT call `create_file` for any other path.
+- Most plans are a SINGLE document. When the system prompt lists MULTIPLE target paths, issue one `create_file` per path and partition the sections across them with NO overlap (MECE); each file must be complete.
+- The `content` argument is the document content. Do NOT wrap it in code fences — raw markdown only. It streams to the user live as you generate the call's arguments.
+- For a long document, write the first chunk with `create_file` and continue with `append_file` calls at the same path until the document is complete.
+- In generate mode `create_file` is the ONLY write path; document content placed in text output is NOT saved.
 - A brief acknowledgement to the user (one or two sentences) goes in a `<reply>...</reply>` tag. Free text outside any registered tag is silently dropped.
 
-⚠️ **Blind Spot**: the context is already re-anchored on the directive + brief; do NOT slip back into an analysis / audit persona and answer with a prose write-up. The deliverable is the `<file>` document. Fold the brief's decisions into the document's sections and emit the `<file>`.
+⚠️ **Blind Spot**: the context is already re-anchored on the directive + brief; do NOT slip back into an analysis / audit persona and answer with a prose write-up. The deliverable is the document written via `create_file`. Fold the brief's decisions into the document's sections and write the file.
 
 ### Refine Mode (editing existing document)
 
@@ -31,7 +32,7 @@ edit_file(path="{target_path}", old_str="exact text to find", new_str="replaceme
 
 - Each `edit_file` call makes ONE logical change; `old_str` MUST match existing text exactly.
 - After all edits, output a brief summary inside a `<reply>...</reply>` tag.
-- Do NOT output a `<file>` tag in refine mode unless the directive explicitly asks to rewrite the entire document.
+- Do NOT rewrite the whole document via `create_file` (`overwrite: true`) in refine mode unless the directive explicitly asks to rewrite the entire document.
 
 **Constraint**: Use ONLY the target path from the system prompt. Do NOT invent or hardcode file paths.
 

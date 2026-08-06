@@ -203,7 +203,7 @@ export interface DesignGraphState extends TriageableState {
   /** Monotonic count of artifact files the execute node has written for the
    * CURRENT task this run (incremented by `files.length` each execute turn,
    * reset to 0 on task boundary). `0` at completion means the model never
-   * emitted a `<file>` — the completion output-gate uses this to fail loud
+   * landed a file write — the completion output-gate uses this to fail loud
    * (design_no_output) instead of reporting a phantom success. */
   _taskFilesWritten?: number;
 
@@ -211,7 +211,7 @@ export interface DesignGraphState extends TriageableState {
    * sideEffects) from the JUST-RUN tool batch. Written by the tool node,
    * consumed-and-cleared by the next execute turn into `_taskFilesWritten` /
    * `hasNewFileOutput` so tool-based (REVISE) writes count as output exactly
-   * like XML `<file>` writes. */
+   * as task output. */
   _turnToolWrites?: number;
 
   /** Cached read-only tool results to avoid redundant calls (key: "toolName:argsJSON") */

@@ -859,7 +859,7 @@ export class LLMResponseService {
             name === 'write_file' ||
             name === 'create_file'
           ) {
-            // File mutators are emitted via the dedicated FileRenderer
+            // File mutators are emitted via the dedicated file-card
             // path (start*/complete*). The legacy substrate also injected
             // a placeholder MessageContent here to nest the loading
             // shell — that role moves to the file-progress card now.

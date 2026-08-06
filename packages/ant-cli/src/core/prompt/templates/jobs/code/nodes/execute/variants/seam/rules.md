@@ -43,14 +43,14 @@
 
 ## Interaction Methods
 
-**`<file>`, `<append>` are XML streaming tags. File editing uses tool calls.**
+**ALL file writes are TOOL CALLS. There is no XML file tag — file content placed in text output is NOT saved.** Content streams to the user live as the tool call's arguments generate.
 
-### XML Streaming (Content Generation)
+### File Writing (Content Generation)
 
-| Tag | Purpose |
-|-----|---------|
-| `<file path="...">` | Create NEW file (first chunk of a chunked emission, too) |
-| `<append path="...">` | Add to end of EXISTING file — OR continue a `<file>` you opened earlier |
+| Tool | Purpose |
+|------|---------|
+| `create_file` | Create NEW file (first chunk of a chunked emission, too). `path` first, then `content`. |
+| `append_file` | Add to end of EXISTING file — OR continue a file you started with `create_file` (chunked authoring, or resuming a write cut off by the output limit) |
 
 {{> jobs/code/nodes/execute/injections/chunked-emission}}
 
@@ -62,6 +62,8 @@
 |------|---------|
 | `read_file` | Read file content |
 | `edit_file` | Modify EXISTING file (search/replace) |
+| `create_file` | Create NEW file |
+| `append_file` | Extend a file at its physical end / continue a chunked write |
 | `search_code` | Search codebase |
 | `list_files` | List directory contents |
 | `delete_file` | Delete single file (remove a dead control / orphaned module) |
@@ -74,14 +76,11 @@
 - Include 3-5 lines of context for uniqueness
 - If `edit_file` fails: `read_file` the target file, then retry
 
-### XML Tag Safety
+### Write-Content Safety
 
-**NEVER nest file tags. Each is independent.**
+**⚠️ One file per write call. Do NOT concatenate multiple files into one `create_file` content.**
 
-**DO NOT include closing tags in code strings:**
-```typescript
-// Use: "</" + "file>" instead of "</file>" in string literals
-```
+**⚠️ File content goes in the tool's `content`/`new_str` argument — NEVER in your text output.** Text-channel file bodies are discarded silently.
 
 ---
 

@@ -1,11 +1,11 @@
 /**
  * codebaseRel — derive the codebase directory relative path.
  *
- * Shared SSOT for execute/index.ts (guardrail + path manifest) and
+ * Shared SSOT for execute/index.ts (path manifest) and
  * execute/buildMessages.ts (Modify Targets content loading). Both must
- * resolve the same `codebaseRel` the FileRenderer uses at write time so
- * on-disk reads (`buildModifyTargetsSection`) and on-disk writes stay in
- * lockstep.
+ * resolve the same `codebaseRel` the file tool handlers use at write time
+ * so on-disk reads (`buildModifyTargetsSection`) and on-disk writes stay
+ * in lockstep.
  *
  * Falls back to `'codebase'` when git/fileSystem are unavailable. That
  * matches the legacy default used throughout the code job.

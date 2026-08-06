@@ -17,6 +17,10 @@
  *      with prose and the loop resumed), does NOT use a recursion trigger
  *      (code's near-limit path belongs to Safety Net A + the orchestrator
  *      recursion_limit interrupt), and handles string + block-array content.
+ *      Under the tool-call authoring protocol the salvage window narrows
+ *      toolChoice to DRAIN_SALVAGE_WRITE_TOOLS (create/append/edit) — the
+ *      tools array is returned UNCHANGED (resolveToolChoice narrows at the
+ *      adapter) and the note instructs the write tools or <done>true</done>.
  *   3. STATIC — every execute return path commits `_noProgressStreak` and
  *      resets `_lastToolBatchAllDupReads`, so a return path added later
  *      cannot silently drop the channel (the unreturned-channel-drop class).
@@ -29,11 +33,11 @@
  *      (`_recentExecuteTextHashes`, last 3) catches the observed
  *      A/B-alternating variant; identical text with zero output increments
  *      the same streak.
- *   5. UNIT — drain turn truncated at max_tokens with no open <file> block
- *      jumps the streak to NO_PROGRESS_HARD_CAP (call 219 burned 64K
- *      tokens / 17 min on one repeated sentence; the remaining drain turns
- *      are the same gamble — the router breaker's fresh retry is the
- *      designed escape).
+ *   5. UNIT — drain turn truncated at max_tokens with no open tool-channel
+ *      file write (toolStreamer.getOpenToolFile()) jumps the streak to
+ *      NO_PROGRESS_HARD_CAP (call 219 burned 64K tokens / 17 min on one
+ *      repeated sentence; the remaining drain turns are the same gamble —
+ *      the router breaker's fresh retry is the designed escape).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -41,6 +45,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   applyDrainFinalization,
+  DRAIN_SALVAGE_WRITE_TOOLS,
   computeNextNoProgressStreak,
   computeNextNoOutputStreak,
   computeNextRecentTextHashes,
@@ -104,7 +109,7 @@ describe('computeNextNoProgressStreak — truth table', () => {
     })).toBe(0);
   });
 
-  it('jumps to NO_PROGRESS_HARD_CAP on a drain turn truncated with no open <file> block', () => {
+  it('jumps to NO_PROGRESS_HARD_CAP on a drain turn truncated with no open tool-channel write', () => {
     const state = { _noProgressStreak: SALVAGE_AT + 1, _lastToolBatchAllDupReads: false };
     expect(computeNextNoProgressStreak(state, {
       progressed: false, drainFinalizing: true, toolCallCount: 0, drainTruncatedNoFile: true,
@@ -271,21 +276,25 @@ describe('recent-text ring — repeated assistant text detection', () => {
 // ─── 2. Salvage (persistent tool strip) ───
 
 describe('applyDrainFinalization — code execute', () => {
-  it('keeps tools declared with toolChoice=none and appends the note exactly at CAP − MARGIN', () => {
+  it('narrows toolChoice to DRAIN_SALVAGE_WRITE_TOOLS and appends the note exactly at CAP − MARGIN', () => {
     const messages = [userMsg('apply the plan')];
     const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       { _noProgressStreak: SALVAGE_AT }, messages, TOOLS,
     );
     expect(drainFinalizing).toBe(true);
-    // Tools stay DECLARED; the provider-level constraint carries the
-    // prohibition (sage-causing-rover axis — deleting declarations while the
-    // history carries tool_calls degenerates GLM).
+    // Tools stay DECLARED and unfiltered; the provider-level allow-list
+    // carries the narrowing (sage-causing-rover axis — deleting declarations
+    // while the history carries tool_calls degenerates GLM). The write
+    // channel must stay open: with the tag channel retired, 'none' would
+    // leave zero ways to apply changes.
     expect(tools).toBe(TOOLS);
-    expect(toolChoice).toBe('none');
+    expect(toolChoice).toEqual({ allow: ['create_file', 'append_file', 'edit_file'] });
+    expect((toolChoice as any).allow).toEqual([...DRAIN_SALVAGE_WRITE_TOOLS]);
     const content = messages[0].content as any[];
     expect(content[0]).toEqual({ type: 'text', text: 'apply the plan' });
     expect(content[1].text).toContain('no file output');
-    expect(content[1].text).toContain('<file path="...">');
+    // The note teaches the tool-call exits + the done signal.
+    expect(content[1].text).toContain('create_file / edit_file / append_file');
     expect(content[1].text).toContain('<done>true</done>');
   });
 
@@ -306,7 +315,7 @@ describe('applyDrainFinalization — code execute', () => {
     );
     expect(drainFinalizing).toBe(true);
     expect(tools).toBe(TOOLS);
-    expect(toolChoice).toBe('none');
+    expect(toolChoice).toEqual({ allow: [...DRAIN_SALVAGE_WRITE_TOOLS] });
     const content = messages[0].content as any[];
     expect(content[1].text).toContain('no file output');
   });
@@ -327,7 +336,7 @@ describe('applyDrainFinalization — code execute', () => {
       );
       expect(drainFinalizing).toBe(true);
       expect(tools).toBe(TOOLS);
-      expect(toolChoice).toBe('none');
+      expect(toolChoice).toEqual({ allow: [...DRAIN_SALVAGE_WRITE_TOOLS] });
     }
   });
 
@@ -375,7 +384,9 @@ describe('code execute node — return-path channel commits (static)', () => {
     const mutatedCommits = src.match(/_lastToolBatchMutatedFiles: false/g) ?? [];
     const streakCommits = src.match(/_noProgressStreak: (nextNoProgressStreak|0)/g) ?? [];
     const dupFlagResets = src.match(/_lastToolBatchAllDupReads: false/g) ?? [];
-    expect(mutatedCommits.length).toBeGreaterThanOrEqual(4);
+    // 3 return paths: no-tool-call re-entry / subagent join-barrier / final.
+    // (The fileConflicts merge return retired with the tag channel.)
+    expect(mutatedCommits.length).toBeGreaterThanOrEqual(3);
     expect(streakCommits.length).toBe(mutatedCommits.length);
     expect(dupFlagResets.length).toBe(mutatedCommits.length);
   });
@@ -403,6 +414,17 @@ describe('code execute node — return-path channel commits (static)', () => {
 
   it('replaces a discarded max_tokens truncation with a head excerpt + marker (history hygiene)', () => {
     expect(src).toMatch(/maxTokensTruncatedNoFile && cleanedResponse\.length > 700/);
-    expect(src).toMatch(/without producing any <file> output/);
+    expect(src).toMatch(/without producing any file output/);
+    // The marker redirects to the tool channel, not the retired tag channel.
+    expect(src).toMatch(/issue the intended create_file \/ edit_file/);
+  });
+
+  it('detects truncation salvage on the tool channel only (toolStreamer.getOpenToolFile)', () => {
+    // A truncated tool call never executes, so the resume hint keys off the
+    // ToolFileStreamer's open create_file/append_file call — edit_file is
+    // excluded (partial edits are not resumable by append).
+    expect(src).toMatch(/const openToolFile = toolStreamer\.getOpenToolFile\(\)/);
+    expect(src).toMatch(/openToolFile\?\.path && openToolFile\.toolName !== 'edit_file'/);
+    expect(src).toMatch(/kind: openToolFile\.toolName === 'append_file' \? 'append' : 'file'/);
   });
 });

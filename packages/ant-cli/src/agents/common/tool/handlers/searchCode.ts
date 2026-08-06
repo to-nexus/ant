@@ -154,7 +154,7 @@ export function planSearch(
 ): SearchPlan {
   // ── file_pattern normalize via the existing SSOT ──────────────────────
   // `normalizeToCodebasePath` is the same helper that read_file / edit_file
-  // / createFile / runCommand / FileRenderer / 11+ other call sites use to
+  // / createFile / runCommand / 11+ other call sites use to
   // decide "is this a codebase path or a sibling (features/, plan/, ...)
   // path?". Routing search_code through it eliminates the previous
   // `wantsWorkspaceScope` private branch (same domain, duplicated logic)

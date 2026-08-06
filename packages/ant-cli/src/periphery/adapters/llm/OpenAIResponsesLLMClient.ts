@@ -35,6 +35,7 @@ import {
   ImageContentBlock,
   ThinkingContentBlock,
   TextContentBlock,
+  resolveToolChoice,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
@@ -436,7 +437,7 @@ export class OpenAIResponsesLLMClient implements LLMClient {
       tools?: ToolDefinition[];
       maxTokens?: number;
       stopSequences?: string[];
-      toolChoice?: 'auto' | 'none';
+      toolChoice?: import('../../../core/ports/llm').LLMToolChoice;
       enableThinking?: boolean;
       signal?: AbortSignal;
       [key: string]: any;
@@ -470,7 +471,7 @@ export class OpenAIResponsesLLMClient implements LLMClient {
     options?: {
       tools?: ToolDefinition[];
       maxTokens?: number;
-      toolChoice?: 'auto' | 'none';
+      toolChoice?: import('../../../core/ports/llm').LLMToolChoice;
       enableThinking?: boolean;
       signal?: AbortSignal;
       [key: string]: any;
@@ -482,18 +483,20 @@ export class OpenAIResponsesLLMClient implements LLMClient {
 
     const effort = this.resolveEffort(options?.enableThinking);
     const maxOutputTokens = this.resolveMaxOutputTokens(options?.maxTokens, effort);
-    const toolsCount = options?.tools?.length || 0;
+    // Effective tool set + native choice mode (shared `{ allow }` semantics).
+    const resolvedTools = resolveToolChoice(options?.tools, options?.toolChoice);
+    const toolsCount = resolvedTools.tools?.length || 0;
 
     console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=stream(responses) messages=${messages.length} tools=${toolsCount} effort=${effort} maxOut=${maxOutputTokens}`);
 
     const build = (includeReasoning: boolean) => ({
       model: this.modelName,
       input: this.convertToResponsesInput(messages, includeReasoning),
-      ...this.toolsParam(options?.tools),
+      ...this.toolsParam(resolvedTools.tools),
       // Only meaningful with tools declared (port contract). `'none'` keeps the
       // declarations in the request so a function_call-bearing history stays
       // self-consistent on forced-final rounds.
-      ...(toolsCount && options?.toolChoice ? { tool_choice: options.toolChoice } : {}),
+      ...(toolsCount && resolvedTools.mode ? { tool_choice: resolvedTools.mode } : {}),
       max_output_tokens: maxOutputTokens,
       // `summary: 'auto'` is load-bearing, not cosmetic: without streamed
       // reasoning events a long thinking phase is indistinguishable from a dead
@@ -524,6 +527,9 @@ export class OpenAIResponsesLLMClient implements LLMClient {
   private async *_processResponsesStream(stream: any): AsyncIterable<LLMStreamEvent> {
     /** Streamed function-call arguments, keyed by output item id. */
     const toolArgs = new Map<string, string>();
+    /** Function-call item id → {callId, name} captured at output_item.added, so
+     *  argument fragments can be forwarded as routable tool_use_delta events. */
+    const toolItemMeta = new Map<string, { callId: string; name: string }>();
     const reasoningItems: ReasoningItemRef[] = [];
 
     let tokenUsage: TaskTokenUsage | undefined;
@@ -550,8 +556,37 @@ export class OpenAIResponsesLLMClient implements LLMClient {
           break;
         }
 
+        // Function-call item opens — capture call id + name so argument
+        // fragments below can be forwarded as routable tool_use_delta events.
+        case 'response.output_item.added': {
+          const item = event.item;
+          if (item?.type === 'function_call' && item.id) {
+            toolItemMeta.set(item.id, {
+              callId: item.call_id || `call_${randomUUID()}`,
+              name: item.name || '',
+            });
+          }
+          break;
+        }
+
         case 'response.function_call_arguments.delta': {
-          if (event.item_id) toolArgs.set(event.item_id, (toolArgs.get(event.item_id) || '') + (event.delta || ''));
+          if (event.item_id) {
+            toolArgs.set(event.item_id, (toolArgs.get(event.item_id) || '') + (event.delta || ''));
+            // ✅ Forward the raw fragment for live rendering (file-writing tools).
+            const meta = toolItemMeta.get(event.item_id);
+            if (meta?.name && event.delta) {
+              yield {
+                type: 'tool_use_delta',
+                toolUseDelta: {
+                  toolUseId: meta.callId,
+                  name: meta.name,
+                  partialInput: event.delta,
+                },
+                index: toolIndex,
+                metadata: this.metadata(),
+              };
+            }
+          }
           break;
         }
 
@@ -575,7 +610,9 @@ export class OpenAIResponsesLLMClient implements LLMClient {
             yield {
               type: 'tool_use',
               toolUse: {
-                id: item.call_id || `call_${randomUUID()}`,
+                // Reuse the id already surfaced on tool_use_delta events for
+                // this item, so delta and terminal events stay correlated.
+                id: item.call_id || toolItemMeta.get(item.id)?.callId || `call_${randomUUID()}`,
                 name: item.name || '',
                 input,
                 type: 'function' as const,

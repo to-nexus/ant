@@ -12,6 +12,7 @@ import {
   LLMClient, LLMStreamEvent, ToolDefinition, LLMInvokeResult,
   CacheableContent, MessageContentBlock,
   TextContentBlock, ImageContentBlock, ToolUseContentBlock, ToolResultContentBlock, ThinkingContentBlock,
+  resolveToolChoice,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
@@ -432,6 +433,10 @@ export class AnthropicLLMClient implements LLMClient {
     const converted = this.convertMessages(userMessages);
     this.applyProviderCacheBreakpoints(systemParam, converted);
 
+    // Effective tool set + native choice mode for this round (shared helper —
+    // `{ allow }` narrowing semantics live in the port, not per adapter).
+    const resolvedTools = resolveToolChoice(options?.tools, options?.toolChoice);
+
     const stream = await this.client.messages.create({
       model: this.modelName,
       max_tokens: maxTokens,
@@ -441,18 +446,22 @@ export class AnthropicLLMClient implements LLMClient {
       ...this.buildThinkingParams(enableThinking, thinkingBudget, false),
       ...this.buildSamplingParams(enableThinking, options?.temperature),
       messages: converted,
-      ...(options?.tools && options.tools.length > 0 ? {
-        tools: options.tools.map(t => ({
+      ...(resolvedTools.tools && resolvedTools.tools.length > 0 ? {
+        tools: resolvedTools.tools.map(t => ({
           name: t.name,
           description: t.description,
           input_schema: t.input_schema,
+          // Fine-grained tool streaming (GA): unbuffered input_json_delta
+          // fragments for live rendering of file-writing tool arguments.
+          ...(t.eagerInputStreaming ? { eager_input_streaming: true } : {}),
         })),
-        // Port `toolChoice` → Anthropic `tool_choice` (native support).
-        // Emitted only alongside a non-empty tools array. Keeping the tools
-        // block declared on a `'none'` round also preserves the tools+system
-        // cache tiers — the pre-toolChoice strip invalidated the whole prefix
-        // on the most expensive (final) round.
-        ...(options?.toolChoice ? { tool_choice: { type: options.toolChoice } } : {}),
+        // Port `toolChoice` → Anthropic `tool_choice` via resolveToolChoice.
+        // `'none'` keeps the tools block declared, preserving the tools+system
+        // cache tiers (the pre-toolChoice strip invalidated the whole prefix
+        // on the most expensive round). `{ allow }` narrows the advertised
+        // set for drain salvage rounds — a deliberate cache trade on rare
+        // terminal rounds.
+        ...(resolvedTools.mode ? { tool_choice: { type: resolvedTools.mode } } : {}),
       } : {}),
       ...(stopSequences && stopSequences.length > 0 ? { stop_sequences: stopSequences } : {}),
       stream: true,
@@ -678,6 +687,24 @@ export class AnthropicLLMClient implements LLMClient {
         const buffer = toolUseBuffer.get(event.index);
         if (buffer) {
           buffer.input += event.delta.partial_json;
+          // ✅ Forward the raw fragment for live rendering (file-writing tools).
+          // The terminal `tool_use` event below stays authoritative.
+          if (event.delta.partial_json) {
+            yield {
+              type: 'tool_use_delta',
+              toolUseDelta: {
+                toolUseId: buffer.id,
+                name: buffer.name,
+                partialInput: event.delta.partial_json,
+              },
+              index: event.index,
+              metadata: {
+                provider: 'anthropic',
+                model: this.modelName,
+                timestamp: new Date().toISOString(),
+              },
+            };
+          }
         }
       }
 

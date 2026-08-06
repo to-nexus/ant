@@ -134,7 +134,7 @@ export async function handleReadFile(
       const errorMsg =
         `File not found: ${resolved.displayPath}\n\n` +
         `Before retrying: use list_files("${path.dirname(resolved.displayPath)}") to verify the exact path, ` +
-        `or if this file is meant to be new, use <file path="${resolved.displayPath}"> to create it instead of reading it.`;
+        `or if this file is meant to be new, call create_file("${resolved.displayPath}") to create it instead of reading it.`;
       console.error(`[readFile] ❌ File not found: ${resolved.displayPath}`);
       await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, { error: errorMsg });
       return { content: errorMsg, error: `File not found: ${resolved.displayPath}` };

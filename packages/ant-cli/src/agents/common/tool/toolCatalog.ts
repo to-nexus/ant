@@ -52,6 +52,7 @@ export enum ToolName {
   // ── Write ──
   EDIT_FILE            = 'edit_file',
   CREATE_FILE          = 'create_file',
+  APPEND_FILE          = 'append_file',
   DELETE_FILE          = 'delete_file',
   MKDIR                = 'mkdir',
   // Byte-faithful placement — the only write path that survives a binary
@@ -114,6 +115,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   // Write
   [ToolName.EDIT_FILE]:            '✏️ Editing file',
   [ToolName.CREATE_FILE]:          '📄 Creating file',
+  [ToolName.APPEND_FILE]:          '📄 Appending to file',
   [ToolName.DELETE_FILE]:          '🗑️ Deleting file',
   [ToolName.MKDIR]:                '📁 Creating directory',
   [ToolName.COPY_FILE]:            '📦 Placing file',
@@ -192,6 +194,7 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // Write
     ToolName.EDIT_FILE,
     ToolName.CREATE_FILE,
+    ToolName.APPEND_FILE,
     ToolName.DELETE_FILE,
     ToolName.MKDIR,
     // Byte-faithful placement of an already-existing file (binary assets can
@@ -231,6 +234,8 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.FETCH_URL,
     // Write
     ToolName.EDIT_FILE,
+    ToolName.CREATE_FILE,
+    ToolName.APPEND_FILE,
     ToolName.DELETE_FILE,
     ToolName.MKDIR,
     // NOTE: RUN_COMMAND intentionally absent. Design plan + execute phases
@@ -258,6 +263,7 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // Write
     ToolName.EDIT_FILE,
     ToolName.CREATE_FILE,
+    ToolName.APPEND_FILE,
     ToolName.MKDIR,
     // Delegate (async explore subagent)
     ToolName.EXPLORE,
@@ -309,15 +315,15 @@ export const TOOL_SETS = {
     ToolName.SEARCH_REFERENCE,
   ] as ToolName[],
 
-  // CREATE_FILE is advertised in the code execute set only — plan/design jobs
-  // stream documents via the `<file>` tag and deliberately expose no create
-  // tool. Even in code execute, the `<file>` tag stays the preferred path
-  // (real-time streaming); create_file is the tool-loop fallback.
+  // CREATE_FILE / APPEND_FILE are THE authoring channel (tool-call protocol;
+  // the `<file>`/`<append>` streaming tags are retired). create_file authors,
+  // append_file continues large files and resumes truncated ones.
   // COPY_FILE sits beside the authoring tools here, not in planExplore: the
   // plan phase is read-only and expresses a placement declaratively via
   // `implementation.assets[]`; execute is what carries it out.
   codeBasic: [
     ToolName.READ_FILE, ToolName.READ_STATE, ToolName.EDIT_FILE, ToolName.CREATE_FILE,
+    ToolName.APPEND_FILE,
     ToolName.COPY_FILE,
     ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.RUN_COMMAND,
@@ -371,7 +377,7 @@ export const TOOL_SETS = {
   // survey the real `assets/{domain}/` pool to ground `kind:'external'`
   // catalog entries — the prompt already instructs `list_assets`.
   design: [
-    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.CREATE_FILE, ToolName.APPEND_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE, ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL,
     ToolName.LIST_ASSETS, ToolName.EXPLORE, ToolName.SUBAGENT_REPORT,
     ...ANT_SOURCE_TOOLS,
@@ -380,7 +386,7 @@ export const TOOL_SETS = {
   // SEARCH_CODE included so existing-project workspaces can satisfy the
   // Codebase Channel SSOT "MUST inspect" directive even in UI design jobs.
   uiDesignBase: [
-    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.CREATE_FILE, ToolName.APPEND_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.EXPLORE,
@@ -389,7 +395,7 @@ export const TOOL_SETS = {
   ] as ToolName[],
 
   uiDesign: [
-    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.CREATE_FILE, ToolName.APPEND_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.EXPLORE,
@@ -398,7 +404,7 @@ export const TOOL_SETS = {
   ] as ToolName[],
 
   uiDesignFigma: [
-    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES,
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.CREATE_FILE, ToolName.APPEND_FILE, ToolName.LIST_FILES,
     ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
@@ -411,7 +417,7 @@ export const TOOL_SETS = {
   // Spec-Figma design variant — see JOB_TOOL_MATRIX[JobType.DESIGN]
   // rationale for why `RUN_COMMAND` is absent.
   specFigma: [
-    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.CREATE_FILE, ToolName.APPEND_FILE, ToolName.LIST_FILES, ToolName.SEARCH_CODE,
     ToolName.DELETE_FILE, ToolName.MKDIR, ToolName.SEARCH_WEB, ToolName.FETCH_URL, ToolName.LIST_ASSETS,
     ToolName.DOWNLOAD_ASSET, ToolName.FIGMA_METADATA,
     ToolName.FIGMA_DESIGN_CTX, ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
@@ -421,7 +427,7 @@ export const TOOL_SETS = {
   ] as ToolName[],
 
   figmaExplore: [
-    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.LIST_FILES, ToolName.MKDIR,
+    ToolName.READ_FILE, ToolName.EDIT_FILE, ToolName.CREATE_FILE, ToolName.LIST_FILES, ToolName.MKDIR,
     ToolName.FIGMA_METADATA, ToolName.FIGMA_DESIGN_CTX,
     ToolName.FIGMA_SCREENSHOT, ToolName.FIGMA_VARIABLES,
   ] as ToolName[],
@@ -472,6 +478,7 @@ import {
   handleDeleteFile,
   handleEditFile,
   handleCreateFile,
+  handleAppendFile,
   handleCopyFile,
   handleMkdir,
   handleSearchWeb,
@@ -500,6 +507,7 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.DELETE_FILE,      handleDeleteFile],
     [ToolName.EDIT_FILE,        handleEditFile],
     [ToolName.CREATE_FILE,      handleCreateFile],
+    [ToolName.APPEND_FILE,      handleAppendFile],
     [ToolName.COPY_FILE,        handleCopyFile],
     [ToolName.RUN_COMMAND,      handleRunCommand],
     [ToolName.HTTP_REQUEST,     handleHttpRequest],

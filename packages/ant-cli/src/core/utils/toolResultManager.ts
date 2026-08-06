@@ -74,7 +74,7 @@ export class ToolResultManager {
     if (error && this.config.preserveErrors) {
       // Handler-authored failure content (recovery guidance + exact error
       // text) must reach the LLM — replacing it with the bare `error` field
-      // strips steering like read_file's "use <file> to create it instead
+      // strips steering like read_file's "call create_file to create it instead
       // of reading it" and leaves the model retrying blind
       // (trim-grinding-motif: 371 identical File-not-found retries to
       // recursion_limit). Synthesize from `error` only when the handler

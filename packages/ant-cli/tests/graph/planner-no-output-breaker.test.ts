@@ -3,14 +3,18 @@
  *
  * The planner's plan⟷tool and execute⟷tool loops were bounded only by
  * recursionLimit=200 — a glm-5.2-class degenerate loop issuing novel
- * reads/searches with no <plan> seal / <file> write could burn ~100 tool
- * rounds. `applyPlanDrainFinalization` strips the tool list after
- * NO_OUTPUT_HARD_CAP − DRAIN_FINALIZE_MARGIN tool rounds; because both planner
- * phases terminate structurally on a tool-less round, the strip alone bounds
- * the loop (no router hard-divert). Contracts locked here:
+ * reads/searches with no <plan> seal / file write could burn ~100 tool
+ * rounds. `applyPlanDrainFinalization` constrains toolChoice after
+ * NO_OUTPUT_HARD_CAP − DRAIN_FINALIZE_MARGIN tool rounds — phase split:
+ * plan → 'none' (the <plan> seal is a TEXT tag, so a tool-less round is the
+ * terminal turn), execute → { allow: [create_file, append_file] } (the
+ * document is written through tools, so the write channel stays open while
+ * exploration disappears). Declarations are never deleted (GLM degeneration
+ * axis). Contracts locked here:
  *
  *   1. UNIT — helper does not fire below the threshold; fires at/after it,
- *      stripping tools and appending a phase-appropriate terminal note.
+ *      applying the phase-split constraint and a phase-appropriate terminal
+ *      note.
  *   2. UNIT — replay: 20 tool rounds reach the salvage threshold, not 100+.
  *   3. STATIC — the _noOutputCallCount channel is declared, and the plan/
  *      execute nodes increment on tool rounds + reset on forward progress.
@@ -63,11 +67,19 @@ describe('applyPlanDrainFinalization — planner tool-strip salvage', () => {
     expect(content[1].text).toContain('<plan>');
   });
 
-  it('execute phase note instructs a <file> write, not a seal', () => {
+  it('execute phase → allow-list keeps the write channel open; note instructs create_file/append_file, not a seal', () => {
     const messages = [userMsg('author')];
-    applyPlanDrainFinalization({ _noOutputCallCount: SALVAGE_AT + 3 }, messages, TOOLS, 'execute');
+    const { tools, toolChoice } = applyPlanDrainFinalization(
+      { _noOutputCallCount: SALVAGE_AT + 3 }, messages, TOOLS, 'execute',
+    );
+    // The document IS written through tools now — unlike the plan phase's
+    // 'none' (its seal is a TEXT tag), execute must keep create/append callable
+    // or the salvage window has no way to produce the document at all.
+    expect(tools).toBe(TOOLS);
+    expect(toolChoice).toEqual({ allow: ['create_file', 'append_file'] });
     const content = messages[0].content as any[];
-    expect(content[1].text).toContain('<file');
+    expect(content[1].text).toContain('calling create_file');
+    expect(content[1].text).toContain('append_file');
     expect(content[1].text).not.toContain('<plan>');
   });
 

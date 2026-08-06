@@ -5,7 +5,7 @@
  * (`NO_PROGRESS_HARD_CAP`), the model's remaining turns run tool-less with an
  * "apply your changes now" note, shortly BEFORE the router breaker diverts to
  * checkTaskStatus. This gives a degenerate re-read loop a salvage window to
- * convert its already-gathered context into `<file>` output instead of
+ * convert its already-gathered context into file output instead of
  * burning the retry budget.
  *
  * Deliberately NOT triggered by recursion-budget exhaustion (unlike the
@@ -91,8 +91,8 @@ export function computeNextRecentTextHashes(
  * result on every return path.
  *
  * - Progress (streamed files, tool mutation, explicit `<done>`) → 0.
- * - Drain-finalize turn truncated at `max_tokens` with no open `<file>`
- *   block → jump to `NO_PROGRESS_HARD_CAP`. The model entered its forced
+ * - Drain-finalize turn truncated at `max_tokens` with no open file
+ *   write → jump to `NO_PROGRESS_HARD_CAP`. The model entered its forced
  *   final turn already degenerate and burned the whole output budget on
  *   repetition; granting the remaining drain turns is a repeat 17-minute
  *   gamble (vivid-orbiting-dodge call 219), while the router breaker's
@@ -133,11 +133,11 @@ export function computeNextNoProgressStreak(
  * cedar RCA). Complements `computeNextNoProgressStreak`: it counts consecutive
  * execute turns with NO FORWARD OUTPUT, regardless of read/search novelty, so
  * a loop that keeps issuing genuinely-novel reads (novel line ranges of
- * already-read files, novel `search_code`) while producing no `<file>` /
+ * already-read files, novel `search_code`) while producing no
  * mutation / `<done>` is still bounded. Ported from the design job's
  * `_noOutputCallCount` rule.
  *
- * - Forward output (streamed `<file>`, tool mutation, explicit `<done>`) → 0.
+ * - Forward output (tool mutation or explicit `<done>`) → 0.
  * - A turn with tool calls, OR a tool-stripped salvage turn that produced
  *   nothing → +1. The `drainFinalizing` clause mirrors the `_noProgressStreak`
  *   salvage rule: once tools are stripped the tool node stops running, so
@@ -147,7 +147,7 @@ export function computeNextNoProgressStreak(
  *
  * Kept a SEPARATE function (not folded into `computeNextNoProgressStreak`)
  * because that function is shared with the plan tool-loop, whose rounds
- * legitimately never emit `<file>`. This rule is execute-only.
+ * legitimately never write files. This rule is execute-only.
  */
 export function computeNextNoOutputStreak(
   state: Pick<ArchitectGraphState, '_noOutputStreak'>,
@@ -159,16 +159,28 @@ export function computeNextNoOutputStreak(
   return 0;
 }
 
+/**
+ * Salvage-window tool surface: file-writing only. Exploration (read/search/
+ * list) is what the degenerate loop was burning turns on; the WRITE channel
+ * must stay open or the salvage window has no way to apply changes at all
+ * (the pre-tool-protocol design used `toolChoice:'none'` + `<file>` tags —
+ * with tags retired, 'none' would leave zero write channels).
+ * `mkdir` stays excluded (oat-judging-mound: 4× mkdir "progress" →
+ * design_no_output) and `delete_file` is never the salvage move.
+ */
+export const DRAIN_SALVAGE_WRITE_TOOLS = ['create_file', 'append_file', 'edit_file'] as const;
+
 export interface DrainFinalizeResult<TTool> {
   tools: TTool[];
   /**
-   * `'none'` while draining: the tools stay DECLARED in the request and the
-   * provider-level constraint carries the prohibition. Deleting the
-   * declarations while the history is full of tool_calls degenerated GLM
-   * into repetition loops against the full output budget
-   * (vivid-orbiting-dodge at 64K; same axis as sage-causing-rover).
+   * `{ allow: [write tools] }` while draining: the advertised set narrows to
+   * the file-writing tools, so exploration stops but changes can still land.
+   * Declarations are never DELETED outright — deleting them while the history
+   * is full of tool_calls degenerated GLM into repetition loops against the
+   * full output budget (vivid-orbiting-dodge at 64K; same axis as
+   * sage-causing-rover). resolveToolChoice keeps ≥1 tool declared.
    */
-  toolChoice?: 'none';
+  toolChoice?: import('../../../../../../core/ports/llm').LLMToolChoice;
   drainFinalizing: boolean;
 }
 
@@ -197,9 +209,10 @@ export function applyDrainFinalization<TTool>(
   // and `_noOutputStreak` (novel reads/searches but zero file output).
   const streak = Math.max(progressStreak, outputStreak);
   const finalizeNote = `\n\n[SYSTEM] You have produced no file output for ${streak} consecutive turns — ` +
-    `further reading or searching is not making progress. Tools are no longer available. ` +
-    `Apply your remaining changes NOW from the context you have already gathered, using ` +
-    `<file path="...">full file body</file> tags, or output <done>true</done> if the task's ` +
+    `further reading or searching is not making progress. Exploration tools are no longer available; ` +
+    `only the file-writing tools (${DRAIN_SALVAGE_WRITE_TOOLS.join(', ')}) remain. ` +
+    `Apply your remaining changes NOW from the context you have already gathered by calling ` +
+    `create_file / edit_file / append_file, or output <done>true</done> if the task's ` +
     `changes are already applied.`;
 
   const lastMsg = messages[messages.length - 1];
@@ -214,7 +227,7 @@ export function applyDrainFinalization<TTool>(
     }
   }
   console.warn(
-    `🧯 [Execute] No-output salvage (noProgress=${progressStreak}/${NO_PROGRESS_HARD_CAP}, noOutput=${outputStreak}/${NO_OUTPUT_HARD_CAP}) → toolChoice='none', forcing final output`,
+    `🧯 [Execute] No-output salvage (noProgress=${progressStreak}/${NO_PROGRESS_HARD_CAP}, noOutput=${outputStreak}/${NO_OUTPUT_HARD_CAP}) → toolChoice={allow: write tools}, forcing final output`,
   );
-  return { tools, toolChoice: 'none', drainFinalizing: true };
+  return { tools, toolChoice: { allow: [...DRAIN_SALVAGE_WRITE_TOOLS] }, drainFinalizing: true };
 }

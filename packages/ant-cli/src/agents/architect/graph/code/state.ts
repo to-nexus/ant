@@ -87,7 +87,7 @@ export const RECURSION_DRAIN_THRESHOLD = 20;
  * Cap rationale: the signal counts only provably zero-information rounds
  * (novel reads / commands / mutations reset it), so 10 salvage-free rounds
  * + 5 tool-stripped salvage turns is generous — unlike the design job's
- * NO_OUTPUT_HARD_CAP (25) whose no-`<file>` signal can be legitimate
+ * NO_OUTPUT_HARD_CAP (25) whose no-file-write signal can be legitimate
  * exploration and needs headroom.
  */
 export const NO_PROGRESS_HARD_CAP = 15;
@@ -107,7 +107,7 @@ export const DRAIN_FINALIZE_MARGIN = 5;
  * rounds (dup reads / repeat commands / repeated text); it stays at 0 forever
  * when a degenerate loop keeps issuing genuinely NOVEL reads — novel line
  * ranges of already-read files, novel `search_code` — while producing no
- * `<file>` / mutation / `<done>`. cyan-catching-cedar burned ~156 such rounds
+ * mutation / `<done>`. cyan-catching-cedar burned ~156 such rounds
  * (final-verification, glm-5.2) before the user aborted.
  *
  * This cap bounds "consecutive execute turns with NO forward output" directly
@@ -444,12 +444,10 @@ export interface ArchitectGraphState extends TriageableState {
    * execute-phase tool batch emitted a `fileModified` / `fileCreated` /
    * `fileDeleted` side effect.
    *
-   * Reader: `nodes/execute/index.ts` `isStuckLooping` — combined with
-   * `streamedInThisCall.length === 0` to suppress "stuck" classification on
-   * a turn that immediately followed a tool-based file mutation
-   * (`edit_file` / `create_file` / `delete_file`). The earlier
-   * `streamedFiles`-only check missed these because the XML `<file>` tag
-   * registry is not populated by tool handlers.
+   * Reader: `nodes/execute/index.ts` — the turn-progress signal that
+   * suppresses "stuck" classification (and drives remediation
+   * auto-complete) on a turn that immediately followed a tool-based file
+   * mutation (`edit_file` / `create_file` / `delete_file`).
    *
    * Reset: every execute return path writes `false` so a tool batch that
    * mutated files only counts for ONE subsequent execute turn. Replaces the
@@ -507,7 +505,7 @@ export interface ArchitectGraphState extends TriageableState {
   /**
    * No-forward-output streak: consecutive execute turns that carried tool
    * calls (or ran a tool-stripped salvage turn) but produced NO forward
-   * output — no streamed `<file>`, no tool mutation, no `<done>`. Behind the
+   * output — no tool mutation, no `<done>`. Behind the
    * `NO_OUTPUT_HARD_CAP` circuit breaker (Safety Net C2) and the shared
    * drain-finalize salvage. Increment/reset rule is single-owned by
    * `computeNextNoOutputStreak` (`nodes/execute/drainFinalize.ts`); the
@@ -515,7 +513,7 @@ export interface ArchitectGraphState extends TriageableState {
    *
    * SEPARATE from `_noProgressStreak` because `computeNextNoProgressStreak`
    * is shared with the PLAN tool-loop, which legitimately never emits a
-   * `<file>` — folding a no-output rule into that shared function would make
+   * a file — folding a no-output rule into that shared function would make
    * every plan round accrue it. This channel is execute-only (the plan loop
    * neither writes nor reads it). cyan-catching-cedar RCA: novel line-range
    * re-reads keep `_noProgressStreak` at 0 for 156 rounds; this counter is
@@ -546,14 +544,13 @@ export interface ArchitectGraphState extends TriageableState {
   _otherWorkerFiles?: Array<{ path: string; taskName?: string }>;
   /**
    * Paths of files that existed under `codebase/` at the moment execute
-   * started. Populated from the same `listFiles('codebase', ...)` call that
-   * seeds `FileRegistry.existingFiles`. Rendered in
-   * `buildTaskInvariantContext` as the `Existing Codebase Files` manifest
-   * so the LLM can dispatch between `<file>` (new) and `edit_file`
-   * (existing) without fallthrough to `list_files` — the refactor that
-   * removed `projectCodeContext` left execute blind here and variant
-   * prompts still reference phantom "directory tree" / "retrieved context"
-   * sections.
+   * started. Populated from a one-shot `listFiles('codebase', ...)` call.
+   * Rendered in `buildTaskInvariantContext` as the `Existing Codebase
+   * Files` manifest so the LLM can dispatch between `create_file` (new)
+   * and `edit_file` (existing) without fallthrough to `list_files` — the
+   * refactor that removed `projectCodeContext` left execute blind here and
+   * variant prompts still reference phantom "directory tree" / "retrieved
+   * context" sections.
    */
   _existingCodebaseFiles?: string[];
 
@@ -628,23 +625,21 @@ export interface ArchitectGraphState extends TriageableState {
 
   /**
    * One-shot truncation hint produced by the execute node when an LLM
-   * stream cut off with `stopReason === 'max_tokens'` while a `<file>` or
-   * `<append>` block was still open.
+   * stream cut off with `stopReason === 'max_tokens'` while a create_file
+   * or append_file call was still generating its arguments.
    *
    * Lifecycle:
-   *   - SET by `nodes/execute/index.ts` immediately after the stream's
-   *     `done` event, BEFORE `orchestrator.finalize()` (the parser's
-   *     `<file>`/`<append>` context is wiped by finalize).
+   *   - SET by `nodes/execute/index.ts` on the stream's `done` event, from
+   *     the ToolFileStreamer's open-tool-file salvage context.
    *   - READ by `nodes/execute/buildMessages.ts` on the very next execute
    *     entry — folded into the user message that names the path + last
-   *     ~240 chars so the LLM can resume via `<append path="same">`.
+   *     ~240 chars so the LLM can resume via `append_file`.
    *   - CLEARED to `undefined` once the hint has been folded into a
    *     prompt; per-attempt only, never crosses task boundaries.
    *
-   * RCA: safe-braking-eagle. The partial content was already written to
-   * disk by FileRenderer's incremental emit + finalize-flush; the hint
-   * just tells the LLM where the cut was so it does NOT re-emit content
-   * the disk already has. See option C in
+   * RCA: safe-braking-eagle. A truncated tool call never executes, so
+   * nothing reached disk; the hint tells the LLM where the cut was so the
+   * next round re-issues the write from a known anchor. See option C in
    * `.claude/plans/safe-braking-eagle-id-code-enchanted-dongarra.md`.
    */
   _maxTokensTruncation?: {

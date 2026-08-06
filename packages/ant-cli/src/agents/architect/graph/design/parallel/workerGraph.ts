@@ -208,7 +208,7 @@ async function workerCheckTaskStatus(state: DesignGraphState): Promise<Partial<D
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Gate 2.7: Zero-output completion guard (design_no_output).
-  // A degenerate/drained execute that wrote no <file> and left its target
+  // A degenerate/drained execute that landed no file write and left its target
   // absent must fail loud (resumable) — not complete as a phantom success.
   // Thrown as a typed error so the shared TaskOrchestrator raises the
   // interruption (mirror of the figma-connection-lost global interrupt).

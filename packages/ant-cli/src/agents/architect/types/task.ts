@@ -251,7 +251,7 @@ export type DesignTask = (DocTask | ExplainTask) & {
    */
   removeFiles?: string[];
 
-  /** Pre-computed at decompose time: true for non-first chapters that must use <append> in parallel. */
+  /** Pre-computed at decompose time: true for non-first chapters that must use append_file in parallel. */
   forceAppend?: boolean;
 
   /**

@@ -13,7 +13,7 @@
 🔀 PARALLEL CHAPTER — APPEND MODE 🔀
 ════════════════════════════════════════════════════════════════════════════════
 
-**This is a parallel chapter. You MUST use `<append>` tag.**
+**This is a parallel chapter. You MUST write via `append_file` tool calls.**
 
 {{#if targetFile}}
 **Target file: `{{targetFile}}`** (defined by decompose, DO NOT change!)
@@ -85,7 +85,7 @@ You are a game-art catalog specialist that extracts an engine-agnostic visual ca
 
 {{{previousChaptersSummary}}}
 
-**⚠️ DUPLICATE PREVENTION:** If a category appears above → SKIP it. Use `<append>` to merge additions.
+**⚠️ DUPLICATE PREVENTION:** If a category appears above → SKIP it. Use `append_file` to merge additions.
 ════════════════════════════════════════════════════════════════════════════════
 {{/if}}
 

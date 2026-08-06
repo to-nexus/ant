@@ -12,8 +12,9 @@
  * excluded from all of it).
  *
  * This file keeps only the planner-BESPOKE write tools:
+ * - create_file / append_file: the authoring channel (tool-call protocol)
  * - edit_file: search-replace edits with the planner's codebase write gate
- * - write_file / append_file: shadow tools for LLM hallucination recovery
+ * - write_file: shadow alias for LLM hallucination recovery → create_file
  */
 
 import * as fs from 'fs';
@@ -105,9 +106,41 @@ const editFile: ToolDefinition = {
   },
 };
 
+const createFile: ToolDefinition = {
+  name: 'create_file',
+  description: 'Create a NEW plan/artifact document — the standard way to author a file. Emit the path argument first, then the complete content; the content streams to the user in real time. Fails if the file already exists (use edit_file to modify). For very large documents, emit an initial create_file and continue with append_file calls.',
+  parameters: {
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'Relative path from feature root (e.g., "plan/prd.md"). codebase/ paths are read-only for the planner.' },
+      content: { type: 'string', description: 'The complete content of the new file' },
+    },
+    required: ['path', 'content'],
+  },
+  execute: async (args, ctx) => {
+    return performPlannerWrite(args.path, args.content, { mode: 'create' }, ctx);
+  },
+};
+
+const appendFile: ToolDefinition = {
+  name: 'append_file',
+  description: 'Append content to the END of an EXISTING document, verbatim — for continuing a large file started with create_file, or resuming one cut off by the output-token limit. Emit the path argument first. No separators are added.',
+  parameters: {
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'Relative path from feature root of the existing file' },
+      content: { type: 'string', description: 'Content appended verbatim to the end of the file' },
+    },
+    required: ['path', 'content'],
+  },
+  execute: async (args, ctx) => {
+    return performPlannerWrite(args.path, args.content, { mode: 'append' }, ctx);
+  },
+};
+
 const writeFile: ToolDefinition = {
   name: 'write_file',
-  description: 'Shadow tool for LLM hallucination recovery (write_file → <file> tag)',
+  description: 'Shadow alias for LLM hallucination recovery (write_file → create_file)',
   parameters: {
     type: 'object',
     properties: {
@@ -117,23 +150,8 @@ const writeFile: ToolDefinition = {
     required: ['path', 'content'],
   },
   execute: async (args, ctx) => {
-    return handleHallucinatedFileWrite(args.path, args.content, false, ctx);
-  },
-};
-
-const appendFile: ToolDefinition = {
-  name: 'append_file',
-  description: 'Shadow tool for LLM hallucination recovery (append_file → <append> tag)',
-  parameters: {
-    type: 'object',
-    properties: {
-      path: { type: 'string', description: 'Relative path from feature root' },
-      content: { type: 'string', description: 'Content to append' },
-    },
-    required: ['path', 'content'],
-  },
-  execute: async (args, ctx) => {
-    return handleHallucinatedFileWrite(args.path, args.content, true, ctx);
+    const result = await performPlannerWrite(args.path, args.content, { mode: 'create', allowOverwrite: true }, ctx);
+    return `${result}\n\n⚠️ "write_file" is not a real tool — use create_file (new files) or append_file (continuations) next time.`;
   },
 };
 
@@ -146,16 +164,24 @@ function notifyFileTree(ctx: PlannerToolContext): void {
   }
 }
 
-async function handleHallucinatedFileWrite(
+/**
+ * Shared write path for the planner's authoring tools. Direct fs (the
+ * planner is single-writer — no SharedFileBuffer), codebase gate enforced,
+ * terminal chat card emitted via completeFileCreation so the live shell
+ * opened by ToolFileStreamer settles on the same path.
+ */
+async function performPlannerWrite(
   filePath: string,
   content: string,
-  isAppend: boolean,
+  opts: { mode: 'create' | 'append'; allowOverwrite?: boolean },
   ctx: PlannerToolContext,
 ): Promise<string> {
-  const toolName = isAppend ? 'append_file' : 'write_file';
+  const toolName = opts.mode === 'append' ? 'append_file' : 'create_file';
 
   if (!content) {
-    return `Error: ${toolName} called without content. Use ${isAppend ? '<append>' : '<file>'} XML tag instead.`;
+    const msg = `Error: ${toolName} called without content.`;
+    await ctx.chatStatus.failFileCreation(filePath, msg);
+    return msg;
   }
 
   const resolvedPath = path.join(ctx.featurePath, filePath);
@@ -166,34 +192,42 @@ async function handleHallucinatedFileWrite(
 
   if (isCodebasePathArg(filePath)) {
     const msg = codebaseRejection(toolName, filePath);
-    await ctx.chatStatus.failFileEdit(filePath, msg);
+    await ctx.chatStatus.failFileCreation(filePath, msg);
     return msg;
   }
 
   try {
+    if (opts.mode === 'append') {
+      if (!fs.existsSync(resolvedPath)) {
+        const msg = `Error: append_file target "${filePath}" does not exist. Use create_file to author a new file.`;
+        await ctx.chatStatus.failFileCreation(filePath, msg);
+        return msg;
+      }
+      const existing = fs.readFileSync(resolvedPath, 'utf-8');
+      fs.writeFileSync(resolvedPath, existing + content, 'utf-8');
+      notifyFileTree(ctx);
+      await ctx.chatStatus.completeFileCreation(filePath, content);
+      return `✅ Appended ${content.length} chars to ${filePath}.`;
+    }
+
+    if (fs.existsSync(resolvedPath) && !opts.allowOverwrite) {
+      const msg = `Error: "${filePath}" already exists. Use edit_file to modify it, or append_file to extend it.`;
+      await ctx.chatStatus.failFileCreation(filePath, msg);
+      return msg;
+    }
+
     const dir = path.dirname(resolvedPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-
-    if (isAppend && fs.existsSync(resolvedPath)) {
-      const existing = fs.readFileSync(resolvedPath, 'utf-8');
-      fs.writeFileSync(resolvedPath, existing + '\n' + content, 'utf-8');
-    } else {
-      fs.writeFileSync(resolvedPath, content, 'utf-8');
-    }
+    fs.writeFileSync(resolvedPath, content, 'utf-8');
 
     notifyFileTree(ctx);
-    await ctx.chatStatus.completeFileEdit(filePath, '', content);
-
-    console.warn(`⚠️  [Tool] LLM hallucinated ${toolName} → auto-converted to file ${isAppend ? 'append' : 'write'} for ${filePath}`);
-
-    const action = isAppend ? 'appended' : 'written';
-    return `File ${action} successfully: ${filePath} (auto-recovered from ${toolName} tool call).\n\n` +
-      `⚠️ IMPORTANT: "${toolName}" is not a real tool. For future file operations, use the <file path="...">content</file> XML tag format instead.`;
+    await ctx.chatStatus.completeFileCreation(filePath, content);
+    return `✅ File created: ${filePath} (${content.length} chars).`;
   } catch (error: any) {
-    await ctx.chatStatus.failFileEdit(filePath, error.message);
-    return `Error ${isAppend ? 'appending to' : 'writing'} file: ${error.message}`;
+    await ctx.chatStatus.failFileCreation(filePath, error.message);
+    return `Error writing file: ${error.message}`;
   }
 }
 
@@ -205,8 +239,9 @@ async function handleHallucinatedFileWrite(
  */
 export const PLANNER_BESPOKE_TOOLS: ToolDefinition[] = [
   editFile,
-  writeFile,
+  createFile,
   appendFile,
+  writeFile,
 ];
 
 /** Map-based dispatch for efficient tool lookup */
@@ -215,8 +250,13 @@ export const PLANNER_TOOL_MAP: ReadonlyMap<string, ToolDefinition> = new Map(
 );
 
 /** Reshape a bespoke ToolDefinition into the LLM wire schema. */
-function toWireSchema(t: ToolDefinition): LlmToolSchema {
-  return { name: t.name, description: t.description, input_schema: t.parameters } as LlmToolSchema;
+function toWireSchema(t: ToolDefinition, opts?: { eagerInputStreaming?: boolean }): LlmToolSchema {
+  return {
+    name: t.name,
+    description: t.description,
+    input_schema: t.parameters,
+    ...(opts?.eagerInputStreaming ? { eagerInputStreaming: true } : {}),
+  } as LlmToolSchema;
 }
 
 /**
@@ -229,17 +269,34 @@ export function plannerObserveTools(): LlmToolSchema[] {
 }
 
 /**
- * Tools advertised to the LLM by the execute node, per mode. Only `refactor`
- * (rev-plan) edits an EXISTING document via `edit_file`. `generate` authors a
- * NEW document solely through the `<file>` output tag (create-capable), so it
- * must NOT be handed `edit_file` — that tool cannot create a missing file and
- * any tool call short-circuits the execute node before the `<file>` writer
- * runs, silently producing no output. `explain` is read-only. SSOT for the
- * generate/refactor split — the execute node consumes this, never re-derives it.
+ * Tools advertised to the LLM by the execute node, per mode (tool-call
+ * authoring protocol):
+ * - `generate` authors NEW documents via `create_file` (+ `append_file` for
+ *   chunked continuation / truncation resume). No `edit_file` — nothing
+ *   exists to edit yet, and a failing edit wastes the authoring turn.
+ * - `refactor` (rev-plan) modifies an EXISTING document via `edit_file`,
+ *   with `append_file` for tail additions.
+ * - `explain` is read-only.
+ * SSOT for the mode split — the execute node consumes this, never re-derives it.
  */
 export function plannerToolsForMode(
   planMode: 'generate' | 'refactor' | 'explain',
 ): LlmToolSchema[] {
   const base = plannerObserveTools();
-  return planMode === 'refactor' ? [...base, toWireSchema(editFile)] : base;
+  switch (planMode) {
+    case 'generate':
+      return [
+        ...base,
+        toWireSchema(createFile, { eagerInputStreaming: true }),
+        toWireSchema(appendFile, { eagerInputStreaming: true }),
+      ];
+    case 'refactor':
+      return [
+        ...base,
+        toWireSchema(editFile, { eagerInputStreaming: true }),
+        toWireSchema(appendFile, { eagerInputStreaming: true }),
+      ];
+    default:
+      return base;
+  }
 }

@@ -106,7 +106,7 @@ Prefer fewer file operations, but do NOT suppress web searches — verifying a f
 **Observation target**: the user asks to understand, analyze, describe, or query an existing planning document — without requesting changes.
 
 **Constraints:**
-- NEVER seal a `<plan>` brief, output a `<file>` tag, call `edit_file`, or output a `<clarify>` tag.
+- NEVER seal a `<plan>` brief, call `create_file` / `append_file` / `edit_file`, or output a `<clarify>` tag.
 - Respond inside a `<reply>...</reply>` tag — that is the canonical narrative channel. Free text outside any registered tag is silently dropped.
 
 **Behavior**: Read the requested sections (using read-only tools if needed), then answer directly inside `<reply>...</reply>`. If asked about information not present in the document, say so — do NOT fabricate.

@@ -31,7 +31,7 @@ Legitimate entries typically fall into three classes:
 
 Do NOT record: framework / library / runner names that package.json already declares; alias / source-root paths that tsconfig already declares; config file locations that the filesystem already reveals; **a specific symbol's call shape / signature / type fields** — these are defined in their one source file (factory definition, interface declaration, exported class); execute verifies against the defining file at write-time, recording them here duplicates the SSOT and seeds drift when the defining file evolves. (Note the distinction from condition 2: a *naming/structure PATTERN that recurs* is a recordable convention; a *specific symbol's shape* is not.)
 
-Update via `<file>` or `edit_file`. Keep under 1500 characters. Do NOT fabricate prohibitions or decisions — record only what you actually observed during this task.
+Update via `create_file` or `edit_file`. Keep under 1500 characters. Do NOT fabricate prohibitions or decisions — record only what you actually observed during this task.
 {{else}}
 ## Project Settings (codebase/ANTRULES.md)
 

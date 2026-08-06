@@ -1,27 +1,23 @@
 /**
  * CommonRenderStrategy - Main rendering strategy coordinator
- * 
- * Delegates work to specialized modules:
- * - ResponseRenderer: thinking & text responses
- * - FileRenderer: file operations (create, edit, append, delete)
+ *
+ * Delegates thinking & text responses to ResponseRenderer and owns the
+ * plan / clarify / task_response card surfaces. File authoring is
+ * tool-call-only (`create_file` / `append_file` / `edit_file`), rendered
+ * live by `ToolFileStreamer` — this strategy has no file channel.
  */
 
 import { IRenderStrategy } from './IRenderStrategy';
 import { ParsedAction } from '../types';
-import { FileRegistry } from '../state/FileRegistry';
 import { ChatAPIClient } from '../../adapters/ChatAPIClient';
 import { SpecialTagTransformer } from '../transformers/SpecialTagTransformer';
 import { UserLanguage } from '../../utils/languageDetector';
-import { GitPort, FileSystemPort } from '../../ports';
-import { FileTreeUpdatePort } from '../../ports/fileTree';
 import { ResponseRenderer } from './common/ResponseRenderer';
-import { FileRenderer } from './common/FileRenderer';
 import { detectCrossAxisLeak, transformAndStrip } from '../OutputTagRegistry';
 
 export class CommonRenderStrategy implements IRenderStrategy {
   private chatAPI: ChatAPIClient;
   private responseRenderer: ResponseRenderer;
-  private fileRenderer: FileRenderer;
   private tagTransformer: SpecialTagTransformer;  // ✅ Store for explicitDone access
   private planContentIndex: string | undefined;
   private planTaskTitle: string | undefined;
@@ -36,25 +32,10 @@ export class CommonRenderStrategy implements IRenderStrategy {
   private taskResponseIndex: string | undefined;
   private taskResponseBuffer: string = '';
   private userLanguage: UserLanguage;
-  
+
   constructor(
     chatAPI: ChatAPIClient,
     userLanguage?: UserLanguage,
-    gitPort?: GitPort,
-    fileSystem?: FileSystemPort,
-    writeImmediately: boolean = false,
-    jobType?: 'code' | 'design' | 'plan',
-    featurePath?: string,
-    codebasePath?: string,
-    fileTreeUpdate?: FileTreeUpdatePort,
-    onFileTouched?: (filePath: string) => void,
-    /**
-     * For `jobType === 'code'`, distinguishes plan vs execute phase.
-     * Plan phase rejects `codebase/` writes via the same gate that
-     * design / plan jobs use (see FileRenderer codebase mutation gate).
-     * Defaults to `'execute'` semantics when omitted.
-     */
-    codePhase?: 'plan' | 'execute',
   ) {
     this.chatAPI = chatAPI;
     this.userLanguage = userLanguage || 'en';
@@ -62,26 +43,14 @@ export class CommonRenderStrategy implements IRenderStrategy {
     this.tagTransformer = new SpecialTagTransformer(this.userLanguage);
 
     this.responseRenderer = new ResponseRenderer(chatAPI, this.tagTransformer);
-    this.fileRenderer = new FileRenderer({
-      chatAPI,
-      gitPort,
-      fileSystem,
-      fileTreeUpdate,
-      writeImmediately,
-      jobType,
-      codePhase,
-      featurePath,
-      codebasePath,
-      onFileTouched,
-    });
   }
-  
-  async render(action: ParsedAction, registry: FileRegistry): Promise<void> {
+
+  async render(action: ParsedAction): Promise<void> {
     switch (action.type) {
       case 'thinking':
         await this.responseRenderer.renderThinking(action);
         break;
-        
+
       case 'response':
         if (this.parallelTaskName) {
           const content = action.data.content;
@@ -117,25 +86,13 @@ export class CommonRenderStrategy implements IRenderStrategy {
           await this.responseRenderer.renderResponse(action);
         }
         break;
-        
-      case 'file_start':
-        await this.fileRenderer.renderFileStart(action, registry);
-        break;
-        
-      case 'file_content':
-        await this.fileRenderer.renderFileContent(action, registry);
-        break;
-        
-      case 'file_end':
-        await this.fileRenderer.renderFileEnd(action, registry);
-        break;
-      
+
       case 'plan_start':
         this.planContentIndex = await this.chatAPI.showChatStatus('plan_generating', {
           ...(this.planTaskTitle ? { taskName: this.planTaskTitle } : {})
         });
         break;
-        
+
       case 'plan_content': {
         const planChunk = action.data.content || '';
         if (!planChunk) break;
@@ -155,7 +112,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
         }
         break;
       }
-        
+
       case 'plan_end':
         if (this.planContentIndex !== undefined) {
           // Persist the full accumulated plan text on the terminal `plan`
@@ -166,9 +123,9 @@ export class CommonRenderStrategy implements IRenderStrategy {
           //
           // `transformAndStrip` is a no-op on a well-formed plan body
           // (JSON without nested canonical literals). When the LLM
-          // violates the contract and slips a `<reply>` / `<done>` /
-          // `<file>` literal into the JSON, this layer scrubs the raw
-          // marker from the persisted card metadata. `detectCrossAxisLeak`
+          // violates the contract and slips a `<reply>` / `<done>`
+          // literal into the JSON, this layer scrubs the raw marker from
+          // the persisted card metadata. `detectCrossAxisLeak`
           // additionally surfaces a dev-mode warning so the violation
           // is visible during prompt iteration instead of being silently
           // scrubbed.
@@ -192,7 +149,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
           this.planContentBuffer = '';
         }
         break;
-      
+
       case 'clarify_start':
         // Re-inject placeholder (typing indicator) while clarify content is being generated
         await this.chatAPI.showChatStatus('placeholder');
@@ -209,10 +166,8 @@ export class CommonRenderStrategy implements IRenderStrategy {
         console.warn(`[CommonRenderStrategy] Unknown action type: ${action.type}`);
     }
   }
-  
-  async finalize(hasToolCalls: boolean = false): Promise<void> {
-    await this.fileRenderer.finalize();
 
+  async finalize(hasToolCalls: boolean = false): Promise<void> {
     if (this.taskResponseIndex !== undefined) {
       // `<done>true</done>` side-effect — the parallel task_response
       // buffer path never runs per-chunk `tagTransformer.transform`
@@ -248,61 +203,18 @@ export class CommonRenderStrategy implements IRenderStrategy {
       this.taskResponseIndex = undefined;
       this.taskResponseBuffer = '';
     }
-    
+
     if (!hasToolCalls) {
       await this.chatAPI.finalizeMessage();
     }
   }
-  
-  /**
-   * Get FileRenderer instance for direct access
-   * Used by StreamOrchestrator to wait for file operations
-   */
-  getFileRenderer(): FileRenderer {
-    return this.fileRenderer;
-  }
-  
+
   /**
    * Check if LLM explicitly output <done>true</done>
    * Used by execute to determine task completion
    */
   getExplicitDone(): boolean {
     return this.tagTransformer.explicitDone;
-  }
-  
-  /**
-   * Pin the design-job target filename guard for the current task.
-   * Delegates to the underlying `FileRenderer` so callers don't have to
-   * reach into `getFileRenderer()`.
-   */
-  setExpectedTargetFile(expectedTargetFile: string | undefined): void {
-    this.fileRenderer.setExpectedTargetFile(expectedTargetFile);
-  }
-
-  /**
-   * Cross-intent PRD-sync grant for the current code-execute task — delegates
-   * to the FileRenderer's Guard-1 exception. Empty for ordinary tasks.
-   */
-  setPrdSyncTargets(targets: string[] | undefined): void {
-    this.fileRenderer.setPrdSyncTargets(targets);
-  }
-
-  /**
-   * Take ownership of the deferred terminal file cards — required before
-   * `finalize()` for a phase that writes afterwards, otherwise finalize
-   * fails them. Pairs with `flushDeferredFileCards`.
-   */
-  claimDeferredFileCardSettlement(): void {
-    this.fileRenderer.claimDeferredFileCardSettlement();
-  }
-
-  /**
-   * Settle the terminal file cards this renderer deferred because it wrote
-   * nothing (`writeImmediately === false`). Called by the phase that performs
-   * the deferred disk write, once the write is done.
-   */
-  async flushDeferredFileCards(resolution: Map<string, string | null>): Promise<void> {
-    await this.fileRenderer.flushDeferredFileCards(resolution);
   }
 
   /**
@@ -311,7 +223,7 @@ export class CommonRenderStrategy implements IRenderStrategy {
   setPlanTaskTitle(title: string): void {
     this.planTaskTitle = title;
   }
-  
+
   /**
    * Enable TaskResponseCard routing for worker graph nodes.
    * When set, `response` actions are routed to task_response cards
@@ -320,12 +232,11 @@ export class CommonRenderStrategy implements IRenderStrategy {
   setParallelTaskName(name: string): void {
     this.parallelTaskName = name;
   }
-  
+
   /**
    * Reset state for stream retry
    */
   reset(): void {
-    this.fileRenderer.reset();
     this.taskResponseIndex = undefined;
     this.taskResponseBuffer = '';
     this.planContentIndex = undefined;

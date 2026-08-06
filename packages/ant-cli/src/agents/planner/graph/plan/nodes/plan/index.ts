@@ -226,9 +226,8 @@ export async function planNode(state: PlanGraphState): Promise<Partial<PlanGraph
   const makeOrchestrator = () => new StreamOrchestrator({
     parser: new XMLStreamParser(),
     renderStrategy: new CommonRenderStrategy(
-      chatAPI, state.language === 'ko' ? 'ko' : 'en', undefined, undefined, false, 'plan',
+      chatAPI, state.language === 'ko' ? 'ko' : 'en',
     ),
-    existingFiles: new Set(),
   });
   let orchestrator = makeOrchestrator();
 

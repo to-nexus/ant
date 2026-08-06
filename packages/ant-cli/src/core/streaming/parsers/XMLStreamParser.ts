@@ -1,10 +1,11 @@
 /**
  * XML-based streaming parser for Anthropic/Cursor-style format
- * 
- * Supports incremental parsing of:
- * - <thinking>...</thinking>
- * - <file path="...">...</file>
- * - <append path="...">...</append>
+ *
+ * Supports incremental parsing of the non-file canonical tags:
+ * <thinking>, <tasks>/<task>, <plan>, <clarify>, <references>,
+ * <learn_command>, plus <function_calls> hallucination suppression.
+ * File authoring is tool-call-only (create_file / append_file /
+ * edit_file) — there is no <file>/<append> parse branch.
  */
 
 import { IStreamParser } from './IStreamParser';
@@ -14,8 +15,6 @@ import { StreamState } from '../state/StreamState';
 
 interface ParserContext {
   insideThinking: boolean;
-  insideFile: boolean;
-  insideAppend: boolean;  // ✅ NEW: <append> tag
   insideTasks: boolean; // ✅ Changed: Now used to track but will emit to response
   /**
    * Inside a single `<task>...</task>` element nested under `<tasks>`.
@@ -37,15 +36,11 @@ interface ParserContext {
   clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
   insideFunctionCalls: boolean;  // ✅ SAFETY: <function_calls> tag (suppress hallucinated XML tool calls)
   insidePlan: boolean;  // <plan> tag (plan node — emit plan_start/plan_content/plan_end)
-  currentFilePath: string | null;
-  currentAppendPath: string | null;  // ✅ NEW
 }
 
 export class XMLStreamParser implements IStreamParser {
   private context: ParserContext = {
     insideThinking: false,
-    insideFile: false,
-    insideAppend: false,  // ✅ NEW
     insideTasks: false,
     insideTask: false,
     taskItemContent: '',
@@ -59,20 +54,10 @@ export class XMLStreamParser implements IStreamParser {
     clarifyStartEmitted: false,  // ✅ NEW
     insideFunctionCalls: false,  // ✅ SAFETY
     insidePlan: false,
-    currentFilePath: null,
-    currentAppendPath: null,  // ✅ NEW
   };
-  
+
   private buffer: string = '';
 
-  // Rolling tail of file-block content while a `<file>` or `<append>` block
-  // is open. Used by `getOpenFileContext()` so callers can show the LLM
-  // exactly where its output was cut on a `max_tokens` truncation. Bounded
-  // — only the last `FILE_TAIL_CAP` chars are kept; older content has
-  // already been written to disk by FileRenderer / FileRegistry.
-  private static readonly FILE_TAIL_CAP = 240;
-  private fileTailBuffer: string = '';
-  
   parse(event: LLMStreamEvent, state: StreamState): ParsedAction[] {
     const actions: ParsedAction[] = [];
     
@@ -585,305 +570,19 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
-      // 17. Check for <file path="..." overwrite="..."?> opening
-      if (!this.context.insideFile) {
-        const fileMatch = this.buffer.match(
-          /<file\s+path="([^"]+)"(?:\s+overwrite="(true|false)")?\s*>/,
-        );
-        if (fileMatch) {
-          const fullMatch = fileMatch[0];
-          const filePath = fileMatch[1];
-          const overwrite = fileMatch[2] === 'true';
-          const startIdx = this.buffer.indexOf(fullMatch);
-
-          this.buffer = this.buffer.substring(startIdx + fullMatch.length);
-          this.context.insideFile = true;
-          this.context.currentFilePath = filePath;
-          this.fileTailBuffer = '';
-
-          actions.push({
-            type: 'file_start',
-            data: {
-              filePath,
-              actionType: 'create',  // Registry will determine if it should be 'edit'
-              overwrite,
-            }
-          });
-          continueParsingLoop = true;
-          continue;
-        }
-      }
-      
-      // 16. Check for </file> closing
-      if (this.context.insideFile && this.buffer.includes('</file>')) {
-        const endIdx = this.buffer.indexOf('</file>');
-        const fileContent = this.buffer.substring(0, endIdx);
-        this.buffer = this.buffer.substring(endIdx + '</file>'.length);
-
-        // Emit remaining content
-        if (fileContent.length > 0) {
-          actions.push({
-            type: 'file_content',
-            data: {
-              filePath: this.context.currentFilePath!,
-              content: fileContent
-            }
-          });
-        }
-
-        actions.push({
-          type: 'file_end',
-          data: { filePath: this.context.currentFilePath! }
-        });
-
-        this.context.insideFile = false;
-        this.context.currentFilePath = null;
-        this.fileTailBuffer = '';
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 17. Accumulate file content (LINE-BASED STREAMING for real-time rendering)
-      if (this.context.insideFile && this.buffer.length > 0) {
-        const lookahead = '</file>';
-        
-        // ✅ SAFETY CHECK: Detect invalid XML tags inside file content
-        // If we encounter other XML tags (tooling, etc), force-close the file
-        const invalidTagPatterns = [
-          '</parameter>',
-          '<parameter',
-          '</invoke>',
-          '<invoke',
-          '<tool_call>',
-          '</tool_call>',
-          '<thinking>',
-          '<tasks>',
-          '<done>'
-        ];
-        
-        for (const invalidTag of invalidTagPatterns) {
-          if (this.buffer.includes(invalidTag)) {
-            console.error(`🚨 [XMLParser] CRITICAL: Found invalid tag "${invalidTag}" inside file content!`);
-            console.error(`   File: ${this.context.currentFilePath}`);
-            console.error(`   This likely means </file> tag was missing from LLM output.`);
-            console.error(`   Forcing file close to prevent corruption.`);
-            
-            // Extract content BEFORE the invalid tag
-            const invalidIdx = this.buffer.indexOf(invalidTag);
-            const validContent = this.buffer.substring(0, invalidIdx).trimEnd();
-            
-            // Emit valid content if any
-            if (validContent.length > 0) {
-              actions.push({
-                type: 'file_content',
-                data: {
-                  filePath: this.context.currentFilePath!,
-                  content: validContent
-                }
-              });
-            }
-            
-            // Force file close
-            actions.push({
-              type: 'file_end',
-              data: { filePath: this.context.currentFilePath! }
-            });
-            
-            this.context.insideFile = false;
-            this.context.currentFilePath = null;
-            
-            // Keep buffer (don't consume the invalid tag, let other parsers handle it)
-            this.buffer = this.buffer.substring(invalidIdx);
-            
-            continueParsingLoop = true;
-            break;
-          }
-        }
-        
-        // If we already handled the invalid tag, skip normal processing
-        if (!this.context.insideFile) {
-          continue;
-        }
-        
-        // ✅ AGGRESSIVE STREAMING: Emit complete lines immediately
-        // Only keep incomplete last line + lookahead in buffer
-        if (this.buffer.length > lookahead.length) {
-          const searchableContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
-          
-          // Find last complete line (ending with \n)
-          const lastNewlineIdx = searchableContent.lastIndexOf('\n');
-          
-          if (lastNewlineIdx >= 0) {
-            // Emit all complete lines (including the trailing \n)
-            const completeLines = searchableContent.substring(0, lastNewlineIdx + 1);
-            this.buffer = this.buffer.substring(completeLines.length);
-
-            actions.push({
-              type: 'file_content',
-              data: {
-                filePath: this.context.currentFilePath!,
-                content: completeLines
-              }
-            });
-            this.fileTailBuffer = (this.fileTailBuffer + completeLines).slice(-XMLStreamParser.FILE_TAIL_CAP);
-            continueParsingLoop = true;  // ✅ Re-check for more lines
-          }
-        }
-        continue;
-      }
-      
-      // 18. Check for <append path="..."> opening
-      if (!this.context.insideAppend) {
-        // `\s*>` tolerance mirrors the <file> pattern above — without it a
-        // single stray space before `>` demoted the whole append body to
-        // plain text with zero error signal.
-        const appendMatch = this.buffer.match(/<append\s+path="([^"]+)"\s*>/);
-        if (appendMatch) {
-          const fullMatch = appendMatch[0];
-          const filePath = appendMatch[1];
-          const startIdx = this.buffer.indexOf(fullMatch);
-
-          this.buffer = this.buffer.substring(startIdx + fullMatch.length);
-          this.context.insideAppend = true;
-          this.context.currentAppendPath = filePath;
-          this.fileTailBuffer = '';
-
-          actions.push({
-            type: 'file_start',
-            data: {
-              filePath,
-              actionType: 'append'
-            }
-          });
-          continueParsingLoop = true;
-          continue;
-        }
-      }
-
-      // 19. Check for </append> closing
-      if (this.context.insideAppend && this.buffer.includes('</append>')) {
-        const endIdx = this.buffer.indexOf('</append>');
-        const appendContent = this.buffer.substring(0, endIdx);
-        this.buffer = this.buffer.substring(endIdx + '</append>'.length);
-
-        // Emit remaining content
-        if (appendContent.length > 0) {
-          actions.push({
-            type: 'file_content',
-            data: {
-              filePath: this.context.currentAppendPath!,
-              content: appendContent
-            }
-          });
-        }
-
-        actions.push({
-          type: 'file_end',
-          data: { filePath: this.context.currentAppendPath! }
-        });
-
-        this.context.insideAppend = false;
-        this.context.currentAppendPath = null;
-        this.fileTailBuffer = '';
-        continueParsingLoop = true;
-        continue;
-      }
-      
-      // 20. Accumulate append content (LINE-BASED STREAMING for real-time rendering)
-      if (this.context.insideAppend && this.buffer.length > 0) {
-        const lookahead = '</append>';
-        
-        // ✅ SAFETY CHECK: Detect invalid XML tags inside append content
-        const invalidTagPatterns = [
-          '</parameter>',
-          '<parameter',
-          '</invoke>',
-          '<invoke',
-          '<tool_call>',
-          '</tool_call>',
-          '<thinking>',
-          '<tasks>',
-          '<done>'
-        ];
-        
-        for (const invalidTag of invalidTagPatterns) {
-          if (this.buffer.includes(invalidTag)) {
-            console.error(`🚨 [XMLParser] CRITICAL: Found invalid tag "${invalidTag}" inside append content!`);
-            console.error(`   File: ${this.context.currentAppendPath}`);
-            console.error(`   Forcing append close to prevent corruption.`);
-            
-            const invalidIdx = this.buffer.indexOf(invalidTag);
-            const validContent = this.buffer.substring(0, invalidIdx).trimEnd();
-            
-            if (validContent.length > 0) {
-              actions.push({
-                type: 'file_content',
-                data: {
-                  filePath: this.context.currentAppendPath!,
-                  content: validContent
-                }
-              });
-            }
-            
-            actions.push({
-              type: 'file_end',
-              data: { filePath: this.context.currentAppendPath! }
-            });
-            
-            this.context.insideAppend = false;
-            this.context.currentAppendPath = null;
-            this.buffer = this.buffer.substring(invalidIdx);
-            
-            continueParsingLoop = true;
-            break;
-          }
-        }
-        
-        if (!this.context.insideAppend) {
-          continue;
-        }
-        
-        // ✅ AGGRESSIVE STREAMING: Emit complete lines immediately
-        // Only keep incomplete last line + lookahead in buffer
-        if (this.buffer.length > lookahead.length) {
-          const searchableContent = this.buffer.substring(0, this.buffer.length - lookahead.length);
-          
-          // Find last complete line (ending with \n)
-          const lastNewlineIdx = searchableContent.lastIndexOf('\n');
-          
-          if (lastNewlineIdx >= 0) {
-            // Emit all complete lines (including the trailing \n)
-            const completeLines = searchableContent.substring(0, lastNewlineIdx + 1);
-            this.buffer = this.buffer.substring(completeLines.length);
-
-            actions.push({
-              type: 'file_content',
-              data: {
-                filePath: this.context.currentAppendPath!,
-                content: completeLines
-              }
-            });
-            this.fileTailBuffer = (this.fileTailBuffer + completeLines).slice(-XMLStreamParser.FILE_TAIL_CAP);
-            continueParsingLoop = true;  // ✅ Re-check for more lines
-          }
-        }
-        continue;
-      }
-
       // 21. General text response handling (outside any XML block)
       if (!this.context.insideThinking && 
           !this.context.insideTasks &&
           !this.context.insideLearnCommand &&
           !this.context.insideClarify &&
           !this.context.insideFunctionCalls &&
-          !this.context.insidePlan &&
-          !this.context.insideFile) {
+          !this.context.insidePlan) {
         
         if (this.buffer.length > 0) {
           // 🎯 STRATEGY: Only emit text when it's SAFE (won't break XML tag parsing)
           
           // 1️⃣ HIGHEST PRIORITY: Check if there's text BEFORE an XML tag
-          // Example: "Here is the code:\n<file path=..." → emit "Here is the code:\n"
+          // Example: "Summary follows:\n<plan>..." → emit "Summary follows:\n"
           // Note: detect/references tags are NOT parsed here — they flow
           // through as normal response so SpecialTagTransformer can format
           // them. Same for the narrative-axis `<reply>` tag (Phase 2 of the
@@ -891,7 +590,7 @@ export class XMLStreamParser implements IStreamParser {
           // including it in this lookahead lets the parser cut free text
           // BEFORE a `<reply>` opens, so the reply body reaches the
           // transformer cleanly.
-          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|profile|plan|file|delete|append|learn_command|clarify|function_calls|done|reply)[\s>])/s);
+          const beforeTagMatch = this.buffer.match(/^(.+?)(?=<(?:thinking|tasks|profile|plan|learn_command|clarify|function_calls|done|reply)[\s>])/s);
           if (beforeTagMatch) {
             const content = beforeTagMatch[1];
             this.buffer = this.buffer.substring(content.length);
@@ -989,22 +688,6 @@ export class XMLStreamParser implements IStreamParser {
         } else {
         }
       }
-      // If inside file, emit as file content
-      else if (this.context.insideFile && this.context.currentFilePath) {
-        // ✅ File content: Always emit (even whitespace, as it may be meaningful)
-        actions.push({
-          type: 'file_content',
-          data: {
-            filePath: this.context.currentFilePath,
-            content: this.buffer
-          }
-        });
-      }
-      // If inside append, DISCARD — partial JSON would corrupt the output file
-      // via the fallback text-append path in FileRenderer
-      else if (this.context.insideAppend && this.context.currentFilePath) {
-        console.warn(`⚠️ [XMLParser] Discarding unterminated <append> block on finalize for ${this.context.currentFilePath}`);
-      }
       // If inside plan, emit remaining content + plan_end
       else if (this.context.insidePlan) {
         if (hasActualContent) {
@@ -1046,8 +729,6 @@ export class XMLStreamParser implements IStreamParser {
   reset(): void {
     this.context = {
       insideThinking: false,
-      insideFile: false,
-      insideAppend: false,
       insideTasks: false,
       insideTask: false,
       taskItemContent: '',
@@ -1061,35 +742,8 @@ export class XMLStreamParser implements IStreamParser {
       clarifyStartEmitted: false,  // ✅ NEW
       insideFunctionCalls: false,  // ✅ SAFETY
       insidePlan: false,
-      currentFilePath: null,
-      currentAppendPath: null,
     };
     this.buffer = '';
-    this.fileTailBuffer = '';
-  }
-
-  /**
-   * Snapshot of the in-flight `<file>` or `<append>` block, if any. Used
-   * by the execute node when an LLM stream reports
-   * `stopReason === 'max_tokens'` so the next round can show the LLM
-   * exactly where its output was cut and resume via `<append>`.
-   *
-   * `tailContent` combines previously-emitted file content (capped to
-   * the most recent ~240 chars) with the un-emitted buffer remainder,
-   * so callers see the full visible tail right up to the cut point.
-   * MUST be called BEFORE `finalize()` — finalize emits the buffer and
-   * clears the block context, losing the path/kind signal.
-   */
-  getOpenFileContext(): { kind: 'file' | 'append'; path: string; tailContent: string } | null {
-    if (this.context.insideFile && this.context.currentFilePath) {
-      const tail = (this.fileTailBuffer + this.buffer).slice(-XMLStreamParser.FILE_TAIL_CAP);
-      return { kind: 'file', path: this.context.currentFilePath, tailContent: tail };
-    }
-    if (this.context.insideAppend && this.context.currentAppendPath) {
-      const tail = (this.fileTailBuffer + this.buffer).slice(-XMLStreamParser.FILE_TAIL_CAP);
-      return { kind: 'append', path: this.context.currentAppendPath, tailContent: tail };
-    }
-    return null;
   }
 }
 

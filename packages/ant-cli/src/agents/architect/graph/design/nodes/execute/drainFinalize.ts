@@ -24,14 +24,14 @@ type DrainInputs = Pick<DesignGraphState, 'recursionCount' | 'recursionLimit' | 
 export interface DrainFinalizeResult<TTool> {
   tools: TTool[];
   /**
-   * `'none'` on the target-not-yet-created drain path: the tools stay
-   * DECLARED and the provider constraint forbids calling them — deleting
-   * the declarations while the history carries tool_calls is the GLM
-   * degeneration trigger (sage-causing-rover axis). The targetExists path
-   * filters to write tools instead (they ARE the exit) and sets no
-   * constraint.
+   * `{ allow: [...] }` while draining: the advertised set narrows to the
+   * write tools that can actually SUCCEED on this task's channel
+   * (targetExists → edit/append; missing target → create/append). The
+   * declarations are narrowed, never deleted outright — deleting them while
+   * the history carries tool_calls is the GLM degeneration trigger
+   * (sage-causing-rover axis); resolveToolChoice keeps ≥1 tool declared.
    */
-  toolChoice?: 'none';
+  toolChoice?: import('../../../../../../core/ports/llm').LLMToolChoice;
   drainFinalizing: boolean;
 }
 
@@ -39,7 +39,7 @@ export interface DrainFinalizeResult<TTool> {
  * Single owner of the `_noOutputCallCount` increment/reset rule. Mirror of the
  * code job's `computeNextNoOutputStreak` (code/nodes/execute/drainFinalize.ts).
  *
- * - Forward output (a `<file>` this turn) → 0.
+ * - Forward output (a successful file write this turn) → 0.
  * - A turn with tool calls, OR a tool-stripped salvage turn that produced
  *   nothing → +1. The `drainFinalizing` clause is load-bearing: once the strip
  *   PERSISTS (this file's header), the tool node stops running, so without
@@ -65,13 +65,13 @@ export function computeNextNoOutputCount(
  *
  * `opts.targetExists` dispatches the drain-time exit affordance on the task's
  * write channel (the same disk-existence signal the prompt builders use for
- * REVISE-vs-generate): an existing target keeps the write tools (edit_file IS
- * the REVISE exit), a not-yet-created target strips ALL tools — its only
- * channel is the `<file>` tag, and a surviving edit_file can never succeed
- * against a missing file, so it becomes a degenerate error-loop attractor
- * instead (sharp-baking-bride RCA: 4× `edit_file` on the unborn spec doc
- * until the breaker). Defaults to `true` (keep write tools) when the caller
- * has no target signal.
+ * REVISE-vs-generate): an existing target advertises edit_file/append_file
+ * (edit_file IS the REVISE exit), a not-yet-created target advertises
+ * create_file/append_file — a surviving edit_file can never succeed against
+ * a missing file, so it becomes a degenerate error-loop attractor instead
+ * (sharp-baking-bride RCA: 4× `edit_file` on the unborn spec doc until the
+ * breaker). Defaults to `true` (keep edit/append) when the caller has no
+ * target signal.
  */
 export function applyDrainFinalization<TTool>(
   state: DrainInputs,
@@ -98,14 +98,20 @@ export function applyDrainFinalization<TTool>(
     ? `Recursion budget nearly exhausted (${remaining} steps left).`
     : `You have explored for ${noOutputCount} turns without writing anything.`;
   // The exit instruction must only advertise channels that can actually
-  // succeed: edit_file against a not-yet-created target errors every time.
+  // succeed: edit_file against a not-yet-created target errors every time,
+  // and create_file against an existing bundle file conflicts (full-file
+  // regeneration from partial context is destructive on REVISE tasks).
+  const salvageTools = targetExists
+    ? ['edit_file', 'append_file']
+    : ['create_file', 'append_file'];
   const exitNote = targetExists
-    ? `Exploration tools are no longer available. Finish NOW from the context you have ` +
-      `already gathered: write the complete artifact body using <append>/<file> tags — or, when the ` +
-      `target file already exists, apply your final edit_file changes — then output <done>true</done>.`
-    : `Tools are no longer available. The target document does not exist yet, so there is ` +
-      `nothing to edit. Write the complete artifact body NOW using the <file> tag from the ` +
-      `context you have already gathered, then output <done>true</done>.`;
+    ? `Exploration tools are no longer available; only edit_file and append_file remain. ` +
+      `Finish NOW from the context you have already gathered: apply your final edit_file ` +
+      `changes (or append_file for tail additions), then output <done>true</done>.`
+    : `Exploration tools are no longer available; only create_file and append_file remain. ` +
+      `The target document does not exist yet, so there is nothing to edit. Write the ` +
+      `complete artifact body NOW by calling create_file (continue with append_file if the ` +
+      `document is large) from the context you have already gathered, then output <done>true</done>.`;
   const finalizeNote = `\n\n[SYSTEM] ${reasonNote} ${exitNote}`;
 
   const lastMsg = messages[messages.length - 1];
@@ -119,27 +125,20 @@ export function applyDrainFinalization<TTool>(
       ];
     }
   }
-  // Strip EXPLORATION tools only when the target exists — write tools ARE the
-  // exit for a REVISE task (its contract is read_file + edit_file, not <file>
-  // regeneration; full-file regeneration of an existing bundle file from
-  // partial context is destructive). A successful drained write resets the
-  // streak via `_turnToolWrites`; `computeNextNoOutputCount`'s drainFinalizing
-  // clause still bounds non-writing turns, so the breaker stays reachable.
+  // Narrow to the write tools that can succeed on this task's channel. A
+  // successful drained write resets the streak via `_turnToolWrites`;
+  // `computeNextNoOutputCount`'s drainFinalizing clause still bounds
+  // non-writing turns, so the breaker stays reachable.
   // `mkdir` is deliberately NOT a survivor: it emits no sideEffects, so it can
   // never satisfy the exit condition, yet it always "succeeds" — during forced
   // finalization it becomes the only rewarding call and traps the model in a
   // no-op loop until the breaker (oat-judging-mound RCA: 4× mkdir → design_no_output).
-  // A not-yet-created target strips everything: no surviving write tool can
-  // succeed against a missing file, and any survivor out-competes the <file>
-  // tag as a tool-call attractor (sharp-baking-bride RCA).
-  const WRITE_TOOL_NAMES = new Set(['edit_file', 'create_file', 'delete_file']);
-  const drainedTools = targetExists
-    ? tools.filter((t: any) => WRITE_TOOL_NAMES.has(t?.name))
-    : tools;
+  // The targetExists split keeps the old sharp-baking-bride guarantee in
+  // tool-protocol form: a missing target never advertises edit_file (the
+  // degenerate error-loop attractor), an existing one never advertises
+  // create_file.
   console.warn(
-    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → ${targetExists ? `exploration tools stripped (${drainedTools.length} write tool(s) kept)` : `toolChoice='none' (target not yet created — <file> tag is the only channel)`}, forcing final output`,
+    `🧯 [Execute] Drain finalization (${recursionTrigger ? `${remaining} steps remaining` : `no-output streak ${noOutputCount}`}) → toolChoice={allow: ${salvageTools.join(', ')}}, forcing final output`,
   );
-  return targetExists
-    ? { tools: drainedTools, drainFinalizing: true }
-    : { tools: drainedTools, toolChoice: 'none', drainFinalizing: true };
+  return { tools, toolChoice: { allow: salvageTools }, drainFinalizing: true };
 }

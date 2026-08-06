@@ -121,7 +121,7 @@ Scope and `MC-XXX` / `RW-XXX` in §4 / §6, both inputs MUST be aligned:
 
 | kind       | Where data lives | Production scope                                                       |
 |------------|------------------|------------------------------------------------------------------------|
-| `external` | `assets/game/<subdir>/<file>` | Production-grade — user-placed sprite export      |
+| `external` | `assets/game/<subdir>/<name>` | Production-grade — user-placed sprite export      |
 | `inline`   | Embedded in JSON (`svg` / `css` / `oscillator`) | Simple-shape / single-tone / short-duration only |
 
 **Inline scope (D21 — Phase 2 css-only policy)**:

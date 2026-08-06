@@ -12,7 +12,7 @@ You have access to tools for exploring assets and existing documents:
 ### Workflow
 
 1. **First**: If you need to understand existing assets or documents, use `list_assets` / `read_file`.
-2. **Then**: Generate the document directly using `<file>` or `<append>` XML tag (see below).
+2. **Then**: Write the document via a `create_file` or `append_file` tool call (see below). The content streams to the user live as the call's arguments generate.
 
 > ⚠️ **IMPORTANT**: Description-driven mode receives NO screenshots and NO Figma file. The directive plus PRD are the design authority.
 
@@ -24,10 +24,10 @@ You have access to tools for exploring assets and existing documents:
 
 ════════════════════════════════════════════════════════════════════════════════
 
-**CRITICAL: You MUST use XML tags for ALL file operations!**
+**CRITICAL: ALL file operations are tool calls (`create_file` / `append_file`)!**
 
 ════════════════════════════════════════════════════════════════════════════════
-## XML Tag Reference for UI Design Documents
+## File-Writing Tool Reference for UI Design Documents
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if (eq detectedMode "refactor")}}
@@ -41,11 +41,11 @@ You have access to tools for exploring assets and existing documents:
 1. You have received the **FULL existing document** in this prompt
 2. Identify the **specific section** that needs modification
 3. **Modify ONLY** the relevant parts (do NOT change unrelated sections)
-4. Output the **COMPLETE modified JSON** using `<file>` tag (this will REPLACE the existing file)
+4. Output the **COMPLETE modified JSON** via `create_file` with `overwrite: true` (this will REPLACE the existing file)
 
 **Example:**
-```xml
-<file path="visual/ui/ant/ui-spec.json">
+```
+create_file(path="visual/ui/ant/ui-spec.json", overwrite=true, content="""
 {
   ... existing content unchanged ...,
   "components": {
@@ -55,38 +55,38 @@ You have access to tools for exploring assets and existing documents:
     }
   }
 }
-</file>
+""")
 ```
 
 **⚠️ KEY POINTS:**
-- Use `<file>` NOT `<append>` (you are REPLACING, not adding)
+- Use `create_file` with `overwrite: true`, NOT `append_file` (you are REPLACING, not adding)
 - Include ALL existing content, only modify the target section
 - Do NOT add new top-level keys (like "technologyCardImageVerification")
 - Modify values WITHIN the existing structure
 
 **DO NOT:**
 - ❌ Add new top-level keys for "verification" or "analysis" results
-- ❌ Use `<append>` (this adds new keys instead of modifying existing ones)
+- ❌ Call `append_file` (this adds new keys instead of modifying existing ones)
 - ❌ Change the document structure (only modify values)
 
 **DO:**
 - ✅ Update specific values within existing sections
 - ✅ Preserve all unmodified content exactly as is
-- ✅ Use `<file>` to replace the entire document with modifications
+- ✅ Use one `create_file` call (with `overwrite: true`) to replace the entire document with modifications
 
 {{else}}
 
 {{#if forceAppend}}
 ### Parallel Chapter (Append Mode)
 
-**⚠️ You MUST use `<append>` tag. The system deep-merges your output with other chapters.**
+**⚠️ You MUST call `append_file`. The system deep-merges your output with other chapters.**
 
-```xml
-<append path="visual/ui/{{targetFile}}">
+```
+append_file(path="visual/ui/{{targetFile}}", content="""
 {
   "YOUR_CATEGORY": { ... }
 }
-</append>
+""")
 ```
 
 ### Parallel Chapter Scope Constraint
@@ -101,28 +101,28 @@ You have access to tools for exploring assets and existing documents:
 
 **Detection**: Task ID is `ui-tokens`, `ui-assets`, `ui-spec`, or ends with `-ch1`
 
-Use `<file>` tag:
+Call `create_file`:
 
 **For JSON files (ui-tokens.json, ui-assets.json):**
-```xml
-<file path="visual/ui/ant/ui-tokens.json">
+```
+create_file(path="visual/ui/ant/ui-tokens.json", content="""
 {
   "colors": { ... },
   "typography": { ... }
 }
-</file>
+""")
 ```
 
 **For ui-spec.json:**
-```xml
-<file path="visual/ui/ant/ui-spec.json">
+```
+create_file(path="visual/ui/ant/ui-spec.json", content="""
 {
   "layout": { ... },
   "sections": {
     "hero": { ... }
   }
 }
-</file>
+""")
 ```
 
 **Filename determination:**
@@ -136,36 +136,36 @@ Use `<file>` tag:
 
 **Detection**: Task ID contains `-ch2`, `-ch3`, `-ch4`, etc.
 
-**⚠️ CRITICAL: If continuing a document, you MUST use `<append>`, NOT `<file>`!**
+**⚠️ CRITICAL: If continuing a document, you MUST call `append_file`, NOT `create_file`!**
 
-Use `<append>` tag:
+Call `append_file`:
 
 **For JSON files (ui-tokens.json, ui-assets.json):**
-```xml
-<append path="visual/ui/ant/ui-tokens.json">
+```
+append_file(path="visual/ui/ant/ui-tokens.json", content="""
 {
   "newCategory": { ... }
 }
-</append>
+""")
 ```
 The system will automatically merge this into the existing JSON.
 
 **For ui-spec.json:**
-```xml
-<append path="visual/ui/ant/ui-spec.json">
+```
+append_file(path="visual/ui/ant/ui-spec.json", content="""
 {
   "sections": {
     "newSection": { ... }
   }
 }
-</append>
+""")
 ```
 
 **Examples**:
-- `ui-tokens-ch1` or `ui-tokens` → Use `<file path="visual/ui/ant/ui-tokens.json">` (JSON format)
-- `ui-tokens-ch2` → Use `<append path="visual/ui/ant/ui-tokens.json">` (merge into existing JSON)
-- `ui-assets-ch2` → Use `<append path="visual/ui/ant/ui-assets.json">` (merge into existing JSON)
-- `ui-spec-ch3` → Use `<append path="visual/ui/ant/ui-spec.json">` (merge into existing JSON)
+- `ui-tokens-ch1` or `ui-tokens` → `create_file(path="visual/ui/ant/ui-tokens.json", ...)` (JSON format)
+- `ui-tokens-ch2` → `append_file(path="visual/ui/ant/ui-tokens.json", ...)` (merge into existing JSON)
+- `ui-assets-ch2` → `append_file(path="visual/ui/ant/ui-assets.json", ...)` (merge into existing JSON)
+- `ui-spec-ch3` → `append_file(path="visual/ui/ant/ui-spec.json", ...)` (merge into existing JSON)
 
 {{/if}}
 {{/if}}
@@ -174,56 +174,56 @@ The system will automatically merge this into the existing JSON.
 
 ### Simple Rules
 
-1. **First chapter** (`-ch1` or no suffix) → `<file>` tag
-2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag
+1. **First chapter** (`-ch1` or no suffix) → `create_file`
+2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `append_file`
 3. **Path prefix**: Always `visual/ui/`
 4. **One file per category**: All ui-tokens chapters → `ui-tokens.json`
 
 ### ❌ DO NOT
 
-```xml
-<!-- WRONG: Using <file> for chapter 2 -->
-<file path="visual/ui/ant/ui-tokens.json">  ← Will OVERWRITE existing content!
+```
+// WRONG: Calling create_file for chapter 2
+create_file(path="visual/ui/ant/ui-tokens.json", ...)  ← Conflicts with existing content!
 
-<!-- WRONG: Wrong path (UI tokens belong under visual/ui/ant/, not the plan or codebase tree) -->
-<file path="codebase/ui-tokens.json">
+// WRONG: Wrong path (UI tokens belong under visual/ui/ant/, not the plan or codebase tree)
+create_file(path="codebase/ui-tokens.json", ...)
 
-<!-- WRONG: Creating separate files per chapter -->
-<file path="visual/ui/ant/ui-tokens-ch2.json">  ← All chapters go to same file!
+// WRONG: Creating separate files per chapter
+create_file(path="visual/ui/ant/ui-tokens-ch2.json", ...)  ← All chapters go to same file!
 ```
 
 ### ✅ CORRECT
 
-```xml
-<!-- Task: ui-tokens-ch1 (FIRST) -->
-<file path="visual/ui/ant/ui-tokens.json">
+```
+// Task: ui-tokens-ch1 (FIRST)
+create_file(path="visual/ui/ant/ui-tokens.json", content="""
 {
   "colors": {
     "primary": { "blue": "#1E40AF" },
     "bg": { "dark": "#1A1A1A", "white": "#FFFFFF" }
   }
 }
-</file>
+""")
 ```
 
-```xml
-<!-- Task: ui-tokens-ch2 (CONTINUATION) - merge into existing JSON -->
-<append path="visual/ui/ant/ui-tokens.json">
+```
+// Task: ui-tokens-ch2 (CONTINUATION) - merge into existing JSON
+append_file(path="visual/ui/ant/ui-tokens.json", content="""
 {
   "typography": {
     "heading": { "family": "Inter, sans-serif", "xl": { "size": "48px", "weight": 700 } }
   }
 }
-</append>
+""")
 ```
 
-```xml
-<!-- Task: ui-tokens-ch3 (CONTINUATION) -->
-<append path="visual/ui/ant/ui-tokens.json">
+```
+// Task: ui-tokens-ch3 (CONTINUATION)
+append_file(path="visual/ui/ant/ui-tokens.json", content="""
 {
   "spacing": { "sm": "8px", "md": "16px", "lg": "24px" }
 }
-</append>
+""")
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -365,11 +365,11 @@ ui-spec.json documents **WHAT** to build, not **HOW** to build it.
 
 Before outputting, verify:
 
-**XML Tag Selection**:
+**File-Writing Tool Selection**:
 {{#if forceAppend}}
-- [ ] Used `<append>` (parallel chapter mode)
+- [ ] Called `append_file` (parallel chapter mode)
 {{else}}
-- [ ] Used `<file>` for first chapter (task ID has no `-ch` suffix or ends with `-ch1`)
+- [ ] Called `create_file` for first chapter (task ID has no `-ch` suffix or ends with `-ch1`)
 {{/if}}
 - [ ] Path starts with `visual/ui/`
 - [ ] Filename matches category (`ui-tokens.json`, `ui-assets.json`, or `ui-spec.json`)
@@ -402,17 +402,18 @@ Before outputting, verify:
 
 **Rules:**
 1. Output `<done>true</done>` ONLY after:
-   - Document content has been generated with `<file>` or `<append>` tag
+   - Document content has been written via `create_file` or `append_file`
    - You have no more tool calls to make
 
 2. **Do NOT output `<done>true</done>` if:**
    - You just made a tool call (wait for the result first)
-   - You haven't generated the document yet
+   - You haven't written the document yet
 
 3. **Typical flow:**
    ```
    Turn 1 (optional): list_assets() / read_file(prd) → Wait
-   Turn 2: <file>...</file> or <append>...</append> + <done>true</done>
+   Turn 2: create_file(...) or append_file(...) → Wait
+   Turn 3: <done>true</done>
    ```
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**

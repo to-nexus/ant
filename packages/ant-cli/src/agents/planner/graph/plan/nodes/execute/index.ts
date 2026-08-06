@@ -4,14 +4,15 @@
  * The authoring phase. Consumes ONLY `directive + planText` on a fresh
  * NODE_EXECUTE channel — the plan-loop research transcript is severed, so the
  * research momentum / auditor-persona tail that used to drift the monolith
- * never reaches authoring. Streams the document (`<file>` in generate mode,
- * `edit_file` in refactor mode), writes to disk, records the session run, and
- * finalizes inline (no `learn` tail node).
+ * never reaches authoring. Authors the document via TOOL CALLS (`create_file`
+ * + `append_file` in generate mode, `edit_file` in refactor mode — executed
+ * by the tool node, live-rendered via ToolFileStreamer), records the session
+ * run, and finalizes inline (no `learn` tail node).
  *
  * There is no clarify here — clarify lives in the plan node. There is no
  * authoring-turn self-loop (plan-job-valiant-pebble) — the context is already
- * clean and re-anchored, so a missing `<file>` in generate mode is a genuine
- * terminal error.
+ * clean and re-anchored, so a generate run with zero successful create_file
+ * calls is a genuine terminal error.
  */
 
 import * as path from 'path';
@@ -33,6 +34,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { plannerToolsForMode } from '../tools';
 import { getEstimatingLabel } from '../../../../../common/graph/timing/estimatingLabels';
 import { StreamOrchestrator } from '../../../../../../core/streaming/StreamOrchestrator';
+import { ToolFileStreamer } from '../../../../../../core/streaming/ToolFileStreamer';
 import { XMLStreamParser } from '../../../../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../../../../core/streaming/strategies/CommonRenderStrategy';
 import { buildAssistantMessage } from '../../../../../common/tool/messageBuilder';
@@ -59,12 +61,12 @@ export function buildAuthoringMessage(directive: string, targets: string[], mode
   if (targets.length > 1) {
     const list = targets.join(', ');
     return isKorean
-      ? `아래 지시에 따라 기획 문서들을 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 그대로 옮기지 말고 문서 섹션으로 변환하세요. 다음 파일들을 **각각 하나의 \`<file path="...">\` 태그**로 출력하고, 섹션을 파일 간 겹치지 않게(MECE) 배분하세요 — 각 파일은 완결되어야 합니다: ${list}\n\n지시(원문):\n${directive}`
-      : `Author the planning documents per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce it verbatim — transform it into document sections. Emit **one \`<file path="...">\` tag per file** for exactly these files, partitioning the sections across them with NO overlap (MECE) — each file must be complete: ${list}\n\nDirective (verbatim):\n${directive}`;
+      ? `아래 지시에 따라 기획 문서들을 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 그대로 옮기지 말고 문서 섹션으로 변환하세요. 다음 파일들을 **각각 하나의 \`create_file\` 도구 호출**로 정확히 해당 경로에 작성하고, 섹션을 파일 간 겹치지 않게(MECE) 배분하세요 — 각 파일은 완결되어야 합니다: ${list}\n\n지시(원문):\n${directive}`
+      : `Author the planning documents per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce it verbatim — transform it into document sections. Write **one \`create_file\` tool call per file** at exactly these paths, partitioning the sections across them with NO overlap (MECE) — each file must be complete: ${list}\n\nDirective (verbatim):\n${directive}`;
   }
   return isKorean
-    ? `아래 지시에 따라 기획 문서를 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 브리프나 분석 내용을 그대로 옮기지 말고 문서 섹션으로 변환하세요. 완성된 문서 전체를 하나의 \`<file path="${primary}">\` 태그 안에 출력하세요.\n\n지시(원문):\n${directive}`
-    : `Author the planning document per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce the brief or any analysis verbatim — transform it into the document's sections. Emit the complete document inside a single \`<file path="${primary}">\` tag.\n\nDirective (verbatim):\n${directive}`;
+    ? `아래 지시에 따라 기획 문서를 작성하세요. 시스템 프롬프트의 브리프(관찰/결정 사항)를 근거로 삼되, 브리프나 분석 내용을 그대로 옮기지 말고 문서 섹션으로 변환하세요. 완성된 문서 전체를 \`create_file\` 도구 호출(path: "${primary}")로 작성하세요. 문서가 매우 길면 첫 청크를 create_file로, 이어지는 청크를 append_file로 작성하세요.\n\n지시(원문):\n${directive}`
+    : `Author the planning document per the directive below. Use the brief in the system prompt (observations/decisions) as your anchor, but do NOT reproduce the brief or any analysis verbatim — transform it into the document's sections. Write the complete document via a \`create_file\` tool call with path "${primary}" (for a very long document, write the first chunk with create_file and continue with append_file).\n\nDirective (verbatim):\n${directive}`;
 }
 
 export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGraphState>> {
@@ -151,27 +153,32 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     tokenManager: execTokenManager,
   });
 
-  // generate → `<file>` write path (no edit_file); refactor → edit_file.
+  // generate → create_file/append_file write path (no edit_file); refactor → edit_file.
   // Already wire-shaped (shared catalog schemas + bespoke edit_file reshaped).
   const toolDefinitions = plannerToolsForMode(planMode);
 
   // No-output salvage: after NO_OUTPUT_HARD_CAP − MARGIN tool rounds with no
-  // <file> write, strip tools so the model must author now (a tool-less round
+  // file write, strip tools so the model must author now (a tool-less round
   // writes the document or hits the writer-integrity guard). cyan-catching-cedar.
   const { tools: streamToolDefinitions, toolChoice: drainToolChoice } = applyPlanDrainFinalization(state, messages, toolDefinitions, 'execute');
 
   const chatAPI = getChatAPIClient();
   const parser = new XMLStreamParser();
   const renderStrategy = new CommonRenderStrategy(
-    chatAPI, state.language === 'ko' ? 'ko' : 'en', undefined, undefined, false, 'plan',
+    chatAPI, state.language === 'ko' ? 'ko' : 'en',
   );
-  const orchestrator = new StreamOrchestrator({ parser, renderStrategy, existingFiles: new Set() });
+  const orchestrator = new StreamOrchestrator({ parser, renderStrategy });
 
   let responseText = '';
   const toolCalls: Array<{ id: string; name: string; args: Record<string, any> }> = [];
   const isFirstCall = nodeExecute.length === 0;
 
   await chatAPI.showChatStatus('placeholder');
+
+  // Live rendering of file-writing TOOL CALLS (create_file / append_file /
+  // edit_file): the plan document streams into its card / virtual editor tab
+  // as the arguments generate.
+  let toolStreamer = new ToolFileStreamer(chatAPI);
 
   try {
     applyEstimatedInputTokensFromMessages(state as any, messages);
@@ -186,10 +193,12 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       if (event.type === 'retry') {
         responseText = '';
         toolCalls.length = 0;
+        toolStreamer = new ToolFileStreamer(chatAPI);
         continue;
       }
       maybeUpdatePhaseTokenUsage(state, event);
       await orchestrator.processEvent(event);
+      toolStreamer.handleEvent(event);
       if (event.type === 'text' && event.text) responseText += event.text;
       if (event.type === 'tool_use' && event.toolUse) {
         const { id, name, input } = event.toolUse;
@@ -218,6 +227,9 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     throw error;
   }
 
+  // Flush queued live-card emissions before any finalize path below.
+  await toolStreamer.settle();
+
   const updatedHistory: ConversationMessage[] = [...nodeExecute];
   if (nodeExecute.length === 0) {
     updatedHistory.push({ role: 'user', content: buildAuthoringMessage(state.directive || '', targetPaths, planMode, state.language === 'ko') });
@@ -242,15 +254,11 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
       recursionCount,
       _activePhase: 'execute',
       _subagentJoinRedo: false,
-      // No <file> written this round (tool-only) — advance the no-output window.
+      // No document written this round (exploration tools only) — advance the no-output window.
       _noOutputCallCount: (state._noOutputCallCount || 0) + 1,
     };
   }
 
-  // This phase writes AFTER finalize (the registry is only complete once the
-  // parser buffer flushes), so claim the deferred terminal file cards before
-  // finalize sweeps them as failures. Every exit below settles them.
-  renderStrategy.claimDeferredFileCardSettlement();
   await orchestrator.finalize(true);
 
   // ── Join barrier (explore subagent): the LLM finished authoring while
@@ -281,9 +289,6 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
           state.deps.workflowUpdate.exitNode(state._httpJobId, 'execute', 0);
         }
         console.log(`🔀 [Planner:Execute] Finalization withheld — subagent reports delivered, re-entering execute`);
-        // Nothing was written this pass and the re-entry re-emits the
-        // document, so the owed cards resolve to nothing.
-        await renderStrategy.flushDeferredFileCards(new Map());
         return {
           conversations: { [CONV_KEYS.NODE_EXECUTE]: updatedHistory },
           pendingToolCalls: [],
@@ -300,41 +305,33 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     }
   }
 
-  // ── Authoring done — extract the document(s), write to disk, record session.
-  //    Generate mode may emit MULTIPLE `<file>` tags (a MECE plan split); write
-  //    every recognized file. Bound targets accept only files whose basename
-  //    matches a declared target (honoring the plan/ dir); unbound accepts any
-  //    safe LLM-emitted path (dusk-mounding-pilot fallback). ──
-  const boundTargets = state.resolvedAction?.target ?? [];
+  // ── Authoring done — the documents were written to disk BY THE TOOLS
+  //    (create_file / append_file, executed in the tool node; edit_file in
+  //    refactor mode). The tool node accumulated `_authoredDocPaths` from
+  //    successful writes; read them back for the session record. Terminal
+  //    file cards were settled at tool-execution time. ──
   const writtenFiles: Array<{ relPath: string; content: string }> = [];
-  // LLM-emitted path → the path it actually lands on (null = rejected). The
-  // FileRenderer deferred its terminal file cards (this phase runs with
-  // `writeImmediately: false`), and settles them against this map below —
-  // so the card the FE promotes into an editor tab names the written path,
-  // not the emitted one, and only after the bytes exist.
-  const cardResolution = new Map<string, string | null>();
   let resolvedTargetRelPath = getTargetPath(state);
   let generatedDocument: string | undefined;
 
   if (planMode !== 'refactor') {
-    const files = orchestrator.getRegistry().getAllFiles().filter(f => (f.content ?? '').trim().length > 0);
-    const boundByBasename = new Map(boundTargets.map(t => [path.basename(t), t]));
-    for (const f of files) {
-      let relPath: string | undefined;
-      if (boundByBasename.size > 0) {
-        relPath = boundByBasename.get(path.basename(f.path));
-      } else if (isSafeStagingPath(f.path)) {
-        relPath = f.path; // unbound — accept any safe LLM-emitted path
-      }
-      if (!relPath) {
-        console.warn(`⚠️ [Planner:Execute] Skipping <file> "${f.path}" — not a declared target / unsafe path.`);
-        cardResolution.set(f.path, null);
+    const authored = state._authoredDocPaths || [];
+    for (const relPath of authored) {
+      if (!isSafeStagingPath(relPath)) {
+        console.warn(`⚠️ [Planner:Execute] Skipping authored path "${relPath}" — unsafe staging path.`);
         continue;
       }
-      cardResolution.set(f.path, relPath);
-      writtenFiles.push({ relPath, content: f.content });
+      try {
+        const content = await fsPromises.readFile(path.join(state.featurePath, relPath), 'utf-8');
+        if (content.trim().length > 0) writtenFiles.push({ relPath, content });
+      } catch {
+        console.warn(`⚠️ [Planner:Execute] Authored path "${relPath}" not readable — skipping.`);
+      }
     }
     generatedDocument = writtenFiles.length > 0 ? writtenFiles.map(w => w.content).join('\n\n') : undefined;
+    if (writtenFiles.length > 0) {
+      resolvedTargetRelPath = writtenFiles[0].relPath; // primary for session record
+    }
   } else if (resolvedTargetRelPath) {
     // refactor: edits were applied via edit_file; read back the file for session metadata.
     const editTargetPath = path.join(state.featurePath, resolvedTargetRelPath);
@@ -346,40 +343,6 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     }
   }
 
-  const persistedRelPaths = new Set<string>();
-  try {
-    if (writtenFiles.length > 0 && planMode !== 'refactor') {
-      if (state.deps?.kanbanUpdate?.setEstimatingActivity) {
-        state.deps.kanbanUpdate.setEstimatingActivity(getEstimatingLabel('write', state._uiLocale || 'en'), 'write');
-      }
-      for (const { relPath, content } of writtenFiles) {
-        const targetAbsPath = path.join(state.featurePath, relPath);
-        try {
-          await fsPromises.mkdir(path.dirname(targetAbsPath), { recursive: true });
-          await fsPromises.writeFile(targetAbsPath, content, 'utf-8');
-          persistedRelPaths.add(relPath);
-          console.log(`📝 [Planner:Execute] Written ${content.length} chars to ${relPath}`);
-        } catch (error: any) {
-          console.error(`❌ [Planner:Execute] Failed to write document: ${error.message}`);
-          throw error;
-        }
-        notifyFileTree(state, relPath);
-      }
-      resolvedTargetRelPath = writtenFiles[0].relPath; // primary for session record
-    }
-  } finally {
-    // Settle the deferred terminal file cards against what actually reached
-    // disk — the FE promotes a `file_create` straight into an editor tab and
-    // fetches the path, so a card may only name a file that now exists.
-    // `finally` so a mid-loop write failure still settles instead of
-    // stranding the streaming preview tab.
-    const settled = new Map<string, string | null>();
-    for (const [emittedPath, relPath] of cardResolution) {
-      settled.set(emittedPath, relPath && persistedRelPaths.has(relPath) ? relPath : null);
-    }
-    await renderStrategy.flushDeferredFileCards(settled);
-  }
-
   if (generatedDocument && resolvedTargetRelPath) {
     // One run entry per turn (combined char count); refine-impact per doc.
     await recordSessionRun(state, planMode, resolvedTargetRelPath, generatedDocument);
@@ -388,18 +351,19 @@ export async function executeNode(state: PlanGraphState): Promise<Partial<PlanGr
     }
   }
 
-  // Writer integrity guard — in generate mode at least one `<file>` MUST have
-  // been emitted. The context is clean and re-anchored, so a miss is a genuine
-  // terminal error (no authoring-turn self-loop — that was the monolith's crutch).
+  // Writer integrity guard — in generate mode at least one document MUST have
+  // been written via create_file. The context is clean and re-anchored, so a
+  // miss is a genuine terminal error (no authoring-turn self-loop — that was
+  // the monolith's crutch).
   if (writtenFiles.length === 0 && planMode === 'generate') {
     const missTarget = resolvedTargetRelPath ?? '(unresolved)';
     console.error(
-      `❌ [Planner:Execute] NO <file> artifact for target "${missTarget}" — response was not wrapped in a <file> tag. Nothing written to disk.`,
+      `❌ [Planner:Execute] NO document written for target "${missTarget}" — no successful create_file call this run. Nothing written to disk.`,
     );
     try {
       const notice = state.language === 'ko'
-        ? `\n\n> ⚠️ 문서가 저장되지 않았습니다 — 응답이 \`<file>\` 형식으로 출력되지 않았습니다. 다시 시도해 주세요.`
-        : `\n\n> ⚠️ No document was saved — the response was not emitted as a \`<file>\` document. Please try again.`;
+        ? `\n\n> ⚠️ 문서가 저장되지 않았습니다 — create_file 도구 호출이 이루어지지 않았습니다. 다시 시도해 주세요.`
+        : `\n\n> ⚠️ No document was saved — no create_file tool call was made. Please try again.`;
       await chatAPI.sendLLMEvent({ type: 'text', text: notice });
     } catch (err) {
       console.warn(`⚠️ [Planner:Execute] Failed to surface no-artifact notice:`, err);

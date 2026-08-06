@@ -81,7 +81,7 @@ export class FileSystemAdapter implements FileSystemPort {
     const fullPath = this.resolveAbsolute(relativePath);
 
     // Single gate for every string-authoring surface (create_file, edit_file,
-    // <file>-tag streaming, design append, SharedFileBuffer flush): a utf-8
+    // append_file, SharedFileBuffer flush): a utf-8
     // string write to a binary-extension target can only produce garbage or —
     // when the content came from a utf-8 read of real binary — a U+FFFD
     // round-trip that destroys the file (the Duck.glb mojibake incident).

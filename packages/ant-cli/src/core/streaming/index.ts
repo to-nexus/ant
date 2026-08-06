@@ -1,25 +1,27 @@
 /**
  * Core streaming system for real-time LLM response processing
- * 
+ *
  * @example
  * ```typescript
  * // In any agent node:
  * import { StreamOrchestrator, XMLStreamParser, CommonRenderStrategy } from '@core/streaming';
- * 
+ *
  * const orchestrator = new StreamOrchestrator({
  *   parser: new XMLStreamParser(),
  *   renderStrategy: new CommonRenderStrategy(chatAPI),
- *   existingFiles: new Set(['src/App.tsx', 'package.json'])
  * });
- * 
+ *
  * // Process LLM stream
  * for await (const event of llmStream) {
  *   await orchestrator.processEvent(event);
  * }
- * 
+ *
  * const result = await orchestrator.finalize();
- * console.log('Streamed files:', result.streamedFiles);
+ * console.log('Raw response:', result.raw);
  * ```
+ *
+ * File authoring is tool-call-only (`create_file` / `append_file` /
+ * `edit_file`) — see `ToolFileStreamer` for the live rendering surface.
  */
 
 // Main orchestrator
@@ -36,14 +38,12 @@ export type { IRenderStrategy } from './strategies/IRenderStrategy';
 
 // State management
 export { StreamState } from './state/StreamState';
-export { FileRegistry } from './state/FileRegistry';
 
 // Types
 // NOTE: LLMStreamEvent is now exported from core/ports/llm.ts (unified)
 export type {
   ParsedAction,
   ParsedActionType,
-  StreamResult,
-  FileStreamInfo
+  StreamResult
 } from './types';
 

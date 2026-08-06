@@ -408,7 +408,9 @@ describe('E2E: Design spec', () => {
       result.user,
       'spec variant identity (<spec_specialization>) should appear in user prompt',
     ).toContain(FP.DESIGN_SPEC);
-    expect(result.sections.injections).toContain('Output Tag Contract');
+    // The always-on policy partial renders under its two-channel heading
+    // (tag-only "Output Tag Contract" retired with the tool-call protocol).
+    expect(result.sections.injections).toContain('Output Channel Contract');
   });
 });
 

@@ -96,7 +96,7 @@ derivation MUST cite those IDs:
 
 | kind       | Where data lives | Production scope                                                       |
 |------------|------------------|------------------------------------------------------------------------|
-| `external` | `assets/game/<subdir>/<file>` | Production-grade — user-placed                |
+| `external` | `assets/game/<subdir>/<name>` | Production-grade — user-placed                |
 | `inline`   | Embedded in JSON (`svg` / `css` / `oscillator`) | Simple-shape / single-tone / short-duration only |
 
 **Inline scope (D21 — Phase 2 css-only policy)**:

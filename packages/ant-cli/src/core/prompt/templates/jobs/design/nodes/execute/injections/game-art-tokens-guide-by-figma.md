@@ -61,8 +61,10 @@ All assets and spec entries reference these tokens by dot notation.
 
 ### Output Format
 
-```xml
-<file path="visual/game-art/ant/game-art-tokens.json">
+Write the catalog via a `create_file` tool call:
+
+```
+create_file(path="visual/game-art/ant/game-art-tokens.json", content="""
 {
   "_meta": { "gameArtTier": { "concept": "...", "perspective": "2d" } },
   "palette": { ... },
@@ -70,7 +72,7 @@ All assets and spec entries reference these tokens by dot notation.
   "lighting": { ... },
   "motionTone": { ... }
 }
-</file>
+""")
 ```
 
 ### Quality Criteria

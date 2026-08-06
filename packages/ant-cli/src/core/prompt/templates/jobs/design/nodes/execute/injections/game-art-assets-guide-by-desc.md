@@ -123,7 +123,7 @@ minting a new one.
 {
   "id": "<stable-id>",
   "kind": "external",
-  "src": "assets/game/<subdir>/<file>",
+  "src": "assets/game/<subdir>/<name>",
   "format": "svg" | "png" | "jpg" | "webp" | "json" | "glb" | "gltf",
   "rendering": "sprite" | "graphics-blit" | "div",
   "fallback": {
@@ -176,29 +176,29 @@ Marker derivation:
 ### Output Format
 
 {{#if forceAppend}}
-**Parallel category task**: use `<append>` to merge your category.
+**Parallel category task**: call `append_file` to merge your category.
 
-```xml
-<append path="visual/game-art/ant/game-art-assets.json">
+```
+append_file(path="visual/game-art/ant/game-art-assets.json", content="""
 {
   "<your-category>": [
     /* entries */
   ]
 }
-</append>
+""")
 ```
 {{else}}
-**First task**: use `<file>` with `_meta`.
+**First task**: call `create_file` with `_meta`.
 
-```xml
-<file path="visual/game-art/ant/game-art-assets.json">
+```
+create_file(path="visual/game-art/ant/game-art-assets.json", content="""
 {
   "_meta": { "audioScope": "procedural-only", "visualScope": "baseline" },
   "<your-category>": [
     /* entries */
   ]
 }
-</file>
+""")
 ```
 {{/if}}
 

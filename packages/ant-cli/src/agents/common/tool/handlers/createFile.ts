@@ -2,9 +2,9 @@
  * create_file handler — context-injected version
  *
  * Creates a NEW file (fails if it already exists — parallel-safe via
- * WorkerFileSystem.writeNewFile conflict detection). The `<file>` streaming
- * tag remains the preferred authoring path (real-time streaming to the user);
- * this tool is the sanctioned fallback for tool-loop contexts.
+ * WorkerFileSystem.writeNewFile conflict detection). This is THE authoring
+ * channel for new files (tool-call protocol; ToolFileStreamer renders the
+ * argument stream live).
  */
 
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
@@ -19,9 +19,9 @@ import { packageManagerMutex } from './runCommand';
 
 export async function handleCreateFile(
   ctx: ToolExecutionContext,
-  args: { path: string; content: string },
+  args: { path: string; content: string; overwrite?: boolean },
 ): Promise<ToolResult> {
-  const { path: filePath, content } = args;
+  const { path: filePath, content, overwrite } = args;
   const fileSystem = ctx.fileSystem;
 
   if (!filePath) {
@@ -49,6 +49,9 @@ export async function handleCreateFile(
     // from sibling workers. Non-manifest creates take the fast path
     // (no mutex, no scan).
     const isManifestCreate = isDepManifestPath(resolved.displayPath);
+    // Replaced line count on a deliberate overwrite — feeds the `+N / -X`
+    // chip pair on the chat card (set inside performCreate).
+    let diffBeforeLines: number | undefined;
 
     const performCreate = async (): Promise<ToolResult | null> => {
       if (isManifestCreate) {
@@ -66,7 +69,26 @@ export async function handleCreateFile(
       }
 
       const workerFS = fileSystem as any;
-      if (typeof workerFS.writeNewFile === 'function') {
+      if (overwrite === true) {
+        // Deliberate full replacement (explicit `overwrite: true`).
+        // Capture the replaced line count BEFORE the write for the chat
+        // card's `+N / -X` chip pair.
+        const prior = await fileSystem.readFile(resolved.fsPath).catch(() => null);
+        diffBeforeLines = typeof prior === 'string' && prior.length > 0
+          ? prior.split('\n').length
+          : undefined;
+        if (typeof workerFS.writeOverwrite === 'function') {
+          const result = await workerFS.writeOverwrite(resolved.fsPath, content);
+          if (!result.success) {
+            console.log(`⚠️ [CreateFile] Overwrite conflict: ${result.error}`);
+            const msg = result.error || `File "${resolved.displayPath}" was modified by another task. Read it and merge via edit_file.`;
+            await ctx.chatStatus.failFileCreation(filePath, msg);
+            return { content: msg, error: msg };
+          }
+        } else {
+          await fileSystem.writeFile(resolved.fsPath, content);
+        }
+      } else if (typeof workerFS.writeNewFile === 'function') {
         const result = await workerFS.writeNewFile(resolved.fsPath, content);
         if (!result.success) {
           console.log(`⚠️ [CreateFile] Conflict: ${result.error}`);
@@ -75,6 +97,12 @@ export async function handleCreateFile(
           return { content: msg, error: msg };
         }
       } else {
+        const exists = await fileSystem.fileExists?.(resolved.fsPath);
+        if (exists) {
+          const msg = `File "${resolved.displayPath}" already exists. Use edit_file to modify it, or create_file with overwrite: true for a deliberate full replacement.`;
+          await ctx.chatStatus.failFileCreation(filePath, msg);
+          return { content: msg, error: msg };
+        }
         await fileSystem.writeFile(resolved.fsPath, content);
       }
       return null;
@@ -85,9 +113,13 @@ export async function handleCreateFile(
       : await performCreate();
     if (earlyReturn) return earlyReturn;
 
-    console.log(`✅ [CreateFile] Created ${resolved.displayPath} (${content.length} chars)`);
+    console.log(`✅ [CreateFile] ${overwrite ? 'Overwrote' : 'Created'} ${resolved.displayPath} (${content.length} chars)`);
 
-    await ctx.chatStatus.completeFileCreation(resolved.displayPath, content);
+    await ctx.chatStatus.completeFileCreation(
+      resolved.displayPath,
+      content,
+      diffBeforeLines !== undefined ? { diffBeforeLines } : undefined,
+    );
     ctx.recordFileTouch?.('create', resolved.displayPath);
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
@@ -96,8 +128,7 @@ export async function handleCreateFile(
       // domains (`architecture/`, `visual/`, `meta/evals/`) are surfaced
       // with an unseen badge. The gate is path-prefix only (no job-type
       // branch) so the rule applies wherever a tool-call write lands inside
-      // a workspace — matching `chat.routes.ts` / `transfer.routes.ts` /
-      // FileRenderer.
+      // a workspace — matching `chat.routes.ts` / `transfer.routes.ts`.
       const dp = resolved.displayPath;
       if (
         'addUnseenArtifacts' in ctx.fileTreeUpdate &&
@@ -109,10 +140,14 @@ export async function handleCreateFile(
       }
     }
 
-    const resultMsg = `File created successfully: ${resolved.displayPath} (${content.length} chars)`;
+    const resultMsg = overwrite
+      ? `File overwritten successfully: ${resolved.displayPath} (${content.length} chars)`
+      : `File created successfully: ${resolved.displayPath} (${content.length} chars)`;
 
     const sideEffects: ToolSideEffect[] = [
-      { type: 'fileCreated', path: resolved.displayPath },
+      overwrite
+        ? { type: 'fileModified', path: resolved.displayPath }
+        : { type: 'fileCreated', path: resolved.displayPath },
     ];
 
     const manifestSuffix = isDepManifestPath(resolved.displayPath) ? DEP_MANIFEST_INSTALL_HINT : '';

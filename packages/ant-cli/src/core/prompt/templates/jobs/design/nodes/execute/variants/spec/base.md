@@ -112,43 +112,42 @@ You are REVISING the existing spec document injected above (`# Existing Spec Doc
 - Every section the directive does not affect MUST be reproduced verbatim in your output.
 - Only drop a section when the directive sanctions its removal.
 
-Output the FULL revised document using a `<file>` tag:
+Write the FULL revised document via a `create_file` tool call with `overwrite: true`:
 
-```xml
-<file path="architecture/spec/{{targetFile}}">
+```
+create_file(path="architecture/spec/{{targetFile}}", overwrite=true, content="""
 # Spec: {{title}}
 
 [Full revised document — directive delta applied, unaffected sections preserved verbatim]
-</file>
+""")
 ```
 
-**Constraint**: Output the FULL modified document using `<file>` tag, not a diff or partial update.
+**Constraint**: Output the FULL modified document in one `create_file` call, not a diff or partial update.
 
-**Constraint**: `<append>` is FORBIDDEN in refactor mode — the document already exists and `<file>` replaces it atomically. Appending produces a second complete document below the first, corrupting the artifact for the consuming code job. This holds even when the requested change is an addition (a new section): re-emit the whole document with the addition in place via `<file>`.
+**Constraint**: `append_file` is FORBIDDEN in refactor mode — the document already exists and `create_file` with `overwrite: true` replaces it atomically. Appending produces a second complete document below the first, corrupting the artifact for the consuming code job. This holds even when the requested change is an addition (a new section): re-emit the whole document with the addition in place via `create_file`.
 
 {{else}}
 {{#if isFirstSection}}
-This is the **first section** of the spec document. Create the document using a `<file>` tag:
+This is the **first section** of the spec document. Create the document via a `create_file` tool call:
 
-```xml
-<file path="architecture/spec/{{targetFile}}">
+```
+create_file(path="architecture/spec/{{targetFile}}", content="""
 # Spec: {{title}}
 
 [Write content for this section only — see CURRENT TASK SCOPE below]
-</file>
+""")
 ```
 
 {{else}}
-This is a **continuation section**. The document already exists. Use `<append>` tag to add this section:
+This is a **continuation section**. The document already exists. Call `append_file` to add this section:
 
-```xml
-<append path="architecture/spec/{{targetFile}}">
-
+```
+append_file(path="architecture/spec/{{targetFile}}", content="""
 [Write content for this section only — see CURRENT TASK SCOPE below]
-</append>
+""")
 ```
 
-⚠️ **CRITICAL: Use `<append>`, NOT `<file>`, for a continuation section.** (Content is never lost — the system converts a stray `<file>` on an existing document into an append as a safety net — but the correct tag keeps the document structure clean, so treat this as binding.) The existence state stated here is authoritative — do NOT verify it with tool calls before writing.
+⚠️ **CRITICAL: Call `append_file`, NOT `create_file`, for a continuation section — the content belongs at the document's physical end, and `create_file` on an existing document conflicts.** The existence state stated here is authoritative — do NOT verify it with tool calls before writing.
 
 {{/if}}
 {{/if}}

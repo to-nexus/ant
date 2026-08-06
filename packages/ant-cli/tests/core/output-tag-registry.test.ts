@@ -116,11 +116,23 @@ describe('OutputTagRegistry — Phase 1 inventory parity', () => {
   });
 
   it('every artifact-axis stream tag XMLStreamParser handles is registered', () => {
-    const expected = ['file', 'append', 'edit', 'delete', 'plan'];
+    const expected = ['plan'];
     const names = new Set(allTagNames());
     for (const e of expected) {
       expect(names.has(e), `missing artifact tag "${e}"`).toBe(true);
     }
+  });
+
+  it('file mutation has no XML tag — tool-call only (create_file/append_file/edit_file/delete_file)', () => {
+    // <edit>/<delete> were registered but never parsed: models emitting them
+    // had output silently swallowed as prose. <file>/<append> were retired
+    // with the tag channel (tool-call authoring protocol). All four must
+    // stay deleted.
+    const names = new Set(allTagNames());
+    expect(names.has('file')).toBe(false);
+    expect(names.has('append')).toBe(false);
+    expect(names.has('edit')).toBe(false);
+    expect(names.has('delete')).toBe(false);
   });
 
   it('control axis covers <done> and <clarify>', () => {

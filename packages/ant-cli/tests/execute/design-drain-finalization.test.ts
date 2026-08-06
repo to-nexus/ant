@@ -3,14 +3,18 @@
  * persistence hardened after sandy-building-dryad).
  *
  * When the recursion budget approaches the router drain threshold OR the
- * no-output streak nears the circuit breaker, execute turns run tool-less
- * with an "emit your final artifact now" note, so an imminent pause salvages
- * a written document instead of discarding the exploration. Contracts locked
+ * no-output streak nears the circuit breaker, execute turns run with the
+ * advertised tool set narrowed (via `toolChoice: { allow: [...] }` — the
+ * declarations are returned UNCHANGED; resolveToolChoice narrows at the
+ * adapter) to the write tools that can succeed on the task's channel, plus
+ * an "emit your final artifact now" note, so an imminent pause salvages a
+ * written document instead of discarding the exploration. Contracts locked
  * here:
  *
- *   1. UNIT — `applyDrainFinalization` strips tools + appends the
- *      finalization note (string AND block-array user content), fires only
- *      below `RECURSION_DRAIN_THRESHOLD + DRAIN_FINALIZE_MARGIN` (or at
+ *   1. UNIT — `applyDrainFinalization` keeps the tools array intact, returns
+ *      the allow-list constraint + appends the finalization note (string AND
+ *      block-array user content), fires only below
+ *      `RECURSION_DRAIN_THRESHOLD + DRAIN_FINALIZE_MARGIN` (or at
  *      no-output streak ≥ NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN),
  *      PERSISTS while a trigger holds (sandy-building-dryad: the one-shot
  *      salvage was answered with prose, tools came back, and the model read
@@ -42,20 +46,22 @@ function userMsg(content: string | any[]) {
 }
 
 describe('applyDrainFinalization — unit', () => {
-  it('strips tools and appends the note when the budget crosses the finalize threshold', () => {
+  it('narrows toolChoice to the write tools and appends the note when the budget crosses the finalize threshold', () => {
     const messages = [userMsg('do the task')];
     const state = { recursionLimit: 100, recursionCount: 100 - (RECURSION_DRAIN_THRESHOLD + DRAIN_FINALIZE_MARGIN) + 1 };
-    const { tools, drainFinalizing } = applyDrainFinalization(state, messages, TOOLS);
+    const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(state, messages, TOOLS);
 
     expect(drainFinalizing).toBe(true);
-    // Exploration tools stripped (write tools would be kept — see the
-    // dedicated keep-write-tools case in execute-tool-write-completion.test.ts).
-    expect(tools).toEqual([]);
+    // Declarations returned UNCHANGED — deleting them while the history
+    // carries tool_calls is the GLM degeneration trigger (sage-causing-rover).
+    // The narrowing happens via the allow-list at resolveToolChoice.
+    expect(tools).toBe(TOOLS);
+    expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
     const content = messages[0].content as any[];
     expect(Array.isArray(content)).toBe(true);
     expect(content[0]).toEqual({ type: 'text', text: 'do the task' });
     expect(content[1].text).toContain('Finish NOW');
-    // Channel-complete salvage note: XML tags AND the REVISE edit_file path.
+    // Tool-protocol salvage note: the REVISE edit_file exit + the done signal.
     expect(content[1].text).toContain('edit_file');
     expect(content[1].text).toContain('<done>true</done>');
   });
@@ -85,57 +91,62 @@ describe('applyDrainFinalization — unit', () => {
   });
 
   it('persists across turns while the recursion trigger holds (not one-shot)', () => {
-    // Same task, next turn: budget only tightened. The strip must hold —
-    // returning the tools after one salvage turn let the model resume
-    // reading until the breaker fired with zero output (sandy-building-dryad).
+    // Same task, next turn: budget only tightened. The narrowing must hold —
+    // returning the full tool surface after one salvage turn let the model
+    // resume reading until the breaker fired with zero output
+    // (sandy-building-dryad).
     for (const count of [99, 100]) {
       const messages = [userMsg('go')];
-      const { tools, drainFinalizing } = applyDrainFinalization(
+      const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
         { recursionLimit: 100, recursionCount: count },
         messages,
         TOOLS,
       );
       expect(drainFinalizing).toBe(true);
-      expect(tools).toEqual([]);
+      expect(tools).toBe(TOOLS);
+      expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
       expect((messages[0].content as any[])[1].text).toContain('Finish NOW');
     }
   });
 
   it('fires on the no-output streak trigger and persists until the streak resets', () => {
     const margin = NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN;
-    // Below the margin: tools untouched.
+    // Below the margin: unconstrained.
     {
       const messages = [userMsg('go')];
-      const { tools, drainFinalizing } = applyDrainFinalization(
+      const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
         { _noOutputCallCount: margin - 1 },
         messages,
         TOOLS,
       );
       expect(drainFinalizing).toBe(false);
       expect(tools).toBe(TOOLS);
+      expect(toolChoice).toBeUndefined();
     }
-    // At and above the margin (every remaining pre-breaker turn): stripped.
+    // At and above the margin (every remaining pre-breaker turn): narrowed.
     for (const streak of [margin, margin + 1, NO_OUTPUT_HARD_CAP - 1]) {
       const messages = [userMsg('go')];
-      const { tools, drainFinalizing } = applyDrainFinalization(
+      const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
         { _noOutputCallCount: streak },
         messages,
         TOOLS,
       );
       expect(drainFinalizing).toBe(true);
-      expect(tools).toEqual([]);
+      expect(tools).toBe(TOOLS);
+      expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
       expect((messages[0].content as any[])[1].text).toContain(`${streak} turns without writing`);
     }
-    // A file write resets the streak channel → strip releases.
+    // A file write resets the streak channel → the constraint releases.
     {
       const messages = [userMsg('go')];
-      const { tools, drainFinalizing } = applyDrainFinalization(
+      const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
         { _noOutputCallCount: 0 },
         messages,
         TOOLS,
       );
       expect(drainFinalizing).toBe(false);
       expect(tools).toBe(TOOLS);
+      expect(toolChoice).toBeUndefined();
     }
   });
 
@@ -150,7 +161,9 @@ describe('applyDrainFinalization — unit', () => {
 // actually-viable write channel. sharp-baking-bride: a generate-mode spec task
 // (target not yet on disk) entered drain with edit_file surviving; edit_file
 // can never succeed against a missing file, so the model looped degenerate
-// failing edits to the breaker instead of streaming the <file> tag.
+// failing edits to the breaker instead of writing the document. Under the
+// tool-call protocol the guarantee is expressed as an allow-list: a missing
+// target never allows edit_file, an existing one never allows create_file.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 describe('applyDrainFinalization — targetExists dispatch', () => {
@@ -162,41 +175,45 @@ describe('applyDrainFinalization — targetExists dispatch', () => {
   ];
   const drainState = { recursionCount: 0, recursionLimit: 0, _noOutputCallCount: NO_OUTPUT_HARD_CAP - DRAIN_FINALIZE_MARGIN };
 
-  it('target absent → tools stay declared with toolChoice=none; note offers only the <file> tag', () => {
+  it('target absent → allow-list is create_file/append_file (never edit_file); note teaches create_file', () => {
     const messages = [userMsg('go')];
     const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       drainState, messages, MIXED_TOOLS, { targetExists: false },
     );
     expect(drainFinalizing).toBe(true);
-    // Declarations preserved; the provider constraint forbids the calls
-    // (sage-causing-rover axis — deleting declarations while the history
-    // carries tool_calls is the GLM degeneration trigger).
+    // Declarations preserved; the provider-level allow-list carries the
+    // narrowing (sage-causing-rover axis — deleting declarations while the
+    // history carries tool_calls is the GLM degeneration trigger).
     expect(tools).toBe(MIXED_TOOLS);
-    expect(toolChoice).toBe('none');
+    expect(toolChoice).toEqual({ allow: ['create_file', 'append_file'] });
     const note = (messages[0].content as any[])[1].text as string;
-    expect(note).toContain('<file>');
+    expect(note).toContain('create_file');
+    expect(note).toContain('append_file');
     expect(note).toContain('<done>true</done>');
+    // A missing target must never advertise the edit exit — it errors every time.
     expect(note).not.toContain('edit_file');
-    expect(note).not.toContain('<append>');
   });
 
-  it('target exists → write tools survive and the note keeps the edit_file exit', () => {
+  it('target exists → allow-list is edit_file/append_file (never create_file); note keeps the edit_file exit', () => {
     const messages = [userMsg('go')];
     const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
       drainState, messages, MIXED_TOOLS, { targetExists: true },
     );
     expect(drainFinalizing).toBe(true);
-    // Write tools ARE the exit here — no call constraint.
-    expect(toolChoice).toBeUndefined();
-    expect((tools as any[]).map((t) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
+    expect(tools).toBe(MIXED_TOOLS);
+    // create_file against an existing bundle file conflicts (destructive
+    // full-file regeneration on REVISE) — it is never in the exists-side list.
+    expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
     const note = (messages[0].content as any[])[1].text as string;
     expect(note).toContain('edit_file');
+    expect(note).not.toContain('create_file');
   });
 
-  it('omitted opts defaults to targetExists=true (write tools kept — REVISE-safe)', () => {
+  it('omitted opts defaults to targetExists=true (edit/append allow-list — REVISE-safe)', () => {
     const messages = [userMsg('go')];
-    const { tools } = applyDrainFinalization(drainState, messages, MIXED_TOOLS);
-    expect((tools as any[]).map((t) => t.name).sort()).toEqual(['delete_file', 'edit_file']);
+    const { tools, toolChoice } = applyDrainFinalization(drainState, messages, MIXED_TOOLS);
+    expect(tools).toBe(MIXED_TOOLS);
+    expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
   });
 });
 

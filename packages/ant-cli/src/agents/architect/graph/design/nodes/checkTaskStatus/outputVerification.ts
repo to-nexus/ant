@@ -13,7 +13,7 @@
  * dir, loaded PRE-EXISTING stale files, and reported "Design document created"
  * with the `spec_complete` "Start Development" card.
  *
- * The gate fails loud instead: when the run wrote no `<file>` for the task
+ * The gate fails loud instead: when the run landed no file write for the task
  * (`_taskFilesWritten === 0`) AND the declared target is absent/empty on disk,
  * the task is NOT completed — a resumable `design_no_output` interruption is
  * raised so the user re-runs rather than building on stale specs.
@@ -35,9 +35,9 @@ interface ExistenceFileSystem {
 /**
  * True when the task's declared target file already exists on disk — the
  * REVISE signal for the execute node's drain-time affordance dispatch
- * (`applyDrainFinalization`): an existing target keeps the write tools
- * (edit_file IS the REVISE exit), a not-yet-created target must fall back to
- * the `<file>` tag only. Shares the path-assembly convention with
+ * (`applyDrainFinalization`): an existing target keeps edit/append
+ * (edit_file IS the REVISE exit), a not-yet-created target advertises
+ * create/append instead. Shares the path-assembly convention with
  * `isNoOutputCompletion` above. Defaults to `true` (keep write tools) when
  * the task declares no target or the fs signal is unavailable.
  */

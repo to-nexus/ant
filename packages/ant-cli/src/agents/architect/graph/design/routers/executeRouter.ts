@@ -25,7 +25,7 @@ import { DesignGraphState } from '../state';
 export const RECURSION_DRAIN_THRESHOLD = 30;
 /**
  * No-output circuit breaker: divert to checkTaskStatus after this many
- * CONSECUTIVE execute turns produced no `<file>`. Bounds degenerate read-only
+ * CONSECUTIVE execute turns produced no file write. Bounds degenerate read-only
  * loops (heavy-bridging-onion: 375 turns / ~2.9M tokens) far below the
  * recursion cap. Set well above the execute node's advisory `hardWarnAt`
  * (7 / 10 / 14) so legitimate read-heavy exploration is untouched. When the

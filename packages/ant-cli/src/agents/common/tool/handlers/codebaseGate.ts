@@ -64,7 +64,7 @@ export function rejectCodebaseMutate(
     `${toolName} blocked: "${path}" is under codebase/ which is read-only in this phase. ` +
     `Code changes belong to the code job's execute phase. ` +
     `For document updates, target an artifact path (architecture/, plan/, assets/, visual/, meta/, sessions/) instead. ` +
-    `For describing the intended code change, write it into the spec / plan document via <file>/<append>/<edit>.`;
+    `For describing the intended code change, write it into the spec / plan document via create_file / append_file / edit_file.`;
   return { content: msg, error: msg };
 }
 

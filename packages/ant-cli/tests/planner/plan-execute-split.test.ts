@@ -75,23 +75,23 @@ describe('routeAfterExecute — execute node outcomes', () => {
 describe('execute authoring message — re-anchored on directive + brief', () => {
   const directive = 'Redesign jhcompany.co.kr to be more stylish';
 
-  it('generate mode (single target): contains the verbatim directive + the <file> write instruction', () => {
+  it('generate mode (single target): contains the verbatim directive + the create_file write instruction', () => {
     const msg = buildAuthoringMessage(directive, ['plan/prd.md'], 'generate', false);
     expect(msg).toContain(directive);
-    expect(msg).toContain('<file path="plan/prd.md">');
+    expect(msg).toMatch(/`create_file` tool call with path "plan\/prd\.md"/);
     // The anchor is the brief, and the model must transform (not transcribe) it.
     expect(msg).toMatch(/brief/i);
     expect(msg).toMatch(/do NOT reproduce/i);
   });
 
-  it('generate mode (multi target): instructs one <file> per doc + MECE partition', () => {
+  it('generate mode (multi target): instructs one create_file per doc + MECE partition', () => {
     const msg = buildAuthoringMessage(directive, ['plan/overview.md', 'plan/auth.md'], 'generate', false);
     expect(msg).toContain('plan/overview.md, plan/auth.md');
-    expect(msg).toMatch(/one `<file path="\.\.\.">` tag per file/i);
+    expect(msg).toMatch(/one `create_file` tool call per file/i);
     expect(msg).toMatch(/MECE|no overlap/i);
   });
 
-  it('refactor mode: instructs edit_file at the target, not a <file> rewrite', () => {
+  it('refactor mode: instructs edit_file at the target, not a full-document rewrite', () => {
     const msg = buildAuthoringMessage(directive, ['plan/prd.md'], 'refactor', false);
     expect(msg).toContain('edit_file');
     expect(msg).toContain(directive);
@@ -191,12 +191,12 @@ describe('prompt re-partition — plan observes, execute authors', () => {
     expect(read('execute/variants/default/rules.md')).not.toMatch(/MUST inspect the codebase/);
   });
 
-  it('plan rules own the <plan> brief seal contract; execute owns the <file> Output Protocol', () => {
+  it('plan rules own the <plan> brief seal contract; execute owns the create_file Output Protocol', () => {
     const planRules = read('plan/variants/default/rules.md');
     const execRules = read('execute/variants/default/rules.md');
     expect(planRules).toMatch(/seal the brief inside a single `<plan>` tag/);
-    expect(planRules).not.toMatch(/wrapped in its OWN `<file>`/);
-    expect(execRules).toMatch(/wrapped in its OWN `<file>`/);
+    expect(planRules).not.toMatch(/with its OWN `create_file` call/);
+    expect(execRules).toMatch(/with its OWN `create_file` call/);
   });
 
   it('plan deliverable is a brief, NOT the document (drift guard)', () => {

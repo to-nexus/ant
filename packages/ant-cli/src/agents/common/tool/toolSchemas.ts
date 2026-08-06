@@ -66,7 +66,10 @@ export const ARCHITECT_TOOLS = {
 
   edit_file: {
     name: 'edit_file',
-    description: `Edit an existing file by replacing old_str with new_str. The old_str must match the current file content EXACTLY (including whitespace and indentation). Use content from your context (retrieved files, previous reads). If edit fails with "not found", call read_file to get current content and retry.`,
+    // path first in the schema + "emit path first": the shell of the live
+    // edit card opens as soon as the path argument closes (tool_use_delta).
+    eagerInputStreaming: true,
+    description: `Edit an existing file by replacing old_str with new_str. Emit the path argument first. The old_str must match the current file content EXACTLY (including whitespace and indentation). Use content from your context (retrieved files, previous reads). If edit fails with "not found", call read_file to get current content and retry.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -89,7 +92,10 @@ export const ARCHITECT_TOOLS = {
 
   create_file: {
     name: 'create_file',
-    description: 'Create a NEW file. The `<file>` streaming tag is the preferred way to author files — its content streams to the user in real time — so default to the tag; use this tool as a fallback when emitting the tag is impractical in the current turn. Fails if the file already exists; use edit_file to modify existing files.',
+    // Live rendering contract: arguments stream as fragments; the file card
+    // opens on `path` and content renders line-by-line as it is generated.
+    eagerInputStreaming: true,
+    description: 'Create a NEW file — the standard way to author a file. Emit the path argument first, then the complete content; the content streams to the user in real time as you generate it. Fails if the file already exists (use edit_file to modify, or pass overwrite: true only when a full deliberate replacement of an existing file is intended). For very large files, emit an initial create_file and continue with append_file calls.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -101,6 +107,30 @@ export const ARCHITECT_TOOLS = {
           type: 'string',
           description: 'The complete content of the new file',
         },
+        overwrite: {
+          type: 'boolean',
+          description: 'Set true ONLY to deliberately replace an existing file in full. Without it, writing to an existing path fails with a conflict to prevent silent clobber.',
+        },
+      },
+      required: ['path', 'content'],
+    },
+  },
+
+  append_file: {
+    name: 'append_file',
+    eagerInputStreaming: true,
+    description: 'Append content to the END of an EXISTING file, verbatim. Two uses: (1) continuing a large file you started with create_file (chunked authoring — keep each call a coherent chunk ending at a natural boundary), and (2) resuming a file whose creation was cut off by the output-token limit. Emit the path argument first. Only for content that belongs at the physical end of the file — for middle insertions use edit_file.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Path of the existing file to append to, relative to feature root. Code files MUST use codebase/ prefix.',
+        },
+        content: {
+          type: 'string',
+          description: 'Content appended verbatim to the end of the file (no separators are added — include leading newline if needed)',
+        },
       },
       required: ['path', 'content'],
     },
@@ -109,7 +139,7 @@ export const ARCHITECT_TOOLS = {
   copy_file: {
     name: 'copy_file',
     description:
-      'Place an EXISTING file at another path, byte-for-byte. Use this whenever a file must be PLACED rather than authored — most often moving a user-supplied asset out of the workspace asset pool (assets/game/**, assets/service/**) into the location the running app loads it from (e.g. a static-asset root). This is the ONLY way to write a binary file: `<file>`, create_file and edit_file all write utf-8 and refuse binary targets, and a text round-trip corrupts the bytes irreversibly. Overwrites the destination if it exists, creates parent directories, and verifies integrity on both sides — a corrupt source is refused rather than copied. Do NOT use it to author new content, and do NOT hand-copy bytes you read from a file.',
+      'Place an EXISTING file at another path, byte-for-byte. Use this whenever a file must be PLACED rather than authored — most often moving a user-supplied asset out of the workspace asset pool (assets/game/**, assets/service/**) into the location the running app loads it from (e.g. a static-asset root). This is the ONLY way to write a binary file: create_file and edit_file write utf-8 and refuse binary targets, and a text round-trip corrupts the bytes irreversibly. Overwrites the destination if it exists, creates parent directories, and verifies integrity on both sides — a corrupt source is refused rather than copied. Do NOT use it to author new content, and do NOT hand-copy bytes you read from a file.',
     input_schema: {
       type: 'object' as const,
       properties: {

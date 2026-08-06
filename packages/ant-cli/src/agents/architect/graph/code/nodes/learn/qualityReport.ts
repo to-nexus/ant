@@ -38,8 +38,8 @@ export async function generateQualityReport(
 
   try {
     // Collect files touched this job from git (uncommitted changes inside `codebase/`).
-    // Reads content from disk — the LLM's writes have already been flushed by
-    // FileRenderer before `learn` runs.
+    // Reads content from disk — the file tool handlers write synchronously,
+    // so everything has landed before `learn` runs.
     let generatedFiles: Array<{ path: string; content: string }> = [];
     try {
       const changed = await gitPort.getChangedFiles();

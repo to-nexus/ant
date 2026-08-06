@@ -2,61 +2,31 @@
 
 ## File Operations
 
-### XML Streaming (Real-time Output)
+**Every file write is a TOOL CALL. There is no XML file tag — file content
+placed in text output is NOT saved.** Content streams to the user live as
+you generate the tool call's arguments.
 
 #### Create File
-```xml
-<file path="codebase/src/App.tsx">
-content here...
-</file>
+```
+create_file(
+  path="codebase/src/App.tsx",
+  content="complete file content..."
+)
 ```
 **Use when**: Creating a new file that doesn't exist
+**Requirements**:
+- Emit `path` first, then `content`
+- Fails if the file already exists; pass `overwrite=true` ONLY for a deliberate full replacement
+- For a very large file, write an opening chunk with `create_file` and continue with `append_file`
 
 #### Append to File
-```xml
-<append path="codebase/src/utils.ts">
-additional content...
-</append>
 ```
-**Use when**: Adding content at the end of an existing file
-
-#### 🚨 CRITICAL: XML Tag Closing Rules
-
-**RULE 1**: `<file>` MUST be closed with `</file>`. `<append>` MUST be closed with `</append>`.
-
-**RULE 2**: NEVER use `</parameter>` or `</invoke>` to close these tags!
-
-```xml
-<!-- ✅ CORRECT -->
-<file path="codebase/src/App.tsx">
-content...
-</file>
-
-<!-- ❌ WRONG - Using tool call syntax -->
-<file path="codebase/src/App.tsx">
-content...
-</parameter>   ← WRONG! Breaks parser!
-</invoke>      ← WRONG! Not a tool call!
-
-<!-- ❌ WRONG - Missing closing tag -->
-<file path="codebase/src/App.tsx">
-content...
-<done>true</done>  ← Missing </file>!
+append_file(
+  path="codebase/src/utils.ts",
+  content="additional content..."
+)
 ```
-
-**RULE 3**: Output `<done>true</done>` AFTER closing all file tags:
-
-```xml
-<!-- ✅ CORRECT sequence -->
-<file path="codebase/src/App.tsx">
-content...
-</file>
-<done>true</done>
-```
-
----
-
-### Tool Actions (Request/Response)
+**Use when**: Continuing a large file you started with `create_file`, resuming a write cut off by the output limit, or adding content that belongs at the file's physical end
 
 #### Read File
 ```
@@ -108,17 +78,17 @@ list_files(directory="codebase/src", pattern="*.tsx")
 
 | Action | Use |
 |--------|-----|
-| Create new file | `<file>` |
-| Add to end | `<append>` |
+| Create new file | `create_file` tool |
+| Continue a large file / add to end | `append_file` tool |
 | Modify existing | `edit_file` tool |
 | See content not in context | `read_file` tool |
 | Remove file | `delete_file` tool |
 | Place / replace a file whose bytes already exist (assets: models, audio, images, fonts) | `copy_file` tool |
 
-**CRITICAL**: Never use `<file>` on existing files - it overwrites everything!
+**RULE**: Output `<done>true</done>` only AFTER the write tools' results confirm success — never in the same response as a tool call.
 
-**CRITICAL**: Never author or edit a binary file as text. `<file>`, `create_file` and
+**CRITICAL**: Never call `create_file` on an existing file without `overwrite=true` — the write conflicts to prevent silent clobber; modifying is `edit_file`'s job.
+
+**CRITICAL**: Never author or edit a binary file as text. `create_file` and
 `edit_file` write utf-8 and will refuse a binary target; forcing bytes through a text
 round-trip destroys the file irreversibly. Placing an existing binary is `copy_file`'s job.
-
-

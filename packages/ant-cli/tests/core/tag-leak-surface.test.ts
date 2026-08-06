@@ -18,7 +18,6 @@ import {
   detectCrossAxisLeak,
 } from '../../src/core/streaming/OutputTagRegistry';
 import { CommonRenderStrategy } from '../../src/core/streaming/strategies/CommonRenderStrategy';
-import { FileRegistry } from '../../src/core/streaming/state/FileRegistry';
 import type { ParsedAction } from '../../src/core/streaming/types';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -112,7 +111,7 @@ describe('Surface A — parallel task_response card', () => {
       type: 'response',
       data: { content: '<reply>Hello, world.</reply>' },
     };
-    await strategy.render(replyAction, new FileRegistry(new Set<string>()));
+    await strategy.render(replyAction);
     await strategy.finalize(true);
 
     const terminal = findCalls(
@@ -131,14 +130,11 @@ describe('Surface A — parallel task_response card', () => {
     const strategy = new CommonRenderStrategy(fake, 'en');
     strategy.setParallelTaskName('worker-task');
 
-    const reg = new FileRegistry(new Set<string>());
     await strategy.render(
       { type: 'response', data: { content: '<rep' } },
-      reg,
     );
     await strategy.render(
       { type: 'response', data: { content: 'ly>Hello.</reply>' } },
-      reg,
     );
     await strategy.finalize(true);
 
@@ -163,7 +159,6 @@ describe('Surface A — parallel task_response card', () => {
         type: 'response',
         data: { content: 'context here <reply>answer</reply> trailer' },
       },
-      new FileRegistry(new Set<string>()),
     );
     await strategy.finalize(true);
 
@@ -189,17 +184,15 @@ describe('Surface B — plan card metadata', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { fake, calls } = makeChatAPIFake();
     const strategy = new CommonRenderStrategy(fake, 'en');
-    const reg = new FileRegistry(new Set<string>());
 
-    await strategy.render({ type: 'plan_start', data: {} } as ParsedAction, reg);
+    await strategy.render({ type: 'plan_start', data: {} } as ParsedAction);
     await strategy.render(
       {
         type: 'plan_content',
         data: { content: '{"task":"x", "leak":"<reply>nope</reply>"}' },
       } as ParsedAction,
-      reg,
     );
-    await strategy.render({ type: 'plan_end', data: {} } as ParsedAction, reg);
+    await strategy.render({ type: 'plan_end', data: {} } as ParsedAction);
 
     const planTerminal = findCalls(
       calls,
@@ -218,15 +211,13 @@ describe('Surface B — plan card metadata', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { fake, calls } = makeChatAPIFake();
     const strategy = new CommonRenderStrategy(fake, 'en');
-    const reg = new FileRegistry(new Set<string>());
 
     const validBody = '{"task":{"id":"t","goal":"g"}}';
-    await strategy.render({ type: 'plan_start', data: {} } as ParsedAction, reg);
+    await strategy.render({ type: 'plan_start', data: {} } as ParsedAction);
     await strategy.render(
       { type: 'plan_content', data: { content: validBody } } as ParsedAction,
-      reg,
     );
-    await strategy.render({ type: 'plan_end', data: {} } as ParsedAction, reg);
+    await strategy.render({ type: 'plan_end', data: {} } as ParsedAction);
 
     const planTerminal = findCalls(
       calls,
@@ -246,13 +237,11 @@ describe('Surface B — plan card metadata', () => {
 
 describe('Surface C — file card metadata vs disk', () => {
   it('strips nested <reply> from completeFileCreation card metadata while leaving disk content untouched', () => {
-    // Disk write happens via FileSystemPort upstream; this surface test
-    // only proves the chat-card payload has been scrubbed before it
-    // reaches the projector. The disk-vs-card separation is locked by
-    // the FileRenderer call shape: `fileSystem.writeFile(fsPath, raw)`
-    // happens before `chatAPI.completeFileCreation(filePath, stripped)`,
-    // and the registry helper `stripRegisteredTags` is the SSOT for the
-    // stripped form.
+    // Disk write happens via the file tool handlers upstream; this surface
+    // test only proves the chat-card payload has been scrubbed before it
+    // reaches the projector. The disk write happens before
+    // `chatAPI.completeFileCreation(filePath, stripped)`, and the registry
+    // helper `stripRegisteredTags` is the SSOT for the stripped form.
     const raw = '# Spec\n\nbody <reply>chat-only</reply> body\n';
     expect(stripRegisteredTags(raw)).toBe('# Spec\n\nbody  body\n');
     expect(stripRegisteredTags(raw)).not.toMatch(/<reply>/);
@@ -282,7 +271,6 @@ describe('Surface D — thinking stream', () => {
           blockEnd: false,
         },
       } as ParsedAction,
-      new FileRegistry(new Set<string>()),
     );
 
     const thinkingEvents = findCalls(

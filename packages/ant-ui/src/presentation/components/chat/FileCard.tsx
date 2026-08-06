@@ -347,7 +347,7 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
                 {content.metadata.reason}
               </div>
             </div>
-          ) : operation === 'edit' && (diffBefore || diffAfter) ? (
+          ) : operation === 'edit' && (diffBefore || diffAfter || (isActive && hasFileContent)) ? (
             <div
               ref={contentRef}
               className="max-h-[80px] overflow-y-auto scrollbar-thin"
@@ -369,13 +369,16 @@ export const FileCard = memo(function FileCard({ line, pending, operation }: Fil
                   </pre>
                 </div>
               )}
-              {diffAfter && (
+              {/* Terminal after-block, or the live-streaming new_str while the
+                  edit tool call is still generating (pending-edit variant —
+                  streamedOutput arrives via streamFileDiff card_output deltas). */}
+              {(diffAfter || (isActive && hasFileContent)) && (
                 <div style={{ background: GREEN_WASH }}>
                   <pre
                     className="px-3 py-1.5 text-[11px] whitespace-pre-wrap break-words"
                     style={{ lineHeight: '1.5', color: 'var(--status-done-fg)', fontFamily: 'var(--font-mono)' }}
                   >
-                    {diffAfter.split('\n').map((line, i) => (
+                    {(diffAfter ?? fileContent).split('\n').map((line, i) => (
                       <div key={i} className="flex">
                         <span className="mr-2" style={{ color: 'var(--status-done-fg)' }}>+</span>
                         <span>{line}</span>

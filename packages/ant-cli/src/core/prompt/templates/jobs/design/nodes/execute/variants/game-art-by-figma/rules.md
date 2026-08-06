@@ -15,7 +15,7 @@ You have access to the Figma MCP tools plus asset / file tools:
 ### Workflow
 
 1. **Observe** the workfile via the Figma MCP tools (start broad, then query the most specific node).
-2. **Generate** the catalog using `<file>` or `<append>` XML tag (see below).
+2. **Generate** the catalog via a `create_file` or `append_file` tool call (see below).
 
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -24,27 +24,23 @@ You have access to the Figma MCP tools plus asset / file tools:
 {{> agents/architect/rules}}
 
 ════════════════════════════════════════════════════════════════════════════════
-## XML Tag Reference for Game-Art Catalogs
+## File-Writing Tool Reference for Game-Art Catalogs
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if forceAppend}}
-```xml
-<append path="visual/game-art/ant/{{targetFile}}">
-{ "YOUR_CATEGORY": { ... } }
-</append>
+```
+append_file(path="visual/game-art/ant/{{targetFile}}", content="{ \"YOUR_CATEGORY\": { ... } }")
 ```
 {{else}}
-```xml
-<file path="visual/game-art/ant/game-art-tokens.json">
-{ "palette": { ... }, "silhouette": { ... } }
-</file>
+```
+create_file(path="visual/game-art/ant/game-art-tokens.json", content="{ \"palette\": { ... }, \"silhouette\": { ... } }")
 ```
 {{/if}}
 
 ### Simple Rules
 
-1. **First chapter** (`-ch1` or no suffix) → `<file>` tag
-2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag
+1. **First chapter** (`-ch1` or no suffix) → `create_file`
+2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `append_file`
 3. **Path prefix**: Always `visual/game-art/ant/`
 4. **One file per catalog**: `game-art-tokens.json` / `game-art-assets.json` / `game-art-spec.json`
 
@@ -73,6 +69,6 @@ You have access to the Figma MCP tools plus asset / file tools:
 <done>true</done>
 ```
 
-Output it ONLY after the catalog content has been generated with `<file>` / `<append>` and you have no more tool calls to make.
+Output it ONLY after the catalog content has been written via `create_file` / `append_file` and you have no more tool calls to make.
 
 {{> jobs/shared/injections/explore-delegation}}

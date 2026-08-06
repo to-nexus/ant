@@ -17,6 +17,7 @@ import {
   ToolUseContentBlock,
   ToolResultContentBlock,
   ImageContentBlock,
+  resolveToolChoice,
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
@@ -276,8 +277,16 @@ export class OpenAILLMClient implements LLMClient {
 
     const providerExtra = this.resolveThinkingParam(options);
 
-    const toolsConfig = options?.tools?.length ? {
-      tools: options.tools.map(t => ({
+    // Tool-call constraint (port `toolChoice`) resolved through the shared
+    // helper: `{ allow }` narrows the advertised set (drain salvage rounds);
+    // 'none' keeps declarations so a tool_calls-heavy history stays
+    // self-consistent on the forced-final round — deleting the declarations
+    // instead is what degenerated GLM (tiny-counting-mocha /
+    // sage-causing-rover RCAs). Emitted ONLY when tools are declared —
+    // OpenAI-compat 400s on `tool_choice` without `tools`.
+    const resolvedTools = resolveToolChoice(options?.tools, options?.toolChoice);
+    const toolsConfig = resolvedTools.tools?.length ? {
+      tools: resolvedTools.tools.map(t => ({
         type: 'function' as const,
         function: {
           name: t.name,
@@ -287,15 +296,9 @@ export class OpenAILLMClient implements LLMClient {
       })),
     } : {};
 
-    // Tool-call constraint (port `toolChoice`). Emitted ONLY when tools are
-    // declared — OpenAI (and several compat endpoints) 400 on `tool_choice`
-    // without `tools`. `'none'` keeps the declarations in the request so a
-    // tool_calls-heavy history stays self-consistent on the forced-final
-    // round; deleting the declarations instead is what degenerated GLM
-    // (tiny-counting-mocha / sage-causing-rover RCAs).
     const toolChoiceParam =
-      options?.tools?.length && options?.toolChoice
-        ? { tool_choice: options.toolChoice }
+      resolvedTools.tools?.length && resolvedTools.mode
+        ? { tool_choice: resolvedTools.mode }
         : {};
 
     // `stopSequences` → OpenAI `stop` (max 4 strings per API contract).
@@ -538,6 +541,21 @@ export class OpenAILLMClient implements LLMClient {
           // Accumulate arguments (streamed incrementally)
           if (toolCall.function?.arguments) {
             buffer.arguments += toolCall.function.arguments;
+            // ✅ Forward the raw fragment for live rendering (file-writing tools).
+            // Only once the tool name is known — a fragment without a name
+            // cannot be routed by consumers. Terminal `tool_use` stays authoritative.
+            if (buffer.name) {
+              yield {
+                type: 'tool_use_delta',
+                toolUseDelta: {
+                  toolUseId: buffer.id,
+                  name: buffer.name,
+                  partialInput: toolCall.function.arguments,
+                },
+                index,
+                metadata: metadata(),
+              };
+            }
           }
         }
       }

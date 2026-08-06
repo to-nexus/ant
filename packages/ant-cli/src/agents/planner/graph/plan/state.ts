@@ -183,7 +183,7 @@ export interface PlanGraphState extends TriageableState, PhaseTrackingState {
   /**
    * No-output window: consecutive tool-call rounds (in either the plan or the
    * execute loop) that produced no forward output — no `<plan>` seal, no
-   * `<file>` write. Incremented by the plan/execute nodes on each tool-round
+   * file write. Incremented by the plan/execute nodes on each tool-round
    * return; reset to 0 when the plan node seals the brief (→execute) or a
    * subagent-join redo delivers reports (both = forward progress). At
    * `NO_OUTPUT_HARD_CAP − DRAIN_FINALIZE_MARGIN` the node strips its tool list

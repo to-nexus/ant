@@ -108,8 +108,9 @@ describe('antrulesDecisionCheck — mandatory <antrules-decision> gate', () => {
     const state = stateWith({
       taskType: 'verification',
       done: true,
+      // The update itself happens via the edit_file TOOL (no <edit> tag exists);
+      // the text response carries only the decision + justification.
       rawResponse:
-        '<edit path="codebase/ANTRULES.md">...</edit>\n' +
         '<antrules-decision>update</antrules-decision>\n' +
         '<reply>Recorded jsdom v24 pin rationale — not derivable from package.json.</reply>\n<done>true</done>',
     });

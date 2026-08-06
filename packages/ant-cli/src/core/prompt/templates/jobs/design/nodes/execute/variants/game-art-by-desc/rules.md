@@ -12,7 +12,7 @@ You have access to tools for exploring assets and existing documents:
 ### Workflow
 
 1. **First**: If you need to understand existing assets or documents, use `list_assets` / `read_file`.
-2. **Then**: Generate the catalog directly using `<file>` or `<append>` XML tag (see below).
+2. **Then**: Write the catalog via a `create_file` or `append_file` tool call (see below). The content streams to the user live as the call's arguments generate.
 
 > ⚠️ **IMPORTANT**: Description-driven mode receives NO screenshots and NO workfile. The directive plus PRD are the design authority.
 
@@ -24,10 +24,10 @@ You have access to tools for exploring assets and existing documents:
 
 ════════════════════════════════════════════════════════════════════════════════
 
-**CRITICAL: You MUST use XML tags for ALL file operations!**
+**CRITICAL: ALL file operations are tool calls (`create_file` / `append_file`)!**
 
 ════════════════════════════════════════════════════════════════════════════════
-## XML Tag Reference for Game-Art Catalogs
+## File-Writing Tool Reference for Game-Art Catalogs
 ════════════════════════════════════════════════════════════════════════════════
 
 {{#if (eq detectedMode "refactor")}}
@@ -39,10 +39,10 @@ You have access to tools for exploring assets and existing documents:
 1. You have received the **FULL existing catalog** in this prompt
 2. Identify the **specific category** that needs modification
 3. **Modify ONLY** the relevant parts (do NOT change unrelated categories)
-4. Output the **COMPLETE modified JSON** using `<file>` tag (this will REPLACE the existing file)
+4. Output the **COMPLETE modified JSON** via `create_file` with `overwrite: true` (this will REPLACE the existing file)
 
 **⚠️ KEY POINTS:**
-- Use `<file>` NOT `<append>` (you are REPLACING, not adding)
+- Use `create_file` with `overwrite: true`, NOT `append_file` (you are REPLACING, not adding)
 - Include ALL existing content, only modify the target category
 - Do NOT add new unrelated top-level keys
 
@@ -51,14 +51,14 @@ You have access to tools for exploring assets and existing documents:
 {{#if forceAppend}}
 ### Parallel Chapter (Append Mode)
 
-**⚠️ You MUST use `<append>` tag. The system deep-merges your output with other chapters.**
+**⚠️ You MUST call `append_file`. The system deep-merges your output with other chapters.**
 
-```xml
-<append path="visual/game-art/ant/{{targetFile}}">
+```
+append_file(path="visual/game-art/ant/{{targetFile}}", content="""
 {
   "YOUR_CATEGORY": { ... }
 }
-</append>
+""")
 ```
 
 **CONSTRAINT**: Generate ONLY content within the scope described in your task description. When uncertain whether a category belongs to your scope, OMIT it — another chapter is responsible for it.
@@ -68,15 +68,15 @@ You have access to tools for exploring assets and existing documents:
 
 **Detection**: Task ID is `game-art-tokens`, `game-art-assets`, `game-art-spec`, or ends with `-ch1`.
 
-Use `<file>` tag:
+Call `create_file`:
 
-```xml
-<file path="visual/game-art/ant/game-art-tokens.json">
+```
+create_file(path="visual/game-art/ant/game-art-tokens.json", content="""
 {
   "palette": { ... },
   "silhouette": { ... }
 }
-</file>
+""")
 ```
 
 **Filename determination:**
@@ -90,14 +90,14 @@ Use `<file>` tag:
 
 **Detection**: Task ID contains `-ch2`, `-ch3`, etc.
 
-**⚠️ CRITICAL: If continuing a catalog, you MUST use `<append>`, NOT `<file>`!**
+**⚠️ CRITICAL: If continuing a catalog, you MUST call `append_file`, NOT `create_file`!**
 
-```xml
-<append path="visual/game-art/ant/game-art-assets.json">
+```
+append_file(path="visual/game-art/ant/game-art-assets.json", content="""
 {
   "newCategory": { ... }
 }
-</append>
+""")
 ```
 The system will automatically merge this into the existing JSON.
 
@@ -108,19 +108,19 @@ The system will automatically merge this into the existing JSON.
 
 ### Simple Rules
 
-1. **First chapter** (`-ch1` or no suffix) → `<file>` tag
-2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `<append>` tag
+1. **First chapter** (`-ch1` or no suffix) → `create_file`
+2. **Continuation chapters** (`-ch2`, `-ch3`, etc.) → `append_file`
 3. **Path prefix**: Always `visual/game-art/ant/`
 4. **One file per catalog**: All `game-art-tokens` chapters → `game-art-tokens.json`
 
 ### ❌ DO NOT
 
-```xml
-<!-- WRONG: Using <file> for a continuation chapter → OVERWRITES existing content -->
-<!-- WRONG: Wrong path — game-art catalogs belong under visual/game-art/ant/, not the codebase tree -->
-<file path="codebase/game-art-tokens.json">
-<!-- WRONG: Creating a separate file per chapter -->
-<file path="visual/game-art/ant/game-art-tokens-ch2.json">
+```
+// WRONG: Calling create_file for a continuation chapter → conflicts with existing content
+// WRONG: Wrong path — game-art catalogs belong under visual/game-art/ant/, not the codebase tree
+create_file(path="codebase/game-art-tokens.json", ...)
+// WRONG: Creating a separate file per chapter
+create_file(path="visual/game-art/ant/game-art-tokens-ch2.json", ...)
 ```
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -175,8 +175,8 @@ game-art-spec.json    (read_file tokens.json + assets.json → reference their k
 ```
 
 **Rules:**
-1. Output `<done>true</done>` ONLY after the catalog content has been generated with `<file>` or `<append>` and you have no more tool calls to make.
-2. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first) or have not generated the catalog yet.
+1. Output `<done>true</done>` ONLY after the catalog content has been written via `create_file` or `append_file` and you have no more tool calls to make.
+2. Do NOT output `<done>true</done>` if you just made a tool call (wait for the result first) or have not written the catalog yet.
 
 **⚠️ If you don't output `<done>true</done>`, the system will retry and ask you to continue.**
 

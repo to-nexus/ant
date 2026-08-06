@@ -17,19 +17,14 @@ figma_get_variable_defs(fileKey, nodeId)
 ```
 
 ### Option B: If you already have enough Figma data
-Generate the document using `<file>` XML tag:
-```xml
-<file path="visual/ui/{{targetDoc}}">
-<!-- START_SECTION: 1 -->
-# Document Title
-...content...
-<!-- END_SECTION -->
-</file>
+Write the document via a `create_file` tool call (the content streams to the user live as the call's arguments generate):
+```
+create_file(path="visual/ui/{{targetDoc}}", content="<!-- START_SECTION: 1 -->\n# Document Title\n...content...\n<!-- END_SECTION -->")
 ```
 
 ## ⚠️ FAILURE CONDITIONS:
 - ❌ Responding with only text explanation → TASK FAILS
 - ❌ Saying "I will do X" without doing it → TASK FAILS
-- ❌ Stopping without generating `<file>` → TASK FAILS
+- ❌ Stopping without calling `create_file` → TASK FAILS
 
-**You MUST output either a tool_use block OR a <file> XML tag!**
+**You MUST output a tool call — either a Figma MCP call (Option A) or the `create_file` call (Option B)!**

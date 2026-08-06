@@ -2,18 +2,18 @@
 
 ## Output Protocol
 
-Emit the COMPLETE updated planning document inside one `<file>` tag, at the document's own path:
+Write the COMPLETE updated planning document via one `create_file` tool call with `overwrite: true`, at the document's own path:
 
 ```
-<file path="plan/<document-name>.md">
+create_file(path="plan/<document-name>.md", overwrite=true, content="""
 # Document Title
 ...the entire updated document...
-</file>
+""")
 ```
 
 - The write REPLACES the file. Emit the FULL document with your changes applied — start from the current content provided in context and modify it in place. Do NOT emit only the changed section; a partial body is rejected.
 - The `path` MUST be the target document named in your task description. Do NOT create new plan documents and do NOT touch any other path.
-- Everything inside the `<file>` tag is raw markdown document content — no code fences around it.
+- The `content` argument is raw markdown document content — no code fences around it.
 
 ## Change Discipline
 
@@ -28,6 +28,6 @@ Emit the COMPLETE updated planning document inside one `<file>` tag, at the docu
 
 ## Completion
 
-After emitting the updated document, output `<done>true</done>`.
+After the tool result confirms the updated document was written, output `<done>true</done>`.
 
 A brief note to the user (one or two sentences) goes in a `<reply>...</reply>` tag. Free text outside a registered tag is dropped.
