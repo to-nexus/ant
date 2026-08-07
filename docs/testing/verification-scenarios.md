@@ -28,7 +28,7 @@ A real code job is slow and non-deterministic, so branches like "force split fir
 | **L3 real LLM** | same, but with a real LLM | real | minutes | manual/nightly | regression check of L2 results |
 | **L4 full E2E** | `e2e-runbook.md` | real | minutes+ | manual | user-experience smoke |
 
-**This document focuses on L1 and L2.** L1 is included in the CI gate (`pnpm test:cli`), and all 10 L2 scenarios (S00~S09) are reproducible via `pnpm scenario [--list | Sxx | --all]` (see §8).
+**This document focuses on L1 and L2.** L1 is included in the CI gate (`pnpm test:cli`), and all 10 L2 scenarios (`S00`–`S04`, `S06`–`S10`) are reproducible via `pnpm scenario [--list | Sxx | --all]` (see §8).
 
 ## 3. Glossary
 
@@ -36,7 +36,7 @@ A real code job is slow and non-deterministic, so branches like "force split fir
 |---|---|---|
 | Fault Injection | deliberately injecting failures | `ANT_COMMAND_INJECT` + `ANT_COMMAND_OVERLAY_MODE` |
 | State Seeding | resuming from an intermediate state | freeze the just-before-verification state into `sessions/architect/code.json` |
-| Scenario Matrix | failure type × branch strategy matrix | `scenarios/S01`..`S09` directories |
+| Scenario Matrix | failure type × branch strategy matrix | `scenarios/S01`..`S10` directories |
 | Test Doubles | stand-ins for external dependencies | `MockLLMClient` (existing) + `commandInject` (new) |
 | Hermetic | reproducible isolated environment | `.ant-test/scenario-runs/<runId>`, fresh on every run |
 
@@ -170,7 +170,7 @@ The `mode` field in `scenario.json` is mandatory. The runner checks these combin
 
 ### 8.1 Landed (foundation PR `verification_scenario_harness_a1514eb3`)
 - ✅ `/.ant-test/` added to `.gitignore`
-- ✅ L1 unit tests (`tests/verification/unit/`) — 10 files, ~1069 total cases
+- ✅ L1 unit tests (`tests/verification/unit/`) — 17 files, 287 cases
 - ✅ Test-only exports of `processDiagnosticBatchSplit`, `normalizePlanForHash`
   (`__testing__` namespace)
 - ✅ Command Mock Layer (`src/utils/commandInject.ts`) + `runCommand.ts` integration (no impact on the production path)

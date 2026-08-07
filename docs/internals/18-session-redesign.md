@@ -7,7 +7,7 @@
 
 ## 0. One-Line Summary
 
-The **product set of three orthogonal axes** — Context (structure) × Mode (intent) × Complexity (scale) — is routed into **5 tiers**. Session storage is split into **2 files**: `feature.jsonl` (prompt-context SSOT) + `trace.jsonl` (UI-render SSOT). The previous `jobConversation` Inter-Job Context Bridge (28-context-management.md §2) has been **fully replaced** by this redesign.
+The **product set of three orthogonal axes** — Context (structure) × Mode (intent) × Complexity (scale) — is routed into **5 tiers**. Session storage is split into **2 files**: `feature.jsonl` (prompt-context SSOT) + `trace.jsonl` (UI-render SSOT). The previous `jobConversation` Inter-Job Context Bridge has been **fully replaced** by this redesign.
 
 ---
 
@@ -335,7 +335,7 @@ All exported from [`packages/ant-shared/src/session-log.ts`](../../packages/ant-
 
 ## 8. Migration Notes (what was replaced)
 
-| Before (28-context-management.md) | Now (this document) | Status |
+| Before | Now (this document) | Status |
 |---|---|---|
 | `session.state.jobConversation: ConversationEntry[]` | `feature.jsonl` + `featureContext` state channel | **Field removed** (legacy cleanup) |
 | `compressHeavyweightEntries` (Trigger 2) | — (heavyweight-boundary concept retired) | **Function deleted** |
@@ -349,7 +349,7 @@ All exported from [`packages/ant-shared/src/session-log.ts`](../../packages/ant-
 | `ChatStatusReporter.flush()` | — | Removed from the interface |
 | Triage Step 6 "Scope Routing" | Decompose `<specClarify>` | Prompt stage moved (`triage_scope_cleanup`) |
 
-The "Inter-Job Context Bridge" section of **28-context-management.md** has been **fully replaced** by this document. The Plan/Visual (Context Continuity) path's use of `compactJob` is retained — the three orthogonal axes currently apply only to code/design.
+The "Inter-Job Context Bridge" has been **fully replaced** by this document. The Plan/Visual (Context Continuity) path's use of `compactJob` is retained — the three orthogonal axes currently apply only to code/design. See [`28-in-job-compaction.md`](./28-in-job-compaction.md) for that surviving path.
 
 **plan/visual's `sessionDigest`** (buildSessionDigest → the `{{#if hasSessionDigest}}` section of the triage prompt) survives. Because code/design no longer populate `state.conversations[SESSION_MAIN]`, triage on those paths always renders without a sessionDigest. plan/visual still use the `conversation` continuity model, so sessionDigest stays active for them. See the appendix in §9 for detailed instrumentation.
 
@@ -415,8 +415,9 @@ Assuming `user_turn.text` averages 200 chars:
 
 ## Boundaries
 
-- **Replaced document**: [`28-context-management.md`](./28-context-management.md) — its §2 "Context Isolation" / "Inter-Job Context Bridge" sections are replaced by this document. The Continuity (plan/visual), `compactRun`, and `retentionPolicy` parts remain valid.
 - **Related documents**:
+  - [`28-in-job-compaction.md`](./28-in-job-compaction.md) — in-job history compaction (`compactRun` / `compactJob` / `retentionPolicy`); this document replaced its former "Inter-Job Context Bridge" scope
+  - [`37-context-management.md`](./37-context-management.md) — Context Lens, the cross-job axis
   - [`11-agent-architecture.md`](./11-agent-architecture.md) — LangGraph StateGraph wiring
   - [`12-triage-routing.md`](./12-triage-routing.md) — Detect / Triage intent classification
   - [`13-prompt-system.md`](./13-prompt-system.md) — Handlebars template engine

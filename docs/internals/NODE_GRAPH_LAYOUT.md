@@ -2,7 +2,7 @@
 
 > **Scope**: every LangGraph StateGraph under `packages/ant-cli/src/agents/{agent}/graph/{job}/`.
 > **Purpose**: enforce that task type, phase, and domain responsibilities cohere consistently along directory axes.
-> **Related documents**: [14-code-job.md](./14-code-job.md), [17-code-verification-task.md](./17-code-verification-task.md), the `Node Graph Layout — Task Type Blind Phases (R1)` section of [`.cursorrules`](../../.cursorrules).
+> **Related documents**: [14-code-job.md](./14-code-job.md), [17-code-verification-task.md](./17-code-verification-task.md), the [`Node Graph Layout — Phases Are Task-Type Blind (R1)`](../../AGENTS.md#node-graph-layout--phases-are-task-type-blind-r1) section of AGENTS.md.
 
 ---
 

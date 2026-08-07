@@ -15,64 +15,41 @@ the user-facing concepts live in [`docs/concepts/`](docs/concepts/).
 
 ## Quick Map
 
-| You want to…                              | Read                                                |
-|-------------------------------------------|-----------------------------------------------------|
-| Understand the system in 5 minutes        | [docs/concepts/architecture.md](docs/concepts/architecture.md) |
-| Run the project locally                   | [docs/local-mode/install.md](docs/local-mode/install.md) |
-| Add a new agent / job / phase node        | This file, then `docs/internals/`                   |
-| Author or edit a prompt template          | [Prompt Engineering](#prompt-engineering)           |
-| Touch the LangGraph state machine         | [LangGraph State Management](#langgraph-state-management) |
-| Make a change that crosses BE↔FE          | `@ant/shared` types + this file's "Cross-package contracts" |
+| You want to…                          | Read                                                |
+|---------------------------------------|-----------------------------------------------------|
+| Understand the system in 5 minutes    | [docs/concepts/architecture.md](docs/concepts/architecture.md) — user-facing explanations of agents, jobs, tiers live alongside it |
+| Set up, build, test                   | [CONTRIBUTING.md](CONTRIBUTING.md) · [docs/develop.md](docs/develop.md) |
+| Add a new agent / job / phase node    | This file, then [docs/internals/](docs/internals/) — incident-driven rationale, enforcement greps, test names |
+| Author or edit a prompt template      | [Prompt Engineering](#prompt-engineering)           |
+| Touch the LangGraph state machine     | [LangGraph State Management](#langgraph-state-management) |
+| Make a change that crosses BE↔FE      | [Cross-Package Contracts](#cross-package-contracts-antshared) |
+| Self-host, design input, custom prompts | [docs/guides/](docs/guides/)                      |
+
+If a rule here contradicts the code, the **code is authoritative** for runtime
+behaviour — please file an issue so the document gets fixed.
 
 ---
 
 ## Architecture in One Page
 
-Ant is a **modular monolith** packaged as four independent processes that
-communicate exclusively via Redis (Pub/Sub, Key-Value, BullMQ).
+Ant is a **modular monolith** packaged as four independent processes
+(`ant-api` 4100 / `ant-realtime` 4101 / `ant-job` / `ant-preview` 4102) that
+communicate **exclusively via Redis** — Pub/Sub, Key-Value, BullMQ. There is no
+direct HTTP between processes. The backend is hexagonal: `composition/` entry
+points, `core/` domain logic, `agents/` LangGraph graphs, `infrastructure/` and
+`periphery/` adapters.
 
-| Process       | Port | Entry point                                       |
-|---------------|------|---------------------------------------------------|
-| `ant-api`     | 4100 | `composition/server.ts`                           |
-| `ant-realtime`| 4101 | `infrastructure/realtime/start-realtime-server.ts` |
-| `ant-job`     | —    | `infrastructure/worker/start-job-worker.ts`        |
-| `ant-preview` | 4102 | `infrastructure/preview/start-preview-server.ts`   |
-
-Inter-process communication is **always** Redis. There is no direct HTTP
-between processes.
-
-### Backend internal layout (hexagonal)
-
-```
-src/
-├── composition/    Entry points (server, job-runner, orchestrator)
-├── core/           Domain logic, prompt engine, types, ports
-├── agents/         LangGraph agents (architect, planner)
-├── infrastructure/ Adapters: queue, worker, realtime, IDE, preview
-├── periphery/      External adapters: HTTP, auth, git, LLM, memory
-├── cli/            CLI runtime
-└── utils/          Shared utilities
-```
-
-### Job lifecycle
-
-1. API receives an HTTP request → enqueue to BullMQ.
-2. `JobWorker` dequeues → spawns `job-runner.ts` as a child process.
-3. The child runs `orchestrator.ts` → routes to a LangGraph agent graph.
-4. The graph executes nodes (LLM calls, file I/O, tools); state broadcasts
-   via Redis Pub/Sub.
-5. Job completion publishes to `job:status:updates`.
-
-| Job type     | Agent     | Output                  |
-|--------------|-----------|-------------------------|
-| `code`       | architect | Source code             |
-| `design`     | architect | Design docs (MD, JSON)  |
-| `learn`      | architect | Vector DB index         |
-| `plan`       | planner   | PRD                     |
-| `ask`/`inline-ask` | architect | Chat response     |
-
-Jobs support interruption and resumption. Checkpoints are saved to
+A job flows: HTTP request → BullMQ enqueue → `JobWorker` spawns `job-runner.ts`
+as a child → `orchestrator.ts` routes to a LangGraph agent graph → state
+broadcasts over Pub/Sub → completion publishes to `job:status:updates`. Jobs are
+interruptible and resumable; checkpoints live at
 `{featurePath}/sessions/{agent}/{jobType}.json`.
+
+Process table, entry points, and the job-type → agent → output matrix are in
+[docs/develop.md](docs/develop.md); the narrative walkthrough is in
+[docs/concepts/architecture.md](docs/concepts/architecture.md) and
+[docs/concepts/jobs.md](docs/concepts/jobs.md). Read those before changing
+topology; the rules below are what binds when you write code.
 
 ---
 
@@ -149,11 +126,15 @@ different actors:
 callback.** Phase nodes, routers, parallel scheduling, classification, and
 type decisions MUST NOT compare priority semantically. The single legal
 priority-to-meaning translation lives in
-`decompose/responseParser.ts::deriveBandFromPriority` — that helper attaches
-`band` to feature tasks (priority window → feature band) and to setup tasks
-(`priority === SETUP_PROJECT` (100) → `'root'`, the unique workspace-level
-setup that dequeues first; 101+ → band-absent package setup); everything
-downstream reads `task.band` (features/setup) or `task.type` (everything else).
+`decompose/responseParser.ts::deriveBandFromPriority` — a **strict reverse lookup
+over the `TASK_PRIORITY` window map** in `code/state.ts`, so the band→window
+forward map and the priority→band reverse lookup cannot drift. Strict means
+window-exact: `setup.root` is `100..100` (the unique workspace-level setup, which
+dequeues first — `101+` is band-absent package setup), feature bands are
+`foundation 220..259` / `platform 260..299` / `integration 600..649`, and the
+adjacent `design-system 200..219` window never derives a feature band.
+Everything downstream reads `task.band` (feature / setup) or `task.type`
+(everything else) — never the integer.
 
 `band` is carried only by `FeatureTask` (`FeatureBand` = foundation / platform
 / integration) and `SetupTask` (`SetupBand` = `'root'`) via discriminated
@@ -275,21 +256,12 @@ state.parsedUiDocs = value;
 
 ### Derived channels
 
-`state.executionTier?: ExecutionTierId` is derived. Decompose writes it once
-after the LLM emits `<executionTier>N</executionTier>`. Phase nodes read it
-through `getExecutionTier(state)` — never inspect `mode` / `complexity`
-literals in phase code.
-
-```typescript
-// ✅
-const executionTier = getExecutionTier(state);
-await executionTier.breadcrumb(state, touched);
-
-// ❌
-if (state.resolvedAction?.mode === 'explain' && state.complexity === 'task') { ... }
-```
-
-Mode dispatch lives in exactly one place: `Tier3Task`'s constructor.
+`state.executionTier?: ExecutionTierId` is derived — decompose writes it once,
+after the LLM emits `<executionTier>N</executionTier>`. Phase nodes read it only
+through the `getExecutionTier(state)` facade (`executionTier.breadcrumb(...)` /
+`.boundary(...)`), and must never inspect `mode` / `complexity` literals
+themselves (`if (state.resolvedAction?.mode === 'explain' && …)`). Mode dispatch
+lives in exactly one place: `Tier3Task`'s constructor.
 
 ---
 
@@ -336,10 +308,18 @@ Phase nodes and resolve must never wholesale-walk `architecture/**`,
 that pre-dates RAC (used during triage / detect), use `state.workspaceState`
 — that is the SSOT for "does this directory exist on disk".
 
-The `code.decompose` discovery tools (`list_files`, `read_file` with
-`scope='artifact'`) enforce a RAC whitelist for explicit pipelines. The
-single writer of `discoveryCtx.racScope` is `decompose/index.ts`; the
-matching logic lives in `discoveryTools.ts::isWithinRacWhitelist`.
+`read_file` / `list_files` enforce a RAC whitelist for **explicit** pipelines.
+The policy SSOT is
+`code/nodes/decompose/racGate.ts` — `computeRacScope` (returns a scope only when
+`source === 'explicit'` ∧ `hasExplicitFields` ∧ `refs ∪ context` non-empty; infer
+pipelines get `undefined` and may discover freely), `decideRacGate`, and
+`isWithinRacWhitelist`. It is applied at exactly two symmetric sites: decompose's
+inline tool dispatch, and the shared code `tool` node that serves plan and
+execute. Two families stay RAC-**orthogonal** and are always reachable: paths
+under `codebase/` (classified via `normalizeToCodebasePath`) and the
+`assets/{service,game}/**` pools (existence-only stubs that ride along with every
+selection). Never push this gate into the common `readFile` / `listFiles`
+handlers — design and planner jobs have no RAC to honor.
 
 ---
 
@@ -443,12 +423,11 @@ the only gate. Test sources are excluded from `packages/ant-cli/tsconfig.json`
 because it ships into the runtime image; `tsconfig.test.json` is what
 typechecks them. Never add test globs to the shipped config.
 
-`pnpm typecheck:tests` is **blocking in CI**. Tests went un-typechecked for a
-long time and accumulated 185 errors across 57 files — stale import paths, task
-literals missing required fields, `interface X extends BaseTask` from before that
-type became a union, spies whose declared arity was smaller than the call they
-assert on, and fields (`packages`, `selfVerifyOnDone` on the wrong variant) that
-had been deleted from the types. All fixed; keep it at zero.
+`pnpm typecheck:tests` is **blocking in CI** — keep it at zero. It was added
+after tests went un-typechecked long enough to accumulate 185 errors across 57
+files (stale import paths, task literals missing required fields, `interface X
+extends BaseTask` from before that type became a union, spies with too-small
+declared arity, and fields already deleted from the types).
 
 ### ❌ Forbidden
 
@@ -504,15 +483,13 @@ as if it were one.
 | FPOP (§4) | ⚠️ Guideline | reviewer judgement only — no CI lock |
 | SBS (§5) | ⚠️ Guideline | soft sanity grep only — not a build gate |
 
-These authoring policies read as four orthogonal failure-mode axes:
-**specificity = activation scope** (SBS + FPOP "Universal over Specific"),
-**single home / collectively-exhaustive partition** (MECE + WHAT/HOW),
-**falsifiable constraints** (FPOP "Observable" / "Constraints over
-Instructions"), and **self-contained runtime** (a prompt the model reads
-should not reference internal vocabulary it was never given — acronyms,
-decision IDs, incident codenames). The last axis and "no rule without a
-guard" are currently unenforced; they are kept as conscious guidelines, not
-pretended contracts. FPOP / SBS / MECE are retained as the names above.
+The policies below are four orthogonal failure-mode axes: **specificity =
+activation scope** (SBS, FPOP "Universal over Specific"), **single home /
+collectively-exhaustive partition** (MECE, WHAT/HOW), **falsifiable constraints**
+(FPOP "Observable", "Constraints over Instructions"), and **self-contained
+runtime** — a prompt must not reference internal vocabulary the model was never
+given (acronyms, decision IDs, incident codenames). That last axis and "no rule
+without a guard" are unenforced: conscious guidelines, not contracts.
 
 ### 1. WHAT / HOW separation
 
@@ -559,70 +536,52 @@ Prompts must not assume a stack.
 
 ### 4. FPOP — First-Principles Observation Prompting — guideline (not CI-enforced)
 
-Every prompt follows six principles:
-
-| Principle                        | ❌ Bad                              | ✅ Good                                  |
-|----------------------------------|-------------------------------------|------------------------------------------|
-| Principles over Examples         | "Footer is a column"                | "Each container decides direction independently" |
-| What over How                    | "Top → flex-start"                  | "Observe cross-axis position"            |
-| Observable over Assumed          | "Add overlay"                       | "If not observed, do NOT add"            |
-| Universal over Specific          | "React component"                   | "component"                              |
-| Constraints over Instructions    | "Do this way"                       | "Do NOT assume"                          |
-| Reminders for Blind Spots        | generic list                        | "⚠️ Cross-axis REQUIRED"                 |
+State observation targets and constraints as **principles**, not as concrete
+examples or methods: principles over examples, what over how, observable over
+assumed, universal over specific, constraints over instructions, and an explicit
+⚠️ reminder for a blind spot the model reliably misses. Concretely — "each
+container decides its direction independently", not "the footer is a column";
+"if it is not observed, do NOT add it", not "add an overlay".
 
 ### 5. SBS — Scope-Bound Specificity — guideline (soft sanity grep only)
 
-A prompt fragment's required abstraction level is bounded by its activation
-scope. **Gated templates** (techTier / intent / taskType / mode / role /
-artifact-presence) MUST be specific along the gate's axis. **Always-on
-templates** must stay universal.
+**A fragment's required abstraction level is bounded by its activation scope.**
+Gated templates (techTier / intent / taskType / mode / role / artifact-presence)
+MUST be specific along the gate's axis; always-on templates MUST stay universal.
+`basis/techTier/framework/nextjs.md` MUST name "Next.js" — the gate is the entire
+reason the file exists, so citing "Universal over Specific" against a gated file
+to strip its discriminator is itself an SBS violation.
 
-`basis/techTier/framework/nextjs.md` MUST mention "Next.js" by name — its
-gate is the entire reason it exists. Citing "Universal over Specific"
-against a gated file to demand removal of the gate's discriminator is itself
-an SBS violation.
-
-For each paragraph in a template, run two checks:
-
-1. **SBS check**: Is this paragraph specific along the file's gate? If no,
-   either lift it to a less-gated location or rewrite it to use the gate
-   discriminator name(s).
-2. **FPOP check**: Is this paragraph specific along an axis other than the
-   file's gate? If yes, that's scope creep — lift it out or remove it.
-
-A compliant paragraph passes both: specific exactly along the gate,
-generic everywhere else.
+Run both checks on every paragraph: is it specific along **this file's** gate
+(if not, lift it to a less-gated location), and is it specific along **any other**
+axis (if so, that is scope creep — lift it out). A compliant paragraph is
+specific exactly along the gate and generic everywhere else. Corollary: if you
+cannot tell which variant a paragraph came from with the path hidden, the variant
+is SBS-empty.
 
 ---
 
 ## Cross-Package Contracts (`@ant/shared`)
 
-`@ant/shared` is the single source of truth for types that cross BE↔FE:
+`@ant/shared` is the single source of truth for every type that crosses BE↔FE —
+job classification (`JobType`, `DecomposableJobType`), task queue state
+(`BaseTask`, `KanbanData`, `TaskStatus`), SSE payloads (`WorkflowRealtimeState`),
+interruption metadata, detection types (`InferredAction`, `Mode`, `IntentGroup`),
+and RAC / tier types (`ResolvedActionContext`, `TechTier`, `ResolvedArtifact`).
+The full inventory is [docs/reference/shared-types.md](docs/reference/shared-types.md).
 
-- `JobType`, `DecomposableJobType`, `SessionableJobType`
-- `KanbanData`, `BaseTask`, `TaskStatus`
-- `WorkflowRealtimeState` — real-time SSE event payloads
-- `InterruptionDetails`, `InterruptionReason`
-- `InferredAction`, `Mode`, `IntentGroup`
-- `ResolvedActionContext`, `TechTier`, `ResolvedArtifact`
-
-Adding a new shared type is a contract change. Land the type with both BE and
-FE consumers in the same PR when possible, and write a regression test in
-`packages/ant-cli/tests/` that exercises the new shape.
+Adding a shared type is a **contract change**: land it with both BE and FE
+consumers in the same PR where possible, and add a regression test in
+`packages/ant-cli/tests/` that exercises the new shape. `@ant/shared` also ships
+runtime code (canonical paths, the action-config matrix, tier matrices) — after
+editing that, run `pnpm --filter @ant/shared build`.
 
 ---
 
 ## Where to Read Next
 
-- The **regression-grade** rationale for every rule above (incident-driven
-  invariants, enforcement greps, test names) lives in
-  [`docs/internals/`](docs/internals/). Read it when you're touching the
-  graph, prompt builder, or SSOT functions.
-- The **user-facing** explanations of agents, jobs, and tiers live in
-  [`docs/concepts/`](docs/concepts/).
-- The **how-to** guides (self-hosting, design input, custom prompts) live
-  in [`docs/guides/`](docs/guides/).
-
-If you find a rule in this file that contradicts the code, the **code is
-authoritative** for runtime behaviour, but please file an issue so we can
-update the document.
+The regression-grade rationale behind every rule above — incident-driven
+invariants, enforcement greps, and the test that guards each one — lives in
+[`docs/internals/`](docs/internals/). Read it before touching the graph, the
+prompt builder, or any SSOT function. See the [Quick Map](#quick-map) for
+everything else.

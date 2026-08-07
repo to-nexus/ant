@@ -11,8 +11,6 @@ pnpm dev:all    # API + Realtime + Job + Preview + UI + site
 
 A workspace and a feature must already exist.
 
-> Note on directive strings: several `directive` values below are kept in Korean **verbatim** because the test fixture `packages/ant-cli/tests/intents/documents/directives.json` references those exact strings. Each such example carries an English gloss in a `#` comment line. All other directives are translated.
-
 ---
 
 ## Plan
@@ -20,11 +18,10 @@ A workspace and a feature must already exist.
 ### gen-plan
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Plan a team-collaboration project management web service"
 curl -X POST http://localhost:4100/api/jobs \
   -H "Content-Type: application/json" \
   -d '{
-    "directive": "팀 협업 프로젝트 관리 웹 서비스를 기획해줘",
+    "directive": "Plan a team-collaboration project management web service",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-plan"
@@ -39,10 +36,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### rev-plan
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Add social login and remove guest mode"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "소셜 로그인을 추가하고 게스트 모드를 삭제해줘",
+    "directive": "Add social login and remove guest mode",
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-plan",
@@ -98,10 +94,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### gen-sys-full
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Design the full-stack system"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "풀스택 시스템 설계해줘",
+    "directive": "Design the full-stack system",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-sys-full",
@@ -117,10 +112,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### rev-sys
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Change the authentication method to OAuth"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "인증 방식을 OAuth로 변경해줘",
+    "directive": "Change the authentication method to OAuth",
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-sys",
@@ -140,10 +134,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### gen-ui-figma
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Extract the UI design from the Figma file"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "Figma 파일에서 UI 설계를 추출해줘",
+    "directive": "Extract the UI design from the Figma file",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-ui-figma",
@@ -178,10 +171,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### rev-ui
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Change the color palette to a dark theme"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "색상 팔레트를 다크 테마로 변경해줘",
+    "directive": "Change the color palette to a dark theme",
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-ui",
@@ -219,10 +211,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### rev-spec
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Change pagination from offset to cursor"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "페이지네이션을 offset에서 cursor로 변경해줘",
+    "directive": "Change pagination from offset to cursor",
     "actionMetadata": {
       "explicit": true,
       "intent": "rev-spec",
@@ -242,10 +233,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### gen-code-sys
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Generate code based on the design documents"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "설계 문서 기반으로 코드 생성해줘",
+    "directive": "Generate code based on the design documents",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-code-sys",
@@ -262,10 +252,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### gen-code-spec
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Implement the task search API based on the spec"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "스펙 기반으로 태스크 검색 API를 구현해줘",
+    "directive": "Implement the task search API based on the spec",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-code-spec",
@@ -282,10 +271,9 @@ curl -X POST http://localhost:4100/api/jobs \
 ### gen-code-directive
 
 ```bash
-# directive kept verbatim (test fixture) — gloss: "Build a simple TODO app"
 curl -X POST http://localhost:4100/api/jobs \
   -d '{
-    "directive": "간단한 TODO 앱을 만들어줘",
+    "directive": "Build a simple TODO app",
     "actionMetadata": {
       "explicit": true,
       "intent": "gen-code-directive"

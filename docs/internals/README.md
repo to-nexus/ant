@@ -59,7 +59,7 @@ For binding rules with regression-guard test names, see
 - [25-design-pipeline.md](25-design-pipeline.md)
 - [26-figma-integration-infra.md](26-figma-integration-infra.md)
 - [27-visual-processor.md](27-visual-processor.md)
-- [28-context-management.md](28-context-management.md)
+- [28-in-job-compaction.md](28-in-job-compaction.md) — in-job history compaction: `compactRun` / `compactJob` / `retentionPolicy`
 - [29-debug-logging.md](29-debug-logging.md)
 
 ### Frontend
@@ -101,7 +101,7 @@ For binding rules with regression-guard test names, see
 
 These documents:
 
-- Are **English** (translated to Korean only when explicitly mirrored).
+- Are **English only** — as is everything under `docs/`.
 - Cite **incident codenames** that map to in-tree regression tests.
 - Use **enforcement code blocks** so reviewers can grep for violations.
 - Are **versioned alongside the code** — when a policy changes, the

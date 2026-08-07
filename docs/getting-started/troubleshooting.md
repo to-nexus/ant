@@ -1,7 +1,7 @@
 # Troubleshooting
 
 Common problems and how to diagnose them. If your issue isn't here, search
-[issues](../../../issues) or open a new one with the
+[issues](https://github.com/to-nexus/ant/issues) or open a new one with the
 [bug-report template](../../.github/ISSUE_TEMPLATE/bug_report.yml).
 
 ## Setup
