@@ -1,3 +1,4 @@
+import type { SessionableJobType } from '@ant/shared';
 import { Router, Request, Response } from 'express';
 import { registerFeatureParamDecoders } from './helpers/featureParam';
 import * as path from 'path';
@@ -11,6 +12,7 @@ import type { ChatService, KanbanService } from '../services';
 import type { InterruptionDetails } from '../../../../core/types';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { clearCanonicalDirectory } from '../../../../core/utils/sessionPaths';
+import { resolveUniversalThreadPath } from '../../../../core/customAgents/threadPaths';
 
 /**
  * Feature log routes
@@ -47,13 +49,34 @@ export function createFeatureLogRoutes(deps: {
     projectId?: string,
     featureName?: string,
     interruptionReason?: InterruptionDetails,
-    explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+    explicitJobType?: SessionableJobType,
     userContext?: any,
   ) => Promise<void>;
   stateTracker?: any;
 }): Router {
   const router = Router();
   registerFeatureParamDecoders(router);
+
+  /**
+   * Universal projects ride the threadId in the `:feature` URL slot — the
+   * chat/feature log SSOT lives in the thread container, not under
+   * features/. Falls through to the normal feature path everywhere else.
+   */
+  function resolveContainerPath(
+    workspaceResolver: NonNullable<typeof deps.workspaceResolver>,
+    userContext: { userId: string; organizationId: string },
+    projectId: string,
+    featureName: string,
+  ): string {
+    try {
+      const projectPath = workspaceResolver.getProjectPath(userContext as any, projectId);
+      const threadPath = resolveUniversalThreadPath(projectPath, featureName);
+      if (threadPath) return threadPath;
+    } catch {
+      // partial resolvers (tests) / lookup failures → normal feature path
+    }
+    return workspaceResolver.getFeaturePath(userContext as any, projectId, featureName);
+  }
 
   /**
    * GET /projects/:id/features/:feature/breadcrumbs
@@ -69,7 +92,7 @@ export function createFeatureLogRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const featurePath = resolveContainerPath(deps.workspaceResolver, userContext, projectId, featureName);
 
       const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
       const breadcrumbs = await adapter.loadAllBreadcrumbs();
@@ -107,7 +130,7 @@ export function createFeatureLogRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const featurePath = resolveContainerPath(deps.workspaceResolver, userContext, projectId, featureName);
 
       const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
       const { buildFeatureContext, estimateCarryoverTokens } = await import('../../../../core/context/featureContextBuilder');
@@ -150,7 +173,7 @@ export function createFeatureLogRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const featurePath = resolveContainerPath(deps.workspaceResolver, userContext, projectId, featureName);
 
       const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
       const { buildFeatureContext } = await import('../../../../core/context/featureContextBuilder');
@@ -186,7 +209,7 @@ export function createFeatureLogRoutes(deps: {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const featurePath = resolveContainerPath(deps.workspaceResolver, userContext, projectId, featureName);
 
       const adapter = new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
       const { userTurns, userTurnMetas } = await adapter.loadFeatureTurnMeta();
@@ -244,7 +267,7 @@ export function createFeatureLogRoutes(deps: {
       const rawReason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
       const reason = rawReason === '' ? 'user_reset' : rawReason;
 
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      const featurePath = resolveContainerPath(deps.workspaceResolver, userContext, projectId, featureName);
       const jobTypes: Array<'code' | 'design' | 'learn' | 'plan'> = ['code', 'design', 'learn', 'plan'];
 
       // 1. SSOT cascade seal for every job tied to this feature. We finalize
@@ -265,7 +288,7 @@ export function createFeatureLogRoutes(deps: {
               timestamp: new Date().toISOString(),
               metadata: { stoppedBy: 'hard_reset' },
             };
-            const jt = (job.type || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+            const jt = (job.type || 'code') as SessionableJobType;
             try {
               if (deps.cleanupJobState && deps.stateTracker) {
                 await finalizeTerminalJob(

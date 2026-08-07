@@ -28,6 +28,7 @@
  *     writes status='paused' directly; can optionally migrate here.
  */
 
+import type { SessionableJobType } from '@ant/shared';
 import type { InterruptionDetails } from '../../../../../core/types';
 import type { UserContext } from '../../../../../core/types/user';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
@@ -41,7 +42,7 @@ export interface PauseJobArgs {
   jobId: string;
   projectId: string;
   featureName: string;
-  jobType: 'code' | 'design' | 'learn' | 'plan' | 'visual';
+  jobType: SessionableJobType;
   userContext?: UserContext;
   interruption: InterruptionDetails;
   /**

@@ -55,7 +55,7 @@ import { logger } from '../../../../../utils/logger';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { BullMQJobQueue } from '../../../../../infrastructure/queue/BullMQJobQueue';
 import type { InterruptionDetails } from '../../../../../core/types';
-import { buildInfrastructureInterruption } from '@ant/shared';
+import { buildInfrastructureInterruption, type SessionableJobType } from '@ant/shared';
 import type { JobCleanupManager } from '../managers/JobCleanupManager';
 import type { JobStateTracker } from '../managers/JobStateTracker';
 import type { KanbanService } from '../../services';
@@ -176,7 +176,7 @@ async function recoverOrphanedRunningJobs(
       });
 
       const mapping = await stateStore.getJobMapping(job.jobId);
-      const jobType = (mapping?.jobType || job.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
+      const jobType = (mapping?.jobType || job.type || 'code') as SessionableJobType;
 
       // Only decomposable jobs (code/design/learn) checkpoint mid-graph, so
       // only they can resume "from where it stopped". plan/visual would just
@@ -309,7 +309,7 @@ async function recoverUncardedPausedJobs(
       if (!job.projectId || !job.featureName) continue;
 
       const mapping = await stateStore.getJobMapping(job.jobId);
-      const jobType = (mapping?.jobType || job.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
+      const jobType = (mapping?.jobType || job.type || 'code') as SessionableJobType;
 
       // Single-owner jobType gate: plan/visual restart rather than resume, so
       // they never carry a resume card — nothing to repair. This server_crash
@@ -393,7 +393,7 @@ async function recoverMissedCompletions(
 
         const payload = bullJob.data;
         const mapping = await stateStore.getJobMapping(bullJob.id);
-        const jobType = (mapping?.jobType || payload?.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
+        const jobType = (mapping?.jobType || payload?.type || 'code') as SessionableJobType;
         const projectId = mapping?.projectId || payload?.projectId;
         const featureName = mapping?.featureName || payload?.feature;
 
@@ -497,7 +497,7 @@ async function recoverOrphanTerminalIndexEntries(
         // Terminal status still lingering → seal missed. Finalize idempotently.
         if (status.status === 'completed' || status.status === 'failed') {
           const mapping = await stateStore.getJobMapping(jobId);
-          const jobType = (mapping?.jobType || status.type || 'code') as 'design' | 'code' | 'learn' | 'plan' | 'visual';
+          const jobType = (mapping?.jobType || status.type || 'code') as SessionableJobType;
           const userContext = mapping?.userContext || status.userContext;
           await finalizeTerminalJob(deps, {
             jobId,

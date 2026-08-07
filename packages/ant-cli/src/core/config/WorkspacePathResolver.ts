@@ -54,6 +54,55 @@ export interface WorkspaceResolver {
    * Get physical workspaces directory path
    */
   getPhysicalWorkspacesPath(): string;
+
+  /**
+   * Get a universal-job thread container path (D6). Threads are the universal
+   * plane's session containers — the path flows wherever a featurePath-shaped
+   * value is expected (session adapter, ANT_FEATURE_PATH), but lives under
+   * `universal/`, invisible to the feature/git/preview lifecycles.
+   */
+  getAgentThreadPath(
+    userContext: UserContext,
+    projectId: string,
+    agentId: string,
+    jobId: string,
+    threadId: string,
+  ): string;
+
+  /**
+   * Get the project's shared universal artifact tree root (D6) — the single
+   * working tree all custom agents/jobs/threads and the user share.
+   */
+  getUniversalArtifactsPath(userContext: UserContext, projectId: string): string;
+}
+
+/** Namespace directory of the universal plane inside a project. */
+export const UNIVERSAL_DIR = 'universal';
+
+/** Path segment charset shared by agentId / jobId / threadId. */
+const UNIVERSAL_SEGMENT_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Build the on-disk thread container path. All three ids share the custom-id
+ * charset — validated here (single FS chokepoint, mirrors buildFeaturePath).
+ */
+export function buildAgentThreadPath(
+  projectPath: string,
+  agentId: string,
+  jobId: string,
+  threadId: string,
+): string {
+  for (const [label, value] of [['agentId', agentId], ['jobId', jobId], ['threadId', threadId]] as const) {
+    if (!UNIVERSAL_SEGMENT_RE.test(value)) {
+      throw new Error(`[WorkspacePathResolver] invalid ${label} for thread path: ${JSON.stringify(value)}`);
+    }
+  }
+  return path.join(projectPath, UNIVERSAL_DIR, 'agents', agentId, jobId, 'threads', threadId);
+}
+
+/** Build the shared universal artifact tree root. */
+export function buildUniversalArtifactsPath(projectPath: string): string {
+  return path.join(projectPath, UNIVERSAL_DIR, 'artifacts');
 }
 
 /** Directory name of the bare git anchor inside a project. */
@@ -326,6 +375,20 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
 
   getPhysicalWorkspacesPath(): string {
     return this.workspacesPath;
+  }
+
+  getAgentThreadPath(
+    userContext: UserContext,
+    projectId: string,
+    agentId: string,
+    jobId: string,
+    threadId: string,
+  ): string {
+    return buildAgentThreadPath(this.getProjectPath(userContext, projectId), agentId, jobId, threadId);
+  }
+
+  getUniversalArtifactsPath(userContext: UserContext, projectId: string): string {
+    return buildUniversalArtifactsPath(this.getProjectPath(userContext, projectId));
   }
 }
 

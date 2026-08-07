@@ -2,7 +2,7 @@ import { useStore } from '@/domain/store';
 import { selectPausedNonTaskJob } from '@/domain/store/selectors';
 import { API_BASE, addChatUserMessage, resolveChoice } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
-import { deriveFromIntent } from '@ant/shared';
+import { deriveFromIntent, formatCustomJobRef } from '@ant/shared';
 import type { ChatLine, ChatChoicePresentedLine, ChatChoiceResolvedLine } from '@ant/shared';
 
 interface UseChatSubmitOptions {
@@ -25,8 +25,27 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     if (!message.trim() && !hasPendingClarifyNow) return;
 
     const selectedProject = useStore.getState().selectedProject;
-    const selectedFeature = useStore.getState().selectedFeature;
     const kanbanData = useStore.getState().kanban;
+
+    // Universal runtime context — custom job + thread selected on a universal
+    // project. The threadId rides the feature slot for every feature-shaped
+    // endpoint (chat user-message, /execute URL). Takes priority over every
+    // other jobType source below.
+    const {
+      projectType,
+      selectedCustomAgentId,
+      selectedCustomJobId,
+      selectedThreadId,
+    } = useStore.getState();
+    const universalCtx =
+      projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId && selectedThreadId
+        ? {
+            customJobRef: formatCustomJobRef({ agentId: selectedCustomAgentId, jobId: selectedCustomJobId }),
+            threadId: selectedThreadId,
+          }
+        : null;
+
+    const selectedFeature = universalCtx ? universalCtx.threadId : useStore.getState().selectedFeature;
 
     if (!selectedProject || !selectedFeature || !selectedAgent || !selectedJobType) {
       console.error('[ChatInput] Missing required selection for job execution');
@@ -151,8 +170,16 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
       const derived = hasMetadata && storeActionMetadata.intent
         ? deriveFromIntent(storeActionMetadata.intent)
         : null;
-      const resolvedAgent = pausedNonTask?.agent ?? derived?.agent ?? selectedAgent;
-      const resolvedJobType = pausedNonTask?.jobType ?? derived?.jobType ?? selectedJobType;
+      // Universal context outranks every other jobType/agent source — the
+      // custom job the user selected IS the job identity.
+      const resolvedAgent = universalCtx ? 'universal' : (pausedNonTask?.agent ?? derived?.agent ?? selectedAgent);
+      const resolvedJobType = universalCtx ? 'universal' : (pausedNonTask?.jobType ?? derived?.jobType ?? selectedJobType);
+
+      if (universalCtx) {
+        // Make the SSE / stop paths observe the universal identity before the
+        // job starts (mirrors applyJobIdentity's SSOT role for built-ins).
+        useStore.getState().applyJobIdentity({ jobType: 'universal', agent: 'universal' });
+      }
 
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
@@ -161,7 +188,12 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         agent: resolvedAgent,
         overrideDirective: userMessage,
         chatSource: true,
-        actionMetadata: hasMetadata ? storeActionMetadata : undefined,
+        actionMetadata: hasMetadata && !universalCtx ? storeActionMetadata : undefined,
+        // Universal jobs are addressed explicitly by customJobRef — the
+        // triage classifier has nothing to infer.
+        skipTriage: universalCtx ? true : undefined,
+        customJobRef: universalCtx?.customJobRef,
+        threadId: universalCtx?.threadId,
         // chat SSOT §6 — forward the API-allocated turnId so the worker
         // reuses it for the durable user_turn line; eliminates the
         // optimistic-vs-durable id mismatch that produced two user

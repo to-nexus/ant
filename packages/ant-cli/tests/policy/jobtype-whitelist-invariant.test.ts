@@ -64,9 +64,10 @@ describe('Invariant I1 — jobType whitelist', () => {
     expect(isExecutableJobType('not-a-job')).toBe(false);
   });
 
-  it('isNonTaskJob is true for plan and visual only', () => {
+  it('isNonTaskJob is true for plan, visual, and universal only', () => {
     expect(isNonTaskJob('plan')).toBe(true);
     expect(isNonTaskJob('visual')).toBe(true);
+    expect(isNonTaskJob('universal')).toBe(true);
     expect(isNonTaskJob('code')).toBe(false);
     expect(isNonTaskJob('design')).toBe(false);
     expect(isNonTaskJob('learn')).toBe(false);
@@ -75,13 +76,13 @@ describe('Invariant I1 — jobType whitelist', () => {
     expect(isNonTaskJob(undefined)).toBe(false);
   });
 
-  it('NON_TASK_JOB_TYPES set is the canonical [plan, visual] tuple', () => {
-    expect([...NON_TASK_JOB_TYPES].sort()).toEqual(['plan', 'visual']);
+  it('NON_TASK_JOB_TYPES set is the canonical [plan, universal, visual] tuple', () => {
+    expect([...NON_TASK_JOB_TYPES].sort()).toEqual(['plan', 'universal', 'visual']);
   });
 
   it('SESSIONABLE_JOB_TYPES contains every union member exactly once', () => {
     expect([...SESSIONABLE_JOB_TYPES].sort()).toEqual(
-      ['code', 'design', 'learn', 'plan', 'visual'],
+      ['code', 'design', 'learn', 'plan', 'universal', 'visual'],
     );
   });
 });

@@ -611,6 +611,9 @@ async function executeCommandLogic(
   if (working_directory) {
     if (path.isAbsolute(working_directory)) {
       workingDir = working_directory;
+    } else if (ctx.pathAutoCorrect === 'none') {
+      // Non-canonical root (universal artifact tree) — no codebase/ prefixing.
+      workingDir = path.join(projectPath, working_directory);
     } else {
       const { normalized } = normalizeToCodebasePath(working_directory);
       workingDir = path.join(projectPath, normalized);
@@ -627,7 +630,12 @@ async function executeCommandLogic(
     }
   }
 
-  const writeViolations = detectWritePathViolations(command, workingDir, projectPath);
+  // The codebase/-bound write-path policy only applies to canonical feature
+  // roots; a non-canonical root has no codebase/ tree to protect (the sandbox
+  // is the fileSystem root itself).
+  const writeViolations = ctx.pathAutoCorrect === 'none'
+    ? []
+    : detectWritePathViolations(command, workingDir, projectPath);
   if (writeViolations.length > 0) {
     const msg = writeViolations.map(v => `  - "${v.path}" → ${v.reason}`).join('\n');
     console.error(`\n   ❌ [run_command] Write path violation detected:\n${msg}\n`);

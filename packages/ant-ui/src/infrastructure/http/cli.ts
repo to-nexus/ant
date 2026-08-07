@@ -19,6 +19,10 @@ export interface ExecuteCodeJobOptions {
    * optimistic SSE broadcast (chat SSOT §6).
    */
   seedTurnId?: string;
+  /** Universal runtime — `{agentId}/{jobId}` composite custom-job reference. */
+  customJobRef?: string;
+  /** Universal runtime — conversation thread id (also carried as `featureName`). */
+  threadId?: string;
 }
 
 export interface JobExecution {
@@ -41,6 +45,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     skipTriage,
     actionMetadata,
     seedTurnId,
+    customJobRef,
+    threadId,
   } = options;
 
   if (!featureName) {
@@ -102,6 +108,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     skipTriage,
     actionMetadata,
     seedTurnId,
+    customJobRef,
+    threadId,
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);

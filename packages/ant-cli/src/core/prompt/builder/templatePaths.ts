@@ -198,6 +198,16 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/ask/nodes/agent/variants/default/rules',
   },
 
+  // ─── universal / agent ────────────────────────────────────────────────────
+  // Universal has no per-node variants — one agent node, one triple. The
+  // custom agent/job definition rides in as an inert system suffix
+  // (`inertSystemAppend`), never as a template.
+  universalAgent: {
+    base: 'jobs/universal/nodes/agent/base',
+    rules: 'jobs/universal/nodes/agent/rules',
+    system: 'jobs/universal/nodes/agent/system',
+  },
+
   // ─── planner / plan ──────────────────────────────────────────────────────
   // No job-level system prompt — planner embeds its system header inside the
   // variant base.md (mirrors ask).

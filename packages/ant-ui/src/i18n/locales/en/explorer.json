@@ -281,5 +281,18 @@
     "projectProfileDesc": "Structure / language / framework detected from the codebase manifests.",
     "language": "Language",
     "framework": "Framework"
+  },
+  "customAgent": {
+    "title": "Agents",
+    "refresh": "Refresh agents",
+    "create": "Register agent",
+    "addJob": "Add job",
+    "placeholder": "No agents yet — register one with +",
+    "noJobs": "No jobs yet",
+    "newThread": "New conversation",
+    "newThreadBadge": "new",
+    "namePlaceholder": "Agent name",
+    "jobNamePlaceholder": "Job name",
+    "descPlaceholder": "Description (optional)"
   }
 }

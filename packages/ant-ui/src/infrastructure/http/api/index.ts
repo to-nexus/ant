@@ -12,6 +12,7 @@ export * from './deploy';
 export * from './config';
 export * from './kanban';
 export * from './agents';
+export * from './customAgents';
 export * from './llm';
 // `github.ts` is restricted at the import-boundary (ESLint / git-sweep).
 // Only the clone-status polling helper used by the Project Wizard is

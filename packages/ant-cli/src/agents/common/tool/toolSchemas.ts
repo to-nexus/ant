@@ -201,6 +201,29 @@ export const ARCHITECT_TOOLS = {
     },
   },
   
+  search_files: {
+    name: 'search_files',
+    description: 'Search the working file tree with ripgrep. Returns matches as `file:line:content`. Paths are relative to the working tree root — there is no codebase/ prefix convention. By default `node_modules`, `.git`, `dist`, `build` are excluded. Empty results include a `[search context]` block listing the resolved cwd / file_pattern / excludes so you can tell "really absent" from "cut by a filter".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        pattern: {
+          type: 'string',
+          description: 'Ripgrep regex pattern (Rust regex syntax, no lookaround). Escape literal metacharacters. Examples: "weekly report" (literal), "on(Load|Init)\\b" (alternation).',
+        },
+        file_pattern: {
+          type: 'string',
+          description: 'Ripgrep glob relative to the working tree root, passed verbatim. Examples: "**/*.md", "reports/**/*.{md,csv}", "!**/*.tmp" (exclude).',
+        },
+        include_dependencies: {
+          type: 'boolean',
+          description: 'Include `node_modules` / `vendor` and bypass `.gitignore` (default: false). Only relevant when the tree contains an uploaded codebase.',
+        },
+      },
+      required: ['pattern'],
+    },
+  },
+
   delete_file: {
     name: 'delete_file',
     description: 'Delete a file from the codebase',

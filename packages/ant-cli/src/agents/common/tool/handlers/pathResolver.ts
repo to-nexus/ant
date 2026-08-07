@@ -33,9 +33,15 @@ export async function resolveToolPath(
   const fileSystem = ctx.fileSystem;
   const p = await import('path');
   const projectRoot = fileSystem.getRootPath();
+  // Non-canonical roots (universal artifact tree) opt out of the codebase/
+  // auto-correction — Rule 4 would misplace every path under codebase/.
+  const skipAutoCorrect = ctx.pathAutoCorrect === 'none';
 
   if (p.isAbsolute(rawPath)) {
     const fsPath = normalizeRelPath(p.relative(projectRoot, rawPath));
+    if (skipAutoCorrect) {
+      return { displayPath: fsPath, fsPath, scope: 'workspace', wasFixed: false };
+    }
     const { corrected, wasFixed } = autoCorrectCodebasePath(fsPath);
     const fixMessage = wasFixed
       ? `⚠️ Path corrected: "${fsPath}" → "${corrected}". Always use codebase/ prefix for code files.`
@@ -44,6 +50,9 @@ export async function resolveToolPath(
   }
 
   const rel = normalizeRelPath(rawPath);
+  if (skipAutoCorrect) {
+    return { displayPath: rel, fsPath: rel, scope: 'workspace', wasFixed: false };
+  }
   const { corrected, wasFixed } = autoCorrectCodebasePath(rel);
   const fixMessage = wasFixed
     ? `⚠️ Path corrected: "${rel}" → "${corrected}". Always use codebase/ prefix for code files.`

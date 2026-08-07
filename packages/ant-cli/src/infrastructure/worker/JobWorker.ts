@@ -491,14 +491,30 @@ export class JobWorker {
     // Jobs always run inside a feature — a project without features has no
     // codebase. Reject at dispatch instead of silently pointing at a
     // nonexistent working tree ('_base' is the retired no-feature sentinel).
-    if (!payload.feature || payload.feature === '_base') {
-      throw new Error(
-        `Job ${jobId} has no feature — jobs require a feature (project without features has no codebase)`
+    // Universal jobs run inside a THREAD container instead (D6): the thread
+    // path flows through ANT_FEATURE_PATH, and the shared artifact tree
+    // stands in for the codebase path (universal has no canonical codebase).
+    let codebasePath: string;
+    let featurePath: string;
+    if (payload.type === 'universal') {
+      const { parseCustomJobRef } = await import('@ant/shared');
+      const ref = parseCustomJobRef(payload.customJobRef);
+      if (!ref || !payload.threadId) {
+        throw new Error(`Universal job ${jobId} requires customJobRef + threadId (got ref=${payload.customJobRef}, thread=${payload.threadId})`);
+      }
+      featurePath = workspaceResolver.getAgentThreadPath(
+        payload.userContext, payload.projectId, ref.agentId, ref.jobId, payload.threadId,
       );
+      codebasePath = workspaceResolver.getUniversalArtifactsPath(payload.userContext, payload.projectId);
+    } else {
+      if (!payload.feature || payload.feature === '_base') {
+        throw new Error(
+          `Job ${jobId} has no feature — jobs require a feature (project without features has no codebase)`
+        );
+      }
+      codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
+      featurePath = workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
     }
-
-    const codebasePath = workspaceResolver.getCodebasePath(payload.userContext, payload.projectId, payload.feature);
-    const featurePath = workspaceResolver.getFeaturePath(payload.userContext, payload.projectId, payload.feature);
 
     // CLI source/dist root for internal resource paths (templates, policies, etc.)
     const cliRoot = WorkspacePathResolver.getCliRoot();
@@ -563,6 +579,12 @@ export class JobWorker {
       // the orchestrator will pass this to recordUserTurn so the durable
       // user_turn shares the same id as the optimistic SSE broadcast.
       env.ANT_SEED_TURN_ID = payload.seedTurnId;
+    }
+    if (payload.customJobRef) {
+      env.ANT_CUSTOM_JOB_REF = payload.customJobRef;
+    }
+    if (payload.threadId) {
+      env.ANT_THREAD_ID = payload.threadId;
     }
 
     // Cap the child V8 heap below the pod cgroup memory limit, split across

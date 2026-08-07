@@ -41,6 +41,7 @@ import type { UserContext } from '../../../../../core/types/user';
 import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
 import { MessageBroadcaster } from '../../../../../core/chat/MessageBroadcaster';
 import { SessionPersistence } from './SessionPersistence';
+import { resolveUniversalThreadPath } from '../../../../../core/customAgents/threadPaths';
 import { getSessionKey } from '../../../../../core/chat/schema';
 import {
   getChoiceResolvedNXKey,
@@ -1461,7 +1462,11 @@ export class ChatService {
     if (!this.workspaceResolver || !userContext) return null;
     let featurePath: string | null = null;
     try {
-      featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      // Universal projects ride the threadId in the feature slot — the chat
+      // SSOT lives in the thread container (mirrors SessionPersistence).
+      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+      featurePath = resolveUniversalThreadPath(projectPath, featureName)
+        ?? this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     } catch {
       return null;
     }

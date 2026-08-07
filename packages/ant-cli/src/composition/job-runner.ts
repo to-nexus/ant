@@ -52,13 +52,13 @@ interface JobParams {
   jobId: string;
   projectId: string;
   feature: string;
-  jobType: 'code' | 'design' | 'learn' | 'inline-ask' | 'visual';
-  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator';
+  jobType: 'code' | 'design' | 'learn' | 'inline-ask' | 'visual' | 'universal';
+  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator' | 'universal';
   mode: 'generate' | 'refactor' | 'explain';
   userId: string;
   orgId: string;
   projectPath: string;    // Full project path (already resolved)
-  featurePath: string;    // Full feature path (already resolved)
+  featurePath: string;    // Full feature path (already resolved; thread path for universal)
   overrideDirective?: string;
   inputFile?: string;
   isResume?: boolean;
@@ -68,6 +68,10 @@ interface JobParams {
   actionMetadata?: import('@ant/shared').ActionMetadata;
   /** chat SSOT §6 — pre-allocated turnId from /chat/user-message. */
   seedTurnId?: string;
+  /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
+  customJobRef?: string;
+  /** Universal only — thread container id. */
+  threadId?: string;
 }
 
 function getJobParams(): JobParams {
@@ -83,8 +87,8 @@ function getJobParams(): JobParams {
     jobId: process.env.ANT_JOB_ID!,
     projectId: process.env.ANT_PROJECT_ID!,
     feature: process.env.ANT_FEATURE!,
-    jobType: process.env.ANT_JOB_TYPE as 'code' | 'design' | 'learn' | 'visual',
-    agent: process.env.ANT_AGENT as 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator',
+    jobType: process.env.ANT_JOB_TYPE as JobParams['jobType'],
+    agent: process.env.ANT_AGENT as JobParams['agent'],
     mode: (process.env.ANT_MODE || 'generate') as 'generate' | 'refactor' | 'explain',
     userId: process.env.ANT_USER_ID!,
     orgId: process.env.ANT_ORG_ID!,
@@ -98,6 +102,8 @@ function getJobParams(): JobParams {
     skipTriage: process.env.ANT_SKIP_TRIAGE === 'true',
     actionMetadata: process.env.ANT_ACTION_METADATA ? (() => { try { return JSON.parse(process.env.ANT_ACTION_METADATA); } catch { return undefined; } })() : undefined,
     seedTurnId: process.env.ANT_SEED_TURN_ID,
+    customJobRef: process.env.ANT_CUSTOM_JOB_REF,
+    threadId: process.env.ANT_THREAD_ID,
   };
 }
 
@@ -222,6 +228,8 @@ async function runJob(params: JobParams): Promise<void> {
       actionMetadata: params.actionMetadata,
       isResume: params.isResume,
       seedTurnId: params.seedTurnId,
+      customJobRef: params.customJobRef,
+      threadId: params.threadId,
     });
     
     reportProgress('completed', 'Job completed successfully', 100);
@@ -325,6 +333,22 @@ async function main(): Promise<void> {
   const partialResult = await initPartials();
   if (partialResult.failed.length > 0) {
     console.error(`⛔ ${partialResult.failed.length} partial(s) failed to register`);
+  }
+
+  // Universal (D5): load + activate the custom job definition once per child.
+  // The server process only lists summaries; activation is job-runner-only.
+  if (params.jobType === 'universal') {
+    const { parseCustomJobRef } = await import('@ant/shared');
+    const ref = parseCustomJobRef(params.customJobRef);
+    if (!ref || !params.threadId) {
+      throw new Error(`Universal job requires ANT_CUSTOM_JOB_REF + ANT_THREAD_ID (got ref=${params.customJobRef}, thread=${params.threadId})`);
+    }
+    const { loadCustomJob } = await import('../core/customAgents/CustomAgentLoader');
+    const { deriveCustomAgentScopeRoots } = await import('../core/customAgents/scopeRoots');
+    const { activateCustomJob } = await import('../core/customAgents/activeCustomJob');
+    const resolved = loadCustomJob(deriveCustomAgentScopeRoots(params.projectPath), ref.agentId, ref.jobId);
+    activateCustomJob(resolved);
+    console.log(`🧩 [JobRunner] Custom job activated: ${params.customJobRef} (scope: ${resolved.scope})`);
   }
 
   try {

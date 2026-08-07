@@ -49,6 +49,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
   // ── Step 1 ──
   const [mode, setMode] = useState<'design' | 'code'>(initialMode);
+  // Project runtime shape. 'universal' = custom-agent workspace: no features,
+  // no git step, no auto-started job — the wizard collapses to a single step
+  // that creates the project + config (`projectType: 'universal'`).
+  const [projectType, setProjectType] = useState<'canonical' | 'universal'>('canonical');
   // Project-level domain (service / game). Written to config.json at creation;
   // there is no mid-flow switcher — it is changed later only in project settings.
   const [domain, setDomain] = useState<Domain>('service');
@@ -221,6 +225,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
   // ── Derived ──
 
+  // Universal only applies to NEW projects — adding a feature to an existing
+  // project never reaches this modal for universal projects (no FeatureSection).
+  const isUniversal = projectType === 'universal' && !existingProjectId;
+
   const gitReadOnly = !!existingProjectId && gitUrlFromConfig;
 
   // Clone flow: the BE auto-creates a feature named after the remote default
@@ -238,7 +246,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
   const canGoNext: Record<WizardStep, boolean> = {
     // Clone flow ignores the feature-name field (BE auto-creates the base feature).
-    1: (isCloneFlow
+    // Universal projects have no feature, so only the project name gates step 1.
+    1: (isUniversal
+        || isCloneFlow
         || (featureName.trim().length >= 3 && isValidFeatureName(featureName.trim()) && !featureNameExists))
       && (!!existingProjectId || (projectName.trim().length >= 3 && isValidName(projectName.trim())))
       && !projectNameExists,
@@ -328,17 +338,20 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     setExecutionError(null);
 
     const needsProject = !existingProjectId;
-    const hasGitAction = !gitReadOnly && gitEnabled && gitAction !== 'none' && gitUrl.trim().length > 0 && patStatus?.configured;
+    // Universal projects skip git / feature / upload / job entirely — the BE
+    // rejects feature creation on them (400) and jobs start from custom-job
+    // threads, not from the wizard.
+    const hasGitAction = !isUniversal && !gitReadOnly && gitEnabled && gitAction !== 'none' && gitUrl.trim().length > 0 && patStatus?.configured;
     const uploadableDesignDocs = designDocsFiles.filter((f) => isCanonicalDesignDoc(f.name));
-    const hasFiles = sourcesFiles.length + assetsFiles.length + (mode === 'code' ? uploadableDesignDocs.length : 0) > 0;
+    const hasFiles = !isUniversal && sourcesFiles.length + assetsFiles.length + (mode === 'code' ? uploadableDesignDocs.length : 0) > 0;
 
     const userDirective = directive.trim();
-    const effectiveDirective = startJob
+    const effectiveDirective = startJob && !isUniversal
       ? (userDirective || (mode === 'design'
         ? t('quickstart.projectWizard.defaultDirectiveDesign')
         : t('quickstart.projectWizard.defaultDirectiveCode')))
       : '';
-    const shouldStartJob = startJob && effectiveDirective;
+    const shouldStartJob = startJob && !isUniversal && effectiveDirective;
 
     // Clone requires ZERO features and auto-creates one from the remote HEAD,
     // so it must run before the feature step. Init is the mirror: it publishes
@@ -350,7 +363,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
     const steps: ExecStepState[] = [];
     if (needsProject) steps.push({ id: 'project', status: 'pending' });
     if (needsProject) steps.push({ id: 'config', status: 'pending' });
-    if (!cloneFlowExec) steps.push({ id: 'feature', status: 'pending' });
+    if (!cloneFlowExec && !isUniversal) steps.push({ id: 'feature', status: 'pending' });
     if (hasGitAction) steps.push({ id: gitAction === 'clone' ? 'gitClone' : 'gitInit', status: 'pending' });
     if (cloneFlowExec) steps.push({ id: 'feature', status: 'pending' });
     if (hasFiles) steps.push({ id: 'upload', status: 'pending' });
@@ -408,11 +421,17 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
           serverConfig = await createProjectConfig(projectId);
         }
         const updates: Record<string, any> = {};
-        if (repositoryName) updates.repositoryName = repositoryName;
-        if (gitUrl.trim()) updates.githubRepo = gitUrl.trim();
-        // Domain is always written so the project-level SSOT is explicit from
-        // creation (the server default is 'service'; this records the choice).
-        updates.domain = domain;
+        if (isUniversal) {
+          // Universal workspace: record the projectType SSOT; git/domain are
+          // canonical-project concerns and stay untouched.
+          updates.projectType = 'universal';
+        } else {
+          if (repositoryName) updates.repositoryName = repositoryName;
+          if (gitUrl.trim()) updates.githubRepo = gitUrl.trim();
+          // Domain is always written so the project-level SSOT is explicit from
+          // creation (the server default is 'service'; this records the choice).
+          updates.domain = domain;
+        }
         if (Object.keys(updates).length > 0) {
           await updateProjectConfig(projectId, { ...serverConfig, ...updates });
         }
@@ -458,7 +477,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
         updateExecStep('feature', 'done');
       };
 
-      if (!cloneFlowExec) await runFeatureStep();
+      if (!cloneFlowExec && !isUniversal) await runFeatureStep();
 
       if (hasGitAction) {
         const gitStepId: ExecStepId = gitAction === 'clone' ? 'gitClone' : 'gitInit';
@@ -546,8 +565,10 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
 
       if (useStore.getState().selectedProject !== projectId) setSelectedProject(projectId);
       await delay(150);
-      setSelectedFeature(effectiveFeature);
-      await delay(200);
+      if (!isUniversal) {
+        setSelectedFeature(effectiveFeature);
+        await delay(200);
+      }
 
       if (shouldStartJob) {
         updateExecStep('job', 'active');
@@ -596,7 +617,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   }, [
     isExecuting, existingProjectId, projectName, repositoryName, gitUrl, gitAction, patStatus,
     featureName, directive, showDirective, sourcesFiles, assetsFiles,
-    designDocsFiles, mode, domain, serverMode, language, gitEnabled, gitReadOnly, t,
+    designDocsFiles, mode, domain, isUniversal, serverMode, language, gitEnabled, gitReadOnly, t,
     setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType,
     setRunning, setCurrentJob, fetchProjects, setProjectSetupConfig, runGitOperation,
   ]);
@@ -606,7 +627,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
   // Project the wizard's 1/2/3 numeric steps into the shared aurora
   // WizardStepIndicator's WizardStep[] contract. `hasValue` encodes the
   // emerald-checkmark / violet-current state expected by the primitive.
-  const auroraSteps: AuroraWizardStep[] = ([1, 2, 3] as const).map((step) => ({
+  // Universal collapses the wizard to the single setup step (no git, no files).
+  const visibleWizardSteps: readonly WizardStep[] = isUniversal ? [1] : [1, 2, 3];
+  const auroraSteps: AuroraWizardStep[] = visibleWizardSteps.map((step) => ({
     id: String(step),
     label: t(`quickstart.projectWizard.step${step}Title`),
     hasValue: step < currentStep || (step === currentStep && canGoNext[step]),
@@ -632,6 +655,16 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 t={t}
                 mode={mode}
                 onModeChange={handleModeChange}
+                projectType={existingProjectId ? 'canonical' : projectType}
+                onProjectTypeChange={(next) => {
+                  setProjectType(next);
+                  // Universal collapses to step 1 — pull navigation back so a
+                  // previously-visited git step can't linger as the current view.
+                  if (next === 'universal') {
+                    setCurrentStep(1);
+                    setMaxVisited(1);
+                  }
+                }}
                 domain={domain}
                 onDomainChange={setDomain}
                 existingProjectId={existingProjectId}
@@ -716,7 +749,15 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
               size="sm"
             />
             <div className="flex items-center gap-2">
-              {currentStep < 3 ? (
+              {isUniversal ? (
+                // Universal: single-step wizard — create project + config only
+                // (no feature, no git, no job start).
+                <SubmitButton
+                  disabled={!canGoNext[1]}
+                  onClick={() => handleSubmit(false)}
+                  label={t('quickstart.projectWizard.createOnly')}
+                />
+              ) : currentStep < 3 ? (
                 <NextButton
                   disabled={!canGoNext[currentStep]}
                   onClick={handleNext}

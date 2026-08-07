@@ -135,6 +135,20 @@ export interface ToolExecutionContext {
    */
   recordFileTouch?: (op: 'create' | 'update' | 'delete', path: string) => void;
 
+  /**
+   * Path auto-correction mode for the file tool handlers.
+   *
+   * `'codebase'` (default when absent) routes every path through
+   * `normalizeToCodebasePath` — Rule 4 prepends `codebase/` to anything
+   * outside the canonical feature dirs. Correct for canonical feature roots.
+   *
+   * `'none'` skips the auto-correction entirely: paths resolve verbatim
+   * against `fileSystem.getRootPath()`. Required for non-canonical roots
+   * (the universal `universal/artifacts/` tree) where a `codebase/` prefix
+   * would silently misplace every write.
+   */
+  pathAutoCorrect?: 'codebase' | 'none';
+
   // === Optional ports (per job) ===
   command?: CommandPort;
   git?: GitPort;

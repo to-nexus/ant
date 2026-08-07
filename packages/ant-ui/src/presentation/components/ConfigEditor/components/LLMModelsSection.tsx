@@ -67,9 +67,10 @@ const NODE_LABEL: Record<ModelNodeKey, string> = {
   plan: 'Plan',
   execute: 'Execute',
   direct: 'Direct',
-  // BE-only value key (never in OVERRIDABLE_MODEL_SLOTS / COLUMN_ORDER) —
+  // BE-only value keys (never in OVERRIDABLE_MODEL_SLOTS / COLUMN_ORDER) —
   // present only to satisfy the exhaustive Record type.
   subagent: 'Subagent',
+  agent: 'Agent',
   sketch: 'Sketch',
   render: 'Render',
   engrave: 'Engrave',

@@ -374,8 +374,15 @@ export interface AuthState {
   /** Test-account level (0 = normal, ≥1 = test-payment enabled). */
   testAccountLevel: number;
   selectedAgent: string;
-  selectedJobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
+  selectedJobType: SelectedJobType;
 }
+
+/**
+ * Job identity values the chat toolbar / SSE param can hold. `'universal'`
+ * is the custom-agent runtime (universal projects only) — it never appears
+ * in the built-in agent/job pickers.
+ */
+export type SelectedJobType = 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'universal';
 
 export interface ConfigState {
   recursionLimit: number;

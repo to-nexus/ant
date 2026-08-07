@@ -318,7 +318,9 @@ export class PromptBuilder implements PromptPort {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Step 4: Assemble merged output
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    const systemParts = [systemBase, basisSection, rules, injectionsMerged, examples].filter(Boolean);
+    // Inert system suffix (universal custom-job definition): rides after the
+    // merged injections, stays before policy (policy-last invariant below).
+    const systemParts = [systemBase, basisSection, rules, injectionsMerged, config.inertSystemAppend ?? '', examples].filter(Boolean);
 
     let guardrail = '';
     let policy = '';

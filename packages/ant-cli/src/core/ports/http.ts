@@ -19,17 +19,21 @@ export interface LogEntry {
 export interface JobStatus {
   jobId: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';  // ✅ Added 'paused' for recursion limit / interruptions
-  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc' | 'visual' | 'inline-ask';  // ✅ Track the job type
+  task?: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc' | 'visual' | 'inline-ask' | 'universal';  // ✅ Track the job type
   startedAt?: string;
   completedAt?: string;
   error?: string;
 }
 
 export interface ExecuteJobParams {
-  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator';
-  jobType: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc' | 'inline-ask' | 'visual';  // ✅ Type of job to execute
+  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator' | 'universal';
+  jobType: 'design' | 'code' | 'learn' | 'review' | 'plan' | 'doc' | 'inline-ask' | 'visual' | 'universal';  // ✅ Type of job to execute
   project: string;
   feature?: string;  // ✅ Feature name for Kanban tracking
+  /** Universal only — `{agentId}/{jobId}` composite ref of the custom job definition. */
+  customJobRef?: string;
+  /** Universal only — thread (conversation container) id under the custom job. */
+  threadId?: string;
   inputFile?: string;  // ✅ Optional: undefined for chat-initiated jobs with overrideDirective
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;

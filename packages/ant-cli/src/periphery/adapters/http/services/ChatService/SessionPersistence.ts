@@ -21,6 +21,7 @@ import type {
 } from '@ant/shared';
 import { logger } from '../../../../../utils/logger';
 import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
+import { resolveUniversalThreadPath } from '../../../../../core/customAgents/threadPaths';
 
 export class SessionPersistence {
   constructor(private workspaceResolver?: WorkspaceResolver) {}
@@ -28,6 +29,11 @@ export class SessionPersistence {
   /**
    * Resolve the absolute feature path. Returns `null` when the resolver
    * is missing or the lookup fails (e.g. unknown project/feature).
+   *
+   * Universal projects: the FE rides the threadId in the feature slot, so
+   * when the project is universal-type and a thread container matches, the
+   * chat SSOT lives THERE — not under features/. Resolved once here (the
+   * single FileSessionAdapter construction seam for the chat layer).
    */
   getFeaturePath(
     projectId: string,
@@ -36,6 +42,9 @@ export class SessionPersistence {
   ): string | null {
     if (!this.workspaceResolver || !userContext) return null;
     try {
+      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+      const threadPath = resolveUniversalThreadPath(projectPath, featureName);
+      if (threadPath) return threadPath;
       return this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     } catch {
       return null;

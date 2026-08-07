@@ -145,5 +145,15 @@
     "clearAll": "Clear All",
     "clearContentsDetail": "Clear all contents in \"{{name}}\"? This will delete all files and subdirectories.",
     "deleteType": "Delete {{type}}"
+  },
+  "universal": {
+    "title": "Workspace",
+    "refresh": "Refresh",
+    "upload": "Upload files",
+    "uploading": "Uploading…",
+    "download": "Download",
+    "newFolder": "New folder",
+    "folderNamePlaceholder": "folder-name",
+    "placeholder": "Drop files here to add them to the workspace"
   }
 }

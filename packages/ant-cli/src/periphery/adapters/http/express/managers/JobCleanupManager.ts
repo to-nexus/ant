@@ -12,7 +12,7 @@ import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state
 import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
 import { appendJobSnapshotToSession } from '../../routes/helpers/sessionCleanup';
-import { isNonTaskJob } from '@ant/shared';
+import { isNonTaskJob, type SessionableJobType } from '@ant/shared';
 
 /**
  * Invariant I2 — `cancelled` choice cards (Resume / Dismiss UI) must not
@@ -62,7 +62,7 @@ export class JobCleanupManager {
     projectId?: string,
     featureName?: string,
     interruptionReason?: InterruptionDetails,
-    explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+    explicitJobType?: SessionableJobType,
     userContext?: UserContext,
     finalStatus?: SessionRunStatus,
     opts?: {
@@ -123,7 +123,7 @@ export class JobCleanupManager {
       return;
     }
     const jobStatus = this.stateTracker.getJobStatus(jobId);
-    const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'code';
+    const jobType = mapping?.jobType || explicitJobType || (jobStatus?.task as SessionableJobType) || 'code';
     
     // End workflow tracking
     await this.deps.workflowStateService.endJob(jobId);
@@ -671,7 +671,7 @@ export class JobCleanupManager {
    */
   private async broadcastFinalUpdate(
     mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext },
-    jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+    jobType: SessionableJobType,
     userContext: UserContext,
     jobId: string,
     interruptionReason?: InterruptionDetails,

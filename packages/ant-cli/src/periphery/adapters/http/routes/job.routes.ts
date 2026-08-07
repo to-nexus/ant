@@ -18,7 +18,7 @@ import { readBranchBase } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
-import { getConfigSlots, featureNameToSlug } from '@ant/shared';
+import { getConfigSlots, featureNameToSlug, type SessionableJobType } from '@ant/shared';
 import { isBillingEnabled } from '../../../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
@@ -60,8 +60,52 @@ function resolveAgentForJobType(jobType: string): string {
   switch (jobType) {
     case 'plan': return 'planner';
     case 'visual': return 'creator';
+    case 'universal': return 'universal';
     default: return 'architect';
   }
+}
+
+/**
+ * Universal job-accept validation (fail-loud, D5): parse the composite ref,
+ * validate the thread id, and load+merge the definition so a broken
+ * agent.yaml/job.yaml surfaces as HTTP 400 at accept time — never inside the
+ * worker child. Returns the resolved thread container path.
+ */
+async function resolveUniversalExecuteContext(
+  workspaceResolver: WorkspaceResolver,
+  userContext: { userId: string; organizationId: string },
+  projectId: string,
+  customJobRef: unknown,
+  threadId: unknown,
+): Promise<{ ok: true; threadPath: string; ref: { agentId: string; jobId: string } } | { ok: false; status: number; error: string; code: string }> {
+  const { parseCustomJobRef, isValidCustomId } = await import('@ant/shared');
+  const ref = parseCustomJobRef(typeof customJobRef === 'string' ? customJobRef : undefined);
+  if (!ref) {
+    return { ok: false, status: 400, error: `Invalid or missing customJobRef (expected "{agentId}/{jobId}"): ${String(customJobRef)}`, code: 'invalid-custom-job-ref' };
+  }
+  if (typeof threadId !== 'string' || !isValidCustomId(threadId)) {
+    return { ok: false, status: 400, error: `Invalid or missing threadId (expected [a-z0-9-]+): ${String(threadId)}`, code: 'invalid-thread-id' };
+  }
+  const projectPath = workspaceResolver.getProjectPath(userContext as any, projectId);
+  // Policy flag (D6): custom jobs run only in universal-type projects.
+  try {
+    const configRaw = fs.readFileSync(path.join(projectPath, 'config.json'), 'utf-8');
+    const projectType = JSON.parse(configRaw)?.projectType;
+    if (projectType !== 'universal') {
+      return { ok: false, status: 400, error: `Project "${projectId}" is not a universal-type project (projectType: ${projectType ?? 'canonical'})`, code: 'project-not-universal' };
+    }
+  } catch (e) {
+    return { ok: false, status: 400, error: `Cannot read project config for "${projectId}": ${e instanceof Error ? e.message : String(e)}`, code: 'project-config-unreadable' };
+  }
+  try {
+    const { deriveCustomAgentScopeRoots } = await import('../../../../core/customAgents/scopeRoots');
+    const { loadCustomJob } = await import('../../../../core/customAgents/CustomAgentLoader');
+    loadCustomJob(deriveCustomAgentScopeRoots(projectPath), ref.agentId, ref.jobId);
+  } catch (e) {
+    return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e), code: 'invalid-custom-job-definition' };
+  }
+  const threadPath = workspaceResolver.getAgentThreadPath(userContext as any, projectId, ref.agentId, ref.jobId, threadId);
+  return { ok: true, threadPath, ref };
 }
 
 /**
@@ -72,7 +116,7 @@ function resolveAgentForJobType(jobType: string): string {
 export function createJobRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   executeJob: (params: ExecuteJobParams) => Promise<any>;
-  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual', userContext?: { userId: string; organizationId: string }) => Promise<void>;
+  cleanupJobState: (jobId: string, projectId?: string, featureName?: string, interruptionReason?: InterruptionDetails, explicitJobType?: SessionableJobType, userContext?: { userId: string; organizationId: string }) => Promise<void>;
   workflowStateService: import('../services/WorkflowStateService').WorkflowStateService;
   chatService: import('../services/ChatService').ChatService;
   stateStore: StateStorePort;
@@ -124,7 +168,7 @@ export function createJobRoutes(deps: {
     finalStatus: 'completed' | 'failed';
     projectId: string;
     featureName: string;
-    jobType: 'code' | 'design' | 'learn' | 'plan' | 'visual';
+    jobType: SessionableJobType;
     userContext?: { userId: string; organizationId: string };
     interruption?: InterruptionDetails;
     featurePath?: string;
@@ -218,10 +262,24 @@ export function createJobRoutes(deps: {
     // turn when the execute pipeline throws (queue / spawn / …).
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId } = req.body;
+    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, threadId } = req.body;
     let userContext: { userId: string; organizationId: string } | null = null;
     try {
       userContext = extractUserContext(req);
+
+      // Universal (D5/D6): validate the definition fail-loud at accept time and
+      // resolve the thread container path that flows where a featurePath would.
+      // For universal, the `:feature` URL param carries the threadId.
+      let universalCtx: { threadPath: string; ref: { agentId: string; jobId: string } } | null = null;
+      if (jobType === 'universal') {
+        const resolved = await resolveUniversalExecuteContext(
+          deps.workspaceResolver, userContext, projectId, customJobRef, threadId ?? featureName,
+        );
+        if (!resolved.ok) {
+          return res.status(resolved.status).json({ error: resolved.error, code: resolved.code });
+        }
+        universalCtx = { threadPath: resolved.threadPath, ref: resolved.ref };
+      }
 
       // Check if this feature already has a running or interrupted job of the same type
       const duplicate = await checkDuplicateJob(projectId, featureName, jobType);
@@ -236,7 +294,9 @@ export function createJobRoutes(deps: {
           // unambiguous choice to start fresh — `resume` is a separate route —
           // so supersede the interrupted job instead of hard-blocking with 409.
           // (A genuinely `running` job still 409s below for concurrency.)
-          const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+          const featurePath = universalCtx
+            ? universalCtx.threadPath
+            : deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
           const resumable = hasResumableSession(featurePath, existingJobId);
 
           logger.info(
@@ -254,7 +314,7 @@ export function createJobRoutes(deps: {
             finalStatus: 'failed',
             projectId,
             featureName,
-            jobType: jobType as 'code' | 'design' | 'learn' | 'plan' | 'visual',
+            jobType: jobType as SessionableJobType | 'universal',
             userContext,
             interruption: {
               reason: 'user_stopped',
@@ -329,8 +389,11 @@ export function createJobRoutes(deps: {
         }
       }
 
-      const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const inputFile = overrideDirective ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
+      const featurePath = universalCtx
+        ? universalCtx.threadPath
+        : deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      // Universal is chat-driven only — no meta/directives plane in a thread.
+      const inputFile = (overrideDirective || universalCtx) ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
 
       // Approval gate (stronger than credits): an unapproved account cannot
       // start work. Re-checked every start, so admin revocation takes effect
@@ -385,6 +448,10 @@ export function createJobRoutes(deps: {
         skipTriage,
         actionMetadata,
         userContext,
+        ...(universalCtx && {
+          customJobRef: `${universalCtx.ref.agentId}/${universalCtx.ref.jobId}`,
+          threadId: (threadId ?? featureName) as string,
+        }),
         // chat SSOT §6 — pre-allocated turnId from /chat/user-message,
         // forwarded to the worker so the durable user_turn line shares
         // the same id as the optimistic SSE broadcast.
@@ -773,7 +840,7 @@ export function createJobRoutes(deps: {
       metadata: { stoppedBy: 'user_action' },
     };
 
-    const resolvedJobType = (jobType || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+    const resolvedJobType = (jobType || 'code') as SessionableJobType;
     const featurePath = projectId && featureName
       ? deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName)
       : undefined;
@@ -799,7 +866,7 @@ export function createJobRoutes(deps: {
   // Resume existing job
   router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
     const requestedJobId = req.params.jobId;
-    const { projectId, featureName, chatSource = true } = req.body;
+    const { projectId, featureName, chatSource = true, customJobRef, threadId } = req.body;
     
     logger.debug(`\n🔄 [ResumeRoute] Resume request received`);
     logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
@@ -830,6 +897,51 @@ export function createJobRoutes(deps: {
           error: 'Insufficient credits to resume the job.',
           code: 'insufficient_credits',
           ...lowResume,
+        });
+      }
+
+      // ── Universal resume: the thread conversation is always-valid resume
+      // context (non-task job — no task-queue checkpoint to gate on). The FE
+      // supplies the definition ref + thread id; the ref round-trips through
+      // the payload/env chain exactly like a fresh start (E2E check 4).
+      if (customJobRef && threadId) {
+        const resolvedUniversal = await resolveUniversalExecuteContext(
+          deps.workspaceResolver, userContext, projectId, customJobRef, threadId,
+        );
+        if (!resolvedUniversal.ok) {
+          return res.status(resolvedUniversal.status).json({ error: resolvedUniversal.error, code: resolvedUniversal.code });
+        }
+        const threadSessionPath = path.join(resolvedUniversal.threadPath, 'sessions/universal/universal.json');
+        if (!fs.existsSync(threadSessionPath)) {
+          return res.status(404).json({ error: 'No thread session found', message: `No session for thread ${threadId}` });
+        }
+        const threadSession = JSON.parse(fs.readFileSync(threadSessionPath, 'utf-8'));
+        const universalJobId = threadSession.state?.jobId ?? requestedJobId;
+        const universalParams: ExecuteJobParams = {
+          agent: 'universal',
+          jobType: 'universal',
+          project: projectId,
+          feature: featureName,
+          enableEvaluation: false,
+          chatSource,
+          userContext,
+          jobId: universalJobId,
+          isResume: true,
+          customJobRef,
+          threadId,
+        };
+        const universalResult = await deps.executeJob(universalParams);
+        await deps.stateStore.releaseLock(`ant:job-completed:${universalJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-event:${universalJobId}:completed`);
+        await deps.stateStore.releaseLock(`ant:job-event:${universalJobId}:failed`);
+        await deps.stateStore.releaseLock(`ant:job-finalize:${universalJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-pause:${universalJobId}`);
+        await deps.stateStore.releaseLock(`ant:job-poisoned:${universalJobId}`);
+        return res.json({
+          success: true,
+          jobId: universalResult?.jobId ?? universalJobId,
+          jobType: 'universal',
+          message: `Universal thread ${threadId} resumed`,
         });
       }
 
@@ -1361,7 +1473,7 @@ export function createJobRoutes(deps: {
       const terminalStatuses = ['failed', 'completed', 'cancelled', 'stopped'];
       if (jobStatus.status === 'paused') {
         // Paused → terminal. Go through finalize for seal + broadcast + idempotency lock.
-        const jobType = (jobStatus.type || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+        const jobType = (jobStatus.type || 'code') as SessionableJobType;
         const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
         await finalize({
           jobId,
@@ -1406,7 +1518,7 @@ export function createJobRoutes(deps: {
           `Job dismiss: already terminal (${jobStatus.status}) — performing defensive seal`,
           { component: 'JobRoute' },
         );
-        const jobType = (jobStatus.type || 'code') as 'code' | 'design' | 'learn' | 'plan' | 'visual';
+        const jobType = (jobStatus.type || 'code') as SessionableJobType;
         const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
         await finalize({
           jobId,

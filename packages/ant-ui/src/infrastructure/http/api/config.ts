@@ -19,12 +19,20 @@ export interface ProjectConfig {
    * creation or changes it in project settings (ConfigEditor).
    */
   domain?: Domain;
+  /**
+   * Project runtime shape. `'universal'` marks a custom-agent workspace
+   * (no features / git; jobs run through the `jobType='universal'` runtime).
+   * Absent = `'canonical'` (the classic feature-based product project).
+   */
+  projectType?: 'canonical' | 'universal';
   llmModels?: {
     design?: JobLLMConfig;
     code?: JobLLMConfig;
     learn?: JobLLMConfig;
     plan?: JobLLMConfig;
     visual?: JobLLMConfig;
+    // Universal custom-agent runtime (jobType 'universal').
+    universal?: JobLLMConfig;
     // Auxiliary (non-graph) model slots — default-only, surfaced in the picker.
     commit?: JobLLMConfig;
   };

@@ -68,8 +68,8 @@ async function getJobCreditLedger(): Promise<CreditLedgerPort | undefined> {
  * This is the only place where concrete implementations are wired together.
  */
 export async function orchestrator(params: {
-  agent: "architect" | "reviewer" | "planner" | "doc" | "creator";
-  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc" | "inline-ask" | "visual";
+  agent: "architect" | "reviewer" | "planner" | "doc" | "creator" | "universal";
+  jobType?: "design" | "code" | "learn" | "review" | "plan" | "doc" | "inline-ask" | "visual" | "universal";
   input: string;
   project?: string;
   feature?: string;  // ✅ Feature name (for chat jobs without inputFile)
@@ -100,8 +100,12 @@ export async function orchestrator(params: {
    * defect.
    */
   seedTurnId?: string;
+  /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
+  customJobRef?: string;
+  /** Universal only — thread container id (featurePath is the thread path). */
+  threadId?: string;
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume, seedTurnId } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume, seedTurnId, customJobRef, threadId } = params;
 
   switch (agent) {
     case "architect": {
@@ -575,6 +579,105 @@ export async function orchestrator(params: {
       });
 
       // Drain pending chat broadcasts before process exits
+      const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
+      await drainChatBroadcaster();
+      await closeBroadcasters?.();
+
+      return result;
+    }
+
+    case "universal": {
+      if (jobType !== 'universal') {
+        throw new Error(`Universal agent requires jobType: 'universal' (got: ${jobType})`);
+      }
+      if (!featurePath || !projectPath) {
+        throw new Error('featurePath (thread path) and projectPath are required for universal jobs');
+      }
+      if (!customJobRef || !threadId) {
+        throw new Error('customJobRef and threadId are required for universal jobs');
+      }
+
+      const config = new FileConfigAdapter();
+      const configData = await config.load(project || "default");
+      const llm = createLLMClient('universal', undefined, { jobType: 'universal', nodeType: 'agent' }, configData);
+
+      // Real-time updates (workflow node tracking + artifact file tree)
+      let kanbanUpdate: TaskQueueUpdatePort | undefined = undefined;
+      let fileTreeUpdate: FileTreeUpdatePort | undefined = undefined;
+      let workflowUpdate: WorkflowStateUpdatePort | undefined = undefined;
+      let closeBroadcasters: (() => Promise<void>) | undefined = undefined;
+
+      if (process.env.ANT_REDIS_URL) {
+        try {
+          const { createRealtimeBroadcasters, getBroadcasterOptionsFromEnv } = await import('../core/realtime');
+          const options = getBroadcasterOptionsFromEnv();
+          if (options) {
+            options.creditLedger = await getJobCreditLedger();
+            const broadcasters = createRealtimeBroadcasters(options);
+            kanbanUpdate = broadcasters.kanban;
+            fileTreeUpdate = broadcasters.fileTree;
+            workflowUpdate = broadcasters.workflow;
+            closeBroadcasters = () => broadcasters.close();
+            console.log('✅ Real-time updates enabled (Redis Pub/Sub) [Universal]');
+          } else {
+            console.log('⚠️  Redis URL set but missing required env vars for broadcasting [Universal]');
+          }
+        } catch (error: any) {
+          console.log('⚠️  Failed to initialize real-time broadcasters [Universal]:', error?.message);
+        }
+      } else {
+        console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Universal]');
+      }
+
+      // Thread session — {threadPath}/sessions/universal/universal.json.
+      // featureName param carries the threadId (used only for fileTree notify).
+      const session = new FileSessionAdapter(featurePath, 'universal', project, threadId, fileTreeUpdate);
+
+      // Two-root sandbox (D6): artifacts rw + definition ro mount. The
+      // definition was activated by job-runner main() before orchestration.
+      const { requireActiveCustomJob } = await import('../core/customAgents/activeCustomJob');
+      const { createUniversalFileSystem } = await import('../agents/universal/graph/runtime');
+      const activeDef = requireActiveCustomJob();
+      const path = await import('path');
+      const artifactsRoot = process.env.ANT_CODEBASE_PATH || path.join(projectPath, 'universal', 'artifacts');
+      const artifactsFs = AdapterFactory.createFileSystemAdapterWithPath(artifactsRoot);
+      const definitionFs = AdapterFactory.createFileSystemAdapterWithPath(activeDef.agentDir);
+      const fileSystem = createUniversalFileSystem(artifactsFs, definitionFs, activeDef);
+
+      // Record user_turn — the thread's chat.jsonl/feature.jsonl live under
+      // the thread container (featurePath-shaped), so the shared helper works.
+      if (featurePath) {
+        await recordUserTurn({
+          featurePath,
+          jobType: 'universal',
+          jobId: jobId || 'unknown',
+          directive: overrideDirective || input,
+          isResume,
+          turnId: seedTurnId,
+          session,
+          actionMetadata,
+        }).catch(err => {
+          console.warn('[Orchestrator:Universal] Failed to record user_turn:', err);
+        });
+      }
+
+      const language = /[가-힣]/.test(input) ? 'ko' : 'en';
+      const promptPort = new FilePromptAdapter();
+      const { PromptBuilder } = await import('../core/prompt/builder/PromptBuilder');
+      const promptBuilder = new PromptBuilder(promptPort);
+
+      const { runUniversalGraph } = await import('../agents/universal');
+      const result = await runUniversalGraph({
+        input,
+        language: language as 'ko' | 'en',
+        threadPath: featurePath,
+        projectId: project || 'default',
+        threadId,
+        isResume,
+        deps: { llm, session, promptBuilder, fileSystem, kanbanUpdate, workflowUpdate, fileTreeUpdate },
+        _httpJobId: jobId,
+      });
+
       const { drainChatBroadcaster } = await import('../core/adapters/ChatAPIClient');
       await drainChatBroadcaster();
       await closeBroadcasters?.();

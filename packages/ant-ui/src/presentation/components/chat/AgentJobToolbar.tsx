@@ -97,6 +97,17 @@ export function AgentJobToolbar({
   const isStopping = useStore((state) => state.isStopping);
   const activeJobs = useStore((state) => state.activeJobs);
 
+  // Universal runtime — custom agent/job identity replaces the built-in
+  // agent/job chips ('universal' is never listed in the built-in pickers).
+  const isUniversalMode = useStore((state) => state.projectType === 'universal');
+  const customAgents = useStore((state) => state.customAgents);
+  const selectedCustomAgentId = useStore((state) => state.selectedCustomAgentId);
+  const selectedCustomJobId = useStore((state) => state.selectedCustomJobId);
+  const selectedThreadId = useStore((state) => state.selectedThreadId);
+  const selectCustomJob = useStore((state) => state.selectCustomJob);
+  const currentCustomAgent = customAgents.find((a) => a.id === selectedCustomAgentId);
+  const currentCustomJob = currentCustomAgent?.jobs.find((j) => j.id === selectedCustomJobId);
+
   const chatPolicy = useChatPolicy(messageCount);
   const { stopJob } = useJobExecution();
 
@@ -188,6 +199,101 @@ export function AgentJobToolbar({
       className="flex items-center justify-between gap-2 px-2 py-1.5"
     >
       <div className="flex items-center gap-1 flex-shrink-0">
+        {isUniversalMode ? (
+          /* Universal runtime — single `{agent} · {job}` chip; the dropdown
+             switches between the selected agent's custom jobs. */
+          <>
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setShowJobMenu(!showJobMenu)}
+                disabled={!chatPolicy.canChangeJob || !currentCustomAgent}
+                className={`flex items-center gap-1 text-xs font-semibold
+                           border border-[color:var(--border-2)]
+                           text-[color:var(--text-1)]
+                           hover:bg-[color:var(--bg-hover)]
+                           transition-all
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           px-2 py-1`}
+                style={{
+                  background: showJobMenu
+                    ? 'oklch(from var(--violet-300) l c h / 0.18)'
+                    : 'var(--bg-surface)',
+                  borderRadius: 'var(--r-sm)',
+                }}
+                title={
+                  currentCustomAgent && currentCustomJob
+                    ? `${currentCustomAgent.name} · ${currentCustomJob.name}`
+                    : t('universal.selectJob', { defaultValue: 'Select a custom job' })
+                }
+              >
+                <span className="truncate max-w-[160px]">
+                  {currentCustomAgent && currentCustomJob
+                    ? `🧩 ${currentCustomAgent.name} · ${currentCustomJob.name}`
+                    : `🧩 ${t('universal.selectJob', { defaultValue: 'Select a custom job' })}`}
+                </span>
+                <ChevronDown
+                  className={`w-2.5 h-2.5 text-[color:var(--text-3)] transition-transform flex-shrink-0 ${
+                    showJobMenu ? 'rotate-180' : ''
+                  }`}
+                  strokeWidth={2.5}
+                />
+              </button>
+
+              {showJobMenu && currentCustomAgent && currentCustomAgent.jobs.length > 0 && (
+                <div
+                  className="absolute bottom-full left-0 mb-1 w-56 overflow-hidden z-50"
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-1)',
+                    borderRadius: 'var(--r-md)',
+                    boxShadow: 'var(--shadow-lg)',
+                  }}
+                >
+                  {currentCustomAgent.jobs.map((job) => {
+                    const isSelected = job.id === selectedCustomJobId;
+                    return (
+                      <button
+                        key={job.id}
+                        onClick={() => {
+                          selectCustomJob(currentCustomAgent.id, job.id);
+                          setShowJobMenu(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 text-left text-xs
+                                   hover:bg-[color:var(--bg-hover)]
+                                   transition-colors flex flex-col gap-0.5 ${
+                          isSelected ? 'border-l-2' : ''
+                        }`}
+                        style={{
+                          color: 'var(--text-1)',
+                          ...(isSelected
+                            ? {
+                                background: 'oklch(from var(--violet-500) l c h / 0.10)',
+                                borderLeftColor: 'var(--violet-500)',
+                              }
+                            : {}),
+                        }}
+                      >
+                        <span className="font-medium">{job.name}</span>
+                        {job.description && (
+                          <span className="text-[10px] text-[color:var(--text-3)]">{job.description}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {selectedThreadId && !compact && (
+              <span
+                className="font-mono truncate max-w-[110px] text-[10px] text-[color:var(--text-3)]"
+                title={selectedThreadId}
+              >
+                {selectedThreadId}
+              </span>
+            )}
+          </>
+        ) : (
+        <>
         {/* Agent Selector — handoff a3-cards.jsx L1366-1378.
             Layout: [emoji-from-label] [text-after-emoji?] <ChevronDown>.
             Compact mode collapses to emoji + chevron; the emoji is sourced
@@ -358,6 +464,8 @@ export function AgentJobToolbar({
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {/* Middle: Token Gauge (fills remaining space) */}

@@ -167,6 +167,19 @@ export class FeatureCrudService {
   async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string): Promise<void> {
     assertValidFeatureName(featureName);
 
+    // Policy flag (D6): universal-type projects have no canonical plane —
+    // features (codebase/, worktrees, git anchor) belong to canonical projects.
+    try {
+      const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+      const configRaw = fs.readFileSync(path.join(projectPath, 'config.json'), 'utf-8');
+      if (JSON.parse(configRaw)?.projectType === 'universal') {
+        throw new Error('Universal-type projects do not support features — use custom agent threads instead');
+      }
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('do not support features')) throw e;
+      // config unreadable → treat as canonical (default), proceed
+    }
+
     await this.withFeatureLifecycleLock(projectId, userContext, async () => {
       const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 

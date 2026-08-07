@@ -151,6 +151,12 @@ export interface SearchPlan {
 export function planSearch(
   args: { pattern: string; file_pattern?: string; include_dependencies?: boolean },
   fileSystem: FileSystemPort,
+  opts?: {
+    /** `codebase` (default) routes file_pattern through `normalizeToCodebasePath`;
+     *  `raw` passes it to ripgrep untouched — for roots with no canonical
+     *  `codebase/` layout (universal artifact tree, reference codebases). */
+    filePatternMode?: 'codebase' | 'raw';
+  },
 ): SearchPlan {
   // ── file_pattern normalize via the existing SSOT ──────────────────────
   // `normalizeToCodebasePath` is the same helper that read_file / edit_file
@@ -163,15 +169,19 @@ export function planSearch(
   let effectiveFilePattern: string | undefined;
   let filePatternFix: string | undefined;
   if (args.file_pattern) {
-    const norm = normalizeToCodebasePath(args.file_pattern);
-    effectiveFilePattern = norm.normalized;
-    if (norm.wasFixed) {
-      filePatternFix =
-        `file_pattern auto-corrected: "${args.file_pattern}" → "${norm.normalized}"` +
-        (norm.reason ? ` (${norm.reason})` : '');
-      console.warn(`\n[searchCode] PATH AUTO-FIX: ${norm.reason}`);
-      console.warn(`   Requested: ${args.file_pattern}`);
-      console.warn(`   Corrected: ${norm.normalized}\n`);
+    if (opts?.filePatternMode === 'raw') {
+      effectiveFilePattern = args.file_pattern;
+    } else {
+      const norm = normalizeToCodebasePath(args.file_pattern);
+      effectiveFilePattern = norm.normalized;
+      if (norm.wasFixed) {
+        filePatternFix =
+          `file_pattern auto-corrected: "${args.file_pattern}" → "${norm.normalized}"` +
+          (norm.reason ? ` (${norm.reason})` : '');
+        console.warn(`\n[searchCode] PATH AUTO-FIX: ${norm.reason}`);
+        console.warn(`   Requested: ${args.file_pattern}`);
+        console.warn(`   Corrected: ${norm.normalized}\n`);
+      }
     }
   }
 
@@ -246,18 +256,34 @@ export async function handleSearchCode(
   ctx: ToolExecutionContext,
   args: { pattern: string; file_pattern?: string; include_dependencies?: boolean },
 ): Promise<ToolResult> {
+  return runSearchTool(ctx, args, 'search_code');
+}
+
+/**
+ * Shared execution body for the ripgrep-backed search tools. `search_code`
+ * normalizes file_pattern against the canonical `codebase/` layout;
+ * `search_files` (universal artifact tree) searches its root verbatim —
+ * same engine, same result shape, same status cards.
+ */
+export async function runSearchTool(
+  ctx: ToolExecutionContext,
+  args: { pattern: string; file_pattern?: string; include_dependencies?: boolean },
+  toolLabel: 'search_code' | 'search_files',
+): Promise<ToolResult> {
   const { pattern, file_pattern } = args;
 
   if (!pattern) {
-    return { content: 'search_code requires pattern', error: 'search_code requires pattern' };
+    return { content: `${toolLabel} requires pattern`, error: `${toolLabel} requires pattern` };
   }
 
   const fileSystem = ctx.fileSystem;
   if (!fileSystem) {
-    return { content: 'search_code requires fileSystem', error: 'search_code requires fileSystem' };
+    return { content: `${toolLabel} requires fileSystem`, error: `${toolLabel} requires fileSystem` };
   }
 
-  const plan = planSearch(args, fileSystem);
+  const plan = planSearch(args, fileSystem, {
+    filePatternMode: toolLabel === 'search_files' ? 'raw' : 'codebase',
+  });
 
   const searchingIndex = await ctx.chatStatus.showStatus('searching_code', { pattern, file_pattern });
 
