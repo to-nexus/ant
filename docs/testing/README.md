@@ -19,10 +19,10 @@ Reference documents:
 
 ```bash
 # 1. Unit tests (day-to-day, this is all you need)
-pnpm test:cli                # 44 files, 1069 tests, ~1s, no infrastructure needed
+pnpm test:cli                # ~580 files, ~6,700 tests, ~30s, no infrastructure needed
 
 # 1b. Verification scenarios (L2 regressions)
-pnpm --filter @ant/cli scenario --all    # 10 scenarios (S00~S09), ~25s, mock LLM, no Redis needed
+pnpm --filter @ant/cli scenario --all    # 10 scenarios, mock LLM, no Redis needed
 pnpm --filter @ant/cli scenario S08      # single scenario
 pnpm --filter @ant/cli scenario --list   # metadata-only JSON output
 
@@ -53,5 +53,5 @@ CI: test:cli FAIL → PR merge blocked
 
 ## Definition of green
 
-- `pnpm test:cli` PASSES (~1s)
+- `pnpm test:cli` PASSES (~30s)
 - `pnpm test:e2e` PASSES (with the mock server running)

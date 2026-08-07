@@ -309,7 +309,7 @@ Why does it have to be this way? The intent matrix ([`@ant/shared/action-config-
 - `gen-code-spec`: UI=**context** / SYS=context (SPEC is ref)
 - `rev-ui`: UI=ref
 
-Gating on `hasUiRef` alone produces a **regression where UI guidance goes silent** under `gen-code-spec`. The token inventory and the design-system task ladder have the correct semantics of "active whenever a UI document exists", regardless of intent, so they must branch on Gate (`hasUi`). This invariant is protected at runtime by [`tests/role-flag-intent-matrix.test.ts`](../../packages/ant-cli/tests/role-flag-intent-matrix.test.ts).
+Gating on `hasUiRef` alone produces a **regression where UI guidance goes silent** under `gen-code-spec`. The token inventory and the design-system task ladder have the correct semantics of "active whenever a UI document exists", regardless of intent, so they must branch on Gate (`hasUi`). This invariant is protected at runtime by [`tests/prompt/role-flag-intent-matrix.test.ts`](../../packages/ant-cli/tests/prompt/role-flag-intent-matrix.test.ts).
 
 For the full conventions and prohibitions, see the **Post-RAC Template Condition SSOT** section of `.cursorrules`.
 
@@ -370,7 +370,7 @@ In cloud mode, `BridgeMCPTransport` uses Redis Pub/Sub. `orchestrator.ts` create
 The code job's verification cycle (fields, reset rules, gates, policies, snapshot, terminal, composeBundle composition, invariants, anti-patterns) has its SSOT in [17-code-verification-task.md](./17-code-verification-task.md). This document keeps only the following high-level points:
 
 - **Responsibility polarization**: verification = diagnosis + fan-out; error = fix (see the `Error Diagnostics System` section above).
-- **Session SSOT**: diagnostic state is encapsulated in `state.verification: VerificationSession` ([`tasks/_shared/verify/Session.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/verify/Session.ts)).
+- **Session SSOT**: diagnostic state is encapsulated in a verification session under [`tasks/_shared/verify/`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/verify/), never as loose fields on `state.ts`.
 - **Gate passage** has the LLM's `verifies` declaration + exit 0 as its SSOT (regex command inference retired).
 - **Terminal exit** is guaranteed by the 4 `VerificationTerminalError` typed kinds + the `MAX_BATCH_SPLIT_CYCLES = 10` hard cap + orchestrator `_failedAttempts >= 2` + `recursionLimit`.
 

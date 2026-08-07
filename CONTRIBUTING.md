@@ -226,7 +226,7 @@ it in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) in the same PR.
 
 - **Documentation**: start with `docs/local-mode/install.md` and `docs/concepts/`.
 - **Discussions**: for open-ended questions, use
-  [GitHub Discussions](../../discussions). There is no Discord or other chat
+  [GitHub Discussions](https://github.com/to-nexus/ant/discussions). There is no Discord or other chat
   channel — a one-person project cannot staff one, and a dead server is worse
   than none.
 

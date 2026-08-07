@@ -131,8 +131,8 @@ All 3 INCR trigger sources set the `task.interrupted = true` marker, so the sing
 | Source | Where the marker is set |
 |--------|----------------|
 | User Stop + Resume | `handleInterruption` / the checkpoint path preserves the task in the queue with `interrupted: true` |
-| batchSplit Path A requeue (verification) | `requeuedTask = { ...nextTask, interrupted: !!snapshot ? true : undefined, ... }` in [`tasks/_shared/batchSplit/process.ts`](packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/batchSplit/process.ts) |
-| TaskOrchestrator transient retry | `task.interrupted = true; this.taskQueue.push(task)` in [`parallel/TaskOrchestrator.ts`](packages/ant-cli/src/agents/architect/graph/code/parallel/TaskOrchestrator.ts) |
+| batchSplit Path A requeue (verification) | `requeuedTask = { ...nextTask, interrupted: !!snapshot ? true : undefined, ... }` in [`tasks/_shared/batchSplit/process.ts`](../../packages/ant-cli/src/agents/architect/graph/code/tasks/_shared/batchSplit/process.ts) |
+| TaskOrchestrator transient retry | `task.interrupted = true; this.taskQueue.push(task)` in [`parallel/TaskOrchestrator.ts`](../../packages/ant-cli/src/agents/architect/graph/code/parallel/TaskOrchestrator.ts) |
 
 On the first attempt (no marker), cycleSeq=0 is returned and the suffix is omitted, so the key `worker-N#task-K` is identical to the two-dimension form — the schema BC of chat.jsonl lines is preserved.
 
@@ -192,7 +192,7 @@ Bundles N questions into a single card. Supports per-question option buttons and
 
 The `ant:chat:cancelled-emitted:job:{jobId}` NX guard in `ChatService.appendChoicePresentedCancelled` means **"skip the second attempt once it has been SUCCESSFULLY emitted"** — not simply "skip once attempted". If emission throws after acquire (Redis blip / chat.jsonl write race / `autoResolveStaleCancelledCards` failure, etc.), the lock is released immediately in try/finally so the next pause source can retry. On the success path, the 24h NX remains intact, preserving the multi-source idempotency contract (preventing duplicate cards when StaleJobRecovery / the BullMQ stalled handler / ServerLifecycleManager fire concurrently).
 
-Regression when the release is missing: if a case arises where NX was set but the line emit failed (as when the previous bug — a single outer try/catch in cleanupJobState swallowing the emit throw — was present), every cancelled card attempt for the same jobId is silently skipped for the 24h TTL (the `cancelled-card-stale-NX` RCA — observed in `vast-curling-perch`, fixed in commit `8ea931b8` + the ChatService release-on-failure). Regression guard: the 4 `release-on-failure (a~d)` cases in [`tests/http/chatService.test.ts`](packages/ant-cli/tests/http/chatService.test.ts).
+Regression when the release is missing: if a case arises where NX was set but the line emit failed (as when the previous bug — a single outer try/catch in cleanupJobState swallowing the emit throw — was present), every cancelled card attempt for the same jobId is silently skipped for the 24h TTL (the `cancelled-card-stale-NX` RCA — observed in `vast-curling-perch`, fixed in commit `8ea931b8` + the ChatService release-on-failure). Regression guard: the 4 `release-on-failure (a~d)` cases in [`tests/http/chatService.test.ts`](../../packages/ant-cli/tests/http/chatService.test.ts).
 
 ## Boundaries
 

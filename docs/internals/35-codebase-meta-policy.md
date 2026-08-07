@@ -214,9 +214,8 @@ If `CLAUDE.md`, `AGENTS.md`, or `.cursorrules` already exist, they can coexist w
 
 ## 4. Related Documents
 
-- [.cursorrules](/.cursorrules) — ant's baseline working conventions + summary pointer for ANTRULES.md
+- [AGENTS.md](../../AGENTS.md) — ant's own binding agent rules (the repo-level counterpart to a generated workspace's ANTRULES.md)
 - [14-code-job.md](14-code-job.md) — how the code job's setup task initializes ANTRULES.md (the reduced seed scope after applying the 3-condition filter)
-- [28-context-management.md](28-context-management.md) — how the ArtifactPipeline constructs the pool
 
 ## 5. Change History
 

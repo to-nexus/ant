@@ -279,9 +279,19 @@ Connections belong to a package via the `source` field. In a monorepo, each pack
 ### Detection Timing
 
 - **Auto detection**: when the Config Panel is first opened and the registry is empty, runs once and caches to Redis
-- **Manual re-detection**: "Auto Detect" button → POST /detect-connections → filesystem re-scan. **Resets to source** (`preserveUserEdits=false`).
+- **Manual re-detection**: "Auto Detect" button → POST /detect-connections → filesystem re-scan
 - **Preview Start**: reads only from the Redis registry (no detection run)
-- **Auto refresh after code-job completion**: `CONNECTIONS_REFRESH` pub/sub → re-detect. But with `preserveUserEdits=true` — edits the user made in the panel that are not yet persisted to `.env.example` (`userModified`) are not overwritten ([`mergeDetectedWithSaved`](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/detectors/ConnectionDetector/mergeUserEdits.ts)). Once the source catches up with the edit (detected == saved), `userModified` is cleared, tidying up the "changed" badge.
+- **Auto refresh after code-job completion**: `CONNECTIONS_REFRESH` pub/sub → re-detect
+
+The Auto-Detect button and the post-job `CONNECTIONS_REFRESH` subscriber share a
+**single** implementation — `PreviewServer.refreshProjectFacts` — so the panel
+after a job reflects the final code rather than a snapshot cached early in the
+job. The channel constant keeps its name (cross-process contract); only the
+handler's responsibility widened. The code is the SSOT for connection facts, so
+re-detection overwrites the derived caches; user-entered **values** survive
+because `syncEnvStructureFromExample` reconciles `.env` against `.env.example`
+fill-if-absent and never clobbers an existing value. Deletion is never done here,
+and detection failure is best-effort (yields `[]`, leaves the profile untouched).
 
 ## Project Profile (structure type / language / framework)
 
