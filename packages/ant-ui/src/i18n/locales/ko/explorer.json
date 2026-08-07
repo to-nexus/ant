@@ -281,5 +281,18 @@
     "projectProfileDesc": "코드베이스 매니페스트에서 감지한 구조 / 언어 / 프레임워크.",
     "language": "언어",
     "framework": "프레임워크"
+  },
+  "customAgent": {
+    "title": "에이전트",
+    "refresh": "에이전트 새로고침",
+    "create": "에이전트 등록",
+    "addJob": "잡 추가",
+    "placeholder": "에이전트가 없습니다 — +로 등록하세요",
+    "noJobs": "잡이 없습니다",
+    "newThread": "새 대화",
+    "newThreadBadge": "신규",
+    "namePlaceholder": "에이전트 이름",
+    "jobNamePlaceholder": "잡 이름",
+    "descPlaceholder": "설명 (선택)"
   }
 }

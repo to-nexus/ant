@@ -2,7 +2,6 @@
  * AnthropicLLMClient
  * 
  * Direct Anthropic SDK integration for advanced features like thinking blocks.
- * Falls back to LangChain for compatibility with existing code.
  */
 
 // @ts-ignore

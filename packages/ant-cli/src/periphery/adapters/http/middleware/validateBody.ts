@@ -42,8 +42,12 @@ export function validateBody<T extends z.ZodTypeAny>(schema: T) {
  * POST /projects/:id/features/:feature/execute
  */
 export const executeJobSchema = z.object({
-  task: z.enum(['design', 'code', 'learn', 'plan', 'visual']),
+  task: z.enum(['design', 'code', 'learn', 'plan', 'visual', 'universal']),
   agent: z.string().optional(),
+  /** universal only — `{agentId}/{jobId}` custom job definition ref. */
+  customJobRef: z.string().optional(),
+  /** universal only — thread container id. */
+  threadId: z.string().optional(),
   mode: z.string().optional(),
   language: z.string().optional(),
   overrideDirective: z.string().optional(),

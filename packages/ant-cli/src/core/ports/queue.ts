@@ -20,13 +20,18 @@ import { UserContext } from '../types/user';
 
 export interface JobPayload {
   jobId: string;
-  type: import('../types/task').DecomposableJobType | 'inline-ask' | 'visual';
-  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator';
+  type: import('../types/task').DecomposableJobType | 'inline-ask' | 'visual' | 'universal';
+  agent: 'architect' | 'reviewer' | 'planner' | 'doc' | 'creator' | 'universal';
   projectId: string;
   feature: string;
   featureName: string;  // Alias for feature (used in status tracking)
   userContext: UserContext;
   workspacePath?: string;  // For distributed workers
+
+  /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
+  customJobRef?: string;
+  /** Universal only — thread container id (rides where a feature would). */
+  threadId?: string;
   
   // Job configuration
   mode?: 'generate' | 'refactor' | 'explain';

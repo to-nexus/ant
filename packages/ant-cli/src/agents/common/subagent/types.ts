@@ -3,7 +3,7 @@ import type { ToolExecutionContext, ToolCall } from '../tool/types';
 import type { ToolRegistry } from '../tool/registry';
 import type { ToolDefinition } from '../../../core/ports/llm';
 
-export type SubagentJobKind = 'code' | 'design' | 'planner' | 'ask';
+export type SubagentJobKind = 'code' | 'design' | 'planner' | 'ask' | 'universal';
 
 export interface SubagentResult {
   /** Distilled report (error-shaped on failure — the runner never throws). */

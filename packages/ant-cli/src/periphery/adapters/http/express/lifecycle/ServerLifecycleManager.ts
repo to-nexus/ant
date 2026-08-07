@@ -5,7 +5,7 @@ import { logger } from '../../../../../utils/logger';
 import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { pauseJob } from './pauseJob';
-import { buildInfrastructureInterruption } from '@ant/shared';
+import { buildInfrastructureInterruption, type SessionableJobType } from '@ant/shared';
 
 /**
  * ServerLifecycleManager
@@ -24,7 +24,7 @@ export class ServerLifecycleManager {
       projectId?: string,
       featureName?: string,
       interruptionReason?: any,
-      explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+      explicitJobType?: SessionableJobType,
       userContext?: any
     ) => Promise<void>
   ) {}
@@ -118,7 +118,7 @@ export class ServerLifecycleManager {
           jobId,
           projectId: mapping.projectId,
           featureName: mapping.featureName,
-          jobType: mapping.jobType as 'code' | 'design' | 'learn' | 'plan' | 'visual',
+          jobType: mapping.jobType as SessionableJobType,
           userContext: mapping.userContext as { userId: string; organizationId: string } | undefined,
           // jobType-gated canResume via the single owner (plan/visual → false).
           interruption: buildInfrastructureInterruption('server_shutdown', mapping.jobType),

@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { Compass, Code2, Check, X } from 'lucide-react';
+import { Compass, Code2, Check, X, Package, Bot } from 'lucide-react';
 import type { Domain } from '@ant/shared';
 import { DomainSelect } from '../Actions/DomainSelect';
 import { featureNameErrorKey } from '@/application/utils/featureNameError';
@@ -8,6 +8,9 @@ interface StepProjectSetupProps {
   t: (key: string) => string;
   mode: 'design' | 'code';
   onModeChange: (mode: 'design' | 'code') => void;
+  /** Project runtime shape — canonical (features + jobs) vs universal (custom-agent workspace). */
+  projectType: 'canonical' | 'universal';
+  onProjectTypeChange: (projectType: 'canonical' | 'universal') => void;
   domain: Domain;
   onDomainChange: (domain: Domain) => void;
   domainDisabled?: boolean;
@@ -26,13 +29,15 @@ interface StepProjectSetupProps {
 }
 
 export function StepProjectSetup({
-  t, mode, onModeChange, domain, onDomainChange, domainDisabled, existingProjectId,
+  t, mode, onModeChange, projectType, onProjectTypeChange,
+  domain, onDomainChange, domainDisabled, existingProjectId,
   projectName, onProjectNameChange,
   featureName, onFeatureNameChange,
   projectNameExists, featureNameExists,
   projectNameInvalid, featureNameInvalid,
   featureNameDisabled, featureNameDisabledHint,
 }: StepProjectSetupProps) {
+  const isUniversal = projectType === 'universal';
   const projectNameError = projectNameExists || projectNameInvalid;
   const featureNameError = featureNameExists || featureNameInvalid;
   // Feature names share the FeatureSection message source (explorer namespace)
@@ -44,32 +49,67 @@ export function StepProjectSetup({
 
   return (
     <>
+      {/* Project type cards — canonical product project vs universal
+          custom-agent workspace. Mirrors the mode-card pattern. Only chosen
+          when creating a new project (an existing project's type is fixed). */}
+      {!existingProjectId && (
+        <div>
+          <label
+            className="block text-sm font-medium mb-1.5"
+            style={{ color: 'var(--text-2)' }}
+          >
+            {t('quickstart.projectWizard.projectTypeLabel')}
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <ModeCard
+              selected={projectType === 'canonical'}
+              onClick={() => onProjectTypeChange('canonical')}
+              gradient="var(--gradient-aurora)"
+              Icon={Package}
+              title={t('quickstart.projectWizard.projectTypeCanonical')}
+              desc={t('quickstart.projectWizard.projectTypeCanonicalDesc')}
+            />
+            <ModeCard
+              selected={projectType === 'universal'}
+              onClick={() => onProjectTypeChange('universal')}
+              gradient="var(--gradient-pink-orange)"
+              Icon={Bot}
+              title={t('quickstart.projectWizard.projectTypeUniversal')}
+              desc={t('quickstart.projectWizard.projectTypeUniversalDesc')}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Mode cards — C1 actionchip pattern: full gradient when selected,
-          watermark icon + slight rotate; neutral surface when unselected. */}
-      <div className="grid grid-cols-2 gap-3">
-        <ModeCard
-          selected={mode === 'design'}
-          onClick={() => onModeChange('design')}
-          gradient="var(--gradient-aurora)"
-          Icon={Compass}
-          title={t('quickstart.projectWizard.modeDesign')}
-          desc={t('quickstart.projectWizard.modeDesignDesc')}
-        />
-        <ModeCard
-          selected={mode === 'code'}
-          onClick={() => onModeChange('code')}
-          gradient="var(--gradient-pink-orange)"
-          Icon={Code2}
-          title={t('quickstart.projectWizard.modeCode')}
-          desc={t('quickstart.projectWizard.modeCodeDesc')}
-        />
-      </div>
+          watermark icon + slight rotate; neutral surface when unselected.
+          Hidden for universal projects (no design/code job is auto-started). */}
+      {!isUniversal && (
+        <div className="grid grid-cols-2 gap-3">
+          <ModeCard
+            selected={mode === 'design'}
+            onClick={() => onModeChange('design')}
+            gradient="var(--gradient-aurora)"
+            Icon={Compass}
+            title={t('quickstart.projectWizard.modeDesign')}
+            desc={t('quickstart.projectWizard.modeDesignDesc')}
+          />
+          <ModeCard
+            selected={mode === 'code'}
+            onClick={() => onModeChange('code')}
+            gradient="var(--gradient-pink-orange)"
+            Icon={Code2}
+            title={t('quickstart.projectWizard.modeCode')}
+            desc={t('quickstart.projectWizard.modeCodeDesc')}
+          />
+        </div>
+      )}
 
       {/* Domain — project-level property (service vs game). Only chosen when
           creating a new project; features inherit the project's domain, so it
           is hidden when adding a feature to an existing project. Changeable
           later in project settings. */}
-      {!existingProjectId && (
+      {!existingProjectId && !isUniversal && (
         <div>
           <label
             className="block text-sm font-medium mb-1.5"
@@ -117,7 +157,9 @@ export function StepProjectSetup({
         }
       />
 
-      {/* Feature name */}
+      {/* Feature name — universal projects have no features (the BE rejects
+          feature creation on them), so the field is hidden entirely. */}
+      {!isUniversal && (
       <NameField
         label={t('quickstart.projectWizard.featureName')}
         value={featureName}
@@ -139,6 +181,7 @@ export function StepProjectSetup({
             : !featureNameError ? t('quickstart.projectWizard.featureNameHint') : undefined
         }
       />
+      )}
     </>
   );
 }

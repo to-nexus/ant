@@ -18,10 +18,17 @@ For the lifecycle internals, see
 | `ask`         | architect | Chat answer (read-only)                    | "Why does X work this way?"        |
 | `inline-ask`  | architect | Inline chat answer (faster, narrower)      | Quick clarification                |
 | `visual`      | creator   | Generated images under `assets/`           | "Generate the hero illustration"   |
+| `universal`   | universal | Chat + files under `universal/artifacts/` (custom agent/job runtime) | Custom job thread in a universal-type project |
 
 The `learn` job is a no-op unless `ANT_VECTOR_DB_ENABLED=true`; without it,
 retrieval falls back to git-changes + keyword search and the job
 short-circuits.
+
+The `universal` job never appears in the selector by itself: it is the
+runtime that executes **file-defined custom agents/jobs** (see
+[custom-agents.md](custom-agents.md)). It runs only inside universal-type
+projects, skips triage, and lives in per-job conversation threads instead of
+features.
 
 The job type is decided by **triage** based on the directive's intent. You
 can hint the intent with a prefix:

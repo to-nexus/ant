@@ -61,6 +61,7 @@ Variable: `ANT_DEFAULT_MODEL_<JOB>[_<NODE>]`, value `"<provider>:<tier>"` (an ab
 | `ANT_DEFAULT_MODEL_VISUAL`, `..._VISUAL_{DIRECT,EXPLAIN,ENGRAVE,SKETCH,RENDER}` | `google:flash`; `pro` for text nodes, `flashImage`/`proImage` for sketch/render | Visual job. `SKETCH`/`RENDER` must bind to an image-generation tier. |
 | `ANT_DEFAULT_MODEL_REVIEWER`, `ANT_DEFAULT_MODEL_DOC` | `anthropic:opus` | Reviewer / doc agents. |
 | `ANT_DEFAULT_MODEL_COMMIT` | `anthropic:sonnet` | Auxiliary one-shot: the ant-authored commit message. |
+| `ANT_DEFAULT_MODEL_UNIVERSAL` | `anthropic:sonnet` | Universal job (custom agent/job runtime) agent round. |
 | `ANT_DEFAULT_MODEL_FALLBACK` | `anthropic:opus` | Used only when a call maps to no slot at all. |
 
 A per-project override in the UI still wins over these. An unknown provider, unknown tier, malformed value, or a text tier on an image slot is logged and ignored in favour of the built-in binding — a typo cannot brick a deployment.

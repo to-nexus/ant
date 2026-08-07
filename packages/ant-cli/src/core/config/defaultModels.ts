@@ -83,6 +83,8 @@ const DEFAULT_BINDINGS: Record<BindingJobKey, Partial<Record<ModelNodeKey, TierR
   reviewer: { default: 'anthropic:opus' },
   doc: { default: 'anthropic:opus' },
   commit: { default: 'anthropic:sonnet' },
+  // universal job — single agent-round node; `agent` falls back to default.
+  universal: { default: 'anthropic:sonnet' },
 };
 
 /**

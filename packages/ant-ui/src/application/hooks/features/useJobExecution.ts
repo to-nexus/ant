@@ -13,6 +13,7 @@
 
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { formatCustomJobRef } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { selectPausedNonTaskJob } from '@/domain/store/selectors';
 import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition, dismissInterruptedJob } from '@/infrastructure/http/api';
@@ -122,7 +123,23 @@ export function useJobExecution() {
         // ✅ Set running state immediately
         setRunning(true, currentJobId);
 
-        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true);
+        // Universal runtime — resuming a custom-job thread must ride the
+        // universal path on the BE, keyed by customJobRef + threadId.
+        const {
+          projectType,
+          selectedCustomAgentId,
+          selectedCustomJobId,
+          selectedThreadId,
+        } = useStore.getState();
+        const universalResume =
+          projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId && selectedThreadId
+            ? {
+                customJobRef: formatCustomJobRef({ agentId: selectedCustomAgentId, jobId: selectedCustomJobId }),
+                threadId: selectedThreadId,
+              }
+            : undefined;
+
+        const result = await resumeJob(currentJobId, selectedProject, selectedFeature!, true, universalResume);
         
         // ✅ Restore correct jobType from server (interrupted job may differ from current UI mode)
         // Invariant I4 — but a clarify-paused non-task job (plan / visual)

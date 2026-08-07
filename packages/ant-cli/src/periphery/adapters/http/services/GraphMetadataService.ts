@@ -28,6 +28,7 @@ import { buildDesignGraph } from '../../../../agents/architect/graph/design/grap
 import { buildLearnGraph } from '../../../../agents/architect/graph/learn/graph';
 import { buildPlanGraph } from '../../../../agents/planner/graph/plan/graph';
 import { buildVisualGraph } from '../../../../agents/creator/graph/visual/graph';
+import { buildUniversalGraph } from '../../../../agents/universal/graph/graph';
 
 /**
  * 공통 Actor 정의
@@ -199,6 +200,24 @@ export const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: st
     description: 'Execute tools (read workspace, web search)'
   },
 
+  // Universal (custom agent/job runtime)
+  'universal:universal:resolve': {
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
+    description: 'Load custom job definition, thread session, artifact overview'
+  },
+  'universal:universal:agent': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'LLM round: harness + custom definition + history + tools'
+  },
+  'universal:universal:tool': {
+    actors: [COMMON_ACTORS.fileSystem.id],
+    description: 'Execute builtin/MCP tools over the artifact tree'
+  },
+  'universal:universal:respond': {
+    actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
+    description: 'Final response, outputs-contract check, session seal'
+  },
+
   // Creator Visual
   'creator:visual:resolve': {
     actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
@@ -311,6 +330,8 @@ export class GraphMetadataService {
         return buildPlanGraph;
       case 'creator:visual':
         return buildVisualGraph;
+      case 'universal:universal':
+        return buildUniversalGraph;
       default:
         return null;
     }

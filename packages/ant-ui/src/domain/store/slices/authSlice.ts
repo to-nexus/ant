@@ -1,6 +1,6 @@
 import { StateCreator } from 'zustand';
 import { sseManager } from '@/infrastructure/sse/SSEManager';
-import { AuthState, AuthStatus } from '../types';
+import { AuthState, AuthStatus, SelectedJobType } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import { resolveAgentForJobType } from '@/shared/utils/constants';
 import { isNonTaskJob, type OrganizationKind } from '@ant/shared';
@@ -8,7 +8,7 @@ import type { OrgMembership, AuthApprovalStatus } from '@ant/auth-client/types';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
-  setSelectedJobType: (jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual') => void;
+  setSelectedJobType: (jobType: SelectedJobType) => void;
   /**
    * SSOT writer for the active job identity. Sole writer of the
    * `(selectedAgent, selectedJobType)` pair: resolves the agent from the job
@@ -19,7 +19,7 @@ export interface AuthActions {
    * live re-convergence, feature-entry bootstrap) funnels through this.
    */
   applyJobIdentity: (args: {
-    jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual';
+    jobType: SelectedJobType;
     agent?: string;
     jobId?: string;
   }) => void;
@@ -72,7 +72,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   approvalStatus: undefined,
   testAccountLevel: 0,
   selectedAgent: loadFromStorage(STORAGE_KEYS.SELECTED_AGENT) || 'planner',
-  selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as 'design' | 'code' | 'learn' | 'plan' | 'visual') || 'plan',
+  selectedJobType: (loadFromStorage(STORAGE_KEYS.SELECTED_JOB_TYPE) as SelectedJobType) || 'plan',
 
   // ==================
   // Actions

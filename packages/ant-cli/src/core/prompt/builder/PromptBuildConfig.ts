@@ -79,6 +79,15 @@ export interface PromptBuildConfig {
   /** Template variables — consumed by Handlebars rendering. */
   vars: Record<string, unknown>;
 
+  /**
+   * Inert (NOT Handlebars-compiled) system-prompt suffix, appended after the
+   * merged injections and before the policy section — guardrail-first /
+   * policy-last invariants hold. Used by the universal job to inject the
+   * boundary-tagged custom agent/job definition (workspace-authored prose has
+   * no partial access and never goes through template compilation).
+   */
+  inertSystemAppend?: string;
+
   /** Role-labeled artifacts for prompt content. */
   artifacts?: ResolvedArtifact[];
 

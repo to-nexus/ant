@@ -44,6 +44,9 @@ export enum ToolName {
 
   // ── Search (scope: codebase, web, reference project, ant-source) ──
   SEARCH_CODE          = 'search_code',
+  // Non-canonical root search (universal artifact tree) — same ripgrep engine
+  // as search_code, no codebase/ path normalization.
+  SEARCH_FILES         = 'search_files',
   SEARCH_WEB           = 'search_web',
   FETCH_URL            = 'fetch_url',
   SEARCH_REFERENCE     = 'search_reference_code',
@@ -80,10 +83,11 @@ export enum ToolName {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export enum JobType {
-  CODE   = 'code',
-  DESIGN = 'design',
-  PLAN   = 'plan',
-  ASK    = 'ask',
+  CODE      = 'code',
+  DESIGN    = 'design',
+  PLAN      = 'plan',
+  ASK       = 'ask',
+  UNIVERSAL = 'universal',
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -108,6 +112,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
   [ToolName.REGISTER_REFERENCE]:   '🔗 Registering reference project',
   // Search
   [ToolName.SEARCH_CODE]:          '🔍 Searching code',
+  [ToolName.SEARCH_FILES]:         '🔍 Searching files',
   [ToolName.SEARCH_WEB]:           '🌐 Searching web',
   [ToolName.FETCH_URL]:            '🌐 Fetching URL',
   [ToolName.SEARCH_REFERENCE]:     '🔎 Searching reference',
@@ -141,6 +146,7 @@ export const CACHEABLE_TOOLS: ReadonlySet<ToolName> = new Set([
   ToolName.READ_FILE,
   ToolName.LIST_FILES,
   ToolName.SEARCH_CODE,
+  ToolName.SEARCH_FILES,
   ToolName.READ_SOURCE_DOC,
   ToolName.LIST_ASSETS,
   // Reference reads are pure (project+branch+path in args) → cacheable.
@@ -282,6 +288,36 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     // Delegate (async explore subagent)
     ToolName.EXPLORE,
     ToolName.SUBAGENT_REPORT,
+  ],
+
+  // Universal job — the artifact-tree agent runtime. Root = `universal/artifacts/`
+  // (ctx.fileSystem reparented; no canonical codebase). Domain-bound tools
+  // (search_code, workspace/reference/ant-source readers, assets, figma) are
+  // deliberately absent — extra capability arrives via MCP overlay, and the
+  // per-job allowlist (`tools.builtin` in job.yaml) can only narrow this set.
+  [JobType.UNIVERSAL]: [
+    // Read / explore (artifact tree)
+    ToolName.READ_FILE,
+    ToolName.LIST_FILES,
+    ToolName.SEARCH_FILES,
+    // Write (artifact tree)
+    ToolName.CREATE_FILE,
+    ToolName.EDIT_FILE,
+    ToolName.APPEND_FILE,
+    ToolName.DELETE_FILE,
+    ToolName.MKDIR,
+    ToolName.COPY_FILE,
+    // Web
+    ToolName.FETCH_URL,
+    ToolName.SEARCH_WEB,
+    // External calls / command execution (approval-gated by default)
+    ToolName.HTTP_REQUEST,
+    ToolName.RUN_COMMAND,
+    // Delegate (async explore subagent over the artifact tree)
+    ToolName.EXPLORE,
+    ToolName.SUBAGENT_REPORT,
+    // Live run-state self-inspection
+    ToolName.READ_STATE,
   ],
 };
 
@@ -460,6 +496,9 @@ export const TOOL_SETS = {
     ToolName.READ_ANT_SOURCE, ToolName.LIST_ANT_FILES, ToolName.SEARCH_ANT_CODE,
     ToolName.READ_WORKSPACE_FILE, ToolName.LIST_WORKSPACE_FILES,
   ] as ToolName[],
+  subagentUniversal: [
+    ToolName.READ_FILE, ToolName.LIST_FILES, ToolName.SEARCH_FILES,
+  ] as ToolName[],
 } as const;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -475,6 +514,7 @@ import {
   handleReadState,
   handleListFiles,
   handleSearchCode,
+  handleSearchFiles,
   handleDeleteFile,
   handleEditFile,
   handleCreateFile,
@@ -503,6 +543,7 @@ export const TOOL_HANDLERS: ReadonlyMap<ToolName, ToolHandler> = new Map<ToolNam
     [ToolName.READ_STATE,       handleReadState],
     [ToolName.LIST_FILES,       handleListFiles],
     [ToolName.SEARCH_CODE,      handleSearchCode],
+    [ToolName.SEARCH_FILES,     handleSearchFiles],
     [ToolName.MKDIR,            handleMkdir],
     [ToolName.DELETE_FILE,      handleDeleteFile],
     [ToolName.EDIT_FILE,        handleEditFile],

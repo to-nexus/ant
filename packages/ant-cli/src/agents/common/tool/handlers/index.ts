@@ -6,6 +6,7 @@ export { handleReadFile } from './readFile';
 export { handleReadState } from './readState';
 export { handleListFiles } from './listFiles';
 export { handleSearchCode } from './searchCode';
+export { handleSearchFiles } from './searchFiles';
 export { handleDeleteFile } from './deleteFile';
 export { handleEditFile } from './editFile';
 export { handleCreateFile } from './createFile';

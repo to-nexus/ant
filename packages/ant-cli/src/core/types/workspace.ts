@@ -29,6 +29,7 @@ export interface LLMModels {
   reviewer?: JobLLMConfig;    // Reviewer agent configuration
   doc?: JobLLMConfig;         // Doc agent configuration
   commit?: JobLLMConfig;      // Auxiliary (non-graph) commit-message model
+  universal?: JobLLMConfig;   // Universal job (custom agent/job runtime)
 }
 
 /**
@@ -91,6 +92,17 @@ export interface WorkspaceBasis {
 export interface WorkspaceConfig {
   // Project identification
   projectName: string;
+
+  /**
+   * Project type — a pure POLICY flag (D6): it decides which jobs this
+   * project exposes, never the layout (the universal plane is always
+   * namespaced under `universal/`).
+   * - `'canonical'` (default; absent = canonical) — builtin feature-based
+   *   jobs (code/design/plan/visual/learn).
+   * - `'universal'` — file-defined custom agents/jobs only; canonical
+   *   scaffolding (codebase/, features/, git anchor) is skipped.
+   */
+  projectType?: 'canonical' | 'universal';
 
   /**
    * Project domain (Phase 2 — D22). Default `'service'`.
@@ -164,6 +176,15 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
     throw new Error('Config with repoType="github" requires owner and repo');
   }
   
+  // projectType policy flag (D6) — enum-validated; unknown values fall back
+  // to canonical (absent) so a typo can't hide the builtin jobs.
+  const projectType: 'canonical' | 'universal' | undefined = (() => {
+    if (config.projectType === undefined || config.projectType === null) return undefined;
+    if (config.projectType === 'canonical' || config.projectType === 'universal') return config.projectType;
+    console.warn(`[Config] Unknown workspace.projectType="${config.projectType}", treating as canonical`);
+    return undefined;
+  })();
+
   // Phase 2 (D22): domain is a 1st-class workspace slot, default 'service'.
   // Validated as enum to keep accidental values out of the gate machinery.
   const allowedDomains: ReadonlyArray<Domain> = ['service', 'game'];
@@ -196,6 +217,7 @@ export function validateWorkspaceConfig(config: any): WorkspaceConfig {
 
   return {
     projectName: config.projectName,
+    projectType,
     domain,
     basis,
     repoType: repoType,

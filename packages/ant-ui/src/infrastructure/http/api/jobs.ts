@@ -37,6 +37,14 @@ export interface ExecuteJobParams {
    * it for the durable user_turn line (chat SSOT §6).
    */
   seedTurnId?: string;
+  /**
+   * Universal runtime (jobType 'universal') — composite `{agentId}/{jobId}`
+   * custom-job reference. When set, `featureName` carries the threadId
+   * (the `:feature` URL slot is thread-shaped on the universal path).
+   */
+  customJobRef?: string;
+  /** Universal runtime — conversation thread id (`[a-z0-9-]+`). */
+  threadId?: string;
 }
 
 // `JobStatus` interface was removed along with `fetchJobStatus` — the
@@ -60,13 +68,15 @@ export async function executeJob(
     skipTriage,
     actionMetadata,
     seedTurnId,
+    customJobRef,
+    threadId,
   } = params;
 
   if (!featureName) {
     throw new Error('Feature name is required for job execution');
   }
 
-  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId };
+  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, threadId };
   const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/execute`;
 
   const response = await authFetch(endpoint, {
@@ -146,10 +156,17 @@ export function resumeJob(
   projectId: string,
   featureName: string,
   chatSource: boolean = true,
-): Promise<{ jobId: string; originalJobId: string; jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' }> {
+  /** Universal runtime — presence of `customJobRef` + `threadId` routes the resume through the universal path. */
+  universal?: { customJobRef: string; threadId: string },
+): Promise<{ jobId: string; originalJobId: string; jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'universal' }> {
   return apiPost(
     `${API_BASE()}/jobs/${encodeURIComponent(jobId)}/resume`,
-    { projectId, featureName, chatSource },
+    {
+      projectId,
+      featureName,
+      chatSource,
+      ...(universal ? { customJobRef: universal.customJobRef, threadId: universal.threadId } : {}),
+    },
   );
 }
 

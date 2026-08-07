@@ -18,6 +18,8 @@ flags exist (that's [reference/](../reference/)).
    decides decomposition strategy and verification depth.
 6. [**workspace**](workspace.md) — Project / Feature / Workspace data
    layout and what each directory means.
+7. [**custom-agents**](custom-agents.md) — File-defined custom agents/jobs
+   on the universal runtime, and universal-type projects.
 
 ## Background documents
 

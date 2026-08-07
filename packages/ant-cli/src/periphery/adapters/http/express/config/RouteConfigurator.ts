@@ -5,7 +5,8 @@ import {
   createWorkflowRoutes,
   createIDERoutes,
   createCloudIDERoutes,
-  createApiRoutes
+  createApiRoutes,
+  createCustomAgentRoutes
 } from '../../routes';
 import { extractUserContext } from '../../routes/helpers/userContext';
 import { parseCompositeUserEmail } from '../../../../../core/utils/compositeUserEmail';
@@ -18,7 +19,7 @@ import { WorkflowBridge } from '../bridges/WorkflowBridge';
 import { ChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
-import { isSessionableJobType, isExecutableJobType } from '@ant/shared';
+import { isSessionableJobType, isExecutableJobType, type SessionableJobType } from '@ant/shared';
 
 /**
  * RouteConfigurator
@@ -42,7 +43,7 @@ export class RouteConfigurator {
       projectId?: string,
       featureName?: string,
       interruptionReason?: any,
-      explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+      explicitJobType?: SessionableJobType,
       userContext?: any
     ) => Promise<void>
   ) {}
@@ -74,6 +75,16 @@ export class RouteConfigurator {
     // SSE routes moved to Realtime Server (see 10-cloud-architecture.md)
     // this.setupSSERoutes(app);
     this.setupJobRoutes(app);
+    this.setupCustomAgentRoutes(app);
+  }
+
+  /**
+   * Custom agent/job definition routes (universal runtime). The server only
+   * LISTS/EDITS definitions — activation is job-runner-child-only (D5).
+   */
+  private setupCustomAgentRoutes(app: Express): void {
+    if (!this.deps.workspaceResolver) return;
+    app.use('/api', createCustomAgentRoutes({ workspaceResolver: this.deps.workspaceResolver }));
   }
 
   /**
@@ -369,7 +380,7 @@ export class RouteConfigurator {
 
         // Resolve the seal-surface jobType. Prefer worker-reported (`result.output.job`)
         // then Redis mapping's jobType as a fallback.
-        let sealJobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' = jobType ?? 'code';
+        let sealJobType: SessionableJobType = jobType ?? 'code';
         if (!jobType) {
           try {
             const mapping = await stateStore.getJobMapping(jobId);
@@ -477,7 +488,7 @@ export class RouteConfigurator {
       if (!isExecutableJobType(params.jobType)) {
         throw new Error(
           `[RouteConfigurator] Invalid jobType: ${params.jobType}. ` +
-          `Expected one of: code, design, learn, plan, visual, inline-ask.`,
+          `Expected one of: code, design, learn, plan, visual, universal, inline-ask.`,
         );
       }
       const jobType = params.jobType;
@@ -534,6 +545,10 @@ export class RouteConfigurator {
         skipTriage: params.skipTriage,
         actionMetadata: params.actionMetadata,
         inputFile: params.inputFile,
+        // Universal (D5): the composite definition ref + thread id ride the
+        // same channel as overrideDirective — body → payload → env → runner.
+        customJobRef: params.customJobRef,
+        threadId: params.threadId,
         isResume: params.isResume ?? !!params.jobId,
         originalJobId: params.jobId,
         // chat SSOT §6 — pre-allocated turnId from /chat/user-message (fresh

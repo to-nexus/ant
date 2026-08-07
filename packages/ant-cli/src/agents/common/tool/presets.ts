@@ -69,3 +69,18 @@ export function createPlanToolRegistry(): ToolRegistry {
 export function createAskToolRegistry(): ToolRegistry {
   return buildRegistryFromMatrix(JobType.ASK);
 }
+
+/**
+ * Universal job — artifact-tree agent runtime.
+ *
+ * The full preset is the upper bound; the custom job's `tools.builtin`
+ * allowlist (job ⊆ agent ⊆ preset, validated by the loader) narrows what is
+ * ADVERTISED to the LLM — the registry itself always carries the full preset
+ * so approval-gated dispatch can produce a proper "not allowed" failure turn
+ * instead of an unknown-tool crash. The policy SSOT the loader validates
+ * against is `core/customAgents/universalToolPolicy.ts::UNIVERSAL_BUILTIN_TOOLS`;
+ * a policy test reconciles it with `JOB_TOOL_MATRIX[JobType.UNIVERSAL]`.
+ */
+export function createUniversalToolRegistry(): ToolRegistry {
+  return buildRegistryFromMatrix(JobType.UNIVERSAL);
+}

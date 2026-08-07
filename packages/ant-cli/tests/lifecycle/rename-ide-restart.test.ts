@@ -49,6 +49,10 @@ function makeFixture() {
     // anchor-first feature migration; the stub must satisfy it.
     getGitAnchorPath: (_ctx: UserContext, projectId: string) =>
       path.join(base, 'org', 'user', projectId, 'repo.git'),
+        getAgentThreadPath: (_ctx: UserContext, projectId: string, agentId: string, jobId: string, threadId: string) =>
+      path.join(base, 'org', 'user', projectId, 'universal', 'agents', agentId, jobId, 'threads', threadId),
+    getUniversalArtifactsPath: (_ctx: UserContext, projectId: string) =>
+      path.join(base, 'org', 'user', projectId, 'universal', 'artifacts'),
     getPhysicalWorkspacesPath: () => base,
   };
 

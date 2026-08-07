@@ -1,3 +1,4 @@
+import type { SessionableJobType } from '@ant/shared';
 import { Router } from 'express';
 import { ProjectService, ChatService, KanbanService } from '../services';
 import { GitHubAuthService } from '../../auth/GitHubAuthService';
@@ -26,6 +27,7 @@ export { createSSERoutes } from './sse.routes';
 // overlay's registerRoutes). OSS no longer re-exports them.
 export { createIDERoutes } from './ide.routes';  // Local IDE
 export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (containers)
+export { createCustomAgentRoutes } from './customAgents.routes';  // Universal custom agents/jobs
 
 /**
  * Dependencies for route creation
@@ -49,7 +51,7 @@ export interface RoutesDeps {
     projectId?: string,
     featureName?: string,
     interruptionReason?: any,
-    explicitJobType?: 'design' | 'code' | 'learn' | 'plan' | 'visual',
+    explicitJobType?: SessionableJobType,
     userContext?: any,
   ) => Promise<void>;
   stateTracker?: any;  // JobStateTracker — finalizeTerminalJob requires this

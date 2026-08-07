@@ -48,6 +48,9 @@ const JOB_TO_AGENT: Record<string, string> = {
   ask: 'architect',      // ask debug logs go under architect
   plan: 'planner',
   visual: 'creator',
+  // universal sessions live under the THREAD container, not a feature —
+  // the mapping still applies (sessions/universal/universal.json).
+  universal: 'universal',
 };
 
 /**
@@ -226,6 +229,10 @@ export const SESSION_SEARCH_MAP: Array<{ agent: string; job: SessionableJobType 
   { agent: 'architect', job: 'learn' },
   { agent: 'planner', job: 'plan' },
   { agent: 'creator', job: 'visual' },
+  // Universal sessions live under THREAD containers, never features — callers
+  // pass a thread path there; on feature paths the file simply never exists
+  // and existsSync-filtering callers skip it.
+  { agent: 'universal', job: 'universal' },
 ];
 
 /**

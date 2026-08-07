@@ -14,7 +14,7 @@
  */
 
 /** Jobs that expose a per-node model picker. */
-export type ModelJobKey = 'plan' | 'design' | 'code' | 'learn' | 'visual';
+export type ModelJobKey = 'plan' | 'design' | 'code' | 'learn' | 'visual' | 'universal';
 
 /**
  * Every key that can appear in a `JobLLMConfig` — the storage / value-resolution
@@ -35,6 +35,8 @@ export type ModelNodeKey =
   | 'render'
   | 'engrave'
   | 'explain'
+  // universal job's single LLM round node
+  | 'agent'
   // BE-only value key (like `tool` / `validate`): the explore-subagent child
   // client resolves `llmModels[job].subagent ?? llmModels[job].default`. Not a
   // graph node — exempt from the picker and the drift cross-check.
@@ -57,6 +59,7 @@ export const MODEL_JOB_AGENT: Record<ModelJobKey, string> = {
   code: 'architect',
   learn: 'architect',
   visual: 'creator',
+  universal: 'universal',
 };
 
 /**
@@ -69,6 +72,7 @@ export const OVERRIDABLE_MODEL_SLOTS: Record<ModelJobKey, readonly ModelNodeKey[
   code: ['decompose', 'plan', 'execute'],
   learn: [],
   visual: ['direct', 'sketch', 'render', 'engrave', 'explain'],
+  universal: ['agent'],
 };
 
 /**

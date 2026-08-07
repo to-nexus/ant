@@ -5,13 +5,13 @@
  */
 
 /** All job types in the system */
-export type JobType = 'code' | 'design' | 'learn' | 'ask' | 'plan' | 'inline-ask' | 'visual';
+export type JobType = 'code' | 'design' | 'learn' | 'ask' | 'plan' | 'inline-ask' | 'visual' | 'universal';
 
 /** Job types that use task decomposition and Kanban tracking */
-export type DecomposableJobType = Exclude<JobType, 'ask' | 'plan' | 'inline-ask' | 'visual'>;
+export type DecomposableJobType = Exclude<JobType, 'ask' | 'plan' | 'inline-ask' | 'visual' | 'universal'>;
 
-/** Job types that maintain session files (decomposable + planning + visual) */
-export type SessionableJobType = DecomposableJobType | 'plan' | 'visual';
+/** Job types that maintain session files (decomposable + planning + visual + universal) */
+export type SessionableJobType = DecomposableJobType | 'plan' | 'visual' | 'universal';
 
 /**
  * Non-task jobs — long-running sessionable jobs that DO NOT use task
@@ -22,11 +22,11 @@ export type SessionableJobType = DecomposableJobType | 'plan' | 'visual';
  * `useChatSubmit` / `useJobExecution` / `ClarifyingVariant` (FE),
  * `JobExecutionManager` / `JobCleanupManager` / `chatService` (BE).
  */
-export const NON_TASK_JOB_TYPES = ['plan', 'visual'] as const;
+export const NON_TASK_JOB_TYPES = ['plan', 'visual', 'universal'] as const;
 export type NonTaskJobType = typeof NON_TASK_JOB_TYPES[number];
 
 export function isNonTaskJob(jobType: string | undefined | null): jobType is NonTaskJobType {
-  return jobType === 'plan' || jobType === 'visual';
+  return jobType === 'plan' || jobType === 'visual' || jobType === 'universal';
 }
 
 /**
@@ -35,7 +35,9 @@ export function isNonTaskJob(jobType: string | undefined | null): jobType is Non
  * whole graph. Only task-decomposable jobs (code/design/learn) checkpoint
  * mid-execution. plan/visual persist a session (context) but have no mid-graph
  * checkpoint, so an infrastructure interruption cannot be meaningfully
- * "resumed" — resuming re-runs generation from the start.
+ * "resumed" — resuming re-runs generation from the start. universal follows
+ * the plan/visual model: the session (conversation history) persists, but
+ * there is no task-queue checkpoint to resume into.
  *
  * Used with `isInfrastructureInterruption` (interruption.ts) to gate
  * `interruption.canResume`: the FE must not offer a "resume from where it
@@ -46,10 +48,10 @@ export function isMidGraphResumable(jobType: string | undefined | null): boolean
 }
 
 /** Sessionable + non-task — the union actually persisted to disk under `sessions/{agent}/`. */
-export const SESSIONABLE_JOB_TYPES = ['code', 'design', 'learn', 'plan', 'visual'] as const satisfies readonly SessionableJobType[];
+export const SESSIONABLE_JOB_TYPES = ['code', 'design', 'learn', 'plan', 'visual', 'universal'] as const satisfies readonly SessionableJobType[];
 
 export function isSessionableJobType(jobType: string | undefined | null): jobType is SessionableJobType {
-  return jobType === 'code' || jobType === 'design' || jobType === 'learn' || jobType === 'plan' || jobType === 'visual';
+  return jobType === 'code' || jobType === 'design' || jobType === 'learn' || jobType === 'plan' || jobType === 'visual' || jobType === 'universal';
 }
 
 /**

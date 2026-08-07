@@ -61,6 +61,13 @@ function mirrorWorkspaceDomainToActionMetadata(
   state: any,
   cfg: ProjectConfig | null | undefined,
 ): void {
+  // Universal runtime — mirror `projectType` (SSOT: config.json) into the
+  // universal slice on every config load/save so the sidebar/toolbar gates
+  // follow the persisted value. Runs even for `cfg == null` (missing config
+  // = canonical by contract).
+  if (typeof state.syncProjectTypeFromConfig === 'function') {
+    state.syncProjectTypeFromConfig(cfg);
+  }
   if (!cfg) return;
   const cfgDomain = cfg.domain;
   const nextDomain = (cfgDomain === 'service' || cfgDomain === 'game')
@@ -198,5 +205,11 @@ export const createProjectConfigSlice: StateCreator<
 
   clearProjectConfig: () => {
     set({ projectConfig: initialAsyncFields<ProjectConfig>() });
+    // Project switch: fall back to canonical until the next config load says
+    // otherwise, so universal-only UI never renders against the wrong project.
+    const state = get() as any;
+    if (typeof state.syncProjectTypeFromConfig === 'function') {
+      state.syncProjectTypeFromConfig(null);
+    }
   },
 });
