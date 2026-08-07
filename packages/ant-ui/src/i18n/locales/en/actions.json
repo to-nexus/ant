@@ -102,6 +102,13 @@
       "openSettings": "Open project settings"
     }
   },
+  "projectType": {
+    "badge": {
+      "label": "Workspace",
+      "aria": "Workspace project",
+      "hint": "This project is a workspace for custom agents. The type is decided when the project is created and cannot be changed."
+    }
+  },
   "section": {
     "basis": "Basis",
     "refs": "References",

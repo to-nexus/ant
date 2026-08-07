@@ -44,22 +44,34 @@ const JOB_DEFS: JobDef[] = [
   { jobKey: 'visual', jobLabel: 'Visual', agentLabel: 'Creator', accent: 'sunset', icon: 'Palette' },
 ];
 
+// Universal workspaces run only the universal runtime — the canonical job rows
+// above never execute there, so the grid shows this single row instead.
+const UNIVERSAL_JOB_DEFS: JobDef[] = [
+  { jobKey: 'universal', jobLabel: 'Universal', agentLabel: 'Agent', accent: 'pink-orange', icon: 'Bot' },
+];
+
 // Left-to-right column order for the picker. The rendered columns are the union
-// of overridable slots across all jobs, filtered to this order — so a new slot
-// in OVERRIDABLE_MODEL_SLOTS surfaces automatically once added to this order.
+// of overridable slots across the DISPLAYED jobs, filtered to this order — so a
+// new slot in OVERRIDABLE_MODEL_SLOTS surfaces automatically once added here,
+// and the canonical grid never grows a column only universal uses (or vice versa).
 const COLUMN_ORDER: ModelNodeKey[] = [
   'decompose',
   'plan',
   'execute',
   'direct',
+  'agent',
   'sketch',
   'render',
   'engrave',
   'explain',
 ];
 
-const ALL_SLOTS = new Set<ModelNodeKey>(Object.values(OVERRIDABLE_MODEL_SLOTS).flat());
-const NODE_COLUMNS: ModelNodeKey[] = COLUMN_ORDER.filter((c) => ALL_SLOTS.has(c));
+function nodeColumnsFor(jobDefs: JobDef[]): ModelNodeKey[] {
+  const slots = new Set<ModelNodeKey>(
+    jobDefs.flatMap((j) => OVERRIDABLE_MODEL_SLOTS[j.jobKey] ?? []),
+  );
+  return COLUMN_ORDER.filter((c) => slots.has(c));
+}
 
 const NODE_LABEL: Record<ModelNodeKey, string> = {
   default: 'Default',
@@ -134,6 +146,12 @@ export function LLMModelsSection({
 }: LLMModelsSectionProps) {
   const { t } = useTranslation('config');
 
+  // projectType gates the row set: universal workspaces configure only the
+  // universal runtime's slots; canonical projects only the canonical jobs'.
+  const isUniversal = editedConfig.projectType === 'universal';
+  const jobDefs = isUniversal ? UNIVERSAL_JOB_DEFS : JOB_DEFS;
+  const nodeColumns = nodeColumnsFor(jobDefs);
+
   // Providers that back a selectable model but have no API key on the server.
   // Only computed when the server reported `configuredProviders` (else empty).
   const unconfiguredProviders = Array.isArray(configuredProviders)
@@ -145,7 +163,7 @@ export function LLMModelsSection({
   // Column widths sized so model chips fit their (suffix-free) display names
   // without truncation; the outer overflowX:auto still scrolls when all node
   // columns exceed the viewport.
-  const gridTemplate = `minmax(120px, 140px) minmax(150px, 1fr) ${NODE_COLUMNS.map(() => 'minmax(150px, 1fr)').join(' ')}`;
+  const gridTemplate = `minmax(120px, 140px) minmax(150px, 1fr) ${nodeColumns.map(() => 'minmax(150px, 1fr)').join(' ')}`;
 
   return (
     <SectionCard
@@ -182,14 +200,14 @@ export function LLMModelsSection({
               >
                 Default · Job 전체
               </div>
-              {NODE_COLUMNS.map((col) => (
+              {nodeColumns.map((col) => (
                 <div key={col} style={{ ...HEAD_CELL, textAlign: 'center' }}>
                   {NODE_LABEL[col] || col}
                 </div>
               ))}
 
               {/* Body rows */}
-              {JOB_DEFS.map((job) => {
+              {jobDefs.map((job) => {
                 const jobConfig = editedConfig.llmModels?.[job.jobKey];
                 const inheritedDefault = (() => {
                   const r = resolveModelDisplay(jobConfig?.default ?? '', availableModels);
@@ -204,6 +222,7 @@ export function LLMModelsSection({
                     key={job.jobKey}
                     job={job}
                     Icon={Icon}
+                    nodeColumns={nodeColumns}
                     jobConfig={jobConfig}
                     inheritedDefault={inheritedDefault}
                     availableModels={availableModels}
@@ -216,8 +235,10 @@ export function LLMModelsSection({
             </div>
           </div>
 
-          {/* Auxiliary (non-graph) models — default-only single-model rows. */}
-          {AUXILIARY_MODEL_KEYS.length > 0 && (
+          {/* Auxiliary (non-graph) models — default-only single-model rows.
+              Canonical-only: today's sole key (commit) is git-bound, and
+              universal workspaces have no git. */}
+          {!isUniversal && AUXILIARY_MODEL_KEYS.length > 0 && (
             <div style={{ borderTop: '1px solid var(--border-1)' }}>
               <div
                 style={{
@@ -316,6 +337,7 @@ export function LLMModelsSection({
 interface JobRowProps {
   job: JobDef;
   Icon: LucideIcon | null;
+  nodeColumns: ModelNodeKey[];
   jobConfig: JobLLMConfig | undefined;
   inheritedDefault: { id: string; displayName: string; provider: string } | undefined;
   availableModels: AvailableModel[];
@@ -327,6 +349,7 @@ interface JobRowProps {
 function JobRow({
   job,
   Icon,
+  nodeColumns,
   jobConfig,
   inheritedDefault,
   availableModels,
@@ -421,7 +444,7 @@ function JobRow({
       </div>
 
       {/* Override cells */}
-      {NODE_COLUMNS.map((col) => {
+      {nodeColumns.map((col) => {
         const applicable = OVERRIDABLE_MODEL_SLOTS[job.jobKey].includes(col);
         if (!applicable) {
           return (

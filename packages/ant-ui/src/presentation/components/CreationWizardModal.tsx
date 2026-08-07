@@ -1,15 +1,17 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 // TEMP(action-system-compat): Compass/Code2 icons used only by hidden design/code entries; re-add when restoring.
-import { Sparkles, FolderPlus } from 'lucide-react';
+import { Sparkles, FolderPlus, Bot, Package } from 'lucide-react';
 import { Modal } from './common/Modal';
 import { useStore } from '@/domain/store';
+import type { ProjectType } from '@/domain/store/slices/universalSlice';
 import { cn } from '@/shared/utils/design-system';
 
 interface CreationWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
   existingProjectId?: string;
-  onCreateEmpty: () => void;
+  onCreateEmpty: (projectType: ProjectType) => void;
 }
 
 // Token-driven visual config. Brand-gradient surfaces use inline CSS vars so
@@ -79,6 +81,11 @@ export function CreationWizardModal({
   const { t } = useTranslation('onboarding');
   const setQuickStartProjectId = useStore((s) => s.setQuickStartProjectId);
   const setProjectSetupConfig = useStore((s) => s.setProjectSetupConfig);
+  // Project type is a creation-time decision (an existing project's type is
+  // fixed), so the tabs render only for brand-new projects.
+  const [projectType, setProjectType] = useState<ProjectType>('canonical');
+  const showTypeTabs = !existingProjectId;
+  const effectiveType: ProjectType = showTypeTabs ? projectType : 'canonical';
 
   const handleSelect = (id: 'plan' | 'design' | 'code') => {
     onClose();
@@ -105,68 +112,162 @@ export function CreationWizardModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={t('quickstart.creationModal.title')} size="md">
       <div className="space-y-3">
-        {PATHS.map((p) => {
-          const Icon = p.icon;
-          return (
-            <button
-              key={p.id}
-              onClick={() => handleSelect(p.id)}
-              style={p.surfaceStyle}
-              className={cn(
-                'w-full flex items-center gap-3 px-4 py-3.5 text-left rounded-xl border',
-                'transition-all duration-200 hover:shadow-md group',
-              )}
-            >
-              <div
-                style={p.iconBgStyle}
+        {showTypeTabs && (
+          <div
+            className="flex items-center gap-1 p-1 rounded-xl"
+            style={{ background: 'var(--bg-surface-2)' }}
+          >
+            <TypeTab
+              selected={projectType === 'canonical'}
+              onClick={() => setProjectType('canonical')}
+              Icon={Package}
+              label={t('quickstart.projectWizard.projectTypeCanonical')}
+            />
+            <TypeTab
+              selected={projectType === 'universal'}
+              onClick={() => setProjectType('universal')}
+              Icon={Bot}
+              label={t('quickstart.projectWizard.projectTypeUniversal')}
+            />
+          </div>
+        )}
+
+        {effectiveType === 'canonical' ? (
+          PATHS.map((p) => {
+            const Icon = p.icon;
+            return (
+              <button
+                key={p.id}
+                onClick={() => handleSelect(p.id)}
+                style={p.surfaceStyle}
                 className={cn(
-                  'flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0',
-                  'group-hover:scale-105 transition-transform',
+                  'w-full flex items-center gap-3 px-4 py-3.5 text-left rounded-xl border',
+                  'transition-all duration-200 hover:shadow-md group',
                 )}
               >
-                <Icon className="w-4.5 h-4.5" style={p.iconColorStyle} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm" style={p.titleColorStyle}>
-                  {titleKey(p.id)}
+                <div
+                  style={p.iconBgStyle}
+                  className={cn(
+                    'flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0',
+                    'group-hover:scale-105 transition-transform',
+                  )}
+                >
+                  <Icon className="w-4.5 h-4.5" style={p.iconColorStyle} />
                 </div>
-                <div className="text-xs mt-0.5" style={p.hintColorStyle}>
-                  {hintKey(p.id)}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm" style={p.titleColorStyle}>
+                    {titleKey(p.id)}
+                  </div>
+                  <div className="text-xs mt-0.5" style={p.hintColorStyle}>
+                    {hintKey(p.id)}
+                  </div>
                 </div>
+              </button>
+            );
+          })
+        ) : (
+          // Universal workspace — no auto-started job, so the only entry is
+          // creating an empty project (projectType is recorded at creation).
+          <button
+            onClick={() => {
+              onClose();
+              onCreateEmpty('universal');
+            }}
+            style={{
+              background: 'var(--gradient-pink-orange)',
+              boxShadow: 'var(--shadow-glow-aurora)',
+              borderColor: 'transparent',
+            }}
+            className={cn(
+              'w-full flex items-center gap-3 px-4 py-3.5 text-left rounded-xl border',
+              'transition-all duration-200 hover:shadow-md group',
+            )}
+          >
+            <div
+              style={{ background: 'rgba(255, 255, 255, 0.18)' }}
+              className={cn(
+                'flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0',
+                'group-hover:scale-105 transition-transform',
+              )}
+            >
+              <Bot className="w-4.5 h-4.5" style={{ color: 'var(--text-on-brand)' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm" style={{ color: 'var(--text-on-brand)' }}>
+                {t('quickstart.creationModal.createUniversal')}
               </div>
-            </button>
-          );
-        })}
+              <div
+                className="text-xs mt-0.5"
+                style={{ color: 'var(--text-on-brand)', opacity: 0.8 }}
+              >
+                {t('quickstart.creationModal.createUniversalHint')}
+              </div>
+            </div>
+          </button>
+        )}
 
-        {/* Empty creation */}
-        <button
-          onClick={() => {
-            onClose();
-            onCreateEmpty();
-          }}
-          className={cn(
-            'w-full flex items-center gap-3 px-4 py-3.5 text-left rounded-xl border',
-            'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)]',
-            'hover:border-[color:var(--border-2)] transition-all duration-200 hover:shadow-sm group',
-          )}
-        >
-          <div className={cn(
-            'flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0',
-            'group-hover:scale-105 transition-transform',
-            'bg-[color:var(--bg-surface-2)]/50',
-          )}>
-            <FolderPlus className="w-4.5 h-4.5 text-[color:var(--text-3)]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm text-[color:var(--text-2)]">
-              {t('quickstart.creationModal.createEmpty')}
+        {/* Empty creation (canonical only — the universal tab's single entry
+            above IS the empty creation for universal workspaces) */}
+        {effectiveType === 'canonical' && (
+          <button
+            onClick={() => {
+              onClose();
+              onCreateEmpty('canonical');
+            }}
+            className={cn(
+              'w-full flex items-center gap-3 px-4 py-3.5 text-left rounded-xl border',
+              'bg-[color:var(--bg-canvas)]/50 border-[color:var(--border-1)]',
+              'hover:border-[color:var(--border-2)] transition-all duration-200 hover:shadow-sm group',
+            )}
+          >
+            <div className={cn(
+              'flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0',
+              'group-hover:scale-105 transition-transform',
+              'bg-[color:var(--bg-surface-2)]/50',
+            )}>
+              <FolderPlus className="w-4.5 h-4.5 text-[color:var(--text-3)]" />
             </div>
-            <div className="text-xs mt-0.5 text-[color:var(--text-4)]">
-              {t('quickstart.creationModal.createEmptyHint')}
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm text-[color:var(--text-2)]">
+                {t('quickstart.creationModal.createEmpty')}
+              </div>
+              <div className="text-xs mt-0.5 text-[color:var(--text-4)]">
+                {t('quickstart.creationModal.createEmptyHint')}
+              </div>
             </div>
-          </div>
-        </button>
+          </button>
+        )}
       </div>
     </Modal>
+  );
+}
+
+function TypeTab({
+  selected,
+  onClick,
+  Icon,
+  label,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  Icon: typeof Bot;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-all"
+      style={{
+        background: selected ? 'var(--bg-surface)' : 'transparent',
+        color: selected ? 'var(--text-1)' : 'var(--text-3)',
+        border: selected ? '1px solid var(--border-2)' : '1px solid transparent',
+        borderRadius: 'var(--r-md)',
+        boxShadow: selected ? 'var(--shadow-xs)' : 'none',
+      }}
+    >
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </button>
   );
 }
