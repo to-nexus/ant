@@ -45,7 +45,9 @@
     "creationModal": {
       "title": "How would you like to start?",
       "createEmpty": "Create empty project/feature",
-      "createEmptyHint": "Just set up a blank workspace"
+      "createEmptyHint": "Just set up a blank workspace",
+      "createUniversal": "Create an empty Workspace",
+      "createUniversalHint": "A blank space for file-defined custom agents — no domain, features, or git"
     },
     "projectWizard": {
       "forceCleanupTitle": "Existing project data found",
@@ -61,10 +63,10 @@
       "modeCode": "Code from design",
       "modeCodeDesc": "I already have Ant design documents",
       "projectTypeLabel": "Project type",
-      "projectTypeCanonical": "Product project",
-      "projectTypeCanonicalDesc": "Features, design/code jobs, git integration",
-      "projectTypeUniversal": "Agent workspace",
-      "projectTypeUniversalDesc": "Custom agents & jobs with a free-form workspace",
+      "projectTypeCanonical": "Codespace",
+      "projectTypeCanonicalDesc": "Build a product — features, design/code jobs, git",
+      "projectTypeUniversal": "Workspace",
+      "projectTypeUniversalDesc": "A free-form space for custom agents & jobs",
       "modeChangeConfirm": "Changing the mode will reset uploaded files and instructions. Continue?",
       "closeConfirm": "Close the wizard? Your input will be lost.",
       "domainLabel": "Domain",

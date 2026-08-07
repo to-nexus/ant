@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pencil } from 'lucide-react';
+import { Pencil, Bot } from 'lucide-react';
 import {
   ProjectConfig,
   fetchOrgConfig,
@@ -42,7 +42,7 @@ interface ConfigEditorProps {
   onClose: () => void;
 }
 
-const SECTION_IDS = ['c3p-identity', 'c3p-domain', 'c3p-repository', 'c3p-llm', 'c3p-danger'] as const;
+const SECTION_IDS = ['c3p-identity', 'c3p-domain', 'c3p-project-type', 'c3p-repository', 'c3p-llm', 'c3p-danger'] as const;
 
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   // onClose is handled by MainPanel tab close button (kept for API compatibility)
@@ -58,13 +58,27 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     serverMode,
   } = useConfigEditor(config);
 
+  // projectType is a creation-time decision (SSOT: config.json) — universal
+  // workspaces show a read-only type card in place of the Domain section and
+  // hide canonical-only concerns (repository/git).
+  const isUniversal = editedConfig.projectType === 'universal';
+
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [githubOwnerInfo, setGithubOwnerInfo] = useState<GitHubOwnerInfo>({});
   const [githubRepoManuallyEdited, setGithubRepoManuallyEdited] = useState(false);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const [activeSection, setActiveSection] = useActiveSection([...SECTION_IDS], scrollerRef);
+  const visibleSectionIds = useMemo(
+    () =>
+      SECTION_IDS.filter((id) =>
+        isUniversal
+          ? id !== 'c3p-domain' && id !== 'c3p-repository'
+          : id !== 'c3p-project-type',
+      ),
+    [isUniversal],
+  );
+  const [activeSection, setActiveSection] = useActiveSection(visibleSectionIds, scrollerRef);
 
   // Git snapshot — branchBase locks once a remote is connected (clone/init).
   // NOT `hasGit`: local git always exists once a feature is created, so a
@@ -107,6 +121,9 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
         const defaultOwner = effectiveOrgOwner || personalOwner;
         if (defaultOwner) {
           setEditedConfig((prev) => {
+            // Universal workspaces have no repository section — don't seed a
+            // githubRepo default into a form that never shows the field.
+            if (prev.projectType === 'universal') return prev;
             if (prev.githubRepo) return prev;
             const repoName = prev.repositoryName || 'my-project';
             return {
@@ -388,7 +405,10 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     newProjectName.trim() !== '' &&
     newProjectName.trim() !== selectedProject;
 
+  // Repository/domain sections are hidden (universal) — keep their dirty
+  // flags hard-false so invisible fields can't trip the change bar.
   const repositoryDirty = useMemo(() => {
+    if (isUniversal) return false;
     const keys: Array<keyof ProjectConfig> = [
       'repositoryName',
       'repoType',
@@ -397,11 +417,11 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       'branchBase',
     ];
     return keys.some((k) => editedConfig[k] !== config[k]);
-  }, [editedConfig, config]);
+  }, [isUniversal, editedConfig, config]);
 
   const domainDirty = useMemo(
-    () => (editedConfig.domain ?? 'service') !== (config.domain ?? 'service'),
-    [editedConfig.domain, config.domain],
+    () => !isUniversal && (editedConfig.domain ?? 'service') !== (config.domain ?? 'service'),
+    [isUniversal, editedConfig.domain, config.domain],
   );
 
   const llmDirty = useMemo(() => {
@@ -414,8 +434,12 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
     <TocNav
       items={[
         { id: 'c3p-identity', label: '아이덴티티', icon: 'Box', dirty: identityDirty },
-        { id: 'c3p-domain', label: t('domain.title'), icon: 'Globe', dirty: domainDirty },
-        { id: 'c3p-repository', label: '저장소', icon: 'GitBranch', dirty: repositoryDirty },
+        ...(isUniversal
+          ? [{ id: 'c3p-project-type', label: t('projectType.title'), icon: 'Bot' }]
+          : [
+              { id: 'c3p-domain', label: t('domain.title'), icon: 'Globe', dirty: domainDirty },
+              { id: 'c3p-repository', label: '저장소', icon: 'GitBranch', dirty: repositoryDirty },
+            ]),
         { id: 'c3p-llm', label: 'LLM 모델', icon: 'Brain', dirty: llmDirty },
         { id: 'c3p-danger', label: '위험 영역', icon: 'AlertTriangle' },
       ]}
@@ -580,9 +604,44 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             </SectionCard>
           )}
 
-          {/* Domain — project-level SSOT (service vs game). Editing here writes
+          {/* Universal workspaces have no domain — projectType (not a domain)
+              takes the Domain section's slot as a read-only, creation-time
+              fact. Canonical projects keep the editable Domain section. */}
+          {isUniversal ? (
+            <SectionCard
+              id="c3p-project-type"
+              icon="Bot"
+              title={t('projectType.title')}
+              accent="pink-orange"
+              description={t('projectType.description')}
+              bodyMaxWidth={640}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '10px 12px',
+                  borderRadius: 'var(--r-md)',
+                  background: 'var(--bg-surface-2)',
+                  border: '1px solid var(--border-1)',
+                }}
+              >
+                <Bot size={16} style={{ color: 'var(--pink-500, oklch(70% 0.2 350))', flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)' }}>
+                    {t('projectType.universal')}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    {t('projectType.universalDesc')}
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
+          ) : (
+          /* Domain — project-level SSOT (service vs game). Editing here writes
               config.json on save; the projectConfigSlice mirror then updates
-              actionMetadata.domain and runs the domain-transition cleanup. */}
+              actionMetadata.domain and runs the domain-transition cleanup. */
           <SectionCard
             id="c3p-domain"
             icon="Globe"
@@ -600,8 +659,11 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               }}
             />
           </SectionCard>
+          )}
 
-          {/* Repository */}
+          {/* Repository — canonical-only concern (universal workspaces have no
+              git/features; see the project wizard's universal branch). */}
+          {!isUniversal && (
           <SectionCard
             id="c3p-repository"
             icon="GitBranch"
@@ -681,6 +743,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
               </div>
             </div>
           </SectionCard>
+          )}
 
           {/* LLM Models — renders its own SectionCard with id="c3p-llm" */}
           <LLMModelsSection

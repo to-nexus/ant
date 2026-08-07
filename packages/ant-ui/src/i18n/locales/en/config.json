@@ -150,19 +150,19 @@
   },
   "providerConsent": {
     "deepseek": {
-    "eyebrow": "Third-party AI provider",
-    "title": "Using DeepSeek — please review before continuing",
-    "intro": "DeepSeek is a third-party model provider based in China. Its data-handling terms differ materially from Anthropic and Google. Before selecting it, understand what this means for your data:",
-    "risks": [
-      "Data location & jurisdiction: DeepSeek stores data on servers in the People's Republic of China and is subject to Chinese law, which can compel disclosure to authorities with limited legal recourse — unlike EU/US providers.",
-      "Your prompts leave your environment: everything a job sends — your project's source files, prompts, and generated code — is transmitted to api.deepseek.com.",
-      "Training & retention: DeepSeek's terms permit using inputs/outputs for service improvement and model training. Inputs are retained (roughly 30 days for inputs, longer for logs) and may be kept even after deletion for legal/compliance reasons.",
-      "Track record: public reporting (e.g. the January 2025 exposure of a DeepSeek database) underscores operational data-handling risk."
-    ],
-    "acknowledgement": "I understand DeepSeek is a third-party service outside ANT's control, and I use it at my own responsibility for any code or data sent to it.",
-    "dontShowAgain": "Don't show this again",
-    "confirm": "I understand — use DeepSeek",
-    "cancel": "Cancel"
+      "eyebrow": "Third-party AI provider",
+      "title": "Using DeepSeek — please review before continuing",
+      "intro": "DeepSeek is a third-party model provider based in China. Its data-handling terms differ materially from Anthropic and Google. Before selecting it, understand what this means for your data:",
+      "risks": [
+        "Data location & jurisdiction: DeepSeek stores data on servers in the People's Republic of China and is subject to Chinese law, which can compel disclosure to authorities with limited legal recourse — unlike EU/US providers.",
+        "Your prompts leave your environment: everything a job sends — your project's source files, prompts, and generated code — is transmitted to api.deepseek.com.",
+        "Training & retention: DeepSeek's terms permit using inputs/outputs for service improvement and model training. Inputs are retained (roughly 30 days for inputs, longer for logs) and may be kept even after deletion for legal/compliance reasons.",
+        "Track record: public reporting (e.g. the January 2025 exposure of a DeepSeek database) underscores operational data-handling risk."
+      ],
+      "acknowledgement": "I understand DeepSeek is a third-party service outside ANT's control, and I use it at my own responsibility for any code or data sent to it.",
+      "dontShowAgain": "Don't show this again",
+      "confirm": "I understand — use DeepSeek",
+      "cancel": "Cancel"
     },
     "glm": {
       "eyebrow": "Third-party AI provider",
@@ -215,6 +215,12 @@
     "serviceDesc": "Web / app services (UI + backend)",
     "game": "Game",
     "gameDesc": "Games (game art + engine)"
+  },
+  "projectType": {
+    "title": "Project type",
+    "description": "The project type is decided when the project is created and cannot be changed.",
+    "universal": "Workspace",
+    "universalDesc": "Runs file-defined custom agents and jobs. Domain, features, and git do not apply."
   },
   "llmModels": {
     "title": "LLM Settings by Job Node",

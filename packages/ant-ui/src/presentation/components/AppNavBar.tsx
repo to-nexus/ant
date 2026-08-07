@@ -46,12 +46,23 @@ export function AppNavBar({}: AppNavBarProps) {
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
+  // Universal workspaces have no code IDE surface — the Editor toggle hides.
+  const isUniversalProject = useStore((state) => state.projectType) === 'universal';
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [editorTooltip, setEditorTooltip] = useState<string | null>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
+
+  // If the active project flips to universal while the IDE view is open
+  // (project switch), fall back to the agents view — the Editor toggle is
+  // hidden, so codeIde would otherwise be unreachable-but-stuck.
+  useEffect(() => {
+    if (isUniversalProject && mainView === 'codeIde') {
+      setMainView('agents');
+    }
+  }, [isUniversalProject, mainView, setMainView]);
 
   // Close language menu on outside click
   useEffect(() => {
@@ -200,7 +211,8 @@ export function AppNavBar({}: AppNavBarProps) {
                 <span className="hidden sm:inline">{t('viewMode.agents')}</span>
               </button>
 
-              {/* Editor Button */}
+              {/* Editor Button — hidden for universal workspaces (no IDE) */}
+              {!isUniversalProject && (
               <button
                 onClick={handleCodeIdeViewSwitch}
                 className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"
@@ -214,6 +226,7 @@ export function AppNavBar({}: AppNavBarProps) {
                 <Code2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('viewMode.code')}</span>
               </button>
+              )}
 
               {/* Tooltip for Editor button */}
               {editorTooltip && (

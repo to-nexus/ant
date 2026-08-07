@@ -1,8 +1,9 @@
 
 import { useState, type MouseEvent, type ReactNode } from 'react';
-import { ChevronRight, X, Layers, Gamepad2 } from 'lucide-react';
+import { ChevronRight, X, Layers, Gamepad2, Bot } from 'lucide-react';
 import { selectedRowStyle, selectedRowLabel } from '../../aurora/selection';
 import type { Domain } from '@ant/shared';
+import type { ProjectType } from '@/domain/store/slices/universalSlice';
 
 export type ProjectDotAccent = 'violet' | 'pink' | 'orange' | 'cool';
 
@@ -20,6 +21,9 @@ interface ProjectRowProps {
   accent: ProjectDotAccent;
   /** Project domain (service or game) — displays as icon */
   domain?: Domain;
+  /** Project runtime shape — universal workspaces have no domain, so the icon
+   *  shows Bot instead of a domain glyph. */
+  projectType?: ProjectType;
   /** Disabled state (e.g. policy.canChangeProject === false). */
   disabled?: boolean;
   disabledReason?: string;
@@ -52,6 +56,7 @@ export function ProjectRow({
   isActive,
   accent,
   domain,
+  projectType,
   disabled,
   disabledReason,
   onSwitch,
@@ -107,7 +112,8 @@ export function ProjectRow({
         transition: 'background var(--dur-fast), border-color var(--dur-fast)',
       }}
     >
-      {/* Domain icon — service (Layers) or game (Gamepad2) */}
+      {/* Type/domain icon — universal (Bot) wins; else service (Layers) or
+          game (Gamepad2) */}
       <span
         aria-hidden
         style={{
@@ -120,7 +126,9 @@ export function ProjectRow({
           color: DOT_COLOR[accent],
         }}
       >
-        {domain === 'game' ? (
+        {projectType === 'universal' ? (
+          <Bot size={12} strokeWidth={2} />
+        ) : domain === 'game' ? (
           <Gamepad2 size={12} strokeWidth={2} />
         ) : (
           <Layers size={12} strokeWidth={2} />

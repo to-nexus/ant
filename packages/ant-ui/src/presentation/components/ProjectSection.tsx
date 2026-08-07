@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Settings } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { createProject, fetchProjectConfig as apiFetchProjectConfig } from '@/infrastructure/http/api';
+import {
+  createProject,
+  fetchProjectConfig as apiFetchProjectConfig,
+  createProjectConfig as apiCreateProjectConfig,
+} from '@/infrastructure/http/api';
+import type { ProjectType } from '@/domain/store/slices/universalSlice';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { CreationWizardModal } from './CreationWizardModal';
@@ -34,6 +39,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     openMainPanelTab,
     fetchProjectConfig,
     createProjectConfig,
+    updateProjectConfig,
   } = useStore();
   const projectConfigMissing = useStore(selectProjectConfigMissing);
   // Live domain mirror for the ACTIVE project. `actionMetadata.domain` is the
@@ -43,19 +49,26 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
   const activeDomain = useStore((s) => s.actionMetadata.domain as Domain | undefined);
 
   const [showWizard, setShowWizard] = useState(false);
-  const [forceInlineCreate, setForceInlineCreate] = useState(false);
+  // Inline-create form visibility + the projectType the created project gets
+  // (creation-time decision — carried from the CreationWizardModal tab).
+  const [inlineCreateType, setInlineCreateType] = useState<ProjectType | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
-  // Per-project domain cache for the NON-active rows (project-level SSOT is
-  // `config.json` WorkspaceConfig.domain — one value per project, feature-
+  // Per-project config meta cache for the NON-active rows (project-level SSOT
+  // is `config.json` — domain + projectType, one value per project, feature-
   // independent). Filled by a bulk parallel fetch; never routed through the
   // single-project `projectConfig` store slice.
-  const [projectDomainByName, setProjectDomainByName] = useState<Record<string, Domain>>({});
+  const [projectMetaByName, setProjectMetaByName] = useState<
+    Record<string, { domain: Domain; projectType: ProjectType }>
+  >({});
+  // Live projectType mirror for the ACTIVE project (universalSlice, synced
+  // from config.json on every load/save).
+  const activeProjectType = useStore((s) => s.projectType as ProjectType);
 
   const handleOpenWizard = useCallback(() => setShowWizard(true), []);
   const handleCloseWizard = useCallback(() => setShowWizard(false), []);
-  const handleCreateEmpty = useCallback(() => {
+  const handleCreateEmpty = useCallback((projectType: ProjectType) => {
     setShowWizard(false);
-    setForceInlineCreate(true);
+    setInlineCreateType(projectType);
   }, []);
   const policy = useUIActionPolicy();
   const { showError } = useAlertModalContext();
@@ -69,9 +82,26 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     }
   }, [selectedProject, fetchProjectConfig]);
 
-  const handleCreateProject = async (projectName: string) => {
+  const handleCreateProject = async (projectName: string, projectType: ProjectType = 'canonical') => {
     await createProject(projectName);
     setSelectedProject(projectName);
+    if (projectType === 'universal') {
+      // Record the projectType SSOT (same fetch→merge→PUT sequence as the
+      // project wizard; git/domain are canonical-project concerns and stay
+      // untouched). Saved via the store slice so `syncProjectTypeFromConfig`
+      // flips the sidebar/toolbar gates immediately.
+      let serverConfig = await apiFetchProjectConfig(projectName);
+      if (!serverConfig) {
+        serverConfig = await apiCreateProjectConfig(projectName);
+      }
+      const result = await updateProjectConfig(projectName, {
+        ...serverConfig,
+        projectType: 'universal',
+      });
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to persist projectType');
+      }
+    }
   };
 
   const handleConfigClick = async () => {
@@ -115,59 +145,65 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     setSelectedProject(undefined);
   }, [setSelectedProject]);
 
-  // Bulk-resolve every project's domain so ALL rows show the correct icon
+  // Bulk-resolve every project's config meta so ALL rows show the correct icon
   // without any interaction (including when no project/feature is selected).
   // Uses the RAW API (aliased) — the store's `fetchProjectConfig` is a
   // single-project slice writer and must NOT be used for other projects.
   useEffect(() => {
-    const missing = projects.filter((p) => !(p in projectDomainByName));
+    const missing = projects.filter((p) => !(p in projectMetaByName));
     if (missing.length === 0) return;
     let cancelled = false;
     void Promise.allSettled(
       missing.map(async (name) => {
         const cfg = await apiFetchProjectConfig(name);
-        return [name, (cfg?.domain as Domain) ?? 'service'] as const;
+        return [
+          name,
+          {
+            domain: (cfg?.domain as Domain) ?? 'service',
+            projectType: (cfg?.projectType === 'universal' ? 'universal' : 'canonical') as ProjectType,
+          },
+        ] as const;
       }),
     ).then((results) => {
       if (cancelled) return;
-      const resolved: Record<string, Domain> = {};
+      const resolved: Record<string, { domain: Domain; projectType: ProjectType }> = {};
       for (const r of results) {
         if (r.status === 'fulfilled') resolved[r.value[0]] = r.value[1];
       }
       if (Object.keys(resolved).length > 0) {
-        setProjectDomainByName((prev) => ({ ...prev, ...resolved }));
+        setProjectMetaByName((prev) => ({ ...prev, ...resolved }));
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [projects, projectDomainByName]);
+  }, [projects, projectMetaByName]);
 
-  // Warm-keep: mirror the active project's live domain into the cache so the
-  // icon stays correct after the project is deselected / becomes non-active.
+  // Warm-keep: mirror the active project's live domain/type into the cache so
+  // the icon stays correct after the project is deselected / becomes non-active.
   useEffect(() => {
     if (!selectedProject || !activeDomain) return;
-    setProjectDomainByName((prev) =>
-      prev[selectedProject] === activeDomain
-        ? prev
-        : { ...prev, [selectedProject]: activeDomain },
-    );
-  }, [selectedProject, activeDomain]);
+    setProjectMetaByName((prev) => {
+      const cur = prev[selectedProject];
+      if (cur && cur.domain === activeDomain && cur.projectType === activeProjectType) return prev;
+      return { ...prev, [selectedProject]: { domain: activeDomain, projectType: activeProjectType } };
+    });
+  }, [selectedProject, activeDomain, activeProjectType]);
 
   const handleSubmitNewProject = useCallback(async () => {
     const name = newProjectName.trim();
     if (!name) return;
     try {
-      await handleCreateProject(name);
+      await handleCreateProject(name, inlineCreateType ?? 'canonical');
       await fetchProjects();
       setSelectedProject(name);
       setNewProjectName('');
-      setForceInlineCreate(false);
+      setInlineCreateType(null);
     } catch (err) {
       console.error('Failed to create project:', err);
       showError(t('workspace.createFailed'));
     }
-  }, [newProjectName, fetchProjects, setSelectedProject, showError, t]);
+  }, [newProjectName, inlineCreateType, fetchProjects, setSelectedProject, showError, t]);
 
   return (
     <div>
@@ -263,11 +299,14 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             <RowList ariaLabel={t('workspace.title')}>
               {orderedProjects.map((name) => {
                 const isActive = name === selectedProject;
-                // Active row: live mirror (reflects a settings change quickly).
-                // Non-active rows: bulk-resolved cache. Default `service`.
+                // Active row: live mirrors (reflect a settings change quickly).
+                // Non-active rows: bulk-resolved cache. Default service/canonical.
                 const domain: Domain = isActive
                   ? (activeDomain || 'service')
-                  : (projectDomainByName[name] || 'service');
+                  : (projectMetaByName[name]?.domain || 'service');
+                const projectType: ProjectType = isActive
+                  ? activeProjectType
+                  : (projectMetaByName[name]?.projectType || 'canonical');
                 return (
                   <ProjectRow
                     key={name}
@@ -275,6 +314,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
                     isActive={isActive}
                     accent={projectAccents[name] || 'violet'}
                     domain={domain}
+                    projectType={projectType}
                     disabled={!policy.canChangeProject && !isActive}
                     disabledReason={policy.disabledReason || undefined}
                     onSwitch={() => handleSwitchProject(name)}
@@ -309,7 +349,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
           </>
         )}
 
-        {forceInlineCreate && (
+        {inlineCreateType && (
           <div
             style={{
               marginTop: 6,
@@ -326,7 +366,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void handleSubmitNewProject();
                 if (e.key === 'Escape') {
-                  setForceInlineCreate(false);
+                  setInlineCreateType(null);
                   setNewProjectName('');
                 }
               }}
@@ -367,7 +407,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             <button
               type="button"
               onClick={() => {
-                setForceInlineCreate(false);
+                setInlineCreateType(null);
                 setNewProjectName('');
               }}
               style={{

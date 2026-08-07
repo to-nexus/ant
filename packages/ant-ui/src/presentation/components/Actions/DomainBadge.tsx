@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, ArrowUpRight } from 'lucide-react';
+import { Globe, Bot, ArrowUpRight } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { Tooltip } from '@/presentation/components/common/Tooltip';
 
@@ -15,10 +15,15 @@ interface DomainBadgeProps {
  * project settings — the badge itself never switches it. Its tooltip carries
  * a link that opens project settings (`projectConfig` main-panel tab) where
  * the domain can actually be changed.
+ *
+ * Universal workspaces have no domain — projectType (not a domain) takes the
+ * badge's slot as a read-only creation-time fact, with its own copy so the
+ * two axes never share vocabulary.
  */
 export function DomainBadge({ className }: DomainBadgeProps) {
   const { t } = useTranslation('actions');
   const domain = useStore(s => s.actionMetadata).domain ?? 'service';
+  const isUniversal = useStore(s => s.projectType) === 'universal';
   const openMainPanelTab = useStore(s => s.openMainPanelTab);
 
   const openSettings = useCallback(
@@ -29,7 +34,7 @@ export function DomainBadge({ className }: DomainBadgeProps) {
   const content = (
     <div className="flex flex-col gap-1.5 max-w-[15rem]">
       <span className="text-xs" style={{ color: 'var(--text-2)' }}>
-        {t('domain.badge.hint')}
+        {isUniversal ? t('projectType.badge.hint') : t('domain.badge.hint')}
       </span>
       <button
         type="button"
@@ -47,7 +52,7 @@ export function DomainBadge({ className }: DomainBadgeProps) {
     <Tooltip content={content} placement="bottom">
       <span
         role="button"
-        aria-label={t('domain.badge.aria') as string}
+        aria-label={(isUniversal ? t('projectType.badge.aria') : t('domain.badge.aria')) as string}
         className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium shrink-0 ${className ?? ''}`}
         style={{
           background: 'var(--bg-surface)',
@@ -55,8 +60,12 @@ export function DomainBadge({ className }: DomainBadgeProps) {
           color: 'var(--text-2)',
         }}
       >
-        <Globe className="w-3 h-3 shrink-0" style={{ color: 'var(--blue-500)' }} />
-        {t(`domain.toggle.option.${domain}`)}
+        {isUniversal ? (
+          <Bot className="w-3 h-3 shrink-0" style={{ color: 'var(--pink-500, oklch(70% 0.2 350))' }} />
+        ) : (
+          <Globe className="w-3 h-3 shrink-0" style={{ color: 'var(--blue-500)' }} />
+        )}
+        {isUniversal ? t('projectType.badge.label') : t(`domain.toggle.option.${domain}`)}
       </span>
     </Tooltip>
   );
