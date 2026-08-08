@@ -198,6 +198,14 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         // triage classifier has nothing to infer.
         skipTriage: universalCtx ? true : undefined,
         customJobRef: universalCtx?.customJobRef,
+        // Explicit `@intent:` / `@ctx:` mentions — this run only.
+        ...(universalCtx && (() => {
+          const meta = useStore.getState().universalTurnMeta;
+          return {
+            intents: meta.intents.length > 0 ? meta.intents : undefined,
+            context: meta.context.length > 0 ? meta.context : undefined,
+          };
+        })()),
         // chat SSOT §6 — forward the API-allocated turnId so the worker
         // reuses it for the durable user_turn line; eliminates the
         // optimistic-vs-durable id mismatch that produced two user
@@ -207,6 +215,10 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
 
       if (hasMetadata) {
         useStore.getState().resetActionMetadata();
+      }
+      if (universalCtx) {
+        // Mentions apply to the run just dispatched; following turns re-infer.
+        useStore.getState().resetUniversalTurnMeta();
       }
 
       useStore.getState().setCurrentJob(jobExecution);

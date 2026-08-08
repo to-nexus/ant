@@ -19,10 +19,15 @@ export const CUSTOM_AGENTS_DIRNAME = '.ant/agents';
 /** Env var naming an org-scope definitions dir (self-host; Phase 3 for cloud sync). */
 export const ORG_AGENTS_DIR_ENV = 'ANT_CUSTOM_AGENTS_DIR';
 
-export function deriveCustomAgentScopeRoots(projectPath: string): CustomAgentScopeRoot[] {
+/**
+ * Account-first derivation: the user dir IS the scope anchor. Project-scoped
+ * callers delegate here with `dirname(projectPath)`; account-scoped callers
+ * (agent settings screen — no project selected) pass
+ * `getWorkspacePath(userContext)` directly.
+ */
+export function deriveCustomAgentScopeRootsFromUserDir(userDir: string): CustomAgentScopeRoot[] {
   const roots: CustomAgentScopeRoot[] = [
-    // workspaces/{org}/{user}/{project} → the user dir is the project's parent.
-    { scope: 'user', root: path.join(path.dirname(projectPath), CUSTOM_AGENTS_DIRNAME), readonly: false },
+    { scope: 'user', root: path.join(userDir, CUSTOM_AGENTS_DIRNAME), readonly: false },
   ];
   const orgRoot = process.env[ORG_AGENTS_DIR_ENV];
   if (orgRoot) {
@@ -30,4 +35,9 @@ export function deriveCustomAgentScopeRoots(projectPath: string): CustomAgentSco
   }
   roots.push({ scope: 'builtin', root: WorkspacePathResolver.getBuiltinAgentsPath(), readonly: true });
   return roots;
+}
+
+export function deriveCustomAgentScopeRoots(projectPath: string): CustomAgentScopeRoot[] {
+  // workspaces/{org}/{user}/{project} → the user dir is the project's parent.
+  return deriveCustomAgentScopeRootsFromUserDir(path.dirname(projectPath));
 }

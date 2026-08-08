@@ -27,6 +27,10 @@ export interface UniversalRunnerParams {
   containerPath: string;
   projectId: string;
   isResume?: boolean;
+  /** Explicit `@intent:` mentions (validated at accept) — this run only. */
+  explicitIntents?: string[];
+  /** Explicit `@ctx:` artifact paths (checked at accept) — this run only. */
+  explicitContext?: string[];
   deps: {
     llm: any;
     session?: any;
@@ -65,6 +69,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let restoredConversations: Record<string, ConversationMessage[]> | undefined;
   let restoredTokenUsage: any;
   let restoredTokenUsageByModel: any;
+  let restoredActiveIntents: string[] | undefined;
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
@@ -73,6 +78,9 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         restoredConversations = { [CONV_KEYS.SESSION_MAIN]: sessionState.conversations[CONV_KEYS.SESSION_MAIN] };
         restoredTokenUsage = sessionState.tokenUsage;
         restoredTokenUsageByModel = sessionState.tokenUsageByModel;
+        if (Array.isArray(sessionState.activeIntents)) {
+          restoredActiveIntents = sessionState.activeIntents.filter((i: unknown) => typeof i === 'string');
+        }
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
     } catch (e) {
@@ -107,6 +115,9 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     _httpJobId: params._httpJobId,
     isResume: params.isResume,
     conversations,
+    activeIntents: restoredActiveIntents,
+    explicitIntents: params.explicitIntents,
+    explicitContext: params.explicitContext,
   });
   if (restoredTokenUsage) (initialState as any).tokenUsage = restoredTokenUsage;
   if (restoredTokenUsageByModel) (initialState as any).tokenUsageByModel = restoredTokenUsageByModel;

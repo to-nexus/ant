@@ -31,7 +31,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SessionableJobType } from '@ant/shared';
-import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, isCanonicalDir, createEmptyFigmaData } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, UNIVERSAL_FEATURE, isCanonicalDir, createEmptyFigmaData } from '@ant/shared';
+import { UNIVERSAL_DIRNAME, isUniversalProject } from '../customAgents/universalContainer';
 import { logger } from '../../utils/logger';
 
 export { CANONICAL_FEATURE_DIRS, isCanonicalDir };
@@ -172,10 +173,10 @@ export const DEBUG_SUBDIRS: Readonly<Record<string, readonly string[]>> = (() =>
 
 /**
  * Get the debug directory path for an agent.
- * 
+ *
  * @example getSessionDebugDir('/path/to/feature', 'architect', 'prompts')
  *   → '/path/to/feature/sessions/architect/debug/prompts'
- * 
+ *
  * @param featurePath - Absolute path to the feature directory
  * @param agent - Agent name
  * @param subdir - Debug subdirectory (e.g., 'prompts', 'plans', 'logs', 'figma')
@@ -183,6 +184,21 @@ export const DEBUG_SUBDIRS: Readonly<Record<string, readonly string[]>> = (() =>
  */
 export function getSessionDebugDir(featurePath: string, agent: string, subdir: string): string {
   return path.join(featurePath, 'sessions', agent, 'debug', subdir);
+}
+
+/**
+ * Debug-dir agent name for the current job process. Universal jobs write
+ * debug logs under the custom agent's own id
+ * (`{container}/sessions/{agentId}/debug/…`) instead of minting the
+ * canonical `architect` skeleton inside the universal container.
+ */
+export function resolveDebugAgentName(): string {
+  if (process.env.ANT_JOB_TYPE === 'universal') {
+    const ref = process.env.ANT_CUSTOM_JOB_REF;
+    const agentId = ref?.split('/')[0];
+    if (agentId) return agentId;
+  }
+  return 'architect';
 }
 
 // ============================================
@@ -307,10 +323,36 @@ export interface EnsureCanonicalResult {
  * @param featurePath - Absolute path to the feature directory
  * @returns Count of items actually created this call; zero on a healthy feature.
  */
+/**
+ * Backstop guard: true when the path is a universal plane that must never
+ * receive the canonical feature skeleton — either the universal container
+ * (`{project}/universal`) or a phantom `{project}/features/universal` on a
+ * universal-type project. The primary gates live at the call sites
+ * (FileTreeBroadcaster jobType gate, ensureCanonicalFeature middleware);
+ * this catches any remaining path so pollution cannot silently recur.
+ */
+function isUniversalPlanePath(featurePath: string): boolean {
+  const normalized = path.resolve(featurePath);
+  const base = path.basename(normalized);
+  const parent = path.dirname(normalized);
+  if (base === UNIVERSAL_DIRNAME && isUniversalProject(parent)) return true;
+  if (base === UNIVERSAL_FEATURE && path.basename(parent) === 'features' && isUniversalProject(path.dirname(parent))) {
+    return true;
+  }
+  return false;
+}
+
 export async function ensureCanonicalStructure(featurePath: string): Promise<EnsureCanonicalResult> {
   try {
     await fs.promises.access(featurePath);
   } catch {
+    return { createdDirs: 0, createdFiles: 0 };
+  }
+
+  if (isUniversalPlanePath(featurePath)) {
+    logger.warn('[ensureCanonicalStructure] refused to scaffold canonical dirs on a universal plane', {
+      component: 'ensureCanonicalStructure',
+    }, { featurePath });
     return { createdDirs: 0, createdFiles: 0 };
   }
 

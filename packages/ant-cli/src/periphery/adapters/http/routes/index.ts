@@ -28,6 +28,7 @@ export { createSSERoutes } from './sse.routes';
 export { createIDERoutes } from './ide.routes';  // Local IDE
 export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (containers)
 export { createCustomAgentRoutes } from './customAgents.routes';  // Universal custom agents/jobs
+export { createAccountAgentRoutes } from './accountAgents.routes';  // Account-scoped agent settings
 
 /**
  * Dependencies for route creation

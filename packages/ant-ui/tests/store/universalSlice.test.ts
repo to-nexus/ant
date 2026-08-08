@@ -119,3 +119,45 @@ describe('loadCustomAgents selection repair', () => {
     expect(s.getState().selectedCustomJobId).toBeUndefined();
   });
 });
+
+describe('universalTurnMeta — explicit @intent:/@ctx: mention accumulation', () => {
+  it('accumulates + dedupes intents and context, removes individually', () => {
+    const s = makeStore();
+    s.getState().addUniversalIntentMention('research');
+    s.getState().addUniversalIntentMention('cite');
+    s.getState().addUniversalIntentMention('research'); // dedupe
+    s.getState().addUniversalContextMention('plan/a.md');
+    s.getState().addUniversalContextMention('plan/a.md'); // dedupe
+    expect(s.getState().universalTurnMeta).toEqual({ intents: ['research', 'cite'], context: ['plan/a.md'] });
+
+    s.getState().removeUniversalIntentMention('research');
+    s.getState().removeUniversalContextMention('plan/a.md');
+    expect(s.getState().universalTurnMeta).toEqual({ intents: ['cite'], context: [] });
+  });
+
+  it('resets on job switch (mentions are job-scoped vocabulary)', () => {
+    const s = makeStore();
+    s.getState().selectCustomJob('researcher', 'brief');
+    s.getState().addUniversalIntentMention('research');
+    s.getState().selectCustomJob('researcher', 'quick');
+    expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: [] });
+  });
+
+  it('resetUniversalTurnMeta clears after send; no-op keeps reference stability', () => {
+    const s = makeStore();
+    s.getState().addUniversalIntentMention('research');
+    s.getState().resetUniversalTurnMeta();
+    expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: [] });
+    const ref = s.getState().universalTurnMeta;
+    s.getState().resetUniversalTurnMeta();
+    expect(s.getState().universalTurnMeta).toBe(ref);
+  });
+
+  it('chip survival: selecting the SAME job keeps accumulated mentions', () => {
+    const s = makeStore();
+    s.getState().selectCustomJob('researcher', 'brief');
+    s.getState().addUniversalIntentMention('research');
+    s.getState().selectCustomJob('researcher', 'brief'); // no-op selection
+    expect(s.getState().universalTurnMeta.intents).toEqual(['research']);
+  });
+});

@@ -34,6 +34,12 @@ export type BrowseField = 'refs' | 'context' | 'target';
 const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@explicit'] as const;
 type MentionPrefix = (typeof MENTION_PREFIXES)[number];
 
+// Universal surface (D-E): the mention MECHANISM (parsing / dropdown / token
+// removal / keyboard nav) is shared; only vocabulary, cardinality, and the
+// target store field differ. The pure data rules live in
+// `universalMentionSurface.ts` (store-free, directly testable).
+import { UNIVERSAL_MENTION_PREFIXES, isUniversalCtxSuggestible } from './universalMentionSurface';
+
 type FileMentionPrefix = '@target:' | '@ref:' | '@ctx:';
 
 function flattenFilePaths(nodes: FileNode[], prefix = ''): string[] {
@@ -155,15 +161,41 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
   const fileTree = useStore(s => s.fileTree);
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const actionMetadata = useStore(s => s.actionMetadata);
+  // Universal surface inputs — vocabulary comes from the selected custom
+  // job's own catalog (API data, never a code-resident table).
+  const projectType = useStore(s => s.projectType);
+  const customAgents = useStore(s => s.customAgents);
+  const selectedCustomAgentId = useStore(s => s.selectedCustomAgentId);
+  const selectedCustomJobId = useStore(s => s.selectedCustomJobId);
+  const addUniversalIntentMention = useStore(s => s.addUniversalIntentMention);
+  const addUniversalContextMention = useStore(s => s.addUniversalContextMention);
   const { canStartChat } = useActionFooterPolicy();
   const { t } = useTranslation('chat');
 
-  const COMMAND_MENU_BASE = useMemo<MentionSuggestion[]>(() => [
-    { type: 'command', id: '@intent:', label: t('mention.intent.label'), description: t('mention.intent.description') },
-    { type: 'command', id: '@target:', label: t('mention.target.label'), description: t('mention.target.description') },
-    { type: 'command', id: '@ref:',    label: t('mention.ref.label'),    description: t('mention.ref.description') },
-    { type: 'command', id: '@ctx:',    label: t('mention.ctx.label'),    description: t('mention.ctx.description') },
-  ], [t]);
+  const isUniversal = projectType === 'universal';
+  const universalJobIntents = useMemo(() => {
+    if (!isUniversal) return [];
+    const agent = customAgents.find(a => a.id === selectedCustomAgentId);
+    return agent?.jobs.find(j => j.id === selectedCustomJobId)?.intents ?? [];
+  }, [isUniversal, customAgents, selectedCustomAgentId, selectedCustomJobId]);
+
+  const COMMAND_MENU_BASE = useMemo<MentionSuggestion[]>(() => {
+    if (isUniversal) {
+      // `@intent:` only surfaces when the selected job declares a catalog.
+      return [
+        ...(universalJobIntents.length > 0
+          ? [{ type: 'command' as const, id: '@intent:', label: t('mention.intent.label'), description: t('mention.universalIntent.description', { defaultValue: 'Attach one or more of this job\'s intents' }) }]
+          : []),
+        { type: 'command' as const, id: '@ctx:', label: t('mention.ctx.label'), description: t('mention.ctx.description') },
+      ];
+    }
+    return [
+      { type: 'command', id: '@intent:', label: t('mention.intent.label'), description: t('mention.intent.description') },
+      { type: 'command', id: '@target:', label: t('mention.target.label'), description: t('mention.target.description') },
+      { type: 'command', id: '@ref:',    label: t('mention.ref.label'),    description: t('mention.ref.description') },
+      { type: 'command', id: '@ctx:',    label: t('mention.ctx.label'),    description: t('mention.ctx.description') },
+    ];
+  }, [t, isUniversal, universalJobIntents.length]);
 
   const EXPLICIT_COMMAND = useMemo<MentionSuggestion>(() => ({
     type: 'command',
@@ -174,10 +206,12 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
   const allFilePaths = useMemo(() => flattenFilePaths(fileTree), [fileTree]);
 
+  const activePrefixes: readonly MentionPrefix[] = isUniversal ? UNIVERSAL_MENTION_PREFIXES : MENTION_PREFIXES;
+
   const { prefix, query, matchStart, commandQuery } = useMemo(() => {
     const textBeforeCursor = message.slice(0, cursorPos);
 
-    for (const p of MENTION_PREFIXES) {
+    for (const p of activePrefixes) {
       const lastIdx = textBeforeCursor.lastIndexOf(p);
       if (lastIdx >= 0) {
         const afterPrefix = textBeforeCursor.slice(lastIdx + p.length);
@@ -193,11 +227,12 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     }
 
     return { prefix: null as MentionPrefix | null, query: '', matchStart: -1, commandQuery: null as string | null };
-  }, [message, cursorPos]);
+  }, [message, cursorPos, activePrefixes]);
 
   // `@explicit` suggestion surfaces iff it's both settable (canStartChat) and not already on.
   // Mirrors the ActionFooter button policy so the two entry points are symmetrical.
-  const explicitSettable = canStartChat && actionMetadata.explicit !== true;
+  // Universal never surfaces it — there is no triage to bypass.
+  const explicitSettable = !isUniversal && canStartChat && actionMetadata.explicit !== true;
 
   const suggestions = useMemo((): MentionSuggestion[] => {
     if (commandQuery !== null) {
@@ -208,6 +243,23 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
 
     if (!prefix) return [];
     const q = query.toLowerCase();
+
+    // Universal surface: data + rules differ, mechanism is shared.
+    if (isUniversal) {
+      if (prefix === '@intent:') {
+        return universalJobIntents
+          .filter(i => i.id.toLowerCase().includes(q) || i.description.toLowerCase().includes(q))
+          .slice(0, 8)
+          .map(i => ({ type: 'intent' as const, id: i.id, label: i.id, description: i.description }));
+      }
+      if (prefix === '@ctx:') {
+        return allFilePaths
+          .filter(p => isUniversalCtxSuggestible(p) && p.toLowerCase().includes(q))
+          .slice(0, 10)
+          .map(p => ({ type: 'context' as const, id: p, label: basename(p), description: p }));
+      }
+      return [];
+    }
 
     switch (prefix) {
       case '@intent:': {
@@ -272,7 +324,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       default:
         return [];
     }
-  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, t]);
+  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, t, isUniversal, universalJobIntents]);
 
   const showSuggestions = (prefix !== null || commandQuery !== null) && suggestions.length > 0;
 
@@ -305,6 +357,16 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     // this field (ChatInput observes `browseField`).
     if (suggestion.type === 'browse') {
       setBrowseField(suggestion.id as BrowseField);
+      setIsOpen(false);
+      setSelectedIndex(0);
+      return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
+    }
+
+    // Universal: mentions ACCUMULATE into `universalTurnMeta` (multiple
+    // intents legal) — never into the canonical actionMetadata store.
+    if (isUniversal) {
+      if (suggestion.type === 'intent') addUniversalIntentMention(suggestion.id);
+      else if (suggestion.type === 'context') addUniversalContextMention(suggestion.id);
       setIsOpen(false);
       setSelectedIndex(0);
       return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
@@ -343,7 +405,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     setIsOpen(false);
     setSelectedIndex(0);
     return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
-  }, [message, cursorPos, matchStart, updateActionMetadata, actionMetadata, canStartChat]);
+  }, [message, cursorPos, matchStart, updateActionMetadata, actionMetadata, canStartChat, isUniversal, addUniversalIntentMention, addUniversalContextMention]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent): false | { newMessage: string; newCursorPos: number } => {
     if (!showSuggestions) return false;

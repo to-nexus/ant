@@ -329,3 +329,120 @@ describe('error type', () => {
     }
   });
 });
+
+// ── intents.yaml (dedicated single-file catalog, D-A) ────────────────────────
+
+function writeIntents(dir: string, doc: unknown): void {
+  fs.writeFileSync(path.join(dir, 'intents.yaml'), typeof doc === 'string' ? doc : yaml.dump(doc));
+}
+
+describe('loadCustomJob — intents catalog validation table', () => {
+  function setup(agentIntents?: unknown, jobIntents?: unknown, opts?: {
+    agentInjections?: Record<string, string>;
+    jobInjections?: Record<string, string>;
+  }): void {
+    const agentDir = writeAgent(roots()[0].root, 'ops', {}, {
+      base: { 'system.md': 'Persona.' },
+      injections: opts?.agentInjections,
+    });
+    writeJob(agentDir, 'weekly', {}, { injections: opts?.jobInjections });
+    if (agentIntents !== undefined) writeIntents(agentDir, agentIntents);
+    if (jobIntents !== undefined) writeIntents(path.join(agentDir, 'jobs', 'weekly'), jobIntents);
+  }
+
+  it('absent files → empty catalog (classify zero-cost path)', () => {
+    setup();
+    expect(loadCustomJob(roots(), 'ops', 'weekly').intents).toEqual([]);
+  });
+
+  it('comments-only / empty intents list → empty catalog', () => {
+    setup('# just comments\n');
+    expect(loadCustomJob(roots(), 'ops', 'weekly').intents).toEqual([]);
+    setup({ version: 1, intents: [] });
+    expect(loadCustomJob(roots(), 'ops', 'weekly').intents).toEqual([]);
+  });
+
+  it.each([
+    ['duplicate id in one file', { intents: [
+      { id: 'a', description: 'x' }, { id: 'a', description: 'y' },
+    ] }, /duplicate intent id/],
+    ['reserved general id', { intents: [{ id: 'general', description: 'x' }] }, /implicit fallback/],
+    ['bad id charset', { intents: [{ id: 'Bad_Id', description: 'x' }] }, /must match/],
+    ['empty description', { intents: [{ id: 'a', description: '  ' }] }, /non-empty description/],
+    ['description over 200 chars', { intents: [{ id: 'a', description: 'x'.repeat(201) }] }, /exceeds 200/],
+    ['injection with path separator', { intents: [{ id: 'a', description: 'x', injections: ['dir/f.md'] }] }, /bare file name/],
+    ['injection without .md', { intents: [{ id: 'a', description: 'x', injections: ['f.txt'] }] }, /must be a \.md file/],
+    ['missing injection file', { intents: [{ id: 'a', description: 'x', injections: ['ghost.md'] }] }, /does not exist/],
+  ] as const)('%s → throws', (_label, doc, pattern) => {
+    setup(doc);
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
+  });
+
+  it('level scope: agent intent must NOT reference a job-private injection', () => {
+    setup(
+      { intents: [{ id: 'a', description: 'x', injections: ['job-only.md'] }] },
+      undefined,
+      { jobInjections: { 'job-only.md': 'Job-private prose.' } },
+    );
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/does not exist in the agent/);
+  });
+
+  it('level scope: job intent MAY reference an agent-level injection (merged set)', () => {
+    setup(
+      undefined,
+      { intents: [{ id: 'cite', description: 'citations', injections: ['style.md'] }] },
+      { agentInjections: { 'style.md': 'Citation rules.' } },
+    );
+    const resolved = loadCustomJob(roots(), 'ops', 'weekly');
+    expect(resolved.intents).toEqual([{ id: 'cite', description: 'citations', injections: ['style.md'] }]);
+  });
+
+  it('merge: id union, JOB entry wins WHOLESALE on collision', () => {
+    setup(
+      { intents: [
+        { id: 'a', description: 'agent-a', injections: ['shared.md'] },
+        { id: 'b', description: 'agent-b' },
+      ] },
+      { intents: [{ id: 'a', description: 'job-a' }] },
+      { agentInjections: { 'shared.md': 'Shared prose.' } },
+    );
+    const { intents } = loadCustomJob(roots(), 'ops', 'weekly');
+    expect(intents).toHaveLength(2);
+    // Job entry replaced the agent's entirely — injections gone, not merged.
+    expect(intents.find((i) => i.id === 'a')).toEqual({ id: 'a', description: 'job-a' });
+    expect(intents.find((i) => i.id === 'b')).toEqual({ id: 'b', description: 'agent-b' });
+  });
+
+  it('merged catalog cap (32) is enforced', () => {
+    const many = Array.from({ length: 33 }, (_, i) => ({ id: `intent-${i}`, description: 'x' }));
+    setup({ intents: many });
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/cap is 32/);
+  });
+
+  it('TOC annotation: mapped entries carry intents[] + preloaded body; unmapped drop body', () => {
+    setup(
+      { intents: [{ id: 'a', description: 'x', injections: ['mapped.md'] }] },
+      undefined,
+      { agentInjections: { 'mapped.md': 'Mapped body text.', 'unmapped.md': 'Unmapped body.' } },
+    );
+    const { injectionsToc } = loadCustomJob(roots(), 'ops', 'weekly');
+    const mapped = injectionsToc.find((e) => e.file === 'mapped.md');
+    const unmapped = injectionsToc.find((e) => e.file === 'unmapped.md');
+    expect(mapped?.intents).toEqual(['a']);
+    expect(mapped?.body).toBe('Mapped body text.');
+    expect(unmapped?.intents).toBeUndefined();
+    expect(unmapped?.body).toBeUndefined();
+  });
+
+  it('discovery projects the merged catalog into CustomJobSummary.intents (lenient)', () => {
+    setup({ intents: [{ id: 'a', description: 'agent-a' }] });
+    const agents = discoverAgents(roots());
+    expect(agents[0].jobs[0].intents).toEqual([{ id: 'a', description: 'agent-a' }]);
+  });
+
+  it('discovery omits intents (not []) when the catalog is malformed', () => {
+    setup('intents: [ {{{ broken');
+    const agents = discoverAgents(roots());
+    expect(agents[0].jobs[0].intents).toBeUndefined();
+  });
+});

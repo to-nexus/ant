@@ -64,7 +64,10 @@ export class SessionPersistence {
   ): FileSessionAdapter | null {
     const featurePath = this.getFeaturePath(projectId, featureName, userContext);
     if (!featurePath) return null;
-    return new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
+    // Chat layer only ever touches chat.jsonl / feature.jsonl — a stray
+    // session-JSON save() would scaffold an agent dir (e.g. sessions/architect
+    // inside a universal container), so the chat-log-only variant is used.
+    return FileSessionAdapter.forChatLog(featurePath, projectId, featureName);
   }
 
   /**

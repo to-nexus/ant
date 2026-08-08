@@ -7,7 +7,7 @@
  * owns the full parsed shapes the loader and the runtime consume.
  */
 
-import type { CustomAgentScope } from '@ant/shared';
+import type { CustomAgentScope, CustomIntentDef } from '@ant/shared';
 
 /** MCP server connection declaration (secrets are env-var *names*, never values). */
 export interface McpServerConfig {
@@ -29,7 +29,7 @@ export type OutputsMode = 'none' | 'free' | 'contract';
 export interface OutputArtifactContract {
   /** Vocabulary name injected into the prompt (e.g. `weekly-report`). */
   kind: string;
-  /** Relative dir under `universal/artifacts/` (only `plans/` is reserved). */
+  /** Relative dir under `universal/artifacts/` (only `plan/` is reserved). */
   dir: string;
   /** Extension / format (e.g. `md`). */
   format: string;
@@ -78,7 +78,7 @@ export interface CustomJobYaml {
   };
   workspace?: WorkspaceAccess;
   models?: Record<string, string>;
-  /** Phase 2 — accepted and preserved, not yet acted on. */
+  /** Plan convention — gates the `plan/{agentId}/{jobId}` prompt section. */
   plan?: 'required' | 'suggested' | 'off';
 }
 
@@ -90,6 +90,14 @@ export interface InjectionTocEntry {
   summary: string;
   /** Absolute path, for the read-only definition sandbox. */
   absolutePath: string;
+  /** Intent ids that inline this file (reverse mapping from `intents.yaml`). */
+  intents?: string[];
+  /**
+   * Full body, preloaded ONLY for intent-mapped entries — the loader already
+   * reads the file for its summary, so this is free; the prompt builder must
+   * never re-read the disk mid-job.
+   */
+  body?: string;
 }
 
 /**
@@ -107,6 +115,12 @@ export interface ResolvedCustomJob {
   prose: string;
   /** Union of agent + job injections (job wins on filename collision). */
   injectionsToc: InjectionTocEntry[];
+  /**
+   * Merged intent catalog (agent ∪ job `intents.yaml`, job entry wins
+   * wholesale). Code-exterior data — a per-job runtime vocabulary, never the
+   * compile-time `IntentId` union. Empty = classify is skipped entirely.
+   */
+  intents: CustomIntentDef[];
   /** Union of MCP servers (job definition wins on name collision). */
   mcpServers: Record<string, McpServerConfig>;
   /** Effective builtin allowlist (job ⊆ agent ⊆ universal preset). */

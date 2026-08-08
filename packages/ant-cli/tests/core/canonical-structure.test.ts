@@ -14,7 +14,7 @@
  *     defined in @ant/shared canonical dirs.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -157,5 +157,25 @@ describe('DEBUG_SUBDIRS (derived from CANONICAL_FEATURE_DIRS)', () => {
     expect(DEBUG_SUBDIRS.architect?.length ?? 0).toBeGreaterThan(0);
     expect(DEBUG_SUBDIRS.planner?.length ?? 0).toBeGreaterThan(0);
     expect(DEBUG_SUBDIRS.creator?.length ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('resolveDebugAgentName — universal debug-dir owner (env table)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ['canonical job (no env)', undefined, undefined, 'architect'],
+    ['canonical job (code)', 'code', undefined, 'architect'],
+    ['universal job with ref → agentId', 'universal', 'sample-researcher/quick-answer', 'sample-researcher'],
+    ['universal job with malformed ref → architect fallback', 'universal', '', 'architect'],
+    ['universal job without ref → architect fallback', 'universal', undefined, 'architect'],
+  ] as const)('%s', async (_label, jobType, ref, expected) => {
+    if (jobType !== undefined) vi.stubEnv('ANT_JOB_TYPE', jobType);
+    if (ref !== undefined) vi.stubEnv('ANT_CUSTOM_JOB_REF', ref);
+    vi.resetModules();
+    const { resolveDebugAgentName } = await import('../../src/core/utils/sessionPaths');
+    expect(resolveDebugAgentName()).toBe(expected);
   });
 });

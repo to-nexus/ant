@@ -125,7 +125,8 @@ export type StaticMainPanelTab =
   | 'transfer'
   | 'previewConfig'
   | 'actions'
-  | 'billing';
+  | 'billing'
+  | 'agentSettings';
 
 export type EditorMainPanelTabId = `editor:${string}`;
 export type MainPanelTabId = StaticMainPanelTab | EditorMainPanelTabId;
@@ -227,6 +228,7 @@ export interface UIState {
     previewConfig: boolean;
     actions: boolean;
     billing: boolean;
+    agentSettings: boolean;
   };
   mainPanelTabOrder: MainPanelTabOrderItem[];
   // Actions panel state

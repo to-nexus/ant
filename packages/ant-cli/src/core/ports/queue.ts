@@ -30,6 +30,8 @@ export interface JobPayload {
 
   /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
   customJobRef?: string;
+  /** Universal only — explicit `@intent:`/`@ctx:` turn meta (validated at accept). */
+  universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
   
   // Job configuration
   mode?: 'generate' | 'refactor' | 'explain';

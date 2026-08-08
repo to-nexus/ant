@@ -51,10 +51,11 @@ const EXCLUDE_PATTERNS = [
 export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private pubRedis: Redis;
   private readonly projectPath: string;
+  private readonly jobType?: string;
   private readonly userContext?: UserContext;
   private readonly gitStateBroadcaster?: GitStateBroadcaster;
   private readonly inflight = new InflightTracker();
-  
+
   constructor(
     options: BroadcasterOptions & { projectPath: string },
     gitStateBroadcaster?: GitStateBroadcaster
@@ -66,6 +67,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
       retryStrategy: (times: number) => Math.min(times * 100, 3000),
     });
     this.projectPath = options.projectPath;
+    this.jobType = options.jobType;
     this.userContext = options.userContext;
     this.gitStateBroadcaster = gitStateBroadcaster;
 
@@ -128,7 +130,12 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
       // reflects the current CANONICAL_FEATURE_DIRS. Without this the worker
       // overwrites the API-server-reconciled tree (from FileOperationService.getFileTree)
       // with a stale snapshot, which hides newly added canonical dirs for 24h (cache TTL).
-      await ensureCanonicalStructure(this.projectPath);
+      // Universal jobs point projectPath at the universal container, which must
+      // never receive the canonical feature skeleton (decideProjectJobGate
+      // guarantees jobType 'universal' ⇔ universal project).
+      if (this.jobType !== 'universal') {
+        await ensureCanonicalStructure(this.projectPath);
+      }
 
       // 2. Build file tree from filesystem
       const tree = await this.buildFileTree(this.projectPath);

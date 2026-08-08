@@ -16,60 +16,24 @@ import { writeBufferVerified } from '../../../../core/utils/binaryIntegrity';
 import { isValidCustomId } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { deriveCustomAgentScopeRoots } from '../../../../core/customAgents/scopeRoots';
-import { UNIVERSAL_ARTIFACT_CANONICAL_DIRS } from '../../../../core/customAgents/universalContainer';
+import {
+  UNIVERSAL_ARTIFACT_CANONICAL_DIRS,
+  UNIVERSAL_SESSIONS_NODE,
+  buildUniversalMergedTree,
+  resolveUniversalMergedPath,
+  type UniversalTreeNode,
+} from '../../../../core/customAgents/universalContainer';
 import {
   discoverAgents,
-  findAgentRoot,
   findCreateCollision,
   loadCustomJob,
   type CustomAgentScopeRoot,
 } from '../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../core/customAgents/types';
+import { findWritableAgent, patchYamlFile, scaffoldAgent, scaffoldJob } from './helpers/customAgentHandlers';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
-
-const AGENT_SCAFFOLD_SYSTEM_MD = `# Role
-
-Describe this agent's shared persona and working principles here.
-Everything in \`base/\` is always injected for every job of this agent.
-Put long, situational material into \`injections/\` instead — the runtime
-shows a table of contents and loads files on demand.
-`;
-
-const JOB_SCAFFOLD_SYSTEM_MD = `# Job Procedure
-
-Describe what this job does, step by step, and what a good result looks like.
-This file is always injected on top of the agent's shared \`base/\` prose.
-`;
-
-function scaffoldAgent(agentDir: string, id: string, name: string, description: string): void {
-  fs.mkdirSync(path.join(agentDir, 'base'), { recursive: true });
-  fs.mkdirSync(path.join(agentDir, 'injections'), { recursive: true });
-  fs.mkdirSync(path.join(agentDir, 'jobs'), { recursive: true });
-  fs.writeFileSync(path.join(agentDir, 'agent.yaml'), yaml.dump({ id, name, description, version: 1 }), 'utf-8');
-  fs.writeFileSync(path.join(agentDir, 'base', 'system.md'), AGENT_SCAFFOLD_SYSTEM_MD, 'utf-8');
-}
-
-function scaffoldJob(jobDir: string, id: string, name: string, description: string): void {
-  fs.mkdirSync(path.join(jobDir, 'base'), { recursive: true });
-  fs.mkdirSync(path.join(jobDir, 'injections'), { recursive: true });
-  fs.writeFileSync(
-    path.join(jobDir, 'job.yaml'),
-    yaml.dump({ id, name, description, version: 1, outputs: { mode: 'free' } }),
-    'utf-8',
-  );
-  fs.writeFileSync(path.join(jobDir, 'base', 'system.md'), JOB_SCAFFOLD_SYSTEM_MD, 'utf-8');
-}
-
-/** Patch top-level yaml fields in place, preserving the rest of the document. */
-function patchYamlFile(filePath: string, patch: Record<string, unknown>): void {
-  const doc = (yaml.load(fs.readFileSync(filePath, 'utf-8')) ?? {}) as Record<string, unknown>;
-  for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) doc[k] = v;
-  }
-  fs.writeFileSync(filePath, yaml.dump(doc), 'utf-8');
-}
 
 export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceResolver }): Router {
   const router = Router();
@@ -78,27 +42,6 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     const userContext = extractUserContext(req);
     const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
     return deriveCustomAgentScopeRoots(projectPath);
-  }
-
-  function findWritableAgent(
-    res: Response,
-    scopeRoots: CustomAgentScopeRoot[],
-    agentId: string,
-  ): { scopeRoot: CustomAgentScopeRoot; agentDir: string } | null {
-    if (!isValidCustomId(agentId)) {
-      res.status(400).json({ error: `Invalid agent id: ${agentId}` });
-      return null;
-    }
-    const found = findAgentRoot(scopeRoots, agentId);
-    if (!found) {
-      res.status(404).json({ error: `Custom agent not found: ${agentId}` });
-      return null;
-    }
-    if (found.scopeRoot.readonly) {
-      res.status(403).json({ error: `Custom agent "${agentId}" is read-only (scope: ${found.scopeRoot.scope})` });
-      return null;
-    }
-    return found;
   }
 
   // ── agents ─────────────────────────────────────────────────────────────
@@ -235,6 +178,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
         mcpServers: Object.keys(resolved.mcpServers),
         outputsMode: resolved.outputs.mode,
         workspace: resolved.workspace,
+        intents: resolved.intents,
       });
     } catch (error: any) {
       if (error instanceof CustomAgentValidationError) {
@@ -249,45 +193,28 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
   /** Reserved top-level node name — the grafted sessions folder (see tree). */
-  const SESSIONS_NODE = 'sessions';
+  const SESSIONS_NODE = UNIVERSAL_SESSIONS_NODE;
 
   function firstSegment(rel: string): string {
     return rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0] ?? '';
   }
 
-  function artifactsRootFor(req: Request, projectId: string): string {
+  function containerRootFor(req: Request, projectId: string): string {
     const userContext = extractUserContext(req);
-    return deps.workspaceResolver.getUniversalArtifactsPath(userContext, projectId);
-  }
-
-  function sessionsRootFor(req: Request, projectId: string): string {
-    const userContext = extractUserContext(req);
-    return path.join(deps.workspaceResolver.getUniversalContainerPath(userContext, projectId), SESSIONS_NODE);
-  }
-
-  /** Path-traversal-safe resolve inside a root. */
-  function resolveArtifactPath(root: string, rel: string): string {
-    const full = path.resolve(root, rel);
-    if (full !== root && !full.startsWith(root + path.sep)) {
-      throw new Error(`Invalid artifact path: ${rel}`);
-    }
-    return full;
+    return deps.workspaceResolver.getUniversalContainerPath(userContext, projectId);
   }
 
   /**
-   * Merged-tree path routing: the explorer shows the artifacts tree with a
-   * top-level `sessions` node grafted in (mirrors the codespace per-feature
-   * sessions folder). Paths under `sessions/` resolve against the container's
-   * sessions dir; everything else against the artifacts root.
+   * Merged-path routing — delegates to the `universalContainer` SSOT
+   * (`resolveUniversalMergedPath`), shared with FileOperationService.
+   * Artifacts-only routes call it after their `sessions` reserved-name guard,
+   * so non-`sessions/` paths always land inside `{container}/artifacts`.
    */
   function resolveMergedPath(req: Request, projectId: string, rel: string): string {
-    if (rel === SESSIONS_NODE || rel.startsWith(`${SESSIONS_NODE}/`)) {
-      const remainder = rel === SESSIONS_NODE ? '' : rel.slice(SESSIONS_NODE.length + 1);
-      return resolveArtifactPath(sessionsRootFor(req, projectId), remainder);
-    }
-    return resolveArtifactPath(artifactsRootFor(req, projectId), rel);
+    return resolveUniversalMergedPath(containerRootFor(req, projectId), rel);
   }
 
+  /** API node shape (no absolutePath leak). */
   interface ArtifactTreeNode {
     name: string;
     path: string;
@@ -296,52 +223,21 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     children?: ArtifactTreeNode[];
   }
 
-  function buildTree(root: string, rel = '', prefix = ''): ArtifactTreeNode[] {
-    const abs = rel ? path.join(root, rel) : root;
-    if (!fs.existsSync(abs)) return [];
-    return fs
-      .readdirSync(abs, { withFileTypes: true })
-      .filter((e) => !e.name.startsWith('.'))
-      .sort((a, b) => (a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1))
-      .map((e) => {
-        const childRel = rel ? `${rel}/${e.name}` : e.name;
-        const nodePath = prefix ? `${prefix}/${childRel}` : childRel;
-        if (e.isDirectory()) {
-          return { name: e.name, path: nodePath, type: 'directory' as const, children: buildTree(root, childRel, prefix) };
-        }
-        const size = fs.statSync(path.join(abs, e.name)).size;
-        return { name: e.name, path: nodePath, type: 'file' as const, size };
-      });
+  function toApiNode(n: UniversalTreeNode): ArtifactTreeNode {
+    return {
+      name: n.name,
+      path: n.path,
+      type: n.type,
+      ...(n.type === 'file' ? { size: n.size ?? 0 } : { children: (n.children ?? []).map(toApiNode) }),
+    };
   }
 
   router.get('/projects/:projectId/universal/artifacts/tree', (req: Request, res: Response) => {
     try {
-      const root = artifactsRootFor(req, req.params.projectId);
-      // Reserved name: an agent-created `artifacts/sessions/` dir is shadowed
-      // by the grafted node (user creation is blocked at upload/mkdir).
-      const artifactNodes = buildTree(root).filter((n) => n.name !== SESSIONS_NODE);
-      // Canonical dirs first (synthesized when missing, mirroring the
-      // codespace panel's placeholder rows), then free-form content,
-      // `sessions` last — same ordering contract as CANONICAL_DIR_DEFS.
-      const canonicalNodes: ArtifactTreeNode[] = UNIVERSAL_ARTIFACT_CANONICAL_DIRS.map(
-        (name) =>
-          artifactNodes.find((n) => n.name === name && n.type === 'directory') ?? {
-            name,
-            path: name,
-            type: 'directory' as const,
-            children: [],
-          },
-      );
-      const freeNodes = artifactNodes.filter(
-        (n) => !(UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(n.name) || n.type !== 'directory',
-      );
-      const sessionsNode: ArtifactTreeNode = {
-        name: SESSIONS_NODE,
-        path: SESSIONS_NODE,
-        type: 'directory',
-        children: buildTree(sessionsRootFor(req, req.params.projectId), '', SESSIONS_NODE),
-      };
-      res.json({ tree: [...canonicalNodes, ...freeNodes, sessionsNode] });
+      // Assembly SSOT — universalContainer.buildUniversalMergedTree (shared
+      // with FileOperationService.getFileTree; single implementation, no drift).
+      const tree = buildUniversalMergedTree(containerRootFor(req, req.params.projectId));
+      res.json({ tree: tree.map(toApiNode) });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'UniversalArtifacts');
     }
@@ -349,7 +245,6 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   router.post('/projects/:projectId/universal/artifacts/upload', upload.array('files'), async (req: Request, res: Response) => {
     try {
-      const root = artifactsRootFor(req, req.params.projectId);
       const dirPath = (req.body.dirPath || '').replace(/\\/g, '/');
       const files = (req.files as Express.Multer.File[]) || [];
       const rawRelPaths = req.body.relativePaths;
@@ -365,7 +260,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
             code: 'reserved-name-sessions',
           });
         }
-        const filePath = resolveArtifactPath(root, path.join(dirPath, relPath));
+        const filePath = resolveMergedPath(req, req.params.projectId, effectiveRel);
         // Byte-safe write (size + header verification) — uploads must survive
         // binary payloads unmodified (no utf-8 round-trip).
         await writeBufferVerified(filePath, files[i].buffer);
@@ -427,7 +322,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
           code: 'reserved-name-sessions',
         });
       }
-      const full = resolveArtifactPath(artifactsRootFor(req, req.params.projectId), rel);
+      const full = resolveMergedPath(req, req.params.projectId, rel);
       if (fs.existsSync(full)) {
         return res.status(409).json({ error: `Already exists: ${rel}` });
       }
@@ -454,9 +349,8 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
       if (!parentRel && (newName === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(newName))) {
         return res.status(400).json({ error: `"${newName}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' });
       }
-      const root = artifactsRootFor(req, req.params.projectId);
-      const from = resolveArtifactPath(root, rel);
-      const to = resolveArtifactPath(root, parentRel ? `${parentRel}/${newName}` : newName);
+      const from = resolveMergedPath(req, req.params.projectId, rel);
+      const to = resolveMergedPath(req, req.params.projectId, parentRel ? `${parentRel}/${newName}` : newName);
       if (!fs.existsSync(from)) return res.status(404).json({ error: `Artifact not found: ${rel}` });
       if (fs.existsSync(to)) return res.status(409).json({ error: `Already exists: ${newName}` });
       fs.renameSync(from, to);
@@ -468,7 +362,6 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   router.post('/projects/:projectId/universal/artifacts/mkdir', (req: Request, res: Response) => {
     try {
-      const root = artifactsRootFor(req, req.params.projectId);
       const rel = String(req.body?.path || '');
       if (!rel) return res.status(400).json({ error: 'path is required' });
       if (firstSegment(rel) === SESSIONS_NODE) {
@@ -477,7 +370,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
           code: 'reserved-name-sessions',
         });
       }
-      fs.mkdirSync(resolveArtifactPath(root, rel), { recursive: true });
+      fs.mkdirSync(resolveMergedPath(req, req.params.projectId, rel), { recursive: true });
       res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'UniversalArtifacts');

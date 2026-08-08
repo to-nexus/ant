@@ -146,6 +146,25 @@ export function getArtifactDirPolicy(relativePath: string): ArtifactDirPolicy | 
 }
 
 /**
+ * Universal (workspace) artifact policies — the container's canonical `plan`
+ * dir allows the `plan/{agentId}/{jobId}/` convention, so subdirs are legal
+ * there (unlike the codespace `plan`). Everything else in `artifacts/` is
+ * free-form and has no enforced policy.
+ */
+export const UNIVERSAL_ARTIFACT_DIR_POLICIES: Record<string, ArtifactDirPolicy> = {
+  'plan': {
+    allowSubdirs: true,
+    acceptedExtensions: ARTIFACT_DIR_POLICIES['plan'].acceptedExtensions,
+  },
+};
+
+/** Universal-plane counterpart of {@link getArtifactDirPolicy}. */
+export function getUniversalArtifactDirPolicy(relativePath: string): ArtifactDirPolicy | null {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/\/$/, '');
+  return UNIVERSAL_ARTIFACT_DIR_POLICIES[normalized] ?? null;
+}
+
+/**
  * Validate a single file against the policy of its target directory.
  * Returns `{ valid: true }` when there is no policy or the file is allowed.
  */

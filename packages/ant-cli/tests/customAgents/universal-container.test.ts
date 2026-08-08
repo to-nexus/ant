@@ -14,14 +14,18 @@ import * as os from 'os';
 import * as path from 'path';
 import { UNIVERSAL_FEATURE } from '@ant/shared';
 import {
+  buildUniversalMergedTree,
   decideProjectJobGate,
   ensureUniversalContainer,
   getUniversalContainerPathOf,
   isUniversalProject,
+  reconcileUniversalContainer,
   resolveUniversalContainerPath,
+  resolveUniversalMergedPath,
   UNIVERSAL_ARTIFACT_CANONICAL_DIRS,
 } from '../../src/core/customAgents/universalContainer';
-import { getSessionFilePath } from '../../src/core/utils/sessionPaths';
+import { createEmptyFigmaData } from '@ant/shared';
+import { ensureCanonicalStructure, getSessionFilePath } from '../../src/core/utils/sessionPaths';
 
 let projectPath: string;
 
@@ -106,6 +110,135 @@ describe('per-(agentId, jobId) session path shape', () => {
     expect(getSessionFilePath(container, 'sample-researcher', 'quick-answer')).toBe(
       path.join(projectPath, 'universal', 'sessions', 'sample-researcher', 'quick-answer.json'),
     );
+  });
+});
+
+describe('resolveUniversalMergedPath — merged-path routing truth table', () => {
+  const container = () => getUniversalContainerPathOf(projectPath);
+
+  it.each([
+    ['artifact file → artifacts root', 'plan/notes.md', ['universal', 'artifacts', 'plan', 'notes.md']],
+    ['free file → artifacts root', 'briefs/a.md', ['universal', 'artifacts', 'briefs', 'a.md']],
+    ['sessions file → sessions root', 'sessions/chat.jsonl', ['universal', 'sessions', 'chat.jsonl']],
+    ['bare sessions → sessions root itself', 'sessions', ['universal', 'sessions']],
+    ['name-collision guard: artifacts/sessions-x stays in artifacts', 'sessions-x/a.md', ['universal', 'artifacts', 'sessions-x', 'a.md']],
+    ['backslash normalization', 'plan\\notes.md', ['universal', 'artifacts', 'plan', 'notes.md']],
+  ] as const)('%s', (_label, rel, expectedSegments) => {
+    expect(resolveUniversalMergedPath(container(), rel)).toBe(path.join(projectPath, ...expectedSegments));
+  });
+
+  it.each([
+    ['traversal out of artifacts', '../outside.md'],
+    ['traversal out of sessions', 'sessions/../../outside.md'],
+  ] as const)('rejects %s', (_label, rel) => {
+    expect(() => resolveUniversalMergedPath(container(), rel)).toThrow(/Invalid artifact path/);
+  });
+});
+
+describe('buildUniversalMergedTree — assembly contract', () => {
+  it('canonical plan first (synthesized when missing), free content next, sessions last', () => {
+    ensureUniversalContainer(projectPath);
+    const container = getUniversalContainerPathOf(projectPath);
+    fs.mkdirSync(path.join(container, 'artifacts', 'briefs'), { recursive: true });
+    fs.writeFileSync(path.join(container, 'artifacts', 'briefs', 'a.md'), 'x');
+    fs.writeFileSync(path.join(container, 'sessions', 'chat.jsonl'), '');
+    // Reserved-name shadowing: an agent-created artifacts/sessions dir is hidden.
+    fs.mkdirSync(path.join(container, 'artifacts', 'sessions'), { recursive: true });
+
+    const tree = buildUniversalMergedTree(container);
+    expect(tree[0]).toMatchObject({ name: 'plan', type: 'directory', path: 'plan' });
+    expect(tree[tree.length - 1]).toMatchObject({ name: 'sessions', type: 'directory', path: 'sessions' });
+    const names = tree.map((n) => n.name);
+    expect(names.filter((n) => n === 'sessions')).toHaveLength(1);
+    const briefs = tree.find((n) => n.name === 'briefs');
+    expect(briefs?.children?.[0]).toMatchObject({ name: 'a.md', path: 'briefs/a.md', type: 'file' });
+    const sessions = tree[tree.length - 1];
+    expect(sessions.children?.some((c) => c.path === 'sessions/chat.jsonl')).toBe(true);
+  });
+
+  it('synthesizes the plan node when the dir is missing on disk', () => {
+    const container = getUniversalContainerPathOf(projectPath);
+    const tree = buildUniversalMergedTree(container);
+    expect(tree[0]).toMatchObject({ name: 'plan', type: 'directory', children: [] });
+  });
+});
+
+describe('reconcileUniversalContainer — pollution sweep rows', () => {
+  const container = () => getUniversalContainerPathOf(projectPath);
+
+  beforeEach(() => {
+    writeConfig({ projectType: 'universal' });
+    ensureUniversalContainer(projectPath);
+  });
+
+  it('deletes empty canonical-skeleton dirs (architecture/visual/assets/meta + builtin session agents)', () => {
+    for (const dir of ['architecture/system', 'visual/ui/ant', 'assets/service', 'meta/evals/prd']) {
+      fs.mkdirSync(path.join(container(), dir), { recursive: true });
+    }
+    for (const agent of ['architect', 'planner', 'creator']) {
+      fs.mkdirSync(path.join(container(), 'sessions', agent, 'debug', 'prompts'), { recursive: true });
+    }
+    reconcileUniversalContainer(projectPath);
+    for (const dir of ['architecture', 'visual', 'assets', 'meta']) {
+      expect(fs.existsSync(path.join(container(), dir))).toBe(false);
+    }
+    for (const agent of ['architect', 'planner', 'creator']) {
+      expect(fs.existsSync(path.join(container(), 'sessions', agent))).toBe(false);
+    }
+    expect(fs.existsSync(path.join(container(), 'artifacts', 'plan'))).toBe(true);
+    expect(fs.existsSync(path.join(container(), 'sessions'))).toBe(true);
+  });
+
+  it('deletes dirs whose only files are byte-identical factory placeholders', () => {
+    const figmaDir = path.join(container(), 'visual', 'ui', 'figma');
+    fs.mkdirSync(figmaDir, { recursive: true });
+    fs.writeFileSync(path.join(figmaDir, 'figma.json'), JSON.stringify(createEmptyFigmaData(), null, 2));
+    reconcileUniversalContainer(projectPath);
+    expect(fs.existsSync(path.join(container(), 'visual'))).toBe(false);
+  });
+
+  it('user bytes are inviolable — a dir with real data is kept', () => {
+    const dir = path.join(container(), 'visual', 'ui');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'user-notes.md'), 'my data');
+    reconcileUniversalContainer(projectPath);
+    expect(fs.readFileSync(path.join(dir, 'user-notes.md'), 'utf-8')).toBe('my data');
+  });
+
+  it('removes the phantom features/universal plane (and features/ once empty)', () => {
+    fs.mkdirSync(path.join(projectPath, 'features', 'universal', 'sessions', 'universal'), { recursive: true });
+    reconcileUniversalContainer(projectPath);
+    expect(fs.existsSync(path.join(projectPath, 'features'))).toBe(false);
+  });
+
+  it('keeps a phantom plane that carries user data (and sibling features)', () => {
+    fs.mkdirSync(path.join(projectPath, 'features', 'universal'), { recursive: true });
+    fs.writeFileSync(path.join(projectPath, 'features', 'universal', 'user.md'), 'keep');
+    reconcileUniversalContainer(projectPath);
+    expect(fs.existsSync(path.join(projectPath, 'features', 'universal', 'user.md'))).toBe(true);
+  });
+});
+
+describe('ensureCanonicalStructure — universal-plane no-op guard', () => {
+  it.each([
+    ['universal container', () => path.join(projectPath, 'universal')],
+    ['phantom features/universal', () => path.join(projectPath, 'features', 'universal')],
+  ] as const)('refuses to scaffold on the %s of a universal project', async (_label, target) => {
+    writeConfig({ projectType: 'universal' });
+    fs.mkdirSync(target(), { recursive: true });
+    const result = await ensureCanonicalStructure(target());
+    expect(result).toEqual({ createdDirs: 0, createdFiles: 0 });
+    expect(fs.existsSync(path.join(target(), 'architecture'))).toBe(false);
+    expect(fs.existsSync(path.join(target(), 'sessions', 'architect'))).toBe(false);
+  });
+
+  it('still scaffolds a canonical feature dir normally', async () => {
+    writeConfig({ projectType: 'canonical' });
+    const featurePath = path.join(projectPath, 'features', 'main');
+    fs.mkdirSync(featurePath, { recursive: true });
+    const result = await ensureCanonicalStructure(featurePath);
+    expect(result.createdDirs).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(featurePath, 'plan'))).toBe(true);
   });
 });
 

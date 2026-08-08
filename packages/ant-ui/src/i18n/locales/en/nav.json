@@ -46,7 +46,8 @@
     "teamNameLabel": "Team name",
     "teamNamePlaceholder": "Acme Inc.",
     "close": "Close",
-    "createTeamComingSoon": "Team workspaces are coming soon. You can already switch between accounts here; team creation and member invites will arrive in a future release."
+    "createTeamComingSoon": "Team workspaces are coming soon. You can already switch between accounts here; team creation and member invites will arrive in a future release.",
+    "agentSettings": "Agent Settings"
   },
   "onboarding": {
     "title": "Choose your organization",
@@ -81,7 +82,8 @@
     "deleteJobIdBlocked": "Cannot delete a running or paused job. Stop it first.",
     "deletedJobId": "Job deleted",
     "deleteJobIdFailed": "Failed to delete job",
-    "featureDeleteBlocked": "Cannot delete this feature while a job is running. Stop the job first."
+    "featureDeleteBlocked": "Cannot delete this feature while a job is running. Stop the job first.",
+    "agentSettings": "Agent Settings"
   },
   "splitLayout": {
     "columns": "Columns Grid (Side by Side)",

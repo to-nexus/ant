@@ -32,6 +32,8 @@ export interface ExecuteJobParams {
   feature?: string;  // ✅ Feature name for Kanban tracking
   /** Universal only — `{agentId}/{jobId}` composite ref of the custom job definition. */
   customJobRef?: string;
+  /** Universal only — explicit `@intent:`/`@ctx:` turn meta (validated at accept). */
+  universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
   inputFile?: string;  // ✅ Optional: undefined for chat-initiated jobs with overrideDirective
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;

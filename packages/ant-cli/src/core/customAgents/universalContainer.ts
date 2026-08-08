@@ -12,7 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { UNIVERSAL_FEATURE } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, UNIVERSAL_FEATURE, createEmptyFigmaData } from '@ant/shared';
 
 export const UNIVERSAL_DIRNAME = 'universal';
 export const UNIVERSAL_ARTIFACTS_DIRNAME = 'artifacts';
@@ -53,7 +53,8 @@ export function resolveUniversalContainerPath(projectPath: string, featureName: 
  * Materializes `{container}/artifacts` (+ its canonical dirs) and
  * `{container}/sessions`. Idempotent. Must run before any session/chat
  * write — FileSessionAdapter's ghost-guard silently drops appends when the
- * container directory does not exist.
+ * container directory does not exist. Also sweeps legacy canonical-skeleton
+ * pollution (see {@link reconcileUniversalContainer}).
  */
 export function ensureUniversalContainer(projectPath: string): void {
   const container = getUniversalContainerPathOf(projectPath);
@@ -61,6 +62,219 @@ export function ensureUniversalContainer(projectPath: string): void {
     fs.mkdirSync(path.join(container, UNIVERSAL_ARTIFACTS_DIRNAME, dir), { recursive: true });
   }
   fs.mkdirSync(path.join(container, 'sessions'), { recursive: true });
+  try {
+    reconcileUniversalContainer(projectPath);
+  } catch (e) {
+    console.warn(`⚠️ [UniversalContainer] reconcile failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+/**
+ * Factory placeholder contents keyed by canonical relative path — a polluted
+ * dir is deletable only when every file in it is byte-identical to the
+ * placeholder that `ensureCanonicalStructure` would have written there.
+ */
+const PLACEHOLDER_FACTORIES: Record<string, () => string> = {
+  'visual/ui/figma/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
+  'visual/game-art/figma/figma.json': () => JSON.stringify(createEmptyFigmaData(), null, 2),
+};
+
+/**
+ * True when the dir holds nothing but empty subdirs and factory-placeholder
+ * files (byte-equal at their canonical relative path). Any user byte keeps
+ * the dir.
+ */
+function isFactoryResidueOnly(absDir: string, relFromPlaneRoot: string): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(absDir, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    const absChild = path.join(absDir, entry.name);
+    const relChild = relFromPlaneRoot ? `${relFromPlaneRoot}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      if (!isFactoryResidueOnly(absChild, relChild)) return false;
+    } else if (entry.isFile()) {
+      const factory = PLACEHOLDER_FACTORIES[relChild];
+      if (!factory) return false;
+      try {
+        if (!fs.readFileSync(absChild).equals(Buffer.from(factory(), 'utf-8'))) return false;
+      } catch {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Derived from the canonical dir SSOT: top-level pollution roots (minus the
+ * legitimate universal `plan`) and the builtin session agent dirs. */
+const POLLUTION_TOP_DIRS = Array.from(
+  new Set(CANONICAL_FEATURE_DIRS.map((d) => d.split('/')[0])),
+).filter((d) => d !== 'plan' && d !== 'sessions');
+const POLLUTION_SESSION_AGENTS = Array.from(
+  new Set(
+    CANONICAL_FEATURE_DIRS.filter((d) => d.startsWith('sessions/')).map((d) => d.split('/')[1]),
+  ),
+);
+
+function sweepResidueDir(absDir: string, relFromPlaneRoot: string): boolean {
+  if (!fs.existsSync(absDir)) return false;
+  if (!isFactoryResidueOnly(absDir, relFromPlaneRoot)) {
+    console.warn(
+      `⚠️ [UniversalContainer] canonical-skeleton dir carries user data — kept as-is: ${absDir}`,
+    );
+    return false;
+  }
+  fs.rmSync(absDir, { recursive: true, force: true });
+  return true;
+}
+
+/**
+ * One-shot cleanup of historical pollution (idempotent, cheap when clean):
+ *   1. Canonical skeleton dirs stamped into the container root by the
+ *      pre-gate FileTreeBroadcaster (`architecture/visual/assets/meta` +
+ *      `sessions/{architect,planner,creator}`) — deleted only when they hold
+ *      nothing beyond empty dirs / byte-identical factory placeholders.
+ *   2. The phantom `{project}/features/universal` plane minted by
+ *      universal-unaware cleanup paths (and `features/` itself once empty).
+ * User bytes are inviolable — a dir with real data is kept and logged.
+ */
+export function reconcileUniversalContainer(projectPath: string): void {
+  const container = getUniversalContainerPathOf(projectPath);
+
+  for (const dir of POLLUTION_TOP_DIRS) {
+    sweepResidueDir(path.join(container, dir), dir);
+  }
+  for (const agent of POLLUTION_SESSION_AGENTS) {
+    sweepResidueDir(path.join(container, 'sessions', agent), `sessions/${agent}`);
+  }
+
+  const featuresDir = path.join(projectPath, 'features');
+  const phantom = path.join(featuresDir, UNIVERSAL_FEATURE);
+  if (fs.existsSync(phantom)) {
+    sweepResidueDir(phantom, '');
+    try {
+      if (fs.existsSync(featuresDir) && fs.readdirSync(featuresDir).length === 0) {
+        fs.rmdirSync(featuresDir);
+      }
+    } catch { /* best-effort */ }
+  }
+}
+
+// ── Merged view (artifacts tree + grafted sessions node) ────────────────────
+
+/** Reserved top-level node name — the grafted sessions folder. */
+export const UNIVERSAL_SESSIONS_NODE = 'sessions';
+
+/** Path-traversal-safe resolve inside a root. */
+function resolveWithinRoot(root: string, rel: string): string {
+  const full = path.resolve(root, rel);
+  if (full !== root && !full.startsWith(root + path.sep)) {
+    throw new Error(`Invalid artifact path: ${rel}`);
+  }
+  return full;
+}
+
+/**
+ * Merged-path routing SSOT: the explorer shows the artifacts tree with a
+ * top-level `sessions` node grafted in (mirrors the codespace per-feature
+ * sessions folder). Paths under `sessions/` resolve against the container's
+ * sessions dir; everything else against `{container}/artifacts`.
+ */
+export function resolveUniversalMergedPath(containerPath: string, rel: string): string {
+  const normalized = rel.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (normalized === UNIVERSAL_SESSIONS_NODE || normalized.startsWith(`${UNIVERSAL_SESSIONS_NODE}/`)) {
+    const remainder = normalized === UNIVERSAL_SESSIONS_NODE ? '' : normalized.slice(UNIVERSAL_SESSIONS_NODE.length + 1);
+    return resolveWithinRoot(path.join(containerPath, UNIVERSAL_SESSIONS_NODE), remainder);
+  }
+  return resolveWithinRoot(path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME), normalized);
+}
+
+/** One node of the merged universal tree (SSOT for both the artifacts route
+ * and FileOperationService.getFileTree — the two consumers decorate it into
+ * their own node shapes). */
+export interface UniversalTreeNode {
+  name: string;
+  /** Merged-view relative path (`plan/...`, `notes.md`, `sessions/...`). */
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  mtimeMs?: number;
+  absolutePath: string;
+  children?: UniversalTreeNode[];
+}
+
+function buildSubtree(root: string, rel = '', prefix = ''): UniversalTreeNode[] {
+  const abs = rel ? path.join(root, rel) : root;
+  if (!fs.existsSync(abs)) return [];
+  return fs
+    .readdirSync(abs, { withFileTypes: true })
+    .filter((e) => !e.name.startsWith('.'))
+    .sort((a, b) => (a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1))
+    .map((e) => {
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      const nodePath = prefix ? `${prefix}/${childRel}` : childRel;
+      const absolutePath = path.join(abs, e.name);
+      if (e.isDirectory()) {
+        return {
+          name: e.name,
+          path: nodePath,
+          type: 'directory' as const,
+          absolutePath,
+          children: buildSubtree(root, childRel, prefix),
+        };
+      }
+      let size = 0;
+      let mtimeMs = 0;
+      try {
+        const stats = fs.statSync(absolutePath);
+        size = stats.size;
+        mtimeMs = stats.mtimeMs;
+      } catch { /* skip stat failures */ }
+      return { name: e.name, path: nodePath, type: 'file' as const, size, mtimeMs, absolutePath };
+    });
+}
+
+/**
+ * Merged-tree assembly SSOT: canonical dirs first (synthesized when missing,
+ * mirroring the codespace panel's placeholder rows), then free-form content,
+ * the grafted `sessions` node last — same ordering contract as
+ * CANONICAL_DIR_DEFS.
+ */
+export function buildUniversalMergedTree(containerPath: string): UniversalTreeNode[] {
+  const artifactsRoot = path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME);
+  const sessionsRoot = path.join(containerPath, UNIVERSAL_SESSIONS_NODE);
+
+  // Reserved name: an agent-created `artifacts/sessions/` dir is shadowed by
+  // the grafted node (user creation is blocked at upload/mkdir).
+  const artifactNodes = buildSubtree(artifactsRoot).filter((n) => n.name !== UNIVERSAL_SESSIONS_NODE);
+
+  const canonicalNodes: UniversalTreeNode[] = UNIVERSAL_ARTIFACT_CANONICAL_DIRS.map(
+    (name) =>
+      artifactNodes.find((n) => n.name === name && n.type === 'directory') ?? {
+        name,
+        path: name,
+        type: 'directory' as const,
+        absolutePath: path.join(artifactsRoot, name),
+        children: [],
+      },
+  );
+  const freeNodes = artifactNodes.filter(
+    (n) => !(UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(n.name) || n.type !== 'directory',
+  );
+  const sessionsNode: UniversalTreeNode = {
+    name: UNIVERSAL_SESSIONS_NODE,
+    path: UNIVERSAL_SESSIONS_NODE,
+    type: 'directory',
+    absolutePath: sessionsRoot,
+    children: buildSubtree(sessionsRoot, '', UNIVERSAL_SESSIONS_NODE),
+  };
+  return [...canonicalNodes, ...freeNodes, sessionsNode];
 }
 
 export type ProjectJobGateResult =

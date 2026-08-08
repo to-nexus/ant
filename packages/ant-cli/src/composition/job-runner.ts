@@ -70,6 +70,8 @@ interface JobParams {
   seedTurnId?: string;
   /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
   customJobRef?: string;
+  /** Universal only — explicit `@intent:`/`@ctx:` turn meta (single JSON env). */
+  universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
 }
 
 function getJobParams(): JobParams {
@@ -101,6 +103,9 @@ function getJobParams(): JobParams {
     actionMetadata: process.env.ANT_ACTION_METADATA ? (() => { try { return JSON.parse(process.env.ANT_ACTION_METADATA); } catch { return undefined; } })() : undefined,
     seedTurnId: process.env.ANT_SEED_TURN_ID,
     customJobRef: process.env.ANT_CUSTOM_JOB_REF,
+    universalTurnMeta: process.env.ANT_UNIVERSAL_TURN_META
+      ? (() => { try { return JSON.parse(process.env.ANT_UNIVERSAL_TURN_META!); } catch { return undefined; } })()
+      : undefined,
   };
 }
 
@@ -226,6 +231,7 @@ async function runJob(params: JobParams): Promise<void> {
       isResume: params.isResume,
       seedTurnId: params.seedTurnId,
       customJobRef: params.customJobRef,
+      universalTurnMeta: params.universalTurnMeta,
     });
     
     reportProgress('completed', 'Job completed successfully', 100);

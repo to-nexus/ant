@@ -207,6 +207,13 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/universal/nodes/agent/rules',
     system: 'jobs/universal/nodes/agent/system',
   },
+  // Intent classification (multi-label, per-job catalog). The catalog table
+  // is rendered as DATA each run — the definition supplies it, never a
+  // template (code-exterior catalog principle).
+  universalClassify: {
+    base: 'jobs/universal/nodes/classify/base',
+    rules: 'jobs/universal/nodes/classify/rules',
+  },
 
   // ─── planner / plan ──────────────────────────────────────────────────────
   // No job-level system prompt — planner embeds its system header inside the

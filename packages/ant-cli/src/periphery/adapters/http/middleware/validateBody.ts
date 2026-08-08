@@ -57,6 +57,10 @@ export const executeJobSchema = z.object({
   actionMetadata: z.any().optional(),
   /** chat SSOT §6 — pre-allocated turn id from /chat/user-message. */
   seedTurnId: z.string().optional(),
+  /** universal only — explicit `@intent:` mentions (catalog-validated at accept). */
+  intents: z.array(z.string()).optional(),
+  /** universal only — explicit `@ctx:` artifact paths (existence-checked at accept). */
+  context: z.array(z.string()).optional(),
 }).passthrough();
 
 /**

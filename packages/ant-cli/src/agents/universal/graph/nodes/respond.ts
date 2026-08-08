@@ -80,6 +80,12 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         tokenUsageByModel: state.tokenUsageByModel,
         executionTier: state.executionTier,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,
+        // Persisted so a resume without a new message keeps its
+        // classification (explicit* fields are run-scoped — never sealed).
+        // Known degradation: a pause skips this seal, so that resume can
+        // demote to ['general'] (same acceptance as universal interruption
+        // persistence being a no-op).
+        activeIntents: state.activeIntents,
         ...(state._httpJobId && { jobId: state._httpJobId }),
       };
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });

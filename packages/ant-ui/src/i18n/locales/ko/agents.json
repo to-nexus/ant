@@ -1,0 +1,54 @@
+{
+  "title": "에이전트 설정",
+  "tree": {
+    "newAgent": "새 에이전트",
+    "upload": "업로드",
+    "newJob": "새 잡",
+    "deleteAgent": "에이전트 삭제",
+    "deleteJob": "잡 삭제",
+    "agentName": "에이전트 이름",
+    "jobName": "잡 이름",
+    "readonly": "읽기 전용",
+    "scope": {
+      "user": "내 계정",
+      "org": "조직",
+      "builtin": "기본 제공"
+    }
+  },
+  "detail": {
+    "overview": "개요",
+    "files": "파일",
+    "copyToAccount": "내 계정으로 복사",
+    "selectAgent": "왼쪽에서 에이전트 또는 잡을 선택하세요"
+  },
+  "overview": {
+    "general": "기본 정보",
+    "name": "이름",
+    "description": "설명",
+    "save": "저장",
+    "remove": "제거",
+    "tools": "도구",
+    "toolsHint": "축소 전용 — 잡은 이 집합을 좁힐 수만 있고 추가할 수 없습니다.",
+    "workspace": "워크스페이스 접근",
+    "plan": "플랜 컨벤션",
+    "outputs": "산출물",
+    "outputsEditHint": "아티팩트 행은 파일 탭(job.yaml)에서 편집하세요.",
+    "intents": "인텐트",
+    "intentsHint": "설명이 곧 분류 기준입니다. 인텐트가 활성화되면 매핑된 injections가 전문 주입됩니다.",
+    "intentsMissing": "intents.yaml이 아직 없습니다 — 항목을 추가하면 생성됩니다.",
+    "intentDescription": "매칭 기준 (카탈로그 행으로 그대로 렌더링됩니다)",
+    "intentInjections": "injections/*.md 파일명, 쉼표로 구분",
+    "addIntent": "인텐트 추가"
+  },
+  "files": {
+    "newFile": "새 파일",
+    "upload": "업로드",
+    "save": "저장",
+    "yamlError": "YAML 구문 오류 (저장 차단됨)",
+    "validationWarnings": "경고와 함께 저장됨 — 수정 전까지 해당 잡은 로드에 실패합니다:",
+    "selectFile": "정의 파일을 선택하세요"
+  },
+  "import": {
+    "skipped": "{{count}}개 파일을 건너뛰고 가져왔습니다: "
+  }
+}

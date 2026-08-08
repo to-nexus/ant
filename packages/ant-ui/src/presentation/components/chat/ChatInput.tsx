@@ -22,6 +22,7 @@ import { useBaselineEstimate } from '@/application/hooks/baseline/useBaselineEst
 import { ChatFileChangeSummary } from './ChatFileChangeSummary';
 import { AgentJobToolbar, CHAT_INPUT_MIN_WIDTH_PX } from './AgentJobToolbar';
 import { ActionMetadataBadges } from './ActionMetadataBadges';
+import { UniversalTurnMetaBadges } from './UniversalTurnMetaBadges';
 import { MentionDropdown } from './MentionDropdown';
 
 
@@ -292,6 +293,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
 
           {/* Action Metadata Badges */}
           <ActionMetadataBadges />
+
+          {/* Universal explicit turn meta (@intent:/@ctx: mentions) */}
+          <UniversalTurnMetaBadges />
 
           {/* Textarea */}
           <textarea
