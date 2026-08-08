@@ -1,13 +1,28 @@
 # Authoring a Custom Agent / Job
 
 This guide walks through defining a custom agent with one job, from empty
-directory to a running thread. Concepts:
+directory to a running chat. Concepts:
 [concepts/custom-agents.md](../concepts/custom-agents.md).
+
+## 0. Study the shipped sample
+
+Every universal project already lists **`sample-researcher`** — a read-only
+builtin agent shipped with Ant (source of truth:
+`packages/ant-cli/src/core/data/agents/sample-researcher/`). It demonstrates
+the whole definition surface: tool narrowing, per-tool approval, an
+`outputs: contract` job, a chat-only job, and `injections/` loaded on demand.
+Its yaml comments double as field documentation.
+
+You cannot edit it in place — to make it yours, create an agent with the
+**same id** in user scope; a closer scope shadows the builtin wholesale
+(jobs included). It deliberately declares no MCP server; the `ops-team`
+example below is where MCP is shown.
 
 ## 1. Scaffold
 
-Use the agent hub UI (+ button), or create the files by hand under
-`{project}/.ant/agents/`:
+Use Settings → Agents (register button), or create the files by hand under
+your account root `{workspaces}/{org}/{user}/.ant/agents/` — definitions are
+account-owned and shared across your workspace projects:
 
 ```
 .ant/agents/ops-team/
@@ -85,7 +100,9 @@ runtime's safety or output rules (the harness states this explicitly).
   violations, contract-without-write-tools, secret values in env).
 - A broken definition also fails loudly with HTTP 400 when a job is started —
   never silently inside the worker.
-- In the UI: select the agent → the job → start a new thread → chat.
+- In the UI: open a workspace project and pick the agent and job with the
+  chat composer's chips, then chat — one conversation per workspace, with
+  per-(agent, job) sessions behind it.
 
 ## 6. Iterating
 

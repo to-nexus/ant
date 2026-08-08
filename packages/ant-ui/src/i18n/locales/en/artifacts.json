@@ -1,12 +1,6 @@
 {
   "panel": {
     "title": "Artifacts",
-    "plan": "Plan",
-    "architecture": "Architecture",
-    "visual": "Visual",
-    "assets": "Assets",
-    "meta": "Meta",
-    "sessions": "Sessions",
     "transfer": "Transfer",
     "emptyDir": "Empty directory",
     "emptySection": "No files in {{title}}",
@@ -147,13 +141,6 @@
     "deleteType": "Delete {{type}}"
   },
   "universal": {
-    "title": "Workspace",
-    "refresh": "Refresh",
-    "upload": "Upload files",
-    "uploading": "Uploading…",
-    "download": "Download",
-    "newFolder": "New folder",
-    "folderNamePlaceholder": "folder-name",
-    "placeholder": "Drop files here to add them to the workspace"
+    "uploading": "Uploading…"
   }
 }

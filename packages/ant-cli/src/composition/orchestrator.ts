@@ -102,10 +102,8 @@ export async function orchestrator(params: {
   seedTurnId?: string;
   /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
   customJobRef?: string;
-  /** Universal only — thread container id (featurePath is the thread path). */
-  threadId?: string;
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume, seedTurnId, customJobRef, threadId } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume, seedTurnId, customJobRef } = params;
 
   switch (agent) {
     case "architect": {
@@ -591,10 +589,10 @@ export async function orchestrator(params: {
         throw new Error(`Universal agent requires jobType: 'universal' (got: ${jobType})`);
       }
       if (!featurePath || !projectPath) {
-        throw new Error('featurePath (thread path) and projectPath are required for universal jobs');
+        throw new Error('featurePath (universal container) and projectPath are required for universal jobs');
       }
-      if (!customJobRef || !threadId) {
-        throw new Error('customJobRef and threadId are required for universal jobs');
+      if (!customJobRef) {
+        throw new Error('customJobRef is required for universal jobs');
       }
 
       const config = new FileConfigAdapter();
@@ -629,23 +627,25 @@ export async function orchestrator(params: {
         console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Universal]');
       }
 
-      // Thread session — {threadPath}/sessions/universal/universal.json.
-      // featureName param carries the threadId (used only for fileTree notify).
-      const session = new FileSessionAdapter(featurePath, 'universal', project, threadId, fileTreeUpdate);
-
       // Two-root sandbox (D6): artifacts rw + definition ro mount. The
       // definition was activated by job-runner main() before orchestration.
       const { requireActiveCustomJob } = await import('../core/customAgents/activeCustomJob');
       const { createUniversalFileSystem } = await import('../agents/universal/graph/runtime');
       const activeDef = requireActiveCustomJob();
+
+      // Per-(agentId, jobId) session — {container}/sessions/{agentId}/{jobId}.json,
+      // the exact analog of the canonical sessions/{agent}/{jobType}.json layout.
+      const { UNIVERSAL_FEATURE } = await import('@ant/shared');
+      const session = new FileSessionAdapter(featurePath, activeDef.agentId, project, UNIVERSAL_FEATURE, fileTreeUpdate);
+
       const path = await import('path');
       const artifactsRoot = process.env.ANT_CODEBASE_PATH || path.join(projectPath, 'universal', 'artifacts');
       const artifactsFs = AdapterFactory.createFileSystemAdapterWithPath(artifactsRoot);
       const definitionFs = AdapterFactory.createFileSystemAdapterWithPath(activeDef.agentDir);
       const fileSystem = createUniversalFileSystem(artifactsFs, definitionFs, activeDef);
 
-      // Record user_turn — the thread's chat.jsonl/feature.jsonl live under
-      // the thread container (featurePath-shaped), so the shared helper works.
+      // Record user_turn — the workspace's chat.jsonl/feature.jsonl live under
+      // the universal container (featurePath-shaped), so the shared helper works.
       if (featurePath) {
         await recordUserTurn({
           featurePath,
@@ -670,9 +670,8 @@ export async function orchestrator(params: {
       const result = await runUniversalGraph({
         input,
         language: language as 'ko' | 'en',
-        threadPath: featurePath,
+        containerPath: featurePath,
         projectId: project || 'default',
-        threadId,
         isResume,
         deps: { llm, session, promptBuilder, fileSystem, kanbanUpdate, workflowUpdate, fileTreeUpdate },
         _httpJobId: jobId,

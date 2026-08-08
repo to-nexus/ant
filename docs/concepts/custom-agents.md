@@ -15,22 +15,34 @@ plus your purpose prose and machine contract on top.
 ```
 Custom agent  (shared persona — a team, a role)
   └── Custom job  (one concrete duty of that agent)
-        └── Threads  (conversations — where work actually happens)
 ```
 
 There is no single-level shortcut: a standalone job is simply an agent with
 one job. The agent level owns what its jobs share — persona prose, MCP
 servers, the tool upper bound; each job narrows and specializes.
 
+A workspace project has **one chat** (exactly like a codespace feature). You
+switch the active agent and job with the chat composer's chips; each
+(agent, job) pair keeps its own session, and the conversation stream is
+shared — the same interaction model as switching builtin job types within a
+feature chat.
+
 ## Where definitions live (scopes)
+
+Definitions are **account/org-owned, never project-owned** — register once,
+use across all of the account's workspace projects. Registration and editing
+live in Settings → Agents (universal projects), or edit the files directly.
 
 | Scope     | Location                                | Who edits            |
 |-----------|------------------------------------------|----------------------|
-| `project` | `{project}/.ant/agents/{agentId}/`       | anyone on the project |
 | `user`    | `{user dir}/.ant/agents/{agentId}/`      | you, across all your projects |
 | `org`     | `$ANT_CUSTOM_AGENTS_DIR` (self-host)     | org admins (read-only for members) |
+| `builtin` | shipped with Ant (read-only samples)     | nobody — shadow it by creating the same id in a closer scope |
 
-Closer scopes win id collisions: project > user > org.
+Closer scopes win id collisions: user > org > builtin. Shadowing is
+whole-directory: the closer agent replaces the farther one entirely, jobs
+included. The shipped `sample-researcher` agent is a builtin you can study or
+shadow.
 
 ## Definition layout
 
@@ -51,7 +63,8 @@ See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-age
 
 - **Agentic loop** — resolve → agent ⇄ tool → respond, with a recursion
   backstop and inline context-window compaction (the conversation is the
-  job's only working memory and survives across thread turns).
+  job's only working memory and survives across runs of the same
+  agent/job pair).
 - **Tool sandbox** — file tools rooted at the project-shared
   `universal/artifacts/` tree (read-write) plus a read-only mount of the
   agent definition. No access to the canonical plane (codebase/, features/).
@@ -75,5 +88,7 @@ canonical scaffolding (no codebase/, features/, or git anchor) and reject
 feature creation.
 
 Artifacts are owned by the **project**, not by an agent: one shared
-`universal/artifacts/` tree serves every agent, job, and thread — upload a
-folder once, and every custom job can read it.
+`universal/artifacts/` tree serves every agent and job — upload a folder
+once, and every custom job can read it. The explorer's Artifacts panel shows
+this tree plus a root `sessions` folder (session JSONs + debug logs — the
+same role as a codespace feature's sessions folder; download/delete only).

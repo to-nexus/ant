@@ -4,7 +4,6 @@ import { Bar } from '../Bar';
 import { ProjectSection } from '../ProjectSection';
 import { FeatureSection } from '../FeatureSection';
 import { ArtifactsPanel } from '../ArtifactsPanel';
-import { CustomAgentSection } from '../CustomAgentSection';
 import { UniversalArtifactsPanel } from '../UniversalArtifactsPanel';
 import { QuickStartCTA } from '../common/QuickStartCTA';
 import { useStore } from '@/domain/store';
@@ -30,8 +29,8 @@ export function ExplorerPanel({
   const projects = useStore((state) => state.projects);
   const onboardingSkipped = useStore((state) => state.onboardingSkipped);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
-  // Universal projects swap the feature/artifacts sections for the
-  // custom-agent hub + workspace tree. `projectType` mirrors config.json
+  // Universal projects swap the feature section + canonical artifacts panel
+  // for the workspace artifacts tree. `projectType` mirrors config.json
   // (absent/canonical → 'canonical'), so canonical UX is untouched.
   const isUniversalProject = useStore((state) => state.projectType === 'universal');
 
@@ -151,12 +150,7 @@ export function ExplorerPanel({
               <ProjectSection explorerWidth={width} />
             </div>
             {isUniversalProject ? (
-              <>
-                <div style={{ flex: '0 0 auto' }}>
-                  <CustomAgentSection explorerWidth={width} />
-                </div>
-                <UniversalArtifactsPanel explorerWidth={width} />
-              </>
+              <UniversalArtifactsPanel explorerWidth={width} />
             ) : (
               <>
                 <div style={{ flex: '0 0 auto' }}>

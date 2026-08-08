@@ -7,16 +7,23 @@
  * reference travels as an opaque `{agentId}/{jobId}` composite key
  * (`customJobRef`) alongside `jobType: 'universal'`.
  *
- * Scope model (D8): definitions are discovered across an ordered list of
- * scope roots. Closer scopes win id collisions (project > user > org).
- * `org` is structurally reserved from day one but only activated in Phase 3.
+ * Scope model (D8): definitions are account/org-owned, never project-owned.
+ * They are discovered across an ordered list of scope roots; closer scopes
+ * win id collisions (user > org > builtin). `org` is structurally reserved
+ * from day one but only activated in Phase 3. `builtin` is the read-only
+ * sample tree shipped with Ant — lowest priority, so any writable scope
+ * shadows it wholesale.
  */
 
 /** Where a custom agent definition lives — determines ownership and editability. */
-export type CustomAgentScope = 'project' | 'user' | 'org';
+export type CustomAgentScope = 'user' | 'org' | 'builtin';
 
 /** Scope priority for id collisions — earlier wins. */
-export const CUSTOM_AGENT_SCOPE_PRIORITY: readonly CustomAgentScope[] = ['project', 'user', 'org'];
+export const CUSTOM_AGENT_SCOPE_PRIORITY: readonly CustomAgentScope[] = [
+  'user',
+  'org',
+  'builtin',
+];
 
 /** Summary of one custom job inside an agent (chip label / tooltip / catalog row). */
 export interface CustomJobSummary {
@@ -40,6 +47,13 @@ export interface CustomAgentSummary {
   readonly: boolean;
   jobs: CustomJobSummary[];
 }
+
+/**
+ * The constant pseudo-feature that rides the `:feature` slot for universal
+ * (workspace) projects — canonical projects have real features; a workspace
+ * has exactly one chat/session container at `{project}/universal`.
+ */
+export const UNIVERSAL_FEATURE = 'universal' as const;
 
 /** id charset for both agentId and jobId (must equal the directory name). */
 export const CUSTOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;

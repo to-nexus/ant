@@ -41,7 +41,7 @@ import type { UserContext } from '../../../../../core/types/user';
 import { FileSessionAdapter } from '../../../session/FileSessionAdapter';
 import { MessageBroadcaster } from '../../../../../core/chat/MessageBroadcaster';
 import { SessionPersistence } from './SessionPersistence';
-import { resolveUniversalThreadPath } from '../../../../../core/customAgents/threadPaths';
+import { resolveUniversalContainerPath } from '../../../../../core/customAgents/universalContainer';
 import { getSessionKey } from '../../../../../core/chat/schema';
 import {
   getChoiceResolvedNXKey,
@@ -1462,10 +1462,10 @@ export class ChatService {
     if (!this.workspaceResolver || !userContext) return null;
     let featurePath: string | null = null;
     try {
-      // Universal projects ride the threadId in the feature slot — the chat
-      // SSOT lives in the thread container (mirrors SessionPersistence).
+      // Universal projects ride the constant 'universal' feature slot — the
+      // chat SSOT lives in the universal container (mirrors SessionPersistence).
       const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
-      featurePath = resolveUniversalThreadPath(projectPath, featureName)
+      featurePath = resolveUniversalContainerPath(projectPath, featureName)
         ?? this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     } catch {
       return null;

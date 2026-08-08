@@ -12,6 +12,7 @@ import * as yaml from 'js-yaml';
 import {
   discoverAgents,
   findAgentRoot,
+  findCreateCollision,
   loadCustomJob,
   CUSTOM_PROSE_CAP,
   type CustomAgentScopeRoot,
@@ -74,9 +75,9 @@ function writeJob(
 
 function roots(): CustomAgentScopeRoot[] {
   return [
-    { scope: 'project', root: path.join(tmpRoot, 'project-agents'), readonly: false },
     { scope: 'user', root: path.join(tmpRoot, 'user-agents'), readonly: false },
     { scope: 'org', root: path.join(tmpRoot, 'org-agents'), readonly: true },
+    { scope: 'builtin', root: path.join(tmpRoot, 'builtin-agents'), readonly: true },
   ];
 }
 
@@ -235,20 +236,20 @@ describe('loadCustomJob — D4 merge rules', () => {
 
 describe('discoverAgents — D8 scope priority', () => {
   it('merges scopes; closer scope wins id collisions; readonly flag rides the scope', () => {
-    const p = writeAgent(roots()[0].root, 'dup', { name: 'project version' });
-    writeJob(p, 'j1', {});
-    const u = writeAgent(roots()[1].root, 'dup', { name: 'user version' });
-    writeJob(u, 'j2', {});
-    const uo = writeAgent(roots()[1].root, 'user-only', {});
+    const u = writeAgent(roots()[0].root, 'dup', { name: 'user version' });
+    writeJob(u, 'j1', {});
+    const o = writeAgent(roots()[1].root, 'dup', { name: 'org version' });
+    writeJob(o, 'j2', {});
+    const uo = writeAgent(roots()[0].root, 'user-only', {});
     writeJob(uo, 'j3', {});
-    const o = writeAgent(roots()[2].root, 'org-agent', {});
-    writeJob(o, 'j4', {});
+    const oa = writeAgent(roots()[1].root, 'org-agent', {});
+    writeJob(oa, 'j4', {});
 
     const agents = discoverAgents(roots());
     const byId = new Map(agents.map((a) => [a.id, a]));
 
-    expect(byId.get('dup')!.name).toBe('project version');
-    expect(byId.get('dup')!.scope).toBe('project');
+    expect(byId.get('dup')!.name).toBe('user version');
+    expect(byId.get('dup')!.scope).toBe('user');
     expect(byId.get('dup')!.jobs.map((j) => j.id)).toEqual(['j1']);
     expect(byId.get('user-only')!.scope).toBe('user');
     expect(byId.get('user-only')!.readonly).toBe(false);
@@ -267,9 +268,39 @@ describe('discoverAgents — D8 scope priority', () => {
 
   it('findAgentRoot follows priority order', () => {
     writeAgent(roots()[1].root, 'ops', {});
-    expect(findAgentRoot(roots(), 'ops')!.scopeRoot.scope).toBe('user');
+    expect(findAgentRoot(roots(), 'ops')!.scopeRoot.scope).toBe('org');
     writeAgent(roots()[0].root, 'ops', {});
-    expect(findAgentRoot(roots(), 'ops')!.scopeRoot.scope).toBe('project');
+    expect(findAgentRoot(roots(), 'ops')!.scopeRoot.scope).toBe('user');
+  });
+
+  it('a user agent shadows a same-id builtin agent wholesale; builtin-only surfaces readonly', () => {
+    const b = writeAgent(roots()[2].root, 'sample', { name: 'builtin version' });
+    writeJob(b, 'builtin-job', {});
+    const bOnly = writeAgent(roots()[2].root, 'builtin-only', {});
+    writeJob(bOnly, 'j1', {});
+    const u = writeAgent(roots()[0].root, 'sample', { name: 'user version' });
+    writeJob(u, 'user-job', {});
+
+    const byId = new Map(discoverAgents(roots()).map((a) => [a.id, a]));
+    expect(byId.get('sample')!.name).toBe('user version');
+    expect(byId.get('sample')!.readonly).toBe(false);
+    expect(byId.get('sample')!.jobs.map((j) => j.id)).toEqual(['user-job']); // no job union
+    expect(byId.get('builtin-only')!.scope).toBe('builtin');
+    expect(byId.get('builtin-only')!.readonly).toBe(true);
+  });
+
+  it.each([
+    ['builtin-only id → creatable (shadowing allowed)', 2, null],
+    ['org id → creatable (readonly scopes never block)', 1, null],
+    ['user id → blocks', 0, 'user'],
+  ] as const)('findCreateCollision: %s', (_label, rootIdx, expected) => {
+    writeAgent(roots()[rootIdx].root, 'dup', {});
+    const collision = findCreateCollision(roots(), 'dup');
+    if (expected === null) {
+      expect(collision).toBeNull();
+    } else {
+      expect(collision!.scopeRoot.scope).toBe(expected);
+    }
   });
 });
 

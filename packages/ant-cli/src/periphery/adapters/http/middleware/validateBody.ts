@@ -46,8 +46,6 @@ export const executeJobSchema = z.object({
   agent: z.string().optional(),
   /** universal only — `{agentId}/{jobId}` custom job definition ref. */
   customJobRef: z.string().optional(),
-  /** universal only — thread container id. */
-  threadId: z.string().optional(),
   mode: z.string().optional(),
   language: z.string().optional(),
   overrideDirective: z.string().optional(),

@@ -1,0 +1,18 @@
+# Sample job: researches a topic and maintains a sourced brief file.
+# Demonstrates `outputs.mode: contract` — the job promises a named artifact
+# kind in a fixed directory, and needs at least one write tool to honor it
+# (inherited here from the agent's tool bound, since `tools` is omitted).
+id: research-brief
+name: 'Research Brief'
+description: 'Researches a topic on the web and maintains a sourced brief in the shared artifact tree'
+version: 1
+# 'required' | 'suggested' | 'off' — whether the model should plan before acting.
+plan: suggested
+outputs:
+  mode: contract # 'none' = chat only, 'free' = any files, 'contract' = artifacts below
+  artifacts:
+    - kind: research-brief # vocabulary name the prompt refers to this artifact by
+      dir: briefs/ # relative to universal/artifacts/ ('plans/' is reserved)
+      format: md
+      naming: llm # the model chooses the filename
+      update: in-place # follow-up turns edit the existing file, not a new one

@@ -22,6 +22,7 @@ import { CONFIG_SCHEMA } from './configSchema';
 import { ConfigField, GitHubOwnerInfo } from './components/ConfigField';
 import { DomainSelect } from '../Actions/DomainSelect';
 import { LLMModelsSection } from './components/LLMModelsSection';
+import { CustomAgentsSection } from './components/CustomAgentsSection';
 import { ProviderConsentModal } from './components/ProviderConsentModal';
 import { DangerZoneSection } from '../common/DangerZoneSection';
 import { MODEL_REGISTRY, OVERRIDABLE_MODEL_SLOTS, IMAGE_GEN_SLOTS, providerRequiresDataConsent, type ModelJobKey, type ModelProvider } from '@ant/shared';
@@ -42,7 +43,7 @@ interface ConfigEditorProps {
   onClose: () => void;
 }
 
-const SECTION_IDS = ['c3p-identity', 'c3p-domain', 'c3p-project-type', 'c3p-repository', 'c3p-llm', 'c3p-danger'] as const;
+const SECTION_IDS = ['c3p-identity', 'c3p-domain', 'c3p-project-type', 'c3p-agents', 'c3p-repository', 'c3p-llm', 'c3p-danger'] as const;
 
 export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
   // onClose is handled by MainPanel tab close button (kept for API compatibility)
@@ -74,7 +75,7 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
       SECTION_IDS.filter((id) =>
         isUniversal
           ? id !== 'c3p-domain' && id !== 'c3p-repository'
-          : id !== 'c3p-project-type',
+          : id !== 'c3p-project-type' && id !== 'c3p-agents',
       ),
     [isUniversal],
   );
@@ -744,6 +745,11 @@ export function ConfigEditor({ config, onSave, onClose }: ConfigEditorProps) {
             </div>
           </SectionCard>
           )}
+
+          {/* Agents — custom agent/job management (account-owned definitions).
+              Universal-only: canonical projects are BE-blocked from running
+              custom jobs, so surfacing management there is a dead end. */}
+          {isUniversal && <CustomAgentsSection />}
 
           {/* LLM Models — renders its own SectionCard with id="c3p-llm" */}
           <LLMModelsSection

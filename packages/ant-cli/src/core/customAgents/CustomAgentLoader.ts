@@ -32,7 +32,7 @@ import {
 } from './types.js';
 import { UNIVERSAL_BUILTIN_TOOLS, WRITE_TOOLS } from './universalToolPolicy.js';
 
-/** One discovery root, in D8 priority order (project > user > org). */
+/** One discovery root, in D8 priority order (user > org > builtin). */
 export interface CustomAgentScopeRoot {
   scope: CustomAgentScope;
   /** Absolute path of the `agents/` container dir (may not exist yet). */
@@ -212,6 +212,20 @@ export function discoverAgents(scopeRoots: CustomAgentScopeRoot[]): CustomAgentS
     }
   }
   return Array.from(byId.values());
+}
+
+/**
+ * Collision check for agent creation: only a writable-scope collision blocks —
+ * a new agent may shadow readonly scopes (org/builtin) wholesale.
+ */
+export function findCreateCollision(
+  scopeRoots: CustomAgentScopeRoot[],
+  agentId: string,
+): { scopeRoot: CustomAgentScopeRoot; agentDir: string } | null {
+  return findAgentRoot(
+    scopeRoots.filter((r) => !r.readonly),
+    agentId,
+  );
 }
 
 /** Resolve which scope root owns an agent id (first match in priority order). */

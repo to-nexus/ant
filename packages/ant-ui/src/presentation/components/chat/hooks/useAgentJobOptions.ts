@@ -44,9 +44,14 @@ export function useAgentJobOptions() {
   // resolves `agent.planner_game` first, falling back to `agent.planner`.
   const domain = useStore((state) => state.actionMetadata.domain);
 
+  // Universal (workspace) projects never render the canonical pickers —
+  // skip the /agents fetch there (universalSlice owns the custom-agent list).
+  const isUniversalMode = useStore((state) => state.projectType === 'universal');
+
   const [agents, setAgents] = useState<Agent[]>(DEFAULT_AGENTS);
 
   useEffect(() => {
+    if (isUniversalMode) return;
     async function loadAgents() {
       try {
         const agentsData = await fetchAgents();
@@ -57,7 +62,7 @@ export function useAgentJobOptions() {
       }
     }
     loadAgents();
-  }, []);
+  }, [isUniversalMode]);
 
   const agentsWithMetadata: AgentWithMetadata[] = useMemo(() =>
     agents.map((agent) => {

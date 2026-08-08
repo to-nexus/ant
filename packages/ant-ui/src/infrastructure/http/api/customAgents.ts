@@ -4,13 +4,6 @@ import type { UploadFileEntry } from './files';
 
 export type { CustomAgentSummary, CustomJobSummary, CustomAgentScope };
 
-/** One conversation thread of a custom job (universal runtime). */
-export interface CustomJobThread {
-  threadId: string;
-  lastActiveAt: string;
-  jobId: string;
-}
-
 /** One node of the universal artifacts workspace tree. */
 export interface UniversalArtifactNode {
   name: string;
@@ -29,9 +22,10 @@ export function fetchCustomAgents(projectId: string): Promise<{ agents: CustomAg
   return apiGet(`${projectBase(projectId)}/custom-agents`);
 }
 
+/** Creation always targets the account (user) scope — definitions are account-owned. */
 export function createCustomAgent(
   projectId: string,
-  body: { id: string; name: string; description?: string; scope: 'project' | 'user' },
+  body: { id: string; name: string; description?: string },
 ): Promise<{ agent: CustomAgentSummary }> {
   return apiPost(`${projectBase(projectId)}/custom-agents`, body);
 }
@@ -104,16 +98,6 @@ export function validateCustomJob(
   );
 }
 
-export function fetchCustomJobThreads(
-  projectId: string,
-  agentId: string,
-  jobId: string,
-): Promise<{ threads: CustomJobThread[] }> {
-  return apiGet(
-    `${projectBase(projectId)}/custom-agents/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}/threads`,
-  );
-}
-
 // ── Universal artifacts workspace ───────────────────────────────────
 
 export function fetchUniversalArtifactsTree(
@@ -159,4 +143,19 @@ export function createUniversalArtifactDirectory(
   path: string,
 ): Promise<void> {
   return apiPost(`${projectBase(projectId)}/universal/artifacts/mkdir`, { path });
+}
+
+/** Delete a file/dir in the merged workspace tree (canonical dirs are cleared, not removed). */
+export function deleteUniversalArtifact(projectId: string, path: string): Promise<void> {
+  return apiDelete(`${projectBase(projectId)}/universal/artifacts/file?path=${encodeURIComponent(path)}`);
+}
+
+/** Create an empty file (artifacts plane only — sessions is read-only). */
+export function createUniversalArtifactFile(projectId: string, path: string): Promise<void> {
+  return apiPost(`${projectBase(projectId)}/universal/artifacts/create-file`, { path });
+}
+
+/** Rename a file/dir (artifacts plane only — canonical roots and sessions are fixed). */
+export function renameUniversalArtifact(projectId: string, path: string, newName: string): Promise<void> {
+  return apiPost(`${projectBase(projectId)}/universal/artifacts/rename`, { path, newName });
 }

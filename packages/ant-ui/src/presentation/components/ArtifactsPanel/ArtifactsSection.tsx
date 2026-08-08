@@ -10,6 +10,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { SectionShell } from '../layout/Explorer/SectionShell';
 import { RowList } from '../layout/Explorer/RowList';
 import { ArtifactRow } from '../layout/Explorer/ArtifactRow';
+import { FileActionMenu } from '../FileActionMenu';
 import {
   isCanonicalDir,
   isStructuralCanonicalDir,
@@ -69,6 +70,14 @@ export interface ArtifactsSectionProps {
    * used to.
    */
   getNodePermissions?: (path: string) => ArtifactPermissions | undefined;
+  /**
+   * When set, the section root itself is a writable directory: the header
+   * gains a FileActionMenu (⋯) with create-file / create-folder / upload
+   * targeting this path, and the inline create form can render at root.
+   * Codespace mounts omit it (their root rows are fixed canonical domains);
+   * the universal workspace passes `''` (the artifacts root).
+   */
+  rootDirPath?: string;
 }
 
 /**
@@ -103,6 +112,7 @@ export function ArtifactsSection({
   notifyArtifactMutationBlocked,
   accent,
   getNodePermissions,
+  rootDirPath,
 }: ArtifactsSectionProps) {
   const { t } = useTranslation('artifacts');
   // `expandedDirs` is lifted to the zustand store so it survives transient
@@ -576,8 +586,46 @@ export function ArtifactsSection({
     );
   };
 
-  const rootDropEnabled = !!(sectionPrefix && onDropFiles);
-  const rootIsDragTarget = rootDropEnabled && dragOverPath === sectionPrefix;
+  // Root-writable mode (rootDirPath) shares the drop-dir plumbing with the
+  // legacy per-domain mount (sectionPrefix). Note rootDirPath may be '' —
+  // presence checks below must not be truthiness checks.
+  const rootDropDir = sectionPrefix ?? rootDirPath;
+  const rootDropEnabled = rootDropDir !== undefined && !!onDropFiles;
+  const rootIsDragTarget = rootDropEnabled && dragOverPath === rootDropDir;
+
+  const rootUploadInputId = rootDirPath !== undefined && onUploadFiles ? 'upload-__section-root__' : undefined;
+  const isCreatingAtRoot = rootDirPath !== undefined && showCreateForm === rootDirPath;
+  const rootMenu =
+    rootDirPath !== undefined ? (
+      <FileActionMenu
+        nodePath={rootDirPath}
+        nodeType="directory"
+        isSessionPath={false}
+        onCreateFile={
+          onCreateFile
+            ? () => {
+                setCreateType('file');
+                setShowCreateForm(isCreatingAtRoot ? null : rootDirPath);
+                setNewFileName('');
+              }
+            : undefined
+        }
+        onCreateDirectory={
+          onCreateDirectory
+            ? () => {
+                setCreateType('directory');
+                setShowCreateForm(isCreatingAtRoot ? null : rootDirPath);
+                setNewFileName('');
+              }
+            : undefined
+        }
+        onUpload={
+          rootUploadInputId
+            ? () => document.getElementById(rootUploadInputId)?.click()
+            : undefined
+        }
+      />
+    ) : undefined;
 
   const dropWrapperStyle: React.CSSProperties = rootIsDragTarget
     ? rootIsStructural
@@ -606,12 +654,35 @@ export function ArtifactsSection({
       expanded={belongsToSpotlight}
       collapsedLabel={collapsedLabel}
       collapsedAction={collapsedAction}
-      action={headerAction}
+      action={
+        rootMenu ? (
+          <>
+            {headerAction}
+            {rootMenu}
+          </>
+        ) : (
+          headerAction
+        )
+      }
       fill
     >
+      {rootUploadInputId && (
+        <input
+          type="file"
+          multiple
+          className="hidden"
+          id={rootUploadInputId}
+          onChange={(e) => {
+            if (e.target.files && onUploadFiles) {
+              onUploadFiles(rootDirPath!, e.target.files);
+              e.target.value = '';
+            }
+          }}
+        />
+      )}
       <div
         style={{ ...dropWrapperStyle, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
-        data-drop-dir={rootDropEnabled ? sectionPrefix : undefined}
+        data-drop-dir={rootDropEnabled ? rootDropDir : undefined}
         data-drop-blocked={rootDropEnabled && rootIsStructural ? '' : undefined}
         onDragOver={(e) => {
           e.preventDefault();
@@ -650,7 +721,7 @@ export function ArtifactsSection({
             return;
           }
           const dirPath = target?.getAttribute('data-drop-dir');
-          if (dirPath) {
+          if (dirPath != null) {
             const entries = await extractDroppedFiles(e.dataTransfer);
             if (entries.length > 0) {
               const policy = getArtifactDirPolicy(dirPath);
@@ -692,6 +763,7 @@ export function ArtifactsSection({
           }
         }}
       >
+        {isCreatingAtRoot && renderInlineCreateForm(rootDirPath!, 8)}
         {nodes.length === 0 ? (
           <div className={cn('text-sm p-2 text-center', textColors.tertiary)}>
             {t('panel.emptySection', { title: title.toLowerCase() })}

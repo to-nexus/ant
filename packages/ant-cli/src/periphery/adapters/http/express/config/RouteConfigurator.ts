@@ -545,10 +545,9 @@ export class RouteConfigurator {
         skipTriage: params.skipTriage,
         actionMetadata: params.actionMetadata,
         inputFile: params.inputFile,
-        // Universal (D5): the composite definition ref + thread id ride the
-        // same channel as overrideDirective — body → payload → env → runner.
+        // Universal (D5): the composite definition ref rides the same
+        // channel as overrideDirective — body → payload → env → runner.
         customJobRef: params.customJobRef,
-        threadId: params.threadId,
         isResume: params.isResume ?? !!params.jobId,
         originalJobId: params.jobId,
         // chat SSOT §6 — pre-allocated turnId from /chat/user-message (fresh

@@ -56,22 +56,17 @@ export interface WorkspaceResolver {
   getPhysicalWorkspacesPath(): string;
 
   /**
-   * Get a universal-job thread container path (D6). Threads are the universal
-   * plane's session containers — the path flows wherever a featurePath-shaped
-   * value is expected (session adapter, ANT_FEATURE_PATH), but lives under
-   * `universal/`, invisible to the feature/git/preview lifecycles.
+   * Get the universal container path (D6) — `{project}/universal`, the single
+   * featurePath-shaped chat/session container of a universal (workspace)
+   * project. It flows wherever a featurePath is expected (session adapter,
+   * ANT_FEATURE_PATH), but lives under `universal/`, invisible to the
+   * feature/git/preview lifecycles.
    */
-  getAgentThreadPath(
-    userContext: UserContext,
-    projectId: string,
-    agentId: string,
-    jobId: string,
-    threadId: string,
-  ): string;
+  getUniversalContainerPath(userContext: UserContext, projectId: string): string;
 
   /**
    * Get the project's shared universal artifact tree root (D6) — the single
-   * working tree all custom agents/jobs/threads and the user share.
+   * working tree all custom agents/jobs and the user share.
    */
   getUniversalArtifactsPath(userContext: UserContext, projectId: string): string;
 }
@@ -79,25 +74,9 @@ export interface WorkspaceResolver {
 /** Namespace directory of the universal plane inside a project. */
 export const UNIVERSAL_DIR = 'universal';
 
-/** Path segment charset shared by agentId / jobId / threadId. */
-const UNIVERSAL_SEGMENT_RE = /^[a-z0-9][a-z0-9-]*$/;
-
-/**
- * Build the on-disk thread container path. All three ids share the custom-id
- * charset — validated here (single FS chokepoint, mirrors buildFeaturePath).
- */
-export function buildAgentThreadPath(
-  projectPath: string,
-  agentId: string,
-  jobId: string,
-  threadId: string,
-): string {
-  for (const [label, value] of [['agentId', agentId], ['jobId', jobId], ['threadId', threadId]] as const) {
-    if (!UNIVERSAL_SEGMENT_RE.test(value)) {
-      throw new Error(`[WorkspacePathResolver] invalid ${label} for thread path: ${JSON.stringify(value)}`);
-    }
-  }
-  return path.join(projectPath, UNIVERSAL_DIR, 'agents', agentId, jobId, 'threads', threadId);
+/** Build the universal container path — `{project}/universal`. */
+export function buildUniversalContainerPath(projectPath: string): string {
+  return path.join(projectPath, UNIVERSAL_DIR);
 }
 
 /** Build the shared universal artifact tree root. */
@@ -321,6 +300,15 @@ export class WorkspacePathResolver {
   static getPoliciesPath(): string {
     return path.join(WorkspacePathResolver.getCliRoot(), 'core/policies/prompts');
   }
+
+  /**
+   * Get the builtin custom-agent definitions directory (shipped samples,
+   * mounted as the read-only `builtin` scope root)
+   * @returns Path to core/data/agents directory
+   */
+  static getBuiltinAgentsPath(): string {
+    return path.join(WorkspacePathResolver.getCliRoot(), 'core/data/agents');
+  }
   
   /**
    * Get monorepo docs directory path
@@ -377,14 +365,8 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
     return this.workspacesPath;
   }
 
-  getAgentThreadPath(
-    userContext: UserContext,
-    projectId: string,
-    agentId: string,
-    jobId: string,
-    threadId: string,
-  ): string {
-    return buildAgentThreadPath(this.getProjectPath(userContext, projectId), agentId, jobId, threadId);
+  getUniversalContainerPath(userContext: UserContext, projectId: string): string {
+    return buildUniversalContainerPath(this.getProjectPath(userContext, projectId));
   }
 
   getUniversalArtifactsPath(userContext: UserContext, projectId: string): string {

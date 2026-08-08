@@ -12,7 +12,7 @@ import type { ChatService, KanbanService } from '../services';
 import type { InterruptionDetails } from '../../../../core/types';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { clearCanonicalDirectory } from '../../../../core/utils/sessionPaths';
-import { resolveUniversalThreadPath } from '../../../../core/customAgents/threadPaths';
+import { resolveUniversalContainerPath } from '../../../../core/customAgents/universalContainer';
 
 /**
  * Feature log routes
@@ -58,8 +58,8 @@ export function createFeatureLogRoutes(deps: {
   registerFeatureParamDecoders(router);
 
   /**
-   * Universal projects ride the threadId in the `:feature` URL slot — the
-   * chat/feature log SSOT lives in the thread container, not under
+   * Universal projects ride the constant 'universal' `:feature` slot — the
+   * chat/feature log SSOT lives in the universal container, not under
    * features/. Falls through to the normal feature path everywhere else.
    */
   function resolveContainerPath(
@@ -70,8 +70,8 @@ export function createFeatureLogRoutes(deps: {
   ): string {
     try {
       const projectPath = workspaceResolver.getProjectPath(userContext as any, projectId);
-      const threadPath = resolveUniversalThreadPath(projectPath, featureName);
-      if (threadPath) return threadPath;
+      const containerPath = resolveUniversalContainerPath(projectPath, featureName);
+      if (containerPath) return containerPath;
     } catch {
       // partial resolvers (tests) / lookup failures → normal feature path
     }

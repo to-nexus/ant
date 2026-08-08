@@ -16,9 +16,11 @@ import { writeBufferVerified } from '../../../../core/utils/binaryIntegrity';
 import { isValidCustomId } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { deriveCustomAgentScopeRoots } from '../../../../core/customAgents/scopeRoots';
+import { UNIVERSAL_ARTIFACT_CANONICAL_DIRS } from '../../../../core/customAgents/universalContainer';
 import {
   discoverAgents,
   findAgentRoot,
+  findCreateCollision,
   loadCustomJob,
   type CustomAgentScopeRoot,
 } from '../../../../core/customAgents/CustomAgentLoader';
@@ -112,22 +114,21 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   router.post('/projects/:projectId/custom-agents', (req: Request, res: Response) => {
     try {
-      const { id, name, description = '', scope = 'project' } = req.body ?? {};
+      const { id, name, description = '' } = req.body ?? {};
       if (!isValidCustomId(id ?? '')) {
         return res.status(400).json({ error: `Agent id must match [a-z0-9-]+ (got: ${String(id)})` });
       }
-      if (scope !== 'project' && scope !== 'user') {
-        return res.status(400).json({ error: `scope must be "project" | "user" (org agents are managed by the org)` });
-      }
       const scopeRoots = scopeRootsFor(req, req.params.projectId);
-      if (findAgentRoot(scopeRoots, id)) {
+      // Readonly scopes (org/builtin) may be shadowed; only writable collisions block.
+      if (findCreateCollision(scopeRoots, id)) {
         return res.status(409).json({ error: `Custom agent already exists: ${id}` });
       }
-      const root = scopeRoots.find((r) => r.scope === scope)!;
+      // Definitions are account-owned: creation always targets the user root.
+      const root = scopeRoots.find((r) => r.scope === 'user')!;
       const agentDir = path.join(root.root, id);
       scaffoldAgent(agentDir, id, name || id, description);
-      logger.info(`Custom agent scaffolded: ${id} (scope: ${scope})`, { component: 'CustomAgents' });
-      res.status(201).json({ id, name: name || id, description, scope, readonly: false, jobs: [] });
+      logger.info(`Custom agent scaffolded: ${id} (scope: user)`, { component: 'CustomAgents' });
+      res.status(201).json({ id, name: name || id, description, scope: 'user', readonly: false, jobs: [] });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'CustomAgents');
     }
@@ -243,55 +244,48 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     }
   });
 
-  // ── threads (conversation containers under a custom job) ───────────────
-
-  router.get('/projects/:projectId/custom-agents/:agentId/jobs/:jobId/threads', (req: Request, res: Response) => {
-    try {
-      const userContext = extractUserContext(req);
-      const { projectId, agentId, jobId } = req.params;
-      if (!isValidCustomId(agentId) || !isValidCustomId(jobId)) {
-        return res.status(400).json({ error: 'Invalid agent/job id' });
-      }
-      const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
-      const threadsDir = path.join(projectPath, 'universal', 'agents', agentId, jobId, 'threads');
-      if (!fs.existsSync(threadsDir)) return res.json({ threads: [] });
-      const threads = fs
-        .readdirSync(threadsDir, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && isValidCustomId(e.name))
-        .map((e) => {
-          const sessionPath = path.join(threadsDir, e.name, 'sessions', 'universal', 'universal.json');
-          let lastActiveAt: string | null = null;
-          let jobIdInSession: string | null = null;
-          try {
-            const stat = fs.statSync(sessionPath);
-            lastActiveAt = stat.mtime.toISOString();
-            jobIdInSession = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'))?.state?.jobId ?? null;
-          } catch { /* fresh thread without a session yet */ }
-          return { threadId: e.name, lastActiveAt, jobId: jobIdInSession };
-        })
-        .sort((a, b) => (b.lastActiveAt ?? '').localeCompare(a.lastActiveAt ?? ''));
-      res.json({ threads });
-    } catch (error: any) {
-      sendErrorResponse(res, 500, error, 'CustomAgents');
-    }
-  });
-
   // ── universal artifact tree (project-shared working tree, D6) ──────────
 
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+  /** Reserved top-level node name — the grafted sessions folder (see tree). */
+  const SESSIONS_NODE = 'sessions';
+
+  function firstSegment(rel: string): string {
+    return rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0] ?? '';
+  }
 
   function artifactsRootFor(req: Request, projectId: string): string {
     const userContext = extractUserContext(req);
     return deps.workspaceResolver.getUniversalArtifactsPath(userContext, projectId);
   }
 
-  /** Path-traversal-safe resolve inside the artifacts root. */
+  function sessionsRootFor(req: Request, projectId: string): string {
+    const userContext = extractUserContext(req);
+    return path.join(deps.workspaceResolver.getUniversalContainerPath(userContext, projectId), SESSIONS_NODE);
+  }
+
+  /** Path-traversal-safe resolve inside a root. */
   function resolveArtifactPath(root: string, rel: string): string {
     const full = path.resolve(root, rel);
     if (full !== root && !full.startsWith(root + path.sep)) {
       throw new Error(`Invalid artifact path: ${rel}`);
     }
     return full;
+  }
+
+  /**
+   * Merged-tree path routing: the explorer shows the artifacts tree with a
+   * top-level `sessions` node grafted in (mirrors the codespace per-feature
+   * sessions folder). Paths under `sessions/` resolve against the container's
+   * sessions dir; everything else against the artifacts root.
+   */
+  function resolveMergedPath(req: Request, projectId: string, rel: string): string {
+    if (rel === SESSIONS_NODE || rel.startsWith(`${SESSIONS_NODE}/`)) {
+      const remainder = rel === SESSIONS_NODE ? '' : rel.slice(SESSIONS_NODE.length + 1);
+      return resolveArtifactPath(sessionsRootFor(req, projectId), remainder);
+    }
+    return resolveArtifactPath(artifactsRootFor(req, projectId), rel);
   }
 
   interface ArtifactTreeNode {
@@ -302,7 +296,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     children?: ArtifactTreeNode[];
   }
 
-  function buildTree(root: string, rel = ''): ArtifactTreeNode[] {
+  function buildTree(root: string, rel = '', prefix = ''): ArtifactTreeNode[] {
     const abs = rel ? path.join(root, rel) : root;
     if (!fs.existsSync(abs)) return [];
     return fs
@@ -311,18 +305,43 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
       .sort((a, b) => (a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1))
       .map((e) => {
         const childRel = rel ? `${rel}/${e.name}` : e.name;
+        const nodePath = prefix ? `${prefix}/${childRel}` : childRel;
         if (e.isDirectory()) {
-          return { name: e.name, path: childRel, type: 'directory' as const, children: buildTree(root, childRel) };
+          return { name: e.name, path: nodePath, type: 'directory' as const, children: buildTree(root, childRel, prefix) };
         }
         const size = fs.statSync(path.join(abs, e.name)).size;
-        return { name: e.name, path: childRel, type: 'file' as const, size };
+        return { name: e.name, path: nodePath, type: 'file' as const, size };
       });
   }
 
   router.get('/projects/:projectId/universal/artifacts/tree', (req: Request, res: Response) => {
     try {
       const root = artifactsRootFor(req, req.params.projectId);
-      res.json({ tree: buildTree(root) });
+      // Reserved name: an agent-created `artifacts/sessions/` dir is shadowed
+      // by the grafted node (user creation is blocked at upload/mkdir).
+      const artifactNodes = buildTree(root).filter((n) => n.name !== SESSIONS_NODE);
+      // Canonical dirs first (synthesized when missing, mirroring the
+      // codespace panel's placeholder rows), then free-form content,
+      // `sessions` last — same ordering contract as CANONICAL_DIR_DEFS.
+      const canonicalNodes: ArtifactTreeNode[] = UNIVERSAL_ARTIFACT_CANONICAL_DIRS.map(
+        (name) =>
+          artifactNodes.find((n) => n.name === name && n.type === 'directory') ?? {
+            name,
+            path: name,
+            type: 'directory' as const,
+            children: [],
+          },
+      );
+      const freeNodes = artifactNodes.filter(
+        (n) => !(UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(n.name) || n.type !== 'directory',
+      );
+      const sessionsNode: ArtifactTreeNode = {
+        name: SESSIONS_NODE,
+        path: SESSIONS_NODE,
+        type: 'directory',
+        children: buildTree(sessionsRootFor(req, req.params.projectId), '', SESSIONS_NODE),
+      };
+      res.json({ tree: [...canonicalNodes, ...freeNodes, sessionsNode] });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'UniversalArtifacts');
     }
@@ -339,11 +358,18 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
       const uploadedFiles: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const relPath = (relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
+        const effectiveRel = path.join(dirPath, relPath).replace(/\\/g, '/');
+        if (firstSegment(effectiveRel) === SESSIONS_NODE) {
+          return res.status(400).json({
+            error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`,
+            code: 'reserved-name-sessions',
+          });
+        }
         const filePath = resolveArtifactPath(root, path.join(dirPath, relPath));
         // Byte-safe write (size + header verification) — uploads must survive
         // binary payloads unmodified (no utf-8 round-trip).
         await writeBufferVerified(filePath, files[i].buffer);
-        uploadedFiles.push(path.join(dirPath, relPath).replace(/\\/g, '/'));
+        uploadedFiles.push(effectiveRel);
       }
       res.json({ success: true, uploadedFiles, count: uploadedFiles.length });
     } catch (error: any) {
@@ -356,14 +382,85 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   router.get('/projects/:projectId/universal/artifacts/file', (req: Request, res: Response) => {
     try {
-      const root = artifactsRootFor(req, req.params.projectId);
       const rel = String(req.query.path || '');
       if (!rel) return res.status(400).json({ error: 'path query param is required' });
-      const full = resolveArtifactPath(root, rel);
+      const full = resolveMergedPath(req, req.params.projectId, rel);
       if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
         return res.status(404).json({ error: `Artifact not found: ${rel}` });
       }
       res.download(full);
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'UniversalArtifacts');
+    }
+  });
+
+  router.delete('/projects/:projectId/universal/artifacts/file', (req: Request, res: Response) => {
+    try {
+      const rel = String(req.query.path || '');
+      if (!rel) return res.status(400).json({ error: 'path query param is required' });
+      const full = resolveMergedPath(req, req.params.projectId, rel);
+      if (!fs.existsSync(full)) {
+        return res.status(404).json({ error: `Artifact not found: ${rel}` });
+      }
+      // Canonical roots are clearable, never removable (codespace parity):
+      // delete on the root clears its contents and keeps the dir.
+      if (rel === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(rel)) {
+        for (const entry of fs.readdirSync(full)) {
+          fs.rmSync(path.join(full, entry), { recursive: true, force: true });
+        }
+        return res.json({ success: true, cleared: true });
+      }
+      fs.rmSync(full, { recursive: true, force: true });
+      res.json({ success: true });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'UniversalArtifacts');
+    }
+  });
+
+  router.post('/projects/:projectId/universal/artifacts/create-file', (req: Request, res: Response) => {
+    try {
+      const rel = String(req.body?.path || '').replace(/\\/g, '/');
+      if (!rel) return res.status(400).json({ error: 'path is required' });
+      if (firstSegment(rel) === SESSIONS_NODE) {
+        return res.status(400).json({
+          error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`,
+          code: 'reserved-name-sessions',
+        });
+      }
+      const full = resolveArtifactPath(artifactsRootFor(req, req.params.projectId), rel);
+      if (fs.existsSync(full)) {
+        return res.status(409).json({ error: `Already exists: ${rel}` });
+      }
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, '', { flag: 'wx' });
+      res.json({ success: true });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'UniversalArtifacts');
+    }
+  });
+
+  router.post('/projects/:projectId/universal/artifacts/rename', (req: Request, res: Response) => {
+    try {
+      const rel = String(req.body?.path || '').replace(/\\/g, '/');
+      const newName = String(req.body?.newName || '');
+      if (!rel || !newName) return res.status(400).json({ error: 'path and newName are required' });
+      if (newName.includes('/') || newName.includes('\\') || newName.startsWith('.')) {
+        return res.status(400).json({ error: `Invalid name: ${newName}` });
+      }
+      if (firstSegment(rel) === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(rel)) {
+        return res.status(400).json({ error: `"${rel}" cannot be renamed` });
+      }
+      const parentRel = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+      if (!parentRel && (newName === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(newName))) {
+        return res.status(400).json({ error: `"${newName}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' });
+      }
+      const root = artifactsRootFor(req, req.params.projectId);
+      const from = resolveArtifactPath(root, rel);
+      const to = resolveArtifactPath(root, parentRel ? `${parentRel}/${newName}` : newName);
+      if (!fs.existsSync(from)) return res.status(404).json({ error: `Artifact not found: ${rel}` });
+      if (fs.existsSync(to)) return res.status(409).json({ error: `Already exists: ${newName}` });
+      fs.renameSync(from, to);
+      res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'UniversalArtifacts');
     }
@@ -374,6 +471,12 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
       const root = artifactsRootFor(req, req.params.projectId);
       const rel = String(req.body?.path || '');
       if (!rel) return res.status(400).json({ error: 'path is required' });
+      if (firstSegment(rel) === SESSIONS_NODE) {
+        return res.status(400).json({
+          error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`,
+          code: 'reserved-name-sessions',
+        });
+      }
       fs.mkdirSync(resolveArtifactPath(root, rel), { recursive: true });
       res.json({ success: true });
     } catch (error: any) {

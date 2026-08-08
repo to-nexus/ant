@@ -1,14 +1,17 @@
 /**
  * Custom-agent scope root derivation (D8).
  *
- * The loader/discovery only ever sees an ordered root list, so adding the
- * org scope later is "one more root", not a mechanism change. Roots are
- * ordered by priority — project > user > org — and the workspace layout
+ * Definitions are account/org-owned, never project-owned. The loader and
+ * discovery only ever see an ordered root list, so adding a scope is "one
+ * more root", not a mechanism change. Roots are ordered by priority —
+ * user > org > builtin — and the workspace layout
  * (`workspaces/{org}/{user}/{project}`) makes the user root simply the
- * parent directory of the project.
+ * parent directory of the project. `builtin` is the read-only sample tree
+ * shipped inside the CLI image; any writable scope shadows it wholesale.
  */
 
 import * as path from 'path';
+import { WorkspacePathResolver } from '../config/WorkspacePathResolver.js';
 import type { CustomAgentScopeRoot } from './CustomAgentLoader.js';
 
 export const CUSTOM_AGENTS_DIRNAME = '.ant/agents';
@@ -18,7 +21,6 @@ export const ORG_AGENTS_DIR_ENV = 'ANT_CUSTOM_AGENTS_DIR';
 
 export function deriveCustomAgentScopeRoots(projectPath: string): CustomAgentScopeRoot[] {
   const roots: CustomAgentScopeRoot[] = [
-    { scope: 'project', root: path.join(projectPath, CUSTOM_AGENTS_DIRNAME), readonly: false },
     // workspaces/{org}/{user}/{project} → the user dir is the project's parent.
     { scope: 'user', root: path.join(path.dirname(projectPath), CUSTOM_AGENTS_DIRNAME), readonly: false },
   ];
@@ -26,5 +28,6 @@ export function deriveCustomAgentScopeRoots(projectPath: string): CustomAgentSco
   if (orgRoot) {
     roots.push({ scope: 'org', root: orgRoot, readonly: true });
   }
+  roots.push({ scope: 'builtin', root: WorkspacePathResolver.getBuiltinAgentsPath(), readonly: true });
   return roots;
 }

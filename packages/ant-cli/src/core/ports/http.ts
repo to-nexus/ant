@@ -32,8 +32,6 @@ export interface ExecuteJobParams {
   feature?: string;  // ✅ Feature name for Kanban tracking
   /** Universal only — `{agentId}/{jobId}` composite ref of the custom job definition. */
   customJobRef?: string;
-  /** Universal only — thread (conversation container) id under the custom job. */
-  threadId?: string;
   inputFile?: string;  // ✅ Optional: undefined for chat-initiated jobs with overrideDirective
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;

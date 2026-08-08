@@ -323,6 +323,7 @@
     "jumpTo": "{{label}}(으)로 이동"
   },
   "universal": {
-    "selectJob": "커스텀 잡을 선택하세요"
+    "selectJob": "커스텀 잡을 선택하세요",
+    "selectAgent": "에이전트를 선택하세요"
   }
 }

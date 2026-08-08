@@ -323,6 +323,7 @@
     "jumpTo": "Jump to {{label}}"
   },
   "universal": {
-    "selectJob": "Select a custom job"
+    "selectJob": "Select a custom job",
+    "selectAgent": "Select an agent"
   }
 }
