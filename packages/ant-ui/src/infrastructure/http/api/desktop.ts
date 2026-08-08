@@ -1,4 +1,8 @@
 import { API_BASE, authFetch, apiGet, apiPost } from './client';
+import {
+  buildDesktopDeepLink,
+  readPairingState,
+} from '@/application/auth/desktopPairing';
 
 export interface DesktopTokenResponse {
   success: boolean;
@@ -44,9 +48,11 @@ export async function openDesktopDeepLink(): Promise<boolean> {
   if (!result.success || !result.token) {
     return false;
   }
-  const serverUrl = getRealtimeServerUrl();
-  const deepLink = `ant-desktop://connect?token=${encodeURIComponent(result.token)}&server=${encodeURIComponent(serverUrl)}`;
-  window.location.href = deepLink;
+  window.location.href = buildDesktopDeepLink(
+    result.token,
+    getRealtimeServerUrl(),
+    readPairingState(),
+  );
   return true;
 }
 
