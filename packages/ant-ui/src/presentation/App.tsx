@@ -41,6 +41,7 @@ import {
   clearOnboardingQueryFlag,
   shouldShowOnboarding,
 } from '@/application/auth/onboardingRouter';
+import { capturePairingStateFromUrl } from '@/application/auth/desktopPairing';
 import { fetchAuthMeDetailed, API_BASE } from '@/infrastructure/http/api';
 import type { AuthMeResult } from '@/infrastructure/http/api/auth';
 import { selectIsAuthBlocked, selectIsAuthenticated, selectServerMode } from '@/domain/store/selectors';
@@ -136,6 +137,13 @@ function AppShell() {
       navigate('/', { replace: true });
     }
   }, [location.pathname, navigate]);
+
+  // ✅ Ant Desktop pairing nonce (`?desktop_pair=...`). Captured before anything
+  // navigates or strips the query, so `openDesktopDeepLink()` can echo it back
+  // and Desktop can tell a user-initiated connect from a drive-by one.
+  useEffect(() => {
+    capturePairingStateFromUrl();
+  }, []);
 
   // ✅ Handle Google OAuth callback (always relevant regardless of BE mode —
   // the URL param itself is the trigger; if a callback landed in a local-mode
