@@ -1,0 +1,16 @@
+# Intent catalog for the research-brief job.
+# Each description is the classification matching criterion — the runtime
+# renders it verbatim as a catalog row for the intent classifier. When an
+# intent is active, its `injections` files are inlined in full; otherwise
+# they stay in the on-demand table of contents.
+#
+# `cite` references an AGENT-level injection (citation-style.md) — job intents
+# see the merged agent+job injections set, so this is legal.
+version: 1
+intents:
+  - id: research
+    description: 'Start or continue researching a topic — gathering sources, writing or updating the brief document'
+    injections: [brief-template.md]
+  - id: cite
+    description: 'Fix, review, or ask about citations, source links, quotes, or confidence labels in an existing brief'
+    injections: [citation-style.md]

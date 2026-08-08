@@ -6,7 +6,8 @@ import {
   createIDERoutes,
   createCloudIDERoutes,
   createApiRoutes,
-  createCustomAgentRoutes
+  createCustomAgentRoutes,
+  createAccountAgentRoutes
 } from '../../routes';
 import { extractUserContext } from '../../routes/helpers/userContext';
 import { parseCompositeUserEmail } from '../../../../../core/utils/compositeUserEmail';
@@ -85,6 +86,8 @@ export class RouteConfigurator {
   private setupCustomAgentRoutes(app: Express): void {
     if (!this.deps.workspaceResolver) return;
     app.use('/api', createCustomAgentRoutes({ workspaceResolver: this.deps.workspaceResolver }));
+    // Account-scoped agent settings (profile menu) — no project required (D-G).
+    app.use('/api/account/agents', createAccountAgentRoutes({ workspaceResolver: this.deps.workspaceResolver }));
   }
 
   /**
@@ -548,6 +551,7 @@ export class RouteConfigurator {
         // Universal (D5): the composite definition ref rides the same
         // channel as overrideDirective — body → payload → env → runner.
         customJobRef: params.customJobRef,
+        universalTurnMeta: params.universalTurnMeta,
         isResume: params.isResume ?? !!params.jobId,
         originalJobId: params.jobId,
         // chat SSOT §6 — pre-allocated turnId from /chat/user-message (fresh

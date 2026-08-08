@@ -100,3 +100,30 @@ describe('builtin scope root wiring', () => {
     expect(roots[roots.length - 1].root).toBe(path.join(fakeCliRoot, 'core/data/agents'));
   });
 });
+
+describe('shipped intent catalogs', () => {
+  it('research-brief declares research + cite (job intents may reference agent-level injections)', () => {
+    const resolved = loadCustomJob(builtinRoots, 'sample-researcher', 'research-brief');
+    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['cite', 'research']);
+    const cite = resolved.intents.find((i) => i.id === 'cite');
+    expect(cite?.injections).toEqual(['citation-style.md']);
+    const research = resolved.intents.find((i) => i.id === 'research');
+    expect(research?.injections).toEqual(['brief-template.md']);
+  });
+
+  it('quick-answer declares no catalog (zero-cost classify skip path)', () => {
+    const resolved = loadCustomJob(builtinRoots, 'sample-researcher', 'quick-answer');
+    expect(resolved.intents).toEqual([]);
+  });
+});
+
+describe('account-scoped root derivation', () => {
+  it('deriveCustomAgentScopeRootsFromUserDir anchors on the user dir directly', async () => {
+    const { deriveCustomAgentScopeRootsFromUserDir } = await import('../../src/core/customAgents/scopeRoots');
+    const roots = deriveCustomAgentScopeRootsFromUserDir('/ws/org/user');
+    expect(roots[0]).toMatchObject({ scope: 'user', readonly: false });
+    expect(roots[0].root).toBe(path.join('/ws/org/user', '.ant/agents'));
+    // Project-scoped derivation is exactly the user-dir derivation of dirname(project).
+    expect(deriveCustomAgentScopeRoots('/ws/org/user/project')).toEqual(roots);
+  });
+});

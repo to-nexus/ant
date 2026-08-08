@@ -123,7 +123,7 @@ export class FileSessionAdapter implements SessionPort {
   constructor(featurePath: string, agent: string, projectId?: string, featureName?: string, fileTreeUpdate?: FileTreeUpdatePort) {
     this.featurePath = featurePath;
     this.agent = agent;
-    
+
     if (projectId && featureName) {
       this.projectId = projectId;
       this.featureName = featureName;
@@ -133,8 +133,27 @@ export class FileSessionAdapter implements SessionPort {
       this.projectId = featuresIdx > 0 ? parts[featuresIdx - 1] : 'unknown';
       this.featureName = featuresIdx >= 0 && featuresIdx + 1 < parts.length ? parts[featuresIdx + 1] : 'unknown';
     }
-    
+
     this.fileTreeUpdate = fileTreeUpdate;
+  }
+
+  /**
+   * Chat-log-only adapter: `chat.jsonl` / `feature.jsonl` appends and reads
+   * work as usual, but the session-JSON write family (`save` / `addRun` /
+   * `updateArtifacts`) is a warn + no-op. Chat-layer callers never own a
+   * session file, and the agent-dir side effect of a stray `save()` would
+   * scaffold `sessions/architect/` inside a universal container — this
+   * factory removes the `'architect'` literal from the chat layer entirely.
+   */
+  static forChatLog(featurePath: string, projectId?: string, featureName?: string): FileSessionAdapter {
+    const adapter = new FileSessionAdapter(featurePath, 'chat-log-only', projectId, featureName);
+    const refuse = (op: string) => {
+      console.warn(`[FileSessionAdapter] ${op}() refused on a chat-log-only adapter (featurePath=${featurePath})`);
+    };
+    adapter.save = async () => refuse('save');
+    adapter.addRun = async () => refuse('addRun');
+    adapter.updateArtifacts = async () => refuse('updateArtifacts');
+    return adapter;
   }
   
   /**

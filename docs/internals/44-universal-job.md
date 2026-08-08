@@ -43,10 +43,12 @@ compactRun) — not the graph.
   like canonical jobType switching within one feature chat.
 - **Chat**: ONE chat per workspace — `{container}/sessions/chat.jsonl` +
   `feature.jsonl`, shared across agent/job switches (mirrors one-chat-per-
-  feature). Debug logs land under `{container}/sessions/` too; note the token
-  logger hardcodes `getSessionDebugDir(featurePath, 'architect', 'tokens')`,
-  so universal token logs live at `sessions/architect/debug/tokens/` — same
-  pre-existing behavior as plan/visual jobs, accepted as-is.
+  feature). Debug logs land under `{container}/sessions/` too: the token /
+  execution loggers resolve their debug-dir owner via
+  `resolveDebugAgentName()` (`ANT_JOB_TYPE==='universal'` → the custom
+  agentId from `ANT_CUSTOM_JOB_REF`, else `'architect'`), so universal debug
+  output lives at `{container}/sessions/{agentId}/debug/{tokens,logs}/`
+  without minting the canonical `architect` skeleton in the container.
 - **Tier**: pinned Reflex at graph start (plan/visual precedent); Phase 2
   moves to LLM-declared `<executionTier>` per the 7a matrix. Tier 4 is
   deliberately unused (would be a tautology axis with `activePlanPath`).

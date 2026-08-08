@@ -1,0 +1,54 @@
+{
+  "title": "Agent Settings",
+  "tree": {
+    "newAgent": "New Agent",
+    "upload": "Upload",
+    "newJob": "New job",
+    "deleteAgent": "Delete agent",
+    "deleteJob": "Delete job",
+    "agentName": "Agent name",
+    "jobName": "Job name",
+    "readonly": "readonly",
+    "scope": {
+      "user": "My Account",
+      "org": "Organization",
+      "builtin": "Built-in"
+    }
+  },
+  "detail": {
+    "overview": "Overview",
+    "files": "Files",
+    "copyToAccount": "Copy to my account",
+    "selectAgent": "Select an agent or job on the left"
+  },
+  "overview": {
+    "general": "General",
+    "name": "Name",
+    "description": "Description",
+    "save": "Save",
+    "remove": "Remove",
+    "tools": "Tools",
+    "toolsHint": "Narrowing only — a job can restrict but never add beyond this set.",
+    "workspace": "Workspace access",
+    "plan": "Plan convention",
+    "outputs": "Outputs",
+    "outputsEditHint": "Edit artifact rows in the Files tab (job.yaml).",
+    "intents": "Intents",
+    "intentsHint": "Descriptions ARE the classification criteria; injections inline in full when the intent is active.",
+    "intentsMissing": "No intents.yaml yet — adding an entry creates it.",
+    "intentDescription": "Matching criterion (rendered verbatim as a catalog row)",
+    "intentInjections": "injections/*.md file names, comma-separated",
+    "addIntent": "Add intent"
+  },
+  "files": {
+    "newFile": "New file",
+    "upload": "Upload",
+    "save": "Save",
+    "yamlError": "YAML syntax error (save blocked)",
+    "validationWarnings": "Saved with warnings — affected jobs will fail to load until fixed:",
+    "selectFile": "Select a definition file"
+  },
+  "import": {
+    "skipped": "Imported with {{count}} skipped file(s): "
+  }
+}

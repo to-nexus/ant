@@ -4,6 +4,12 @@ import type { FileNode, FileResource } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
+import {
+  buildUniversalMergedTree,
+  resolveUniversalContainerPath,
+  resolveUniversalMergedPath,
+  type UniversalTreeNode,
+} from '../../../../../core/customAgents/universalContainer';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import { computeFileMeta, shouldEvaluateTemplate } from '../../../../../core/utils/computeFileMeta';
 import { isBinaryPath, isBinaryFileSync, sniffFile } from '../../../../../core/utils/binaryExtensions';
@@ -66,7 +72,22 @@ export class FileOperationService {
     return clearCanonicalDirectory(dirPath, relativePath);
   }
 
+  /**
+   * Universal seam: when `featureName` is the universal pseudo-feature on a
+   * universal-type project, file paths resolve against the container's merged
+   * view (`artifacts/**` + grafted `sessions/**`) instead of `features/…`.
+   * Null on canonical projects — every existing path is untouched.
+   */
+  private resolveUniversalContainer(projectId: string, featureName: string, userContext: UserContext): string | null {
+    const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
+    return resolveUniversalContainerPath(projectPath, featureName);
+  }
+
   private resolveFullPath(projectId: string, featureName: string, filePath: string, userContext: UserContext): { featurePath: string; fullPath: string } {
+    const containerPath = this.resolveUniversalContainer(projectId, featureName, userContext);
+    if (containerPath) {
+      return { featurePath: containerPath, fullPath: resolveUniversalMergedPath(containerPath, filePath) };
+    }
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     const root = path.resolve(featurePath);
     const fullPath = path.resolve(featurePath, filePath);
@@ -82,6 +103,33 @@ export class FileOperationService {
    * Get file tree for a feature
    */
   async getFileTree(projectId: string, featureName: string, userContext: UserContext): Promise<FileNode[]> {
+    // Universal seam: merged container view, no canonical-feature scaffolding.
+    // FileNode meta computation is preserved so fileSlice.refreshFileTree /
+    // stale detection / the Redis tree cache stay shape-compatible.
+    const containerPath = this.resolveUniversalContainer(projectId, featureName, userContext);
+    if (containerPath) {
+      const decorate = async (nodes: UniversalTreeNode[]): Promise<FileNode[]> =>
+        Promise.all(nodes.map(async (n): Promise<FileNode> => {
+          if (n.type === 'directory') {
+            return { name: n.name, path: n.path, type: 'directory', children: await decorate(n.children ?? []) };
+          }
+          let content: string | null = null;
+          if (shouldEvaluateTemplate(n.path)) {
+            try {
+              content = await fs.promises.readFile(n.absolutePath, 'utf-8');
+            } catch { /* skip read failures */ }
+          }
+          const meta = computeFileMeta({
+            relativePath: n.path,
+            content,
+            size: n.size ?? 0,
+            mtime: n.mtimeMs ?? 0,
+          });
+          return { name: n.name, path: n.path, type: 'file', meta };
+        }));
+      return decorate(buildUniversalMergedTree(containerPath));
+    }
+
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
     // Reconcile canonical dirs/files for existing features (retroactive for newly added entries)

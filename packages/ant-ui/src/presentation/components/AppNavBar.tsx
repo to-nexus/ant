@@ -551,6 +551,27 @@ export function AppNavBar({}: AppNavBarProps) {
                           <User className="w-4 h-4" />
                           {t('auth.accountConfig')}
                         </button>
+                        <button
+                          onClick={() => {
+                            setQuickStartProjectId(undefined);
+                            setOnboardingSkipped(true);
+                            openMainPanelTab('agentSettings');
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                          style={{
+                            color: 'var(--text-2)',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = 'var(--bg-hover)';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <Bot className="w-4 h-4" />
+                          {t('auth.agentSettings', '에이전트 설정')}
+                        </button>
                         <div
                           className="my-1"
                           style={{ height: 1, background: 'var(--border-1)' }}

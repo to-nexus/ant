@@ -36,7 +36,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { getSessionDebugDir } from './sessionPaths';
+import { getSessionDebugDir, resolveDebugAgentName } from './sessionPaths';
 
 export type ExecutionEventType =
   | 'job_start'
@@ -92,6 +92,8 @@ export interface ExecutionLoggerOptions {
   featurePath: string;
   jobId: string;
   jobType: string;
+  /** Debug-dir owner; defaults per job type (universal → custom agentId). */
+  agent?: string;
 }
 
 /**
@@ -107,7 +109,7 @@ export class ExecutionLogger {
 
   constructor(options: ExecutionLoggerOptions) {
     this.options = options;
-    this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'logs');
+    this.logDirPath = getSessionDebugDir(options.featurePath, options.agent ?? resolveDebugAgentName(), 'logs');
     this.logFilePath = path.join(this.logDirPath, `log-${options.jobId}.json`);
   }
 

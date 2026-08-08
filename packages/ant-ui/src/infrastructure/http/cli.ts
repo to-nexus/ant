@@ -21,6 +21,10 @@ export interface ExecuteCodeJobOptions {
   seedTurnId?: string;
   /** Universal runtime — `{agentId}/{jobId}` composite custom-job reference. */
   customJobRef?: string;
+  /** Universal only — explicit `@intent:` mentions for this run. */
+  intents?: string[];
+  /** Universal only — explicit `@ctx:` artifact paths for this run. */
+  context?: string[];
 }
 
 export interface JobExecution {
@@ -44,6 +48,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     actionMetadata,
     seedTurnId,
     customJobRef,
+    intents,
+    context,
   } = options;
 
   if (!featureName) {
@@ -106,6 +112,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     actionMetadata,
     seedTurnId,
     customJobRef,
+    intents,
+    context,
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);

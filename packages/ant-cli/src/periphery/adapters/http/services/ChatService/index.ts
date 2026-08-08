@@ -1471,7 +1471,9 @@ export class ChatService {
       return null;
     }
     if (!featurePath) return null;
-    return new FileSessionAdapter(featurePath, 'architect', projectId, featureName);
+    // Chat layer never owns a session JSON — chat-log-only variant (a stray
+    // save() would scaffold sessions/architect inside a universal container).
+    return FileSessionAdapter.forChatLog(featurePath, projectId, featureName);
   }
 
   private async appendAndBroadcast(

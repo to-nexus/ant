@@ -46,16 +46,58 @@ const HISTORY_BUDGET_FLOOR = 75_000;
 const COMPACT_TRIGGER_RATIO = 0.85;
 
 /**
- * Render the custom definition as one inert boundary-tagged block:
- * merged base prose → injections TOC (progressive disclosure via read_file on
- * the read-only definition mount) → outputs contract vocabulary.
+ * Budget for intent-inlined injection bodies (separate from the base/ 8k
+ * prose cap). On overflow, files demote WHOLESALE back to the TOC (in TOC
+ * order) with an "applies now" marker — a truncated instruction file is
+ * worse than a pointered one.
  */
-export function buildCustomJobSystemBlock(resolved: ResolvedCustomJob): string {
+export const INJECTION_INLINE_CAP = 12_000;
+
+/**
+ * Render the custom definition as one inert boundary-tagged block:
+ * merged base prose → intent-matched injections INLINED in full → remaining
+ * injections as a TOC (progressive disclosure via read_file on the read-only
+ * definition mount) → outputs contract vocabulary.
+ *
+ * `general` semantics: implicit/reserved/unmappable — when activeIntents is
+ * `['general']` even mapped injections stay TOC-only (always-on prose belongs
+ * in `base/`, not in an injection).
+ */
+export function buildCustomJobSystemBlock(resolved: ResolvedCustomJob, activeIntents: string[] = []): string {
   const parts: string[] = [resolved.prose];
 
-  if (resolved.injectionsToc.length > 0) {
-    const toc = resolved.injectionsToc
-      .map((e) => `- \`${DEFINITION_MOUNT_PREFIX}injections/${e.file}\` — ${e.summary}`)
+  const active = new Set(activeIntents);
+  const inlined: Array<{ entry: (typeof resolved.injectionsToc)[number]; matched: string[] }> = [];
+  const demoted = new Set<string>();
+  let inlineBudget = INJECTION_INLINE_CAP;
+  for (const entry of resolved.injectionsToc) {
+    const matched = (entry.intents ?? []).filter((i) => active.has(i));
+    if (matched.length === 0 || !entry.body) continue;
+    if (entry.body.length > inlineBudget) {
+      demoted.add(entry.file);
+      continue;
+    }
+    inlineBudget -= entry.body.length;
+    inlined.push({ entry, matched });
+  }
+
+  if (inlined.length > 0) {
+    const sections = inlined.map(
+      ({ entry, matched }) => `### ${entry.file} (intents: ${matched.join(', ')})\n\n${entry.body!.trim()}`,
+    );
+    parts.push(`## Active Situation Instructions (intents: ${activeIntents.join(', ')})\n\n${sections.join('\n\n')}`);
+  }
+
+  const inlinedFiles = new Set(inlined.map(({ entry }) => entry.file));
+  const tocEntries = resolved.injectionsToc.filter((e) => !inlinedFiles.has(e.file));
+  if (tocEntries.length > 0) {
+    const toc = tocEntries
+      .map((e) => {
+        const marker = demoted.has(e.file)
+          ? ' (applies to the current request — load with `read_file` before acting)'
+          : '';
+        return `- \`${DEFINITION_MOUNT_PREFIX}injections/${e.file}\` — ${e.summary}${marker}`;
+      })
       .join('\n');
     parts.push(
       `## Conditional Instructions (load on demand)\n` +
@@ -97,13 +139,28 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
       workspaceAccess: resolved.workspace,
       hasMcpServers: Object.keys(resolved.mcpServers).length > 0,
       definitionMount: DEFINITION_MOUNT_PREFIX,
+      // Plan convention (job.yaml `plan:`): off → no plan section at all.
+      planMode: resolved.plan,
+      planDir: resolved.plan === 'off' ? undefined : `plan/${resolved.agentId}/${resolved.jobId}`,
     },
     // Custom definition rides as an inert system-suffix — after injections,
     // before policy (guardrail-first / policy-last invariants intact).
-    inertSystemAppend: buildCustomJobSystemBlock(resolved),
+    inertSystemAppend: buildCustomJobSystemBlock(resolved, state.activeIntents ?? []),
   });
 
-  return [result.system, result.user].filter(Boolean).join('\n\n---\n\n');
+  const sections = [result.system, result.user];
+
+  // `@ctx:` mentions — path list only (universal has no RAC/pool; tool access
+  // suffices, no full-content load).
+  if (state.explicitContext && state.explicitContext.length > 0) {
+    sections.push(
+      `## Attached Context (user-specified)\n` +
+      `The user attached these workspace files to this request. Read each with \`read_file\` before acting:\n` +
+      state.explicitContext.map((p) => `- \`${p}\``).join('\n'),
+    );
+  }
+
+  return sections.filter(Boolean).join('\n\n---\n\n');
 }
 
 /** Builtin allowlist + connected MCP tools, shaped for llm.stream. */

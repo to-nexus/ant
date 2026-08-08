@@ -13,7 +13,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { getSessionDebugDir } from './sessionPaths';
+import { getSessionDebugDir, resolveDebugAgentName } from './sessionPaths';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Types
@@ -85,6 +85,8 @@ export interface TokenLogContext {
 export interface TokenLoggerOptions {
   featurePath: string;
   jobId: string;
+  /** Debug-dir owner; defaults per job type (universal → custom agentId). */
+  agent?: string;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -115,7 +117,7 @@ export class TokenLogger {
 
   constructor(private options: TokenLoggerOptions) {
     this.jobId = options.jobId;
-    this.logDirPath = getSessionDebugDir(options.featurePath, 'architect', 'tokens');
+    this.logDirPath = getSessionDebugDir(options.featurePath, options.agent ?? resolveDebugAgentName(), 'tokens');
     this.logFilePath = path.join(this.logDirPath, `token-${options.jobId}.json`);
   }
 

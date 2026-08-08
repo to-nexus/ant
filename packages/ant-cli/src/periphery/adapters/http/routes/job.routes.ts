@@ -76,7 +76,10 @@ async function resolveUniversalExecuteContext(
   userContext: { userId: string; organizationId: string },
   projectId: string,
   customJobRef: unknown,
-): Promise<{ ok: true; containerPath: string; ref: { agentId: string; jobId: string } } | { ok: false; status: number; error: string; code: string }> {
+): Promise<
+  | { ok: true; containerPath: string; ref: { agentId: string; jobId: string }; intentIds: Set<string> }
+  | { ok: false; status: number; error: string; code: string }
+> {
   const { parseCustomJobRef } = await import('@ant/shared');
   const ref = parseCustomJobRef(typeof customJobRef === 'string' ? customJobRef : undefined);
   if (!ref) {
@@ -93,17 +96,67 @@ async function resolveUniversalExecuteContext(
   } catch (e) {
     return { ok: false, status: 400, error: `Cannot read project config for "${projectId}": ${e instanceof Error ? e.message : String(e)}`, code: 'project-config-unreadable' };
   }
+  let intentIds: Set<string>;
   try {
     const { deriveCustomAgentScopeRoots } = await import('../../../../core/customAgents/scopeRoots');
     const { loadCustomJob } = await import('../../../../core/customAgents/CustomAgentLoader');
-    loadCustomJob(deriveCustomAgentScopeRoots(projectPath), ref.agentId, ref.jobId);
+    const loaded = loadCustomJob(deriveCustomAgentScopeRoots(projectPath), ref.agentId, ref.jobId);
+    intentIds = new Set(loaded.intents.map((i) => i.id));
   } catch (e) {
     return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e), code: 'invalid-custom-job-definition' };
   }
   const { ensureUniversalContainer } = await import('../../../../core/customAgents/universalContainer');
   ensureUniversalContainer(projectPath);
   const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
-  return { ok: true, containerPath, ref };
+  return { ok: true, containerPath, ref, intentIds };
+}
+
+/**
+ * Validate the explicit turn meta (`@intent:` / `@ctx:` mentions) against the
+ * job's merged catalog and the container's artifacts subtree. Explicit input
+ * is user intent — an unknown id is a 400 (`unknown-intent`), never a silent
+ * drop (that contract belongs to the inference channel).
+ */
+export async function validateUniversalTurnMeta(
+  containerPath: string,
+  intentIds: Set<string>,
+  rawIntents: unknown,
+  rawContext: unknown,
+): Promise<
+  | { ok: true; meta: { intents: string[]; context: string[] } | null }
+  | { ok: false; status: number; error: string; code: string }
+> {
+  const { GENERAL_INTENT } = await import('@ant/shared');
+  const intents = Array.isArray(rawIntents) ? rawIntents.filter((i): i is string => typeof i === 'string') : [];
+  const context = Array.isArray(rawContext) ? rawContext.filter((c): c is string => typeof c === 'string') : [];
+  if (intents.length === 0 && context.length === 0) return { ok: true, meta: null };
+
+  for (const id of intents) {
+    if (id !== GENERAL_INTENT && !intentIds.has(id)) {
+      return { ok: false, status: 400, error: `Unknown intent id for this job: "${id}"`, code: 'unknown-intent' };
+    }
+  }
+
+  const { resolveUniversalMergedPath, UNIVERSAL_SESSIONS_NODE } = await import('../../../../core/customAgents/universalContainer');
+  for (const rel of context) {
+    const first = rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0];
+    if (first === UNIVERSAL_SESSIONS_NODE) {
+      // sessions is outside the agent sandbox (artifacts + definition mount
+      // only) — an attached file the agent cannot read is a broken promise.
+      return { ok: false, status: 400, error: `Context path is outside the artifacts tree: "${rel}"`, code: 'invalid-context-path' };
+    }
+    let full: string;
+    try {
+      full = resolveUniversalMergedPath(containerPath, rel);
+    } catch {
+      return { ok: false, status: 400, error: `Invalid context path: "${rel}"`, code: 'invalid-context-path' };
+    }
+    if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+      return { ok: false, status: 400, error: `Context file not found: "${rel}"`, code: 'invalid-context-path' };
+    }
+  }
+
+  return { ok: true, meta: { intents: [...new Set(intents)], context: [...new Set(context)] } };
 }
 
 /**
@@ -313,7 +366,7 @@ export function createJobRoutes(deps: {
     // turn when the execute pipeline throws (queue / spawn / …).
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef } = req.body;
+    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, intents, context } = req.body;
     let userContext: { userId: string; organizationId: string } | null = null;
     try {
       userContext = extractUserContext(req);
@@ -338,6 +391,7 @@ export function createJobRoutes(deps: {
       // resolve the container path that flows where a featurePath would. The
       // `:feature` URL param must be the constant universal pseudo-feature.
       let universalCtx: { containerPath: string; ref: { agentId: string; jobId: string } } | null = null;
+      let universalTurnMeta: { intents: string[]; context: string[] } | null = null;
       if (jobType === 'universal') {
         const { UNIVERSAL_FEATURE } = await import('@ant/shared');
         if (featureName !== UNIVERSAL_FEATURE) {
@@ -353,6 +407,14 @@ export function createJobRoutes(deps: {
           return res.status(resolved.status).json({ error: resolved.error, code: resolved.code });
         }
         universalCtx = { containerPath: resolved.containerPath, ref: resolved.ref };
+
+        // Explicit turn meta (`@intent:` / `@ctx:` mentions) — fail-loud at
+        // accept; explicit input never silently drops.
+        const metaResult = await validateUniversalTurnMeta(resolved.containerPath, resolved.intentIds, intents, context);
+        if (!metaResult.ok) {
+          return res.status(metaResult.status).json({ error: metaResult.error, code: metaResult.code });
+        }
+        universalTurnMeta = metaResult.meta;
       }
 
       // Check if this feature already has a running or interrupted job of the same type
@@ -525,6 +587,7 @@ export function createJobRoutes(deps: {
         ...(universalCtx && {
           customJobRef: `${universalCtx.ref.agentId}/${universalCtx.ref.jobId}`,
         }),
+        ...(universalTurnMeta && { universalTurnMeta }),
         // chat SSOT §6 — pre-allocated turnId from /chat/user-message,
         // forwarded to the worker so the durable user_turn line shares
         // the same id as the optimistic SSE broadcast.

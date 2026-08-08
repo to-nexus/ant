@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { UI_PANEL_TOP_LEVEL_DIRS, type ArtifactPermissions } from '@ant/shared';
+import { UI_PANEL_TOP_LEVEL_DIRS, getUniversalArtifactDirPolicy, type ArtifactPermissions } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import {
@@ -35,8 +35,14 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
   const isRunning = useStore((state) => state.isRunning);
   const { showError } = useAlertModalContext();
 
+  // Canonical mirror: file selection lives in fileSlice/uiSlice so a click
+  // opens the shared FileEditorPanel (universalSlice pins selectedFeature to
+  // 'universal', so openFile/save resolve against the container seam).
+  const selectedFile = useStore((state) => state.selectedFile);
+  const selectFile = useStore((state) => state.selectFile);
+  const openMainPanelTab = useStore((state) => state.openMainPanelTab);
+
   const [tree, setTree] = useState<FileNode[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string | undefined>(undefined);
   const [uploading, setUploading] = useState(false);
 
   const loadTree = useCallback(async () => {
@@ -133,8 +139,15 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
           ) : undefined
         }
         getNodePermissions={getNodePermissions}
-        onFileSelect={(path) => setSelectedFile(path || undefined)}
-        selectedFile={selectedFile}
+        resolveDirPolicy={getUniversalArtifactDirPolicy}
+        onFileSelect={(path) => {
+          // ArtifactsSection uses '' to mean deselect.
+          selectFile(path);
+          if (path && path.length > 0) {
+            openMainPanelTab('fileEdit');
+          }
+        }}
+        selectedFile={selectedFile || undefined}
         onCreateFile={(dirPath, fileName) =>
           void mutate(() => createUniversalArtifactFile(selectedProject, joinDir(dirPath, fileName)))
         }

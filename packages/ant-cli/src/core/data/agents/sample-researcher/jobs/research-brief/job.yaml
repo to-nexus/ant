@@ -12,7 +12,7 @@ outputs:
   mode: contract # 'none' = chat only, 'free' = any files, 'contract' = artifacts below
   artifacts:
     - kind: research-brief # vocabulary name the prompt refers to this artifact by
-      dir: briefs/ # relative to universal/artifacts/ ('plans/' is reserved)
+      dir: briefs/ # relative to universal/artifacts/ ('plan/' is reserved)
       format: md
       naming: llm # the model chooses the filename
       update: in-place # follow-up turns edit the existing file, not a new one

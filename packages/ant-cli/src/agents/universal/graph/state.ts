@@ -51,6 +51,16 @@ export interface UniversalGraphState extends ResolvableState {
   _turnToolWrites: string[];
   /** Top-level artifact tree overview built by resolve (existence band). */
   artifactsOverview?: string;
+  /**
+   * Active intent ids for this run — classify node output (explicit >
+   * inferred > ['general']). Gates injection inlining in the agent's system
+   * block. Sealed by respond; restored by the runner.
+   */
+  activeIntents: string[];
+  /** Explicit `@intent:` mentions for THIS run only (never persisted). */
+  explicitIntents?: string[];
+  /** Explicit `@ctx:` artifact paths for THIS run only (never persisted). */
+  explicitContext?: string[];
 }
 
 export const UniversalAnnotation = Annotation.Root({
@@ -67,6 +77,10 @@ export const UniversalAnnotation = Annotation.Root({
   executionTier: Annotation<ExecutionTierId | undefined>,
   _turnToolWrites: Annotation<string[]>,
   artifactsOverview: Annotation<string | undefined>,
+  // Undeclared channels are DROPPED by LangGraph — declare every intent field.
+  activeIntents: Annotation<string[]>,
+  explicitIntents: Annotation<string[] | undefined>,
+  explicitContext: Annotation<string[] | undefined>,
 } as const);
 
 export function createInitialUniversalState(params: {
@@ -78,6 +92,12 @@ export function createInitialUniversalState(params: {
   _httpJobId?: string;
   isResume?: boolean;
   conversations?: Conversations;
+  /** Restored classification from the sealed session (resume). */
+  activeIntents?: string[];
+  /** `@intent:` mentions for this run (validated at accept). */
+  explicitIntents?: string[];
+  /** `@ctx:` artifact paths for this run (existence-checked at accept). */
+  explicitContext?: string[];
 }): UniversalGraphState {
   const RESOLVED_TIER = 0 as ExecutionTierId; // ExecutionTierId.Reflex (avoid runtime import)
   return {
@@ -96,5 +116,8 @@ export function createInitialUniversalState(params: {
     pendingToolCalls: [],
     executionTier: RESOLVED_TIER,
     _turnToolWrites: [],
+    activeIntents: params.activeIntents?.length ? params.activeIntents : ['general'],
+    explicitIntents: params.explicitIntents,
+    explicitContext: params.explicitContext,
   } as unknown as UniversalGraphState;
 }

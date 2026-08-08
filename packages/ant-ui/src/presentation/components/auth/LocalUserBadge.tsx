@@ -1,4 +1,4 @@
-import { Monitor, User, ChevronDown } from 'lucide-react';
+import { Monitor, User, Bot, ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
@@ -91,6 +91,27 @@ export function LocalUserBadge() {
           >
             <User className="w-4 h-4" />
             {t('auth.accountConfig')}
+          </button>
+          <button
+            onClick={() => {
+              setQuickStartProjectId(undefined);
+              setOnboardingSkipped(true);
+              openMainPanelTab('agentSettings');
+              setOpen(false);
+            }}
+            className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+            style={{
+              color: 'var(--text-2)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-hover)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <Bot className="w-4 h-4" />
+            {t('auth.agentSettings', '에이전트 설정')}
           </button>
         </div>
       )}

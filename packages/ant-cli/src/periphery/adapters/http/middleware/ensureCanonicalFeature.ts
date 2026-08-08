@@ -22,6 +22,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { featureSlugToName } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { ensureCanonicalStructure } from '../../../../core/utils/sessionPaths';
+import { resolveUniversalContainerPath } from '../../../../core/customAgents/universalContainer';
 import { extractUserContext } from '../routes/helpers/userContext';
 import { logger } from '../../../../utils/logger';
 
@@ -76,6 +77,12 @@ export function ensureCanonicalFeatureMiddleware(workspaceResolver: WorkspaceRes
 
     try {
       const userContext = extractUserContext(req);
+      // Universal pseudo-feature: the container has its own layout — never
+      // scaffold the canonical feature skeleton onto it.
+      const projectPath = workspaceResolver.getProjectPath(userContext, decodedProjectId);
+      if (resolveUniversalContainerPath(projectPath, decodedFeatureName)) {
+        return next();
+      }
       const featurePath = workspaceResolver.getFeaturePath(
         userContext,
         decodedProjectId,

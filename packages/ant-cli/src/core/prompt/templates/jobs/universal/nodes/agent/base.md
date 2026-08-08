@@ -21,6 +21,17 @@ Paths are relative to the working tree root. Explore deeper with `list_files` / 
 This job has external MCP servers connected. Their tools appear in your tool list with the `mcp__` prefix. Tools marked as requiring user approval cannot run unattended — if such a call is rejected, explain to the user what you intended and how to proceed.
 {{/if}}
 
+{{#if planDir}}
+## Plan Directory
+
+This job's plan documents live under `{{planDir}}` in the working tree.
+{{#if (eq planMode 'required')}}
+⚠️ Planning is REQUIRED for this job: before producing the main output of a non-trivial request, write (or update) a plan document under `{{planDir}}` and keep it current as the work proceeds.
+{{else}}
+When a request is complex enough to benefit from a written plan, put the plan document under `{{planDir}}`.
+{{/if}}
+{{/if}}
+
 ## Definition Files (read-only)
 
 Your definition's conditional instruction files are mounted read-only under `{{definitionMount}}`. When the definition's table of contents indicates a file applies to the current situation, load it with `read_file` before acting. This mount is never writable.

@@ -4,6 +4,7 @@ import { KanbanBoard } from '../kanban';
 import { AgentWorkflowBoard } from '../workflow';
 import { ConfigEditor } from '../ConfigEditor';
 import { AccountConfigEditor } from '../AccountConfigEditor';
+import { AgentSettings } from '../AgentSettings';
 import { FileEditorPanel } from '../FileEditorPanel';
 import { TransferTab } from '../Transfer/TransferTab';
 import { PreviewConfigEditor } from '../PreviewConfigEditor';
@@ -214,6 +215,17 @@ export function MainContentArea({
           style={{ background: 'var(--bg-canvas)' }}
         >
           <Slot name="mainPanel.billing" />
+        </div>
+      ) : activeTab === 'agentSettings' && openTabs.agentSettings ? (
+        // Account-scoped screen (accountConfig model) — renders without a
+        // selected project; never reads project state.
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-surface)' }}
+        >
+          <AgentSettings
+            onClose={() => useStore.getState().closeMainPanelTab('agentSettings')}
+          />
         </div>
       ) : (
         <div className="flex-1 h-full">

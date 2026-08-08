@@ -102,8 +102,10 @@ export async function orchestrator(params: {
   seedTurnId?: string;
   /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
   customJobRef?: string;
+  /** Universal only — explicit `@intent:`/`@ctx:` turn meta (validated at accept). */
+  universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
 }) {
-  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume, seedTurnId, customJobRef } = params;
+  const { agent, jobType, input, project, feature, inputFile, mode, enableEvaluation, jobId, featurePath, projectPath, workspaceResolver, userContext, overrideDirective, chatSource, skipTriage, actionMetadata, isResume, seedTurnId, customJobRef, universalTurnMeta } = params;
 
   switch (agent) {
     case "architect": {
@@ -673,6 +675,8 @@ export async function orchestrator(params: {
         containerPath: featurePath,
         projectId: project || 'default',
         isResume,
+        explicitIntents: universalTurnMeta?.intents,
+        explicitContext: universalTurnMeta?.context,
         deps: { llm, session, promptBuilder, fileSystem, kanbanUpdate, workflowUpdate, fileTreeUpdate },
         _httpJobId: jobId,
       });

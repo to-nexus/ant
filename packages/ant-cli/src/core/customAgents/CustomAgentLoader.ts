@@ -31,6 +31,13 @@ import {
   type ResolvedCustomJob,
 } from './types.js';
 import { UNIVERSAL_BUILTIN_TOOLS, WRITE_TOOLS } from './universalToolPolicy.js';
+import {
+  intentsFilePathFor,
+  mergeIntentCatalogs,
+  parseIntentsYaml,
+  tryReadMergedIntentSummaries,
+  validateIntentInjectionRefs,
+} from './intents.js';
 
 /** One discovery root, in D8 priority order (user > org > builtin). */
 export interface CustomAgentScopeRoot {
@@ -147,7 +154,9 @@ function readInjectionsToc(dir: string): InjectionTocEntry[] {
     const absolutePath = path.join(dir, f);
     const content = fs.readFileSync(absolutePath, 'utf-8');
     const summary = content.split('\n').find((l) => l.trim().length > 0)?.trim() ?? '';
-    return { file: f, summary, absolutePath };
+    // Body rides along so intent-mapped entries can be annotated without a
+    // second disk read (the file is already fully read for its summary).
+    return { file: f, summary, absolutePath, body: content };
   });
 }
 
@@ -173,7 +182,15 @@ function summarizeJobs(agentDir: string): CustomJobSummary[] {
     try {
       const job = yaml.load(fs.readFileSync(yamlPath, 'utf-8')) as CustomJobYaml;
       if (job && typeof job === 'object' && job.id === entry.name) {
-        summaries.push({ id: job.id, name: job.name ?? job.id, description: job.description ?? '' });
+        // Lenient intents projection for the `@intent:` mention vocabulary —
+        // omitted (not []) when the catalog fails to parse.
+        const intents = tryReadMergedIntentSummaries(agentDir, path.join(jobsDir, entry.name), path.basename(agentDir), entry.name);
+        summaries.push({
+          id: job.id,
+          name: job.name ?? job.id,
+          description: job.description ?? '',
+          ...(intents ? { intents } : {}),
+        });
       }
     } catch {
       // Discovery is lenient (a broken job must not hide its siblings);
@@ -299,9 +316,42 @@ export function loadCustomJob(
   }
 
   // injections TOC: union, job wins on filename collision
+  const agentToc = readInjectionsToc(path.join(agentDir, 'injections'));
+  const jobToc = readInjectionsToc(path.join(jobDir, 'injections'));
   const tocByFile = new Map<string, InjectionTocEntry>();
-  for (const entry of readInjectionsToc(path.join(agentDir, 'injections'))) tocByFile.set(entry.file, entry);
-  for (const entry of readInjectionsToc(path.join(jobDir, 'injections'))) tocByFile.set(entry.file, entry);
+  for (const entry of agentToc) tocByFile.set(entry.file, entry);
+  for (const entry of jobToc) tocByFile.set(entry.file, entry);
+
+  // intents: dedicated single-file catalog per level (agent-shared +
+  // optional job extension), job entry wins WHOLESALE on id collision.
+  // Injection refs are LEVEL-scoped: agent intents may only reference agent
+  // injections (a job-private ref would explode on sibling jobs); job
+  // intents see the merged set.
+  const agentIntents = parseIntentsYaml(intentsFilePathFor(agentDir), agentId);
+  const jobIntents = parseIntentsYaml(intentsFilePathFor(jobDir), agentId, jobId);
+  validateIntentInjectionRefs(agentIntents, new Set(agentToc.map((e) => e.file)), `agent "${agentId}"`, agentId);
+  validateIntentInjectionRefs(jobIntents, new Set(tocByFile.keys()), `merged agent+job`, agentId, jobId);
+  const intents = mergeIntentCatalogs(agentIntents, jobIntents, agentId, jobId);
+
+  // Annotate the TOC with the reverse mapping (file → intent ids); body is
+  // kept ONLY on intent-mapped entries (they inline in full at prompt time —
+  // no mid-job disk re-read), and dropped elsewhere.
+  const intentsByFile = new Map<string, string[]>();
+  for (const intent of intents) {
+    for (const f of intent.injections ?? []) {
+      const list = intentsByFile.get(f);
+      if (list) list.push(intent.id);
+      else intentsByFile.set(f, [intent.id]);
+    }
+  }
+  for (const [file, entry] of tocByFile) {
+    const mapped = intentsByFile.get(file);
+    if (mapped) {
+      entry.intents = mapped;
+    } else {
+      delete entry.body;
+    }
+  }
 
   // mcp servers: union, job wins on name collision
   const mcpServers: Record<string, McpServerConfig> = {
@@ -332,6 +382,7 @@ export function loadCustomJob(
     description: job.description ?? '',
     prose,
     injectionsToc: Array.from(tocByFile.values()),
+    intents,
     mcpServers,
     builtinTools,
     approval,

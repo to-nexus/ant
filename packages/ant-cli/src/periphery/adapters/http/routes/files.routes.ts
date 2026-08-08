@@ -12,6 +12,7 @@ import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
 import { writeBufferVerified, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
+import { resolveFeatureScopedFilePath } from './helpers/featureFiles';
 
 /**
  * File operations (read, write, delete, upload)
@@ -149,8 +150,8 @@ export function createFilesRoutes(deps: {
 
       const userContext = extractUserContext(req);
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const fullPath = resolveSafePath(featurePath, filePath);
+      // Universal-aware seam (blob/image preview must reach the container).
+      const fullPath = resolveFeatureScopedFilePath(workspaceResolver, userContext, projectId, featureName, filePath);
 
       try {
         const stat = await fs.promises.stat(fullPath);
@@ -566,8 +567,8 @@ export function createFilesRoutes(deps: {
 
       const userContext = extractUserContext(req);
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const fullPath = resolveSafePath(featurePath, relativePath);
+      // Universal-aware seam (download must reach the container).
+      const fullPath = resolveFeatureScopedFilePath(workspaceResolver, userContext, projectId, featureName, relativePath);
 
       // Check existence
       try {

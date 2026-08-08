@@ -22,6 +22,10 @@ const useMentionSrc = readFileSync(
   resolve(here, '../useMentionAutocomplete.ts'),
   'utf-8',
 );
+const universalSurfaceSrc = readFileSync(
+  resolve(here, '../universalMentionSurface.ts'),
+  'utf-8',
+);
 const enChat = readFileSync(
   resolve(here, '../../../../../i18n/locales/en/chat.json'),
   'utf-8',
@@ -53,5 +57,46 @@ describe('chat-input mention surface — `@domain:` is intentionally absent', ()
     expect(koMention).toBeDefined();
     expect(enMention!.domain).toBeUndefined();
     expect(koMention!.domain).toBeUndefined();
+  });
+});
+
+describe('universal mention surface (D-E) — source-level invariants', () => {
+  it('universal prefixes are exactly @intent: and @ctx: (no @target:/@ref:/@explicit)', () => {
+    const m = universalSurfaceSrc.match(/UNIVERSAL_MENTION_PREFIXES = \[([^\]]*)\]/);
+    expect(m).not.toBeNull();
+    const prefixes = [...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+    expect(prefixes).toEqual(['@intent:', '@ctx:']);
+  });
+
+  it('universal @intent: vocabulary comes from the selected job catalog (API data), not INTENT_DEFINITIONS', () => {
+    // The universal branch reads `universalJobIntents` (CustomJobSummary.intents projection).
+    expect(useMentionSrc).toMatch(/universalJobIntents/);
+    // And the prefix command only surfaces when the job declares a catalog.
+    expect(useMentionSrc).toMatch(/universalJobIntents\.length > 0/);
+  });
+
+  it('universal @intent: mentions ACCUMULATE (multi-label) via universalTurnMeta, never actionMetadata', () => {
+    expect(useMentionSrc).toMatch(/addUniversalIntentMention\(suggestion\.id\)/);
+    expect(useMentionSrc).toMatch(/addUniversalContextMention\(suggestion\.id\)/);
+  });
+
+  it('universal @ctx: excludes the grafted sessions node (outside the agent sandbox)', () => {
+    expect(useMentionSrc).toMatch(/isUniversalCtxSuggestible/);
+  });
+
+  it('@explicit is never settable on universal (no triage to bypass)', () => {
+    expect(useMentionSrc).toMatch(/!isUniversal && canStartChat && actionMetadata\.explicit !== true/);
+  });
+});
+
+describe('isUniversalCtxSuggestible — behavior rows', () => {
+  it('artifacts paths suggestible; sessions subtree excluded', async () => {
+    const { isUniversalCtxSuggestible } = await import('../universalMentionSurface');
+    expect(isUniversalCtxSuggestible('plan/notes.md')).toBe(true);
+    expect(isUniversalCtxSuggestible('briefs/a.md')).toBe(true);
+    expect(isUniversalCtxSuggestible('sessions')).toBe(false);
+    expect(isUniversalCtxSuggestible('sessions/chat.jsonl')).toBe(false);
+    // Name-collision guard: a user dir merely PREFIXED with "sessions" stays suggestible.
+    expect(isUniversalCtxSuggestible('sessions-notes/a.md')).toBe(true);
   });
 });

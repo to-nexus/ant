@@ -43,6 +43,10 @@ export interface ExecuteJobParams {
    * 'universal' pseudo-feature (the workspace's single chat container).
    */
   customJobRef?: string;
+  /** Universal only — explicit `@intent:` mentions (validated at accept). */
+  intents?: string[];
+  /** Universal only — explicit `@ctx:` artifact paths (checked at accept). */
+  context?: string[];
 }
 
 // `JobStatus` interface was removed along with `fetchJobStatus` — the
@@ -67,13 +71,15 @@ export async function executeJob(
     actionMetadata,
     seedTurnId,
     customJobRef,
+    intents,
+    context,
   } = params;
 
   if (!featureName) {
     throw new Error('Feature name is required for job execution');
   }
 
-  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef };
+  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, intents, context };
   const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/execute`;
 
   const response = await authFetch(endpoint, {

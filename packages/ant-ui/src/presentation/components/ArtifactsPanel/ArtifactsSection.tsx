@@ -21,7 +21,7 @@ import {
   type SectionAccent,
 } from '@/shared/utils/canonical-dirs';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
-import type { ArtifactPermissions } from '@ant/shared';
+import type { ArtifactDirPolicy, ArtifactPermissions } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
 
@@ -78,6 +78,12 @@ export interface ArtifactsSectionProps {
    * the universal workspace passes `''` (the artifacts root).
    */
   rootDirPath?: string;
+  /**
+   * Per-directory policy resolver. Defaults to the canonical
+   * `getArtifactDirPolicy`; the universal workspace passes its own table
+   * (e.g. `plan` allows subdirs there) — codespace behavior is unchanged.
+   */
+  resolveDirPolicy?: (path: string) => ArtifactDirPolicy | null;
 }
 
 /**
@@ -113,6 +119,7 @@ export function ArtifactsSection({
   accent,
   getNodePermissions,
   rootDirPath,
+  resolveDirPolicy = getArtifactDirPolicy,
 }: ArtifactsSectionProps) {
   const { t } = useTranslation('artifacts');
   // `expandedDirs` is lifted to the zustand store so it survives transient
@@ -451,7 +458,7 @@ export function ArtifactsSection({
         onCreateDirectory &&
         !isStructural &&
         allowCreate &&
-        getArtifactDirPolicy(node.path)?.allowSubdirs !== false
+        resolveDirPolicy(node.path)?.allowSubdirs !== false
           ? () => {
               setCreateType('directory');
               setShowCreateForm(isCreatingInThisDir ? null : node.path);
@@ -512,7 +519,7 @@ export function ArtifactsSection({
             multiple
             className="hidden"
             id={`upload-${node.path}`}
-            accept={getArtifactDirPolicy(node.path)?.acceptedExtensions?.join(',') || undefined}
+            accept={resolveDirPolicy(node.path)?.acceptedExtensions?.join(',') || undefined}
             onChange={(e) => {
               if (e.target.files && onUploadFiles) {
                 onUploadFiles(node.path, e.target.files);
@@ -724,7 +731,7 @@ export function ArtifactsSection({
           if (dirPath != null) {
             const entries = await extractDroppedFiles(e.dataTransfer);
             if (entries.length > 0) {
-              const policy = getArtifactDirPolicy(dirPath);
+              const policy = resolveDirPolicy(dirPath);
               if (policy) {
                 const valid: typeof entries = [];
                 const blocked: typeof entries = [];

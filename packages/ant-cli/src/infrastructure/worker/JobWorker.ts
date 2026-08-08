@@ -581,6 +581,10 @@ export class JobWorker {
     if (payload.customJobRef) {
       env.ANT_CUSTOM_JOB_REF = payload.customJobRef;
     }
+    if (payload.universalTurnMeta) {
+      // Single JSON env — context paths may contain commas, so never CSV.
+      env.ANT_UNIVERSAL_TURN_META = JSON.stringify(payload.universalTurnMeta);
+    }
 
     // Cap the child V8 heap below the pod cgroup memory limit, split across
     // the concurrent job-runner children this worker may spawn. See

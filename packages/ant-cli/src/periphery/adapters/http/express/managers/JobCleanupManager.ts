@@ -175,7 +175,15 @@ export class JobCleanupManager {
       );
       const sessionPath = getSessionFilePathByJob(featurePath, jobType);
 
-      sessionData = await this.deps.sessionService.readSessionData(
+      // Universal session persistence is owned by the runner/respond node.
+      // This manager's featurePath/sessionPath derivation is universal-unaware
+      // (`features/universal/sessions/universal/`), so any read-modify-write
+      // here would mint a phantom feature dir. Broadcast + cancelled card
+      // (Phase B) still run; the crash-time final state simply stays unrecorded
+      // (same acceptance as the existing universal interruption no-op).
+      const skipSessionSync = jobType === 'universal';
+
+      sessionData = skipSessionSync ? null : await this.deps.sessionService.readSessionData(
         mapping.projectId,
         mapping.featureName || 'skeleton',
         jobType,
@@ -431,7 +439,7 @@ export class JobCleanupManager {
           
           // Write updated session (atomic: temp file + rename to prevent corruption)
           await atomicWriteFile(sessionPath, JSON.stringify(sessionData, null, 2));
-        } else if (interruptionReason) {
+        } else if (interruptionReason && !skipSessionSync) {
           // ✅ Session file unreadable (corrupted mid-write, EFS stale, or not yet created).
           // CRITICAL: Do NOT blindly create a minimal session with empty taskQueue — this
           // would destroy task state and cause all tasks to disappear from the Kanban.
@@ -747,19 +755,24 @@ export class JobCleanupManager {
 
       // Persist per-jobId kanban snapshot into session.runs[] for dropdown replay.
       // Best-effort: failures here must not block the broadcast.
-      try {
-        const featurePath = this.deps.workspaceResolver.getFeaturePath(
-          userContext,
-          mapping.projectId,
-          mapping.featureName,
-        );
-        await appendJobSnapshotToSession(featurePath, jobType, jobId, kanbanData, derivedStatus);
-      } catch (snapErr) {
-        logger.warn(
-          `Failed to persist kanban snapshot to session`,
-          { component: 'JobCleanupManager', jobId },
-          snapErr,
-        );
+      // Skipped for universal — session files there are per-(agentId, jobId)
+      // and owned by the runner; getFeaturePath here would mkdir a phantom
+      // `features/universal` plane.
+      if (jobType !== 'universal') {
+        try {
+          const featurePath = this.deps.workspaceResolver.getFeaturePath(
+            userContext,
+            mapping.projectId,
+            mapping.featureName,
+          );
+          await appendJobSnapshotToSession(featurePath, jobType, jobId, kanbanData, derivedStatus);
+        } catch (snapErr) {
+          logger.warn(
+            `Failed to persist kanban snapshot to session`,
+            { component: 'JobCleanupManager', jobId },
+            snapErr,
+          );
+        }
       }
 
       // Broadcast via user-scoped Redis Pub/Sub → Realtime Server → SSE

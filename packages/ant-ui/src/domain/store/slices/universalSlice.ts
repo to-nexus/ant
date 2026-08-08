@@ -28,6 +28,11 @@ export interface UniversalState {
   customAgents: CustomAgentSummary[];
   selectedCustomAgentId: string | undefined;
   selectedCustomJobId: string | undefined;
+  /**
+   * Explicit `@intent:` / `@ctx:` mentions accumulated for the NEXT send —
+   * applies to that run only. Reset on job switch and after send.
+   */
+  universalTurnMeta: { intents: string[]; context: string[] };
 }
 
 export interface UniversalActions {
@@ -40,6 +45,13 @@ export interface UniversalActions {
   /** Fetch the agent list and repair/auto-select the (agent, job) pair. */
   loadCustomAgents: (projectId: string) => Promise<void>;
   clearUniversalSelection: () => void;
+  /** Accumulate an `@intent:` mention (multiple allowed, deduped). */
+  addUniversalIntentMention: (intentId: string) => void;
+  removeUniversalIntentMention: (intentId: string) => void;
+  /** Accumulate an `@ctx:` artifact-path mention (deduped). */
+  addUniversalContextMention: (path: string) => void;
+  removeUniversalContextMention: (path: string) => void;
+  resetUniversalTurnMeta: () => void;
 }
 
 export type UniversalSlice = UniversalState & UniversalActions;
@@ -49,6 +61,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
   customAgents: [],
   selectedCustomAgentId: undefined,
   selectedCustomJobId: undefined,
+  universalTurnMeta: { intents: [], context: [] },
 
   setProjectType: (projectType) => {
     const changed = get().projectType !== projectType;
@@ -92,6 +105,8 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     set({
       selectedCustomAgentId: agentId,
       selectedCustomJobId: jobId,
+      // Mentions are job-scoped vocabulary — a job switch invalidates them.
+      universalTurnMeta: { intents: [], context: [] },
     });
   },
 
@@ -119,5 +134,36 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       selectedCustomAgentId: undefined,
       selectedCustomJobId: undefined,
       customAgents: [],
+      universalTurnMeta: { intents: [], context: [] },
     }),
+
+  addUniversalIntentMention: (intentId) => {
+    const meta = get().universalTurnMeta;
+    if (meta.intents.includes(intentId)) return;
+    set({ universalTurnMeta: { ...meta, intents: [...meta.intents, intentId] } });
+  },
+
+  removeUniversalIntentMention: (intentId) => {
+    const meta = get().universalTurnMeta;
+    if (!meta.intents.includes(intentId)) return;
+    set({ universalTurnMeta: { ...meta, intents: meta.intents.filter((i: string) => i !== intentId) } });
+  },
+
+  addUniversalContextMention: (path) => {
+    const meta = get().universalTurnMeta;
+    if (meta.context.includes(path)) return;
+    set({ universalTurnMeta: { ...meta, context: [...meta.context, path] } });
+  },
+
+  removeUniversalContextMention: (path) => {
+    const meta = get().universalTurnMeta;
+    if (!meta.context.includes(path)) return;
+    set({ universalTurnMeta: { ...meta, context: meta.context.filter((p: string) => p !== path) } });
+  },
+
+  resetUniversalTurnMeta: () => {
+    const meta = get().universalTurnMeta;
+    if (meta.intents.length === 0 && meta.context.length === 0) return;
+    set({ universalTurnMeta: { intents: [], context: [] } });
+  },
 });
