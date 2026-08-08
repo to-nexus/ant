@@ -58,7 +58,7 @@ interface JobParams {
   userId: string;
   orgId: string;
   projectPath: string;    // Full project path (already resolved)
-  featurePath: string;    // Full feature path (already resolved; thread path for universal)
+  featurePath: string;    // Full feature path (already resolved; universal container for universal)
   overrideDirective?: string;
   inputFile?: string;
   isResume?: boolean;
@@ -70,8 +70,6 @@ interface JobParams {
   seedTurnId?: string;
   /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
   customJobRef?: string;
-  /** Universal only — thread container id. */
-  threadId?: string;
 }
 
 function getJobParams(): JobParams {
@@ -103,7 +101,6 @@ function getJobParams(): JobParams {
     actionMetadata: process.env.ANT_ACTION_METADATA ? (() => { try { return JSON.parse(process.env.ANT_ACTION_METADATA); } catch { return undefined; } })() : undefined,
     seedTurnId: process.env.ANT_SEED_TURN_ID,
     customJobRef: process.env.ANT_CUSTOM_JOB_REF,
-    threadId: process.env.ANT_THREAD_ID,
   };
 }
 
@@ -229,7 +226,6 @@ async function runJob(params: JobParams): Promise<void> {
       isResume: params.isResume,
       seedTurnId: params.seedTurnId,
       customJobRef: params.customJobRef,
-      threadId: params.threadId,
     });
     
     reportProgress('completed', 'Job completed successfully', 100);
@@ -340,8 +336,8 @@ async function main(): Promise<void> {
   if (params.jobType === 'universal') {
     const { parseCustomJobRef } = await import('@ant/shared');
     const ref = parseCustomJobRef(params.customJobRef);
-    if (!ref || !params.threadId) {
-      throw new Error(`Universal job requires ANT_CUSTOM_JOB_REF + ANT_THREAD_ID (got ref=${params.customJobRef}, thread=${params.threadId})`);
+    if (!ref) {
+      throw new Error(`Universal job requires a valid ANT_CUSTOM_JOB_REF (got: ${params.customJobRef})`);
     }
     const { loadCustomJob } = await import('../core/customAgents/CustomAgentLoader');
     const { deriveCustomAgentScopeRoots } = await import('../core/customAgents/scopeRoots');

@@ -66,25 +66,21 @@ function resolveAgentForJobType(jobType: string): string {
 }
 
 /**
- * Universal job-accept validation (fail-loud, D5): parse the composite ref,
- * validate the thread id, and load+merge the definition so a broken
- * agent.yaml/job.yaml surfaces as HTTP 400 at accept time — never inside the
- * worker child. Returns the resolved thread container path.
+ * Universal job-accept validation (fail-loud, D5): parse the composite ref and
+ * load+merge the definition so a broken agent.yaml/job.yaml surfaces as HTTP
+ * 400 at accept time — never inside the worker child. Returns the universal
+ * container path (`{project}/universal`) that flows where a featurePath would.
  */
 async function resolveUniversalExecuteContext(
   workspaceResolver: WorkspaceResolver,
   userContext: { userId: string; organizationId: string },
   projectId: string,
   customJobRef: unknown,
-  threadId: unknown,
-): Promise<{ ok: true; threadPath: string; ref: { agentId: string; jobId: string } } | { ok: false; status: number; error: string; code: string }> {
-  const { parseCustomJobRef, isValidCustomId } = await import('@ant/shared');
+): Promise<{ ok: true; containerPath: string; ref: { agentId: string; jobId: string } } | { ok: false; status: number; error: string; code: string }> {
+  const { parseCustomJobRef } = await import('@ant/shared');
   const ref = parseCustomJobRef(typeof customJobRef === 'string' ? customJobRef : undefined);
   if (!ref) {
     return { ok: false, status: 400, error: `Invalid or missing customJobRef (expected "{agentId}/{jobId}"): ${String(customJobRef)}`, code: 'invalid-custom-job-ref' };
-  }
-  if (typeof threadId !== 'string' || !isValidCustomId(threadId)) {
-    return { ok: false, status: 400, error: `Invalid or missing threadId (expected [a-z0-9-]+): ${String(threadId)}`, code: 'invalid-thread-id' };
   }
   const projectPath = workspaceResolver.getProjectPath(userContext as any, projectId);
   // Policy flag (D6): custom jobs run only in universal-type projects.
@@ -104,8 +100,42 @@ async function resolveUniversalExecuteContext(
   } catch (e) {
     return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e), code: 'invalid-custom-job-definition' };
   }
-  const threadPath = workspaceResolver.getAgentThreadPath(userContext as any, projectId, ref.agentId, ref.jobId, threadId);
-  return { ok: true, threadPath, ref };
+  const { ensureUniversalContainer } = await import('../../../../core/customAgents/universalContainer');
+  ensureUniversalContainer(projectPath);
+  const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
+  return { ok: true, containerPath, ref };
+}
+
+/**
+ * Reverse direction of the project-type × jobType gate (D6): canonical job
+ * types never run on a universal (workspace) project. Forward direction
+ * (universal job on a canonical project) lives in
+ * `resolveUniversalExecuteContext`. Truth table: `decideProjectJobGate`.
+ */
+async function rejectCanonicalJobOnUniversalProject(
+  workspaceResolver: WorkspaceResolver,
+  userContext: { userId: string; organizationId: string },
+  projectId: string,
+  jobType: string,
+): Promise<{ status: number; error: string; code: string } | null> {
+  const { isUniversalProject, decideProjectJobGate } = await import('../../../../core/customAgents/universalContainer');
+  let projectType: 'universal' | 'canonical' = 'canonical';
+  try {
+    const projectPath = workspaceResolver.getProjectPath(userContext as any, projectId);
+    projectType = isUniversalProject(projectPath) ? 'universal' : 'canonical';
+  } catch {
+    // partial resolvers (tests) / lookup failures → canonical (gate passes;
+    // canonical paths fail loudly downstream if the project is truly broken)
+  }
+  const gate = decideProjectJobGate(projectType, jobType);
+  if (!gate.ok && gate.code === 'project-universal-requires-custom-job') {
+    return {
+      status: 400,
+      error: `Project "${projectId}" is a universal (workspace) project — only custom agent jobs (jobType 'universal') can run here (got: ${jobType})`,
+      code: gate.code,
+    };
+  }
+  return null;
 }
 
 /**
@@ -241,6 +271,27 @@ export function createJobRoutes(deps: {
    * If the session was cleared (interruption is null/missing), the paused job
    * is a "zombie" that can never be dismissed via the UI — auto-dismiss it.
    */
+  /**
+   * Feature-slot → path resolution for routes that serve BOTH project kinds
+   * (stop/dismiss): the universal pseudo-feature maps to `{project}/universal`,
+   * anything else to the canonical feature path.
+   */
+  async function resolveFeatureContainerPath(
+    userContext: { userId: string; organizationId: string },
+    projectId: string,
+    featureName: string,
+  ): Promise<string> {
+    try {
+      const { resolveUniversalContainerPath } = await import('../../../../core/customAgents/universalContainer');
+      const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
+      const containerPath = resolveUniversalContainerPath(projectPath, featureName);
+      if (containerPath) return containerPath;
+    } catch {
+      // partial resolvers (tests) / lookup failures → normal feature path
+    }
+    return deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+  }
+
   function hasResumableSession(featurePath: string, jobId: string): boolean {
     for (const entry of getAllSessionPaths(featurePath)) {
       try {
@@ -262,23 +313,46 @@ export function createJobRoutes(deps: {
     // turn when the execute pipeline throws (queue / spawn / …).
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, threadId } = req.body;
+    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef } = req.body;
     let userContext: { userId: string; organizationId: string } | null = null;
     try {
       userContext = extractUserContext(req);
 
+      // Reverse gate (D6): canonical job types never run on a workspace project.
+      if (jobType !== 'universal') {
+        const rejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, jobType);
+        if (rejected) {
+          await emitConflictAssistantMessage(
+            projectId,
+            featureName,
+            seedTurnId,
+            `gate-${seedTurnId ?? Date.now()}`,
+            userContext,
+            '워크스페이스 프로젝트에서는 커스텀 에이전트 잡만 실행할 수 있습니다.',
+          );
+          return res.status(rejected.status).json({ error: rejected.error, code: rejected.code });
+        }
+      }
+
       // Universal (D5/D6): validate the definition fail-loud at accept time and
-      // resolve the thread container path that flows where a featurePath would.
-      // For universal, the `:feature` URL param carries the threadId.
-      let universalCtx: { threadPath: string; ref: { agentId: string; jobId: string } } | null = null;
+      // resolve the container path that flows where a featurePath would. The
+      // `:feature` URL param must be the constant universal pseudo-feature.
+      let universalCtx: { containerPath: string; ref: { agentId: string; jobId: string } } | null = null;
       if (jobType === 'universal') {
+        const { UNIVERSAL_FEATURE } = await import('@ant/shared');
+        if (featureName !== UNIVERSAL_FEATURE) {
+          return res.status(400).json({
+            error: `Universal jobs ride the constant '${UNIVERSAL_FEATURE}' feature slot (got: ${featureName})`,
+            code: 'invalid-universal-feature',
+          });
+        }
         const resolved = await resolveUniversalExecuteContext(
-          deps.workspaceResolver, userContext, projectId, customJobRef, threadId ?? featureName,
+          deps.workspaceResolver, userContext, projectId, customJobRef,
         );
         if (!resolved.ok) {
           return res.status(resolved.status).json({ error: resolved.error, code: resolved.code });
         }
-        universalCtx = { threadPath: resolved.threadPath, ref: resolved.ref };
+        universalCtx = { containerPath: resolved.containerPath, ref: resolved.ref };
       }
 
       // Check if this feature already has a running or interrupted job of the same type
@@ -295,7 +369,7 @@ export function createJobRoutes(deps: {
           // so supersede the interrupted job instead of hard-blocking with 409.
           // (A genuinely `running` job still 409s below for concurrency.)
           const featurePath = universalCtx
-            ? universalCtx.threadPath
+            ? universalCtx.containerPath
             : deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
           const resumable = hasResumableSession(featurePath, existingJobId);
 
@@ -390,9 +464,9 @@ export function createJobRoutes(deps: {
       }
 
       const featurePath = universalCtx
-        ? universalCtx.threadPath
+        ? universalCtx.containerPath
         : deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      // Universal is chat-driven only — no meta/directives plane in a thread.
+      // Universal is chat-driven only — no meta/directives plane in the container.
       const inputFile = (overrideDirective || universalCtx) ? undefined : path.join(featurePath, `meta/directives/${jobType}/directive.md`);
 
       // Approval gate (stronger than credits): an unapproved account cannot
@@ -450,7 +524,6 @@ export function createJobRoutes(deps: {
         userContext,
         ...(universalCtx && {
           customJobRef: `${universalCtx.ref.agentId}/${universalCtx.ref.jobId}`,
-          threadId: (threadId ?? featureName) as string,
         }),
         // chat SSOT §6 — pre-allocated turnId from /chat/user-message,
         // forwarded to the worker so the durable user_turn line shares
@@ -518,6 +591,12 @@ export function createJobRoutes(deps: {
       }
 
       const userContext = extractUserContext(req);
+
+      // Reverse gate (D6): learn is a canonical job — never on a workspace project.
+      const learnRejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, 'learn');
+      if (learnRejected) {
+        return res.status(learnRejected.status).json({ error: learnRejected.error, code: learnRejected.code });
+      }
 
       // Approval gate — an unapproved account cannot start a learn job.
       const notApprovedLearn = await checkApproval(userContext);
@@ -842,7 +921,7 @@ export function createJobRoutes(deps: {
 
     const resolvedJobType = (jobType || 'code') as SessionableJobType;
     const featurePath = projectId && featureName
-      ? deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName)
+      ? await resolveFeatureContainerPath(userContext, projectId, featureName)
       : undefined;
 
     await finalize({
@@ -866,7 +945,7 @@ export function createJobRoutes(deps: {
   // Resume existing job
   router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
     const requestedJobId = req.params.jobId;
-    const { projectId, featureName, chatSource = true, customJobRef, threadId } = req.body;
+    const { projectId, featureName, chatSource = true, customJobRef } = req.body;
     
     logger.debug(`\n🔄 [ResumeRoute] Resume request received`);
     logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
@@ -900,35 +979,38 @@ export function createJobRoutes(deps: {
         });
       }
 
-      // ── Universal resume: the thread conversation is always-valid resume
-      // context (non-task job — no task-queue checkpoint to gate on). The FE
-      // supplies the definition ref + thread id; the ref round-trips through
-      // the payload/env chain exactly like a fresh start (E2E check 4).
-      if (customJobRef && threadId) {
+      // ── Universal resume: the (agent, job) conversation is always-valid
+      // resume context (non-task job — no task-queue checkpoint to gate on).
+      // The FE supplies the definition ref; it round-trips through the
+      // payload/env chain exactly like a fresh start (E2E check 4).
+      if (customJobRef) {
         const resolvedUniversal = await resolveUniversalExecuteContext(
-          deps.workspaceResolver, userContext, projectId, customJobRef, threadId,
+          deps.workspaceResolver, userContext, projectId, customJobRef,
         );
         if (!resolvedUniversal.ok) {
           return res.status(resolvedUniversal.status).json({ error: resolvedUniversal.error, code: resolvedUniversal.code });
         }
-        const threadSessionPath = path.join(resolvedUniversal.threadPath, 'sessions/universal/universal.json');
-        if (!fs.existsSync(threadSessionPath)) {
-          return res.status(404).json({ error: 'No thread session found', message: `No session for thread ${threadId}` });
+        const { getSessionFilePath } = await import('../../../../core/utils/sessionPaths');
+        const { UNIVERSAL_FEATURE } = await import('@ant/shared');
+        const universalSessionPath = getSessionFilePath(
+          resolvedUniversal.containerPath, resolvedUniversal.ref.agentId, resolvedUniversal.ref.jobId,
+        );
+        if (!fs.existsSync(universalSessionPath)) {
+          return res.status(404).json({ error: 'No universal session found', message: `No session for custom job ${customJobRef}` });
         }
-        const threadSession = JSON.parse(fs.readFileSync(threadSessionPath, 'utf-8'));
-        const universalJobId = threadSession.state?.jobId ?? requestedJobId;
+        const universalSession = JSON.parse(fs.readFileSync(universalSessionPath, 'utf-8'));
+        const universalJobId = universalSession.state?.jobId ?? requestedJobId;
         const universalParams: ExecuteJobParams = {
           agent: 'universal',
           jobType: 'universal',
           project: projectId,
-          feature: featureName,
+          feature: UNIVERSAL_FEATURE,
           enableEvaluation: false,
           chatSource,
           userContext,
           jobId: universalJobId,
           isResume: true,
           customJobRef,
-          threadId,
         };
         const universalResult = await deps.executeJob(universalParams);
         await deps.stateStore.releaseLock(`ant:job-completed:${universalJobId}`);
@@ -941,8 +1023,17 @@ export function createJobRoutes(deps: {
           success: true,
           jobId: universalResult?.jobId ?? universalJobId,
           jobType: 'universal',
-          message: `Universal thread ${threadId} resumed`,
+          message: `Universal custom job ${customJobRef} resumed`,
         });
+      }
+
+      // Canonical session scan below can never find a universal session —
+      // fail loud instead of a misleading "no interrupted job" 404.
+      {
+        const rejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, 'resume');
+        if (rejected) {
+          return res.status(rejected.status).json({ error: rejected.error, code: rejected.code });
+        }
       }
 
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
@@ -1112,6 +1203,12 @@ export function createJobRoutes(deps: {
         });
       }
 
+      // Continue is canonical-session-scan only — fail loud on workspace projects.
+      const continueRejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, 'continue');
+      if (continueRejected) {
+        return res.status(continueRejected.status).json({ error: continueRejected.error, code: continueRejected.code });
+      }
+
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
       let jobType: string | null = null;
@@ -1218,7 +1315,13 @@ export function createJobRoutes(deps: {
     
     try {
       const userContext = extractUserContext(req);
-      
+
+      // Reverse gate (D6): inline-ask is a canonical job — never on a workspace project.
+      const inlineAskRejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, 'inline-ask');
+      if (inlineAskRejected) {
+        return res.status(inlineAskRejected.status).json({ error: inlineAskRejected.error, code: inlineAskRejected.code });
+      }
+
       const params: ExecuteJobParams = {
         agent: 'architect',
         jobType: 'inline-ask',
@@ -1461,7 +1564,7 @@ export function createJobRoutes(deps: {
       // the session left the interrupted taskQueue armed to hijack the next
       // chat turn (sharp-choking-glove RCA).
       if (!jobStatus) {
-        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        const featurePath = await resolveFeatureContainerPath(userContext, projectId, featureName);
         const patched = await setSessionDismissed(deps.kanbanService, featurePath, jobId, true);
         logger.debug(
           `Job dismiss: no Redis record (already sealed or never existed) jobId=${jobId}, sessionPatched=${patched}`,
@@ -1474,7 +1577,7 @@ export function createJobRoutes(deps: {
       if (jobStatus.status === 'paused') {
         // Paused → terminal. Go through finalize for seal + broadcast + idempotency lock.
         const jobType = (jobStatus.type || 'code') as SessionableJobType;
-        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        const featurePath = await resolveFeatureContainerPath(userContext, projectId, featureName);
         await finalize({
           jobId,
           finalStatus: 'failed',
@@ -1519,7 +1622,7 @@ export function createJobRoutes(deps: {
           { component: 'JobRoute' },
         );
         const jobType = (jobStatus.type || 'code') as SessionableJobType;
-        const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+        const featurePath = await resolveFeatureContainerPath(userContext, projectId, featureName);
         await finalize({
           jobId,
           finalStatus: 'failed',

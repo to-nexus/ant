@@ -27,25 +27,28 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     const selectedProject = useStore.getState().selectedProject;
     const kanbanData = useStore.getState().kanban;
 
-    // Universal runtime context — custom job + thread selected on a universal
-    // project. The threadId rides the feature slot for every feature-shaped
-    // endpoint (chat user-message, /execute URL). Takes priority over every
-    // other jobType source below.
+    // Universal runtime context — the custom (agent, job) pair selected on a
+    // universal project. The chat itself rides the constant 'universal'
+    // feature slot (set by universalSlice). Takes priority over every other
+    // jobType source below.
     const {
       projectType,
       selectedCustomAgentId,
       selectedCustomJobId,
-      selectedThreadId,
     } = useStore.getState();
     const universalCtx =
-      projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId && selectedThreadId
+      projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId
         ? {
             customJobRef: formatCustomJobRef({ agentId: selectedCustomAgentId, jobId: selectedCustomJobId }),
-            threadId: selectedThreadId,
           }
         : null;
 
-    const selectedFeature = universalCtx ? universalCtx.threadId : useStore.getState().selectedFeature;
+    if (projectType === 'universal' && !universalCtx) {
+      showError(t('universal.selectJob', { defaultValue: 'Select a custom agent job first' }));
+      return;
+    }
+
+    const selectedFeature = useStore.getState().selectedFeature;
 
     if (!selectedProject || !selectedFeature || !selectedAgent || !selectedJobType) {
       console.error('[ChatInput] Missing required selection for job execution');
@@ -120,8 +123,10 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
       !kanbanData?.interruption?.message?.includes('completed') &&
       !interruptionWasDismissed;
 
-    // CASE 1: Interrupted job — inline-ask to classify intent
-    if (currentJobId && hasInterruption) {
+    // CASE 1: Interrupted job — inline-ask to classify intent. Universal
+    // messages always take the normal execute path (inline-ask is a
+    // canonical job; the BE execute route supersedes a paused universal job).
+    if (currentJobId && hasInterruption && !universalCtx) {
       try {
         await addChatUserMessage(selectedProject, selectedFeature, userMessage);
         useStore.getState().setRunning(true, currentJobId);
@@ -193,7 +198,6 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         // triage classifier has nothing to infer.
         skipTriage: universalCtx ? true : undefined,
         customJobRef: universalCtx?.customJobRef,
-        threadId: universalCtx?.threadId,
         // chat SSOT §6 — forward the API-allocated turnId so the worker
         // reuses it for the durable user_turn line; eliminates the
         // optimistic-vs-durable id mismatch that produced two user

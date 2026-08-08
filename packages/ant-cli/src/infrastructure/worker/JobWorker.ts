@@ -499,12 +499,10 @@ export class JobWorker {
     if (payload.type === 'universal') {
       const { parseCustomJobRef } = await import('@ant/shared');
       const ref = parseCustomJobRef(payload.customJobRef);
-      if (!ref || !payload.threadId) {
-        throw new Error(`Universal job ${jobId} requires customJobRef + threadId (got ref=${payload.customJobRef}, thread=${payload.threadId})`);
+      if (!ref) {
+        throw new Error(`Universal job ${jobId} requires a valid customJobRef (got: ${payload.customJobRef})`);
       }
-      featurePath = workspaceResolver.getAgentThreadPath(
-        payload.userContext, payload.projectId, ref.agentId, ref.jobId, payload.threadId,
-      );
+      featurePath = workspaceResolver.getUniversalContainerPath(payload.userContext, payload.projectId);
       codebasePath = workspaceResolver.getUniversalArtifactsPath(payload.userContext, payload.projectId);
     } else {
       if (!payload.feature || payload.feature === '_base') {
@@ -582,9 +580,6 @@ export class JobWorker {
     }
     if (payload.customJobRef) {
       env.ANT_CUSTOM_JOB_REF = payload.customJobRef;
-    }
-    if (payload.threadId) {
-      env.ANT_THREAD_ID = payload.threadId;
     }
 
     // Cap the child V8 heap below the pod cgroup memory limit, split across

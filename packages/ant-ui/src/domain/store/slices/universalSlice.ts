@@ -1,23 +1,24 @@
 import { StateCreator } from 'zustand';
-import type { CustomAgentSummary } from '@ant/shared';
+import { UNIVERSAL_FEATURE, type CustomAgentSummary } from '@ant/shared';
 import type { ProjectConfig } from '@/infrastructure/http/api';
+import { fetchCustomAgents } from '@/infrastructure/http/api/customAgents';
 
 /**
- * universalSlice — FE state for the universal custom-agent runtime (Phase 1).
+ * universalSlice — FE state for the universal custom-agent runtime.
  *
  * `projectType` mirrors `config.json`'s `projectType` (SSOT on the BE;
  * absent = 'canonical'). It is written only by `syncProjectTypeFromConfig`,
  * which `projectConfigSlice` calls whenever a project config loads/saves, so
  * the sidebar/toolbar gates can never diverge from the persisted config.
  *
- * Selection state (`selectedCustomAgentId` / `selectedCustomJobId` /
- * `selectedThreadId`) is deliberately memory-only in Phase 1 — no
- * localStorage persistence.
+ * A workspace project has exactly ONE chat, riding the constant
+ * `UNIVERSAL_FEATURE` feature slot. The composer's agent/job chips switch
+ * the custom (agent, job) pair — each pair has its own LLM session on the
+ * BE, mirroring canonical jobType switching within a feature chat.
  *
- * `selectThread` is the identity glue: the universal runtime reuses the
- * feature-shaped plumbing (`:feature` URL slot, chat stream keying, SSE
- * connection) with the threadId in the feature slot, so selecting a thread
- * also drives `setSelectedFeature(threadId)` + `applyJobIdentity('universal')`.
+ * Selection state (`selectedCustomAgentId` / `selectedCustomJobId`) is
+ * deliberately memory-only — `loadCustomAgents` restores a valid selection
+ * on every project entry.
  */
 
 export type ProjectType = 'canonical' | 'universal';
@@ -27,7 +28,6 @@ export interface UniversalState {
   customAgents: CustomAgentSummary[];
   selectedCustomAgentId: string | undefined;
   selectedCustomJobId: string | undefined;
-  selectedThreadId: string | undefined;
 }
 
 export interface UniversalActions {
@@ -35,10 +35,10 @@ export interface UniversalActions {
   /** Mirror `config.json` → store. Called by projectConfigSlice on every config load/save. */
   syncProjectTypeFromConfig: (config: ProjectConfig | null | undefined) => void;
   setCustomAgents: (agents: CustomAgentSummary[]) => void;
-  /** Select a custom job. Clears the thread selection (threads are per-job). */
+  /** Select a custom job (agent + job pair). */
   selectCustomJob: (agentId: string, jobId: string) => void;
-  /** Select (or clear) a conversation thread of the selected custom job. */
-  selectThread: (threadId: string | undefined) => void;
+  /** Fetch the agent list and repair/auto-select the (agent, job) pair. */
+  loadCustomAgents: (projectId: string) => Promise<void>;
   clearUniversalSelection: () => void;
 }
 
@@ -49,13 +49,34 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
   customAgents: [],
   selectedCustomAgentId: undefined,
   selectedCustomJobId: undefined,
-  selectedThreadId: undefined,
 
   setProjectType: (projectType) => {
-    if (get().projectType === projectType) return;
-    set({ projectType });
-    if (projectType !== 'universal') {
-      get().clearUniversalSelection();
+    const changed = get().projectType !== projectType;
+    if (changed) set({ projectType });
+    if (!changed && projectType === 'canonical') return;
+    const state = get();
+    if (projectType === 'universal') {
+      // Runs on every universal config load (not only on type flips) so that
+      // switching between two universal projects reloads the agent list.
+      // Universal identity: SSE job param + stop path key off jobType
+      // 'universal'; the chat/session container rides the constant feature.
+      if (typeof state.applyJobIdentity === 'function' && (
+        state.selectedJobType !== 'universal' || state.selectedAgent !== 'universal'
+      )) {
+        state.applyJobIdentity({ jobType: 'universal', agent: 'universal' });
+      }
+      if (typeof state.setSelectedFeature === 'function' && state.selectedFeature !== UNIVERSAL_FEATURE) {
+        state.setSelectedFeature(UNIVERSAL_FEATURE);
+      }
+      if (state.selectedProject) {
+        void get().loadCustomAgents(state.selectedProject);
+      }
+    } else {
+      state.clearUniversalSelection();
+      // Purge a persisted 'universal' identity leaking into a canonical project.
+      if (state.selectedJobType === 'universal' && typeof state.applyJobIdentity === 'function') {
+        state.applyJobIdentity({ jobType: 'plan', agent: 'planner' });
+      }
     }
   },
 
@@ -71,26 +92,25 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     set({
       selectedCustomAgentId: agentId,
       selectedCustomJobId: jobId,
-      selectedThreadId: undefined,
     });
   },
 
-  selectThread: (threadId) => {
-    set({ selectedThreadId: threadId });
-    const state = get();
-    if (!threadId) return;
-    // Point the SSE job param + stop path at the universal runtime FIRST, so
-    // the session load triggered by the feature switch below already keys off
-    // jobType 'universal'.
-    if (typeof state.applyJobIdentity === 'function' && (
-      state.selectedJobType !== 'universal' || state.selectedAgent !== 'universal'
-    )) {
-      state.applyJobIdentity({ jobType: 'universal', agent: 'universal' });
-    }
-    // Thread rides the feature slot: chat stream, SSE connection, and the
-    // `/execute` URL are all keyed by (project, feature=threadId).
-    if (typeof state.setSelectedFeature === 'function' && state.selectedFeature !== threadId) {
-      state.setSelectedFeature(threadId);
+  loadCustomAgents: async (projectId) => {
+    try {
+      const { agents } = await fetchCustomAgents(projectId);
+      set({ customAgents: agents });
+      const { selectedCustomAgentId, selectedCustomJobId } = get();
+      const current = agents.find((a) => a.id === selectedCustomAgentId);
+      const currentJobValid = current?.jobs.some((j) => j.id === selectedCustomJobId) ?? false;
+      if (!currentJobValid) {
+        const firstAgent = agents.find((a) => a.jobs.length > 0);
+        set({
+          selectedCustomAgentId: firstAgent?.id,
+          selectedCustomJobId: firstAgent?.jobs[0]?.id,
+        });
+      }
+    } catch (e) {
+      console.warn('[universalSlice] Failed to load custom agents:', e);
     }
   },
 
@@ -98,7 +118,6 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     set({
       selectedCustomAgentId: undefined,
       selectedCustomJobId: undefined,
-      selectedThreadId: undefined,
       customAgents: [],
     }),
 });

@@ -39,12 +39,10 @@ export interface ExecuteJobParams {
   seedTurnId?: string;
   /**
    * Universal runtime (jobType 'universal') — composite `{agentId}/{jobId}`
-   * custom-job reference. When set, `featureName` carries the threadId
-   * (the `:feature` URL slot is thread-shaped on the universal path).
+   * custom-job reference. When set, `featureName` is the constant
+   * 'universal' pseudo-feature (the workspace's single chat container).
    */
   customJobRef?: string;
-  /** Universal runtime — conversation thread id (`[a-z0-9-]+`). */
-  threadId?: string;
 }
 
 // `JobStatus` interface was removed along with `fetchJobStatus` — the
@@ -69,14 +67,13 @@ export async function executeJob(
     actionMetadata,
     seedTurnId,
     customJobRef,
-    threadId,
   } = params;
 
   if (!featureName) {
     throw new Error('Feature name is required for job execution');
   }
 
-  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, threadId };
+  const requestBody = { task, agent, mode, language, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef };
   const endpoint = `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/execute`;
 
   const response = await authFetch(endpoint, {
@@ -156,8 +153,8 @@ export function resumeJob(
   projectId: string,
   featureName: string,
   chatSource: boolean = true,
-  /** Universal runtime — presence of `customJobRef` + `threadId` routes the resume through the universal path. */
-  universal?: { customJobRef: string; threadId: string },
+  /** Universal runtime — presence of `customJobRef` routes the resume through the universal path. */
+  universal?: { customJobRef: string },
 ): Promise<{ jobId: string; originalJobId: string; jobType: 'design' | 'code' | 'learn' | 'plan' | 'visual' | 'universal' }> {
   return apiPost(
     `${API_BASE()}/jobs/${encodeURIComponent(jobId)}/resume`,
@@ -165,7 +162,7 @@ export function resumeJob(
       projectId,
       featureName,
       chatSource,
-      ...(universal ? { customJobRef: universal.customJobRef, threadId: universal.threadId } : {}),
+      ...(universal ? { customJobRef: universal.customJobRef } : {}),
     },
   );
 }

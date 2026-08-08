@@ -323,7 +323,8 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
                 );
               })}
             </RowList>
-            {selectedProject && <GitToolbar />}
+            {/* Universal projects have no git anchor — the toolbar is dead UI there. */}
+            {selectedProject && activeProjectType !== 'universal' && <GitToolbar />}
             {selectedProject && projectConfigMissing && (
               <div
                 style={{

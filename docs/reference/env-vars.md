@@ -16,6 +16,7 @@ For deployment-specific recommendations, see
 | `ANT_REDIS_URL` | `redis://localhost:16379` | Redis connection URL. Required in cloud mode. |
 | `ANT_ENCRYPTION_KEY` | — | 32+ byte random string. Required. Generate with `openssl rand -base64 32`. |
 | `ANT_WORKSPACE_BASE_PATH` | `./workspaces` | Where Ant stores per-feature data. EFS mount root in cloud. |
+| `ANT_CUSTOM_AGENTS_DIR` | — | Org-scope custom-agent definitions root (self-host). Read-only for members; the user scope shadows it. |
 
 ## LLM providers
 

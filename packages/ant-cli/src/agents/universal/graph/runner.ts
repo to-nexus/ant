@@ -2,7 +2,7 @@
  * Universal Graph Runner
  *
  * Entry point for the universal job. Lifecycle:
- *   1. Restore the thread session (conversation = the job's only memory).
+ *   1. Restore the (agent, job) session (conversation = the job's only memory).
  *   2. Append the new user turn to session:main.
  *   3. Connect MCP servers declared by the active definition; build registry.
  *   4. invokeGraph with the recursion backstop.
@@ -10,6 +10,7 @@
  *      best-effort save so the turn's conversation is not lost.
  */
 
+import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { buildUniversalGraph } from './graph';
 import { createInitialUniversalState, type UniversalGraphState } from './state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph/conversations';
@@ -23,9 +24,8 @@ export interface UniversalRunnerParams {
   /** The user's message for this run (overrideDirective / input). */
   input: string;
   language: 'ko' | 'en';
-  threadPath: string;
+  containerPath: string;
   projectId: string;
-  threadId: string;
   isResume?: boolean;
   deps: {
     llm: any;
@@ -61,13 +61,13 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     promptBuilder = new PromptBuilder(new FilePromptAdapter());
   }
 
-  // ── Session restore: the thread conversation persists across runs.
+  // ── Session restore: the (agent, job) conversation persists across runs.
   let restoredConversations: Record<string, ConversationMessage[]> | undefined;
   let restoredTokenUsage: any;
   let restoredTokenUsageByModel: any;
   if (params.deps.session) {
     try {
-      const session = await params.deps.session.load(params.projectId, params.threadId, 'universal');
+      const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
       const sessionState = session?.state;
       if (sessionState?.conversations?.[CONV_KEYS.SESSION_MAIN]?.length) {
         restoredConversations = { [CONV_KEYS.SESSION_MAIN]: sessionState.conversations[CONV_KEYS.SESSION_MAIN] };
@@ -76,7 +76,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
     } catch (e) {
-      console.warn('⚠️ [Universal] Session restore failed (fresh thread):', e instanceof Error ? e.message : String(e));
+      console.warn('⚠️ [Universal] Session restore failed (fresh session):', e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -86,7 +86,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   if (params.input && params.input.trim().length > 0) {
     main.push({ role: 'user', content: params.input });
   } else if (main.length === 0) {
-    throw new Error('[Universal] Empty input on a fresh thread — nothing to do');
+    throw new Error('[Universal] Empty input on a fresh session — nothing to do');
   }
   conversations[CONV_KEYS.SESSION_MAIN] = main;
 
@@ -101,9 +101,8 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   const initialState = createInitialUniversalState({
     userMessage: params.input,
     language: params.language,
-    threadPath: params.threadPath,
+    containerPath: params.containerPath,
     projectId: params.projectId,
-    threadId: params.threadId,
     deps: { ...params.deps, promptBuilder },
     _httpJobId: params._httpJobId,
     isResume: params.isResume,
@@ -135,11 +134,10 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     // Best-effort session save so the user turn + partial rounds survive.
     if (params.deps.session) {
       try {
-        await params.deps.session.updateArtifacts(params.projectId, params.threadId, 'universal', {
+        await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
           state: {
             conversations: { [CONV_KEYS.SESSION_MAIN]: main },
             customJobRef: `${resolved.agentId}/${resolved.jobId}`,
-            threadId: params.threadId,
           },
         });
       } catch { /* best-effort */ }

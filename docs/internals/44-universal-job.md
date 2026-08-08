@@ -11,13 +11,16 @@ Custom jobs therefore NEVER mint a JobType: everything executes as
 `jobType='universal'` and the definition travels as an opaque composite key
 `customJobRef = "{agentId}/{jobId}"` on the same channel overrideDirective
 uses (HTTP body → zod schema → ExecuteJobParams → JobPayload →
-`ANT_CUSTOM_JOB_REF`/`ANT_THREAD_ID` env → job-runner → orchestrator).
+`ANT_CUSTOM_JOB_REF` env → job-runner → orchestrator).
 Adding/removing a custom job is a pure file operation.
 
 ```bash
 # The ref must never fork into a second channel:
 rg -n "ANT_CUSTOM_JOB_REF" packages/ant-cli/src --type ts
 # Expected: JobWorker (write), job-runner (read) only.
+# Tombstone — the thread plane is deleted (one chat per workspace):
+rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src
+# Expected: 0 hits.
 ```
 
 ## Graph shape (designed from runtime concerns, not copied from ask)
@@ -31,8 +34,19 @@ compactRun) — not the graph.
   session history → `compactRun` (compactTurns + TurnPruner) against a
   model-window-keyed budget (85% trigger — conservative Phase 1; the
   conversation is the job's only working memory, over-pruning = work loss).
-- **Session**: `{thread}/sessions/universal/universal.json`, conversation on
-  the `session:main` channel so it persists across runs of the same thread.
+- **Session**: `{project}/universal/sessions/{agentId}/{jobId}.json` — the
+  exact analog of the canonical `sessions/{agent}/{jobType}.json` layout. The
+  universal runtime resolves it with `(agentId, jobId)` from
+  `requireActiveCustomJob()` via `getSessionFilePath`; conversation rides the
+  `session:main` channel so it persists across runs of the same (agent, job)
+  pair. Switching the composer's agent/job chips switches sessions, exactly
+  like canonical jobType switching within one feature chat.
+- **Chat**: ONE chat per workspace — `{container}/sessions/chat.jsonl` +
+  `feature.jsonl`, shared across agent/job switches (mirrors one-chat-per-
+  feature). Debug logs land under `{container}/sessions/` too; note the token
+  logger hardcodes `getSessionDebugDir(featurePath, 'architect', 'tokens')`,
+  so universal token logs live at `sessions/architect/debug/tokens/` — same
+  pre-existing behavior as plan/visual jobs, accepted as-is.
 - **Tier**: pinned Reflex at graph start (plan/visual precedent); Phase 2
   moves to LLM-declared `<executionTier>` per the 7a matrix. Tier 4 is
   deliberately unused (would be a tautology axis with `activePlanPath`).
@@ -43,14 +57,33 @@ compactRun) — not the graph.
   agent base → job base (cap 8k, truncation footer); injections TOC union
   (job wins); MCP union (job wins); `tools.builtin` job ⊆ agent ⊆ preset
   (narrowing only); approval stricter-wins; models/workspace job-overrides.
-- Scope roots: `deriveCustomAgentScopeRoots` — project > user > org
-  (`$ANT_CUSTOM_AGENTS_DIR`, readonly). Adding org sync later = one more root.
+- Scope roots: `deriveCustomAgentScopeRoots` — user > org
+  (`$ANT_CUSTOM_AGENTS_DIR`, readonly) > builtin (shipped samples under
+  `core/data/agents`, readonly, always present). Definitions are
+  **account/org-owned, never project-owned** — the user root is
+  `workspaces/{org}/{user}/.ant/agents`, shared across the account's
+  projects. Adding org sync later = one more root.
+- **Builtin samples ship as files** (`src/core/data/agents/`, copied to dist
+  by the build script like prompt templates / triage jobs; runtime path =
+  `WorkspacePathResolver.getBuiltinAgentsPath()`). Because `discoverAgents`
+  is deliberately lenient, a malformed shipped sample would silently vanish —
+  `tests/customAgents/builtin-agents.test.ts` is the fail-loud gate
+  (`loadCustomJob` over every shipped pair + root-wiring rows).
+- **Create-collision is writable-scope-only** (`findCreateCollision`): a new
+  user agent may shadow a readonly (org/builtin) agent wholesale; only a
+  same-id user agent 409s. Creation (Settings → Agents, or
+  `POST /custom-agents`) always targets the user scope — there is no scope
+  request parameter. Future: expose `shadows` on `CustomAgentSummary` and a
+  copy-to-scope endpoint so shadowing doesn't start from an empty scaffold.
 - **Activation is job-runner-child-only** (`activeCustomJob.ts` throws on
   double activation). The API server only lists summaries. Validation
   failures are HTTP 400 at job-accept (`resolveUniversalExecuteContext`),
   never a crash inside the child.
 
-Guard: `tests/customAgents/custom-agent-loader.test.ts`.
+Guard: `tests/customAgents/custom-agent-loader.test.ts`,
+`tests/customAgents/builtin-agents.test.ts`,
+`tests/customAgents/universal-container.test.ts` (feature-slot + gate truth
+tables, container bootstrap, session path shape, thread-plane tombstones).
 
 ## Tool policy (D3)
 
@@ -101,20 +134,56 @@ table, not prose pinning).
 
 `WorkspaceConfig.projectType: 'canonical' | 'universal'` (absent =
 canonical) decides which jobs a project exposes; the universal plane is
-ALWAYS namespaced under `universal/` regardless. Enforcement points:
+ALWAYS namespaced under `universal/` regardless. The gate is
+**bidirectional** — truth table: `decideProjectJobGate`
+(`core/customAgents/universalContainer.ts`). Enforcement points:
 
 - `/execute` universal branch: 400 `project-not-universal` on canonical
-  projects (`resolveUniversalExecuteContext`).
+  projects (`resolveUniversalExecuteContext`); 400 `invalid-universal-feature`
+  when the `:feature` slot is not the constant.
+- `/execute` (+ `/learn`, `/inline-ask`, `/resume`, `/continue`) reverse
+  direction: 400 `project-universal-requires-custom-job` when a canonical
+  jobType targets a universal project.
 - `FeatureCrudService.createFeature`: rejected on universal projects
   ("git 없는 feature"라는 개념 모순의 구조적 차단).
-- `deleteProject`'s fs.rm covers `universal/` (threads + artifacts) without
+- `deleteProject`'s fs.rm covers `universal/` (sessions + artifacts) without
   a new cascade step; feature-stage steps are naturally no-ops.
 
-Threads (`universal/agents/{agentId}/{jobId}/threads/{threadId}`) flow
-wherever a featurePath-shaped value is expected — the single seam is
-`WorkspaceResolver.getAgentThreadPath` (+ `getUniversalArtifactsPath`), used
-by JobWorker and the routes. Artifacts are project-owned
-(`universal/artifacts/`), agents own only their sessions.
+The **universal container** `{project}/universal` is the single
+featurePath-shaped value: it rides the constant `UNIVERSAL_FEATURE`
+(`'universal'`, `@ant/shared`) in the `:feature` URL slot (chat stream, SSE,
+feature-log, execute). Resolution seam: `resolveUniversalContainerPath`
+(routes/ChatService/SessionPersistence) + `WorkspaceResolver.
+getUniversalContainerPath` (JobWorker) + `getUniversalArtifactsPath`.
+`ensureUniversalContainer` materializes `artifacts/` + `sessions/` at
+execute-accept and at the chat layer's first durable append (the session
+adapter's ghost-guard silently drops writes into a missing container).
+Artifacts are project-owned (`universal/artifacts/`). The artifacts root
+carries canonical dirs (`UNIVERSAL_ARTIFACT_CANONICAL_DIRS = ['plan']` —
+name matches the codespace feature dir): always materialized by
+`ensureUniversalContainer`, listed first in the tree, never
+deletable/renamable (delete = clear contents, codespace parity). The
+explorer tree grafts a root `sessions` node last (codespace per-feature
+sessions analog: delete/download only; `sessions` is a reserved name at the
+artifacts root — 400 `reserved-name-sessions` on upload/mkdir/rename; an
+agent-created `artifacts/sessions/` dir is shadowed by the graft).
+
+The workspace explorer panel is NOT a bespoke tree: it mounts the SAME
+shared `ArtifactsSection` → `ArtifactRow` → `FileActionMenu` stack the
+codespace panel uses (upload/create live in the per-row ⋯ menu; the
+root-writable workspace additionally passes `rootDirPath=''`, which puts the
+same ⋯ menu in the section header for root-level create/upload). Rows render
+the **real directory name**, never a localized label — a translated segment
+would misrepresent the path the agent and the tools actually address.
+
+There is NO thread plane (`universal/agents/**` was removed before release —
+no data migration; stale trees are ignored and removed by `deleteProject`).
+Multi-chat, when it lands, will be designed cross-project-kind, not as a
+universal-only bolt-on. Universal resume sends only `customJobRef`; a resumed
+pair re-enters its own conversation regardless of which job originally
+paused (non-task job — benign). Kanban/interruption disk-restore never
+existed for universal (per-(agent,job) session files are invisible to the
+static SESSION_SEARCH_MAP by design) — live Redis/SSE state still works.
 
 ## Outputs are a contract, not an obligation
 

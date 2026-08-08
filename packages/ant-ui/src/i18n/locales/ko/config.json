@@ -222,6 +222,29 @@
     "universal": "워크스페이스",
     "universalDesc": "파일로 정의한 커스텀 에이전트/잡을 실행합니다. 도메인·피처·git이 적용되지 않습니다."
   },
+  "agents": {
+    "title": "에이전트",
+    "description": "커스텀 에이전트/잡은 계정 귀속 정의(.ant/agents)로, 계정의 워크스페이스 프로젝트 전체에서 공유됩니다.",
+    "refresh": "새로고침",
+    "createAgent": "에이전트 등록",
+    "addJob": "잡 추가",
+    "edit": "수정",
+    "delete": "삭제",
+    "namePlaceholder": "이름",
+    "descPlaceholder": "설명 (선택)",
+    "invalidName": "이름에 영문자 또는 숫자가 포함되어야 합니다",
+    "placeholder": "에이전트가 없습니다 — +로 등록하세요",
+    "noJobs": "잡이 없습니다",
+    "deleteAgentConfirm": "이 에이전트와 모든 잡을 삭제할까요?",
+    "deleteJobConfirm": "이 잡을 삭제할까요?",
+    "validate": "검증",
+    "valid": "✓ 유효",
+    "scope": {
+      "user": "계정",
+      "org": "조직",
+      "builtin": "기본 제공"
+    }
+  },
   "llmModels": {
     "title": "작업 노드별 LLM 설정",
     "nodeOverrides": "노드별 모델 설정",

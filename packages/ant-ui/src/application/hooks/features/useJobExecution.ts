@@ -123,19 +123,17 @@ export function useJobExecution() {
         // ✅ Set running state immediately
         setRunning(true, currentJobId);
 
-        // Universal runtime — resuming a custom-job thread must ride the
-        // universal path on the BE, keyed by customJobRef + threadId.
+        // Universal runtime — resuming a custom job must ride the universal
+        // path on the BE, keyed by customJobRef.
         const {
           projectType,
           selectedCustomAgentId,
           selectedCustomJobId,
-          selectedThreadId,
         } = useStore.getState();
         const universalResume =
-          projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId && selectedThreadId
+          projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId
             ? {
                 customJobRef: formatCustomJobRef({ agentId: selectedCustomAgentId, jobId: selectedCustomJobId }),
-                threadId: selectedThreadId,
               }
             : undefined;
 

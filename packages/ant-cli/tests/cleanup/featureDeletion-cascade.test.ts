@@ -52,8 +52,8 @@ function makeFixture(overrides?: {
     // Git anchor = hidden bare repo at {project}/repo.git (new architecture).
     getGitAnchorPath: (_ctx: UserContext, projectId: string) =>
       path.join(base, 'org', 'user', projectId, 'repo.git'),
-        getAgentThreadPath: (_ctx: UserContext, projectId: string, agentId: string, jobId: string, threadId: string) =>
-      path.join(base, 'org', 'user', projectId, 'universal', 'agents', agentId, jobId, 'threads', threadId),
+        getUniversalContainerPath: (_ctx: UserContext, projectId: string) =>
+      path.join(base, 'org', 'user', projectId, 'universal'),
     getUniversalArtifactsPath: (_ctx: UserContext, projectId: string) =>
       path.join(base, 'org', 'user', projectId, 'universal', 'artifacts'),
     getPhysicalWorkspacesPath: () => base,

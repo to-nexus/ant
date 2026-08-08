@@ -30,8 +30,6 @@ export interface JobPayload {
 
   /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
   customJobRef?: string;
-  /** Universal only — thread container id (rides where a feature would). */
-  threadId?: string;
   
   // Job configuration
   mode?: 'generate' | 'refactor' | 'explain';

@@ -4,7 +4,7 @@
  * State for the universal job — the file-defined custom agent/job runtime.
  * The conversation is the job's only working memory (non-task, no TaskQueue),
  * held on the `session:main` channel so it persists across runs of the same
- * thread (`{thread}/sessions/universal/universal.json`).
+ * (agent, job) pair (`{container}/sessions/{agentId}/{jobId}.json`).
  *
  * Extends ResolvableFields from the common annotation chain.
  */
@@ -28,9 +28,8 @@ export interface UniversalGraphState extends ResolvableState {
   /** The user's message for this run (directive / overrideDirective). */
   userMessage: string;
   language: 'ko' | 'en';
-  /** Project id (thread sessions live outside the features/ plane). */
+  /** Project id (universal sessions live outside the features/ plane). */
   projectId?: string;
-  threadId?: string;
   conversations: Conversations;
   toolCalls: UniversalToolCall[];
   pendingToolCalls: Array<{ id: string; name: string; args: Record<string, any> }>;
@@ -59,7 +58,6 @@ export const UniversalAnnotation = Annotation.Root({
   userMessage: Annotation<string>,
   language: Annotation<'ko' | 'en'>,
   projectId: Annotation<string | undefined>,
-  threadId: Annotation<string | undefined>,
   toolCalls: Annotation<UniversalToolCall[]>,
   pendingToolCalls: Annotation<Array<{ id: string; name: string; args: Record<string, any> }>>,
   response: Annotation<string | undefined>,
@@ -74,9 +72,8 @@ export const UniversalAnnotation = Annotation.Root({
 export function createInitialUniversalState(params: {
   userMessage: string;
   language: 'ko' | 'en';
-  threadPath: string;
+  containerPath: string;
   projectId?: string;
-  threadId?: string;
   deps?: any;
   _httpJobId?: string;
   isResume?: boolean;
@@ -84,7 +81,7 @@ export function createInitialUniversalState(params: {
 }): UniversalGraphState {
   const RESOLVED_TIER = 0 as ExecutionTierId; // ExecutionTierId.Reflex (avoid runtime import)
   return {
-    featurePath: params.threadPath,
+    featurePath: params.containerPath,
     context: {} as any,
     deps: params.deps as any,
     _httpJobId: params._httpJobId,
@@ -94,7 +91,6 @@ export function createInitialUniversalState(params: {
     userMessage: params.userMessage,
     language: params.language,
     projectId: params.projectId,
-    threadId: params.threadId,
     conversations: params.conversations ?? {},
     toolCalls: [],
     pendingToolCalls: [],

@@ -1,12 +1,6 @@
 {
   "panel": {
     "title": "아티팩트",
-    "plan": "기획",
-    "architecture": "아키텍처",
-    "visual": "비주얼",
-    "assets": "에셋",
-    "meta": "메타",
-    "sessions": "세션",
     "transfer": "전송",
     "emptyDir": "비어있는 디렉토리",
     "emptySection": "{{title}}에 파일이 없습니다",
@@ -147,13 +141,6 @@
     "deleteType": "{{type}} 삭제"
   },
   "universal": {
-    "title": "워크스페이스",
-    "refresh": "새로고침",
-    "upload": "파일 업로드",
-    "uploading": "업로드 중…",
-    "download": "다운로드",
-    "newFolder": "새 폴더",
-    "folderNamePlaceholder": "folder-name",
-    "placeholder": "파일을 끌어다 놓으면 워크스페이스에 추가됩니다"
+    "uploading": "업로드 중…"
   }
 }

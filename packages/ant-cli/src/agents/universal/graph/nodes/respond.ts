@@ -8,6 +8,7 @@
  */
 
 import * as path from 'path';
+import { UNIVERSAL_FEATURE } from '@ant/shared';
 import type { UniversalGraphState } from '../state';
 import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
@@ -71,7 +72,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
 
   // 3. Session seal — the conversation IS the job's memory; persist it.
   const session = state.deps?.session;
-  if (session && state.projectId && state.threadId) {
+  if (session && state.projectId) {
     try {
       const sessionState = {
         conversations: { [CONV_KEYS.SESSION_MAIN]: getConv(state.conversations, CONV_KEYS.SESSION_MAIN) },
@@ -79,10 +80,9 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         tokenUsageByModel: state.tokenUsageByModel,
         executionTier: state.executionTier,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,
-        threadId: state.threadId,
         ...(state._httpJobId && { jobId: state._httpJobId }),
       };
-      await session.updateArtifacts(state.projectId, state.threadId, 'universal', { state: sessionState });
+      await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });
       console.log('💾 [Universal:Respond] Session sealed');
     } catch (e) {
       console.warn('⚠️ [Universal:Respond] Session seal failed:', e instanceof Error ? e.message : String(e));

@@ -11,7 +11,7 @@ import {
   GIT_ANCHOR_DIR,
   resolveCodebasePathFromConfig,
   buildFeaturePath,
-  buildAgentThreadPath,
+  buildUniversalContainerPath,
   buildUniversalArtifactsPath,
 } from '../../core/config/WorkspacePathResolver';
 import { WorkspaceServicePort } from '../../core/ports/workspace';
@@ -55,14 +55,8 @@ export class WorkspaceServiceAdapter implements WorkspaceResolver {
     return this.basePath;
   }
 
-  getAgentThreadPath(
-    userContext: UserContext,
-    projectId: string,
-    agentId: string,
-    jobId: string,
-    threadId: string,
-  ): string {
-    return buildAgentThreadPath(this.getProjectPath(userContext, projectId), agentId, jobId, threadId);
+  getUniversalContainerPath(userContext: UserContext, projectId: string): string {
+    return buildUniversalContainerPath(this.getProjectPath(userContext, projectId));
   }
 
   getUniversalArtifactsPath(userContext: UserContext, projectId: string): string {
