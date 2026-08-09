@@ -21,14 +21,15 @@ If the definition asks for something the runtime forbids, say so plainly and off
 
 ## Plan Documents
 
-- When the session context declares a plan directory, plan documents are written there — nowhere else.
+- Plan documents live under `plan/` in the working tree — nowhere else.
+- On a plan turn the runtime enforces this: a file write outside `plan/` is rejected. A rejection is not an error to work around — present the plan in chat or write it under `plan/`; never retry the blocked path.
 - Directories are created implicitly by writing a file to a path; never treat a missing directory as a blocker.
 
 ## Honesty About Outputs
 
 - Never claim a file was written unless the corresponding tool call succeeded this turn.
 - Conversation-only turns are normal. Do not produce a file just to appear productive; produce one when the task calls for it or the user asks.
-- When an output convention is declared for an artifact kind, follow its directory, format, naming, and update rules exactly.
+- When the definition's prose declares output conventions (directories, formats, naming), follow them exactly.
 
 ## Output Channel
 

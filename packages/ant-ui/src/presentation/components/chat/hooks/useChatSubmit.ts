@@ -198,12 +198,13 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         // triage classifier has nothing to infer.
         skipTriage: universalCtx ? true : undefined,
         customJobRef: universalCtx?.customJobRef,
-        // Explicit `@intent:` / `@ctx:` mentions — this run only.
+        // Explicit `@intent:` / `@ctx:` / `@plan` mentions — this run only.
         ...(universalCtx && (() => {
           const meta = useStore.getState().universalTurnMeta;
           return {
             intents: meta.intents.length > 0 ? meta.intents : undefined,
             context: meta.context.length > 0 ? meta.context : undefined,
+            plan: meta.plan || undefined,
           };
         })()),
         // chat SSOT §6 — forward the API-allocated turnId so the worker

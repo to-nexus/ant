@@ -29,13 +29,17 @@ account-owned and shared across your workspace projects:
 ```
 .ant/agents/ops-team/
   agent.yaml
-  base/system.md
+  base/role.md                 # agent prose — who this agent is (default name)
   jobs/weekly-report/
     job.yaml
-    base/system.md
+    base/system.md             # job prose — how this job runs (default name)
     injections/weekly-report-format.md
     intents.yaml
 ```
+
+`role.md` / `system.md` are only the names the scaffold and the shipped
+built-in use. Any number of `base/*.md` files is allowed; they are concatenated
+in filename order (agent prose first, then job prose).
 
 Intents, injections, and tools are **job-owned** — there is no agent-level
 `intents.yaml` or `injections/` (a legacy definition carrying them fails loud
@@ -44,7 +48,7 @@ with a move instruction).
 ## 2. agent.yaml — identity + shared connections
 
 ```yaml
-id: ops-team                 # [a-z0-9-]+, must equal the directory name
+id: ops-team                 # kebab-case, must equal the directory name
 name: "Ops Team"
 version: 1
 mcp:
@@ -105,7 +109,7 @@ instead of waiting to be read on demand:
 ```yaml
 version: 1
 intents:
-  - id: incident            # [a-z0-9-]+; 'general' is reserved (the no-match fallback)
+  - id: incident            # kebab-case; 'general' is reserved (the no-match fallback)
     description: 'Reporting, investigating, or following up on a service incident'
     injections: [incident-playbook.md]
 ```

@@ -1,11 +1,11 @@
 /**
- * Intent catalog — parsing, validation, and merge for `intents.yaml`.
+ * Intent catalog — parsing and validation for `jobs/{jobId}/intents.yaml`.
  *
- * The catalog is CODE-EXTERIOR DATA (D-F): it lives in the definition tree
- * (`{agentId}/intents.yaml` shared + optional `jobs/{jobId}/intents.yaml`
- * extension/override), is loaded fresh at every job accept, and its ids are a
- * per-job runtime string vocabulary — they never join the compile-time
- * canonical `IntentId` union and never key any code-resident matrix.
+ * The catalog is CODE-EXTERIOR DATA (D-F) and JOB-ONLY (mirroring canonical,
+ * where intents belong to jobs): it is loaded fresh at every job accept, and
+ * its ids are a per-job runtime string vocabulary — they never join the
+ * compile-time canonical `IntentId` union and never key any code-resident
+ * matrix.
  *
  * Shared by the loader (`loadCustomJob`) and the settings API's save
  * validation (single validation SSOT — a file the PUT funnel accepts is a
@@ -18,7 +18,7 @@ import * as yaml from 'js-yaml';
 import { GENERAL_INTENT, INTENTS_FILE_NAME, type CustomIntentDef } from '@ant/shared';
 import { CustomAgentValidationError } from './types.js';
 
-/** Merged catalog size cap — keeps the classify prompt table bounded. */
+/** Catalog size cap — keeps the classify prompt table bounded. */
 export const INTENT_CATALOG_CAP = 32;
 
 const INTENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -43,6 +43,15 @@ export function parseIntentsYaml(filePath: string, agentId: string, jobId?: stri
       jobId,
     );
   }
+  return validateIntentsDoc(doc, agentId, jobId);
+}
+
+/**
+ * Validate an already-parsed `intents.yaml` document. Split out from
+ * `parseIntentsYaml` so the settings PUT funnel can gate content PRE-WRITE
+ * with the identical rules the loader applies at job accept.
+ */
+export function validateIntentsDoc(doc: unknown, agentId: string, jobId?: string): CustomIntentDef[] {
   if (doc == null) return [];
   if (typeof doc !== 'object') {
     throw new CustomAgentValidationError(`${INTENTS_FILE_NAME} must be a mapping`, agentId, jobId);
@@ -121,15 +130,20 @@ export function parseIntentsYaml(filePath: string, agentId: string, jobId?: stri
     }
     result.push({ id, description: description.trim(), ...(injectionList ? { injections: injectionList } : {}) });
   }
+  if (result.length > INTENT_CATALOG_CAP) {
+    throw new CustomAgentValidationError(
+      `${INTENTS_FILE_NAME}: catalog has ${result.length} intents — cap is ${INTENT_CATALOG_CAP}`,
+      agentId,
+      jobId,
+    );
+  }
   return result;
 }
 
 /**
- * Level-scoped injection-reference check: an intent may only reference files
- * visible AT ITS OWN LEVEL — agent intents see agent `injections/`, job
- * intents see the merged (agent ∪ job) set. Without the scoping, an agent
- * intent referencing a job-private file would explode on the agent's sibling
- * jobs.
+ * Injection-reference check: every intent must only reference files that
+ * exist in the job's `injections/` set — a dangling reference would silently
+ * inline nothing at classify time.
  */
 export function validateIntentInjectionRefs(
   intents: CustomIntentDef[],
@@ -151,51 +165,27 @@ export function validateIntentInjectionRefs(
   }
 }
 
-/**
- * Merge agent + job catalogs: id-keyed union, the JOB entry wins WHOLESALE on
- * collision (mirror of the injections TOC merge). Caps the merged size.
- */
-export function mergeIntentCatalogs(
-  agentIntents: CustomIntentDef[],
-  jobIntents: CustomIntentDef[],
-  agentId: string,
-  jobId?: string,
-): CustomIntentDef[] {
-  const byId = new Map<string, CustomIntentDef>();
-  for (const intent of agentIntents) byId.set(intent.id, intent);
-  for (const intent of jobIntents) byId.set(intent.id, intent);
-  const merged = Array.from(byId.values());
-  if (merged.length > INTENT_CATALOG_CAP) {
-    throw new CustomAgentValidationError(
-      `${INTENTS_FILE_NAME}: merged catalog has ${merged.length} intents — cap is ${INTENT_CATALOG_CAP}`,
-      agentId,
-      jobId,
-    );
-  }
-  return merged;
-}
-
-/** Convenience: agent-level and job-level catalog file paths. */
+/** Convenience: job-level catalog file path. */
 export function intentsFilePathFor(dir: string): string {
   return path.join(dir, INTENTS_FILE_NAME);
 }
 
 /**
  * Lenient parse for discovery (`CustomJobSummary.intents`) — returns the
- * merged id/description rows, or undefined when either file fails to parse.
- * Fail-loud belongs to load/validate; a broken catalog must not hide the job
- * from the chip list.
+ * job catalog's id/description rows, or undefined when the file fails to
+ * parse. Fail-loud belongs to load/validate; a broken catalog must not hide
+ * the job from the chip list.
  */
-export function tryReadMergedIntentSummaries(
-  agentDir: string,
+export function tryReadJobIntentSummaries(
   jobDir: string,
   agentId: string,
   jobId: string,
 ): Pick<CustomIntentDef, 'id' | 'description'>[] | undefined {
   try {
-    const agentIntents = parseIntentsYaml(intentsFilePathFor(agentDir), agentId);
-    const jobIntents = parseIntentsYaml(intentsFilePathFor(jobDir), agentId, jobId);
-    return mergeIntentCatalogs(agentIntents, jobIntents, agentId, jobId).map(({ id, description }) => ({ id, description }));
+    return parseIntentsYaml(intentsFilePathFor(jobDir), agentId, jobId).map(({ id, description }) => ({
+      id,
+      description,
+    }));
   } catch {
     return undefined;
   }

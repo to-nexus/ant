@@ -1,9 +1,9 @@
 import { useStore } from '@/domain/store';
-import { X, Target, BookOpen } from 'lucide-react';
+import { X, Target, BookOpen, ClipboardList } from 'lucide-react';
 
 /**
- * Chips for the universal explicit turn meta (`@intent:` / `@ctx:` mentions).
- * Mirrors the ActionMetadataBadges look; the data source is
+ * Chips for the universal explicit turn meta (`@intent:` / `@ctx:` / `@plan`
+ * mentions). Mirrors the ActionMetadataBadges look; the data source is
  * `universalTurnMeta` (run-scoped, reset on send/job-switch) instead of the
  * canonical actionMetadata store.
  */
@@ -12,9 +12,10 @@ export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { clas
   const meta = useStore(s => s.universalTurnMeta);
   const removeIntent = useStore(s => s.removeUniversalIntentMention);
   const removeContext = useStore(s => s.removeUniversalContextMention);
+  const setPlan = useStore(s => s.setUniversalPlanMention);
 
   if (projectType !== 'universal') return null;
-  if (meta.intents.length === 0 && meta.context.length === 0) return null;
+  if (meta.intents.length === 0 && meta.context.length === 0 && !meta.plan) return null;
 
   const chip = (
     key: string,
@@ -42,6 +43,14 @@ export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { clas
 
   return (
     <div className={`flex flex-wrap items-center gap-1 ${className}`}>
+      {meta.plan &&
+        chip(
+          'plan',
+          ClipboardList,
+          'plan',
+          'bg-[color:var(--status-warning-bg, var(--bg-surface-2))] border-[color:var(--border-1)] text-[color:var(--status-warning-fg, var(--text-2))]',
+          () => setPlan(false),
+        )}
       {meta.intents.map(id =>
         chip(
           `intent:${id}`,

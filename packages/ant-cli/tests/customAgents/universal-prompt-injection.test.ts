@@ -12,7 +12,7 @@ import { wrapCustomJobContent } from '../../src/core/prompt/builder/InputSanitiz
 import { PromptBuilder } from '../../src/core/prompt/builder/PromptBuilder';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import { TEMPLATE_PATHS } from '../../src/core/prompt/builder/templatePaths';
-import { buildCustomJobSystemBlock, INJECTION_INLINE_CAP } from '../../src/agents/universal/graph/nodes/agent';
+import { buildCustomJobSystemBlock, INJECTION_INLINE_CAP } from '../../src/core/customAgents/promptBlock';
 import type { ResolvedCustomJob, InjectionTocEntry } from '../../src/core/customAgents/types';
 
 const SENTINEL = 'UNIQUE-CUSTOM-DEFINITION-SENTINEL-9313';
@@ -38,9 +38,10 @@ describe('PromptBuilder inertSystemAppend gate', () => {
     jobName: 'Weekly',
     jobDescription: '',
     artifactsOverview: '(empty)',
-    workspaceAccess: 'none',
     hasMcpServers: false,
     definitionMount: '_agent-definition/',
+    planTurn: false,
+    planDocsDir: 'plan/ops/weekly',
   };
 
   it('ON: custom block lands in system, after rules/injections content', async () => {
@@ -92,26 +93,19 @@ describe('PromptBuilder inertSystemAppend gate', () => {
     expect(result.system).not.toContain('<custom_job_instructions id=');
   });
 
-  it('plan gate: off → no plan section; suggested/required → gated section with planDir', async () => {
+  it('plan-turn gate: off → no PLAN TURN section; on → section with the plan docs dir', async () => {
     const offResult = await builder.build({
       templates: TEMPLATE_PATHS.universalAgent,
-      vars: { ...baseVars, planMode: 'off', planDir: undefined },
+      vars: { ...baseVars, planTurn: false },
     });
-    expect(offResult.user).not.toContain('Plan Directory');
+    expect(offResult.user).not.toContain('PLAN TURN');
 
-    const suggested = await builder.build({
+    const onResult = await builder.build({
       templates: TEMPLATE_PATHS.universalAgent,
-      vars: { ...baseVars, planMode: 'suggested', planDir: 'plan/ops/weekly' },
+      vars: { ...baseVars, planTurn: true },
     });
-    expect(suggested.user).toContain('plan/ops/weekly');
-    expect(suggested.user).not.toContain('REQUIRED');
-
-    const required = await builder.build({
-      templates: TEMPLATE_PATHS.universalAgent,
-      vars: { ...baseVars, planMode: 'required', planDir: 'plan/ops/weekly' },
-    });
-    expect(required.user).toContain('plan/ops/weekly');
-    expect(required.user).toContain('REQUIRED');
+    expect(onResult.user).toContain('PLAN TURN');
+    expect(onResult.user).toContain('plan/ops/weekly');
   });
 });
 
@@ -124,25 +118,22 @@ function makeResolved(toc: InjectionTocEntry[]): ResolvedCustomJob {
     scope: 'user',
     agentName: 'Ops',
     jobName: 'Weekly',
-    description: '',
     prose: 'PERSONA-PROSE',
     injectionsToc: toc,
     intents: [],
     mcpServers: {},
     builtinTools: [],
     approval: {},
-    workspace: 'none',
-    models: {},
-    plan: 'suggested',
-    outputs: { mode: 'free' },
     agentDir: '/tmp/x',
     jobDir: '/tmp/x/jobs/weekly',
   };
 }
 
 function entry(file: string, opts?: { intents?: string[]; body?: string }): InjectionTocEntry {
-  return { file, summary: `${file} summary`, absolutePath: `/tmp/x/injections/${file}`, ...opts };
+  return { file, summary: `${file} summary`, absolutePath: `/tmp/x/jobs/weekly/injections/${file}`, ...opts };
 }
+
+const TOC_PATH = (file: string): string => `_agent-definition/jobs/weekly/injections/${file}`;
 
 describe('buildCustomJobSystemBlock — intent gate truth table', () => {
   it('matched intent → body inlined in the Active section, entry ABSENT from TOC', () => {
@@ -150,9 +141,11 @@ describe('buildCustomJobSystemBlock — intent gate truth table', () => {
       makeResolved([entry('a.md', { intents: ['research'], body: 'A-BODY' })]),
       ['research'],
     );
-    expect(block).toContain('Active Situation Instructions');
-    expect(block).toContain('A-BODY');
-    expect(block).not.toContain('_agent-definition/injections/a.md');
+    expect(block.text).toContain('Active Situation Instructions');
+    expect(block.text).toContain('A-BODY');
+    expect(block.text).not.toContain(TOC_PATH('a.md'));
+    expect(block.inlined).toEqual(['a.md']);
+    expect(block.toc).toEqual([]);
   });
 
   it('unmatched intent → TOC entry only (current on-demand behavior)', () => {
@@ -160,9 +153,11 @@ describe('buildCustomJobSystemBlock — intent gate truth table', () => {
       makeResolved([entry('a.md', { intents: ['research'], body: 'A-BODY' })]),
       ['other'],
     );
-    expect(block).not.toContain('Active Situation Instructions');
-    expect(block).not.toContain('A-BODY');
-    expect(block).toContain('_agent-definition/injections/a.md');
+    expect(block.text).not.toContain('Active Situation Instructions');
+    expect(block.text).not.toContain('A-BODY');
+    expect(block.text).toContain(TOC_PATH('a.md'));
+    expect(block.inlined).toEqual([]);
+    expect(block.toc).toEqual(['a.md']);
   });
 
   it('unmapped injection → always pure TOC regardless of active intents (backcompat)', () => {
@@ -170,8 +165,8 @@ describe('buildCustomJobSystemBlock — intent gate truth table', () => {
       makeResolved([entry('free.md')]),
       ['research'],
     );
-    expect(block).toContain('_agent-definition/injections/free.md');
-    expect(block).not.toContain('Active Situation Instructions');
+    expect(block.text).toContain(TOC_PATH('free.md'));
+    expect(block.text).not.toContain('Active Situation Instructions');
   });
 
   it('general-only → even mapped injections stay TOC (always-on prose belongs in base/)', () => {
@@ -179,8 +174,8 @@ describe('buildCustomJobSystemBlock — intent gate truth table', () => {
       makeResolved([entry('a.md', { intents: ['research'], body: 'A-BODY' })]),
       ['general'],
     );
-    expect(block).not.toContain('A-BODY');
-    expect(block).toContain('_agent-definition/injections/a.md');
+    expect(block.text).not.toContain('A-BODY');
+    expect(block.text).toContain(TOC_PATH('a.md'));
   });
 
   it('overflow → the oversized file demotes WHOLESALE to TOC with the applies-now marker', () => {
@@ -192,17 +187,19 @@ describe('buildCustomJobSystemBlock — intent gate truth table', () => {
       ]),
       ['research'],
     );
-    expect(block).not.toContain(huge);
-    expect(block).toContain('applies to the current request');
+    expect(block.text).not.toContain(huge);
+    expect(block.text).toContain('applies to the current request');
     // Remaining budget still inlines the smaller sibling.
-    expect(block).toContain('SMALL-BODY');
+    expect(block.text).toContain('SMALL-BODY');
+    expect(block.inlined).toEqual(['small.md']);
+    expect(block.toc).toEqual(['big.md']);
   });
 
   it('no activeIntents argument (default []) → legacy TOC-only rendering', () => {
     const block = buildCustomJobSystemBlock(
       makeResolved([entry('a.md', { intents: ['research'], body: 'A-BODY' })]),
     );
-    expect(block).not.toContain('A-BODY');
-    expect(block).toContain('_agent-definition/injections/a.md');
+    expect(block.text).not.toContain('A-BODY');
+    expect(block.text).toContain(TOC_PATH('a.md'));
   });
 });

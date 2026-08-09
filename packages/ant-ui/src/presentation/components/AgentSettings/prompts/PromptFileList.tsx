@@ -1,9 +1,8 @@
 /**
  * Grouped prompt file list — the top half of the Prompts card. Flat rows
  * under semantic group headers (base = always injected, injections =
- * intent-gated with per-row intent badges, config = the yaml hatches).
- * Intent bindings surface here ONCE: badges open the BindingPopover, the
- * hover "+" adds a first binding.
+ * intent-gated with per-row intent badges). Intent bindings surface here
+ * ONCE: badges open the BindingPopover, the hover "+" adds a first binding.
  */
 
 import { useRef, useState } from 'react';

@@ -12,7 +12,8 @@ import { describe, it, expect } from 'vitest';
 import {
   UNIVERSAL_BUILTIN_TOOLS,
   MUTATING_BUILTIN_TOOLS,
-  WRITE_TOOLS,
+  ARTIFACT_WRITE_TOOLS,
+  planTurnViolation,
   requiresApproval,
   isMcpToolName,
 } from '../../src/core/customAgents/universalToolPolicy';
@@ -76,9 +77,35 @@ describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
     expect(TOOL_SETS.subagentUniversal).not.toContain(ToolName.EXPLORE);
   });
 
-  it('WRITE_TOOLS and MUTATING_BUILTIN_TOOLS are subsets of the preset', () => {
-    for (const t of [...WRITE_TOOLS, ...MUTATING_BUILTIN_TOOLS]) {
+  it('ARTIFACT_WRITE_TOOLS and MUTATING_BUILTIN_TOOLS are subsets of the preset', () => {
+    for (const t of [...ARTIFACT_WRITE_TOOLS, ...MUTATING_BUILTIN_TOOLS]) {
       expect(UNIVERSAL_BUILTIN_TOOLS).toContain(t);
+    }
+  });
+});
+
+describe('planTurnViolation — @plan write confinement table', () => {
+  it.each([
+    // [label, tool, args, violates]
+    ['create_file outside plan/', 'create_file', { path: 'reports/w.md' }, true],
+    ['edit_file outside plan/', 'edit_file', { path: 'notes.md' }, true],
+    ['append_file outside plan/', 'append_file', { path: 'log.txt' }, true],
+    ['delete_file outside plan/', 'delete_file', { path: 'old.md' }, true],
+    ['mkdir outside plan/', 'mkdir', { path: 'reports' }, true],
+    ['copy_file dest outside plan/', 'copy_file', { src: 'plan/a.md', dest: 'reports/a.md' }, true],
+    ['create_file under plan/', 'create_file', { path: 'plan/ops/weekly/plan.md' }, false],
+    ['copy_file dest under plan/', 'copy_file', { src: 'notes.md', dest: 'plan/copy.md' }, false],
+    ['./ prefix normalizes', 'create_file', { path: './plan/x.md' }, false],
+    ['backslash separators normalize', 'create_file', { path: 'plan\\x.md' }, false],
+    ['plan-prefixed sibling dir is NOT plan/', 'create_file', { path: 'planning/x.md' }, true],
+    ['read tools never violate', 'read_file', { path: 'reports/w.md' }, false],
+    ['search tools never violate', 'search_files', { query: 'x' }, false],
+  ] as const)('%s', (_label, tool, args, violates) => {
+    const result = planTurnViolation(tool, args as Record<string, unknown>);
+    if (violates) {
+      expect(result).toMatch(/PLAN turn/);
+    } else {
+      expect(result).toBeNull();
     }
   });
 });

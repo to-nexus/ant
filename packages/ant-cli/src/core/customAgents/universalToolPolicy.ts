@@ -2,7 +2,7 @@
  * Universal-job tool policy — the SSOT allowlist and approval defaults.
  *
  * Lives in core (not agents/common/tool) so the loader can validate
- * `job ⊆ agent ⊆ preset` without a core→agents dependency. The registry
+ * `job ⊆ preset` without a core→agents dependency. The registry
  * factory in `agents/common/tool/presets.ts` builds the runtime registry
  * from this list; a unit test reconciles the two.
  *
@@ -59,12 +59,54 @@ export function isMcpToolName(name: string): boolean {
   return name.startsWith(MCP_TOOL_PREFIX);
 }
 
-/** Write tools — outputs.mode 'contract'/'free' requires at least one of these. */
-export const WRITE_TOOLS: readonly UniversalBuiltinTool[] = [
+/**
+ * Builtin tools that mutate the artifact tree — during a plan turn (`@plan`)
+ * these are confined to the `plan/` directory.
+ */
+export const ARTIFACT_WRITE_TOOLS: readonly UniversalBuiltinTool[] = [
   'create_file',
   'edit_file',
   'append_file',
+  'delete_file',
+  'mkdir',
+  'copy_file',
 ];
+
+/** Path-bearing args per artifact-write tool (mirrors the tool node's write collection). */
+const WRITE_PATH_ARGS: Record<string, readonly string[]> = {
+  create_file: ['path'],
+  edit_file: ['path'],
+  append_file: ['path'],
+  delete_file: ['path'],
+  mkdir: ['path'],
+  copy_file: ['dest'],
+};
+
+function isUnderPlanDir(rawPath: string): boolean {
+  const normalized = rawPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+  return normalized === 'plan' || normalized.startsWith('plan/');
+}
+
+/**
+ * Plan-turn write confinement — returns the rejection message when `toolName`
+ * would write outside `plan/` during a plan turn, else null. Pure so the
+ * gate is unit-testable without the graph.
+ */
+export function planTurnViolation(toolName: string, args: Record<string, unknown>): string | null {
+  const pathArgs = WRITE_PATH_ARGS[toolName];
+  if (!pathArgs) return null;
+  for (const argName of pathArgs) {
+    const value = args[argName];
+    if (typeof value !== 'string' || value.length === 0) continue;
+    if (!isUnderPlanDir(value)) {
+      return (
+        `"${toolName}" targeting "${value}" is blocked: this is a PLAN turn — file writes are confined to the plan/ directory. ` +
+        `Write the plan document under plan/ or present the plan in chat; the actual work runs on a normal turn.`
+      );
+    }
+  }
+  return null;
+}
 
 /**
  * Effective approval decision for one tool call.

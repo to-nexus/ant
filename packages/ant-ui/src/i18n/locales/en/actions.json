@@ -183,5 +183,13 @@
   },
   "figma": {
     "setUrl": "Set Figma URL"
+  },
+  "universal": {
+    "noAgent": "Select an agent in the chat toolbar first",
+    "noAgentHint": "Agents and their jobs are authored in Agent Settings, from the profile menu.",
+    "pickJobTitle": "What should this agent do?",
+    "jobIntentCount": "{{count}} intent(s)",
+    "pickIntentHint": "Arm one or more for the next turn — same as an @intent: mention.",
+    "noIntents": "This job declares no intents — every turn runs with its base prompt, at no classification cost."
   }
 }

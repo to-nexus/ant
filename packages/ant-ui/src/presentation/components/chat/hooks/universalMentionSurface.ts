@@ -6,11 +6,13 @@
 
 /**
  * Universal exposes `@intent:` (the selected job's own catalog, MULTIPLE
- * accumulate) and `@ctx:` (artifacts subtree, `context[]` accumulate).
+ * accumulate), `@ctx:` (artifacts subtree, `context[]` accumulate), and
+ * `@plan` (argument-less per-turn flag: this run produces a plan under
+ * plan/, not the work — the runtime enforces the write confinement).
  * `@target:`/`@ref:` are RAC-only and `@explicit` is a triage-bypass flag —
- * none exist on universal.
+ * neither exists on universal.
  */
-export const UNIVERSAL_MENTION_PREFIXES = ['@intent:', '@ctx:'] as const;
+export const UNIVERSAL_MENTION_PREFIXES = ['@intent:', '@ctx:', '@plan'] as const;
 
 /** `sessions/` is grafted into the universal tree but sits OUTSIDE the agent
  * sandbox (artifacts + definition mount only) — never suggest it as `@ctx:`. */

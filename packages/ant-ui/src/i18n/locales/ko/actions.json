@@ -203,5 +203,13 @@
   },
   "figma": {
     "setUrl": "Figma URL 설정"
+  },
+  "universal": {
+    "noAgent": "먼저 채팅 툴바에서 에이전트를 선택하세요",
+    "noAgentHint": "에이전트와 잡은 프로필 메뉴의 에이전트 설정에서 작성합니다.",
+    "pickJobTitle": "이 에이전트로 무엇을 할까요?",
+    "jobIntentCount": "인텐트 {{count}}개",
+    "pickIntentHint": "다음 턴에 적용할 인텐트를 켜세요 — @intent: 멘션과 같습니다.",
+    "noIntents": "이 잡은 인텐트를 선언하지 않았습니다 — 모든 턴이 분류 비용 없이 기본 프롬프트로 실행됩니다."
   }
 }

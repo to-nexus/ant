@@ -1,15 +1,16 @@
 /**
- * Prompts section card — the selection-scoped prompt surface, stacked
+ * Prompts section card — the selection-scoped PROSE surface, stacked
  * vertically: grouped file list (with intent-binding badges) on top, the
  * full-width editor below. Replaces the old fixed-height left-tree /
  * right-editor split — the page scroller stays the single primary scroller.
  *
- * Scope model: agent = base/*.md + agent.yaml · job = its jobs/{id}/ subtree
- * grouped base / injections / config · intent = only its bound injections
- * (plus the Add-existing picker over the job's unbound ones).
+ * Scope model: agent = base/*.md · job = its jobs/{id}/ subtree grouped base
+ * / injections · intent = only its bound injections (plus the Add-existing
+ * picker over the job's unbound ones). Definition yaml never appears here —
+ * each yaml is owned by its own card above.
  *
- * Save rule: catalog fields (bindings) mutate the intents draft → shell
- * ChangedBar; file-system ops and raw buffers save immediately here.
+ * Save rule: catalog fields (bindings) mutate the intents document → shell
+ * ChangedBar; file-system ops and .md buffers save immediately here.
  */
 
 import { useMemo, useState } from 'react';
@@ -31,8 +32,6 @@ import { AddExistingPicker } from './AddExistingPicker';
 
 export type { PromptsScope };
 
-const STRUCTURAL_FILE = /^(agent\.yaml|jobs\/[^/]+\/job\.yaml)$/;
-
 export interface PromptsCardProps {
   id: string;
   agentId: string;
@@ -50,10 +49,6 @@ export interface PromptsCardProps {
   onAddExisting?: (fileName: string) => void;
   /** The job's injection file names (Add-existing picker vocabulary). */
   jobInjectionFiles?: string[];
-  /** Draft-owned yaml paths with unsaved form edits (raw-save clobber warning). */
-  draftDirtyPaths: string[];
-  /** Called after a raw save lands (with the saved path), so drafts can re-sync selectively. */
-  onRawSaved?: (path: string) => void;
 }
 
 export function PromptsCard({
@@ -68,8 +63,6 @@ export function PromptsCard({
   onCreatedInjection,
   onAddExisting,
   jobInjectionFiles = [],
-  draftDirtyPaths,
-  onRawSaved,
 }: PromptsCardProps) {
   const { t } = useTranslation('agents');
   const tree = useStore((s) => s.definitionTree);
@@ -138,10 +131,8 @@ export function PromptsCard({
   const handleSave = async () => {
     if (!openFile) return;
     setSaveError(null);
-    const savedPath = openFile.path;
     try {
       await saveOpenDefinitionFile();
-      onRawSaved?.(savedPath);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     }
@@ -187,8 +178,8 @@ export function PromptsCard({
       : 0;
 
   const description = {
-    agent: t('prompts.agentDescription', "The agent's always-on prompt — base/*.md prose plus the agent.yaml raw hatch."),
-    job: t('prompts.jobDescription', "This job's prompt surface — base/ (always-on), injections/ (intent-gated), and the yaml raw hatches."),
+    agent: t('prompts.agentDescription', "The agent's always-on prompt — the base/*.md prose every job inherits."),
+    job: t('prompts.jobDescription', "This job's prompt surface — base/ (always-on) and injections/ (intent-gated)."),
     intent: t('prompts.intentDescription', "The injection files this intent inlines when active. Creating a file here binds it automatically."),
   }[scope.level];
 
@@ -312,8 +303,6 @@ export function PromptsCard({
             <PromptEditor
               openFile={openFile}
               readonly={readonly}
-              structural={STRUCTURAL_FILE.test(openFile.path)}
-              draftDirtyPaths={draftDirtyPaths}
               validation={validation}
               onChange={setDefinitionFileContent}
               onSave={handleSave}

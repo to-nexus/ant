@@ -24,10 +24,22 @@ import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
 import { BasisWizard } from './basis';
 import { DomainBadge } from './DomainBadge';
+import { UniversalActionsPanel } from './UniversalActionsPanel';
 
 const STEP_ORDER = ['pick-action', 'pick-intent', 'config', 'basis-edit'] as const;
 
+/**
+ * Canonical actions surface. Universal (workspace) projects have no RAC and
+ * no action/intent matrix, so they render their own two-step panel instead of
+ * threading a projectType branch through every step of this one.
+ */
 export function ActionsPanel() {
+  const isUniversal = useStore((s) => s.projectType === 'universal');
+  if (isUniversal) return <UniversalActionsPanel />;
+  return <CanonicalActionsPanel />;
+}
+
+function CanonicalActionsPanel() {
   const { t, i18n } = useTranslation('actions');
   const lang = i18n.language as 'en' | 'ko';
   const readiness = useActionReadiness();

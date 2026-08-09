@@ -110,6 +110,7 @@ The Visual Job (creator agent) has dedicated UI for the image generation/revisio
 | `fileEdit` | CodeEditor | File editing |
 | `transfer` | TransferPanel | Code transfer |
 | `previewConfig` | PreviewConfigEditor | Preview settings |
+| `agentSettings` | AgentSettings | Account-scoped custom agent/job/intent editing |
 
 ## Internationalization (i18n)
 

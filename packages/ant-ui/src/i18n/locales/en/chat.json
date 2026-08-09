@@ -37,6 +37,10 @@
     "explicit": {
       "label": "explicit",
       "description": "Skip inference and use metadata as-is"
+    },
+    "plan": {
+      "label": "plan",
+      "description": "Plan turn — produce a plan first, not the work"
     }
   },
   "panelTabs": {

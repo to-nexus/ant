@@ -19,6 +19,8 @@ import {
   ensureUniversalContainer,
   getUniversalContainerPathOf,
   isUniversalProject,
+  listUniversalContainers,
+  moveUniversalAgentData,
   reconcileUniversalContainer,
   resolveUniversalContainerPath,
   resolveUniversalMergedPath,
@@ -107,9 +109,77 @@ describe('ensureUniversalContainer', () => {
 describe('per-(agentId, jobId) session path shape', () => {
   it('mirrors the canonical sessions/{agent}/{jobType}.json layout', () => {
     const container = getUniversalContainerPathOf(projectPath);
-    expect(getSessionFilePath(container, 'sample-researcher', 'quick-answer')).toBe(
-      path.join(projectPath, 'universal', 'sessions', 'sample-researcher', 'quick-answer.json'),
+    expect(getSessionFilePath(container, 'assistant', 'chat')).toBe(
+      path.join(projectPath, 'universal', 'sessions', 'assistant', 'chat.json'),
     );
+  });
+});
+
+/**
+ * Agent-id-keyed container data is per PROJECT while the definition is
+ * account-wide, so an id rename has to sweep every universal project — these
+ * rows pin what the sweep sees and what it refuses to touch.
+ */
+describe('listUniversalContainers / moveUniversalAgentData', () => {
+  let workspacePath: string;
+
+  function seedProject(projectId: string, projectType: string, agentId?: string): string {
+    const project = path.join(workspacePath, projectId);
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(project, 'config.json'), JSON.stringify({ projectType }));
+    if (agentId) {
+      const sessions = path.join(project, 'universal/sessions', agentId);
+      fs.mkdirSync(sessions, { recursive: true });
+      fs.writeFileSync(
+        path.join(sessions, 'chat.json'),
+        JSON.stringify({ state: { customJobRef: `${agentId}/chat` } }),
+      );
+      fs.mkdirSync(path.join(project, 'universal/artifacts/plan', agentId), { recursive: true });
+    }
+    return project;
+  }
+
+  beforeEach(() => {
+    workspacePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-workspace-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(workspacePath, { recursive: true, force: true });
+  });
+
+  it('lists universal projects only — canonical projects and dotfiles are skipped', () => {
+    seedProject('uni', 'universal');
+    seedProject('canon', 'canonical');
+    fs.mkdirSync(path.join(workspacePath, '.ant/agents'), { recursive: true });
+
+    expect(listUniversalContainers(workspacePath).map((c) => c.projectId)).toEqual(['uni']);
+  });
+
+  it('moves sessions + plan dirs across projects and rewrites the recorded ref', () => {
+    seedProject('a', 'universal', 'ops');
+    seedProject('b', 'universal', 'ops');
+    seedProject('c', 'universal'); // universal but untouched by this agent
+
+    const { movedProjects, conflicts } = moveUniversalAgentData(workspacePath, 'ops', 'ops-team');
+    expect(conflicts).toEqual([]);
+    expect(movedProjects.sort()).toEqual(['a', 'b']);
+
+    for (const projectId of ['a', 'b']) {
+      const base = path.join(workspacePath, projectId, 'universal');
+      expect(fs.existsSync(path.join(base, 'sessions/ops'))).toBe(false);
+      expect(fs.existsSync(path.join(base, 'artifacts/plan/ops-team'))).toBe(true);
+      const session = JSON.parse(fs.readFileSync(path.join(base, 'sessions/ops-team/chat.json'), 'utf-8'));
+      expect(session.state.customJobRef).toBe('ops-team/chat');
+    }
+  });
+
+  it('dryRun reports conflicts and moves nothing', () => {
+    seedProject('a', 'universal', 'ops');
+    fs.mkdirSync(path.join(workspacePath, 'a/universal/sessions/ops-team'), { recursive: true });
+
+    const dry = moveUniversalAgentData(workspacePath, 'ops', 'ops-team', { dryRun: true });
+    expect(dry.conflicts).toHaveLength(1);
+    expect(fs.existsSync(path.join(workspacePath, 'a/universal/sessions/ops'))).toBe(true);
   });
 });
 

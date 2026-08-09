@@ -61,11 +61,11 @@ describe('chat-input mention surface — `@domain:` is intentionally absent', ()
 });
 
 describe('universal mention surface (D-E) — source-level invariants', () => {
-  it('universal prefixes are exactly @intent: and @ctx: (no @target:/@ref:/@explicit)', () => {
+  it('universal prefixes are exactly @intent:, @ctx:, @plan (no @target:/@ref:/@explicit)', () => {
     const m = universalSurfaceSrc.match(/UNIVERSAL_MENTION_PREFIXES = \[([^\]]*)\]/);
     expect(m).not.toBeNull();
     const prefixes = [...m![1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
-    expect(prefixes).toEqual(['@intent:', '@ctx:']);
+    expect(prefixes).toEqual(['@intent:', '@ctx:', '@plan']);
   });
 
   it('universal @intent: vocabulary comes from the selected job catalog (API data), not INTENT_DEFINITIONS', () => {

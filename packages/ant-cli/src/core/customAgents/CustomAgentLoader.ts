@@ -25,6 +25,7 @@ import * as yaml from 'js-yaml';
 import {
   INTENTS_FILE_NAME,
   isValidCustomId,
+  validateMcpServers,
   type CustomAgentScope,
   type CustomAgentSummary,
   type CustomJobSummary,
@@ -163,32 +164,10 @@ export function validateJobYamlDoc(doc: unknown, agentId: string, jobId: string)
   }
 }
 
-function validateMcpServers(servers: Record<string, McpServerConfig> | undefined, agentId: string, jobId?: string): void {
-  for (const [name, cfg] of Object.entries(servers ?? {})) {
-    if (!isValidCustomId(name)) {
-      throw new CustomAgentValidationError(`MCP server name "${name}" must match [a-z0-9-]+`, agentId, jobId);
-    }
-    if (cfg.transport === 'stdio') {
-      if (!cfg.command) {
-        throw new CustomAgentValidationError(`MCP server "${name}": stdio transport requires "command"`, agentId, jobId);
-      }
-    } else if (cfg.transport === 'http') {
-      if (!cfg.url) {
-        throw new CustomAgentValidationError(`MCP server "${name}": http transport requires "url"`, agentId, jobId);
-      }
-    } else {
-      throw new CustomAgentValidationError(`MCP server "${name}": transport must be "stdio" | "http"`, agentId, jobId);
-    }
-    for (const [key, value] of Object.entries(cfg.env ?? {})) {
-      if (typeof value !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(value)) {
-        throw new CustomAgentValidationError(
-          `MCP server "${name}": env.${key} must reference a host env var NAME (got: ${String(value)}) — secrets never live in the definition file`,
-          agentId,
-          jobId,
-        );
-      }
-    }
-  }
+/** Rules live in `@ant/shared.validateMcpServers`; the loader only chooses the failure shape. */
+function assertMcpServers(servers: Record<string, McpServerConfig> | undefined, agentId: string, jobId?: string): void {
+  const [first] = validateMcpServers(servers);
+  if (first) throw new CustomAgentValidationError(first, agentId, jobId);
 }
 
 function validateBuiltinSubset(
@@ -379,8 +358,8 @@ export function loadCustomJob(
   validateJobYamlDoc(job, agentId, jobId);
   validateIdMatchesDir('job', job.id, jobId, agentId, jobId);
 
-  validateMcpServers(agent.mcp?.servers, agentId);
-  validateMcpServers(job.mcp?.servers, agentId, jobId);
+  assertMcpServers(agent.mcp?.servers, agentId);
+  assertMcpServers(job.mcp?.servers, agentId, jobId);
 
   // tools.builtin: job ⊆ universal preset (job-only, mirroring canonical)
   const builtinTools = validateBuiltinSubset(job.tools?.builtin, UNIVERSAL_BUILTIN_TOOLS, 'the universal preset', agentId, jobId);
@@ -394,7 +373,7 @@ export function loadCustomJob(
     .join('\n\n');
   if (prose.trim().length === 0) {
     throw new CustomAgentValidationError(
-      `Custom job ${agentId}/${jobId} has no prose — add at least one base/*.md (e.g. base/system.md)`,
+      `Custom job ${agentId}/${jobId} has no prose — add at least one base/*.md (e.g. base/role.md or jobs/${jobId}/base/system.md)`,
       agentId,
       jobId,
     );

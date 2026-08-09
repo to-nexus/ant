@@ -644,7 +644,7 @@ export async function orchestrator(params: {
       const artifactsRoot = process.env.ANT_CODEBASE_PATH || path.join(projectPath, 'universal', 'artifacts');
       const artifactsFs = AdapterFactory.createFileSystemAdapterWithPath(artifactsRoot);
       const definitionFs = AdapterFactory.createFileSystemAdapterWithPath(activeDef.agentDir);
-      const fileSystem = createUniversalFileSystem(artifactsFs, definitionFs, activeDef);
+      const fileSystem = createUniversalFileSystem(artifactsFs, definitionFs);
 
       // Record user_turn — the workspace's chat.jsonl/feature.jsonl live under
       // the universal container (featurePath-shaped), so the shared helper works.
@@ -677,6 +677,7 @@ export async function orchestrator(params: {
         isResume,
         explicitIntents: universalTurnMeta?.intents,
         explicitContext: universalTurnMeta?.context,
+        planRequested: universalTurnMeta?.plan === true,
         deps: { llm, session, promptBuilder, fileSystem, kanbanUpdate, workflowUpdate, fileTreeUpdate },
         _httpJobId: jobId,
       });

@@ -29,10 +29,11 @@ export interface UniversalState {
   selectedCustomAgentId: string | undefined;
   selectedCustomJobId: string | undefined;
   /**
-   * Explicit `@intent:` / `@ctx:` mentions accumulated for the NEXT send —
-   * applies to that run only. Reset on job switch and after send.
+   * Explicit `@intent:` / `@ctx:` / `@plan` mentions accumulated for the NEXT
+   * send — applies to that run only. Reset on job switch and after send.
+   * `plan` requests a plan turn: the run produces a plan document, not the work.
    */
-  universalTurnMeta: { intents: string[]; context: string[] };
+  universalTurnMeta: { intents: string[]; context: string[]; plan: boolean };
 }
 
 export interface UniversalActions {
@@ -51,6 +52,8 @@ export interface UniversalActions {
   /** Accumulate an `@ctx:` artifact-path mention (deduped). */
   addUniversalContextMention: (path: string) => void;
   removeUniversalContextMention: (path: string) => void;
+  /** `@plan` per-turn plan-mode flag. */
+  setUniversalPlanMention: (on: boolean) => void;
   resetUniversalTurnMeta: () => void;
 }
 
@@ -61,7 +64,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
   customAgents: [],
   selectedCustomAgentId: undefined,
   selectedCustomJobId: undefined,
-  universalTurnMeta: { intents: [], context: [] },
+  universalTurnMeta: { intents: [], context: [], plan: false },
 
   setProjectType: (projectType) => {
     const changed = get().projectType !== projectType;
@@ -106,7 +109,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       selectedCustomAgentId: agentId,
       selectedCustomJobId: jobId,
       // Mentions are job-scoped vocabulary — a job switch invalidates them.
-      universalTurnMeta: { intents: [], context: [] },
+      universalTurnMeta: { intents: [], context: [], plan: false },
     });
   },
 
@@ -134,7 +137,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       selectedCustomAgentId: undefined,
       selectedCustomJobId: undefined,
       customAgents: [],
-      universalTurnMeta: { intents: [], context: [] },
+      universalTurnMeta: { intents: [], context: [], plan: false },
     }),
 
   addUniversalIntentMention: (intentId) => {
@@ -161,9 +164,15 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     set({ universalTurnMeta: { ...meta, context: meta.context.filter((p: string) => p !== path) } });
   },
 
+  setUniversalPlanMention: (on) => {
+    const meta = get().universalTurnMeta;
+    if (meta.plan === on) return;
+    set({ universalTurnMeta: { ...meta, plan: on } });
+  },
+
   resetUniversalTurnMeta: () => {
     const meta = get().universalTurnMeta;
-    if (meta.intents.length === 0 && meta.context.length === 0) return;
-    set({ universalTurnMeta: { intents: [], context: [] } });
+    if (meta.intents.length === 0 && meta.context.length === 0 && !meta.plan) return;
+    set({ universalTurnMeta: { intents: [], context: [], plan: false } });
   },
 });

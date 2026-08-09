@@ -5,7 +5,7 @@ Respond in Korean (한국어로 응답하세요). Keep technical terms, file pat
 ## Current Session
 
 - Agent: {{agentName}}
-- Job: {{jobName}}{{#if jobDescription}} — {{jobDescription}}{{/if}}
+- Job: {{jobName}}
 
 ## Working File Tree (top level)
 
@@ -21,15 +21,14 @@ Paths are relative to the working tree root. Explore deeper with `list_files` / 
 This job has external MCP servers connected. Their tools appear in your tool list with the `mcp__` prefix. Tools marked as requiring user approval cannot run unattended — if such a call is rejected, explain to the user what you intended and how to proceed.
 {{/if}}
 
-{{#if planDir}}
-## Plan Directory
+{{#if planTurn}}
+## ⚠️ PLAN TURN
 
-This job's plan documents live under `{{planDir}}` in the working tree.
-{{#if (eq planMode 'required')}}
-⚠️ Planning is REQUIRED for this job: before producing the main output of a non-trivial request, write (or update) a plan document under `{{planDir}}` and keep it current as the work proceeds.
-{{else}}
-When a request is complex enough to benefit from a written plan, put the plan document under `{{planDir}}`.
-{{/if}}
+The user toggled plan mode for THIS turn. Your job this turn is to produce or update a plan, not the work itself:
+
+- Write the plan document under `{{planDocsDir}}` (file writes outside `plan/` are blocked this turn) and/or present the plan in chat.
+- Cover: what will be produced, where files will land, the steps in order, and any open questions for the user.
+- Do NOT create or edit the actual deliverables this turn — that happens on a normal turn after the user confirms.
 {{/if}}
 
 ## Definition Files (read-only)

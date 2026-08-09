@@ -12,8 +12,10 @@ import * as yaml from 'js-yaml';
 import {
   isAllowedDefinitionPath,
   isValidCustomId,
+  validateMcpServers,
   type CustomAgentDefinitionFileNode,
   type DefinitionValidationResult,
+  type McpServerConfig,
 } from '@ant/shared';
 import {
   findAgentRoot,
@@ -27,7 +29,7 @@ import { validateIntentsDoc } from '../../../../../core/customAgents/intents';
 
 // ── scaffolds ────────────────────────────────────────────────────────────────
 
-export const AGENT_SCAFFOLD_SYSTEM_MD = `# Role
+export const AGENT_SCAFFOLD_ROLE_MD = `# Role
 
 Describe this agent's shared persona and working principles here.
 Everything in \`base/\` is always injected for every job of this agent.
@@ -43,11 +45,20 @@ Put long, situational material into this job's \`injections/\` instead — the
 runtime shows a table of contents and loads files on demand.
 `;
 
+/**
+ * Default base-prose filenames. The agent level answers "who is this" and the
+ * job level "how does this run", so they get distinct names — and the shipped
+ * builtin uses the same two, so a scaffolded agent and the exemplar read alike.
+ * Additional `base/*.md` files are always allowed; these are only the defaults.
+ */
+export const AGENT_BASE_DEFAULT_MD = 'role.md';
+export const JOB_BASE_DEFAULT_MD = 'system.md';
+
 export function scaffoldAgent(agentDir: string, id: string, name: string): void {
   fs.mkdirSync(path.join(agentDir, 'base'), { recursive: true });
   fs.mkdirSync(path.join(agentDir, 'jobs'), { recursive: true });
   fs.writeFileSync(path.join(agentDir, 'agent.yaml'), yaml.dump({ id, name, version: 1 }), 'utf-8');
-  fs.writeFileSync(path.join(agentDir, 'base', 'system.md'), AGENT_SCAFFOLD_SYSTEM_MD, 'utf-8');
+  fs.writeFileSync(path.join(agentDir, 'base', AGENT_BASE_DEFAULT_MD), AGENT_SCAFFOLD_ROLE_MD, 'utf-8');
 }
 
 export const JOB_SCAFFOLD_INTENTS_YAML = `# Job intent catalog (optional). An empty catalog costs nothing — the intent
@@ -69,7 +80,7 @@ export function scaffoldJob(jobDir: string, id: string, name: string): void {
   fs.mkdirSync(path.join(jobDir, 'base'), { recursive: true });
   fs.mkdirSync(path.join(jobDir, 'injections'), { recursive: true });
   fs.writeFileSync(path.join(jobDir, 'job.yaml'), yaml.dump({ id, name, version: 1 }), 'utf-8');
-  fs.writeFileSync(path.join(jobDir, 'base', 'system.md'), JOB_SCAFFOLD_SYSTEM_MD, 'utf-8');
+  fs.writeFileSync(path.join(jobDir, 'base', JOB_BASE_DEFAULT_MD), JOB_SCAFFOLD_SYSTEM_MD, 'utf-8');
   fs.writeFileSync(path.join(jobDir, 'intents.yaml'), JOB_SCAFFOLD_INTENTS_YAML, 'utf-8');
 }
 
@@ -164,6 +175,12 @@ export type DefinitionSaveGate =
  * runs at job accept). Failing any of these returns 400 and the file is NOT
  * written — a file the funnel records is always at least structurally loadable.
  */
+/** First MCP contract violation in a parsed agent.yaml/job.yaml, or null. */
+function mcpErrorOf(parsed: unknown): string | null {
+  const servers = (parsed as { mcp?: { servers?: Record<string, McpServerConfig> } } | null)?.mcp?.servers;
+  return validateMcpServers(servers)[0] ?? null;
+}
+
 export function gateDefinitionSave(agentId: string, relPath: string, content: string): DefinitionSaveGate {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   if (!isAllowedDefinitionPath(normalized)) {
@@ -204,6 +221,8 @@ export function gateDefinitionSave(agentId: string, relPath: string, content: st
         if (e instanceof CustomAgentValidationError) return { ok: false, status: 400, error: e.message };
         throw e;
       }
+      const mcpError = mcpErrorOf(parsed);
+      if (mcpError) return { ok: false, status: 400, error: mcpError };
     } else if (segments[0] === 'jobs' && segments[2] === 'job.yaml') {
       const jobId = segments[1];
       const id = (parsed as { id?: unknown } | null)?.id;
@@ -216,6 +235,8 @@ export function gateDefinitionSave(agentId: string, relPath: string, content: st
         if (e instanceof CustomAgentValidationError) return { ok: false, status: 400, error: e.message };
         throw e;
       }
+      const mcpError = mcpErrorOf(parsed);
+      if (mcpError) return { ok: false, status: 400, error: mcpError };
     } else if (segments[segments.length - 1] === 'intents.yaml') {
       try {
         validateIntentsDoc(parsed, agentId, segments[0] === 'jobs' ? segments[1] : undefined);

@@ -8,8 +8,8 @@ import {
   deleteAccountAgent,
   deleteAccountAgentJob,
   importAgentFolder,
-  renameAccountAgent,
-  renameAccountAgentJob,
+  renameAccountAgentId,
+  renameAccountAgentJobId,
   uploadDefinitionFiles,
   validateAccountAgentJob,
 } from '@/infrastructure/http/api/accountAgents';
@@ -18,9 +18,9 @@ import { AgentTree } from './AgentTree';
 import { DetailHeader, type DetailLevel } from './DetailHeader';
 import { PromptsCard, type PromptsScope } from './prompts/PromptsCard';
 import { useResizableWidth } from './useResizableWidth';
-import { IntentsCard, ToolsCard, type OverviewCtx } from './overview/sections';
+import { IntentsCard, JobDefinitionCard, type OverviewCtx } from './overview/sections';
+import { AgentDefinitionCard } from './overview/AgentDefinitionCard';
 import { IntentDetailCard } from './overview/IntentDetailCard';
-import { PromptPreviewCard } from './overview/PromptPreviewCard';
 import { useDefinitionDocs } from './overview/useDefinitionDocs';
 
 /**
@@ -30,9 +30,21 @@ import { useDefinitionDocs } from './overview/useDefinitionDocs';
  *
  * Layout: left resizable agent › job › intent tree, right single scroller
  * with a breadcrumb DetailHeader, stacked SectionCards, and one sticky
- * ChangedBar driving save/discard for the job/intent forms. The agent level
- * has no form drafts (identity lives in base/*.md prose; renames live in the
- * tree kebab), so it renders without docs entirely.
+ * ChangedBar driving save/discard.
+ *
+ * Ownership: every definition yaml belongs to exactly one card, which shows
+ * it as a structured form OR as raw YAML over the SAME buffer (see
+ * `useDefinitionDocs`) — agent.yaml → AgentDefinitionCard, job.yaml →
+ * JobDefinitionCard, intents.yaml → IntentsCard. The tree only creates and
+ * navigates; renaming (both the display name and the id) is the card's job and
+ * deleting is the Danger Zone, so no file has two writers. The Prompts card is
+ * prose (.md) only.
+ *
+ * The id is editable at ALL THREE levels, on one rule. agentId and jobId are
+ * directory names, so each is a structural move done by its own endpoint
+ * (definition dir + the container data keyed by it) through the shared
+ * `IdRenameField`; an intentId owns no directory, so it is a catalog edit that
+ * rides the ChangedBar like every other intents.yaml change.
  *
  * Unlike the other settings shells this screen has NO TocNav rail — its card
  * count is small and the left tree is already the navigation surface, so a
@@ -67,8 +79,6 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const loadAccountAgents = useStore((s) => s.loadAccountAgents);
   const loadDefinitionTree = useStore((s) => s.loadDefinitionTree);
   const selectAgentSettingsNode = useStore((s) => s.selectAgentSettingsNode);
-  const createJobIntent = useStore((s) => s.createJobIntent);
-  const deleteJobIntent = useStore((s) => s.deleteJobIntent);
   const syncComposerAgents = useStore((s) => s.syncComposerAgents);
 
   const [error, setError] = useState<string | null>(null);
@@ -88,9 +98,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const readonly = definitionReadonly || (selectedAgent?.readonly ?? false);
   const level: DetailLevel = selection.intentId ? 'intent' : selection.jobId ? 'job' : 'agent';
 
-  // Drafts exist only at job/intent level — the agent level has no form
-  // fields left, so it skips the agent.yaml fetch entirely.
-  const docs = useDefinitionDocs(selection.jobId ? selection.agentId : undefined, selection.jobId);
+  // agent level → agent.yaml · job/intent level → the job's yaml pair.
+  const docs = useDefinitionDocs(selection.agentId, selection.jobId);
 
   // Wire the standalone validate endpoint: shows the definition's
   // load-validity for the selected job as a status pill.
@@ -126,7 +135,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     [],
   );
 
-  // ── tree handlers ──────────────────────────────────────────────────────────
+  // ── tree handlers (create + upload only) ───────────────────────────────────
 
   const handleCreateAgent = (id: string, name: string) =>
     wrap(async () => {
@@ -140,43 +149,6 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       await createAccountAgentJob(agentId, { id, name });
       await afterMutation();
       selectAgentSettingsNode(agentId, id);
-    });
-
-  const handleCreateIntent = (agentId: string, jobId: string, intentId: string) =>
-    wrap(async () => {
-      await createJobIntent(agentId, jobId, intentId);
-      if (selection.agentId === agentId) await loadDefinitionTree(agentId);
-    });
-
-  const handleRenameAgent = (agentId: string, name: string) =>
-    wrap(async () => {
-      await renameAccountAgent(agentId, name);
-      await afterMutation();
-    });
-
-  const handleRenameJob = (agentId: string, jobId: string, name: string) =>
-    wrap(async () => {
-      await renameAccountAgentJob(agentId, jobId, name);
-      await afterMutation();
-    });
-
-  const handleDeleteAgent = (agentId: string) =>
-    wrap(async () => {
-      await deleteAccountAgent(agentId);
-      await afterMutation();
-      if (selection.agentId === agentId) selectAgentSettingsNode(undefined);
-    });
-
-  const handleDeleteJob = (agentId: string, jobId: string) =>
-    wrap(async () => {
-      await deleteAccountAgentJob(agentId, jobId);
-      await afterMutation();
-      if (selection.agentId === agentId && selection.jobId === jobId) selectAgentSettingsNode(agentId);
-    });
-
-  const handleDeleteIntent = (agentId: string, jobId: string, intentId: string) =>
-    wrap(async () => {
-      await deleteJobIntent(agentId, jobId, intentId);
     });
 
   const handleUploadFiles = (agentId: string, files: FileList, pathPrefix: string) =>
@@ -213,18 +185,27 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
 
   // ── detail handlers ────────────────────────────────────────────────────────
 
+  /**
+   * Agent/job deletion removes a directory (immediate, irreversible); intent
+   * deletion is a catalog edit, so it lands in the document and the ChangedBar
+   * confirms it — same funnel as every other intents.yaml change.
+   */
   const handleDangerAction = async () => {
     if (!selection.agentId) return;
     if (!dangerArmed) {
       setDangerArmed(true);
       return;
     }
+    if (selection.intentId && selection.jobId) {
+      docs.removeIntent(selection.intentId);
+      setDangerArmed(false);
+      selectAgentSettingsNode(selection.agentId, selection.jobId);
+      return;
+    }
     setIsDeleting(true);
     setError(null);
     try {
-      if (selection.intentId && selection.jobId) {
-        await deleteJobIntent(selection.agentId, selection.jobId, selection.intentId);
-      } else if (selection.jobId) {
+      if (selection.jobId) {
         await deleteAccountAgentJob(selection.agentId, selection.jobId);
         await afterMutation();
         selectAgentSettingsNode(selection.agentId);
@@ -242,8 +223,16 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   };
 
   const handleSave = async () => {
+    if (docs.hasParseError) {
+      setError(t('overview.fixYaml', 'Fix the YAML syntax error before saving.'));
+      return;
+    }
     if (docs.intentErrors.length > 0) {
       setError(t('overview.fixIntents', 'Fix the intent catalog issues before saving.'));
+      return;
+    }
+    if (docs.mcpErrors.length > 0) {
+      setError(t('overview.fixMcp', 'Fix the MCP server issues before saving.'));
       return;
     }
     setError(null);
@@ -261,6 +250,39 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     }
   };
 
+  /** Structural move (definition dir + workspace data) — re-selects under the new id. */
+  const handleRenameAgentId = (newId: string) =>
+    wrap(async () => {
+      if (!selection.agentId) return;
+      await renameAccountAgentId(selection.agentId, newId);
+      await afterMutation();
+      selectAgentSettingsNode(newId);
+      await loadDefinitionTree(newId);
+    });
+
+  /** Same structural move as the agent id, one level down. */
+  const handleRenameJobId = (newId: string) =>
+    wrap(async () => {
+      if (!selection.agentId || !selection.jobId) return;
+      await renameAccountAgentJobId(selection.agentId, selection.jobId, newId);
+      await afterMutation();
+      selectAgentSettingsNode(selection.agentId, newId);
+      await loadDefinitionTree(selection.agentId);
+    });
+
+  /** Catalog edit (not a move) — the ChangedBar confirms it into intents.yaml. */
+  const handleRenameIntentId = (newId: string) => {
+    if (!selection.intentId) return;
+    docs.renameIntent(selection.intentId, newId);
+    selectAgentSettingsNode(selection.agentId, selection.jobId, newId);
+  };
+
+  /** New intents are authored on their own screen — the criteria start empty. */
+  const handleCreateIntent = (intentId: string) => {
+    docs.addIntent(intentId);
+    selectAgentSettingsNode(selection.agentId, selection.jobId, intentId);
+  };
+
   // ── injection ↔ intent binding maps (Prompts card, job-only model) ─────────
   const jobInjectionFiles = useMemo(
     () => (selection.jobId ? injectionFilesUnder(definitionTree, `jobs/${selection.jobId}/injections/`) : []),
@@ -270,7 +292,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const intentBindings = useMemo(() => {
     const map: Record<string, string[]> = {};
     if (!selection.jobId) return map;
-    for (const entry of docs.draft?.intents ?? []) {
+    for (const entry of docs.intents) {
       for (const f of entry.injections ?? []) {
         if (jobInjectionFiles.includes(f)) {
           (map[`jobs/${selection.jobId}/injections/${f}`] ??= []).push(entry.id);
@@ -278,24 +300,24 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       }
     }
     return map;
-  }, [docs.draft?.intents, jobInjectionFiles, selection.jobId]);
+  }, [docs.intents, jobInjectionFiles, selection.jobId]);
 
   const bindableIntentIds = useCallback(
     (path: string): string[] => {
-      if (!docs.draft || !selection.jobId) return [];
+      if (!selection.jobId) return [];
       if (!path.startsWith(`jobs/${selection.jobId}/injections/`)) return [];
       const fileName = path.split('/').pop() ?? '';
-      return docs.draft.intents
+      return docs.intents
         .filter((e) => e.id.length > 0 && !(e.injections ?? []).includes(fileName))
         .map((e) => e.id);
     },
-    [docs.draft, selection.jobId],
+    [docs.intents, selection.jobId],
   );
 
   const handleBind = useCallback(
     (intentId: string, path: string) => {
       const fileName = path.split('/').pop() ?? '';
-      const entry = docs.draft?.intents.find((e) => e.id === intentId);
+      const entry = docs.intents.find((e) => e.id === intentId);
       if (!entry) return;
       docs.updateIntent(intentId, { injections: [...(entry.injections ?? []), fileName] });
     },
@@ -305,7 +327,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const handleUnbind = useCallback(
     (intentId: string, path: string) => {
       const fileName = path.split('/').pop() ?? '';
-      const entry = docs.draft?.intents.find((e) => e.id === intentId);
+      const entry = docs.intents.find((e) => e.id === intentId);
       if (!entry) return;
       docs.updateIntent(intentId, { injections: (entry.injections ?? []).filter((f) => f !== fileName) });
     },
@@ -316,7 +338,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const bindToSelectedIntent = useCallback(
     (fileName: string) => {
       if (!selection.intentId) return;
-      const entry = docs.draft?.intents.find((e) => e.id === selection.intentId);
+      const entry = docs.intents.find((e) => e.id === selection.intentId);
       if (entry && !(entry.injections ?? []).includes(fileName)) {
         docs.updateIntent(selection.intentId, { injections: [...(entry.injections ?? []), fileName] });
       }
@@ -324,32 +346,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     [docs, selection.intentId],
   );
 
-  // Selective raw-save re-sync: only the selection's own yaml docs reload the
-  // drafts (an unrelated .md save no longer clobbers unsaved form edits);
-  // intents.yaml additionally refreshes the tree's intent rows.
-  const handleRawSaved = useCallback(
-    (path: string) => {
-      if (!selection.jobId) return;
-      const mainPath = `jobs/${selection.jobId}/job.yaml`;
-      const intentsPath = `jobs/${selection.jobId}/intents.yaml`;
-      if (path === mainPath || path === intentsPath) void docs.reload();
-      if (path.endsWith('intents.yaml')) void loadAccountAgents();
-    },
-    [selection.jobId, docs, loadAccountAgents],
-  );
-
-  // Draft-owned yaml paths with pending form edits (raw-save clobber warning).
-  const draftDirtyPaths = useMemo(() => {
-    if (!selection.jobId) return [];
-    const paths: string[] = [];
-    if (docs.mainDirty) paths.push(`jobs/${selection.jobId}/job.yaml`);
-    if (docs.intentsDirty) paths.push(`jobs/${selection.jobId}/intents.yaml`);
-    return paths;
-  }, [selection.jobId, docs.mainDirty, docs.intentsDirty]);
-
-  // Job/intent levels only — the agent level renders without form drafts.
   const overviewCtx: OverviewCtx | null =
-    selection.agentId && selection.jobId && docs.loaded
+    selection.agentId && docs.loaded
       ? {
           level,
           readonly,
@@ -378,7 +376,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
             level: 'intent',
             jobId: selection.jobId!,
             intentInjections:
-              docs.draft?.intents.find((e) => e.id === selection.intentId)?.injections ?? [],
+              docs.intents.find((e) => e.id === selection.intentId)?.injections ?? [],
           };
 
   const dangerCopy = {
@@ -394,13 +392,12 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     },
     intent: {
       title: t('danger.intentTitle', 'Delete this intent'),
-      desc: t('danger.intentDesc', 'Removes the entry from intents.yaml (renaming = delete + recreate; bindings and @intent: mentions reference the id). Its injection files stay on disk, on-demand only.'),
+      desc: t('danger.intentDesc', 'Drops the entry from the intents.yaml buffer — confirm it with Save above. Its injection files stay on disk, on-demand only.'),
       button: t('danger.intentButton', 'Delete intent'),
     },
   }[level];
 
-  const detailReady =
-    !!selection.agentId && !!promptsScope && (level === 'agent' || overviewCtx != null);
+  const detailReady = !!selection.agentId && !!promptsScope && overviewCtx != null;
 
   return (
     <div
@@ -420,12 +417,6 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onSelect={selectAgentSettingsNode}
           onCreateAgent={handleCreateAgent}
           onCreateJob={handleCreateJob}
-          onCreateIntent={handleCreateIntent}
-          onRenameAgent={handleRenameAgent}
-          onRenameJob={handleRenameJob}
-          onDeleteAgent={handleDeleteAgent}
-          onDeleteJob={handleDeleteJob}
-          onDeleteIntent={handleDeleteIntent}
           onUploadFiles={handleUploadFiles}
           onImportFolder={handleImportFolder}
         />
@@ -450,7 +441,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       </div>
 
       {/* right — canonical settings scroller */}
-      {detailReady && promptsScope ? (
+      {detailReady && promptsScope && overviewCtx ? (
         <div ref={scrollerRef} style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
           <div
             style={{
@@ -470,7 +461,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
               status={headerStatus}
             />
 
-            {!readonly && overviewCtx && (
+            {!readonly && (
               <ChangedBar
                 hasChanges={docs.dirtyCount > 0}
                 isSaving={docs.isSaving}
@@ -500,25 +491,38 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
               </div>
             )}
 
-            {level === 'intent' && overviewCtx && selection.intentId && (
+            {level === 'agent' && (
+              <AgentDefinitionCard
+                ctx={overviewCtx}
+                id="c3g-agent"
+                agentId={selection.agentId!}
+                onRenameId={handleRenameAgentId}
+              />
+            )}
+            {level === 'intent' && selection.intentId && (
               <IntentDetailCard
                 ctx={overviewCtx}
                 id="c3g-intent"
                 intentId={selection.intentId}
                 onBackToJob={() => selectAgentSettingsNode(selection.agentId, selection.jobId)}
+                onRenameId={handleRenameIntentId}
               />
             )}
-            {level === 'job' && overviewCtx && <ToolsCard ctx={overviewCtx} id="c3g-tools" />}
-            {level === 'job' && overviewCtx && selection.agentId && selection.jobId && (
+            {level === 'job' && (
+              <JobDefinitionCard
+                ctx={overviewCtx}
+                id="c3g-tools"
+                jobId={selection.jobId!}
+                onRenameId={handleRenameJobId}
+              />
+            )}
+            {level === 'job' && (
               <IntentsCard
                 ctx={overviewCtx}
                 id="c3g-intents"
                 onSelectIntent={(intentId) => selectAgentSettingsNode(selection.agentId, selection.jobId, intentId)}
-                onCreateIntent={(intentId) => handleCreateIntent(selection.agentId!, selection.jobId!, intentId)}
+                onCreateIntent={handleCreateIntent}
               />
-            )}
-            {level === 'job' && overviewCtx && selection.agentId && selection.jobId && (
-              <PromptPreviewCard ctx={overviewCtx} id="c3g-preview" agentId={selection.agentId} jobId={selection.jobId} />
             )}
             <PromptsCard
               id="c3g-prompts"
@@ -532,8 +536,6 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
               onCreatedInjection={bindToSelectedIntent}
               onAddExisting={bindToSelectedIntent}
               jobInjectionFiles={jobInjectionFiles}
-              draftDirtyPaths={draftDirtyPaths}
-              onRawSaved={handleRawSaved}
             />
             {!readonly && (
               <div id="c3g-danger">

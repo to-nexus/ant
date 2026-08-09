@@ -112,24 +112,27 @@ async function resolveUniversalExecuteContext(
 }
 
 /**
- * Validate the explicit turn meta (`@intent:` / `@ctx:` mentions) against the
- * job's merged catalog and the container's artifacts subtree. Explicit input
- * is user intent — an unknown id is a 400 (`unknown-intent`), never a silent
- * drop (that contract belongs to the inference channel).
+ * Validate the explicit turn meta (`@intent:` / `@ctx:` / `@plan` mentions)
+ * against the job's catalog and the container's artifacts subtree. Explicit
+ * input is user intent — an unknown id is a 400 (`unknown-intent`), never a
+ * silent drop (that contract belongs to the inference channel). `@plan` is
+ * job-independent: a boolean per-turn flag, adopted only when strictly true.
  */
 export async function validateUniversalTurnMeta(
   containerPath: string,
   intentIds: Set<string>,
   rawIntents: unknown,
   rawContext: unknown,
+  rawPlan?: unknown,
 ): Promise<
-  | { ok: true; meta: { intents: string[]; context: string[] } | null }
+  | { ok: true; meta: { intents: string[]; context: string[]; plan?: boolean } | null }
   | { ok: false; status: number; error: string; code: string }
 > {
   const { GENERAL_INTENT } = await import('@ant/shared');
   const intents = Array.isArray(rawIntents) ? rawIntents.filter((i): i is string => typeof i === 'string') : [];
   const context = Array.isArray(rawContext) ? rawContext.filter((c): c is string => typeof c === 'string') : [];
-  if (intents.length === 0 && context.length === 0) return { ok: true, meta: null };
+  const planRequested = rawPlan === true;
+  if (intents.length === 0 && context.length === 0 && !planRequested) return { ok: true, meta: null };
 
   for (const id of intents) {
     if (id !== GENERAL_INTENT && !intentIds.has(id)) {
@@ -156,7 +159,14 @@ export async function validateUniversalTurnMeta(
     }
   }
 
-  return { ok: true, meta: { intents: [...new Set(intents)], context: [...new Set(context)] } };
+  return {
+    ok: true,
+    meta: {
+      intents: [...new Set(intents)],
+      context: [...new Set(context)],
+      ...(planRequested && { plan: true }),
+    },
+  };
 }
 
 /**
@@ -366,7 +376,7 @@ export function createJobRoutes(deps: {
     // turn when the execute pipeline throws (queue / spawn / …).
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, intents, context } = req.body;
+    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, intents, context, plan } = req.body;
     let userContext: { userId: string; organizationId: string } | null = null;
     try {
       userContext = extractUserContext(req);
@@ -410,7 +420,7 @@ export function createJobRoutes(deps: {
 
         // Explicit turn meta (`@intent:` / `@ctx:` mentions) — fail-loud at
         // accept; explicit input never silently drops.
-        const metaResult = await validateUniversalTurnMeta(resolved.containerPath, resolved.intentIds, intents, context);
+        const metaResult = await validateUniversalTurnMeta(resolved.containerPath, resolved.intentIds, intents, context, plan);
         if (!metaResult.ok) {
           return res.status(metaResult.status).json({ error: metaResult.error, code: metaResult.code });
         }
