@@ -30,7 +30,7 @@ import {
   type CustomAgentScopeRoot,
 } from '../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../core/customAgents/types';
-import { findWritableAgent, patchYamlFile, scaffoldAgent, scaffoldJob } from './helpers/customAgentHandlers';
+import { createCollisionMessage, findWritableAgent, patchYamlFile, scaffoldAgent, scaffoldJob } from './helpers/customAgentHandlers';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
@@ -57,21 +57,22 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   router.post('/projects/:projectId/custom-agents', (req: Request, res: Response) => {
     try {
-      const { id, name, description = '' } = req.body ?? {};
+      // `description` from older FE builds is accepted-and-dropped (schema no longer carries it).
+      const { id, name } = req.body ?? {};
       if (!isValidCustomId(id ?? '')) {
         return res.status(400).json({ error: `Agent id must match [a-z0-9-]+ (got: ${String(id)})` });
       }
       const scopeRoots = scopeRootsFor(req, req.params.projectId);
-      // Readonly scopes (org/builtin) may be shadowed; only writable collisions block.
-      if (findCreateCollision(scopeRoots, id)) {
-        return res.status(409).json({ error: `Custom agent already exists: ${id}` });
+      const collision = findCreateCollision(scopeRoots, id);
+      if (collision) {
+        return res.status(409).json({ error: createCollisionMessage(id, collision) });
       }
       // Definitions are account-owned: creation always targets the user root.
       const root = scopeRoots.find((r) => r.scope === 'user')!;
       const agentDir = path.join(root.root, id);
-      scaffoldAgent(agentDir, id, name || id, description);
+      scaffoldAgent(agentDir, id, name || id);
       logger.info(`Custom agent scaffolded: ${id} (scope: user)`, { component: 'CustomAgents' });
-      res.status(201).json({ id, name: name || id, description, scope: 'user', readonly: false, jobs: [] });
+      res.status(201).json({ id, name: name || id, scope: 'user', readonly: false, jobs: [] });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'CustomAgents');
     }
@@ -81,8 +82,8 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     try {
       const found = findWritableAgent(res, scopeRootsFor(req, req.params.projectId), req.params.agentId);
       if (!found) return;
-      const { name, description } = req.body ?? {};
-      patchYamlFile(path.join(found.agentDir, 'agent.yaml'), { name, description });
+      const { name } = req.body ?? {};
+      patchYamlFile(path.join(found.agentDir, 'agent.yaml'), { name });
       res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'CustomAgents');
@@ -119,7 +120,9 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     try {
       const found = findWritableAgent(res, scopeRootsFor(req, req.params.projectId), req.params.agentId);
       if (!found) return;
-      const { id, name, description = '' } = req.body ?? {};
+      // `description` from older FE builds is accepted-and-dropped — the
+      // job.yaml schema no longer carries it (mirrors agent.yaml).
+      const { id, name } = req.body ?? {};
       if (!isValidCustomId(id ?? '')) {
         return res.status(400).json({ error: `Job id must match [a-z0-9-]+ (got: ${String(id)})` });
       }
@@ -127,9 +130,9 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
       if (fs.existsSync(jobDir)) {
         return res.status(409).json({ error: `Custom job already exists: ${req.params.agentId}/${id}` });
       }
-      scaffoldJob(jobDir, id, name || id, description);
+      scaffoldJob(jobDir, id, name || id);
       logger.info(`Custom job scaffolded: ${req.params.agentId}/${id}`, { component: 'CustomAgents' });
-      res.status(201).json({ id, name: name || id, description });
+      res.status(201).json({ id, name: name || id });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'CustomAgents');
     }
@@ -143,8 +146,8 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
       if (!isValidCustomId(req.params.jobId) || !fs.existsSync(jobYaml)) {
         return res.status(404).json({ error: `Custom job not found: ${req.params.agentId}/${req.params.jobId}` });
       }
-      const { name, description } = req.body ?? {};
-      patchYamlFile(jobYaml, { name, description });
+      const { name } = req.body ?? {};
+      patchYamlFile(jobYaml, { name });
       res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'CustomAgents');
@@ -176,8 +179,6 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
         valid: true,
         builtinTools: resolved.builtinTools,
         mcpServers: Object.keys(resolved.mcpServers),
-        outputsMode: resolved.outputs.mode,
-        workspace: resolved.workspace,
         intents: resolved.intents,
       });
     } catch (error: any) {

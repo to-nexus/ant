@@ -1,0 +1,14 @@
+# Built-in general-purpose agent, shipped read-only with Ant (`builtin` scope).
+# It is not editable or forkable from the UI — create your own agent (under a
+# different id; same-id creation is refused with 409) to customize behavior.
+# Authoring guide: docs/guides/custom-agent-authoring.md
+#
+# The agent contributes identity (name), the always-on base/*.md prose, and
+# optionally shared MCP connections. Tools, intents, and injections are
+# job-owned — see jobs/chat/.
+id: assistant # must equal the directory name, [a-z0-9][a-z0-9-]*
+name: 'Assistant'
+version: 1
+# No mcp: block on purpose. An MCP server runs arbitrary code and depends on
+# host env vars a shipped sample cannot assume. See the authoring guide for a
+# full mcp.servers example.

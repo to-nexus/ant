@@ -11,8 +11,10 @@
  * They are discovered across an ordered list of scope roots; closer scopes
  * win id collisions (user > org > builtin). `org` is structurally reserved
  * from day one but only activated in Phase 3. `builtin` is the read-only
- * sample tree shipped with Ant — lowest priority, so any writable scope
- * shadows it wholesale.
+ * sample tree shipped with Ant. Pre-existing on-disk id collisions still
+ * resolve by scope priority, but CREATING a new agent under an id any scope
+ * already owns (builtin included) is refused with 409 — silent shadowing has
+ * no UI story.
  */
 
 /** Where a custom agent definition lives — determines ownership and editability. */
@@ -26,7 +28,8 @@ export const CUSTOM_AGENT_SCOPE_PRIORITY: readonly CustomAgentScope[] = [
 ];
 
 /**
- * One intent declared in an `intents.yaml` catalog (agent-shared or per-job).
+ * One intent declared in a job's `intents.yaml` catalog (job-only — mirrors
+ * the canonical system where intents belong to jobs, never agents).
  * The catalog is code-exterior data: ids are a per-job runtime string
  * vocabulary — they never join the compile-time canonical `IntentId` union.
  */
@@ -35,28 +38,32 @@ export interface CustomIntentDef {
   id: string;
   /** Classification matching criterion — rendered verbatim as a catalog row. */
   description: string;
-  /** `injections/*.md` filenames inlined in full while this intent is active. */
+  /** The job's `injections/*.md` filenames inlined in full while this intent is active. */
   injections?: string[];
 }
 
 /** Implicit fallback intent — reserved, never declarable, maps no injections. */
 export const GENERAL_INTENT = 'general' as const;
 
-/** The dedicated single-file intent catalog name (agent root and job dir). */
+/** The dedicated single-file intent catalog name (job dir only). */
 export const INTENTS_FILE_NAME = 'intents.yaml' as const;
 
-/** Summary of one custom job inside an agent (chip label / tooltip / catalog row). */
+/**
+ * Summary of one custom job inside an agent (chip label / catalog row).
+ *
+ * There is no `description`: the job shows its name only, and what the job is
+ * plus how it works lives in `jobs/{jobId}/base/*.md` prose — the same single
+ * authoring home `agent.yaml` already enforces for the agent's persona.
+ */
 export interface CustomJobSummary {
   /** `[a-z0-9-]+`, equals the `jobs/{jobId}/` directory name. */
   id: string;
   /** UI chip label. */
   name: string;
-  /** Chip tooltip; Phase 2 triage catalog row. */
-  description: string;
   /**
-   * Merged intent catalog (agent ∪ job, job wins) for `@intent:` mention
-   * vocabulary. Filled by lenient discovery parsing — omitted when the
-   * catalog fails to parse (fail-loud belongs to load/validate).
+   * Job intent catalog (`jobs/{jobId}/intents.yaml`) for `@intent:` mention
+   * vocabulary and the settings tree. Filled by lenient discovery parsing —
+   * omitted when the catalog fails to parse (fail-loud belongs to load/validate).
    */
   intents?: Pick<CustomIntentDef, 'id' | 'description'>[];
 }
@@ -66,7 +73,6 @@ export interface CustomAgentSummary {
   /** `[a-z0-9-]+`, equals the `.ant/agents/{agentId}/` directory name. */
   id: string;
   name: string;
-  description: string;
   /** Which scope root this definition was resolved from. */
   scope: CustomAgentScope;
   /** True when the scope forbids editing through the API (e.g. org members). */
@@ -121,6 +127,12 @@ export function parseCustomJobRef(raw: string | undefined | null): CustomJobRef 
 export interface UniversalTurnMeta {
   intents: string[];
   context: string[];
+  /**
+   * Per-turn plan-mode request (composer `@plan` mention) — this run produces
+   * a plan document under `plan/`, not the work itself; the runtime confines
+   * file writes to `plan/` for the turn.
+   */
+  plan?: boolean;
 }
 
 // ── Definition file surface (account-scoped agent settings API) ─────────────
@@ -143,19 +155,41 @@ export interface DefinitionValidationResult {
 }
 
 /**
+ * Composed-prompt preview for one job (`GET …/jobs/:jobId/prompt-preview`) —
+ * the `<custom_job_instructions>` block exactly as the runtime injects it for
+ * the given active intents, plus the partition of injection files.
+ */
+export interface CustomJobPromptPreview {
+  agentId: string;
+  jobId: string;
+  /** Intent ids the preview was rendered with (empty = pre-classify TOC-only view). */
+  activeIntents: string[];
+  /** Assembled system block text. */
+  system: string;
+  /** Harness template paths that wrap the block (names only, not rendered). */
+  harnessTemplates: string[];
+  /** `injections/*.md` inlined in full for the given intents. */
+  inlined: string[];
+  /** `injections/*.md` left as TOC pointers. */
+  toc: string[];
+}
+
+/**
  * Write whitelist for definition files — the single vocabulary of paths the
  * settings API may create or edit inside an agent dir:
- *   agent.yaml | intents.yaml | base/*.md | injections/*.md
+ *   agent.yaml | base/*.md
  *   jobs/{jobId}/(job.yaml | intents.yaml | base/*.md | injections/*.md)
+ * Intents and injections are job-only — agent-level `intents.yaml` and
+ * `injections/` are legacy and rejected.
  */
 export function isAllowedDefinitionPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   if (normalized.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')) return false;
   const MD_NAME = /^[^/]+\.md$/;
   const parts = normalized.split('/');
-  if (parts.length === 1) return parts[0] === 'agent.yaml' || parts[0] === INTENTS_FILE_NAME;
+  if (parts.length === 1) return parts[0] === 'agent.yaml';
   if (parts.length === 2) {
-    return (parts[0] === 'base' || parts[0] === 'injections') && MD_NAME.test(parts[1]);
+    return parts[0] === 'base' && MD_NAME.test(parts[1]);
   }
   if (parts[0] !== 'jobs' || !isValidCustomId(parts[1])) return false;
   if (parts.length === 3) return parts[2] === 'job.yaml' || parts[2] === INTENTS_FILE_NAME;

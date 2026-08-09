@@ -17,7 +17,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import multer from 'multer';
-import { isAllowedDefinitionPath, isValidCustomId } from '@ant/shared';
+import { GENERAL_INTENT, isAllowedDefinitionPath, isValidCustomId, type CustomJobPromptPreview } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { deriveCustomAgentScopeRootsFromUserDir } from '../../../../core/customAgents/scopeRoots';
 import {
@@ -28,9 +28,12 @@ import {
   type CustomAgentScopeRoot,
 } from '../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../core/customAgents/types';
-import { UNIVERSAL_BUILTIN_TOOLS } from '../../../../core/customAgents/universalToolPolicy';
+import { buildCustomJobSystemBlock } from '../../../../core/customAgents/promptBlock';
+import { MUTATING_BUILTIN_TOOLS, UNIVERSAL_BUILTIN_TOOLS } from '../../../../core/customAgents/universalToolPolicy';
+import { TEMPLATE_PATHS } from '../../../../core/prompt/builder/templatePaths';
 import {
   buildDefinitionTree,
+  createCollisionMessage,
   findWritableAgent,
   gateDefinitionSave,
   patchYamlFile,
@@ -83,7 +86,13 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
       const agents = discoverAgents(scopeRootsFor(req));
       // builtinToolPreset supplies the settings form's tool-checkbox
       // vocabulary from the runtime SSOT — never hardcoded in the FE.
-      res.json({ agents, builtinToolPreset: UNIVERSAL_BUILTIN_TOOLS });
+      // mutatingBuiltinTools marks the tools whose approval defaults to
+      // 'always' so the approval editor can label them without hardcoding.
+      res.json({
+        agents,
+        builtinToolPreset: UNIVERSAL_BUILTIN_TOOLS,
+        mutatingBuiltinTools: MUTATING_BUILTIN_TOOLS,
+      });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
@@ -93,19 +102,22 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
 
   router.post('/', (req: Request, res: Response) => {
     try {
-      const { id, name, description = '' } = req.body ?? {};
+      // `description` from older FE builds is accepted-and-dropped — the
+      // agent.yaml schema no longer carries it.
+      const { id, name } = req.body ?? {};
       if (!isValidCustomId(id ?? '')) {
         return res.status(400).json({ error: `Agent id must match [a-z0-9-]+ (got: ${String(id)})` });
       }
       const scopeRoots = scopeRootsFor(req);
-      if (findCreateCollision(scopeRoots, id)) {
-        return res.status(409).json({ error: `Custom agent already exists: ${id}` });
+      const collision = findCreateCollision(scopeRoots, id);
+      if (collision) {
+        return res.status(409).json({ error: createCollisionMessage(id, collision) });
       }
       const root = scopeRoots.find((r) => r.scope === 'user')!;
       const agentDir = path.join(root.root, id);
-      scaffoldAgent(agentDir, id, name || id, description);
+      scaffoldAgent(agentDir, id, name || id);
       logger.info(`Custom agent scaffolded: ${id} (scope: user)`, { component: 'AccountAgents' });
-      res.status(201).json({ id, name: name || id, description, scope: 'user', readonly: false, jobs: [] });
+      res.status(201).json({ id, name: name || id, scope: 'user', readonly: false, jobs: [] });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
@@ -115,8 +127,8 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
     try {
       const found = findWritableAgent(res, scopeRootsFor(req), req.params.agentId);
       if (!found) return;
-      const { name, description } = req.body ?? {};
-      patchYamlFile(path.join(found.agentDir, 'agent.yaml'), { name, description });
+      const { name } = req.body ?? {};
+      patchYamlFile(path.join(found.agentDir, 'agent.yaml'), { name });
       res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
@@ -139,7 +151,9 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
     try {
       const found = findWritableAgent(res, scopeRootsFor(req), req.params.agentId);
       if (!found) return;
-      const { id, name, description = '' } = req.body ?? {};
+      // `description` from older FE builds is accepted-and-dropped — the
+      // job.yaml schema no longer carries it (mirrors agent.yaml).
+      const { id, name } = req.body ?? {};
       if (!isValidCustomId(id ?? '')) {
         return res.status(400).json({ error: `Job id must match [a-z0-9-]+ (got: ${String(id)})` });
       }
@@ -147,8 +161,8 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
       if (fs.existsSync(jobDir)) {
         return res.status(409).json({ error: `Custom job already exists: ${req.params.agentId}/${id}` });
       }
-      scaffoldJob(jobDir, id, name || id, description);
-      res.status(201).json({ id, name: name || id, description });
+      scaffoldJob(jobDir, id, name || id);
+      res.status(201).json({ id, name: name || id });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
@@ -162,8 +176,8 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
       if (!isValidCustomId(req.params.jobId) || !fs.existsSync(jobYaml)) {
         return res.status(404).json({ error: `Custom job not found: ${req.params.agentId}/${req.params.jobId}` });
       }
-      const { name, description } = req.body ?? {};
-      patchYamlFile(jobYaml, { name, description });
+      const { name } = req.body ?? {};
+      patchYamlFile(jobYaml, { name });
       res.json({ success: true });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
@@ -192,10 +206,44 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
         valid: true,
         builtinTools: resolved.builtinTools,
         mcpServers: Object.keys(resolved.mcpServers),
-        outputsMode: resolved.outputs.mode,
-        workspace: resolved.workspace,
         intents: resolved.intents,
       });
+    } catch (error: any) {
+      if (error instanceof CustomAgentValidationError) {
+        return res.status(400).json({ valid: false, error: error.message });
+      }
+      sendErrorResponse(res, 500, error, 'AccountAgents');
+    }
+  });
+
+  // Composed-prompt preview: the exact <custom_job_instructions> block the
+  // runtime injects for the given active intents (readonly scopes viewable).
+  router.get('/:agentId/jobs/:jobId/prompt-preview', (req: Request, res: Response) => {
+    try {
+      const { agentId, jobId } = req.params;
+      const resolved = loadCustomJob(scopeRootsFor(req), agentId, jobId);
+      const rawIntents = String(req.query.intents ?? '');
+      const intents = rawIntents
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const known = new Set(resolved.intents.map((i) => i.id));
+      for (const id of intents) {
+        if (id !== GENERAL_INTENT && !known.has(id)) {
+          return res.status(400).json({ error: `Unknown intent id for this job: "${id}"`, code: 'unknown-intent' });
+        }
+      }
+      const block = buildCustomJobSystemBlock(resolved, intents);
+      const preview: CustomJobPromptPreview = {
+        agentId,
+        jobId,
+        activeIntents: intents,
+        system: block.text,
+        harnessTemplates: Object.values<string>(TEMPLATE_PATHS.universalAgent),
+        inlined: block.inlined,
+        toc: block.toc,
+      };
+      res.json(preview);
     } catch (error: any) {
       if (error instanceof CustomAgentValidationError) {
         return res.status(400).json({ valid: false, error: error.message });
@@ -381,8 +429,9 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
       if (!hasAgentYaml) {
         return res.status(400).json({ error: 'The agent folder must contain agent.yaml at its root' });
       }
-      if (findCreateCollision(scopeRoots, agentId)) {
-        return res.status(409).json({ error: `Custom agent already exists: ${agentId}` });
+      const collision = findCreateCollision(scopeRoots, agentId);
+      if (collision) {
+        return res.status(409).json({ error: createCollisionMessage(agentId, collision) });
       }
 
       const root = scopeRoots.find((r) => r.scope === 'user')!;
