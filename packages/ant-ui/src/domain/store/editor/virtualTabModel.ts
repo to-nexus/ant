@@ -23,16 +23,32 @@ export function buildTurnInfoMap(
   return turnInfo;
 }
 
+/**
+ * Single owner of "which job types get a streaming virtual editor tab".
+ * `chatSseHandler` (terminal promotion) and `statusCardVisibility` (the
+ * inverse — chat-side card suppression) MUST consume this set; a local copy
+ * is exactly the drift that muted the universal job.
+ */
+export const VIRTUAL_TAB_JOB_TYPES = new Set(['plan', 'design', 'universal'] as const);
+
+export type VirtualTabSource = 'plan' | 'design' | 'universal';
+
+function asVirtualTabSource(jobType?: string): VirtualTabSource | undefined {
+  return jobType && (VIRTUAL_TAB_JOB_TYPES as Set<string>).has(jobType)
+    ? (jobType as VirtualTabSource)
+    : undefined;
+}
+
 export function resolveVirtualTabSource(args: {
   turnInfo: Map<string, TurnInfo>;
   turnId: string;
   selectedJobType?: string;
-}): 'plan' | 'design' | undefined {
+}): VirtualTabSource | undefined {
   const { turnInfo, turnId, selectedJobType } = args;
-  const fromTurn = turnInfo.get(turnId)?.jobType;
-  if (fromTurn === 'plan' || fromTurn === 'design') return fromTurn;
-  if (selectedJobType === 'plan' || selectedJobType === 'design') return selectedJobType;
-  return undefined;
+  return (
+    asVirtualTabSource(turnInfo.get(turnId)?.jobType) ??
+    asVirtualTabSource(selectedJobType)
+  );
 }
 
 export function getPendingCardFilePath(card: PendingCardSnapshot): string | undefined {

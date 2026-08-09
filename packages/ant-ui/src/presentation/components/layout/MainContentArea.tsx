@@ -13,6 +13,7 @@ import { Slot } from '@/presentation/extensions/slots';
 import { VirtualDocumentViewer } from '../VirtualDocumentViewer';
 import { useStore } from '@/domain/store';
 import { isEditorTabId } from '@/domain/store/editor/editorTabMainPanel';
+import { VIRTUAL_TAB_JOB_TYPES } from '@/domain/store/editor/virtualTabModel';
 import { selectActiveEditorTab } from '@/domain/store/selectors/editorTabs';
 import { useActiveEditorTabFileSync } from '@/application/hooks/ui/useActiveEditorTabFileSync';
 import { selectIsAuthBlocked } from '@/domain/store/selectors';
@@ -75,7 +76,8 @@ export function MainContentArea({
   useActiveEditorTabFileSync(activeEditorTab);
   const shouldRenderStreamingPreView =
     activeEditorTab?.status === 'streaming' &&
-    (activeEditorTab.source === 'design' || activeEditorTab.source === 'plan');
+    activeEditorTab.source != null &&
+    (VIRTUAL_TAB_JOB_TYPES as Set<string>).has(activeEditorTab.source);
 
   return (
     <MainPanel headerBar={<MainPanelTabsBar />}>

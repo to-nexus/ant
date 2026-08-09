@@ -33,6 +33,10 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
   const { t } = useTranslation(['artifacts', 'common']);
   const selectedProject = useStore((state) => state.selectedProject);
   const isRunning = useStore((state) => state.isRunning);
+  // fileTree SSE tick — tool-node writes broadcast notifyFileTreeUpdate;
+  // the panel's own tree comes from the universal artifacts API, so the
+  // shared fileTree state is used purely as a refresh trigger.
+  const fileTreeTick = useStore((state) => state.fileTree);
   const { showError } = useAlertModalContext();
 
   // Canonical mirror: file selection lives in fileSlice/uiSlice so a click
@@ -63,6 +67,13 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
   useEffect(() => {
     if (!isRunning) void loadTree();
   }, [isRunning, loadTree]);
+
+  // Live refresh during the run: each fileTree SSE update means a write
+  // landed in the container.
+  useEffect(() => {
+    if (isRunning) void loadTree();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileTreeTick]);
 
   const surfaceError = useCallback(
     (err: unknown) => {

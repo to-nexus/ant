@@ -37,6 +37,7 @@ import type {
   PendingCardSnapshot,
   LogJobType,
 } from '@ant/shared';
+import { isJobType } from '@ant/shared';
 
 import { ActionMetadataBadges } from './ActionMetadataBadges';
 import { ShimmerCard } from './ShimmerCard';
@@ -273,19 +274,9 @@ function parseScope(scope: string): { workerLabel?: string; taskKey?: string } {
   };
 }
 
-const LOG_JOB_TYPES = new Set<LogJobType>([
-  'code',
-  'design',
-  'learn',
-  'ask',
-  'plan',
-  'inline-ask',
-  'visual',
-]);
-
 function parseLogJobType(value: unknown): LogJobType | undefined {
-  if (typeof value !== 'string') return undefined;
-  return LOG_JOB_TYPES.has(value as LogJobType) ? (value as LogJobType) : undefined;
+  // `LogJobType = JobType` — shared runtime mirror (see selectors/chat.ts twin).
+  return isJobType(value) ? value : undefined;
 }
 
 function resolvePendingJobType(

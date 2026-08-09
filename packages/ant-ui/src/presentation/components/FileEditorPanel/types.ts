@@ -37,7 +37,7 @@ export type IdeLifecycleState =
  * when (a) callers explicitly pass `'code'` / `'chat'`, or (b) the fallback
  * path maps an undefined source to `'code'`.
  */
-export type EditorSource = 'design' | 'plan' | 'code' | 'chat' | 'report';
+export type EditorSource = 'design' | 'plan' | 'universal' | 'code' | 'chat' | 'report';
 
 /**
  * Editor body solid surface — shared SSOT for the streaming

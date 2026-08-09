@@ -94,6 +94,31 @@ describe('turn item preview-only policy', () => {
     ).toBe(true);
   });
 
+  it('universal: file-op cards move to the editor tab, path-less preview cards stay in chat', () => {
+    // File ops promote to the streaming editor tab (VIRTUAL_TAB job).
+    expect(
+      shouldSuppressPreviewOnlyStatusCard(
+        makeLine({
+          jobType: 'universal',
+          statusType: 'file_creating',
+          metadata: { filePath: 'reports/weekly.md' },
+        }),
+      ),
+    ).toBe(true);
+    // Universal has no path-less preview surface — plan/task_response cards
+    // must stay in chat (suppressing them hides the content everywhere).
+    expect(
+      shouldSuppressPreviewOnlyStatusCard(
+        makeLine({ jobType: 'universal', statusType: 'plan_generating' }),
+      ),
+    ).toBe(false);
+    expect(
+      shouldSuppressPreviewOnlyStatusCard(
+        makeLine({ jobType: 'universal', statusType: 'task_response' }),
+      ),
+    ).toBe(false);
+  });
+
   it('does not suppress statuses for code jobs', () => {
     expect(
       shouldSuppressPreviewOnlyStatusCard(

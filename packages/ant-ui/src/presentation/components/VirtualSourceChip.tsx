@@ -16,6 +16,8 @@ const GRADIENT_BY_SOURCE: Record<EditorSource, string> = {
   chat: 'linear-gradient(135deg, oklch(70% 0.20 50), oklch(68% 0.22 30))',
   // Report — violet → cyan (subagent exploration output)
   report: 'linear-gradient(135deg, oklch(60% 0.22 285), oklch(58% 0.20 200))',
+  // Universal — pink → orange (matches the universal accent in LLMModelsSection)
+  universal: 'var(--gradient-pink-orange)',
 };
 
 const LABEL_BY_SOURCE: Record<EditorSource, string> = {
@@ -24,6 +26,7 @@ const LABEL_BY_SOURCE: Record<EditorSource, string> = {
   code: 'code',
   chat: 'chat',
   report: 'report',
+  universal: 'agent',
 };
 
 /**

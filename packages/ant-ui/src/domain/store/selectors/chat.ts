@@ -57,6 +57,7 @@ import type {
   KanbanData,
   TaskScopeOutcome,
 } from '@ant/shared';
+import { isJobType } from '@ant/shared';
 import type { FileStats } from '@/domain/models/chat';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -190,19 +191,10 @@ let turnsCache: TurnsCacheEntry | null = null;
 const EMPTY_TURNS: Turn[] = Object.freeze([]) as unknown as Turn[];
 const EMPTY_LINES: ChatLine[] = Object.freeze([]) as unknown as ChatLine[];
 const EMPTY_BUFFER_MAP: Map<string, StreamingBuffer> = new Map();
-const LOG_JOB_TYPES = new Set<LogJobType>([
-  'code',
-  'design',
-  'learn',
-  'ask',
-  'plan',
-  'inline-ask',
-  'visual',
-]);
-
 function parseLogJobType(value: unknown): LogJobType | undefined {
-  if (typeof value !== 'string') return undefined;
-  return LOG_JOB_TYPES.has(value as LogJobType) ? (value as LogJobType) : undefined;
+  // `LogJobType = JobType` — the shared runtime mirror is the SSOT; a local
+  // copy is how universal turns silently downcast to 'code'.
+  return isJobType(value) ? value : undefined;
 }
 
 /**

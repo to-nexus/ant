@@ -7,6 +7,17 @@
 /** All job types in the system */
 export type JobType = 'code' | 'design' | 'learn' | 'ask' | 'plan' | 'inline-ask' | 'visual' | 'universal';
 
+/**
+ * Runtime mirror of the `JobType` union. FE turn projectors parse persisted
+ * `jobType` strings against THIS list — a hand-copied subset is exactly how
+ * universal turns silently downcast to `'code'`.
+ */
+export const JOB_TYPES = ['code', 'design', 'learn', 'ask', 'plan', 'inline-ask', 'visual', 'universal'] as const satisfies readonly JobType[];
+
+export function isJobType(value: unknown): value is JobType {
+  return typeof value === 'string' && (JOB_TYPES as readonly string[]).includes(value);
+}
+
 /** Job types that use task decomposition and Kanban tracking */
 export type DecomposableJobType = Exclude<JobType, 'ask' | 'plan' | 'inline-ask' | 'visual' | 'universal'>;
 

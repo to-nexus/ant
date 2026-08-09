@@ -106,4 +106,36 @@ describe('virtualTabModel', () => {
       }),
     ).toBeUndefined();
   });
+
+  it('universal is a virtual-tab job (streaming artifact editor)', () => {
+    const turnInfo = buildTurnInfoMap([{ turnId: 'turn-u', jobType: 'universal', jobId: 'job-u' }] as any);
+    expect(
+      resolveVirtualTabSource({ turnInfo, turnId: 'turn-u', selectedJobType: 'code' }),
+    ).toBe('universal');
+    expect(
+      resolveVirtualTabSource({ turnInfo: new Map(), turnId: 'turn-x', selectedJobType: 'universal' }),
+    ).toBe('universal');
+  });
+
+  // Drift between the tab-minting gate and the chat-side suppression gate
+  // double-renders the card — the two sites must consume the SAME set.
+  it('statusCardVisibility file-op suppression agrees with VIRTUAL_TAB_JOB_TYPES', async () => {
+    const { VIRTUAL_TAB_JOB_TYPES } = await import('../../src/domain/store/editor/virtualTabModel');
+    const { shouldSuppressPreviewOnlyStatusCard } = await import(
+      '../../src/presentation/components/chat/statusCardVisibility'
+    );
+    for (const jobType of ['plan', 'design', 'universal', 'code', 'visual']) {
+      const suppressed = shouldSuppressPreviewOnlyStatusCard({
+        type: 'chat_status',
+        ts: '2026-05-04T00:00:00.000Z',
+        jobId: 'j',
+        turnId: 't',
+        jobType,
+        cardId: 'c',
+        statusType: 'file_creating',
+        metadata: { filePath: 'docs/out.md' },
+      } as any);
+      expect(suppressed).toBe((VIRTUAL_TAB_JOB_TYPES as Set<string>).has(jobType));
+    }
+  });
 });
