@@ -26,11 +26,14 @@ import {
   flushStreamingDeltaBatch,
 } from './streamingDeltaBatch';
 import { isStaleJobUpdate } from './isStaleJobUpdate';
-import { isPreviewSurfaceArtifactPath } from '@/domain/store/editor/virtualTabModel';
+import {
+  isPreviewSurfaceArtifactPath,
+  VIRTUAL_TAB_JOB_TYPES,
+  type VirtualTabSource,
+} from '@/domain/store/editor/virtualTabModel';
 
 const MAIN_WORKER_SCOPE = '_main_';
 const STREAMING_FILE_STATUS = new Set(['file_create', 'file_edit']);
-const VIRTUAL_TAB_JOB_TYPES = new Set(['plan', 'design']);
 
 function bufferKey(turnId: string, workerScope?: string | null): BufferKey {
   return `${turnId}:${workerScope || MAIN_WORKER_SCOPE}`;
@@ -127,14 +130,14 @@ export function createChatSseHandler(set: any, get: any): (event: any) => void {
           // same gate `shouldRenderVirtualPreviewCard` applies when minting
           // the virtual tab this promotes.
           if (
-            VIRTUAL_TAB_JOB_TYPES.has(statusLine.jobType) &&
+            (VIRTUAL_TAB_JOB_TYPES as Set<string>).has(statusLine.jobType) &&
             STREAMING_FILE_STATUS.has(statusLine.statusType) &&
             isPreviewSurfaceArtifactPath(filePath)
           ) {
             get().promoteVirtualEditorTabToReal?.({
               cardId: statusLine.cardId,
               filePath,
-              source: statusLine.jobType as 'plan' | 'design',
+              source: statusLine.jobType as VirtualTabSource,
             });
           }
           if (

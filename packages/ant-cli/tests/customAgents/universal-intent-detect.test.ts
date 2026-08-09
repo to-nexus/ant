@@ -1,14 +1,15 @@
 /**
- * Universal intent classification axis — the `<intents>` tag parser table,
- * the detect node's skip ladder (explicit → empty catalog → empty resume →
- * infer with fallback), and the accept-time explicit-intent validation.
+ * Universal turn-context detection axis — the `<intents>` / `<executionTier>`
+ * parser tables, the detect node's skip ladder (empty resume → single LLM
+ * call with explicit/empty-catalog halving), turnContext convergence, and
+ * the accept-time explicit-intent validation.
  */
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as nodePath from 'path';
-import { parseIntentsTag } from '../../src/agents/universal/graph/nodes/detect/parser';
+import { parseIntentsTag, parseDetectResponse } from '../../src/agents/universal/graph/nodes/detect/parser';
 import { detectNode } from '../../src/agents/universal/graph/nodes/detect';
 import {
   activateCustomJob,
@@ -85,7 +86,6 @@ function makeState(overrides: Partial<UniversalGraphState>, llmRaw?: string | Er
     toolCalls: [],
     pendingToolCalls: [],
     _turnToolWrites: [],
-    activeIntents: ['general'],
     deps: { llm, promptBuilder },
     ...overrides,
   } as unknown as UniversalGraphState;
@@ -96,55 +96,101 @@ afterEach(() => {
   _resetActiveCustomJobForTests();
 });
 
-describe('detectNode — skip ladder', () => {
-  it('1. explicit intents adopted, zero LLM calls', async () => {
-    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state, invocations } = makeState({ explicitIntents: ['research', 'cite'] });
-    const result = await detectNode(state);
-    expect(result.activeIntents).toEqual(['research', 'cite']);
-    expect(invocations()).toBe(0);
+describe('parseDetectResponse — executionTier table', () => {
+  it.each([
+    ['tier 0', '<executionTier>0</executionTier>', 0],
+    ['tier 4', '<executionTier>4</executionTier>', 4],
+    ['tier with intents', '<executionTier>2</executionTier>\n<intents>research</intents>', 2],
+    ['out of range → undefined (caller retries then coerces)', '<executionTier>7</executionTier>', undefined],
+    ['missing tag → undefined', '<intents>research</intents>', undefined],
+  ] as const)('%s', (_label, raw, expected) => {
+    expect(parseDetectResponse(raw, CATALOG, { needsIntents: true }).executionTier).toBe(expected);
   });
 
-  it('2. empty catalog → [general], zero LLM calls', async () => {
+  it('needsIntents:false skips intent parsing entirely', () => {
+    const parsed = parseDetectResponse('<executionTier>1</executionTier><intents>research</intents>', CATALOG, { needsIntents: false });
+    expect(parsed.intents).toBeNull();
+    expect(parsed.executionTier).toBe(1);
+  });
+});
+
+describe('detectNode — skip ladder → turnContext convergence', () => {
+  const TIER1 = '<executionTier>1</executionTier>';
+
+  it('1. explicit intents adopted; single LLM call judges only the tier', async () => {
+    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
+    const { state, invocations } = makeState({ explicitIntents: ['research', 'cite'] }, TIER1);
+    const result = await detectNode(state);
+    expect(result.turnContext).toMatchObject({
+      intents: ['research', 'cite'],
+      source: 'explicit',
+      executionTier: 1,
+    });
+    expect(invocations()).toBe(1);
+  });
+
+  it('2. empty catalog → [general]; tier still judged (orthogonal to the catalog)', async () => {
     activateCustomJob(makeResolved([]));
-    const { state, invocations } = makeState({});
+    const { state, invocations } = makeState({}, TIER1);
     const result = await detectNode(state);
-    expect(result.activeIntents).toEqual(['general']);
-    expect(invocations()).toBe(0);
+    expect(result.turnContext).toMatchObject({ intents: ['general'], executionTier: 1 });
+    expect(invocations()).toBe(1);
   });
 
-  it('3. empty userMessage (resume) → keeps the restored classification', async () => {
+  it('3. empty userMessage (resume) → restored context, zero LLM calls', async () => {
     activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state, invocations } = makeState({ userMessage: '', activeIntents: ['research'] });
+    const { state, invocations } = makeState({
+      userMessage: '',
+      restoredIntents: ['research'],
+      restoredExecutionTier: 2 as any,
+    });
     const result = await detectNode(state);
-    expect(result.activeIntents).toEqual(['research']);
+    expect(result.turnContext).toMatchObject({ intents: ['research'], executionTier: 2 });
     expect(invocations()).toBe(0);
   });
 
-  it('4. inference adopts the parsed multi-label result', async () => {
+  it('4. inference adopts the parsed multi-label result + tier', async () => {
     activateCustomJob(makeResolved([
       { id: 'research', description: 'r' },
       { id: 'cite', description: 'c' },
     ]));
-    const { state, invocations } = makeState({}, '<intents>research, cite</intents>');
+    const { state, invocations } = makeState({}, `${TIER1}<intents>research, cite</intents>`);
     const result = await detectNode(state);
-    expect(result.activeIntents).toEqual(['research', 'cite']);
+    expect(result.turnContext).toMatchObject({
+      intents: ['research', 'cite'],
+      source: 'infer',
+      executionTier: 1,
+    });
     expect(invocations()).toBe(1);
   });
 
-  it('4b. unparsable output retries once, then falls back to [general] (never throws)', async () => {
+  it('4b. unparsable output retries once, then floors to [general]/Reflex (never throws)', async () => {
     activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state, invocations } = makeState({}, 'no tag here');
+    const { state, invocations } = makeState({}, 'no tags here');
     const result = await detectNode(state);
-    expect(result.activeIntents).toEqual(['general']);
+    expect(result.turnContext).toMatchObject({ intents: ['general'], executionTier: 0 });
     expect(invocations()).toBe(2);
   });
 
-  it('4c. LLM error falls back to [general] (classification must not kill the turn)', async () => {
+  it('4c. LLM error floors to [general]/Reflex (detection must not kill the turn)', async () => {
     activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
     const { state } = makeState({}, new Error('boom'));
     const result = await detectNode(state);
-    expect(result.activeIntents).toEqual(['general']);
+    expect(result.turnContext).toMatchObject({ intents: ['general'], executionTier: 0 });
+  });
+
+  it('@ctx/@plan runner inputs converge into turnContext (detect is the single writer)', async () => {
+    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
+    const { state } = makeState(
+      { explicitContext: ['plan/notes.md'], planRequested: true },
+      `${TIER1}<intents>research</intents>`,
+    );
+    const result = await detectNode(state);
+    expect(result.turnContext).toMatchObject({
+      context: ['plan/notes.md'],
+      planTurn: true,
+      source: 'explicit',
+    });
   });
 });
 

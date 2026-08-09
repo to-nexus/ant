@@ -1,6 +1,6 @@
-# Intent Classification
+# Turn Context Detection
 
-You are classifying the user's current message for the job "{{jobName}}".
+You are detecting the work context of the user's current message for the job "{{jobName}}": how much execution the message calls for{{#if needsIntentInference}}, and which of the job's declared intents it activates{{/if}}.
 
 ## Current Message
 
@@ -14,6 +14,7 @@ You are classifying the user's current message for the job "{{jobName}}".
 {{/each}}
 {{/if}}
 
+{{#if needsIntentInference}}
 ## Intent Catalog
 
 Each row is one intent this job declares. The description is the matching criterion.
@@ -23,3 +24,4 @@ Each row is one intent this job declares. The description is the matching criter
 {{#each catalogRows}}
 | {{{this.id}}} | {{{this.description}}} |
 {{/each}}
+{{/if}}

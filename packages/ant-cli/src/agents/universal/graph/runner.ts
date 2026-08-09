@@ -31,6 +31,8 @@ export interface UniversalRunnerParams {
   explicitIntents?: string[];
   /** Explicit `@ctx:` artifact paths (checked at accept) — this run only. */
   explicitContext?: string[];
+  /** `@plan` per-turn plan-mode request — this run only. */
+  planRequested?: boolean;
   deps: {
     llm: any;
     session?: any;
@@ -69,7 +71,8 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let restoredConversations: Record<string, ConversationMessage[]> | undefined;
   let restoredTokenUsage: any;
   let restoredTokenUsageByModel: any;
-  let restoredActiveIntents: string[] | undefined;
+  let restoredIntents: string[] | undefined;
+  let restoredExecutionTier: import('@ant/shared').ExecutionTierId | undefined;
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
@@ -79,7 +82,10 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         restoredTokenUsage = sessionState.tokenUsage;
         restoredTokenUsageByModel = sessionState.tokenUsageByModel;
         if (Array.isArray(sessionState.activeIntents)) {
-          restoredActiveIntents = sessionState.activeIntents.filter((i: unknown) => typeof i === 'string');
+          restoredIntents = sessionState.activeIntents.filter((i: unknown) => typeof i === 'string');
+        }
+        if (typeof sessionState.executionTier === 'number') {
+          restoredExecutionTier = sessionState.executionTier;
         }
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
@@ -106,6 +112,18 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   setUniversalMcp(mcp);
   buildUniversalRegistry(mcp);
 
+  const recursionLimit = loadRecursionLimit('universal', 100);
+
+  // ── Kanban plane seeding (visual runner precedent): job timing + an empty
+  // task-queue snapshot so the FE board/recursion gauge binds to this job.
+  const kanbanUpdate = params.deps.kanbanUpdate;
+  if (params._httpJobId && kanbanUpdate?.setJobTiming) {
+    const { JobTimingManager } = await import('../../common/graph/timing/JobTimingManager');
+    const { jobTiming } = JobTimingManager.initializeNewJob(params._httpJobId);
+    kanbanUpdate.setJobTiming(jobTiming);
+    kanbanUpdate.updateTaskQueue?.(params._httpJobId, null, [], [], 0, recursionLimit);
+  }
+
   const initialState = createInitialUniversalState({
     userMessage: params.input,
     language: params.language,
@@ -115,14 +133,16 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     _httpJobId: params._httpJobId,
     isResume: params.isResume,
     conversations,
-    activeIntents: restoredActiveIntents,
+    recursionLimit,
+    restoredIntents,
+    restoredExecutionTier,
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
+    planRequested: params.planRequested,
   });
   if (restoredTokenUsage) (initialState as any).tokenUsage = restoredTokenUsage;
   if (restoredTokenUsageByModel) (initialState as any).tokenUsageByModel = restoredTokenUsageByModel;
 
-  const recursionLimit = loadRecursionLimit('universal', 100);
   const chatAPI = getChatAPIClient();
   let finalState: UniversalGraphState;
 
@@ -164,6 +184,26 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
 
   console.log('\n✅ Universal job completed');
   console.log(`   Tool calls: ${finalState.toolCalls.length}`);
+
+  // ── Final token/credit broadcast. Per-model breakdown must land BEFORE
+  // the aggregate updateTaskQueue snapshot — updateTokenUsageByModel is the
+  // meterCredits entry and finalizeTerminalJob settles from the Redis kanban
+  // snapshot's tokenUsageByModel (empty map = no-usage settle branch).
+  if (params._httpJobId && kanbanUpdate) {
+    if ((finalState as any).tokenUsageByModel && kanbanUpdate.updateTokenUsageByModel) {
+      kanbanUpdate.updateTokenUsageByModel((finalState as any).tokenUsageByModel);
+    }
+    if (finalState.tokenUsage && kanbanUpdate.updateTokenUsage) {
+      kanbanUpdate.updateTokenUsage(finalState.tokenUsage as any);
+    }
+    if (finalState.phaseTokenUsages && kanbanUpdate.updatePhaseTokenUsages) {
+      kanbanUpdate.updatePhaseTokenUsages(finalState.phaseTokenUsages as any);
+    }
+    kanbanUpdate.updateTaskQueue?.(
+      params._httpJobId, null, [], [],
+      finalState.recursionCount ?? 0, recursionLimit, finalState.tokenUsage,
+    );
+  }
 
   return {
     response: finalState.response || '',

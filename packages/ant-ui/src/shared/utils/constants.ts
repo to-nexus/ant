@@ -38,6 +38,12 @@ export const AVAILABLE_JOBS = [
     label: '🖼️ Visual',
     description: 'Generate visual assets',
     agent: 'Creator'
+  },
+  {
+    value: 'universal' as const,
+    label: '🧩 Universal',
+    description: 'Custom agent/job runtime',
+    agent: 'Universal'
   }
 ] as const;
 

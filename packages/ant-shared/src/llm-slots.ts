@@ -93,6 +93,7 @@ export const NON_OVERRIDABLE_LLM_NODES: Record<string, readonly string[]> = {
   'architect:learn': ['decompose'],
   'planner:plan': ['triage', 'detect'],
   'creator:visual': ['triage', 'detect'],
+  'universal:universal': ['detect'],
 };
 
 /**

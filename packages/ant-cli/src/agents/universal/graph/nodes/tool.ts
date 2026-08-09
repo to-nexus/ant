@@ -6,12 +6,17 @@
  *   1. the custom job's `tools.builtin` allowlist (narrowing-only),
  *   2. the approval policy — Phase 1 is FAIL-CLOSED: an approval-gated call
  *      is rejected with guidance (never silently executed); the interactive
- *      approve/resume flow arrives with the approval UI.
+ *      approve/resume flow arrives with the approval UI,
+ *   3. the @plan turn confinement — while turnContext.planTurn is set, file
+ *      writes outside plan/ and execution tools (run_command / http_request /
+ *      non-read-only MCP) are rejected: a plan turn produces a plan, not the
+ *      work.
  *
  * Sandbox: ctx.fileSystem is the two-root facade (artifacts rw + definition
  * ro mount), pathAutoCorrect 'none' (no codebase/ prefixing).
  */
 
+import { UNIVERSAL_FEATURE } from '@ant/shared';
 import type { UniversalGraphState, UniversalToolCall } from '../state';
 import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
 import { createToolNode } from '../../../common/tool/createToolNode';
@@ -23,10 +28,17 @@ import type { ToolExecutionContext } from '../../../common/tool/types';
 import { ToolResultManager } from '../../../../core/utils/toolResultManager';
 import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
-import { requiresApproval, isMcpToolName } from '../../../../core/customAgents/universalToolPolicy';
+import { requiresApproval, isMcpToolName, planTurnViolation } from '../../../../core/customAgents/universalToolPolicy';
 import { getUniversalMcp, getUniversalRegistry } from '../runtime';
 
 const WRITE_SIDE_EFFECTS = new Set(['fileCreated', 'fileModified']);
+
+/** Execution tools a @plan turn rejects outright (the write gate can't see their targets). */
+const PLAN_TURN_EXECUTION_TOOLS = new Set<string>(['run_command', 'http_request']);
+
+const PLAN_TURN_EXECUTION_ERROR = (name: string): string =>
+  `"${name}" is blocked: this is a PLAN turn — no work is executed this turn. ` +
+  `Write the plan document under plan/ or present the plan in chat; the actual work runs on a normal turn.`;
 
 const universalResultManager = new ToolResultManager(new TokenBudgetManager());
 
@@ -35,13 +47,16 @@ const toolNodeFn = createToolNode<UniversalGraphState>({
     return (state.pendingToolCalls || []).map((tc) => ({ id: tc.id, name: tc.name, args: tc.args }));
   },
 
-  gateCall(_state, call) {
+  gateCall(state, call) {
     const resolved = requireActiveCustomJob();
 
     if (isMcpToolName(call.name)) {
       const info = getUniversalMcp()?.getToolInfo(call.name);
       if (!info) {
         return { allowed: false, error: `Unknown MCP tool "${call.name}" — it is not provided by any connected server.` };
+      }
+      if (state.turnContext?.planTurn && info.readOnlyHint !== true) {
+        return { allowed: false, error: PLAN_TURN_EXECUTION_ERROR(call.name) };
       }
       if (requiresApproval(call.name, resolved.approval, { mcpReadOnlyHint: info.readOnlyHint })) {
         return {
@@ -60,6 +75,16 @@ const toolNodeFn = createToolNode<UniversalGraphState>({
         allowed: false,
         error: `Tool "${call.name}" is not in this job's allowlist (tools.builtin). Available: ${resolved.builtinTools.join(', ')}.`,
       };
+    }
+
+    if (state.turnContext?.planTurn) {
+      if (PLAN_TURN_EXECUTION_TOOLS.has(call.name)) {
+        return { allowed: false, error: PLAN_TURN_EXECUTION_ERROR(call.name) };
+      }
+      const violation = planTurnViolation(call.name, call.args);
+      if (violation) {
+        return { allowed: false, error: violation };
+      }
     }
 
     if (requiresApproval(call.name, resolved.approval)) {
@@ -84,6 +109,10 @@ const toolNodeFn = createToolNode<UniversalGraphState>({
       workingDir: fileSystem.getRootPath(),
       featurePath: state.featurePath,
       project: state.projectId,
+      // File handlers gate fileTreeUpdate.notifyFileTreeUpdate on
+      // project ∧ featureFolder — universal's container rides the constant
+      // pseudo-feature, so artifact writes refresh the FE tree live.
+      featureFolder: UNIVERSAL_FEATURE,
       // Artifact tree has no canonical codebase/ layout — resolve verbatim.
       pathAutoCorrect: 'none',
       // The whole tree is the sandbox; the codebase/ mutate gate is a

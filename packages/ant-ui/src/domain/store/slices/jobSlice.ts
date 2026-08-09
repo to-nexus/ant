@@ -283,7 +283,7 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       // job's own type so the toolbar, workflow graph, and history all follow.
       // Fetch-free applyJobIdentity (NOT setSelectedJobType, whose
       // auto-select-latest would clobber the job the user just clicked).
-      const resolvedJobType = (kanbanData.jobType || jobType) as 'design' | 'code' | 'learn' | 'plan' | 'visual';
+      const resolvedJobType = (kanbanData.jobType || jobType) as import('../types').SelectedJobType;
       if (resolvedJobType !== get().selectedJobType) {
         get().applyJobIdentity({ jobType: resolvedJobType, agent: opts?.agent, jobId });
       }

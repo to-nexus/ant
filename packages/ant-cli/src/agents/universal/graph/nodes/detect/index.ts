@@ -1,26 +1,34 @@
 /**
- * Universal detect node — turn-context detection: multi-label intent inference over the job's own
- * catalog (`ResolvedCustomJob.intents`, code-exterior data).
+ * Universal detect node — turn-context detection. The SINGLE writer of
+ * `state.turnContext` (intents + @ctx paths + plan flag + provenance +
+ * execution tier); downstream nodes read the confirmed object only.
  *
- * Runs INSIDE the job only: it gates injection inlining and never routes or
- * switches jobs (job identity is fixed by the composer's agent/job chips).
+ * Intent inference is multi-label over the job's own catalog
+ * (`ResolvedCustomJob.intents`, code-exterior data) and runs INSIDE the job
+ * only: it gates injection inlining and never routes or switches jobs (job
+ * identity is fixed by the composer's agent/job chips). Execution tier is
+ * LLM-declared via `<executionTier>` — the canonical Tier Entry Node
+ * contract (plan/visual: detect; code/design: decompose).
  *
  * Skip ladder (priority order, all decided inside the node):
- *   1. explicit intents (validated at accept) → adopt, zero LLM calls
- *   2. empty catalog → ['general'], zero LLM calls
- *   3. empty userMessage (resume without a new message) → keep restored value
- *   4. infer via one non-streaming LLM call (retry once, then ['general'])
+ *   1. empty userMessage (resume without a new message) → keep restored
+ *      context, zero LLM calls
+ *   2. otherwise → one non-streaming LLM call (retry once) for the tier,
+ *      and — unless intents are explicit or the catalog is empty — the
+ *      intent labels. Failure floors: intents → ['general'], tier → Reflex.
  */
 
-import { GENERAL_INTENT } from '@ant/shared';
-import type { UniversalGraphState } from '../../state';
+import { GENERAL_INTENT, ExecutionTierId } from '@ant/shared';
+import type { UniversalGraphState, UniversalTurnContext } from '../../state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations';
 import { LLM_TEMPERATURE } from '../../../../common/graph/llmConfig';
 import { accumulateTokenUsage } from '../../../../common/graph/llmHelpers';
 import { getJobAbortSignal } from '../../../../../composition/jobAbort';
+import { extractLLMInfo } from '../../../../../core/ports/workflow';
 import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths';
 import { requireActiveCustomJob } from '../../../../../core/customAgents/activeCustomJob';
-import { parseIntentsTag } from './parser';
+import { emitExecutionTier } from '../../../../../core/streaming/emitExecutionTier';
+import { parseDetectResponse } from './parser';
 
 const RECENT_TURNS_MAX = 3;
 const RECENT_TURN_CHARS = 300;
@@ -51,82 +59,117 @@ function recentUserTurns(state: UniversalGraphState): string[] {
   return texts.slice(-RECENT_TURNS_MAX).map((t) => sanitizeCell(t).slice(0, RECENT_TURN_CHARS));
 }
 
+function buildTurnContext(state: UniversalGraphState, intents: string[], executionTier: ExecutionTierId): UniversalTurnContext {
+  const explicit = (state.explicitIntents?.length ?? 0) > 0 || (state.explicitContext?.length ?? 0) > 0;
+  return {
+    intents,
+    context: state.explicitContext ?? [],
+    planTurn: state.planRequested === true,
+    source: explicit ? 'explicit' : 'infer',
+    executionTier,
+  };
+}
+
 export async function detectNode(state: UniversalGraphState): Promise<Partial<UniversalGraphState>> {
   const resolved = requireActiveCustomJob();
   const catalog = resolved.intents;
-
-  // 1. Explicit intents (mention channel) — apply to THIS run only.
-  if (state.explicitIntents && state.explicitIntents.length > 0) {
-    console.log(`🎯 [Universal:Detect] Explicit intents adopted: ${state.explicitIntents.join(', ')}`);
-    return { activeIntents: state.explicitIntents };
-  }
-
-  // 2. No catalog declared → the job runs on the implicit fallback, no LLM.
-  if (catalog.length === 0) {
-    return { activeIntents: [GENERAL_INTENT] };
-  }
-
-  // 3. Resume without a new user message → keep the restored classification.
-  if (!state.userMessage || state.userMessage.trim().length === 0) {
-    return { activeIntents: state.activeIntents?.length ? state.activeIntents : [GENERAL_INTENT] };
-  }
-
-  // 4. Infer.
   const llm = state.deps?.llm;
-  const promptBuilder = state.deps?.promptBuilder;
-  if (!llm || !promptBuilder) {
-    console.warn('⚠️ [Universal:Detect] LLM/promptBuilder unavailable — falling back to general');
-    return { activeIntents: [GENERAL_INTENT] };
+  const workflowUpdate = state.deps?.workflowUpdate;
+
+  // 1. Resume without a new user message → keep the restored context, no LLM.
+  if (!state.userMessage || state.userMessage.trim().length === 0) {
+    const intents = state.restoredIntents?.length ? state.restoredIntents : [GENERAL_INTENT];
+    const tier = state.restoredExecutionTier ?? ExecutionTierId.Reflex;
+    return { turnContext: buildTurnContext(state, intents, tier) };
   }
 
-  const result = await promptBuilder.build({
-    templates: TEMPLATE_PATHS.universalDetect,
-    vars: {
-      jobName: resolved.jobName,
-      userMessage: state.userMessage,
-      recentTurns: recentUserTurns(state),
-      catalogRows: catalog.map((i) => ({ id: sanitizeCell(i.id), description: sanitizeCell(i.description) })),
-    },
-  });
-  const messages = [{ role: 'user' as const, content: result.user || 'Classify the current message.' }];
-  const options = {
-    system: result.system,
-    enableThinking: false,
-    temperature: LLM_TEMPERATURE.DETECT,
-    signal: getJobAbortSignal(),
-  };
-  const catalogIds = new Set(catalog.map((i) => i.id));
-
-  const attempt = async (): Promise<string[] | null> => {
-    let raw: string;
-    if (llm.invokeWithUsage) {
-      const { content, usage } = await llm.invokeWithUsage(messages, options);
-      raw = content;
-      if (usage) accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true });
-    } else {
-      raw = await llm.invoke(messages, options);
-    }
-    return parseIntentsTag(raw, catalogIds);
-  };
+  if (workflowUpdate && state._httpJobId) {
+    await workflowUpdate.enterNode(
+      state._httpJobId, 'detect', 0,
+      undefined, llm ? extractLLMInfo(llm) : undefined,
+      state.recursionCount, state.recursionLimit,
+    );
+  }
 
   try {
-    const first = await attempt();
-    if (first) {
-      console.log(`🎯 [Universal:Detect] Inferred intents: ${first.join(', ')}`);
-      return { activeIntents: first };
-    }
-    const retry = await attempt();
-    if (retry) {
-      console.log(`🎯 [Universal:Detect] Inferred intents (retry): ${retry.join(', ')}`);
-      return { activeIntents: retry };
-    }
-  } catch (e) {
-    console.warn(`⚠️ [Universal:Detect] Inference failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
+    // Explicit `@intent:` mentions fix the labels for this run; the LLM call
+    // below then only judges the tier. An empty catalog likewise removes the
+    // labeling half — tier judgment is orthogonal to the catalog.
+    const explicitIntents = state.explicitIntents?.length ? state.explicitIntents : undefined;
+    const needsIntentInference = !explicitIntents && catalog.length > 0;
+    const fallbackIntents = explicitIntents ?? [GENERAL_INTENT];
 
-  // Classification failure must never kill the turn — unlike triage (whose
-  // single tag is routing-load-bearing and therefore throws), this gate only
-  // strengthens the prompt; general is a safe floor.
-  console.warn('⚠️ [Universal:Detect] Falling back to general');
-  return { activeIntents: [GENERAL_INTENT] };
+    const promptBuilder = state.deps?.promptBuilder;
+    if (!llm || !promptBuilder) {
+      console.warn('⚠️ [Universal:Detect] LLM/promptBuilder unavailable — falling back to general/Reflex');
+      return { turnContext: buildTurnContext(state, fallbackIntents, ExecutionTierId.Reflex) };
+    }
+
+    const result = await promptBuilder.build({
+      templates: TEMPLATE_PATHS.universalDetect,
+      vars: {
+        jobName: resolved.jobName,
+        userMessage: state.userMessage,
+        recentTurns: recentUserTurns(state),
+        needsIntentInference,
+        catalogRows: needsIntentInference
+          ? catalog.map((i) => ({ id: sanitizeCell(i.id), description: sanitizeCell(i.description) }))
+          : [],
+      },
+    });
+    const messages = [{ role: 'user' as const, content: result.user || 'Detect the turn context of the current message.' }];
+    const options = {
+      system: result.system,
+      enableThinking: false,
+      temperature: LLM_TEMPERATURE.DETECT,
+      signal: getJobAbortSignal(),
+    };
+    const catalogIds = new Set(catalog.map((i) => i.id));
+
+    const attempt = async () => {
+      let raw: string;
+      if (llm.invokeWithUsage) {
+        const { content, usage } = await llm.invokeWithUsage(messages, options);
+        raw = content;
+        if (usage) accumulateTokenUsage(state as any, usage, { taskLevel: true, jobLevel: true, modelId: (llm as any).modelName });
+      } else {
+        raw = await llm.invoke(messages, options);
+      }
+      return parseDetectResponse(raw, catalogIds, { needsIntents: needsIntentInference });
+    };
+
+    let intents = fallbackIntents;
+    let tier: ExecutionTierId | undefined;
+    try {
+      let parsed = await attempt();
+      // Retry once when a REQUIRED half is missing (intents when inferring,
+      // tier always). Detection failure must never kill the turn — unlike
+      // triage (whose single tag is routing-load-bearing and throws), this
+      // gate only strengthens the prompt; general/Reflex is a safe floor.
+      if ((needsIntentInference && !parsed.intents) || parsed.executionTier === undefined) {
+        parsed = await attempt();
+      }
+      if (parsed.intents) intents = parsed.intents;
+      else if (needsIntentInference) console.warn('⚠️ [Universal:Detect] Intent inference failed — falling back to general');
+      tier = parsed.executionTier;
+    } catch (e) {
+      console.warn(`⚠️ [Universal:Detect] Inference failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    const executionTier = tier ?? ExecutionTierId.Reflex;
+    if (tier === undefined) {
+      console.warn('⚠️ [Universal:Detect] Missing <executionTier> — defaulting to Tier 0 (Reflex)');
+    }
+    console.log(`🎯 [Universal:Detect] intents=[${intents.join(', ')}] tier=${executionTier}${explicitIntents ? ' (explicit)' : ''}`);
+
+    // Canonical Tag Rendering SSOT — the tier line renders through
+    // SpecialTagTransformer (same surface as code decompose's detect emit).
+    void emitExecutionTier(executionTier, state.language);
+
+    return { turnContext: buildTurnContext(state, intents, executionTier) };
+  } finally {
+    if (workflowUpdate && state._httpJobId) {
+      await workflowUpdate.exitNode(state._httpJobId, 'detect', 0);
+    }
+  }
 }

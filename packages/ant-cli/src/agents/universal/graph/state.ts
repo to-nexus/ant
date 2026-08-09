@@ -24,6 +24,29 @@ export interface UniversalToolCall {
   timestamp: number;
 }
 
+/**
+ * The turn's confirmed work context — universal's analog of the canonical
+ * detect contract (slots + provenance + execution tier, confirmed once, read
+ * everywhere downstream). The detect node is the ONLY writer.
+ *
+ * Deliberately NOT a `ResolvedActionContext`: RAC's identity half
+ * (intent/intentGroup/mode) is a closed code-branching vocabulary, while a
+ * universal job's intents are workspace-authored data (job.yaml catalog).
+ * Universal follows RAC's *structure* without forging canonical identity.
+ */
+export interface UniversalTurnContext {
+  /** Active intent ids — job.yaml catalog vocabulary, not canonical IntentId. */
+  intents: string[];
+  /** `@ctx:` workspace paths attached to this turn (advisory, not a read gate). */
+  context: string[];
+  /** `@plan` — while true the tool node confines writes to `plan/`. */
+  planTurn: boolean;
+  /** Whether the user pinned the context explicitly (`@` mentions) or it was inferred. */
+  source: 'explicit' | 'infer';
+  /** LLM-declared execution tier (detect's `<executionTier>` tag). */
+  executionTier: ExecutionTierId;
+}
+
 export interface UniversalGraphState extends ResolvableState {
   /** The user's message for this run (directive / overrideDirective). */
   userMessage: string;
@@ -39,11 +62,6 @@ export interface UniversalGraphState extends ResolvableState {
   /** Join-barrier redo flag (explore subagent) — same contract as ask. */
   _subagentJoinRedo?: boolean;
   /**
-   * Phase 1 pins Reflex like plan/visual (injected at graph start, no LLM
-   * judgment); Phase 2 moves to LLM-declared `<executionTier>` per 7a.
-   */
-  executionTier?: ExecutionTierId;
-  /**
    * Real file writes THIS RUN (from tool side-effects) — the respond node's
    * outputs-contract check and artifact manifest read this, never the LLM's
    * claims (completion-signal = actual-write principle).
@@ -51,16 +69,24 @@ export interface UniversalGraphState extends ResolvableState {
   _turnToolWrites: string[];
   /** Top-level artifact tree overview built by resolve (existence band). */
   artifactsOverview?: string;
+  /** Per-phase cumulative usage history (token popup rows). */
+  phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
   /**
-   * Active intent ids for this run — classify node output (explicit >
-   * inferred > ['general']). Gates injection inlining in the agent's system
-   * block. Sealed by respond; restored by the runner.
+   * Confirmed turn context — detect node output, sealed by respond,
+   * restored (intents + tier) by the runner. Downstream nodes read THIS,
+   * never the raw runner inputs below.
    */
-  activeIntents: string[];
+  turnContext?: UniversalTurnContext;
+  /** Restored classification from the sealed session (resume input). */
+  restoredIntents?: string[];
+  /** Restored execution tier from the sealed session (resume input). */
+  restoredExecutionTier?: ExecutionTierId;
   /** Explicit `@intent:` mentions for THIS run only (never persisted). */
   explicitIntents?: string[];
   /** Explicit `@ctx:` artifact paths for THIS run only (never persisted). */
   explicitContext?: string[];
+  /** Per-turn plan-mode request (`@plan`) — never sealed, mirrors explicitIntents. */
+  planRequested?: boolean;
 }
 
 export const UniversalAnnotation = Annotation.Root({
@@ -74,13 +100,16 @@ export const UniversalAnnotation = Annotation.Root({
   streamingCompleted: Annotation<boolean | undefined>,
   chatMessageStarted: Annotation<boolean | undefined>,
   _subagentJoinRedo: Annotation<boolean | undefined>,
-  executionTier: Annotation<ExecutionTierId | undefined>,
   _turnToolWrites: Annotation<string[]>,
   artifactsOverview: Annotation<string | undefined>,
-  // Undeclared channels are DROPPED by LangGraph — declare every intent field.
-  activeIntents: Annotation<string[]>,
+  phaseTokenUsages: Annotation<import('@ant/shared').PhaseTokenUsage[] | undefined>,
+  // Undeclared channels are DROPPED by LangGraph — declare every field.
+  turnContext: Annotation<UniversalTurnContext | undefined>,
+  restoredIntents: Annotation<string[] | undefined>,
+  restoredExecutionTier: Annotation<ExecutionTierId | undefined>,
   explicitIntents: Annotation<string[] | undefined>,
   explicitContext: Annotation<string[] | undefined>,
+  planRequested: Annotation<boolean | undefined>,
 } as const);
 
 export function createInitialUniversalState(params: {
@@ -92,14 +121,18 @@ export function createInitialUniversalState(params: {
   _httpJobId?: string;
   isResume?: boolean;
   conversations?: Conversations;
+  recursionLimit?: number;
   /** Restored classification from the sealed session (resume). */
-  activeIntents?: string[];
+  restoredIntents?: string[];
+  /** Restored execution tier from the sealed session (resume). */
+  restoredExecutionTier?: ExecutionTierId;
   /** `@intent:` mentions for this run (validated at accept). */
   explicitIntents?: string[];
   /** `@ctx:` artifact paths for this run (existence-checked at accept). */
   explicitContext?: string[];
+  /** `@plan` per-turn plan-mode request. */
+  planRequested?: boolean;
 }): UniversalGraphState {
-  const RESOLVED_TIER = 0 as ExecutionTierId; // ExecutionTierId.Reflex (avoid runtime import)
   return {
     featurePath: params.containerPath,
     context: {} as any,
@@ -110,14 +143,20 @@ export function createInitialUniversalState(params: {
     isResume: params.isResume,
     userMessage: params.userMessage,
     language: params.language,
+    // Node phase labels (token gauge / estimating banner) localize via
+    // _uiLocale; universal never sets directive/overrideDirective, so the
+    // shared resolve node cannot derive it — seed it here.
+    _uiLocale: params.language,
     projectId: params.projectId,
     conversations: params.conversations ?? {},
     toolCalls: [],
     pendingToolCalls: [],
-    executionTier: RESOLVED_TIER,
+    recursionLimit: params.recursionLimit,
     _turnToolWrites: [],
-    activeIntents: params.activeIntents?.length ? params.activeIntents : ['general'],
+    restoredIntents: params.restoredIntents,
+    restoredExecutionTier: params.restoredExecutionTier,
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
+    planRequested: params.planRequested,
   } as unknown as UniversalGraphState;
 }

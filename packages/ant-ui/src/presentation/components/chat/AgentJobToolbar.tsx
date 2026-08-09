@@ -6,6 +6,7 @@ import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useTranslation } from 'react-i18next';
 import type { Agent } from '@/infrastructure/http/api';
 import type { AgentWithMetadata, JobWithMetadata } from './hooks/useAgentJobOptions';
+import { AgentLogo } from '../AgentLogo';
 import { TurnTokenGauge } from './TurnTokenGauge';
 
 interface AgentJobToolbarProps {
@@ -156,7 +157,7 @@ export function AgentJobToolbar({
   }, [isRunning]);
 
   const handleJobSelect = (jobValue: string) => {
-    setSelectedJobType(jobValue as 'design' | 'code' | 'learn' | 'plan' | 'visual');
+    setSelectedJobType(jobValue as import('@/domain/store/types').SelectedJobType);
     setShowJobMenu(false);
   };
 
@@ -166,18 +167,17 @@ export function AgentJobToolbar({
     const agentData = agents.find((a) => a.value === agentValue);
     const firstJobType = agentData?.jobs?.[0]?.value;
     if (firstJobType) {
-      setSelectedJobType(firstJobType as 'design' | 'code' | 'learn' | 'plan' | 'visual');
+      setSelectedJobType(firstJobType as import('@/domain/store/types').SelectedJobType);
     }
   };
 
   const handleStop = () => stopJob();
 
-  // Labels carry their own emoji prefix (e.g. "🤖 Architect", "💻 Code")
-  // composed in useAgentJobOptions — that emoji IS the visual cue. No
-  // adjacent lucide icon is rendered, otherwise two icons would stack.
-  // In compact mode we surface only the first whitespace-delimited token
-  // of the label (the emoji) so the button stays icon-sized without
-  // losing the agent/job affordance.
+  // The agent chip is marked by `AgentLogo` (the Ant character) in both
+  // runtimes — an agent may be user-authored, so there is no per-agent art to
+  // theme. Job labels still carry their own emoji prefix ("💻 Code") composed
+  // in useAgentJobOptions, and compact mode surfaces just that first
+  // whitespace-delimited token so the button stays icon-sized.
   const agentLabel =
     currentAgent?.displayLabel ||
     t('input.agentPlaceholder', { defaultValue: 'Agent' });
@@ -185,7 +185,6 @@ export function AgentJobToolbar({
     chatPolicy.reason === 'no-job'
       ? t('input.jobPlaceholder', { defaultValue: 'Job' })
       : currentJob?.label || t('input.jobPlaceholder', { defaultValue: 'Job' });
-  const agentCompactToken = agentLabel.split(' ')[0];
   const jobCompactToken = jobLabel.split(' ')[0];
 
   return (
@@ -224,11 +223,10 @@ export function AgentJobToolbar({
                 title={currentCustomAgent?.name ?? t('universal.selectAgent', { defaultValue: 'Select an agent' })}
                 aria-label={currentCustomAgent?.name ?? t('universal.selectAgent', { defaultValue: 'Select an agent' })}
               >
-                {compact ? (
-                  <span className="flex-shrink-0">🧩</span>
-                ) : (
+                <AgentLogo size={14} />
+                {!compact && (
                   <span className="truncate max-w-[120px]">
-                    {`🧩 ${currentCustomAgent?.name ?? t('universal.selectAgent', { defaultValue: 'Select an agent' })}`}
+                    {currentCustomAgent?.name ?? t('universal.selectAgent', { defaultValue: 'Select an agent' })}
                   </span>
                 )}
                 <ChevronDown
@@ -280,10 +278,11 @@ export function AgentJobToolbar({
                             : {}),
                         }}
                       >
-                        <span className="font-medium">{`🧩 ${agent.name}`}</span>
-                        {agent.description && (
-                          <span className="text-[10px] text-[color:var(--text-3)]">{agent.description}</span>
-                        )}
+                        {/* Custom agents carry a name only — the persona lives in base/ prose. */}
+                        <span className="font-medium flex items-center gap-1.5">
+                          <AgentLogo size={13} />
+                          {agent.name}
+                        </span>
                       </button>
                     );
                   })}
@@ -361,9 +360,6 @@ export function AgentJobToolbar({
                         }}
                       >
                         <span className="font-medium">{job.name}</span>
-                        {job.description && (
-                          <span className="text-[10px] text-[color:var(--text-3)]">{job.description}</span>
-                        )}
                       </button>
                     );
                   })}
@@ -399,9 +395,8 @@ export function AgentJobToolbar({
             title={agentLabel}
             aria-label={agentLabel}
           >
-            {compact ? (
-              <span className="flex-shrink-0">{agentCompactToken}</span>
-            ) : (
+            <AgentLogo size={14} />
+            {!compact && (
               <span className="truncate max-w-[120px]">{agentLabel}</span>
             )}
             <ChevronDown
@@ -448,7 +443,10 @@ export function AgentJobToolbar({
                         : {}),
                     }}
                   >
-                    <span className="font-medium">{agent.displayLabel}</span>
+                    <span className="font-medium flex items-center gap-1.5">
+                      <AgentLogo size={13} />
+                      {agent.displayLabel}
+                    </span>
                     <span className="text-[10px] text-[color:var(--text-3)]">{agent.description}</span>
                   </button>
                 );

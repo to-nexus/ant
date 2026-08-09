@@ -1,7 +1,16 @@
 import type { ChatStatusLine, ChatStatusType } from '@ant/shared';
-import { isPreviewSurfaceArtifactPath } from '@/domain/store/editor/virtualTabModel';
+import {
+  isPreviewSurfaceArtifactPath,
+  VIRTUAL_TAB_JOB_TYPES,
+} from '@/domain/store/editor/virtualTabModel';
 
-const PREVIEW_ONLY_JOB_TYPES = new Set(['plan', 'design']);
+/**
+ * Path-less preview cards (plan / task_response) exist only for jobs whose
+ * main panel renders them as a document surface — plan/design. Universal is
+ * a VIRTUAL_TAB job (file-op promotion) but has no path-less preview, so its
+ * plan/task_response cards must stay in chat.
+ */
+const PATHLESS_PREVIEW_JOB_TYPES = new Set(['plan', 'design']);
 
 /**
  * File statuses the main-panel preview surface can own — but only for an
@@ -34,8 +43,13 @@ const PREVIEW_ONLY_STATUS_TYPES = new Set<ChatStatusType>([
 ]);
 
 export function shouldSuppressPreviewOnlyStatusCard(line: ChatStatusLine): boolean {
-  if (!PREVIEW_ONLY_JOB_TYPES.has(line.jobType)) return false;
-  if (PREVIEW_ONLY_STATUS_TYPES.has(line.statusType)) return true;
+  if (PATHLESS_PREVIEW_JOB_TYPES.has(line.jobType) && PREVIEW_ONLY_STATUS_TYPES.has(line.statusType)) {
+    return true;
+  }
+  // File-op suppression must mirror the tab-minting gate exactly
+  // (VIRTUAL_TAB_JOB_TYPES is the single owner) — drift double-renders the
+  // card in chat AND the editor tab.
+  if (!(VIRTUAL_TAB_JOB_TYPES as Set<string>).has(line.jobType)) return false;
   if (!PREVIEW_ONLY_FILE_STATUS_TYPES.has(line.statusType)) return false;
 
   const filePath = line.metadata?.filePath;
