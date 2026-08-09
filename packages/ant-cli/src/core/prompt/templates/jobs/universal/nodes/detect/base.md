@@ -14,6 +14,12 @@ You are detecting the work context of the user's current message for the job "{{
 {{/each}}
 {{/if}}
 
+## Workspace Artifacts (top-level, existence only)
+
+Whether "existing artifacts must be observed first" can only be judged against what exists:
+
+{{{artifactsOverview}}}
+
 {{#if needsIntentInference}}
 ## Intent Catalog
 

@@ -111,6 +111,9 @@ export async function detectNode(state: UniversalGraphState): Promise<Partial<Un
         jobName: resolved.jobName,
         userMessage: state.userMessage,
         recentTurns: recentUserTurns(state),
+        // Existence band from resolve — Tier 1/2 splits on "must existing
+        // artifacts be observed first", which is unjudgeable blind.
+        artifactsOverview: state.artifactsOverview || '(empty — no artifacts yet)',
         needsIntentInference,
         catalogRows: needsIntentInference
           ? catalog.map((i) => ({ id: sanitizeCell(i.id), description: sanitizeCell(i.description) }))

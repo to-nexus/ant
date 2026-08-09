@@ -13,9 +13,11 @@ Emit the following tag{{#if needsIntentInference}}s{{/if}} and nothing else:
 |---|---|
 | `0` | Read-only answer. The reply itself is the deliverable; no file is produced. |
 | `1` | A single write whose target and content are determined by the directive alone. |
-| `2` | Producing the deliverable requires observing first — prior conversation, existing artifacts, or attached files must be read before the output can be shaped. |
+| `2` | A single deliverable that requires observing first — prior conversation, existing artifacts, or attached files must be read before the output can be shaped. |
 | `3` | Multiple independent deliverables driven by the directive alone. |
 | `4` | Multiple deliverables systematically derived from reference material supplied with the request. |
+
+**Precedence**: Decide the deliverable COUNT first. Multiple deliverables are `3` or `4` (split by whether they are systematically derived from supplied references) even when observation must precede production; a single deliverable splits into `1` or `2` by whether observation is required.
 
 **Constraint**: The presence of attached files alone does NOT force Tier 4. Tier 4 applies when the deliverables are systematically derived from those references, not merely informed by them.
 
