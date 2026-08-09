@@ -1,5 +1,5 @@
 /**
- * Custom agent/job loader — validation table + D4 merge rules + D8 scope
+ * Custom agent/job loader — validation table (job-only schema) + D8 scope
  * discovery. Fixtures are generated under os.tmpdir() per test (never
  * committed).
  */
@@ -33,19 +33,14 @@ function writeAgent(
   agentYaml: Record<string, unknown>,
   opts?: {
     base?: Record<string, string>;
-    injections?: Record<string, string>;
   },
 ): string {
   const agentDir = path.join(root, agentId);
   fs.mkdirSync(agentDir, { recursive: true });
-  fs.writeFileSync(path.join(agentDir, 'agent.yaml'), yaml.dump({ id: agentId, name: agentId, description: '', ...agentYaml }));
+  fs.writeFileSync(path.join(agentDir, 'agent.yaml'), yaml.dump({ id: agentId, name: agentId, ...agentYaml }));
   for (const [file, content] of Object.entries(opts?.base ?? {})) {
     fs.mkdirSync(path.join(agentDir, 'base'), { recursive: true });
     fs.writeFileSync(path.join(agentDir, 'base', file), content);
-  }
-  for (const [file, content] of Object.entries(opts?.injections ?? {})) {
-    fs.mkdirSync(path.join(agentDir, 'injections'), { recursive: true });
-    fs.writeFileSync(path.join(agentDir, 'injections', file), content);
   }
   return agentDir;
 }
@@ -61,7 +56,7 @@ function writeJob(
 ): void {
   const jobDir = path.join(agentDir, 'jobs', jobId);
   fs.mkdirSync(jobDir, { recursive: true });
-  fs.writeFileSync(path.join(jobDir, 'job.yaml'), yaml.dump({ id: jobId, name: jobId, description: '', ...jobYaml }));
+  fs.writeFileSync(path.join(jobDir, 'job.yaml'), yaml.dump({ id: jobId, name: jobId, ...jobYaml }));
   const base = opts?.base ?? { 'system.md': 'Job procedure.' };
   for (const [file, content] of Object.entries(base)) {
     fs.mkdirSync(path.join(jobDir, 'base'), { recursive: true });
@@ -128,31 +123,10 @@ describe('loadCustomJob — validation table', () => {
     expect(resolved.prose).toContain('truncated');
   });
 
-  it('job builtin outside agent bound → throws (narrowing only)', () => {
-    const dir = writeAgent(roots()[0].root, 'ops', { tools: { builtin: ['read_file'] } });
-    writeJob(dir, 'weekly', { tools: { builtin: ['read_file', 'run_command'] } });
-    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/narrowing only/);
-  });
-
-  it('agent builtin outside the universal preset → throws', () => {
-    const dir = writeAgent(roots()[0].root, 'ops', { tools: { builtin: ['search_code'] } });
-    writeJob(dir, 'weekly', {});
+  it('job builtin outside the universal preset → throws', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', { tools: { builtin: ['search_code'] } });
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/universal preset/);
-  });
-
-  it('outputs contract without a write tool → throws', () => {
-    const dir = writeAgent(roots()[0].root, 'ops', {});
-    writeJob(dir, 'weekly', {
-      tools: { builtin: ['read_file'] },
-      outputs: { mode: 'contract', artifacts: [{ kind: 'report', dir: 'reports/', format: 'md', naming: 'llm' }] },
-    });
-    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/requires a write tool/);
-  });
-
-  it('outputs contract without artifacts → throws', () => {
-    const dir = writeAgent(roots()[0].root, 'ops', {});
-    writeJob(dir, 'weekly', { outputs: { mode: 'contract' } });
-    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/at least one artifacts entry/);
   });
 
   it('mcp env carrying a literal value (not an env var NAME) → throws', () => {
@@ -174,33 +148,72 @@ describe('loadCustomJob — validation table', () => {
   });
 });
 
-describe('loadCustomJob — D4 merge rules', () => {
-  it('merges agent → job (prose order, injections union job-wins, mcp union, approval stricter-wins, models override)', () => {
+describe('loadCustomJob — legacy schema fails loud with migration messages', () => {
+  it.each([
+    ['agent.yaml tools', { tools: { builtin: ['read_file'] } }, /"tools" moved to job level/],
+    ['agent.yaml description', { description: 'legacy' }, /"description" was removed/],
+    ['agent.yaml workspace', { workspace: 'none' }, /"workspace" was removed/],
+    ['agent.yaml models', { models: { default: 'x' } }, /"models" was removed/],
+    ['agent.yaml intents key', { intents: [] }, /intents belong in jobs/],
+  ] as const)('%s → throws', (_label, agentYaml, pattern) => {
+    const dir = writeAgent(roots()[0].root, 'ops', agentYaml as Record<string, unknown>);
+    writeJob(dir, 'weekly', {});
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
+  });
+
+  it.each([
+    ['job.yaml outputs', { outputs: { mode: 'free' } }, /"outputs" was removed/],
+    ['job.yaml plan', { plan: 'suggested' }, /"plan" was removed/],
+    ['job.yaml description', { description: 'legacy' }, /"description" was removed/],
+    ['job.yaml workspace', { workspace: 'read' }, /"workspace" was removed/],
+    ['job.yaml models', { models: { default: 'x' } }, /"models" was removed/],
+  ] as const)('%s → throws', (_label, jobYaml, pattern) => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', jobYaml as Record<string, unknown>);
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
+  });
+
+  it('agent-level intents.yaml on disk → throws move instruction', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    fs.writeFileSync(path.join(dir, 'intents.yaml'), 'version: 1\nintents: []\n');
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/Agent-level intents\.yaml is no longer supported/);
+  });
+
+  it('agent-level injections/*.md on disk → throws move instruction', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    fs.mkdirSync(path.join(dir, 'injections'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'injections', 'style.md'), 'Legacy prose.');
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/Agent-level injections\/ is no longer supported/);
+  });
+
+  it('an empty legacy injections/ dir is tolerated (no *.md left)', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    fs.mkdirSync(path.join(dir, 'injections'), { recursive: true });
+    expect(loadCustomJob(roots(), 'ops', 'weekly').jobId).toBe('weekly');
+  });
+});
+
+describe('loadCustomJob — composition (job-only tools/injections, mcp union)', () => {
+  it('composes agent prose + job everything-else', () => {
     const dir = writeAgent(
       roots()[0].root,
       'ops',
-      {
-        tools: { builtin: ['read_file', 'create_file', 'edit_file', 'fetch_url'], approval: { fetch_url: 'always' } },
-        mcp: { servers: { shared: { transport: 'stdio', command: 'npx' } } },
-        models: { agent: 'claude-sonnet-5', default: 'claude-sonnet-5' },
-        workspace: 'read',
-      },
-      {
-        base: { 'a-persona.md': 'AGENT PERSONA' },
-        injections: { 'shared.md': 'Shared conditional', 'both.md': 'agent version' },
-      },
+      { mcp: { servers: { shared: { transport: 'stdio', command: 'npx' } } } },
+      { base: { 'a-persona.md': 'AGENT PERSONA' } },
     );
     writeJob(
       dir,
       'weekly',
       {
-        tools: { builtin: ['read_file', 'create_file'], approval: { fetch_url: 'never', create_file: 'always' } },
+        tools: { builtin: ['read_file', 'create_file'], approval: { fetch_url: 'always', create_file: 'always' } },
         mcp: { servers: { jobonly: { transport: 'http', url: 'http://localhost:9' } } },
-        models: { agent: 'claude-opus-5' },
       },
       {
         base: { 'system.md': 'JOB PROCEDURE' },
-        injections: { 'both.md': 'job version', 'job-only.md': 'Job conditional' },
+        injections: { 'job-only.md': 'Job conditional' },
       },
     );
 
@@ -208,29 +221,33 @@ describe('loadCustomJob — D4 merge rules', () => {
 
     // prose: agent base before job base
     expect(resolved.prose.indexOf('AGENT PERSONA')).toBeLessThan(resolved.prose.indexOf('JOB PROCEDURE'));
-    // injections: union, job wins on filename collision
-    const both = resolved.injectionsToc.find((e) => e.file === 'both.md')!;
-    expect(both.summary).toBe('job version');
-    expect(resolved.injectionsToc.map((e) => e.file).sort()).toEqual(['both.md', 'job-only.md', 'shared.md']);
-    // mcp union
+    // injections: job-only
+    expect(resolved.injectionsToc.map((e) => e.file)).toEqual(['job-only.md']);
+    // mcp union (the one field that still composes agent ∪ job)
     expect(Object.keys(resolved.mcpServers).sort()).toEqual(['jobonly', 'shared']);
-    // builtin narrowed to job's subset
+    // builtin = the job's declaration
     expect(resolved.builtinTools.sort()).toEqual(['create_file', 'read_file']);
-    // approval: stricter (always) wins over the job's attempt to relax
-    expect(resolved.approval.fetch_url).toBe('always');
-    expect(resolved.approval.create_file).toBe('always');
-    // models: job overrides agent
-    expect(resolved.models.agent).toBe('claude-opus-5');
-    expect(resolved.models.default).toBe('claude-sonnet-5');
-    // workspace inherited from agent
-    expect(resolved.workspace).toBe('read');
+    // approval = job-declared only
+    expect(resolved.approval).toEqual({ fetch_url: 'always', create_file: 'always' });
   });
 
-  it('agent without tools.builtin defaults the bound to the full preset', () => {
-    const dir = writeAgent(roots()[0].root, 'ops', {});
-    writeJob(dir, 'weekly', { tools: { builtin: ['run_command'] } });
+  it('mcp union: job wins on server-name collision', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {
+      mcp: { servers: { db: { transport: 'stdio', command: 'agent-cmd' } } },
+    }, { base: { 'p.md': 'Persona.' } });
+    writeJob(dir, 'weekly', {
+      mcp: { servers: { db: { transport: 'stdio', command: 'job-cmd' } } },
+    });
     const resolved = loadCustomJob(roots(), 'ops', 'weekly');
-    expect(resolved.builtinTools).toEqual(['run_command']);
+    expect(resolved.mcpServers.db.command).toBe('job-cmd');
+  });
+
+  it('job without tools.builtin defaults to the full universal preset', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    const resolved = loadCustomJob(roots(), 'ops', 'weekly');
+    expect(resolved.builtinTools).toContain('read_file');
+    expect(resolved.builtinTools).toContain('run_command');
   });
 });
 
@@ -290,11 +307,12 @@ describe('discoverAgents — D8 scope priority', () => {
   });
 
   it.each([
-    ['builtin-only id → creatable (shadowing allowed)', 2, null],
-    ['org id → creatable (readonly scopes never block)', 1, null],
+    ['builtin id → blocks (no silent shadowing of shipped agents)', 2, 'builtin'],
+    ['org id → blocks (readonly ownership refuses new creations)', 1, 'org'],
     ['user id → blocks', 0, 'user'],
+    ['free id → creatable', null, null],
   ] as const)('findCreateCollision: %s', (_label, rootIdx, expected) => {
-    writeAgent(roots()[rootIdx].root, 'dup', {});
+    if (rootIdx !== null) writeAgent(roots()[rootIdx].root, 'dup', {});
     const collision = findCreateCollision(roots(), 'dup');
     if (expected === null) {
       expect(collision).toBeNull();
@@ -330,27 +348,26 @@ describe('error type', () => {
   });
 });
 
-// ── intents.yaml (dedicated single-file catalog, D-A) ────────────────────────
-
-function writeIntents(dir: string, doc: unknown): void {
-  fs.writeFileSync(path.join(dir, 'intents.yaml'), typeof doc === 'string' ? doc : yaml.dump(doc));
-}
+// ── intents.yaml (job-only single-file catalog, D-A) ─────────────────────────
 
 describe('loadCustomJob — intents catalog validation table', () => {
-  function setup(agentIntents?: unknown, jobIntents?: unknown, opts?: {
-    agentInjections?: Record<string, string>;
+  function setup(jobIntents?: unknown, opts?: {
     jobInjections?: Record<string, string>;
   }): void {
     const agentDir = writeAgent(roots()[0].root, 'ops', {}, {
       base: { 'system.md': 'Persona.' },
-      injections: opts?.agentInjections,
     });
     writeJob(agentDir, 'weekly', {}, { injections: opts?.jobInjections });
-    if (agentIntents !== undefined) writeIntents(agentDir, agentIntents);
-    if (jobIntents !== undefined) writeIntents(path.join(agentDir, 'jobs', 'weekly'), jobIntents);
+    if (jobIntents !== undefined) {
+      const jobDir = path.join(agentDir, 'jobs', 'weekly');
+      fs.writeFileSync(
+        path.join(jobDir, 'intents.yaml'),
+        typeof jobIntents === 'string' ? jobIntents : yaml.dump(jobIntents),
+      );
+    }
   }
 
-  it('absent files → empty catalog (classify zero-cost path)', () => {
+  it('absent file → empty catalog (classify zero-cost path)', () => {
     setup();
     expect(loadCustomJob(roots(), 'ops', 'weekly').intents).toEqual([]);
   });
@@ -378,42 +395,7 @@ describe('loadCustomJob — intents catalog validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
   });
 
-  it('level scope: agent intent must NOT reference a job-private injection', () => {
-    setup(
-      { intents: [{ id: 'a', description: 'x', injections: ['job-only.md'] }] },
-      undefined,
-      { jobInjections: { 'job-only.md': 'Job-private prose.' } },
-    );
-    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/does not exist in the agent/);
-  });
-
-  it('level scope: job intent MAY reference an agent-level injection (merged set)', () => {
-    setup(
-      undefined,
-      { intents: [{ id: 'cite', description: 'citations', injections: ['style.md'] }] },
-      { agentInjections: { 'style.md': 'Citation rules.' } },
-    );
-    const resolved = loadCustomJob(roots(), 'ops', 'weekly');
-    expect(resolved.intents).toEqual([{ id: 'cite', description: 'citations', injections: ['style.md'] }]);
-  });
-
-  it('merge: id union, JOB entry wins WHOLESALE on collision', () => {
-    setup(
-      { intents: [
-        { id: 'a', description: 'agent-a', injections: ['shared.md'] },
-        { id: 'b', description: 'agent-b' },
-      ] },
-      { intents: [{ id: 'a', description: 'job-a' }] },
-      { agentInjections: { 'shared.md': 'Shared prose.' } },
-    );
-    const { intents } = loadCustomJob(roots(), 'ops', 'weekly');
-    expect(intents).toHaveLength(2);
-    // Job entry replaced the agent's entirely — injections gone, not merged.
-    expect(intents.find((i) => i.id === 'a')).toEqual({ id: 'a', description: 'job-a' });
-    expect(intents.find((i) => i.id === 'b')).toEqual({ id: 'b', description: 'agent-b' });
-  });
-
-  it('merged catalog cap (32) is enforced', () => {
+  it('catalog cap (32) is enforced per file', () => {
     const many = Array.from({ length: 33 }, (_, i) => ({ id: `intent-${i}`, description: 'x' }));
     setup({ intents: many });
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/cap is 32/);
@@ -422,8 +404,7 @@ describe('loadCustomJob — intents catalog validation table', () => {
   it('TOC annotation: mapped entries carry intents[] + preloaded body; unmapped drop body', () => {
     setup(
       { intents: [{ id: 'a', description: 'x', injections: ['mapped.md'] }] },
-      undefined,
-      { agentInjections: { 'mapped.md': 'Mapped body text.', 'unmapped.md': 'Unmapped body.' } },
+      { jobInjections: { 'mapped.md': 'Mapped body text.', 'unmapped.md': 'Unmapped body.' } },
     );
     const { injectionsToc } = loadCustomJob(roots(), 'ops', 'weekly');
     const mapped = injectionsToc.find((e) => e.file === 'mapped.md');
@@ -434,10 +415,10 @@ describe('loadCustomJob — intents catalog validation table', () => {
     expect(unmapped?.body).toBeUndefined();
   });
 
-  it('discovery projects the merged catalog into CustomJobSummary.intents (lenient)', () => {
-    setup({ intents: [{ id: 'a', description: 'agent-a' }] });
+  it('discovery projects the job catalog into CustomJobSummary.intents (lenient)', () => {
+    setup({ intents: [{ id: 'a', description: 'job-a' }] });
     const agents = discoverAgents(roots());
-    expect(agents[0].jobs[0].intents).toEqual([{ id: 'a', description: 'agent-a' }]);
+    expect(agents[0].jobs[0].intents).toEqual([{ id: 'a', description: 'job-a' }]);
   });
 
   it('discovery omits intents (not []) when the catalog is malformed', () => {

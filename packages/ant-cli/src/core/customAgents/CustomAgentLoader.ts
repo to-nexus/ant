@@ -1,16 +1,19 @@
 /**
- * Custom agent / job loader — discovery + load + D4 merge.
+ * Custom agent / job loader — discovery + load.
  *
  * File layout (workspace disk is the SSOT — no caching beyond one load call):
  *
  *   {scopeRoot}/{agentId}/
- *     agent.yaml            machine contract (shared MCP / tool bound / defaults)
+ *     agent.yaml            identity + shared MCP connections
  *     base/*.md             shared persona — always injected, filename order
- *     injections/*.md       shared conditional prose (TOC injected, body on demand)
  *     jobs/{jobId}/
- *       job.yaml            job machine contract (narrows the agent's)
+ *       job.yaml            job machine contract (tools ⊆ universal preset)
  *       base/*.md           job procedure — always injected
- *       injections/*.md     job conditional prose
+ *       injections/*.md     job conditional prose (TOC injected, body on demand)
+ *       intents.yaml        job intent catalog
+ *
+ * Intents, injections, and tools are JOB-ONLY (mirroring canonical). The
+ * agent contributes name, `base/` prose, and shared `mcp` only.
  *
  * Validation failures throw CustomAgentValidationError → HTTP 400 at
  * job-accept (fail-loud, never a silent fallback).
@@ -19,7 +22,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { isValidCustomId, type CustomAgentScope, type CustomAgentSummary, type CustomJobSummary } from '@ant/shared';
+import {
+  INTENTS_FILE_NAME,
+  isValidCustomId,
+  type CustomAgentScope,
+  type CustomAgentSummary,
+  type CustomJobSummary,
+} from '@ant/shared';
 import {
   CustomAgentValidationError,
   type ApprovalPolicy,
@@ -27,15 +36,13 @@ import {
   type CustomJobYaml,
   type InjectionTocEntry,
   type McpServerConfig,
-  type OutputsContract,
   type ResolvedCustomJob,
 } from './types.js';
-import { UNIVERSAL_BUILTIN_TOOLS, WRITE_TOOLS } from './universalToolPolicy.js';
+import { UNIVERSAL_BUILTIN_TOOLS } from './universalToolPolicy.js';
 import {
   intentsFilePathFor,
-  mergeIntentCatalogs,
   parseIntentsYaml,
-  tryReadMergedIntentSummaries,
+  tryReadJobIntentSummaries,
   validateIntentInjectionRefs,
 } from './intents.js';
 
@@ -81,6 +88,78 @@ function validateIdMatchesDir(kind: 'agent' | 'job', id: unknown, dirName: strin
   }
   if (id !== dirName) {
     throw new CustomAgentValidationError(`${kind} id "${id}" must equal its directory name "${dirName}"`, agentId, jobId);
+  }
+}
+
+/**
+ * Legacy-key rejection for agent.yaml / job.yaml — shared by `loadCustomJob`
+ * and the settings PUT funnel (`gateDefinitionSave`), so a file the funnel
+ * accepts is exactly a file the runtime loads. Every message is the migration
+ * instruction for that key.
+ */
+export function validateAgentYamlDoc(doc: unknown, agentId: string): void {
+  if (!doc || typeof doc !== 'object') return;
+  const keys = doc as Record<string, unknown>;
+  if (keys.tools !== undefined) {
+    throw new CustomAgentValidationError(
+      `agent.yaml: "tools" moved to job level — declare tools.builtin / tools.approval in jobs/{jobId}/job.yaml (each job validates directly against the universal preset)`,
+      agentId,
+    );
+  }
+  if (keys.description !== undefined) {
+    throw new CustomAgentValidationError(
+      `agent.yaml: "description" was removed — the agent shows its name only; put persona prose in base/*.md`,
+      agentId,
+    );
+  }
+  if (keys.intents !== undefined) {
+    throw new CustomAgentValidationError(
+      `agent.yaml: intents belong in jobs/{jobId}/intents.yaml (intents are job-only)`,
+      agentId,
+    );
+  }
+  for (const key of ['workspace', 'models'] as const) {
+    if (keys[key] !== undefined) {
+      throw new CustomAgentValidationError(
+        `agent.yaml: "${key}" was removed (it never had a runtime effect) — delete the field`,
+        agentId,
+      );
+    }
+  }
+}
+
+export function validateJobYamlDoc(doc: unknown, agentId: string, jobId: string): void {
+  if (!doc || typeof doc !== 'object') return;
+  const keys = doc as Record<string, unknown>;
+  if (keys.outputs !== undefined) {
+    throw new CustomAgentValidationError(
+      `job.yaml: "outputs" was removed — describe output conventions in the job's base/*.md prose instead`,
+      agentId,
+      jobId,
+    );
+  }
+  if (keys.plan !== undefined) {
+    throw new CustomAgentValidationError(
+      `job.yaml: "plan" was removed — planning is now a per-turn composer toggle (@plan); delete the field`,
+      agentId,
+      jobId,
+    );
+  }
+  if (keys.description !== undefined) {
+    throw new CustomAgentValidationError(
+      `job.yaml: "description" was removed — the job shows its name only; put what the job is and how it works in base/*.md prose (mirrors agent.yaml)`,
+      agentId,
+      jobId,
+    );
+  }
+  for (const key of ['workspace', 'models'] as const) {
+    if (keys[key] !== undefined) {
+      throw new CustomAgentValidationError(
+        `job.yaml: "${key}" was removed (it never had a runtime effect) — delete the field`,
+        agentId,
+        jobId,
+      );
+    }
   }
 }
 
@@ -184,11 +263,10 @@ function summarizeJobs(agentDir: string): CustomJobSummary[] {
       if (job && typeof job === 'object' && job.id === entry.name) {
         // Lenient intents projection for the `@intent:` mention vocabulary —
         // omitted (not []) when the catalog fails to parse.
-        const intents = tryReadMergedIntentSummaries(agentDir, path.join(jobsDir, entry.name), path.basename(agentDir), entry.name);
+        const intents = tryReadJobIntentSummaries(path.join(jobsDir, entry.name), path.basename(agentDir), entry.name);
         summaries.push({
           id: job.id,
           name: job.name ?? job.id,
-          description: job.description ?? '',
           ...(intents ? { intents } : {}),
         });
       }
@@ -218,7 +296,6 @@ export function discoverAgents(scopeRoots: CustomAgentScopeRoot[]): CustomAgentS
         byId.set(agentId, {
           id: agentId,
           name: agent.name ?? agentId,
-          description: agent.description ?? '',
           scope,
           readonly,
           jobs: summarizeJobs(agentDir),
@@ -232,17 +309,16 @@ export function discoverAgents(scopeRoots: CustomAgentScopeRoot[]): CustomAgentS
 }
 
 /**
- * Collision check for agent creation: only a writable-scope collision blocks —
- * a new agent may shadow readonly scopes (org/builtin) wholesale.
+ * Collision check for agent creation: ANY scope owning the id blocks — a new
+ * agent must not silently shadow a readonly (org/builtin) agent. Pre-existing
+ * on-disk shadows still resolve leniently by scope priority (discoverAgents /
+ * findAgentRoot); only new creations are refused.
  */
 export function findCreateCollision(
   scopeRoots: CustomAgentScopeRoot[],
   agentId: string,
 ): { scopeRoot: CustomAgentScopeRoot; agentDir: string } | null {
-  return findAgentRoot(
-    scopeRoots.filter((r) => !r.readonly),
-    agentId,
-  );
+  return findAgentRoot(scopeRoots, agentId);
 }
 
 /** Resolve which scope root owns an agent id (first match in priority order). */
@@ -259,13 +335,11 @@ export function findAgentRoot(
   return null;
 }
 
-// ── load + merge ─────────────────────────────────────────────────────────────
-
-const DEFAULT_OUTPUTS: OutputsContract = { mode: 'free' };
+// ── load ─────────────────────────────────────────────────────────────────────
 
 /**
- * Load agent.yaml + job.yaml, apply the D4 merge rules, validate, and return
- * the single immutable definition the runtime consumes.
+ * Load agent.yaml + job.yaml, validate, and return the single immutable
+ * definition the runtime consumes.
  */
 export function loadCustomJob(
   scopeRoots: CustomAgentScopeRoot[],
@@ -282,23 +356,37 @@ export function loadCustomJob(
   const { scopeRoot, agentDir } = found;
   const jobDir = path.join(agentDir, 'jobs', jobId);
 
+  // Legacy agent-level structure fails loud with the migration instruction.
+  if (fs.existsSync(intentsFilePathFor(agentDir))) {
+    throw new CustomAgentValidationError(
+      `Agent-level ${INTENTS_FILE_NAME} is no longer supported — intents are job-only. Move the catalog into jobs/{jobId}/${INTENTS_FILE_NAME} and its referenced files into jobs/{jobId}/injections/, then delete the agent-level file (the settings Prompts view can create/delete these files).`,
+      agentId,
+      jobId,
+    );
+  }
+  if (listMarkdownFiles(path.join(agentDir, 'injections')).length > 0) {
+    throw new CustomAgentValidationError(
+      `Agent-level injections/ is no longer supported — move the *.md files into jobs/{jobId}/injections/ and delete the agent-level directory.`,
+      agentId,
+      jobId,
+    );
+  }
+
   const agent = readYamlFile<CustomAgentYaml>(path.join(agentDir, 'agent.yaml'), agentId);
+  validateAgentYamlDoc(agent, agentId);
   validateIdMatchesDir('agent', agent.id, agentId, agentId);
   const job = readYamlFile<CustomJobYaml>(path.join(jobDir, 'job.yaml'), agentId, jobId);
+  validateJobYamlDoc(job, agentId, jobId);
   validateIdMatchesDir('job', job.id, jobId, agentId, jobId);
 
   validateMcpServers(agent.mcp?.servers, agentId);
   validateMcpServers(job.mcp?.servers, agentId, jobId);
 
-  // tools.builtin: job ⊆ agent ⊆ universal preset (narrowing only)
-  const agentBound = validateBuiltinSubset(agent.tools?.builtin, UNIVERSAL_BUILTIN_TOOLS, 'the universal preset', agentId);
-  const builtinTools = validateBuiltinSubset(job.tools?.builtin, agentBound, `agent "${agentId}"'s tools.builtin`, agentId, jobId);
+  // tools.builtin: job ⊆ universal preset (job-only, mirroring canonical)
+  const builtinTools = validateBuiltinSubset(job.tools?.builtin, UNIVERSAL_BUILTIN_TOOLS, 'the universal preset', agentId, jobId);
 
-  // approval: union, stricter (always) wins on collision
-  const approval: Record<string, ApprovalPolicy> = { ...(agent.tools?.approval ?? {}) };
-  for (const [tool, policy] of Object.entries(job.tools?.approval ?? {})) {
-    approval[tool] = approval[tool] === 'always' ? 'always' : policy;
-  }
+  // approval: job-declared only
+  const approval: Record<string, ApprovalPolicy> = { ...(job.tools?.approval ?? {}) };
 
   // prose: agent base → job base (harness prose is owned by templates/, not here)
   let prose = [readBaseProse(path.join(agentDir, 'base')), readBaseProse(path.join(jobDir, 'base'))]
@@ -315,23 +403,10 @@ export function loadCustomJob(
     prose = prose.slice(0, CUSTOM_PROSE_CAP) + TRUNCATION_FOOTER;
   }
 
-  // injections TOC: union, job wins on filename collision
-  const agentToc = readInjectionsToc(path.join(agentDir, 'injections'));
-  const jobToc = readInjectionsToc(path.join(jobDir, 'injections'));
-  const tocByFile = new Map<string, InjectionTocEntry>();
-  for (const entry of agentToc) tocByFile.set(entry.file, entry);
-  for (const entry of jobToc) tocByFile.set(entry.file, entry);
-
-  // intents: dedicated single-file catalog per level (agent-shared +
-  // optional job extension), job entry wins WHOLESALE on id collision.
-  // Injection refs are LEVEL-scoped: agent intents may only reference agent
-  // injections (a job-private ref would explode on sibling jobs); job
-  // intents see the merged set.
-  const agentIntents = parseIntentsYaml(intentsFilePathFor(agentDir), agentId);
-  const jobIntents = parseIntentsYaml(intentsFilePathFor(jobDir), agentId, jobId);
-  validateIntentInjectionRefs(agentIntents, new Set(agentToc.map((e) => e.file)), `agent "${agentId}"`, agentId);
-  validateIntentInjectionRefs(jobIntents, new Set(tocByFile.keys()), `merged agent+job`, agentId, jobId);
-  const intents = mergeIntentCatalogs(agentIntents, jobIntents, agentId, jobId);
+  // injections TOC + intents: job-only
+  const injectionsToc = readInjectionsToc(path.join(jobDir, 'injections'));
+  const intents = parseIntentsYaml(intentsFilePathFor(jobDir), agentId, jobId);
+  validateIntentInjectionRefs(intents, new Set(injectionsToc.map((e) => e.file)), `job "${jobId}"`, agentId, jobId);
 
   // Annotate the TOC with the reverse mapping (file → intent ids); body is
   // kept ONLY on intent-mapped entries (they inline in full at prompt time —
@@ -344,8 +419,8 @@ export function loadCustomJob(
       else intentsByFile.set(f, [intent.id]);
     }
   }
-  for (const [file, entry] of tocByFile) {
-    const mapped = intentsByFile.get(file);
+  for (const entry of injectionsToc) {
+    const mapped = intentsByFile.get(entry.file);
     if (mapped) {
       entry.intents = mapped;
     } else {
@@ -359,37 +434,18 @@ export function loadCustomJob(
     ...(job.mcp?.servers ?? {}),
   };
 
-  const outputs: OutputsContract = job.outputs ?? DEFAULT_OUTPUTS;
-  if (outputs.mode === 'contract') {
-    if (!outputs.artifacts?.length) {
-      throw new CustomAgentValidationError(`outputs.mode "contract" requires at least one artifacts entry`, agentId, jobId);
-    }
-    if (!builtinTools.some((t) => (WRITE_TOOLS as readonly string[]).includes(t))) {
-      throw new CustomAgentValidationError(
-        `outputs.mode "contract" requires a write tool (${WRITE_TOOLS.join(', ')}) in tools.builtin`,
-        agentId,
-        jobId,
-      );
-    }
-  }
-
   return {
     agentId,
     jobId,
     scope: scopeRoot.scope,
     agentName: agent.name ?? agentId,
     jobName: job.name ?? jobId,
-    description: job.description ?? '',
     prose,
-    injectionsToc: Array.from(tocByFile.values()),
+    injectionsToc,
     intents,
     mcpServers,
     builtinTools,
     approval,
-    workspace: job.workspace ?? agent.workspace ?? 'none',
-    models: { ...(agent.models ?? {}), ...(job.models ?? {}) },
-    plan: job.plan ?? 'suggested',
-    outputs,
     agentDir,
     jobDir,
   };

@@ -60,23 +60,26 @@ async function createAgent(id = 'ops'): Promise<void> {
 }
 
 describe('listing + CRUD', () => {
-  it('GET / returns agents + builtinToolPreset (form vocabulary from the runtime SSOT)', async () => {
+  it('GET / returns agents + builtinToolPreset + mutatingBuiltinTools (form vocabulary from the runtime SSOT)', async () => {
     const res = await api('');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.agents)).toBe(true);
     expect(body.builtinToolPreset.length).toBeGreaterThan(0);
+    expect(body.mutatingBuiltinTools).toEqual(['http_request', 'run_command']);
     // Shipped builtin samples are visible without a project.
     expect(body.agents.some((a: any) => a.scope === 'builtin')).toBe(true);
   });
 
-  it('agent scaffold includes intents.yaml; job CRUD mirrors project-scoped semantics', async () => {
+  it('agent scaffold is intents-free (job-only); job scaffold includes intents.yaml', async () => {
     await createAgent();
-    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/intents.yaml'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/intents.yaml'))).toBe(false);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/injections'))).toBe(false);
 
     const jobRes = await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'Weekly' }) });
     expect(jobRes.status).toBe(201);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/job.yaml'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'))).toBe(true);
 
     const patch = await api('/ops/jobs/weekly', { method: 'PATCH', body: JSON.stringify({ description: 'd' }) });
     expect(patch.status).toBe(200);
@@ -87,8 +90,20 @@ describe('listing + CRUD', () => {
   });
 
   it('readonly scope (builtin) mutations → 403', async () => {
-    const res = await api('/sample-researcher', { method: 'PATCH', body: JSON.stringify({ name: 'x' }) });
+    const res = await api('/assistant', { method: 'PATCH', body: JSON.stringify({ name: 'x' }) });
     expect(res.status).toBe(403);
+  });
+
+  it('creating a same-id agent over a builtin → 409 (no silent shadowing); duplicate user id → 409', async () => {
+    const shadow = await api('', { method: 'POST', body: JSON.stringify({ id: 'assistant', name: 'Mine' }) });
+    expect(shadow.status).toBe(409);
+    expect((await shadow.json()).error).toMatch(/built-in/);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/assistant'))).toBe(false);
+
+    await createAgent('dup');
+    const again = await api('', { method: 'POST', body: JSON.stringify({ id: 'dup', name: 'dup' }) });
+    expect(again.status).toBe(409);
+    expect((await again.json()).error).toMatch(/already exists/);
   });
 
   it('unknown agent → 404; invalid id → 400', async () => {
@@ -106,19 +121,19 @@ describe('definition file endpoints', () => {
     const tree = await (await api('/ops/files')).json();
     const names = tree.tree.map((n: any) => n.name);
     expect(names).toContain('agent.yaml');
-    expect(names).toContain('intents.yaml');
+    expect(names).not.toContain('intents.yaml');
 
     const file = await (await api('/ops/file?path=agent.yaml')).json();
     expect(file.content).toContain('id: ops');
 
-    const builtinTree = await api('/sample-researcher/files');
+    const builtinTree = await api('/assistant/files');
     expect(builtinTree.status).toBe(200);
     expect((await builtinTree.json()).readonly).toBe(true);
   });
 
   it.each([
     ['YAML syntax error → 400, NOT written', 'agent.yaml', 'id: [unclosed', 400],
-    ['agent.yaml id ≠ dir name → 400, NOT written', 'agent.yaml', 'id: not-ops\nname: x\ndescription: ""\n', 400],
+    ['agent.yaml id ≠ dir name → 400, NOT written', 'agent.yaml', 'id: not-ops\nname: x\n', 400],
     ['whitelist violation → 400', 'random/deep/file.md', 'x', 400],
     ['traversal → whitelist 400', '../escape.md', 'x', 400],
   ] as const)('PUT gate: %s', async (_label, relPath, content, expectedStatus) => {
@@ -128,32 +143,72 @@ describe('definition file endpoints', () => {
     expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/agent.yaml'), 'utf-8')).toBe(before);
   });
 
-  it('PUT semantic error → 200 SAVED with validation.errors warnings', async () => {
+  it.each([
+    ['agent.yaml with tools', 'agent.yaml', 'id: ops\nname: x\ntools:\n  builtin: [read_file]\n', /moved to job level/],
+    ['agent.yaml with description', 'agent.yaml', 'id: ops\nname: x\ndescription: legacy\n', /"description" was removed/],
+    ['agent.yaml with workspace', 'agent.yaml', 'id: ops\nname: x\nworkspace: none\n', /"workspace" was removed/],
+    ['job.yaml with outputs', 'jobs/weekly/job.yaml', 'id: weekly\nname: W\noutputs: { mode: free }\n', /"outputs" was removed/],
+    ['job.yaml with plan', 'jobs/weekly/job.yaml', "id: weekly\nname: W\nplan: suggested\n", /"plan" was removed/],
+  ] as const)('PUT legacy key: %s → 400 with migration message', async (_label, relPath, content, pattern) => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
-    // Structurally valid yaml, semantically broken: reserved `general` intent.
+    const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content }) });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(pattern);
+  });
+
+  it.each([
+    ['agent-level intents.yaml', 'intents.yaml', /intents are job-only/],
+    ['agent-level injections file', 'injections/style.md', /save the file under jobs/],
+  ] as const)('PUT legacy path: %s → 400 with move instruction', async (_label, relPath, pattern) => {
+    const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content: 'x' }) });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(pattern);
+  });
+
+  it('PUT intents contract violation → 400 pre-write gate, NOT written', async () => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    // Structurally valid yaml, but the catalog contract is enforced pre-write:
+    // reserved `general` intent must be a hard 400, not saved-with-warnings.
     const res = await api('/ops/file', {
       method: 'PUT',
       body: JSON.stringify({
-        path: 'intents.yaml',
+        path: 'jobs/weekly/intents.yaml',
         content: 'version: 1\nintents:\n  - id: general\n    description: nope\n',
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/implicit fallback/);
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'), 'utf-8')).not.toContain('general');
+  });
+
+  it('PUT semantic error → 200 SAVED with validation.errors warnings', async () => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    // Catalog-valid but the referenced injection file does not exist — a
+    // cross-file condition the pre-write gate cannot see; post-write dry run
+    // reports it as a warning while the file stays on disk.
+    const res = await api('/ops/file', {
+      method: 'PUT',
+      body: JSON.stringify({
+        path: 'jobs/weekly/intents.yaml',
+        content: 'version: 1\nintents:\n  - id: review\n    description: review things\n    injections: [ghost.md]\n',
       }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.validation.valid).toBe(false);
-    expect(body.validation.errors.join('\n')).toMatch(/implicit fallback/);
+    expect(body.validation.errors.join('\n')).toMatch(/does not exist in the .* injections set/);
     // The file IS on disk (fix continues in the editor).
-    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/intents.yaml'), 'utf-8')).toContain('general');
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'), 'utf-8')).toContain('ghost.md');
   });
 
   it('PUT valid intents.yaml → 200, validation.valid true', async () => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
-    fs.mkdirSync(path.join(userDir, '.ant/agents/ops/injections'), { recursive: true });
-    fs.writeFileSync(path.join(userDir, '.ant/agents/ops/injections/style.md'), 'Style prose.');
+    fs.mkdirSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections'), { recursive: true });
+    fs.writeFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections/style.md'), 'Style prose.');
     const res = await api('/ops/file', {
       method: 'PUT',
       body: JSON.stringify({
-        path: 'intents.yaml',
+        path: 'jobs/weekly/intents.yaml',
         content: 'version: 1\nintents:\n  - id: research\n    description: research things\n    injections: [style.md]\n',
       }),
     });
@@ -171,12 +226,23 @@ describe('definition file endpoints', () => {
   });
 
   it('create + delete a whitelisted file round-trips', async () => {
-    const create = await api('/ops/files/create', { method: 'POST', body: JSON.stringify({ path: 'injections/extra.md' }) });
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    const rel = 'jobs/weekly/injections/extra.md';
+    const create = await api('/ops/files/create', { method: 'POST', body: JSON.stringify({ path: rel }) });
     expect(create.status).toBe(200);
-    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/injections/extra.md'))).toBe(true);
-    const del = await api('/ops/file?path=injections/extra.md', { method: 'DELETE' });
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops', rel))).toBe(true);
+    const del = await api(`/ops/file?path=${encodeURIComponent(rel)}`, { method: 'DELETE' });
     expect(del.status).toBe(200);
-    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/injections/extra.md'))).toBe(false);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops', rel))).toBe(false);
+  });
+
+  it('legacy agent-level file remains deletable (the migration escape hatch)', async () => {
+    // A pre-migration dir may still hold intents.yaml at the agent root; the
+    // DELETE route only blocks structural files, so cleanup stays possible.
+    fs.writeFileSync(path.join(userDir, '.ant/agents/ops/intents.yaml'), 'version: 1\nintents: []\n');
+    const del = await api('/ops/file?path=intents.yaml', { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/intents.yaml'))).toBe(false);
   });
 });
 
@@ -189,18 +255,73 @@ describe('folder import', () => {
     expect(missing.status).toBe(400);
 
     const full = new FormData();
-    full.append('files', new Blob(['id: imported\nname: Imported\ndescription: ""\n']), 'agent.yaml');
+    full.append('files', new Blob(['id: imported\nname: Imported\n']), 'agent.yaml');
     full.append('relativePaths', 'imported/agent.yaml');
     full.append('files', new Blob(['# base']), 'system.md');
     full.append('relativePaths', 'imported/base/system.md');
     full.append('files', new Blob(['skip me']), 'notes.txt');
     full.append('relativePaths', 'imported/random/notes.txt');
+    // Legacy agent-level intents.yaml is off-whitelist now — must be skipped.
+    full.append('files', new Blob(['version: 1\nintents: []\n']), 'intents.yaml');
+    full.append('relativePaths', 'imported/intents.yaml');
     const ok = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: full });
     expect(ok.status).toBe(201);
     const body = await ok.json();
     expect(body.agentId).toBe('imported');
     expect(body.uploaded).toContain('agent.yaml');
-    expect(body.skipped).toEqual([{ path: 'imported/random/notes.txt', reason: 'outside the definition whitelist' }]);
+    expect(body.skipped).toEqual([
+      { path: 'imported/random/notes.txt', reason: 'outside the definition whitelist' },
+      { path: 'imported/intents.yaml', reason: 'outside the definition whitelist' },
+    ]);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/base/system.md'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/intents.yaml'))).toBe(false);
+  });
+
+  it('importing a folder named after a builtin agent → 409 (no silent shadowing)', async () => {
+    const form = new FormData();
+    form.append('files', new Blob(['id: assistant\nname: Mine\n']), 'agent.yaml');
+    form.append('relativePaths', 'assistant/agent.yaml');
+    const res = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: form });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/built-in/);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/assistant'))).toBe(false);
+  });
+});
+
+describe('prompt preview', () => {
+  beforeEach(async () => {
+    await createAgent();
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    fs.mkdirSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections'), { recursive: true });
+    fs.writeFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections/style.md'), 'STYLE-BODY sentinel.');
+    fs.writeFileSync(
+      path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'),
+      'version: 1\nintents:\n  - id: research\n    description: research things\n    injections: [style.md]\n',
+    );
+  });
+
+  it('returns the composed block; intents flip a file between toc and inlined', async () => {
+    const tocOnly = await (await api('/ops/jobs/weekly/prompt-preview')).json();
+    expect(tocOnly.system).toContain('<custom_job_instructions id="ops/weekly"');
+    expect(tocOnly.inlined).toEqual([]);
+    expect(tocOnly.toc).toEqual(['style.md']);
+    expect(tocOnly.harnessTemplates.length).toBe(3);
+
+    const active = await (await api('/ops/jobs/weekly/prompt-preview?intents=research')).json();
+    expect(active.activeIntents).toEqual(['research']);
+    expect(active.inlined).toEqual(['style.md']);
+    expect(active.system).toContain('STYLE-BODY sentinel.');
+  });
+
+  it('unknown intent → 400 unknown-intent', async () => {
+    const res = await api('/ops/jobs/weekly/prompt-preview?intents=ghost');
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('unknown-intent');
+  });
+
+  it('builtin (readonly) jobs are previewable', async () => {
+    const res = await api('/assistant/jobs/chat/prompt-preview');
+    expect(res.status).toBe(200);
+    expect((await res.json()).system).toContain('<custom_job_instructions id="assistant/chat"');
   });
 });
