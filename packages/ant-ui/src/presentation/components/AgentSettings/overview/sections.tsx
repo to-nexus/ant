@@ -1,468 +1,359 @@
 /**
- * Overview form sections — each section reads ONE definition file, patches
- * yaml fields via `yaml.parseDocument` (comment-preserving), and saves
- * through the SAME single write funnel as the raw editor
- * (`saveDefinitionFile`). No section owns a bespoke endpoint.
+ * Overview section cards — canonical `ConfigEditor/aurora` kit (SectionCard +
+ * FieldLabel/AuroraInput/AuroraSelect). Cards mutate the shared
+ * `useDefinitionDocs` drafts; the shell's single ChangedBar saves every dirty
+ * file through the definition write funnel. No card owns a Save button.
+ *
+ * Level model: cards exist only where a form field does — job = tools +
+ * intents summary; intent = its own detail card (IntentDetailCard.tsx). The
+ * agent level has no cards (identity is base/*.md prose; renames live in the
+ * tree kebab). IntentsCard is a summary list that links into the intent
+ * selection, keeping ONE editing surface per intent.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { parseDocument } from 'yaml';
-import { useStore } from '@/domain/store';
-import { fetchDefinitionFile, saveDefinitionFile } from '@/infrastructure/http/api/accountAgents';
-import { Button, Input, Textarea } from '@/presentation/components/aurora';
-import type { CustomIntentDef, DefinitionValidationResult } from '@ant/shared';
+import { Plus, Target } from 'lucide-react';
+import { Button } from '@/presentation/components/aurora';
+import {
+  AuroraInput,
+  AuroraSelect,
+  FieldLabel,
+  SectionCard,
+} from '@/presentation/components/ConfigEditor/aurora';
+import { CUSTOM_ID_PATTERN } from '@ant/shared';
+import type { UseDefinitionDocsResult } from './useDefinitionDocs';
 
-export interface OverviewSectionContext {
-  agentId: string;
-  /** undefined = agent-level overview; set = job-level overview. */
-  jobId?: string;
+export interface OverviewCtx {
+  level: 'agent' | 'job' | 'intent';
   readonly: boolean;
-  onSaved: (validation: DefinitionValidationResult) => void;
-  onError: (message: string) => void;
+  docs: UseDefinitionDocsResult;
+  builtinToolPreset: string[];
+  mutatingBuiltinTools: string[];
 }
 
-export interface OverviewSectionDef {
-  id: string;
-  appliesTo: 'agent' | 'job' | 'both';
-  Component: (props: { ctx: OverviewSectionContext }) => React.ReactElement | null;
-}
-
-function yamlPathFor(ctx: OverviewSectionContext, file: 'main' | 'intents'): string {
-  if (ctx.jobId) return file === 'main' ? `jobs/${ctx.jobId}/job.yaml` : `jobs/${ctx.jobId}/intents.yaml`;
-  return file === 'main' ? 'agent.yaml' : 'intents.yaml';
-}
-
-/**
- * Load → patch → save cycle over one yaml definition file. The patch runs on
- * a comment-preserving `yaml` Document; the serialized document goes through
- * the shared write funnel.
- */
-function useYamlFile(ctx: OverviewSectionContext, file: 'main' | 'intents') {
-  const path = yamlPathFor(ctx, file);
-  const [raw, setRaw] = useState<string | null>(null);
-  const [missing, setMissing] = useState(false);
-
-  const reload = useCallback(async () => {
-    try {
-      const { content } = await fetchDefinitionFile(ctx.agentId, path);
-      setRaw(content);
-      setMissing(false);
-    } catch {
-      setRaw(null);
-      setMissing(true);
-    }
-  }, [ctx.agentId, path]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
-  const save = useCallback(
-    async (patch: (doc: ReturnType<typeof parseDocument>) => void) => {
-      const doc = parseDocument(raw ?? '');
-      patch(doc);
-      try {
-        const { validation } = await saveDefinitionFile(ctx.agentId, path, doc.toString());
-        ctx.onSaved(validation);
-        await reload();
-        return true;
-      } catch (e) {
-        ctx.onError(e instanceof Error ? e.message : String(e));
-        return false;
-      }
-    },
-    [ctx, path, raw, reload],
-  );
-
-  return { raw, missing, save, reload, path };
-}
-
-function SectionShellCard({ title, children }: { title: string; children: React.ReactNode }) {
+/** Pill-toggle used for tool selection and injection binding. */
+export function ChipToggle({
+  label,
+  selected,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  selected: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <div
-      className="rounded-lg p-4 flex flex-col gap-3"
-      style={{ background: 'var(--bg-surface-2)', border: '1px solid var(--border-1)' }}
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onToggle}
+      style={{
+        fontSize: 11,
+        fontFamily: 'var(--font-mono)',
+        padding: '3px 10px',
+        borderRadius: 'var(--r-pill)',
+        border: `1px solid ${selected ? 'var(--violet-300)' : 'var(--border-2)'}`,
+        background: selected ? 'var(--select-fill-violet)' : 'var(--bg-surface)',
+        color: selected ? 'var(--select-fg)' : 'var(--text-3)',
+        fontWeight: selected ? 700 : 500,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled && !selected ? 0.55 : 1,
+        transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
+      }}
     >
-      <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-3)' }}>
-        {title}
-      </div>
-      {children}
-    </div>
+      {label}
+    </button>
   );
 }
 
-// ── General (name / description) ─────────────────────────────────────────────
+// ── Tools (job-only: builtin allowlist + approval overrides) ─────────────────
 
-function GeneralSection({ ctx }: { ctx: OverviewSectionContext }) {
+export function ToolsCard({ ctx, id }: { ctx: OverviewCtx; id: string }) {
   const { t } = useTranslation('agents');
-  const { raw, save } = useYamlFile(ctx, 'main');
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [dirty, setDirty] = useState(false);
+  const draft = ctx.docs.draft;
+  const [addingOverride, setAddingOverride] = useState('');
+  if (!draft) return null;
 
-  useEffect(() => {
-    if (raw == null) return;
-    const doc = parseDocument(raw);
-    setName(String(doc.get('name') ?? ''));
-    setDescription(String(doc.get('description') ?? ''));
-    setDirty(false);
-  }, [raw]);
+  // Vocabulary = the universal preset (tools are job-owned; no agent bound).
+  const vocabulary = ctx.builtinToolPreset;
+  const effective = new Set(draft.main.toolsBuiltin ?? vocabulary);
 
-  if (raw == null) return null;
-
-  return (
-    <SectionShellCard title={t('overview.general', 'General')}>
-      <Input
-        value={name}
-        disabled={ctx.readonly}
-        onChange={(e) => { setName(e.target.value); setDirty(true); }}
-        placeholder={t('overview.name', 'Name')}
-      />
-      <Textarea
-        value={description}
-        disabled={ctx.readonly}
-        onChange={(e) => { setDescription(e.target.value); setDirty(true); }}
-        placeholder={t('overview.description', 'Description')}
-        rows={2}
-      />
-      {!ctx.readonly && dirty && (
-        <div>
-          <Button
-            size="sm"
-            onClick={() => void save((doc) => { doc.set('name', name); doc.set('description', description); }).then((ok) => ok && setDirty(false))}
-          >
-            {t('overview.save', 'Save')}
-          </Button>
-        </div>
-      )}
-    </SectionShellCard>
-  );
-}
-
-// ── Tools (builtin allowlist, narrowing-only) ────────────────────────────────
-
-function ToolsSection({ ctx }: { ctx: OverviewSectionContext }) {
-  const { t } = useTranslation('agents');
-  const builtinToolPreset = useStore((s) => s.builtinToolPreset);
-  const { raw, save } = useYamlFile(ctx, 'main');
-  const [selected, setSelected] = useState<Set<string> | null>(null);
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => {
-    if (raw == null) return;
-    const doc = parseDocument(raw);
-    const listed = doc.getIn(['tools', 'builtin']);
-    const arr = listed && typeof (listed as any).toJSON === 'function' ? (listed as any).toJSON() : listed;
-    setSelected(Array.isArray(arr) ? new Set(arr.filter((x): x is string => typeof x === 'string')) : null);
-    setDirty(false);
-  }, [raw]);
-
-  if (raw == null || builtinToolPreset.length === 0) return null;
-  const effective = selected ?? new Set(builtinToolPreset);
-
-  const toggle = (tool: string) => {
+  const toggleTool = (tool: string) => {
     const next = new Set(effective);
     if (next.has(tool)) next.delete(tool);
     else next.add(tool);
-    setSelected(next);
-    setDirty(true);
+    // Full selection = key absent (inherit the whole preset).
+    ctx.docs.setMain({
+      toolsBuiltin: next.size === vocabulary.length ? null : vocabulary.filter((v) => next.has(v)),
+    });
+  };
+
+  const approval = draft.main.approval;
+  const approvalRows = vocabulary.filter(
+    (tool) => ctx.mutatingBuiltinTools.includes(tool) || approval[tool] !== undefined,
+  );
+  const overrideCandidates = vocabulary.filter((tool) => !approvalRows.includes(tool));
+
+  const setApproval = (tool: string, value: string) => {
+    const next = { ...approval };
+    if (value === 'default') delete next[tool];
+    else next[tool] = value as 'always' | 'never';
+    ctx.docs.setMain({ approval: next });
   };
 
   return (
-    <SectionShellCard title={t('overview.tools', 'Tools')}>
-      <div className="text-xs" style={{ color: 'var(--text-4)' }}>
-        {t('overview.toolsHint', 'Narrowing only — a job can restrict but never add beyond this set.')}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {builtinToolPreset.map((tool) => (
-          <label key={tool} className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--text-2)' }}>
-            <input
-              type="checkbox"
+    <SectionCard
+      id={id}
+      icon="Wrench"
+      accent="cool"
+      title={t('overview.tools', 'Tools')}
+      description={t('overview.toolsJobDesc', 'This job’s builtin allowlist — validates directly against the universal preset. Selecting everything omits the key (full preset).')}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {vocabulary.map((tool) => (
+            <ChipToggle
+              key={tool}
+              label={tool}
+              selected={effective.has(tool)}
               disabled={ctx.readonly}
-              checked={effective.has(tool)}
-              onChange={() => toggle(tool)}
+              onToggle={() => toggleTool(tool)}
             />
-            {tool}
-          </label>
-        ))}
-      </div>
-      {!ctx.readonly && dirty && (
+          ))}
+        </div>
+
         <div>
-          <Button
-            size="sm"
-            onClick={() => void save((doc) => {
-              if (effective.size === builtinToolPreset.length) {
-                doc.deleteIn(['tools', 'builtin']);
-              } else {
-                doc.setIn(['tools', 'builtin'], [...effective]);
-              }
-            }).then((ok) => ok && setDirty(false))}
-          >
-            {t('overview.save', 'Save')}
-          </Button>
-        </div>
-      )}
-    </SectionShellCard>
-  );
-}
-
-// ── enum field sections (workspace / plan / outputs.mode) ────────────────────
-
-function EnumSection({
-  ctx,
-  title,
-  yamlPath,
-  options,
-  clearValue,
-}: {
-  ctx: OverviewSectionContext;
-  title: string;
-  yamlPath: string[];
-  options: string[];
-  /** Value meaning "remove the key" (inherit default). */
-  clearValue?: string;
-}) {
-  const { t } = useTranslation('agents');
-  const { raw, save } = useYamlFile(ctx, 'main');
-  const [value, setValue] = useState<string>('');
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => {
-    if (raw == null) return;
-    const doc = parseDocument(raw);
-    setValue(String(doc.getIn(yamlPath) ?? clearValue ?? ''));
-    setDirty(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [raw]);
-
-  if (raw == null) return null;
-
-  return (
-    <SectionShellCard title={title}>
-      <div className="flex items-center gap-2">
-        <select
-          value={value}
-          disabled={ctx.readonly}
-          onChange={(e) => { setValue(e.target.value); setDirty(true); }}
-          className="text-sm rounded-md px-2 py-1"
-          style={{ background: 'var(--bg-surface)', color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
-        >
-          {options.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-        {!ctx.readonly && dirty && (
-          <Button
-            size="sm"
-            onClick={() => void save((doc) => {
-              if (clearValue !== undefined && value === clearValue) doc.deleteIn(yamlPath);
-              else doc.setIn(yamlPath, value);
-            }).then((ok) => ok && setDirty(false))}
-          >
-            {t('overview.save', 'Save')}
-          </Button>
-        )}
-      </div>
-    </SectionShellCard>
-  );
-}
-
-function WorkspaceSection({ ctx }: { ctx: OverviewSectionContext }) {
-  const { t } = useTranslation('agents');
-  return (
-    <EnumSection
-      ctx={ctx}
-      title={t('overview.workspace', 'Workspace access')}
-      yamlPath={['workspace']}
-      options={['none', 'read']}
-      clearValue="none"
-    />
-  );
-}
-
-function PlanSection({ ctx }: { ctx: OverviewSectionContext }) {
-  const { t } = useTranslation('agents');
-  return (
-    <EnumSection
-      ctx={ctx}
-      title={t('overview.plan', 'Plan convention')}
-      yamlPath={['plan']}
-      options={['suggested', 'required', 'off']}
-      clearValue="suggested"
-    />
-  );
-}
-
-function OutputsSection({ ctx }: { ctx: OverviewSectionContext }) {
-  const { t } = useTranslation('agents');
-  const { raw, save } = useYamlFile(ctx, 'main');
-  const [mode, setMode] = useState<string>('free');
-  const [artifacts, setArtifacts] = useState<Array<Record<string, string>>>([]);
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => {
-    if (raw == null) return;
-    const doc = parseDocument(raw);
-    setMode(String(doc.getIn(['outputs', 'mode']) ?? 'free'));
-    const arts = doc.getIn(['outputs', 'artifacts']);
-    const arr = arts && typeof (arts as any).toJSON === 'function' ? (arts as any).toJSON() : arts;
-    setArtifacts(Array.isArray(arr) ? arr : []);
-    setDirty(false);
-  }, [raw]);
-
-  if (raw == null) return null;
-
-  return (
-    <SectionShellCard title={t('overview.outputs', 'Outputs')}>
-      <div className="flex items-center gap-2">
-        <select
-          value={mode}
-          disabled={ctx.readonly}
-          onChange={(e) => { setMode(e.target.value); setDirty(true); }}
-          className="text-sm rounded-md px-2 py-1"
-          style={{ background: 'var(--bg-surface)', color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
-        >
-          {['none', 'free', 'contract'].map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-      </div>
-      {mode === 'contract' && artifacts.length > 0 && (
-        <div className="flex flex-col gap-1 text-xs" style={{ color: 'var(--text-3)' }}>
-          {artifacts.map((a, i) => (
-            <div key={i} className="font-mono">
-              {a.kind} → {a.dir} (.{a.format}, {a.naming}{a.update ? `, ${a.update}` : ''})
-            </div>
-          ))}
-          <div style={{ color: 'var(--text-4)' }}>
-            {t('overview.outputsEditHint', 'Edit artifact rows in the Files tab (job.yaml).')}
-          </div>
-        </div>
-      )}
-      {!ctx.readonly && dirty && (
-        <div>
-          <Button
-            size="sm"
-            onClick={() => void save((doc) => { doc.setIn(['outputs', 'mode'], mode); }).then((ok) => ok && setDirty(false))}
-          >
-            {t('overview.save', 'Save')}
-          </Button>
-        </div>
-      )}
-    </SectionShellCard>
-  );
-}
-
-// ── Intents (intents.yaml — WS5 schema) ──────────────────────────────────────
-
-function IntentsSection({ ctx }: { ctx: OverviewSectionContext }) {
-  const { t } = useTranslation('agents');
-  const { raw, missing, save } = useYamlFile(ctx, 'intents');
-  const [entries, setEntries] = useState<CustomIntentDef[]>([]);
-  const [dirty, setDirty] = useState(false);
-
-  useEffect(() => {
-    if (raw == null) { setEntries([]); setDirty(false); return; }
-    const doc = parseDocument(raw);
-    const listed = doc.get('intents');
-    const arr = listed && typeof (listed as any).toJSON === 'function' ? (listed as any).toJSON() : listed;
-    setEntries(
-      Array.isArray(arr)
-        ? arr.filter((e): e is CustomIntentDef => !!e && typeof e === 'object' && typeof e.id === 'string')
-        : [],
-    );
-    setDirty(false);
-  }, [raw]);
-
-  const update = (idx: number, patch: Partial<CustomIntentDef>) => {
-    setEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
-    setDirty(true);
-  };
-
-  const persist = () =>
-    void save((doc) => {
-      doc.set('version', doc.get('version') ?? 1);
-      doc.set(
-        'intents',
-        entries.map((e) => ({
-          id: e.id,
-          description: e.description,
-          ...(e.injections && e.injections.length > 0 ? { injections: e.injections } : {}),
-        })),
-      );
-    }).then((ok) => ok && setDirty(false));
-
-  return (
-    <SectionShellCard title={t('overview.intents', 'Intents')}>
-      <div className="text-xs" style={{ color: 'var(--text-4)' }}>
-        {missing
-          ? t('overview.intentsMissing', 'No intents.yaml yet — adding an entry creates it.')
-          : t('overview.intentsHint', 'Descriptions ARE the classification criteria; injections inline in full when the intent is active.')}
-      </div>
-      {entries.map((entry, idx) => (
-        <div key={idx} className="flex flex-col gap-1 rounded-md p-2" style={{ border: '1px solid var(--border-1)' }}>
-          <div className="flex items-center gap-2">
-            <Input
-              value={entry.id}
-              disabled={ctx.readonly}
-              onChange={(e) => update(idx, { id: e.target.value })}
-              placeholder="intent-id"
-            />
-            {!ctx.readonly && (
-              <Button size="sm" variant="ghost" onClick={() => { setEntries((prev) => prev.filter((_, i) => i !== idx)); setDirty(true); }}>
-                {t('overview.remove', 'Remove')}
-              </Button>
+          <FieldLabel>{t('overview.approval', 'Approval overrides')}</FieldLabel>
+          <p style={{ margin: '0 0 10px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+            {t(
+              'overview.approvalHint',
+              "Mutating tools default to 'always' (call rejected until approved); everything else to 'never'. Declare 'never' here to pre-approve a mutating tool.",
+            )}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 420 }}>
+            {approvalRows.map((tool) => {
+              const isMutating = ctx.mutatingBuiltinTools.includes(tool);
+              return (
+                <div key={tool} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontSize: 12,
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--text-2)',
+                    }}
+                  >
+                    {tool}
+                  </span>
+                  <div style={{ width: 180 }}>
+                    <AuroraSelect
+                      value={approval[tool] ?? 'default'}
+                      disabled={ctx.readonly}
+                      onChange={(v) => setApproval(tool, v)}
+                      options={[
+                        {
+                          value: 'default',
+                          label: `${t('overview.approvalDefault', 'default')} (${isMutating ? 'always' : 'never'})`,
+                        },
+                        { value: 'always', label: 'always' },
+                        { value: 'never', label: 'never' },
+                      ]}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+            {!ctx.readonly && overrideCandidates.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <AuroraSelect
+                    value={addingOverride}
+                    onChange={(v) => {
+                      setAddingOverride('');
+                      if (v) setApproval(v, 'never');
+                    }}
+                    placeholder={t('overview.approvalAdd', 'Add override for a tool…')}
+                    options={overrideCandidates.map((tool) => ({ value: tool, label: tool }))}
+                  />
+                </div>
+                <div style={{ width: 180 }} />
+              </div>
             )}
           </div>
-          <Textarea
-            value={entry.description}
-            disabled={ctx.readonly}
-            onChange={(e) => update(idx, { description: e.target.value })}
-            placeholder={t('overview.intentDescription', 'Matching criterion (rendered verbatim as a catalog row)')}
-            rows={2}
-          />
-          <Input
-            value={(entry.injections ?? []).join(', ')}
-            disabled={ctx.readonly}
-            onChange={(e) =>
-              update(idx, {
-                injections: e.target.value
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              })
-            }
-            placeholder={t('overview.intentInjections', 'injections/*.md file names, comma-separated')}
-          />
         </div>
-      ))}
-      {!ctx.readonly && (
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => { setEntries((prev) => [...prev, { id: '', description: '' }]); setDirty(true); }}
-          >
-            {t('overview.addIntent', 'Add intent')}
-          </Button>
-          {dirty && (
-            <Button size="sm" onClick={persist}>
-              {t('overview.save', 'Save')}
-            </Button>
-          )}
-        </div>
-      )}
-    </SectionShellCard>
+      </div>
+    </SectionCard>
   );
 }
 
-/** Section registry — Overview renders the entries matching the selection level. */
-export const OVERVIEW_SECTIONS: OverviewSectionDef[] = [
-  { id: 'general', appliesTo: 'both', Component: GeneralSection },
-  { id: 'tools', appliesTo: 'both', Component: ToolsSection },
-  { id: 'workspace', appliesTo: 'both', Component: WorkspaceSection },
-  { id: 'outputs', appliesTo: 'job', Component: OutputsSection },
-  { id: 'plan', appliesTo: 'job', Component: PlanSection },
-  { id: 'intents', appliesTo: 'both', Component: IntentsSection },
-];
+// ── Intents (summary list — the editing surface is the intent detail) ────────
+
+export function IntentsCard({
+  ctx,
+  id,
+  onSelectIntent,
+  onCreateIntent,
+}: {
+  ctx: OverviewCtx;
+  id: string;
+  onSelectIntent: (intentId: string) => void;
+  onCreateIntent: (intentId: string) => Promise<void>;
+}) {
+  const { t } = useTranslation('agents');
+  const [creating, setCreating] = useState(false);
+  const [newId, setNewId] = useState('');
+  const draft = ctx.docs.draft;
+  if (!draft) return null;
+  const entries = draft.intents;
+  const newIdValid = CUSTOM_ID_PATTERN.test(newId) && newId !== 'general' && !entries.some((e) => e.id === newId);
+
+  const submitCreate = async () => {
+    if (!newIdValid) return;
+    await onCreateIntent(newId);
+    setCreating(false);
+    setNewId('');
+  };
+
+  return (
+    <SectionCard
+      id={id}
+      icon="Split"
+      accent="sunset"
+      title={t('overview.intents', 'Intents')}
+      description={t(
+        'overview.intentsHint',
+        'Ways this job classifies an incoming request. Select one to edit its matching criteria and prompts.',
+      )}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {entries.length === 0 && (
+          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)' }}>
+            {t('overview.intentsEmpty', 'No intents — classification is skipped entirely at zero cost until you add one.')}
+          </p>
+        )}
+
+        {entries.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            onClick={() => onSelectIntent(entry.id)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '8px 12px',
+              borderRadius: 'var(--r-md)',
+              border: '1px solid var(--border-1)',
+              background: 'var(--bg-surface)',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            <Target size={14} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-1)' }}>
+              {entry.id}
+            </span>
+            <span
+              style={{
+                flex: 1,
+                minWidth: 0,
+                fontSize: 11.5,
+                color: 'var(--text-3)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {entry.description}
+            </span>
+            {(entry.injections ?? []).length > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontFamily: 'var(--font-mono)',
+                  padding: '1px 7px',
+                  borderRadius: 'var(--r-pill)',
+                  border: '1px solid var(--violet-300)',
+                  color: 'var(--select-fg)',
+                  background: 'var(--select-fill-violet)',
+                  flexShrink: 0,
+                }}
+              >
+                {(entry.injections ?? []).length}
+              </span>
+            )}
+          </button>
+        ))}
+
+        {!ctx.readonly && !creating && (
+          <div>
+            <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
+              <Plus className="w-3 h-3" /> {t('overview.addIntent', 'Add intent')}
+            </Button>
+          </div>
+        )}
+        {!ctx.readonly && creating && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitCreate();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420 }}
+          >
+            <div style={{ flex: 1 }}>
+              <AuroraInput
+                value={newId}
+                mono
+                hasError={newId.length > 0 && !newIdValid}
+                onChange={setNewId}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setCreating(false);
+                    setNewId('');
+                  }
+                }}
+                placeholder={t('tree.intentId', 'intent-id')}
+              />
+            </div>
+            <Button size="sm" type="submit" disabled={!newIdValid}>
+              {t('tree.create', 'Create')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                setCreating(false);
+                setNewId('');
+              }}
+            >
+              {t('tree.cancel', 'Cancel')}
+            </Button>
+          </form>
+        )}
+
+        {ctx.docs.intentErrors.length > 0 && (
+          <div
+            style={{
+              fontSize: 11.5,
+              borderRadius: 'var(--r-md)',
+              padding: '6px 10px',
+              background: 'var(--status-error-bg, var(--bg-surface-2))',
+              color: 'var(--status-error-fg, var(--text-2))',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+            }}
+          >
+            {ctx.docs.intentErrors.map((e, i) => (
+              <span key={i}>{e}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}

@@ -18,8 +18,10 @@ Custom agent  (shared persona — a team, a role)
 ```
 
 There is no single-level shortcut: a standalone job is simply an agent with
-one job. The agent level owns what its jobs share — persona prose, MCP
-servers, the tool upper bound; each job narrows and specializes.
+one job. The agent contributes identity (name), the always-on persona prose
+(`base/*.md`), and optionally shared MCP connections. Everything else —
+tools, intents, injections — is **job-owned**, mirroring the canonical
+system, where tool sets and intents belong to jobs, never agents.
 
 A workspace project has **one chat** (exactly like a codespace feature). You
 switch the active agent and job with the chat composer's chips; each
@@ -31,31 +33,40 @@ feature chat.
 
 Definitions are **account/org-owned, never project-owned** — register once,
 use across all of the account's workspace projects. Registration and editing
-live in Settings → Agents (universal projects), or edit the files directly.
+live in the Agent Settings screen (profile menu), or edit the files directly.
 
 | Scope     | Location                                | Who edits            |
 |-----------|------------------------------------------|----------------------|
 | `user`    | `{user dir}/.ant/agents/{agentId}/`      | you, across all your projects |
 | `org`     | `$ANT_CUSTOM_AGENTS_DIR` (self-host)     | org admins (read-only for members) |
-| `builtin` | shipped with Ant (read-only samples)     | nobody — shadow it by creating the same id in a closer scope |
+| `builtin` | shipped with Ant (read-only samples)     | nobody |
 
-Closer scopes win id collisions: user > org > builtin. Shadowing is
-whole-directory: the closer agent replaces the farther one entirely, jobs
-included. The shipped `sample-researcher` agent is a builtin you can study or
-shadow.
+Pre-existing on-disk id collisions resolve by scope priority (user > org >
+builtin, whole-directory — the closer agent replaces the farther one
+entirely, jobs included), but creating or importing a NEW agent under an id
+any scope already owns is refused with 409: silent shadowing has no UI
+story. The shipped `assistant` agent is a builtin you can study; to
+customize behavior, build your own agent under its own id.
 
 ## Definition layout
 
 ```
 .ant/agents/{agentId}/
-  agent.yaml             # machine contract: name, shared MCP servers, tool upper bound
+  agent.yaml             # identity: id, name (+ optional shared MCP servers)
   base/*.md              # shared persona — always injected for every job
-  injections/*.md        # shared conditional prose (loaded on demand)
   jobs/{jobId}/
-    job.yaml             # job contract: tools (narrowing only), outputs, approval, models
+    job.yaml             # job contract: name, description, tools (⊆ universal preset), approval
     base/*.md            # job procedure — always injected
     injections/*.md      # job conditional prose (TOC injected; body via read_file)
+    intents.yaml         # job intent catalog (gates injection inlining)
 ```
+
+Agent-level `intents.yaml` and `injections/` are **not** supported — a legacy
+definition carrying them fails loud at load with a move instruction (the
+settings Prompts view can create/delete the files). Every description in a
+definition is prompt-serving: the job description and the intent descriptions
+are injected verbatim; `agent.yaml` carries no description at all — the
+persona lives in `base/` prose the model actually reads.
 
 See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-agent-authoring.md).
 
@@ -73,10 +84,16 @@ See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-age
 - **Approval gates** — mutating tools (`run_command`, `http_request`, MCP
   tools not marked read-only) require user approval. Phase 1 is fail-closed:
   gated calls are rejected with guidance instead of executed silently.
-- **Outputs as a contract, not an obligation** — chat-only turns are normal;
-  when the job writes files, declared conventions (directory, format,
-  naming, in-place updates) are checked against *real* writes and a manifest
-  is announced in chat.
+- **Plan turns (`@plan`)** — a per-turn composer flag, orthogonal to intents
+  (like `/plan` in a coding agent): the run produces or updates a plan
+  document, not the work. Enforced, not advisory — during a plan turn the
+  tool gate confines file writes to `plan/` and rejects execution tools
+  (`run_command`, `http_request`, mutating MCP). The work runs on a normal
+  turn after you confirm.
+- **Output honesty** — chat-only turns are normal; when the job writes files,
+  a manifest of *real* writes (tool side-effects, never model claims) is
+  announced in chat. Output conventions, when a job needs them, are plain
+  prose in its `base/*.md`.
 
 ## Universal-type projects
 
