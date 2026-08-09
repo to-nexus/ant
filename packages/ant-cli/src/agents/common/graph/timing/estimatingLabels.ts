@@ -42,7 +42,6 @@ const LABELS: Record<string, Record<UILocale, string>> = {
   planExecute:  { ko: 'PRD 생성 중',           en: 'Generating PRD' },
 
   // Creator agent (visual job) nodes
-  classify:     { ko: '에셋 유형 분석 중',     en: 'Classifying asset type' },
   direct:       { ko: '프롬프트 설계 중',      en: 'Engineering prompt' },
   directCode:   { ko: '탐색 실행 중',          en: 'Exploring' },
   sketch:       { ko: '시안 생성 중',          en: 'Generating drafts' },

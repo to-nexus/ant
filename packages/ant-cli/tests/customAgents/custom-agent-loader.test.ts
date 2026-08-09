@@ -367,7 +367,7 @@ describe('loadCustomJob — intents catalog validation table', () => {
     }
   }
 
-  it('absent file → empty catalog (classify zero-cost path)', () => {
+  it('absent file → empty catalog (detect zero-cost path)', () => {
     setup();
     expect(loadCustomJob(roots(), 'ops', 'weekly').intents).toEqual([]);
   });

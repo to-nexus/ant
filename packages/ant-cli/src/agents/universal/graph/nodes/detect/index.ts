@@ -1,5 +1,5 @@
 /**
- * Universal classify node — multi-label intent inference over the job's own
+ * Universal detect node — turn-context detection: multi-label intent inference over the job's own
  * catalog (`ResolvedCustomJob.intents`, code-exterior data).
  *
  * Runs INSIDE the job only: it gates injection inlining and never routes or
@@ -51,13 +51,13 @@ function recentUserTurns(state: UniversalGraphState): string[] {
   return texts.slice(-RECENT_TURNS_MAX).map((t) => sanitizeCell(t).slice(0, RECENT_TURN_CHARS));
 }
 
-export async function classifyNode(state: UniversalGraphState): Promise<Partial<UniversalGraphState>> {
+export async function detectNode(state: UniversalGraphState): Promise<Partial<UniversalGraphState>> {
   const resolved = requireActiveCustomJob();
   const catalog = resolved.intents;
 
   // 1. Explicit intents (mention channel) — apply to THIS run only.
   if (state.explicitIntents && state.explicitIntents.length > 0) {
-    console.log(`🎯 [Universal:Classify] Explicit intents adopted: ${state.explicitIntents.join(', ')}`);
+    console.log(`🎯 [Universal:Detect] Explicit intents adopted: ${state.explicitIntents.join(', ')}`);
     return { activeIntents: state.explicitIntents };
   }
 
@@ -75,15 +75,14 @@ export async function classifyNode(state: UniversalGraphState): Promise<Partial<
   const llm = state.deps?.llm;
   const promptBuilder = state.deps?.promptBuilder;
   if (!llm || !promptBuilder) {
-    console.warn('⚠️ [Universal:Classify] LLM/promptBuilder unavailable — falling back to general');
+    console.warn('⚠️ [Universal:Detect] LLM/promptBuilder unavailable — falling back to general');
     return { activeIntents: [GENERAL_INTENT] };
   }
 
   const result = await promptBuilder.build({
-    templates: TEMPLATE_PATHS.universalClassify,
+    templates: TEMPLATE_PATHS.universalDetect,
     vars: {
       jobName: resolved.jobName,
-      jobDescription: sanitizeCell(resolved.description),
       userMessage: state.userMessage,
       recentTurns: recentUserTurns(state),
       catalogRows: catalog.map((i) => ({ id: sanitizeCell(i.id), description: sanitizeCell(i.description) })),
@@ -113,21 +112,21 @@ export async function classifyNode(state: UniversalGraphState): Promise<Partial<
   try {
     const first = await attempt();
     if (first) {
-      console.log(`🎯 [Universal:Classify] Inferred intents: ${first.join(', ')}`);
+      console.log(`🎯 [Universal:Detect] Inferred intents: ${first.join(', ')}`);
       return { activeIntents: first };
     }
     const retry = await attempt();
     if (retry) {
-      console.log(`🎯 [Universal:Classify] Inferred intents (retry): ${retry.join(', ')}`);
+      console.log(`🎯 [Universal:Detect] Inferred intents (retry): ${retry.join(', ')}`);
       return { activeIntents: retry };
     }
   } catch (e) {
-    console.warn(`⚠️ [Universal:Classify] Inference failed: ${e instanceof Error ? e.message : String(e)}`);
+    console.warn(`⚠️ [Universal:Detect] Inference failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   // Classification failure must never kill the turn — unlike triage (whose
   // single tag is routing-load-bearing and therefore throws), this gate only
   // strengthens the prompt; general is a safe floor.
-  console.warn('⚠️ [Universal:Classify] Falling back to general');
+  console.warn('⚠️ [Universal:Detect] Falling back to general');
   return { activeIntents: [GENERAL_INTENT] };
 }
