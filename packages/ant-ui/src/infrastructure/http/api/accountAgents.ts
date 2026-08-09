@@ -4,13 +4,14 @@
  * here takes a projectId.
  */
 
-import { API_BASE, authFetch, apiGet, apiPost, apiPatch, apiDelete, apiPut, ApiError } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiDelete, apiPatch, apiPut, ApiError } from './client';
 import type {
   CustomAgentSummary,
   CustomJobSummary,
   CustomAgentDefinitionFileNode,
   CustomAgentScope,
   CustomIntentDef,
+  CustomJobPromptPreview,
   DefinitionValidationResult,
 } from '@ant/shared';
 import type { UploadFileEntry } from './files';
@@ -19,35 +20,40 @@ export type { CustomAgentDefinitionFileNode, DefinitionValidationResult };
 
 const base = () => `${API_BASE()}/account/agents`;
 
-export function fetchAccountAgents(): Promise<{ agents: CustomAgentSummary[]; builtinToolPreset: string[] }> {
+export function fetchAccountAgents(): Promise<{
+  agents: CustomAgentSummary[];
+  builtinToolPreset: string[];
+  mutatingBuiltinTools?: string[];
+}> {
   return apiGet(base());
 }
 
-export function createAccountAgent(body: { id: string; name: string; description?: string }): Promise<CustomAgentSummary> {
+export function createAccountAgent(body: { id: string; name: string }): Promise<CustomAgentSummary> {
   return apiPost(base(), body);
-}
-
-export function updateAccountAgent(agentId: string, patch: { name?: string; description?: string }): Promise<void> {
-  return apiPatch(`${base()}/${encodeURIComponent(agentId)}`, patch);
 }
 
 export function deleteAccountAgent(agentId: string): Promise<void> {
   return apiDelete(`${base()}/${encodeURIComponent(agentId)}`);
 }
 
-export function createAccountAgentJob(
-  agentId: string,
-  body: { id: string; name: string; description?: string },
-): Promise<CustomJobSummary> {
-  return apiPost(`${base()}/${encodeURIComponent(agentId)}/jobs`, body);
+/** Display-name rename (id is immutable — it IS the directory name). */
+export function renameAccountAgent(agentId: string, name: string): Promise<{ success: boolean }> {
+  return apiPatch(`${base()}/${encodeURIComponent(agentId)}`, { name });
 }
 
-export function updateAccountAgentJob(
+export function renameAccountAgentJob(
   agentId: string,
   jobId: string,
-  patch: { name?: string; description?: string },
-): Promise<void> {
-  return apiPatch(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}`, patch);
+  name: string,
+): Promise<{ success: boolean }> {
+  return apiPatch(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}`, { name });
+}
+
+export function createAccountAgentJob(
+  agentId: string,
+  body: { id: string; name: string },
+): Promise<CustomJobSummary> {
+  return apiPost(`${base()}/${encodeURIComponent(agentId)}/jobs`, body);
 }
 
 export function deleteAccountAgentJob(agentId: string, jobId: string): Promise<void> {
@@ -59,13 +65,21 @@ export interface AccountJobValidation {
   error?: string;
   builtinTools?: string[];
   mcpServers?: string[];
-  outputsMode?: string;
-  workspace?: string;
   intents?: CustomIntentDef[];
 }
 
 export function validateAccountAgentJob(agentId: string, jobId: string): Promise<AccountJobValidation> {
   return apiGet(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}/validate`);
+}
+
+/** Composed-prompt preview — the exact system block the runtime injects for the given intents. */
+export function fetchJobPromptPreview(
+  agentId: string,
+  jobId: string,
+  intents?: string[],
+): Promise<CustomJobPromptPreview> {
+  const query = intents && intents.length > 0 ? `?intents=${encodeURIComponent(intents.join(','))}` : '';
+  return apiGet(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}/prompt-preview${query}`);
 }
 
 // ── definition files ─────────────────────────────────────────────────────────

@@ -1,28 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, ChevronDown, ChevronRight, Copy, Plus, Trash2, Upload, X } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { Button, Input } from '@/presentation/components/aurora';
+import { ChangedBar, DangerZone, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
 import {
   createAccountAgent,
   createAccountAgentJob,
   deleteAccountAgent,
   deleteAccountAgentJob,
-  fetchDefinitionFile,
   importAgentFolder,
+  renameAccountAgent,
+  renameAccountAgentJob,
+  uploadDefinitionFiles,
+  validateAccountAgentJob,
 } from '@/infrastructure/http/api/accountAgents';
-import type { CustomAgentScope, CustomAgentSummary, CustomAgentDefinitionFileNode } from '@ant/shared';
-import { FilesTab } from './FilesTab';
-import { OVERVIEW_SECTIONS, type OverviewSectionContext } from './overview/sections';
+import type { CustomAgentDefinitionFileNode } from '@ant/shared';
+import { AgentTree } from './AgentTree';
+import { DetailHeader, type DetailLevel } from './DetailHeader';
+import { PromptsCard, type PromptsScope } from './prompts/PromptsCard';
+import { useResizableWidth } from './useResizableWidth';
+import { IntentsCard, ToolsCard, type OverviewCtx } from './overview/sections';
+import { IntentDetailCard } from './overview/IntentDetailCard';
+import { PromptPreviewCard } from './overview/PromptPreviewCard';
+import { useDefinitionDocs } from './overview/useDefinitionDocs';
 
 /**
  * Agent Settings — account-scoped standalone screen (profile menu → main
  * panel tab, D-G). Works WITHOUT a selected project: everything reads
- * `/api/account/agents`. Left: scope-grouped agent/job tree. Right:
- * [Overview | Files] detail tabs.
+ * `/api/account/agents`.
+ *
+ * Layout: left resizable agent › job › intent tree, right single scroller
+ * with a breadcrumb DetailHeader, stacked SectionCards, and one sticky
+ * ChangedBar driving save/discard for the job/intent forms. The agent level
+ * has no form drafts (identity lives in base/*.md prose; renames live in the
+ * tree kebab), so it renders without docs entirely.
+ *
+ * Unlike the other settings shells this screen has NO TocNav rail — its card
+ * count is small and the left tree is already the navigation surface, so a
+ * second sticky rail only narrowed the cards. `ChangedBar.dirtyCount` carries
+ * the dirty signal the rail's per-item dots used to.
  */
-
-const SCOPE_ORDER: CustomAgentScope[] = ['user', 'org', 'builtin'];
 
 function collectFilePaths(nodes: CustomAgentDefinitionFileNode[], out: string[] = []): string[] {
   for (const n of nodes) {
@@ -32,106 +48,154 @@ function collectFilePaths(nodes: CustomAgentDefinitionFileNode[], out: string[] 
   return out;
 }
 
-export function AgentSettings({ onClose }: { onClose?: () => void }) {
+function injectionFilesUnder(tree: CustomAgentDefinitionFileNode[], prefix: string): string[] {
+  return collectFilePaths(tree)
+    .filter((p) => p.startsWith(prefix) && p.endsWith('.md') && !p.slice(prefix.length).includes('/'))
+    .map((p) => p.slice(prefix.length));
+}
+
+// AccountConfigEditor precedent: the main-panel tab bar owns close — the
+// prop is accepted for mount-site compatibility and deliberately unused.
+export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const { t } = useTranslation('agents');
   const agents = useStore((s) => s.accountAgents);
   const selection = useStore((s) => s.agentSettingsSelection);
   const definitionTree = useStore((s) => s.definitionTree);
   const definitionReadonly = useStore((s) => s.definitionReadonly);
+  const builtinToolPreset = useStore((s) => s.builtinToolPreset);
+  const mutatingBuiltinTools = useStore((s) => s.mutatingBuiltinTools);
   const loadAccountAgents = useStore((s) => s.loadAccountAgents);
+  const loadDefinitionTree = useStore((s) => s.loadDefinitionTree);
   const selectAgentSettingsNode = useStore((s) => s.selectAgentSettingsNode);
+  const createJobIntent = useStore((s) => s.createJobIntent);
+  const deleteJobIntent = useStore((s) => s.deleteJobIntent);
   const syncComposerAgents = useStore((s) => s.syncComposerAgents);
 
-  const [detailTab, setDetailTab] = useState<'overview' | 'files'>('overview');
-  const [collapsedAgents, setCollapsedAgents] = useState<Set<string>>(new Set());
-  const [creating, setCreating] = useState<null | { kind: 'agent' } | { kind: 'job'; agentId: string }>(null);
-  const [createName, setCreateName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [overviewNonce, setOverviewNonce] = useState(0);
   const [lastWarnings, setLastWarnings] = useState<string[]>([]);
+  const [jobValid, setJobValid] = useState<boolean | null>(null);
+  const [dangerArmed, setDangerArmed] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const { width: treeWidth, isResizing, startResize } = useResizableWidth();
 
   useEffect(() => {
     void loadAccountAgents();
   }, [loadAccountAgents]);
 
   const selectedAgent = agents.find((a) => a.id === selection.agentId);
+  const selectedJob = selectedAgent?.jobs.find((j) => j.id === selection.jobId);
   const readonly = definitionReadonly || (selectedAgent?.readonly ?? false);
+  const level: DetailLevel = selection.intentId ? 'intent' : selection.jobId ? 'job' : 'agent';
 
-  const deriveId = (name: string) =>
-    name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  // Drafts exist only at job/intent level — the agent level has no form
+  // fields left, so it skips the agent.yaml fetch entirely.
+  const docs = useDefinitionDocs(selection.jobId ? selection.agentId : undefined, selection.jobId);
 
-  const afterMutation = async () => {
+  // Wire the standalone validate endpoint: shows the definition's
+  // load-validity for the selected job as a status pill.
+  useEffect(() => {
+    setJobValid(null);
+    setLastWarnings([]);
+    setError(null);
+    setDangerArmed(false);
+    if (!selection.agentId || !selection.jobId) return;
+    let cancelled = false;
+    validateAccountAgentJob(selection.agentId, selection.jobId)
+      .then((v) => !cancelled && setJobValid(v.valid))
+      .catch(() => !cancelled && setJobValid(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selection.agentId, selection.jobId]);
+
+  const afterMutation = useCallback(async () => {
     await loadAccountAgents();
     syncComposerAgents();
-  };
+  }, [loadAccountAgents, syncComposerAgents]);
 
-  const handleCreate = async () => {
-    const name = createName.trim();
-    const id = deriveId(name);
-    if (!id) return;
-    setError(null);
-    try {
-      if (creating?.kind === 'agent') {
-        await createAccountAgent({ id, name });
-        await afterMutation();
-        selectAgentSettingsNode(id);
-      } else if (creating?.kind === 'job') {
-        await createAccountAgentJob(creating.agentId, { id, name });
-        await afterMutation();
-        selectAgentSettingsNode(creating.agentId, id);
+  const wrap = useCallback(
+    async (fn: () => Promise<void>) => {
+      setError(null);
+      try {
+        await fn();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
       }
-      setCreating(null);
-      setCreateName('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+    },
+    [],
+  );
 
-  const handleDeleteAgent = async (agentId: string) => {
-    setError(null);
-    try {
+  // ── tree handlers ──────────────────────────────────────────────────────────
+
+  const handleCreateAgent = (id: string, name: string) =>
+    wrap(async () => {
+      await createAccountAgent({ id, name });
+      await afterMutation();
+      selectAgentSettingsNode(id);
+    });
+
+  const handleCreateJob = (agentId: string, id: string, name: string) =>
+    wrap(async () => {
+      await createAccountAgentJob(agentId, { id, name });
+      await afterMutation();
+      selectAgentSettingsNode(agentId, id);
+    });
+
+  const handleCreateIntent = (agentId: string, jobId: string, intentId: string) =>
+    wrap(async () => {
+      await createJobIntent(agentId, jobId, intentId);
+      if (selection.agentId === agentId) await loadDefinitionTree(agentId);
+    });
+
+  const handleRenameAgent = (agentId: string, name: string) =>
+    wrap(async () => {
+      await renameAccountAgent(agentId, name);
+      await afterMutation();
+    });
+
+  const handleRenameJob = (agentId: string, jobId: string, name: string) =>
+    wrap(async () => {
+      await renameAccountAgentJob(agentId, jobId, name);
+      await afterMutation();
+    });
+
+  const handleDeleteAgent = (agentId: string) =>
+    wrap(async () => {
       await deleteAccountAgent(agentId);
       await afterMutation();
       if (selection.agentId === agentId) selectAgentSettingsNode(undefined);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+    });
 
-  const handleDeleteJob = async (agentId: string, jobId: string) => {
-    setError(null);
-    try {
+  const handleDeleteJob = (agentId: string, jobId: string) =>
+    wrap(async () => {
       await deleteAccountAgentJob(agentId, jobId);
       await afterMutation();
-      if (selection.jobId === jobId) selectAgentSettingsNode(agentId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+      if (selection.agentId === agentId && selection.jobId === jobId) selectAgentSettingsNode(agentId);
+    });
 
-  /** Readonly scope escape hatch: read every definition file, re-upload into
-   * the user scope as a new agent (no new BE surface needed). */
-  const handleCopyToAccount = async (agent: CustomAgentSummary) => {
-    setError(null);
-    try {
-      const paths = collectFilePaths(definitionTree);
-      const entries = await Promise.all(
-        paths.map(async (p) => {
-          const { content } = await fetchDefinitionFile(agent.id, p);
-          return { file: new File([content], p.split('/').pop() || p), relativePath: `${agent.id}/${p}` };
-        }),
+  const handleDeleteIntent = (agentId: string, jobId: string, intentId: string) =>
+    wrap(async () => {
+      await deleteJobIntent(agentId, jobId, intentId);
+    });
+
+  const handleUploadFiles = (agentId: string, files: FileList, pathPrefix: string) =>
+    wrap(async () => {
+      const result = await uploadDefinitionFiles(
+        agentId,
+        Array.from(files).map((f) => ({ file: f, relativePath: `${pathPrefix}${f.name}` })),
       );
-      const result = await importAgentFolder(entries);
-      await afterMutation();
-      if (result.agentId) selectAgentSettingsNode(result.agentId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+      if (result.skipped.length > 0) {
+        setError(
+          t('import.skipped', 'Imported with {{count}} skipped file(s): ', { count: result.skipped.length }) +
+            result.skipped.map((s) => s.path).join(', '),
+        );
+      }
+      if (selection.agentId === agentId) await loadDefinitionTree(agentId);
+    });
 
-  const handleImportFolder = async (files: FileList) => {
-    setError(null);
-    try {
+  const handleImportFolder = (files: FileList) =>
+    wrap(async () => {
       const entries = Array.from(files).map((f) => ({
         file: f,
         relativePath: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
@@ -145,240 +209,357 @@ export function AgentSettings({ onClose }: { onClose?: () => void }) {
         );
       }
       if (result.agentId) selectAgentSettingsNode(result.agentId);
+    });
+
+  // ── detail handlers ────────────────────────────────────────────────────────
+
+  const handleDangerAction = async () => {
+    if (!selection.agentId) return;
+    if (!dangerArmed) {
+      setDangerArmed(true);
+      return;
+    }
+    setIsDeleting(true);
+    setError(null);
+    try {
+      if (selection.intentId && selection.jobId) {
+        await deleteJobIntent(selection.agentId, selection.jobId, selection.intentId);
+      } else if (selection.jobId) {
+        await deleteAccountAgentJob(selection.agentId, selection.jobId);
+        await afterMutation();
+        selectAgentSettingsNode(selection.agentId);
+      } else {
+        await deleteAccountAgent(selection.agentId);
+        await afterMutation();
+        selectAgentSettingsNode(undefined);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsDeleting(false);
+      setDangerArmed(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (docs.intentErrors.length > 0) {
+      setError(t('overview.fixIntents', 'Fix the intent catalog issues before saving.'));
+      return;
+    }
+    setError(null);
+    try {
+      const result = await docs.save();
+      setLastWarnings(result?.warnings ?? []);
+      await afterMutation();
+      if (selection.agentId && selection.jobId) {
+        validateAccountAgentJob(selection.agentId, selection.jobId)
+          .then((v) => setJobValid(v.valid))
+          .catch(() => setJobValid(false));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
-  const overviewCtx: OverviewSectionContext | null = selection.agentId
-    ? {
-        agentId: selection.agentId,
-        jobId: selection.jobId,
-        readonly,
-        onSaved: (validation) => {
-          setLastWarnings(validation.errors);
-          setOverviewNonce((n) => n + 1);
-          void afterMutation();
-        },
-        onError: (message) => setError(message),
-      }
-    : null;
+  // ── injection ↔ intent binding maps (Prompts card, job-only model) ─────────
+  const jobInjectionFiles = useMemo(
+    () => (selection.jobId ? injectionFilesUnder(definitionTree, `jobs/${selection.jobId}/injections/`) : []),
+    [definitionTree, selection.jobId],
+  );
 
-  const level: 'agent' | 'job' = selection.jobId ? 'job' : 'agent';
+  const intentBindings = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    if (!selection.jobId) return map;
+    for (const entry of docs.draft?.intents ?? []) {
+      for (const f of entry.injections ?? []) {
+        if (jobInjectionFiles.includes(f)) {
+          (map[`jobs/${selection.jobId}/injections/${f}`] ??= []).push(entry.id);
+        }
+      }
+    }
+    return map;
+  }, [docs.draft?.intents, jobInjectionFiles, selection.jobId]);
+
+  const bindableIntentIds = useCallback(
+    (path: string): string[] => {
+      if (!docs.draft || !selection.jobId) return [];
+      if (!path.startsWith(`jobs/${selection.jobId}/injections/`)) return [];
+      const fileName = path.split('/').pop() ?? '';
+      return docs.draft.intents
+        .filter((e) => e.id.length > 0 && !(e.injections ?? []).includes(fileName))
+        .map((e) => e.id);
+    },
+    [docs.draft, selection.jobId],
+  );
+
+  const handleBind = useCallback(
+    (intentId: string, path: string) => {
+      const fileName = path.split('/').pop() ?? '';
+      const entry = docs.draft?.intents.find((e) => e.id === intentId);
+      if (!entry) return;
+      docs.updateIntent(intentId, { injections: [...(entry.injections ?? []), fileName] });
+    },
+    [docs],
+  );
+
+  const handleUnbind = useCallback(
+    (intentId: string, path: string) => {
+      const fileName = path.split('/').pop() ?? '';
+      const entry = docs.draft?.intents.find((e) => e.id === intentId);
+      if (!entry) return;
+      docs.updateIntent(intentId, { injections: (entry.injections ?? []).filter((f) => f !== fileName) });
+    },
+    [docs],
+  );
+
+  /** Intent scope: bind an existing (or freshly created) injections file to the selected intent. */
+  const bindToSelectedIntent = useCallback(
+    (fileName: string) => {
+      if (!selection.intentId) return;
+      const entry = docs.draft?.intents.find((e) => e.id === selection.intentId);
+      if (entry && !(entry.injections ?? []).includes(fileName)) {
+        docs.updateIntent(selection.intentId, { injections: [...(entry.injections ?? []), fileName] });
+      }
+    },
+    [docs, selection.intentId],
+  );
+
+  // Selective raw-save re-sync: only the selection's own yaml docs reload the
+  // drafts (an unrelated .md save no longer clobbers unsaved form edits);
+  // intents.yaml additionally refreshes the tree's intent rows.
+  const handleRawSaved = useCallback(
+    (path: string) => {
+      if (!selection.jobId) return;
+      const mainPath = `jobs/${selection.jobId}/job.yaml`;
+      const intentsPath = `jobs/${selection.jobId}/intents.yaml`;
+      if (path === mainPath || path === intentsPath) void docs.reload();
+      if (path.endsWith('intents.yaml')) void loadAccountAgents();
+    },
+    [selection.jobId, docs, loadAccountAgents],
+  );
+
+  // Draft-owned yaml paths with pending form edits (raw-save clobber warning).
+  const draftDirtyPaths = useMemo(() => {
+    if (!selection.jobId) return [];
+    const paths: string[] = [];
+    if (docs.mainDirty) paths.push(`jobs/${selection.jobId}/job.yaml`);
+    if (docs.intentsDirty) paths.push(`jobs/${selection.jobId}/intents.yaml`);
+    return paths;
+  }, [selection.jobId, docs.mainDirty, docs.intentsDirty]);
+
+  // Job/intent levels only — the agent level renders without form drafts.
+  const overviewCtx: OverviewCtx | null =
+    selection.agentId && selection.jobId && docs.loaded
+      ? {
+          level,
+          readonly,
+          docs,
+          builtinToolPreset,
+          mutatingBuiltinTools,
+        }
+      : null;
+
+  const headerStatus = readonly ? (
+    <StatusPill state="not-configured" label={t('detail.readonly', 'read-only')} />
+  ) : selection.jobId && jobValid != null ? (
+    <StatusPill
+      state={jobValid ? 'configured' : 'error'}
+      label={jobValid ? t('detail.valid', 'loads OK') : t('detail.invalid', 'fails to load')}
+    />
+  ) : undefined;
+
+  const promptsScope: PromptsScope | null = !selection.agentId
+    ? null
+    : level === 'agent'
+      ? { level: 'agent' }
+      : level === 'job'
+        ? { level: 'job', jobId: selection.jobId! }
+        : {
+            level: 'intent',
+            jobId: selection.jobId!,
+            intentInjections:
+              docs.draft?.intents.find((e) => e.id === selection.intentId)?.injections ?? [],
+          };
+
+  const dangerCopy = {
+    agent: {
+      title: t('danger.agentTitle', 'Delete this agent'),
+      desc: t('danger.agentDesc', 'Removes the whole agent directory, every job included. This cannot be undone.'),
+      button: t('danger.agentButton', 'Delete agent'),
+    },
+    job: {
+      title: t('danger.jobTitle', 'Delete this job'),
+      desc: t('danger.jobDesc', 'Removes the job directory (definition files included). The session history of past runs is not touched.'),
+      button: t('danger.jobButton', 'Delete job'),
+    },
+    intent: {
+      title: t('danger.intentTitle', 'Delete this intent'),
+      desc: t('danger.intentDesc', 'Removes the entry from intents.yaml (renaming = delete + recreate; bindings and @intent: mentions reference the id). Its injection files stay on disk, on-demand only.'),
+      button: t('danger.intentButton', 'Delete intent'),
+    },
+  }[level];
+
+  const detailReady =
+    !!selection.agentId && !!promptsScope && (level === 'agent' || overviewCtx != null);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      {/* header */}
-      <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--border-1)' }}>
-        <Bot className="w-4 h-4" style={{ color: 'var(--violet-500)' }} />
-        <span className="text-sm font-semibold" style={{ color: 'var(--text-1)' }}>
-          {t('title', '에이전트 설정')}
-        </span>
-        <div className="flex-1" />
-        {onClose && (
-          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-[color:var(--bg-hover)]">
-            <X className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
-          </button>
-        )}
+    <div
+      style={{
+        height: '100%',
+        display: 'flex',
+        background: 'var(--bg-canvas)',
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
+    >
+      {/* left — resizable agent › job › intent tree */}
+      <div className="relative shrink-0" style={{ width: treeWidth, borderRight: '1px solid var(--border-1)' }}>
+        <AgentTree
+          agents={agents}
+          selection={selection}
+          onSelect={selectAgentSettingsNode}
+          onCreateAgent={handleCreateAgent}
+          onCreateJob={handleCreateJob}
+          onCreateIntent={handleCreateIntent}
+          onRenameAgent={handleRenameAgent}
+          onRenameJob={handleRenameJob}
+          onDeleteAgent={handleDeleteAgent}
+          onDeleteJob={handleDeleteJob}
+          onDeleteIntent={handleDeleteIntent}
+          onUploadFiles={handleUploadFiles}
+          onImportFolder={handleImportFolder}
+        />
+        {/* drag handle: 4px hit area on the border */}
+        <div
+          className="absolute top-0 right-0 h-full"
+          style={{
+            width: 4,
+            marginRight: -2,
+            cursor: 'ew-resize',
+            zIndex: 10,
+            background: isResizing ? 'var(--violet-400)' : 'transparent',
+          }}
+          onMouseDown={startResize}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.background = 'var(--violet-400)';
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing) (e.currentTarget as HTMLDivElement).style.background = 'transparent';
+          }}
+        />
       </div>
 
-      {error && (
-        <div className="mx-4 mt-2 text-xs rounded-md px-2 py-1" style={{ background: 'var(--bg-surface-2)', color: 'var(--text-2)' }}>
-          {error}
+      {/* right — canonical settings scroller */}
+      {detailReady && promptsScope ? (
+        <div ref={scrollerRef} style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+              padding: '20px 24px 40px',
+            }}
+          >
+            <DetailHeader
+              level={level}
+              agentName={selectedAgent?.name ?? selection.agentId!}
+              jobName={selection.jobId ? (selectedJob?.name ?? selection.jobId) : undefined}
+              intentId={selection.intentId}
+              onSelectAgent={() => selectAgentSettingsNode(selection.agentId)}
+              onSelectJob={() => selectAgentSettingsNode(selection.agentId, selection.jobId)}
+              status={headerStatus}
+            />
+
+            {!readonly && overviewCtx && (
+              <ChangedBar
+                hasChanges={docs.dirtyCount > 0}
+                isSaving={docs.isSaving}
+                count={docs.dirtyCount}
+                onSave={() => void handleSave()}
+                onDiscard={docs.discard}
+              />
+            )}
+
+            {error && (
+              <div
+                className="text-xs rounded-md px-3 py-2"
+                style={{ background: 'var(--status-error-bg, var(--bg-surface-2))', color: 'var(--status-error-fg, var(--text-2))' }}
+              >
+                {error}
+              </div>
+            )}
+            {lastWarnings.length > 0 && (
+              <div
+                className="text-xs rounded-md px-3 py-2 flex flex-col gap-0.5"
+                style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}
+              >
+                <span>{t('prompts.validationWarnings', 'Saved with warnings — affected jobs will fail to load until fixed:')}</span>
+                {lastWarnings.map((w, i) => (
+                  <span key={i} className="font-mono">{w}</span>
+                ))}
+              </div>
+            )}
+
+            {level === 'intent' && overviewCtx && selection.intentId && (
+              <IntentDetailCard
+                ctx={overviewCtx}
+                id="c3g-intent"
+                intentId={selection.intentId}
+                onBackToJob={() => selectAgentSettingsNode(selection.agentId, selection.jobId)}
+              />
+            )}
+            {level === 'job' && overviewCtx && <ToolsCard ctx={overviewCtx} id="c3g-tools" />}
+            {level === 'job' && overviewCtx && selection.agentId && selection.jobId && (
+              <IntentsCard
+                ctx={overviewCtx}
+                id="c3g-intents"
+                onSelectIntent={(intentId) => selectAgentSettingsNode(selection.agentId, selection.jobId, intentId)}
+                onCreateIntent={(intentId) => handleCreateIntent(selection.agentId!, selection.jobId!, intentId)}
+              />
+            )}
+            {level === 'job' && overviewCtx && selection.agentId && selection.jobId && (
+              <PromptPreviewCard ctx={overviewCtx} id="c3g-preview" agentId={selection.agentId} jobId={selection.jobId} />
+            )}
+            <PromptsCard
+              id="c3g-prompts"
+              agentId={selection.agentId!}
+              readonly={readonly}
+              scope={promptsScope}
+              intentBindings={intentBindings}
+              bindableIntentIds={bindableIntentIds}
+              onBind={handleBind}
+              onUnbind={handleUnbind}
+              onCreatedInjection={bindToSelectedIntent}
+              onAddExisting={bindToSelectedIntent}
+              jobInjectionFiles={jobInjectionFiles}
+              draftDirtyPaths={draftDirtyPaths}
+              onRawSaved={handleRawSaved}
+            />
+            {!readonly && (
+              <div id="c3g-danger">
+                <DangerZone
+                  title={dangerCopy.title}
+                  description={dangerCopy.desc}
+                  buttonText={dangerArmed ? t('danger.confirm', 'Click again to confirm') : dangerCopy.button}
+                  loadingText={t('danger.deleting', 'Deleting…')}
+                  isLoading={isDeleting}
+                  onAction={() => void handleDangerAction()}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div
+          className="flex-1 flex flex-col items-center justify-center gap-1.5 px-6 text-center"
+          style={{ color: 'var(--text-4)' }}
+        >
+          <span className="text-sm">{t('detail.selectAgent', 'Select an agent, job, or intent on the left')}</span>
+          <span className="text-xs" style={{ maxWidth: 380, lineHeight: 1.6 }}>
+            {t('detail.emptyHint', 'Built-in agents are read-only — create an agent of your own with the + button on the left.')}
+          </span>
         </div>
       )}
-
-      <div className="flex flex-1 min-h-0">
-        {/* left tree */}
-        <div className="w-64 shrink-0 overflow-y-auto p-3 flex flex-col gap-2" style={{ borderRight: '1px solid var(--border-1)' }}>
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => { setCreating({ kind: 'agent' }); setCreateName(''); }}>
-              <Plus className="w-3 h-3" /> {t('tree.newAgent', 'New Agent')}
-            </Button>
-            <label className="cursor-pointer inline-flex items-center gap-1 text-xs px-2 py-1 rounded hover:bg-[color:var(--bg-hover)]" style={{ color: 'var(--text-3)' }}>
-              <Upload className="w-3 h-3" /> {t('tree.upload', 'Upload')}
-              <input
-                type="file"
-                multiple
-                className="hidden"
-                // @ts-expect-error — non-standard folder-upload attribute
-                webkitdirectory=""
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) void handleImportFolder(e.target.files);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-          </div>
-
-          {creating?.kind === 'agent' && (
-            <form onSubmit={(e) => { e.preventDefault(); void handleCreate(); }}>
-              <Input
-                autoFocus
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder={t('tree.agentName', 'Agent name')}
-                onKeyDown={(e) => e.key === 'Escape' && setCreating(null)}
-              />
-            </form>
-          )}
-
-          {SCOPE_ORDER.map((scope) => {
-            const group = agents.filter((a) => a.scope === scope);
-            if (group.length === 0) return null;
-            return (
-              <div key={scope} className="flex flex-col gap-0.5">
-                <div className="text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1" style={{ color: 'var(--text-4)' }}>
-                  {t(`tree.scope.${scope}`, scope)}
-                  {scope !== 'user' && (
-                    <span className="px-1 rounded" style={{ background: 'var(--bg-surface-2)', color: 'var(--text-4)' }}>
-                      {t('tree.readonly', 'readonly')}
-                    </span>
-                  )}
-                </div>
-                {group.map((agent) => {
-                  const collapsed = collapsedAgents.has(agent.id);
-                  const isSelected = selection.agentId === agent.id && !selection.jobId;
-                  return (
-                    <div key={agent.id}>
-                      <div
-                        className="group flex items-center gap-1 py-0.5 px-1 rounded text-xs cursor-pointer hover:bg-[color:var(--bg-hover)]"
-                        style={{ color: isSelected ? 'var(--violet-500)' : 'var(--text-2)' }}
-                        onClick={() => selectAgentSettingsNode(agent.id)}
-                      >
-                        <button
-                          type="button"
-                          className="p-0.5"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCollapsedAgents((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(agent.id)) next.delete(agent.id);
-                              else next.add(agent.id);
-                              return next;
-                            });
-                          }}
-                        >
-                          {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        </button>
-                        <Bot className="w-3 h-3 shrink-0" />
-                        <span className="truncate flex-1">{agent.name}</span>
-                        {!agent.readonly && (
-                          <>
-                            <button
-                              type="button"
-                              className="opacity-0 group-hover:opacity-100 p-0.5"
-                              title={t('tree.newJob', 'New job')}
-                              onClick={(e) => { e.stopPropagation(); setCreating({ kind: 'job', agentId: agent.id }); setCreateName(''); }}
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                            <button
-                              type="button"
-                              className="opacity-0 group-hover:opacity-100 p-0.5"
-                              title={t('tree.deleteAgent', 'Delete agent')}
-                              onClick={(e) => { e.stopPropagation(); void handleDeleteAgent(agent.id); }}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      {creating?.kind === 'job' && creating.agentId === agent.id && (
-                        <form className="pl-6" onSubmit={(e) => { e.preventDefault(); void handleCreate(); }}>
-                          <Input
-                            autoFocus
-                            value={createName}
-                            onChange={(e) => setCreateName(e.target.value)}
-                            placeholder={t('tree.jobName', 'Job name')}
-                            onKeyDown={(e) => e.key === 'Escape' && setCreating(null)}
-                          />
-                        </form>
-                      )}
-                      {!collapsed &&
-                        agent.jobs.map((job) => {
-                          const jobSelected = selection.agentId === agent.id && selection.jobId === job.id;
-                          return (
-                            <div
-                              key={job.id}
-                              className="group flex items-center gap-1 py-0.5 pl-7 pr-1 rounded text-xs cursor-pointer hover:bg-[color:var(--bg-hover)]"
-                              style={{ color: jobSelected ? 'var(--violet-500)' : 'var(--text-3)' }}
-                              onClick={() => selectAgentSettingsNode(agent.id, job.id)}
-                            >
-                              <span className="truncate flex-1">{job.name}</span>
-                              {!agent.readonly && (
-                                <button
-                                  type="button"
-                                  className="opacity-0 group-hover:opacity-100 p-0.5"
-                                  title={t('tree.deleteJob', 'Delete job')}
-                                  onClick={(e) => { e.stopPropagation(); void handleDeleteJob(agent.id, job.id); }}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* right detail */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {selection.agentId && overviewCtx ? (
-            <>
-              <div className="flex items-center gap-2 px-4 py-2" style={{ borderBottom: '1px solid var(--border-1)' }}>
-                {(['overview', 'files'] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    className="text-xs px-2 py-1 rounded"
-                    style={{
-                      color: detailTab === tab ? 'var(--violet-500)' : 'var(--text-3)',
-                      background: detailTab === tab ? 'var(--bg-surface-2)' : 'transparent',
-                    }}
-                    onClick={() => setDetailTab(tab)}
-                  >
-                    {tab === 'overview' ? t('detail.overview', 'Overview') : t('detail.files', 'Files')}
-                  </button>
-                ))}
-                <div className="flex-1" />
-                {readonly && selectedAgent && (
-                  <Button size="sm" variant="ghost" onClick={() => void handleCopyToAccount(selectedAgent)}>
-                    <Copy className="w-3 h-3" /> {t('detail.copyToAccount', '내 계정으로 복사')}
-                  </Button>
-                )}
-              </div>
-              {lastWarnings.length > 0 && (
-                <div className="mx-4 mt-2 text-xs rounded-md px-2 py-1 flex flex-col gap-0.5" style={{ background: 'var(--bg-surface-2)', color: 'var(--text-3)' }}>
-                  {lastWarnings.map((w, i) => (
-                    <span key={i} className="font-mono">{w}</span>
-                  ))}
-                </div>
-              )}
-              {detailTab === 'overview' ? (
-                <div key={`${selection.agentId}/${selection.jobId ?? ''}#${overviewNonce}`} className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
-                  {OVERVIEW_SECTIONS.filter((s) => s.appliesTo === 'both' || s.appliesTo === level).map((s) => (
-                    <s.Component key={s.id} ctx={overviewCtx} />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex-1 min-h-0">
-                  <FilesTab agentId={selection.agentId} readonly={readonly} />
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-sm" style={{ color: 'var(--text-4)' }}>
-              {t('detail.selectAgent', 'Select an agent or job on the left')}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

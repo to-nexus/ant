@@ -222,29 +222,6 @@
     "universal": "Workspace",
     "universalDesc": "Runs file-defined custom agents and jobs. Domain, features, and git do not apply."
   },
-  "agents": {
-    "title": "Agents",
-    "description": "Custom agents and jobs are account-owned definitions (.ant/agents) shared across your workspace projects.",
-    "refresh": "Refresh",
-    "createAgent": "Register agent",
-    "addJob": "Add job",
-    "edit": "Edit",
-    "delete": "Delete",
-    "namePlaceholder": "Name",
-    "descPlaceholder": "Description (optional)",
-    "invalidName": "Name must contain letters or digits",
-    "placeholder": "No agents yet — register one with +",
-    "noJobs": "No jobs yet",
-    "deleteAgentConfirm": "Delete this agent and all its jobs?",
-    "deleteJobConfirm": "Delete this job?",
-    "validate": "Validate",
-    "valid": "✓ valid",
-    "scope": {
-      "user": "account",
-      "org": "org",
-      "builtin": "built-in"
-    }
-  },
   "llmModels": {
     "title": "LLM Settings by Job Node",
     "nodeOverrides": "Node-level overrides",
