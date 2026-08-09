@@ -57,7 +57,7 @@ export function fetchCustomJobs(
 export function createCustomJob(
   projectId: string,
   agentId: string,
-  body: { id: string; name: string; description?: string },
+  body: { id: string; name: string },
 ): Promise<{ job: CustomJobSummary }> {
   return apiPost(
     `${projectBase(projectId)}/custom-agents/${encodeURIComponent(agentId)}/jobs`,
@@ -69,7 +69,7 @@ export function updateCustomJob(
   projectId: string,
   agentId: string,
   jobId: string,
-  patch: { name?: string; description?: string },
+  patch: { name?: string },
 ): Promise<{ job: CustomJobSummary }> {
   return apiPatch(
     `${projectBase(projectId)}/custom-agents/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}`,

@@ -1,27 +1,26 @@
 /**
  * Overview section cards — canonical `ConfigEditor/aurora` kit (SectionCard +
- * FieldLabel/AuroraInput/AuroraSelect). Cards mutate the shared
- * `useDefinitionDocs` drafts; the shell's single ChangedBar saves every dirty
- * file through the definition write funnel. No card owns a Save button.
+ * FieldLabel/AuroraInput/AuroraSelect). Each card owns exactly ONE definition
+ * yaml through `DefinitionCard`, offering a structured form and the raw YAML
+ * over the same buffer; the shell's single ChangedBar saves every dirty file
+ * through the definition write funnel. No card owns a Save button.
  *
- * Level model: cards exist only where a form field does — job = tools +
- * intents summary; intent = its own detail card (IntentDetailCard.tsx). The
- * agent level has no cards (identity is base/*.md prose; renames live in the
- * tree kebab). IntentsCard is a summary list that links into the intent
- * selection, keeping ONE editing surface per intent.
+ * Level model: agent = agent.yaml (AgentDefinitionCard.tsx) · job = job.yaml
+ * (name + tools + approval) and intents.yaml (catalog) · intent = its own
+ * detail card (IntentDetailCard.tsx). The intent catalog card ADDS intents
+ * and links into them; editing and deleting one intent happens on that
+ * intent's own screen, keeping ONE editing surface per intent.
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Target } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, SquareArrowOutUpRight, Target } from 'lucide-react';
 import { Button } from '@/presentation/components/aurora';
-import {
-  AuroraInput,
-  AuroraSelect,
-  FieldLabel,
-  SectionCard,
-} from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, AuroraSelect, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { CUSTOM_ID_PATTERN } from '@ant/shared';
+import { DefinitionCard } from './DefinitionCard';
+import { IdRenameField } from './IdRenameField';
+import { McpServersEditor } from './McpServersEditor';
 import type { UseDefinitionDocsResult } from './useDefinitionDocs';
 
 export interface OverviewCtx {
@@ -68,29 +67,63 @@ export function ChipToggle({
   );
 }
 
-// ── Tools (job-only: builtin allowlist + approval overrides) ─────────────────
+/** Icon-only row action box — same box metrics as the tree's toolbar icons. */
+const ROW_ICON_CLASS =
+  'inline-flex items-center justify-center h-5 w-5 shrink-0 rounded text-[color:var(--text-4)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors';
 
-export function ToolsCard({ ctx, id }: { ctx: OverviewCtx; id: string }) {
+/** Static (non-interactive) counterpart of ChipToggle. */
+function StaticChip({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        fontFamily: 'var(--font-mono)',
+        padding: '2px 8px',
+        borderRadius: 'var(--r-pill)',
+        border: '1px solid var(--violet-300)',
+        color: 'var(--select-fg)',
+        background: 'var(--select-fill-violet)',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ── Job definition (job.yaml: name + builtin allowlist + approval) ──────────
+
+export function JobDefinitionCard({
+  ctx,
+  id,
+  jobId,
+  onRenameId,
+}: {
+  ctx: OverviewCtx;
+  id: string;
+  jobId: string;
+  /** Resolves once the move landed (or threw) — the shell owns reselection. */
+  onRenameId: (newId: string) => Promise<void>;
+}) {
   const { t } = useTranslation('agents');
-  const draft = ctx.docs.draft;
+  const { docs } = ctx;
   const [addingOverride, setAddingOverride] = useState('');
-  if (!draft) return null;
+  const disabled = ctx.readonly || docs.identityDoc?.parseError != null;
 
   // Vocabulary = the universal preset (tools are job-owned; no agent bound).
   const vocabulary = ctx.builtinToolPreset;
-  const effective = new Set(draft.main.toolsBuiltin ?? vocabulary);
+  const effective = new Set(docs.main.toolsBuiltin ?? vocabulary);
 
   const toggleTool = (tool: string) => {
     const next = new Set(effective);
     if (next.has(tool)) next.delete(tool);
     else next.add(tool);
     // Full selection = key absent (inherit the whole preset).
-    ctx.docs.setMain({
+    docs.setMain({
       toolsBuiltin: next.size === vocabulary.length ? null : vocabulary.filter((v) => next.has(v)),
     });
   };
 
-  const approval = draft.main.approval;
+  const approval = docs.main.approval;
   const approvalRows = vocabulary.filter(
     (tool) => ctx.mutatingBuiltinTools.includes(tool) || approval[tool] !== undefined,
   );
@@ -100,28 +133,56 @@ export function ToolsCard({ ctx, id }: { ctx: OverviewCtx; id: string }) {
     const next = { ...approval };
     if (value === 'default') delete next[tool];
     else next[tool] = value as 'always' | 'never';
-    ctx.docs.setMain({ approval: next });
+    docs.setMain({ approval: next });
   };
 
   return (
-    <SectionCard
+    <DefinitionCard
       id={id}
-      icon="Wrench"
+      icon="Briefcase"
       accent="cool"
-      title={t('overview.tools', 'Tools')}
-      description={t('overview.toolsJobDesc', 'This job’s builtin allowlist — validates directly against the universal preset. Selecting everything omits the key (full preset).')}
+      title={t('overview.jobDefinition', 'Job definition')}
+      description={t(
+        'overview.jobDefinitionDesc',
+        'This job’s name, builtin allowlist and MCP servers — the tool list validates directly against the universal preset. Selecting everything omits the key (full preset).',
+      )}
+      doc={docs.identityDoc}
+      readonly={ctx.readonly}
+      onRawChange={(text) => docs.setRaw('main', text)}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {vocabulary.map((tool) => (
-            <ChipToggle
-              key={tool}
-              label={tool}
-              selected={effective.has(tool)}
-              disabled={ctx.readonly}
-              onToggle={() => toggleTool(tool)}
-            />
-          ))}
+        <div style={{ maxWidth: 420 }}>
+          <FieldLabel>{t('overview.jobName', 'Display name')}</FieldLabel>
+          <AuroraInput value={docs.identity.name} disabled={disabled} onChange={(v) => docs.setName(v)} />
+        </div>
+
+        <IdRenameField
+          label={t('overview.jobId', 'Job id')}
+          hint={t(
+            'overview.jobIdHint',
+            'The id is the job directory name. Changing it moves the directory and this job’s session and plan folders, across all of your workspaces.',
+          )}
+          currentId={jobId}
+          yamlId={docs.identity.id}
+          dirtyCount={docs.dirtyCount}
+          readonly={ctx.readonly}
+          disabled={disabled}
+          onRename={onRenameId}
+        />
+
+        <div>
+          <FieldLabel>{t('overview.tools', 'Tools')}</FieldLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {vocabulary.map((tool) => (
+              <ChipToggle
+                key={tool}
+                label={tool}
+                selected={effective.has(tool)}
+                disabled={disabled}
+                onToggle={() => toggleTool(tool)}
+              />
+            ))}
+          </div>
         </div>
 
         <div>
@@ -151,7 +212,7 @@ export function ToolsCard({ ctx, id }: { ctx: OverviewCtx; id: string }) {
                   <div style={{ width: 180 }}>
                     <AuroraSelect
                       value={approval[tool] ?? 'default'}
-                      disabled={ctx.readonly}
+                      disabled={disabled}
                       onChange={(v) => setApproval(tool, v)}
                       options={[
                         {
@@ -166,7 +227,7 @@ export function ToolsCard({ ctx, id }: { ctx: OverviewCtx; id: string }) {
                 </div>
               );
             })}
-            {!ctx.readonly && overrideCandidates.length > 0 && (
+            {!disabled && overrideCandidates.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1 }}>
                   <AuroraSelect
@@ -184,12 +245,33 @@ export function ToolsCard({ ctx, id }: { ctx: OverviewCtx; id: string }) {
             )}
           </div>
         </div>
+
+        <McpServersEditor servers={docs.mcpServers} disabled={disabled} onChange={docs.setMcpServers} />
+
+        {docs.mcpErrors.length > 0 && (
+          <div
+            style={{
+              fontSize: 11.5,
+              borderRadius: 'var(--r-md)',
+              padding: '6px 10px',
+              background: 'var(--status-error-bg, var(--bg-surface-2))',
+              color: 'var(--status-error-fg, var(--text-2))',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+            }}
+          >
+            {docs.mcpErrors.map((e, i) => (
+              <span key={i}>{e}</span>
+            ))}
+          </div>
+        )}
       </div>
-    </SectionCard>
+    </DefinitionCard>
   );
 }
 
-// ── Intents (summary list — the editing surface is the intent detail) ────────
+// ── Intents (catalog: add + navigate; edit/delete live on the intent screen) ─
 
 export function IntentsCard({
   ctx,
@@ -200,33 +282,46 @@ export function IntentsCard({
   ctx: OverviewCtx;
   id: string;
   onSelectIntent: (intentId: string) => void;
-  onCreateIntent: (intentId: string) => Promise<void>;
+  /** Adds the entry to the draft and opens its screen so the criteria get authored. */
+  onCreateIntent: (intentId: string) => void;
 }) {
   const { t } = useTranslation('agents');
   const [creating, setCreating] = useState(false);
   const [newId, setNewId] = useState('');
-  const draft = ctx.docs.draft;
-  if (!draft) return null;
-  const entries = draft.intents;
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const { docs } = ctx;
+  const entries = docs.intents;
+  const disabled = ctx.readonly || docs.intentsDoc?.parseError != null;
   const newIdValid = CUSTOM_ID_PATTERN.test(newId) && newId !== 'general' && !entries.some((e) => e.id === newId);
 
-  const submitCreate = async () => {
+  const toggleExpanded = (intentId: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(intentId)) next.delete(intentId);
+      else next.add(intentId);
+      return next;
+    });
+
+  const submitCreate = () => {
     if (!newIdValid) return;
-    await onCreateIntent(newId);
+    onCreateIntent(newId);
     setCreating(false);
     setNewId('');
   };
 
   return (
-    <SectionCard
+    <DefinitionCard
       id={id}
       icon="Split"
       accent="sunset"
       title={t('overview.intents', 'Intents')}
       description={t(
         'overview.intentsHint',
-        'Ways this job classifies an incoming request. Select one to edit its matching criteria and prompts.',
+        'Ways this job classifies an incoming request. Open one to edit its matching criteria and prompts.',
       )}
+      doc={docs.intentsDoc}
+      readonly={ctx.readonly}
+      onRawChange={(text) => docs.setRaw('intents', text)}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {entries.length === 0 && (
@@ -235,71 +330,91 @@ export function IntentsCard({
           </p>
         )}
 
-        {entries.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => onSelectIntent(entry.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '8px 12px',
-              borderRadius: 'var(--r-md)',
-              border: '1px solid var(--border-1)',
-              background: 'var(--bg-surface)',
-              textAlign: 'left',
-              cursor: 'pointer',
-            }}
-          >
-            <Target size={14} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
-            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-1)' }}>
-              {entry.id}
-            </span>
-            <span
+        {entries.map((entry) => {
+          const isOpen = expanded.has(entry.id);
+          const injections = entry.injections ?? [];
+          return (
+            <div
+              key={entry.id}
               style={{
-                flex: 1,
-                minWidth: 0,
-                fontSize: 11.5,
-                color: 'var(--text-3)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: '8px 10px',
+                borderRadius: 'var(--r-md)',
+                border: '1px solid var(--border-1)',
+                background: 'var(--bg-surface)',
               }}
             >
-              {entry.description}
-            </span>
-            {(entry.injections ?? []).length > 0 && (
-              <span
-                style={{
-                  fontSize: 10,
-                  fontFamily: 'var(--font-mono)',
-                  padding: '1px 7px',
-                  borderRadius: 'var(--r-pill)',
-                  border: '1px solid var(--violet-300)',
-                  color: 'var(--select-fg)',
-                  background: 'var(--select-fill-violet)',
-                  flexShrink: 0,
-                }}
-              >
-                {(entry.injections ?? []).length}
-              </span>
-            )}
-          </button>
-        ))}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  className="p-0.5"
+                  aria-expanded={isOpen}
+                  aria-label={t('overview.intentExpand', 'Show matching criteria')}
+                  onClick={() => toggleExpanded(entry.id)}
+                  style={{ color: 'var(--text-4)', flexShrink: 0 }}
+                >
+                  {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                </button>
+                <Target size={14} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-1)' }}>
+                  {entry.id}
+                </span>
+                {/* Navigation is this icon alone — the criteria text is never a link. */}
+                <button
+                  type="button"
+                  className={ROW_ICON_CLASS}
+                  title={t('overview.intentOpen', 'Open intent')}
+                  aria-label={t('overview.intentOpen', 'Open intent')}
+                  onClick={() => onSelectIntent(entry.id)}
+                >
+                  <SquareArrowOutUpRight size={12} />
+                </button>
+                <span style={{ flex: 1 }} />
+              </div>
 
-        {!ctx.readonly && !creating && (
+              {isOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 27 }}>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 11.5,
+                      lineHeight: 1.6,
+                      color: 'var(--text-3)',
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {entry.description || t('overview.intentNoDescription', 'No matching criteria yet.')}
+                  </p>
+                  {injections.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 10.5, color: 'var(--text-4)' }}>
+                        {t('overview.intentBoundFiles', 'Injected prompts')}
+                      </span>
+                      {injections.map((file) => (
+                        <StaticChip key={file} label={file} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {!disabled && !creating && (
           <div>
             <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
               <Plus className="w-3 h-3" /> {t('overview.addIntent', 'Add intent')}
             </Button>
           </div>
         )}
-        {!ctx.readonly && creating && (
+        {!disabled && creating && (
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              void submitCreate();
+              submitCreate();
             }}
             style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420 }}
           >
@@ -335,7 +450,7 @@ export function IntentsCard({
           </form>
         )}
 
-        {ctx.docs.intentErrors.length > 0 && (
+        {docs.intentErrors.length > 0 && (
           <div
             style={{
               fontSize: 11.5,
@@ -348,12 +463,12 @@ export function IntentsCard({
               gap: 2,
             }}
           >
-            {ctx.docs.intentErrors.map((e, i) => (
+            {docs.intentErrors.map((e, i) => (
               <span key={i}>{e}</span>
             ))}
           </div>
         )}
       </div>
-    </SectionCard>
+    </DefinitionCard>
   );
 }

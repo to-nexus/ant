@@ -1,0 +1,33 @@
+# The assistant's single job. Output form is the model's per-turn judgment —
+# a chat-only answer or real file writes; chat-only turns are normal. Output
+# conventions, when a job needs them, are written in base/*.md prose.
+id: chat
+name: 'Chat'
+version: 1
+tools:
+  # Allowlist — validates directly against the universal preset. Omitting
+  # `builtin` entirely would grant the full preset. This is the preset MINUS
+  # two deliberate exclusions:
+  #   http_request — loopback-only service probe, no general-purpose use here
+  #   read_state   — reads canonical feature history, empty on universal projects
+  builtin:
+    - read_file
+    - list_files
+    - search_files
+    - create_file
+    - edit_file
+    - append_file
+    - delete_file
+    - mkdir
+    - copy_file
+    - fetch_url
+    - search_web
+    - run_command
+    - explore
+    - subagent_report
+  # Per-tool approval override: 'always' | 'never'. Mutating tools
+  # (http_request, run_command) default to 'always'; everything else to 'never'.
+  # run_command executes inside the job's own artifact sandbox, so it is
+  # pre-approved here.
+  approval:
+    run_command: never

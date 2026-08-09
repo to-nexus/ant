@@ -1,6 +1,6 @@
 import { useEffect, useRef, Fragment } from 'react';
 import type { MentionSuggestion } from './hooks/useMentionAutocomplete';
-import { Target, Crosshair, FileText, BookOpen, Zap, FolderTree } from 'lucide-react';
+import { Target, Crosshair, FileText, BookOpen, Zap, FolderTree, ClipboardList } from 'lucide-react';
 
 const TYPE_ICONS: Record<string, any> = {
   intent: Target,
@@ -8,6 +8,7 @@ const TYPE_ICONS: Record<string, any> = {
   ref: FileText,
   context: BookOpen,
   explicit: Zap,
+  plan: ClipboardList,
   browse: FolderTree,
 };
 
@@ -17,15 +18,17 @@ const TYPE_COLORS: Record<string, string> = {
   ref: 'text-emerald-500',
   context: 'text-gray-500',
   explicit: 'text-indigo-500',
+  plan: 'text-amber-500',
   browse: 'text-violet-500',
 };
 
 const COMMAND_ICON_MAP: Record<string, { icon: any; color: string }> = {
-  '@intent:':  { icon: Target,    color: 'text-blue-500' },
-  '@target:':  { icon: Crosshair, color: 'text-orange-500' },
-  '@ref:':     { icon: FileText,  color: 'text-emerald-500' },
-  '@ctx:':     { icon: BookOpen,  color: 'text-gray-500' },
-  '@explicit': { icon: Zap,       color: 'text-indigo-500' },
+  '@intent:':  { icon: Target,        color: 'text-blue-500' },
+  '@target:':  { icon: Crosshair,     color: 'text-orange-500' },
+  '@ref:':     { icon: FileText,      color: 'text-emerald-500' },
+  '@ctx:':     { icon: BookOpen,      color: 'text-gray-500' },
+  '@explicit': { icon: Zap,           color: 'text-indigo-500' },
+  '@plan':     { icon: ClipboardList, color: 'text-amber-500' },
 };
 
 interface MentionDropdownProps {

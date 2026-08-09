@@ -37,6 +37,10 @@
     "explicit": {
       "label": "explicit",
       "description": "추론 생략, 직접 지정"
+    },
+    "plan": {
+      "label": "plan",
+      "description": "플랜 턴 — 작업 대신 계획을 먼저 산출"
     }
   },
   "panelTabs": {

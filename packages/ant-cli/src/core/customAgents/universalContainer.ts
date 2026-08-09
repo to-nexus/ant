@@ -69,6 +69,161 @@ export function ensureUniversalContainer(projectPath: string): void {
   }
 }
 
+// ── agent-id-keyed container data ────────────────────────────────────────────
+
+/**
+ * Container paths keyed by the AGENT id. Definitions live account-wide under
+ * `.ant/agents/{agentId}`, but these two live per project — so renaming an
+ * agent has to sweep every universal project of the account, not just the
+ * current one.
+ */
+function agentKeyedDirsOf(container: string, agentId: string): string[] {
+  return [
+    path.join(container, 'sessions', agentId),
+    path.join(container, UNIVERSAL_ARTIFACTS_DIRNAME, 'plan', agentId),
+  ];
+}
+
+/** Every universal container under an account workspace (`workspaces/{org}/{user}`). */
+export function listUniversalContainers(workspacePath: string): Array<{ projectId: string; container: string }> {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(workspacePath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+    .map((e) => ({ projectId: e.name, projectPath: path.join(workspacePath, e.name) }))
+    .filter((p) => isUniversalProject(p.projectPath))
+    .map((p) => ({ projectId: p.projectId, container: getUniversalContainerPathOf(p.projectPath) }));
+}
+
+export interface AgentDataMoveResult {
+  /** Project ids that had (or would have had) data moved. */
+  movedProjects: string[];
+  /** Destination paths already occupied — the caller must refuse before moving anything. */
+  conflicts: string[];
+}
+
+/**
+ * Move the container data keyed by `oldId` to `newId` across the account.
+ *
+ * Callers MUST run this with `dryRun` first and refuse on any conflict: a
+ * partial move would split one agent's memory across two ids with no way back.
+ * The session JSON also records `customJobRef` for forensics; it is patched
+ * best-effort (nothing reads it back, so a failure there is not worth aborting
+ * an otherwise complete move).
+ */
+export function moveUniversalAgentData(
+  workspacePath: string,
+  oldId: string,
+  newId: string,
+  opts: { dryRun?: boolean } = {},
+): AgentDataMoveResult {
+  const movedProjects: string[] = [];
+  const conflicts: string[] = [];
+
+  for (const { projectId, container } of listUniversalContainers(workspacePath)) {
+    const sources = agentKeyedDirsOf(container, oldId);
+    const targets = agentKeyedDirsOf(container, newId);
+    let touched = false;
+
+    for (const [i, source] of sources.entries()) {
+      if (!fs.existsSync(source)) continue;
+      touched = true;
+      if (fs.existsSync(targets[i])) {
+        conflicts.push(targets[i]);
+        continue;
+      }
+      if (opts.dryRun) continue;
+      fs.mkdirSync(path.dirname(targets[i]), { recursive: true });
+      fs.renameSync(source, targets[i]);
+      if (i === 0) patchSessionRefs(targets[i], newId);
+    }
+    if (touched) movedProjects.push(projectId);
+  }
+
+  return { movedProjects, conflicts };
+}
+
+/**
+ * Container paths keyed by the (agent, job) PAIR — the per-job session file and
+ * the job's plan artifacts. The agent segment is untouched here: a job rename
+ * moves only what the job id names.
+ */
+function jobKeyedPathsOf(container: string, agentId: string, jobId: string): string[] {
+  return [
+    path.join(container, 'sessions', agentId, `${jobId}.json`),
+    path.join(container, UNIVERSAL_ARTIFACTS_DIRNAME, 'plan', agentId, jobId),
+  ];
+}
+
+/**
+ * Job-id counterpart of {@link moveUniversalAgentData} — same dry-run-then-move
+ * contract, same reason: leaving `sessions/{agent}/{oldJob}.json` behind would
+ * silently reset the job's memory in every project of the account.
+ */
+export function moveUniversalJobData(
+  workspacePath: string,
+  agentId: string,
+  oldJobId: string,
+  newJobId: string,
+  opts: { dryRun?: boolean } = {},
+): AgentDataMoveResult {
+  const movedProjects: string[] = [];
+  const conflicts: string[] = [];
+
+  for (const { projectId, container } of listUniversalContainers(workspacePath)) {
+    const sources = jobKeyedPathsOf(container, agentId, oldJobId);
+    const targets = jobKeyedPathsOf(container, agentId, newJobId);
+    let touched = false;
+
+    for (const [i, source] of sources.entries()) {
+      if (!fs.existsSync(source)) continue;
+      touched = true;
+      if (fs.existsSync(targets[i])) {
+        conflicts.push(targets[i]);
+        continue;
+      }
+      if (opts.dryRun) continue;
+      fs.mkdirSync(path.dirname(targets[i]), { recursive: true });
+      fs.renameSync(source, targets[i]);
+      if (i === 0) patchSessionFileRef(targets[i], undefined, newJobId);
+    }
+    if (touched) movedProjects.push(projectId);
+  }
+
+  return { movedProjects, conflicts };
+}
+
+/** Rewrite the recorded `{agentId}/{jobId}` inside moved session files. */
+function patchSessionRefs(sessionDir: string, newAgentId: string): void {
+  let files: string[];
+  try {
+    files = fs.readdirSync(sessionDir).filter((f) => f.endsWith('.json'));
+  } catch {
+    return;
+  }
+  for (const file of files) {
+    patchSessionFileRef(path.join(sessionDir, file), newAgentId, undefined);
+  }
+}
+
+/** Patch one session file's `customJobRef` segment(s); best-effort by contract. */
+function patchSessionFileRef(full: string, newAgentId?: string, newJobId?: string): void {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(full, 'utf-8'));
+    const ref = parsed?.state?.customJobRef;
+    if (typeof ref !== 'string') return;
+    const [agent, job] = ref.split('/');
+    parsed.state.customJobRef = `${newAgentId ?? agent ?? ''}/${newJobId ?? job ?? ''}`;
+    fs.writeFileSync(full, JSON.stringify(parsed, null, 2), 'utf-8');
+  } catch {
+    /* forensic field only — never fail the move over it */
+  }
+}
+
 /**
  * Factory placeholder contents keyed by canonical relative path — a polluted
  * dir is deletable only when every file in it is byte-identical to the

@@ -168,7 +168,7 @@ describe('resolveDebugAgentName — universal debug-dir owner (env table)', () =
   it.each([
     ['canonical job (no env)', undefined, undefined, 'architect'],
     ['canonical job (code)', 'code', undefined, 'architect'],
-    ['universal job with ref → agentId', 'universal', 'sample-researcher/quick-answer', 'sample-researcher'],
+    ['universal job with ref → agentId', 'universal', 'assistant/chat', 'assistant'],
     ['universal job with malformed ref → architect fallback', 'universal', '', 'architect'],
     ['universal job without ref → architect fallback', 'universal', undefined, 'architect'],
   ] as const)('%s', async (_label, jobType, ref, expected) => {

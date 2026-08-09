@@ -120,7 +120,7 @@ describe('loadCustomAgents selection repair', () => {
   });
 });
 
-describe('universalTurnMeta — explicit @intent:/@ctx: mention accumulation', () => {
+describe('universalTurnMeta — explicit @intent:/@ctx:/@plan mention accumulation', () => {
   it('accumulates + dedupes intents and context, removes individually', () => {
     const s = makeStore();
     s.getState().addUniversalIntentMention('research');
@@ -128,29 +128,44 @@ describe('universalTurnMeta — explicit @intent:/@ctx: mention accumulation', (
     s.getState().addUniversalIntentMention('research'); // dedupe
     s.getState().addUniversalContextMention('plan/a.md');
     s.getState().addUniversalContextMention('plan/a.md'); // dedupe
-    expect(s.getState().universalTurnMeta).toEqual({ intents: ['research', 'cite'], context: ['plan/a.md'] });
+    expect(s.getState().universalTurnMeta).toEqual({ intents: ['research', 'cite'], context: ['plan/a.md'], plan: false });
 
     s.getState().removeUniversalIntentMention('research');
     s.getState().removeUniversalContextMention('plan/a.md');
-    expect(s.getState().universalTurnMeta).toEqual({ intents: ['cite'], context: [] });
+    expect(s.getState().universalTurnMeta).toEqual({ intents: ['cite'], context: [], plan: false });
   });
 
   it('resets on job switch (mentions are job-scoped vocabulary)', () => {
     const s = makeStore();
     s.getState().selectCustomJob('researcher', 'brief');
     s.getState().addUniversalIntentMention('research');
+    s.getState().setUniversalPlanMention(true);
     s.getState().selectCustomJob('researcher', 'quick');
-    expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: [] });
+    expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: [], plan: false });
   });
 
   it('resetUniversalTurnMeta clears after send; no-op keeps reference stability', () => {
     const s = makeStore();
     s.getState().addUniversalIntentMention('research');
     s.getState().resetUniversalTurnMeta();
-    expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: [] });
+    expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: [], plan: false });
     const ref = s.getState().universalTurnMeta;
     s.getState().resetUniversalTurnMeta();
     expect(s.getState().universalTurnMeta).toBe(ref);
+  });
+
+  it('@plan is a per-turn boolean: toggles, resets after send, no-op set keeps reference', () => {
+    const s = makeStore();
+    s.getState().setUniversalPlanMention(true);
+    expect(s.getState().universalTurnMeta.plan).toBe(true);
+    const ref = s.getState().universalTurnMeta;
+    s.getState().setUniversalPlanMention(true); // no-op
+    expect(s.getState().universalTurnMeta).toBe(ref);
+    s.getState().resetUniversalTurnMeta();
+    expect(s.getState().universalTurnMeta.plan).toBe(false);
+    s.getState().setUniversalPlanMention(true);
+    s.getState().setUniversalPlanMention(false);
+    expect(s.getState().universalTurnMeta.plan).toBe(false);
   });
 
   it('chip survival: selecting the SAME job keeps accumulated mentions', () => {

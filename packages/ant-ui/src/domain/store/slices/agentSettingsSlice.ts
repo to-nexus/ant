@@ -19,15 +19,19 @@ export interface AgentSettingsSelection {
   agentId: string | undefined;
   /** undefined = the agent itself; a job id = that job's detail. */
   jobId: string | undefined;
+  /** An intent id inside the selected job = that intent's detail. */
+  intentId: string | undefined;
 }
 
 export interface AgentSettingsState {
   accountAgents: CustomAgentSummary[];
   builtinToolPreset: string[];
+  /** Tools whose approval defaults to 'always' (runtime SSOT, for form labels). */
+  mutatingBuiltinTools: string[];
   agentSettingsSelection: AgentSettingsSelection;
   definitionTree: CustomAgentDefinitionFileNode[];
   definitionReadonly: boolean;
-  /** Open definition file buffer (raw editor / form target). */
+  /** Open prose (.md) buffer for the Prompts card editor — yaml is owned by its card. */
   openDefinitionFile: { path: string; content: string; savedContent: string } | null;
   /** Last save's semantic validation result (warnings surface in the UI). */
   definitionValidation: DefinitionValidationResult | null;
@@ -35,7 +39,7 @@ export interface AgentSettingsState {
 
 export interface AgentSettingsActions {
   loadAccountAgents: () => Promise<void>;
-  selectAgentSettingsNode: (agentId: string | undefined, jobId?: string) => void;
+  selectAgentSettingsNode: (agentId: string | undefined, jobId?: string, intentId?: string) => void;
   loadDefinitionTree: (agentId: string) => Promise<void>;
   openDefinitionFileBuffer: (agentId: string, path: string) => Promise<void>;
   setDefinitionFileContent: (content: string) => void;
@@ -51,7 +55,8 @@ export type AgentSettingsSlice = AgentSettingsState & AgentSettingsActions;
 export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSlice> = (set, get) => ({
   accountAgents: [],
   builtinToolPreset: [],
-  agentSettingsSelection: { agentId: undefined, jobId: undefined },
+  mutatingBuiltinTools: [],
+  agentSettingsSelection: { agentId: undefined, jobId: undefined, intentId: undefined },
   definitionTree: [],
   definitionReadonly: false,
   openDefinitionFile: null,
@@ -59,27 +64,38 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
 
   loadAccountAgents: async () => {
     try {
-      const { agents, builtinToolPreset } = await fetchAccountAgents();
-      set({ accountAgents: agents, builtinToolPreset });
-      const { agentSettingsSelection } = get();
-      if (agentSettingsSelection.agentId && !agents.some((a: CustomAgentSummary) => a.id === agentSettingsSelection.agentId)) {
+      const { agents, builtinToolPreset, mutatingBuiltinTools } = await fetchAccountAgents();
+      set({ accountAgents: agents, builtinToolPreset, mutatingBuiltinTools: mutatingBuiltinTools ?? [] });
+      // Prune the selection level-by-level when its target vanished.
+      const sel = get().agentSettingsSelection as AgentSettingsSelection;
+      const agent = agents.find((a: CustomAgentSummary) => a.id === sel.agentId);
+      if (sel.agentId && !agent) {
         set({
-          agentSettingsSelection: { agentId: undefined, jobId: undefined },
+          agentSettingsSelection: { agentId: undefined, jobId: undefined, intentId: undefined },
           definitionTree: [],
           openDefinitionFile: null,
           definitionValidation: null,
         });
+        return;
+      }
+      const job = agent?.jobs.find((j) => j.id === sel.jobId);
+      if (sel.jobId && !job) {
+        set({ agentSettingsSelection: { agentId: sel.agentId, jobId: undefined, intentId: undefined } });
+        return;
+      }
+      if (sel.intentId && !(job?.intents ?? []).some((i) => i.id === sel.intentId)) {
+        set({ agentSettingsSelection: { agentId: sel.agentId, jobId: sel.jobId, intentId: undefined } });
       }
     } catch (e) {
       console.warn('[agentSettingsSlice] Failed to load account agents:', e);
     }
   },
 
-  selectAgentSettingsNode: (agentId, jobId) => {
+  selectAgentSettingsNode: (agentId, jobId, intentId) => {
     const prev = get().agentSettingsSelection;
-    if (prev.agentId === agentId && prev.jobId === jobId) return;
+    if (prev.agentId === agentId && prev.jobId === jobId && prev.intentId === intentId) return;
     set({
-      agentSettingsSelection: { agentId, jobId },
+      agentSettingsSelection: { agentId, jobId, intentId },
       openDefinitionFile: null,
       definitionValidation: null,
     });

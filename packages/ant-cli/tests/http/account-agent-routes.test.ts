@@ -110,6 +110,192 @@ describe('listing + CRUD', () => {
     expect((await api('/ghost', { method: 'DELETE' })).status).toBe(404);
     expect((await api('/Bad_Id', { method: 'DELETE' })).status).toBe(400);
   });
+
+  it('scaffold base prose uses the default names — agent role.md, job system.md', async () => {
+    await createAgent();
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/base/role.md'))).toBe(true);
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'Weekly' }) });
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base/system.md'))).toBe(true);
+  });
+});
+
+/**
+ * The id IS the directory name, and it also keys `sessions/{agentId}` and
+ * `artifacts/plan/{agentId}` in every universal project of the account — so
+ * these rows assert the definition move AND the workspace sweep, plus that a
+ * refusal moves nothing at all.
+ */
+describe('agent id rename', () => {
+  /** A universal project carrying session + plan data for `agentId`. */
+  function seedUniversalProject(projectId: string, agentId: string): void {
+    const project = path.join(userDir, projectId);
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(project, 'config.json'), JSON.stringify({ projectType: 'universal' }), 'utf-8');
+    const sessions = path.join(project, 'universal/sessions', agentId);
+    fs.mkdirSync(sessions, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessions, 'weekly.json'),
+      JSON.stringify({ state: { customJobRef: `${agentId}/weekly` } }),
+      'utf-8',
+    );
+    fs.mkdirSync(path.join(project, 'universal/artifacts/plan', agentId, 'weekly'), { recursive: true });
+  }
+
+  beforeEach(() => {
+    for (const entry of fs.readdirSync(userDir)) {
+      if (entry !== '.ant') fs.rmSync(path.join(userDir, entry), { recursive: true, force: true });
+    }
+  });
+
+  it('moves the definition dir, patches agent.yaml id, and sweeps every universal project', async () => {
+    await createAgent();
+    seedUniversalProject('proj-a', 'ops');
+    seedUniversalProject('proj-b', 'ops');
+    // Non-universal projects are skipped, not swept.
+    fs.mkdirSync(path.join(userDir, 'canonical-proj'), { recursive: true });
+    fs.writeFileSync(
+      path.join(userDir, 'canonical-proj/config.json'),
+      JSON.stringify({ projectType: 'canonical' }),
+      'utf-8',
+    );
+
+    const res = await api('/ops/rename', { method: 'POST', body: JSON.stringify({ id: 'ops-team' }) });
+    expect(res.status).toBe(200);
+    expect((await res.json()).movedProjects.sort()).toEqual(['proj-a', 'proj-b']);
+
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops'))).toBe(false);
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops-team/agent.yaml'), 'utf-8')).toContain('id: ops-team');
+
+    for (const projectId of ['proj-a', 'proj-b']) {
+      const base = path.join(userDir, projectId, 'universal');
+      expect(fs.existsSync(path.join(base, 'sessions/ops'))).toBe(false);
+      expect(fs.existsSync(path.join(base, 'sessions/ops-team/weekly.json'))).toBe(true);
+      expect(fs.existsSync(path.join(base, 'artifacts/plan/ops-team/weekly'))).toBe(true);
+      const session = JSON.parse(fs.readFileSync(path.join(base, 'sessions/ops-team/weekly.json'), 'utf-8'));
+      expect(session.state.customJobRef).toBe('ops-team/weekly');
+    }
+  });
+
+  it('an id taken by a builtin → 409 and nothing moves', async () => {
+    await createAgent();
+    seedUniversalProject('proj-a', 'ops');
+    const res = await api('/ops/rename', { method: 'POST', body: JSON.stringify({ id: 'assistant' }) });
+    expect(res.status).toBe(409);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'proj-a/universal/sessions/ops'))).toBe(true);
+  });
+
+  it('occupied workspace data at the destination → 409 BEFORE any move', async () => {
+    await createAgent();
+    seedUniversalProject('proj-a', 'ops');
+    // A stale container from a previously deleted agent named `ops-team`.
+    fs.mkdirSync(path.join(userDir, 'proj-a/universal/sessions/ops-team'), { recursive: true });
+
+    const res = await api('/ops/rename', { method: 'POST', body: JSON.stringify({ id: 'ops-team' }) });
+    expect(res.status).toBe(409);
+    expect((await res.json()).conflicts.length).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'proj-a/universal/sessions/ops'))).toBe(true);
+  });
+
+  it('readonly scope → 403; invalid target id → 400; same id → no-op 200', async () => {
+    await createAgent();
+    expect((await api('/assistant/rename', { method: 'POST', body: JSON.stringify({ id: 'x' }) })).status).toBe(403);
+    const same = await api('/ops/rename', { method: 'POST', body: JSON.stringify({ id: 'ops' }) });
+    expect(same.status).toBe(200);
+    expect((await same.json()).movedProjects).toEqual([]);
+  });
+
+  // Ids are directory names AND are echoed back in `{agentId}/{jobId}` refs and
+  // `@intent:` mentions, so the charset is strict kebab-case — not merely
+  // "lowercase and hyphens".
+  it.each(['Bad_Id', 'ops--team', 'ops-', '-ops', 'Ops'])('non-kebab id %s → 400', async (badId) => {
+    await createAgent();
+    expect((await api('/ops/rename', { method: 'POST', body: JSON.stringify({ id: badId }) })).status).toBe(400);
+    expect((await api('', { method: 'POST', body: JSON.stringify({ id: badId, name: 'x' }) })).status).toBe(400);
+    expect((await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: badId, name: 'x' }) })).status).toBe(400);
+  });
+});
+
+/**
+ * jobId is the second half of the same axis: a directory name that also keys
+ * `sessions/{agentId}/{jobId}.json` and `artifacts/plan/{agentId}/{jobId}`. The
+ * rows mirror the agent block — move + sweep, refusal moves nothing — because
+ * the two levels are deliberately symmetric.
+ */
+describe('job id rename', () => {
+  function seedUniversalProject(projectId: string, agentId: string, jobId: string): void {
+    const project = path.join(userDir, projectId);
+    fs.mkdirSync(project, { recursive: true });
+    fs.writeFileSync(path.join(project, 'config.json'), JSON.stringify({ projectType: 'universal' }), 'utf-8');
+    const sessions = path.join(project, 'universal/sessions', agentId);
+    fs.mkdirSync(sessions, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessions, `${jobId}.json`),
+      JSON.stringify({ state: { customJobRef: `${agentId}/${jobId}` } }),
+      'utf-8',
+    );
+    fs.mkdirSync(path.join(project, 'universal/artifacts/plan', agentId, jobId), { recursive: true });
+  }
+
+  beforeEach(async () => {
+    for (const entry of fs.readdirSync(userDir)) {
+      if (entry !== '.ant') fs.rmSync(path.join(userDir, entry), { recursive: true, force: true });
+    }
+    await createAgent();
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'Weekly' }) });
+  });
+
+  it('moves the job dir, patches job.yaml id, and sweeps the per-job container data', async () => {
+    seedUniversalProject('proj-a', 'ops', 'weekly');
+
+    const res = await api('/ops/jobs/weekly/rename', { method: 'POST', body: JSON.stringify({ id: 'monthly' }) });
+    expect(res.status).toBe(200);
+    expect((await res.json()).movedProjects).toEqual(['proj-a']);
+
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly'))).toBe(false);
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/monthly/job.yaml'), 'utf-8')).toContain('id: monthly');
+
+    const base = path.join(userDir, 'proj-a/universal');
+    expect(fs.existsSync(path.join(base, 'sessions/ops/weekly.json'))).toBe(false);
+    expect(fs.existsSync(path.join(base, 'artifacts/plan/ops/weekly'))).toBe(false);
+    expect(fs.existsSync(path.join(base, 'artifacts/plan/ops/monthly'))).toBe(true);
+    const session = JSON.parse(fs.readFileSync(path.join(base, 'sessions/ops/monthly.json'), 'utf-8'));
+    expect(session.state.customJobRef).toBe('ops/monthly');
+  });
+
+  it('occupied workspace data at the destination → 409 BEFORE any move', async () => {
+    seedUniversalProject('proj-a', 'ops', 'weekly');
+    fs.writeFileSync(path.join(userDir, 'proj-a/universal/sessions/ops/monthly.json'), '{}', 'utf-8');
+
+    const res = await api('/ops/jobs/weekly/rename', { method: 'POST', body: JSON.stringify({ id: 'monthly' }) });
+    expect(res.status).toBe(409);
+    expect((await res.json()).conflicts.length).toBeGreaterThan(0);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, 'proj-a/universal/sessions/ops/weekly.json'))).toBe(true);
+  });
+
+  it('an id taken by a sibling job → 409; unknown job → 404; readonly scope → 403', async () => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'monthly', name: 'Monthly' }) });
+    expect(
+      (await api('/ops/jobs/weekly/rename', { method: 'POST', body: JSON.stringify({ id: 'monthly' }) })).status,
+    ).toBe(409);
+    expect(
+      (await api('/ops/jobs/ghost/rename', { method: 'POST', body: JSON.stringify({ id: 'x' }) })).status,
+    ).toBe(404);
+    expect(
+      (await api('/assistant/jobs/chat/rename', { method: 'POST', body: JSON.stringify({ id: 'x' }) })).status,
+    ).toBe(403);
+  });
+
+  it('invalid target id → 400; same id → no-op 200', async () => {
+    expect(
+      (await api('/ops/jobs/weekly/rename', { method: 'POST', body: JSON.stringify({ id: 'Bad_Id' }) })).status,
+    ).toBe(400);
+    const same = await api('/ops/jobs/weekly/rename', { method: 'POST', body: JSON.stringify({ id: 'weekly' }) });
+    expect(same.status).toBe(200);
+    expect((await same.json()).movedProjects).toEqual([]);
+  });
 });
 
 describe('definition file endpoints', () => {

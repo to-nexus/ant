@@ -15,6 +15,12 @@ interface LineNumberedEditorProps {
  * Focus surfaces an Aurora violet ring (`var(--violet-500)`) instead of
  * the legacy blue ring; body uses `var(--bg-surface)` (shared editor body
  * fill) and the gutter recesses to `var(--bg-surface-2)` + `var(--text-4)`.
+ *
+ * MOUNT CONTRACT: the root takes its height from `flex-1`, so it must be a
+ * child of a **flex column with a definite height**. Inside a plain block it
+ * has no height, grows to the full content, gets clipped by whatever box
+ * bounds it, and — since the textarea then never scrolls — the gutter stops
+ * tracking the content.
  */
 export function LineNumberedEditor({ value, onChange, disabled }: LineNumberedEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);

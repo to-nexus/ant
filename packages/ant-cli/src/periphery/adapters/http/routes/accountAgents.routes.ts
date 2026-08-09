@@ -17,7 +17,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import multer from 'multer';
-import { GENERAL_INTENT, isAllowedDefinitionPath, isValidCustomId, type CustomJobPromptPreview } from '@ant/shared';
+import { CUSTOM_ID_HINT, GENERAL_INTENT, isAllowedDefinitionPath, isValidCustomId, type CustomJobPromptPreview } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { deriveCustomAgentScopeRootsFromUserDir } from '../../../../core/customAgents/scopeRoots';
 import {
@@ -29,6 +29,7 @@ import {
 } from '../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../core/customAgents/types';
 import { buildCustomJobSystemBlock } from '../../../../core/customAgents/promptBlock';
+import { moveUniversalAgentData, moveUniversalJobData } from '../../../../core/customAgents/universalContainer';
 import { MUTATING_BUILTIN_TOOLS, UNIVERSAL_BUILTIN_TOOLS } from '../../../../core/customAgents/universalToolPolicy';
 import { TEMPLATE_PATHS } from '../../../../core/prompt/builder/templatePaths';
 import {
@@ -106,7 +107,7 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
       // agent.yaml schema no longer carries it.
       const { id, name } = req.body ?? {};
       if (!isValidCustomId(id ?? '')) {
-        return res.status(400).json({ error: `Agent id must match [a-z0-9-]+ (got: ${String(id)})` });
+        return res.status(400).json({ error: `Agent id must be ${CUSTOM_ID_HINT} (got: ${String(id)})` });
       }
       const scopeRoots = scopeRootsFor(req);
       const collision = findCreateCollision(scopeRoots, id);
@@ -135,6 +136,56 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
     }
   });
 
+  /**
+   * Change an agent's id — the id IS the definition directory name, so this
+   * moves that directory AND the container data keyed by it in every universal
+   * project of the account (`sessions/{agentId}`, `artifacts/plan/{agentId}`).
+   * Leaving those behind would silently reset the agent's memory everywhere.
+   *
+   * Every destination is checked before anything moves, so a refusal leaves the
+   * account exactly as it was. Known gap (shared with DELETE /:agentId): a job
+   * already running under the old id finishes writing to the old paths.
+   */
+  router.post('/:agentId/rename', (req: Request, res: Response) => {
+    try {
+      const scopeRoots = scopeRootsFor(req);
+      const found = findWritableAgent(res, scopeRoots, req.params.agentId);
+      if (!found) return;
+      const { id: newId } = req.body ?? {};
+      if (!isValidCustomId(newId ?? '')) {
+        return res.status(400).json({ error: `Agent id must be ${CUSTOM_ID_HINT} (got: ${String(newId)})` });
+      }
+      if (newId === req.params.agentId) return res.json({ id: newId, movedProjects: [] });
+
+      const collision = findCreateCollision(scopeRoots, newId);
+      if (collision) {
+        return res.status(409).json({ error: createCollisionMessage(newId, collision) });
+      }
+
+      const workspacePath = deps.workspaceResolver.getWorkspacePath(extractUserContext(req));
+      const { conflicts } = moveUniversalAgentData(workspacePath, req.params.agentId, newId, { dryRun: true });
+      if (conflicts.length > 0) {
+        return res.status(409).json({
+          error: `Workspace data for "${newId}" already exists — nothing was moved`,
+          conflicts,
+        });
+      }
+
+      const newDir = path.join(found.scopeRoot.root, newId);
+      fs.renameSync(found.agentDir, newDir);
+      patchYamlFile(path.join(newDir, 'agent.yaml'), { id: newId });
+      const { movedProjects } = moveUniversalAgentData(workspacePath, req.params.agentId, newId);
+
+      logger.info(
+        `Custom agent renamed: ${req.params.agentId} → ${newId} (workspace data moved in ${movedProjects.length} project(s))`,
+        { component: 'AccountAgents' },
+      );
+      res.json({ id: newId, movedProjects });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'AccountAgents');
+    }
+  });
+
   router.delete('/:agentId', (req: Request, res: Response) => {
     try {
       const found = findWritableAgent(res, scopeRootsFor(req), req.params.agentId);
@@ -155,7 +206,7 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
       // job.yaml schema no longer carries it (mirrors agent.yaml).
       const { id, name } = req.body ?? {};
       if (!isValidCustomId(id ?? '')) {
-        return res.status(400).json({ error: `Job id must match [a-z0-9-]+ (got: ${String(id)})` });
+        return res.status(400).json({ error: `Job id must be ${CUSTOM_ID_HINT} (got: ${String(id)})` });
       }
       const jobDir = path.join(found.agentDir, 'jobs', id);
       if (fs.existsSync(jobDir)) {
@@ -179,6 +230,56 @@ export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceRes
       const { name } = req.body ?? {};
       patchYamlFile(jobYaml, { name });
       res.json({ success: true });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'AccountAgents');
+    }
+  });
+
+  /**
+   * Change a job's id — symmetric with `POST /:agentId/rename`. The id is the
+   * job directory name AND keys the per-job container data
+   * (`sessions/{agentId}/{jobId}.json`, `artifacts/plan/{agentId}/{jobId}`) in
+   * every universal project of the account, so the same dry-run-then-move
+   * contract applies: any occupied destination refuses before anything moves.
+   */
+  router.post('/:agentId/jobs/:jobId/rename', (req: Request, res: Response) => {
+    try {
+      const found = findWritableAgent(res, scopeRootsFor(req), req.params.agentId);
+      if (!found) return;
+      const oldJobId = req.params.jobId;
+      const jobDir = path.join(found.agentDir, 'jobs', oldJobId);
+      if (!isValidCustomId(oldJobId) || !fs.existsSync(jobDir)) {
+        return res.status(404).json({ error: `Custom job not found: ${req.params.agentId}/${oldJobId}` });
+      }
+      const { id: newId } = req.body ?? {};
+      if (!isValidCustomId(newId ?? '')) {
+        return res.status(400).json({ error: `Job id must be ${CUSTOM_ID_HINT} (got: ${String(newId)})` });
+      }
+      if (newId === oldJobId) return res.json({ id: newId, movedProjects: [] });
+
+      const newDir = path.join(found.agentDir, 'jobs', newId);
+      if (fs.existsSync(newDir)) {
+        return res.status(409).json({ error: `Custom job already exists: ${req.params.agentId}/${newId}` });
+      }
+
+      const workspacePath = deps.workspaceResolver.getWorkspacePath(extractUserContext(req));
+      const { conflicts } = moveUniversalJobData(workspacePath, req.params.agentId, oldJobId, newId, { dryRun: true });
+      if (conflicts.length > 0) {
+        return res.status(409).json({
+          error: `Workspace data for "${req.params.agentId}/${newId}" already exists — nothing was moved`,
+          conflicts,
+        });
+      }
+
+      fs.renameSync(jobDir, newDir);
+      patchYamlFile(path.join(newDir, 'job.yaml'), { id: newId });
+      const { movedProjects } = moveUniversalJobData(workspacePath, req.params.agentId, oldJobId, newId);
+
+      logger.info(
+        `Custom job renamed: ${req.params.agentId}/${oldJobId} → ${newId} (workspace data moved in ${movedProjects.length} project(s))`,
+        { component: 'AccountAgents' },
+      );
+      res.json({ id: newId, movedProjects });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }

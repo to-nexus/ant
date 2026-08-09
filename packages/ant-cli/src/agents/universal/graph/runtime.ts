@@ -8,17 +8,15 @@
 
 import type { FileSystemPort } from '../../../core/ports/filesystem';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
-import type { ResolvedCustomJob } from '../../../core/customAgents/types';
+import { DEFINITION_MOUNT_PREFIX } from '../../../core/customAgents/promptBlock';
 import { ToolRegistry } from '../../common/tool/registry';
 import { createUniversalToolRegistry } from '../../common/tool/presets';
 import type { ToolName } from '../../common/tool/toolCatalog';
 
-/**
- * Virtual read-only mount of the custom agent definition dir inside the tool
- * sandbox — lets the LLM `read_file` shared `injections/` prose (progressive
- * disclosure) without widening the write surface beyond `universal/artifacts/`.
- */
-export const DEFINITION_MOUNT_PREFIX = '_agent-definition/';
+// The mount prefix SSOT lives in core (promptBlock.ts) so the settings API
+// can render TOC paths without importing the graph; re-exported for the
+// existing graph-side consumers.
+export { DEFINITION_MOUNT_PREFIX };
 
 let _mcp: McpConnectionManager | null = null;
 let _registry: ToolRegistry | null = null;
@@ -74,7 +72,6 @@ export function _resetUniversalRuntimeForTests(): void {
 export function createUniversalFileSystem(
   artifactsFs: FileSystemPort,
   definitionFs: FileSystemPort,
-  _resolved: ResolvedCustomJob,
 ): FileSystemPort {
   const strip = (p: string): string => p.slice(DEFINITION_MOUNT_PREFIX.length);
   const isMounted = (p: string): boolean => p.startsWith(DEFINITION_MOUNT_PREFIX);

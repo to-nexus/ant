@@ -48,10 +48,9 @@ describe('shipped builtin definitions — smoke', () => {
   it.each(shippedPairs)('%s/%s loads and honors the shipping policy', (agentId, jobId) => {
     const resolved = loadCustomJob(builtinRoots, agentId, jobId);
 
-    // Shipping policy: no MCP servers (arbitrary code + host env deps), no
-    // canonical-plane access, prose under the cap (no truncation footer).
+    // Shipping policy: no MCP servers (arbitrary code + host env deps),
+    // prose under the cap (no truncation footer).
     expect(Object.keys(resolved.mcpServers)).toEqual([]);
-    expect(resolved.workspace).toBe('none');
     expect(resolved.prose).not.toContain('[... truncated');
 
     // Every advertised injection must exist where the TOC points.
@@ -59,6 +58,11 @@ describe('shipped builtin definitions — smoke', () => {
       expect(fs.existsSync(entry.absolutePath), `missing injection: ${entry.absolutePath}`).toBe(true);
       expect(entry.summary.trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it.each(shippedAgents)('%s carries no agent-level intents.yaml or injections/ (job-only)', (agentId) => {
+    expect(fs.existsSync(path.join(SRC_AGENTS_DIR, agentId, 'intents.yaml'))).toBe(false);
+    expect(fs.existsSync(path.join(SRC_AGENTS_DIR, agentId, 'injections'))).toBe(false);
   });
 
   it('lenient discovery lists every shipped agent with all of its jobs', () => {
@@ -101,19 +105,34 @@ describe('builtin scope root wiring', () => {
   });
 });
 
-describe('shipped intent catalogs', () => {
-  it('research-brief declares research + cite (job intents may reference agent-level injections)', () => {
-    const resolved = loadCustomJob(builtinRoots, 'sample-researcher', 'research-brief');
-    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['cite', 'research']);
-    const cite = resolved.intents.find((i) => i.id === 'cite');
-    expect(cite?.injections).toEqual(['citation-style.md']);
-    const research = resolved.intents.find((i) => i.id === 'research');
-    expect(research?.injections).toEqual(['brief-template.md']);
+describe('shipped assistant definition', () => {
+  it('assistant/chat exposes the job catalog, one injection per intent', () => {
+    const resolved = loadCustomJob(builtinRoots, 'assistant', 'chat');
+    expect(resolved.intents.map((i) => i.id).sort()).toEqual([
+      'analysis',
+      'coding',
+      'research',
+      'writing',
+    ]);
+    expect(resolved.intents.find((i) => i.id === 'research')?.injections).toEqual([
+      'web-research.md',
+    ]);
+    expect(resolved.intents.find((i) => i.id === 'writing')?.injections).toEqual([
+      'document-workflow.md',
+    ]);
+    expect(resolved.intents.find((i) => i.id === 'coding')?.injections).toEqual([
+      'coding-practices.md',
+    ]);
+    expect(resolved.intents.find((i) => i.id === 'analysis')?.injections).toEqual([
+      'data-analysis.md',
+    ]);
   });
 
-  it('quick-answer declares no catalog (zero-cost classify skip path)', () => {
-    const resolved = loadCustomJob(builtinRoots, 'sample-researcher', 'quick-answer');
-    expect(resolved.intents).toEqual([]);
+  it('ships the intended tool posture: no http_request, run_command pre-approved', () => {
+    const resolved = loadCustomJob(builtinRoots, 'assistant', 'chat');
+    expect(resolved.builtinTools).not.toContain('http_request');
+    expect(resolved.builtinTools).toContain('run_command');
+    expect(resolved.approval.run_command).toBe('never');
   });
 });
 

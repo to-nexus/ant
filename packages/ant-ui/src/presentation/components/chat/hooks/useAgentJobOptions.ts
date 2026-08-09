@@ -64,20 +64,22 @@ export function useAgentJobOptions() {
     loadAgents();
   }, [isUniversalMode]);
 
+  // Agents carry no emoji: every agent surface renders the Ant character
+  // (`AgentLogo`) instead, so the label here is the bare name. Job labels keep
+  // their emoji — a job still has a built-in identity.
   const agentsWithMetadata: AgentWithMetadata[] = useMemo(() =>
     agents.map((agent) => {
-      const metadata: Record<string, { emoji: string; description: string }> = {
-        architect: { emoji: '🤖', description: t('agent.architect') },
-        planner: { emoji: '📋', description: t('agent.planner', { context: domain }) },
-        reviewer: { emoji: '🔍', description: t('agent.reviewer') },
-        doc: { emoji: '📝', description: t('agent.doc') },
-        creator: { emoji: '🎨', description: t('agent.creator') }
+      const descriptions: Record<string, string> = {
+        architect: t('agent.architect'),
+        planner: t('agent.planner', { context: domain }),
+        reviewer: t('agent.reviewer'),
+        doc: t('agent.doc'),
+        creator: t('agent.creator'),
       };
-      const meta = metadata[agent.value] || { emoji: '🤖', description: agent.label };
       return {
         ...agent,
-        displayLabel: `${meta.emoji} ${agent.label}`,
-        description: meta.description
+        displayLabel: agent.label,
+        description: descriptions[agent.value] || agent.label,
       };
     }),
     [agents, t, domain]

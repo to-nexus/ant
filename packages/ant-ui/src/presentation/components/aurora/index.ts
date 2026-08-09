@@ -19,6 +19,7 @@ export {
   type CardPadding,
 } from './Card';
 export { Badge, type BadgeProps, type BadgeTone, type BadgeSize } from './Badge';
+export { KebabMenu, type KebabMenuItem } from './KebabMenu';
 export { Chip, type ChipProps, type ChipTone } from './Chip';
 export { Input, type InputProps, type InputSize } from './Input';
 export { Textarea, type TextareaProps } from './Textarea';

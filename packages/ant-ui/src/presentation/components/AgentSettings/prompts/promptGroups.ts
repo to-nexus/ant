@@ -2,11 +2,14 @@
  * Prompts-card scope + grouping model — pure, store-free, so tests exercise
  * the truth table without a DOM.
  *
- * The scoped surface has a fixed, shallow shape (agent = base/*.md +
- * agent.yaml · job = its jobs/{id}/ subtree · intent = only the bound
- * injection files), so the list is FLAT and grouped by semantics — base =
- * always injected, injections = intent-gated, config = the yaml hatches —
- * instead of mirroring directory nesting that carries no extra information.
+ * This surface is PROSE ONLY: the definition yaml files are owned by their
+ * own cards (agent.yaml / job.yaml / intents.yaml each get a structured form
+ * and a raw YAML view over the same buffer), so listing them here too would
+ * re-open the two-writers-one-file hazard. The scoped shape is fixed and
+ * shallow (agent = base/*.md · job = its jobs/{id}/ subtree · intent = only
+ * the bound injection files), so the list is FLAT and grouped by semantics —
+ * base = always injected, injections = intent-gated — instead of mirroring
+ * directory nesting that carries no extra information.
  */
 
 import type { CustomAgentDefinitionFileNode } from '@ant/shared';
@@ -16,7 +19,7 @@ export type PromptsScope =
   | { level: 'job'; jobId: string }
   | { level: 'intent'; jobId: string; intentInjections: string[] };
 
-export type PromptRowKind = 'base' | 'injection' | 'config';
+export type PromptRowKind = 'base' | 'injection';
 
 export interface PromptRow {
   /** Full definition path (API vocabulary). */
@@ -26,18 +29,14 @@ export interface PromptRow {
   kind: PromptRowKind;
   /** Intent ids that inline this file when active — injection rows only. */
   boundIntents: string[];
-  /** Structural files can never be renamed or deleted from the UI. */
-  structural: boolean;
 }
 
 export interface PromptGroup {
-  id: 'base' | 'injections' | 'config' | 'bound';
+  id: 'base' | 'injections' | 'bound';
   /** i18n key in the `agents` namespace. */
   labelKey: string;
   rows: PromptRow[];
 }
-
-const STRUCTURAL_FILE = /^(agent\.yaml|jobs\/[^/]+\/job\.yaml)$/;
 
 function collectFiles(nodes: CustomAgentDefinitionFileNode[], out: CustomAgentDefinitionFileNode[] = []) {
   for (const n of nodes) {
@@ -57,7 +56,6 @@ function toRow(
     name: node.name,
     kind,
     boundIntents: kind === 'injection' ? (intentBindings[node.path] ?? []) : [],
-    structural: STRUCTURAL_FILE.test(node.path),
   };
 }
 
@@ -78,11 +76,6 @@ export function buildPromptGroups(
       'base',
       'prompts.groupBase',
       files.filter((f) => /^base\/[^/]+\.md$/.test(f.path)).map((f) => toRow(f, 'base', intentBindings)),
-    );
-    push(
-      'config',
-      'prompts.groupConfig',
-      files.filter((f) => f.path === 'agent.yaml').map((f) => toRow(f, 'config', intentBindings)),
     );
     return groups;
   }
@@ -118,13 +111,6 @@ export function buildPromptGroups(
     jobFiles
       .filter((f) => /^injections\/[^/]+\.md$/.test(f.path.slice(prefix.length)))
       .map((f) => toRow(f, 'injection', intentBindings)),
-  );
-  push(
-    'config',
-    'prompts.groupConfig',
-    jobFiles
-      .filter((f) => f.path === `${prefix}job.yaml` || f.path === `${prefix}intents.yaml`)
-      .map((f) => toRow(f, 'config', intentBindings)),
   );
   return groups;
 }

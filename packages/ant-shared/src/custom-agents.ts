@@ -34,7 +34,7 @@ export const CUSTOM_AGENT_SCOPE_PRIORITY: readonly CustomAgentScope[] = [
  * vocabulary — they never join the compile-time canonical `IntentId` union.
  */
 export interface CustomIntentDef {
-  /** `[a-z0-9][a-z0-9-]*`, unique within its file; `'general'` is reserved. */
+  /** {@link CUSTOM_ID_PATTERN}, unique within its file; `'general'` is reserved. */
   id: string;
   /** Classification matching criterion — rendered verbatim as a catalog row. */
   description: string;
@@ -56,7 +56,7 @@ export const INTENTS_FILE_NAME = 'intents.yaml' as const;
  * authoring home `agent.yaml` already enforces for the agent's persona.
  */
 export interface CustomJobSummary {
-  /** `[a-z0-9-]+`, equals the `jobs/{jobId}/` directory name. */
+  /** {@link CUSTOM_ID_PATTERN}, equals the `jobs/{jobId}/` directory name. */
   id: string;
   /** UI chip label. */
   name: string;
@@ -70,7 +70,7 @@ export interface CustomJobSummary {
 
 /** Summary of one custom agent and its jobs, as listed by the discovery API. */
 export interface CustomAgentSummary {
-  /** `[a-z0-9-]+`, equals the `.ant/agents/{agentId}/` directory name. */
+  /** {@link CUSTOM_ID_PATTERN}, equals the `.ant/agents/{agentId}/` directory name. */
   id: string;
   name: string;
   /** Which scope root this definition was resolved from. */
@@ -87,11 +87,81 @@ export interface CustomAgentSummary {
  */
 export const UNIVERSAL_FEATURE = 'universal' as const;
 
-/** id charset for both agentId and jobId (must equal the directory name). */
-export const CUSTOM_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+/**
+ * id charset for agentId / jobId / intentId / MCP server name — strict
+ * kebab-case: `a-z0-9` segments joined by SINGLE hyphens, no leading or
+ * trailing hyphen. agent and job ids are directory names, so a doubled or
+ * dangling hyphen would be a legal directory that reads as a typo everywhere
+ * it is echoed back (`@intent:` mentions, `{agentId}/{jobId}` refs).
+ */
+export const CUSTOM_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Human-readable form of {@link CUSTOM_ID_PATTERN} for error copy. */
+export const CUSTOM_ID_HINT = 'lowercase kebab-case (a-z, 0-9, single hyphens)';
 
 export function isValidCustomId(id: string): boolean {
   return CUSTOM_ID_PATTERN.test(id);
+}
+
+/** Coerce free text (a display name) into a valid {@link CUSTOM_ID_PATTERN} id. */
+export function toCustomId(text: string, maxLength = 40): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .slice(0, maxLength)
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * MCP server connection declaration (secrets are env-var *names*, never
+ * values). Shared because the settings screen edits this shape structurally —
+ * one type and ONE validator for the loader, the pre-write gate, and the form.
+ */
+export interface McpServerConfig {
+  transport: 'stdio' | 'http';
+  /** stdio: executable to spawn. */
+  command?: string;
+  args?: string[];
+  /** stdio: map of child-env key → *host env var name* to forward. */
+  env?: Record<string, string>;
+  /** http: streamable HTTP endpoint. */
+  url?: string;
+}
+
+export const MCP_TRANSPORTS = ['stdio', 'http'] as const;
+
+/** env values name a host variable — the pattern that keeps secrets out of the file. */
+export const MCP_ENV_VAR_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/**
+ * Every rule the loader enforces, as plain messages. Empty = valid. Callers
+ * decide the shape of the failure: the loader throws
+ * `CustomAgentValidationError`, the HTTP gate answers 400, the form disables
+ * saving.
+ */
+export function validateMcpServers(servers: Record<string, McpServerConfig> | undefined): string[] {
+  const errors: string[] = [];
+  for (const [name, cfg] of Object.entries(servers ?? {})) {
+    if (!isValidCustomId(name)) {
+      errors.push(`MCP server name "${name}" must be ${CUSTOM_ID_HINT}`);
+    }
+    if (cfg?.transport === 'stdio') {
+      if (!cfg.command) errors.push(`MCP server "${name}": stdio transport requires "command"`);
+    } else if (cfg?.transport === 'http') {
+      if (!cfg.url) errors.push(`MCP server "${name}": http transport requires "url"`);
+    } else {
+      errors.push(`MCP server "${name}": transport must be "stdio" | "http"`);
+    }
+    for (const [key, value] of Object.entries(cfg?.env ?? {})) {
+      if (typeof value !== 'string' || !MCP_ENV_VAR_NAME_PATTERN.test(value)) {
+        errors.push(
+          `MCP server "${name}": env.${key} must reference a host env var NAME (got: ${String(value)}) — secrets never live in the definition file`,
+        );
+      }
+    }
+  }
+  return errors;
 }
 
 /**

@@ -41,12 +41,29 @@ function makeStore(seed?: Partial<HostState>) {
 }
 
 const AGENTS = [
-  { id: 'ops', name: 'Ops', description: '', scope: 'user', readonly: false, jobs: [] },
+  {
+    id: 'ops',
+    name: 'Ops',
+    scope: 'user',
+    readonly: false,
+    jobs: [
+      {
+        id: 'weekly',
+        name: 'Weekly',
+        description: '',
+        intents: [{ id: 'review', description: 'review things' }],
+      },
+    ],
+  },
 ];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  apiMock.fetchAccountAgents.mockResolvedValue({ agents: AGENTS, builtinToolPreset: ['read_file', 'write_file'] });
+  apiMock.fetchAccountAgents.mockResolvedValue({
+    agents: AGENTS,
+    builtinToolPreset: ['read_file', 'write_file'],
+    mutatingBuiltinTools: ['run_command'],
+  });
   apiMock.fetchDefinitionTree.mockResolvedValue({ tree: [{ name: 'agent.yaml', path: 'agent.yaml', type: 'file' }], scope: 'user', readonly: false });
   apiMock.fetchDefinitionFile.mockResolvedValue({ path: 'agent.yaml', content: 'id: ops\n' });
   apiMock.saveDefinitionFile.mockResolvedValue({ success: true, validation: { valid: true, errors: [] } });
@@ -58,13 +75,29 @@ describe('loadAccountAgents', () => {
     await s.getState().loadAccountAgents();
     expect(s.getState().accountAgents).toHaveLength(1);
     expect(s.getState().builtinToolPreset).toEqual(['read_file', 'write_file']);
+    expect(s.getState().mutatingBuiltinTools).toEqual(['run_command']);
   });
 
   it('drops a selection whose agent disappeared', async () => {
     const s = makeStore();
     s.getState().selectAgentSettingsNode('ghost');
     await s.getState().loadAccountAgents();
-    expect(s.getState().agentSettingsSelection).toEqual({ agentId: undefined, jobId: undefined });
+    expect(s.getState().agentSettingsSelection).toEqual({ agentId: undefined, jobId: undefined, intentId: undefined });
+  });
+
+  it('prunes level-by-level: stale jobId and stale intentId drop, valid ancestors survive', async () => {
+    const s = makeStore();
+    s.getState().selectAgentSettingsNode('ops', 'ghost-job');
+    await s.getState().loadAccountAgents();
+    expect(s.getState().agentSettingsSelection).toEqual({ agentId: 'ops', jobId: undefined, intentId: undefined });
+
+    s.getState().selectAgentSettingsNode('ops', 'weekly', 'ghost-intent');
+    await s.getState().loadAccountAgents();
+    expect(s.getState().agentSettingsSelection).toEqual({ agentId: 'ops', jobId: 'weekly', intentId: undefined });
+
+    s.getState().selectAgentSettingsNode('ops', 'weekly', 'review');
+    await s.getState().loadAccountAgents();
+    expect(s.getState().agentSettingsSelection).toEqual({ agentId: 'ops', jobId: 'weekly', intentId: 'review' });
   });
 });
 
@@ -75,6 +108,16 @@ describe('selection + file buffer', () => {
     await vi.waitFor(() => expect(s.getState().definitionTree).toHaveLength(1));
     apiMock.fetchDefinitionTree.mockClear();
     s.getState().selectAgentSettingsNode('ops');
+    expect(apiMock.fetchDefinitionTree).not.toHaveBeenCalled();
+  });
+
+  it('intent selection changes the selection without refetching the tree (same agent)', async () => {
+    const s = makeStore();
+    s.getState().selectAgentSettingsNode('ops');
+    await vi.waitFor(() => expect(s.getState().definitionTree).toHaveLength(1));
+    apiMock.fetchDefinitionTree.mockClear();
+    s.getState().selectAgentSettingsNode('ops', 'weekly', 'review');
+    expect(s.getState().agentSettingsSelection).toEqual({ agentId: 'ops', jobId: 'weekly', intentId: 'review' });
     expect(apiMock.fetchDefinitionTree).not.toHaveBeenCalled();
   });
 

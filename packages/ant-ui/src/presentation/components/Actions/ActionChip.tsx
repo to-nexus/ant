@@ -78,6 +78,8 @@ export interface ActionChipProps {
   iconColor?: string;
   disabled?: boolean;
   blockReason?: string;
+  /** Toggle chips (universal intents) stay lit while active — one-shot chips leave this unset. */
+  selected?: boolean;
   /** Millisecond delay; parity (idx = delay/50) drives ±0.25° rest rotation. */
   animationDelay?: number;
 }
@@ -92,6 +94,7 @@ export function ActionChip(props: ActionChipProps) {
     icon,
     disabled = false,
     blockReason,
+    selected = false,
     animationDelay = 0,
   } = props;
 
@@ -112,6 +115,7 @@ export function ActionChip(props: ActionChipProps) {
         hue={grad.hue}
         disabled={disabled}
         blockReason={blockReason}
+        selected={selected}
         restRotation={restRotation}
         animationDelay={animationDelay}
       />
@@ -146,6 +150,7 @@ interface LargeTileProps {
   hue: number;
   disabled: boolean;
   blockReason?: string;
+  selected?: boolean;
   restRotation: number;
   animationDelay: number;
 }
@@ -159,6 +164,7 @@ function LargeTile({
   hue,
   disabled,
   blockReason,
+  selected = false,
   restRotation,
   animationDelay,
 }: LargeTileProps) {
@@ -183,9 +189,13 @@ function LargeTile({
     transform: active
       ? `translateY(-3px) rotate(${restRotation * 0.4}deg) scale(1.012)`
       : `translateY(0) rotate(${restRotation}deg) scale(1)`,
+    // A selected toggle chip keeps the lifted shadow and gains a white rim so
+    // "armed for this turn" reads without hovering.
     boxShadow: active
       ? `0 22px 36px -12px oklch(55% 0.24 ${hue} / 0.65), inset 0 0 0 1px oklch(100% 0 0 / 0.18), inset 0 1px 0 0 oklch(100% 0 0 / 0.20)`
-      : `0 14px 28px -12px oklch(55% 0.24 ${hue} / 0.55), inset 0 0 0 1px oklch(100% 0 0 / 0.18), inset 0 1px 0 0 oklch(100% 0 0 / 0.20)`,
+      : selected
+        ? `0 18px 32px -12px oklch(55% 0.24 ${hue} / 0.62), inset 0 0 0 2px oklch(100% 0 0 / 0.75), inset 0 1px 0 0 oklch(100% 0 0 / 0.20)`
+        : `0 14px 28px -12px oklch(55% 0.24 ${hue} / 0.55), inset 0 0 0 1px oklch(100% 0 0 / 0.18), inset 0 1px 0 0 oklch(100% 0 0 / 0.20)`,
     transition:
       'transform 360ms var(--ease-spring), box-shadow 360ms var(--ease-smooth), background-position 600ms var(--ease-smooth), opacity 320ms var(--ease-smooth)',
     animation: `spring-in 420ms var(--ease-spring) ${animationDelay}ms forwards`,

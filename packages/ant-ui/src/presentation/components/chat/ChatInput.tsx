@@ -12,6 +12,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { useTranslation } from 'react-i18next';
 import { pruneFileTreeForWorkspaceDomain } from '@ant/shared';
 import { FileTreePicker } from '@/presentation/components/common/FileTreePicker';
+import { AgentLogo } from '../AgentLogo';
 import type { FileStats } from '@/domain/models/chat';
 
 import { useAgentJobOptions } from './hooks/useAgentJobOptions';
@@ -141,7 +142,8 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
                            text-[color:var(--text-4)]
                            rounded cursor-not-allowed opacity-50"
               >
-                <span>🤖 Agent</span>
+                <AgentLogo size={13} />
+                <span>Agent</span>
                 <ChevronDown className="w-3 h-3" />
               </button>
 

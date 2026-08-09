@@ -4,14 +4,13 @@
  * here takes a projectId.
  */
 
-import { API_BASE, authFetch, apiGet, apiPost, apiDelete, apiPatch, apiPut, ApiError } from './client';
+import { API_BASE, authFetch, apiGet, apiPost, apiDelete, apiPut, ApiError } from './client';
 import type {
   CustomAgentSummary,
   CustomJobSummary,
   CustomAgentDefinitionFileNode,
   CustomAgentScope,
   CustomIntentDef,
-  CustomJobPromptPreview,
   DefinitionValidationResult,
 } from '@ant/shared';
 import type { UploadFileEntry } from './files';
@@ -36,17 +35,16 @@ export function deleteAccountAgent(agentId: string): Promise<void> {
   return apiDelete(`${base()}/${encodeURIComponent(agentId)}`);
 }
 
-/** Display-name rename (id is immutable — it IS the directory name). */
-export function renameAccountAgent(agentId: string, name: string): Promise<{ success: boolean }> {
-  return apiPatch(`${base()}/${encodeURIComponent(agentId)}`, { name });
-}
-
-export function renameAccountAgentJob(
+/**
+ * Change the agent's id. The id is the definition directory name, so the BE
+ * moves that directory plus every session/plan folder keyed by it; the response
+ * names the projects whose workspace data moved.
+ */
+export function renameAccountAgentId(
   agentId: string,
-  jobId: string,
-  name: string,
-): Promise<{ success: boolean }> {
-  return apiPatch(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}`, { name });
+  newId: string,
+): Promise<{ id: string; movedProjects: string[] }> {
+  return apiPost(`${base()}/${encodeURIComponent(agentId)}/rename`, { id: newId });
 }
 
 export function createAccountAgentJob(
@@ -54,6 +52,22 @@ export function createAccountAgentJob(
   body: { id: string; name: string },
 ): Promise<CustomJobSummary> {
   return apiPost(`${base()}/${encodeURIComponent(agentId)}/jobs`, body);
+}
+
+/**
+ * Change a job's id — symmetric with {@link renameAccountAgentId}: the id is
+ * the job directory name and keys the per-job session/plan data, so the BE
+ * moves both and names the projects it swept.
+ */
+export function renameAccountAgentJobId(
+  agentId: string,
+  jobId: string,
+  newId: string,
+): Promise<{ id: string; movedProjects: string[] }> {
+  return apiPost(
+    `${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}/rename`,
+    { id: newId },
+  );
 }
 
 export function deleteAccountAgentJob(agentId: string, jobId: string): Promise<void> {
@@ -70,16 +84,6 @@ export interface AccountJobValidation {
 
 export function validateAccountAgentJob(agentId: string, jobId: string): Promise<AccountJobValidation> {
   return apiGet(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}/validate`);
-}
-
-/** Composed-prompt preview — the exact system block the runtime injects for the given intents. */
-export function fetchJobPromptPreview(
-  agentId: string,
-  jobId: string,
-  intents?: string[],
-): Promise<CustomJobPromptPreview> {
-  const query = intents && intents.length > 0 ? `?intents=${encodeURIComponent(intents.join(','))}` : '';
-  return apiGet(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}/prompt-preview${query}`);
 }
 
 // ── definition files ─────────────────────────────────────────────────────────

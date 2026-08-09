@@ -1,0 +1,22 @@
+# Job intent catalog — intents are job-only (this file lives next to job.yaml).
+#
+# Each description IS the classification criterion: the runtime renders it
+# verbatim as a catalog row for the per-turn intent classifier. When an intent
+# matches, its `injections` files (this job's injections/*.md) are inlined in
+# full; otherwise they stay in an on-demand table of contents. Users can also
+# force intents explicitly with `@intent:` mentions in the composer. `general`
+# is reserved for "no match" and cannot be declared here.
+version: 1
+intents:
+  - id: research
+    description: 'Questions needing current or external information from the web — news, prices, releases, product comparisons, fact-checking a claim'
+    injections: [web-research.md]
+  - id: writing
+    description: 'Drafting, revising, or maintaining a document, report, plan, or other written deliverable kept as a file'
+    injections: [document-workflow.md]
+  - id: coding
+    description: 'Writing, fixing, explaining, or running code, scripts, or shell commands'
+    injections: [coding-practices.md]
+  - id: analysis
+    description: 'Summarizing, extracting from, transforming, or computing over files or data already in the artifact tree'
+    injections: [data-analysis.md]

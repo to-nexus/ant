@@ -94,6 +94,8 @@ export interface ChipItem {
   text?: string;
   disabled?: boolean;
   blockReason?: string;
+  /** Toggle chips only (universal intents) — keeps the tile lit while armed. */
+  selected?: boolean;
 }
 
 interface IntentChipGridProps {
@@ -138,6 +140,7 @@ export function IntentChipGrid({ items, onSelect, title, subtitle }: IntentChipG
               iconColor={item.text}
               disabled={item.disabled}
               blockReason={item.blockReason}
+              selected={item.selected}
               animationDelay={idx * 50}
             />
           </div>

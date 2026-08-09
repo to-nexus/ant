@@ -19,6 +19,8 @@ import { useChat } from '@/application/hooks/features/useChat';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useActionReadiness } from '@/application/hooks/features/useActionReadiness';
 import { ActionChipGrid } from '../Actions';
+import { IntentChipGrid } from '../Actions/ActionChipGrid';
+import { useUniversalActionSurface } from '../Actions/useUniversalActionSurface';
 import { DomainBadge } from '../Actions/DomainBadge';
 import { useStore } from '@/domain/store';
 import { selectFileStats } from '@/domain/store/selectors/chat';
@@ -33,38 +35,24 @@ interface ChatPanelProps {
   onCollapse?: () => void;
 }
 
-type WatermarkVariant = 'color' | 'mono';
-
 const BASE = import.meta.env.BASE_URL;
 
-const WATERMARK_MAP: Record<string, Record<WatermarkVariant, string>> = {
-  planner: {
-    color: `${BASE}watermarks/planner-color.png`,
-    mono: `${BASE}watermarks/planner-mono.png`,
-  },
-  architect: {
-    color: `${BASE}watermarks/architect-color.png`,
-    mono: `${BASE}watermarks/architect-mono.png`,
-  },
-  creator: {
-    color: `${BASE}watermarks/creator-color.png`,
-    mono: `${BASE}watermarks/creator-mono.png`,
-  },
+/**
+ * The agent mark on the empty state is the Ant character for EVERY agent — a
+ * universal agent is user-authored, so per-agent art could only ever cover the
+ * built-in three.
+ */
+const AGENT_MARK_SRC = `${BASE}logo.png`;
+
+/** Faint texture behind a populated history — background, not an agent mark. */
+const HISTORY_TEXTURE: Record<string, string> = {
+  planner: `${BASE}watermarks/planner-mono.png`,
+  architect: `${BASE}watermarks/architect-mono.png`,
+  creator: `${BASE}watermarks/creator-mono.png`,
 };
 
-function getWatermarkSrc(
-  selectedAgent: string | null | undefined,
-  variant: WatermarkVariant
-): string | null {
-  if (!selectedAgent) return null;
-  return WATERMARK_MAP[selectedAgent]?.[variant] ?? null;
-}
-
-function getWatermarkStyle(
-  selectedAgent: string | null | undefined,
-  variant: WatermarkVariant
-): CSSProperties | null {
-  const src = getWatermarkSrc(selectedAgent, variant);
+function getHistoryTextureStyle(selectedAgent: string | null | undefined): CSSProperties | null {
+  const src = selectedAgent ? HISTORY_TEXTURE[selectedAgent] : undefined;
   if (!src) return null;
 
   return {
@@ -122,10 +110,8 @@ export function ChatPanel({
   useFeatureLogSync(_projectId, _featureName);
 
   const hasMessages = turnCount > 0;
-  const emptyStateWatermarkSrc = getWatermarkSrc(selectedAgent, 'color');
-  const historyWatermarkStyle = hasMessages
-    ? getWatermarkStyle(selectedAgent, 'mono')
-    : null;
+  const emptyStateWatermarkSrc = AGENT_MARK_SRC;
+  const historyWatermarkStyle = hasMessages ? getHistoryTextureStyle(selectedAgent) : null;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -268,7 +254,68 @@ export function ChatPanel({
   );
 }
 
+/**
+ * Empty-state action surface. Universal (workspace) projects have no RAC and
+ * no action/intent matrix, so offering them `ACTION_DEFINITIONS` would expose
+ * canonical jobs the project cannot run at all — they get the workspace
+ * vocabulary (job → intent) from the same hook the actions panel uses.
+ */
 function ChatActionCards() {
+  const isUniversal = useStore(s => s.projectType === 'universal');
+  return isUniversal ? <UniversalChatActionCards /> : <CanonicalChatActionCards />;
+}
+
+/**
+ * Universal empty state: the selected agent's jobs. Picking one selects it and
+ * hands off to the actions panel at the intent step — the same depth handoff a
+ * canonical chip performs.
+ */
+function UniversalChatActionCards() {
+  const { t } = useTranslation('actions');
+  const surface = useUniversalActionSurface();
+  const openActionsPanel = useStore(s => s.openActionsPanel);
+  const setActionsStep = useStore(s => s.setActionsStep);
+
+  const handleSelect = (jobId: string) => {
+    surface.selectJob(jobId);
+    openActionsPanel();
+    setActionsStep('pick-intent');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: '28rem' }}>
+      <img
+        src={AGENT_MARK_SRC}
+        alt=""
+        className="w-20 h-20 mb-4 opacity-80 watermark-empty-icon"
+        style={{ flexShrink: 0 }}
+      />
+      {surface.ready ? (
+        <div style={{ width: '100%', flexShrink: 0 }}>
+          <IntentChipGrid
+            items={surface.jobChipItems}
+            onSelect={handleSelect}
+            title={t('universal.pickJobTitle', { defaultValue: 'What should this agent do?' })}
+            subtitle={surface.agentName}
+          />
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-1.5 text-center">
+          <span className="text-sm" style={{ color: 'var(--text-2)' }}>
+            {t('universal.noAgent', { defaultValue: 'Select an agent in the chat toolbar first' })}
+          </span>
+          <span className="text-xs" style={{ color: 'var(--text-3)', maxWidth: 380, lineHeight: 1.6 }}>
+            {t('universal.noAgentHint', {
+              defaultValue: 'Agents and their jobs are authored in Agent Settings, from the profile menu.',
+            })}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CanonicalChatActionCards() {
   const { t } = useTranslation('actions');
   const readiness = useActionReadiness();
   const openActionsPanel = useStore(s => s.openActionsPanel);
@@ -287,12 +334,9 @@ function ChatActionCards() {
     openActionsPanel(actionId);
   };
 
-  const BASE = import.meta.env.BASE_URL;
-  // Hide agent watermark in 'show all' mode — the view is no longer scoped
-  // to the current agent, so the agent-themed art would mislead.
-  const agentWatermark = selectedAgent && !showAll
-    ? `${BASE}watermarks/${selectedAgent}-color.png`
-    : undefined;
+  // Hide the agent mark in 'show all' mode — the view is no longer scoped to
+  // one agent, so an agent mark would mislead.
+  const agentWatermark = selectedAgent && !showAll ? AGENT_MARK_SRC : undefined;
 
   return (
     <div
