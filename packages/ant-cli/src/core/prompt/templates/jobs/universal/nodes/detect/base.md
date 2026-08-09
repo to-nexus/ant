@@ -1,6 +1,6 @@
 # Intent Classification
 
-You are classifying the user's current message for the job "{{jobName}}"{{#if jobDescription}} ({{jobDescription}}){{/if}}.
+You are classifying the user's current message for the job "{{jobName}}".
 
 ## Current Message
 

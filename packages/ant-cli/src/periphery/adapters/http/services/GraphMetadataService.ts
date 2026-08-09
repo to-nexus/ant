@@ -205,6 +205,10 @@ export const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: st
     actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
     description: 'Load custom job definition, thread session, artifact overview'
   },
+  'universal:universal:detect': {
+    actors: [COMMON_ACTORS.llm.id],
+    description: 'Detect turn context: active intents + execution tier'
+  },
   'universal:universal:agent': {
     actors: [COMMON_ACTORS.llm.id],
     description: 'LLM round: harness + custom definition + history + tools'

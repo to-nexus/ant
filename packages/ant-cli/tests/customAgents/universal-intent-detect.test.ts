@@ -1,6 +1,6 @@
 /**
  * Universal intent classification axis — the `<intents>` tag parser table,
- * the classify node's skip ladder (explicit → empty catalog → empty resume →
+ * the detect node's skip ladder (explicit → empty catalog → empty resume →
  * infer with fallback), and the accept-time explicit-intent validation.
  */
 
@@ -8,8 +8,8 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as nodePath from 'path';
-import { parseIntentsTag } from '../../src/agents/universal/graph/nodes/classify/parser';
-import { classifyNode } from '../../src/agents/universal/graph/nodes/classify';
+import { parseIntentsTag } from '../../src/agents/universal/graph/nodes/detect/parser';
+import { detectNode } from '../../src/agents/universal/graph/nodes/detect';
 import {
   activateCustomJob,
   _resetActiveCustomJobForTests,
@@ -43,7 +43,7 @@ describe('parseIntentsTag — table', () => {
   });
 });
 
-// ── classify node skip ladder ────────────────────────────────────────────────
+// ── detect node skip ladder ────────────────────────────────────────────────
 
 function makeResolved(intents: ResolvedCustomJob['intents']): ResolvedCustomJob {
   return {
@@ -52,17 +52,12 @@ function makeResolved(intents: ResolvedCustomJob['intents']): ResolvedCustomJob 
     scope: 'user',
     agentName: 'Ops',
     jobName: 'Weekly',
-    description: 'desc',
     prose: 'p',
     injectionsToc: [],
     intents,
     mcpServers: {},
     builtinTools: [],
     approval: {},
-    workspace: 'none',
-    models: {},
-    plan: 'suggested',
-    outputs: { mode: 'free' },
     agentDir: '/tmp/x',
     jobDir: '/tmp/x/jobs/weekly',
   };
@@ -101,11 +96,11 @@ afterEach(() => {
   _resetActiveCustomJobForTests();
 });
 
-describe('classifyNode — skip ladder', () => {
+describe('detectNode — skip ladder', () => {
   it('1. explicit intents adopted, zero LLM calls', async () => {
     activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
     const { state, invocations } = makeState({ explicitIntents: ['research', 'cite'] });
-    const result = await classifyNode(state);
+    const result = await detectNode(state);
     expect(result.activeIntents).toEqual(['research', 'cite']);
     expect(invocations()).toBe(0);
   });
@@ -113,7 +108,7 @@ describe('classifyNode — skip ladder', () => {
   it('2. empty catalog → [general], zero LLM calls', async () => {
     activateCustomJob(makeResolved([]));
     const { state, invocations } = makeState({});
-    const result = await classifyNode(state);
+    const result = await detectNode(state);
     expect(result.activeIntents).toEqual(['general']);
     expect(invocations()).toBe(0);
   });
@@ -121,7 +116,7 @@ describe('classifyNode — skip ladder', () => {
   it('3. empty userMessage (resume) → keeps the restored classification', async () => {
     activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
     const { state, invocations } = makeState({ userMessage: '', activeIntents: ['research'] });
-    const result = await classifyNode(state);
+    const result = await detectNode(state);
     expect(result.activeIntents).toEqual(['research']);
     expect(invocations()).toBe(0);
   });
@@ -132,7 +127,7 @@ describe('classifyNode — skip ladder', () => {
       { id: 'cite', description: 'c' },
     ]));
     const { state, invocations } = makeState({}, '<intents>research, cite</intents>');
-    const result = await classifyNode(state);
+    const result = await detectNode(state);
     expect(result.activeIntents).toEqual(['research', 'cite']);
     expect(invocations()).toBe(1);
   });
@@ -140,7 +135,7 @@ describe('classifyNode — skip ladder', () => {
   it('4b. unparsable output retries once, then falls back to [general] (never throws)', async () => {
     activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
     const { state, invocations } = makeState({}, 'no tag here');
-    const result = await classifyNode(state);
+    const result = await detectNode(state);
     expect(result.activeIntents).toEqual(['general']);
     expect(invocations()).toBe(2);
   });
@@ -148,7 +143,7 @@ describe('classifyNode — skip ladder', () => {
   it('4c. LLM error falls back to [general] (classification must not kill the turn)', async () => {
     activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
     const { state } = makeState({}, new Error('boom'));
-    const result = await classifyNode(state);
+    const result = await detectNode(state);
     expect(result.activeIntents).toEqual(['general']);
   });
 });
@@ -186,6 +181,24 @@ describe('validateUniversalTurnMeta — accept gate', () => {
     const validate = await load();
     const result = await validate(container, CATALOG, ['ghost'], []);
     expect(result).toMatchObject({ ok: false, status: 400, code: 'unknown-intent' });
+  });
+
+  it('@plan alone → meta with plan:true (a plan turn needs no intents/context)', async () => {
+    const validate = await load();
+    const result = await validate(container, CATALOG, undefined, undefined, true);
+    expect(result).toEqual({ ok: true, meta: { intents: [], context: [], plan: true } });
+  });
+
+  it('plan must be strictly true — truthy strings do not count', async () => {
+    const validate = await load();
+    expect(await validate(container, CATALOG, undefined, undefined, 'true')).toEqual({ ok: true, meta: null });
+    expect(await validate(container, CATALOG, undefined, undefined, false)).toEqual({ ok: true, meta: null });
+  });
+
+  it('@plan rides along with intents/context', async () => {
+    const validate = await load();
+    const result = await validate(container, CATALOG, ['research'], [], true);
+    expect(result).toEqual({ ok: true, meta: { intents: ['research'], context: [], plan: true } });
   });
 
   it.each([
