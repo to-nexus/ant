@@ -57,6 +57,15 @@ describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
     }
   });
 
+  it('buildContext wires the CommandPort from deps (A12 — run_command must be executable, not just advertised)', async () => {
+    const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+    const command = { execute: () => { throw new Error('unused'); } };
+    const fileSystem = { getRootPath: () => '/tmp/universal-artifacts' };
+    const state = { deps: { fileSystem, command }, featurePath: '/tmp/container', projectId: 'p' } as any;
+    const ctx = universalToolNodeConfig.buildContext(state);
+    expect(ctx.command).toBe(command);
+  });
+
   it('domain-bound tools stay excluded (search_code, workspace/reference, assets, figma)', () => {
     const forbidden = [
       'search_code', 'read_workspace_file', 'list_workspace_files', 'read_reference_file',

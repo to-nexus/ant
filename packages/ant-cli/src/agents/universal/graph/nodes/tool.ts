@@ -42,7 +42,8 @@ const PLAN_TURN_EXECUTION_ERROR = (name: string): string =>
 
 const universalResultManager = new ToolResultManager(new TokenBudgetManager());
 
-const toolNodeFn = createToolNode<UniversalGraphState>({
+// Exported for the tool-policy reconciliation test (preset ↔ runtime wiring).
+export const universalToolNodeConfig: import('../../../common/tool/createToolNode').ToolNodeConfig<UniversalGraphState> = {
   getPendingCalls(state) {
     return (state.pendingToolCalls || []).map((tc) => ({ id: tc.id, name: tc.name, args: tc.args }));
   },
@@ -122,6 +123,7 @@ const toolNodeFn = createToolNode<UniversalGraphState>({
       // run_command is approval-gated (fail-closed above); the shell gate
       // stays open so a declared-`never` command job can actually run.
       allowShellExecution: true,
+      command: state.deps?.command,
       fileTreeUpdate: state.deps?.fileTreeUpdate,
     };
     ctx.subagent = createSubagentSeam({
@@ -197,6 +199,8 @@ const toolNodeFn = createToolNode<UniversalGraphState>({
       recursionCount: (state.recursionCount ?? 0) + 1,
     };
   },
-});
+};
+
+const toolNodeFn = createToolNode<UniversalGraphState>(universalToolNodeConfig);
 
 export { toolNodeFn as toolNode };

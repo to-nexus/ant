@@ -99,7 +99,7 @@ Open items, in dependency order:
 
 | Open | Blocks | Shape |
 |---|---|---|
-| **WS-D E2E** — real skeleton server, real job | Gate 1 (pilot start) | definition set + minimal HTTP MCP server (separate repo); proves the full loop unit tests cannot: SDK spawn passthrough, 401/200 both ways, no `Unknown tool` in job logs |
+| ~~**WS-D E2E**~~ ✅ **done 2026-08-11** | — (Gate 1 pilot-start condition met) | Reference server built outside this repo (fixture-only ops incident/SLA API: 4 tools, streamable HTTP + stdio, bearer auth) with a single `ops-team` agent whose `weekly-report` job declares the connection (job-level, because a fail-loud connect at agent level would take down sibling jobs that never touch the server). All three things unit tests cannot reach are now proven on real traffic: SDK spawn passthrough (stdio child sees only the mapped env, none of Ant's secrets), header auth both ways (missing host env var → fail-loud in 2s; wired → 200 + tool results), and zero `Unknown tool` across the session. The approval axis was demonstrated end-to-end too: an unannotated write tool is refused before reaching the server, and an explicit `approval: never` grant lets it run with the server's idempotency key + `dry_run` carrying the blast radius. E2E surfaced four Ant defects — two blocking (fixed: execute-route agent default shadowing the universal mapping; universal runtime never wiring a CommandPort) and three recorded (crash-mislabel of config failures, `<reply>` tag leaking across tool rounds, optimistic `user_turn` hardcoded to `jobType:'code'`) |
 | **A3 interactive approval** | Gate 2 (any write tool) | Phase 1 is fail-closed: approval-gated calls are *rejected with guidance*. Until the pause/approve/resume flow lands (`pendingApproval` session field is reserved), write tools run only under an explicit `approval: never` declaration — so the pilot is read-only by construction |
 | **A6 department scope** | Gate 2 (shared workspaces) | `team` org kind is data-model-only; org agent root is one global env var; projects are `(tenant,user)`-owned. Until fixed, every artifact lives in a personal project |
 | **A5 image passthrough** | dashboards/chart tools | MCP image content is extracted (`McpCallResult.image`) but dropped at the registry handler (text only). Becomes priority the moment a department tool returns a rendered artifact |
@@ -109,14 +109,17 @@ Open items, in dependency order:
 
 ## 4. Ant development roadmap (gate-aligned)
 
-**Gate 1 — pilot (read-only).** Remaining work is exactly one item: the WS-D
-end-to-end. Build the reference definition set (HTTP MCP + `headers` auth,
-read-only builtin tools, one intent catalog) modeled on the shipped
-`assistant` builtin, plus the skeleton server (TypeScript,
-`@modelcontextprotocol/sdk`, streamable HTTP, header auth, health check,
-structured logging, two tools with `annotations.readOnlyHint: true`). The
-skeleton lives *outside* this repo — it is the D4 reference implementation
-departments copy.
+**Gate 1 — pilot (read-only).** ✅ **Open (2026-08-11).** The WS-D end-to-end
+closed the last condition: a reference definition set (HTTP MCP + `headers`
+auth, read-only builtin tools, one intent catalog) plus the reference server
+(TypeScript, `@modelcontextprotocol/sdk` 1.30, streamable HTTP + stdio, bearer
+auth, health check, structured logging, `annotations.readOnlyHint: true` on the
+read tools) now run against each other on real traffic. The server lives
+*outside* this repo — it is the D4 reference implementation departments copy,
+and its own README carries the copy checklist (registerTool + flat ZodRawShape,
+per-request stateless transport, annotations discipline, machine guards on
+write tools). Pilot tools stay read-only by construction: the one write-shaped
+tool is refused until a job explicitly declares `approval: never` for it.
 
 **Gate 2 — spread (writes + sharing).** Two independent tracks:
 
@@ -292,7 +295,7 @@ rules = translation stalls regardless of everything else).
 | Error/pagination conventions, version policy | Internal service logic behind the tools (§5.1) |
 | Server registry | |
 
-Gate summary: **1** = WS-D E2E, read-only tools (all code prerequisites
-closed). **2** = A3 interactive approval + A6 team scope. **3** = scheduler
+Gate summary: **1** = ✅ open — WS-D E2E passed 2026-08-11, read-only tools
+(all code prerequisites closed). **2** = A3 interactive approval + A6 team scope. **3** = scheduler
 (new internal enqueue path + billing identity) + notification-domain MCP +
 `JOB_STATUS_UPDATES` failure consumer + audit log.

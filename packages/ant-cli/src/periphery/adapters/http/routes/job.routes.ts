@@ -367,7 +367,10 @@ export function createJobRoutes(deps: {
     // turn when the execute pipeline throws (queue / spawn / …).
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { task: jobType, agent = 'architect', enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, intents, context, plan } = req.body;
+    // No `agent` default here (A11): a destructuring default of 'architect'
+    // made the resolveAgentForJobType fallback below unreachable, sending
+    // agent-less universal executes into the architect branch.
+    const { task: jobType, agent, enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, intents, context, plan } = req.body;
     let userContext: { userId: string; organizationId: string } | null = null;
     try {
       userContext = extractUserContext(req);

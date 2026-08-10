@@ -678,7 +678,7 @@ export async function orchestrator(params: {
         explicitIntents: universalTurnMeta?.intents,
         explicitContext: universalTurnMeta?.context,
         planRequested: universalTurnMeta?.plan === true,
-        deps: { llm, session, promptBuilder, fileSystem, kanbanUpdate, workflowUpdate, fileTreeUpdate },
+        deps: { llm, session, promptBuilder, fileSystem, command: new NodeCommandAdapter(), kanbanUpdate, workflowUpdate, fileTreeUpdate },
         _httpJobId: jobId,
       });
 

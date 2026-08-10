@@ -38,6 +38,7 @@ export interface UniversalRunnerParams {
     session?: any;
     promptBuilder?: import('../../../core/prompt/builder/PromptBuilder').PromptBuilder;
     fileSystem?: import('../../../core/ports/filesystem').FileSystemPort;
+    command?: import('../../../core/ports/command').CommandPort;
     kanbanUpdate?: any;
     workflowUpdate?: any;
     fileTreeUpdate?: any;
