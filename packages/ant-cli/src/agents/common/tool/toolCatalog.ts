@@ -292,9 +292,12 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
 
   // Universal job — the artifact-tree agent runtime. Root = `universal/artifacts/`
   // (ctx.fileSystem reparented; no canonical codebase). Domain-bound tools
-  // (search_code, workspace/reference/ant-source readers, assets, figma) are
+  // (search_code, workspace/reference readers, assets, figma) are
   // deliberately absent — extra capability arrives via MCP overlay, and the
   // per-job allowlist (`tools.builtin` in job.yaml) can only narrow this set.
+  // The ant-source family IS included: domain-free read-only access to Ant's
+  // own shipped docs/source, so agents answer platform questions from code
+  // (see universalToolPolicy.ts header).
   [JobType.UNIVERSAL]: [
     // Read / explore (artifact tree)
     ToolName.READ_FILE,
@@ -318,6 +321,10 @@ export const JOB_TOOL_MATRIX: Record<JobType, readonly ToolName[]> = {
     ToolName.SUBAGENT_REPORT,
     // Live run-state self-inspection
     ToolName.READ_STATE,
+    // Ant platform self-source (read-only, domain-free)
+    ToolName.READ_ANT_SOURCE,
+    ToolName.LIST_ANT_FILES,
+    ToolName.SEARCH_ANT_CODE,
   ],
 };
 

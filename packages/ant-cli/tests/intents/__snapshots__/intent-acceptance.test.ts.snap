@@ -3,6 +3,7 @@
 exports[`Intent Acceptance > gen-code-directive > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
   "jobs/shared/injections/visual-source-authority",
@@ -18,6 +19,7 @@ exports[`Intent Acceptance > gen-code-directive > prompt build: injection list s
 exports[`Intent Acceptance > gen-code-spec > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
   "jobs/shared/injections/visual-source-authority",
@@ -33,6 +35,7 @@ exports[`Intent Acceptance > gen-code-spec > prompt build: injection list snapsh
 exports[`Intent Acceptance > gen-code-sys > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
   "jobs/shared/injections/visual-source-authority",
@@ -49,6 +52,7 @@ exports[`Intent Acceptance > gen-code-sys > prompt build: injection list snapsho
 exports[`Intent Acceptance > gen-spec > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
   "jobs/design/base/injections/document-language",
@@ -59,6 +63,7 @@ exports[`Intent Acceptance > gen-spec > prompt build: injection list snapshot 1`
 exports[`Intent Acceptance > gen-sys-be > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/design/base/injections/backend-guide",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
@@ -70,6 +75,7 @@ exports[`Intent Acceptance > gen-sys-be > prompt build: injection list snapshot 
 exports[`Intent Acceptance > gen-sys-fe > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/design/base/injections/frontend-guide",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
@@ -81,6 +87,7 @@ exports[`Intent Acceptance > gen-sys-fe > prompt build: injection list snapshot 
 exports[`Intent Acceptance > gen-sys-full > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/design/base/injections/frontend-guide",
   "jobs/design/base/injections/backend-guide",
   "jobs/design/base/injections/api-contract-guide",
@@ -94,6 +101,7 @@ exports[`Intent Acceptance > gen-sys-full > prompt build: injection list snapsho
 exports[`Intent Acceptance > gen-ui-desc > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/ui-design-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
@@ -105,6 +113,7 @@ exports[`Intent Acceptance > gen-ui-desc > prompt build: injection list snapshot
 exports[`Intent Acceptance > gen-ui-figma > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/ui-design-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
@@ -116,6 +125,7 @@ exports[`Intent Acceptance > gen-ui-figma > prompt build: injection list snapsho
 exports[`Intent Acceptance > rev-spec > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
   "jobs/design/base/injections/document-language",
@@ -127,6 +137,7 @@ exports[`Intent Acceptance > rev-spec > prompt build: injection list snapshot 1`
 exports[`Intent Acceptance > rev-sys > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",
   "jobs/design/base/injections/document-language",
@@ -138,6 +149,7 @@ exports[`Intent Acceptance > rev-sys > prompt build: injection list snapshot 1`]
 exports[`Intent Acceptance > rev-ui > prompt build: injection list snapshot 1`] = `
 [
   "jobs/shared/injections/output-tag-policy",
+  "jobs/shared/injections/ant-platform-identity",
   "jobs/shared/injections/ui-design-policy",
   "jobs/shared/injections/directive",
   "jobs/shared/injections/shared-source-diagnosis",

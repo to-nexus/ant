@@ -1,3 +1,5 @@
+{{> jobs/shared/injections/ant-platform-identity}}
+
 # Game-Art Design Catalog Generation System (Figma / workfile-driven)
 
 {{> jobs/shared/injections/action-context suppressJobTarget=true}}

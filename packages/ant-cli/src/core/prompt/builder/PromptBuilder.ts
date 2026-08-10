@@ -372,6 +372,17 @@ export class PromptBuilder implements PromptPort {
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     injectionPaths.push('jobs/shared/injections/output-tag-policy');
 
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Always-on: Ant platform identity
+    //
+    // Every LLM surface must know what Ant itself is — without it, models
+    // interpret the user's Ant vocabulary ("universal job", "custom
+    // agent", "앤트") as third-party products (observed: answered from web
+    // material about the Anthropic SDK). render()-only nodes reference the
+    // same partial via `{{> }}` in their templates.
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    injectionPaths.push('jobs/shared/injections/ant-platform-identity');
+
     // Tier I: Intent-driven static policies
     if (config.intent) {
       const intentPolicy = getPromptPolicies(config.intent);

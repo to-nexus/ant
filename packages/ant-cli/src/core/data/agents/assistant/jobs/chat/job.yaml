@@ -25,6 +25,11 @@ tools:
     - run_command
     - explore
     - subagent_report
+    # Ant platform self-source (read-only) — answer questions about Ant
+    # itself from its shipped docs/source instead of guessing.
+    - read_ant_source
+    - list_ant_files
+    - search_ant_code
   # Per-tool approval override: 'always' | 'never'. Mutating tools
   # (http_request, run_command) default to 'always'; everything else to 'never'.
   # run_command executes inside the job's own artifact sandbox, so it is

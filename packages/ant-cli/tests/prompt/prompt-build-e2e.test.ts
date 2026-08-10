@@ -394,15 +394,15 @@ describe('E2E: Design spec', () => {
     result = await promptBuilder.build(config);
   });
 
-  it('stage 1: only the always-on output-tag-policy injection (no Tier A/D, no static policies)', () => {
-    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy']);
+  it('stage 1: only the always-on shared injections (no Tier A/D, no static policies)', () => {
+    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy', 'jobs/shared/injections/ant-platform-identity']);
   });
 
   it('stage 2: no templates fail to render', () => {
     assertNoFailedTemplates(result);
   });
 
-  it('stage 3: design universal role present + spec variant identity in user; only output-tag-policy in injections', () => {
+  it('stage 3: design universal role present + spec variant identity in user; only always-on shared injections', () => {
     assertSystemContains(result, FP.DESIGN_ROLE, 'design universal role (base/system.md)');
     expect(
       result.user,
@@ -437,8 +437,8 @@ describe('E2E: Ask agent', () => {
     result = await promptBuilder.build(config);
   });
 
-  it('stage 1: only the always-on output-tag-policy injection (no Tier A/D, no static policies)', () => {
-    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy']);
+  it('stage 1: only the always-on shared injections (no Tier A/D, no static policies)', () => {
+    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy', 'jobs/shared/injections/ant-platform-identity']);
   });
 
   it('stage 2: no templates fail to render', () => {
@@ -475,8 +475,8 @@ describe('E2E: Plan', () => {
     result = await promptBuilder.build(config);
   });
 
-  it('stage 1: only the always-on output-tag-policy injection (plan has no static policies, no techContext)', () => {
-    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy']);
+  it('stage 1: only the always-on shared injections (plan has no static policies, no techContext)', () => {
+    expect(result.injections).toEqual(['jobs/shared/injections/output-tag-policy', 'jobs/shared/injections/ant-platform-identity']);
   });
 
   it('stage 2: no templates fail to render', () => {

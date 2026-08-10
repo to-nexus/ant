@@ -1,3 +1,5 @@
+{{> jobs/shared/injections/ant-platform-identity}}
+
 # Task Revision Decision
 
 You are analyzing whether the current task queue needs modifications based on new user feedback.

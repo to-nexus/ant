@@ -1,3 +1,5 @@
+{{> jobs/shared/injections/ant-platform-identity}}
+
 # UI Handoff Bundle File Authoring
 
 {{> jobs/shared/injections/action-context suppressJobTarget=true}}

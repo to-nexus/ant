@@ -1,3 +1,5 @@
+{{> jobs/shared/injections/ant-platform-identity}}
+
 OUTPUT FORMAT:
 
 {{> jobs/code/base/injections/text-format-compact}}

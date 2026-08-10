@@ -205,6 +205,13 @@ export async function searchAntCode(args: {
 
   const rootPath = resolveSourceRoot(source);
 
+  // A missing root must be a loud error, not "No matches found" — in a
+  // deployed image the `ui` source is not shipped, and a silently empty
+  // result reads as "the code doesn't exist".
+  if (!fs.existsSync(rootPath)) {
+    return { success: false, error: `Source root not available: ${source} (${rootPath})` };
+  }
+
   const results: { file: string; line: number; content: string }[] = [];
   const maxResults = 20;
 

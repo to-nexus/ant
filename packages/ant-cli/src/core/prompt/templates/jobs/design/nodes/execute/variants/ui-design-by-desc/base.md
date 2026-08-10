@@ -1,3 +1,5 @@
+{{> jobs/shared/injections/ant-platform-identity}}
+
 # UI Design Document Generation System (Description-driven)
 
 {{> jobs/shared/injections/action-context suppressJobTarget=true}}

@@ -6,9 +6,16 @@
  * factory in `agents/common/tool/presets.ts` builds the runtime registry
  * from this list; a unit test reconciles the two.
  *
- * Domain-bound tools (search_code, read_workspace_file, list_assets, figma_*,
- * read_ant_source, …) are deliberately absent: universal has no canonical
- * codebase, no RAC, no design asset pool. Extra capability comes from MCP.
+ * Domain-bound tools (search_code, read_workspace_file, list_assets,
+ * figma_*, …) are deliberately absent: universal has no canonical codebase,
+ * no RAC, no design asset pool. Extra capability comes from MCP.
+ *
+ * The ant-source family (read_ant_source / list_ant_files / search_ant_code)
+ * is IN the preset despite that stance: it is domain-free (reads Ant's own
+ * shipped docs/source, no workspace or RAC involved), read-only, and it is
+ * what lets any universal agent answer questions about the Ant platform
+ * itself from the actual code instead of hedging or web-guessing
+ * (steady-caring-depth RCA).
  */
 
 export const UNIVERSAL_BUILTIN_TOOLS = [
@@ -35,6 +42,10 @@ export const UNIVERSAL_BUILTIN_TOOLS = [
   'subagent_report',
   // state
   'read_state',
+  // Ant platform self-source (read-only, domain-free)
+  'read_ant_source',
+  'list_ant_files',
+  'search_ant_code',
 ] as const;
 
 export type UniversalBuiltinTool = typeof UNIVERSAL_BUILTIN_TOOLS[number];

@@ -1,3 +1,5 @@
+{{> jobs/shared/injections/ant-platform-identity}}
+
 # Generate Task Plan
 
 You are the **ARCHITECT** planning HOW to implement a specific task.
