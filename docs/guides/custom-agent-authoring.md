@@ -54,12 +54,22 @@ version: 1
 mcp:
   servers:
     ops-db:
-      transport: stdio       # or http (streamable) with url:
+      transport: stdio
       command: "npx"
       args: ["-y", "@acme/ops-db-mcp"]
       env:
         DB_URL: OPS_DB_URL   # value is the HOST ENV VAR NAME — secrets never live in this file
+    ops-api:
+      transport: http        # streamable HTTP
+      url: "https://ops-api.internal/mcp"
+      headers:
+        Authorization: OPS_API_TOKEN   # also a HOST ENV VAR NAME, same rule as env
 ```
+
+`headers` is the one authentication mechanism for `http` servers, and `env` the
+one for `stdio`; each is rejected on the other transport. A stdio child receives
+only its declared `env` plus a minimal exec baseline (`PATH`, `HOME`, `LANG`, …)
+— never Ant's own environment, so a server never sees Ant's provider keys.
 
 That is the whole schema. There is no `description` (the persona lives in
 `base/*.md` prose the model actually reads) and no agent-level `tools` —
@@ -71,7 +81,6 @@ unioned into every member job (a job-level server with the same name wins).
 ```yaml
 id: weekly-report
 name: "Weekly Ops Report"
-description: "Compiles the weekly operations report from the shared data"
 version: 1
 tools:
   builtin: [read_file, list_files, search_files, create_file, edit_file]
@@ -81,10 +90,11 @@ tools:
     "mcp__ops-db__push": always   # always | never; mutating tools default to always
 ```
 
-The job `description` is injected into the prompt (and shown on the composer
-chip) — write it for the model. Output conventions ("reports live under
-`reports/`, revisions edit the existing file, …") are plain prose in the
-job's `base/*.md`; there is no outputs schema to configure.
+There is no job `description` (the loader rejects it — mirrors `agent.yaml`):
+the job shows its `name` on the composer chip, and what the job is plus how it
+works belongs in `base/*.md` prose, which is what the model actually reads.
+Output conventions ("reports live under `reports/`, revisions edit the existing
+file, …") go in that same prose; there is no outputs schema to configure.
 
 ## 4. Prose — base/ and injections/
 
@@ -114,11 +124,14 @@ intents:
     injections: [incident-playbook.md]
 ```
 
-- The `description` **is the matching criterion** — the runtime classifies
-  each user turn against the catalog (multi-label) and inlines the matched
-  intents' injections in full. Users can also force intents with `@intent:`
-  mentions in the composer.
-- No catalog at all means classification is skipped entirely at zero cost.
+- **Intents are selected explicitly, never auto-classified.** A turn carries the
+  intents the user mentioned with `@intent:` in the composer (or that an API
+  caller passed in the execute body); those intents' injections are inlined in
+  full. There is no per-turn LLM classification pass.
+- A turn with no explicit mention runs as the reserved `general` intent, so every
+  injection stays on the table of contents and the model pulls what it needs with
+  `read_file` — the `description` is what it reads to decide, so write it for
+  that judgment.
 - The shipped `assistant` agent's catalog
   (`packages/ant-cli/src/core/data/agents/assistant/jobs/chat/intents.yaml`)
   is the working example.
@@ -163,6 +176,7 @@ now fails loud with the fix in the message:
 | `{agent}/injections/*.md` | move into `jobs/{jobId}/injections/` |
 | `agent.yaml: tools` | declare in `jobs/{jobId}/job.yaml` |
 | `agent.yaml: description` | fold into `base/*.md` prose |
+| `job.yaml: description` | fold into the job's `base/*.md` prose |
 | `job.yaml: outputs` | describe conventions in the job's `base/*.md` |
 | `job.yaml: plan` | delete — use the composer's `@plan` per turn |
 | `workspace` / `models` (either file) | delete — they never had a runtime effect |
@@ -171,8 +185,10 @@ The settings Prompts view can read, re-save, and delete the files in place.
 
 ## Pitfalls
 
-- **Secrets**: `mcp.servers.*.env` values must be *names* of host env vars.
-  A literal credential in the yaml fails validation.
+- **Secrets**: `mcp.servers.*.env` and `mcp.servers.*.headers` values must be
+  *names* of host env vars. A literal credential in the yaml fails validation.
+  The named variable must be set on the host when the job starts, or the
+  connection fails loud rather than sending an empty credential.
 - **Judgment vs. guarantees**: prompts specialize judgment; they cannot
   guarantee behavior. Anything that must be mechanically enforced (amount
   limits, bulk-send protection, complex branching) belongs in an MCP server

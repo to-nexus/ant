@@ -5,16 +5,22 @@
  * `useDefinitionDocs.setMcpServers`, so the YAML view is the same buffer and
  * the shell's ChangedBar owns saving.
  *
- * `args` and `env` are row-per-entry rather than one delimited field: an arg
- * may legitimately contain spaces or commas, so any split rule would be a
- * guess. Transport picks the field set — http shows only `url`, because the
- * connection manager ignores command/args/env there.
+ * `args`, `env`, and `headers` are row-per-entry rather than one delimited
+ * field: an arg may legitimately contain spaces or commas, so any split rule
+ * would be a guess. Transport picks the field set — http shows `url` + `headers`
+ * (its only auth mechanism), stdio shows command/args/env; the connection
+ * manager ignores the other side's fields either way.
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
-import { MCP_ENV_VAR_NAME_PATTERN, isValidCustomId, type McpServerConfig } from '@ant/shared';
+import {
+  MCP_ENV_VAR_NAME_PATTERN,
+  MCP_HEADER_NAME_PATTERN,
+  isValidCustomId,
+  type McpServerConfig,
+} from '@ant/shared';
 import { Button } from '@/presentation/components/aurora';
 import { AuroraInput, AuroraSelect, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 
@@ -44,6 +50,83 @@ function RowLabel({ children }: { children: string }) {
     >
       {children}
     </span>
+  );
+}
+
+/**
+ * key → HOST_ENV_VAR row list. Shared by stdio `env` and http `headers`: both
+ * map a name to a host env var NAME, so they get the same editor and the same
+ * value validation rather than two drifting copies.
+ */
+function EnvVarNameRows({
+  entries,
+  disabled,
+  keyPlaceholder,
+  removeLabel,
+  addLabel,
+  keyHasError,
+  onChange,
+}: {
+  entries: [string, string][];
+  disabled: boolean;
+  keyPlaceholder?: string;
+  removeLabel: string;
+  addLabel: string;
+  keyHasError?: (key: string) => boolean;
+  onChange: (next: Record<string, string>) => void;
+}) {
+  const replaceAt = (i: number, pair: [string, string]) =>
+    onChange(Object.fromEntries(entries.map((e, j) => (j === i ? pair : e))));
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {entries.map(([key, value], i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ flex: 1 }}>
+            <AuroraInput
+              value={key}
+              mono
+              disabled={disabled}
+              hasError={keyHasError?.(key) ?? false}
+              onChange={(v) => replaceAt(i, [v, value])}
+              placeholder={keyPlaceholder}
+            />
+          </div>
+          <span style={{ color: 'var(--text-4)', fontSize: 12 }}>→</span>
+          <div style={{ flex: 1 }}>
+            <AuroraInput
+              value={value}
+              mono
+              disabled={disabled}
+              hasError={!MCP_ENV_VAR_NAME_PATTERN.test(value)}
+              onChange={(v) => replaceAt(i, [key, v])}
+              placeholder="HOST_ENV_VAR"
+            />
+          </div>
+          {!disabled && (
+            <button
+              type="button"
+              className={ICON_BTN}
+              aria-label={removeLabel}
+              onClick={() => onChange(Object.fromEntries(entries.filter((_, j) => j !== i)))}
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
+      ))}
+      {!disabled && (
+        <div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onChange({ ...Object.fromEntries(entries), '': '' })}
+          >
+            <Plus className="w-3 h-3" /> {addLabel}
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -142,18 +225,33 @@ export function McpServersEditor({
               </div>
 
               {cfg.transport === 'http' ? (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <RowLabel>url</RowLabel>
-                  <div style={{ flex: 1 }}>
-                    <AuroraInput
-                      value={cfg.url ?? ''}
-                      mono
+                <>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <RowLabel>url</RowLabel>
+                    <div style={{ flex: 1 }}>
+                      <AuroraInput
+                        value={cfg.url ?? ''}
+                        mono
+                        disabled={disabled}
+                        onChange={(v) => patch(name, { url: v })}
+                        placeholder="https://…"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <RowLabel>headers</RowLabel>
+                    <EnvVarNameRows
+                      entries={Object.entries(cfg.headers ?? {})}
                       disabled={disabled}
-                      onChange={(v) => patch(name, { url: v })}
-                      placeholder="https://…"
+                      keyPlaceholder="Authorization"
+                      keyHasError={(key) => key.length > 0 && !MCP_HEADER_NAME_PATTERN.test(key)}
+                      removeLabel={t('agentDef.mcpRemoveHeader', 'Remove header')}
+                      addLabel={t('agentDef.mcpAddHeader', 'Add header')}
+                      onChange={(headers) => patch(name, { headers })}
                     />
                   </div>
-                </div>
+                </>
               ) : (
                 <>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -208,68 +306,13 @@ export function McpServersEditor({
 
                   <div style={{ display: 'flex', gap: 8 }}>
                     <RowLabel>env</RowLabel>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {env.map(([key, value], i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <div style={{ flex: 1 }}>
-                            <AuroraInput
-                              value={key}
-                              mono
-                              disabled={disabled}
-                              onChange={(v) =>
-                                patch(name, {
-                                  env: Object.fromEntries(
-                                    env.map(([k, val], j) => (j === i ? [v, val] : [k, val])),
-                                  ),
-                                })
-                              }
-                            />
-                          </div>
-                          <span style={{ color: 'var(--text-4)', fontSize: 12 }}>→</span>
-                          <div style={{ flex: 1 }}>
-                            <AuroraInput
-                              value={value}
-                              mono
-                              disabled={disabled}
-                              hasError={!MCP_ENV_VAR_NAME_PATTERN.test(value)}
-                              onChange={(v) =>
-                                patch(name, {
-                                  env: Object.fromEntries(
-                                    env.map(([k, val], j) => (j === i ? [k, v] : [k, val])),
-                                  ),
-                                })
-                              }
-                              placeholder="HOST_ENV_VAR"
-                            />
-                          </div>
-                          {!disabled && (
-                            <button
-                              type="button"
-                              className={ICON_BTN}
-                              aria-label={t('agentDef.mcpRemoveEnv', 'Remove variable')}
-                              onClick={() =>
-                                patch(name, {
-                                  env: Object.fromEntries(env.filter((_, j) => j !== i)),
-                                })
-                              }
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      {!disabled && (
-                        <div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => patch(name, { env: { ...(cfg.env ?? {}), '': '' } })}
-                          >
-                            <Plus className="w-3 h-3" /> {t('agentDef.mcpAddEnv', 'Add variable')}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                    <EnvVarNameRows
+                      entries={env}
+                      disabled={disabled}
+                      removeLabel={t('agentDef.mcpRemoveEnv', 'Remove variable')}
+                      addLabel={t('agentDef.mcpAddEnv', 'Add variable')}
+                      onChange={(next) => patch(name, { env: next })}
+                    />
                   </div>
                 </>
               )}

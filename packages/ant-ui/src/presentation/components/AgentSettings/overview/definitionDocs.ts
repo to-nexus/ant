@@ -74,6 +74,13 @@ export function deriveMcpServers(doc: Document | null): Record<string, McpServer
           }
         : {}),
       ...(typeof cfg.url === 'string' ? { url: cfg.url } : {}),
+      ...(cfg.headers && typeof cfg.headers === 'object' && !Array.isArray(cfg.headers)
+        ? {
+            headers: Object.fromEntries(
+              Object.entries(cfg.headers as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+            ),
+          }
+        : {}),
     };
   }
   return out;
@@ -169,7 +176,11 @@ export function applyMcpServers(doc: Document, servers: Record<string, McpServer
         return [
           name,
           cfg.transport === 'http'
-            ? { transport: 'http', url: cfg.url ?? '' }
+            ? {
+                transport: 'http',
+                url: cfg.url ?? '',
+                ...(cfg.headers && Object.keys(cfg.headers).length > 0 ? { headers: cfg.headers } : {}),
+              }
             : {
                 transport: cfg.transport,
                 command: cfg.command ?? '',

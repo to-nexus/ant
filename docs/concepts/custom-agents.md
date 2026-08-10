@@ -55,7 +55,7 @@ customize behavior, build your own agent under its own id.
   agent.yaml             # identity: id, name (+ optional shared MCP servers)
   base/*.md              # shared persona — always injected for every job
   jobs/{jobId}/
-    job.yaml             # job contract: name, description, tools (⊆ universal preset), approval
+    job.yaml             # job contract: name, tools (⊆ universal preset), approval
     base/*.md            # job procedure — always injected
     injections/*.md      # job conditional prose (TOC injected; body via read_file)
     intents.yaml         # job intent catalog (gates injection inlining)
@@ -63,10 +63,11 @@ customize behavior, build your own agent under its own id.
 
 Agent-level `intents.yaml` and `injections/` are **not** supported — a legacy
 definition carrying them fails loud at load with a move instruction (the
-settings Prompts view can create/delete the files). Every description in a
-definition is prompt-serving: the job description and the intent descriptions
-are injected verbatim; `agent.yaml` carries no description at all — the
-persona lives in `base/` prose the model actually reads.
+settings Prompts view can create/delete the files). Neither `agent.yaml` nor
+`job.yaml` carries a `description`: identity and procedure live in `base/` prose,
+which is what the model actually reads. The one prompt-serving description left
+is the per-intent one in `intents.yaml`, which the model reads off the injection
+table of contents to decide what to pull in.
 
 See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-agent-authoring.md).
 
