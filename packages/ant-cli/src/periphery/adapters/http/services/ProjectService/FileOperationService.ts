@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { FileNode, FileResource } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
+import { assertWithinRoot } from '../../../../../core/config/pathContainment';
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 import {
@@ -89,11 +90,12 @@ export class FileOperationService {
       return { featurePath: containerPath, fullPath: resolveUniversalMergedPath(containerPath, filePath) };
     }
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-    const root = path.resolve(featurePath);
-    const fullPath = path.resolve(featurePath, filePath);
-    // Path-traversal guard: bare startsWith is prefix-collision-prone
-    // (`/a/b` vs sibling `/a/bc`) — require the separator boundary.
-    if (fullPath !== root && !fullPath.startsWith(root + path.sep)) {
+    // Traversal + symlink-redirect guard (shared SSOT with the route-level
+    // raw/download handlers, which bypass this service).
+    let fullPath: string;
+    try {
+      fullPath = assertWithinRoot(featurePath, filePath);
+    } catch {
       throw new Error('Invalid file path');
     }
     return { featurePath, fullPath };

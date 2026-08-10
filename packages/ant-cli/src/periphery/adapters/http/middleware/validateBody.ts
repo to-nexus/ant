@@ -39,6 +39,40 @@ export function validateBody<T extends z.ZodTypeAny>(schema: T) {
 // ========================================
 
 /**
+ * A RAC artifact selection: a path RELATIVE to the caller's own feature root.
+ *
+ * `refs` / `context` reach `loadResolvedArtifacts`, which reads the file and
+ * injects its content into the decompose prompt — so an absolute path or a
+ * `..` segment would pull another workspace's files into the caller's job (and
+ * on to the model provider). Normal selections (`plan/prd.md`,
+ * `architecture/spec/`) are unaffected. The sink enforces the same rule, so a
+ * queued or resumed job cannot bypass this by pre-dating the schema.
+ */
+const racPathSchema = z
+  .string()
+  .max(1024)
+  .refine(
+    p =>
+      !p.startsWith('/') &&
+      !/^[A-Za-z]:[\\/]/.test(p) &&
+      !p.split(/[\\/]/).includes('..') &&
+      !p.includes('\0'),
+    { message: 'Artifact paths must be relative to the feature root (no absolute paths, no "..")' },
+  );
+
+/**
+ * `actionMetadata` carries the resolved-action context (intent + artifact
+ * selection) the FE computed. Only the path-bearing fields are constrained —
+ * the rest stays open so the RAC shape can evolve without a schema change.
+ */
+const actionMetadataSchema = z
+  .object({
+    refs: z.array(racPathSchema).optional(),
+    context: z.array(racPathSchema).optional(),
+  })
+  .passthrough();
+
+/**
  * POST /projects/:id/features/:feature/execute
  */
 export const executeJobSchema = z.object({
@@ -54,7 +88,7 @@ export const executeJobSchema = z.object({
   enableEvaluation: z.boolean().optional(),
   uiDocumentContext: z.any().optional(),
   designContext: z.any().optional(),
-  actionMetadata: z.any().optional(),
+  actionMetadata: actionMetadataSchema.optional(),
   /** chat SSOT §6 — pre-allocated turn id from /chat/user-message. */
   seedTurnId: z.string().optional(),
   /** universal only — explicit `@intent:` mentions (catalog-validated at accept). */
@@ -87,5 +121,5 @@ export const chatUserMessageSchema = z.object({
     .enum(['code', 'design', 'plan', 'learn', 'ask', 'inline-ask', 'visual'])
     .optional()
     .default('ask'),
-  actionMetadata: z.any().optional(),
+  actionMetadata: actionMetadataSchema.optional(),
 }).passthrough();

@@ -3,7 +3,7 @@ import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
 import type { LogCallback, PackageInfo } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
-import { buildPackageEnv } from './envAssembly';
+import { buildPackageEnv, composeChildEnv } from './envAssembly';
 import type { PreviewManifestResult } from './previewManifest';
 
 /**
@@ -146,10 +146,9 @@ export class ProvisioningManager {
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
     return new Promise((resolve) => {
-      const env = {
-        ...process.env,
-        ...buildPackageEnv({ pkgPath: cmd.cwd, projectRoot, connections, packageSource: cmd.packageSource }),
-      };
+      const env = composeChildEnv(
+        buildPackageEnv({ pkgPath: cmd.cwd, projectRoot, connections, packageSource: cmd.packageSource }),
+      );
 
       const child = spawn(cmd.command, cmd.args, {
         cwd: cmd.cwd,

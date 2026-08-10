@@ -135,13 +135,14 @@ export class KanbanService {
    * prior turn's id — and its completed session — on disk for the whole run).
    */
   private async discoverRunningJobId(
+    userContext: UserContext | undefined,
     projectId: string,
     featureName: string,
     jobType: string,
   ): Promise<string | undefined> {
     if (!this.stateStore) return undefined;
     try {
-      const featureJobs = await this.stateStore.listJobsByFeature(projectId, featureName);
+      const featureJobs = await this.stateStore.listJobsByFeature(userContext, projectId, featureName);
       const runningJob = featureJobs.find(
         j => j.status === 'running' && j.type === jobType
       );
@@ -199,7 +200,7 @@ export class KanbanService {
     // report the wrong, not-running job (`isRunning=false`) for the entire
     // live job. A running job in Redis wins regardless of the session flag.
     let adoptedLiveJob = false;
-    const runningJobId = await this.discoverRunningJobId(projectId, featureName, jobType);
+    const runningJobId = await this.discoverRunningJobId(userContext, projectId, featureName, jobType);
     if (runningJobId) {
       if (runningJobId !== sessionJobId) {
         dlog(`   Redis reports running ${jobType} job ${runningJobId}; preferring over session jobId ${sessionJobId || 'none'}`);

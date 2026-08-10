@@ -9,6 +9,7 @@ import { GitHelper } from '../GitService/helper/GitHelper';
 import { DeletionVerificationError } from './errors';
 import { MODEL_REGISTRY } from '@ant/shared';
 import { getDefaultLlmModels } from '../../../../../core/config/defaultModels';
+import { isLocalServerMode } from '../../../../../core/config/serverMode';
 
 /**
  * ProjectCrudService
@@ -457,6 +458,18 @@ export class ProjectCrudService {
    * domain toggles MUST NOT trigger any disk relocation.
    */
   async updateProjectConfig(projectId: string, config: any, userContext: UserContext): Promise<void> {
+    // `repoType:'local'` points the job worker and the git adapter at a caller-
+    // chosen absolute path. That is the intended local-mode workflow (the user
+    // owns the machine), but in cloud it would hand one tenant a codebase root
+    // anywhere the worker can read — so it is refused at the write side here,
+    // and ignored at the read side (`resolveCodebasePathFromConfig`) for configs
+    // that pre-date this gate.
+    if (!isLocalServerMode() && config && typeof config === 'object') {
+      if (config.repoType === 'local' || config.localPath) {
+        throw new Error("Invalid config: 'repoType: local' / 'localPath' is not available in cloud mode");
+      }
+    }
+
     const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
     const configPath = path.join(projectPath, 'config.json');
 

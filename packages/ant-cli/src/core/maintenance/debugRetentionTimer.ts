@@ -42,7 +42,11 @@ export function startDebugRetentionTimer(
       for (const feat of features) {
         await pruneDebugArtifacts(feat.featurePath, {
           stateStore: options.stateStore,
-          context: { projectId: feat.projectId, featureName: feat.featureName },
+          context: {
+            userContext: feat.userContext,
+            projectId: feat.projectId,
+            featureName: feat.featureName,
+          },
         });
       }
     } catch (err) {
@@ -78,6 +82,8 @@ interface FeatureRef {
   featurePath: string;
   projectId: string;
   featureName: string;
+  /** Owning tenant — the jobsByFeature index is tenant-scoped. */
+  userContext: { organizationId: string; userId: string };
 }
 
 /**
@@ -104,6 +110,7 @@ async function listAllFeaturePaths(base: string): Promise<FeatureRef[]> {
             featurePath: path.join(featuresDir, feature),
             projectId: project,
             featureName: featureSlugToName(feature),
+            userContext: { organizationId: org, userId: user },
           });
         }
       }

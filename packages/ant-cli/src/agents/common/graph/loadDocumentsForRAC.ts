@@ -32,6 +32,7 @@ import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/share
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
 import { isBinaryFileSync, formatByteSize } from '../../../core/utils/binaryExtensions';
 import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
+import { resolveWithinRoot } from '../../../core/config/pathContainment';
 
 export function loadResolvedArtifacts(
   resolvedAction: ResolvedActionContext,
@@ -118,7 +119,15 @@ function appendPath(
   // A directory enters as a reference, not as exploded content.
   if (isCodebaseScopedPath(relativePath)) return;
 
-  const absolute = path.join(featurePath, relativePath);
+  // RAC paths originate in the execute request's `actionMetadata`, so they are
+  // caller-controlled. Everything below reads from disk and injects the content
+  // into the decompose prompt (and thence to the model provider), so a path
+  // that escapes the feature root would exfiltrate another workspace's files.
+  // Skip rather than throw: the contract of this function is already
+  // "unreadable path → skip" (the statSync catch below).
+  const absolute = resolveWithinRoot(featurePath, relativePath);
+  if (!absolute) return;
+
   let stat: fs.Stats;
   try {
     stat = fs.statSync(absolute);
@@ -135,6 +144,9 @@ function appendPath(
     // pickUiSourceSubgroupDir); this throw fires only if a caller bypassed it.
     const seenSources = new Set<UiSource>();
     for (const child of walkDir(absolute)) {
+      // Same containment check per entry: the directory itself is contained,
+      // but a symlink inside it can still point out of the feature root.
+      if (!resolveWithinRoot(featurePath, path.relative(featurePath, child))) continue;
       const rel = path.relative(featurePath, child).split(path.sep).join('/');
       // Classify against BOTH surfaces (WS2 §3) — a game-art dir child
       // classifies via gameArtSourceOfPath (uiSourceOfPath returns null for it).

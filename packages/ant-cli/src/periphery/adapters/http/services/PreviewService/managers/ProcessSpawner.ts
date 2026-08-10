@@ -7,7 +7,7 @@ import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 import { resolveRunScript } from '../detectors/PackageDetector';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
-import { loadProjectEnv as loadProjectEnvShared } from './envAssembly';
+import { loadProjectEnv as loadProjectEnvShared, composeChildEnv } from './envAssembly';
 import { backfillMockToggles } from './mockToggles';
 import { isSubdomainRouting } from '../../../../../../core/config/previewRouting';
 
@@ -200,9 +200,7 @@ export class ProcessSpawner {
     this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
 
-    const env = {
-      ...process.env,
-      ...projectEnv,
+    const env = composeChildEnv(projectEnv, {
       PORT: port.toString(),
       NODE_ENV: 'development',
       BROWSER: 'none',
@@ -212,8 +210,8 @@ export class ProcessSpawner {
       WATCHPACK_POLLING: 'true',
       ...basePathEnv,
       ...(options.extraEnv || {})
-    };
-    
+    });
+
     logger.warn(`[Preview] Starting ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
     logger.warn(`[Preview] Command: ${command} ${args.join(' ')}`, { component: 'ProcessSpawner' });
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
@@ -325,12 +323,10 @@ export class ProcessSpawner {
     this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
 
-    const env = {
-      ...process.env,
-      ...projectEnv,
+    const env = composeChildEnv(projectEnv, {
       PORT: port.toString(),
       ...(options.extraEnv || {})
-    };
+    });
 
     logger.warn(`[Preview] Starting ${language} ${pkg.type}: ${pkg.name} on port ${port}`, { component: 'ProcessSpawner' });
     logger.warn(`[Preview] Command: ${command} ${args.join(' ')}`, { component: 'ProcessSpawner' });

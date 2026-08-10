@@ -41,6 +41,7 @@ import {
   PreviewRuntimeIssue
 } from '../../core/ports/portRegistry';
 import type { PreviewConfigRecord } from '../../core/ports/preview';
+import type { UserContext } from '../../core/types/user';
 import type { CustomDomain } from '@ant/shared';
 import { createIDEKey, createPreviewKey, createDeployKey, parseIDEKey, parsePreviewKey, parseDeployKey, NO_FEATURE_KEY } from './redisKeyUtils';
 
@@ -148,9 +149,32 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // Job Status Management
   // ============================================
 
+  /**
+   * Build the `jobsByFeature` index key.
+   *
+   * The index is tenant-scoped: `projectId` / `featureName` are user-chosen, so
+   * two tenants routinely pick the same pair. A tenantless key made one
+   * tenant's running job visible to the other's duplicate-check (leaking a job
+   * id, and blocking the second tenant from starting their own job). The owner
+   * is therefore part of the key. Jobs written without a userContext are local
+   * mode, whose tenant IS `local:local`.
+   */
+  private jobsByFeatureKey(
+    userContext: UserContext | undefined,
+    projectId: string,
+    featureName: string,
+  ): string {
+    const organizationId = userContext?.organizationId ?? 'local';
+    const userId = userContext?.userId ?? 'local';
+    return this.key(
+      REDIS_KEYS.INDEX.JOBS_BY_FEATURE,
+      `${organizationId}:${userId}:${projectId}:${featureName}`,
+    );
+  }
+
   async setJobStatus(jobId: string, status: JobStatusData): Promise<void> {
     const key = this.key(REDIS_KEYS.JOB.STATUS, jobId);
-    const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${status.projectId}:${status.featureName}`);
+    const featureKey = this.jobsByFeatureKey(status.userContext, status.projectId, status.featureName);
 
     const pipeline = this.redis.pipeline();
     pipeline.set(key, JSON.stringify(status), 'EX', REDIS_TTL.JOB.STATUS);
@@ -185,7 +209,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.del(this.key(REDIS_KEYS.JOB.STATUS, jobId));
     
     if (status) {
-      const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${status.projectId}:${status.featureName}`);
+      const featureKey = this.jobsByFeatureKey(status.userContext, status.projectId, status.featureName);
       pipeline.srem(featureKey, jobId);
     }
     
@@ -194,8 +218,12 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     logger.debug(`Job status deleted`, { component: 'RedisStateStore', jobId });
   }
 
-  async listJobsByFeature(projectId: string, featureName: string): Promise<JobStatusData[]> {
-    const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
+  async listJobsByFeature(
+    userContext: UserContext | undefined,
+    projectId: string,
+    featureName: string,
+  ): Promise<JobStatusData[]> {
+    const featureKey = this.jobsByFeatureKey(userContext, projectId, featureName);
     const jobIds = await this.redis.smembers(featureKey);
 
     if (jobIds.length === 0) {
@@ -387,13 +415,14 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // ============================================
 
   async scanJobsByFeatureIndex(): Promise<Array<{
+    userContext: UserContext;
     projectId: string;
     featureName: string;
     jobIds: string[];
   }>> {
     const prefix = REDIS_KEYS.INDEX.JOBS_BY_FEATURE;
     const pattern = `${prefix}*`;
-    const results: Array<{ projectId: string; featureName: string; jobIds: string[] }> = [];
+    const results: Array<{ userContext: UserContext; projectId: string; featureName: string; jobIds: string[] }> = [];
     let cursor = '0';
 
     do {
@@ -401,14 +430,17 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       cursor = nextCursor;
 
       for (const key of keys) {
+        // `{organizationId}:{userId}:{projectId}:{featureName}` — split from the
+        // left exactly three times; a feature name may itself contain `:`.
         const tail = key.substring(prefix.length);
-        const sep = tail.indexOf(':');
-        if (sep <= 0) continue;
-        const projectId = tail.substring(0, sep);
-        const featureName = tail.substring(sep + 1);
+        const parts = tail.split(':');
+        if (parts.length < 4) continue; // pre-tenancy key shape — leave it to TTL
+        const [organizationId, userId, projectId] = parts;
+        const featureName = parts.slice(3).join(':');
+        if (!organizationId || !userId || !projectId || !featureName) continue;
         const jobIds = await this.redis.smembers(key);
         if (jobIds.length === 0) continue;
-        results.push({ projectId, featureName, jobIds });
+        results.push({ userContext: { organizationId, userId }, projectId, featureName, jobIds });
       }
     } while (cursor !== '0');
 
@@ -416,11 +448,12 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   async removeJobFromFeatureIndex(
+    userContext: UserContext | undefined,
     projectId: string,
     featureName: string,
     jobId: string,
   ): Promise<void> {
-    const featureKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
+    const featureKey = this.jobsByFeatureKey(userContext, projectId, featureName);
     await this.redis.srem(featureKey, jobId);
   }
 
@@ -438,7 +471,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     // 1) Job-related keys via INDEX.JOBS_BY_FEATURE:{projectId}:* SETs.
     try {
-      const jobsByFeaturePattern = `${REDIS_KEYS.INDEX.JOBS_BY_FEATURE}${projectId}:*`;
+      const jobsByFeaturePattern = `${REDIS_KEYS.INDEX.JOBS_BY_FEATURE}${organizationId}:${userId}:${projectId}:*`;
       let cursor = '0';
       const indexKeys: string[] = [];
       do {
@@ -643,7 +676,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     });
 
     try {
-      const indexKey = this.key(REDIS_KEYS.INDEX.JOBS_BY_FEATURE, `${projectId}:${featureName}`);
+      const indexKey = this.jobsByFeatureKey({ organizationId, userId }, projectId, featureName);
       const jobIds = await this.redis.smembers(indexKey);
 
       const pipeline = this.redis.pipeline();

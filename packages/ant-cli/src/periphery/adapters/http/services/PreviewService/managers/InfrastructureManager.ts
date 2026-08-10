@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../../../../../../utils/logger';
 import type { LogCallback } from '../types';
-import { loadProjectEnv } from './envAssembly';
+import { loadProjectEnv, composeChildEnv } from './envAssembly';
 import { getComposeServices } from '../detectors/ConnectionDetector/enrichCompose';
 
 export interface ServiceStatus {
@@ -118,7 +118,7 @@ export class InfrastructureManager {
     // Pass the project's .env so compose `${VAR}` interpolation resolves
     // (image tags, registry hosts, credentials). Without this, compose only
     // sees the bare process env and silently substitutes empty strings.
-    const composeEnv = { ...process.env, ...loadProjectEnv(projectPath) };
+    const composeEnv = composeChildEnv(loadProjectEnv(projectPath));
 
     logger.info(`🐳 Starting infrastructure services from ${composeName}`, { component: 'InfrastructureManager' });
     onLog('stdout', `🐳 Starting infrastructure services (${composeName})...\n`);
@@ -298,7 +298,7 @@ export class InfrastructureManager {
     }
 
     const composeDir = path.dirname(composeFile);
-    const composeEnv = { ...process.env, ...loadProjectEnv(projectPath) };
+    const composeEnv = composeChildEnv(loadProjectEnv(projectPath));
 
     logger.info('🐳 Stopping infrastructure services', { component: 'InfrastructureManager' });
     onLog('stdout', '🐳 Stopping infrastructure services...\n');
@@ -384,7 +384,7 @@ export class InfrastructureManager {
         cwd: path.dirname(composeFile),
         shell: false,
         stdio: 'pipe',
-        env: { ...process.env, ...loadProjectEnv(path.dirname(composeFile)) },
+        env: composeChildEnv(loadProjectEnv(path.dirname(composeFile))),
       });
 
       let settled = false;
@@ -447,7 +447,7 @@ export class InfrastructureManager {
         encoding: 'utf-8',
         timeout: 10_000,
         stdio: 'pipe',
-        env: { ...process.env, ...loadProjectEnv(projectPath) },
+        env: composeChildEnv(loadProjectEnv(projectPath)),
       });
 
       if (!output.trim()) {

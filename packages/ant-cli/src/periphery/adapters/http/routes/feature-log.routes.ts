@@ -279,7 +279,7 @@ export function createFeatureLogRoutes(deps: {
       //    emits the final kanban for any open SSE tabs.
       if (deps.stateStore) {
         try {
-          const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+          const jobs = await deps.stateStore.listJobsByFeature(userContext, projectId, featureName);
           for (const job of jobs) {
             const interruption: InterruptionDetails = {
               reason: 'user_stopped',

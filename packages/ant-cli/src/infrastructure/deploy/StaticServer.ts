@@ -10,6 +10,7 @@ import express, { Express } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
+import { composeChildEnv } from '../../core/config/childEnv';
 import { logger } from '../../utils/logger';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 
@@ -92,11 +93,10 @@ function startNextServer(options: StaticServerOptions): Promise<StaticServerHand
 
     const child: ChildProcess = spawn(cmd, args, {
       cwd: workspacePath,
-      env: {
-        ...process.env,
+      env: composeChildEnv({
         PORT: String(port),
         NEXT_PUBLIC_BASE_PATH: basePath === '/' ? '' : basePath,
-      },
+      }),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

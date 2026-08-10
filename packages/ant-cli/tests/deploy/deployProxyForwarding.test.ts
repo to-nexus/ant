@@ -141,7 +141,11 @@ describe('deploy proxy — request forwarding', () => {
     expect(sentHeaders['rsc']).toBe('1');
     expect(sentHeaders['next-router-state-tree']).toBe('%5B%22%22%2C%7B%7D%5D');
     expect(sentHeaders['next-url']).toBe('/signup');
-    expect(sentHeaders['cookie']).toBe('ant_session=abc; other=1');
+    // The deployed app's own cookies ride along; the PLATFORM session does not
+    // (it would hand the caller's Ant session to user-authored code — see the
+    // credential-isolation policy test). The RSC anchor above is about the
+    // Next.js headers, which are unaffected.
+    expect(sentHeaders['cookie']).toBe('other=1');
   });
 
   it('injects X-Forwarded-Host/Proto/For from the incoming request', async () => {

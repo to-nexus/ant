@@ -13,6 +13,25 @@ import * as fs from "fs";
 import * as path from "path";
 import { GitPort, MemoryPort, ChunkPort } from "../ports";
 
+/**
+ * Is `candidate` still inside `root` once symlinks are resolved?
+ *
+ * The indexed tree is user-supplied (a cloned repository), so a link planted
+ * in it would otherwise redirect `readFileSync` at any file the service account
+ * can reach — and the contents land in the vector DB and in later LLM context.
+ * Unresolvable paths are treated as outside (fail closed).
+ */
+function isWithinIndexRoot(root: string, candidate: string): boolean {
+  try {
+    const realRoot = fs.realpathSync(root);
+    const realCandidate = fs.realpathSync(candidate);
+    const rel = path.relative(realRoot, realCandidate);
+    return rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel));
+  } catch {
+    return false;
+  }
+}
+
 export interface IndexOptions {
   project: string;
   workingDir: string;
@@ -390,7 +409,15 @@ export class CodebaseIndexer {
     
     // Ensure we're reading from absolute path
     const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(workingDir, filePath);
-    
+
+    // Second gate on the single-file entry point: `getSourceFiles` is not the
+    // only caller (incremental indexing feeds git-reported paths straight in),
+    // so containment is re-checked at the read itself.
+    if (!isWithinIndexRoot(workingDir, absolutePath)) {
+      console.log(`   ⚠️  Skipping file outside index root: ${filePath}`);
+      return { chunks: 0, tokens: 0 };
+    }
+
     // Read file content
     const content = fs.readFileSync(absolutePath, 'utf8');
     const relativePath = path.relative(workingDir, absolutePath);
@@ -478,6 +505,14 @@ export class CodebaseIndexer {
 
     const walk = (currentPath: string) => {
       if (!fs.existsSync(currentPath)) return;
+      // A cloned repository is attacker-authored content: a symlink inside it
+      // can point at anything the service account can read. Resolve the real
+      // path first and skip whatever leaves the clone root — links that stay
+      // inside it are followed and indexed exactly as before.
+      if (!isWithinIndexRoot(workingDir, currentPath)) {
+        console.log(`   ⚠️  Skipping link outside index root: ${path.relative(workingDir, currentPath)}`);
+        return;
+      }
       const stat = fs.statSync(currentPath);
       const relativePath = path.relative(workingDir, currentPath);
 

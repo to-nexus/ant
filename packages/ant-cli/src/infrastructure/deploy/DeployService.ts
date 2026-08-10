@@ -27,6 +27,7 @@ import * as path from 'path';
 import { PortManager } from '../networking/PortManager';
 import { StateStorePort, DeployState, DeployPackage, DeployPhase } from '../../core/ports/stateStore';
 import type { ServiceConnection } from '../../core/ports/portRegistry';
+import type { UserContext } from '../../core/types/user';
 import type { DeployVisibility } from '@ant/shared';
 import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
@@ -196,9 +197,13 @@ export class DeployService {
    * Other job types (`design`, `plan`, `learn`, `ask`, `inline-ask`) do not
    * modify the source tree, so they do not invalidate a deploy snapshot.
    */
-  private async hasActiveCodeJob(projectId: string, feature: string): Promise<boolean> {
+  private async hasActiveCodeJob(
+    userContext: UserContext,
+    projectId: string,
+    feature: string,
+  ): Promise<boolean> {
     try {
-      const jobs = await this.stateStore.listJobsByFeature(projectId, feature);
+      const jobs = await this.stateStore.listJobsByFeature(userContext, projectId, feature);
       return jobs.some(
         (j) =>
           j.type === 'code' &&
@@ -417,7 +422,7 @@ export class DeployService {
 
     // 2) Active code-job guard — do this BEFORE any snapshot/port work so
     // the caller sees a clean 409 without transient side effects.
-    if (await this.hasActiveCodeJob(projectId, feature)) {
+    if (await this.hasActiveCodeJob({ organizationId: tenantId, userId }, projectId, feature)) {
       return {
         success: false,
         reason: 'code-job-active',

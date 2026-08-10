@@ -8,6 +8,7 @@ import { atomicWriteFile } from '../../../../../../core/utils/atomicWriteFile';
 import type { ProjectProfile } from '@ant/shared';
 import type { LogCallback } from '../types';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
+import { composeChildEnv } from './envAssembly';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
 const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -270,9 +271,7 @@ export class DependencyInstaller {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe',
-        ...(credentialEnv && Object.keys(credentialEnv).length > 0
-          ? { env: { ...process.env, ...credentialEnv } }
-          : {}),
+        env: composeChildEnv(credentialEnv),
       });
 
       const onAbort = () => {
@@ -360,11 +359,7 @@ export class DependencyInstaller {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe',
-        env: {
-          ...process.env,
-          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0',
-          ...(credentialEnv ?? {}),
-        },
+        env: composeChildEnv({ COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' }, credentialEnv),
       });
 
       const onAbort = () => {
@@ -575,7 +570,7 @@ export class DependencyInstaller {
         cwd,
         shell: true,
         stdio: 'pipe',
-        ...(env ? { env: { ...process.env, ...env } } : {}),
+        env: composeChildEnv(env),
       });
 
       const onAbort = () => {

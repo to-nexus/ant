@@ -9,8 +9,8 @@
  * traversal guard the routes used before.
  */
 
-import * as path from 'path';
 import type { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
+import { assertWithinRoot } from '../../../../../core/config/pathContainment';
 import type { UserContext } from '../../../../../core/types/user';
 import {
   resolveUniversalContainerPath,
@@ -30,10 +30,9 @@ export function resolveFeatureScopedFilePath(
     return resolveUniversalMergedPath(containerPath, relPath);
   }
   const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-  const root = path.resolve(featurePath);
-  const fullPath = path.resolve(root, relPath);
-  if (fullPath !== root && !fullPath.startsWith(root + path.sep)) {
+  try {
+    return assertWithinRoot(featurePath, relPath);
+  } catch {
     throw new Error(`Invalid file path: ${relPath}`);
   }
-  return fullPath;
 }
