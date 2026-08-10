@@ -62,8 +62,9 @@ overrides:
   'mdast-util-to-hast': '^13.2.1'
   # mermaid transitive — IN_PLACE / shadow-root XSS chain (FE bundle).
   'dompurify': '^3.4.11'
-  # express-rate-limit transitive — Address6 HTML XSS.
-  'ip-address': '^10.1.1'
+  # express-rate-limit transitive — Address6 HTML XSS + CVE-2026-69192
+  # (Address4 SSRF-adjacent parsing bypass, fixed 10.3.1).
+  'ip-address': '^10.3.1'
   # uuid: buf bounds check (langgraph/bullmq/dockerode transitive; direct dep also bumped).
   'uuid': '^11.1.1'
   # brace-expansion: DoS — original zero-step (2.0.x), CVE-2026-13149
@@ -75,9 +76,15 @@ overrides:
   # consumers onto 5.x: the 5.x CJS build is named-export (exports.expand)
   # and crashes minimatch@5/9's default-import at runtime.
   'brace-expansion@>=2.0.0 <2.1.2': '^2.1.2'
-  'brace-expansion@>=5.0.0 <5.0.8': '^5.0.8'
-  # js-yaml: CVE-2026-59869 DoS on malformed input (fixed 4.3.0 / 3.15.0).
-  'js-yaml@>=4.0.0 <4.3.0': '^4.3.0'
+  # CVE-2026-69152: common-prefix/suffix arbitrary-string generation DoS,
+  # fixed 5.0.9 (also 1.1.18/2.1.4/3.0.6 for those majors — none installed).
+  'brace-expansion@>=5.0.0 <5.0.9': '^5.0.9'
+  # js-yaml: CVE-2026-59869 DoS on malformed input (fixed 4.3.0 / 3.15.0) +
+  # GHSA-5p4m-2wfm-xmqj quadratic-CPU !!omap resolution (fixed 4.3.1 / 3.15.1).
+  'js-yaml@>=4.0.0 <4.3.1': '^4.3.1'
+  # nanoid: CVE-2026-67213 infinite loop in customAlphabet/customRandom on
+  # certain inputs (fixed 3.3.17 / 5.1.6 — only the 3.x line is installed).
+  'nanoid@>=3.0.0 <3.3.17': '^3.3.17'
   # postcss: CSS-stringify XSS + GHSA-r28c-9q8g-f849 sourceMappingURL path
   # traversal (.map disclosure, fixed 8.5.18) — build-time only (tailwind/vite).
   'postcss': '^8.5.18'
