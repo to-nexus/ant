@@ -296,7 +296,18 @@ export interface LLMClient {
    * (tool_use, tool_result, thinking blocks) alongside CacheableContent[].
    *
    * Recognised options (provider-agnostic; adapters that ignore them are
-   * still spec-compliant):
+   * still spec-compliant — EXCEPT `system`, which is a hard contract):
+   *   - `system`          → system prompt for this call. NOT optional to
+   *                          honor: every adapter MUST deliver it (Anthropic
+   *                          maps it to the API `system` param; all others
+   *                          materialize it via `applySystemOption` in
+   *                          `core/utils/sanitizeMessages.ts` as a leading
+   *                          `role:'system'` message). Priority semantics:
+   *                          when present it REPLACES message-embedded
+   *                          system roles. Silently dropping it detaches
+   *                          every prompt rule from the model
+   *                          (jade-blessing-brass RCA: GLM ran the universal
+   *                          job with no system prompt at all).
    *   - `tools`           → tool-use definitions
    *   - `maxTokens`       → output cap
    *   - `enableThinking`  → request extended thinking (provider-dependent)

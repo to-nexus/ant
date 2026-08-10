@@ -21,7 +21,7 @@ import {
 } from '../../../core/ports/llm';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetry } from '../../../core/utils/retry';
-import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
+import { sanitizeMessages, applySystemOption } from '../../../core/utils/sanitizeMessages';
 
 export class GeminiLLMClient implements LLMClient {
   private client: GoogleGenAI;
@@ -70,7 +70,9 @@ export class GeminiLLMClient implements LLMClient {
     messages: Array<{ role: string; content: string | CacheableContent[] }>,
     options?: Record<string, any>
   ): Promise<LLMInvokeResult> {
-    const { systemInstruction, contents } = this.convertMessages(messages);
+    // `options.system` is a port-level contract — materialized as a leading
+    // system message; convertMessages lifts it into systemInstruction.
+    const { systemInstruction, contents } = this.convertMessages(applySystemOption(messages, options?.system));
 
     const temperature = options?.temperature ?? this.temperature;
     console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=invoke messages=${messages.length} temp=${temperature}`);
@@ -116,7 +118,9 @@ export class GeminiLLMClient implements LLMClient {
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent> {
-    const { systemInstruction, contents } = this.convertMessages(messages);
+    // `options.system` is a port-level contract — materialized as a leading
+    // system message; convertMessages lifts it into systemInstruction.
+    const { systemInstruction, contents } = this.convertMessages(applySystemOption(messages, options?.system));
     const toolsCount = options?.tools?.length || 0;
     const temperature = options?.temperature ?? this.temperature;
 
@@ -256,7 +260,9 @@ export class GeminiLLMClient implements LLMClient {
     schemaName: string,
     options?: { temperature?: number; maxTokens?: number; [key: string]: any }
   ): Promise<T> {
-    const { systemInstruction, contents } = this.convertMessages(messages);
+    // `options.system` is a port-level contract — materialized as a leading
+    // system message; convertMessages lifts it into systemInstruction.
+    const { systemInstruction, contents } = this.convertMessages(applySystemOption(messages, options?.system));
     const temperature = options?.temperature ?? this.temperature;
 
     console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=invokeStructured schema=${schemaName} temp=${temperature}`);
