@@ -50,6 +50,16 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   the `auditConfig.ignoreGhsas:` block (accepted dev-only GHSAs, one inline
   comment each) in [pnpm-workspace.yaml](../../pnpm-workspace.yaml), **plus** the
   narrative here. Do not scatter audit-ignore rationale across multiple files.
+- **`overrides:` has a downstream mirror.** pnpm 11 honors `overrides` only at
+  the *resolving* workspace root. The cloud distribution consumes this repo as
+  a submodule, where this file is inert — so every entry in `overrides:` must
+  also exist, byte-identical, in that workspace's own root. Raising a pin here
+  alone changes nothing downstream, and the failure is silent: a stale root
+  override outranks the importer specifier, so the downstream lockfile keeps
+  resolving the vulnerable version while `--frozen-lockfile` still passes.
+  Authoring stays ant-first; the mirror is applied automatically at submodule
+  bump and asserted by a gate there. Add the rationale comment above the pin —
+  it travels with the entry.
 - **State (2026-06-30, P3).** `pnpm audit` exits clean (runtime vulns = 0).
   Runtime fixes applied: js-yaml/uuid (ant-cli) + mermaid/yaml (ant-ui) bumped;
   body-parser/qs/follow-redirects/mdast-util-to-hast/dompurify/ip-address/uuid/
