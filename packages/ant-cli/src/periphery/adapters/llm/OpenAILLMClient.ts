@@ -22,7 +22,7 @@ import {
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { getLLMDispatcher } from './llmDispatcher';
-import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
+import { sanitizeMessages, applySystemOption } from '../../../core/utils/sanitizeMessages';
 
 /**
  * OpenAI-compatible providers that accept the `thinking:{type}` request param, mapped
@@ -168,7 +168,9 @@ export class OpenAILLMClient implements LLMClient {
     const response = await this.client.chat.completions.create({
       model: this.modelName,
       // Provider-neutral guard: strip empty text blocks; see sanitizeMessages.
-      messages: sanitizeMessages(messages).map(m => ({
+      // `options.system` is a port-level contract — materialized as a leading
+      // system message (see applySystemOption).
+      messages: sanitizeMessages(applySystemOption(messages, options?.system)).map(m => ({
         role: m.role as 'user' | 'assistant' | 'system',
         content: normalizeChatContent(m.content),
       })),
@@ -272,7 +274,9 @@ export class OpenAILLMClient implements LLMClient {
     const signal = options?.signal;
     if (signal?.aborted) return;
 
-    const openAIMessages = this.convertToOpenAIMessages(messages);
+    // `options.system` is a port-level contract — materialized as a leading
+    // system message before conversion (see applySystemOption).
+    const openAIMessages = this.convertToOpenAIMessages(applySystemOption(messages, options?.system));
     const temperature = options?.temperature ?? this.temperature;
 
     const providerExtra = this.resolveThinkingParam(options);
@@ -619,7 +623,9 @@ export class OpenAILLMClient implements LLMClient {
     const response = await this.client.chat.completions.create({
       model: this.modelName,
       // Provider-neutral guard: strip empty text blocks; see sanitizeMessages.
-      messages: sanitizeMessages(messages).map(m => ({
+      // `options.system` is a port-level contract — materialized as a leading
+      // system message (see applySystemOption).
+      messages: sanitizeMessages(applySystemOption(messages, options?.system)).map(m => ({
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
       })),

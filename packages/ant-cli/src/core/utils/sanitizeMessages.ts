@@ -67,3 +67,27 @@ export function sanitizeMessages<T extends NeutralMessage>(messages: T[]): T[] {
     return { ...msg, content: filtered };
   });
 }
+
+/**
+ * Materialize the port-level `options.system` contract into the neutral
+ * message list. `options.system` is a cross-adapter contract (see
+ * `core/ports/llm.ts`): AnthropicLLMClient maps it to the API's `system`
+ * param natively; every other adapter carries system content as a
+ * `role:'system'` message, and MUST route through this helper so the option
+ * is never silently dropped (jade-blessing-brass RCA: the OpenAI-compat
+ * adapter ignored it, so GLM never received any system prompt).
+ *
+ * Semantics mirror Anthropic's priority rule — `options.system` WINS over
+ * message-embedded system roles: when `system` is non-blank, existing
+ * `role:'system'` messages are removed and a single system message is
+ * prepended. When `system` is absent/blank, messages pass through untouched.
+ * Non-mutating.
+ */
+export function applySystemOption<T extends NeutralMessage>(
+  messages: T[],
+  system: string | undefined,
+): T[] {
+  if (isBlankText(system)) return messages;
+  const withoutSystem = messages.filter((m) => m.role !== 'system');
+  return [{ role: 'system', content: system as string } as T, ...withoutSystem];
+}

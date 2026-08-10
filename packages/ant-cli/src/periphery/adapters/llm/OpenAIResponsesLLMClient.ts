@@ -40,7 +40,7 @@ import {
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { getLLMDispatcher } from './llmDispatcher';
-import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
+import { sanitizeMessages, applySystemOption } from '../../../core/utils/sanitizeMessages';
 import {
   decodeReasoningEnvelope,
   encodeReasoningEnvelope,
@@ -369,7 +369,7 @@ export class OpenAIResponsesLLMClient implements LLMClient {
 
     const response: any = await this.client.responses.create({
       model: this.modelName,
-      input: this.convertToResponsesInput(messages as any, false),
+      input: this.convertToResponsesInput(applySystemOption(messages, options?.system) as any, false),
       max_output_tokens: maxOutputTokens,
       reasoning: { effort },
       store: false,
@@ -391,7 +391,7 @@ export class OpenAIResponsesLLMClient implements LLMClient {
     const effort = this.resolveEffort(options?.enableThinking ?? false);
     const response: any = await this.client.responses.create({
       model: this.modelName,
-      input: this.convertToResponsesInput(messages as any, false),
+      input: this.convertToResponsesInput(applySystemOption(messages, options?.system) as any, false),
       max_output_tokens: this.resolveMaxOutputTokens(options?.maxTokens, effort),
       reasoning: { effort },
       store: false,
@@ -491,7 +491,7 @@ export class OpenAIResponsesLLMClient implements LLMClient {
 
     const build = (includeReasoning: boolean) => ({
       model: this.modelName,
-      input: this.convertToResponsesInput(messages, includeReasoning),
+      input: this.convertToResponsesInput(applySystemOption(messages, options?.system), includeReasoning),
       ...this.toolsParam(resolvedTools.tools),
       // Only meaningful with tools declared (port contract). `'none'` keeps the
       // declarations in the request so a function_call-bearing history stays
