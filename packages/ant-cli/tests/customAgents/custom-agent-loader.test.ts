@@ -146,6 +146,44 @@ describe('loadCustomJob — validation table', () => {
     writeJob(dir2, 'weekly', {});
     expect(() => loadCustomJob(roots(), 'ops2', 'weekly')).toThrow(/requires "url"/);
   });
+
+  // http `headers` — the ONE auth mechanism for http MCP. Same env-var-NAME rule
+  // as `env`, so a literal token in the definition file cannot reach a server.
+  it.each([
+    [
+      'headers carrying a literal token',
+      { transport: 'http', url: 'http://localhost:9', headers: { Authorization: 'Bearer sk-live-abc' } },
+      /env var NAME/,
+    ],
+    [
+      'headers with an invalid header name',
+      { transport: 'http', url: 'http://localhost:9', headers: { 'Bad Header': 'OPS_TOKEN' } },
+      /not a valid HTTP header name/,
+    ],
+    [
+      'headers on stdio transport',
+      { transport: 'stdio', command: 'npx', headers: { Authorization: 'OPS_TOKEN' } },
+      /"headers" applies to http transport only/,
+    ],
+  ] as const)('mcp %s → throws', (_label, server, pattern) => {
+    const dir = writeAgent(roots()[0].root, 'ops', { mcp: { servers: { s: server } } });
+    writeJob(dir, 'weekly', {});
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
+  });
+
+  it('http headers naming host env vars load through to the resolved job', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {
+      mcp: {
+        servers: {
+          api: { transport: 'http', url: 'http://localhost:9', headers: { Authorization: 'OPS_TOKEN' } },
+        },
+      },
+    });
+    writeJob(dir, 'weekly', {});
+    expect(loadCustomJob(roots(), 'ops', 'weekly').mcpServers.api.headers).toEqual({
+      Authorization: 'OPS_TOKEN',
+    });
+  });
 });
 
 describe('loadCustomJob — legacy schema fails loud with migration messages', () => {

@@ -182,6 +182,42 @@ describe('mcp.servers round-trip', () => {
     });
   });
 
+  it('http headers survive derive → apply unchanged', () => {
+    const servers = {
+      remote: {
+        transport: 'http' as const,
+        url: 'https://mcp.example/sse',
+        headers: { Authorization: 'OPS_API_TOKEN' },
+      },
+    };
+    const next = editRaw(JOB_YAML, (doc) => applyMcpServers(doc, servers));
+    expect(deriveMcpServers(docOf(next))).toEqual(servers);
+  });
+
+  it("headers are dropped on stdio — env is that transport's only credential door", () => {
+    const next = editRaw(JOB_YAML, (doc) =>
+      applyMcpServers(doc, {
+        local: { transport: 'stdio', command: 'npx', headers: { Authorization: 'OPS_API_TOKEN' } },
+      }),
+    );
+    expect(deriveMcpServers(docOf(next))).toEqual({ local: { transport: 'stdio', command: 'npx' } });
+  });
+
+  it.each([
+    [
+      'a literal header token',
+      { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { Authorization: 'Bearer sk-live' } } },
+      /host env var NAME/,
+    ],
+    [
+      'headers declared on stdio',
+      { db: { transport: 'stdio' as const, command: 'npx', headers: { Authorization: 'OPS_API_TOKEN' } } },
+      /applies to http transport only/,
+    ],
+  ])('the validator refuses %s', (_label, servers, pattern) => {
+    expect(validateMcpServers(servers).join('\n')).toMatch(pattern);
+  });
+
   it('removing the last server drops the whole mcp block', () => {
     const next = editRaw(JOB_YAML, (doc) => applyMcpServers(doc, {}));
     expect(next).not.toContain('mcp:');

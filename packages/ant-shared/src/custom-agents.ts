@@ -127,12 +127,22 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   /** http: streamable HTTP endpoint. */
   url?: string;
+  /**
+   * http: map of request-header name → *host env var name* holding the value.
+   * The ONE authentication mechanism for HTTP MCP servers (`Authorization`,
+   * `X-Api-Key`, …). Same env-var-name rule as {@link McpServerConfig.env}, so a
+   * literal credential in the definition file fails validation.
+   */
+  headers?: Record<string, string>;
 }
 
 export const MCP_TRANSPORTS = ['stdio', 'http'] as const;
 
 /** env values name a host variable — the pattern that keeps secrets out of the file. */
 export const MCP_ENV_VAR_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/** HTTP header names accepted in `headers` keys (RFC token subset). */
+export const MCP_HEADER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 
 /**
  * Every rule the loader enforces, as plain messages. Empty = valid. Callers
@@ -148,6 +158,9 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
     }
     if (cfg?.transport === 'stdio') {
       if (!cfg.command) errors.push(`MCP server "${name}": stdio transport requires "command"`);
+      if (cfg.headers && Object.keys(cfg.headers).length > 0) {
+        errors.push(`MCP server "${name}": "headers" applies to http transport only — stdio auth goes through "env"`);
+      }
     } else if (cfg?.transport === 'http') {
       if (!cfg.url) errors.push(`MCP server "${name}": http transport requires "url"`);
     } else {
@@ -157,6 +170,16 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
       if (typeof value !== 'string' || !MCP_ENV_VAR_NAME_PATTERN.test(value)) {
         errors.push(
           `MCP server "${name}": env.${key} must reference a host env var NAME (got: ${String(value)}) — secrets never live in the definition file`,
+        );
+      }
+    }
+    for (const [key, value] of Object.entries(cfg?.headers ?? {})) {
+      if (!MCP_HEADER_NAME_PATTERN.test(key)) {
+        errors.push(`MCP server "${name}": headers."${key}" is not a valid HTTP header name`);
+      }
+      if (typeof value !== 'string' || !MCP_ENV_VAR_NAME_PATTERN.test(value)) {
+        errors.push(
+          `MCP server "${name}": headers.${key} must reference a host env var NAME (got: ${String(value)}) — secrets never live in the definition file`,
         );
       }
     }

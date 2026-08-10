@@ -8,7 +8,10 @@
  *
  * Trust model: an MCP stdio server is arbitrary code execution, equivalent to
  * run_command — acceptable under the workspace trust model; cloud multitenancy
- * relies on pod isolation (documented risk, Phase 3 adds org approval).
+ * relies on pod isolation (documented risk, Phase 3 adds org approval). A stdio
+ * child therefore gets a MINIMAL env (see {@link STDIO_EXEC_ENV_KEYS}), not the
+ * host's, and secrets travel as declared env-var *names* only — for http
+ * servers through `headers`, for stdio through `env`.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -62,14 +65,43 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-/** Resolve declared env-var *names* to values from the host environment. */
-function resolveEnv(declared: Record<string, string> | undefined): Record<string, string> {
+/**
+ * Host variables a spawned process needs to run at all (resolve executables,
+ * find a home dir, decode text). Everything else — provider keys, JWT secret,
+ * Redis URL — stays out of the child unless the definition names it in `env`.
+ */
+export const STDIO_EXEC_ENV_KEYS = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'SystemRoot'] as const;
+
+/**
+ * The exact environment a stdio MCP child receives: the exec baseline plus the
+ * definition's declared vars, and NOTHING else. Exported because this
+ * allowlist IS the isolation boundary — it is guarded directly rather than by
+ * spawning a server.
+ */
+export function buildStdioChildEnv(declared: Record<string, string> | undefined): Record<string, string> {
+  const base: Record<string, string> = {};
+  for (const key of STDIO_EXEC_ENV_KEYS) {
+    const value = process.env[key];
+    if (value !== undefined) base[key] = value;
+  }
+  return { ...base, ...resolveFromHostEnv(declared, 'env') };
+}
+
+/**
+ * Resolve declared host env-var *names* to their values. Shared by `env`
+ * (stdio child env) and `headers` (http request headers) — one rule, so a
+ * literal secret can never enter a definition file through either door.
+ */
+function resolveFromHostEnv(
+  declared: Record<string, string> | undefined,
+  field: 'env' | 'headers',
+): Record<string, string> {
   const resolved: Record<string, string> = {};
   for (const [key, varName] of Object.entries(declared ?? {})) {
     const value = process.env[varName];
     if (value === undefined) {
       throw new Error(
-        `MCP server env "${key}" references host env var "${varName}" which is not set — set it before starting the job`,
+        `MCP server ${field} "${key}" references host env var "${varName}" which is not set — set it before starting the job`,
       );
     }
     resolved[key] = value;
@@ -94,9 +126,14 @@ export class McpConnectionManager {
           ? new StdioClientTransport({
               command: cfg.command!,
               args: cfg.args ?? [],
-              env: { ...process.env as Record<string, string>, ...resolveEnv(cfg.env) },
+              // Declared env ONLY, plus the minimum a process needs to execute.
+              // Never `...process.env` — that handed every third-party server the
+              // host's full secret set (LLM provider keys, JWT secret, Redis URL).
+              env: buildStdioChildEnv(cfg.env),
             })
-          : new StreamableHTTPClientTransport(new URL(cfg.url!));
+          : new StreamableHTTPClientTransport(new URL(cfg.url!), {
+              requestInit: { headers: resolveFromHostEnv(cfg.headers, 'headers') },
+            });
 
       console.log(`🔌 [MCP] Connecting to server "${serverName}" (${cfg.transport})`);
       await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, `MCP connect "${serverName}"`);

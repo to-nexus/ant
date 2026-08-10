@@ -4,6 +4,11 @@
  *
  * A job-runner child runs exactly one job, so these are process singletons
  * (derived from the active custom-job definition; workspace disk is the SSOT).
+ *
+ * REGISTRY INSTANCE IDENTITY IS A CONTRACT — see {@link buildUniversalRegistry}.
+ * The tool node resolves `getUniversalRegistry()` at module-load time and the
+ * orchestrator captures that reference for the process lifetime, so the object
+ * this module hands out must never be replaced, only populated.
  */
 
 import type { FileSystemPort } from '../../../core/ports/filesystem';
@@ -30,11 +35,21 @@ export function getUniversalMcp(): McpConnectionManager | null {
 }
 
 /**
- * Registry singleton: universal preset + one dispatch handler per connected
- * MCP tool. Built after MCP connect (runner start).
+ * Registers one dispatch handler per connected MCP tool onto the registry
+ * singleton. Called once per process, after MCP connect (runner start).
+ *
+ * MUST register into `getUniversalRegistry()`'s existing instance and MUST NOT
+ * replace it: `nodes/tool.ts` passes `registry: getUniversalRegistry()` at
+ * module load (the `createToolNode({...})` call is module-top-level, reached via
+ * runner → graph → nodes/tool static imports), and `createToolNode` captures it
+ * immediately in `new ToolOrchestrator({ registry })`. Swapping in a fresh
+ * instance here leaves that orchestrator holding an MCP-less preset registry, so
+ * every `mcp__*` call fails `registry.get(name) === undefined` → "Unknown tool"
+ * — while the subagent seam (which resolves the registry inside `buildContext`,
+ * i.e. per call) still works, producing a confusing asymmetry.
  */
 export function buildUniversalRegistry(mcp: McpConnectionManager | null): ToolRegistry {
-  const registry = createUniversalToolRegistry();
+  const registry = getUniversalRegistry();
   if (mcp) {
     for (const info of mcp.listToolInfos()) {
       // MCP names are dynamic — the registry map is string-keyed at runtime.
@@ -47,7 +62,6 @@ export function buildUniversalRegistry(mcp: McpConnectionManager | null): ToolRe
       });
     }
   }
-  _registry = registry;
   return registry;
 }
 
