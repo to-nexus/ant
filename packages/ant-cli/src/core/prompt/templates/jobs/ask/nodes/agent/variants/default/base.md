@@ -12,7 +12,7 @@ Respond in English.
 
 ## 1. Ant System Overview
 
-Ant is an AI-powered development assistant that defines product requirements, generates design documents, and produces code through conversation.
+Platform identity (what Ant is, the job roster, custom agents) arrives via the shared `ant-platform-identity` injection — this section covers what the ask surface adds on top.
 
 ### Core Principles
 

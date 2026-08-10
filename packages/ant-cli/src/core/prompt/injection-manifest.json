@@ -8,6 +8,7 @@
       "content"
     ],
     "output-tag-policy": [],
+  "ant-platform-identity": [],
     "directive-qa": [],
     "clarify-policy": [
       "clarifyBudget",

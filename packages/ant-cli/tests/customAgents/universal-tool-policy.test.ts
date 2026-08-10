@@ -57,15 +57,21 @@ describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
     }
   });
 
-  it('domain-bound tools stay excluded (search_code, workspace/reference/ant-source, assets, figma)', () => {
+  it('domain-bound tools stay excluded (search_code, workspace/reference, assets, figma)', () => {
     const forbidden = [
       'search_code', 'read_workspace_file', 'list_workspace_files', 'read_reference_file',
-      'list_reference_files', 'search_reference_code', 'register_reference', 'read_ant_source',
-      'list_ant_files', 'search_ant_code', 'read_source_doc', 'list_assets', 'download_asset',
+      'list_reference_files', 'search_reference_code', 'register_reference',
+      'read_source_doc', 'list_assets', 'download_asset',
       'figma_get_design_context', 'figma_get_screenshot', 'figma_get_metadata', 'figma_get_variable_defs',
     ];
     for (const name of forbidden) {
       expect((UNIVERSAL_BUILTIN_TOOLS as readonly string[]).includes(name), `"${name}" must NOT be in the universal preset`).toBe(false);
+    }
+  });
+
+  it('ant-source self-source tools are included (domain-free read-only — platform self-awareness)', () => {
+    for (const name of ['read_ant_source', 'list_ant_files', 'search_ant_code']) {
+      expect((UNIVERSAL_BUILTIN_TOOLS as readonly string[]).includes(name), `"${name}" must be in the universal preset`).toBe(true);
     }
   });
 
