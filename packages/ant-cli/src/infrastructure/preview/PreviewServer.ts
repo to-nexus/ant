@@ -47,6 +47,7 @@ import { extractUserContext } from '../../periphery/adapters/http/routes/helpers
 import { UnifiedWorkspaceResolver, type WorkspaceResolver } from '../../core/config/WorkspacePathResolver';
 import { isUrlKey, parseUrlKey } from '../../periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 import { resolveConnectionForSave } from '../../periphery/adapters/http/services/PreviewService/utils/connectionResolve';
+import { resolveConnectionDir } from '../../periphery/adapters/http/services/PreviewService/utils/connectionDir';
 import { resolveDeployTarget } from '../../periphery/adapters/http/middleware/deployRouting';
 import { resolvePreviewTarget, resolvePreviewLabel, resolveOwnerForward, selfPodId, selfServicePort, PREVIEW_PEER_FORWARD_HEADER } from '../../periphery/adapters/http/middleware/previewRouting';
 import { resolveCrossPodLiveness } from '../../core/utils/crossPodLiveness';
@@ -523,7 +524,7 @@ export class PreviewServer {
         connections.map(c => (c.source && c.source !== '*' ? c.source : '')),
       );
       for (const subdir of sources) {
-        const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+        const pkgDir = resolveConnectionDir(workspacePath, subdir);
         const framework = toToggleFramework(detectFramework(pkgDir));
         syncEnvStructureFromExample(
           path.join(pkgDir, '.env.example'),
@@ -1084,6 +1085,20 @@ export class PreviewServer {
           }
         }
 
+        // Validate `source` BEFORE persisting: it is the subdirectory this
+        // service later joins onto the workspace root to write `.env` /
+        // `.env.example`, so a `../` source would steer those writes out of the
+        // caller's workspace. Rejecting at save time also means no escaping
+        // value is ever stored in Redis for a later write to pick up.
+        for (const conn of (connections || [])) {
+          try {
+            resolveConnectionDir(this.resolveWorkspacePath(userContext, projectId, feature), conn.source);
+          } catch (err: any) {
+            res.status(400).json({ error: err.message, envVar: conn.envVar });
+            return;
+          }
+        }
+
         // Resolve ant-project connections: compute resolvedUrlKey and proxy path.
         // A service-less connection (e.g. `self`) resolves to the whole-backend
         // proxy path — see resolveConnectionForSave for the serviceName guard.
@@ -1119,15 +1134,13 @@ export class PreviewServer {
         const workspacePath = this.resolveWorkspacePath(userContext, projectId, feature);
         if (fs.existsSync(workspacePath)) {
           for (const conn of configConnections) {
-            const subdir = conn.source && conn.source !== '*' ? conn.source : '';
-            const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+            const pkgDir = resolveConnectionDir(workspacePath, conn.source);
             const framework = toToggleFramework(detectFramework(pkgDir));
             upsertConnectionAnnotation(path.join(pkgDir, '.env.example'), conn, framework);
             mirrorConnectionToEnv(path.join(pkgDir, '.env'), conn, framework);
           }
           for (const conn of removedConns) {
-            const subdir = conn.source && conn.source !== '*' ? conn.source : '';
-            const pkgDir = subdir ? path.join(workspacePath, subdir) : workspacePath;
+            const pkgDir = resolveConnectionDir(workspacePath, conn.source);
             // Structure delete: drop the annotation from .env.example AND the
             // value/toggle keys from .env (explicit removal knows the envVar,
             // so this is the one safe place to delete .env keys).

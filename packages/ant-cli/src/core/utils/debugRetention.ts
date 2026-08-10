@@ -60,7 +60,11 @@ export interface PruneOptions {
    * Required for Redis active-job lookup. When omitted alongside `stateStore`,
    * source (b) is skipped and only sources (a)+(c) protect files.
    */
-  context?: { projectId: string; featureName: string };
+  context?: {
+    userContext?: { organizationId: string; userId: string };
+    projectId: string;
+    featureName: string;
+  };
   /** Override `now` for deterministic tests. */
   nowMs?: number;
 }
@@ -96,7 +100,7 @@ async function readActiveJobIdsFromRedis(
   const ids = new Set<string>();
   if (!stateStore || !ctx) return ids;
   try {
-    const jobs = await stateStore.listJobsByFeature(ctx.projectId, ctx.featureName);
+    const jobs = await stateStore.listJobsByFeature(ctx.userContext, ctx.projectId, ctx.featureName);
     for (const j of jobs) {
       if (j.jobId && ACTIVE_REDIS_STATUSES.has(j.status)) ids.add(j.jobId.toLowerCase());
     }

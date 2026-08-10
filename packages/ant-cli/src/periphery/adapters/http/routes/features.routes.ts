@@ -274,7 +274,7 @@ export function createFeaturesRoutes(deps: {
       // live-state store only.
       if (deps.stateStore) {
         try {
-          const redisJobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+          const redisJobs = await deps.stateStore.listJobsByFeature(userContext, projectId, featureName);
           for (const j of redisJobs) {
             if (!(types as readonly string[]).includes(j.type)) continue;
             // `includes` over a widened string[] doesn't narrow `j.type`, but

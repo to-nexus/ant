@@ -31,6 +31,7 @@ import { isSubdomainRouting, getDeployBaseDomain } from '../../../../core/config
 import type { DeployState } from '../../../../core/ports/portRegistry';
 import {
   buildCleanHeaders,
+  type PlatformCredentialFilter,
   escapeRegExp,
   extractForwardingContext,
   fetchWithTransportRetry,
@@ -256,6 +257,15 @@ async function serveDeployWithSelfHeal(
 
 export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
   const cookieName = deps.cookieName ?? 'ant_session';
+  // The upstream serves the user's own built application — the caller's
+  // platform session must not travel to it. App-owned cookies / bearer tokens
+  // are preserved (see PlatformCredentialFilter).
+  const platformCredentials: PlatformCredentialFilter = {
+    cookieName,
+    isPlatformToken: deps.jwtService
+      ? (token: string) => { try { deps.jwtService!.verify(token); return true; } catch { return false; } }
+      : undefined,
+  };
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     // ── Subdomain routing (Phase 2) ──
     // Deploy apps live at their own `{label}.<deployBaseDomain>` host root. The
@@ -308,7 +318,7 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
           }
           const { targetHost, targetPort } = target;
           const targetUrl = `http://${targetHost}:${targetPort}${req.url}`; // verbatim — root served
-          const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
+          const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req), platformCredentials);
           const response = await fetchWithTransportRetry(targetUrl, {
             method: req.method,
             headers,
@@ -390,7 +400,7 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
         const targetUrl = `http://${targetHost}:${targetPort}${targetPath}`;
         const upstreamHost = `${targetHost}:${targetPort}`;
 
-        const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
+        const headers = buildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req), platformCredentials);
         // Transient transport errors (spawn race, brief socket reset) are
         // absorbed by fetchWithTransportRetry. A persistently dead target throws
         // out to serveDeployWithSelfHeal's rehydrate path.

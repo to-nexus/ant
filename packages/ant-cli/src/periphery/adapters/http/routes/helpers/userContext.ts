@@ -22,15 +22,13 @@ function warnAmbiguousLocalTenant(reason: string): void {
 }
 
 /**
- * Single sink for "is the BE running in local mode?". Reading
- * `process.env.ANT_SERVER_MODE` directly is allowed at startup wiring,
- * but routes / services that branch on mode should go through here so
- * the gate semantics ("anything other than 'cloud' is local") stays in
- * one place.
+ * Single sink for "is the BE running in local mode?". Re-exported from
+ * `core/config/serverMode` — `core/` needs the same predicate (codebase-path
+ * resolution) and must not import from `periphery/`, so the implementation
+ * lives there and this stays the route-layer import site.
  */
-export function isLocalServerMode(): boolean {
-  return (process.env.ANT_SERVER_MODE || 'local') !== 'cloud';
-}
+import { isLocalServerMode } from '../../../../../core/config/serverMode';
+export { isLocalServerMode };
 
 let inferredLocalDefault: { organizationId: string; userId: string } | null | undefined;
 

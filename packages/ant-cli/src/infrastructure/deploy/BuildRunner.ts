@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import { spawn } from 'child_process';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 import { detectPackageManager, buildInstallCommand, findProjectRoot } from '../../utils/packageManager';
+import { composeChildEnv } from '../../core/config/childEnv';
 
 export interface BuildResult {
   success: boolean;
@@ -275,7 +276,7 @@ export async function runBuild(
 
     const child = spawn(npmBin, args, {
       cwd: workspacePath,
-      env: { ...process.env, ...envVars, NODE_ENV: 'production' },
+      env: composeChildEnv(envVars, { NODE_ENV: 'production' }),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
     });

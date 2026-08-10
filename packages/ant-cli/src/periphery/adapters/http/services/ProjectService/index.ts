@@ -440,7 +440,7 @@ export class ProjectService {
       'cancelJobs',
       this.stateStore && this.jobQueue
         ? async () => {
-            const jobs = await this.stateStore!.listJobsByFeature(projectId, featureName);
+            const jobs = await this.stateStore!.listJobsByFeature(userContext, projectId, featureName);
             // Refuse outright when an active job is running — force lets the
             // user override (cancelScopedJobs SIGTERMs the child).
             const activeJob = jobs.find((j) => ['running', 'queued', 'pending'].includes(j.status));

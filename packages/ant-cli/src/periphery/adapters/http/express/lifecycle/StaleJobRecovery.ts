@@ -474,7 +474,7 @@ async function recoverOrphanTerminalIndexEntries(
   let sremCount = 0;
 
   for (const entry of indexEntries) {
-    const { projectId, featureName, jobIds } = entry;
+    const { userContext, projectId, featureName, jobIds } = entry;
     for (const jobId of jobIds) {
       try {
         const status = await stateStore.getJobStatus(jobId);
@@ -482,7 +482,7 @@ async function recoverOrphanTerminalIndexEntries(
         // Status key evicted but SET still has the jobId — srem and move on.
         if (!status) {
           try {
-            await stateStore.removeJobFromFeatureIndex(projectId, featureName, jobId);
+            await stateStore.removeJobFromFeatureIndex(userContext, projectId, featureName, jobId);
             sremCount++;
           } catch (err) {
             logger.warn(

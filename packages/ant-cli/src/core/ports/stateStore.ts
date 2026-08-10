@@ -161,9 +161,19 @@ export interface StateStorePort {
   deleteJobStatus(jobId: string): Promise<void>;
   
   /**
-   * List jobs by project and feature
+   * List jobs by project and feature, scoped to the owning tenant.
+   *
+   * `projectId` / `featureName` are user-chosen and collide across tenants, so
+   * the caller's `userContext` is part of the lookup — without it one tenant's
+   * running job surfaces in another's duplicate check. Pass `undefined` only
+   * where there is genuinely no caller identity (local single-tenant paths);
+   * it resolves to the `local:local` tenant.
    */
-  listJobsByFeature(projectId: string, featureName: string): Promise<JobStatusData[]>;
+  listJobsByFeature(
+    userContext: UserContext | undefined,
+    projectId: string,
+    featureName: string,
+  ): Promise<JobStatusData[]>;
 
   // ============================================
   // Task Queue Snapshot Management
@@ -695,6 +705,7 @@ export interface StateStorePort {
    * missed (e.g. server crash between status update and key DEL).
    */
   scanJobsByFeatureIndex(): Promise<Array<{
+    userContext: UserContext;
     projectId: string;
     featureName: string;
     jobIds: string[];
@@ -707,6 +718,7 @@ export interface StateStorePort {
    * the stale jobId.
    */
   removeJobFromFeatureIndex(
+    userContext: UserContext | undefined,
     projectId: string,
     featureName: string,
     jobId: string,

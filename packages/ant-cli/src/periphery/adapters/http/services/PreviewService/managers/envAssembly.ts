@@ -94,3 +94,8 @@ export function buildPackageEnv(input: PackageEnvInput): Record<string, string> 
     ...connectionsToEnv(input.connections, input.packageSource),
   };
 }
+
+// Child-process environment composition lives in `core/config/childEnv` (it is
+// job-neutral and also used by the deploy-side runners). Re-exported here so
+// preview call sites keep a single env-assembly import.
+export { composeChildEnv } from '../../../../../../core/config/childEnv';

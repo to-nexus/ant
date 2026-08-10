@@ -9,6 +9,7 @@ import type { JobProjectMapping } from '../../../../core/types/task';
 import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants';
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
+import { assertJobAccess as assertJobAccessShared } from './helpers/jobAccess';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
@@ -284,33 +285,14 @@ export function createJobRoutes(deps: {
   }
 
   /**
-   * Cross-tenant guard for `jobId`-addressed routes. `jobId` is a low-entropy
-   * human id that leaks into logs / SSE / URLs, so in cloud mode a tracked job
-   * may only be read or controlled by its owning `(org, user)`. Rejects with
-   * 403 when a tracked job's owner differs from the caller — this closes
-   * cross-tenant stop (DoS) and status read (info-disclosure). Local mode is
-   * single-tenant → no-op. Untracked jobs (no Redis record) are allowed: they
-   * expose no other tenant's state and the caller-scoped handlers operate only
-   * within the caller's own namespace.
+   * Cross-tenant guard — delegates to the shared `assertJobAccess` owner so
+   * this route file and the workflow SSE route cannot drift apart.
    */
   async function assertJobAccess(
     jobId: string,
     userContext: { userId: string; organizationId: string },
   ): Promise<{ code: number; body: { error: string } } | null> {
-    if (isLocalServerMode()) return null;
-    const owner = (await deps.stateStore.getJobStatus(jobId))?.userContext;
-    if (
-      owner &&
-      (owner.userId !== userContext.userId ||
-        owner.organizationId !== userContext.organizationId)
-    ) {
-      logger.warn(
-        `Cross-tenant job access denied: job=${jobId} owner=${owner.organizationId}/${owner.userId} caller=${userContext.organizationId}/${userContext.userId}`,
-        { component: 'JobRoute' },
-      );
-      return { code: 403, body: { error: 'Forbidden' } };
-    }
-    return null;
+    return assertJobAccessShared(deps.stateStore, jobId, userContext);
   }
 
 
@@ -319,8 +301,17 @@ export function createJobRoutes(deps: {
    * of the same jobType. Filters by jobType to prevent cross-type blocking
    * (e.g. a paused design job should not block a new code job).
    */
-  async function checkDuplicateJob(projectId: string, featureName: string, jobType?: string): Promise<{ jobId: string; isInterrupted: boolean } | undefined> {
-    const jobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+  async function checkDuplicateJob(
+    userContext: { userId: string; organizationId: string },
+    projectId: string,
+    featureName: string,
+    jobType?: string,
+  ): Promise<{ jobId: string; isInterrupted: boolean } | undefined> {
+    // Tenant-scoped: `projectId`/`featureName` are user-chosen and collide
+    // across tenants, so an unscoped lookup would surface another tenant's
+    // running job here — leaking its id in the 409 body and blocking this
+    // caller from starting their own job.
+    const jobs = await deps.stateStore.listJobsByFeature(userContext, projectId, featureName);
     const active = jobs.find(j =>
       (j.status === 'running' || j.status === 'paused') &&
       (!jobType || j.type === jobType)
@@ -428,7 +419,7 @@ export function createJobRoutes(deps: {
       }
 
       // Check if this feature already has a running or interrupted job of the same type
-      const duplicate = await checkDuplicateJob(projectId, featureName, jobType);
+      const duplicate = await checkDuplicateJob(userContext, projectId, featureName, jobType);
 
       if (duplicate) {
         const { jobId: existingJobId, isInterrupted } = duplicate;
@@ -700,7 +691,7 @@ export function createJobRoutes(deps: {
       }
 
       // Check if the base feature already has a running job
-      const duplicate = await checkDuplicateJob(projectId, branchBase);
+      const duplicate = await checkDuplicateJob(userContext, projectId, branchBase);
       if (duplicate) {
         return res.status(409).json({
           error: 'A learn job is already running for this project. Please wait for it to complete or stop it first.',

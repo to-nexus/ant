@@ -31,6 +31,7 @@ import {
 import { resolveCrossPodLiveness } from '../../../../core/utils/crossPodLiveness';
 import {
   buildCleanHeaders as sharedBuildCleanHeaders,
+  type PlatformCredentialFilter,
   buildForwardHeaders,
   escapeRegExp as sharedEscapeRegExp,
   extractForwardingContext,
@@ -144,8 +145,13 @@ export interface PreviewProxyConfig {
  * external host, which preview's Next.js dev servers can use for OAuth
  * callback construction).
  */
-function buildCleanHeaders(req: Request, targetHost: string, targetPort: number): Record<string, string> {
-  return sharedBuildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req));
+function buildCleanHeaders(
+  req: Request,
+  targetHost: string,
+  targetPort: number,
+  platform?: PlatformCredentialFilter,
+): Record<string, string> {
+  return sharedBuildCleanHeaders(req, targetHost, targetPort, extractForwardingContext(req), platform);
 }
 
 /**
@@ -179,6 +185,15 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
   // → always authorized.
   const isOwner = (req: Request, owner: { tenantId: string; userId: string }): boolean =>
     authorizeProxyToken(parseCookieHeader(req.headers.cookie)[cookieName], jwtService, owner);
+
+  // The upstream is a user-authored dev server: it must never receive the
+  // caller's platform session. Its own cookies / bearer tokens pass through.
+  const platformCredentials: PlatformCredentialFilter = {
+    cookieName,
+    isPlatformToken: jwtService
+      ? (token: string) => { try { jwtService.verify(token); return true; } catch { return false; } }
+      : undefined,
+  };
 
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
     // ✅ Skip reserved API/system routes — handled by Express route handlers
@@ -329,7 +344,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
 
         const targetUrl = `http://${previewHost}:${targetPort}${req.url}`; // verbatim — root served
         try {
-          const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
+          const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort, platformCredentials);
           const response = await fetchWithTransportRetry(targetUrl, {
             method: req.method,
             headers: cleanHeaders,
@@ -434,7 +449,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
               ?? await portRegistry.getPreview(tenantId, userId, projectId, feature);
             if (mapping) {
               const host = mapping.host || 'localhost';
-              const cleanHeaders = buildCleanHeaders(req, host, mapping.port);
+              const cleanHeaders = buildCleanHeaders(req, host, mapping.port, platformCredentials);
 
               // All frameworks use native base path — always prepend the urlKey
               const resolvedUrl = rewriteNextImagePath(`/${urlKey}${req.url}`, urlKey);
@@ -621,7 +636,7 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
     
     try {
       // Build clean headers — use actual previewHost (not localhost)
-      const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort);
+      const cleanHeaders = buildCleanHeaders(req, previewHost, targetPort, platformCredentials);
 
       // Transport-error retry shared with baseProxy / deployProxy. Absorbs
       // dev-server startup races; upstream HTTP errors pass through untouched.

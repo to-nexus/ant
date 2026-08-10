@@ -9,6 +9,7 @@ import {
 } from '../services';
 import { UserContext } from '../../../../core/types/user';
 import { extractUserContext } from './helpers/userContext';
+import { assertJobAccess } from './helpers/jobAccess';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
@@ -90,7 +91,7 @@ export function createSSERoutes(deps: {
     let activeJobs: ActiveJobInfo[] = [];
     if (deps.stateStore) {
       try {
-        const featureJobs = await deps.stateStore.listJobsByFeature(projectId, featureName);
+        const featureJobs = await deps.stateStore.listJobsByFeature(userContext, projectId, featureName);
         activeJobs = featureJobs
           .filter(j =>
             (j.status === 'running' || j.status === 'paused' || j.status === 'queued') &&
@@ -271,7 +272,19 @@ export function createSSERoutes(deps: {
     // ✅ Resolve user context consistently (query + header + auth).
     const userContext: UserContext = extractUserContext(req);
     logger.debug(`Workflow user context resolved`, { component: 'SSE', jobId, organizationId: userContext.organizationId, userId: userContext.userId });
-    
+
+    // Ownership gate BEFORE the SSE headers: the initial state below carries
+    // the target job's workflow metadata, so a valid session for a different
+    // owner must be refused with a plain HTTP status rather than an open
+    // stream. Same guard the jobId-addressed HTTP routes use.
+    if (deps.stateStore) {
+      const denied = await assertJobAccess(deps.stateStore, jobId, userContext);
+      if (denied) {
+        res.status(denied.code).json(denied.body);
+        return;
+      }
+    }
+
     // Set SSE headers
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',

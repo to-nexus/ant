@@ -59,6 +59,53 @@ export function parseCookieHeader(cookieHeader: string | undefined): Record<stri
   );
 }
 
+/**
+ * How to recognize the caller's PLATFORM credentials so they can be withheld
+ * from an upstream the platform does not control.
+ *
+ * The dev server / deployed app behind these proxies is user-authored code. A
+ * victim who opens an attacker's preview URL sends their own platform session
+ * along with the request (the cookie is scoped to the shared parent domain),
+ * and forwarding it verbatim would hand that session's authority to the
+ * attacker's process.
+ *
+ * Only the platform's own credentials are removed — the previewed app's OWN
+ * cookies and any non-platform `Authorization` are left untouched, because
+ * those belong to the app being previewed, not to Ant.
+ */
+export interface PlatformCredentialFilter {
+  /** Name of the platform session cookie (`JwtService.cookieName`). */
+  cookieName: string;
+  /** True when a bearer token verifies as a platform JWT. */
+  isPlatformToken?: (token: string) => boolean;
+}
+
+/**
+ * Remove the platform session cookie and a platform bearer token in place,
+ * preserving everything the previewed app itself set.
+ */
+function stripPlatformCredentials(
+  headers: Record<string, string>,
+  platform?: PlatformCredentialFilter,
+): void {
+  if (!platform) return;
+
+  const cookie = headers['cookie'];
+  if (cookie) {
+    const kept = cookie
+      .split(';')
+      .filter(part => part.trim().split('=')[0] !== platform.cookieName);
+    if (kept.length === 0) delete headers['cookie'];
+    else headers['cookie'] = kept.join(';').replace(/^\s+/, '');
+  }
+
+  const auth = headers['authorization'];
+  if (auth && platform.isPlatformToken) {
+    const match = /^Bearer\s+(.+)$/i.exec(auth.trim());
+    if (match && platform.isPlatformToken(match[1])) delete headers['authorization'];
+  }
+}
+
 export interface ForwardingContext {
   externalHost?: string;
   externalProto?: string;
@@ -130,12 +177,14 @@ export function isDevResourceRequest(url: string | undefined): boolean {
  *     `isDevResourceRequest`.
  *   - Inject X-Forwarded-* when a context is supplied, preserving values
  *     already set by an upstream proxy.
+ *   - Strip the caller's PLATFORM credentials (see `PlatformCredentialFilter`).
  */
 export function buildCleanHeaders(
   req: Request,
   targetHost: string,
   targetPort: number,
   ctx?: ForwardingContext,
+  platform?: PlatformCredentialFilter,
 ): Record<string, string> {
   const headers: Record<string, string> = {};
 
@@ -144,6 +193,8 @@ export function buildCleanHeaders(
     if (typeof value !== 'string') continue;
     headers[key] = value;
   }
+
+  stripPlatformCredentials(headers, platform);
 
   headers['host'] = `${targetHost}:${targetPort}`;
   headers['accept-encoding'] = 'identity';

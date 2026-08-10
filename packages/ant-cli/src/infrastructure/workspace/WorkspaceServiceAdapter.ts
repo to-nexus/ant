@@ -14,6 +14,7 @@ import {
   buildUniversalContainerPath,
   buildUniversalArtifactsPath,
 } from '../../core/config/WorkspacePathResolver';
+import { assertProjectSegment } from '../../core/config/pathContainment';
 import { WorkspaceServicePort } from '../../core/ports/workspace';
 import { UserContext } from '../../core/types/user';
 
@@ -33,7 +34,9 @@ export class WorkspaceServiceAdapter implements WorkspaceResolver {
     const tenantId = `${userContext.organizationId}:${userContext.userId}`;
     // ✅ CRITICAL: Replace colon with slash for proper directory structure
     const sanitizedTenantId = tenantId.replace(':', '/');
-    return path.join(this.basePath, sanitizedTenantId, projectId);
+    // Same single-segment gate as UnifiedWorkspaceResolver — both
+    // implementations must reject a traversal-bearing projectId identically.
+    return path.join(this.basePath, sanitizedTenantId, assertProjectSegment(projectId));
   }
 
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {

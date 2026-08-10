@@ -33,7 +33,9 @@ function makeStubs(initialStatuses: Record<string, JobStatusData>) {
   };
   let statuses = { ...initialStatuses };
   const store = {
-    listJobsByFeature: async (_p: string, f: string) =>
+    // Signature is (userContext, projectId, featureName) — the index is
+    // tenant-scoped so two tenants can hold the same projectId/featureName.
+    listJobsByFeature: async (_u: unknown, _p: string, f: string) =>
       Object.values(statuses).filter((s) => s.featureName === f),
     markUserStopped: async (jobId: string) => {
       calls.markUserStopped.push(jobId);

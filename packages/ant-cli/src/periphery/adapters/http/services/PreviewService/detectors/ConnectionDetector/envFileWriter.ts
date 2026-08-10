@@ -13,6 +13,24 @@ import {
   type DeployFramework,
 } from '../../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
 
+/** POSIX environment variable name. */
+const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Reject anything that is not a bare env-var name before it is written as
+ * `KEY=value`.
+ *
+ * Connection names (and therefore derived toggle vars) come from the preview
+ * config panel, so a key carrying a newline would append attacker-chosen
+ * additional lines to the project `.env`. Guarding at the single write site
+ * means every caller — toggle, mirror, annotation sync — inherits it.
+ */
+function assertEnvKey(key: string): void {
+  if (!ENV_KEY_RE.test(key)) {
+    throw new Error(`Invalid environment variable name: ${JSON.stringify(key)}`);
+  }
+}
+
 /**
  * Set a single `KEY=value` entry in the project `.env` file. Companion to
  * `overrideWithEnvFile` (the read side): read computes
@@ -34,6 +52,7 @@ export function setEnvValue(
   key: string,
   value: string,
 ): void {
+  assertEnvKey(key);
   const newLine = `${key}=${value}`;
 
   if (!fs.existsSync(envFilePath)) {

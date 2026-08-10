@@ -173,7 +173,7 @@ export async function cancelAllProjectJobs(args: CancelAllProjectJobsArgs): Prom
     await Promise.all(
       features.map(async (f) => {
         try {
-          return await stateStore.listJobsByFeature(projectId, f);
+          return await stateStore.listJobsByFeature(userContext, projectId, f);
         } catch (err) {
           logger.warn(`[CancelCascade] listJobsByFeature failed`, { component: 'CancelCascade' }, { projectId, feature: f, err });
           return [];

@@ -14,6 +14,8 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { featureNameToSlug, FEATURE_SLUG_SENTINEL } from '@ant/shared';
 import { UserContext } from '../types/user';
+import { assertProjectSegment } from './pathContainment';
+import { isLocalServerMode } from './serverMode';
 
 export interface WorkspaceResolver {
   /**
@@ -117,6 +119,13 @@ export function buildFeaturePath(projectPath: string, featureId: string): string
  * Shared codebase-path resolution used by every WorkspaceResolver
  * implementation. `repoType:'local'` short-circuits to the user-owned
  * localPath; otherwise the feature worktree codebase is returned.
+ *
+ * `repoType:'local'` is honoured in local mode only. In cloud the stored
+ * `localPath` is an arbitrary absolute path chosen by a tenant, and honouring
+ * it would hand the job worker a codebase root outside that tenant's
+ * workspace. The write side rejects it (`ProjectCrudService`), and this read
+ * side is what also neutralizes configs written before that gate existed or
+ * restored from a checkpoint.
  */
 export function resolveCodebasePathFromConfig(
   projectPath: string,
@@ -126,7 +135,7 @@ export function resolveCodebasePathFromConfig(
   try {
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      if (config.repoType === 'local' && config.localPath) {
+      if (config.repoType === 'local' && config.localPath && isLocalServerMode()) {
         return resolveLocalPath(config.localPath);
       }
     }
@@ -343,7 +352,15 @@ export class UnifiedWorkspaceResolver implements WorkspaceResolver {
   }
   
   getProjectPath(userContext: UserContext, projectId: string): string {
-    return path.join(this.workspacesPath, userContext.organizationId, userContext.userId, projectId);
+    // Single-segment gate: every feature / codebase / anchor / universal path
+    // is derived from here, so this is the one place a `../`-bearing projectId
+    // can be stopped before `path.join` normalizes it out of the workspace.
+    return path.join(
+      this.workspacesPath,
+      userContext.organizationId,
+      userContext.userId,
+      assertProjectSegment(projectId),
+    );
   }
   
   getFeaturePath(userContext: UserContext, projectId: string, featureId: string): string {

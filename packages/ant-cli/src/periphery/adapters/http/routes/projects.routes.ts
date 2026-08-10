@@ -260,7 +260,7 @@ export function createProjectsRoutes(deps: {
       if (error instanceof GitOperationError) {
         // branchBase lifecycle rejections (locked / not an existing feature)
         res.status(error.statusCode).json({ error: error.message });
-      } else if (error.message.includes('Missing required fields')) {
+      } else if (error.message.includes('Missing required fields') || error.message.startsWith('Invalid config:')) {
         res.status(400).json({ error: error.message });
       } else if (error.message === 'Config file not found') {
         res.status(404).json({ error: error.message });
@@ -269,7 +269,7 @@ export function createProjectsRoutes(deps: {
       }
     }
   });
-  
+
   // Get session for a project (skeleton)
   router.get('/projects/:id/session', async (req: Request, res: Response) => {
     try {
