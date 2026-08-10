@@ -107,6 +107,49 @@ describe('PromptBuilder inertSystemAppend gate', () => {
     expect(onResult.user).toContain('PLAN TURN');
     expect(onResult.user).toContain('plan/ops/weekly');
   });
+
+  it('planDocs gate: off → no Plan Documents band; on → listed paths', async () => {
+    const offResult = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: baseVars,
+    });
+    expect(offResult.user).not.toContain('Plan Documents');
+
+    const onResult = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: { ...baseVars, planDocs: ['plan/ops/weekly/report-plan.md'] },
+    });
+    expect(onResult.user).toContain('Plan Documents');
+    expect(onResult.user).toContain('plan/ops/weekly/report-plan.md');
+  });
+
+  it('existingChecklist gate: off → no Working Checklist band; on → serialized list (+ plan source)', async () => {
+    const offResult = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: baseVars,
+    });
+    expect(offResult.user).not.toContain('Working Checklist');
+
+    const onResult = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: {
+        ...baseVars,
+        existingChecklist: '- [x] first\n- [~] second',
+        existingChecklistPlan: 'plan/ops/weekly/report-plan.md',
+      },
+    });
+    expect(onResult.user).toContain('Working Checklist');
+    expect(onResult.user).toContain('- [~] second');
+    expect(onResult.user).toContain('plan/ops/weekly/report-plan.md');
+  });
+
+  it('checklist contract is always-on in rules (creation stays conditional in prose)', async () => {
+    const result = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: baseVars,
+    });
+    expect(result.system).toContain('Checklist Contract');
+  });
 });
 
 // ── intent-gated injection inlining (buildCustomJobSystemBlock) ──────────────

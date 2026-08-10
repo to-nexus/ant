@@ -1,6 +1,7 @@
 import { MainPanel } from '../MainPanel';
 import { MainPanelTabsBar } from '../MainPanelTabsBar';
 import { KanbanBoard } from '../kanban';
+import { ChecklistBoard } from '../checklist/ChecklistBoard';
 import { AgentWorkflowBoard } from '../workflow';
 import { ConfigEditor } from '../ConfigEditor';
 import { AccountConfigEditor } from '../AccountConfigEditor';
@@ -55,6 +56,7 @@ export function MainContentArea({
   const editorTabs = useStore((s) => s.editorTabs);
   const activeEditorTabId = useStore((s) => s.activeEditorTabId);
   const taskViewMode = useStore((s) => s.taskViewMode);
+  const isUniversalProject = useStore((s) => s.projectType === 'universal');
   const selectedProject = useStore((s) => s.selectedProject);
   const fetchProjectConfig = useStore((s) => s.fetchProjectConfig);
   const updateProjectConfig = useStore((s) => s.updateProjectConfig);
@@ -233,6 +235,10 @@ export function MainContentArea({
         <div className="flex-1 h-full">
           {taskViewMode === 'workflow' ? (
             <AgentWorkflowBoard workflowState={workflowState} kanbanData={kanbanData} />
+          ) : isUniversalProject ? (
+            // Workspace (universal) projects have no tasks — the board slot
+            // renders the Checklist surface (checklist items are NOT tasks).
+            <ChecklistBoard kanbanData={kanbanData} />
           ) : (
             <div className="h-full overflow-y-auto">
               <KanbanBoard kanbanData={kanbanData} workflowState={workflowState} />

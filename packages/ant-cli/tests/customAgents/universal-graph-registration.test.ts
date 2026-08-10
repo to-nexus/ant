@@ -28,7 +28,7 @@ describe('universal graph — realtime surface registration', () => {
   const nodeIds = compiledNodeIds();
 
   it('graph compiles with the expected node set', () => {
-    expect(nodeIds.sort()).toEqual(['agent', 'detect', 'resolve', 'respond', 'tool'].sort());
+    expect(nodeIds.sort()).toEqual(['agent', 'resolve', 'respond', 'tool'].sort());
   });
 
   it.each(compiledNodeIds().map((id) => [id] as const))(
@@ -39,7 +39,7 @@ describe('universal graph — realtime surface registration', () => {
   );
 
   // Phase ids universal passes to withPhaseTracking (graph.ts wiring).
-  it.each([['detect'], ['agent']] as const)(
+  it.each([['agent']] as const)(
     'phase label map resolves %s (no raw-id fallback)',
     (phaseId) => {
       expect(resolveNodePhaseLabel(phaseId, 'en')).not.toBe(phaseId);

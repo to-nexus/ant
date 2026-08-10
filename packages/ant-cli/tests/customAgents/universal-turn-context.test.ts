@@ -1,52 +1,29 @@
 /**
- * Universal turn-context detection axis — the `<intents>` / `<executionTier>`
- * parser tables, the detect node's skip ladder (empty resume → single LLM
- * call with explicit/empty-catalog halving), turnContext convergence, and
- * the accept-time explicit-intent validation.
+ * Universal turn-context axis — the resolve strategy's deterministic
+ * `turnContext` assembly (single writer; no LLM), the `planDocs` disk
+ * listing (plan-consumption gate's deterministic half), and the accept-time
+ * explicit turn-meta validation.
+ *
+ * The former detect node (LLM intent/tier classification) was removed:
+ * universal has nothing for a classifier to route, so every field below is
+ * a pure function of runner inputs + disk.
  */
 
-import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as nodePath from 'path';
-import { parseIntentsTag, parseDetectResponse } from '../../src/agents/universal/graph/nodes/detect/parser';
-import { detectNode } from '../../src/agents/universal/graph/nodes/detect';
+import { universalResolveStrategy } from '../../src/agents/universal/graph/nodes/resolve';
 import {
   activateCustomJob,
   _resetActiveCustomJobForTests,
 } from '../../src/core/customAgents/activeCustomJob';
 import type { ResolvedCustomJob } from '../../src/core/customAgents/types';
 import type { UniversalGraphState } from '../../src/agents/universal/graph/state';
-import { CONV_KEYS } from '../../src/agents/common/graph/conversations';
 
 const CATALOG = new Set(['research', 'cite']);
 
-describe('parseIntentsTag — table', () => {
-  it.each([
-    ['single id', '<intents>research</intents>', ['research']],
-    ['multiple ids', '<intents>research, cite</intents>', ['research', 'cite']],
-    ['whitespace tolerated', '<intents>  research ,  cite  </intents>', ['research', 'cite']],
-    ['unknown dropped, valid kept', '<intents>research, ghost</intents>', ['research']],
-    ['general + concrete → concrete only', '<intents>general, research</intents>', ['research']],
-    ['dedupe', '<intents>research, research</intents>', ['research']],
-    ['general alone survives', '<intents>general</intents>', ['general']],
-    ['surrounding prose tolerated', 'thinking...\n<intents>cite</intents>\ndone', ['cite']],
-  ] as const)('%s', (_label, raw, expected) => {
-    expect(parseIntentsTag(raw, CATALOG)).toEqual(expected);
-  });
-
-  it.each([
-    ['missing tag', 'no tag at all'],
-    ['all unknown', '<intents>ghost, phantom</intents>'],
-    ['empty tag', '<intents>  </intents>'],
-  ] as const)('%s → null (caller retries then falls back)', (_label, raw) => {
-    expect(parseIntentsTag(raw, CATALOG)).toBeNull();
-  });
-});
-
-// ── detect node skip ladder ────────────────────────────────────────────────
-
-function makeResolved(intents: ResolvedCustomJob['intents']): ResolvedCustomJob {
+function makeResolved(): ResolvedCustomJob {
   return {
     agentId: 'ops',
     jobId: 'weekly',
@@ -55,7 +32,7 @@ function makeResolved(intents: ResolvedCustomJob['intents']): ResolvedCustomJob 
     jobName: 'Weekly',
     prose: 'p',
     injectionsToc: [],
-    intents,
+    intents: [],
     mcpServers: {},
     builtinTools: [],
     approval: {},
@@ -64,133 +41,86 @@ function makeResolved(intents: ResolvedCustomJob['intents']): ResolvedCustomJob 
   };
 }
 
-function makeState(overrides: Partial<UniversalGraphState>, llmRaw?: string | Error): {
-  state: UniversalGraphState;
-  invocations: () => number;
-} {
-  let calls = 0;
-  const llm = {
-    invokeWithUsage: vi.fn(async () => {
-      calls++;
-      if (llmRaw instanceof Error) throw llmRaw;
-      return { content: llmRaw ?? '', usage: undefined };
-    }),
+/** Minimal in-memory fileSystem port: dirs is a map of path → entries. */
+function makeFileSystem(dirs: Record<string, Array<{ name: string; isDirectory: boolean }>>) {
+  return {
+    createDirectory: async () => undefined,
+    readDirectory: async (path: string) => {
+      const entries = dirs[path];
+      if (!entries) throw new Error(`ENOENT: ${path}`);
+      return entries;
+    },
   };
-  const promptBuilder = {
-    build: vi.fn(async () => ({ system: 'sys', user: 'user', sections: {} })),
-  };
-  const state = {
+}
+
+function makeState(overrides: Partial<UniversalGraphState> = {}): UniversalGraphState {
+  return {
     userMessage: 'do research on pens',
     language: 'en',
-    conversations: { [CONV_KEYS.SESSION_MAIN]: [{ role: 'user', content: 'do research on pens' }] },
     toolCalls: [],
     pendingToolCalls: [],
     _turnToolWrites: [],
-    deps: { llm, promptBuilder },
+    conversations: {},
+    deps: { fileSystem: makeFileSystem({ '.': [] }) },
     ...overrides,
   } as unknown as UniversalGraphState;
-  return { state, invocations: () => calls };
 }
 
 afterEach(() => {
   _resetActiveCustomJobForTests();
 });
 
-describe('parseDetectResponse — executionTier table', () => {
+describe('universalResolveStrategy — deterministic turnContext (single writer)', () => {
+  beforeEach(() => activateCustomJob(makeResolved()));
+
   it.each([
-    ['tier 0', '<executionTier>0</executionTier>', 0],
-    ['tier 4', '<executionTier>4</executionTier>', 4],
-    ['tier with intents', '<executionTier>2</executionTier>\n<intents>research</intents>', 2],
-    ['out of range → undefined (caller retries then coerces)', '<executionTier>7</executionTier>', undefined],
-    ['missing tag → undefined', '<intents>research</intents>', undefined],
-  ] as const)('%s', (_label, raw, expected) => {
-    expect(parseDetectResponse(raw, CATALOG, { needsIntents: true }).executionTier).toBe(expected);
+    ['explicit intents adopted verbatim', { explicitIntents: ['research', 'cite'] }, { intents: ['research', 'cite'], source: 'explicit' }],
+    ['no explicit input → [general] / infer', {}, { intents: ['general'], source: 'infer' }],
+    ['@ctx alone flips source to explicit', { explicitContext: ['plan/notes.md'] }, { intents: ['general'], context: ['plan/notes.md'], source: 'explicit' }],
+    ['@plan rides as planTurn', { planRequested: true }, { planTurn: true }],
+    ['planRequested absent → planTurn false', {}, { planTurn: false }],
+  ] as const)('%s', async (_label, overrides, expected) => {
+    const result = await universalResolveStrategy.loadArtifacts(makeState(overrides as any));
+    expect(result.turnContext).toMatchObject(expected);
   });
 
-  it('needsIntents:false skips intent parsing entirely', () => {
-    const parsed = parseDetectResponse('<executionTier>1</executionTier><intents>research</intents>', CATALOG, { needsIntents: false });
-    expect(parsed.intents).toBeNull();
-    expect(parsed.executionTier).toBe(1);
+  it('onResume assembles the same deterministic context (no restore channel needed)', async () => {
+    const result = await universalResolveStrategy.onResume!(makeState({ userMessage: '' }));
+    expect(result.turnContext).toMatchObject({ intents: ['general'], source: 'infer', planTurn: false });
   });
 });
 
-describe('detectNode — skip ladder → turnContext convergence', () => {
-  const TIER1 = '<executionTier>1</executionTier>';
+describe('universalResolveStrategy — planDocs listing (plan-consumption gate)', () => {
+  beforeEach(() => activateCustomJob(makeResolved()));
 
-  it('1. explicit intents adopted; single LLM call judges only the tier', async () => {
-    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state, invocations } = makeState({ explicitIntents: ['research', 'cite'] }, TIER1);
-    const result = await detectNode(state);
-    expect(result.turnContext).toMatchObject({
-      intents: ['research', 'cite'],
-      source: 'explicit',
-      executionTier: 1,
-    });
-    expect(invocations()).toBe(1);
+  it('lists files (not dirs) under the active pair\'s plan dir, path-prefixed', async () => {
+    const state = makeState({
+      deps: {
+        fileSystem: makeFileSystem({
+          '.': [],
+          'plan/ops/weekly': [
+            { name: 'report-plan.md', isDirectory: false },
+            { name: 'drafts', isDirectory: true },
+          ],
+        }),
+      },
+    } as any);
+    const result = await universalResolveStrategy.loadArtifacts(state);
+    expect(result.planDocs).toEqual(['plan/ops/weekly/report-plan.md']);
   });
 
-  it('2. empty catalog → [general]; tier still judged (orthogonal to the catalog)', async () => {
-    activateCustomJob(makeResolved([]));
-    const { state, invocations } = makeState({}, TIER1);
-    const result = await detectNode(state);
-    expect(result.turnContext).toMatchObject({ intents: ['general'], executionTier: 1 });
-    expect(invocations()).toBe(1);
+  it('absent plan dir → empty list (not an error)', async () => {
+    const result = await universalResolveStrategy.loadArtifacts(makeState());
+    expect(result.planDocs).toEqual([]);
   });
 
-  it('3. empty userMessage (resume) → restored context, zero LLM calls', async () => {
-    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state, invocations } = makeState({
-      userMessage: '',
-      restoredIntents: ['research'],
-      restoredExecutionTier: 2 as any,
-    });
-    const result = await detectNode(state);
-    expect(result.turnContext).toMatchObject({ intents: ['research'], executionTier: 2 });
-    expect(invocations()).toBe(0);
-  });
-
-  it('4. inference adopts the parsed multi-label result + tier', async () => {
-    activateCustomJob(makeResolved([
-      { id: 'research', description: 'r' },
-      { id: 'cite', description: 'c' },
-    ]));
-    const { state, invocations } = makeState({}, `${TIER1}<intents>research, cite</intents>`);
-    const result = await detectNode(state);
-    expect(result.turnContext).toMatchObject({
-      intents: ['research', 'cite'],
-      source: 'infer',
-      executionTier: 1,
-    });
-    expect(invocations()).toBe(1);
-  });
-
-  it('4b. unparsable output retries once, then floors to [general]/Reflex (never throws)', async () => {
-    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state, invocations } = makeState({}, 'no tags here');
-    const result = await detectNode(state);
-    expect(result.turnContext).toMatchObject({ intents: ['general'], executionTier: 0 });
-    expect(invocations()).toBe(2);
-  });
-
-  it('4c. LLM error floors to [general]/Reflex (detection must not kill the turn)', async () => {
-    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state } = makeState({}, new Error('boom'));
-    const result = await detectNode(state);
-    expect(result.turnContext).toMatchObject({ intents: ['general'], executionTier: 0 });
-  });
-
-  it('@ctx/@plan runner inputs converge into turnContext (detect is the single writer)', async () => {
-    activateCustomJob(makeResolved([{ id: 'research', description: 'r' }]));
-    const { state } = makeState(
-      { explicitContext: ['plan/notes.md'], planRequested: true },
-      `${TIER1}<intents>research</intents>`,
-    );
-    const result = await detectNode(state);
-    expect(result.turnContext).toMatchObject({
-      context: ['plan/notes.md'],
-      planTurn: true,
-      source: 'explicit',
-    });
+  it('caps at 20 docs', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ name: `p${i}.md`, isDirectory: false }));
+    const state = makeState({
+      deps: { fileSystem: makeFileSystem({ '.': [], 'plan/ops/weekly': many }) },
+    } as any);
+    const result = await universalResolveStrategy.loadArtifacts(state);
+    expect(result.planDocs).toHaveLength(20);
   });
 });
 

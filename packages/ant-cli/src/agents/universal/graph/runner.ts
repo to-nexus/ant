@@ -71,8 +71,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let restoredConversations: Record<string, ConversationMessage[]> | undefined;
   let restoredTokenUsage: any;
   let restoredTokenUsageByModel: any;
-  let restoredIntents: string[] | undefined;
-  let restoredExecutionTier: import('@ant/shared').ExecutionTierId | undefined;
+  let restoredChecklist: import('@ant/shared').UniversalChecklist | undefined;
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
@@ -81,11 +80,8 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         restoredConversations = { [CONV_KEYS.SESSION_MAIN]: sessionState.conversations[CONV_KEYS.SESSION_MAIN] };
         restoredTokenUsage = sessionState.tokenUsage;
         restoredTokenUsageByModel = sessionState.tokenUsageByModel;
-        if (Array.isArray(sessionState.activeIntents)) {
-          restoredIntents = sessionState.activeIntents.filter((i: unknown) => typeof i === 'string');
-        }
-        if (typeof sessionState.executionTier === 'number') {
-          restoredExecutionTier = sessionState.executionTier;
+        if (Array.isArray(sessionState.checklist?.items) && sessionState.checklist.items.length > 0) {
+          restoredChecklist = sessionState.checklist;
         }
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
@@ -122,6 +118,10 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     const { jobTiming } = JobTimingManager.initializeNewJob(params._httpJobId);
     kanbanUpdate.setJobTiming(jobTiming);
     kanbanUpdate.updateTaskQueue?.(params._httpJobId, null, [], [], 0, recursionLimit);
+    // Rehydrate the Checklist board from the sealed session (continuation turns).
+    if (restoredChecklist) {
+      kanbanUpdate.updateUniversalChecklist?.(restoredChecklist);
+    }
   }
 
   const initialState = createInitialUniversalState({
@@ -134,8 +134,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     isResume: params.isResume,
     conversations,
     recursionLimit,
-    restoredIntents,
-    restoredExecutionTier,
+    restoredChecklist,
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,

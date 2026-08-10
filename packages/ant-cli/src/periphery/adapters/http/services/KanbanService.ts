@@ -345,6 +345,7 @@ export class KanbanService {
         tokenUsage: liveSnapshot.tokenUsage ?? sessionState.tokenUsage,
         tokenUsageByModel: liveSnapshot.tokenUsageByModel ?? sessionState.tokenUsageByModel,
         estimatingTokenUsage: liveSnapshot.estimatingTokenUsage ?? sessionState.estimatingTokenUsage,
+        ...(liveSnapshot.checklist && { checklist: liveSnapshot.checklist }),
         jobType,
         agent: getAgentForJobSafe(jobType),
       };

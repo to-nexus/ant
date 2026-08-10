@@ -112,6 +112,7 @@ export function projectSessionStateToKanban(
     tokenUsage: sessionState.tokenUsage,
     tokenUsageByModel: sessionState.tokenUsageByModel,
     estimatingTokenUsage: sessionState.estimatingTokenUsage,
+    ...((sessionState as any).checklist && { checklist: (sessionState as any).checklist }),
     jobType,
     agent: getAgentForJobSafe(jobType),
   };

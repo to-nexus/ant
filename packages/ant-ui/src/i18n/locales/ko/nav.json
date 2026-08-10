@@ -24,7 +24,8 @@
     "failedToOpenIde": "IDE 열기 실패",
     "label": "작업 표시 모드",
     "kanban": "보드",
-    "workflow": "작업흐름"
+    "workflow": "작업흐름",
+    "checklist": "체크리스트"
   },
   "theme": {
     "toggle": "테마 전환",
@@ -111,5 +112,10 @@
     "cancel": "취소",
     "connectionFailed": "연결 시간 초과",
     "connectionFailedDesc": "Ant Desktop에 연결할 수 없습니다. 실행 중인지 확인하세요."
+  },
+  "checklistBoard": {
+    "empty": "이번 턴의 체크리스트가 없습니다 — 다중 산출물 작업 시 에이전트가 생성합니다.",
+    "progress": "{{total}}개 중 {{done}}개 완료",
+    "fromPlan": "플랜 기반"
   }
 }

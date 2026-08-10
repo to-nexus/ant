@@ -515,6 +515,34 @@ export interface ActiveJobInfo {
 }
 
 // ============================================
+// Universal Checklist (SSE → Frontend)
+// ============================================
+
+/** Lifecycle of a universal checklist item. FIFO contract: at most one 'active'. */
+export type UniversalChecklistItemState = 'pending' | 'active' | 'done';
+
+export interface UniversalChecklistItem {
+  /** Index-derived id (`item-1`…), stable only within one full-replace emit. */
+  id: string;
+  text: string;
+  state: UniversalChecklistItemState;
+}
+
+/**
+ * The universal job's lightweight to-do list — deliberately NOT tasks.
+ * Checklist items never enter the task plane (no TaskType, no TaskQueue, no
+ * orchestrator/verification, no per-task billing). Authored by the agent LLM
+ * via the `<checklist>` tag (full-replace on every emit) and rendered by the
+ * FE's dedicated Checklist surface in place of the kanban board.
+ */
+export interface UniversalChecklist {
+  items: UniversalChecklistItem[];
+  /** Plan document this checklist was derived from (`<checklist plan="…">`). */
+  sourcePlanPath?: string;
+  updatedAt?: string;
+}
+
+// ============================================
 // Kanban Data (SSE → Frontend)
 // ============================================
 
@@ -629,4 +657,11 @@ export interface KanbanData {
   /** All active (running/paused/queued) jobs for this feature.
    *  Only present in SSE initial kanban response, not in live broadcasts. */
   activeJobs?: ActiveJobInfo[];
+
+  /**
+   * Universal job's checklist — rides the kanban plane (same SSE event, same
+   * store slot) but renders on the dedicated Checklist surface, never as task
+   * cards. Absent for canonical jobs. See {@link UniversalChecklist}.
+   */
+  checklist?: UniversalChecklist;
 }

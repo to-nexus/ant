@@ -23,7 +23,7 @@ import type {
   KanbanBroadcastMessage,
   DecomposableJobType
 } from '../types/task';
-import type { JobTiming, PhaseTokenUsage, TokenUsageByModel, ExecutionTierId } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage, TokenUsageByModel, ExecutionTierId, UniversalChecklist } from '@ant/shared';
 import { computeJobCostUsd, computeModelCostBreakdownUsd, isBillableWorkTask, sumInputSideTokens } from '@ant/shared';
 import type { CreditLedgerPort } from '../ports/creditLedger';
 import { 
@@ -70,6 +70,8 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   private cachedTokenUsageByModel?: TokenUsageByModel;
   /** Job execution tier (once decompose sets it) — persisted so the fee meter can index the base matrix. */
   private cachedExecutionTier?: ExecutionTierId;
+  /** Universal job's checklist (full-replace) — rides every broadcast + snapshot; never tasks, never billed. */
+  private cachedChecklist?: UniversalChecklist;
   private cachedEstimatingTokenUsage?: TaskTokenUsage;
   private cachedPhaseTokenUsages?: PhaseTokenUsage[];
   /**
@@ -280,6 +282,29 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
   updateExecutionTier(tier: ExecutionTierId | undefined): void {
     if (tier === undefined) return;
     this.cachedExecutionTier = tier;
+  }
+
+  /**
+   * Update the universal job's checklist (full-replace) and re-broadcast
+   * immediately so the Checklist board reflects the agent's latest emit
+   * without waiting for the next task-queue tick. Cached into every
+   * subsequent broadcast + Redis snapshot (reload rehydration).
+   */
+  updateUniversalChecklist(checklist: UniversalChecklist): void {
+    this.cachedChecklist = checklist;
+    this.inflight.track(
+      this.broadcastKanbanUpdate(
+        this.jobId,
+        this.cachedCurrentTasks,
+        this.cachedQueue,
+        this.cachedCompletedTasks,
+        this.cachedRecursionCount,
+        this.cachedRecursionLimit,
+        this.cachedTokenUsage,
+      ).catch(err => {
+        console.warn(`[KanbanBroadcaster] Failed to broadcast checklist update:`, err.message);
+      })
+    );
   }
 
   /** User-facing task count (excludes verification/error) for the per-task fee. */
@@ -638,6 +663,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedTokenUsageByModel && { tokenUsageByModel: this.cachedTokenUsageByModel }),
       ...(this.cachedExecutionTier != null && { executionTier: this.cachedExecutionTier }),
+      ...(this.cachedChecklist && { checklist: this.cachedChecklist }),
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),
@@ -675,6 +701,7 @@ export class KanbanBroadcaster implements TaskQueueUpdatePort {
       tokenUsage: effectiveTokenUsage,
       ...(this.cachedTokenUsageByModel && { tokenUsageByModel: this.cachedTokenUsageByModel }),
       ...(this.cachedExecutionTier != null && { executionTier: this.cachedExecutionTier }),
+      ...(this.cachedChecklist && { checklist: this.cachedChecklist }),
       ...(this.cachedEstimatingTokenUsage && { estimatingTokenUsage: this.cachedEstimatingTokenUsage }),
       ...(this.cachedPhaseTokenUsages && { phaseTokenUsages: this.cachedPhaseTokenUsages }),
       ...(currentPhaseTokenUsagesArray && { currentPhaseTokenUsages: currentPhaseTokenUsagesArray }),

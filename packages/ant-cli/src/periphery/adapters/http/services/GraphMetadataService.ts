@@ -203,11 +203,7 @@ export const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: st
   // Universal (custom agent/job runtime)
   'universal:universal:resolve': {
     actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
-    description: 'Load custom job definition, thread session, artifact overview'
-  },
-  'universal:universal:detect': {
-    actors: [COMMON_ACTORS.llm.id],
-    description: 'Detect turn context: active intents + execution tier'
+    description: 'Load custom job definition, turn context, plan docs, artifact overview'
   },
   'universal:universal:agent': {
     actors: [COMMON_ACTORS.llm.id],

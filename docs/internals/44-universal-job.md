@@ -49,9 +49,58 @@ compactRun) — not the graph.
   agentId from `ANT_CUSTOM_JOB_REF`, else `'architect'`), so universal debug
   output lives at `{container}/sessions/{agentId}/debug/{tokens,logs}/`
   without minting the canonical `architect` skeleton in the container.
-- **Tier**: pinned Reflex at graph start (plan/visual precedent); Phase 2
-  moves to LLM-declared `<executionTier>` per the 7a matrix. Tier 4 is
-  deliberately unused (would be a tautology axis with `activePlanPath`).
+- **No execution tier, no detect node.** Universal deliberately does NOT use
+  the canonical execution-tier system: the tier's reason to exist is a
+  *decision* (path routing, task-shape contract, budgets — see
+  `docs/concepts/execution-tiers.md`), and universal's graph is linear with
+  no task plane, so there is nothing for a tier to decide. An earlier
+  iteration had a per-turn detect node LLM-declaring a tier; it was removed
+  because the declaration had zero behavioral consumers (a classifier that
+  routes nothing is a label) and cost one non-streaming LLM call of
+  first-token latency on every turn. `turnContext` (intents / `@ctx` paths /
+  planTurn / provenance) is assembled deterministically in **resolve** — the
+  single writer; inferred-intent turns get `['general']` so definition
+  injections stay on the TOC for read_file self-selection. What replaced the
+  tier's would-be roles: the **checklist contract** (below) for multi-
+  deliverable shape, and the **plan-consumption gate** (resolve lists
+  `plan/{agentId}/{jobId}/` into `state.planDocs`; the agent reads and
+  derives) for refs-grounded work.
+
+  ```bash
+  rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal
+  # Expected: 0 hits.
+  ```
+
+## Checklist — the universal to-do plane (NOT tasks)
+
+Universal has no TaskQueue; its unit of visible multi-part progress is the
+**checklist**, authored by the agent LLM itself via the `<checklist>` canonical
+tag (TodoWrite model — the contract is always-on in `agent/rules.md`, creation
+is conditional):
+
+- **Creation threshold**: only when the work decomposes into 2+ independent
+  deliverables. Single-deliverable / answer-only turns have no checklist and
+  the board stays empty. Parser enforces: a NEW checklist with <2 items is
+  dropped; an UPDATE may shrink to any size.
+- **Full-replace semantics**: every emit carries the whole list
+  (`- [ ]` / `- [~]` active / `- [x]` done); the last occurrence in a round
+  wins. FIFO — at most one active item (parser normalizes extras; the loop is
+  a single sequential LLM).
+- **Plan grounding**: `<checklist plan="relative/path.md">` records the plan
+  doc the list was derived from — display/restore metadata only, no runtime
+  consumer.
+- **Wiring**: parse/serialize SSOT `core/customAgents/universalChecklist.ts`;
+  registry entry `checklist` (consumed — never rendered to chat; the board is
+  its only surface); agent node extracts post-stream into the `turnChecklist`
+  channel + broadcasts via `kanbanUpdate.updateUniversalChecklist` (cached in
+  `KanbanBroadcaster`, rides every kanban frame + Redis snapshot); respond
+  seals it; the runner restores it (`restoredChecklist`) and re-broadcasts at
+  start. A pause skips the seal — the checklist can lose one turn (same
+  acceptance as universal interruption persistence being a no-op).
+- **Checklist items are NOT tasks**: they never enter the task queue, never
+  render as kanban task cards (the FE swaps in `ChecklistBoard` for
+  workspace projects — tabs read "Checklist / Workflow"), and never count
+  toward per-task billing (`billableTaskCount` reads completed *tasks* only).
 
 ## Definition loading (D4/D5/D8)
 

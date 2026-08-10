@@ -49,6 +49,8 @@ export interface TaskQueueSnapshot {
   tokenUsageByModel?: TokenUsageByModel;
   /** Execution tier (0..4) once decompose set it — billing fee-matrix index. */
   executionTier?: import('@ant/shared').ExecutionTierId;
+  /** Universal job's checklist (never tasks, never billed) — reload rehydration. */
+  checklist?: import('@ant/shared').UniversalChecklist;
   estimatingTokenUsage?: TaskTokenUsage;
   phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
   currentPhaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];

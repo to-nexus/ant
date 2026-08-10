@@ -12,7 +12,7 @@
 import { Annotation } from '@langchain/langgraph';
 import { ResolvableFields } from '../../common/graph/annotationHelpers';
 import type { ResolvableState } from '../../common/graph/annotationHelpers';
-import type { ExecutionTierId } from '@ant/shared';
+import type { UniversalChecklist } from '@ant/shared';
 import type { Conversations } from '../../common/graph/conversations';
 
 /** Tool call record for debugging / observability. */
@@ -25,9 +25,9 @@ export interface UniversalToolCall {
 }
 
 /**
- * The turn's confirmed work context — universal's analog of the canonical
- * detect contract (slots + provenance + execution tier, confirmed once, read
- * everywhere downstream). The detect node is the ONLY writer.
+ * The turn's confirmed work context — assembled deterministically from
+ * runner inputs (no LLM). The resolve node is the ONLY writer; downstream
+ * nodes read THIS, never the raw runner inputs below.
  *
  * Deliberately NOT a `ResolvedActionContext`: RAC's identity half
  * (intent/intentGroup/mode) is a closed code-branching vocabulary, while a
@@ -35,7 +35,8 @@ export interface UniversalToolCall {
  * Universal follows RAC's *structure* without forging canonical identity.
  */
 export interface UniversalTurnContext {
-  /** Active intent ids — job.yaml catalog vocabulary, not canonical IntentId. */
+  /** Active intent ids — explicit `@intent:` mentions, or `['general']`
+   *  (all definition injections stay on the TOC for self-selection). */
   intents: string[];
   /** `@ctx:` workspace paths attached to this turn (advisory, not a read gate). */
   context: string[];
@@ -43,8 +44,6 @@ export interface UniversalTurnContext {
   planTurn: boolean;
   /** Whether the user pinned the context explicitly (`@` mentions) or it was inferred. */
   source: 'explicit' | 'infer';
-  /** LLM-declared execution tier (detect's `<executionTier>` tag). */
-  executionTier: ExecutionTierId;
 }
 
 export interface UniversalGraphState extends ResolvableState {
@@ -72,15 +71,22 @@ export interface UniversalGraphState extends ResolvableState {
   /** Per-phase cumulative usage history (token popup rows). */
   phaseTokenUsages?: import('@ant/shared').PhaseTokenUsage[];
   /**
-   * Confirmed turn context — detect node output, sealed by respond,
-   * restored (intents + tier) by the runner. Downstream nodes read THIS,
-   * never the raw runner inputs below.
+   * Confirmed turn context — resolve node output (deterministic).
+   * Downstream nodes read THIS, never the raw runner inputs below.
    */
   turnContext?: UniversalTurnContext;
-  /** Restored classification from the sealed session (resume input). */
-  restoredIntents?: string[];
-  /** Restored execution tier from the sealed session (resume input). */
-  restoredExecutionTier?: ExecutionTierId;
+  /**
+   * Existing plan documents under `plan/{agentId}/{jobId}/` — resolve's
+   * disk listing (deterministic plan-consumption gate). Empty = no band.
+   */
+  planDocs?: string[];
+  /**
+   * Checklist authored THIS run (agent's `<checklist>` tag, full-replace —
+   * last emit wins). Sealed by respond; the board mirrors it live.
+   */
+  turnChecklist?: UniversalChecklist;
+  /** Checklist restored from the sealed session (resume/continuation input). */
+  restoredChecklist?: UniversalChecklist;
   /** Explicit `@intent:` mentions for THIS run only (never persisted). */
   explicitIntents?: string[];
   /** Explicit `@ctx:` artifact paths for THIS run only (never persisted). */
@@ -105,8 +111,9 @@ export const UniversalAnnotation = Annotation.Root({
   phaseTokenUsages: Annotation<import('@ant/shared').PhaseTokenUsage[] | undefined>,
   // Undeclared channels are DROPPED by LangGraph — declare every field.
   turnContext: Annotation<UniversalTurnContext | undefined>,
-  restoredIntents: Annotation<string[] | undefined>,
-  restoredExecutionTier: Annotation<ExecutionTierId | undefined>,
+  planDocs: Annotation<string[] | undefined>,
+  turnChecklist: Annotation<UniversalChecklist | undefined>,
+  restoredChecklist: Annotation<UniversalChecklist | undefined>,
   explicitIntents: Annotation<string[] | undefined>,
   explicitContext: Annotation<string[] | undefined>,
   planRequested: Annotation<boolean | undefined>,
@@ -122,10 +129,8 @@ export function createInitialUniversalState(params: {
   isResume?: boolean;
   conversations?: Conversations;
   recursionLimit?: number;
-  /** Restored classification from the sealed session (resume). */
-  restoredIntents?: string[];
-  /** Restored execution tier from the sealed session (resume). */
-  restoredExecutionTier?: ExecutionTierId;
+  /** Checklist restored from the sealed session (resume/continuation). */
+  restoredChecklist?: UniversalChecklist;
   /** `@intent:` mentions for this run (validated at accept). */
   explicitIntents?: string[];
   /** `@ctx:` artifact paths for this run (existence-checked at accept). */
@@ -153,8 +158,7 @@ export function createInitialUniversalState(params: {
     pendingToolCalls: [],
     recursionLimit: params.recursionLimit,
     _turnToolWrites: [],
-    restoredIntents: params.restoredIntents,
-    restoredExecutionTier: params.restoredExecutionTier,
+    restoredChecklist: params.restoredChecklist,
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,

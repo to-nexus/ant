@@ -18,6 +18,9 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   const resolved = requireActiveCustomJob();
   const writes = Array.from(new Set(state._turnToolWrites ?? []));
   const workflowUpdate = state.deps?.workflowUpdate;
+  // This turn's checklist, or the restored one carried through unchanged
+  // (a turn that never re-emits keeps the prior list alive in the seal).
+  const checklist = state.turnChecklist ?? state.restoredChecklist;
 
   if (workflowUpdate && state._httpJobId) {
     await workflowUpdate.enterNode(
@@ -54,14 +57,11 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         conversations: { [CONV_KEYS.SESSION_MAIN]: getConv(state.conversations, CONV_KEYS.SESSION_MAIN) },
         tokenUsage: state.tokenUsage,
         tokenUsageByModel: state.tokenUsageByModel,
-        executionTier: state.turnContext?.executionTier,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,
-        // Persisted so a resume without a new message keeps its
-        // classification (explicit* fields are run-scoped — never sealed).
-        // Known degradation: a pause skips this seal, so that resume can
-        // demote to ['general'] (same acceptance as universal interruption
-        // persistence being a no-op).
-        activeIntents: state.turnContext?.intents,
+        // Persisted so continuation turns update the same list instead of
+        // recreating it. Known degradation: a pause skips this seal (same
+        // acceptance as universal interruption persistence being a no-op).
+        ...(checklist && { checklist }),
         ...(state._httpJobId && { jobId: state._httpJobId }),
       };
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });
