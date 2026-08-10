@@ -44,6 +44,7 @@ import { maybeJoinSubagents, ownerKeyFor } from '../../../common/subagent';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
 import { requiresApproval } from '../../../../core/customAgents/universalToolPolicy';
+import { parseChecklistTag, serializeChecklist } from '../../../../core/customAgents/universalChecklist';
 import { getUniversalMcp } from '../runtime';
 import { compactRun } from '../../../../core/context';
 import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
@@ -61,6 +62,7 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
   const promptBuilder = state.deps?.promptBuilder;
   if (!promptBuilder) throw new Error('[Universal:Agent] PromptBuilder not available');
 
+  const existingChecklist = state.turnChecklist ?? state.restoredChecklist;
   const result = await promptBuilder.build({
     templates: TEMPLATE_PATHS.universalAgent,
     vars: {
@@ -74,6 +76,13 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
       // are gated in the tool node while this is set.
       planTurn: state.turnContext?.planTurn === true,
       planDocsDir: `plan/${resolved.agentId}/${resolved.jobId}`,
+      // Plan-consumption gate (deterministic half): existing plan docs from
+      // resolve's disk listing. Consuming one is the agent's judgment.
+      planDocs: state.planDocs?.length ? state.planDocs : undefined,
+      // Working checklist carried on the session — continuation turns
+      // update this list (full-replace) instead of recreating it.
+      existingChecklist: existingChecklist ? serializeChecklist(existingChecklist) : undefined,
+      existingChecklistPlan: existingChecklist?.sourcePlanPath,
     },
     // Custom definition rides as an inert system-suffix — after injections,
     // before policy (guardrail-first / policy-last invariants intact).
@@ -295,6 +304,19 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
     // Flush queued live-card emissions before any finalize path below.
     await toolStreamer.settle();
 
+    // ── Checklist extraction (post-stream): the agent's `<checklist>` tag is
+    // chat-suppressed (registry: consumed) — this is where it lands. Full
+    // replace; last occurrence in the round wins. Broadcast keeps the
+    // Checklist board live per round.
+    const emittedChecklist = parseChecklistTag(responseText, {
+      hasExisting: Boolean(state.turnChecklist ?? state.restoredChecklist),
+    });
+    if (emittedChecklist) {
+      state.deps?.kanbanUpdate?.updateUniversalChecklist?.(emittedChecklist);
+      console.log(`📋 [Universal:Agent] Checklist updated (${emittedChecklist.items.length} items${emittedChecklist.sourcePlanPath ? `, plan: ${emittedChecklist.sourcePlanPath}` : ''})`);
+    }
+    const checklistPatch = emittedChecklist ? { turnChecklist: emittedChecklist } : {};
+
     // ── Join barrier (explore subagent) — same contract as ask.
     const subagentOwnerKey = ownerKeyFor(state._httpJobId);
     if (toolCalls.length === 0) {
@@ -312,6 +334,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
           chatMessageStarted: streamedAnything,
           _subagentJoinRedo: true,
           tokenUsage: state.tokenUsage,
+          ...checklistPatch,
           ...(joined.tokenDelta as any),
         };
       }
@@ -342,6 +365,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
       chatMessageStarted: streamedAnything,
       tokenUsage: state.tokenUsage,
       _subagentJoinRedo: false,
+      ...checklistPatch,
     };
   } finally {
     if (workflowUpdate && state._httpJobId) {

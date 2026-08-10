@@ -207,14 +207,6 @@ export const TEMPLATE_PATHS = {
     rules: 'jobs/universal/nodes/agent/rules',
     system: 'jobs/universal/nodes/agent/system',
   },
-  // Turn-context detect (multi-label intent inference, per-job catalog).
-  // The catalog table is rendered as DATA each run — the definition supplies
-  // it, never a template (code-exterior catalog principle).
-  universalDetect: {
-    base: 'jobs/universal/nodes/detect/base',
-    rules: 'jobs/universal/nodes/detect/rules',
-  },
-
   // ─── planner / plan ──────────────────────────────────────────────────────
   // No job-level system prompt — planner embeds its system header inside the
   // variant base.md (mirrors ask).

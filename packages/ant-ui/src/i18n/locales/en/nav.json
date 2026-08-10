@@ -24,7 +24,8 @@
     "failedToOpenIde": "Failed to open IDE",
     "label": "Task view mode",
     "kanban": "Kanban",
-    "workflow": "Workflow"
+    "workflow": "Workflow",
+    "checklist": "Checklist"
   },
   "theme": {
     "toggle": "Toggle theme",
@@ -111,5 +112,10 @@
     "cancel": "Cancel",
     "connectionFailed": "Connection timed out",
     "connectionFailedDesc": "Could not connect to Ant Desktop. Make sure it's running."
+  },
+  "checklistBoard": {
+    "empty": "No checklist for this turn — the agent creates one for multi-deliverable work.",
+    "progress": "{{done}} of {{total}} done",
+    "fromPlan": "From plan"
   }
 }

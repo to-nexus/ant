@@ -12,7 +12,7 @@
  */
 
 import { BaseTask, TaskTokenUsage } from '../types/task';
-import type { JobTiming, PhaseTokenUsage, TokenUsageByModel, ExecutionTierId } from '@ant/shared';
+import type { JobTiming, PhaseTokenUsage, TokenUsageByModel, ExecutionTierId, UniversalChecklist } from '@ant/shared';
 
 export interface TaskQueueUpdatePort {
   /**
@@ -91,6 +91,14 @@ export interface TaskQueueUpdatePort {
    * implementation doesn't meter credits.
    */
   updateExecutionTier?(tier: ExecutionTierId | undefined): void;
+
+  /**
+   * Update the universal job's checklist (full-replace). Cached and included
+   * in every subsequent broadcast + Redis snapshot so the FE's Checklist
+   * board stays live and rehydrates on reload. Checklist items are NOT
+   * tasks — they never enter the task queue or billing.
+   */
+  updateUniversalChecklist?(checklist: UniversalChecklist): void;
 
   /**
    * Live credit-metering signal. The broadcaster debits the running job's

@@ -59,11 +59,12 @@ A tag's semantics map to exactly 1 cell across 4 orthogonal axes. Two tags in th
 | `<reply>` | narrative | consumed-formatted (`kind=directive_reply`) | chat-line | non-blocking | execute / execute / direct / generate / ask |
 | `<done>` | control | consumed-formatted | chat-line (terminal notice) | terminal | execute / execute / direct |
 | `<clarify>` | control | post-stream + card-only | chat-line + card | blocking | execute / generate |
-| `<executionTier>` | decision | consumed-formatted + post-stream | sealed-state + chat-line | non-blocking | decompose |
+| `<executionTier>` | decision | consumed-formatted + post-stream | sealed-state + chat-line | non-blocking | decompose (code/design) · detect (plan/visual) — canonical jobs only; universal does not use tiers |
 | `<domain>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
 | `<gameArtTier>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
 | `<techTier>` | decision | consumed-suppressed + post-stream | sealed-state | non-blocking | detect / decompose |
 | `<tasks>` | metadata | stream-action (`task_added`) | kanban | non-blocking | decompose |
+| `<checklist>` | metadata | consumed-suppressed + post-stream | sealed-state + kanban | non-blocking | universal agent (never rendered to chat — feeds the Checklist board; parse SSOT `core/customAgents/universalChecklist.ts`) |
 | `<references>` | metadata | consumed-formatted | chat-line | non-blocking | decompose / learn |
 | `<detect>` | metadata | consumed-formatted | chat-line | non-blocking | detect / decompose-final |
 | `<learn_command>` | metadata | consumed-formatted | chat-line | non-blocking | learn |

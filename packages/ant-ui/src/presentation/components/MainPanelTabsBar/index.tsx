@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, Workflow, Coins, Bot } from 'lucide-react';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot } from 'lucide-react';
 import { TabButton, type TabAccent } from './components/TabButton';
 
 const TAB_ACCENTS = {
@@ -47,6 +47,9 @@ export function MainPanelTabsBar() {
   const closeEditorTab = useStore((state) => state.closeEditorTab);
   const taskViewMode = useStore((state) => state.taskViewMode);
   const setTaskViewMode = useStore((state) => state.setTaskViewMode);
+  // Workspace (universal) projects have no tasks — the non-workflow board
+  // slot renders the Checklist surface instead of the kanban board.
+  const isUniversalProject = useStore((state) => state.projectType === 'universal');
 
   const getJobTabLabel = () => t('tabs.job');
 
@@ -145,10 +148,14 @@ export function MainPanelTabsBar() {
           value={taskViewMode === 'workflow' ? 'workflow' : 'kanban'}
           onChange={(v) => setTaskViewMode(v)}
           options={[
-            { id: 'kanban', label: t('tabs.kanban', 'Kanban'), icon: LayoutGrid },
-            { id: 'workflow', label: t('tabs.workflow', 'Workflow'), icon: Workflow },
+            // The non-workflow slot is an abstract "board slot": kanban for
+            // canonical projects, the Checklist surface for workspace projects.
+            isUniversalProject
+              ? { id: 'kanban', label: t('viewMode.checklist', 'Checklist'), icon: ListTodo }
+              : { id: 'kanban', label: t('viewMode.kanban', 'Kanban'), icon: LayoutGrid },
+            { id: 'workflow', label: t('viewMode.workflow', 'Workflow'), icon: Workflow },
           ]}
-          ariaLabel={t('tabs.viewMode', 'View mode')}
+          ariaLabel={t('viewMode.label', 'View mode')}
         />
       </div>
     ) : null,

@@ -45,6 +45,7 @@ import type { UserLanguage } from '../utils/languageDetector';
 import { extractPlanText } from '../../agents/common/graph/nodes/plan/extractPlanText';
 import { parseClarifyTags } from '../../agents/common/clarify/tags';
 import { parseExecutionTierTag } from '../executionTier/parseExecutionTierTag';
+import { parseChecklistTag } from '../customAgents/universalChecklist';
 import {
   transformDone,
   transformReply,
@@ -653,6 +654,21 @@ register({
   streamAction: 'task_added',
   promptContract:
     'Each task is wrapped in its own `<task>...</task>` element inside `<tasks>`. Do NOT emit a JSON array — the system parses tasks incrementally as each `</task>` arrives.',
+});
+
+register({
+  name: 'checklist',
+  pattern: /<checklist(?:\s[^>]*)?>\s*([\s\S]*?)\s*<\/checklist>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['consumed-suppressed', 'post-stream'],
+    persistence: ['sealed-state', 'kanban'],
+    blocking: 'non-blocking',
+  },
+  extract: (text, opts) =>
+    parseChecklistTag(text, { hasExisting: opts?.hasExisting === true }),
+  promptContract:
+    'Emit `<checklist>` (optionally `<checklist plan="relative/path.md">`) as text with one `- [ ] item` line per deliverable (`[~]` = in progress, `[x]` = done) ONLY when the work decomposes into 2+ independent deliverables. Every emit replaces the whole list — re-emit all lines with updated marks after finishing each item. Never rendered to chat; it feeds the Checklist board.',
 });
 
 register({

@@ -53,6 +53,12 @@ export function handleKanbanUpdate(data: KanbanData, set: any, get: any): void {
   if (data.tokenUsageByModel === undefined && existingKanban?.tokenUsageByModel !== undefined) {
     data = { ...data, tokenUsageByModel: existingKanban.tokenUsageByModel };
   }
+  // Universal checklist (full-replace when present). A frame that omits it
+  // (e.g. a token-only or terminal-seal update) must not blank the
+  // Checklist board — preserve the last-seen list.
+  if (data.checklist === undefined && existingKanban?.checklist !== undefined) {
+    data = { ...data, checklist: existingKanban.checklist };
+  }
   // NOTE: previously preserved `currentPhaseTokenUsages` when an incoming
   // update omitted it, to keep the gauge visible during idle. That sticky
   // was an in-memory-only partial fix (page reload wiped it) and is

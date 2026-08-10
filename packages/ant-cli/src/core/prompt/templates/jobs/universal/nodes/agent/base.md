@@ -21,6 +21,32 @@ Paths are relative to the working tree root. Explore deeper with `list_files` / 
 This job has external MCP servers connected. Their tools appear in your tool list with the `mcp__` prefix. Tools marked as requiring user approval cannot run unattended — if such a call is rejected, explain to the user what you intended and how to proceed.
 {{/if}}
 
+{{#if planDocs}}
+## Plan Documents
+
+Previously authored plan documents exist for this job:
+
+{{#each planDocs}}
+- `{{this}}`
+{{/each}}
+
+When the user asks to execute, continue, or apply one of these plans, read it with `read_file` FIRST, then derive your checklist from the plan's steps in plan order, declaring the source as `<checklist plan="the/plan/path.md">`. If the user's request is unrelated to these plans, ignore them.
+{{/if}}
+
+{{#if existingChecklist}}
+## Working Checklist (current state)
+
+{{#if existingChecklistPlan}}
+Derived from plan: `{{existingChecklistPlan}}`
+{{/if}}
+
+```
+{{existingChecklist}}
+```
+
+Continue this list — update marks and re-emit it as you work; do not create a new one unless the user starts unrelated multi-deliverable work.
+{{/if}}
+
 {{#if planTurn}}
 ## ⚠️ PLAN TURN
 

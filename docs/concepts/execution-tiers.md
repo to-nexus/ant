@@ -116,6 +116,22 @@ The verification infrastructure is one SSOT under `tasks/_shared/verify/`.
 Tier 2 self-verify and Tier 3/4 dedicated verification share the same
 plan/execute/check/router/orchestrator/tool stack.
 
+## Universal job — no tiers, by design
+
+The universal (custom agent) job does NOT use execution tiers. The tier's
+reason to exist is a *decision* — routing between the direct path and the
+decomposed pipeline, enforcing the task-count shape, sizing budgets. The
+universal graph is linear (`resolve → agent ⇄ tool → respond`) with no task
+plane, so there is nothing for a tier to decide; a declared tier there was
+a label with zero behavioral consumers, and it was removed. The two roles a
+tier would have played are covered by dedicated mechanisms instead: the
+always-on **checklist contract** (the agent authors a `<checklist>` when
+work decomposes into 2+ deliverables — the universal analog of the Tier 3+
+task shape) and the deterministic **plan-consumption gate** (existing
+`plan/` documents are surfaced to the agent, which reads them and derives
+its checklist from them — the analog of Tier 4 refs-grounding). See
+[internals/44-universal-job.md](../internals/44-universal-job.md).
+
 ## Domain-aware behaviour
 
 Tiers compose with **domain** (`service` or `game`) and **techTier**
