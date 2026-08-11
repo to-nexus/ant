@@ -68,15 +68,15 @@ mcp:
 ```
 
 `env` and `headers` values are either plain text (stored verbatim in this
-file) or a `${secret:KEY}` reference to the encrypted per-user store — you
-declare which; nothing is inferred from the value's shape. Register each
-referenced key's value once — through the agent settings UI, or
-`PUT /api/account/mcp-credentials {"key":"OPS_API_TOKEN","value":"Bearer …"}`
-— and rotate it there without touching the definition. Reference resolution
-reads ONLY the store (never the host environment), so a definition cannot
-name-and-leak Ant's own secrets. A bare ALL-CAPS value (the pre-`${secret:…}`
-key-name format) is rejected with a migration hint rather than silently
-downgraded to plain text.
+file) or a `${secret:KEY}` reference to the encrypted per-user store — **you
+declare which; nothing is inferred from the value's shape.** `${secret:…}` is
+the one marker that means "look this up", so any other value is a literal, and
+a *malformed* reference (`${secret:lowercase}`, an unclosed brace) fails
+validation rather than being treated as one.
+
+Reference resolution reads **only the store, never the host environment**, so a
+definition cannot name-and-leak Ant's own secrets. See step 2.5 for registering
+the value.
 
 `headers` is the one authentication mechanism for `http` servers, and `env` the
 one for `stdio`; each is rejected on the other transport. A stdio child receives
@@ -88,6 +88,24 @@ That is the whole schema. There is no `description` (the persona lives in
 `base/*.md` prose the model actually reads) and no agent-level `tools` —
 each job declares its own. `mcp` is the one shared field: servers here are
 unioned into every member job (a job-level server with the same name wins).
+
+## 2.5 Register the credentials the definition references
+
+Every `${secret:KEY}` must exist in the encrypted store **before the first
+run**, or the connection fails loud as `config_invalid` rather than sending an
+empty credential:
+
+```bash
+curl -X PUT .../api/account/mcp-credentials \
+  -H 'content-type: application/json' \
+  -d '{"key":"OPS_API_TOKEN","value":"Bearer …"}'
+```
+
+Or use the MCP credentials panel in Settings → Agents, which is the same
+endpoint. The store is per-user and AES-256-GCM encrypted; values are
+**write-only** — reading the list back returns key names and timestamps, never
+the values. Rotating a credential is a `PUT` with the same key: the definition
+file never changes and no job restart is needed beyond the next run.
 
 ## 3. jobs/{id}/job.yaml — the job contract
 
@@ -162,7 +180,8 @@ then send a normal turn to execute it.
 
 - `GET /api/projects/{id}/custom-agents/{agentId}/jobs/{jobId}/validate`
   runs the loader's full validation (broken YAML, id mismatches, unknown
-  tools, legacy fields, secret values in env).
+  tools, removed legacy fields, malformed `${secret:…}` references, a
+  `headers` block on a stdio server or `env` on an http one).
 - `GET /api/account/agents/{agentId}/jobs/{jobId}/prompt-preview?intents=a,b`
   returns the exact composed definition block the runtime will inject — the
   settings screen's "Composed prompt" card renders it per intent selection.
@@ -171,6 +190,21 @@ then send a normal turn to execute it.
 - In the UI: open a workspace project and pick the agent and job with the
   chat composer's chips, then chat — one conversation per workspace, with
   per-(agent, job) sessions behind it.
+
+## 5.5 What you get without declaring it
+
+Two surfaces are harness behavior — there is nothing to configure, and nothing
+you write can turn them on or off:
+
+- **The checklist board.** When a turn's work decomposes into two or more
+  independent deliverables, the agent writes its own checklist and the
+  workspace's board renders it, updating as items move. Single-deliverable and
+  answer-only turns leave the board empty on purpose. Checklist items are not
+  tasks — no queue, no cards, no per-task billing.
+- **The write manifest.** When a turn writes files, the reply announces the
+  files that were *actually* written, taken from tool side-effects rather than
+  from anything the model said it did. Chat-only turns are normal and announce
+  nothing.
 
 ## 6. Iterating
 
@@ -199,13 +233,10 @@ The settings Prompts view can read, re-save, and delete the files in place.
 ## Pitfalls
 
 - **Secrets**: put a secret in `mcp.servers.*.env` / `headers` only as a
-  `${secret:KEY}` reference — a plain-text value is stored verbatim in the
-  yaml, so it is for non-sensitive values only. The referenced key must be
-  registered in the encrypted store (settings UI or
-  `PUT /api/account/mcp-credentials`) before the job starts, or the connection
-  fails loud (`config_invalid`) rather than sending an empty credential. A
-  bare ALL-CAPS value (legacy key-name format) fails validation with a
-  migration hint.
+  `${secret:KEY}` reference. A plain-text value is stored **verbatim in the
+  yaml**, and nothing warns you about it — the runtime cannot tell a token from
+  a workspace id, which is exactly why the marker is explicit. Plain text is
+  for non-sensitive values only (see step 2.5 for registering the rest).
 - **Judgment vs. guarantees**: prompts specialize judgment; they cannot
   guarantee behavior. Anything that must be mechanically enforced (amount
   limits, bulk-send protection, complex branching) belongs in an MCP server

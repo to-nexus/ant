@@ -59,7 +59,7 @@ only one is Ant-spawned foreign code. Confusing them mis-assigns trust.
 |---|---|---|---|
 | ant-job worker → **job-runner child** | OS process (`spawn`, `JobWorker.ts`) | Ant | Ant's own code; carries the full job env (`ANT_CUSTOM_JOB_REF`, …) |
 | job-runner → **stdio MCP child** | OS process (`StdioClientTransport` spawns `cfg.command`) | Ant (connect at job start, close at job end) | **Arbitrary third-party code on Ant's host.** Receives ONLY `buildStdioChildEnv()` = exec baseline (`PATH`/`HOME`/`LANG`/`LC_ALL`/`TMPDIR`/`SystemRoot`) + explicitly declared vars — never Ant's env (`McpConnectionManager.ts`) |
-| job-runner → **HTTP MCP server** | network (streamable HTTP) | **the department** | Not a child at all: independent peer with its own deploy, monitoring, and credentials. Auth = `headers` (host-env-var names). The server never runs on Ant's host |
+| job-runner → **HTTP MCP server** | network (streamable HTTP) | **the department** | Not a child at all: independent peer with its own deploy, monitoring, and credentials. Auth = `headers` whose values are `${secret:KEY}` references into the encrypted per-user store. The server never runs on Ant's host |
 | job-runner → **subagent** (explore seam) | none (same process, separate LLM loop) | Ant | Logical child only; shares the tool registry via `ctx.subagent` — no process or trust boundary |
 
 The stdio/HTTP asymmetry drives the deployment policy: **HTTP transport is the
@@ -86,20 +86,24 @@ rg -n "process.env as Record" packages/ant-cli/src/core/customAgents/McpConnecti
 
 ## 3. Runtime status — what holds, what is open
 
-As of 2026-08-10 (`724c21be9`), the pilot-blocking defects are closed:
+As of 2026-08-11 (`2524da299`), the pilot-blocking defects are closed:
 
 | Closed | What was fixed | Guard |
 |---|---|---|
 | A1 dispatch | `buildUniversalRegistry` now populates the module-load-captured registry singleton instead of replacing it — `mcp__*` calls resolve | `universal-mcp-runtime.test.ts` (identity + handler rows; red-verified) |
-| A2 HTTP auth | `McpServerConfig.headers` (header name → credential key NAME, same rule as `env`; resolved from the encrypted store since A16); wired to `requestInit.headers`; rejected on stdio | loader + definitionDocs rows |
+| A2 HTTP auth | `McpServerConfig.headers` (values follow the same `${secret:KEY}`-or-literal rule as `env`, resolved from the encrypted store since A16); wired to `requestInit.headers`; rejected on stdio | loader + definitionDocs rows |
 | A4 env isolation | stdio child receives allowlist env only | `universal-mcp-runtime.test.ts` isolation rows (red-verified) |
 | A8 doc drift | authoring guide / concepts match the loader (no job `description`; intents are explicit-only) | guide examples load verbatim |
+| A16 credential plane | `headers`/`env` values resolve `${secret:KEY}` from the encrypted per-user store (`PUT /api/account/mcp-credentials`); resolution never reads `process.env`, so a definition cannot name-and-exfiltrate platform secrets | `mcp-credential-store.test.ts` + FE `mcpCredential*` rows |
+| A13 failure class | an MCP config failure raises `McpConfigError` → `config_invalid` (`canResume:false`), never `process_crash` | `job-runner` mapping row |
+| A14 stream scope | `StreamOrchestrator` is turn-scoped, so `<reply>` no longer leaks raw across tool rounds | streaming rows |
+| A15 turn identity | the optimistic `user_turn` stamps the real jobType instead of `'code'` | chat persistence rows |
 
 Open items, in dependency order:
 
 | Open | Blocks | Shape |
 |---|---|---|
-| ~~**WS-D E2E**~~ ✅ **done 2026-08-11** | — (Gate 1 pilot-start condition met) | Reference server built outside this repo (fixture-only ops incident/SLA API: 4 tools, streamable HTTP + stdio, bearer auth) with a single `ops-team` agent whose `weekly-report` job declares the connection (job-level, because a fail-loud connect at agent level would take down sibling jobs that never touch the server). All three things unit tests cannot reach are now proven on real traffic: SDK spawn passthrough (stdio child sees only the mapped env, none of Ant's secrets), header auth both ways (missing host env var → fail-loud in 2s; wired → 200 + tool results), and zero `Unknown tool` across the session. The approval axis was demonstrated end-to-end too: an unannotated write tool is refused before reaching the server, and an explicit `approval: never` grant lets it run with the server's idempotency key + `dry_run` carrying the blast radius. E2E surfaced four Ant defects — two blocking (fixed: execute-route agent default shadowing the universal mapping; universal runtime never wiring a CommandPort) and three recorded (crash-mislabel of config failures, `<reply>` tag leaking across tool rounds, optimistic `user_turn` hardcoded to `jobType:'code'`) |
+| ~~**WS-D E2E**~~ ✅ **done 2026-08-11** | — (Gate 1 pilot-start condition met) | Reference server built outside this repo (fixture-only ops incident/SLA API: 4 tools, streamable HTTP + stdio, bearer auth) with a single `ops-team` agent whose `weekly-report` job declares the connection (job-level, because a fail-loud connect at agent level would take down sibling jobs that never touch the server). All three things unit tests cannot reach are now proven on real traffic: SDK spawn passthrough (stdio child sees only the mapped env, none of Ant's secrets), header auth both ways (unregistered credential key → fail-loud in 2s; registered → 200 + tool results), and zero `Unknown tool` across the session. The approval axis was demonstrated end-to-end too: an unannotated write tool is refused before reaching the server, and an explicit `approval: never` grant lets it run with the server's idempotency key + `dry_run` carrying the blast radius. E2E surfaced four Ant defects — two blocking (fixed: execute-route agent default shadowing the universal mapping; universal runtime never wiring a CommandPort) and three recorded, all since fixed (crash-mislabel of config failures → A13; `<reply>` leaking across tool rounds → A14; optimistic `user_turn` hardcoded to `jobType:'code'` → A15) |
 | **A3 interactive approval** | Gate 2 (any write tool) | Phase 1 is fail-closed: approval-gated calls are *rejected with guidance*. Until the pause/approve/resume flow lands (`pendingApproval` session field is reserved), write tools run only under an explicit `approval: never` declaration — so the pilot is read-only by construction |
 | **A6 department scope** | Gate 2 (shared workspaces) | `team` org kind is data-model-only; org agent root is one global env var; projects are `(tenant,user)`-owned. Until fixed, every artifact lives in a personal project |
 | **A5 image passthrough** | dashboards/chart tools | MCP image content is extracted (`McpCallResult.image`) but dropped at the registry handler (text only). Becomes priority the moment a department tool returns a rendered artifact |
@@ -111,7 +115,7 @@ Open items, in dependency order:
 
 **Gate 1 — pilot (read-only).** ✅ **Open (2026-08-11).** The WS-D end-to-end
 closed the last condition: a reference definition set (HTTP MCP + `headers`
-auth, read-only builtin tools, one intent catalog) plus the reference server
+auth over stored credentials, read-only builtin tools, one intent catalog) plus the reference server
 (TypeScript, `@modelcontextprotocol/sdk` 1.30, streamable HTTP + stdio, bearer
 auth, health check, structured logging, `annotations.readOnlyHint: true` on the
 read tools) now run against each other on real traffic. The server lives
@@ -176,8 +180,9 @@ document/data. Read/aggregate/search tools only until Gate 2.
 7. Errors are human-readable sentences; the LLM plans recovery from that text.
 8. Response size caps + pagination. Context budget is cost.
 9. Naming: server `{domain}-{system}`, tools `snake_case` verbs.
-10. Auth: exactly one mechanism — `headers` with host-env-var names (A2).
-    No per-department inventions.
+10. Auth: exactly one mechanism — `headers`, whose values are `${secret:KEY}`
+    references resolved from Ant's encrypted per-user store (A2/A16). No
+    per-department inventions, and no credential in a definition file.
 
 ### 5.3 Operations
 
@@ -193,11 +198,17 @@ document/data. Read/aggregate/search tools only until Gate 2.
 - **Secrets**: server credentials live only in the encrypted per-user store
   (`workspaces/{org}/{user}/.ant/credentials.json`, AES-256-GCM; registered via
   `PUT /api/account/mcp-credentials` or the settings UI) and as the
-  department's own config — `headers`/`env` name the store keys. Resolution is
-  store-only (`McpCredentialResolver`): process.env is never consulted, so a
-  definition cannot name-and-exfiltrate platform secrets. A literal credential
-  in a definition file fails validation — three enforcement layers (loader,
-  HTTP gate, settings form) share `validateMcpServers`.
+  department's own config — a `headers`/`env` value carries the marker
+  `${secret:KEY}`, which names a store key. Resolution is store-only
+  (`McpCredentialResolver`): process.env is never consulted, so a definition
+  cannot name-and-exfiltrate platform secrets. **A definition file cannot
+  detect a pasted credential for you** — an unmarked value is stored verbatim
+  as a literal, by design (credential-ness is authored, not inferred from
+  shape; see the tombstone in [44](44-universal-job.md)). Reviewing D2 output
+  for pasted tokens is therefore a checklist item for the FDE, not something
+  `validateMcpServers` can enforce. What the three enforcement layers (loader,
+  HTTP gate, settings form) do share is transport-exclusivity and malformed-
+  reference rejection.
 
 ---
 

@@ -37,11 +37,11 @@ or Ant authors them for you from a PRD. Both produce the same `uiSource`
 
 ## Hard-exclusivity
 
-Only one source is active per workspace at a time. Ant's
+Only one source is active per feature at a time. Ant's
 [`normalizeUiSourceRefs`](../../../packages/ant-shared/src/canonical.ts)
 enforces this at every RAC-creating site. If you've been iterating in
 Claude and want to switch to Figma, move the existing
-`visual/ui/handoff/**` files out of the workspace (or just delete the
+`visual/ui/handoff/**` files out of the feature (or just delete the
 slot from the RAC).
 
 ## Game projects

@@ -1,8 +1,15 @@
 # 44 — Universal Job: File-Defined Custom Agent/Job Runtime
 
-Status: Phase 1 (MVP) landed. Owner surfaces: `agents/universal/`,
-`core/customAgents/`, `templates/jobs/universal/`,
-`periphery/adapters/http/routes/customAgents.routes.ts`.
+Status: Phase 1 (MVP) landed, plus the MCP credential plane (A16/A13) and the
+checklist plane. Owner surfaces: `agents/universal/`, `core/customAgents/`,
+`templates/jobs/universal/`, `utils/userConfig/` (credential store),
+`periphery/adapters/http/routes/{customAgents,accountAgents,mcpCredentials}.routes.ts`.
+
+Strategy and org rollout live in
+[45-org-ax-mcp-orchestration.md](45-org-ax-mcp-orchestration.md); the
+user-facing view is [concepts/custom-agents.md](../concepts/custom-agents.md)
+and the codespace/workspace vocabulary is
+[concepts/spaces.md](../concepts/spaces.md).
 
 ## Why one JobType, not N
 
@@ -14,9 +21,18 @@ uses (HTTP body → zod schema → ExecuteJobParams → JobPayload →
 `ANT_CUSTOM_JOB_REF` env → job-runner → orchestrator).
 Adding/removing a custom job is a pure file operation.
 
+Per-turn axes ride a **second** single-value channel,
+`ANT_UNIVERSAL_TURN_META` — one JSON blob carrying
+`UniversalTurnMeta {intents[], context[], plan?}`. One JSON, never
+comma-separated lists per axis: a CSV env var per axis is how a third axis
+becomes a fourth parse site.
+
 ```bash
 # The ref must never fork into a second channel:
 rg -n "ANT_CUSTOM_JOB_REF" packages/ant-cli/src --type ts
+# Expected: JobWorker (write), job-runner (read) only.
+# Same for the turn meta:
+rg -n "ANT_UNIVERSAL_TURN_META" packages/ant-cli/src --type ts
 # Expected: JobWorker (write), job-runner (read) only.
 # Tombstone — the thread plane is deleted (one chat per workspace):
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src
@@ -105,9 +121,19 @@ is conditional):
 ## Definition loading (D4/D5/D8)
 
 - Loader SSOT: `core/customAgents/CustomAgentLoader.ts`. Merge rules: prose =
-  agent base → job base (cap 8k, truncation footer); injections TOC union
-  (job wins); MCP union (job wins); `tools.builtin` job ⊆ agent ⊆ preset
-  (narrowing only); approval stricter-wins; models/workspace job-overrides.
+  agent base → job base (cap 8k, truncation footer); MCP servers union (job
+  wins on name); `tools.builtin` validated **job ⊆ the universal preset**, with
+  no agent-level tier to narrow through; `tools.approval` job-declared only.
+- **`agent.yaml` carries identity + shared MCP, nothing else.** The two
+  validators (`validateAgentYamlDoc` / `validateJobYamlDoc`) **throw** on every
+  removed key rather than ignoring it, each with the migration in the message:
+  `agent.yaml: tools | description | intents`, `job.yaml: outputs | plan |
+  description`, and `workspace` / `models` on either file. Intents and
+  injections are job-only for the same reason tool sets are: a duty owns its
+  situational rules, a persona does not. A silently-ignored field is how a
+  definition author concludes a knob works.
+- Prose floor: a job with zero non-empty `base/*.md` across both levels fails
+  loud — an agent with no prose is a harness with no purpose.
 - Scope roots: `deriveCustomAgentScopeRoots` — user > org
   (`$ANT_CUSTOM_AGENTS_DIR`, readonly) > builtin (shipped samples under
   `core/data/agents`, readonly, always present). Definitions are
@@ -120,12 +146,17 @@ is conditional):
   is deliberately lenient, a malformed shipped sample would silently vanish —
   `tests/customAgents/builtin-agents.test.ts` is the fail-loud gate
   (`loadCustomJob` over every shipped pair + root-wiring rows).
-- **Create-collision is writable-scope-only** (`findCreateCollision`): a new
-  user agent may shadow a readonly (org/builtin) agent wholesale; only a
-  same-id user agent 409s. Creation (Settings → Agents, or
-  `POST /custom-agents`) always targets the user scope — there is no scope
+- **Create-collision spans every scope.** `findCreateCollision` *is*
+  `findAgentRoot`, so an id owned by ANY root — org and builtin included — 409s
+  at creation/import. Pre-existing on-disk collisions still resolve by scope
+  priority (whole-directory: the closer agent replaces the farther one
+  entirely, jobs included), but *minting* a shadow is refused because silent
+  shadowing has no UI story — the author would edit a definition that a
+  higher-priority root overrides. Creation (Settings → Agents, or
+  `POST /custom-agents`) always targets the user scope; there is no scope
   request parameter. Future: expose `shadows` on `CustomAgentSummary` and a
-  copy-to-scope endpoint so shadowing doesn't start from an empty scaffold.
+  copy-to-scope endpoint so a deliberate shadow doesn't start from an empty
+  scaffold.
 - **Activation is job-runner-child-only** (`activeCustomJob.ts` throws on
   double activation). The API server only lists summaries. Validation
   failures are HTTP 400 at job-accept (`resolveUniversalExecuteContext`),
@@ -158,6 +189,79 @@ tables, container bootstrap, session path shape, thread-plane tombstones).
   loopback-only probe (SSRF-guarded), not a general HTTP client. External
   mutations go through MCP; revisit if a real need appears.
 
+## MCP connections & the credential plane (A16/A13)
+
+MCP is the ONLY way a custom job gains capability beyond the builtin preset
+(`tools.builtin` can narrow the preset, never extend it), which makes the
+connection contract a security surface rather than a convenience.
+
+- **Transport-exclusive auth**, validated in `@ant/shared::validateMcpServers`
+  (one SSOT, three consumers: loader throw / HTTP 400 / settings form disable):
+  `headers` is the only auth mechanism for `http`, `env` the only one for
+  `stdio`, and each is **rejected on the other transport**. Two mechanisms per
+  transport is two places to forget one.
+- **Credential-ness is authored, never inferred.** `MCP_SECRET_REF_PATTERN`
+  (`^\$\{secret:([A-Z][A-Z0-9_]*)\}$`) is the one marker that turns a value
+  into a store lookup; every other non-empty value is a literal stored verbatim
+  in the yaml. A *malformed* reference (anything starting `${secret:` that
+  doesn't match) fails validation rather than degrading to a literal — the one
+  case where shape does decide something, because it can only be a typo.
+
+  > **Tombstone.** An earlier iteration treated a bare ALL-CAPS value as a
+  > credential key name and rejected it with a migration hint. It was removed in
+  > `2524da299` because the heuristic could not distinguish a key name from a
+  > legitimate literal (`X-Env: PRODUCTION`), so it silently killed job starts
+  > on valid definitions. Do not reintroduce shape-based detection as a
+  > "safety" check: the failure mode is a definition that cannot run and an
+  > error the author cannot act on.
+
+- **Store**: `CredentialsStore` (`utils/userConfig/CredentialsStore.ts`) at
+  `workspaces/{org}/{user}/.ant/credentials.json` — AES-256-GCM,
+  `iv:authTag:ciphertext`, file mode `0600`, key from `ANT_ENCRYPTION_KEY` or
+  `workspaces/.ant/encryption.key`. The `mcp` bucket is keyed by credential key.
+  Per-user, not per-project: definitions are account-owned, so their secrets
+  must be too.
+- **Resolution is store-only.** `McpCredentialResolver` is a port whose sole
+  implementation (`StoreBackedMcpCredentialResolver`) reads the store and has
+  **no `process.env` fallback**. That is the whole point: with a fallback, a
+  definition could name `ANTHROPIC_API_KEY` and exfiltrate it through a server
+  it controls. An unregistered key throws with the registration endpoint in the
+  message.
+- **stdio child env isolation**: `buildStdioChildEnv()` = `STDIO_EXEC_ENV_KEYS`
+  (`PATH HOME LANG LC_ALL TMPDIR SystemRoot`) + the resolved declared vars.
+  Never `...process.env` — a stdio MCP server is arbitrary code execution on
+  Ant's host (accepted under the workspace trust model; cloud leans on pod
+  isolation), so it must not inherit provider keys, the JWT secret, or the Redis
+  URL.
+- **Failure classification**: `McpConfigError` → `InterruptionReason
+  'config_invalid'` at the single `job-runner` boundary — non-infrastructure,
+  `canResume:false`, and explicitly **never** `process_crash`. A definition
+  mistake reported as a crash sends the reader to the wrong subsystem.
+- **Write API**: `/api/account/mcp-credentials` — `GET` returns key names and
+  `updatedAt` only (values are write-only), `PUT` upserts, `DELETE` removes.
+  Rotation touches the store, never the definition file.
+- Connect is fail-loud at job start (`runner.ts`), 60s connect/call timeouts,
+  tools surfaced as `mcp__{server}__{tool}`. Handlers are registered into the
+  **existing** registry singleton — instance identity is a contract, not an
+  implementation detail (A1: replacing the singleton made every `mcp__*` call
+  resolve to `Unknown tool`).
+- Known gap (A5): `McpCallResult.image` is extracted and then **dropped** at the
+  registry handler — MCP results are text-only today.
+
+```bash
+# The resolver must never learn to read the host environment:
+rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts \
+  packages/ant-cli/src/utils/userConfig/StoreBackedMcpCredentialResolver.ts
+# Expected: 0 hits.
+# The stdio child must never inherit Ant's env:
+rg -n "process.env as Record|\.\.\.process\.env" packages/ant-cli/src/core/customAgents/McpConnectionManager.ts
+# Expected: 0 hits.
+```
+
+Guard: `tests/customAgents/universal-mcp-runtime.test.ts` (dispatch identity +
+env isolation rows, both red-verified), `tests/customAgents/mcp-credential-store.test.ts`,
+and the FE rows in `packages/ant-ui/tests/components/mcpCredential*`.
+
 ## Approval gate (1-8, Phase 1 = fail-closed)
 
 `requiresApproval`: explicit declaration → mutating-builtin default
@@ -167,6 +271,15 @@ calls with guidance ("do not retry; tell the user; author may declare
 `never`") — silent execution is forbidden. The interactive
 pause/approve/resume flow is the Phase-1.5 follow-up; the session field
 reserved for it is `pendingApproval`.
+
+A **`@plan` turn** adds a second, orthogonal gate on top: file writes are
+confined to `plan/` (`universalToolPolicy.planTurnViolation`) and
+`nodes/tool.ts` additionally rejects `run_command`, `http_request`, and any
+non-read-only MCP call for that turn. Planning is enforced, not advisory —
+otherwise "review the plan first" is a suggestion the model may decline, which
+is exactly the failure a plan turn exists to prevent. The plan itself lands at
+`plan/{agentId}/{jobId}/` and `resolve` lists it into `state.planDocs` on later
+turns (the plan-consumption gate).
 
 ## Prompt injection (1-4)
 
@@ -180,6 +293,20 @@ Handlebars-compiled (no partial access).
 
 Guard: `tests/customAgents/universal-prompt-injection.test.ts` (gate truth
 table, not prose pinning).
+
+## Streaming & turn identity (A14/A15)
+
+Two defects the WS-D end-to-end surfaced, both structural rather than cosmetic:
+
+- **A14 — `StreamOrchestrator` is turn-scoped, not process-scoped**
+  (`graph/runtime.ts`). A universal turn can span many tool rounds, and a
+  process-lived orchestrator carried its open-tag state across them, so
+  `<reply>` leaked into chat raw after the first round. The lifetime of a
+  streaming state machine must match the lifetime of the stream it parses.
+- **A15 — the optimistic `user_turn` carries the real jobType.** It was
+  hardcoded `'code'`, so a universal project's user messages persisted under a
+  jobType the project cannot even run — which then failed to match on reload.
+  Optimistic writes must stamp the same identity the durable write will.
 
 ## Project type is policy, layout is invariant (D6)
 
@@ -195,8 +322,9 @@ ALWAYS namespaced under `universal/` regardless. The gate is
 - `/execute` (+ `/learn`, `/inline-ask`, `/resume`, `/continue`) reverse
   direction: 400 `project-universal-requires-custom-job` when a canonical
   jobType targets a universal project.
-- `FeatureCrudService.createFeature`: rejected on universal projects
-  ("git 없는 feature"라는 개념 모순의 구조적 차단).
+- `FeatureCrudService.createFeature`: rejected on universal projects — a
+  feature without git is a contradiction, so it is blocked structurally rather
+  than degraded into a directory-only feature.
 - `deleteProject`'s fs.rm covers `universal/` (sessions + artifacts) without
   a new cascade step; feature-stage steps are naturally no-ops.
 

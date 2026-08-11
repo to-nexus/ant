@@ -1,11 +1,12 @@
 # Job intent catalog — intents are job-only (this file lives next to job.yaml).
 #
-# Each description IS the classification criterion: the runtime renders it
-# verbatim as a catalog row for the per-turn intent classifier. When an intent
-# matches, its `injections` files (this job's injections/*.md) are inlined in
-# full; otherwise they stay in an on-demand table of contents. Users can also
-# force intents explicitly with `@intent:` mentions in the composer. `general`
-# is reserved for "no match" and cannot be declared here.
+# Intents are selected explicitly, never auto-classified: a turn carries the
+# `@intent:` mentions from the composer (or the execute body's `intents`), and
+# those intents' `injections` files (this job's injections/*.md) are inlined in
+# full. Everything else stays in an on-demand table of contents, where each
+# `description` below is the row the model reads to decide what to pull in with
+# read_file — so write it for that judgment. `general` is reserved for a turn
+# with no mention and cannot be declared here.
 version: 1
 intents:
   - id: research

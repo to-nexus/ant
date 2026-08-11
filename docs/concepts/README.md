@@ -16,10 +16,10 @@ flags exist (that's [reference/](../reference/)).
    produces and when each runs.
 5. [**execution-tiers**](execution-tiers.md) — The 5-tier model that
    decides decomposition strategy and verification depth.
-6. [**workspace**](workspace.md) — Project / Feature / Workspace data
-   layout and what each directory means.
-7. [**custom-agents**](custom-agents.md) — File-defined custom agents/jobs
-   on the universal runtime, and universal-type projects.
+6. [**spaces**](spaces.md) — Codespace vs workspace: the two project kinds,
+   which jobs run in each, and what every directory means.
+7. [**custom-agents**](custom-agents.md) — File-defined custom agents/jobs on
+   the universal runtime — the workspace kind's whole point. *(Experimental.)*
 
 ## Background documents
 

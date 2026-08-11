@@ -84,7 +84,7 @@ For binding rules with regression-guard test names, see
 - [41-task-priority-band-system.md](41-task-priority-band-system.md) — type / band / priority three-axis SSOT
 - [42-custom-domains.md](42-custom-domains.md) — deploy-only custom domains (NLB+Caddy on-demand TLS); infra + developer tasks
 - [43-explore-subagent.md](43-explore-subagent.md) — async read-only explore subagent pipeline (all jobs): launch/drain/join, registry, chat card + report overlay
-- [44-universal-job.md](44-universal-job.md) — universal job: file-defined custom agent/job runtime — one JobType, definition loader/scopes, tool sandbox, approval gate, projectType policy
+- [44-universal-job.md](44-universal-job.md) — universal job: file-defined custom agent/job runtime — one JobType, definition loader/scopes, tool sandbox, MCP credential plane, approval + plan-turn gates, checklist plane, projectType policy
 - [45-org-ax-mcp-orchestration.md](45-org-ax-mcp-orchestration.md) — organization AX: universal job + department MCP servers — process/trust topology, gate roadmap, D3 server contract, inventory→definition normalization
 
 ### Layout

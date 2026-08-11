@@ -8,6 +8,7 @@ Welcome. The docs are organized into four tiers based on what you want to do.
 | Deploying for a team (managed or self-host)       | **[Cloud Mode](cloud-mode/)**                       |
 | Trying to understand how it works                 | **[Concepts](concepts/)**                           |
 | Customizing / integrating                         | **[Guides](guides/)**                               |
+| Building work agents for your team or org         | **[Custom agents](concepts/custom-agents.md)** + [authoring guide](guides/custom-agent-authoring.md) |
 | Looking up an API / env var / file format         | **[Reference](reference/)**                         |
 | Contributing to Ant itself                        | **[Internals](internals/)** + [AGENTS.md](../AGENTS.md) |
 
@@ -21,8 +22,9 @@ docs/
 ├── local-mode/         Install + develop on your own machine (Persona A)
 ├── cloud-mode/         Install + develop for managed (Persona B) or self-host (Persona C)
 ├── getting-started/    First-feature walkthrough, troubleshooting
-├── concepts/           Architecture, spec-driven philosophy, agents, jobs, tiers
-├── guides/             Design input, custom prompts, observability
+├── concepts/           Architecture, spec-driven philosophy, agents, jobs, tiers,
+│                       codespace vs workspace, custom agents
+├── guides/             Design input, custom prompts, custom agents, observability
 │   └── design-input/   The killer feature: Claude / Figma / native design sources
 ├── reference/          CLI, env vars, API, shared types, Redis keys
 ├── internals/          Contributor deep-dives — incident-grade SSOT documents

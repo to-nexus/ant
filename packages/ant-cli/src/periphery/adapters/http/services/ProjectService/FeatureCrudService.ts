@@ -173,7 +173,7 @@ export class FeatureCrudService {
       const projectPath = this.workspaceResolver.getProjectPath(userContext, projectId);
       const configRaw = fs.readFileSync(path.join(projectPath, 'config.json'), 'utf-8');
       if (JSON.parse(configRaw)?.projectType === 'universal') {
-        throw new Error('Universal-type projects do not support features — use custom agent threads instead');
+        throw new Error('Universal-type projects do not support features — run a custom agent job instead');
       }
     } catch (e) {
       if (e instanceof Error && e.message.includes('do not support features')) throw e;

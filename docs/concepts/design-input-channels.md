@@ -17,7 +17,7 @@ The binding rules live in
 | `figma`   | `visual/ui/figma/figma.json` | Just a Figma URL + nodeId            | Live MCP exploration: the agent fetches frames, variables, and styles at prompt time. |
 | `handoff` | `visual/ui/handoff/**`        | Free-form bundle (HTML/CSS/MD/PNG/JSON) | Observation-only (FPOP): the agent inspects what is observable and does not infer schema. |
 
-These three are **hard-exclusive per workspace**. Mixing them in a single
+These three are **hard-exclusive per feature**. Mixing them in a single
 RAC throws an exception at the safety net layer
 (`ArtifactPoolView.uiSource()` and `validateUiSourceExclusivity`).
 

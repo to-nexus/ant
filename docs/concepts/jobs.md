@@ -129,7 +129,8 @@ on type / band / priority axes live in
 
 - [**execution-tiers**](execution-tiers.md) — when each job type uses
   which decomposition strategy.
-- [**workspace**](workspace.md) — where all the artifacts land.
+- [**spaces**](spaces.md) — where all the artifacts land, in a codespace and
+  in a workspace.
 - [internals/14-code-job.md](../internals/14-code-job.md) and
   [internals/15-design-job.md](../internals/15-design-job.md) — full job
   walkthroughs with channel schemas.
