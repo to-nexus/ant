@@ -73,7 +73,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/multer": "^2.1.0",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20.19.41",
     "concurrently": "^9.2.1",
     "dotenv": "^16.6.1",
