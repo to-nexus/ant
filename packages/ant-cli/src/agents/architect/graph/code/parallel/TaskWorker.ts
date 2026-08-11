@@ -20,6 +20,7 @@ import type { SharedFileBuffer } from './SharedFileBuffer';
 import { WorkerFileSystem } from './WorkerFileSystem';
 import { isJobAborted } from '../../../../../composition/jobAbort';
 import { runInTaskScope, runInWorkerScope } from '../../../../../core/parallel/workerScope';
+import { loadRecursionLimit } from '../../../../common/graph/runnerHelpers';
 import { VerificationTerminalError } from '../tasks/_shared/verify/terminal/errors';
 import { getLLMResponseServiceOrNull } from '../../../../../core/adapters/ChatAPIClient';
 
@@ -375,7 +376,7 @@ export class TaskWorker<T extends BaseTask> {
     // Without this, LangGraph uses its default of 25 which is far too low
     // for complex tasks (plan → execute ↔ tool loop easily exceeds 25 node transitions).
     // Use sharedContext.recursionLimit (from env RECURSION_LIMIT via runner.ts).
-    const envLimit = parseInt(process.env.RECURSION_LIMIT || '200', 10);
+    const envLimit = loadRecursionLimit('code');
     // Wrap with `runInTaskScope` (inside `runInWorkerScope`) so every
     // chat event emitted during this task carries `worker-N#task-K`
     // identity. The FE projector splits sections per task and sorts by

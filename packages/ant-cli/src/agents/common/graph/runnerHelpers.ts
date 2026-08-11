@@ -12,7 +12,10 @@
 
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 
-export function loadRecursionLimit(jobTypeOrDefault?: string | number, defaultLimit = 200): number {
+// Default calibrated for the tool-call file-authoring protocol (each write
+// round costs 2 super-steps: execute + tool). The pre-tool-call value of 200
+// assumed XML-tag streaming where N files + <done> cost 1 step.
+export function loadRecursionLimit(jobTypeOrDefault?: string | number, defaultLimit = 300): number {
   // Overload: loadRecursionLimit(200) — backward-compatible numeric-only call
   if (typeof jobTypeOrDefault === 'number') {
     defaultLimit = jobTypeOrDefault;
