@@ -111,10 +111,19 @@ HTTP bridge in cloud) — there is no separate Figma env var.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANT_JWT_SECRET` | — | JWT signing secret. Required in cloud. |
+| `ANT_LOCAL_ORG` | — | Local mode only: pin the tenant's org. Requires `ANT_LOCAL_USER`. |
+| `ANT_LOCAL_USER` | — | Local mode only: pin the tenant's user. Requires `ANT_LOCAL_ORG`. |
 
 Auth tenancy is driven by `ANT_SERVER_MODE`: `local` uses the single
 `local:local` tenant, `cloud` uses OAuth. The current implementation is
 intentionally minimal — SAML / SCIM / fine-grained ACL is on the roadmap.
+
+In local mode the tenant resolves as: `ANT_LOCAL_ORG` + `ANT_LOCAL_USER` (both
+required) → a filesystem probe of `ANT_WORKSPACE_BASE_PATH` that only commits
+when it finds exactly one org holding exactly one user → the `local:local`
+fallback. Set the pair when the workspaces root holds more than one tenant:
+without it the probe is ambiguous, everything lands in `local/local/`, and
+projects under any other org/user directory are invisible to that server.
 
 ## Logging
 

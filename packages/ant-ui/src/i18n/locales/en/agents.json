@@ -43,6 +43,8 @@
     "mcpHint": "env and header values are plain text, or a credential reference (lock toggle) resolved from the encrypted per-user store when the server starts — secrets never live in the definition file.",
     "mcpValueModeSecret": "Credential (encrypted) — click for plain text",
     "mcpValueModePlain": "Plain text — click for credential",
+    "mcpValueModeSecretBadge": "encrypted",
+    "mcpValueModePlainBadge": "plain",
     "mcpPlainValuePlaceholder": "value",
     "mcpTransport": "transport…",
     "mcpServerName": "server-name",

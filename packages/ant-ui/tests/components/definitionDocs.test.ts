@@ -163,7 +163,7 @@ describe('mcp.servers round-trip', () => {
         transport: 'stdio' as const,
         command: 'npx',
         args: ['-y', '@acme/ops-db-mcp'],
-        env: { DB_URL: 'OPS_DB_URL' },
+        env: { DB_URL: '${secret:OPS_DB_URL}' },
       },
     };
     const next = editRaw(JOB_YAML, (doc) => applyMcpServers(doc, servers));
@@ -187,7 +187,7 @@ describe('mcp.servers round-trip', () => {
       remote: {
         transport: 'http' as const,
         url: 'https://mcp.example/sse',
-        headers: { Authorization: 'OPS_API_TOKEN' },
+        headers: { Authorization: '${secret:OPS_API_TOKEN}', 'X-Workspace-Id': 'ws-abc' },
       },
     };
     const next = editRaw(JOB_YAML, (doc) => applyMcpServers(doc, servers));
@@ -205,17 +205,32 @@ describe('mcp.servers round-trip', () => {
 
   it.each([
     [
-      'a literal header token',
-      { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { Authorization: 'Bearer sk-live' } } },
-      /credential KEY/,
+      'a malformed secret reference',
+      { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { Authorization: '${secret:not-caps}' } } },
+      /malformed/,
+    ],
+    [
+      'an empty value',
+      { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { Authorization: ' ' } } },
+      /non-empty/,
     ],
     [
       'headers declared on stdio',
-      { db: { transport: 'stdio' as const, command: 'npx', headers: { Authorization: 'OPS_API_TOKEN' } } },
+      { db: { transport: 'stdio' as const, command: 'npx', headers: { Authorization: '${secret:OPS_API_TOKEN}' } } },
       /applies to http transport only/,
     ],
   ])('the validator refuses %s', (_label, servers, pattern) => {
     expect(validateMcpServers(servers).join('\n')).toMatch(pattern);
+  });
+
+  it.each([
+    ['a plain-text header', { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { 'X-Workspace-Id': 'ws-abc' } } }],
+    ['a secret reference', { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { Authorization: '${secret:OPS_API_TOKEN}' } } }],
+    ['a plain-text env value', { db: { transport: 'stdio' as const, command: 'npx', env: { DB_HOST: 'localhost' } } }],
+    // `${secret:KEY}` is the only lookup marker, so an ALL-CAPS literal is a literal.
+    ['an ALL-CAPS plain-text value', { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { Authorization: 'OPS_API_TOKEN' } } }],
+  ])('the validator accepts %s', (_label, servers) => {
+    expect(validateMcpServers(servers)).toEqual([]);
   });
 
   it('removing the last server drops the whole mcp block', () => {
@@ -231,11 +246,10 @@ describe('mcp.servers round-trip', () => {
     expect(validateMcpServers(derived).join('\n')).toMatch(/transport must be/);
   });
 
-  it('a lowercase env value is refused — env names a credential key, not a secret', () => {
-    const errors = validateMcpServers({
-      db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'postgres://secret' } },
-    });
-    expect(errors.join('\n')).toMatch(/credential KEY/);
+  it('a bare ALL-CAPS env value stays plain text — the value shape never implies a store lookup', () => {
+    expect(
+      validateMcpServers({ db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'OPS_DB_URL' } } }),
+    ).toEqual([]);
   });
 });
 

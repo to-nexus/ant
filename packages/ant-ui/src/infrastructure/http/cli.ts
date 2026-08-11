@@ -32,6 +32,11 @@ export interface JobExecution {
   kill: (signal?: string) => Promise<boolean>;
   on: (event: 'exit', listener: (code: number | null, signal: string | null) => void) => JobExecution;
   onJobIdReady: (callback: (jobId: string) => void) => void;
+  /**
+   * The job never got an id, so there is no card and no `job-error` line to
+   * carry the reason. Fires with the BE's rejection sentence.
+   */
+  onStartError: (callback: (message: string) => void) => void;
 }
 
 export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecution {
@@ -61,6 +66,8 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
   let jobId = '';
   let exitListener: ((code: number | null, signal: string | null) => void) | null = null;
   let jobIdReadyCallback: ((jobId: string) => void) | null = null;
+  let startErrorCallback: ((message: string) => void) | null = null;
+  let startError: string | null = null;
 
   const jobExecution: JobExecution = {
     jobId: '',
@@ -93,6 +100,13 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
       jobIdReadyCallback = callback;
       if (jobId) {
         callback(jobId);
+      }
+    },
+    onStartError: (callback: (message: string) => void) => {
+      startErrorCallback = callback;
+      // The rejection can land before the caller subscribes — replay it.
+      if (startError) {
+        callback(startError);
       }
     }
   };
@@ -157,8 +171,11 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     })
     .catch((error) => {
       console.error('[cli.ts] Failed to start job:', error);
-      // Job-start failures are surfaced through the BE chat stream as
-      // assistant_message lines (job.routes /execute emitConflictAssistantMessage).
+      // The BE emits an assistant_message for most /execute rejections, but that
+      // needs a seedTurnId and a reachable chatService — neither is guaranteed.
+      // Hand the reason to the caller so the failure cannot end up invisible.
+      startError = error instanceof Error ? error.message : String(error);
+      startErrorCallback?.(startError);
       store.setRunning(false);
       store.setLastJobFailed(true);
       if (exitListener) {

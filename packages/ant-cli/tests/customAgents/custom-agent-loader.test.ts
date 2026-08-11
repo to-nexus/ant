@@ -129,12 +129,24 @@ describe('loadCustomJob — validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/universal preset/);
   });
 
-  it('mcp env carrying a literal value (not a credential KEY name) → throws', () => {
+  it('mcp env carrying a literal value loads through — plain text is authored, not refused', () => {
     const dir = writeAgent(roots()[0].root, 'ops', {
       mcp: { servers: { db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'postgres://user:pw@host' } } } },
     });
     writeJob(dir, 'weekly', {});
-    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/credential KEY/);
+    expect(loadCustomJob(roots(), 'ops', 'weekly').mcpServers.db.env).toEqual({
+      DB_URL: 'postgres://user:pw@host',
+    });
+  });
+
+  // `${secret:KEY}` is the ONLY marker that turns a value into a store lookup,
+  // so an ALL-CAPS literal is just a literal — the shape carries no meaning.
+  it('mcp env carrying a bare ALL-CAPS value loads through as plain text', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {
+      mcp: { servers: { db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'OPS_DB_URL' } } } },
+    });
+    writeJob(dir, 'weekly', {});
+    expect(loadCustomJob(roots(), 'ops', 'weekly').mcpServers.db.env).toEqual({ DB_URL: 'OPS_DB_URL' });
   });
 
   it('mcp stdio without command / http without url → throws', () => {
@@ -147,22 +159,22 @@ describe('loadCustomJob — validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops2', 'weekly')).toThrow(/requires "url"/);
   });
 
-  // http `headers` — the ONE auth mechanism for http MCP. Same credential-KEY
-  // rule as `env`, so a literal token in the definition file cannot reach a server.
+  // http `headers` — the ONE auth mechanism for http MCP. Same value rule as
+  // `env`: plain text verbatim, or a `${secret:KEY}` credential reference.
   it.each([
     [
-      'headers carrying a literal token',
-      { transport: 'http', url: 'http://localhost:9', headers: { Authorization: 'Bearer sk-live-abc' } },
-      /credential KEY/,
+      'headers with a malformed secret reference',
+      { transport: 'http', url: 'http://localhost:9', headers: { Authorization: '${secret:not-caps}' } },
+      /malformed/,
     ],
     [
       'headers with an invalid header name',
-      { transport: 'http', url: 'http://localhost:9', headers: { 'Bad Header': 'OPS_TOKEN' } },
+      { transport: 'http', url: 'http://localhost:9', headers: { 'Bad Header': '${secret:OPS_TOKEN}' } },
       /not a valid HTTP header name/,
     ],
     [
       'headers on stdio transport',
-      { transport: 'stdio', command: 'npx', headers: { Authorization: 'OPS_TOKEN' } },
+      { transport: 'stdio', command: 'npx', headers: { Authorization: '${secret:OPS_TOKEN}' } },
       /"headers" applies to http transport only/,
     ],
   ] as const)('mcp %s → throws', (_label, server, pattern) => {
@@ -171,17 +183,22 @@ describe('loadCustomJob — validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
   });
 
-  it('http headers naming credential keys load through to the resolved job', () => {
+  it('http headers mixing a secret reference and plain text load through to the resolved job', () => {
     const dir = writeAgent(roots()[0].root, 'ops', {
       mcp: {
         servers: {
-          api: { transport: 'http', url: 'http://localhost:9', headers: { Authorization: 'OPS_TOKEN' } },
+          api: {
+            transport: 'http',
+            url: 'http://localhost:9',
+            headers: { Authorization: '${secret:OPS_TOKEN}', 'X-Workspace-Id': 'ws-abc' },
+          },
         },
       },
     });
     writeJob(dir, 'weekly', {});
     expect(loadCustomJob(roots(), 'ops', 'weekly').mcpServers.api.headers).toEqual({
-      Authorization: 'OPS_TOKEN',
+      Authorization: '${secret:OPS_TOKEN}',
+      'X-Workspace-Id': 'ws-abc',
     });
   });
 });

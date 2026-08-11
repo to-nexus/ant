@@ -103,7 +103,9 @@ export async function executeJob(
   }
 
   if (!response.ok) {
-    throw new Error(`Failed to execute task: ${response.statusText}`);
+    // Keep the BE's own sentence — it names the field that blocked the job, and
+    // `statusText` ("Bad Request") is the one thing a user cannot act on.
+    throw new Error(data?.error || `Failed to execute task: ${response.statusText}`);
   }
 
   return data;

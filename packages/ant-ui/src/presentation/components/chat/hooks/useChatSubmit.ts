@@ -228,6 +228,14 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         useStore.getState().setRunning(true, jobId);
       });
 
+      // Rejected before an id existed — no card, no job-error line, so the
+      // toast is the only place the reason can land.
+      jobExecution.onStartError((detail) => {
+        showError(`${t('inlineAsk.failed', { defaultValue: 'Job failed to start' })}: ${detail}`, {
+          title: t('common:error.title'),
+        });
+      });
+
       jobExecution.on('exit', async (code, signal) => {
         const jobFailed = code !== 0 && code !== null;
         useStore.getState().setLastJobFailed(jobFailed);

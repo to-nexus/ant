@@ -19,7 +19,7 @@ import { readBranchBase } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
-import { getConfigSlots, featureNameToSlug, type SessionableJobType } from '@ant/shared';
+import { getConfigSlots, featureNameToSlug, type LogJobType, type SessionableJobType } from '@ant/shared';
 import { isBillingEnabled } from '../../../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
@@ -236,12 +236,14 @@ export function createJobRoutes(deps: {
     jobId: string,
     userContext: { userId: string; organizationId: string },
     text: string,
+    jobType?: LogJobType,
   ): Promise<void> {
     if (!seedTurnId || !deps.chatService) return;
     try {
       await deps.chatService.appendAssistantMessage(projectId, featureName, text, {
         jobId,
         turnId: seedTurnId,
+        jobType,
         userContext,
       });
     } catch (err) {
@@ -375,6 +377,30 @@ export function createJobRoutes(deps: {
     try {
       userContext = extractUserContext(req);
 
+      /**
+       * Reject with the reason visible in chat. The universal accept-time gates
+       * below carry the only detail a user can act on (which definition field is
+       * wrong), and the FE cannot show a job card for a job that never got an id
+       * — so the sentence has to land on the turn itself.
+       */
+      const rejectWithChatLine = async (
+        status: number,
+        error: string,
+        code: string,
+        kind: string,
+      ): Promise<Response> => {
+        await emitConflictAssistantMessage(
+          projectId,
+          featureName,
+          seedTurnId,
+          `${kind}-${seedTurnId ?? Date.now()}`,
+          userContext!,
+          `작업을 시작할 수 없습니다: ${error}`,
+          jobType,
+        );
+        return res.status(status).json({ error, code });
+      };
+
       // Reverse gate (D6): canonical job types never run on a workspace project.
       if (jobType !== 'universal') {
         const rejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, jobType);
@@ -399,16 +425,18 @@ export function createJobRoutes(deps: {
       if (jobType === 'universal') {
         const { UNIVERSAL_FEATURE } = await import('@ant/shared');
         if (featureName !== UNIVERSAL_FEATURE) {
-          return res.status(400).json({
-            error: `Universal jobs ride the constant '${UNIVERSAL_FEATURE}' feature slot (got: ${featureName})`,
-            code: 'invalid-universal-feature',
-          });
+          return await rejectWithChatLine(
+            400,
+            `Universal jobs ride the constant '${UNIVERSAL_FEATURE}' feature slot (got: ${featureName})`,
+            'invalid-universal-feature',
+            'slot',
+          );
         }
         const resolved = await resolveUniversalExecuteContext(
           deps.workspaceResolver, userContext, projectId, customJobRef,
         );
         if (!resolved.ok) {
-          return res.status(resolved.status).json({ error: resolved.error, code: resolved.code });
+          return await rejectWithChatLine(resolved.status, resolved.error, resolved.code, 'defn');
         }
         universalCtx = { containerPath: resolved.containerPath, ref: resolved.ref };
 
@@ -416,7 +444,7 @@ export function createJobRoutes(deps: {
         // accept; explicit input never silently drops.
         const metaResult = await validateUniversalTurnMeta(resolved.containerPath, resolved.intentIds, intents, context, plan);
         if (!metaResult.ok) {
-          return res.status(metaResult.status).json({ error: metaResult.error, code: metaResult.code });
+          return await rejectWithChatLine(metaResult.status, metaResult.error, metaResult.code, 'meta');
         }
         universalTurnMeta = metaResult.meta;
       }
