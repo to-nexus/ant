@@ -188,12 +188,6 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
       errors.push(
         `MCP server "${name}": ${slot} looks like a credential reference but is malformed — use \${secret:KEY} with KEY matching ${String(MCP_ENV_VAR_NAME_PATTERN)}`,
       );
-      return;
-    }
-    if (MCP_ENV_VAR_NAME_PATTERN.test(value)) {
-      errors.push(
-        `MCP server "${name}": ${slot} is a bare credential key name from the pre-\${secret:…} format — wrap it as \${secret:${value}} to keep the store lookup, or rephrase it if it was meant as plain text`,
-      );
     }
   };
   for (const [name, cfg] of Object.entries(servers ?? {})) {

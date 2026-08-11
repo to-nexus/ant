@@ -43,6 +43,8 @@
     "mcpHint": "env/헤더 값은 평문이거나 크레덴셜 참조(자물쇠 토글)입니다 — 참조 값은 서버 기동 시 암호화 저장소에서 해석되며, 시크릿은 정의 파일에 저장되지 않습니다.",
     "mcpValueModeSecret": "크레덴셜(암호화) — 클릭하면 평문으로",
     "mcpValueModePlain": "평문 — 클릭하면 크레덴셜로",
+    "mcpValueModeSecretBadge": "암호화",
+    "mcpValueModePlainBadge": "평문",
     "mcpPlainValuePlaceholder": "값",
     "mcpTransport": "transport…",
     "mcpServerName": "server-name",

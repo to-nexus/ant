@@ -15,8 +15,9 @@ function warnAmbiguousLocalTenant(reason: string): void {
   if (warnedMultiTenant) return;
   warnedMultiTenant = true;
   logger.warn(
-    `⚠️  Local-mode tenant inference is ambiguous (${reason}); falling back to the 'local' tenant. ` +
-      'Local server mode assumes a single developer — set JWT auth (cloud mode) for multi-tenant isolation.',
+    `⚠️  Local-mode tenant inference is ambiguous (${reason}); falling back to the 'local' tenant — ` +
+      'projects under any other org/user directory are invisible to this server. ' +
+      'Set ANT_LOCAL_ORG + ANT_LOCAL_USER to pick a tenant explicitly, or JWT auth (cloud mode) for real multi-tenant isolation.',
     { component: 'userContext' },
   );
 }
@@ -33,6 +34,19 @@ export { isLocalServerMode };
 let inferredLocalDefault: { organizationId: string; userId: string } | null | undefined;
 
 /**
+ * Authored local tenant. Without it the active tenant is a function of how many
+ * directories happen to sit under the workspaces root, so adding or removing one
+ * user folder silently repoints every project/feature/credential lookup.
+ * Both halves are required — a half-declared tenant is a typo, not a default.
+ */
+export function declaredLocalTenant(): { organizationId: string; userId: string } | null {
+  const organizationId = process.env.ANT_LOCAL_ORG?.trim();
+  const userId = process.env.ANT_LOCAL_USER?.trim();
+  if (!organizationId || !userId) return null;
+  return { organizationId, userId };
+}
+
+/**
  * Test-only: clear the cached local-default-tenant inference so a test
  * can rerun the filesystem probe after seeding the workspace tree. Not
  * called by production code.
@@ -45,6 +59,11 @@ export function __resetInferredLocalDefaultForTests(): void {
 export function inferLocalDefaultTenant(): { organizationId: string; userId: string } | null {
   // Only infer in local server mode; in cloud mode the client must be explicit.
   if (!isLocalServerMode()) return null;
+
+  // An authored tenant outranks the filesystem probe — and silences the warning,
+  // since there is nothing ambiguous left to resolve.
+  const declared = declaredLocalTenant();
+  if (declared) return declared;
 
   if (inferredLocalDefault !== undefined) return inferredLocalDefault;
 
@@ -103,16 +122,9 @@ function inferTenantByProjectId(projectId: string): { organizationId: string; us
       .map((d) => d.name)
       .filter((name) => name !== '.ide-homes' && !name.startsWith('.'));
 
+    // The `local` org is scanned like any other: its user directory is
+    // LOCAL_USER_ID ('local'), so `local/local/<project>` is discoverable here.
     for (const org of orgDirs) {
-      // Local legacy workspace shape: <base>/local/user/<project>
-      if (org === 'local') {
-        const localProject = path.join(base, 'local', 'user', projectId);
-        if (fs.existsSync(localProject)) {
-          candidates.push({ organizationId: 'local', userId: 'user' });
-        }
-        continue;
-      }
-
       const usersDir = path.join(base, org);
       let users: string[] = [];
       try {
@@ -169,15 +181,19 @@ export function extractUserContext(req: Request): UserContext {
     throw new Error('Authentication required: no valid JWT token');
   }
 
-  // Local mode: filesystem inference fallback. Local server mode is local-kind
-  // by definition regardless of which org folder the inference lands on.
+  // Local mode: authored tenant, else filesystem inference. Local server mode is
+  // local-kind by definition regardless of which org folder it lands on.
+  // The declaration outranks project-id inference too: once a developer names
+  // their tenant, a same-named project under another org must not repoint them.
+  const declared = declaredLocalTenant();
   const projectIdFromParams =
     (req.params as any)?.id ||
     (req.params as any)?.projectId ||
     (req.params as any)?.project ||
     undefined;
-  const inferredByProject = projectIdFromParams ? inferTenantByProjectId(projectIdFromParams) : null;
-  const inferred = inferredByProject || inferLocalDefaultTenant();
+  const inferredByProject =
+    declared || !projectIdFromParams ? null : inferTenantByProjectId(projectIdFromParams);
+  const inferred = declared || inferredByProject || inferLocalDefaultTenant();
   return {
     userId: inferred?.userId || 'local',
     organizationId: inferred?.organizationId || 'local',

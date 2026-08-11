@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Lock, Pencil, Plus, Trash2, Type } from 'lucide-react';
+import { Check, Lock, LockOpen, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   MCP_ENV_VAR_NAME_PATTERN,
   MCP_HEADER_NAME_PATTERN,
@@ -59,6 +59,22 @@ const MCP_LAYOUT_CSS = `
 .mcp-kv-row { display: flex; align-items: center; gap: 6px; }
 .mcp-kv-key, .mcp-kv-value, .mcp-kv-solo { flex: 1; min-width: 0; }
 .mcp-kv-arrow { flex-shrink: 0; color: var(--text-4); font-size: 12px; }
+/* Mode badge lives in the value input's suffix slot, so the row's two
+   meanings (literal vs credential key) are readable without hovering. */
+.mcp-kv-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  color: inherit;
+}
+.mcp-kv-mode:disabled { cursor: default; }
 
 @container mcp-server (max-width: 420px) {
   .mcp-field-row { flex-direction: column; gap: 4px; }
@@ -106,9 +122,7 @@ function splitValueMode(value: string): { mode: 'secret' | 'plain'; text: string
 function valueHasError(value: string): boolean {
   const { mode, text } = splitValueMode(value);
   if (mode === 'secret') return !MCP_ENV_VAR_NAME_PATTERN.test(text);
-  // Plain text: empty is incomplete; bare ALL-CAPS is the legacy key-name
-  // format the validator rejects with a migration hint.
-  return text.trim() === '' || MCP_ENV_VAR_NAME_PATTERN.test(text);
+  return text.trim() === '';
 }
 
 /**
@@ -165,26 +179,6 @@ function EnvVarNameRows({
               />
             </div>
             <span className="mcp-kv-arrow">→</span>
-            <button
-              type="button"
-              className={ICON_BTN}
-              disabled={disabled}
-              title={
-                isSecret
-                  ? t('agentDef.mcpValueModeSecret', 'Credential (encrypted) — click for plain text')
-                  : t('agentDef.mcpValueModePlain', 'Plain text — click for credential')
-              }
-              aria-label={
-                isSecret
-                  ? t('agentDef.mcpValueModeSecret', 'Credential (encrypted) — click for plain text')
-                  : t('agentDef.mcpValueModePlain', 'Plain text — click for credential')
-              }
-              aria-pressed={isSecret}
-              style={isSecret ? { color: 'var(--select-fg)' } : undefined}
-              onClick={() => replaceAt(i, [key, isSecret ? text : formatSecretRef(text) ])}
-            >
-              {isSecret ? <Lock size={12} /> : <Type size={12} />}
-            </button>
             <div className="mcp-kv-value">
               <AuroraInput
                 value={text}
@@ -193,6 +187,33 @@ function EnvVarNameRows({
                 hasError={valueHasError(value)}
                 onChange={(v) => replaceAt(i, [key, isSecret ? formatSecretRef(v) : v])}
                 placeholder={isSecret ? 'CREDENTIAL_KEY' : t('agentDef.mcpPlainValuePlaceholder', 'value')}
+                suffix={
+                  <button
+                    type="button"
+                    className="mcp-kv-mode"
+                    disabled={disabled}
+                    title={
+                      isSecret
+                        ? t('agentDef.mcpValueModeSecret', 'Credential (encrypted) — click for plain text')
+                        : t('agentDef.mcpValueModePlain', 'Plain text — click for credential')
+                    }
+                    aria-label={
+                      isSecret
+                        ? t('agentDef.mcpValueModeSecret', 'Credential (encrypted) — click for plain text')
+                        : t('agentDef.mcpValueModePlain', 'Plain text — click for credential')
+                    }
+                    aria-pressed={isSecret}
+                    style={isSecret ? { color: 'var(--select-fg)' } : undefined}
+                    onClick={() => replaceAt(i, [key, isSecret ? text : formatSecretRef(text)])}
+                  >
+                    {isSecret ? <Lock size={11} /> : <LockOpen size={11} />}
+                    <span>
+                      {isSecret
+                        ? t('agentDef.mcpValueModeSecretBadge', 'encrypted')
+                        : t('agentDef.mcpValueModePlainBadge', 'plain')}
+                    </span>
+                  </button>
+                }
               />
             </div>
             {isSecret && credKey !== null && onCredentialJump && (

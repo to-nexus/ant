@@ -195,9 +195,9 @@ describe('universal MCP runtime — credential resolution is store-only', () => 
   });
 
   it.each([
-    ['stdio env', { s: { transport: 'stdio' as const, command: 'npx', env: { TOKEN: 'UNREGISTERED_KEY' } } }],
-    ['http headers', { s: { transport: 'http' as const, url: 'http://localhost:9', headers: { Authorization: 'UNREGISTERED_KEY' } } }],
-  ])('an unregistered %s key rejects with a typed McpConfigError before any connect', async (_label, servers) => {
+    ['stdio env', { s: { transport: 'stdio' as const, command: 'npx', env: { TOKEN: '${secret:UNREGISTERED_KEY}' } } }],
+    ['http headers', { s: { transport: 'http' as const, url: 'http://localhost:9', headers: { Authorization: '${secret:UNREGISTERED_KEY}' } } }],
+  ])('an unregistered %s reference rejects with a typed McpConfigError before any connect', async (_label, servers) => {
     const mcp = new McpConnectionManager(servers, stubResolver({}));
     const err = await mcp.connect().then(
       () => null,
@@ -207,13 +207,29 @@ describe('universal MCP runtime — credential resolution is store-only', () => 
     expect(String(err.message)).toMatch(/not registered/);
   });
 
-  it("a definition naming one of Ant's own env vars gets a store miss, not the host secret", async () => {
+  it("a definition referencing one of Ant's own env vars gets a store miss, not the host secret", async () => {
     // ANTHROPIC_API_KEY is set on the host (beforeEach). Store-only resolution
     // means the exfiltration attempt dies as an unregistered-key config error.
     const mcp = new McpConnectionManager(
-      { s: { transport: 'http', url: 'http://localhost:9', headers: { X: 'ANTHROPIC_API_KEY' } } },
+      { s: { transport: 'http', url: 'http://localhost:9', headers: { X: '${secret:ANTHROPIC_API_KEY}' } } },
       stubResolver({}),
     );
     await expect(mcp.connect()).rejects.toMatchObject({ isMcpConfigError: true });
+  });
+
+  it('a plain-text value passes through without touching the store — only ${secret:…} resolves', async () => {
+    // Header value is NOT a reference, so credential resolution must pass it
+    // verbatim and proceed to the (unreachable) connect — the failure is a
+    // network error, never a typed McpConfigError.
+    const mcp = new McpConnectionManager(
+      { s: { transport: 'http', url: 'http://127.0.0.1:9', headers: { 'X-Workspace-Id': 'ws-abc' } } },
+      stubResolver({}),
+    );
+    const err = await mcp.connect().then(
+      () => null,
+      (e) => e,
+    );
+    expect(err).not.toBeNull();
+    expect(isMcpConfigError(err)).toBe(false);
   });
 });
