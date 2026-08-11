@@ -36,6 +36,15 @@ interface ParserContext {
   clarifyStartEmitted: boolean;  // ✅ Track if clarify_start action was already emitted
   insideFunctionCalls: boolean;  // ✅ SAFETY: <function_calls> tag (suppress hallucinated XML tool calls)
   insidePlan: boolean;  // <plan> tag (plan node — emit plan_start/plan_content/plan_end)
+  /**
+   * Inside `<reply>...</reply>` (narrative axis). The delimiters are
+   * suppressed and the body live-streams as plain response — per-chunk
+   * transformer matching can't handle a tag split across chunks, and a
+   * tool-looping job can split it across ROUNDS (open in round 1, close in
+   * round 2). This flag survives `finalize()` (only `reset()` clears it) so
+   * a turn-persistent parser recognizes the late `</reply>` (A14).
+   */
+  insideReply: boolean;
 }
 
 export class XMLStreamParser implements IStreamParser {
@@ -54,6 +63,7 @@ export class XMLStreamParser implements IStreamParser {
     clarifyStartEmitted: false,  // ✅ NEW
     insideFunctionCalls: false,  // ✅ SAFETY
     insidePlan: false,
+    insideReply: false,
   };
 
   private buffer: string = '';
@@ -570,8 +580,66 @@ export class XMLStreamParser implements IStreamParser {
         continue;
       }
       
+      // 17. Check for <reply> opening (outside thinking) — narrative axis:
+      // suppress the delimiter, live-stream the body as plain response.
+      if (!this.context.insideThinking && !this.context.insidePlan && !this.context.insideReply
+          && this.buffer.includes('<reply>')) {
+        const startIdx = this.buffer.indexOf('<reply>');
+
+        const beforeTag = this.buffer.substring(0, startIdx);
+        if (beforeTag.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: beforeTag }
+          });
+        }
+
+        this.buffer = this.buffer.substring(startIdx + '<reply>'.length);
+        this.context.insideReply = true;
+
+        continueParsingLoop = true;
+        continue;
+      }
+
+      // 17b. Check for </reply> closing — emit the remaining body, suppress
+      // the delimiter. Fires even when the opening was consumed in an
+      // EARLIER round (turn-persistent parser, A14).
+      if (this.context.insideReply && this.buffer.includes('</reply>')) {
+        const endIdx = this.buffer.indexOf('</reply>');
+        const fragment = this.buffer.substring(0, endIdx);
+        if (fragment.trim()) {
+          actions.push({
+            type: 'response',
+            data: { content: fragment }
+          });
+        }
+
+        this.buffer = this.buffer.substring(endIdx + '</reply>'.length);
+        this.context.insideReply = false;
+
+        continueParsingLoop = true;
+        continue;
+      }
+
+      // 17c. Stream body inside <reply>, holding back the `</reply>`
+      // lookahead so a closing tag straddling a chunk boundary is never
+      // emitted as text. Downstream renderers filter whitespace-only chunks.
+      if (this.context.insideReply && this.buffer.length > 0) {
+        const lookahead = '</reply>';
+        if (this.buffer.length > lookahead.length) {
+          const flushable = this.buffer.substring(0, this.buffer.length - lookahead.length);
+          this.buffer = this.buffer.substring(flushable.length);
+          actions.push({
+            type: 'response',
+            data: { content: flushable }
+          });
+        }
+        // Wait for more tokens before deciding (avoid consuming partial </reply>).
+        continue;
+      }
+
       // 21. General text response handling (outside any XML block)
-      if (!this.context.insideThinking && 
+      if (!this.context.insideThinking &&
           !this.context.insideTasks &&
           !this.context.insideLearnCommand &&
           !this.context.insideClarify &&
@@ -742,6 +810,7 @@ export class XMLStreamParser implements IStreamParser {
       clarifyStartEmitted: false,  // ✅ NEW
       insideFunctionCalls: false,  // ✅ SAFETY
       insidePlan: false,
+      insideReply: false,
     };
     this.buffer = '';
   }

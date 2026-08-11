@@ -14,6 +14,10 @@
 import type { FileSystemPort } from '../../../core/ports/filesystem';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { DEFINITION_MOUNT_PREFIX } from '../../../core/customAgents/promptBlock';
+import { XMLStreamParser } from '../../../core/streaming/parsers/XMLStreamParser';
+import { CommonRenderStrategy } from '../../../core/streaming/strategies/CommonRenderStrategy';
+import { StreamOrchestrator } from '../../../core/streaming/StreamOrchestrator';
+import type { ChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { ToolRegistry } from '../../common/tool/registry';
 import { createUniversalToolRegistry } from '../../common/tool/presets';
 import type { ToolName } from '../../common/tool/toolCatalog';
@@ -72,9 +76,33 @@ export function getUniversalRegistry(): ToolRegistry {
   return _registry;
 }
 
+/**
+ * TURN-scoped streaming pipeline (A14). The agent→tool→agent loop re-invokes
+ * the agent node once per round; a per-round parser loses its tag context at
+ * the round boundary, so a `<reply>` opened before a tool call and closed
+ * after it leaks both raw delimiters into the assistant message. One parser +
+ * renderer per TURN (process = one job turn in the runner child) lets the
+ * late `</reply>` land on the same `insideReply` state. The agent node calls
+ * `orchestrator.beginRound()` at each round start.
+ */
+let _turnStreaming: StreamOrchestrator | null = null;
+
+export function getOrCreateUniversalTurnStreaming(
+  chatAPI: ChatAPIClient,
+  language: 'ko' | 'en',
+): StreamOrchestrator {
+  if (!_turnStreaming) {
+    const parser = new XMLStreamParser();
+    const renderStrategy = new CommonRenderStrategy(chatAPI, language);
+    _turnStreaming = new StreamOrchestrator({ parser, renderStrategy });
+  }
+  return _turnStreaming;
+}
+
 export function _resetUniversalRuntimeForTests(): void {
   _mcp = null;
   _registry = null;
+  _turnStreaming = null;
 }
 
 /**
