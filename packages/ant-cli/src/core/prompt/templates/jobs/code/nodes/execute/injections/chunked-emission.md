@@ -11,3 +11,9 @@
 ⚠️ **Blind spot — recovery from output-limit truncation**: If a previous round's write was cut off by the output limit (the system surfaces this via a message naming the path + the last characters you had generated), the truncated call did NOT execute — nothing from it is on disk. Follow the resume message: re-issue the write it names (`create_file` if the file was never created, `append_file` from the file's current end otherwise), with each chunk comfortably under the output ceiling.
 
 ⚠️ **Blind spot — chunking is not modularization**: This is an output-budget strategy, not a source-structure choice. Chunked authoring writes ONE file across many calls. If the file genuinely belongs in multiple modules, the modularization rule handles that separately.
+
+### Round budget and batching
+
+**Principle**: Every response that issues tool calls consumes one round from a bounded per-task budget, and ALL tool calls in one response execute together as a single round. Independent operations — writes to different files, edits to non-overlapping regions, reads of separate paths — may be issued as multiple tool calls in the same response.
+
+⚠️ **Blind spot — round budget**: This worker has {{remainingRecursionBudget}} node-execution rounds remaining before the system terminates the task. Issuing one tool call per response spends the budget twice as fast as batching independent calls; batch what does not depend on an unseen result.

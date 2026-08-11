@@ -43,7 +43,7 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
   const app = buildCodeGraph();
   let state: ArchitectGraphState = initial;
   let isRecursionLimit = false;
-  const finalLimit = loadRecursionLimit();
+  const finalLimit = loadRecursionLimit('code');
   
   // ✅ CRITICAL: Check for resumable session BEFORE invoke
   if (initial.deps?.session && initial.context.featureFolder) {

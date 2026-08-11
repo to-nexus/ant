@@ -378,11 +378,11 @@ export async function buildPlanPrompt(
     }),
     // Plan-tool-loop budget surfacing — observable signal for
     // `plan-tools-batch.md`'s Finalization Discipline. Derived from
-    // LangGraph's per-worker recursionLimit; default 200 mirrors the
-    // env-default in `runner.ts` so the variable is never undefined.
+    // LangGraph's per-worker recursionLimit; default 300 mirrors the
+    // env-default in `runnerHelpers.ts` so the variable is never undefined.
     remainingRecursionBudget: Math.max(
       0,
-      (state.recursionLimit ?? 200) - (state.recursionCount ?? 0),
+      (state.recursionLimit ?? 300) - (state.recursionCount ?? 0),
     ),
     ...typeVars,
   });

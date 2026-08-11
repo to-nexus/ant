@@ -79,7 +79,7 @@ A per-project override in the UI still wins over these. An unknown provider, unk
 |----------|---------|---------|
 | `ANT_TASK_CONCURRENCY` | `3` | Parallel tasks per worker process. |
 | `ANT_WORKER_CONCURRENCY` | `1` | Concurrent jobs per worker process. |
-| `RECURSION_LIMIT` | — | LangGraph recursion ceiling override. |
+| `RECURSION_LIMIT` | `300` | LangGraph recursion ceiling override (per task in parallel mode). Calibrated for tool-call file authoring — each write round costs 2 graph steps. Job-scoped `{JOB}_RECURSION_LIMIT` (e.g. `CODE_RECURSION_LIMIT`, `ASK_RECURSION_LIMIT`) takes precedence. |
 
 ## Vector DB / RAG
 

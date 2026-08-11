@@ -500,6 +500,15 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
       // `currentTaskIsFinal` so the verification bundle's classify is the
       // SSOT for "this task is the queue-terminal final verification".
       currentTaskIsFinal: schedClassify(state.currentTask, 'isFinal'),
+      // Round-budget surfacing for `chunked-emission.md` — mirrors
+      // plan/llm/prompt.ts. Under the tool-call authoring protocol each
+      // write round costs 2 graph steps, so the model needs the remaining
+      // budget to batch independent calls instead of one-per-round.
+      // Fallback 300 mirrors loadRecursionLimit's default.
+      remainingRecursionBudget: Math.max(
+        0,
+        (state.recursionLimit ?? 300) - (state.recursionCount ?? 0),
+      ),
       directive: execHook?.sanitizeDirective
         ? execHook.sanitizeDirective(state.directive || '')
         : (state.directive || ''),
