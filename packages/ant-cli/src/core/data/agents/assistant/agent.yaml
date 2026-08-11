@@ -10,5 +10,5 @@ id: assistant # must equal the directory name, [a-z0-9][a-z0-9-]*
 name: 'Assistant'
 version: 1
 # No mcp: block on purpose. An MCP server runs arbitrary code and depends on
-# host env vars a shipped sample cannot assume. See the authoring guide for a
-# full mcp.servers example.
+# registered credentials a shipped sample cannot assume. See the authoring
+# guide for a full mcp.servers example.

@@ -95,6 +95,9 @@ export function AuroraInput({
           height: 36,
           padding: '0 12px',
           fontSize: 13,
+          // Narrow containers clip the value; ellipsise it while unfocused
+          // rather than silently truncating mid-character.
+          textOverflow: 'ellipsis',
           fontFamily: mono ? 'var(--font-mono)' : 'inherit',
           background: 'transparent',
           border: 'none',

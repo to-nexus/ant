@@ -14,6 +14,7 @@ export type InterruptionReason =
   | 'user_stopped'          // User clicked Stop button
   | 'api_error'             // LLM API error (rate limit, malformed request, etc.)
   | 'llm_auth_failed'       // LLM API key invalid or missing — never resumable (resume re-hits the same key)
+  | 'config_invalid'        // User's agent/job configuration is wrong (e.g. MCP credential unregistered, server unreachable) — deterministic, fix the config then start a new job. NOT infrastructure: never grants the infra resume affordance.
   | 'api_overloaded'        // Anthropic API overloaded (HTTP 529, external/transient — not a code defect)
   | 'provider_unavailable'  // Upstream LLM provider account out of balance/quota (operator-side, NOT the user's credits — resumable after recharge)
   | 'process_crash'         // Child process crashed unexpectedly

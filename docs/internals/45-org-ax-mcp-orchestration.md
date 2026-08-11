@@ -91,7 +91,7 @@ As of 2026-08-10 (`724c21be9`), the pilot-blocking defects are closed:
 | Closed | What was fixed | Guard |
 |---|---|---|
 | A1 dispatch | `buildUniversalRegistry` now populates the module-load-captured registry singleton instead of replacing it — `mcp__*` calls resolve | `universal-mcp-runtime.test.ts` (identity + handler rows; red-verified) |
-| A2 HTTP auth | `McpServerConfig.headers` (header name → host env var NAME, same rule as `env`); wired to `requestInit.headers`; rejected on stdio | loader + definitionDocs rows |
+| A2 HTTP auth | `McpServerConfig.headers` (header name → credential key NAME, same rule as `env`; resolved from the encrypted store since A16); wired to `requestInit.headers`; rejected on stdio | loader + definitionDocs rows |
 | A4 env isolation | stdio child receives allowlist env only | `universal-mcp-runtime.test.ts` isolation rows (red-verified) |
 | A8 doc drift | authoring guide / concepts match the loader (no job `description`; intents are explicit-only) | guide examples load verbatim |
 
@@ -190,10 +190,14 @@ document/data. Read/aggregate/search tools only until Gate 2.
 - **Versioning**: additive tool changes are free; renames/removals are a
   coordinated definition + server change (the definition file and the server
   deploy move together, same as any cross-package contract).
-- **Secrets**: server credentials exist only as host env vars on the Ant host
-  (`headers`/`env` name them) and as the department's own config. A literal
-  credential in a definition file fails validation — three enforcement layers
-  (loader, HTTP gate, settings form) share `validateMcpServers`.
+- **Secrets**: server credentials live only in the encrypted per-user store
+  (`workspaces/{org}/{user}/.ant/credentials.json`, AES-256-GCM; registered via
+  `PUT /api/account/mcp-credentials` or the settings UI) and as the
+  department's own config — `headers`/`env` name the store keys. Resolution is
+  store-only (`McpCredentialResolver`): process.env is never consulted, so a
+  definition cannot name-and-exfiltrate platform secrets. A literal credential
+  in a definition file fails validation — three enforcement layers (loader,
+  HTTP gate, settings form) share `validateMcpServers`.
 
 ---
 

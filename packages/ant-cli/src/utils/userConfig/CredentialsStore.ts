@@ -13,12 +13,14 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { UserContext } from '../../core/types/user';
 import { logger } from '../logger';
-import { 
-  UserCredentials, 
-  GitHubCredentials, 
-  LinearCredentials, 
+import {
+  UserCredentials,
+  GitHubCredentials,
+  LinearCredentials,
   SlackCredentials,
-  ServiceType 
+  McpCredential,
+  ServiceType,
+  SERVICE_TYPES
 } from './types';
 
 export class CredentialsStore {
@@ -148,7 +150,55 @@ export class CredentialsStore {
    */
   async list(userContext: UserContext): Promise<ServiceType[]> {
     const all = await this.getAll(userContext);
-    return Object.keys(all) as ServiceType[];
+    // The `mcp` bucket lives in the same file but is not a ServiceType.
+    return Object.keys(all).filter((k): k is ServiceType =>
+      SERVICE_TYPES.includes(k as ServiceType)
+    );
+  }
+
+  // ============================================
+  // MCP credentials — keyed bucket, separate from the ServiceType union.
+  // Keys are the credential key names referenced by agent definitions.
+  // ============================================
+
+  async getMcpSecret(userContext: UserContext, key: string): Promise<McpCredential | undefined> {
+    const all = await this.getAll(userContext);
+    return all.mcp?.[key];
+  }
+
+  async setMcpSecret(userContext: UserContext, key: string, value: string): Promise<void> {
+    const all = await this.getAll(userContext);
+    all.mcp = {
+      ...all.mcp,
+      [key]: { kind: 'static', value, updatedAt: new Date().toISOString() },
+    };
+    await this.saveAll(userContext, all);
+    logger.info(`✅ MCP credential saved: ${key}`, {
+      component: 'CredentialsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    });
+  }
+
+  async deleteMcpSecret(userContext: UserContext, key: string): Promise<void> {
+    const all = await this.getAll(userContext);
+    if (!all.mcp?.[key]) return;
+    delete all.mcp[key];
+    await this.saveAll(userContext, all);
+    logger.info(`✅ MCP credential deleted: ${key}`, {
+      component: 'CredentialsStore',
+      organizationId: userContext.organizationId,
+      userId: userContext.userId
+    });
+  }
+
+  /** Keys + updatedAt only — never returns secret values. */
+  async listMcpKeys(userContext: UserContext): Promise<Array<{ key: string; updatedAt: string }>> {
+    const all = await this.getAll(userContext);
+    return Object.entries(all.mcp ?? {}).map(([key, cred]) => ({
+      key,
+      updatedAt: cred.updatedAt,
+    }));
   }
   
   /**

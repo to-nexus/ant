@@ -47,6 +47,7 @@ import { resolveKillReason, buildSigtermInterruption } from './sigtermInterrupti
 import { buildInfrastructureInterruption } from '@ant/shared';
 import { isPromptTooLongError } from '../core/utils/apiErrorClassify';
 import { isLlmAuthError } from '../core/llm/isLlmAuthError';
+import { isMcpConfigError } from '../core/customAgents/McpConfigError';
 
 interface JobParams {
   jobId: string;
@@ -290,6 +291,16 @@ async function runJob(params: JobParams): Promise<void> {
             'The request is too large for the model context window (the assembled prompt exceeded the maximum). ' +
             'This usually means too many or too large reference files were selected. ' +
             'Reduce the selected references and start a new job.',
+          timestamp: new Date().toISOString(),
+          canResume: false,
+        }
+      // MCP config/connect failure (typed at the runner's connect boundary) is
+      // the USER'S definition or credentials being wrong — deterministic, not
+      // an infra crash. Fix the config, then start a new job (no resume).
+      : isMcpConfigError(error)
+      ? {
+          reason: 'config_invalid' as InterruptionReason,
+          message: error.message || 'Agent configuration is invalid.',
           timestamp: new Date().toISOString(),
           canResume: false,
         }

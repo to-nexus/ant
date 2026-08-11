@@ -23,8 +23,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { McpConnectionManager, McpToolInfo, McpCallResult } from '../../src/core/customAgents/McpConnectionManager';
-import { STDIO_EXEC_ENV_KEYS, buildStdioChildEnv } from '../../src/core/customAgents/McpConnectionManager';
+import type { McpToolInfo, McpCallResult } from '../../src/core/customAgents/McpConnectionManager';
+import { McpConnectionManager, STDIO_EXEC_ENV_KEYS, buildStdioChildEnv } from '../../src/core/customAgents/McpConnectionManager';
+import { isMcpConfigError } from '../../src/core/customAgents/McpConfigError';
+import type { McpCredentialResolver } from '../../src/core/customAgents/McpCredentialResolver';
 import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
 import {
   buildUniversalRegistry,
@@ -134,15 +136,16 @@ describe('universal MCP dispatch — registry instance identity', () => {
  * A third-party MCP server is arbitrary code execution. Passing `...process.env`
  * to it handed over every host secret at once — provider keys, JWT secret, Redis
  * URL — so the child env is an explicit allowlist and this is its gate.
+ * Since A16 the declared values arrive ALREADY RESOLVED from the encrypted
+ * store; buildStdioChildEnv only composes baseline + resolved values.
  */
 describe('universal MCP runtime — stdio child env isolation', () => {
-  const HOST_SECRETS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'JWT_SECRET', 'REDIS_URL'];
+  const HOST_SECRETS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'JWT_SECRET', 'REDIS_URL', 'ANT_ENCRYPTION_KEY'];
   const saved = new Map<string, string | undefined>();
 
   beforeEach(() => {
-    for (const key of [...HOST_SECRETS, 'OPS_DB_URL', 'PATH']) saved.set(key, process.env[key]);
+    for (const key of [...HOST_SECRETS, 'PATH']) saved.set(key, process.env[key]);
     for (const key of HOST_SECRETS) process.env[key] = `secret-${key}`;
-    process.env.OPS_DB_URL = 'postgres://declared';
     process.env.PATH = '/usr/bin';
   });
 
@@ -155,11 +158,11 @@ describe('universal MCP runtime — stdio child env isolation', () => {
   });
 
   it.each(HOST_SECRETS)('undeclared host secret %s never reaches the child', (key) => {
-    expect(buildStdioChildEnv({ DB_URL: 'OPS_DB_URL' })[key]).toBeUndefined();
+    expect(buildStdioChildEnv({ DB_URL: 'postgres://resolved' })[key]).toBeUndefined();
   });
 
-  it('forwards declared vars under their child-side key, resolved from the host', () => {
-    expect(buildStdioChildEnv({ DB_URL: 'OPS_DB_URL' }).DB_URL).toBe('postgres://declared');
+  it('forwards resolved values under their child-side key', () => {
+    expect(buildStdioChildEnv({ DB_URL: 'postgres://resolved' }).DB_URL).toBe('postgres://resolved');
   });
 
   it('keeps the exec baseline so the child can actually run', () => {
@@ -169,9 +172,48 @@ describe('universal MCP runtime — stdio child env isolation', () => {
   it('with nothing declared, the child env is the exec baseline and nothing more', () => {
     expect(Object.keys(buildStdioChildEnv(undefined)).every((k) => STDIO_EXEC_ENV_KEYS.includes(k as any))).toBe(true);
   });
+});
 
-  it('a declared var missing from the host fails loud instead of silently empty', () => {
-    delete process.env.OPS_DB_URL;
-    expect(() => buildStdioChildEnv({ DB_URL: 'OPS_DB_URL' })).toThrow(/which is not set/);
+/**
+ * A16 credential resolution — store-only, never process.env. The connect()
+ * boundary is where an unregistered key must fail loud (typed McpConfigError →
+ * `config_invalid` classification), and where a definition naming one of Ant's
+ * own env vars must resolve to a store MISS rather than the host secret.
+ */
+describe('universal MCP runtime — credential resolution is store-only', () => {
+  const stubResolver = (entries: Record<string, string>): McpCredentialResolver => ({
+    resolve: async (key) => entries[key],
+  });
+
+  const savedKey = process.env.ANTHROPIC_API_KEY;
+  beforeEach(() => {
+    process.env.ANTHROPIC_API_KEY = 'sk-host-secret';
+  });
+  afterEach(() => {
+    if (savedKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedKey;
+  });
+
+  it.each([
+    ['stdio env', { s: { transport: 'stdio' as const, command: 'npx', env: { TOKEN: 'UNREGISTERED_KEY' } } }],
+    ['http headers', { s: { transport: 'http' as const, url: 'http://localhost:9', headers: { Authorization: 'UNREGISTERED_KEY' } } }],
+  ])('an unregistered %s key rejects with a typed McpConfigError before any connect', async (_label, servers) => {
+    const mcp = new McpConnectionManager(servers, stubResolver({}));
+    const err = await mcp.connect().then(
+      () => null,
+      (e) => e,
+    );
+    expect(isMcpConfigError(err)).toBe(true);
+    expect(String(err.message)).toMatch(/not registered/);
+  });
+
+  it("a definition naming one of Ant's own env vars gets a store miss, not the host secret", async () => {
+    // ANTHROPIC_API_KEY is set on the host (beforeEach). Store-only resolution
+    // means the exfiltration attempt dies as an unregistered-key config error.
+    const mcp = new McpConnectionManager(
+      { s: { transport: 'http', url: 'http://localhost:9', headers: { X: 'ANTHROPIC_API_KEY' } } },
+      stubResolver({}),
+    );
+    await expect(mcp.connect()).rejects.toMatchObject({ isMcpConfigError: true });
   });
 });

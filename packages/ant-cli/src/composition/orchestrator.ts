@@ -668,6 +668,14 @@ export async function orchestrator(params: {
       const { PromptBuilder } = await import('../core/prompt/builder/PromptBuilder');
       const promptBuilder = new PromptBuilder(promptPort);
 
+      // MCP credential resolution — encrypted per-user store, never process.env.
+      // Same workspace base expression as job-runner (the runner child inherits
+      // ANT_WORKSPACE_BASE_PATH / ANT_ENCRYPTION_KEY from the worker).
+      const { CredentialsStore } = await import('../utils/userConfig/CredentialsStore');
+      const { StoreBackedMcpCredentialResolver } = await import('../utils/userConfig/StoreBackedMcpCredentialResolver');
+      const credentialsStore = new CredentialsStore(process.env.ANT_WORKSPACE_BASE_PATH || process.cwd());
+      const mcpCredentialResolver = new StoreBackedMcpCredentialResolver(credentialsStore, userContext);
+
       const { runUniversalGraph } = await import('../agents/universal');
       const result = await runUniversalGraph({
         input,
@@ -678,7 +686,7 @@ export async function orchestrator(params: {
         explicitIntents: universalTurnMeta?.intents,
         explicitContext: universalTurnMeta?.context,
         planRequested: universalTurnMeta?.plan === true,
-        deps: { llm, session, promptBuilder, fileSystem, command: new NodeCommandAdapter(), kanbanUpdate, workflowUpdate, fileTreeUpdate },
+        deps: { llm, session, promptBuilder, fileSystem, command: new NodeCommandAdapter(), kanbanUpdate, workflowUpdate, fileTreeUpdate, mcpCredentialResolver },
         _httpJobId: jobId,
       });
 
