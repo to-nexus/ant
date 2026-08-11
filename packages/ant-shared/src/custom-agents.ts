@@ -114,27 +114,29 @@ export function toCustomId(text: string, maxLength = 40): string {
 }
 
 /**
- * MCP server connection declaration (secrets are credential *key names*, never
- * values — the value lives in the encrypted per-user credential store and is
- * registered via `PUT /api/account/mcp-credentials` or the settings UI).
- * Shared because the settings screen edits this shape structurally —
- * one type and ONE validator for the loader, the pre-write gate, and the form.
+ * MCP server connection declaration. env/header values are either plain text
+ * (stored verbatim in the definition file) or a `${secret:KEY}` reference to
+ * the encrypted per-user credential store (registered via
+ * `PUT /api/account/mcp-credentials` or the settings UI) — the author declares
+ * which, never a pattern guess. Shared because the settings screen edits this
+ * shape structurally — one type and ONE validator for the loader, the
+ * pre-write gate, and the form.
  */
 export interface McpServerConfig {
   transport: 'stdio' | 'http';
   /** stdio: executable to spawn. */
   command?: string;
   args?: string[];
-  /** stdio: map of child-env key → *credential key name* to resolve and forward. */
+  /** stdio: map of child-env key → literal value or `${secret:KEY}` reference. */
   env?: Record<string, string>;
   /** http: streamable HTTP endpoint. */
   url?: string;
   /**
-   * http: map of request-header name → *credential key name* whose stored
-   * value fills the header. The ONE authentication mechanism for HTTP MCP
-   * servers (`Authorization`, `X-Api-Key`, …). Same key-name rule as
-   * {@link McpServerConfig.env}, so a literal credential in the definition
-   * file fails validation.
+   * http: map of request-header name → literal value or `${secret:KEY}`
+   * reference whose stored value fills the header (`Authorization`,
+   * `X-Api-Key`, …). Same value rule as {@link McpServerConfig.env}, so a
+   * literal secret only ends up in the definition file if the author
+   * explicitly chose plain text.
    */
   headers?: Record<string, string>;
 }
@@ -142,11 +144,27 @@ export interface McpServerConfig {
 export const MCP_TRANSPORTS = ['stdio', 'http'] as const;
 
 /**
- * env/headers values name a credential key in the encrypted store — the
- * pattern that keeps secrets out of the file. (Same shape as an env-var name;
- * resolution never touches process.env.)
+ * Shape of a credential KEY inside a `${secret:KEY}` reference. (Same shape
+ * as an env-var name; resolution never touches process.env.)
  */
 export const MCP_ENV_VAR_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
+/**
+ * The ONE marker that turns an env/header value into a credential-store
+ * lookup. Anything else is a literal. Explicit by design: credential-ness is
+ * authored, never inferred from the value's shape.
+ */
+export const MCP_SECRET_REF_PATTERN = /^\$\{secret:([A-Z][A-Z0-9_]*)\}$/;
+
+/** Returns the credential key when `value` is a `${secret:KEY}` reference, else null. */
+export function parseSecretRef(value: string | undefined | null): string | null {
+  if (typeof value !== 'string') return null;
+  return MCP_SECRET_REF_PATTERN.exec(value)?.[1] ?? null;
+}
+
+export function formatSecretRef(key: string): string {
+  return `\${secret:${key}}`;
+}
 
 /** HTTP header names accepted in `headers` keys (RFC token subset). */
 export const MCP_HEADER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
@@ -159,6 +177,25 @@ export const MCP_HEADER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
  */
 export function validateMcpServers(servers: Record<string, McpServerConfig> | undefined): string[] {
   const errors: string[] = [];
+  // One rule for env and headers: `${secret:KEY}` reference or non-empty literal.
+  const checkValue = (name: string, slot: string, value: unknown): void => {
+    if (typeof value !== 'string' || value.trim() === '') {
+      errors.push(`MCP server "${name}": ${slot} must be a non-empty string (got: ${String(value)})`);
+      return;
+    }
+    if (MCP_SECRET_REF_PATTERN.test(value)) return;
+    if (value.startsWith('${secret:')) {
+      errors.push(
+        `MCP server "${name}": ${slot} looks like a credential reference but is malformed — use \${secret:KEY} with KEY matching ${String(MCP_ENV_VAR_NAME_PATTERN)}`,
+      );
+      return;
+    }
+    if (MCP_ENV_VAR_NAME_PATTERN.test(value)) {
+      errors.push(
+        `MCP server "${name}": ${slot} is a bare credential key name from the pre-\${secret:…} format — wrap it as \${secret:${value}} to keep the store lookup, or rephrase it if it was meant as plain text`,
+      );
+    }
+  };
   for (const [name, cfg] of Object.entries(servers ?? {})) {
     if (!isValidCustomId(name)) {
       errors.push(`MCP server name "${name}" must be ${CUSTOM_ID_HINT}`);
@@ -174,21 +211,13 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
       errors.push(`MCP server "${name}": transport must be "stdio" | "http"`);
     }
     for (const [key, value] of Object.entries(cfg?.env ?? {})) {
-      if (typeof value !== 'string' || !MCP_ENV_VAR_NAME_PATTERN.test(value)) {
-        errors.push(
-          `MCP server "${name}": env.${key} must name a credential KEY registered in the encrypted store (got: ${String(value)}) — secrets never live in the definition file`,
-        );
-      }
+      checkValue(name, `env.${key}`, value);
     }
     for (const [key, value] of Object.entries(cfg?.headers ?? {})) {
       if (!MCP_HEADER_NAME_PATTERN.test(key)) {
         errors.push(`MCP server "${name}": headers."${key}" is not a valid HTTP header name`);
       }
-      if (typeof value !== 'string' || !MCP_ENV_VAR_NAME_PATTERN.test(value)) {
-        errors.push(
-          `MCP server "${name}": headers.${key} must name a credential KEY registered in the encrypted store (got: ${String(value)}) — secrets never live in the definition file`,
-        );
-      }
+      checkValue(name, `headers.${key}`, value);
     }
   }
   return errors;

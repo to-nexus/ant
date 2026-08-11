@@ -10,10 +10,11 @@
  * run_command — acceptable under the workspace trust model; cloud multitenancy
  * relies on pod isolation (documented risk, Phase 3 adds org approval). A stdio
  * child therefore gets a MINIMAL env (see {@link STDIO_EXEC_ENV_KEYS}), not the
- * host's, and secrets travel as declared credential *key names* only — for
- * http servers through `headers`, for stdio through `env`. Key resolution goes
- * through {@link McpCredentialResolver} (encrypted per-user store); it never
- * reads process.env, so a definition cannot name-and-exfiltrate host secrets.
+ * host's, and secrets travel as `${secret:KEY}` references only (other values
+ * are authored plain text) — for http servers through `headers`, for stdio
+ * through `env`. Reference resolution goes through
+ * {@link McpCredentialResolver} (encrypted per-user store); it never reads
+ * process.env, so a definition cannot name-and-exfiltrate host secrets.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -22,6 +23,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { ToolDefinition } from '../ports/llm';
 import { extractMCPTextContent, extractMCPImageContent } from '../utils/mcpContent';
 import { MCP_TOOL_PREFIX } from './universalToolPolicy';
+import { parseSecretRef } from '@ant/shared';
 import { McpConfigError } from './McpConfigError';
 import type { McpCredentialResolver } from './McpCredentialResolver';
 import type { McpServerConfig } from './types';
@@ -104,11 +106,11 @@ export class McpConnectionManager {
   ) {}
 
   /**
-   * Resolve declared credential *key names* to their secret values via the
-   * encrypted store. Shared by `env` (stdio child env) and `headers` (http
-   * request headers) — one rule, so a literal secret can never enter a
-   * definition file through either door, and process.env is never consulted
-   * (a definition naming a host secret resolves to a store miss, not a leak).
+   * Resolve declared values: `${secret:KEY}` references go through the
+   * encrypted store, everything else passes verbatim as authored plain text.
+   * Shared by `env` (stdio child env) and `headers` (http request headers) —
+   * one rule, and process.env is never consulted (a reference naming a host
+   * secret resolves to a store miss, not a leak).
    */
   private async resolveCredentials(
     declared: Record<string, string> | undefined,
@@ -116,7 +118,12 @@ export class McpConnectionManager {
     serverName: string,
   ): Promise<Record<string, string>> {
     const resolved: Record<string, string> = {};
-    for (const [key, credentialKey] of Object.entries(declared ?? {})) {
+    for (const [key, declaredValue] of Object.entries(declared ?? {})) {
+      const credentialKey = parseSecretRef(declaredValue);
+      if (credentialKey === null) {
+        resolved[key] = declaredValue;
+        continue;
+      }
       const value = await this.resolver.resolve(credentialKey);
       if (value === undefined) {
         throw new McpConfigError(

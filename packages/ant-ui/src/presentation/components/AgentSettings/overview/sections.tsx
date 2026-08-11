@@ -106,7 +106,7 @@ export function JobDefinitionCard({
 }) {
   const { t } = useTranslation('agents');
   const { docs } = ctx;
-  const [addingOverride, setAddingOverride] = useState('');
+  const [addingOverride, setAddingOverride] = useState(false);
   const disabled = ctx.readonly || docs.identityDoc?.parseError != null;
 
   // Vocabulary = the universal preset (tools are job-owned; no agent bound).
@@ -227,20 +227,30 @@ export function JobDefinitionCard({
                 </div>
               );
             })}
-            {!disabled && overrideCandidates.length > 0 && (
+            {!disabled && overrideCandidates.length > 0 && !addingOverride && (
+              <div>
+                <Button size="sm" variant="ghost" onClick={() => setAddingOverride(true)}>
+                  <Plus className="w-3 h-3" /> {t('overview.approvalAddButton', 'Add override')}
+                </Button>
+              </div>
+            )}
+            {!disabled && overrideCandidates.length > 0 && addingOverride && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ flex: 1 }}>
                   <AuroraSelect
-                    value={addingOverride}
+                    value=""
+                    autoFocus
                     onChange={(v) => {
-                      setAddingOverride('');
+                      setAddingOverride(false);
                       if (v) setApproval(v, 'never');
                     }}
                     placeholder={t('overview.approvalAdd', 'Add override for a tool…')}
                     options={overrideCandidates.map((tool) => ({ value: tool, label: tool }))}
                   />
                 </div>
-                <div style={{ width: 180 }} />
+                <Button size="sm" variant="ghost" onClick={() => setAddingOverride(false)}>
+                  {t('tree.cancel', 'Cancel')}
+                </Button>
               </div>
             )}
           </div>

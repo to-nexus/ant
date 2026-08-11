@@ -58,20 +58,25 @@ mcp:
       command: "npx"
       args: ["-y", "@acme/ops-db-mcp"]
       env:
-        DB_URL: OPS_DB_URL   # value is a CREDENTIAL KEY NAME — secrets never live in this file
+        DB_URL: ${secret:OPS_DB_URL}   # credential reference — the secret lives in the encrypted store
     ops-api:
       transport: http        # streamable HTTP
       url: "https://ops-api.internal/mcp"
       headers:
-        Authorization: OPS_API_TOKEN   # also a CREDENTIAL KEY NAME, same rule as env
+        Authorization: ${secret:OPS_API_TOKEN}   # credential reference, same rule as env
+        X-Workspace-Id: ws-ops-prod              # plain text, stored verbatim
 ```
 
-`env` and `headers` values name credential keys, not secrets. Register each
-key's value once in the encrypted per-user store — through the agent settings
-UI, or `PUT /api/account/mcp-credentials {"key":"OPS_API_TOKEN","value":"Bearer …"}`
-— and rotate it there without touching the definition. Resolution reads ONLY
-the store (never the host environment), so a definition cannot name-and-leak
-Ant's own secrets.
+`env` and `headers` values are either plain text (stored verbatim in this
+file) or a `${secret:KEY}` reference to the encrypted per-user store — you
+declare which; nothing is inferred from the value's shape. Register each
+referenced key's value once — through the agent settings UI, or
+`PUT /api/account/mcp-credentials {"key":"OPS_API_TOKEN","value":"Bearer …"}`
+— and rotate it there without touching the definition. Reference resolution
+reads ONLY the store (never the host environment), so a definition cannot
+name-and-leak Ant's own secrets. A bare ALL-CAPS value (the pre-`${secret:…}`
+key-name format) is rejected with a migration hint rather than silently
+downgraded to plain text.
 
 `headers` is the one authentication mechanism for `http` servers, and `env` the
 one for `stdio`; each is rejected on the other transport. A stdio child receives
@@ -193,11 +198,14 @@ The settings Prompts view can read, re-save, and delete the files in place.
 
 ## Pitfalls
 
-- **Secrets**: `mcp.servers.*.env` and `mcp.servers.*.headers` values must be
-  *credential key names*. A literal credential in the yaml fails validation.
-  The named key must be registered in the encrypted store (settings UI or
+- **Secrets**: put a secret in `mcp.servers.*.env` / `headers` only as a
+  `${secret:KEY}` reference — a plain-text value is stored verbatim in the
+  yaml, so it is for non-sensitive values only. The referenced key must be
+  registered in the encrypted store (settings UI or
   `PUT /api/account/mcp-credentials`) before the job starts, or the connection
-  fails loud (`config_invalid`) rather than sending an empty credential.
+  fails loud (`config_invalid`) rather than sending an empty credential. A
+  bare ALL-CAPS value (legacy key-name format) fails validation with a
+  migration hint.
 - **Judgment vs. guarantees**: prompts specialize judgment; they cannot
   guarantee behavior. Anything that must be mechanically enforced (amount
   limits, bulk-send protection, complex branching) belongs in an MCP server
