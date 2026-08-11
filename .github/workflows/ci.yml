@@ -32,6 +32,8 @@ jobs:
       - run: pnpm build:shared
       - run: pnpm typecheck:cli
       - run: pnpm typecheck:ui
+      # An example that no longer compiles is worse than no example.
+      - run: pnpm --filter @ant/example-mcp-reference typecheck
       # Test sources are excluded from tsconfig.json on purpose (it ships into
       # the runtime image — see packages/ant-cli/tsconfig.test.json). Without
       # this step a test can import a renamed path, build a task literal missing

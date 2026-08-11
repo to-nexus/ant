@@ -1,11 +1,13 @@
 /**
- * Builtin (shipped) custom-agent definitions — validity + scope-root wiring.
+ * Definitions committed to this repository — validity + scope-root wiring.
+ *
+ * Two trees, opposite MCP contracts, one axis:
+ *   src/core/data/agents/   loaded as the readonly `builtin` scope — MCP forbidden
+ *   examples/custom-agents/ never loaded; copied by hand — MCP required
  *
  * discoverAgents is deliberately lenient (a broken definition is silently
- * skipped), so a malformed shipped sample would vanish from the hub without
- * failing anything. This suite is the fail-loud gate: every definition
- * committed under src/core/data/agents/ must load, and the builtin scope
- * root must stay wired as the lowest-priority readonly root.
+ * skipped), so a malformed definition in either tree would vanish without
+ * failing anything. This suite is the fail-loud gate.
  * Analogue of tests/prompt/prompt-smoke.test.ts for prompt assets.
  */
 
@@ -13,6 +15,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { MCP_ENV_VAR_NAME_PATTERN, parseSecretRef, validateMcpServers } from '@ant/shared';
 import {
   discoverAgents,
   loadCustomJob,
@@ -75,6 +78,61 @@ describe('shipped builtin definitions — smoke', () => {
         listDirs(path.join(SRC_AGENTS_DIR, agent.id, 'jobs')),
       );
     }
+  });
+});
+
+describe('committed example definitions — validity + MCP contract', () => {
+  const EXAMPLES_DIR = path.resolve(__dirname, '../../../../examples/custom-agents');
+  const exampleRoots: CustomAgentScopeRoot[] = [
+    { scope: 'user', root: EXAMPLES_DIR, readonly: false },
+  ];
+  const exampleAgents = listDirs(EXAMPLES_DIR);
+  const examplePairs = exampleAgents.flatMap((agentId) =>
+    listDirs(path.join(EXAMPLES_DIR, agentId, 'jobs')).map((jobId) => [agentId, jobId] as const),
+  );
+
+  it('at least one example ships', () => {
+    expect(examplePairs.length).toBeGreaterThan(0);
+  });
+
+  it.each(examplePairs)('%s/%s loads with a valid definition', (agentId, jobId) => {
+    const resolved = loadCustomJob(exampleRoots, agentId, jobId);
+    expect(validateMcpServers(resolved.mcpServers)).toEqual([]);
+    for (const entry of resolved.injectionsToc) {
+      expect(fs.existsSync(entry.absolutePath), `missing injection: ${entry.absolutePath}`).toBe(true);
+      expect(entry.summary.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  // The regression guard validateMcpServers cannot be: a bare `OPS_API_TOKEN`
+  // is a VALID literal (credential-ness is authored, never inferred), so the
+  // retired key-name form passes validation and then ships the literal string
+  // as the header — a 401 with no config error. Nothing that looks like an
+  // env-var name may appear unwrapped.
+  it.each(examplePairs)('%s/%s wraps every credential-shaped value in ${secret:}', (agentId, jobId) => {
+    const { mcpServers } = loadCustomJob(exampleRoots, agentId, jobId);
+    for (const [name, cfg] of Object.entries(mcpServers)) {
+      const slots = { ...(cfg.env ?? {}), ...(cfg.headers ?? {}) };
+      for (const [key, value] of Object.entries(slots)) {
+        if (parseSecretRef(value)) continue;
+        expect(
+          MCP_ENV_VAR_NAME_PATTERN.test(value),
+          `${name}.${key} is the bare key name "${value}" — use \${secret:${value}}`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('at least one example declares an MCP server — the reason this tree exists', () => {
+    const withMcp = examplePairs.filter(
+      ([a, j]) => Object.keys(loadCustomJob(exampleRoots, a, j).mcpServers).length > 0,
+    );
+    expect(withMcp.length).toBeGreaterThan(0);
+  });
+
+  it('is not reachable through the runtime scope roots', () => {
+    const roots = deriveCustomAgentScopeRoots('/ws/org/user/project');
+    expect(roots.map((r) => path.resolve(r.root))).not.toContain(EXAMPLES_DIR);
   });
 });
 

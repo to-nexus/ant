@@ -14,3 +14,7 @@ you've read the [concepts](../concepts/) docs at least once.
 
 If you're looking for runtime defaults and config knobs, see
 [reference/env-vars.md](../reference/env-vars.md).
+
+Worked examples that pair with these guides — a reference MCP server and the
+agent definitions that consume it — live in
+[examples/](../../examples/README.md).

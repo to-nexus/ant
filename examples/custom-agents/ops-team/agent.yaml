@@ -1,0 +1,12 @@
+id: ops-team
+name: "Ops Team"
+version: 1
+# No agent-level `mcp:` block on purpose.
+#
+# An agent-level declaration is unioned into EVERY member job, and
+# McpConnectionManager.connect() is fail-loud — so one unreachable server
+# would kill every job of this agent, including ones that never touch it.
+# The `chat` job in this agent is exactly that case. The connection therefore
+# lives in the single job that needs it (`jobs/weekly-report/job.yaml`).
+# Promote it here only when several jobs genuinely share the same server and
+# can all be assumed to need it up.

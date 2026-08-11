@@ -1,0 +1,9 @@
+id: chat
+name: "Chat"
+version: 1
+# The minimum a job can be: identity plus prose in base/.
+#
+# It is here to make the agent.yaml comment concrete — no `mcp:` block, so
+# this job runs even when the reference server is down, which is exactly what
+# an agent-level connection would take away. No `tools:` block either, so it
+# gets the full universal preset.
