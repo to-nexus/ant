@@ -145,6 +145,20 @@ export class StreamOrchestrator {
   }
 
   /**
+   * Start a new LLM round on a TURN-persistent orchestrator (A14).
+   *
+   * Keeps the parser's tag context (e.g. a `<reply>` opened last round whose
+   * `</reply>` arrives this round) and the render strategy's buffers; clears
+   * only the per-round raw accumulator so the first-event residue check in
+   * `processEvent` doesn't mistake the previous round for a failed retry.
+   * Callers that create a fresh orchestrator per round don't need this.
+   */
+  beginRound(): void {
+    this.state.reset();
+    this.streamStarted = false;
+  }
+
+  /**
    * Reset orchestrator state (for reuse or stream retry)
    */
   reset(): void {

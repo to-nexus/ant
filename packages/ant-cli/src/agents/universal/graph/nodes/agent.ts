@@ -32,9 +32,7 @@ import {
 } from '../../../common/graph/llmHelpers';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { extractLLMInfo } from '../../../../core/ports/workflow';
-import { XMLStreamParser } from '../../../../core/streaming/parsers/XMLStreamParser';
-import { CommonRenderStrategy } from '../../../../core/streaming/strategies/CommonRenderStrategy';
-import { StreamOrchestrator } from '../../../../core/streaming/StreamOrchestrator';
+import { transformAndStrip } from '../../../../core/streaming/OutputTagRegistry';
 import { ToolFileStreamer } from '../../../../core/streaming/ToolFileStreamer';
 import { TEMPLATE_PATHS } from '../../../../core/prompt/builder/templatePaths';
 import { buildCustomJobSystemBlock, DEFINITION_MOUNT_PREFIX } from '../../../../core/customAgents/promptBlock';
@@ -45,7 +43,7 @@ import { requireActiveCustomJob } from '../../../../core/customAgents/activeCust
 import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
 import { requiresApproval } from '../../../../core/customAgents/universalToolPolicy';
 import { parseChecklistTag, serializeChecklist } from '../../../../core/customAgents/universalChecklist';
-import { getUniversalMcp } from '../runtime';
+import { getUniversalMcp, getOrCreateUniversalTurnStreaming } from '../runtime';
 import { compactRun } from '../../../../core/context';
 import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
 import { getModelContextWindowOrDefault } from '@ant/shared';
@@ -199,9 +197,12 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
 
   await chatAPI.showChatStatus('placeholder');
 
-  const parser = new XMLStreamParser();
-  const renderStrategy = new CommonRenderStrategy(chatAPI, state.language === 'ko' ? 'ko' : 'en');
-  const orchestrator = new StreamOrchestrator({ parser, renderStrategy });
+  // TURN-scoped streaming pipeline (A14): one parser/renderer for the whole
+  // agent→tool→agent loop, so a `<reply>` opened in one round and closed in a
+  // later one is recognized instead of leaking raw delimiters. beginRound()
+  // clears only the per-round raw accumulator (tag context survives).
+  const orchestrator = getOrCreateUniversalTurnStreaming(chatAPI, state.language === 'ko' ? 'ko' : 'en');
+  orchestrator.beginRound();
   // Live rendering of file-writing TOOL CALLS (create_file / append_file /
   // edit_file): artifact content streams into its card / editor tab as the
   // arguments generate. Disk writes stay with the tool node (authoritative).
@@ -297,7 +298,12 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
       }
       if (responseText) {
         streamedAnything = true;
-        await chatAPI.sendLLMEvent({ type: 'text', text: responseText });
+        // Invoke fallback bypasses the streaming parser — the text is complete
+        // here, so strip/format canonical tags (<reply>, <done>, …) before emit.
+        await chatAPI.sendLLMEvent({
+          type: 'text',
+          text: transformAndStrip(responseText, state.language === 'ko' ? 'ko' : 'en'),
+        });
       }
     }
 
@@ -322,7 +328,9 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
     if (toolCalls.length === 0) {
       const joined = await maybeJoinSubagents(state as any, subagentOwnerKey);
       if (joined) {
-        await orchestrator.finalize(true); // withhold message finalization — round continues
+        // Round continues (redo) — do NOT finalize: flushing the parser here
+        // would emit a held-back partial tag as raw text, and the turn-scoped
+        // pipeline must keep its tag context for the next round (A14).
         const redoHistory: ConversationMessage[] = [...baseHistory];
         if (responseText) redoHistory.push(buildAssistantMessage({ text: responseText }));
         redoHistory.push({ role: 'user', content: joined.blocks as any });
@@ -345,8 +353,12 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
       // done rides before finalize — orchestrator.finalize(false) closes the
       // message (renderStrategy → finalizeMessage), matching canonical order.
       await chatAPI.sendLLMEvent({ type: 'done' });
+      // Terminal round of the turn — flush the parser and close the message.
+      // Tool rounds skip finalize entirely: the turn-scoped pipeline carries
+      // its parser buffer/tag context into the next round (A14), and flushing
+      // mid-turn would emit a held-back partial tag as raw text.
+      await orchestrator.finalize(false);
     }
-    await orchestrator.finalize(hasToolCalls);
 
     const streamingCompleted = streamedAnything && !hasToolCalls;
 
