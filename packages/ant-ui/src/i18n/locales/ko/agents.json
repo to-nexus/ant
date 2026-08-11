@@ -9,6 +9,10 @@
     "intentId": "intent-id",
     "create": "생성",
     "cancel": "취소",
+    "loadFailed": "에이전트를 불러올 수 없습니다",
+    "loadFailedEndpointMissing": "서버에 해당 엔드포인트가 없습니다. 이 UI보다 오래된 빌드가 실행 중일 수 있습니다.",
+    "loadFailedUnknown": "요청이 실패했습니다. 에이전트가 없는 것과는 다릅니다.",
+    "retry": "다시 시도",
     "idPreview": "id: {{id}}",
     "readonly": "읽기 전용",
     "menu": {

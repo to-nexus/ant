@@ -99,6 +99,47 @@ describe('loadAccountAgents', () => {
     await s.getState().loadAccountAgents();
     expect(s.getState().agentSettingsSelection).toEqual({ agentId: 'ops', jobId: 'weekly', intentId: 'review' });
   });
+
+  // A failure must be distinguishable from "this account has no agents" —
+  // swallowing it made a 404 on /api/account/agents render as an empty tree,
+  // i.e. as missing builtin agents rather than as a dead endpoint.
+  it('records a 404 as endpoint-missing, not as an empty agent list', async () => {
+    const s = makeStore();
+    apiMock.fetchAccountAgents.mockRejectedValue(
+      Object.assign(new Error('HTTP 404'), { status: 404 }),
+    );
+
+    await s.getState().loadAccountAgents();
+
+    expect(s.getState().accountAgents).toEqual([]);
+    expect(s.getState().accountAgentsError).toEqual({ kind: 'endpoint-missing', message: 'HTTP 404' });
+  });
+
+  it('records any other failure as unknown', async () => {
+    const s = makeStore();
+    apiMock.fetchAccountAgents.mockRejectedValue(
+      Object.assign(new Error('HTTP 500'), { status: 500 }),
+    );
+
+    await s.getState().loadAccountAgents();
+
+    expect(s.getState().accountAgentsError).toEqual({ kind: 'unknown', message: 'HTTP 500' });
+  });
+
+  it('starts with no error and clears a previous one on a later success', async () => {
+    const s = makeStore();
+    expect(s.getState().accountAgentsError).toBeNull();
+
+    apiMock.fetchAccountAgents.mockRejectedValueOnce(
+      Object.assign(new Error('HTTP 404'), { status: 404 }),
+    );
+    await s.getState().loadAccountAgents();
+    expect(s.getState().accountAgentsError).not.toBeNull();
+
+    await s.getState().loadAccountAgents();
+    expect(s.getState().accountAgentsError).toBeNull();
+    expect(s.getState().accountAgents).toHaveLength(1);
+  });
 });
 
 describe('selection + file buffer', () => {

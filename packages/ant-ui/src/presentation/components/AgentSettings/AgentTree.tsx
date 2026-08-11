@@ -26,7 +26,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, Briefcase, ChevronDown, ChevronRight, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, Plus, Target, Upload } from 'lucide-react';
 import { toCustomId, type CustomAgentScope, type CustomAgentSummary } from '@ant/shared';
 import { Button, KebabMenu, type KebabMenuItem } from '@/presentation/components/aurora';
 import { AuroraInput, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
@@ -68,6 +68,54 @@ export interface AgentTreeProps {
   /** Upload loose files into the agent (job scope prefixes jobs/{jobId}/). */
   onUploadFiles: (agentId: string, files: FileList, pathPrefix: string) => Promise<void>;
   onImportFolder: (files: FileList) => Promise<void>;
+  /** Why the agent list is empty, when it is empty because loading failed. */
+  loadError?: { kind: 'endpoint-missing' | 'unknown'; message: string } | null;
+  onRetryLoad?: () => void;
+}
+
+/**
+ * Load-failure banner. Without it an empty tree is indistinguishable from "this
+ * account has no agents", which is what made a 404 on `/api/account/agents`
+ * present itself as missing builtin agents.
+ */
+function LoadErrorNotice({
+  error,
+  onRetry,
+}: {
+  error: { kind: 'endpoint-missing' | 'unknown'; message: string };
+  onRetry?: () => void;
+}) {
+  const { t } = useTranslation('agents');
+  return (
+    <div
+      role="alert"
+      className="flex flex-col gap-1.5 rounded px-2 py-2"
+      style={{ border: '1px solid var(--border-1)', background: 'var(--bg-hover)' }}
+    >
+      <div className="flex items-center gap-1.5" style={{ color: 'var(--text-2)', fontSize: 11 }}>
+        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+        <span className="font-semibold">{t('tree.loadFailed', 'Could not load agents')}</span>
+      </div>
+      <p style={{ color: 'var(--text-3)', fontSize: 10, lineHeight: 1.45 }}>
+        {error.kind === 'endpoint-missing'
+          ? t(
+              'tree.loadFailedEndpointMissing',
+              'The server does not provide this endpoint. It is likely running an older build than this UI.',
+            )
+          : t('tree.loadFailedUnknown', 'The request failed. This is not the same as having no agents.')}
+      </p>
+      <span className="truncate" style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-4)' }}>
+        {error.message}
+      </span>
+      {onRetry && (
+        <div>
+          <Button size="sm" variant="ghost" type="button" onClick={onRetry}>
+            {t('tree.retry', 'Retry')}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function InlineCreateForm({
@@ -150,6 +198,8 @@ export function AgentTree({
   onCreateJob,
   onUploadFiles,
   onImportFolder,
+  loadError,
+  onRetryLoad,
 }: AgentTreeProps) {
   const { t } = useTranslation('agents');
   const [collapsedAgents, setCollapsedAgents] = useState<Set<string>>(new Set());
@@ -238,6 +288,8 @@ export function AgentTree({
           }}
         />
       )}
+
+      {loadError && <LoadErrorNotice error={loadError} onRetry={onRetryLoad} />}
 
       {SCOPE_ORDER.map((scope) => {
         const group = agents.filter((a) => a.scope === scope);

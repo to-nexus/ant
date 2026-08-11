@@ -25,6 +25,16 @@ export interface AgentSettingsSelection {
 
 export interface AgentSettingsState {
   accountAgents: CustomAgentSummary[];
+  /**
+   * Why the last `loadAccountAgents` failed, or null when it succeeded.
+   *
+   * An empty `accountAgents` is ambiguous on its own — "this account has no
+   * agents" and "the request failed" render identically, which is how a 404 on
+   * `/api/account/agents` read as a missing-agents bug. `kind` separates the
+   * one cause the UI can explain precisely (the endpoint is absent, i.e. the
+   * server predates it) from everything else.
+   */
+  accountAgentsError: { kind: 'endpoint-missing' | 'unknown'; message: string } | null;
   builtinToolPreset: string[];
   /** Tools whose approval defaults to 'always' (runtime SSOT, for form labels). */
   mutatingBuiltinTools: string[];
@@ -54,6 +64,7 @@ export type AgentSettingsSlice = AgentSettingsState & AgentSettingsActions;
 
 export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSlice> = (set, get) => ({
   accountAgents: [],
+  accountAgentsError: null,
   builtinToolPreset: [],
   mutatingBuiltinTools: [],
   agentSettingsSelection: { agentId: undefined, jobId: undefined, intentId: undefined },
@@ -65,7 +76,12 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
   loadAccountAgents: async () => {
     try {
       const { agents, builtinToolPreset, mutatingBuiltinTools } = await fetchAccountAgents();
-      set({ accountAgents: agents, builtinToolPreset, mutatingBuiltinTools: mutatingBuiltinTools ?? [] });
+      set({
+        accountAgents: agents,
+        accountAgentsError: null,
+        builtinToolPreset,
+        mutatingBuiltinTools: mutatingBuiltinTools ?? [],
+      });
       // Prune the selection level-by-level when its target vanished.
       const sel = get().agentSettingsSelection as AgentSettingsSelection;
       const agent = agents.find((a: CustomAgentSummary) => a.id === sel.agentId);
@@ -86,8 +102,15 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
       if (sel.intentId && !(job?.intents ?? []).some((i) => i.id === sel.intentId)) {
         set({ agentSettingsSelection: { agentId: sel.agentId, jobId: sel.jobId, intentId: undefined } });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.warn('[agentSettingsSlice] Failed to load account agents:', e);
+      // A 404 here is not "no agents" — the route is unconditional in the BE, so
+      // its absence means the server is older than the endpoint.
+      const kind = e?.status === 404 ? 'endpoint-missing' : 'unknown';
+      set({
+        accountAgents: [],
+        accountAgentsError: { kind, message: e?.message ? String(e.message) : String(e) },
+      });
     }
   },
 

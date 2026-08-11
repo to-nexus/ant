@@ -55,6 +55,6 @@ export async function clearChatHistory(
 ): Promise<void> {
   const qs = options?.cancelActive ? '?cancelActive=true' : '';
   await apiDelete(
-    `${API_BASE()}/projects/${projectId}/features/${featureName}/chat/messages${qs}`,
+    `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/chat/messages${qs}`,
   );
 }

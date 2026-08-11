@@ -1,10 +1,10 @@
-import { API_BASE, authFetch, apiGet } from './client';
+import { API_BASE, authFetch, apiGet, featureSeg } from './client';
 import type { FigmaDataConfig } from '@ant/shared';
 
 export async function getFigmaConfig(projectId: string, featureName: string): Promise<FigmaDataConfig | null> {
   try {
     const result = await apiGet<{ success: boolean; config: FigmaDataConfig }>(
-      `${API_BASE()}/figma/config/${projectId}/${featureName}`
+      `${API_BASE()}/figma/config/${encodeURIComponent(projectId)}/${featureSeg(featureName)}`
     );
     return result.config || null;
   } catch {
@@ -19,7 +19,7 @@ export async function saveFigmaConfig(
 ): Promise<boolean> {
   try {
     const response = await authFetch(
-      `${API_BASE()}/figma/config/${projectId}/${featureName}`,
+      `${API_BASE()}/figma/config/${encodeURIComponent(projectId)}/${featureSeg(featureName)}`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
