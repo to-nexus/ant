@@ -58,18 +58,26 @@ mcp:
       command: "npx"
       args: ["-y", "@acme/ops-db-mcp"]
       env:
-        DB_URL: OPS_DB_URL   # value is the HOST ENV VAR NAME — secrets never live in this file
+        DB_URL: OPS_DB_URL   # value is a CREDENTIAL KEY NAME — secrets never live in this file
     ops-api:
       transport: http        # streamable HTTP
       url: "https://ops-api.internal/mcp"
       headers:
-        Authorization: OPS_API_TOKEN   # also a HOST ENV VAR NAME, same rule as env
+        Authorization: OPS_API_TOKEN   # also a CREDENTIAL KEY NAME, same rule as env
 ```
+
+`env` and `headers` values name credential keys, not secrets. Register each
+key's value once in the encrypted per-user store — through the agent settings
+UI, or `PUT /api/account/mcp-credentials {"key":"OPS_API_TOKEN","value":"Bearer …"}`
+— and rotate it there without touching the definition. Resolution reads ONLY
+the store (never the host environment), so a definition cannot name-and-leak
+Ant's own secrets.
 
 `headers` is the one authentication mechanism for `http` servers, and `env` the
 one for `stdio`; each is rejected on the other transport. A stdio child receives
-only its declared `env` plus a minimal exec baseline (`PATH`, `HOME`, `LANG`, …)
-— never Ant's own environment, so a server never sees Ant's provider keys.
+only its declared `env` (resolved values) plus a minimal exec baseline (`PATH`,
+`HOME`, `LANG`, …) — never Ant's own environment, so a server never sees Ant's
+provider keys.
 
 That is the whole schema. There is no `description` (the persona lives in
 `base/*.md` prose the model actually reads) and no agent-level `tools` —
@@ -186,9 +194,10 @@ The settings Prompts view can read, re-save, and delete the files in place.
 ## Pitfalls
 
 - **Secrets**: `mcp.servers.*.env` and `mcp.servers.*.headers` values must be
-  *names* of host env vars. A literal credential in the yaml fails validation.
-  The named variable must be set on the host when the job starts, or the
-  connection fails loud rather than sending an empty credential.
+  *credential key names*. A literal credential in the yaml fails validation.
+  The named key must be registered in the encrypted store (settings UI or
+  `PUT /api/account/mcp-credentials`) before the job starts, or the connection
+  fails loud (`config_invalid`) rather than sending an empty credential.
 - **Judgment vs. guarantees**: prompts specialize judgment; they cannot
   guarantee behavior. Anything that must be mechanically enforced (amount
   limits, bulk-send protection, complex branching) belongs in an MCP server

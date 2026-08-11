@@ -129,12 +129,12 @@ describe('loadCustomJob — validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/universal preset/);
   });
 
-  it('mcp env carrying a literal value (not an env var NAME) → throws', () => {
+  it('mcp env carrying a literal value (not a credential KEY name) → throws', () => {
     const dir = writeAgent(roots()[0].root, 'ops', {
       mcp: { servers: { db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'postgres://user:pw@host' } } } },
     });
     writeJob(dir, 'weekly', {});
-    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/env var NAME/);
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/credential KEY/);
   });
 
   it('mcp stdio without command / http without url → throws', () => {
@@ -147,13 +147,13 @@ describe('loadCustomJob — validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops2', 'weekly')).toThrow(/requires "url"/);
   });
 
-  // http `headers` — the ONE auth mechanism for http MCP. Same env-var-NAME rule
-  // as `env`, so a literal token in the definition file cannot reach a server.
+  // http `headers` — the ONE auth mechanism for http MCP. Same credential-KEY
+  // rule as `env`, so a literal token in the definition file cannot reach a server.
   it.each([
     [
       'headers carrying a literal token',
       { transport: 'http', url: 'http://localhost:9', headers: { Authorization: 'Bearer sk-live-abc' } },
-      /env var NAME/,
+      /credential KEY/,
     ],
     [
       'headers with an invalid header name',
@@ -171,7 +171,7 @@ describe('loadCustomJob — validation table', () => {
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
   });
 
-  it('http headers naming host env vars load through to the resolved job', () => {
+  it('http headers naming credential keys load through to the resolved job', () => {
     const dir = writeAgent(roots()[0].root, 'ops', {
       mcp: {
         servers: {

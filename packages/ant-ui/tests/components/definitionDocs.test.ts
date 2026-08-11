@@ -207,7 +207,7 @@ describe('mcp.servers round-trip', () => {
     [
       'a literal header token',
       { api: { transport: 'http' as const, url: 'https://x/mcp', headers: { Authorization: 'Bearer sk-live' } } },
-      /host env var NAME/,
+      /credential KEY/,
     ],
     [
       'headers declared on stdio',
@@ -231,11 +231,11 @@ describe('mcp.servers round-trip', () => {
     expect(validateMcpServers(derived).join('\n')).toMatch(/transport must be/);
   });
 
-  it('a lowercase env value is refused — env names a host variable, not a secret', () => {
+  it('a lowercase env value is refused — env names a credential key, not a secret', () => {
     const errors = validateMcpServers({
       db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'postgres://secret' } },
     });
-    expect(errors.join('\n')).toMatch(/host env var NAME/);
+    expect(errors.join('\n')).toMatch(/credential KEY/);
   });
 });
 

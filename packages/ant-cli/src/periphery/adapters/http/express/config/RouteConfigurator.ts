@@ -7,9 +7,11 @@ import {
   createCloudIDERoutes,
   createApiRoutes,
   createCustomAgentRoutes,
-  createAccountAgentRoutes
+  createAccountAgentRoutes,
+  createMcpCredentialRoutes
 } from '../../routes';
 import { extractUserContext } from '../../routes/helpers/userContext';
+import { CredentialsStore } from '../../../../../utils/userConfig/CredentialsStore';
 import { parseCompositeUserEmail } from '../../../../../core/utils/compositeUserEmail';
 import { ensureCanonicalFeatureMiddleware } from '../../middleware/ensureCanonicalFeature';
 import { logger } from '../../../../../utils/logger';
@@ -88,6 +90,12 @@ export class RouteConfigurator {
     app.use('/api', createCustomAgentRoutes({ workspaceResolver: this.deps.workspaceResolver }));
     // Account-scoped agent settings (profile menu) — no project required (D-G).
     app.use('/api/account/agents', createAccountAgentRoutes({ workspaceResolver: this.deps.workspaceResolver }));
+    // MCP credential registration — the encrypted per-user store the universal
+    // runtime resolves `mcp.servers[].headers`/`env` key names against (A16).
+    app.use(
+      '/api/account/mcp-credentials',
+      createMcpCredentialRoutes({ credentialsStore: new CredentialsStore(this.config.workspacesPath) }),
+    );
   }
 
   /**

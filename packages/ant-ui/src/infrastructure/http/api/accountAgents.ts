@@ -86,6 +86,25 @@ export function validateAccountAgentJob(agentId: string, jobId: string): Promise
   return apiGet(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}/validate`);
 }
 
+// ── MCP credentials (encrypted per-user store; values are write-only) ────────
+
+export interface McpCredentialSummary {
+  key: string;
+  updatedAt: string;
+}
+
+export function fetchMcpCredentials(): Promise<{ credentials: McpCredentialSummary[] }> {
+  return apiGet(`${API_BASE()}/account/mcp-credentials`);
+}
+
+export function saveMcpCredential(key: string, value: string): Promise<{ success: boolean; key: string }> {
+  return apiPut(`${API_BASE()}/account/mcp-credentials`, { key, value });
+}
+
+export function deleteMcpCredential(key: string): Promise<{ success: boolean }> {
+  return apiDelete(`${API_BASE()}/account/mcp-credentials/${encodeURIComponent(key)}`);
+}
+
 // ── definition files ─────────────────────────────────────────────────────────
 
 export function fetchDefinitionTree(agentId: string): Promise<{

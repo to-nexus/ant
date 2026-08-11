@@ -18,6 +18,7 @@ import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../co
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
+import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
 import { buildUniversalRegistry, setUniversalMcp } from './runtime';
 
 export interface UniversalRunnerParams {
@@ -42,6 +43,8 @@ export interface UniversalRunnerParams {
     kanbanUpdate?: any;
     workflowUpdate?: any;
     fileTreeUpdate?: any;
+    /** Required when the definition declares `mcp.servers` — store-only key resolution. */
+    mcpCredentialResolver?: import('../../../core/customAgents/McpCredentialResolver').McpCredentialResolver;
   };
   _httpJobId?: string;
 }
@@ -102,9 +105,28 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   conversations[CONV_KEYS.SESSION_MAIN] = main;
 
   // ── MCP connect (fail-loud: the definition declared these servers).
-  const mcp = Object.keys(resolved.mcpServers).length > 0 ? new McpConnectionManager(resolved.mcpServers) : null;
-  if (mcp) {
-    await mcp.connect();
+  // Every connect failure — unregistered credential key, unreachable server,
+  // timeout, handshake error — crosses this single boundary as McpConfigError
+  // so job-runner classifies it as config_invalid, never process_crash.
+  let mcp: McpConnectionManager | null = null;
+  if (Object.keys(resolved.mcpServers).length > 0) {
+    const resolver = params.deps.mcpCredentialResolver;
+    if (!resolver) {
+      throw new McpConfigError(
+        `Definition ${resolved.agentId}/${resolved.jobId} declares mcp.servers but no credential resolver was wired`,
+      );
+    }
+    mcp = new McpConnectionManager(resolved.mcpServers, resolver);
+    try {
+      await mcp.connect();
+    } catch (e) {
+      await mcp.close().catch(() => {});
+      if (isMcpConfigError(e)) throw e;
+      throw new McpConfigError(
+        `MCP server connect failed: ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    }
   }
   setUniversalMcp(mcp);
   buildUniversalRegistry(mcp);

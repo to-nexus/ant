@@ -16,6 +16,21 @@ export interface UserCredentials {
   linear?: LinearCredentials;
   slack?: SlackCredentials;
   // 향후 추가될 서비스들...
+
+  /**
+   * MCP server credentials, keyed by the credential key name that agent
+   * definitions reference in `mcp.servers[].headers` / `env` values.
+   * Separate bucket — NOT part of the ServiceType union.
+   */
+  mcp?: Record<string, McpCredential>;
+}
+
+export interface McpCredential {
+  /** 'oauth' is a forward-compatible follow-up track (auto-refresh); only 'static' is issued today. */
+  kind: 'static';
+  /** Raw secret — sent verbatim as the header/env value at MCP connect time. */
+  value: string;
+  updatedAt: string;
 }
 
 export interface GitHubCredentials {

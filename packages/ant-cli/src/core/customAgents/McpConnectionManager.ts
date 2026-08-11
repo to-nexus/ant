@@ -10,8 +10,10 @@
  * run_command — acceptable under the workspace trust model; cloud multitenancy
  * relies on pod isolation (documented risk, Phase 3 adds org approval). A stdio
  * child therefore gets a MINIMAL env (see {@link STDIO_EXEC_ENV_KEYS}), not the
- * host's, and secrets travel as declared env-var *names* only — for http
- * servers through `headers`, for stdio through `env`.
+ * host's, and secrets travel as declared credential *key names* only — for
+ * http servers through `headers`, for stdio through `env`. Key resolution goes
+ * through {@link McpCredentialResolver} (encrypted per-user store); it never
+ * reads process.env, so a definition cannot name-and-exfiltrate host secrets.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -20,6 +22,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { ToolDefinition } from '../ports/llm';
 import { extractMCPTextContent, extractMCPImageContent } from '../utils/mcpContent';
 import { MCP_TOOL_PREFIX } from './universalToolPolicy';
+import { McpConfigError } from './McpConfigError';
+import type { McpCredentialResolver } from './McpCredentialResolver';
 import type { McpServerConfig } from './types';
 
 const CONNECT_TIMEOUT_MS = 60_000;
@@ -74,39 +78,19 @@ export const STDIO_EXEC_ENV_KEYS = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 
 
 /**
  * The exact environment a stdio MCP child receives: the exec baseline plus the
- * definition's declared vars, and NOTHING else. Exported because this
+ * ALREADY-RESOLVED declared values, and NOTHING else. Exported because this
  * allowlist IS the isolation boundary — it is guarded directly rather than by
- * spawning a server.
+ * spawning a server. Credential decryption happens in the runner process
+ * (via {@link McpCredentialResolver}) before this is called; the child only
+ * ever sees resolved values, never the store or `ANT_ENCRYPTION_KEY`.
  */
-export function buildStdioChildEnv(declared: Record<string, string> | undefined): Record<string, string> {
+export function buildStdioChildEnv(resolvedEnv: Record<string, string> | undefined): Record<string, string> {
   const base: Record<string, string> = {};
   for (const key of STDIO_EXEC_ENV_KEYS) {
     const value = process.env[key];
     if (value !== undefined) base[key] = value;
   }
-  return { ...base, ...resolveFromHostEnv(declared, 'env') };
-}
-
-/**
- * Resolve declared host env-var *names* to their values. Shared by `env`
- * (stdio child env) and `headers` (http request headers) — one rule, so a
- * literal secret can never enter a definition file through either door.
- */
-function resolveFromHostEnv(
-  declared: Record<string, string> | undefined,
-  field: 'env' | 'headers',
-): Record<string, string> {
-  const resolved: Record<string, string> = {};
-  for (const [key, varName] of Object.entries(declared ?? {})) {
-    const value = process.env[varName];
-    if (value === undefined) {
-      throw new Error(
-        `MCP server ${field} "${key}" references host env var "${varName}" which is not set — set it before starting the job`,
-      );
-    }
-    resolved[key] = value;
-  }
-  return resolved;
+  return { ...base, ...resolvedEnv };
 }
 
 export class McpConnectionManager {
@@ -114,7 +98,37 @@ export class McpConnectionManager {
   private tools: McpToolInfo[] = [];
   private connected = false;
 
-  constructor(private readonly servers: Record<string, McpServerConfig>) {}
+  constructor(
+    private readonly servers: Record<string, McpServerConfig>,
+    private readonly resolver: McpCredentialResolver,
+  ) {}
+
+  /**
+   * Resolve declared credential *key names* to their secret values via the
+   * encrypted store. Shared by `env` (stdio child env) and `headers` (http
+   * request headers) — one rule, so a literal secret can never enter a
+   * definition file through either door, and process.env is never consulted
+   * (a definition naming a host secret resolves to a store miss, not a leak).
+   */
+  private async resolveCredentials(
+    declared: Record<string, string> | undefined,
+    field: 'env' | 'headers',
+    serverName: string,
+  ): Promise<Record<string, string>> {
+    const resolved: Record<string, string> = {};
+    for (const [key, credentialKey] of Object.entries(declared ?? {})) {
+      const value = await this.resolver.resolve(credentialKey);
+      if (value === undefined) {
+        throw new McpConfigError(
+          `MCP server "${serverName}" ${field} "${key}" references credential key "${credentialKey}" which is not registered — ` +
+            `register it via PUT /api/account/mcp-credentials (or the agent settings UI) before starting the job`,
+          { serverName },
+        );
+      }
+      resolved[key] = value;
+    }
+    return resolved;
+  }
 
   /** Connect every declared server and collect its tool list. Fail-loud. */
   async connect(): Promise<void> {
@@ -126,13 +140,14 @@ export class McpConnectionManager {
           ? new StdioClientTransport({
               command: cfg.command!,
               args: cfg.args ?? [],
-              // Declared env ONLY, plus the minimum a process needs to execute.
-              // Never `...process.env` — that handed every third-party server the
-              // host's full secret set (LLM provider keys, JWT secret, Redis URL).
-              env: buildStdioChildEnv(cfg.env),
+              // Declared env ONLY (resolved from the encrypted store), plus the
+              // minimum a process needs to execute. Never `...process.env` — that
+              // handed every third-party server the host's full secret set (LLM
+              // provider keys, JWT secret, Redis URL).
+              env: buildStdioChildEnv(await this.resolveCredentials(cfg.env, 'env', serverName)),
             })
           : new StreamableHTTPClientTransport(new URL(cfg.url!), {
-              requestInit: { headers: resolveFromHostEnv(cfg.headers, 'headers') },
+              requestInit: { headers: await this.resolveCredentials(cfg.headers, 'headers', serverName) },
             });
 
       console.log(`🔌 [MCP] Connecting to server "${serverName}" (${cfg.transport})`);
