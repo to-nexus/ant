@@ -16,6 +16,7 @@ export interface AuroraSelectProps {
   hasError?: boolean;
   id?: string;
   name?: string;
+  autoFocus?: boolean;
 }
 
 export function AuroraSelect({
@@ -27,6 +28,7 @@ export function AuroraSelect({
   hasError = false,
   id,
   name,
+  autoFocus = false,
 }: AuroraSelectProps) {
   const [focused, setFocused] = useState(false);
 
@@ -60,6 +62,7 @@ export function AuroraSelect({
       <select
         id={id}
         name={name}
+        autoFocus={autoFocus}
         value={value ?? ''}
         onChange={(e) => onChange?.(e.target.value)}
         onFocus={() => setFocused(true)}

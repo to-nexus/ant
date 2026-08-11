@@ -12,13 +12,15 @@
  * manager ignores the other side's fields either way.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { Check, Lock, Pencil, Plus, Trash2, Type } from 'lucide-react';
 import {
   MCP_ENV_VAR_NAME_PATTERN,
   MCP_HEADER_NAME_PATTERN,
+  formatSecretRef,
   isValidCustomId,
+  parseSecretRef,
   type McpServerConfig,
 } from '@ant/shared';
 import { Button } from '@/presentation/components/aurora';
@@ -87,9 +89,33 @@ function RowLabel({ children }: { children: string }) {
 }
 
 /**
- * key → CREDENTIAL_KEY row list. Shared by stdio `env` and http `headers`: both
- * map a name to a credential key NAME (registered in the encrypted per-user
- * store), so they get the same editor and the same value validation rather
+ * Loose wrapper detection for UI mode derivation ONLY: any `${secret:…}` shell
+ * counts as credential mode so a half-typed key doesn't flip the row back to
+ * plain text mid-edit. Validity (error highlight, save gate) stays on the
+ * strict shared patterns.
+ */
+const SECRET_WRAP = /^\$\{secret:(.*)\}$/s;
+
+/** UI mode + editable text of a serialized env/header value. */
+function splitValueMode(value: string): { mode: 'secret' | 'plain'; text: string } {
+  const m = SECRET_WRAP.exec(value);
+  return m ? { mode: 'secret', text: m[1] } : { mode: 'plain', text: value };
+}
+
+/** Mirror of `validateMcpServers`' per-value rule, for the error highlight. */
+function valueHasError(value: string): boolean {
+  const { mode, text } = splitValueMode(value);
+  if (mode === 'secret') return !MCP_ENV_VAR_NAME_PATTERN.test(text);
+  // Plain text: empty is incomplete; bare ALL-CAPS is the legacy key-name
+  // format the validator rejects with a migration hint.
+  return text.trim() === '' || MCP_ENV_VAR_NAME_PATTERN.test(text);
+}
+
+/**
+ * key → value row list. Shared by stdio `env` and http `headers`: both map a
+ * name to either plain text (kept verbatim in the yaml) or a `${secret:KEY}`
+ * credential reference — the author declares which per row via the lock
+ * toggle, so both slots get the same editor and the same validation rather
  * than two drifting copies.
  */
 function EnvVarNameRows({
@@ -99,6 +125,8 @@ function EnvVarNameRows({
   removeLabel,
   addLabel,
   keyHasError,
+  credentialStatusOf,
+  onCredentialJump,
   onChange,
 }: {
   entries: [string, string][];
@@ -107,54 +135,104 @@ function EnvVarNameRows({
   removeLabel: string;
   addLabel: string;
   keyHasError?: (key: string) => boolean;
+  /** Registered-in-store lookup for a credential key (undefined = no registry wired). */
+  credentialStatusOf?: (credKey: string) => boolean;
+  /** Scroll/focus the credentials panel row for this key. */
+  onCredentialJump?: (credKey: string) => void;
   onChange: (next: Record<string, string>) => void;
 }) {
+  const { t } = useTranslation('agents');
   const replaceAt = (i: number, pair: [string, string]) =>
     onChange(Object.fromEntries(entries.map((e, j) => (j === i ? pair : e))));
 
   return (
     <div className="mcp-field-body">
-      {entries.map(([key, value], i) => (
-        <div key={i} className="mcp-kv-row">
-          <div className="mcp-kv-key">
-            <AuroraInput
-              value={key}
-              mono
-              disabled={disabled}
-              hasError={keyHasError?.(key) ?? false}
-              onChange={(v) => replaceAt(i, [v, value])}
-              placeholder={keyPlaceholder}
-            />
-          </div>
-          <span className="mcp-kv-arrow">→</span>
-          <div className="mcp-kv-value">
-            <AuroraInput
-              value={value}
-              mono
-              disabled={disabled}
-              hasError={!MCP_ENV_VAR_NAME_PATTERN.test(value)}
-              onChange={(v) => replaceAt(i, [key, v])}
-              placeholder="CREDENTIAL_KEY"
-            />
-          </div>
-          {!disabled && (
+      {entries.map(([key, value], i) => {
+        const { mode, text } = splitValueMode(value);
+        const isSecret = mode === 'secret';
+        const credKey = parseSecretRef(value);
+        const registered = credKey !== null && (credentialStatusOf?.(credKey) ?? false);
+        return (
+          <div key={i} className="mcp-kv-row">
+            <div className="mcp-kv-key">
+              <AuroraInput
+                value={key}
+                mono
+                disabled={disabled}
+                hasError={keyHasError?.(key) ?? false}
+                onChange={(v) => replaceAt(i, [v, value])}
+                placeholder={keyPlaceholder}
+              />
+            </div>
+            <span className="mcp-kv-arrow">→</span>
             <button
               type="button"
               className={ICON_BTN}
-              aria-label={removeLabel}
-              onClick={() => onChange(Object.fromEntries(entries.filter((_, j) => j !== i)))}
+              disabled={disabled}
+              title={
+                isSecret
+                  ? t('agentDef.mcpValueModeSecret', 'Credential (encrypted) — click for plain text')
+                  : t('agentDef.mcpValueModePlain', 'Plain text — click for credential')
+              }
+              aria-label={
+                isSecret
+                  ? t('agentDef.mcpValueModeSecret', 'Credential (encrypted) — click for plain text')
+                  : t('agentDef.mcpValueModePlain', 'Plain text — click for credential')
+              }
+              aria-pressed={isSecret}
+              style={isSecret ? { color: 'var(--select-fg)' } : undefined}
+              onClick={() => replaceAt(i, [key, isSecret ? text : formatSecretRef(text) ])}
             >
-              <Trash2 size={12} />
+              {isSecret ? <Lock size={12} /> : <Type size={12} />}
             </button>
-          )}
-        </div>
-      ))}
+            <div className="mcp-kv-value">
+              <AuroraInput
+                value={text}
+                mono
+                disabled={disabled}
+                hasError={valueHasError(value)}
+                onChange={(v) => replaceAt(i, [key, isSecret ? formatSecretRef(v) : v])}
+                placeholder={isSecret ? 'CREDENTIAL_KEY' : t('agentDef.mcpPlainValuePlaceholder', 'value')}
+              />
+            </div>
+            {isSecret && credKey !== null && onCredentialJump && (
+              <button
+                type="button"
+                className={ICON_BTN}
+                title={t('agentDef.mcpCredJump', 'Show in MCP credentials')}
+                aria-label={t('agentDef.mcpCredJump', 'Show in MCP credentials')}
+                onClick={() => onCredentialJump(credKey)}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    background: registered ? 'var(--status-done-fg)' : 'transparent',
+                    border: registered ? 'none' : '1.5px solid var(--border-2)',
+                  }}
+                />
+              </button>
+            )}
+            {!disabled && (
+              <button
+                type="button"
+                className={ICON_BTN}
+                aria-label={removeLabel}
+                onClick={() => onChange(Object.fromEntries(entries.filter((_, j) => j !== i)))}
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        );
+      })}
       {!disabled && (
         <div>
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => onChange({ ...Object.fromEntries(entries), '': '' })}
+            onClick={() => onChange({ ...Object.fromEntries(entries), '': formatSecretRef('') })}
           >
             <Plus className="w-3 h-3" /> {addLabel}
           </Button>
@@ -164,20 +242,33 @@ function EnvVarNameRows({
   );
 }
 
+interface McpCredentialRegistry {
+  /** key → updatedAt ISO string for every key registered in the store. */
+  registeredAt: Record<string, string>;
+  drafts: Record<string, string>;
+  setDraft: (key: string, value: string) => void;
+  busyKey: string | null;
+  flashKey: string | null;
+  /** Registered keys whose masked row was flipped open for replacement. */
+  editingKeys: ReadonlySet<string>;
+  beginEdit: (key: string) => void;
+  cancelEdit: (key: string) => void;
+  save: (key: string) => Promise<void>;
+  remove: (key: string) => Promise<void>;
+}
+
 /**
- * Registration surface for the credential keys the servers above reference
- * (A16). Values are write-only: saving PUTs into the encrypted per-user store
- * and the input clears — the store never echoes a secret back, only
- * key + updatedAt. Deliberately NOT gated on the definition's `disabled`
- * (readonly scope): credentials are account-scoped data, not a definition
- * edit, so a viewer of a readonly agent can still register their own values.
+ * Account-scoped credential registry state (A16), hoisted out of the panel so
+ * the binding rows above can decorate themselves with registration status.
+ * Values are write-only: saving PUTs into the encrypted per-user store — the
+ * store never echoes a secret back, only key + updatedAt.
  */
-function McpCredentialsPanel({ referencedKeys }: { referencedKeys: string[] }) {
-  const { t } = useTranslation('agents');
+function useMcpCredentialRegistry(): McpCredentialRegistry {
   const [registeredAt, setRegisteredAt] = useState<Record<string, string>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [flashKey, setFlashKey] = useState<string | null>(null);
+  const [editingKeys, setEditingKeys] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -192,37 +283,111 @@ function McpCredentialsPanel({ referencedKeys }: { referencedKeys: string[] }) {
     };
   }, []);
 
-  if (referencedKeys.length === 0) return null;
+  const setDraft = useCallback(
+    (key: string, value: string) => setDrafts((prev) => ({ ...prev, [key]: value })),
+    [],
+  );
+  const beginEdit = useCallback(
+    (key: string) => setEditingKeys((prev) => new Set(prev).add(key)),
+    [],
+  );
+  const cancelEdit = useCallback((key: string) => {
+    setEditingKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setDrafts((prev) => ({ ...prev, [key]: '' }));
+  }, []);
 
-  const save = async (key: string) => {
-    const value = (drafts[key] ?? '').trim();
-    if (!value || busyKey) return;
-    setBusyKey(key);
-    try {
-      await saveMcpCredential(key, value);
-      setRegisteredAt((prev) => ({ ...prev, [key]: new Date().toISOString() }));
-      setDrafts((prev) => ({ ...prev, [key]: '' }));
-      setFlashKey(key);
-      setTimeout(() => setFlashKey((k) => (k === key ? null : k)), 2000);
-    } catch (e) {
-      console.error('[McpCredentials] Save failed:', e);
-    } finally {
-      setBusyKey(null);
-    }
-  };
+  const save = useCallback(
+    async (key: string) => {
+      const value = (drafts[key] ?? '').trim();
+      if (!value || busyKey) return;
+      setBusyKey(key);
+      try {
+        await saveMcpCredential(key, value);
+        setRegisteredAt((prev) => ({ ...prev, [key]: new Date().toISOString() }));
+        setDrafts((prev) => ({ ...prev, [key]: '' }));
+        setEditingKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+        setFlashKey(key);
+        setTimeout(() => setFlashKey((k) => (k === key ? null : k)), 2000);
+      } catch (e) {
+        console.error('[McpCredentials] Save failed:', e);
+      } finally {
+        setBusyKey(null);
+      }
+    },
+    [drafts, busyKey],
+  );
 
-  const remove = async (key: string) => {
-    if (busyKey) return;
-    setBusyKey(key);
-    try {
-      await deleteMcpCredential(key);
-      setRegisteredAt((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)));
-    } catch (e) {
-      console.error('[McpCredentials] Delete failed:', e);
-    } finally {
-      setBusyKey(null);
-    }
-  };
+  const remove = useCallback(
+    async (key: string) => {
+      if (busyKey) return;
+      setBusyKey(key);
+      try {
+        await deleteMcpCredential(key);
+        setRegisteredAt((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)));
+      } catch (e) {
+        console.error('[McpCredentials] Delete failed:', e);
+      } finally {
+        setBusyKey(null);
+      }
+    },
+    [busyKey],
+  );
+
+  return { registeredAt, drafts, setDraft, busyKey, flashKey, editingKeys, beginEdit, cancelEdit, save, remove };
+}
+
+export interface CredentialPanelRow {
+  key: string;
+  /** Referenced by a `${secret:…}` value of a server in THIS editor. */
+  referenced: boolean;
+  registered: boolean;
+}
+
+/**
+ * Panel rows = union(referenced keys, registered keys). Registered-but-
+ * unreferenced keys stay visible (and deletable) instead of becoming
+ * invisible orphans the moment the last binding is removed.
+ */
+export function credentialPanelRows(
+  referencedKeys: string[],
+  registeredAt: Record<string, string>,
+): CredentialPanelRow[] {
+  const referenced = new Set(referencedKeys);
+  const keys = new Set([...referencedKeys, ...Object.keys(registeredAt)]);
+  return [...keys]
+    .sort()
+    .map((key) => ({ key, referenced: referenced.has(key), registered: key in registeredAt }));
+}
+
+/**
+ * Registration surface for credential keys (A16). A registered key renders
+ * masked (`••••••••` + updatedAt) with an explicit Edit flip — the raw input
+ * only shows for unregistered keys or during a replacement. Deliberately NOT
+ * gated on the definition's `disabled` (readonly scope): credentials are
+ * account-scoped data, not a definition edit, so a viewer of a readonly agent
+ * can still register their own values.
+ */
+function McpCredentialsPanel({
+  rows,
+  registry,
+  highlightKey,
+}: {
+  rows: CredentialPanelRow[];
+  registry: McpCredentialRegistry;
+  highlightKey: string | null;
+}) {
+  const { t } = useTranslation('agents');
+  if (rows.length === 0) return null;
+
+  const { drafts, busyKey, flashKey, editingKeys } = registry;
 
   return (
     <div style={{ marginTop: 14 }}>
@@ -234,10 +399,23 @@ function McpCredentialsPanel({ referencedKeys }: { referencedKeys: string[] }) {
         )}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {referencedKeys.map((key) => {
-          const isRegistered = key in registeredAt;
+        {rows.map(({ key, referenced, registered }) => {
+          const isEditing = !registered || editingKeys.has(key);
           return (
-            <div key={key} className="mcp-kv-row">
+            <div
+              key={key}
+              className="mcp-kv-row"
+              data-cred-key={key}
+              style={
+                highlightKey === key
+                  ? {
+                      boxShadow: '0 0 0 2px var(--violet-300)',
+                      borderRadius: 'var(--r-md)',
+                      transition: 'box-shadow 150ms ease',
+                    }
+                  : undefined
+              }
+            >
               <div
                 className="mcp-kv-key"
                 style={{
@@ -257,51 +435,109 @@ function McpCredentialsPanel({ referencedKeys }: { referencedKeys: string[] }) {
                     borderRadius: 999,
                     fontSize: 10,
                     fontFamily: 'inherit',
-                    color: isRegistered ? 'var(--status-done-fg)' : 'var(--text-4)',
-                    border: `1px solid ${isRegistered ? 'var(--status-done-fg)' : 'var(--border-2)'}`,
+                    color: registered ? 'var(--status-done-fg)' : 'var(--text-4)',
+                    border: `1px solid ${registered ? 'var(--status-done-fg)' : 'var(--border-2)'}`,
                   }}
                 >
-                  {isRegistered
+                  {registered
                     ? t('agentDef.mcpCredRegistered', 'registered')
                     : t('agentDef.mcpCredUnregistered', 'not registered')}
                 </span>
+                {!referenced && (
+                  <span
+                    title={t(
+                      'agentDef.mcpCredUnreferencedHint',
+                      'Not referenced by any server in this definition. You can still remove it.',
+                    )}
+                    style={{
+                      flexShrink: 0,
+                      padding: '1px 6px',
+                      borderRadius: 999,
+                      fontSize: 10,
+                      fontFamily: 'inherit',
+                      color: 'var(--text-4)',
+                      border: '1px dashed var(--border-2)',
+                    }}
+                  >
+                    {t('agentDef.mcpCredUnreferenced', 'unreferenced')}
+                  </span>
+                )}
               </div>
               <span className="mcp-kv-arrow">→</span>
-              <div className="mcp-kv-value">
-                <AuroraInput
-                  value={drafts[key] ?? ''}
-                  type="password"
-                  mono
-                  autoComplete="off"
-                  disabled={busyKey === key}
-                  onChange={(v) => setDrafts((prev) => ({ ...prev, [key]: v }))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void save(key);
-                  }}
-                  placeholder={t('agentDef.mcpCredValuePlaceholder', 'secret value (e.g. Bearer …)')}
-                />
-              </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!(drafts[key] ?? '').trim() || busyKey === key}
-                onClick={() => void save(key)}
-              >
-                {flashKey === key ? (
-                  <>
-                    <Check className="w-3 h-3" /> {t('agentDef.mcpCredSaved', 'Saved')}
-                  </>
-                ) : (
-                  t('agentDef.mcpCredSave', 'Save')
-                )}
-              </Button>
-              {isRegistered && (
+              {isEditing ? (
+                <>
+                  <div className="mcp-kv-value">
+                    <AuroraInput
+                      value={drafts[key] ?? ''}
+                      type="password"
+                      mono
+                      autoComplete="off"
+                      disabled={busyKey === key}
+                      onChange={(v) => registry.setDraft(key, v)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void registry.save(key);
+                      }}
+                      placeholder={t('agentDef.mcpCredValuePlaceholder', 'secret value (e.g. Bearer …)')}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={!(drafts[key] ?? '').trim() || busyKey === key}
+                    onClick={() => void registry.save(key)}
+                  >
+                    {t('agentDef.mcpCredSave', 'Save')}
+                  </Button>
+                  {registered && (
+                    <Button size="sm" variant="ghost" onClick={() => registry.cancelEdit(key)}>
+                      {t('tree.cancel', 'Cancel')}
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div
+                    className="mcp-kv-value"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      gap: 8,
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11.5,
+                    }}
+                  >
+                    {flashKey === key ? (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          color: 'var(--status-done-fg)',
+                        }}
+                      >
+                        <Check size={12} /> {t('agentDef.mcpCredSaved', 'Saved')}
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--text-3)', letterSpacing: 2 }}>••••••••</span>
+                    )}
+                    <span style={{ fontSize: 10.5, color: 'var(--text-4)', fontFamily: 'var(--font-sans)' }}>
+                      {t('agentDef.mcpCredUpdatedAt', 'updated {{when}}', {
+                        when: new Date(registry.registeredAt[key]).toLocaleDateString(),
+                      })}
+                    </span>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => registry.beginEdit(key)}>
+                    <Pencil className="w-3 h-3" /> {t('agentDef.mcpCredEdit', 'Edit')}
+                  </Button>
+                </>
+              )}
+              {registered && (
                 <button
                   type="button"
                   className={ICON_BTN}
                   title={t('agentDef.mcpCredDelete', 'Remove credential')}
                   aria-label={t('agentDef.mcpCredDelete', 'Remove credential')}
-                  onClick={() => void remove(key)}
+                  onClick={() => void registry.remove(key)}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -326,21 +562,54 @@ export function McpServersEditor({
   const { t } = useTranslation('agents');
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
+  const registry = useMcpCredentialRegistry();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    },
+    [],
+  );
 
   const names = Object.keys(servers);
   const newNameValid = isValidCustomId(newName) && !names.includes(newName);
 
-  // Distinct credential keys the declared servers reference (headers + env),
-  // pattern-valid only — half-typed values don't spawn registration rows.
+  // Distinct credential keys the declared servers reference via valid
+  // `${secret:KEY}` values — half-typed references don't spawn panel rows.
   const referencedCredentialKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const cfg of Object.values(servers)) {
       for (const v of [...Object.values(cfg.headers ?? {}), ...Object.values(cfg.env ?? {})]) {
-        if (typeof v === 'string' && MCP_ENV_VAR_NAME_PATTERN.test(v)) keys.add(v);
+        const key = parseSecretRef(v);
+        if (key !== null) keys.add(key);
       }
     }
     return [...keys].sort();
   }, [servers]);
+
+  const panelRows = useMemo(
+    () => credentialPanelRows(referencedCredentialKeys, registry.registeredAt),
+    [referencedCredentialKeys, registry.registeredAt],
+  );
+
+  const credentialStatusOf = useCallback(
+    (key: string) => key in registry.registeredAt,
+    [registry.registeredAt],
+  );
+
+  // Scoped to this editor's root — the agent and job cards can both mount an
+  // McpServersEditor on the same page, each with its own panel.
+  const jumpToCredential = useCallback((key: string) => {
+    const row = rootRef.current?.querySelector<HTMLElement>(`[data-cred-key="${key}"]`);
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.querySelector<HTMLInputElement>('input[type="password"]')?.focus({ preventScroll: true });
+    setHighlightKey(key);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightKey(null), 1600);
+  }, []);
 
   const patch = (name: string, next: Partial<McpServerConfig>) =>
     onChange({ ...servers, [name]: { ...servers[name], ...next } });
@@ -353,11 +622,11 @@ export function McpServersEditor({
   };
 
   return (
-    <div>
+    <div ref={rootRef}>
       <style>{MCP_LAYOUT_CSS}</style>
       <FieldLabel optional>{t('agentDef.mcpServers', 'MCP servers')}</FieldLabel>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
-        {t('agentDef.mcpHint', 'env values are host variable NAMES, never secrets — the value is looked up in the host environment when the server starts.')}
+        {t('agentDef.mcpHint', 'env and header values are plain text, or a credential reference (lock toggle) stored encrypted per user — secrets never live in the definition file.')}
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -446,6 +715,8 @@ export function McpServersEditor({
                       keyHasError={(key) => key.length > 0 && !MCP_HEADER_NAME_PATTERN.test(key)}
                       removeLabel={t('agentDef.mcpRemoveHeader', 'Remove header')}
                       addLabel={t('agentDef.mcpAddHeader', 'Add header')}
+                      credentialStatusOf={credentialStatusOf}
+                      onCredentialJump={jumpToCredential}
                       onChange={(headers) => patch(name, { headers })}
                     />
                   </div>
@@ -509,6 +780,8 @@ export function McpServersEditor({
                       disabled={disabled}
                       removeLabel={t('agentDef.mcpRemoveEnv', 'Remove variable')}
                       addLabel={t('agentDef.mcpAddEnv', 'Add variable')}
+                      credentialStatusOf={credentialStatusOf}
+                      onCredentialJump={jumpToCredential}
                       onChange={(next) => patch(name, { env: next })}
                     />
                   </div>
@@ -567,7 +840,7 @@ export function McpServersEditor({
       </div>
 
       <div className="mcp-server-card">
-        <McpCredentialsPanel referencedKeys={referencedCredentialKeys} />
+        <McpCredentialsPanel rows={panelRows} registry={registry} highlightKey={highlightKey} />
       </div>
     </div>
   );
