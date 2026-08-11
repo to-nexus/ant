@@ -71,6 +71,7 @@ function injectionFilesUnder(tree: CustomAgentDefinitionFileNode[], prefix: stri
 export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const { t } = useTranslation('agents');
   const agents = useStore((s) => s.accountAgents);
+  const accountAgentsError = useStore((s) => s.accountAgentsError);
   const selection = useStore((s) => s.agentSettingsSelection);
   const definitionTree = useStore((s) => s.definitionTree);
   const definitionReadonly = useStore((s) => s.definitionReadonly);
@@ -419,6 +420,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onCreateJob={handleCreateJob}
           onUploadFiles={handleUploadFiles}
           onImportFolder={handleImportFolder}
+          loadError={accountAgentsError}
+          onRetryLoad={() => void loadAccountAgents()}
         />
         {/* drag handle: 4px hit area on the border */}
         <div

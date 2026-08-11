@@ -35,6 +35,7 @@ export function createHealthRoutes(): Router {
         vectorDb: isVectorDbEnabled(),
         billing: isBillingEnabled(),
       },
+      buildSha: process.env.ANT_BUILD_SHA || null,
     };
 
     res.json(payload);

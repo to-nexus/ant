@@ -9,6 +9,10 @@
     "intentId": "intent-id",
     "create": "Create",
     "cancel": "Cancel",
+    "loadFailed": "Could not load agents",
+    "loadFailedEndpointMissing": "The server does not provide this endpoint. It is likely running an older build than this UI.",
+    "loadFailedUnknown": "The request failed. This is not the same as having no agents.",
+    "retry": "Retry",
     "idPreview": "id: {{id}}",
     "readonly": "readonly",
     "menu": {
