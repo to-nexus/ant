@@ -314,6 +314,30 @@ Shared deploy types. `DeployPhase` / `DeployFramework` / `DeployStatus` /
 `private`, absent = public). visibility exists only at the `DeployStatus`
 aggregate level (not per-package).
 
+### custom-agents.ts
+
+The contract layer for the universal runtime — file-defined custom agents/jobs.
+Full runtime: [44-universal-job.md](44-universal-job.md).
+
+| Type/Function | Definition |
+|-----------|------|
+| `UNIVERSAL_FEATURE` | `'universal'` — the reserved value a workspace project passes in the `:feature` URL slot. It is not a feature; it resolves to `{project}/universal`. |
+| `CustomJobRef` / `formatCustomJobRef` / `parseCustomJobRef` | The composite `{agentId}/{jobId}` key. This is what lets custom jobs avoid minting a JobType: the ref is data on a single channel. `parse` returns `null` on malformed input so the caller picks 400-vs-throw. |
+| `CustomAgentSummary` / `CustomJobSummary` | Discovery shapes (id, name, scope, readonly, jobs). The API server only ever lists summaries — activation is job-runner-child-only. |
+| `CustomIntentDef` / `GENERAL_INTENT` / `INTENT_CATALOG_CAP` | A job's intent catalog. Intent ids are **code-exterior**: a per-job runtime string vocabulary that never joins the compile-time `IntentId` union and never keys a code matrix. |
+| `UniversalTurnMeta` | Per-turn axes — `intents[]`, `context[]`, `plan?` — travelling as one JSON on `ANT_UNIVERSAL_TURN_META`. |
+| `McpServerConfig` / `MCP_TRANSPORTS` | One MCP server declaration. `stdio` (`command`/`args`/`env`) or `http` (`url`/`headers`); auth mechanism is transport-exclusive. |
+| `validateMcpServers` | Every MCP rule as plain messages, empty = valid. One SSOT, three failure shapes: loader throws `CustomAgentValidationError`, HTTP gate answers 400, settings form disables save. |
+| `MCP_SECRET_REF_PATTERN` / `parseSecretRef` / `formatSecretRef` | `${secret:KEY}` — the one marker that makes a value a credential-store lookup. Everything else is a literal: credential-ness is authored, never inferred from shape. |
+| `MCP_ENV_VAR_NAME_PATTERN` / `MCP_HEADER_NAME_PATTERN` | Key-shape and HTTP-header-name validators. |
+| `isAllowedDefinitionPath` | Write whitelist for definition files edited over HTTP. |
+| `CUSTOM_ID_PATTERN` / `isValidCustomId` | kebab-case ids, which must equal the owning directory name. |
+
+`task.ts` also carries this runtime's progress plane:
+`UniversalChecklistItem` / `UniversalChecklistItemState`. Checklist items are
+deliberately **not** `BaseTask` — they never enter a queue, never render as
+kanban cards, and never count toward `billableTaskCount`.
+
 ## Boundaries
 
 - Usage in the frontend: [30-frontend-architecture.md](30-frontend-architecture.md)

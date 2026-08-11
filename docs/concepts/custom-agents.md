@@ -1,7 +1,16 @@
 # Custom Agents & Jobs (Universal Runtime)
 
+> ⚠️ **Experimental.** The runtime, the definition loader, the MCP overlay with
+> its encrypted credential store, and the checklist board all ship and are
+> covered by tests. Three things are deliberately not there yet: **interactive
+> approval** (a gated write tool is refused with guidance, so writes need an
+> explicit `approval: never` grant), **team/org sharing** (definitions are
+> account-owned; the org scope is a single read-only directory), and
+> **scheduling** (there is no unattended-run path). The file format may still
+> change — a definition is a handful of files, so migrating one is cheap.
+
 Ant's builtin jobs (plan/design/code/visual/learn) are special-purpose
-pipelines bound to the canonical feature workspace. **Custom agents** are the
+pipelines bound to a codespace's feature layout. **Custom agents** are the
 opposite end: purpose-specialized work agents you define with *files*, running
 on one generic runtime — the `universal` job type. No code change is needed to
 add, edit, or remove one.
@@ -9,6 +18,28 @@ add, edit, or remove one.
 Think "Claude Projects / custom GPT, but on your own infrastructure": a fixed
 harness (agentic loop, context-window management, tool sandbox, safety rules)
 plus your purpose prose and machine contract on top.
+
+This is what a **workspace** project is for — see
+[spaces.md](spaces.md) for the codespace/workspace split and the layout each
+one puts on disk.
+
+## Why a definition plus a server, not just a prompt
+
+The design boundary worth understanding before you write anything:
+
+> **Prompts specialize judgment; they cannot guarantee behavior.**
+
+Prose is the right home for "which incidents count as sev-1", "what a weekly
+report must cover", "when to escalate rather than answer". It is the wrong home
+for anything that must *hold* — a refund ceiling, a bulk-send limit, a
+permission check. Those belong in code the agent merely calls: an MCP server.
+The model decides *when* to call `refund_payment`; the server decides *whether
+this refund is allowed*.
+
+So a mature custom agent is usually two artifacts with two owners: a definition
+(the judgment) and one or more MCP servers (the guarantees). The organizational
+version of that split is
+[internals/45-org-ax-mcp-orchestration.md](../internals/45-org-ax-mcp-orchestration.md).
 
 ## The two-level model
 
@@ -79,9 +110,10 @@ See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-age
   agent/job pair).
 - **Tool sandbox** — file tools rooted at the project-shared
   `universal/artifacts/` tree (read-write) plus a read-only mount of the
-  agent definition. No access to the canonical plane (codebase/, features/).
+  agent definition. No access to the codespace plane (codebase/, features/).
 - **MCP overlay** — servers declared in the definition connect at job start;
-  their tools appear as `mcp__{server}__{tool}`.
+  their tools appear as `mcp__{server}__{tool}`. MCP is the only way to add
+  capability: the builtin tool list can be narrowed, never extended.
 - **Approval gates** — mutating tools (`run_command`, `http_request`, MCP
   tools not marked read-only) require user approval. Phase 1 is fail-closed:
   gated calls are rejected with guidance instead of executed silently.
@@ -95,18 +127,64 @@ See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-age
   a manifest of *real* writes (tool side-effects, never model claims) is
   announced in chat. Output conventions, when a job needs them, are plain
   prose in its `base/*.md`.
+- **A checklist board** — see below.
 
-## Universal-type projects
+## Credentials for MCP servers
 
-A project is either `canonical` (builtin feature-based jobs) or `universal`
-(custom agents only) — chosen at creation, stored as `projectType` in
-`config.json`. The layout is invariant: the universal plane always lives
-under `universal/`, so the flag is pure policy. Universal projects skip the
-canonical scaffolding (no codebase/, features/, or git anchor) and reject
-feature creation.
+A server's `env` (stdio) or `headers` (http) value is one of two things, and
+**you declare which — nothing is guessed from the value's shape**:
 
-Artifacts are owned by the **project**, not by an agent: one shared
-`universal/artifacts/` tree serves every agent and job — upload a folder
-once, and every custom job can read it. The explorer's Artifacts panel shows
-this tree plus a root `sessions` folder (session JSONs + debug logs — the
-same role as a codespace feature's sessions folder; download/delete only).
+- `${secret:OPS_API_TOKEN}` — a reference. The value lives in an encrypted
+  per-user store (`.ant/credentials.json`, AES-256-GCM), registered once through
+  Settings → Agents or `PUT /api/account/mcp-credentials`. Rotate it there
+  without touching the definition file. Reading the list back returns key names
+  only; values are write-only.
+- anything else — a literal, stored verbatim in the yaml. Fine for a region or a
+  tenant id; **not** for a token.
+
+Two properties follow from resolving references against the store only:
+a definition can never name one of Ant's own environment variables to
+exfiltrate it, and a stdio server's child process receives only the variables it
+declared plus a minimal exec baseline — never Ant's provider keys.
+
+An unregistered key fails the job start loudly (`config_invalid`) instead of
+sending an empty credential and getting a confusing 401 from the server.
+
+## Progress: the checklist
+
+A codespace job decomposes into tasks and ends on a verification gate. A custom
+job has no task plane at all. Instead, when a turn's work breaks into **two or
+more independent deliverables**, the agent writes a checklist and the
+workspace's board renders it — pending, active, done — updating as it works. A
+single-deliverable or answer-only turn leaves the board empty, on purpose.
+
+Checklist items are **not tasks**: they never enter a task queue, never render
+as kanban cards, and never count toward per-task billing. Nothing about the
+checklist is configurable; it is harness behavior.
+
+## Where the work lands
+
+Custom jobs run only in a **workspace** project, and everything they produce
+lands in that project's `universal/artifacts/` tree. Artifacts are owned by the
+**project**, not by an agent: one shared tree serves every agent and job, so you
+can upload a folder once and have every custom job read it. The explorer's
+Artifacts panel shows this tree plus a root `sessions` folder (session JSONs +
+debug logs — the same role as a codespace feature's sessions folder;
+download/delete only).
+
+Note the asymmetry that trips people up: **definitions are account-owned,
+artifacts are project-owned.** One `ops-team` agent serves all of your
+workspaces; each workspace keeps its own reports.
+
+The full layout, and why the project kind is policy rather than a fork, is in
+[spaces.md](spaces.md).
+
+## Read next
+
+- [**spaces**](spaces.md) — codespace vs workspace, and the layout of each.
+- [**guides/custom-agent-authoring**](../guides/custom-agent-authoring.md) —
+  build one, start to finish.
+- [internals/44-universal-job.md](../internals/44-universal-job.md) — the
+  runtime contract (one JobType, tool sandbox, credential plane, checklist).
+- [internals/45-org-ax-mcp-orchestration.md](../internals/45-org-ax-mcp-orchestration.md)
+  — rolling this out across an organization's departments.

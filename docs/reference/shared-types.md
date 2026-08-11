@@ -11,13 +11,31 @@ key types and their meaning.
 
 | Type | Source | Purpose |
 |------|--------|---------|
-| `JobType` | `job.ts` | `'code' \| 'design' \| 'learn' \| 'ask' \| 'plan' \| 'inline-ask' \| 'visual'` |
+| `JobType` | `job.ts` | `'code' \| 'design' \| 'learn' \| 'ask' \| 'plan' \| 'inline-ask' \| 'visual' \| 'universal'` |
 | `DecomposableJobType` | `job.ts` | Subset that produces task decompositions (`code`, `design`, `learn`). |
 | `SessionableJobType` | `job.ts` | Jobs whose state checkpoints to disk. |
 | `BaseTask` | `task.ts` | Discriminated union by `task.type` — `feature` / `error` / `verification` / `seam` / `ui` / `design-system` / `test-code` / `doc` / `setup` / `explain`. |
 | `TaskBand` | `task.ts` | `FeatureBand \| SetupBand` — orchestrator scheduling axis. `FeatureBand = 'foundation' \| 'platform' \| 'integration'` (FeatureTask), `SetupBand = 'root'` (SetupTask). |
 | `TaskStatus` | `task.ts` | `'todo' \| 'in-progress' \| 'completed'`. |
 | `KanbanData` | `task.ts` | The per-feature task queue snapshot. |
+| `UniversalChecklistItem` / `UniversalChecklistItemState` | `task.ts` | The workspace progress plane — the agent-authored checklist that stands in for tasks in a `universal` job. Not tasks: never queued, never billed. |
+
+## Custom agents (universal runtime)
+
+> ⚠️ The universal runtime is **experimental** — see
+> [concepts/custom-agents.md](../concepts/custom-agents.md).
+
+| Type / function | Source | Purpose |
+|-----------------|--------|---------|
+| `UNIVERSAL_FEATURE` | `custom-agents.ts` | `'universal'` — the reserved constant a workspace project passes in the `:feature` slot, resolving to `{project}/universal`. |
+| `CustomJobRef` / `formatCustomJobRef` / `parseCustomJobRef` | `custom-agents.ts` | The composite `{agentId}/{jobId}` key that identifies a custom job on the wire. `parse` returns `null` on malformed input — callers decide 400 vs throw. |
+| `CustomAgentSummary` / `CustomJobSummary` | `custom-agents.ts` | Discovery shapes the FE lists (id, name, scope, readonly, jobs). |
+| `CustomIntentDef` / `GENERAL_INTENT` | `custom-agents.ts` | A job's intent catalog entry, and the reserved no-match fallback. Intent ids are runtime strings, deliberately outside the compile-time `IntentId` union. |
+| `UniversalTurnMeta` | `custom-agents.ts` | The per-turn axes: `intents[]`, `context[]`, `plan?` (`@intent:` / `@ctx:` / `@plan`). |
+| `McpServerConfig` | `custom-agents.ts` | One MCP server declaration: `transport` (`stdio` \| `http`), plus `command`/`args`/`env` or `url`/`headers`. |
+| `validateMcpServers` | `custom-agents.ts` | Every MCP rule as plain messages (empty = valid). Shared by the loader (throws), the HTTP gate (400), and the settings form (disables save). |
+| `MCP_SECRET_REF_PATTERN` / `parseSecretRef` / `formatSecretRef` | `custom-agents.ts` | The one marker (`${secret:KEY}`) that makes a value a credential-store lookup. Credential-ness is authored, never inferred from shape. |
+| `isAllowedDefinitionPath` | `custom-agents.ts` | Write whitelist for definition files edited over HTTP. |
 
 ## Action / RAC
 

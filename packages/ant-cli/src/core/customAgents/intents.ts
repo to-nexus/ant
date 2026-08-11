@@ -18,7 +18,7 @@ import * as yaml from 'js-yaml';
 import { GENERAL_INTENT, INTENTS_FILE_NAME, type CustomIntentDef } from '@ant/shared';
 import { CustomAgentValidationError } from './types.js';
 
-/** Catalog size cap — keeps the classify prompt table bounded. */
+/** Catalog size cap — keeps the injections table of contents bounded. */
 export const INTENT_CATALOG_CAP = 32;
 
 const INTENT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -143,7 +143,7 @@ export function validateIntentsDoc(doc: unknown, agentId: string, jobId?: string
 /**
  * Injection-reference check: every intent must only reference files that
  * exist in the job's `injections/` set — a dangling reference would silently
- * inline nothing at classify time.
+ * inline nothing when that intent is selected.
  */
 export function validateIntentInjectionRefs(
   intents: CustomIntentDef[],

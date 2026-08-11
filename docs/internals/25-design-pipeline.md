@@ -2,7 +2,7 @@
 
 ## Overview
 
-The two surfaces of the Design Job — **UI Design** (service domain only) and **Game-Art Design** (game domain only) — share the same graph (`detect → decompose → execute ⇄ tool`) but are sibling pipelines with different outputs, asset pools, and decision tags. The two surfaces are **vertically split by domain** (D28) — only one surface is active per workspace.
+The two surfaces of the Design Job — **UI Design** (service domain only) and **Game-Art Design** (game domain only) — share the same graph (`detect → decompose → execute ⇄ tool`) but are sibling pipelines with different outputs, asset pools, and decision tags. The two surfaces are **vertically split by domain** (D28) — only one surface is active per project.
 
 ### Surface Split (D17 / D18 / D28)
 

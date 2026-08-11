@@ -182,13 +182,13 @@ amount of palette tuning.
 
 ---
 
-# Part 2 — diagrams (the five PNGs)
+# Part 2 — diagrams (the six PNGs)
 
 Diagrams are **authored, not captured**. Each one is an HTML file in
 [`diagrams/`](diagrams) baked to PNG by headless Chrome:
 
 ```bash
-pnpm docs:diagrams              # all five
+pnpm docs:diagrams              # all six
 pnpm docs:diagrams architecture # just one
 ```
 
@@ -203,7 +203,8 @@ and re-run one command rather than re-shooting anything.
 | `design-input.png` | `## Bring your own design` | Three inputs, one hard-exclusive contract |
 | `architecture.png` | `## How it works` | Four processes, Redis as the only channel |
 | `job-anatomy.png` | `## How it works` | Parallel tasks, gated by a first-class verification task |
-| `workspace.png` | `## Workspace model` | One bare anchor, features as peer worktrees |
+| `workspace.png` | `## Codespace layout` | One bare anchor, features as peer worktrees |
+| `codespace-workspace.png` | `## Codespace & workspace` | Two kinds of space over one runtime — canonical jobs and a kanban, or file-defined agents and a checklist |
 
 ### The wordmark is the one localised pair
 
@@ -239,7 +240,7 @@ produces a clean side-by-side lockup.
 - **880 CSS px canvas, rendered at 2×**, declared per-file as
   `<meta name="canvas" content="880x664">`. The README displays at `width="880"`,
   so the layout is what the reader sees at 100% zoom.
-- **Budget: ≤ 300 KB each**, ≤ 1.2 MB for all five. The render script fails the
+- **Budget: ≤ 300 KB each**, ≤ 1.5 MB for all six. The render script fails the
   run if a file goes over.
 - The aurora gradient is the accent, not the background — **use it once per
   diagram**, on the single most important element.

@@ -160,7 +160,7 @@ Wire it in the relevant `jobs/code/base/system.md` with `{{> jobs/code/base/inje
 
 For codebase-local deviations, prefer `codebase/ANTRULES.md` (per-feature
 ledger) over a global injection. See
-[AGENTS.md § Codebase Meta Document Policy](../../AGENTS.md#codebase-meta-document-policy).
+[internals/35-codebase-meta-policy.md](../internals/35-codebase-meta-policy.md).
 
 ## Test your changes
 

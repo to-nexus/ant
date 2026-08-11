@@ -20,6 +20,7 @@ the user-facing concepts live in [`docs/concepts/`](docs/concepts/).
 | Understand the system in 5 minutes    | [docs/concepts/architecture.md](docs/concepts/architecture.md) — user-facing explanations of agents, jobs, tiers live alongside it |
 | Set up, build, test                   | [CONTRIBUTING.md](CONTRIBUTING.md) · [docs/develop.md](docs/develop.md) |
 | Add a new agent / job / phase node    | This file, then [docs/internals/](docs/internals/) — incident-driven rationale, enforcement greps, test names |
+| Touch the universal / custom-agent runtime | [Universal Runtime](#universal-runtime--one-jobtype-file-defined-jobs), then [docs/internals/44-universal-job.md](docs/internals/44-universal-job.md) |
 | Author or edit a prompt template      | [Prompt Engineering](#prompt-engineering)           |
 | Touch the LangGraph state machine     | [LangGraph State Management](#langgraph-state-management) |
 | Make a change that crosses BE↔FE      | [Cross-Package Contracts](#cross-package-contracts-antshared) |
@@ -364,6 +365,57 @@ RAC-creating site goes through it. Mixed RACs throw at the safety nets
 `figma.json` carries **only the URL + nodeId**. Variable dumps, frame JSON,
 and screenshots are never persisted there — the design source is fetched
 live via the Figma MCP at prompt time.
+
+---
+
+## Universal Runtime — One JobType, File-Defined Jobs
+
+Custom agents/jobs (the **workspace** project kind) execute on one generic
+runtime. The invariants below exist because each was violated once and cost a
+debugging session.
+
+### ❌ Forbidden
+
+- **Minting a JobType for a custom job.** A new JobType costs hand-copied
+  unions in 5+ places; a custom job is *data*, not a code path.
+- Forking `customJobRef` or `UniversalTurnMeta` onto a second channel — one
+  env var each (`ANT_CUSTOM_JOB_REF`, `ANT_UNIVERSAL_TURN_META`), turn meta as
+  one JSON rather than a CSV per axis.
+- **Inferring credential-ness from a value's shape** (the deleted bare-ALL-CAPS
+  heuristic) — it cannot tell a key name from a legitimate literal, and it
+  silently killed job starts.
+- A `process.env` fallback in credential resolution, or `...process.env` into a
+  stdio MCP child — either turns a definition into an exfiltration vector.
+- Treating checklist items as tasks: no TaskQueue, no kanban cards, no
+  `billableTaskCount`.
+- Re-judging the project × jobType gate anywhere other than the truth table,
+  or letting a definition error crash the worker child instead of answering 400
+  at accept.
+- Silently ignoring a removed yaml key — an author concludes the knob works.
+
+### ✅ Correct
+
+- `jobType='universal'` for every custom job; the definition rides
+  `customJobRef = "{agentId}/{jobId}"`.
+- `decideProjectJobGate` (`core/customAgents/universalContainer.ts`) is the one
+  bidirectional truth table; enforcement is HTTP 400 at job-accept.
+- `${secret:KEY}` (`MCP_SECRET_REF_PATTERN`) is the only credential marker;
+  everything else is a literal. `validateMcpServers` in `@ant/shared` is the one
+  rule set, with three failure shapes (throw / 400 / form-disable).
+- `buildStdioChildEnv()` allowlist for stdio children; `McpConfigError` →
+  `config_invalid`, never `process_crash`.
+- Phase-node blindness applies here too: the universal graph must not learn
+  `task.type` or execution tiers — it has neither.
+
+```bash
+rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0
+rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal            # Expected: 0
+rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0
+```
+
+Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-container,universal-tool-policy,universal-prompt-injection,universal-checklist,universal-mcp-runtime,mcp-credential-store}.test.ts`.
+Full rationale: [`docs/internals/44-universal-job.md`](docs/internals/44-universal-job.md);
+org rollout: [`docs/internals/45-org-ax-mcp-orchestration.md`](docs/internals/45-org-ax-mcp-orchestration.md).
 
 ---
 

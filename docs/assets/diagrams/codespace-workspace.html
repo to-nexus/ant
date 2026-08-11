@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="canvas" content="880x572">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_diagram.css">
+<style>
+  .canvas { height: 572px; }
+
+  .spaces { align-items: stretch; }
+  .spaces .node { gap: 0; padding: 13px 15px 14px; }
+
+  .top { display: flex; align-items: center; gap: 8px; }
+  .top .name { flex: 1; }
+  .lede { margin-top: 6px; font-size: 11.5px; font-weight: 500; color: var(--text-3); line-height: 1.35; }
+
+  .band { margin-top: 13px; margin-bottom: 6px; }
+
+  /* wrapped rows of small mono tokens — jobs, directories */
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tags span {
+    font-family: var(--font-mono); font-size: 9.5px;
+    color: var(--text-3);
+    background: oklch(28% 0.075 290 / 0.5);
+    border: 1px solid oklch(36% 0.07 290 / 0.5);
+    border-radius: 5px; padding: 2.5px 6px;
+    letter-spacing: -0.01em;
+  }
+  .tags span.on { color: var(--violet-300); border-color: oklch(64% 0.20 290 / 0.42); }
+  .tags span.warm { color: var(--orange); border-color: oklch(75% 0.16 50 / 0.42); }
+  .tags span.off { color: var(--text-4); border-style: dashed; text-decoration: line-through; }
+
+  .line { display: flex; flex-direction: column; gap: 5px; }
+  .sub { font-size: 10.5px; font-weight: 500; color: var(--text-4); line-height: 1.35; }
+
+  /* the progress-surface strip that closes each column */
+  .surface {
+    margin-top: 13px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 9px;
+    background: oklch(23% 0.07 290 / 0.6);
+    border: 1px solid var(--border-1);
+  }
+  .surface .what { font-size: 11px; font-weight: 600; color: var(--text-2); line-height: 1.3; }
+
+  /* two columns converging on the shared runtime */
+  /* height must be flex-locked: an empty flex item shrinks to nothing first */
+  .join { position: relative; height: 30px; flex: none; }
+  .join .v, .join .h { position: absolute; background: var(--wire); }
+  .join .v { width: 1.5px; }
+  .join .h { height: 1.5px; }
+  .join .v.arrow::after {
+    content: '';
+    position: absolute; left: 50%; bottom: -1px;
+    transform: translateX(-50%);
+    border-left: 4.5px solid transparent;
+    border-right: 4.5px solid transparent;
+    border-top: 6px solid var(--wire);
+  }
+
+  .base { padding: 12px 15px 13px; }
+  .base .brow { display: flex; align-items: center; gap: 10px; }
+  .base .brow .name { flex: none; }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="head">
+    <div class="rule"></div>
+    <h1>Two kinds of space, one runtime</h1>
+    <p>A codespace builds a product. A workspace runs the work agents your organization defines.</p>
+  </div>
+
+  <div class="row eq spaces">
+
+    <div class="node acc acc-violet">
+      <div class="top">
+        <span class="name plain">Codespace</span>
+        <span class="chip violet">canonical</span>
+      </div>
+      <div class="lede">Build a product — the PRD → design → code loop, then spec → code forever after.</div>
+
+      <div class="band">Jobs it exposes</div>
+      <div class="tags">
+        <span class="on">plan</span><span class="on">design</span><span class="on">code</span>
+        <span class="on">visual</span><span class="on">learn</span><span class="on">ask</span>
+        <span class="off">universal</span>
+      </div>
+
+      <div class="band">On disk</div>
+      <div class="line">
+        <span class="path">repo.git &nbsp;+&nbsp; features/{feature}/</span>
+        <div class="tags">
+          <span class="on">codebase/</span><span>plan/</span><span>architecture/</span><span>visual/</span><span>assets/</span>
+        </div>
+        <div class="sub">Unit of work: a <b>feature</b> — one branch, one worktree, one preview.</div>
+      </div>
+
+      <div class="surface">
+        <span class="chip violet">kanban</span>
+        <span class="what">Tasks run in parallel, gated by a verification task</span>
+      </div>
+    </div>
+
+    <div class="node acc acc-orange">
+      <div class="top">
+        <span class="name plain">Workspace</span>
+        <span class="chip orange">universal</span>
+        <span class="chip">experimental</span>
+      </div>
+      <div class="lede">Run your own agents — a role, its duties, and the systems it may touch, written as files.</div>
+
+      <div class="band">Jobs it exposes</div>
+      <div class="tags">
+        <span class="warm">your own, defined in files</span>
+        <span class="off">plan</span><span class="off">design</span><span class="off">code</span>
+      </div>
+
+      <div class="band">On disk</div>
+      <div class="line">
+        <span class="path">universal/artifacts/ &nbsp;+&nbsp; universal/sessions/</span>
+        <div class="tags">
+          <span class="off">repo.git</span><span class="off">features/</span><span class="off">codebase/</span>
+        </div>
+        <div class="sub">Unit of work: an <b>(agent, job)</b> pair — one chat, a session each.</div>
+      </div>
+
+      <div class="surface">
+        <span class="chip orange">checklist</span>
+        <span class="what">The agent writes its own list as the work proceeds</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="join">
+    <div class="v" style="left:202px; top:0; height:15px"></div>
+    <div class="v" style="left:618px; top:0; height:15px"></div>
+    <div class="h" style="left:202px; right:202px; top:15px"></div>
+    <div class="v arrow" style="left:410px; top:15px; height:15px"></div>
+  </div>
+
+  <div class="node base">
+    <div class="brow">
+      <span class="name plain">One runtime underneath</span>
+      <span class="path">projectType decides policy, never layout</span>
+    </div>
+    <div class="desc">The same four processes, the same Redis bus, the same agent loop. A project's
+      kind decides which jobs it exposes — it never forks the code path.</div>
+  </div>
+
+  <div class="foot" style="margin-top:16px">
+    <div class="bar"></div>
+    <p><strong>Chosen once, at creation.</strong> A project is one kind or the other for life, and the
+      partition is strict — no job type runs in both. Adding a custom job to a workspace is a file
+      operation, not a code change.</p>
+  </div>
+
+</div>
+</body>
+</html>

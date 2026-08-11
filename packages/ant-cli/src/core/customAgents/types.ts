@@ -75,7 +75,7 @@ export interface ResolvedCustomJob {
   /**
    * Job intent catalog (`jobs/{jobId}/intents.yaml`). Code-exterior data — a
    * per-job runtime vocabulary, never the compile-time `IntentId` union.
-   * Empty = classify is skipped entirely.
+   * Empty = every turn runs as `general`, so all injections stay on the TOC.
    */
   intents: CustomIntentDef[];
   /** Union of MCP servers (job definition wins on name collision). */

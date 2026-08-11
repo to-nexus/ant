@@ -29,6 +29,9 @@ In cloud mode, every endpoint outside `/health` requires a valid token.
 | Preview            | `/api/preview`      | Lifecycle ops on preview servers           |
 | Git                | `/api/git`          | Per-feature git operations                 |
 | Figma              | `/api/figma`        | Figma MCP bridge endpoints (cloud)         |
+| Account agents     | `/api/account/agents` | Custom agent/job definitions (account-scoped) |
+| MCP credentials    | `/api/account/mcp-credentials` | Encrypted credential store (write-only values) |
+| Custom agents      | `/api/projects/:id/custom-agents` | Per-project discovery + workspace artifacts |
 
 ## Health
 
@@ -103,6 +106,61 @@ control plane goes through `ant-api`.
 | GET  | `/api/preview/status`             | Returns the active server map.        |
 | POST | `/api/preview/stop`               | Stop a feature's dev server.          |
 
+## Custom agents (universal runtime)
+
+> ⚠️ **Experimental** — see
+> [concepts/custom-agents.md](../concepts/custom-agents.md). These routes exist
+> only for the workspace project kind (`projectType: 'universal'`).
+
+Definitions are **account-owned, not project-owned**, so CRUD lives under
+`/api/account/agents` and works with no project selected. Writes always target
+the user scope; org and builtin scopes are read-only.
+
+| Verb | Path | Notes |
+|------|------|-------|
+| GET  | `/api/account/agents` | List agents + their jobs, with `scope` and `readonly`. |
+| POST | `/api/account/agents` | Scaffold an agent. **409** if the id is owned by *any* scope, builtin included. |
+| DELETE | `/api/account/agents/:agentId` | Delete (user scope only). |
+| POST | `/api/account/agents/:agentId/rename` | Rename, moving container data across every universal project of the account (dry-run, then move; refuses on any conflict). |
+| POST | `/api/account/agents/:agentId/jobs` | Scaffold a job. |
+| POST | `/api/account/agents/:agentId/jobs/:jobId/rename` | Rename a job, same move contract. |
+| GET  | `/api/account/agents/:agentId/jobs/:jobId/validate` | Run the loader's full validation without starting a job. |
+| GET  | `/api/account/agents/:agentId/jobs/:jobId/prompt-preview?intents=a,b` | The exact definition block the runtime would inject for that intent selection. |
+| GET/PUT/POST/DELETE | `/api/account/agents/:agentId/files/**` | Definition file tree, read, write, create, rename, delete, upload. Paths are checked against `isAllowedDefinitionPath`. |
+| POST | `/api/account/import` | Import a definition bundle. |
+
+Credentials referenced by a definition's `${secret:KEY}` markers:
+
+| Verb | Path | Notes |
+|------|------|-------|
+| GET  | `/api/account/mcp-credentials` | Key names + `updatedAt` **only** — values are write-only. |
+| PUT  | `/api/account/mcp-credentials` | Upsert `{ key, value }`. Rotation is a repeat PUT; the definition file never changes. |
+| DELETE | `/api/account/mcp-credentials/:key` | Remove. |
+
+Per-project surfaces — discovery, and the workspace's shared artifact tree
+(the counterpart of `/api/files` for a workspace):
+
+| Verb | Path | Notes |
+|------|------|-------|
+| GET  | `/api/projects/:id/custom-agents` | Agents/jobs available to this project. |
+| GET  | `/api/projects/:id/universal/artifacts/tree` | Artifact tree. `plan/` is listed first and is not deletable or renamable; a root `sessions` node is grafted last. |
+| GET  | `/api/projects/:id/universal/artifacts/file` | Read one file. |
+| POST | `/api/projects/:id/universal/artifacts/{upload,create-file,rename,mkdir}` | Mutations. `sessions` is reserved at the artifacts root → 400 `reserved-name-sessions`. |
+
+A custom job is started through the normal job route with
+`jobType: 'universal'` plus `customJobRef: "{agentId}/{jobId}"`, and
+`UNIVERSAL_FEATURE` (`'universal'`) in the feature slot. The project-kind gate
+is bidirectional and rejects at accept time, never inside the worker:
+
+| Status | Code | Cause |
+|---|---|---|
+| 400 | `project-not-universal` | a `universal` job aimed at a codespace project |
+| 400 | `project-universal-requires-custom-job` | a builtin jobType (`code`, `design`, `learn`, …, including `/resume` and `/continue`) aimed at a workspace project |
+| 400 | `invalid-universal-feature` | the feature slot is not the reserved constant |
+| 400 | `invalid-custom-job-ref` | the ref is not a well-formed `{agentId}/{jobId}` |
+| 400 | `invalid-custom-job-definition` | the definition failed to load or validate |
+| 400 | `unknown-intent` | an `@intent:` mention not in the job's catalog |
+
 ## Realtime (SSE)
 
 `ant-realtime` exposes:
@@ -129,3 +187,5 @@ Set `Accept: text/event-stream`. Disable proxy buffering on the path.
   auth wiring.
 - [internals/21-realtime-system.md](../internals/21-realtime-system.md) —
   SSE channel internals.
+- [internals/44-universal-job.md](../internals/44-universal-job.md) — the
+  universal runtime behind the custom-agent routes.
