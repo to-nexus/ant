@@ -1,0 +1,51 @@
+id: weekly-report
+name: "Weekly Report"
+version: 1
+
+# Connection to the reference server (../../../mcp-reference-server).
+#
+# `${secret:KEY}` is the ONE marker that makes a value a credential-store
+# lookup — every other value is stored and sent verbatim, and credential-ness
+# is never inferred from a value's shape. So a bare `OPS_API_TOKEN` here would
+# not fail validation: it would be sent literally as the Authorization header
+# and the server would answer 401. Ant resolves OPS_API_TOKEN from the
+# encrypted per-user store and sends its raw value, so the STORED value must
+# hold the full "Bearer <token>" string.
+#
+# Prerequisites: the server running (`pnpm start` in the sibling directory,
+# port 8931) and the OPS_API_TOKEN key registered once:
+#   PUT /api/account/mcp-credentials {"key":"OPS_API_TOKEN","value":"Bearer …"}
+# (or the agent settings UI). Rotation = re-PUT the value; this file never changes.
+#
+# stdio alternative (Ant spawns the server itself — no token, and the only
+# shape that exercises child-env isolation). `args` must be absolute; there is
+# no interpolation in this file:
+#   ops-api:
+#     transport: stdio
+#     command: node
+#     args: [/absolute/path/to/ant/examples/mcp-reference-server/dist/index.js, --stdio]
+#     env:
+#       SKELETON_DEBUG_ENV: "1"   # plain literal — a debug flag is not a secret
+#       # SOME_API_KEY: ${secret:SOME_API_KEY}   # the credential form, same rule as headers
+mcp:
+  servers:
+    ops-api:
+      transport: http
+      url: http://127.0.0.1:8931/mcp
+      headers:
+        Authorization: ${secret:OPS_API_TOKEN}
+
+tools:
+  builtin:
+    - read_file
+    - list_files
+    - search_files
+    - create_file
+    - edit_file
+# No approval block: the two read tools carry readOnlyHint (no approval
+# needed) and create_incident stays fail-closed by design. Letting an
+# unattended run file incidents is a deliberate registration-time decision:
+#   approval:
+#     mcp__ops-api__create_incident: never
+# Its safety then rests entirely on the server's own guarantees — the
+# required idempotency_key and dry_run default — not on a per-call prompt.

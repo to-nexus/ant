@@ -25,6 +25,7 @@ the user-facing concepts live in [`docs/concepts/`](docs/concepts/).
 | Touch the LangGraph state machine     | [LangGraph State Management](#langgraph-state-management) |
 | Make a change that crosses BE↔FE      | [Cross-Package Contracts](#cross-package-contracts-antshared) |
 | Self-host, design input, custom prompts | [docs/guides/](docs/guides/)                      |
+| Run the custom-agent + MCP example end-to-end | [examples/README.md](examples/README.md) — not product code, never loaded at runtime |
 
 If a rule here contradicts the code, the **code is authoritative** for runtime
 behaviour — please file an issue so the document gets fixed.

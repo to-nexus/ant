@@ -20,6 +20,15 @@ under its own id instead. (Pre-existing on-disk id collisions still resolve
 by scope priority: user > org > builtin.) It deliberately declares no MCP
 server; the `ops-team` example below is where MCP is shown.
 
+`ops-team` is not hypothetical: a runnable copy is
+[`examples/custom-agents/ops-team/`](../../examples/custom-agents/ops-team/), and
+the MCP server it connects to is its sibling
+[`examples/mcp-reference-server/`](../../examples/mcp-reference-server/). Copy the
+agent directory into your account root and start the server to follow this guide
+against something that actually answers. That tree is **not** loaded by the
+runtime — unlike the builtin above, it exists to be copied, which is why it may
+declare `mcp.servers` at all.
+
 ## 1. Scaffold
 
 Use Settings → Agents (register button), or create the files by hand under

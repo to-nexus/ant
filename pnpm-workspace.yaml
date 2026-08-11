@@ -3,6 +3,10 @@ packages:
   # ant-cli: AI workflow backend + Cloud IDE (IDEService)
   # ant-ui: Frontend UI (SPA at /app)
   # ant-site: Marketing site (SSG at /)
+  - 'examples/*'
+  # Worked examples — not product, in no image (every Dockerfile COPYs
+  # packages/ selectively). Members so one root install covers them and CI
+  # typechecks them. See examples/README.md.
 
 allowBuilds:
   '@vscode/ripgrep': true

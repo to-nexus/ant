@@ -1,0 +1,13 @@
+# Job intent catalog (optional). An empty catalog costs nothing — the intent
+# classifier is skipped entirely until you declare entries.
+#
+# Each description is the classification matching criterion; when an intent is
+# active its `injections` files (this job's injections/*.md) are inlined in
+# full (otherwise they stay in the on-demand table of contents). Example:
+#
+# intents:
+#   - id: review
+#     description: 'Review or critique an existing document in the workspace'
+#     injections: [review-checklist.md]
+version: 1
+intents: []
