@@ -223,6 +223,7 @@ export class ChatService {
     jobId?: string,
     userContext?: UserContext,
     actionMetadata?: import('@ant/shared').ActionMetadata,
+    jobType?: LogJobType,
   ): Promise<void> {
     const ctx = userContext ?? this.defaultUserContext;
     const line: ChatUserTurnLine = {
@@ -230,7 +231,10 @@ export class ChatService {
       ts: new Date().toISOString(),
       jobId: jobId ?? '',
       turnId,
-      jobType: DEFAULT_JOB_TYPE,
+      // The optimistic stamp is PERMANENT: the worker's recordUserTurn copy is
+      // deduped by turnId and never corrects it, so a universal caller must
+      // pass 'universal' here or the turn is misfiled as code forever (A15).
+      jobType: jobType ?? DEFAULT_JOB_TYPE,
       text,
       sourceRef: `feature.jsonl#${turnId}`,
       ...(actionMetadata && Object.keys(actionMetadata).length > 0

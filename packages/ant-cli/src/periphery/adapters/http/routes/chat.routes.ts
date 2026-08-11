@@ -152,6 +152,22 @@ export function createChatRoutes(deps: {
       }
     }
 
+    // Universal projects file their turns under jobType 'universal' — the
+    // optimistic stamp is permanent (the worker's recordUserTurn copy dedupes
+    // by turnId and never corrects it), so resolving here is the only chance
+    // to keep chat.jsonl's jobType filter honest (A15). Same probe as
+    // job.routes' rejectCanonicalJobOnUniversalProject; failures → 'code'.
+    let jobType: import('@ant/shared').LogJobType | undefined;
+    if (deps.workspaceResolver) {
+      try {
+        const { isUniversalProject } = await import('../../../../core/customAgents/universalContainer');
+        const projectPath: string = deps.workspaceResolver.getProjectPath(userContext, projectId);
+        if (isUniversalProject(projectPath)) jobType = 'universal';
+      } catch {
+        // partial resolvers (tests) / lookup failures → default stamp
+      }
+    }
+
     await deps.chatService.appendUserTurn(
       projectId,
       featureName,
@@ -160,6 +176,7 @@ export function createChatRoutes(deps: {
       undefined,
       userContext,
       enrichedActionMetadata,
+      jobType,
     );
 
     res.json({ turnId, messageId: `user-${turnId}` });
