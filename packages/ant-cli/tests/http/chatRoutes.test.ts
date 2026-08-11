@@ -482,5 +482,36 @@ describe('chat.routes — Phase 9/13 contract', () => {
       expect(userTurns).toHaveLength(1);
       expect(userTurns[0]).toMatchObject({ text: 'hello world' });
     });
+
+    // A15 — a universal project's turn must be stamped 'universal' at submit:
+    // the worker's recordUserTurn copy dedupes by turnId and never corrects
+    // the jobType, so the optimistic stamp is what chat.jsonl filters see
+    // forever. Project type is probed via config.json (isUniversalProject).
+    it.each([
+      ['universal project stamps universal', 'universal', 'universal'],
+      ['canonical project keeps the code default', undefined, 'code'],
+    ] as const)('%s', async (_label, projectType, expected) => {
+      const projectPath = path.dirname(featurePath);
+      const configPath = path.join(projectPath, 'config.json');
+      if (projectType) {
+        await fs.writeFile(configPath, JSON.stringify({ projectType }), 'utf-8');
+      } else {
+        await fs.rm(configPath, { force: true });
+      }
+
+      const res = await harness.call(
+        'POST',
+        '/projects/proj/features/feat-a/chat/user-message',
+        { body: { content: `stamp ${expected}` } },
+      );
+      expect(res.status).toBe(200);
+
+      const raw = await fs.readFile(path.join(featurePath, 'sessions', 'chat.jsonl'), 'utf-8');
+      const disk = raw.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l));
+      const line = disk.find((l: any) => l.type === 'user_turn' && l.turnId === res.body.turnId);
+      expect(line?.jobType).toBe(expected);
+
+      await fs.rm(configPath, { force: true });
+    });
   });
 });

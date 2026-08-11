@@ -217,6 +217,20 @@ describe('ChatService — Phase 9 emission contract', () => {
     expect(userTurns[0]).toMatchObject({ turnId: 't-aa', text: 'hello world' });
   });
 
+  // A15 — the optimistic stamp is permanent (worker's recordUserTurn copy is
+  // deduped by turnId, never corrected), so the jobType param must land in
+  // chat.jsonl: universal callers pass 'universal', others keep the default.
+  it.each([
+    ['universal caller stamps universal', 'universal', 'universal'],
+    ['no jobType keeps the code default', undefined, 'code'],
+  ] as const)('appendUserTurn: %s', async (_label, given, expected) => {
+    await service.appendUserTurn('proj', 'feat-a', 'hi', `t-${expected}`, 'job-1', USER_CTX, undefined, given as any);
+    const raw = await fs.readFile(path.join(featurePath, 'sessions', 'chat.jsonl'), 'utf-8');
+    const disk = raw.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l));
+    const line = disk.find((l: any) => l.type === 'user_turn' && l.turnId === `t-${expected}`);
+    expect(line?.jobType).toBe(expected);
+  });
+
   it('appendAssistantMessage writes chat.jsonl AND broadcasts the line', async () => {
     await seedUserTurn('job-1', 't-aa');
     await service.appendAssistantMessage('proj', 'feat-a', 'final answer', {
