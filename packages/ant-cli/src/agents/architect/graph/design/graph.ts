@@ -886,7 +886,8 @@ export const DesignGraphChannels = {
   ...DetectableFields,
 
   // Job-specific fields (not in common chain)
-  workspaceConfig: Annotation<any>,
+  // `workspaceConfig` is declared in ResolvableFields — it carries the workspace
+  // domain SSOT that common `triage` reads on every job type.
   designError: Annotation<any>,
   artifacts: Annotation<any>,
   // Cross-project reference targets (reference-codebase tools). Declared so the

@@ -109,6 +109,8 @@ export interface PlanRunnerParams {
   chatSource?: boolean;
   skipTriage?: boolean;
   actionMetadata?: import('@ant/shared').ActionMetadata;
+  /** Project `config.json` — carries the workspace `domain` SSOT for triage. */
+  workspaceConfig?: PlanGraphState['workspaceConfig'];
   deps?: PlanGraphState['deps'];
   _httpJobId?: string;
 }
@@ -148,6 +150,7 @@ export async function runPlanGraph(params: PlanRunnerParams): Promise<PlanRunner
     chatSource: params.chatSource,
     skipTriage: params.skipTriage,
     actionMetadata: params.actionMetadata,
+    workspaceConfig: params.workspaceConfig,
     deps: params.deps,
     _httpJobId: params._httpJobId,
   });

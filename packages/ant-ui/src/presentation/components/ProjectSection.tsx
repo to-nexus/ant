@@ -18,6 +18,7 @@ import { SectionShell } from './layout/Explorer/SectionShell';
 import { RowList } from './layout/Explorer/RowList';
 import { ProjectRow, type ProjectDotAccent } from './layout/Explorer/ProjectRow';
 import { GitToolbar } from './layout/Explorer/GitToolbar';
+import { DomainSelect } from './Actions/DomainSelect';
 import type { Domain } from '@ant/shared';
 
 const PROJECT_DOTS: ProjectDotAccent[] = ['violet', 'pink', 'orange', 'cool'];
@@ -53,6 +54,11 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
   // (creation-time decision — carried from the CreationWizardModal tab).
   const [inlineCreateType, setInlineCreateType] = useState<ProjectType | null>(null);
   const [newProjectName, setNewProjectName] = useState('');
+  // Workspace domain for the project about to be created. Persisted with the
+  // project (not via a follow-up config PUT) so the backend has an authoritative
+  // domain from the first job — otherwise the pipeline is left inferring it.
+  // Canonical-only: a universal workspace exercises no domain gate.
+  const [newProjectDomain, setNewProjectDomain] = useState<Domain>('service');
   // Per-project config meta cache for the NON-active rows (project-level SSOT
   // is `config.json` — domain + projectType, one value per project, feature-
   // independent). Filled by a bulk parallel fetch; never routed through the
@@ -69,6 +75,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
   const handleCreateEmpty = useCallback((projectType: ProjectType) => {
     setShowWizard(false);
     setInlineCreateType(projectType);
+    setNewProjectDomain('service');
   }, []);
   const policy = useUIActionPolicy();
   const { showError } = useAlertModalContext();
@@ -82,8 +89,14 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     }
   }, [selectedProject, fetchProjectConfig]);
 
-  const handleCreateProject = async (projectName: string, projectType: ProjectType = 'canonical') => {
-    await createProject(projectName);
+  const handleCreateProject = async (
+    projectName: string,
+    projectType: ProjectType = 'canonical',
+    domain: Domain = 'service',
+  ) => {
+    // Domain rides the create call itself — a project must never exist without a
+    // persisted domain, since that is what every job's triage reads.
+    await createProject(projectName, { domain });
     setSelectedProject(projectName);
     if (projectType === 'universal') {
       // Record the projectType SSOT (same fetch→merge→PUT sequence as the
@@ -194,7 +207,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
     const name = newProjectName.trim();
     if (!name) return;
     try {
-      await handleCreateProject(name, inlineCreateType ?? 'canonical');
+      await handleCreateProject(name, inlineCreateType ?? 'canonical', newProjectDomain);
       await fetchProjects();
       setSelectedProject(name);
       setNewProjectName('');
@@ -203,7 +216,7 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
       console.error('Failed to create project:', err);
       showError(t('workspace.createFailed'));
     }
-  }, [newProjectName, inlineCreateType, fetchProjects, setSelectedProject, showError, t]);
+  }, [newProjectName, inlineCreateType, newProjectDomain, fetchProjects, setSelectedProject, showError, t]);
 
   return (
     <div>
@@ -355,10 +368,11 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             style={{
               marginTop: 6,
               display: 'flex',
+              flexDirection: 'column',
               gap: 4,
-              alignItems: 'center',
             }}
           >
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <input
               type="text"
               autoFocus
@@ -424,6 +438,20 @@ export function ProjectSection({ explorerWidth: _explorerWidth }: { explorerWidt
             >
               ✕
             </button>
+          </div>
+            {/* Domain — canonical only (a universal workspace exercises no
+                domain gate). Default 'service'; changeable later in settings. */}
+            {inlineCreateType === 'canonical' && (
+              <DomainSelect
+                size="compact"
+                value={newProjectDomain}
+                onChange={setNewProjectDomain}
+                labels={{
+                  service: { title: t('onboarding:quickstart.projectWizard.domainService') },
+                  game: { title: t('onboarding:quickstart.projectWizard.domainGame') },
+                }}
+              />
+            )}
           </div>
         )}
       </SectionShell>

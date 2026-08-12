@@ -23,7 +23,7 @@ import {
 import {
   deriveTriageGroup,
   deriveTriageMode,
-  deriveTriageDomain,
+  resolveWorkspaceDomain,
   validateIntentId,
 } from './derive.js';
 import { AgentRegistry } from './AgentRegistry.js';
@@ -38,6 +38,8 @@ import { contextProfileFor } from '../../../../../core/executionTier/contextProf
 import { recordUserTurnMeta } from '../../../../../core/executionTier/recordUserTurnMeta.js';
 import {
   INTENT_DEFINITIONS,
+  isIntentVisibleForDomain,
+  type Domain,
   type IntentId,
   type JobType,
 } from '@ant/shared';
@@ -51,26 +53,36 @@ import { TEMPLATE_PATHS } from '../../../../../core/prompt/builder/templatePaths
 const TRIAGE_BASE_TEMPLATE = TEMPLATE_PATHS.triage.base;
 const TRIAGE_RULES_TEMPLATE = TEMPLATE_PATHS.triage.rules!;
 
-let intentCatalogCache: string | null = null;
+const intentCatalogCache = new Map<Domain, string>();
 
 /**
- * Render the 34-row intent catalog (id + group + label + description) so
- * the LLM sees every option in one place. Cached after first build —
- * INTENT_DEFINITIONS is `as const`, so the table never changes at runtime.
+ * Render the intent catalog (id + group + label + description) the LLM picks
+ * from, scoped to the workspace domain: a domain-gated intent group
+ * (`design-ui` is service-only, `design-game-art` is game-only) must not even
+ * be a candidate outside its domain. Offering the full table is how a service
+ * project's chat turn could resolve to a game intent — and the picked intent
+ * was then read back as evidence of the domain.
+ *
+ * Cached per domain — INTENT_DEFINITIONS is `as const`, so each table is stable
+ * for the process lifetime.
  */
-function renderIntentCatalog(): string {
-  if (intentCatalogCache) return intentCatalogCache;
-  const rows = INTENT_DEFINITIONS.map((d) => {
-    const label = d.label.en || '';
-    const desc = d.description.en || '';
-    return `| ${d.id} | ${d.intentGroup} | ${label} | ${desc} |`;
-  }).join('\n');
-  intentCatalogCache = [
+export function renderIntentCatalog(domain: Domain): string {
+  const cached = intentCatalogCache.get(domain);
+  if (cached) return cached;
+  const rows = INTENT_DEFINITIONS.filter((d) => isIntentVisibleForDomain(d, domain))
+    .map((d) => {
+      const label = d.label.en || '';
+      const desc = d.description.en || '';
+      return `| ${d.id} | ${d.intentGroup} | ${label} | ${desc} |`;
+    })
+    .join('\n');
+  const table = [
     '| id | group | label | description |',
     '|---|---|---|---|',
     rows,
   ].join('\n');
-  return intentCatalogCache;
+  intentCatalogCache.set(domain, table);
+  return table;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -124,6 +136,22 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   console.log('');
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Step 1.2: Workspace domain — resolved BEFORE the LLM turn because it
+  // scopes the intent catalog the LLM is allowed to choose from.
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const domain = resolveWorkspaceDomain({
+    configDomain: state.workspaceConfig?.domain,
+    actionMetadata: state.actionMetadata,
+    workspaceState,
+  });
+  console.log(
+    `🧭 [Triage] Domain: ${domain}` +
+      ` (config=${state.workspaceConfig?.domain ?? 'absent'},` +
+      ` metadata=${state.actionMetadata?.domain ?? 'absent'},` +
+      ` gameShaped=${workspaceState.hasVisualGameArt === true})\n`,
+  );
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Step 1.5: Per-turn featureContext re-hydrate (Phase A — skipCompaction)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const { featureContext: rehydratedContext, turnId: rehydratedTurnId } =
@@ -166,7 +194,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     }
 
     const intentId = state.actionMetadata!.intent as IntentId;
-    const triageResult = buildTriageResult(intentId, state, workspaceState);
+    const triageResult = buildTriageResult(intentId, domain);
     await emitUserTurnMeta({ state, turnId, jobId, jobType, triageResult });
     logTriageResult(triageResult);
 
@@ -209,6 +237,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     userInput,
     currentJob,
     currentAgent,
+    domain,
     workspaceState,
     featureContext: rehydratedContext,
     promptPort,
@@ -228,7 +257,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     jobId: state._httpJobId || 'unknown',
   });
 
-  const triageResult = buildTriageResult(intentId, state, workspaceState, {
+  const triageResult = buildTriageResult(intentId, domain, {
     // Deterministic gate: the tag is honored only against a session that is
     // actually resumable — the LLM can never mint a resume out of nothing.
     resumeRequested: resumeRequested && interruptedSignal?.canResume === true,
@@ -267,23 +296,41 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
 // Helpers
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/**
+ * `domain` is resolved by the caller BEFORE the LLM turn (it scopes the intent
+ * catalog the LLM chooses from), so this builder takes it rather than
+ * re-deriving — a second derivation site is a second owner.
+ */
 function buildTriageResult(
   intentId: IntentId,
-  state: TriageableState,
-  workspaceState: WorkspaceState,
+  domain: Domain,
   opts: { resumeRequested?: boolean } = {},
 ): TriageResult {
   validateIntentId(intentId);
-  const group = deriveTriageGroup(intentId);
-  const mode = deriveTriageMode(intentId);
-  const domain = deriveTriageDomain(intentId, workspaceState, state.actionMetadata);
+  validateIntentDomain(intentId, domain);
   return {
     resolvedIntentId: intentId,
-    group,
-    mode,
+    group: deriveTriageGroup(intentId),
+    mode: deriveTriageMode(intentId),
     domain,
     ...(opts.resumeRequested ? { resumeRequested: true } : {}),
   };
+}
+
+/**
+ * Reject an intent that the workspace domain does not expose. The catalog the
+ * triage LLM reads is already domain-scoped, and explicit intents arrive from a
+ * domain-gated ActionsPanel, so reaching here means the two axes disagree —
+ * fail loudly rather than let the intent silently redefine the project's domain.
+ */
+function validateIntentDomain(intentId: IntentId, domain: Domain): void {
+  const def = INTENT_DEFINITIONS.find((d) => d.id === intentId);
+  if (def && !isIntentVisibleForDomain(def, domain)) {
+    throw new Error(
+      `Intent "${intentId}" (${def.intentGroup}) is not available in the "${domain}" domain. ` +
+        `Domain is a project-level property — change it in project settings, not per job.`,
+    );
+  }
 }
 
 async function emitUserTurnMeta(args: {
@@ -370,6 +417,12 @@ export async function buildTriagePrompt(params: {
   userInput: string;
   currentJob: string;
   currentAgent: string;
+  /**
+   * Resolved workspace domain. Scopes the intent catalog and the design-surface
+   * lines — a service workspace must not be offered game-art intents, nor told
+   * about a game-art surface it does not own.
+   */
+  domain: Domain;
   workspaceState: WorkspaceState;
   featureContext?: unknown;
   promptPort: PromptPort;
@@ -380,7 +433,7 @@ export async function buildTriagePrompt(params: {
    */
   interruptedJob?: InterruptedJobSignal | null;
 }): Promise<{ system: string; user: string }> {
-  const { userInput, currentJob, currentAgent, workspaceState, featureContext, promptPort, interruptedJob } = params;
+  const { userInput, currentJob, currentAgent, domain, workspaceState, featureContext, promptPort, interruptedJob } = params;
 
   // Context Lens P2 — lean profile: digests band only (band-1 user turns
   // already render via the PRIOR USER TURNS block; assistant prose is
@@ -394,7 +447,8 @@ export async function buildTriagePrompt(params: {
     currentAgent,
     currentJob,
     userInput,
-    intentCatalog: renderIntentCatalog(),
+    domain,
+    intentCatalog: renderIntentCatalog(domain),
     featureContext: featureContext ?? undefined,
     lens:
       leanLens && (leanLens.digests.length || leanLens.constraintLedger?.length)
@@ -408,6 +462,11 @@ export async function buildTriagePrompt(params: {
     hasFigmaConfig: workspaceState.hasFigmaConfig,
     hasVisualUi: workspaceState.hasVisualUi,
     hasVisualGameArt: workspaceState.hasVisualGameArt,
+    // The game-art surface line is meaningless in a service workspace — it
+    // owns no `visual/game-art/` deliverable. Gated here rather than in the
+    // template: domain-name branching outside `domain/**` / `basis/**` is a
+    // policy violation (I1 — domain-branching locality).
+    showGameArtSurface: domain === 'game',
     hasArchitectureSystem: workspaceState.hasArchitectureSystem,
     systemDesignFileNames: workspaceState.systemDesignFileNames,
     hasArchitectureSpec: workspaceState.hasArchitectureSpec,
@@ -551,6 +610,6 @@ export { parseIntentIdTag, parseResumeRequestTag } from './parser.js';
 export {
   deriveTriageGroup,
   deriveTriageMode,
-  deriveTriageDomain,
+  resolveWorkspaceDomain,
   validateIntentId,
 } from './derive.js';

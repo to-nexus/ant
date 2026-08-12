@@ -28,10 +28,13 @@
  *      re-inferring an already-known domain.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import Handlebars from 'handlebars';
+import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
+import { ProjectCrudService } from '../../src/periphery/adapters/http/services/ProjectService/ProjectCrudService';
 import {
   TIER_DOMAIN_MATRIX,
   ACTION_DEFINITIONS,
@@ -709,3 +712,75 @@ describe('applyDomainDefaultsToBasis — lockedStack invariants', () => {
 // derived inside `inferRacWithTools` from triage + actionMetadata). The
 // suppression describe blocks that lived here checked the old templates
 // and have been removed alongside them.
+
+// ─────────────────────────────────────────────────────────────────────
+// 6. Domain persistence — `WorkspaceConfig.domain` exists from creation
+//
+// The backend's domain resolution (`resolveWorkspaceDomain`) treats an
+// explicit `config.json` domain as absolute, so it is only as good as the
+// creation path writing one. `createProject` wrote `{repositoryName, repoType,
+// githubRepo, llmModels}` and nothing else, so a project created via the
+// wizard had NO persisted domain and every job fell through to guessing from
+// workspace shape. Resolution rows live in `triage-domain-derivation.test.ts`.
+// ─────────────────────────────────────────────────────────────────────
+describe('6. WorkspaceConfig.domain persistence', () => {
+  const userContext = { organizationId: 'org-domain', userId: 'user-domain' };
+  const roots: string[] = [];
+
+  afterEach(async () => {
+    while (roots.length > 0) {
+      await fs.promises.rm(roots.pop()!, { recursive: true, force: true });
+    }
+  });
+
+  async function mkCrud() {
+    const workspaceRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ant-domain-'));
+    roots.push(workspaceRoot);
+    const resolver = new UnifiedWorkspaceResolver(workspaceRoot);
+    return { resolver, crud: new ProjectCrudService(resolver) };
+  }
+
+  const readConfig = (resolver: UnifiedWorkspaceResolver, id: string) =>
+    JSON.parse(
+      fs.readFileSync(
+        path.join(resolver.getProjectPath(userContext as any, id), 'config.json'),
+        'utf-8',
+      ),
+    );
+
+  it('defaults to service when the caller supplies no domain', async () => {
+    const { resolver, crud } = await mkCrud();
+    await crud.createProject('p-default', userContext as any);
+    expect(readConfig(resolver, 'p-default').domain).toBe('service');
+  });
+
+  it('persists an explicit game domain at creation (not via a follow-up PUT)', async () => {
+    const { resolver, crud } = await mkCrud();
+    await crud.createProject('p-game', userContext as any, { domain: 'game' });
+    expect(readConfig(resolver, 'p-game').domain).toBe('game');
+  });
+
+  it('backfills a legacy config that predates the persisted domain', async () => {
+    const { resolver, crud } = await mkCrud();
+    await crud.createProject('p-legacy', userContext as any);
+    const configPath = path.join(
+      resolver.getProjectPath(userContext as any, 'p-legacy'),
+      'config.json',
+    );
+    const legacy = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    delete legacy.domain;
+    fs.writeFileSync(configPath, JSON.stringify(legacy, null, 2));
+
+    const returned = await crud.getProjectConfig('p-legacy', userContext as any);
+    expect(returned.domain).toBe('service');
+    // Healed on disk too — the runtime reads the file, not this return value.
+    expect(readConfig(resolver, 'p-legacy').domain).toBe('service');
+  });
+
+  it('leaves an existing game domain untouched on read', async () => {
+    const { resolver, crud } = await mkCrud();
+    await crud.createProject('p-keep', userContext as any, { domain: 'game' });
+    await crud.getProjectConfig('p-keep', userContext as any);
+    expect(readConfig(resolver, 'p-keep').domain).toBe('game');
+  });
+});

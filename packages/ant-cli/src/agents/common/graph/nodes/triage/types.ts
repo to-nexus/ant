@@ -63,10 +63,12 @@ export interface TriageResult {
   /** Derived from matrix — universal Mode (generate / refactor / explain). */
   mode: Mode;
   /**
-   * Derived (SSOT `deriveTriageDomain`): actionMetadata.domain →
-   * `design-game-art` intent group → game-shaped workspaceState hint
-   * (`visual/game-art/`) → default `'service'`. Plan filenames are NOT a
-   * domain signal — the plan document is the domain-neutral `plan/prd.md`.
+   * Resolved (SSOT `resolveWorkspaceDomain`): `WorkspaceConfig.domain` →
+   * actionMetadata.domain → game-shaped workspaceState hint (legacy) →
+   * default `'service'`. An explicit project-level domain is absolute; the
+   * intent is NOT an input (it is chosen from a domain-scoped catalog). Plan
+   * filenames are NOT a domain signal — the plan document is the
+   * domain-neutral `plan/prd.md`.
    */
   domain: Domain;
   /**

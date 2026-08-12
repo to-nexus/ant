@@ -7,7 +7,7 @@ import { OrgConfig, buildDefaultGitHubRepoUrl } from '../../../../../core/types/
 import { logger } from '../../../../../utils/logger';
 import { GitHelper } from '../GitService/helper/GitHelper';
 import { DeletionVerificationError } from './errors';
-import { MODEL_REGISTRY } from '@ant/shared';
+import { MODEL_REGISTRY, type Domain } from '@ant/shared';
 import { getDefaultLlmModels } from '../../../../../core/config/defaultModels';
 import { isLocalServerMode } from '../../../../../core/config/serverMode';
 
@@ -81,7 +81,17 @@ export class ProjectCrudService {
    * @param id - Project ID
    * @param userContext - User context for workspace path
    */
-  async createProject(id: string, userContext: UserContext): Promise<void> {
+  /**
+   * `opts.domain` is the workspace domain (`'service'` default). It is written at
+   * creation rather than left to a follow-up config PUT: domain is the SSOT every
+   * job's triage reads, and a project created without it had no persisted domain
+   * for the backend to honor — the pipeline then guessed from workspace shape.
+   */
+  async createProject(
+    id: string,
+    userContext: UserContext,
+    opts?: { domain?: Domain },
+  ): Promise<void> {
     // Validate project ID (no special characters except hyphens and underscores)
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
       throw new Error('Project ID can only contain letters, numbers, hyphens, and underscores');
@@ -136,6 +146,7 @@ export class ProjectCrudService {
       repoType: 'cloud',
       ...(defaultGithubRepo ? { githubRepo: defaultGithubRepo } : {}),
       llmModels,
+      domain: opts?.domain ?? 'service',
     };
 
     // branchBase is intentionally omitted — a fresh project has NO git and NO
@@ -425,9 +436,20 @@ export class ProjectCrudService {
         }
       }
 
+      // Backfill the workspace domain for projects created before it was written
+      // at creation time. An absent `domain` left the backend with nothing
+      // authoritative to read, so triage fell through to guessing from workspace
+      // shape; making it explicit retires that fallback. `'service'` matches the
+      // creation default — a genuine game project flips it once in settings.
+      let domainChanged = false;
+      if (config.domain !== 'service' && config.domain !== 'game') {
+        config.domain = 'service';
+        domainChanged = true;
+      }
+
       // Persist the healed config so runtime reads (which take workspaceConfig
       // as-is) and subsequent loads see the current ids — best-effort write.
-      if (llmModelsChanged) {
+      if (llmModelsChanged || domainChanged) {
         try {
           await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
         } catch { /* best-effort */ }
@@ -446,6 +468,7 @@ export class ProjectCrudService {
         repositoryName: this.sanitizeProjectName(id),
         repoType: 'cloud',
         llmModels: defaults,
+        domain: 'service',
       };
     }
   }

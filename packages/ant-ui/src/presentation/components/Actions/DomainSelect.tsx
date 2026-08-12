@@ -15,6 +15,12 @@ interface DomainSelectProps {
   labels: DomainSelectLabels;
   disabled?: boolean;
   className?: string;
+  /**
+   * `'compact'` renders a single-row chip pair for tight surfaces (the sidebar's
+   * inline project creator) instead of the two-column description cards. Same
+   * radiogroup semantics — only the density changes.
+   */
+  size?: 'default' | 'compact';
 }
 
 const DOMAINS: readonly Domain[] = ['service', 'game'];
@@ -27,15 +33,22 @@ const ICONS: Record<Domain, typeof Layers> = { service: Layers, game: Gamepad2 }
  * switcher, so this is a controlled input that writes to whatever form state
  * its consumer owns. Labels are passed in so the component stays i18n-neutral.
  */
-export function DomainSelect({ value, onChange, labels, disabled, className }: DomainSelectProps) {
+export function DomainSelect({
+  value, onChange, labels, disabled, className, size = 'default',
+}: DomainSelectProps) {
+  const compact = size === 'compact';
   return (
-    <div role="radiogroup" className={`grid grid-cols-2 gap-3 ${className ?? ''}`}>
+    <div
+      role="radiogroup"
+      className={`${compact ? 'flex gap-1.5' : 'grid grid-cols-2 gap-3'} ${className ?? ''}`}
+    >
       {DOMAINS.map((d) => (
         <DomainCard
           key={d}
           domain={d}
           selected={value === d}
           disabled={disabled}
+          compact={compact}
           label={labels[d]}
           onSelect={() => onChange(d)}
         />
@@ -45,11 +58,12 @@ export function DomainSelect({ value, onChange, labels, disabled, className }: D
 }
 
 function DomainCard({
-  domain, selected, disabled, label, onSelect,
+  domain, selected, disabled, compact, label, onSelect,
 }: {
   domain: Domain;
   selected: boolean;
   disabled?: boolean;
+  compact?: boolean;
   label: DomainOptionLabel;
   onSelect: () => void;
 }) {
@@ -79,34 +93,42 @@ function DomainCard({
       onClick={() => { if (!disabled) onSelect(); }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="relative flex items-center gap-3 p-3 text-left transition-all overflow-hidden"
+      className={
+        compact
+          ? 'relative flex items-center gap-1.5 px-2 py-1 text-left transition-all overflow-hidden'
+          : 'relative flex items-center gap-3 p-3 text-left transition-all overflow-hidden'
+      }
       style={{
-        borderRadius: 'var(--r-xl, 14px)',
+        borderRadius: compact ? 'var(--r-md, 8px)' : 'var(--r-xl, 14px)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1,
         ...style,
       }}
     >
-      <div
-        className="flex items-center justify-center shrink-0"
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 'var(--r-lg, 10px)',
-          background: selected ? 'oklch(100% 0 0 / 0.22)' : 'var(--bg-surface-2)',
-          color: selected ? 'white' : 'var(--text-3)',
-        }}
-      >
-        <Icon size={18} />
-      </div>
+      {compact ? (
+        <Icon size={13} style={{ color: selected ? 'white' : 'var(--text-3)' }} />
+      ) : (
+        <div
+          className="flex items-center justify-center shrink-0"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 'var(--r-lg, 10px)',
+            background: selected ? 'oklch(100% 0 0 / 0.22)' : 'var(--bg-surface-2)',
+            color: selected ? 'white' : 'var(--text-3)',
+          }}
+        >
+          <Icon size={18} />
+        </div>
+      )}
       <div className="min-w-0">
         <div
-          className="text-sm font-semibold"
+          className={compact ? 'text-[11px] font-medium' : 'text-sm font-semibold'}
           style={{ color: selected ? 'white' : 'var(--text-1)' }}
         >
           {label.title}
         </div>
-        {label.desc && (
+        {!compact && label.desc && (
           <div
             className="text-[11px] leading-snug"
             style={{ color: selected ? 'oklch(100% 0 0 / 0.85)' : 'var(--text-3)' }}

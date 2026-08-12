@@ -23,6 +23,13 @@ export const ResolvableFields = {
   overrideDirective: Annotation<string | undefined>,
   chatSource: Annotation<boolean | undefined>,
   isResume: Annotation<boolean | undefined>,
+  /**
+   * The project's `config.json`. Common (not job-specific): it carries the
+   * workspace `domain` SSOT, which `triage` reads on EVERY job type before its
+   * LLM turn. It lived only on the code/design graphs, so plan/visual triage had
+   * no persisted domain and fell back to guessing from workspace shape.
+   */
+  workspaceConfig: Annotation<Record<string, any> | undefined>,
   deps: Annotation<Record<string, any> | undefined>,
   _httpJobId: Annotation<string | undefined>,
   tokenUsage: Annotation<TokenUsage | undefined>,

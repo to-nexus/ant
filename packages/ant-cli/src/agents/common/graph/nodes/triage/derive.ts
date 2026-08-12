@@ -31,54 +31,53 @@ export function deriveTriageMode(intentId: IntentId): Mode {
 }
 
 /**
- * Domain derivation (single SSOT — Game-Activation T1-a). Precedence:
+ * Workspace domain resolution — the single SSOT. Precedence:
  *
- *   1. `actionMetadata.domain` — explicit user selection (DomainToggle)
- *      always wins.
- *   2. Intent group — a `design-game-art` intent is game-only by
- *      construction (D28), so its presence pins the domain to `'game'`
- *      even on the infer path (chat-driven, no DomainToggle).
- *   3. Workspace-shape hint — a persisted game workspace is recognised by
- *      the presence of a `visual/game-art/ant/` design doc, a structurally
- *      game-only surface (D28). Universal intents (`gen-spec` / `gen-sys-*`
- *      / `gen-code-*`) invoked in such a workspace resolve to `'game'` so
- *      downstream overlays / slots / catalogs pick the game branch instead
- *      of falling to service. Plan filenames are NOT a domain signal — the
- *      plan document is the domain-neutral `plan/prd.md` in every domain;
- *      domain identity is `WorkspaceConfig.domain` (D22), surfaced via
- *      `actionMetadata.domain` (precedence 1).
+ *   1. `configDomain` — `WorkspaceConfig.domain` from the project's
+ *      `config.json`. Domain is a project-level property set at creation and
+ *      changed only in project settings, so an explicit value is ABSOLUTE:
+ *      nothing infers, guesses, or overrides it.
+ *   2. `actionMetadata.domain` — the FE's mirror of the same `config.json`
+ *      field. A per-turn buffer, so it is absent on plain chat turns; consulted
+ *      only while (1) is absent.
+ *   3. Workspace-shape hint — legacy fallback for projects that predate a
+ *      persisted `domain`. A game workspace is recognised by a game-art design
+ *      surface. Plan filenames are NOT a domain signal — `plan/prd.md` is
+ *      domain-neutral in every domain.
  *   4. Default `'service'`.
  *
- * This replaces the earlier metadata-only stub whose docstring promised a
- * workspaceState hint that was never implemented. With the hint wired here,
- * the game workarounds in `design/nodes/tool/handlers/assets.ts` and
- * `gameArtDesignDecompose.ts` (which re-derived game from the intent group
- * locally) become non-load-bearing.
+ * `intentId` is deliberately NOT an input. The earlier ladder pinned the domain
+ * to `'game'` whenever the intent group was `design-game-art`, which inverted
+ * the axis: the intent is chosen by the triage LLM *from a domain-scoped
+ * candidate set*, so treating it as domain evidence let a mis-picked intent
+ * overrule the project's own setting. Candidate scoping now lives at the one
+ * place that owns it — `isIntentVisibleForDomain` filters the catalog before
+ * the LLM ever sees it — which makes that rung both redundant and circular.
+ *
+ * This order matches `pickAssetsRoot` (`workspaceDomain` first), so the two
+ * consumers of the axis no longer disagree about who owns it.
  */
-export function deriveTriageDomain(
-  intentId: IntentId,
-  workspaceState: WorkspaceState | undefined,
-  actionMetadata: ActionMetadata | undefined,
-): Domain {
-  if (actionMetadata?.domain === 'game' || actionMetadata?.domain === 'service') {
-    return actionMetadata.domain;
-  }
-  if (deriveFromIntent(intentId).intentGroup === 'design-game-art') {
-    return 'game';
-  }
-  if (workspaceIsGameShaped(workspaceState)) {
-    return 'game';
-  }
+export function resolveWorkspaceDomain(input: {
+  configDomain?: Domain | string;
+  actionMetadata?: ActionMetadata;
+  workspaceState?: WorkspaceState;
+}): Domain {
+  if (isDomain(input.configDomain)) return input.configDomain;
+  if (isDomain(input.actionMetadata?.domain)) return input.actionMetadata.domain;
+  if (workspaceIsGameShaped(input.workspaceState)) return 'game';
   return 'service';
 }
 
+function isDomain(v: unknown): v is Domain {
+  return v === 'game' || v === 'service';
+}
+
 /**
- * Documented workspaceState → game hint. A workspace is treated as
- * game-shaped when a game-art design doc is present (`visual/game-art/ant/`)
- * — a structurally game-only surface (D28). Plan filenames, UI
- * (`ui-*.json`), and PRD signals deliberately do NOT flip the domain: the
- * plan document is the domain-neutral `plan/prd.md`, and UI/PRD are the
- * service default.
+ * Legacy workspaceState → game hint (rung 3). A workspace is treated as
+ * game-shaped when a game-art design surface holds real content. `analyzeWorkspace`
+ * owns that predicate — note it must test populated content, not mere file
+ * presence: `ensureCanonicalStructure` scaffolds an empty `game-art/figma/figma.json`
+ * into every project, which once made every workspace game-shaped.
  */
 function workspaceIsGameShaped(ws: WorkspaceState | undefined): boolean {
   if (!ws) return false;

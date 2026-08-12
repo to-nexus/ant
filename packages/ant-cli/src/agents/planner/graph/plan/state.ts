@@ -217,6 +217,7 @@ export function createInitialPlanState(params: {
   chatSource?: boolean;
   skipTriage?: boolean;
   actionMetadata?: ActionMetadata;
+  workspaceConfig?: PlanGraphState['workspaceConfig'];
 }): PlanGraphState {
   return {
     directive: params.directive,
@@ -234,6 +235,7 @@ export function createInitialPlanState(params: {
     chatSource: params.chatSource,
     skipTriage: params.skipTriage,
     actionMetadata: params.actionMetadata,
+    workspaceConfig: params.workspaceConfig,
     deps: params.deps,
     _httpJobId: params._httpJobId,
     recursionCount: 0,

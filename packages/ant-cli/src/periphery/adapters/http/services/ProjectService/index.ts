@@ -26,7 +26,7 @@ import {
   createFeatureDeletionPhaseEmitter,
   type FeatureDeletionPhaseEmitter,
 } from './featureDeletionPhaseEmitter';
-import type { FeatureDeletionPhase, ProjectDeletionPhase } from '@ant/shared';
+import type { Domain, FeatureDeletionPhase, ProjectDeletionPhase } from '@ant/shared';
 
 // Import sub-services
 import { ProjectCrudService } from './ProjectCrudService';
@@ -117,7 +117,11 @@ export class ProjectService {
    * the pre-delete step are propagated EXCEPT "Project not found" which is
    * the expected case when force is enabled defensively.
    */
-  async createProject(id: string, userContext: UserContext, opts?: { force?: boolean }): Promise<void> {
+  async createProject(
+    id: string,
+    userContext: UserContext,
+    opts?: { force?: boolean; domain?: Domain },
+  ): Promise<void> {
     if (opts?.force) {
       try {
         await this.deleteProject(id, userContext, { force: true });
@@ -125,7 +129,7 @@ export class ProjectService {
         if (e?.message !== 'Project not found') throw e;
       }
     }
-    return this.projectCrud.createProject(id, userContext);
+    return this.projectCrud.createProject(id, userContext, { domain: opts?.domain });
   }
 
   /**

@@ -31,6 +31,7 @@ const workspaceState = () =>
 describe('triage rules.md — rev-vs-gen directive-form discriminator lock', () => {
   it('keeps the carried-delta / failure-report axis in the system prompt', async () => {
     const { system } = await buildTriagePrompt({
+      domain: 'service',
       userInput: 'x',
       currentJob: 'design',
       currentAgent: 'architect',
@@ -58,6 +59,7 @@ describe('triage rules.md — rev-vs-gen directive-form discriminator lock', () 
    */
   it('keeps the pending-vs-consumed consumption axis (both directions)', async () => {
     const { system } = await buildTriagePrompt({
+      domain: 'service',
       userInput: 'x',
       currentJob: 'design',
       currentAgent: 'architect',
@@ -95,6 +97,7 @@ describe('triage rules.md — rev-vs-gen directive-form discriminator lock', () 
     };
 
     const { user } = await buildTriagePrompt({
+      domain: 'service',
       userInput: 'x',
       currentJob: 'design',
       currentAgent: 'architect',

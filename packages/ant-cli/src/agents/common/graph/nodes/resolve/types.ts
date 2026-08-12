@@ -8,7 +8,7 @@
  */
 
 import type { TokenUsage } from '../../llmHelpers.js';
-import type { ActionMetadata } from '@ant/shared';
+import type { ActionMetadata, Domain } from '@ant/shared';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ResolvableState — base state type consumed by resolve node
@@ -21,6 +21,20 @@ export interface ResolvableState {
   overrideDirective?: string;
   chatSource?: boolean;
   isResume?: boolean;
+
+  /**
+   * The project's `config.json` (`WorkspaceConfig`), loaded once by the
+   * orchestrator and carried for every job type. `domain` is the SSOT for the
+   * workspace domain axis: it is a project-level property, so no node may infer
+   * it. `basis` carries the settled tiers. Declared structurally (not the full
+   * `WorkspaceConfig`) so the common nodes stay independent of the BE config
+   * type while replacing the `(state as any).workspaceConfig` casts.
+   */
+  workspaceConfig?: {
+    domain?: Domain;
+    basis?: unknown;
+    [key: string]: unknown;
+  };
 
   deps?: {
     llm?: any;

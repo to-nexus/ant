@@ -1,7 +1,7 @@
 import { architectAgent } from "../agents/architect/index";
 import { runPlanGraph } from "../agents/planner";
 import { runAskGraph } from "../agents/architect/graph/ask/runner";
-import { analyzeWorkspace, AgentRegistry, buildTriagePrompt, parseIntentIdTag, parseResumeRequestTag, deriveTriageGroup, validateIntentId } from "../agents/common/graph/nodes/triage";
+import { analyzeWorkspace, AgentRegistry, buildTriagePrompt, parseIntentIdTag, parseResumeRequestTag, deriveTriageGroup, resolveWorkspaceDomain, validateIntentId } from "../agents/common/graph/nodes/triage";
 import { deriveInlineAskWorkRouting, type InterruptedJobSignal } from "../core/session/interruptedSignal";
 import type { IntentId } from "@ant/shared";
 import { LLM_TEMPERATURE } from "../core/ports/llmSampling";
@@ -557,6 +557,11 @@ export async function orchestrator(params: {
         language: language as 'ko' | 'en',
         workspaceState: { featurePath: featurePath || '' } as any,
         featurePath: featurePath || '',
+        // `config.json` is the SSOT for the workspace domain axis, and triage
+        // needs it BEFORE its LLM turn (it scopes the intent catalog). Without
+        // it here a plain chat turn had no persisted domain to read and fell
+        // through to a workspace-shape guess.
+        workspaceConfig: configData,
         // Authoritative orchestrator-level signal (propagated from
         // ANT_IS_RESUME in job-runner). The legacy `!!(overrideDirective && jobId)`
         // heuristic was removed in session-redesign §3 — keeping it here would
@@ -785,6 +790,8 @@ export async function orchestrator(params: {
         chatSource,
         skipTriage,
         actionMetadata,
+        // Workspace domain SSOT for triage (see the planner branch).
+        workspaceConfig: configData,
         deps: {
           llm,
           directLLM,
@@ -878,11 +885,23 @@ async function runInlineAskDispatch(
   workspaceState.hasMetaDirectives = true;
   const language = AgentRegistry.detectLanguage(message);
 
+  // Same domain SSOT as the full-job triage node — the inline channel builds its
+  // own prompt, so it must scope the intent catalog by the persisted project
+  // domain too. This dispatch runs before the job-level config load, so read it here.
+  const inlineConfig = projectId
+    ? await new FileConfigAdapter().load(projectId).catch(() => undefined)
+    : undefined;
+  const domain = resolveWorkspaceDomain({
+    configDomain: inlineConfig?.domain,
+    workspaceState,
+  });
+
   const promptPort = new FilePromptAdapter();
   const { system, user } = await buildTriagePrompt({
     userInput: message,
     currentJob,
     currentAgent,
+    domain,
     workspaceState,
     promptPort,
     interruptedJob: interruptedSignal ?? undefined,

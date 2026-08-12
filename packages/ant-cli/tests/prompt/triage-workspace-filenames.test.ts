@@ -31,6 +31,7 @@ describe('buildTriagePrompt — workspace filename signals', () => {
   it('forwards specDocNames and systemDesignFileNames into the template vars', async () => {
     const render = vi.fn(async () => 'rendered');
     await buildTriagePrompt({
+      domain: 'service',
       userInput: 'fix these defects',
       currentJob: 'design',
       currentAgent: 'architect',
@@ -46,6 +47,7 @@ describe('buildTriagePrompt — workspace filename signals', () => {
   it('renders the filenames in triage base.md when the flags are true, omits them when false', async () => {
     const adapter = new FilePromptAdapter();
     const withDocs = await buildTriagePrompt({
+      domain: 'service',
       userInput: 'x',
       currentJob: 'design',
       currentAgent: 'architect',
@@ -56,6 +58,7 @@ describe('buildTriagePrompt — workspace filename signals', () => {
     expect(withDocs.user).toContain('fe-system-main.md');
 
     const withoutDocs = await buildTriagePrompt({
+      domain: 'service',
       userInput: 'x',
       currentJob: 'design',
       currentAgent: 'architect',
@@ -85,6 +88,7 @@ describe('buildTriagePrompt — interrupted-work signal (resume-request gate)', 
   it('forwards the signal into template vars WITHOUT the internal jobId', async () => {
     const render = vi.fn(async () => 'rendered');
     await buildTriagePrompt({
+      domain: 'service',
       userInput: 'resume the work',
       currentJob: 'code',
       currentAgent: 'architect',
@@ -106,6 +110,7 @@ describe('buildTriagePrompt — interrupted-work signal (resume-request gate)', 
   it('renders the INTERRUPTED WORK block + resumeRequest instruction only when the signal is provided', async () => {
     const adapter = new FilePromptAdapter();
     const withSignal = await buildTriagePrompt({
+      domain: 'service',
       userInput: 'x',
       currentJob: 'code',
       currentAgent: 'architect',
@@ -119,6 +124,7 @@ describe('buildTriagePrompt — interrupted-work signal (resume-request gate)', 
     expect(withSignal.user).not.toContain('icy-landing-glade');
 
     const withoutSignal = await buildTriagePrompt({
+      domain: 'service',
       userInput: 'x',
       currentJob: 'code',
       currentAgent: 'architect',

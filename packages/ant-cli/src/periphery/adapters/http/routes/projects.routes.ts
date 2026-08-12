@@ -117,7 +117,7 @@ export function createProjectsRoutes(deps: {
   // Create a new project
   router.post('/projects', validateBody(createProjectSchema), async (req: Request, res: Response) => {
     try {
-      const { id } = req.body;
+      const { id, domain } = req.body;
 
       if (!id || typeof id !== 'string') {
         return res.status(400).json({ error: 'Project ID is required and must be a string' });
@@ -139,7 +139,9 @@ export function createProjectsRoutes(deps: {
         });
       }
 
-      await deps.projectService.createProject(id, userContext, { force });
+      // `domain` is accepted at creation (not only via a follow-up config PUT) so
+      // the workspace domain SSOT exists from the project's first job onward.
+      await deps.projectService.createProject(id, userContext, { force, domain });
       res.json({ success: true, id });
     } catch (error: any) {
       if (error.message === 'Project already exists') {

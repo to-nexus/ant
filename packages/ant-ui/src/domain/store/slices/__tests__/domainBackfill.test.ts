@@ -11,9 +11,15 @@
  *      the explicit field and the mirror's normal branch turns into a
  *      no-op (idempotent).
  *
- * Without (2) the disk SSOT stays empty forever — the system happens to
- * behave because every code path defaults to 'service', but the
- * "WorkspaceConfig.domain is the SSOT" invariant is silently broken.
+ * Without (2) the disk SSOT stays empty forever — and that is NOT benign:
+ * the backend resolves the workspace domain from `config.json`, so an absent
+ * field leaves it inferring from workspace shape (which once reported every
+ * scaffolded project as game-shaped).
+ *
+ * This is now the LEGACY path: `POST /projects` accepts `domain` and
+ * `createProject` writes it at creation, and the BE backfills on read
+ * (`domain-surface-boundary.test.ts` §6). This mirror remains the FE-side
+ * guarantee for projects that predate both.
  *
  * The companion `domainTransition.test.ts > backfills disk SSOT...` test
  * exercises the same contract one layer below (calling

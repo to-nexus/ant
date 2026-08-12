@@ -244,6 +244,8 @@ export interface RunVisualGraphParams {
   chatSource?: boolean;
   skipTriage?: boolean;
   actionMetadata?: import('@ant/shared').ActionMetadata;
+  /** Project `config.json` — carries the workspace `domain` SSOT for triage. */
+  workspaceConfig?: VisualGraphState['workspaceConfig'];
   deps: VisualGraphDeps;
   visualSettings?: VisualSettings;
   _httpJobId?: string;

@@ -251,6 +251,22 @@ export async function analyzeWorkspace(
     }
   };
 
+  // A `figma/` sub-source is NOT detectable by mere file presence:
+  // `ensureCanonicalStructure` scaffolds `{"file": null}` placeholders into BOTH
+  // surfaces for every project regardless of domain, so `dirHasAnyFile` reported
+  // every workspace as both UI- and game-art-shaped. Reuse the same populated-content
+  // predicate `hasFigmaConfig` applies above.
+  const figmaSurfaceIsPopulated = (absFigmaDir: string): boolean => {
+    try {
+      const figmaJsonPath = path.join(absFigmaDir, 'figma.json');
+      if (!fs.existsSync(figmaJsonPath)) return false;
+      const raw = JSON.parse(fs.readFileSync(figmaJsonPath, 'utf-8'));
+      return isFigmaDataPopulated(migrateFigmaConfig(raw));
+    } catch {
+      return false;
+    }
+  };
+
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // visual/ui/{ant,handoff,figma} — UI design surface (all sub-sources)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -262,7 +278,7 @@ export async function analyzeWorkspace(
     existsInUiAnt('ui-assets.json') ||
     existsInUiAnt('ui-spec.json') ||
     dirHasAnyFile(path.join(uiParentAbs, 'handoff')) ||
-    dirHasAnyFile(path.join(uiParentAbs, 'figma'));
+    figmaSurfaceIsPopulated(path.join(uiParentAbs, 'figma'));
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // visual/game-art/{ant,handoff,figma} — game-art design surface (all sub-sources)
@@ -275,7 +291,7 @@ export async function analyzeWorkspace(
     existsInGameArtAnt('game-art-assets.json') ||
     existsInGameArtAnt('game-art-spec.json') ||
     dirHasAnyFile(path.join(gameArtParentAbs, 'handoff')) ||
-    dirHasAnyFile(path.join(gameArtParentAbs, 'figma'));
+    figmaSurfaceIsPopulated(path.join(gameArtParentAbs, 'figma'));
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Aggregate `hasDesignDoc` — any architecture/visual artifact present.

@@ -9,9 +9,10 @@ import { cn } from '@/shared/utils/design-system';
 import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { isValidName, delay, generateProjectName, generateFeatureName } from '@/presentation/components/ProjectWizardModal/constants';
-import { isValidFeatureName } from '@ant/shared';
+import { isValidFeatureName, type Domain } from '@ant/shared';
 import { featureNameErrorKey } from '@/application/utils/featureNameError';
 import { BrandHero } from '@/presentation/components/common/BrandHero';
+import { DomainSelect } from '@/presentation/components/Actions/DomainSelect';
 
 // ─── Ambient Canvas ─────────────────────────────────────────────────
 // Renders soft floating particles that drift upward — subtle "energy" feel.
@@ -208,6 +209,10 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
   const [featureName, setFeatureName] = useState(() =>
     generateFeatureName(useStore.getState().features.map((f) => f.name)),
   );
+  // Workspace domain — a creation-time decision persisted into `config.json` and
+  // read by every job. Only offered for a brand-new project: an existing
+  // project's domain is owned by project settings.
+  const [domain, setDomain] = useState<Domain>('service');
 
   const projectNameExists = !existingProjectId && !!projectName.trim() && projects.includes(projectName.trim());
   const featureNameExists = !!existingProjectId && !!featureName.trim() && features.some((f) => f.name === featureName.trim());
@@ -264,7 +269,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       } else {
         setActiveStep('workspace');
         console.log(`[QuickStart] Creating project: ${projectId}`);
-        await Promise.all([createProject(projectId), delay(1200)]);
+        await Promise.all([createProject(projectId, { domain }), delay(1200)]);
       }
 
       // Step: feature
@@ -341,7 +346,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       setIsSubmitting(false);
       setActiveStep('idle');
     }
-  }, [input, isSubmitting, isAuthenticated, existingProjectId, projectName, featureName, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
+  }, [input, isSubmitting, isAuthenticated, existingProjectId, projectName, featureName, domain, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -800,6 +805,36 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
               )}
             </div>
           </div>
+          {/* Domain — creation-time only; an existing project's domain is owned
+              by project settings. Persisted with the project so the backend has
+              an authoritative domain from the first job onward. */}
+          {!existingProjectId && (
+            <div className="flex items-start gap-1.5">
+              <span
+                className="text-[11px] font-medium whitespace-nowrap h-[30px] px-2.5 flex items-center justify-center rounded-full"
+                style={{
+                  background: 'var(--bg-surface-2)',
+                  color: 'var(--text-2)',
+                }}
+              >
+                {t('quickstart.projectWizard.domainLabel')}
+              </span>
+              <div>
+                <DomainSelect
+                  size="compact"
+                  value={domain}
+                  onChange={setDomain}
+                  labels={{
+                    service: { title: t('quickstart.projectWizard.domainService') },
+                    game: { title: t('quickstart.projectWizard.domainGame') },
+                  }}
+                />
+                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--text-3)' }}>
+                  {t('quickstart.projectWizard.domainHint')}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )}

@@ -278,6 +278,26 @@ export function isActionSurfaced(
   return def.status !== 'hidden' && isActionVisibleForDomain(def, domain);
 }
 
+/**
+ * Intent-level view of the same domain gate — an intent inherits the gate of
+ * the action card that owns its `intentGroup`. Enumerating INTENT_DEFINITIONS
+ * without this is how an out-of-domain intent became a *candidate*: the triage
+ * prompt's intent catalog offered `design-game-art` rows to a service
+ * workspace, and a picked game-art intent was then read back as evidence that
+ * the workspace was a game workspace.
+ *
+ * Deliberately domain-axis-only (no `status` term, unlike `isActionSurfaced`):
+ * narrowing the candidate set by domain must not silently also narrow it by
+ * lifecycle status.
+ */
+export function isIntentVisibleForDomain(
+  intent: Pick<IntentDefinition, 'intentGroup'>,
+  domain: Domain | undefined,
+): boolean {
+  const owner = ACTION_DEFINITIONS.find(a => a.id === intent.intentGroup);
+  return owner ? isActionVisibleForDomain(owner, domain) : true;
+}
+
 // ============================================
 // Domain-aware label SSOT
 // ============================================

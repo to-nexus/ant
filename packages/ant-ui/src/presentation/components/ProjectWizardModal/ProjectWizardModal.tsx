@@ -376,7 +376,9 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
       if (needsProject) {
         updateExecStep('project', 'active');
         try {
-          await createProject(projectId);
+          // Domain rides the create call so the project is never persisted
+          // without one (the config PUT below still records the rest).
+          await createProject(projectId, { domain });
         } catch (createErr) {
           // Server returns 409 + canForceCleanup when stale state survives a
           // failed delete. Surface a confirm dialog so the user can opt-in
@@ -402,7 +404,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
             if (!confirmed) {
               throw createErr;
             }
-            await createProject(projectId, { force: true });
+            await createProject(projectId, { force: true, domain });
           } else {
             throw createErr;
           }

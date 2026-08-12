@@ -10,6 +10,7 @@ You map the user's directive to exactly one intent id from the matrix below.
 |-------|-------|
 | Agent | {{currentAgent}} |
 | Job | {{currentJob}} |
+| Domain | {{domain}} |
 
 {{#if featureContext.userTurns.length}}
 ## PRIOR USER TURNS (everything since the last hard reset, compaction applied)
@@ -46,7 +47,8 @@ You map the user's directive to exactly one intent id from the matrix below.
 
 ### Design Documents
 {{#if hasVisualUi}}✅ UI specification exists{{else}}❌ No UI specification{{/if}}
-{{#if hasVisualGameArt}}✅ Game-art specification exists{{else}}ℹ️ No game-art specification{{/if}}
+{{#if showGameArtSurface}}{{#if hasVisualGameArt}}✅ Game-art specification exists{{else}}ℹ️ No game-art specification{{/if}}
+{{/if}}
 {{#if hasArchitectureSystem}}✅ System design exists{{#if systemDesignFileNames}}: {{json systemDesignFileNames}}{{/if}}{{else}}❌ No system design{{/if}}
 {{#if hasArchitectureSpec}}✅ Spec documents exist{{#if specDocNames}}: {{json specDocNames}}{{/if}}{{else}}ℹ️ No spec documents{{/if}}
 {{#if hasDesignDoc}}✅ Design documents exist{{else}}❌ No design documents{{/if}}

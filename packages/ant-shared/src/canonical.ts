@@ -192,8 +192,12 @@ export function figmaConfigPathFor(domain: Domain | undefined | null): string {
 
 /**
  * Every figma workfile reference location. For domain-agnostic presence scans
- * (e.g. `WorkspaceState.hasFigmaConfig`) — the two domains are mutually
- * exclusive per workspace, so an OR over this list needs no domain input.
+ * (e.g. `WorkspaceState.hasFigmaConfig`) — at most one surface can carry a
+ * *populated* workfile per workspace, so an OR over this list needs no domain
+ * input. Note that both paths always EXIST on disk: `ensureCanonicalStructure`
+ * scaffolds a `{"file": null}` placeholder into each surface regardless of
+ * domain, so any presence scan over this list must test populated content
+ * (`isFigmaDataPopulated`) rather than file or directory existence.
  */
 export const FIGMA_CONFIG_PATHS: ReadonlyArray<string> = [
   FIGMA_CONFIG_PATH,

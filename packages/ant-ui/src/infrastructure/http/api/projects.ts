@@ -1,3 +1,4 @@
+import type { Domain } from '@ant/shared';
 import type { Session } from '@/domain/models/session';
 import { API_BASE, authFetch, apiGet, apiPost, apiPut, apiDelete } from './client';
 
@@ -24,13 +25,17 @@ export function fetchReferenceCatalog(exclude?: string): Promise<ReferenceCatalo
  * Create a project. Pass `opts.force = true` to overwrite a stale existing
  * directory (server-side cascade deletes first). The 409 path returns an
  * `ApiError` with `canForceCleanup: true` so the wizard can prompt the user.
+ *
+ * `opts.domain` is the workspace domain, sent in the SAME request rather than a
+ * follow-up config PUT: domain is the SSOT every job's triage reads, so a project
+ * must never exist without one. Omitting it defaults to `'service'` server-side.
  */
 export function createProject(
   projectId: string,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; domain?: Domain },
 ): Promise<void> {
   const url = `${API_BASE()}/projects${opts?.force ? '?force=true' : ''}`;
-  return apiPost(url, { id: projectId });
+  return apiPost(url, { id: projectId, ...(opts?.domain ? { domain: opts.domain } : {}) });
 }
 
 export function renameProject(oldId: string, newId: string): Promise<{ success: boolean; oldId: string; newId: string }> {

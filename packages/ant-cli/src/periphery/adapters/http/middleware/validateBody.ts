@@ -103,6 +103,8 @@ export const executeJobSchema = z.object({
 export const createProjectSchema = z.object({
   id: z.string().min(1, 'Project ID is required').max(200),
   description: z.string().max(5000).optional(),
+  /** Workspace domain — persisted into `config.json` at creation; defaults to 'service'. */
+  domain: z.enum(['service', 'game']).optional(),
 }).passthrough();
 
 /**

@@ -20,7 +20,7 @@ import type { JobTiming } from '../../../common/graph/timing/JobTimingManager.js
  * Run the visual job graph.
  */
 export async function runVisualGraph(params: RunVisualGraphParams): Promise<any> {
-  const { directive, featurePath, deps, _httpJobId, visualSettings, isResume, chatSource, skipTriage, actionMetadata } = params;
+  const { directive, featurePath, deps, _httpJobId, visualSettings, isResume, chatSource, skipTriage, actionMetadata, workspaceConfig } = params;
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🎨 CREATOR AGENT - Visual');
@@ -67,6 +67,7 @@ export async function runVisualGraph(params: RunVisualGraphParams): Promise<any>
     overrideDirective: directive,
     chatSource,
     actionMetadata,
+    workspaceConfig,
 
     conversations: {},
     engineeredPrompt: undefined,
