@@ -42,10 +42,13 @@ the host port.
 
 ### `ANT_ENCRYPTION_KEY` errors on startup
 
-The CLI refuses to start without an encryption key. Generate one:
+When the variable is unset, a key is auto-generated and persisted to
+`<workspaceRoot>/.ant/encryption.key` — no action needed. A startup
+error here means the value you set is malformed: it must be exactly
+64 hex characters. Regenerate:
 
 ```bash
-echo "ANT_ENCRYPTION_KEY=$(openssl rand -base64 32)" >> packages/ant-cli/.env
+echo "ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> packages/ant-cli/.env
 ```
 
 ### LLM provider errors

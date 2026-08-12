@@ -95,20 +95,27 @@ Code, or Lovable *instead of* Ant.
 
 ## Quickstart
 
-**Requires** Node.js >= 22.13 · pnpm 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`) · Docker + Compose (for Redis) · an [LLM provider key](#providers).
+**Requires** Node.js >= 22.13 · pnpm 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`) · Docker + Compose (for Redis) · an [LLM provider key](#providers). **macOS/Linux** — Windows only via WSL2, untested.
 
 ```bash
 git clone https://github.com/to-nexus/ant && cd ant
 pnpm install
 
 cp packages/ant-cli/.env.example.local packages/ant-cli/.env
-# edit packages/ant-cli/.env
+# edit packages/ant-cli/.env — one value is mandatory:
 #   ANTHROPIC_API_KEY=sk-ant-...
-#   ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)
+# (Redis URL and the encryption key have working defaults in local mode.)
 
 pnpm dev:infra:redis      # Redis — the only required infra
-pnpm dev:all              # API + Realtime + Worker + Preview + UI + site
+pnpm dev:all              # API + Realtime + Worker + Preview + UI
 ```
+
+`pnpm doctor` checks the install end-to-end (versions, Redis, process
+health, provider keys) whenever something looks off.
+
+Prefer containers? `cp .env.example .env`, set your key, and
+`docker compose up -d` boots the whole stack (Redis included) behind
+[http://localhost:4200](http://localhost:4200) — no Node or pnpm on the host.
 
 Open [http://localhost:4200](http://localhost:4200) and write your first
 directive — for example, *"Build a TODO app with React and Tailwind"*.
@@ -180,6 +187,15 @@ Two caveats worth knowing before you pick: DeepSeek, GLM, and Kimi are wired
 through the OpenAI-compatible adapter rather than first-class clients, so
 provider-specific features may lag. And **image generation is Google-only** —
 the `visual` job needs `GEMINI_API_KEY` regardless of what you use elsewhere.
+
+**Local models (Ollama, llama.cpp, …) are not supported**, and that is a
+sizing fact rather than a policy: the code-job execute system prompt alone is
+≈39k tokens, and the effective floor is **≈200K context plus reliable native
+tool calling** — a 32K local model fails on the system prompt before the
+first tool call. What *is* supported: routing the registered DeepSeek / GLM /
+Kimi model ids through your own OpenAI-compatible gateway (LiteLLM, vLLM,
+OpenRouter) via `ANT_{DEEPSEEK,GLM,KIMI}_BASE_URL` — see
+[docs/reference/env-vars.md](docs/reference/env-vars.md#local--self-hosted-models).
 
 ---
 

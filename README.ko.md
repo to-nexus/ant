@@ -92,20 +92,27 @@ Lovable을 써야 하는 경우까지 포함해서.
 
 ## 빠른 시작
 
-**필요한 것** Node.js >= 22.13 · pnpm 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`) · Docker + Compose (Redis용) · [LLM 프로바이더 키](#프로바이더).
+**필요한 것** Node.js >= 22.13 · pnpm 11.1.0 (`corepack enable && corepack prepare pnpm@11.1.0 --activate`) · Docker + Compose (Redis용) · [LLM 프로바이더 키](#프로바이더). **macOS/Linux** — Windows는 WSL2 경유만 가능하며 미검증입니다.
 
 ```bash
 git clone https://github.com/to-nexus/ant && cd ant
 pnpm install
 
 cp packages/ant-cli/.env.example.local packages/ant-cli/.env
-# packages/ant-cli/.env 편집:
+# packages/ant-cli/.env 편집 — 필수 값은 하나입니다:
 #   ANTHROPIC_API_KEY=sk-ant-...
-#   ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)
+# (Redis URL과 암호화 키는 로컬 모드에서 기본값으로 동작합니다.)
 
 pnpm dev:infra:redis      # Redis — 유일한 필수 인프라
-pnpm dev:all              # API + Realtime + Worker + Preview + UI + site
+pnpm dev:all              # API + Realtime + Worker + Preview + UI
 ```
+
+설치가 이상해 보이면 `pnpm doctor`가 버전·Redis·프로세스 상태·프로바이더
+키를 한 번에 점검합니다.
+
+컨테이너가 편하다면 `cp .env.example .env`로 키만 넣고
+`docker compose up -d` — 호스트에 Node/pnpm 없이 Redis까지 전체 스택이
+[http://localhost:4200](http://localhost:4200) 뒤에서 떠오릅니다.
 
 [http://localhost:4200](http://localhost:4200)을 열고 첫 디렉티브를
 입력합니다 — 예: *"React + Tailwind로 TODO 앱 만들어줘"*.
@@ -177,6 +184,15 @@ Ant은 에이전트 런타임을 직접 구성했으므로 **중간에 라우터
 OpenAI 호환 어댑터를 경유하므로 프로바이더 고유 기능이 늦게 반영될 수
 있습니다. 그리고 **이미지 생성은 Google 전용**입니다 — `visual` 잡은 다른
 곳에서 무엇을 쓰든 `GEMINI_API_KEY`가 필요합니다.
+
+**로컬 모델(Ollama, llama.cpp 등)은 지원하지 않습니다.** 정책이 아니라
+크기의 문제입니다: code 잡 execute 시스템 프롬프트만 ≈39k 토큰이고, 실효
+최소 요건은 **≈200K 컨텍스트 + 신뢰할 수 있는 네이티브 tool calling**입니다
+— 32K 로컬 모델은 첫 tool call 이전에 시스템 프롬프트에서 무너집니다.
+지원되는 것: 레지스트리에 등록된 DeepSeek / GLM / Kimi 모델 id를
+`ANT_{DEEPSEEK,GLM,KIMI}_BASE_URL`로 자체 OpenAI 호환 게이트웨이(LiteLLM,
+vLLM, OpenRouter)에 라우팅하는 것 —
+[docs/reference/env-vars.md](docs/reference/env-vars.md#local--self-hosted-models) 참고.
 
 ---
 

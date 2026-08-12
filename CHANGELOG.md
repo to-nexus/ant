@@ -7,6 +7,55 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Root `docker-compose.yml`** — the full stack (Redis, the four backend
+  processes, and an nginx gateway serving the UI same-origin at `:4200`) with
+  only Docker installed: `cp .env.example .env && docker compose up -d`. The
+  committed `docker/nginx.conf` is compose-only; the cloud deployment keeps
+  mounting its own config.
+- **`pnpm doctor`** — read-only install self-check: Node/pnpm versions, install
+  state, Redis reachability, the four process health endpoints, a BullMQ
+  worker heuristic, and provider-key presence. `--live` additionally validates
+  keys against the provider; `--json` for machines.
+- **`ANT_{DEEPSEEK,GLM,KIMI}_BASE_URL`** — endpoint overrides for the
+  OpenAI-compatible providers, so registered model ids can route through a
+  self-hosted gateway (LiteLLM / vLLM / OpenRouter). Unset means the previous
+  hardcoded endpoints, byte-identical behavior.
+
+### Changed
+
+- **`ANT_REDIS_URL` now defaults to `redis://localhost:16379` in local mode**
+  (SSOT: `core/config/redisUrl.ts`); cloud mode still fails fast when unset.
+  The root scripts dropped their `ANT_REDIS_URL=...` prefixes, so a value in
+  `packages/ant-cli/.env` now wins where the prefix used to shadow it.
+- **`ANT_ENCRYPTION_KEY` documentation matches the code**: the key is
+  auto-generated and persisted on first boot; a manually set value must be
+  64 hex chars (`openssl rand -hex 32` — the previously documented `-base64`
+  variant was rejected at boot).
+- **`pnpm dev:all` / `start:all` no longer boot the marketing site**; run
+  `pnpm dev:site` separately. Added a root `pnpm test` entry point.
+- **Installs are guarded**: `preinstall` rejects npm/yarn, and
+  `engine-strict` enforces Node >= 22.13 and pnpm >= 11 (pnpm 10 silently
+  ignored pnpm-11 workspace keys and skipped native postinstalls).
+- README/install docs state the OS position (macOS/Linux; Windows via WSL2,
+  untested) and the local-model boundary (≈200K-context + native tool-calling
+  floor, with numbers).
+
+### Fixed
+
+- **`packages/ant-cli/Dockerfile` ripgrep sanity checks** were pinned to the
+  pre-1.18 layout (postinstall-downloaded `@vscode/ripgrep/bin/rg`); since the
+  1.18 bump the binary ships as a platform-specific optionalDependency, so
+  every image build failed. Checks now probe `@vscode/ripgrep-<platform>/bin/rg`.
+- **`packages/ant-ui/Dockerfile` did not copy `@ant/shared` / `@ant/auth-client`**,
+  so the vite build could not resolve its workspace imports. (The cloud deploy
+  builds the UI on CI and syncs to S3, so only image builds were affected.)
+
+### Removed
+
+- Dead env vars: `ANT_PREVIEW_WORKERS` (no readers) from scripts and docs.
+
 ## [1.1.0] - 2026-08-12
 
 ### Added

@@ -13,9 +13,9 @@ For deployment-specific recommendations, see
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANT_SERVER_MODE` | `local` | `local` or `cloud`. Decides auth tenant, IDE orchestrator, and Figma transport. |
-| `ANT_REDIS_URL` | `redis://localhost:16379` | Redis connection URL. Required in cloud mode. |
-| `ANT_ENCRYPTION_KEY` | — | 32+ byte random string. Required. Generate with `openssl rand -base64 32`. Encrypts the per-user credential store, including the [MCP credentials](../concepts/custom-agents.md#credentials-for-mcp-servers) custom agents reference. |
-| `ANT_WORKSPACE_BASE_PATH` | `./workspaces` | Where Ant stores per-feature data. EFS mount root in cloud. |
+| `ANT_REDIS_URL` | `redis://localhost:16379` (local mode only) | Redis connection URL. Local mode defaults to the `pnpm dev:infra:redis` port; **cloud mode has no default and fails fast when unset**. SSOT: `core/config/redisUrl.ts`. |
+| `ANT_ENCRYPTION_KEY` | auto-generated | Optional. When unset, a key is generated and persisted to `<workspaceRoot>/.ant/encryption.key` (mode 0600). To set it manually it must be exactly 64 hex chars: `openssl rand -hex 32`. Encrypts the per-user credential store, including the [MCP credentials](../concepts/custom-agents.md#credentials-for-mcp-servers) custom agents reference. |
+| `ANT_WORKSPACE_BASE_PATH` | sibling `../ant-workspaces`, else `<cwd>/workspaces` | Where Ant stores per-feature data. EFS mount root in cloud. |
 | `ANT_CUSTOM_AGENTS_DIR` | — | Org-scope [custom-agent](../concepts/custom-agents.md) definitions root (self-host). Read-only for members; the user scope shadows it. |
 | `ANT_BUILD_SHA` | unset | Git SHA of the running build, baked in at image build time. Reported as `buildSha` by `GET /api/system/config` so a FE/BE version skew is observable. |
 
@@ -33,8 +33,26 @@ Key names are unprefixed — the SSOT is `PROVIDER_API_KEY_ENV` in [`@ant/shared
 | `KIMI_API_KEY` | — | Kimi / Moonshot (OpenAI-compatible endpoint). |
 | `ANT_LLM_MOCK` | `false` | Use the mock LLM adapter (for tests / CI). |
 | `ANT_LLM_MOCK_RESPONSE_DIR` | — | Directory the mock adapter replays canned responses from. |
+| `ANT_DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | Override the DeepSeek endpoint (OpenAI-compatible). |
+| `ANT_GLM_BASE_URL` | `https://api.z.ai/api/paas/v4` | Override the GLM / Z.ai endpoint (OpenAI-compatible). |
+| `ANT_KIMI_BASE_URL` | `https://api.moonshot.ai/v1` | Override the Kimi / Moonshot endpoint (OpenAI-compatible). |
 
 Per-provider reasoning toggles (operator hard opt-outs): `DEEPSEEK_THINKING=disabled`, `GLM_THINKING=disabled`, `OPENAI_REASONING_EFFORT=low\|medium\|high\|xhigh`.
+
+### Local / self-hosted models
+
+The three `*_BASE_URL` overrides exist so a self-hoster can route an
+**already-registered** model id through an OpenAI-compatible gateway
+(LiteLLM, vLLM, OpenRouter). They do **not** add arbitrary-model support:
+`MODEL_REGISTRY` in `@ant/shared` is a frozen literal, and an unknown model
+id is silently replaced by the tier default at project save.
+
+Ant's prompts are sized for large-context hosted models — the code-job
+execute system prompt alone is ≈39k tokens and the decompose rules file is
+≈42k tokens, with hardcoded budget areas summing past 150k. **The effective
+floor is ≈200K context plus reliable native tool calling.** A 32K local
+model fails on the system prompt before the first tool call, so there is no
+supported local-model path today.
 
 ## System default models
 
@@ -101,7 +119,6 @@ gate sites.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANT_K8S_NAMESPACE` | unset | Namespace for IDE pods. If unset, falls back to Docker. |
-| `ANT_PREVIEW_WORKERS` | unset | Comma-separated preview-worker URLs. Required in cloud. |
 | `ANT_PREVIEW_BASE_DOMAIN` | unset | Base domain for preview URL routing in cloud. |
 
 Figma MCP transport is selected by `ANT_SERVER_MODE` (desktop MCP locally,

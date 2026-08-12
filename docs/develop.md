@@ -159,11 +159,13 @@ does not require sign-in. Figma uses the desktop MCP transport
 directly. This is the path 99% of contributors use.
 
 ```bash
-# packages/ant-cli/.env
-ANT_SERVER_MODE=local
-ANT_REDIS_URL=redis://localhost:16379
-ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)
+# packages/ant-cli/.env — only the provider key is mandatory
 ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional overrides (local-mode defaults shown):
+# ANT_SERVER_MODE=local
+# ANT_REDIS_URL=redis://localhost:16379   # cloud mode has no default
+# ANT_ENCRYPTION_KEY=<64 hex chars>       # auto-generated when unset
 ```
 
 ### Cloud mode — `ANT_SERVER_MODE=cloud`

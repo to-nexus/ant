@@ -11,11 +11,14 @@ see [develop.md](../develop.md) instead.
 
 ## Prerequisites
 
+**OS support: macOS and Linux.** Windows is supported only via WSL2, and
+WSL2 is currently untested — reports welcome, but expect rough edges.
+
 | Requirement | Version | Notes |
 |-------------|---------|-------|
 | Node.js     | >= 22.13 | Enforced by the root `engines` field. |
-| pnpm        | 11.1.0  | Pinned via `packageManager`. `corepack enable && corepack prepare pnpm@11.1.0 --activate` |
-| Docker      | 24+     | Used for Redis. Docker Desktop on macOS/Windows. |
+| pnpm        | 11.1.0  | Pinned via `packageManager`. `corepack enable && corepack prepare pnpm@11.1.0 --activate`. pnpm 10 and npm/yarn are rejected at install time (pnpm 10 silently ignores pnpm-11 workspace keys and skips native postinstalls). |
+| Docker      | 24+     | Used for Redis. Docker Desktop on macOS. |
 | Git         | 2.40+   |  |
 | LLM key     | —       | Anthropic Claude (primary) or OpenAI / Gemini. |
 
@@ -44,7 +47,8 @@ ripgrep fails with `ENOENT` while spawning, see
 
 ## Required env
 
-Copy the example file and fill in the three values that are mandatory:
+Local mode needs exactly **one** value: an LLM provider key. Copy the
+example file and set it:
 
 ```bash
 cp packages/ant-cli/.env.example.local packages/ant-cli/.env
@@ -53,17 +57,26 @@ cp packages/ant-cli/.env.example.local packages/ant-cli/.env
 Minimum viable `.env`:
 
 ```
-ANT_SERVER_MODE=local
-ANT_ENCRYPTION_KEY=$(openssl rand -hex 32)   # 64-char hex
 ANTHROPIC_API_KEY=sk-ant-...
-ANT_WORKSPACE_BASE_PATH=~/ant-workspaces      # default, change if you want
 ```
 
-That's everything local mode needs. `ANT_JWT_SECRET`, `GOOGLE_CLIENT_*`,
-`FRONTEND_URL`, `ANT_CORS_ORIGINS`, `GOOGLE_REDIRECT_URI` — leave them
-commented out. Local mode skips OAuth entirely and accepts loopback
-origins automatically; setting cloud-only variables in local mode has no
-effect but won't break anything.
+Everything else has a working default in local mode:
+
+- `ANT_SERVER_MODE` defaults to `local`.
+- `ANT_REDIS_URL` defaults to `redis://localhost:16379` (the port
+  `pnpm dev:infra:redis` publishes). Cloud mode has no default and
+  fails fast.
+- `ANT_ENCRYPTION_KEY` is auto-generated on first boot and persisted to
+  `<workspaceRoot>/.ant/encryption.key` (mode 0600). To pin it yourself,
+  it must be exactly 64 hex chars: `openssl rand -hex 32`.
+- `ANT_WORKSPACE_BASE_PATH` falls back to a sibling `../ant-workspaces`
+  directory if one exists, else `<cwd>/workspaces`. Set it explicitly if
+  you want feature data somewhere specific.
+
+`ANT_JWT_SECRET`, `GOOGLE_CLIENT_*`, `FRONTEND_URL`, `ANT_CORS_ORIGINS`,
+`GOOGLE_REDIRECT_URI` — leave them commented out. Local mode skips OAuth
+entirely and accepts loopback origins automatically; setting cloud-only
+variables in local mode has no effect but won't break anything.
 
 The full env reference: [../reference/env-vars.md](../reference/env-vars.md).
 
@@ -130,8 +143,9 @@ pnpm dev:all
 ```
 
 Boots the 4 backend processes (`ant-api` :4100, `ant-realtime` :4101,
-`ant-job` worker, `ant-preview` :4102) + UI dev server (`ui` :4200) +
-marketing site (`site`) in one terminal under `concurrently`.
+`ant-job` worker, `ant-preview` :4102) + UI dev server (`ui` :4200) in
+one terminal under `concurrently`. The marketing site is not part of
+`dev:all` — run `pnpm dev:site` separately if you are working on it.
 
 To run a backend process in isolation (debugging):
 
@@ -151,8 +165,8 @@ pnpm dev:mock:all
 ### Production-style (built artifacts)
 
 ```bash
-pnpm build               # type-check, test, and build all packages
-pnpm start:all     # 4-process backend + UI + site
+pnpm build               # build all packages (esbuild — run pnpm typecheck / pnpm test separately)
+pnpm start:all           # 4-process backend + UI
 ```
 
 Behind a process manager (`pm2`, `systemd`), invoke the per-process
@@ -160,17 +174,42 @@ scripts (`start:api-server`, `start:realtime-server`,
 `start:job-worker`, `start:preview-server`) so each gets its own
 supervised slot.
 
-## Health checks
+### Docker Compose (no Node/pnpm on the host)
+
+The root `docker-compose.yml` runs the whole stack — Redis, the four
+backend processes, and an nginx gateway serving the UI — with only
+Docker installed:
 
 ```bash
-curl -s http://localhost:4100/health  | jq .   # ant-api
-curl -s http://localhost:4101/health  | jq .   # ant-realtime
-curl -s http://localhost:4102/health  | jq .   # ant-preview
-curl -s http://localhost:4200/        > /dev/null && echo ok
+cp .env.example .env        # put ANTHROPIC_API_KEY (or another provider key) in it
+docker compose up -d
+open http://localhost:4200
 ```
 
-`ant-job` doesn't expose HTTP — check it via `docker ps` (its log stream
-or the BullMQ queue depth).
+Everything is same-origin behind `:4200`: `/app/` is the UI, `/api` and
+`/realtime` are proxied, and previews are path-routed
+(`http://localhost:4200/{urlKey}/...`). Project data persists in the
+`ant-workspaces` named volume. Redis is intentionally not published to
+the host, so this coexists with a `pnpm dev:infra:redis` on 16379 —
+but the compose stack and `pnpm dev:all` cannot run at the same time
+(both claim 4100/4101/4102/4200). Preview dev servers listen on ports
+internal to the `ant-preview` container; if HMR misbehaves behind the
+gateway, `:4102` is also published for a direct connection.
+
+## Health checks
+
+Run `pnpm doctor` for a one-shot install self-check (versions, Redis,
+process health, provider keys). Manually:
+
+```bash
+curl -s http://localhost:4100/api/health  | jq .   # ant-api (health routes live under /api)
+curl -s http://localhost:4101/health      | jq .   # ant-realtime
+curl -s http://localhost:4102/health      | jq .   # ant-preview
+curl -s http://localhost:4200/            > /dev/null && echo ok
+```
+
+`ant-job` doesn't expose HTTP — check its log stream, the BullMQ queue
+depth, or `pnpm doctor`'s worker heuristic.
 
 ## What the UI looks like in local mode
 
@@ -185,11 +224,12 @@ a single fixed `local:local` tenant.
 
 ## External workspace mount
 
-By default Ant writes feature data to `~/ant-workspaces`. If you want
-that on a different volume (network drive, larger SSD):
+By default Ant writes feature data to a sibling `../ant-workspaces`
+directory if one exists, else `<cwd>/workspaces`. If you want that on a
+different volume (network drive, larger SSD):
 
 ```bash
-# In .env:
+# In .env (absolute path — ~ is not expanded):
 ANT_WORKSPACE_BASE_PATH=/Volumes/work/ant-workspaces
 ```
 
