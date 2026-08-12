@@ -1,4 +1,5 @@
 import type { FileResourceMeta, SlotDef, UiSource } from '@ant/shared';
+import type { SelectedEntry } from '@/shared/utils/selectionDisplay';
 
 export interface SlotWarning {
   type: 'invalid-file' | 'invalid-env';
@@ -56,6 +57,18 @@ export interface SlotEntry {
    * code paths but should not be used for rendering).
    */
   subgroups?: SlotSubgroup[];
+}
+
+/**
+ * What one config Section renders. `entries` are the catalog candidates,
+ * `added` are selected paths no candidate covers (see `resolveSlotSection`).
+ * `isEmpty` is the ONLY legal gate for the "None" / empty-hint prose — gating
+ * on catalog shape alone is what made free-added files invisible.
+ */
+export interface SlotSectionView {
+  entries: SlotEntry[];
+  added: SelectedEntry[];
+  isEmpty: boolean;
 }
 
 export interface FileWarningContext {

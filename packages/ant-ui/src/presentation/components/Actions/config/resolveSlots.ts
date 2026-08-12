@@ -1,7 +1,8 @@
 import { getDirDescription } from '@ant/shared';
 import type { SlotDef } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
-import type { SlotWarning, SlotFileEntry, SlotEntry, SlotSubgroup, FileWarningContext } from './types';
+import { compressSelection, type SelectedEntry } from '@/shared/utils/selectionDisplay';
+import type { SlotWarning, SlotFileEntry, SlotEntry, SlotSubgroup, FileWarningContext, SlotSectionView } from './types';
 
 export function resolveFileWarnings(
   filePath: string,
@@ -136,6 +137,63 @@ export function resolveSlotEntries(
       return { def, files, hasFiles, hasValidFiles };
     });
 }
+
+/**
+ * Selection-as-SSOT display derivation — the single owner of "what this
+ * section renders".
+ *
+ * The slot catalog declares *candidates*; `actionMetadata.refs` / `.context`
+ * is the selection SSOT (what the chat badge, the footer gate and the BE all
+ * read). A selected path the catalog does not cover must still be visible, so
+ * it comes back as an `added` entry rather than silently vanishing. Three
+ * shapes reach this branch:
+ *   - the intent declares no slot at all (`context: []` — every `explain-*` /
+ *     `ask-*`, `gen-ui-desc`, `gen-visual-*`; `emptyRef()` on the refs side)
+ *   - the path lives outside every declared slot dir (free-add picker)
+ *   - the path IS a directory (the picker allows bare dir selection, while
+ *     catalog entries are always files)
+ *
+ * `added` is folder-collapsed through the same `compressPathsByFolderCore`
+ * SSOT the badge row uses, so one directory reads as one card in both places.
+ */
+export function resolveSlotSection(
+  defs: SlotDef[],
+  fileTree: FileNode[],
+  selected: ReadonlySet<string>,
+  opts?: {
+    excludePaths?: Set<string>;
+    warningCtx?: FileWarningContext;
+    codebaseHasFiles?: boolean;
+  },
+): SlotSectionView {
+  const entries = resolveSlotEntries(
+    defs,
+    fileTree,
+    opts?.excludePaths,
+    opts?.warningCtx,
+    opts?.codebaseHasFiles,
+  );
+
+  const covered = new Set<string>();
+  for (const entry of entries) {
+    for (const f of entry.files) covered.add(f.path);
+    for (const sg of entry.subgroups ?? []) {
+      for (const f of sg.files) covered.add(f.path);
+    }
+  }
+
+  const uncovered = [...selected].filter(p => !covered.has(p));
+  const added = compressSelection(uncovered, fileTree);
+
+  // Reproduces both legacy gates with one predicate: refs (`emptyRef()` carries
+  // an `emptyHint` and no path) and context (no ctx def ever sets `emptyHint`,
+  // so this collapses to `length > 0`).
+  const hasDeclaredSlots = defs.some(d => !d.emptyHint);
+
+  return { entries, added, isEmpty: !hasDeclaredSlots && added.length === 0 };
+}
+
+export type { SelectedEntry };
 
 /**
  * Compute bundle-level warnings for a ui-source subgroup.

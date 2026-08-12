@@ -114,6 +114,7 @@
     "refs": "References",
     "context": "Context",
     "target": "Target",
+    "added": "Added",
     "none": "None",
     "optional": "Optional",
     "optionalHint": "Select additional files to provide as context",

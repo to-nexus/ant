@@ -141,11 +141,28 @@ describe('exclusivity lock is scoped to multi-select slots', () => {
     expect(source).toMatch(/singleSelect=\{slots\.refsSingleSelect\}/);
   });
 
-  it('every revise-target writer routes through the getDefaultTargetPaths SSOT', () => {
-    const source = read('ActionConfigView.tsx');
-    // 3 call sites: mount effect, toggleFile, toggleFiles.
-    expect(source.match(/resolveTargetPaths\(/g)?.length).toBe(3);
+  /**
+   * Ownership moved: the panel used to call the SSOT at three of its own call
+   * sites (mount effect / toggleFile / toggleFiles) while BOTH file pickers
+   * bypassed it and fell through to the store's verbatim `target = refs`
+   * mirror — so the same figma/handoff ref produced a different target
+   * depending on how it was picked. The derivation now lives at the single
+   * store choke point, which every entry point already funnels through.
+   */
+  it('the revise-target derivation has exactly one owner: updateActionMetadata', () => {
+    const slice = readFileSync(
+      join(__dirname, '..', '..', '..', '..', '..', 'domain', 'store', 'slices', 'uiSlice.ts'),
+      'utf-8',
+    );
+    expect(slice).toMatch(
+      /slots\?\.target\.kind === 'revise'[\s\S]{0,200}next\.target = getDefaultTargetPaths\(/,
+    );
     // The old "target mirrors refs verbatim" shortcut must not come back.
-    expect(source).not.toMatch(/target: next\.length > 0 \? next : undefined/);
+    expect(slice).not.toMatch(/next\.target = next\.refs\b/);
+
+    // No bespoke fork left in the panel.
+    const view = read('ActionConfigView.tsx');
+    expect(view).not.toMatch(/resolveTargetPaths/);
+    expect(view).not.toMatch(/target: next\.length > 0 \? next : undefined/);
   });
 });

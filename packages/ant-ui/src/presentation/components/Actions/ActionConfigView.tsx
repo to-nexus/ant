@@ -14,7 +14,6 @@ import {
   pickDefaultGameArtSourceRefs,
   listActiveTiers,
   supportsReferenceCodebase,
-  pruneFileTreeForWorkspaceDomain,
   type ReferenceTarget,
 } from '@ant/shared';
 import { FileTreePicker } from '@/presentation/components/common/FileTreePicker';
@@ -23,23 +22,30 @@ import { DomainBadge } from './DomainBadge';
 import { PageTransition } from './PageTransition';
 import { ActionFooter } from './ActionFooter';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
+import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 import { FileText, BookOpen, Crosshair, Layers, Link2, Plus } from 'lucide-react';
 import {
   Section,
   SlotEntryList,
   TargetDisplay,
   ReferenceTargetPicker,
-  resolveSlotEntries,
+  resolveSlotSection,
+  shouldSeedSlotDefaults,
   listDir,
 } from './config';
 import { BasisSummaryBar } from './basis';
-import type { FileWarningContext } from './config';
+import type { FileWarningContext, SlotSectionView } from './config';
+import { removeSelectedEntry, type SelectedEntry } from '@/shared/utils/selectionDisplay';
 
 interface ActionConfigViewProps {
   actionId: IntentGroup;
   intentId: IntentId;
   onBack: () => void;
 }
+
+/** Stable identities so the section `useMemo`s don't rerun on every render. */
+const EMPTY_SELECTION: ReadonlySet<string> = new Set();
+const EMPTY_SECTION: SlotSectionView = { entries: [], added: [], isEmpty: true };
 
 export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigViewProps) {
   const { t, i18n } = useTranslation('actions');
@@ -48,9 +54,6 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const selectedProject = useStore(s => s.selectedProject);
   const fileTree = useStore(s => s.fileTree);
-  // Persisted project-domain SSOT for artifact-tree filtering (config.json).
-  const projectDomainStatus = useStore(s => s.projectConfig.status);
-  const projectDomain = useStore(s => s.projectConfig.data?.domain);
   const highlightArtifactDirs = useStore(s => s.highlightArtifactDirs);
   const spotlightTarget = useStore(s => s.spotlightTarget);
   const setSpotlightTarget = useStore(s => s.setSpotlightTarget);
@@ -68,6 +71,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const setMainView = useStore(s => s.setMainView);
   const setAccountConfigScrollTarget = useStore(s => s.setAccountConfigScrollTarget);
   const gitSnapshot = useGitSnapshot();
+  const pickerTree = useArtifactPickerTree();
   const { toast } = useToastContext();
 
   useEffect(() => {
@@ -116,26 +120,24 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const selectedRefs = useMemo(() => new Set(actionMetadata.refs ?? []), [actionMetadata.refs]);
   const selectedCtx = useMemo(() => new Set(actionMetadata.context ?? []), [actionMetadata.context]);
 
-  /**
-   * Target SSOT. `getDefaultTargetPaths` owns every kind — including the two
-   * revise rules the panel used to bypass by mirroring refs verbatim:
-   *   - figma ref → the surface's ant JSON trio (ref ≠ target by design)
-   *   - handoff ref → the bundle DIRECTORY (what `resolveToRAC` already widens
-   *     refs/target to on the BE side)
-   */
-  const resolveTargetPaths = useCallback(
-    (refs: string[]): string[] | undefined =>
-      getDefaultTargetPaths(intentId, actionMetadata.domain, { refs }),
-    [intentId, actionMetadata.domain],
-  );
-
   useEffect(() => {
     if (!slots) {
       updateActionMetadata({ refs: undefined, context: undefined, target: undefined });
       return;
     }
 
-    const refEntries = resolveSlotEntries(slots.refs, fileTree, undefined, warningCtx);
+    // Selection is the SSOT — seeding defaults may not run on every mount, or
+    // arriving at the panel destroys a selection made in the chat composer /
+    // surviving a basis-wizard round trip. See `shouldSeedSlotDefaults`.
+    if (!shouldSeedSlotDefaults({
+      metaIntent: actionMetadata.intent,
+      viewIntent: intentId,
+      hasSelection: (actionMetadata.refs?.length ?? 0) > 0 || (actionMetadata.context?.length ?? 0) > 0,
+    })) {
+      return;
+    }
+
+    const refEntries = resolveSlotSection(slots.refs, fileTree, EMPTY_SELECTION, { warningCtx }).entries;
     // ui-source slots are hard-exclusive — feed them through the SSOT picker
     // (`pickDefaultUiSourceRefs`, canonical.ts) so the auto-fill never seeds
     // mixed UiSource paths into `actionMetadata.refs`. Without this funnel a
@@ -167,13 +169,11 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     } else {
       defaultRefPaths = refCandidates.map(f => f.path);
     }
+    // The refs patch alone settles a `revise` target — `updateActionMetadata`
+    // derives it through `getDefaultTargetPaths` (the one owner).
     updateActionMetadata({ refs: defaultRefPaths.length > 0 ? defaultRefPaths : undefined });
-    updateActionMetadata({ context: undefined });
 
-    const { target } = slots;
-    if (target.kind === 'revise') {
-      updateActionMetadata({ target: resolveTargetPaths(defaultRefPaths) });
-    } else {
+    if (slots.target.kind !== 'revise') {
       // generate / codebase / chat-only — the matrix SSOT
       // (`getDefaultTargetPaths`) drives both this panel and BE detect's
       // explicit branch fallback. Keeping a single derivation here
@@ -245,10 +245,6 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
       }
     }
     updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
-
-    if (field === 'refs' && slots?.target.kind === 'revise') {
-      updateActionMetadata({ target: resolveTargetPaths(next) });
-    }
   };
 
   /**
@@ -274,34 +270,42 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
         ? [...paths]
         : [...current, ...paths.filter(p => !currentSet.has(p))];
     updateActionMetadata({ [field]: next.length > 0 ? next : undefined });
-    if (field === 'refs' && slots?.target.kind === 'revise') {
-      updateActionMetadata({ target: resolveTargetPaths(next) });
-    }
+  };
+
+  /** Deselect a free-added entry; a folder entry drops its whole subtree. */
+  const removeAdded = (entry: SelectedEntry, field: 'refs' | 'context') => {
+    updateActionMetadata({
+      [field]: removeSelectedEntry(field === 'refs' ? actionMetadata.refs : actionMetadata.context, entry),
+    });
   };
 
   const codebaseHasFiles = gitSnapshot?.codebaseHasFiles ?? false;
   const codebaseRequired = slots ? slots.refs.some(r => r.codebase && r.locked) : false;
-  const refEntries = useMemo(() => slots ? resolveSlotEntries(slots.refs, fileTree, selectedCtx, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedCtx, warningCtx, codebaseHasFiles]);
+  // Selection-as-SSOT display views. The slot catalog supplies candidates;
+  // anything selected that no candidate covers comes back as `added` so the
+  // panel can never again disagree with the badge row about what is attached.
+  const refsView = useMemo(
+    () => slots
+      ? resolveSlotSection(slots.refs, fileTree, selectedRefs, { excludePaths: selectedCtx, warningCtx, codebaseHasFiles })
+      : EMPTY_SECTION,
+    [slots, fileTree, selectedRefs, selectedCtx, warningCtx, codebaseHasFiles],
+  );
   // Codebase Channel SSOT — plan/design 인텐트는 `getConfigSlots` 가 동적으로
   // codebaseSlot('context', { auto: true }) 를 주입하므로 context 쪽도 ref 와
   // 동일하게 codebaseHasFiles 를 흘려야 한다. 누락 시 resolveSlots.ts 의
   // def.codebase 분기가 hasFiles=false 로 평가되어 항상 amber empty card 로
   // 렌더된다 (실제 코드베이스 존재 여부와 무관).
-  const ctxEntries = useMemo(() => slots ? resolveSlotEntries(slots.context, fileTree, selectedRefs, warningCtx, codebaseHasFiles) : [], [slots, fileTree, selectedRefs, warningCtx, codebaseHasFiles]);
+  const ctxView = useMemo(
+    () => slots
+      ? resolveSlotSection(slots.context, fileTree, selectedCtx, { excludePaths: selectedRefs, warningCtx, codebaseHasFiles })
+      : EMPTY_SECTION,
+    [slots, fileTree, selectedCtx, selectedRefs, warningCtx, codebaseHasFiles],
+  );
 
   // Free-add picker (unified tree). Domain-pruned tree so a workspace never
   // exposes the other domain's asset pool (I6). `suggestedDirs` are the slot
   // candidate dirs so the tree ★-marks the recommended locations.
   const [pickerField, setPickerField] = useState<'refs' | 'context' | null>(null);
-  // Prune by the persisted project domain (config.json SSOT), not the mutable
-  // actionMetadata buffer — see ArtifactsPanel for the drift rationale. While
-  // the config loads, skip pruning rather than filter by an unknown domain.
-  const prunedTree = useMemo(
-    () => (projectDomainStatus === 'ready'
-      ? (pruneFileTreeForWorkspaceDomain(fileTree as any, projectDomain) as typeof fileTree)
-      : fileTree),
-    [fileTree, projectDomainStatus, projectDomain],
-  );
   const suggestedRefDirs = useMemo(
     () => (slots?.refs ?? []).map(s => s.path).filter((p): p is string => !!p && p !== ''),
     [slots],
@@ -316,6 +320,8 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
     return listDir(fileTree, slots.target.dir);
   }, [slots, fileTree]);
 
+  // Hints describe the CATALOG's selection rules, so they stay catalog-gated —
+  // only the section BODY switched to selection-as-SSOT.
   const hasRefSlots = slots ? slots.refs.some(r => !r.emptyHint) : false;
   const hasCtxSlots = slots ? slots.context.length > 0 : false;
 
@@ -399,9 +405,11 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
               iconColor="text-[var(--emerald-500)]"
               hint={refsHint}
             >
-              {hasRefSlots ? (
+              {!refsView.isEmpty ? (
                 <SlotEntryList
-                  entries={refEntries}
+                  entries={refsView.entries}
+                  added={refsView.added}
+                  onRemoveAdded={(e) => removeAdded(e, 'refs')}
                   selected={selectedRefs}
                   onToggle={(p) => toggleFile(p, 'refs')}
                   onToggleMany={(paths) => toggleFiles(paths, 'refs')}
@@ -437,9 +445,11 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
               iconColor="text-[var(--text-3)]"
               hint={hasCtxSlots ? { label: t('section.optional'), tooltip: t('section.optionalHint'), colorScheme: 'gray' as const } : undefined}
             >
-              {hasCtxSlots ? (
+              {!ctxView.isEmpty ? (
                 <SlotEntryList
-                  entries={ctxEntries}
+                  entries={ctxView.entries}
+                  added={ctxView.added}
+                  onRemoveAdded={(e) => removeAdded(e, 'context')}
                   selected={selectedCtx}
                   onToggle={(p) => toggleFile(p, 'context')}
                   onToggleMany={(paths) => toggleFiles(paths, 'context')}
@@ -517,7 +527,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
           title={pickerField === 'refs' ? tCommon('fileTreePicker.addRefs') : tCommon('fileTreePicker.addContext')}
           eyebrow={pickerField === 'refs' ? t('section.refs') : t('section.context')}
           accent={pickerField === 'refs' ? 'emerald' : 'violet'}
-          fileTree={prunedTree}
+          fileTree={pickerTree}
           initialSelected={pickerField === 'refs' ? [...selectedRefs] : [...selectedCtx]}
           suggestedDirs={pickerField === 'refs' ? suggestedRefDirs : suggestedCtxDirs}
           selectableTypes={['file', 'directory']}

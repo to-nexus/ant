@@ -7,10 +7,10 @@ import { Send, ChevronDown } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { selectIsAuthenticated, selectIsApproved } from '@/domain/store/selectors/auth';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
+import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useTranslation } from 'react-i18next';
-import { pruneFileTreeForWorkspaceDomain } from '@ant/shared';
 import { FileTreePicker } from '@/presentation/components/common/FileTreePicker';
 import { AgentLogo } from '../AgentLogo';
 import type { FileStats } from '@/domain/models/chat';
@@ -57,8 +57,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
   const mention = useMentionAutocomplete(message, cursorPos);
 
   // Unified folder-tree picker (opened from the mention "Browse" row).
-  const fileTree = useStore((state) => state.fileTree);
-  const browseDomain = useStore((state) => state.actionMetadata.domain);
+  const pickerTree = useArtifactPickerTree();
   const browseTarget = useStore((state) => state.actionMetadata.target);
   const updateActionMetadata = useStore((state) => state.updateActionMetadata);
 
@@ -238,7 +237,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           title={t('mention.browse.label')}
           eyebrow={mention.browseField}
           accent={mention.browseField === 'refs' ? 'emerald' : mention.browseField === 'target' ? 'orange' : 'violet'}
-          fileTree={pruneFileTreeForWorkspaceDomain(fileTree as any, browseDomain ?? 'service') as typeof fileTree}
+          fileTree={pickerTree}
           initialSelected={
             mention.browseField === 'refs'
               ? (actionMetadataRefs ?? [])

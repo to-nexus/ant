@@ -1,10 +1,15 @@
 import { useCallback, useMemo } from 'react';
 import { useStore } from '@/domain/store';
 import { useTranslation } from 'react-i18next';
-import { INTENT_DEFINITIONS, compressPathsByFolderCore, getConfigSlotsForDomain, getIntentLabel, isDirLevelTarget, type ActionMetadata, type IntentId, type PathOrFolder } from '@ant/shared';
+import { INTENT_DEFINITIONS, compressPathsByFolderCore, getConfigSlotsForDomain, getIntentLabel, isDirLevelTarget, type ActionMetadata, type IntentId } from '@ant/shared';
 import { X, Target, Crosshair, FileText, Folder, BookOpen, Zap, Lock } from 'lucide-react';
 import { BadgeOverflowRow, type BadgeOverflowItem } from './BadgeOverflowRow';
-import { makeTreeListDir } from './foldersCompressedTree';
+import {
+  makeTreeListDir,
+  removeSelectedEntry,
+  resolveSelectedEntries,
+  type SelectedEntry,
+} from '@/shared/utils/selectionDisplay';
 
 interface BadgeProps {
   icon: any;
@@ -42,60 +47,6 @@ interface ActionMetadataBadgesProps {
   /** Badge-row padding. Defaults to the live config-footer look; the user
    *  bubble overrides this to align badges with the message text. */
   className?: string;
-}
-
-function describePath(p: string): { isFolder: boolean; display: string } {
-  const isFolder = p.endsWith('/');
-  if (isFolder) {
-    const stripped = p.replace(/\/+$/, '');
-    const tail = stripped.split('/').pop() || stripped;
-    return { isFolder: true, display: `${tail}/` };
-  }
-  return { isFolder: false, display: p.split('/').pop() || p };
-}
-
-/**
- * Rendering-ready slot entry. Either comes from the BE-supplied
- * `foldersCompressed` view (folder when every file in a directory was
- * selected) or is built on the fly from the raw `string[]` slot for
- * pre-foldersCompressed records / clients that never go through the
- * compression path (tests, legacy chat.jsonl tails).
- */
-interface SlotEntry {
-  isFolder: boolean;
-  display: string;
-  /** Total file count when `isFolder` — drives the `(N files)` suffix. */
-  fileCount?: number;
-  /** Original path; `folder` kind uses the directory path (no trailing slash). */
-  rawPath: string;
-}
-
-function entryFromCompressed(e: PathOrFolder): SlotEntry {
-  if (e.kind === 'folder') {
-    const tail = e.path.split('/').pop() || e.path;
-    return {
-      isFolder: true,
-      display: `${tail}/`,
-      fileCount: e.fileCount,
-      rawPath: e.path,
-    };
-  }
-  const { isFolder, display } = describePath(e.path);
-  return { isFolder, display, rawPath: e.path };
-}
-
-function entryFromPath(p: string): SlotEntry {
-  const { isFolder, display } = describePath(p);
-  return { isFolder, display, rawPath: p };
-}
-
-function resolveSlot(
-  compressed: ReadonlyArray<PathOrFolder> | undefined,
-  fallback: readonly string[] | undefined,
-): SlotEntry[] {
-  if (compressed?.length) return compressed.map(entryFromCompressed);
-  if (fallback?.length) return fallback.map(entryFromPath);
-  return [];
 }
 
 export function ActionMetadataBadges({ metadata, readOnly = false, className = 'px-3 pt-2 pb-1' }: ActionMetadataBadgesProps) {
@@ -177,20 +128,14 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
     }
   };
 
-  const handleRemoveRefEntry = (entry: SlotEntry) => {
+  const handleRemoveRefEntry = (entry: SelectedEntry) => {
     if (readOnly) return;
-    const nextRefs = entry.isFolder
-      ? meta.refs?.filter(r => !r.startsWith(entry.rawPath + '/') && r !== entry.rawPath)
-      : meta.refs?.filter(r => r !== entry.rawPath);
-    updateActionMetadata({ explicit: undefined, refs: nextRefs && nextRefs.length > 0 ? nextRefs : undefined });
+    updateActionMetadata({ explicit: undefined, refs: removeSelectedEntry(meta.refs, entry) });
   };
 
-  const handleRemoveContextEntry = (entry: SlotEntry) => {
+  const handleRemoveContextEntry = (entry: SelectedEntry) => {
     if (readOnly) return;
-    const nextCtx = entry.isFolder
-      ? meta.context?.filter(c => !c.startsWith(entry.rawPath + '/') && c !== entry.rawPath)
-      : meta.context?.filter(c => c !== entry.rawPath);
-    updateActionMetadata({ explicit: undefined, context: nextCtx && nextCtx.length > 0 ? nextCtx : undefined });
+    updateActionMetadata({ explicit: undefined, context: removeSelectedEntry(meta.context, entry) });
   };
 
   const pinned: BadgeOverflowItem[] = [];
@@ -251,7 +196,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
   const dirLevelTargetPath = slots && isDirLevelTarget(slots.target) && slots.target.kind === 'generate'
     ? slots.target.dir
     : undefined;
-  const targetEntries = resolveSlot(folders?.target, meta.target).map(entry =>
+  const targetEntries = resolveSelectedEntries(folders?.target, meta.target).map(entry =>
     !entry.isFolder && entry.rawPath === dirLevelTargetPath
       ? { ...entry, isFolder: true, display: `${entry.display}/` }
       : entry,
@@ -272,7 +217,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
     });
   });
 
-  resolveSlot(folders?.refs, meta.refs).forEach(entry => {
+  resolveSelectedEntries(folders?.refs, meta.refs).forEach(entry => {
     const locked = isRefLocked(entry.rawPath);
     const icon = locked ? Lock : (entry.isFolder ? Folder : FileText);
     const node = (
@@ -293,7 +238,7 @@ export function ActionMetadataBadges({ metadata, readOnly = false, className = '
     else overflowable.push(item);
   });
 
-  resolveSlot(folders?.context, meta.context).forEach(entry => {
+  resolveSelectedEntries(folders?.context, meta.context).forEach(entry => {
     const locked = isCtxLocked(entry.rawPath);
     const icon = locked ? Lock : (entry.isFolder ? Folder : BookOpen);
     const node = (

@@ -1,11 +1,20 @@
 import { useTranslation } from 'react-i18next';
-import { Plus, Upload, FolderOpen } from 'lucide-react';
+import { Plus, Upload, FolderOpen, Folder } from 'lucide-react';
 import { getFileDescription, getDirDescription } from '@ant/shared';
+import type { SelectedEntry } from '@/shared/utils/selectionDisplay';
 import { FileCard } from './FileCard';
 import type { SlotEntry, SlotSubgroup, SlotWarning } from './types';
 
 interface SlotEntryListProps {
   entries: SlotEntry[];
+  /**
+   * Selected paths no catalog entry covers (`resolveSlotSection().added`).
+   * Rendered after the candidate cards — without this the panel would keep
+   * dropping free-added files that the badge row and the BE both honour.
+   */
+  added?: SelectedEntry[];
+  /** Deselect one `added` entry. Folder entries drop their whole subtree. */
+  onRemoveAdded?: (entry: SelectedEntry) => void;
   selected: Set<string>;
   onToggle: (path: string) => void;
   /**
@@ -31,9 +40,12 @@ interface SlotEntryListProps {
   lang: 'en' | 'ko';
 }
 
-export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHighlightDir, onCreateIntent, onUploadDir, onToggleSpotlight, onViewFile, singleSelect = false, onConfigureFigma, spotlightPath, showEmptyActions = true, lang }: SlotEntryListProps) {
+export function SlotEntryList({ entries, added = [], onRemoveAdded, selected, onToggle, onToggleMany, onHighlightDir, onCreateIntent, onUploadDir, onToggleSpotlight, onViewFile, singleSelect = false, onConfigureFigma, spotlightPath, showEmptyActions = true, lang }: SlotEntryListProps) {
   const { t } = useTranslation('actions');
   const showSlotLabels = entries.length > 1;
+  // Label the group only when candidate cards sit above it — with no catalog
+  // the Section title alone is unambiguous (same rationale as `showSlotLabels`).
+  const showAddedLabel = added.length > 0 && entries.length > 0;
 
   // ── ui-source subgroup renderers (captured closures) ────────────────────
   type SubgroupCtx = { isLocked: boolean; lockedBySlot?: boolean };
@@ -325,6 +337,41 @@ export function SlotEntryList({ entries, selected, onToggle, onToggleMany, onHig
 
         return slotLabel ? [slotLabel, ...fileCards] : fileCards;
       })}
+
+      {showAddedLabel && (
+        <div className="flex items-center gap-1.5 pt-1.5">
+          <span className="text-xs font-medium text-[color:var(--text-3)]">
+            {t('section.added')}
+          </span>
+        </div>
+      )}
+      {added.map(entry => (
+        <FileCard
+          key={`added:${entry.isFolder ? 'folder:' : ''}${entry.rawPath}`}
+          name={entry.display}
+          path={entry.isFolder && typeof entry.fileCount === 'number'
+            ? `${entry.rawPath}/ (${entry.fileCount})`
+            : entry.rawPath}
+          description={entry.isFolder
+            ? getDirDescription(entry.rawPath)?.description
+            : getFileDescription(
+                entry.display,
+                entry.rawPath.includes('/')
+                  ? entry.rawPath.substring(0, entry.rawPath.lastIndexOf('/'))
+                  : undefined,
+              )}
+          icon={entry.isFolder ? <Folder className="w-4 h-4 text-[color:var(--violet-500)] shrink-0" /> : undefined}
+          selected
+          onToggle={onRemoveAdded ? () => onRemoveAdded(entry) : undefined}
+          onViewFile={onViewFile && !entry.isFolder ? () => onViewFile(entry.rawPath) : undefined}
+          spotlight={{
+            active: spotlightPath === entry.rawPath,
+            onClick: () => onToggleSpotlight(entry.isFolder ? 'dir' : 'file', entry.rawPath),
+            title: t('emptySlot.viewInExplorer'),
+          }}
+          lang={lang}
+        />
+      ))}
     </div>
   );
 }

@@ -133,6 +133,7 @@
     "refs": "참조",
     "context": "컨텍스트",
     "target": "타겟",
+    "added": "추가됨",
     "none": "없음",
     "optional": "선택사항",
     "optionalHint": "추가로 전달할 파일을 선택할 수 있습니다",

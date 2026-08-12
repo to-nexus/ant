@@ -29,6 +29,7 @@ import {
   ACTION_DEFINITIONS,
   deriveFromIntent,
   getConfigSlots,
+  getDefaultTargetPaths,
   isActionSurfaced,
   normalizeUiSourceRefs,
   type IntentGroup,
@@ -1549,10 +1550,18 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         }
       }
 
+      // Revise-target derivation SSOT. `getDefaultTargetPaths` owns the two
+      // rules a verbatim `target = refs` mirror got wrong — figma ref → the
+      // surface's ant JSON trio (ref ≠ target by design), handoff ref → the
+      // bundle DIRECTORY. Deriving it here rather than at the call sites is
+      // what makes every entry point agree: the action-tab row toggles used to
+      // call the SSOT themselves while BOTH file pickers (action tab + the chat
+      // composer's `@ref:` Browse row) fell through to the verbatim mirror and
+      // produced a different target for the same ref.
       if ('refs' in patch && next.intent) {
         const slots = getConfigSlots(next.intent);
         if (slots?.target.kind === 'revise') {
-          next.target = next.refs;
+          next.target = getDefaultTargetPaths(next.intent, next.domain, { refs: next.refs ?? [] });
         }
       }
 
@@ -1568,6 +1577,18 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       // backfill path — where store already matches `next` but disk is
       // empty — still trigger the PUT.
       if (patch.domain !== undefined && patch.domain !== s.actionMetadata.domain) {
+        // 0) Artifact selections are domain-scoped — the slot catalog itself
+        //    switches on `applicableDomains` (gen-code-* ui-source vs
+        //    game-art-source), so a surviving path can address the other
+        //    domain's tree. Dropping them here makes this branch the single
+        //    owner of domain-driven cleanup: it used to happen incidentally
+        //    because `ActionConfigView`'s seeding effect listed `domain` as a
+        //    dep and re-derived defaults, which left the chat-composer path
+        //    (no such effect) holding stale wrong-domain selections.
+        next.refs = undefined;
+        next.context = undefined;
+        next.target = undefined;
+
         // 1) game → service: drop game-only basis tiers and the gameEngine
         //    5th slot. visualTier survives — it is matrix-permitted on both
         //    domains and the user's previous selection is still meaningful.

@@ -11,12 +11,16 @@
  * - `suggestedDirs` files are marked with ★ and their folders auto-expand.
  * - Domain isolation is the CALLER's responsibility: pass a `fileTree` already
  *   run through `pruneFileTreeForWorkspaceDomain` so `assets/<other-domain>`
- *   never shows (Asset Surface Boundary I6).
+ *   never shows (Asset Surface Boundary I6). Callers get that from the
+ *   `useArtifactPickerTree` hook so every entry point prunes identically.
+ * - Confirm REPLACES the field, so an already-selected path this tree cannot
+ *   represent is carried through rather than deleted (`preserveHiddenSelections`).
  * - Single-select mode (`singleSelect`) mirrors the revise-target contract.
  */
 
 import { useMemo, useState } from 'react';
 import { Folder, FolderOpen, Check, Search, Minus } from 'lucide-react';
+import { collectRepresentablePaths, preserveHiddenSelections } from '@/shared/utils/selectionDisplay';
 import { Modal } from './Modal';
 import { FileIcon } from '@/shared/utils/file-icons';
 import { cn } from '@/shared/utils/design-system';
@@ -219,7 +223,11 @@ export function FileTreePicker({
   };
 
   const confirm = () => {
-    onConfirm([...selected]);
+    onConfirm(
+      singleSelect
+        ? [...selected]
+        : preserveHiddenSelections([...selected], initialSelected, collectRepresentablePaths(nodes)),
+    );
     onClose();
   };
 

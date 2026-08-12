@@ -4,5 +4,6 @@ export type { FileCardProps } from './FileCard';
 export { SlotEntryList } from './SlotEntryList';
 export { TargetDisplay } from './TargetDisplay';
 export { ReferenceTargetPicker } from './ReferenceTargetPicker';
-export { resolveSlotEntries, listDir } from './resolveSlots';
-export type { SlotWarning, SlotFileEntry, SlotEntry, FileWarningContext } from './types';
+export { resolveSlotEntries, resolveSlotSection, listDir } from './resolveSlots';
+export { shouldSeedSlotDefaults } from './seedDefaults';
+export type { SlotWarning, SlotFileEntry, SlotEntry, SlotSectionView, FileWarningContext } from './types';

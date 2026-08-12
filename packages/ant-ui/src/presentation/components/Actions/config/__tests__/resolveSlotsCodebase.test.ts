@@ -27,7 +27,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getConfigSlots } from '@ant/shared';
-import { resolveSlotEntries } from '../resolveSlots';
+import { resolveSlotEntries, resolveSlotSection } from '../resolveSlots';
 
 describe('resolveSlotEntries — codebase context slot (Codebase Channel SSOT)', () => {
   it('propagates codebaseHasFiles=true to the auto-injected codebase context entry (gen-spec)', () => {
@@ -104,22 +104,30 @@ describe('resolveSlotEntries — codebase context slot (Codebase Channel SSOT)',
     expect(greenfield!.context.some(s => s.codebase === true)).toBe(false);
   });
 
+  it('resolveSlotSection carries codebaseHasFiles through to the codebase entry', () => {
+    const slots = getConfigSlots('gen-spec', { hasCodebase: true });
+    const withFiles = resolveSlotSection(slots!.context, [], new Set(), { codebaseHasFiles: true });
+    const without = resolveSlotSection(slots!.context, [], new Set(), { codebaseHasFiles: false });
+    expect(withFiles.entries.find(e => e.def.codebase === true)!.hasFiles).toBe(true);
+    expect(without.entries.find(e => e.def.codebase === true)!.hasFiles).toBe(false);
+  });
+
   /**
    * lint-as-test — the original bug was a single missing argument at the
-   * `ActionConfigView.ctxEntries` call site (refs path passed the flag,
+   * `ActionConfigView` context call site (refs path passed the flag,
    * context path did not). The unit tests above lock the function
    * contract; this lint locks the call sites so a future refactor
    * cannot quietly drop the argument and re-trigger the regression.
    */
-  it('ActionConfigView passes codebaseHasFiles to BOTH refEntries and ctxEntries call sites', () => {
+  it('ActionConfigView passes codebaseHasFiles to BOTH the refs and context section views', () => {
     const source = readFileSync(
       resolve(__dirname, '../../ActionConfigView.tsx'),
       'utf8',
     );
-    const refCallMatch = source.match(/refEntries\s*=\s*useMemo\([\s\S]*?resolveSlotEntries\(([^)]*)\)/);
-    const ctxCallMatch = source.match(/ctxEntries\s*=\s*useMemo\([\s\S]*?resolveSlotEntries\(([^)]*)\)/);
-    expect(refCallMatch, 'refEntries useMemo not found').not.toBeNull();
-    expect(ctxCallMatch, 'ctxEntries useMemo not found').not.toBeNull();
+    const refCallMatch = source.match(/refsView\s*=\s*useMemo\([\s\S]*?resolveSlotSection\(([\s\S]*?)\)\s*\n/);
+    const ctxCallMatch = source.match(/ctxView\s*=\s*useMemo\([\s\S]*?resolveSlotSection\(([\s\S]*?)\)\s*\n/);
+    expect(refCallMatch, 'refsView useMemo not found').not.toBeNull();
+    expect(ctxCallMatch, 'ctxView useMemo not found').not.toBeNull();
     expect(refCallMatch![1]).toContain('codebaseHasFiles');
     expect(ctxCallMatch![1]).toContain('codebaseHasFiles');
   });
