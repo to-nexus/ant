@@ -18,6 +18,7 @@ import { buildRedisTlsOptions } from '../../infrastructure/utils/redis';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FileNode } from '@ant/shared';
+import { isFeatureTreeRootEntry } from '@ant/shared';
 import { FileTreeUpdatePort } from '../ports';
 import { UserContext } from '../types/user';
 import { 
@@ -28,10 +29,15 @@ import {
 import { REDIS_KEYS, REDIS_TTL } from '../constants/redis';
 import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
 import { ensureCanonicalStructure } from '../utils/sessionPaths';
+import { buildUniversalMergedTree, decorateUniversalTree } from '../customAgents/universalContainer';
 import { GitStateBroadcaster } from './GitStateBroadcaster';
 import { InflightTracker } from './InflightTracker';
 
-// File patterns to exclude from tree
+/**
+ * Blacklist for depth ≥ 1 only. The feature root is governed by the
+ * `isFeatureTreeRootEntry` allowlist, which already excludes `codebase/`
+ * (git worktree — browsed via IDE, not Explorer).
+ */
 const EXCLUDE_PATTERNS = [
   'node_modules',
   '.git',
@@ -44,7 +50,6 @@ const EXCLUDE_PATTERNS = [
   '__pycache__',
   '.env',
   '.env.local',
-  'codebase',  // Git worktree directory — browsed via IDE, not Explorer
 ];
 
 
@@ -133,12 +138,21 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
       // Universal jobs point projectPath at the universal container, which must
       // never receive the canonical feature skeleton (decideProjectJobGate
       // guarantees jobType 'universal' ⇔ universal project).
-      if (this.jobType !== 'universal') {
+      const isUniversal = this.jobType === 'universal';
+      if (!isUniversal) {
         await ensureCanonicalStructure(this.projectPath);
       }
 
-      // 2. Build file tree from filesystem
-      const tree = await this.buildFileTree(this.projectPath);
+      // 2. Build file tree from filesystem.
+      // Universal must go through the merged-view SSOT, not the raw walk: this
+      // cache key is shared with FileOperationService.getFileTree, so a raw walk
+      // would overwrite the merged shape (`plan/…`) with container-relative
+      // paths (`artifacts/…`). Those then round-trip through
+      // resolveUniversalMergedPath into `{container}/artifacts/artifacts/…` and
+      // every artifact click 404s until the 24h TTL expires.
+      const tree = isUniversal
+        ? await decorateUniversalTree(buildUniversalMergedTree(this.projectPath))
+        : await this.buildFileTree(this.projectPath);
 
       // 3. Cache in Redis for cross-pod initial state (bypasses NFS attribute caching)
       const cacheKey = `${REDIS_KEYS.ARTIFACTS.FILETREE}${userContext.userId}:${projectId}:${featureName}`;
@@ -167,8 +181,12 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   }
 
   /**
-   * Build file tree from filesystem. All meta computation routes through
+   * Build the codespace feature tree. All meta computation routes through
    * `computeFileMeta` — no inline template evaluation here.
+   *
+   * Universal containers never reach this method (see `broadcastFileTree`);
+   * their tree comes from `buildUniversalMergedTree`, whose free-form top level
+   * must stay open.
    */
   private async buildFileTree(dirPath: string, relativePath: string = ''): Promise<FileNode[]> {
     const nodes: FileNode[] = [];
@@ -177,7 +195,11 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
       const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
 
       for (const entry of entries) {
-        if (EXCLUDE_PATTERNS.some(pattern => entry.name === pattern || entry.name.startsWith('.'))) {
+        // Feature root: allowlist (same SSOT the ArtifactsPanel renders from).
+        // Deeper levels stay blacklist-based — canonical dirs hold user uploads.
+        if (relativePath === '') {
+          if (!isFeatureTreeRootEntry(entry.name)) continue;
+        } else if (EXCLUDE_PATTERNS.some(pattern => entry.name === pattern || entry.name.startsWith('.'))) {
           continue;
         }
 

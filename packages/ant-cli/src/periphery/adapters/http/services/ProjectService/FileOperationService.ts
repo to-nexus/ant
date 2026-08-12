@@ -1,15 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FileNode, FileResource } from '@ant/shared';
+import { isFeatureTreeRootEntry } from '@ant/shared';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { assertWithinRoot } from '../../../../../core/config/pathContainment';
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
 import {
   buildUniversalMergedTree,
+  decorateUniversalTree,
   resolveUniversalContainerPath,
   resolveUniversalMergedPath,
-  type UniversalTreeNode,
 } from '../../../../../core/customAgents/universalContainer';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import { computeFileMeta, shouldEvaluateTemplate } from '../../../../../core/utils/computeFileMeta';
@@ -37,12 +38,16 @@ export class BinaryFileOperationError extends Error {
   }
 }
 
+/**
+ * Blacklist for depth ≥ 1 only. The feature root is governed by the
+ * `isFeatureTreeRootEntry` allowlist, which already excludes `codebase/`
+ * (not a canonical dir) and everything else that is not an artifact domain.
+ */
 const TREE_EXCLUDE = new Set([
   'node_modules',
   'dist',
   'build',
   '__pycache__',
-  'codebase',
 ]);
 
 /**
@@ -110,26 +115,7 @@ export class FileOperationService {
     // stale detection / the Redis tree cache stay shape-compatible.
     const containerPath = this.resolveUniversalContainer(projectId, featureName, userContext);
     if (containerPath) {
-      const decorate = async (nodes: UniversalTreeNode[]): Promise<FileNode[]> =>
-        Promise.all(nodes.map(async (n): Promise<FileNode> => {
-          if (n.type === 'directory') {
-            return { name: n.name, path: n.path, type: 'directory', children: await decorate(n.children ?? []) };
-          }
-          let content: string | null = null;
-          if (shouldEvaluateTemplate(n.path)) {
-            try {
-              content = await fs.promises.readFile(n.absolutePath, 'utf-8');
-            } catch { /* skip read failures */ }
-          }
-          const meta = computeFileMeta({
-            relativePath: n.path,
-            content,
-            size: n.size ?? 0,
-            mtime: n.mtimeMs ?? 0,
-          });
-          return { name: n.name, path: n.path, type: 'file', meta };
-        }));
-      return decorate(buildUniversalMergedTree(containerPath));
+      return decorateUniversalTree(buildUniversalMergedTree(containerPath));
     }
 
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
@@ -150,7 +136,9 @@ export class FileOperationService {
       }
 
       const sorted = items
-        .filter(d => !d.name.startsWith('.') && !TREE_EXCLUDE.has(d.name))
+        .filter(d => (relativePath === ''
+          ? isFeatureTreeRootEntry(d.name)
+          : !d.name.startsWith('.') && !TREE_EXCLUDE.has(d.name)))
         .sort((a, b) => {
           const ad = a.isDirectory();
           const bd = b.isDirectory();

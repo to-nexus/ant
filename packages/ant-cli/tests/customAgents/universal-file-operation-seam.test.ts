@@ -3,16 +3,37 @@
  * route passes through. Truth table: universal-feature requests resolve into
  * the container's merged view; canonical projects are untouched (null
  * branch); and NO code path materializes a phantom `features/universal`.
+ *
+ * Also covers the SSE peer (`FileTreeBroadcaster`): both writers of the shared
+ * `ARTIFACTS.FILETREE` cache key must emit the SAME merged shape.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import type { FileNode } from '@ant/shared';
 import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { FileOperationService } from '../../src/periphery/adapters/http/services/ProjectService/FileOperationService';
 import { resolveFeatureScopedFilePath } from '../../src/periphery/adapters/http/routes/helpers/featureFiles';
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
+
+const redisWrites: Array<{ key: string; value: string }> = [];
+
+vi.mock('ioredis', () => {
+  class MockRedis {
+    on() { return this; }
+    async set(key: string, value: string, ..._rest: unknown[]) {
+      redisWrites.push({ key, value });
+      return 'OK' as const;
+    }
+    async publish() { return 1; }
+    async quit() { return 'OK' as const; }
+  }
+  return { Redis: MockRedis, default: MockRedis };
+});
+
+const { FileTreeBroadcaster } = await import('../../src/core/realtime/FileTreeBroadcaster');
 
 let workspaceRoot: string;
 let projectPath: string;
@@ -83,6 +104,19 @@ describe('FileOperationService — universal seam truth table', () => {
     expect(fs.existsSync(path.join(projectPath, 'features'))).toBe(false);
   });
 
+  it('free-form top-level dirs survive — the container is NOT allowlist-filtered', async () => {
+    markUniversal();
+    fs.mkdirSync(path.join(projectPath, 'universal', 'artifacts', 'briefs'), { recursive: true });
+    fs.writeFileSync(path.join(projectPath, 'universal', 'artifacts', 'briefs', 'b.md'), 'x');
+    fs.writeFileSync(path.join(projectPath, 'universal', 'artifacts', 'notes.md'), 'y');
+    const svc = new FileOperationService(makeResolver());
+    const tree = await svc.getFileTree('proj', UNIVERSAL_FEATURE, userContext);
+    // The codespace feature-root allowlist (plan/architecture/visual/assets/
+    // meta/sessions) must never reach this plane — a workspace has no codebase
+    // and shows everything its agents author.
+    expect(tree.map((n) => n.name)).toEqual(expect.arrayContaining(['briefs', 'notes.md']));
+  });
+
   it('canonical project: universal feature name falls through to features/ (null branch)', async () => {
     fs.writeFileSync(path.join(projectPath, 'config.json'), JSON.stringify({ projectType: 'canonical' }));
     const featureDir = path.join(projectPath, 'features', 'universal');
@@ -91,6 +125,48 @@ describe('FileOperationService — universal seam truth table', () => {
     const svc = new FileOperationService(makeResolver());
     const resource = await svc.readFile('proj', 'universal', 'a.md', userContext);
     expect(resource.content).toBe('canonical-side');
+  });
+});
+
+describe('universal file tree — HTTP and SSE writers agree on shape', () => {
+  const flatten = (nodes: FileNode[]): string[] =>
+    nodes.flatMap((n) => [n.path, ...flatten(n.children ?? [])]).sort();
+
+  it('FileTreeBroadcaster emits the merged view, not a container raw walk', async () => {
+    markUniversal();
+    fs.writeFileSync(path.join(projectPath, 'universal', 'artifacts', 'plan', 'p.md'), 'x');
+    fs.mkdirSync(path.join(projectPath, 'universal', 'artifacts', 'briefs'), { recursive: true });
+    fs.writeFileSync(path.join(projectPath, 'universal', 'artifacts', 'briefs', 'b.md'), 'y');
+    fs.writeFileSync(path.join(projectPath, 'universal', 'sessions', 'chat.jsonl'), '{}\n');
+
+    const httpTree = await new FileOperationService(makeResolver()).getFileTree(
+      'proj', UNIVERSAL_FEATURE, userContext,
+    );
+
+    redisWrites.length = 0;
+    const broadcaster = new FileTreeBroadcaster({
+      redisUrl: 'redis://mock',
+      jobId: 'j',
+      projectId: 'proj',
+      featureName: UNIVERSAL_FEATURE,
+      jobType: 'universal',
+      userContext,
+      // Universal jobs pass ANT_FEATURE_PATH = {project}/universal.
+      projectPath: path.join(projectPath, 'universal'),
+    });
+    await broadcaster.notifyFileTreeUpdate('proj', UNIVERSAL_FEATURE, userContext);
+    await broadcaster.close();
+
+    const cached = redisWrites.find((w) => w.key.includes('filetree'));
+    expect(cached).toBeDefined();
+    const sseTree = JSON.parse(cached!.value) as FileNode[];
+
+    // Both writers share one Redis key. A raw container walk would emit
+    // `artifacts/plan/p.md`, which then resolves to
+    // `{container}/artifacts/artifacts/plan/p.md` and 404s on every click.
+    expect(flatten(sseTree)).toEqual(flatten(httpTree));
+    expect(flatten(sseTree)).toContain('plan/p.md');
+    expect(flatten(sseTree).some((p) => p.startsWith('artifacts/'))).toBe(false);
   });
 });
 

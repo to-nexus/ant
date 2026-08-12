@@ -12,7 +12,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { FileNode } from '@ant/shared';
 import { CANONICAL_FEATURE_DIRS, UNIVERSAL_FEATURE, createEmptyFigmaData } from '@ant/shared';
+import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
 
 export const UNIVERSAL_DIRNAME = 'universal';
 export const UNIVERSAL_ARTIFACTS_DIRNAME = 'artifacts';
@@ -430,6 +432,44 @@ export function buildUniversalMergedTree(containerPath: string): UniversalTreeNo
     children: buildSubtree(sessionsRoot, '', UNIVERSAL_SESSIONS_NODE),
   };
   return [...canonicalNodes, ...freeNodes, sessionsNode];
+}
+
+/**
+ * `UniversalTreeNode[]` → `FileNode[]` with meta, the shape both the HTTP file
+ * tree and the SSE broadcaster ship.
+ *
+ * Single owner on purpose: the broadcaster used to walk the container directly
+ * with its own blacklist, which emitted `artifacts/…`-prefixed paths while the
+ * HTTP route emitted merged-view paths (`plan/…`). Both write the same
+ * `ARTIFACTS.FILETREE` Redis key, so whichever ran last decided the shape and a
+ * cached raw-walk tree made every artifact click resolve to
+ * `{container}/artifacts/artifacts/…` → 404. Route every universal tree through
+ * {@link buildUniversalMergedTree} + this decorator.
+ */
+export async function decorateUniversalTree(nodes: UniversalTreeNode[]): Promise<FileNode[]> {
+  return Promise.all(nodes.map(async (n): Promise<FileNode> => {
+    if (n.type === 'directory') {
+      return {
+        name: n.name,
+        path: n.path,
+        type: 'directory',
+        children: await decorateUniversalTree(n.children ?? []),
+      };
+    }
+    let content: string | null = null;
+    if (shouldEvaluateTemplate(n.path)) {
+      try {
+        content = await fs.promises.readFile(n.absolutePath, 'utf-8');
+      } catch { /* skip read failures */ }
+    }
+    const meta = computeFileMeta({
+      relativePath: n.path,
+      content,
+      size: n.size ?? 0,
+      mtime: n.mtimeMs ?? 0,
+    });
+    return { name: n.name, path: n.path, type: 'file', meta };
+  }));
 }
 
 export type ProjectJobGateResult =

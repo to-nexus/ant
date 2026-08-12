@@ -12,6 +12,8 @@
  *     ensureCanonicalStructure bails silently and writes nothing.
  *  5. DEBUG_SUBDIRS derived projection matches the agent → subdir shape
  *     defined in @ant/shared canonical dirs.
+ *  6. Feature file tree membership: depth 0 is an allowlist
+ *     (`isFeatureTreeRootEntry`), depth ≥ 1 stays open for user uploads.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -22,11 +24,14 @@ import {
   CANONICAL_FEATURE_DIRS,
   CANONICAL_FEATURE_FILE_PATHS,
   FIGMA_CONFIG_PATH,
+  isFeatureTreeRootEntry,
 } from '@ant/shared';
 import {
   ensureCanonicalStructure,
   DEBUG_SUBDIRS,
 } from '../../src/core/utils/sessionPaths';
+import { FileOperationService } from '../../src/periphery/adapters/http/services/ProjectService/FileOperationService';
+import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 
 async function mkTmpFeature(): Promise<string> {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ant-canonical-'));
@@ -157,6 +162,68 @@ describe('DEBUG_SUBDIRS (derived from CANONICAL_FEATURE_DIRS)', () => {
     expect(DEBUG_SUBDIRS.architect?.length ?? 0).toBeGreaterThan(0);
     expect(DEBUG_SUBDIRS.planner?.length ?? 0).toBeGreaterThan(0);
     expect(DEBUG_SUBDIRS.creator?.length ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('feature file tree — depth 0 allowlist (isFeatureTreeRootEntry)', () => {
+  let workspaceRoot: string;
+  let featurePath: string;
+
+  const makeResolver = () => ({
+    getProjectPath: (_c: unknown, projectId: string) => path.join(workspaceRoot, projectId),
+    getFeaturePath: (_c: unknown, projectId: string, feature: string) =>
+      path.join(workspaceRoot, projectId, 'features', feature),
+  }) as unknown as WorkspaceResolver;
+
+  beforeEach(async () => {
+    workspaceRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ant-tree-allowlist-'));
+    featurePath = path.join(workspaceRoot, 'proj', 'features', 'feat');
+    await fs.promises.mkdir(featurePath, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(workspaceRoot, 'proj', 'config.json'),
+      JSON.stringify({ projectType: 'canonical' }),
+    );
+  });
+
+  afterEach(async () => {
+    await fs.promises.rm(workspaceRoot, { recursive: true, force: true });
+  });
+
+  it('drops non-artifact feature-root entries (deploy/, codebase/, stray files)', async () => {
+    // `deploy/` is the rsync snapshot of codebase/ (DeployWorkspace); it is not
+    // a canonical dir, so the old blacklist walked it — 78% of the tree payload
+    // on a measured feature — and ArtifactsPanel then discarded every node.
+    await fs.promises.mkdir(path.join(featurePath, 'deploy', 'src'), { recursive: true });
+    await fs.promises.writeFile(path.join(featurePath, 'deploy', 'src', 'a.ts'), 'x');
+    await fs.promises.mkdir(path.join(featurePath, 'codebase', 'src'), { recursive: true });
+    await fs.promises.writeFile(path.join(featurePath, 'featureBiases.jsonl'), '{}\n');
+
+    const tree = await new FileOperationService(makeResolver()).getFileTree(
+      'proj', 'feat', { userId: 'u', organizationId: 'o' } as any,
+    );
+
+    const roots = tree.map((n) => n.name);
+    expect(roots).not.toContain('deploy');
+    expect(roots).not.toContain('codebase');
+    expect(roots).not.toContain('featureBiases.jsonl');
+    // Every surviving root is an allowlisted artifact domain.
+    expect(roots.every((n) => isFeatureTreeRootEntry(n))).toBe(true);
+    expect(roots).toEqual(expect.arrayContaining(['plan', 'architecture', 'visual', 'assets', 'meta', 'sessions']));
+  });
+
+  it('stays open below the feature root — user uploads in canonical dirs survive', async () => {
+    await ensureCanonicalStructure(featurePath);
+    // `deploy` as a *nested* name must NOT be filtered: only depth 0 is closed.
+    await fs.promises.mkdir(path.join(featurePath, 'assets', 'service', 'deploy'), { recursive: true });
+    await fs.promises.writeFile(path.join(featurePath, 'assets', 'service', 'deploy', 'logo.png'), 'x');
+
+    const tree = await new FileOperationService(makeResolver()).getFileTree(
+      'proj', 'feat', { userId: 'u', organizationId: 'o' } as any,
+    );
+
+    const assets = tree.find((n) => n.name === 'assets');
+    const service = assets?.children?.find((n) => n.name === 'service');
+    expect(service?.children?.some((n) => n.name === 'deploy')).toBe(true);
   });
 });
 

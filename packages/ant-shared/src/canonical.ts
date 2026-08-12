@@ -264,6 +264,32 @@ export const UI_VISIBLE_FILES: ReadonlyArray<string> =
     .filter(f => f.visibility.startsWith('ui:'))
     .map(f => f.path.split('/').pop()!);
 
+const FEATURE_TREE_ROOT_ENTRIES = new Set<string>([
+  ...UI_PANEL_TOP_LEVEL_DIRS.map(d => d.name),
+  ...UI_VISIBLE_FILES,
+]);
+
+/**
+ * Whether a feature-root entry name belongs in the feature file tree.
+ *
+ * The membership rule for "what is an artifact" used to live in three places
+ * with two different polarities: two backend walks excluded a fixed blacklist
+ * (`node_modules`/`dist`/`codebase`/…) while ArtifactsPanel rendered only
+ * {@link UI_PANEL_TOP_LEVEL_DIRS}. A blacklist is open, so every new
+ * feature-root directory leaked into the payload and was then discarded by the
+ * panel — `deploy/` (the rsync snapshot of `codebase/`) alone accounted for 78%
+ * of the tree nodes on a measured feature.
+ *
+ * Applies to the feature root ONLY. Inside a canonical directory the tree stays
+ * open — that is where user uploads land.
+ *
+ * `codebase/` needs no special case here: it is not a canonical dir, so the
+ * allowlist excludes it (it is browsed via the IDE, not the Explorer).
+ */
+export function isFeatureTreeRootEntry(name: string): boolean {
+  return FEATURE_TREE_ROOT_ENTRIES.has(name);
+}
+
 /**
  * Returns a shallow-cloned file tree with `visual/` and `assets/` immediate
  * directory children narrowed to the workspace {@link Domain} (D28 — service:
