@@ -318,7 +318,10 @@ worktree 는 존재하지 않고 모든 피처가 대등합니다.
 `ops-team` 에이전트 하나가 당신의 모든 워크스페이스를 담당합니다. 기본
 제공되는 `assistant` 에이전트는 읽기 전용 예제로 들여다볼 수 있고,
 [`examples/`](examples/) 에는 위 `ops-team` 에이전트가 실제로 돌아가는 파일과
-그것이 붙는 MCP 서버가 함께 들어 있습니다.
+그것이 붙는 MCP 서버가 함께 들어 있습니다 — `pnpm build:example:mcp &&
+MCP_AUTH_TOKEN=dev-token pnpm start:example:mcp` 로 그 서버를 띄울 수 있고,
+[커스텀 에이전트 작성하기](docs/guides/custom-agent-authoring.md) 가 양쪽을
+끝에서 끝까지 안내합니다.
 
 "Claude Projects / 커스텀 GPT, 단 내가 통제하는 인프라 위에서"로 생각하면
 됩니다 — 다만 그 아래에 있는 것이 채팅 엔드포인트가 아닙니다. 모든 커스텀

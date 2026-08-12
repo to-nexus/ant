@@ -197,6 +197,33 @@ refactor(preview): drop mock:* annotation tokens
   no response after a week, bump it with a comment — that is not rude, it is
   helpful.
 
+## Dependency Updates
+
+Dependabot owns the routine lane, configured in
+[`.github/dependabot.yml`](.github/dependabot.yml). Three weekly npm groups —
+`volatile` (0.x SDKs and generated-export packages, where a semver-minor can
+still be breaking), `prod-minor-patch`, and `dev-minor-patch` — plus one
+`actions` group. Patch bumps and dev-dependency minors auto-merge on green CI
+via [`dependabot-automerge.yml`](.github/workflows/dependabot-automerge.yml);
+everything else needs a human.
+
+**Majors are not proposed.** `dependabot.yml` ignores
+`version-update:semver-major` for npm, because a major that needs a source
+migration (tailwindcss 3 → 4, archiver 7 → 8) otherwise sits red forever and
+eats the open-PR limit until Dependabot stops opening PRs at all. They are
+picked up deliberately instead, once a quarter:
+
+1. `pnpm outdated -r` for the major gap.
+2. Per entry: migrate / defer / drop the dependency (some are simply unused —
+   `http-proxy-middleware` was carried for two majors while the code used
+   `http-proxy` directly).
+3. File an issue for anything deferred so the next sweep sees it.
+
+**When you hand-bump a manifest for a CVE**, check whether an open Dependabot
+PR already covers that package. If it does, comment `@dependabot rebase` on it
+instead of landing a separate commit — two channels pushing the same manifest is
+how PRs go stale, re-run CI, and drift from their base.
+
 ## Reporting Bugs
 
 - For **security** issues, see [SECURITY.md](SECURITY.md). Please do not file

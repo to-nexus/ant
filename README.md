@@ -321,7 +321,10 @@ new job type, no deploy. Definitions are read fresh at every run, and they live
 at the account level, so one `ops-team` agent serves every workspace you own.
 The shipped `assistant` agent is a read-only worked example you can study, and
 [`examples/`](examples/) has the `ops-team` agent above as runnable files
-alongside the MCP server it talks to.
+alongside the MCP server it talks to — `pnpm build:example:mcp && MCP_AUTH_TOKEN=dev-token
+pnpm start:example:mcp` starts that server, and
+[authoring a custom agent](docs/guides/custom-agent-authoring.md) walks the two
+halves end to end.
 
 Think "Claude Projects / custom GPT, on infrastructure you control" — except
 what sits underneath is not a chat endpoint. Every custom job gets:

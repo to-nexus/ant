@@ -28,25 +28,35 @@ own secrets, and that claim is about which keys are present.
 
 ## Run
 
-```bash
-pnpm install                       # at the repo root — this is a workspace member
-pnpm --filter @ant/example-mcp-reference build
+This is a workspace member, so a root `pnpm install` already covers it and every
+command runs from the **repository root** — no `cd` needed.
 
-cd examples/mcp-reference-server
+```bash
+pnpm build:example:mcp                              # compile src/ → dist/
 
 # HTTP (refuses to start without MCP_AUTH_TOKEN)
-cp .env.example .env               # set MCP_AUTH_TOKEN
-pnpm start                         # POST /mcp (Bearer auth) · GET /healthz · GET/DELETE /mcp → 405
+MCP_AUTH_TOKEN=<token> pnpm start:example:mcp       # POST /mcp (Bearer auth) · GET /healthz · GET/DELETE /mcp → 405
 
 # stdio (no auth — the spawning process is the trust boundary)
-pnpm start:stdio
+pnpm start:example:mcp:stdio
 ```
 
-Smoke test a running HTTP server:
+`pnpm dev:example:mcp` runs the same server under `tsx watch`.
+
+`.env` is optional: both `dev` and `start` load it only if present
+(`--env-file-if-exists`), so the token may come from the environment as above.
+For a token that persists across runs, `cp .env.example .env` and set it there.
+
+Smoke test a running HTTP server — `initialize`, `tools/list`, one `tools/call`,
+and the 401 / 405 / 406 negatives:
 
 ```bash
-MCP_AUTH_TOKEN=<token> pnpm smoke
+MCP_AUTH_TOKEN=<token> pnpm test:example:mcp
 ```
+
+Those five root scripts are thin delegations to this package's own `build` /
+`dev` / `start` / `start:stdio` / `smoke`, which still work from inside this
+directory if you prefer.
 
 ## Connect it to Ant
 

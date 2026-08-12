@@ -5,12 +5,12 @@
   "description": "Worked example: reference MCP server for Ant custom agents — fixture-only ops incident/SLA API",
   "type": "module",
   "engines": {
-    "node": ">=20.6"
+    "node": ">=22.13"
   },
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc",
-    "start": "node --env-file=.env dist/index.js",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "start:stdio": "node dist/index.js --stdio",
     "typecheck": "tsc --noEmit",
     "smoke": "bash scripts/smoke.sh"

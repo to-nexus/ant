@@ -1,0 +1,44 @@
+name: Dependabot auto-merge
+
+# The backlog this prevents: six Dependabot PRs, three red for weeks, the npm
+# open-pull-requests-limit saturated so no new ones could be opened. Nothing was
+# wrong with the safe bumps — they just needed a human to click merge, and that
+# click is what never scaled.
+#
+# So: patch bumps (any dependency) and minor bumps of *development* dependencies
+# merge themselves once CI is green. Runtime minors still get a human. Majors
+# never reach here — .github/dependabot.yml does not propose them.
+#
+# Requires two repo settings this file cannot set:
+#   - Settings → General → Allow auto-merge
+#   - main branch protection with required checks:
+#     typecheck-and-test, build, oss-guard, boot-smoke
+# Without them `--auto` degrades into an immediate merge, which defeats the point.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    # Dependabot-triggered runs get a read-only token by default; the
+    # `permissions` block above is what elevates it. If `gh pr merge` ever
+    # returns 403, switch the trigger to pull_request_target — but keep this job
+    # exactly as-is, checking out no PR code and running no PR-authored scripts.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Enable auto-merge for low-risk updates
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          (steps.meta.outputs.update-type == 'version-update:semver-minor' &&
+           steps.meta.outputs.dependency-type == 'direct:development')
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
