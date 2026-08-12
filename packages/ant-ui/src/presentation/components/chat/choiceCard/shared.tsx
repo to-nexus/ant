@@ -10,6 +10,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Play, XCircle } from 'lucide-react';
@@ -79,8 +80,14 @@ export function useChoiceCardState({ presented, resolved }: UseChoiceCardStatePa
   const [localSelectedChoice, setLocalSelectedChoice] = useState<string | null>(null);
   const [localResolvedLabel, setLocalResolvedLabel] = useState<string | null>(null);
 
+  const { t, i18n } = useTranslation('chat');
   const selectedChoice = resolved?.choiceSelected || localSelectedChoice;
-  const resolvedLabel = resolved?.resolvedLabel || localResolvedLabel;
+  // BE-written labels win the per-cardId NX lock and are English literals;
+  // prefer their i18n key when the catalog knows it so the badge localizes.
+  const resolvedLabelKey = (resolved as { resolvedLabelKey?: string } | undefined)?.resolvedLabelKey;
+  const resolvedLabel =
+    (resolvedLabelKey && i18n.exists(`chat:${resolvedLabelKey}`) ? t(resolvedLabelKey) : resolved?.resolvedLabel)
+    || localResolvedLabel;
   const isSelected = !!selectedChoice;
 
   const persistToBackend = useCallback(async (

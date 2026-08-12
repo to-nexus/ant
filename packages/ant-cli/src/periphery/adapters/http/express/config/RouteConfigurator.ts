@@ -312,6 +312,10 @@ export class RouteConfigurator {
           const suggestedJob = data.result?.output?.suggestedJob;
           const suggestedAgent = data.result?.output?.suggestedAgent;
           const redirectReason = data.result?.output?.redirectReason;
+          const resumeJobId = data.result?.output?.resumeJobId;
+          const resumeJobType = data.result?.output?.resumeJobType;
+          const resumeDismissed = data.result?.output?.resumeDismissed;
+          const originalDirective = data.result?.output?.originalDirective;
           logger.info(`Skipping cleanupJobState for inline-ask job: ${jobId} (intent=${intent}, action=${action}, noSession=${noSession})`, {
             component: 'RouteConfigurator'
           });
@@ -328,6 +332,33 @@ export class RouteConfigurator {
                 userId,
                 organizationId,
               };
+
+              // Resume-request → durable consent card (chat-SSOT). The user
+              // explicitly asked to continue the interrupted job; consent to
+              // re-open dismissed work stays a CLICK, never an inference —
+              // the card's Resume action calls /jobs/:id/resume.
+              if (action === 'resume-request' && resumeJobId && this.deps.chatService && projectId && featureName) {
+                try {
+                  await this.deps.chatService.appendChoicePresented(projectId, featureName, {
+                    jobId,
+                    cardId: `resume-confirm-${resumeJobId}-${Date.now()}`,
+                    cardType: 'resume_confirm',
+                    prompt: 'Resume interrupted job?',
+                    payload: {
+                      resumeJobId,
+                      resumeJobType,
+                      resumeDismissed: resumeDismissed === true,
+                      originalDirective,
+                    },
+                    userContext,
+                  });
+                } catch (cardError) {
+                  logger.warn(`Failed to append resume_confirm card: ${jobId}`, {
+                    component: 'RouteConfigurator'
+                  }, cardError);
+                }
+              }
+
               await stateStore.publish(channel, {
                 projectId,
                 featureName,
@@ -342,6 +373,9 @@ export class RouteConfigurator {
                   suggestedJob,
                   suggestedAgent,
                   redirectReason,
+                  resumeJobId,
+                  resumeJobType,
+                  resumeDismissed,
                   noSession,
                   timestamp: new Date().toISOString(),
                 },

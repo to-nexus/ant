@@ -41,3 +41,17 @@ export function extractIntentIdRaw(llmOutput: string): string | null {
   const m = llmOutput?.match(INTENT_TAG_RE);
   return m ? m[1].trim() : null;
 }
+
+const RESUME_TAG_RE = /<resumeRequest>\s*(true|false)\s*<\/resumeRequest>/i;
+
+/**
+ * Extract the optional `<resumeRequest>true</resumeRequest>` tag emitted
+ * alongside `<intentId>` when the directive asks to continue the interrupted
+ * work shown in the prompt. Absent tag or `false` body → false. Callers MUST
+ * apply the deterministic gate (signal exists ∧ canResume) before honoring it
+ * — the LLM can never mint a resume against nothing-resumable.
+ */
+export function parseResumeRequestTag(llmOutput: string): boolean {
+  const m = llmOutput?.match(RESUME_TAG_RE);
+  return !!m && m[1].toLowerCase() === 'true';
+}

@@ -21,9 +21,13 @@ vi.mock('../../src/agents/common/graph/runnerHelpers', () => ({
   invokeGraph: vi.fn(async (_app: unknown, initial: unknown) => initial),
   saveEarlyDirective: vi.fn(),
 }));
+vi.mock('../../src/core/session/archive', () => ({
+  archiveSupersededState: vi.fn(async () => true),
+}));
 
 import { runCodeGraph } from '../../src/agents/architect/graph/code/runner';
 import { invokeGraph } from '../../src/agents/common/graph/runnerHelpers';
+import { archiveSupersededState } from '../../src/core/session/archive';
 
 /** runCodeGraph returns a summary, not the state — capture the (mutated)
  * initial state the runner handed to the graph. */
@@ -124,6 +128,39 @@ describe('code runner restore gate (deriveRestoreMode wiring)', () => {
     expect(state.isResume).toBe(true);
     expect(state.taskQueue?.size()).toBe(1);
     expect(state.overrideDirective).toBeUndefined();
+  });
+
+  it('fresh takeover of resumable work archives the superseded state (icy-landing-glade)', async () => {
+    const initial = makeInitial({
+      overrideDirective: 'follow-up',
+      __session: {
+        interruption: {
+          reason: 'user_stopped', message: 'Dismissed by user', timestamp: 't',
+          canResume: true, dismissed: true,
+        },
+      },
+    });
+    initial.context.featurePath = '/tmp/feature-x';
+    await runAndCaptureState(initial);
+
+    expect(archiveSupersededState).toHaveBeenCalledTimes(1);
+    const [featurePath, agent, jobType, state] = (archiveSupersededState as any).mock.calls[0];
+    expect(featurePath).toBe('/tmp/feature-x');
+    expect(agent).toBe('architect');
+    expect(jobType).toBe('code');
+    expect(state.jobId).toBe('old-code-job');
+  });
+
+  it('revise-context and explicit resume do NOT archive (the slot is being restored, not superseded)', async () => {
+    const feedback = makeInitial({ overrideDirective: 'also handle the edge case' });
+    feedback.context.featurePath = '/tmp/feature-x';
+    await runAndCaptureState(feedback);
+
+    const resume = makeInitial({ isResume: true });
+    resume.context.featurePath = '/tmp/feature-x';
+    await runAndCaptureState(resume);
+
+    expect(archiveSupersededState).not.toHaveBeenCalled();
   });
 });
 

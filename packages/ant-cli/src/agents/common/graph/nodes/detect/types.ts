@@ -82,6 +82,8 @@ export interface DetectResult<T extends DetectableState = DetectableState> {
   displayMessage?: string;
   /** Choice card payload (status === 'redirect-suggested'). */
   choiceOptions?: ChoiceOptions;
+  /** Interrupted job to resume when choiceOptions exposes a 'resume' action. */
+  resumeJobId?: string;
 
   /** Visual asset-classification strategy emits this in place of `resolvedAction`. */
   inferred?: InferredAction;

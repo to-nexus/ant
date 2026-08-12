@@ -115,29 +115,41 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
 
     setMessage('');
 
-    // Check for interrupted job
+    // Check for interrupted job. Dismissed state reads the AUTHORITATIVE
+    // session marker (interruption.dismissed, on the wire via kanban); the
+    // localStorage timestamp survives only as the optimistic overlay for the
+    // pre-refresh window right after a dismiss click.
     const currentJobId = kanbanData?.jobId;
     const dismissedTimestamp = useStore.getState().dismissedInterruptTimestamp;
-    const interruptionWasDismissed = kanbanData?.interruption?.timestamp === dismissedTimestamp;
+    const interruptionWasDismissed =
+      kanbanData?.interruption?.dismissed === true ||
+      kanbanData?.interruption?.timestamp === dismissedTimestamp;
+    // Dismissed-but-RESUMABLE work still routes to inline-ask: the BE
+    // dispatch is the single owner of what the turn means there (explicit
+    // resume request → consent card; anything else → action:'newJob', a
+    // fresh job — never a silent continue of dismissed work).
     const hasInterruption = kanbanData?.interruption &&
       !kanbanData?.interruption?.message?.includes('completed') &&
-      !interruptionWasDismissed;
+      (kanbanData?.interruption?.canResume === true || !interruptionWasDismissed);
 
     // CASE 1: Interrupted job — inline-ask to classify intent. Universal
     // messages always take the normal execute path (inline-ask is a
     // canonical job; the BE execute route supersedes a paused universal job).
     if (currentJobId && hasInterruption && !universalCtx) {
       try {
-        await addChatUserMessage(selectedProject, selectedFeature, userMessage);
+        const { turnId } = await addChatUserMessage(selectedProject, selectedFeature, userMessage);
         useStore.getState().setRunning(true, currentJobId);
         useStore.getState().setInlineAskContext({
           interruptedJobId: currentJobId,
           projectId: selectedProject,
           featureName: selectedFeature,
           message: userMessage,
+          turnId,
         });
         const { inlineAsk } = await import('@/infrastructure/http/api');
-        await inlineAsk(selectedProject, selectedFeature, userMessage, true);
+        // Forward the minted turnId — without it the worker records a second
+        // user_turn and the same question renders twice.
+        await inlineAsk(selectedProject, selectedFeature, userMessage, true, turnId);
       } catch (error) {
         console.error('[ChatInput] Failed to start inline ask:', error);
         useStore.getState().setRunning(false);

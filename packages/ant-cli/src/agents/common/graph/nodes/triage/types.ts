@@ -21,8 +21,9 @@ import type { ActionMetadata, IntentId, Mode, Domain } from '@ant/shared';
  * - redirect: 다른 job으로 전환
  * - guide: 가이드 제공
  * - dismiss: 작업 취소
+ * - resume: 중단된 이전 잡을 명시 재개 (FE가 /jobs/:id/resume 호출)
  */
-export type ChoiceAction = 'proceed' | 'proceedAnyway' | 'redirect' | 'guide' | 'dismiss';
+export type ChoiceAction = 'proceed' | 'proceedAnyway' | 'redirect' | 'guide' | 'dismiss' | 'resume';
 
 /**
  * ChoiceOptions: 선택지 구성
@@ -68,6 +69,12 @@ export interface TriageResult {
    * domain signal — the plan document is the domain-neutral `plan/prd.md`.
    */
   domain: Domain;
+  /**
+   * LLM emitted `<resumeRequest>true</resumeRequest>` AND the deterministic
+   * gate held (an interrupted session with `canResume` exists). The directive
+   * asks to continue that interrupted work rather than open new output.
+   */
+  resumeRequested?: boolean;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -813,6 +813,19 @@ register({
 });
 
 register({
+  name: 'resumeRequest',
+  pattern: /<resumeRequest>\s*(true|false)\s*<\/resumeRequest>/i,
+  axis: {
+    intent: 'metadata',
+    processing: ['consumed-suppressed'],
+    persistence: ['sealed-state'],
+    blocking: 'non-blocking',
+  },
+  promptContract:
+    'Emit `<resumeRequest>true</resumeRequest>` alongside `<intentId>` ONLY when the directive asks to continue the interrupted work shown in the triage prompt. Honored only against a resumable session (deterministic canResume gate). Body is internal routing state — never user-facing.',
+});
+
+register({
   name: 'direct',
   pattern: /<direct>\s*([\s\S]*?)\s*<\/direct>/i,
   axis: {

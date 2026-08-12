@@ -62,6 +62,12 @@ export interface InlineAskContext {
   projectId: string;
   featureName: string;
   message: string;
+  /**
+   * chat SSOT §6 — the turnId the question was submitted under. A follow-up
+   * "work" job re-executes the same text, so it must reuse this id or the
+   * question renders as a second user bubble.
+   */
+  turnId?: string;
 }
 
 export interface ActiveJobEntry {

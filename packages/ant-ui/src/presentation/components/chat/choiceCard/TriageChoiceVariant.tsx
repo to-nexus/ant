@@ -15,7 +15,7 @@ interface TriageChoiceOptions {
 
 export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
   const { runJob } = useJobExecution();
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const [loadingAction, setLoadingAction] = useState<'positive' | 'neutral' | null>(null);
 
   const state = useChoiceCardState({ presented, resolved });
@@ -86,6 +86,29 @@ export function TriageChoiceVariant({ presented, resolved }: VariantProps) {
             agent: targetAgent,
             jobId: newJobId,
           });
+        }
+      }
+
+      if (response.type === 'continue' && response.action === 'resume' && response.resumeJobId) {
+        // Resume consent (in-graph resume card) — re-open the interrupted job.
+        // /jobs/:id/resume clears any dismissed marker and folds the cancelled
+        // cards to "Resumed" via SSE.
+        state.setLocalResolvedLabel(t('chat:resumeConfirm.resumed'));
+        const { resumeJob } = await import('@/infrastructure/http/api');
+        useStore.getState().setRunning(true, response.resumeJobId);
+        try {
+          const result = await resumeJob(
+            response.resumeJobId, state.selectedProject, state.selectedFeature, true,
+          );
+          if (result.jobType && result.jobType !== useStore.getState().selectedJobType) {
+            useStore.setState({ jobStartPending: true });
+            useStore.getState().setSelectedJobType(result.jobType);
+          }
+          useStore.getState().setRunning(true, result.jobId);
+        } catch (resumeError) {
+          console.error('[ChoiceCard:Triage] Resume failed:', resumeError);
+          useStore.getState().setRunning(false);
+          throw resumeError;
         }
       }
 

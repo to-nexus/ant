@@ -27,6 +27,7 @@ import type { JobStateTracker } from '../express/managers/JobStateTracker';
 import type { KanbanService } from '../services';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { setSessionDismissed } from './helpers/sessionCleanup';
+import { ensureSubmitUserTurn } from './helpers/submitUserTurn';
 import { getFallbackModel } from '../../../../core/config/defaultModels';
 
 /**
@@ -226,8 +227,8 @@ export function createJobRoutes(deps: {
    * conversation log without relying on legacy `addChatMessage` calls
    * from `cli.ts`. Fire-and-forget — never block the HTTP response.
    *
-   * Skips when seedTurnId is missing (e.g. /resume / /continue paths
-   * which do not flow through `/chat/user-message`).
+   * Skips when the turn id is missing (e.g. /resume / /continue, which carry
+   * no new user directive and therefore own no turn).
    */
   async function emitConflictAssistantMessage(
     projectId: string,
@@ -373,9 +374,34 @@ export function createJobRoutes(deps: {
     // made the resolveAgentForJobType fallback below unreachable, sending
     // agent-less universal executes into the architect branch.
     const { task: jobType, agent, enableEvaluation, overrideDirective, chatSource, skipTriage, actionMetadata, seedTurnId, customJobRef, intents, context, plan } = req.body;
+    // Own the turn for THIS request. `seedTurnId` present ⇒ /chat/user-message
+    // already recorded + broadcast the bubble; absent (any non-chat caller,
+    // notably a direct API job start) ⇒ we mint it here, otherwise the only
+    // writer left is the worker's recordUserTurn, which has no broadcaster and
+    // so leaves an open chat window with no user message.
+    let effectiveTurnId: string | undefined = seedTurnId;
     let userContext: { userId: string; organizationId: string } | null = null;
     try {
       userContext = extractUserContext(req);
+
+      // Before every gate — a rejected start must still land on the user's own
+      // turn (emitConflictAssistantMessage no-ops without a turnId).
+      try {
+        effectiveTurnId = await ensureSubmitUserTurn({
+          chatService: deps.chatService,
+          workspaceResolver: deps.workspaceResolver,
+          projectId,
+          featureName,
+          directive: overrideDirective,
+          seedTurnId,
+          userContext,
+          actionMetadata,
+          jobType,
+        });
+      } catch (err) {
+        // The chat copy is UI-only — a failure here must never block the job.
+        logger.warn('Failed to record submit-time user_turn', { component: 'JobRoute' }, err);
+      }
 
       /**
        * Reject with the reason visible in chat. The universal accept-time gates
@@ -392,8 +418,8 @@ export function createJobRoutes(deps: {
         await emitConflictAssistantMessage(
           projectId,
           featureName,
-          seedTurnId,
-          `${kind}-${seedTurnId ?? Date.now()}`,
+          effectiveTurnId,
+          `${kind}-${effectiveTurnId ?? Date.now()}`,
           userContext!,
           `작업을 시작할 수 없습니다: ${error}`,
           jobType,
@@ -408,8 +434,8 @@ export function createJobRoutes(deps: {
           await emitConflictAssistantMessage(
             projectId,
             featureName,
-            seedTurnId,
-            `gate-${seedTurnId ?? Date.now()}`,
+            effectiveTurnId,
+            `gate-${effectiveTurnId ?? Date.now()}`,
             userContext,
             '워크스페이스 프로젝트에서는 커스텀 에이전트 잡만 실행할 수 있습니다.',
           );
@@ -512,7 +538,7 @@ export function createJobRoutes(deps: {
             await emitConflictAssistantMessage(
               projectId,
               featureName,
-              seedTurnId,
+              effectiveTurnId,
               existingJobId,
               userContext,
               '이전에 중단된 작업을 새 작업으로 대체했습니다.',
@@ -523,7 +549,7 @@ export function createJobRoutes(deps: {
           await emitConflictAssistantMessage(
             projectId,
             featureName,
-            seedTurnId,
+            effectiveTurnId,
             existingJobId,
             userContext,
             `이미 진행 중인 작업이 있습니다. (Job ID: ${existingJobId})`,
@@ -544,8 +570,8 @@ export function createJobRoutes(deps: {
           await emitConflictAssistantMessage(
             projectId,
             featureName,
-            seedTurnId,
-            `prereq-${seedTurnId ?? Date.now()}`,
+            effectiveTurnId,
+            `prereq-${effectiveTurnId ?? Date.now()}`,
             userContext,
             `❌ Context files must be selected for action: ${actionMetadata.intent}`,
           );
@@ -572,8 +598,8 @@ export function createJobRoutes(deps: {
         await emitConflictAssistantMessage(
           projectId,
           featureName,
-          seedTurnId,
-          `approval-${seedTurnId ?? Date.now()}`,
+          effectiveTurnId,
+          `approval-${effectiveTurnId ?? Date.now()}`,
           userContext,
           code === 'ACCOUNT_DENIED'
             ? '계정이 비활성화되었습니다. 관리자에게 문의해 주세요.'
@@ -590,8 +616,8 @@ export function createJobRoutes(deps: {
         await emitConflictAssistantMessage(
           projectId,
           featureName,
-          seedTurnId,
-          `lowbal-${seedTurnId ?? Date.now()}`,
+          effectiveTurnId,
+          `lowbal-${effectiveTurnId ?? Date.now()}`,
           userContext,
           '크레딧이 부족하여 작업을 시작할 수 없습니다. 크레딧을 충전해 주세요.',
         );
@@ -620,10 +646,11 @@ export function createJobRoutes(deps: {
           customJobRef: `${universalCtx.ref.agentId}/${universalCtx.ref.jobId}`,
         }),
         ...(universalTurnMeta && { universalTurnMeta }),
-        // chat SSOT §6 — pre-allocated turnId from /chat/user-message,
-        // forwarded to the worker so the durable user_turn line shares
-        // the same id as the optimistic SSE broadcast.
-        seedTurnId,
+        // chat SSOT §6 — the turnId this request owns (from
+        // /chat/user-message, or minted above), forwarded to the worker so
+        // its feature.jsonl user_turn shares the broadcast line's id and its
+        // chat.jsonl copy dedupes.
+        seedTurnId: effectiveTurnId,
       };
 
       const enqueuedAt = new Date().toISOString();
@@ -644,28 +671,30 @@ export function createJobRoutes(deps: {
         await emitConflictAssistantMessage(
           projectId,
           featureName,
-          seedTurnId,
-          result.jobId ?? `prereq-${seedTurnId ?? Date.now()}`,
+          effectiveTurnId,
+          result.jobId ?? `prereq-${effectiveTurnId ?? Date.now()}`,
           userContext,
           text,
         );
       }
 
-      res.json(result);
+      // `turnId` lets an API caller correlate its request with the chat turn
+      // (and with every worker line tagged under it).
+      res.json({ ...result, ...(effectiveTurnId && { turnId: effectiveTurnId }) });
     } catch (error: any) {
       // chat-SSOT — server-side execute failures (queue / spawn / …)
       // also flow into the chat stream so the user is not stranded
       // with a silent 5xx. Best-effort; never block the error response.
       try {
-        if (deps.chatService && seedTurnId && userContext) {
+        if (deps.chatService && effectiveTurnId && userContext) {
           const message = (error?.message as string) ?? 'Unknown error';
           await deps.chatService.appendAssistantMessage(
             projectId,
             featureName,
             `❌ Job 실행 실패: ${message}`,
             {
-              jobId: `start-error-${seedTurnId}`,
-              turnId: seedTurnId,
+              jobId: `start-error-${effectiveTurnId}`,
+              turnId: effectiveTurnId,
               userContext,
             },
           );
@@ -1165,9 +1194,31 @@ export function createJobRoutes(deps: {
         break;
       }
       
+      // Archive fallback: the live slot may have been taken over by a later
+      // job (last-writer-wins) while the requested job's state was preserved
+      // by archiveSupersededState. Restore it into the live slot and resume —
+      // this is what keeps the dismissed card's "resume later" promise valid
+      // after subsequent jobs (icy-landing-glade RCA).
+      if ((!jobType || !sessionJobId || !sessionData) && requestedJobId) {
+        const { findArchivedState, restoreArchivedState } = await import('../../../../core/session/archive');
+        const archived = await findArchivedState(featurePath, requestedJobId);
+        if (archived && deriveResumableState(archived.state, archived.jobType, { isActuallyRunning: false }).canResume) {
+          const restored = await restoreArchivedState(featurePath, requestedJobId, {
+            onSessionPathTouched: (p) => deps.kanbanService?.invalidateSessionCache(p),
+          });
+          if (restored) {
+            jobType = restored.jobType;
+            foundAgent = restored.agent;
+            sessionJobId = restored.state.jobId ?? requestedJobId;
+            sessionData = { state: restored.state };
+            logger.debug(`   ♻️ Restored archived session for jobId=${requestedJobId} (${restored.agent}/${restored.jobType})`);
+          }
+        }
+      }
+
       if (!jobType || !sessionJobId || !sessionData) {
         logger.debug(`   ❌ No interrupted job found in session files`);
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: 'No interrupted job found',
           message: `No resumable job found for ${projectId}/${featureName}`
         });
@@ -1354,6 +1405,13 @@ export function createJobRoutes(deps: {
           userContext,
         });
       }
+
+      // Continue is explicit consent (isResume:true) — clear the dismissed
+      // marker like /resume does, so the NEXT implicit turn isn't forced
+      // fresh on work the user just explicitly continued.
+      if (sessionData.state?.interruption?.dismissed === true) {
+        await setSessionDismissed(deps.kanbanService, featurePath, sessionJobId, false);
+      }
       
       const inputFile = undefined;
       
@@ -1395,8 +1453,8 @@ export function createJobRoutes(deps: {
   router.post('/projects/:id/features/:feature/inline-ask', async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { message, chatSource = true } = req.body;
-    
+    const { message, chatSource = true, seedTurnId } = req.body;
+
     logger.debug(`\n💬 [InlineAskRoute] Inline ask request received`);
     logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
     logger.debug(`   Message: ${message?.substring(0, 100)}...`);
@@ -1417,6 +1475,25 @@ export function createJobRoutes(deps: {
         return res.status(inlineAskRejected.status).json({ error: inlineAskRejected.error, code: inlineAskRejected.code });
       }
 
+      // Without a threaded turnId the worker's recordUserTurn mints a fresh
+      // one, so the chat log ends up with the SAME question twice — the
+      // submit-time line and the worker's (dedup keys on turnId).
+      let inlineAskTurnId: string | undefined = seedTurnId;
+      try {
+        inlineAskTurnId = await ensureSubmitUserTurn({
+          chatService: deps.chatService,
+          workspaceResolver: deps.workspaceResolver,
+          projectId,
+          featureName,
+          directive: message,
+          seedTurnId,
+          userContext,
+          jobType: 'inline-ask',
+        });
+      } catch (err) {
+        logger.warn('Failed to record submit-time user_turn (inline-ask)', { component: 'JobRoute' }, err);
+      }
+
       const params: ExecuteJobParams = {
         agent: 'architect',
         jobType: 'inline-ask',
@@ -1427,6 +1504,7 @@ export function createJobRoutes(deps: {
         overrideDirective: message,
         chatSource,
         userContext,
+        seedTurnId: inlineAskTurnId,
         // ✅ No jobId: always create a new job (don't reuse interrupted job's ID)
         // ✅ No isResume: this is an independent lightweight job
       };
@@ -1439,7 +1517,8 @@ export function createJobRoutes(deps: {
         success: true,
         jobId: result.jobId,
         jobType: 'inline-ask',
-        message: 'Inline ask job started'
+        message: 'Inline ask job started',
+        ...(inlineAskTurnId && { turnId: inlineAskTurnId }),
       });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'InlineAsk');
@@ -1673,6 +1752,23 @@ export function createJobRoutes(deps: {
         // Paused → terminal. Go through finalize for seal + broadcast + idempotency lock.
         const jobType = (jobStatus.type || 'code') as SessionableJobType;
         const featurePath = await resolveFeatureContainerPath(userContext, projectId, featureName);
+
+        // Preserve the session's existing interruption identity — dismiss
+        // only withdraws consent. Minting a fresh reason/timestamp here both
+        // erased the real interruption cause from the card and defeated the
+        // FE's dismissed-timestamp match (its stored marker never equals a
+        // newly-minted timestamp).
+        let existingInterruption: InterruptionDetails | undefined;
+        for (const entry of getAllSessionPaths(featurePath)) {
+          try {
+            const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+            if (data.state?.jobId === jobId && data.state.interruption) {
+              existingInterruption = data.state.interruption;
+              break;
+            }
+          } catch { /* skip unreadable */ }
+        }
+
         await finalize({
           jobId,
           finalStatus: 'failed',
@@ -1680,18 +1776,26 @@ export function createJobRoutes(deps: {
           featureName,
           jobType,
           userContext,
-          interruption: {
-            reason: 'user_stopped',
-            message: 'Dismissed by user',
-            // Orthogonal axes: the work itself is intact (user_stopped IS a
-            // resumable kind), so `canResume` stays true and the explicit
-            // /resume route keeps working; `dismissed` withdraws implicit-
-            // continuation consent (deriveRestoreMode → 'fresh' for new turns).
-            canResume: true,
-            dismissed: true,
-            timestamp: new Date().toISOString(),
-            metadata: { stoppedBy: 'dismiss' },
-          },
+          interruption: existingInterruption
+            ? {
+                ...existingInterruption,
+                // Orthogonal axes: work integrity (canResume) untouched;
+                // dismissed withdraws implicit-continuation consent only.
+                dismissed: true,
+                metadata: { ...(existingInterruption.metadata ?? {}), stoppedBy: 'dismiss' },
+              }
+            : {
+                reason: 'user_stopped',
+                message: 'Dismissed by user',
+                // Orthogonal axes: the work itself is intact (user_stopped IS a
+                // resumable kind), so `canResume` stays true and the explicit
+                // /resume route keeps working; `dismissed` withdraws implicit-
+                // continuation consent (deriveRestoreMode → 'fresh' for new turns).
+                canResume: true,
+                dismissed: true,
+                timestamp: new Date().toISOString(),
+                metadata: { stoppedBy: 'dismiss' },
+              },
           featurePath,
         });
 
@@ -1727,6 +1831,17 @@ export function createJobRoutes(deps: {
           userContext,
           featurePath,
         });
+        // This branch previously never armed the consent marker nor folded
+        // the cancelled card — a dismiss taking it left the queue armed for
+        // the next implicit turn and the card dangling unresolved.
+        await setSessionDismissed(deps.kanbanService, featurePath, jobId, true);
+        if (deps.chatService) {
+          await deps.chatService.resolveAllCancelledForJob(projectId, featureName, jobId, {
+            choiceSelected: 'dismiss',
+            resolvedLabel: 'Dismissed',
+            userContext,
+          });
+        }
       } else {
         // Running or queued — cannot dismiss
         return res.status(400).json({ error: `Cannot dismiss job in '${jobStatus.status}' state` });

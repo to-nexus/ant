@@ -275,7 +275,7 @@ function handleNonChatEvent(event: any, set: any, get: any) {
 
     case 'inline_ask_complete': {
       const intent = event.intent as 'ask' | 'work';
-      const action = event.action as 'continue' | 'newJob' | 'redirect' | undefined;
+      const action = event.action as 'continue' | 'newJob' | 'redirect' | 'resume-request' | undefined;
       const inlineAskContext = get().inlineAskContext;
       console.log(`[Store] 💬 Inline ask complete: intent=${intent}, action=${action}, jobId=${event.jobId}`);
 
@@ -326,6 +326,9 @@ function handleNonChatEvent(event: any, set: any, get: any) {
                 agent: effectiveAgent,
                 overrideDirective: inlineAskContext.message,
                 chatSource: true,
+                // Reuse the question's turn — the fresh job re-executes the
+                // same text, so a new turnId would duplicate the bubble.
+                seedTurnId: inlineAskContext.turnId,
               });
               console.log('[Store] ✅ Fresh job started:', result.jobId);
               get().setRunning(true, result.jobId);
@@ -337,7 +340,15 @@ function handleNonChatEvent(event: any, set: any, get: any) {
           })();
         };
 
-        if (noSession) {
+        if (action === 'resume-request') {
+          // The BE recognized an explicit resume request and appended a
+          // durable resume_confirm consent card (chat-SSOT). Consent stays a
+          // click — the card's Resume action calls /jobs/:id/resume; nothing
+          // auto-starts here.
+          console.log('[Store] ⏯️ Work + resume-request → awaiting consent card for', event.resumeJobId);
+          get().setRunning(false);
+          get().setInlineAskContext(null);
+        } else if (noSession) {
           console.log('[Store] ⚠️ Work intent + noSession → starting fresh job');
           startFreshJob();
         } else if (action === 'redirect') {

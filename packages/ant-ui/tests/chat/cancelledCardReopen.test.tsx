@@ -4,7 +4,9 @@
  * Dismiss withdraws implicit-continuation consent on the BE
  * (`interruption.dismissed`), but the work stays explicitly resumable — the
  * resolved card must keep a subdued "resume task" action that calls the
- * /resume route, and only while the kanban still points at this job.
+ * /resume route. The pill is gated on the card's own durable payload.jobId
+ * (NOT the ambient kanban — the superseded-state archive keeps /resume valid
+ * even after later jobs); a genuine 404 degrades it to a muted note.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -24,7 +26,15 @@ const { storeState, useStoreMock, apiMock } = vi.hoisted(() => {
   const useStoreMock: any = (selector: any) => selector(storeState);
   useStoreMock.getState = () => storeState;
   useStoreMock.setState = vi.fn();
+  class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  }
   const apiMock = {
+    ApiError,
     dismissInterruptedJob: vi.fn(async () => ({})),
     resumeJob: vi.fn(async () => ({ jobId: 'job-1', jobType: 'design' })),
     resolveChoice: vi.fn(async () => ({})),
@@ -36,7 +46,10 @@ vi.mock('@/domain/store', () => ({ useStore: useStoreMock }));
 vi.mock('@/infrastructure/http/api', () => apiMock);
 vi.mock('@/presentation/extensions/slots', () => ({ Slot: () => null }));
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
+  useTranslation: () => ({
+    t: (k: string) => k,
+    i18n: { exists: () => false, language: 'en' },
+  }),
 }));
 
 import { CancelledVariant } from '../../src/presentation/components/chat/choiceCard/CancelledVariant';
@@ -106,10 +119,24 @@ describe('CancelledVariant — dismissed card re-open affordance', () => {
     );
   });
 
-  it('hides the reopen action when the kanban has moved on to a newer job', () => {
+  it('STILL shows the reopen action when the kanban has moved on to a newer job (archive-backed)', () => {
+    // The old `kanban.jobId === jobId` gate silently killed the pill across
+    // reloads / tab switches / later jobs; the BE archive keeps /resume valid.
     storeState.kanban = { jobId: 'newer-job' };
     const tree = renderCard(dismissedResolved);
-    expect(JSON.stringify(tree.toJSON())).not.toContain('cancelled.reopen');
+    expect(JSON.stringify(tree.toJSON())).toContain('cancelled.reopen');
+  });
+
+  it('degrades to a muted note (no button) after a reopen attempt 404s', async () => {
+    apiMock.resumeJob.mockRejectedValueOnce(new (apiMock.ApiError as any)('No interrupted job found', 404));
+    const tree = renderCard(dismissedResolved);
+    const buttons = tree.root.findAllByType('button');
+    await act(async () => {
+      buttons[0].props.onClick();
+    });
+    const json = JSON.stringify(tree.toJSON());
+    expect(json).not.toContain('cancelled.reopen"');
+    expect(json).toContain('cancelled.reopenUnavailable');
   });
 
   it('hides the reopen action on a resume-resolved card', () => {

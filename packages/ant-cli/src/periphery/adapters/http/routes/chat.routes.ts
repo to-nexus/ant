@@ -5,6 +5,7 @@ import * as path from 'path';
 import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
+import { ensureSubmitUserTurn } from './helpers/submitUserTurn';
 import { ChoiceService } from '../../../../infrastructure/choice';
 import type { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
@@ -23,9 +24,9 @@ import { logger } from '../../../../utils/logger';
  *    a still-running job is also cancelled before clearing the log.
  *  - `POST /chat/job-error` emits a single `assistant_message` line via
  *    `chatService.appendAssistantMessage`.
- *  - `POST /chat/user-message` emits an optimistic `chat_event_appended`
- *    SSE only — the durable user_turn line is written by the worker's
- *    `recordUserTurn` (chat-SSOT §6).
+ *  - `POST /chat/user-message` records the durable user_turn AND emits
+ *    `chat_event_appended` via the shared `ensureSubmitUserTurn` helper —
+ *    the same one every job-start route uses (chat-SSOT §6).
  *
  * @see docs/internals/31-chat-system.md
  */
@@ -98,11 +99,10 @@ export function createChatRoutes(deps: {
   /**
    * POST /projects/:id/features/:feature/chat/user-message
    *
-   * Mints a stable `turnId` and emits the optimistic SSE echo so the
-   * user's bubble appears immediately. The durable `user_turn` line is
-   * written by the worker's `recordUserTurn` once the job spawns
-   * (chat-SSOT §6) — both views share the same `user-{turnId}` id so
-   * SSE reconnect dedupes via the FE projector.
+   * Mints a stable `turnId`, writes the durable `user_turn` to chat.jsonl
+   * and emits the SSE echo so the user's bubble appears immediately. The
+   * worker's `recordUserTurn` later writes the feature.jsonl twin under the
+   * same id (forwarded as the job's `seedTurnId`) and dedupes its chat copy.
    */
   router.post('/projects/:id/features/:feature/chat/user-message', chatRateLimiter, validateBody(chatUserMessageSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
@@ -130,54 +130,15 @@ export function createChatRoutes(deps: {
       return;
     }
 
-    const { generateTurnId } = await import('../../../../composition/recordUserTurn');
-    const turnId = generateTurnId();
-
-    // Fold full-folder selections into a single `📂` badge entry before
-    // the optimistic SSE echo so the user sees the same compressed view
-    // the durable chat.jsonl record will eventually carry — without
-    // this, the badge briefly renders N file pills and only collapses
-    // when the worker's recordUserTurn lands. Best-effort; failures
-    // degrade to raw paths (helper own guards).
-    let enrichedActionMetadata = actionMetadata;
-    if (actionMetadata && deps.workspaceResolver) {
-      try {
-        const featurePath: string = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-        const { AdapterFactory } = await import('../../../../infrastructure/adapters/AdapterFactory');
-        const { enrichActionMetadataWithFolders } = await import('../../../../core/context/enrichActionMetadataWithFolders');
-        const fs = AdapterFactory.createFileSystemAdapterWithPath(featurePath);
-        enrichedActionMetadata = await enrichActionMetadataWithFolders(actionMetadata, fs);
-      } catch (err) {
-        console.warn('[chat.routes /chat/user-message] foldersCompressed enrichment failed:', err);
-      }
-    }
-
-    // Universal projects file their turns under jobType 'universal' — the
-    // optimistic stamp is permanent (the worker's recordUserTurn copy dedupes
-    // by turnId and never corrects it), so resolving here is the only chance
-    // to keep chat.jsonl's jobType filter honest (A15). Same probe as
-    // job.routes' rejectCanonicalJobOnUniversalProject; failures → 'code'.
-    let jobType: import('@ant/shared').LogJobType | undefined;
-    if (deps.workspaceResolver) {
-      try {
-        const { isUniversalProject } = await import('../../../../core/customAgents/universalContainer');
-        const projectPath: string = deps.workspaceResolver.getProjectPath(userContext, projectId);
-        if (isUniversalProject(projectPath)) jobType = 'universal';
-      } catch {
-        // partial resolvers (tests) / lookup failures → default stamp
-      }
-    }
-
-    await deps.chatService.appendUserTurn(
+    const turnId = await ensureSubmitUserTurn({
+      chatService: deps.chatService,
+      workspaceResolver: deps.workspaceResolver,
       projectId,
       featureName,
-      content,
-      turnId,
-      undefined,
+      directive: content,
       userContext,
-      enrichedActionMetadata,
-      jobType,
-    );
+      actionMetadata,
+    });
 
     res.json({ turnId, messageId: `user-${turnId}` });
   });
@@ -367,7 +328,7 @@ export function createChatRoutes(deps: {
       //     to the FE so the existing UI flow keeps working until the
       //     Phase 12 FE migration.
       if (cardType === 'triage_choice' && deps.choiceService) {
-        const validChoices: ChoiceAction[] = ['proceed', 'proceedAnyway', 'redirect', 'guide', 'dismiss'];
+        const validChoices: ChoiceAction[] = ['proceed', 'proceedAnyway', 'redirect', 'guide', 'dismiss', 'resume'];
         if (!validChoices.includes(choiceSelected as ChoiceAction)) {
           res.status(400).json({ error: `Invalid choice for triage card: ${choiceSelected}` });
           return;

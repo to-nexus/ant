@@ -7,7 +7,9 @@ directive, grounded in the prior conversation's artifacts and outputs.
 
 - Emit exactly one tag: `<intentId>X</intentId>`.
 - `X` MUST be a valid id from the INTENT CATALOG.
-- No other tags. No prose, no JSON. The tag is the entire response.
+- When the Resume-request rule below applies, additionally emit exactly one
+  `<resumeRequest>true</resumeRequest>` tag alongside the intent tag.
+- No other tags. No prose, no JSON.
 
 ## How to decide
 
@@ -62,6 +64,19 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
   spec that was never implemented, and opening a second unconsumed spec on
   the same surface forces a manual merge later.
 
+### Resume request
+
+Applies only when the prompt shows an INTERRUPTED WORK section marked
+resumable. When the directive's sole content is to continue, resume, or
+finish that same unfinished work — it refers to that work or its listed
+tasks and carries no new subject, no content delta, and no question — emit
+`<resumeRequest>true</resumeRequest>` in addition to the intent tag, and
+pick the intent that matches the interrupted work's family. A directive
+that opens a different subject, changes an artifact, or asks about state
+is never a resume request, even while interrupted work exists.
+⚠️ The mere existence of interrupted work does not make a turn a resume
+request — the directive itself must ask for the continuation.
+
 ## Hard Constraints
 
 1. **`rev-*` requires BOTH prior-work evidence AND a directive-carried delta.**
@@ -110,4 +125,6 @@ outweigh an earlier one. The id you emit must satisfy the Hard Constraints.
    content) → `ask-general`.
 6. The chosen `X` MUST appear verbatim in the INTENT CATALOG; misspellings,
    synonyms, and inventions are not allowed.
-7. Do not output any text outside `<intentId>...</intentId>`.
+7. Do not output any text outside the permitted tags
+   (`<intentId>...</intentId>`, and `<resumeRequest>true</resumeRequest>`
+   only when the Resume-request rule applies).
