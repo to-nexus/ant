@@ -26,7 +26,7 @@ import {
   SiPython,
   SiGo,
   SiRust,
-  SiCss3,
+  SiCss,
   SiHtml5,
   SiMarkdown,
   SiDocker,
@@ -60,10 +60,10 @@ const FILE_ICON_MAP: Record<string, FileIconConfig> = {
   // Markup / Styling
   'html': { icon: SiHtml5, color: 'text-[#E34F26]' },         // HTML orange
   'htm': { icon: SiHtml5, color: 'text-[#E34F26]' },
-  'css': { icon: SiCss3, color: 'text-[#1572B6]' },           // CSS blue
-  'scss': { icon: SiCss3, color: 'text-[#CC6699]' },          // Sass pink
-  'sass': { icon: SiCss3, color: 'text-[#CC6699]' },
-  'less': { icon: SiCss3, color: 'text-[#1D365D]' },
+  'css': { icon: SiCss, color: 'text-[#1572B6]' },           // CSS blue
+  'scss': { icon: SiCss, color: 'text-[#CC6699]' },          // Sass pink
+  'sass': { icon: SiCss, color: 'text-[#CC6699]' },
+  'less': { icon: SiCss, color: 'text-[#1D365D]' },
   
   // Markdown / Documentation
   'md': { icon: SiMarkdown, color: 'text-gray-600 dark:text-gray-400' },
