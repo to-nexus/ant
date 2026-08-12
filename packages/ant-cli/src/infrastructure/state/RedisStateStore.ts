@@ -311,10 +311,30 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   // Workflow State Management (Cross-Pod)
   // ============================================
 
+  /**
+   * Keep the job mapping alive as long as the workflow state it owns.
+   *
+   * The mapping carries the `(org, user)` binding that `assertJobAccess` reads
+   * when the status record has already expired. Workflow-state TTL is refreshed
+   * on every broadcast; without this the binding could expire first and leave a
+   * readable state with no owner to compare against.
+   */
+  private async refreshJobMappingTtl(jobId: string): Promise<void> {
+    try {
+      await this.redis.expire(this.key(REDIS_KEYS.JOB.MAPPING, jobId), REDIS_TTL.JOB.STATUS);
+    } catch (error: any) {
+      logger.debug(`Failed to refresh job mapping TTL: ${error.message}`, {
+        component: 'RedisStateStore',
+        jobId,
+      });
+    }
+  }
+
   async setWorkflowState(jobId: string, state: WorkflowRealtimeState): Promise<void> {
     const key = this.key(REDIS_KEYS.JOB.WORKFLOW, jobId);
     await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.JOB.WORKFLOW);
-    
+    await this.refreshJobMappingTtl(jobId);
+
     // Get userContext from job mapping for user-scoped channel
     const mapping = await this.getJobMapping(jobId);
     if (!mapping?.userContext?.organizationId || !mapping?.userContext?.userId) {
@@ -338,6 +358,7 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   async setWorkflowStateSilent(jobId: string, state: WorkflowRealtimeState): Promise<void> {
     const key = this.key(REDIS_KEYS.JOB.WORKFLOW, jobId);
     await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.JOB.WORKFLOW);
+    await this.refreshJobMappingTtl(jobId);
   }
 
   async getWorkflowState(jobId: string): Promise<WorkflowRealtimeState | null> {

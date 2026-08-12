@@ -14,7 +14,10 @@
  * Assertions are on presence/absence of the credential, not on wording.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { Request } from 'express';
 import { composeChildEnv } from '../../src/core/config/childEnv.js';
 import { buildCleanHeaders, buildForwardHeaders } from '../../src/periphery/adapters/http/middleware/proxyForwarding.js';
@@ -26,6 +29,10 @@ import { buildCleanHeaders, buildForwardHeaders } from '../../src/periphery/adap
 /** Service-held values whose disclosure is the finding. */
 const SERVICE_SECRETS = [
   'JWT_SECRET',
+  'ANT_JWT_SECRET',
+  // A bare `GO` prefix in the toolchain allowlist matched this too (C-003).
+  'GOOGLE_CLIENT_SECRET',
+  'GOOGLE_APPLICATION_CREDENTIALS',
   'ANT_ENCRYPTION_KEY',
   'ANT_SERVER_MODE',
   'REDIS_URL',
@@ -48,6 +55,9 @@ const REQUIRED_PASSTHROUGH = [
   'COREPACK_ENABLE_DOWNLOAD_PROMPT',
   'JAVA_HOME',
   'GOPATH',
+  'GOFLAGS',
+  'GOPROXY',
+  'GOMODCACHE',
   'CARGO_HOME',
 ];
 
@@ -101,6 +111,94 @@ describe('preview/deploy child env is composed, not inherited (C-003)', () => {
     const env = composeChildEnv();
     expect(env.CUSTOM_HOST_VAR).toBe('wanted');
     expect(env.OTHER_HOST_VAR).toBeUndefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Call sites (C-005 / H-009)
+//
+// The allowlist above is only worth what its callers use. The two dependency
+// installs and the LLM command child each spawned with an inherited env while
+// `composeChildEnv` sat right next to them, so these assert the env that
+// reaches `spawn`, not the existence of the helper.
+// ────────────────────────────────────────────────────────────────────────────
+
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return { ...actual, spawn: vi.fn() };
+});
+
+describe('user-authored children spawn with a composed env, not an inherited one', () => {
+  const SENTINELS = ['ANT_JWT_SECRET', 'ANTHROPIC_API_KEY', 'ANT_REDIS_URL'];
+  let workspace: string;
+  let spawnMock: Mock;
+
+  /** A `spawn` that reports a clean exit on the next tick. */
+  const fakeChild = () => {
+    const handlers = new Map<string, (arg: unknown) => void>();
+    setTimeout(() => handlers.get('close')?.(0), 0);
+    return {
+      stdout: { on: () => {} },
+      stderr: { on: () => {} },
+      on: (event: string, cb: (arg: unknown) => void) => { handlers.set(event, cb); },
+      kill: () => {},
+    };
+  };
+
+  beforeEach(async () => {
+    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-cred-'));
+    fs.writeFileSync(
+      path.join(workspace, 'package.json'),
+      JSON.stringify({ name: 'w', scripts: { build: 'true' }, dependencies: { vite: '5' } }),
+    );
+    for (const name of SENTINELS) process.env[name] = `leaked-${name}`;
+    process.env.PATH = process.env.PATH || '/usr/bin';
+
+    spawnMock = (await import('child_process')).spawn as unknown as Mock;
+    spawnMock.mockReset();
+    spawnMock.mockImplementation(() => fakeChild());
+  });
+
+  afterEach(() => {
+    fs.rmSync(workspace, { recursive: true, force: true });
+    for (const name of SENTINELS) delete process.env[name];
+  });
+
+  const envOfCall = (index: number) => spawnMock.mock.calls[index][2]?.env as NodeJS.ProcessEnv;
+
+  const expectNoSecrets = (env: NodeJS.ProcessEnv | undefined) => {
+    expect(env).toBeDefined();
+    for (const name of SENTINELS) expect(env![name]).toBeUndefined();
+    expect(env!.PATH).toBeDefined(); // the toolchain still works
+  };
+
+  it('deploy root install (C-005)', async () => {
+    const { installDeployDependencies } = await import('../../src/infrastructure/deploy/DeployWorkspace.js');
+    await installDeployDependencies(workspace);
+    expectNoSecrets(envOfCall(0));
+  });
+
+  it('per-package build install (C-005)', async () => {
+    const { runBuild } = await import('../../src/infrastructure/deploy/BuildRunner.js');
+    await runBuild(workspace, '/');
+    expectNoSecrets(envOfCall(0)); // install
+    expectNoSecrets(envOfCall(1)); // build
+  });
+
+  it('LLM run_command child (H-009)', async () => {
+    const { cleanCommandEnv } = await import('../../src/periphery/adapters/command/NodeCommandAdapter.js');
+    process.env.NODE_ENV = 'test';
+    process.env.PORT = '4100';
+
+    const env = cleanCommandEnv();
+    expectNoSecrets(env);
+    // ant-cli internals stay stripped — the historical contract of this helper.
+    expect(env.NODE_ENV).toBeUndefined();
+    expect(env.PORT).toBeUndefined();
+
+    // an explicit caller overlay still wins
+    expect(cleanCommandEnv({ CI: 'true', NODE_ENV: 'production' }).CI).toBe('true');
+    expect(cleanCommandEnv({ NODE_ENV: 'production' }).NODE_ENV).toBe('production');
   });
 });
 

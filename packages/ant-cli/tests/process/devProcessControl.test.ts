@@ -21,7 +21,8 @@ import {
  *      jumps into its own process group).
  *   2. killOwned reaps an owned group by persisted pgid, acts ONLY on this
  *      pod's records, and only ever sends group (negative-PID) signals.
- *   3. cleanupStaleLocks removes Next dev locks (filesystem hygiene).
+ *   3. cleanupStaleLocks removes Next dev locks (filesystem hygiene) and
+ *      signals nothing — the lock is a user-writable file, not an identity.
  *   4. isPortConflictOutput matches Next/Vite/Node port-conflict messages
  *      but rejects unrelated runtime errors.
  *
@@ -184,37 +185,49 @@ describe('DevProcessControl', () => {
   });
 
   describe('cleanupStaleLocks (Next dev lock)', () => {
-    it('removes the lock and kills the live PID (legacy server.json)', async () => {
-      const stand = spawn('node', ['-e', 'setInterval(()=>{}, 60000)'], { stdio: 'ignore' });
-      orphans.push(stand);
+    // The lock lives in the user's workspace and is user-writable, so the PID
+    // it names is a hint, not an authority to signal (report M-012). The lock
+    // is removed; termination stays with killOwned's persisted records.
+    for (const lockName of ['server.json', 'lock']) {
+      it(`removes \`${lockName}\` without signalling the PID it names`, async () => {
+        const stand = spawn('node', ['-e', 'setInterval(()=>{}, 60000)'], { stdio: 'ignore' });
+        orphans.push(stand);
 
-      const lockDir = path.join(tmpDir, '.next', 'dev');
-      fs.mkdirSync(lockDir, { recursive: true });
-      const lockPath = path.join(lockDir, 'server.json');
-      fs.writeFileSync(lockPath, JSON.stringify({ pid: stand.pid, port: 3099 }));
+        const lockDir = path.join(tmpDir, '.next', 'dev');
+        fs.mkdirSync(lockDir, { recursive: true });
+        const lockPath = path.join(lockDir, lockName);
+        fs.writeFileSync(lockPath, JSON.stringify({ pid: stand.pid, port: 3099 }));
 
-      await dev.cleanupStaleLocks(tmpDir);
+        await dev.cleanupStaleLocks(tmpDir);
 
-      expect(fs.existsSync(lockPath)).toBe(false);
-      expect(dev.isAlive(stand.pid!)).toBe(false);
-    }, 10_000);
+        expect(fs.existsSync(lockPath)).toBe(false);
+        expect(dev.isAlive(stand.pid!)).toBe(true);
+      }, 10_000);
+    }
 
     it('ignores a missing lock (idempotent)', async () => {
       await expect(dev.cleanupStaleLocks(tmpDir)).resolves.toBeUndefined();
     });
 
-    it('removes the Next 16 `.next/dev/lock` and kills its PID', async () => {
-      const stand = spawn('node', ['-e', 'setInterval(()=>{}, 60000)'], { stdio: 'ignore' });
+    it('an owned record is still reaped after the lock is cleared', async () => {
+      const stand = spawn('node', ['-e', 'setInterval(()=>{}, 60000)'], {
+        stdio: 'ignore',
+        detached: true,
+      });
       orphans.push(stand);
 
       const lockDir = path.join(tmpDir, '.next', 'dev');
       fs.mkdirSync(lockDir, { recursive: true });
-      const lockPath = path.join(lockDir, 'lock');
-      fs.writeFileSync(lockPath, JSON.stringify({ pid: stand.pid, port: 30000 }));
+      fs.writeFileSync(path.join(lockDir, 'lock'), JSON.stringify({ pid: stand.pid }));
 
       await dev.cleanupStaleLocks(tmpDir);
+      const record: OwnedProcessRecord = {
+        pid: stand.pid!,
+        pgid: stand.pid!,
+        podId: os.hostname(),
+      };
+      await dev.killOwned([record], { graceMs: 200 });
 
-      expect(fs.existsSync(lockPath)).toBe(false);
       expect(dev.isAlive(stand.pid!)).toBe(false);
     }, 10_000);
   });

@@ -232,7 +232,8 @@ export class RouteConfigurator {
   private setupWorkflowRoutes(app: Express): void {
     const workflowRoutes = createWorkflowRoutes({
       graphMetadataService: this.deps.graphMetadataService,
-      workflowStateService: this.deps.workflowStateService
+      workflowStateService: this.deps.workflowStateService,
+      stateStore: getInfrastructureFactory().getStateStore()
     });
     app.use('/api', workflowRoutes);
   }

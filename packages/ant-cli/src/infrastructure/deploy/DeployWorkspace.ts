@@ -34,6 +34,7 @@ import * as fsp from 'fs/promises';
 import { spawn } from 'child_process';
 import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
 import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
+import { composeChildEnv } from '../../core/config/childEnv';
 
 /**
  * Directories/patterns we never copy into the deploy workspace.
@@ -319,8 +320,12 @@ export async function installDeployDependencies(
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
+    // The install runs the project's OWN lifecycle scripts and its output is
+    // streamed back to the requester — so it gets the composed allowlist, not
+    // the service's `process.env`.
     const child = spawn(command, args, {
       cwd: deployRoot,
+      env: composeChildEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
     });

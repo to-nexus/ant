@@ -348,11 +348,15 @@ export function createCloudIDERoutes(
   
   /**
    * GET /cloud-ide/list
-   * List all running cloud IDEs
+   * List the caller's running cloud IDEs.
+   *
+   * Scoped by user: the unscoped `list()` returns every instance in the
+   * namespace, which hands one tenant the others' tenant/project ids and URLs.
    */
   router.get('/list', async (req: Request, res: Response) => {
     try {
-      const instances = await ideOrchestrator.list();
+      const userContext: UserContext = extractUserContext(req);
+      const instances = await ideOrchestrator.listByUser(userContext);
       
       res.json({
         instances: instances.map(i => ({
