@@ -35,6 +35,13 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # vitest 4.1 requires `vite/module-runner`, which vite 5 does not export —
+      # 4.1.10 auto-merged and broke `@ant/ui test` on main. A `~4.0.18` pin was
+      # no defense: Dependabot's default npm versioning-strategy rewrites the
+      # manifest range, so the tilde moved with the bump. Lift this together with
+      # the vite 5 → 6 major (tracked in the quarterly sweep issue).
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-minor"]
 
     groups:
       # 0.x packages + generated-export packages. A minor here may be breaking.

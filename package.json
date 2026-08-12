@@ -78,9 +78,9 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/multer": "^2.1.0",
-    "@types/node": "^20.19.41",
-    "concurrently": "^9.2.1",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^20.19.43",
+    "concurrently": "^9.2.4",
     "dotenv": "^16.6.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
