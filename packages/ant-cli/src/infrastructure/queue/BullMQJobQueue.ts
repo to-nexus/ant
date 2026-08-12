@@ -361,6 +361,21 @@ export class BullMQJobQueue implements JobQueuePort {
   // ============================================
 
   /**
+   * PTTL against the queue's own connection. BullMQ's `IRedisClient` declares
+   * only the commands BullMQ itself issues, and PTTL is not one of them — its
+   * ioredis adapter is a proxy that forwards every other property to the raw
+   * client, so the call is sound at runtime and only the declared surface is
+   * missing it. Cast structurally rather than importing ioredis's `Redis`, so
+   * this stays independent of which client library backs the queue.
+   */
+  private async pttl(key: string): Promise<number> {
+    const client = (await this.queue.client) as unknown as {
+      pttl(key: string): Promise<number>;
+    };
+    return client.pttl(key);
+  }
+
+  /**
    * True when the BullMQ processing lock for `jobId` is *fresh* — a live worker
    * is actively extending it. Workers extend every `LOCK_DURATION/2` (2.5min),
    * so a TTL still in the upper half of `LOCK_DURATION` means the worker touched
@@ -374,9 +389,8 @@ export class BullMQJobQueue implements JobQueuePort {
    */
   async isJobLockFresh(jobId: string): Promise<boolean> {
     try {
-      const client = await this.queue.client;
       const lockKey = `bull:${this.queue.name}:${jobId}:lock`;
-      const ttl = await client.pttl(lockKey);
+      const ttl = await this.pttl(lockKey);
       return ttl > LOCK_DURATION / 2 && ttl <= LOCK_DURATION;
     } catch {
       return false; // on error, do not block recovery
@@ -396,7 +410,7 @@ export class BullMQJobQueue implements JobQueuePort {
       } catch (removeErr: any) {
         const client = await this.queue.client;
         const lockKey = `bull:${this.queue.name}:${jobId}:lock`;
-        const ttl = await client.pttl(lockKey);
+        const ttl = await this.pttl(lockKey);
 
         if (ttl > LOCK_DURATION) {
           // TTL exceeds current lockDuration — impossible for a live worker.
