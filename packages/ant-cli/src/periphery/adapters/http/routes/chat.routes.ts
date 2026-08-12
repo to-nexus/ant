@@ -107,7 +107,7 @@ export function createChatRoutes(deps: {
   router.post('/projects/:id/features/:feature/chat/user-message', chatRateLimiter, validateBody(chatUserMessageSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
-    const { content, actionMetadata } = req.body;
+    const { content, actionMetadata, jobType } = req.body;
 
     if (!deps.chatService) {
       res.status(503).json({ error: 'Chat service not available' });
@@ -138,6 +138,9 @@ export function createChatRoutes(deps: {
       directive: content,
       userContext,
       actionMetadata,
+      // Permanent stamp — omitting it filed every plan / design / visual turn
+      // under the ChatService `code` default forever.
+      jobType,
     });
 
     res.json({ turnId, messageId: `user-${turnId}` });

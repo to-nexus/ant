@@ -3,7 +3,7 @@ import { selectPausedNonTaskJob } from '@/domain/store/selectors';
 import { API_BASE, addChatUserMessage, resolveChoice } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
 import { deriveFromIntent, formatCustomJobRef } from '@ant/shared';
-import type { ChatLine, ChatChoicePresentedLine, ChatChoiceResolvedLine } from '@ant/shared';
+import type { ChatLine, ChatChoicePresentedLine, ChatChoiceResolvedLine, LogJobType } from '@ant/shared';
 
 interface UseChatSubmitOptions {
   message: string;
@@ -137,7 +137,13 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     // canonical job; the BE execute route supersedes a paused universal job).
     if (currentJobId && hasInterruption && !universalCtx) {
       try {
-        const { turnId } = await addChatUserMessage(selectedProject, selectedFeature, userMessage);
+        const { turnId } = await addChatUserMessage(
+          selectedProject,
+          selectedFeature,
+          userMessage,
+          undefined,
+          'inline-ask',
+        );
         useStore.getState().setRunning(true, currentJobId);
         useStore.getState().setInlineAskContext({
           interruptedJobId: currentJobId,
@@ -174,23 +180,26 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     // since the card was issued (zonal-dreaming-novel regression).
     const pausedNonTask = selectPausedNonTaskJob(useStore.getState());
 
+    const derived = hasMetadata && storeActionMetadata.intent
+      ? deriveFromIntent(storeActionMetadata.intent)
+      : null;
+    // Universal context outranks every other jobType/agent source — the
+    // custom job the user selected IS the job identity.
+    const resolvedAgent = universalCtx ? 'universal' : (pausedNonTask?.agent ?? derived?.agent ?? selectedAgent);
+    const resolvedJobType = universalCtx ? 'universal' : (pausedNonTask?.jobType ?? derived?.jobType ?? selectedJobType);
+
     try {
+      // Resolved BEFORE the turn is minted: the submit-time jobType stamp is
+      // permanent, so it has to be the type the job actually starts with.
       const { turnId } = await addChatUserMessage(
         selectedProject,
         selectedFeature,
         userMessage,
         hasMetadata ? storeActionMetadata : undefined,
+        resolvedJobType as LogJobType,
       );
 
       const { executeCodeJob } = await import('@/infrastructure/http/cli');
-
-      const derived = hasMetadata && storeActionMetadata.intent
-        ? deriveFromIntent(storeActionMetadata.intent)
-        : null;
-      // Universal context outranks every other jobType/agent source — the
-      // custom job the user selected IS the job identity.
-      const resolvedAgent = universalCtx ? 'universal' : (pausedNonTask?.agent ?? derived?.agent ?? selectedAgent);
-      const resolvedJobType = universalCtx ? 'universal' : (pausedNonTask?.jobType ?? derived?.jobType ?? selectedJobType);
 
       if (universalCtx) {
         // Make the SSE / stop paths observe the universal identity before the

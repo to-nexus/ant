@@ -74,6 +74,7 @@ export function SpecCompleteVariant({ presented, resolved }: VariantProps) {
         state.selectedFeature,
         buildDirective,
         metadata,
+        'code',
       );
 
       const jobExecution = executeCodeJob({

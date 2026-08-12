@@ -616,7 +616,10 @@ export function createInferDetectNode<T extends DetectableState>(
           resolvedAction,
           artifacts,
         };
-        console.log(`⚡ [detect:infer] Explicit: intent=${intentId}, domain=${metadata.domain ?? 'unset'}`);
+        // Log the RESOLVED domain, not `metadata.domain` — the RAC above is
+        // built from the triage-derived ladder, so printing the raw metadata
+        // field reported `domain=unset` on runs that resolved a domain fine.
+        console.log(`⚡ [detect:infer] Explicit: intent=${intentId}, domain=${domain ?? 'unset'}`);
       } else {
         // ── Resume-request gate (before agent/job-switch) ──
         // Triage recognized the directive as an explicit continuation of the

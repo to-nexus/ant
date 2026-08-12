@@ -9,7 +9,7 @@ import { cn } from '@/shared/utils/design-system';
 import { createProject, createFeature, addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { isValidName, delay, generateProjectName, generateFeatureName } from '@/presentation/components/ProjectWizardModal/constants';
-import { isValidFeatureName, type Domain } from '@ant/shared';
+import { isValidFeatureName, type ActionMetadata, type Domain } from '@ant/shared';
 import { featureNameErrorKey } from '@/application/utils/featureNameError';
 import { BrandHero } from '@/presentation/components/common/BrandHero';
 import { DomainSelect } from '@/presentation/components/Actions/DomainSelect';
@@ -190,7 +190,7 @@ export interface QuickStartProps {
 }
 
 export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
-  const { t } = useTranslation('onboarding');
+  const { t, i18n } = useTranslation('onboarding');
   const [input, setInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -295,8 +295,22 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
 
       console.log(`[QuickStart] Starting plan job with directive: ${trimmed.substring(0, 50)}...`);
       setRunning(true, undefined, 'generate');
-      
-      const { turnId } = await addChatUserMessage(projectId, feat, trimmed);
+
+      // QuickStart IS the "write a PRD" surface — the step label, the agent and
+      // the jobType are all committed by the UI before the user ever types.
+      // Handing the intent over as metadata is what makes that commitment
+      // authoritative: `actionMetadata.intent` presence is the one SSOT both
+      // triage and detect gate on, so the triage LLM does not re-infer an
+      // answer the screen already fixed. `domain` deliberately stays out —
+      // `createProject` persisted it into config.json, which is the absolute
+      // domain SSOT that triage reads first.
+      const actionMetadata: ActionMetadata = {
+        intent: 'gen-plan',
+        explicit: true,
+        locale: i18n.language,
+      };
+
+      const { turnId } = await addChatUserMessage(projectId, feat, trimmed, actionMetadata, 'plan');
 
       const jobExecution = executeCodeJob({
         projectId,
@@ -306,6 +320,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
         overrideDirective: trimmed,
         chatSource: true,
         seedTurnId: turnId,
+        actionMetadata,
       });
       setCurrentJob(jobExecution);
       jobExecution.onJobIdReady((jobId) => {
@@ -346,7 +361,7 @@ export function QuickStart({ existingProjectId, onSkip }: QuickStartProps) {
       setIsSubmitting(false);
       setActiveStep('idle');
     }
-  }, [input, isSubmitting, isAuthenticated, existingProjectId, projectName, featureName, domain, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t]);
+  }, [input, isSubmitting, isAuthenticated, existingProjectId, projectName, featureName, domain, fetchProjects, setSelectedProject, setSelectedFeature, setSelectedAgent, setSelectedJobType, setRunning, setCurrentJob, setQuickStartProjectId, t, i18n.language]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

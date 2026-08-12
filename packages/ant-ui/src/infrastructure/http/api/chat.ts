@@ -1,5 +1,5 @@
 import { API_BASE, apiPost, apiDelete, featureSeg } from './client';
-import type { ActionMetadata } from '@ant/shared';
+import type { ActionMetadata, LogJobType } from '@ant/shared';
 
 /**
  * Add a user message to the chat history.
@@ -21,11 +21,19 @@ export async function addChatUserMessage(
   featureName: string,
   content: string,
   actionMetadata?: ActionMetadata,
+  /**
+   * jobType this turn belongs to. The submit-time stamp is PERMANENT — the
+   * worker's `recordUserTurn` copy dedupes by turnId and never corrects it —
+   * so a caller that omits it files the turn under the BE default (`code`)
+   * forever. Pass the type the job is actually started with.
+   */
+  jobType?: LogJobType,
 ): Promise<AddChatUserMessageResult> {
   const body: Record<string, unknown> = { content };
   if (actionMetadata && Object.keys(actionMetadata).length > 0) {
     body.actionMetadata = actionMetadata;
   }
+  if (jobType) body.jobType = jobType;
   const data = await apiPost<{ turnId: string; messageId: string }>(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/chat/user-message`,
     body,

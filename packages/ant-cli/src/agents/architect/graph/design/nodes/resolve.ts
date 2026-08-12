@@ -123,7 +123,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
         llm: state.deps?.llm,
         promptPort: state.deps?.promptBuilder,
       },
-      { jobId: state.jobId, logPrefix: 'Design Resolve/Resume' },
+      { jobId: state.jobId, jobType: 'design', logPrefix: 'Design Resolve/Resume' },
     );
 
     // Resume routing in `graph.ts` skips detect, so figmaFileKey /
@@ -282,7 +282,7 @@ export const designResolveStrategy: ResolveStrategy<DesignGraphState> = {
         llm: state.deps?.llm,
         promptPort: state.deps?.promptBuilder,
       },
-      { jobId: state.jobId, logPrefix: 'Design Resolve' },
+      { jobId: state.jobId, jobType: 'design', logPrefix: 'Design Resolve' },
     );
 
     // Generate-mode validation: require at least PRD on disk. The pool is

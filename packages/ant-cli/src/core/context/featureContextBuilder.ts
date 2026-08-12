@@ -26,6 +26,7 @@ import type {
   FeatureBreadcrumbLine,
   FeatureAssistantTurnLine,
   FeatureContextSummaryLine,
+  LogJobType,
   TurnDigest,
 } from '@ant/shared';
 import { assistantProseOf, capTail } from './chatTailBuilder';
@@ -685,6 +686,12 @@ export interface HydrateFeatureContextDeps {
 export interface HydrateFeatureContextInput {
   /** Job id owning the current turn — used to recover `turnId`. */
   jobId?: string;
+  /**
+   * jobType owning the current turn. Threaded into the persisted
+   * `context_summary` line's identity — without it every checkpoint, in
+   * every job type, was stamped with the `'code'` fallback.
+   */
+  jobType?: LogJobType;
   /** Optional overrides for breadcrumb window / compaction thresholds. */
   breadcrumbWindow?: number;
   compact?: CompactFeatureContextOptions;
@@ -762,7 +769,7 @@ export async function hydrateFeatureContext(
         llm: deps.llm,
         promptPort: deps.promptPort,
         session: deps.session,
-        identity: { jobId: input.jobId, turnId },
+        identity: { jobId: input.jobId, turnId, jobType: input.jobType },
         ...(deps.onUsage ? { onUsage: deps.onUsage } : {}),
       };
       if (input.executionTier) {

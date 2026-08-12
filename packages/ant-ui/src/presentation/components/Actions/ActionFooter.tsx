@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized, type IntentGroup } from '@ant/shared';
+import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized, type IntentGroup, type LogJobType } from '@ant/shared';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { addChatUserMessage } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
@@ -97,6 +97,7 @@ function IntentVariant(_props: IntentFooterProps) {
         selectedFeature,
         buildDirective,
         hasMetadata ? metadata : undefined,
+        derived.jobType as LogJobType,
       );
 
       const jobExecution = executeCodeJob({

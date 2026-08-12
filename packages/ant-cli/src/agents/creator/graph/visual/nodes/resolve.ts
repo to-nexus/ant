@@ -183,6 +183,7 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
     },
     {
       jobId: (state as any).jobId,
+      jobType: 'visual',
       logPrefix: 'Visual:Resolve',
     },
   );

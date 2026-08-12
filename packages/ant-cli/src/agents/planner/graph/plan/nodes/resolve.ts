@@ -251,6 +251,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
     },
     {
       jobId: (state as any).jobId,
+      jobType: 'plan',
       logPrefix: 'Planner:Resolve',
     },
   );

@@ -124,6 +124,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       },
       {
         jobId: state.jobId,
+        jobType: 'code',
         logPrefix: 'Resolve/Resume',
         // Resume path — `state.executionTier` was restored from checkpoint
         // if decompose ran on a prior turn, so the tier facade can gate
@@ -242,6 +243,7 @@ export const codeResolveStrategy: ResolveStrategy<ArchitectGraphState> = {
       },
       {
         jobId: state.jobId,
+        jobType: 'code',
         logPrefix: 'Resolve',
         // Fresh-turn code path — `state.executionTier` is not yet set
         // (decompose runs after resolve) so `getExecutionTier(state)`

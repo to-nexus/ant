@@ -110,18 +110,19 @@ export const createProjectSchema = z.object({
 /**
  * POST /projects/:id/features/:feature/chat/user-message
  *
- * `jobType` drives whether the user_turn line is mirrored into
- * feature.jsonl (LLM context) — `code|design|plan|learn` mirror, while
- * `ask|inline-ask` are chat-only (`sourceRef='ask-only'`).
+ * `jobType` is the PERMANENT stamp on the durable `user_turn` line — the
+ * worker's `recordUserTurn` copy dedupes by turnId and never corrects it,
+ * so the submit-time value is what the turn is filed under forever.
  *
- * Defaults to `ask` so legacy clients that omit jobType do not pollute
- * feature.jsonl. New clients (Phase 6+) always pass jobType.
+ * Left `.optional()` with NO default on purpose: an unset value must reach
+ * `ensureSubmitUserTurn` as `undefined` so the universal probe and the
+ * ChatService default still apply. A schema-level default would silently
+ * overwrite both for every client that omits the field.
  */
 export const chatUserMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required').max(100000),
   jobType: z
-    .enum(['code', 'design', 'plan', 'learn', 'ask', 'inline-ask', 'visual'])
-    .optional()
-    .default('ask'),
+    .enum(['code', 'design', 'plan', 'learn', 'ask', 'inline-ask', 'visual', 'universal'])
+    .optional(),
   actionMetadata: actionMetadataSchema.optional(),
 }).passthrough();

@@ -483,10 +483,38 @@ describe('chat.routes — Phase 9/13 contract', () => {
       expect(userTurns[0]).toMatchObject({ text: 'hello world' });
     });
 
+    // The route must CONSUME `body.jobType`. It was declared in
+    // `chatUserMessageSchema` but never destructured, so every plan / design
+    // / visual turn submitted through this route was filed under the
+    // ChatService `code` default — permanently, since the worker's
+    // recordUserTurn copy dedupes by turnId and never corrects the stamp
+    // (fine-dusting-flame: a plan job whose user_turn reads jobType 'code').
+    it.each([
+      ['plan', 'plan'],
+      ['design', 'design'],
+      ['visual', 'visual'],
+      ['inline-ask', 'inline-ask'],
+    ] as const)('body.jobType=%s is the permanent stamp', async (sent, expected) => {
+      const res = await harness.call(
+        'POST',
+        '/projects/proj/features/feat-a/chat/user-message',
+        { body: { content: `stamped ${sent}`, jobType: sent } },
+      );
+      expect(res.status).toBe(200);
+
+      const raw = await fs.readFile(path.join(featurePath, 'sessions', 'chat.jsonl'), 'utf-8');
+      const disk = raw.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l));
+      const line = disk.find((l: any) => l.type === 'user_turn' && l.turnId === res.body.turnId);
+      expect(line?.jobType).toBe(expected);
+    });
+
     // A15 — a universal project's turn must be stamped 'universal' at submit:
     // the worker's recordUserTurn copy dedupes by turnId and never corrects
     // the jobType, so the optimistic stamp is what chat.jsonl filters see
     // forever. Project type is probed via config.json (isUniversalProject).
+    // The `undefined` row is also the no-regression guard for the schema:
+    // `jobType` carries NO zod default, so an omitting client still lands on
+    // the ChatService default rather than being downcast to 'ask'.
     it.each([
       ['universal project stamps universal', 'universal', 'universal'],
       ['canonical project keeps the code default', undefined, 'code'],

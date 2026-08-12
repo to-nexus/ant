@@ -305,6 +305,11 @@ export class ChatService {
     if (!adapter) return;
 
     let turnId: string | null = null;
+    // Inherit the anchor turn's jobType. The FE turn projector resolves a
+    // turn's type from the LAST line that carries one, so stamping the
+    // service default here would flip a design / plan / visual turn to
+    // `code` the moment ant auto-commits into it.
+    let anchorJobType: LogJobType | undefined;
     try {
       const lines = await adapter.loadAllChat();
       for (let i = lines.length - 1; i >= 0; i--) {
@@ -312,6 +317,7 @@ export class ChatService {
         if (line.collapsed) continue;
         if (line.type === 'user_turn') {
           turnId = line.turnId;
+          anchorJobType = line.jobType;
           break;
         }
       }
@@ -330,7 +336,7 @@ export class ChatService {
       ts: new Date().toISOString(),
       jobId: 'aux-commit', // synthetic — commit runs outside a job
       turnId,
-      jobType: DEFAULT_JOB_TYPE,
+      jobType: anchorJobType ?? DEFAULT_JOB_TYPE,
       kind: 'system_notice',
       text,
     };
