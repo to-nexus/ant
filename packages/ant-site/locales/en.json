@@ -16,7 +16,7 @@
     "signOut": "Sign Out"
   },
   "footer": {
-    "tagline": "Open-source AI agent platform.\nFrom ideas to specs, from specs to product.",
+    "tagline": "Open-source AI agent platform.\nDeclared context, auditable stages, predictable cost.",
     "product": "Product",
     "community": "Community",
     "resources": "Resources",
@@ -34,9 +34,9 @@
   },
   "home": {
     "tagline": "Open source AI agents that build software",
-    "title1": "Ideas to Specs.",
-    "title2": "Specs to Product.",
-    "desc": "Multi-agent code generation, design, and planning. Self-host on your laptop or use the managed cloud — same architecture, same experience.",
+    "title1": "Declared context.",
+    "title2": "Auditable engineering.",
+    "desc": "Multi-agent platform that runs PRD → design → code → verification as a state machine, and shows you exactly what enters each prompt. Self-host on your laptop or use the managed cloud — same architecture, same experience.",
     "ctaQuickstart": "Quickstart",
     "ctaDocs": "Read the docs",
     "quickstart": {

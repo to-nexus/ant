@@ -1,12 +1,12 @@
 <p align="center">
   <img src="docs/assets/wordmark.png" width="524"
-       alt="ANT — The spec-driven AI engineering platform">
+       alt="ANT — Declared context. Auditable engineering.">
 </p>
 
 <p align="center">
-  Build: <b>PRD → System & UI Design → Code</b> · Iterate: <b>Spec → Code</b> — every code job verifies itself. Self-hosted.<br>
-  Or define <b>your own work agents in files</b> and run them on the same runtime.<br>
-  <sub>Frontend · Backend · Extensible language/framework tiers · Service connections & mock virtualization · Per-feature dev servers · Browser IDE · Custom agents over MCP (experimental) · Deploy (managed cloud)</sub>
+  <b>Your agent's context is a declared list, not a search.</b><br>
+  Build: <b>PRD → System & UI Design → Code</b> · Iterate: <b>Spec → Code</b> — every code job verifies itself.<br>
+  <sub>Self-hosted · Bring your own LLM key · Apache-2.0</sub>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@ writing a real file at a real path — read it, diff it, argue with it. Not just
 commit.</sub></p>
 
 > ⚠️ **Status: pre-alpha, solo-developed.** It works end-to-end, but the public
-> API and file layout will move until the first tagged release, and building this
+> API and file layout may still move between releases, and building this
 > much breadth alone means some surfaces are thinner than others — see
 > **[Maturity](#maturity)** for an honest per-feature breakdown. Issues and PRs
 > are welcome; **[Contributing](#contributing)** says where help lands best.
@@ -34,14 +34,30 @@ commit.</sub></p>
 
 ## Why Ant?
 
-Most AI coding tools are built around "vibe coding" — you tell the model
-what you want, it writes some code, you tell it what's wrong, repeat. That
-loop scales to demos and hobby projects, not to engineering.
+Most agent tools assemble the model's context by searching your repo at run
+time — whatever the search happens to find is what the model reads. So every
+run reads slightly different context, costs a slightly different amount, and
+fails in ways you can't reproduce.
 
-Ant takes the opposite stance. We made two loops that respect how
-engineering actually works.
+Ant is built on the opposite premise: **context is declared, not discovered.**
 
-**The build loop** — greenfield, once per project:
+- **You see what enters the prompt, before the job runs.** Every job executes
+  against a resolved set of artifacts — the PRD, the system design, the spec
+  it was given — and a binding runtime rule forbids wholesale-walking the
+  workspace into that set. Anything the agent explores beyond it goes through
+  logged tool calls under hard token budgets.
+- **Your chat is not the model's context.** The UI transcript and the LLM
+  context are separate files by construction. A job receives a bounded
+  distillation of prior work (4–12k tokens) — never the scrollback — and
+  constraints you state in chat are carried forward verbatim in a ledger
+  instead of being re-summarized until they disappear.
+- **Every stage is a durable file; every cost is itemized.** The same declared
+  inputs produce the same prompt. Outputs land at real paths you can read,
+  diff, and revise, and every job ends with a per-model token / cost /
+  cache-hit breakdown.
+
+What runs on those rails is a pipeline shaped like engineering, not like a
+chat. **The build loop** — greenfield, once per project:
 
 1. Write the **PRD**. The `planner` agent helps you clarify it.
 2. Generate the **system design** (architecture, API contracts, system docs).
@@ -53,9 +69,8 @@ engineering actually works.
 **The iteration loop** — every change after that:
 
 5. Author a **spec** for the next unit of work, review it, and let a code
-   job implement exactly that one spec (`spec → code`). If you've used plan
-   mode in Claude Code, this is the same workflow — except the plan is a
-   persistent document you can diff, review, and revise
+   job implement exactly that one spec — the spec is a persistent document
+   you diff, revise, and keep
    (`gen-spec` → `gen-code-spec` → `rev-spec` → repeat).
 
 Verification is not a stage you schedule — it is a property of **every code
@@ -67,43 +82,14 @@ Each step is a separate job with its own prompt surface, its own tools, and
 its own durable artifacts. The result is a system you can audit, not a
 black box that occasionally writes code.
 
+Deciding between tools? **[docs/comparison.md](docs/comparison.md)** is an
+honest comparison table — including when to use spec-kit, OpenSpec, Claude
+Code, or Lovable *instead of* Ant.
+
 <p align="center">
   <img src="docs/assets/build-loop.png" width="880"
        alt="Two pipelines. The build loop, for greenfield or a major new feature, runs plan (plan/PRD.md) then system design (architecture/system/) then UI or game art (visual/ui/) then code (codebase/). The iteration loop, for every change after that, skips both plan and system design and runs spec (architecture/spec/) straight into code, with a rev-spec return arc">
 </p>
-
----
-
-## Codespace & workspace
-
-Everything above describes a **codespace** — a project that builds software.
-There is a second kind of project, and it is not a smaller version of the first:
-a **workspace**, where you define the agents yourself.
-
-<p align="center">
-  <img src="docs/assets/codespace-workspace.png" width="880"
-       alt="Two kinds of space over one runtime — a codespace exposing the plan, design, code, visual, learn and ask jobs with a git anchor and feature worktrees and a kanban board, beside a workspace exposing only file-defined custom jobs with a universal artifacts and sessions tree and a checklist board, both converging on one runtime where projectType decides policy and never layout">
-</p>
-
-|                          | **Codespace**                                | **Workspace** *(experimental)*                 |
-|--------------------------|----------------------------------------------|------------------------------------------------|
-| You build                | a product                                    | your organization's work agents                |
-| Jobs it exposes          | `plan` `design` `code` `visual` `learn` `ask` | your own, defined in files                    |
-| Unit of work             | a **feature** — branch + worktree            | an **(agent, job)** pair                       |
-| Progress surface         | Kanban tasks, gated by a verification task   | a checklist the agent writes as it works       |
-| Git, live preview, browser IDE | yes                                    | no — a workspace has no codebase               |
-| On disk                  | `repo.git` + `features/{feature}/…`          | `universal/{artifacts,sessions}/`              |
-
-The kind is chosen at creation and fixed for the project's life; it is stored as
-`projectType` in `config.json`. The partition is strict in both directions —
-there is no job type that runs in both kinds — which is why it is a creation-time
-decision rather than a toggle.
-
-What it is *not* is a fork: the two kinds run on the same four processes, the
-same Redis bus, and the same agent loop. `projectType` decides which jobs a
-project exposes and nothing else.
-
-Read more: [docs/concepts/spaces.md](docs/concepts/spaces.md).
 
 ---
 
@@ -127,10 +113,10 @@ pnpm dev:all              # API + Realtime + Worker + Preview + UI + site
 Open [http://localhost:4200](http://localhost:4200) and write your first
 directive — for example, *"Build a TODO app with React and Tailwind"*.
 
-Curious about the other kind first? Create a **Workspace** instead of a
-Codespace in the same wizard and chat with the shipped `assistant` agent — no
-extra setup, and it doubles as the worked example when you write your own
-([Custom agents](#custom-agents--the-universal-runtime)).
+Ant also has a second project kind — a **Workspace**, where you define your
+own work agents in files and run them on the same runtime
+([Custom agents](#custom-agents--the-universal-runtime)). Create one in the
+same wizard and chat with the shipped `assistant` agent — no extra setup.
 
 `pnpm dev:infra` additionally starts ChromaDB and the visual-processor. Both
 are **optional**: the vector DB is off unless you set
@@ -143,13 +129,36 @@ See [docs/cloud-mode/install.md](docs/cloud-mode/install.md).
 
 ---
 
+## Maturity
+
+Ant covers a lot of ground for a one-person project, and that breadth is
+uneven. This table is the honest version. Nothing here is hidden in a changelog
+footnote.
+
+| Surface | Status | What that means in practice |
+|---|---|---|
+| `code` / `design` / `plan` jobs — service domain | **Stable** | The supported path. This is what gets used daily. |
+| Live preview, browser IDE | **Stable** | Well covered by tests and exercised constantly. |
+| Service connections & virtualization | **Beta** | Connection config, auto-detection, and mock adapters all ship and are tested. What's missing is a **verification gate proving a generated adapter matches the real service** — so test generated integration code against your actual backend before trusting it. |
+| `creator` agent / `visual` job | **Experimental** | **Google Gemini only** — needs `GEMINI_API_KEY` no matter which provider you use elsewhere. Background removal needs an optional sidecar. **No mid-graph resume**: an interruption restarts the job. The graph nodes have no execution tests. |
+| Game domain | **Experimental** | **Greenfield only** — the game-art tier is suppressed on existing codebases. Phaser only (3D is the `enable3d` extension, not a separate engine). The sprite-atlas hand-off between the design and visual jobs isn't closed, so production art is user-placed. |
+| Vector DB / RAG (`learn` job) | **Experimental** | Wired end-to-end but **off by default — and we recommend leaving it off** (`ANT_VECTOR_DB_ENABLED=false`; needs a ChromaDB sidecar; hidden from the UI). The chunking / indexing strategy isn't tuned enough for indexing to pay off yet — the framework exists ahead of a future org-shared vector DB. Nothing degrades without it: retrieval is a 3-tier chain (vector → git-changes → keyword). The `learn` node itself still earns its keep with the DB off — it writes the LLM job summary and the session distillation every job ends with. |
+| Workspaces & custom agents (`universal` runtime) | **Experimental** | The runtime, the definition loader, the MCP overlay with its encrypted credential store, and the checklist board all ship and are covered by tests. Read-only work against an HTTP MCP server is the proven path (verified end to end). Three things are **not** there: **interactive approval** — a gated write tool is refused with guidance, so a job writes only under an explicit `approval: never` grant; **team sharing** — definitions are account-owned and the org scope is a single read-only directory, so every artifact lives in a personal project; **scheduling** — there is no unattended-run path. Also: MCP image results are dropped (text only), and an interrupted run can lose one checklist turn. |
+| Team / org sharing | **Not shipped** | Account switching works. Team creation and invites do not. |
+| Managed cloud (billing, credits, deploy quota, custom domains) | **Not open** | Inert no-op seams in a self-hosted deployment. |
+
+If something in the Experimental rows blocks you, say so in an issue — knowing
+what people actually hit is more useful than a roadmap guess.
+
+---
+
 ## Providers
 
 Bring your own key. Configure one or more in `packages/ant-cli/.env`; models
 are selectable per job and per node.
 
 | Provider   | Env var             | Notes                                     |
-|------------|---------------------|-------------------------------------------|
+|------------|---------------------|--------------------------------------------|
 | Anthropic  | `ANTHROPIC_API_KEY` | Primary supported model                    |
 | OpenAI     | `OPENAI_API_KEY`    |                                            |
 | Google     | `GEMINI_API_KEY`    |                                            |
@@ -290,6 +299,39 @@ registry entry.
 
 ---
 
+## Codespace & workspace
+
+Everything above describes a **codespace** — a project that builds software.
+There is a second kind of project, and it is not a smaller version of the first:
+a **workspace**, where you define the agents yourself.
+
+<p align="center">
+  <img src="docs/assets/codespace-workspace.png" width="880"
+       alt="Two kinds of space over one runtime — a codespace exposing the plan, design, code, visual, learn and ask jobs with a git anchor and feature worktrees and a kanban board, beside a workspace exposing only file-defined custom jobs with a universal artifacts and sessions tree and a checklist board, both converging on one runtime where projectType decides policy and never layout">
+</p>
+
+|                          | **Codespace**                                | **Workspace** *(experimental)*                 |
+|--------------------------|----------------------------------------------|------------------------------------------------|
+| You build                | a product                                    | your organization's work agents                |
+| Jobs it exposes          | `plan` `design` `code` `visual` `learn` `ask` | your own, defined in files                    |
+| Unit of work             | a **feature** — branch + worktree            | an **(agent, job)** pair                       |
+| Progress surface         | Kanban tasks, gated by a verification task   | a checklist the agent writes as it works       |
+| Git, live preview, browser IDE | yes                                    | no — a workspace has no codebase               |
+| On disk                  | `repo.git` + `features/{feature}/…`          | `universal/{artifacts,sessions}/`              |
+
+The kind is chosen at creation and fixed for the project's life; it is stored as
+`projectType` in `config.json`. The partition is strict in both directions —
+there is no job type that runs in both kinds — which is why it is a creation-time
+decision rather than a toggle.
+
+What it is *not* is a fork: the two kinds run on the same four processes, the
+same Redis bus, and the same agent loop. `projectType` decides which jobs a
+project exposes and nothing else.
+
+Read more: [docs/concepts/spaces.md](docs/concepts/spaces.md).
+
+---
+
 ## Custom agents & the universal runtime
 
 > ⚠️ **Experimental**, and a headline capability rather than a side feature —
@@ -370,8 +412,8 @@ build one: [docs/guides/custom-agent-authoring.md](docs/guides/custom-agent-auth
 ## Features
 
 - **Spec-sized iteration.** Author a spec, review it, and a code job
-  implements exactly that one spec — plan mode, except the plan is a
-  persistent artifact you can diff and revise.
+  implements exactly that one spec — a persistent artifact you diff and
+  revise, not a transient plan.
 - **Custom work agents.** Define an agent, its jobs, and the systems it may
   reach in files, and run them on the same runtime — no code change, no new job
   type. MCP for capability, an encrypted credential store for its secrets, a
@@ -424,34 +466,12 @@ cloud-only symbol reaches the open-source bundle.
 
 ---
 
-## Maturity
-
-Ant covers a lot of ground for a one-person project, and that breadth is
-uneven. This table is the honest version. Nothing here is hidden in a changelog
-footnote.
-
-| Surface | Status | What that means in practice |
-|---|---|---|
-| `code` / `design` / `plan` jobs — service domain | **Stable** | The supported path. This is what gets used daily. |
-| Live preview, browser IDE | **Stable** | Well covered by tests and exercised constantly. |
-| Service connections & virtualization | **Beta** | Connection config, auto-detection, and mock adapters all ship and are tested. What's missing is a **verification gate proving a generated adapter matches the real service** — so test generated integration code against your actual backend before trusting it. |
-| `creator` agent / `visual` job | **Experimental** | **Google Gemini only** — needs `GEMINI_API_KEY` no matter which provider you use elsewhere. Background removal needs an optional sidecar. **No mid-graph resume**: an interruption restarts the job. The graph nodes have no execution tests. |
-| Game domain | **Experimental** | **Greenfield only** — the game-art tier is suppressed on existing codebases. Phaser only (3D is the `enable3d` extension, not a separate engine). The sprite-atlas hand-off between the design and visual jobs isn't closed, so production art is user-placed. |
-| Vector DB / RAG (`learn` job) | **Experimental** | Wired end-to-end but **off by default — and we recommend leaving it off** (`ANT_VECTOR_DB_ENABLED=false`; needs a ChromaDB sidecar; hidden from the UI). The chunking / indexing strategy isn't tuned enough for indexing to pay off yet — the framework exists ahead of a future org-shared vector DB. Nothing degrades without it: retrieval is a 3-tier chain (vector → git-changes → keyword). The `learn` node itself still earns its keep with the DB off — it writes the LLM job summary and the session distillation every job ends with. |
-| Workspaces & custom agents (`universal` runtime) | **Experimental** | The runtime, the definition loader, the MCP overlay with its encrypted credential store, and the checklist board all ship and are covered by tests. Read-only work against an HTTP MCP server is the proven path (verified end to end). Three things are **not** there: **interactive approval** — a gated write tool is refused with guidance, so a job writes only under an explicit `approval: never` grant; **team sharing** — definitions are account-owned and the org scope is a single read-only directory, so every artifact lives in a personal project; **scheduling** — there is no unattended-run path. Also: MCP image results are dropped (text only), and an interrupted run can lose one checklist turn. |
-| Team / org sharing | **Not shipped** | Account switching works. Team creation and invites do not. |
-| Managed cloud (billing, credits, deploy quota, custom domains) | **Not open** | Inert no-op seams in a self-hosted deployment. |
-
-If something in the Experimental rows blocks you, say so in an issue — knowing
-what people actually hit is more useful than a roadmap guess.
-
----
-
 ## Documentation
 
+- **[Comparison](docs/comparison.md)** — Ant vs spec-kit, OpenSpec, Claude Code, OpenHands, Lovable — including when to use them instead
 - **[Local Mode](docs/local-mode/)** — install + develop on your own machine (Persona A)
 - **[Cloud Mode](docs/cloud-mode/)** — install + develop for managed (Persona B) or self-host cloud (Persona C)
-- **[Concepts](docs/concepts/)** — architecture, agents, jobs, execution tiers, spec-driven philosophy
+- **[Concepts](docs/concepts/)** — architecture, agents, jobs, execution tiers, the engineering-loop philosophy
 - **[Codespace & workspace](docs/concepts/spaces.md)** — the two project kinds and what each puts on disk
 - **[Custom agents](docs/concepts/custom-agents.md)** — the universal runtime, and [authoring a custom agent](docs/guides/custom-agent-authoring.md)
 - **[Guides](docs/guides/)** — design input, custom prompts, observability

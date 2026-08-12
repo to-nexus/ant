@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     template: '%s — ANT',
   },
   description:
-    'Open source multi-agent platform. Plan, design, code, and preview — self-host on your laptop or use the managed cloud.',
+    'Open source multi-agent platform that runs PRD → design → code → verification as a state machine, with declared, auditable context per job. Self-host on your laptop or use the managed cloud.',
   openGraph: {
     type: 'website',
     siteName: 'ANT',

@@ -12,10 +12,6 @@
   },
   "bugs": "https://github.com/to-nexus/ant/issues",
   "homepage": "https://github.com/to-nexus/ant#readme",
-  "main": "dist/index.js",
-  "bin": {
-    "aidev": "./dist/index.js"
-  },
   "scripts": {
     "test": "vitest run",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",

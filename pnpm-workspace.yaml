@@ -34,7 +34,7 @@ auditConfig:
     - GHSA-v6wh-96g9-6wx3  # vite>launch-editor: NTLMv2 hash disclosure (Windows dev only)
     - GHSA-67mh-4wv8-2f99  # esbuild: dev server accepts any-origin requests (dev server)
 
-# Trivy CI fix — 전이 의존성 CVE patch (pnpm 11 워크스페이스는 overrides 를 여기서만 인식)
+# Trivy CI fix — transitive-dependency CVE patches (pnpm 11 workspaces only honor overrides here)
 overrides:
   handlebars: '^4.7.9'
   protobufjs: '^7.6.1'

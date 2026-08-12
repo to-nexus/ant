@@ -56,7 +56,7 @@ RUN echo "🔨 Building for environment: ${BUILD_ENV}" && \
 # Build ant-ui (Vite will load .env.production automatically)
 RUN pnpm --filter @ant/ui build
 
-# Debug: 빌드 결과물 확인
+# Debug: verify the build output landed where the runner stage expects
 RUN echo "=== Checking dist location ===" && \
     ls -la /app/packages/ant-ui/dist/ || echo "dist not found"
 
@@ -71,10 +71,10 @@ RUN rm -rf /usr/share/nginx/html/* && \
 # Copy Vite build output to nginx html directory
 COPY --from=builder /app/packages/ant-ui/dist /usr/share/nginx/html
 
-# nginx.conf는 ConfigMap에서 /etc/nginx/conf.d/default.conf로 마운트됨
+# nginx.conf is mounted from a ConfigMap as /etc/nginx/conf.d/default.conf
 
-# Run as non-root: nginx 유저가 pid/cache/log/html에 쓸 수 있도록 권한 부여.
-# 마운트되는 ConfigMap nginx.conf는 8080(비특권 포트)을 리슨한다.
+# Run as non-root: grant the nginx user write access to pid/cache/log/html.
+# The mounted ConfigMap nginx.conf listens on 8080 (unprivileged port).
 RUN chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx && \
     touch /var/run/nginx.pid && chown nginx:nginx /var/run/nginx.pid
 USER nginx
