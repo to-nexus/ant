@@ -41,8 +41,8 @@
   "author": "",
   "dependencies": {
     "@ant/shared": "workspace:^",
-    "@anthropic-ai/sdk": "^0.71.2",
-    "@google/genai": "^1.48.0",
+    "@anthropic-ai/sdk": "^0.116.0",
+    "@google/genai": "^1.52.0",
     "@langchain/langgraph": "^1.1.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@octokit/rest": "^22.0.0",
@@ -96,7 +96,7 @@
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.2.4",
-    "esbuild": "^0.27.2",
+    "esbuild": "^0.28.2",
     "tsx": "^4.23.11",
     "typescript": "^5.9.3",
     "vitest": "~4.1.10"
