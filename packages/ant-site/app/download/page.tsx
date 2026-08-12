@@ -9,19 +9,21 @@ import { SectionHeading } from '@/components/aurora/SectionHeading';
 import { IconOrb } from '@/components/aurora/IconOrb';
 import { Reveal } from '@/components/aurora/Reveal';
 import type { IconOrbTone } from '@/components/aurora/IconOrb';
-import { ANT_DESKTOP_MAC_ARM, ANT_DESKTOP_MAC_INTEL, ANT_DESKTOP_RELEASES_URL } from '@/lib/links';
+import { ANT_DESKTOP_RELEASES_URL } from '@/lib/links';
+import { useLatestDesktopRelease } from '@/lib/useLatestDesktopRelease';
+import type { DesktopAssetId } from '@/lib/useLatestDesktopRelease';
 
 interface DesktopItem {
-  id: string;
+  /** macOS rows carry an asset id — their href is resolved from the latest release at runtime. */
+  id: DesktopAssetId | string;
   label: string;
   desc: string;
-  href?: string;
   comingSoon: boolean;
 }
 
 const DESKTOP_ITEMS: DesktopItem[] = [
-  { id: 'mac-arm', label: 'macOS (Apple Silicon)', desc: 'M1 / M2 / M3 / M4', href: ANT_DESKTOP_MAC_ARM, comingSoon: false },
-  { id: 'mac-intel', label: 'macOS (Intel)', desc: 'Intel Mac', href: ANT_DESKTOP_MAC_INTEL, comingSoon: false },
+  { id: 'mac-arm', label: 'macOS (Apple Silicon)', desc: 'M1 / M2 / M3 / M4', comingSoon: false },
+  { id: 'mac-intel', label: 'macOS (Intel)', desc: 'Intel Mac', comingSoon: false },
   { id: 'windows', label: 'Windows', desc: 'Windows 10+, 64-bit', comingSoon: true },
   { id: 'linux-deb', label: 'Linux (Debian)', desc: '.deb', comingSoon: true },
   { id: 'linux-appimage', label: 'Linux (AppImage)', desc: 'AppImage', comingSoon: true },
@@ -36,12 +38,27 @@ const WHAT_ITEMS: { id: string; Icon: typeof Box; titleKey: string; descKey: str
 export default function DownloadPage() {
   const { t } = useTranslation('site');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const release = useLatestDesktopRelease();
 
   const installSteps = t('download.installSteps', { returnObjects: true }) as string[];
 
   function handleComingSoon() {
     setToastMessage(t('download.comingSoonToast'));
     setTimeout(() => setToastMessage(null), 3200);
+  }
+
+  /** Available rows take their href from the latest release; the releases page is the fallback, never a dead end. */
+  function resolveRow(item: DesktopItem): { href?: string; badge: string; pending: boolean } {
+    if (item.comingSoon) return { badge: t('download.comingSoon'), pending: false };
+    if (release.status === 'loading') return { badge: t('download.loadingLabel'), pending: true };
+    if (release.status === 'unavailable') {
+      return { href: ANT_DESKTOP_RELEASES_URL, badge: t('download.viaGithubLabel'), pending: false };
+    }
+    return {
+      href: release.assetUrls[item.id as DesktopAssetId],
+      badge: t('download.downloadLabel'),
+      pending: false,
+    };
   }
 
   return (
@@ -73,6 +90,7 @@ export default function DownloadPage() {
           <div className="space-y-2">
             {DESKTOP_ITEMS.map((item) => {
               const rowStyle = { padding: 16, borderRadius: 'var(--r-lg)', background: 'var(--bg-surface)', border: '1px solid var(--border-1)' } as const;
+              const { href, badge, pending } = resolveRow(item);
               const inner = (
                 <>
                   <div className="flex items-center gap-3">
@@ -80,7 +98,7 @@ export default function DownloadPage() {
                       {item.comingSoon ? (
                         <Clock className="w-4 h-4" style={{ color: 'var(--text-4)' }} />
                       ) : (
-                        <Download className="w-4 h-4" style={{ color: 'var(--violet-300)' }} />
+                        <Download className="w-4 h-4" style={{ color: pending ? 'var(--text-4)' : 'var(--violet-300)' }} />
                       )}
                     </div>
                     <div>
@@ -93,33 +111,57 @@ export default function DownloadPage() {
                       {t('download.comingSoon')}
                     </span>
                   ) : (
-                    <span className="text-mono" style={{ fontSize: 11, color: 'var(--violet-300)', border: '1px solid var(--border-brand)', background: 'oklch(26% 0.09 290)', padding: '3px 10px', borderRadius: 'var(--r-pill)' }}>
-                      {t('download.downloadLabel')}
+                    <span
+                      className="text-mono"
+                      style={
+                        pending
+                          ? { fontSize: 11, color: 'var(--text-4)', border: '1px solid var(--border-1)', background: 'var(--bg-surface-2)', padding: '3px 10px', borderRadius: 'var(--r-pill)' }
+                          : { fontSize: 11, color: 'var(--violet-300)', border: '1px solid var(--border-brand)', background: 'oklch(26% 0.09 290)', padding: '3px 10px', borderRadius: 'var(--r-pill)' }
+                      }
+                    >
+                      {badge}
                     </span>
                   )}
                 </>
               );
 
-              return item.href ? (
-                <a
+              // Three shapes: a real link (asset or releases-page fallback), the
+              // coming-soon toast button, and a flat row while the lookup is in flight.
+              if (href) {
+                return (
+                  <a
+                    key={item.id}
+                    href={href}
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-between text-left transition-all"
+                    style={rowStyle}
+                  >
+                    {inner}
+                  </a>
+                );
+              }
+              if (item.comingSoon) {
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={handleComingSoon}
+                    className="w-full flex items-center justify-between text-left transition-all"
+                    style={rowStyle}
+                  >
+                    {inner}
+                  </button>
+                );
+              }
+              return (
+                <div
                   key={item.id}
-                  href={item.href}
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-between text-left transition-all"
-                  style={rowStyle}
+                  aria-busy
+                  className="w-full flex items-center justify-between text-left"
+                  style={{ ...rowStyle, opacity: 0.6 }}
                 >
                   {inner}
-                </a>
-              ) : (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={handleComingSoon}
-                  className="w-full flex items-center justify-between text-left transition-all"
-                  style={rowStyle}
-                >
-                  {inner}
-                </button>
+                </div>
               );
             })}
           </div>

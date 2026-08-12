@@ -14,17 +14,16 @@ export const DOCS_URL = `${GITHUB_URL}/tree/main/docs`;
 
 // Ant Desktop is the Figma-bridge companion app — a SEPARATE repo from `to-nexus/ant`.
 // The repo is still private until the OSS launch, so these URLs 404 for anyone without
-// read access — but only for that reason. The release itself MUST be published: a draft
-// release is served from an opaque `/download/untagged-<hash>/` slug, so the tag-scoped
-// URL below 404s for everyone, owners included. Bump ANT_DESKTOP_VERSION per release.
+// read access — but only for that reason. The release itself MUST be published: `latest`
+// resolves to the newest published, non-prerelease release, so a draft is invisible here
+// no matter how recent its tag.
 export const ANT_DESKTOP_REPO = 'to-nexus/ant-desktop';
 export const ANT_DESKTOP_RELEASES_URL = `https://github.com/${ANT_DESKTOP_REPO}/releases`;
-export const ANT_DESKTOP_VERSION = '1.0.0';
-// Tag is `v${version}`; asset filenames use the bare version.
-const antDesktopAsset = (file: string) =>
-  `https://github.com/${ANT_DESKTOP_REPO}/releases/download/v${ANT_DESKTOP_VERSION}/${file}`;
-export const ANT_DESKTOP_MAC_ARM = antDesktopAsset(`ant-desktop_${ANT_DESKTOP_VERSION}_aarch64.dmg`);
-export const ANT_DESKTOP_MAC_INTEL = antDesktopAsset(`ant-desktop_${ANT_DESKTOP_VERSION}_x86_64.dmg`);
+// `releases/latest/download/<file>` only redirects on an exact filename, and the assets
+// embed the version (`ant-desktop_1.0.1_aarch64.dmg`). So the latest release is resolved
+// at runtime (`useLatestDesktopRelease`) and its own asset URLs are used — no version
+// constant lives on the site, and nothing has to be bumped per release.
+export const ANT_DESKTOP_LATEST_API_URL = `https://api.github.com/repos/${ANT_DESKTOP_REPO}/releases/latest`;
 
 export const LICENSE_NAME = 'Apache-2.0';
 export const ORG_NAME = 'NEXUS';

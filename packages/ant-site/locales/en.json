@@ -400,6 +400,8 @@
     "desktopTitle": "Download Ant Desktop",
     "desktopDesc": "Unsigned macOS dev builds are available now — pick the one for your chip. Windows and Linux are on the way.",
     "downloadLabel": "Download",
+    "loadingLabel": "Checking latest…",
+    "viaGithubLabel": "Get from GitHub",
     "comingSoonToast": "Windows and Linux builds are on the way — macOS is available now.",
     "comingSoon": "Coming Soon",
     "whatTitle": "What Ant Desktop does",
