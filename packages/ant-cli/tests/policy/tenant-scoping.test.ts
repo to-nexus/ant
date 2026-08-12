@@ -129,9 +129,21 @@ describe('jobsByFeature index is tenant-scoped (H-006)', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('assertJobAccess gates jobId-addressed routes (H-006)', () => {
-  const stateStore = (owner: typeof ALICE | undefined) => ({
-    getJobStatus: async () => (owner ? { jobId: 'j1', userContext: owner } : null),
+  /**
+   * Two owner records with independent lifetimes: job status expires on its own
+   * TTL, the mapping is refreshed alongside every workflow-state write. Either
+   * one identifies the owner; only the absence of BOTH means "untracked".
+   */
+  const store = (records: { status?: typeof ALICE; mapping?: typeof ALICE }) => ({
+    getJobStatus: async () =>
+      records.status ? { jobId: 'j1', userContext: records.status } : null,
+    getJobMapping: async () =>
+      records.mapping
+        ? { projectId: 'p', featureName: 'main', jobType: 'code', userContext: records.mapping }
+        : null,
   });
+  const stateStore = (owner: typeof ALICE | undefined) =>
+    store(owner ? { status: owner, mapping: owner } : {});
 
   const withMode = async (mode: 'cloud' | 'local', run: () => Promise<void>) => {
     vi.stubEnv('ANT_SERVER_MODE', mode);
@@ -161,10 +173,59 @@ describe('assertJobAccess gates jobId-addressed routes (H-006)', () => {
     });
   });
 
+  it('cloud: the mapping still identifies the owner after the status expires', async () => {
+    await withMode('cloud', async () => {
+      const { assertJobAccess } = await import('../../src/periphery/adapters/http/routes/helpers/jobAccess.js');
+      const outlived = store({ mapping: ALICE });
+      expect((await assertJobAccess(outlived as any, 'j1', BOB))?.code).toBe(403);
+      expect(await assertJobAccess(outlived as any, 'j1', ALICE)).toBeNull();
+    });
+  });
+
   it('local: single tenant, always allowed', async () => {
     await withMode('local', async () => {
       const { assertJobAccess } = await import('../../src/periphery/adapters/http/routes/helpers/jobAccess.js');
       expect(await assertJobAccess(stateStore(ALICE) as any, 'j1', BOB)).toBeNull();
+    });
+  });
+
+  it('cloud: the workflow REST route applies the gate before reading state', async () => {
+    await withMode('cloud', async () => {
+      const { createWorkflowRoutes } = await import('../../src/periphery/adapters/http/routes/workflow.routes.js');
+      const workflowStateService = { getState: vi.fn(async () => ({ activeNodes: ['plan'] })) };
+      const router: any = createWorkflowRoutes({
+        graphMetadataService: {} as any,
+        workflowStateService: workflowStateService as any,
+        stateStore: store({ status: ALICE, mapping: ALICE }) as any,
+      });
+
+      const handler = router.stack
+        .find((l: any) => l.route?.path === '/jobs/:jobId/workflow/state')
+        .route.stack[0].handle;
+
+      const call = async (caller: typeof ALICE) => {
+        const res: any = { statusCode: 200, body: undefined,
+          status(code: number) { this.statusCode = code; return this; },
+          json(payload: unknown) { this.body = payload; return this; } };
+        await handler(
+          {
+            params: { jobId: 'j1' },
+            headers: {},
+            user: { id: caller.userId },
+            organization: { id: caller.organizationId },
+          } as any,
+          res,
+        );
+        return res;
+      };
+
+      const denied = await call(BOB);
+      expect(denied.statusCode).toBe(403);
+      expect(workflowStateService.getState).not.toHaveBeenCalled();
+
+      const allowed = await call(ALICE);
+      expect(allowed.statusCode).toBe(200);
+      expect(allowed.body).toEqual({ activeNodes: ['plan'] });
     });
   });
 });

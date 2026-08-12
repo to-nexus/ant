@@ -14,10 +14,14 @@
 import { Router, Request, Response } from 'express';
 import { GraphMetadataService } from '../services/GraphMetadataService';
 import { WorkflowStateService } from '../services/WorkflowStateService';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { assertJobAccess } from './helpers/jobAccess';
+import { extractUserContext } from './helpers/userContext';
 
 export function createWorkflowRoutes(deps: {
   graphMetadataService: GraphMetadataService;
   workflowStateService: WorkflowStateService;
+  stateStore: Pick<StateStorePort, 'getJobStatus' | 'getJobMapping'>;
 }): Router {
   const router = Router();
   
@@ -52,12 +56,22 @@ export function createWorkflowRoutes(deps: {
   
   /**
    * GET /api/jobs/:jobId/workflow/state
-   * 
+   *
    * Job의 워크플로우 상태 조회 (REST API)
+   *
+   * `jobId` is caller-supplied and the state lives under a tenant-less Redis
+   * key, so ownership is checked BEFORE the read — the same gate the workflow
+   * SSE stream applies.
    */
   router.get('/jobs/:jobId/workflow/state', async (req: Request, res: Response) => {
     const { jobId } = req.params;
-    
+
+    const denied = await assertJobAccess(deps.stateStore, jobId, extractUserContext(req));
+    if (denied) {
+      res.status(denied.code).json(denied.body);
+      return;
+    }
+
     const state = await deps.workflowStateService.getState(jobId);
     
     if (!state) {

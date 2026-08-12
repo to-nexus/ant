@@ -17,19 +17,30 @@ import { CommandPort, CommandResult, CommandOptions } from "../../../core/ports"
 import { spawn } from "child_process";
 import { isProcessGroupAlive } from "./processTree";
 import { splitOnShellOperators, tokenizeShellSegment } from "../../../core/utils/shellParser";
+import { composeChildEnv } from "../../../core/config/childEnv";
 
 /**
- * Build a sanitized copy of process.env for user command execution.
- * Strips ant-cli internal variables (PORT, NODE_ENV) that would pollute
- * user projects.  Shared by NodeCommandAdapter.execute() and
- * handleLongRunningCommand() in runCommand.ts.
+ * Build the environment for a user command child.
+ *
+ * The command is LLM-chosen and runs the user's own project (`npm run`, `node
+ * -e`, lifecycle scripts), and its stdout/stderr goes back to the chat card and
+ * into the next LLM turn as a tool result. So it gets the same composed
+ * allowlist as preview/deploy children rather than the job runner's own
+ * `process.env`, which holds provider API keys and the Redis URL.
+ *
+ * On top of that: `PORT`/`NODE_ENV` stay stripped (ant-cli internals that would
+ * pollute a user project — `NODE_ENV` otherwise rides the `NODE_` namespace),
+ * and `extra` still wins, so a caller's explicit execution settings are kept.
  */
 export function cleanCommandEnv(extra?: Record<string, string>): Record<string, string> {
-  const base = Object.entries(process.env).reduce((acc, [key, value]) => {
-    if (key === 'PORT' || key === 'NODE_ENV') return acc;
-    if (value !== undefined) acc[key] = value;
-    return acc;
-  }, {} as Record<string, string>);
+  const composed = composeChildEnv();
+  delete composed.PORT;
+  delete composed.NODE_ENV;
+
+  const base: Record<string, string> = {};
+  for (const [key, value] of Object.entries(composed)) {
+    if (value !== undefined) base[key] = value;
+  }
   return extra ? { ...base, ...extra } : base;
 }
 

@@ -12,6 +12,7 @@ import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
 import { writeBufferVerified, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
+import { assertWithinRoot } from '../../../../core/config/pathContainment';
 import { resolveFeatureScopedFilePath } from './helpers/featureFiles';
 
 /**
@@ -286,8 +287,18 @@ export function createFilesRoutes(deps: {
       const userContext = extractUserContext(req);
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const baseDir = path.join(featurePath, dirPath);
-      
+
+      // `dirPath` is caller-supplied. `resolveSafePath` below only re-anchors the
+      // per-file relative paths to `baseDir`, so an escaped baseDir would be
+      // honoured — containment has to be asserted here, against the feature root.
+      let baseDir: string;
+      try {
+        baseDir = assertWithinRoot(featurePath, dirPath);
+      } catch {
+        res.status(400).json({ error: 'Invalid directory path' });
+        return;
+      }
+
       // Ensure base directory exists
       await fs.promises.mkdir(baseDir, { recursive: true });
       
@@ -412,10 +423,14 @@ export function createFilesRoutes(deps: {
       const userContext = extractUserContext(req);
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
-      const fullPath = path.join(featurePath, dirPath);
-
-      // Security: prevent path traversal (must stay within feature directory)
-      if (!fullPath.startsWith(featurePath)) {
+      // Security: must stay within the feature directory. A bare `startsWith`
+      // compares no separator, so `../<feature>-escaped` normalizes to a sibling
+      // that still shares the prefix — the shared helper compares by segment and
+      // also realpaths the nearest existing ancestor.
+      let fullPath: string;
+      try {
+        fullPath = assertWithinRoot(featurePath, dirPath);
+      } catch {
         return res.status(400).json({ error: 'Invalid directory path' });
       }
 

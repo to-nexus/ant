@@ -148,8 +148,8 @@ export function buildSpawnEnv(
   // makes pnpm/yarn use a frozen/immutable lockfile: correct in real CI, wrong during
   // ANT generation where every task mutates the lockfile (→ ERR_PNPM_OUTDATED_LOCKFILE).
   // `34366b35` guarded only the *downstream* build/test leak (operator carve-out) and
-  // missed the install's OWN frozen behavior. `cleanCommandEnv` merges
-  // {...process.env, ...extra}, so this explicit knob also beats an inherited CI=true
+  // missed the install's OWN frozen behavior. `cleanCommandEnv` layers `extra` last,
+  // so this explicit knob also beats a CI=true that reached the child some other way
   // (npm/yarn ignore it harmlessly).
   if (opts.isInstallCommand) {
     extra.npm_config_frozen_lockfile = 'false';

@@ -145,8 +145,11 @@ async function ensureDependencies(
   return new Promise<void>((resolve, reject) => {
     let settled = false;
 
+    // Same boundary as the build below: lifecycle scripts are user-authored and
+    // their output reaches the requester's deploy log.
     const child = spawn(command, args, {
       cwd: workspacePath,
+      env: composeChildEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
     });

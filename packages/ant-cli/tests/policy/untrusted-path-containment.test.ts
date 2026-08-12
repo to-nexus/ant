@@ -104,6 +104,9 @@ describe('feature-root containment (C-002 / H-004)', () => {
     ['deep traversal', '../../../../etc/passwd', false],
     ['absolute path', '/etc/passwd', false],
     ['symlink escape', 'escape-link/secret.env', false],
+    // A bare `startsWith(root)` accepts this one: the sibling shares the root's
+    // string prefix with no separator between them (report L-030).
+    ['sibling prefix escape', '../feature-escaped', false],
   ];
 
   for (const [label, relPath, contained] of CASES) {
@@ -117,6 +120,91 @@ describe('feature-root containment (C-002 / H-004)', () => {
       }
     });
   }
+});
+
+describe('file routes anchor caller `dirPath` to the feature root (H-007 / L-030)', () => {
+  let base: string;
+  let featurePath: string;
+  let router: any;
+
+  const handlerFor = (method: 'post', routePath: string) =>
+    router.stack.find(
+      (l: any) => l.route?.path === routePath && l.route?.methods?.[method],
+    ).route.stack.at(-1).handle;
+
+  const call = async (handler: any, req: Record<string, unknown>) => {
+    const res: any = {
+      statusCode: 200,
+      body: undefined,
+      status(code: number) { this.statusCode = code; return this; },
+      json(payload: unknown) { this.body = payload; return this; },
+    };
+    await handler({ headers: {}, user: { id: 'alice' }, organization: { id: 'acme' }, ...req } as any, res);
+    return res;
+  };
+
+  beforeAll(async () => {
+    base = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-files-route-'));
+    featurePath = path.join(base, 'features', 'main');
+    fs.mkdirSync(featurePath, { recursive: true });
+    fs.symlinkSync(base, path.join(featurePath, 'escape-link'), 'dir');
+
+    const { createFilesRoutes } = await import('../../src/periphery/adapters/http/routes/files.routes.js');
+    router = createFilesRoutes({
+      projectService: { workspaceResolver: { getFeaturePath: () => featurePath } } as any,
+    });
+  });
+
+  afterAll(() => {
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  const ESCAPES: Array<[label: string, dirPath: string]> = [
+    ['parent traversal', '../../outside'],
+    ['sibling prefix', '../main-escaped'],
+    ['symlink escape', 'escape-link/planted'],
+  ];
+
+  for (const [label, dirPath] of ESCAPES) {
+    it(`upload rejects ${label}`, async () => {
+      const handler = handlerFor('post', '/projects/:id/features/:feature/upload');
+      const res = await call(handler, {
+        params: { id: 'p', feature: 'main' },
+        body: { dirPath, relativePaths: ['x.txt'] },
+        files: [{ originalname: 'x.txt', buffer: Buffer.from('x') }],
+      });
+      expect(res.statusCode).toBe(400);
+      // pin the gate that answered, not just the status — 400 has other producers
+      expect((res.body as any)?.error).toBe('Invalid directory path');
+    });
+
+    it(`directory create rejects ${label}`, async () => {
+      const handler = handlerFor('post', '/projects/:id/features/:feature/directory');
+      const res = await call(handler, {
+        params: { id: 'p', feature: 'main' },
+        body: { path: dirPath },
+      });
+      expect(res.statusCode).toBe(400);
+      // pin the gate that answered, not just the status — 400 has other producers
+      expect((res.body as any)?.error).toBe('Invalid directory path');
+    });
+  }
+
+  it('directory create still makes a nested directory inside the feature', async () => {
+    const handler = handlerFor('post', '/projects/:id/features/:feature/directory');
+    const res = await call(handler, {
+      params: { id: 'p', feature: 'main' },
+      body: { path: 'docs/nested' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fs.existsSync(path.join(featurePath, 'docs', 'nested'))).toBe(true);
+  });
+
+  it('no escaped directory was created by any rejected request', () => {
+    expect(fs.existsSync(path.join(base, 'features', 'main-escaped'))).toBe(false);
+    expect(fs.existsSync(path.join(base, 'outside'))).toBe(false);
+    expect(fs.existsSync(path.join(base, 'planted'))).toBe(false);
+  });
 });
 
 describe('preview connection source stays in the workspace (H-003)', () => {

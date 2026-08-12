@@ -27,13 +27,25 @@ const BASE_ENV_NAMES: ReadonlySet<string> = new Set([
  * almost entirely through prefixed variables (registry auth handled separately
  * via `credentialEnv`), so passing the namespaces keeps installs working
  * without passing the service's own configuration.
+ *
+ * Go is deliberately absent here: a bare `GO` prefix also matches `GOOGLE_*`,
+ * which is how the platform's OAuth client secret reached user children in a
+ * single-host deployment. Go variables are named explicitly below instead —
+ * a `GO_` prefix would not work either, since `GOPATH` has no underscore.
  */
 const TOOLCHAIN_ENV_PREFIXES: readonly string[] = [
   'LC_', 'NODE_', 'npm_', 'NPM_CONFIG_', 'PNPM_', 'COREPACK_', 'YARN_', 'BUN_',
-  'GO', 'JAVA_', 'GRADLE_', 'MAVEN_', 'PYTHON', 'PIP_', 'VIRTUAL_ENV', 'POETRY_',
+  'JAVA_', 'GRADLE_', 'MAVEN_', 'PYTHON', 'PIP_', 'VIRTUAL_ENV', 'POETRY_',
   'CARGO_', 'RUSTUP_', 'RUST_', 'DOTNET_', 'NUGET_', 'RBENV_', 'GEM_', 'BUNDLE_',
   'ANDROID_', 'XDG_', 'SSL_CERT_', 'NIX_',
 ];
+
+/** Go toolchain variables, named one by one — see the note above. */
+const GO_ENV_NAMES: ReadonlySet<string> = new Set([
+  'GOPATH', 'GOROOT', 'GOBIN', 'GOCACHE', 'GOMODCACHE', 'GOFLAGS', 'GOPROXY',
+  'GOPRIVATE', 'GONOSUMDB', 'GONOSUMCHECK', 'GOSUMDB', 'GOTOOLCHAIN',
+  'GOOS', 'GOARCH', 'GOARM', 'GOEXPERIMENT', 'GOINSECURE', 'GOVCS', 'CGO_ENABLED',
+]);
 
 /**
  * Extra variable names a deployment explicitly wants forwarded, comma-separated.
@@ -44,6 +56,7 @@ const PASSTHROUGH_ENV_VAR = 'ANT_PREVIEW_ENV_PASSTHROUGH';
 
 function isAllowedInheritedName(name: string, passthrough: ReadonlySet<string>): boolean {
   if (BASE_ENV_NAMES.has(name)) return true;
+  if (GO_ENV_NAMES.has(name)) return true;
   if (passthrough.has(name)) return true;
   return TOOLCHAIN_ENV_PREFIXES.some(prefix => name.startsWith(prefix));
 }

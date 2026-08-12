@@ -298,9 +298,12 @@ export class DevProcessControl {
    * Currently handles:
    *   • Next.js: `.next/dev/lock` (Next 16) / `.next/dev/server.json` (older)
    *
-   * If the recorded PID is alive, that process is killed via `killTree`
-   * before the lock is removed. If the PID is already dead, the lock is
-   * simply unlinked. Idempotent — safe to call when no lock exists.
+   * The lock file is removed; the PID recorded inside it is NOT signalled.
+   * That file lives in the user's workspace and is user-writable, so its PID
+   * is a hygiene hint, not an authority to kill — termination authority is the
+   * persisted `(pid, pgid, podId)` record consumed by `killOwned()`, which
+   * every caller here already runs first. Idempotent — safe to call when no
+   * lock exists.
    */
   async cleanupStaleLocks(cwd: string): Promise<void> {
     await this.cleanupNextDevLock(cwd);
@@ -317,9 +320,11 @@ export class DevProcessControl {
 
       const parsed = this.parseLockPids(lockPath);
       if (parsed.pid != null && this.isAlive(parsed.pid)) {
-        this.log('warn', `Stale Next dev lock at ${lockPath} → killing PID ${parsed.pid}` +
-          (parsed.port ? ` (port ${parsed.port})` : ''));
-        await this.killTree(parsed.pid);
+        // Reported, never signalled — see the method doc: the PID comes from a
+        // user-writable file, so it identifies nothing we own.
+        this.log('warn', `Stale Next dev lock at ${lockPath} names live PID ${parsed.pid}` +
+          (parsed.port ? ` (port ${parsed.port})` : '') +
+          ' — removing the lock only; owned processes are stopped via killOwned()');
       }
 
       try {
