@@ -22,14 +22,19 @@ COPY pnpm-workspace.yaml ./
 COPY package.json ./
 COPY pnpm-lock.yaml ./
 
-# Copy ant-ui package
+# Copy ant-ui package + its workspace deps (vite resolves both from source:
+# @ant/shared is aliased to ../ant-shared/src, @ant/auth-client's main is src/)
 COPY packages/ant-ui/package.json ./packages/ant-ui/
+COPY packages/ant-shared/package.json ./packages/ant-shared/
+COPY packages/ant-auth-client/package.json ./packages/ant-auth-client/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
-# Copy ant-ui source code
+# Copy source code
 COPY packages/ant-ui ./packages/ant-ui
+COPY packages/ant-shared ./packages/ant-shared
+COPY packages/ant-auth-client ./packages/ant-auth-client
 
 # Build environment argument (dev, stage, prod)
 ARG BUILD_ENV=prod
