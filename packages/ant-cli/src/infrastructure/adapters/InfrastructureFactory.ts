@@ -11,8 +11,7 @@
  * 
  * Environment Variables:
  * - ANT_SERVER_MODE: 'local' | 'cloud' (affects authentication only)
- * - ANT_REDIS_URL: Redis connection URL (REQUIRED)
- * - ANT_PREVIEW_WORKERS: Comma-separated list of preview worker URLs (REQUIRED)
+ * - ANT_REDIS_URL: Redis connection URL (defaults in local mode, required in cloud — see core/config/redisUrl.ts)
  * - ANT_K8S_NAMESPACE: Kubernetes namespace for IDE pods (optional, uses Docker if not set)
  * 
  * The only difference between local and cloud:
@@ -40,6 +39,7 @@ import { NoopOrganizationRepository } from '../../periphery/adapters/auth/NoopOr
 import { isBillingEnabled } from '../../core/config/billingCapability';
 import { loadCloudModule } from '../../core/cloud/cloudPlugin';
 import type { CloudModule } from '../../core/cloud/cloudModule';
+import { resolveRedisUrl } from '../../core/config/redisUrl';
 import { PortManager } from '../networking/PortManager';
 
 import { logger } from '../../utils/logger';
@@ -113,23 +113,14 @@ export class InfrastructureFactory {
    * Infrastructure is the same for both modes (Redis, BullMQ, Remote Preview)
    * 
    * Note: Validation is lazy - only validates what's needed at the time of use.
-   * - ANT_REDIS_URL: Required at factory initialization (used by most services)
-   * 
+   * - ANT_REDIS_URL: Resolved at factory initialization (local default / cloud fail-fast)
+   *
    * Note: Preview moved to ant-preview service (see 10-cloud-architecture.md)
    */
   private loadConfig(): InfrastructureConfig {
     const authMode = (process.env.ANT_SERVER_MODE || 'local') as AuthMode;
-    const redisUrl = process.env.ANT_REDIS_URL;
-    
-    // Validate Redis URL - required for all environments (StateStore, JobQueue, etc.)
-    if (!redisUrl) {
-      throw new Error(
-        'ANT_REDIS_URL is required. ' +
-        'Redis is required for both local and cloud environments. ' +
-        'Example: ANT_REDIS_URL=redis://localhost:16379'
-      );
-    }
-    
+    const redisUrl = resolveRedisUrl();
+
     return {
       authMode,
       redisUrl,

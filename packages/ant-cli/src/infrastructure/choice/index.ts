@@ -8,24 +8,23 @@ export * from './types';
 export { ChoiceService } from './ChoiceService';
 
 import { ChoiceService } from './ChoiceService';
+import { resolveRedisUrl } from '../../core/config/redisUrl';
 
 // Singleton with Redis support (lazily initialized)
 let redisChoiceService: ChoiceService | null = null;
 
 /**
  * Get ChoiceService with Redis support for job workers.
- * Always requires ANT_REDIS_URL (unified distributed system).
+ * Redis is always required (unified distributed system); the URL resolves
+ * via core/config/redisUrl.ts (local default / cloud fail-fast).
  */
 export async function getChoiceService(): Promise<ChoiceService> {
   if (redisChoiceService) {
     return redisChoiceService;
   }
   
-  const redisUrl = process.env.ANT_REDIS_URL;
-  if (!redisUrl) {
-    throw new Error('[getChoiceService] ANT_REDIS_URL is required — Redis is always needed in the unified distributed system');
-  }
-  
+  const redisUrl = resolveRedisUrl();
+
   const { RedisStateStore } = await import('../state/RedisStateStore');
   const stateStore = new RedisStateStore({ url: redisUrl });
   redisChoiceService = new ChoiceService({ stateStore });

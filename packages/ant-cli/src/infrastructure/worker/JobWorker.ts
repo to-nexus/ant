@@ -29,6 +29,7 @@ import { LOCK_DURATION, LOCK_EXTENSION_INTERVAL, STALLED_INTERVAL, CANCELLATION_
 import { logger } from '../../utils/logger';
 import { holdIdleSleepAssertion } from './sleepAssertion';
 import { UnifiedWorkspaceResolver, WorkspacePathResolver } from '../../core/config/WorkspacePathResolver';
+import { resolveRedisUrl } from '../../core/config/redisUrl';
 import { readBranchBase } from '../../core/utils/branchUtils';
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
@@ -1265,10 +1266,9 @@ export class JobWorker {
  * Create and start a JobWorker from environment variables
  */
 export async function startJobWorker(): Promise<JobWorker> {
-  const redisUrl = process.env.ANT_REDIS_URL;
-  if (!redisUrl) {
-    throw new Error('ANT_REDIS_URL environment variable is required');
-  }
+  // Local mode defaults, cloud mode fails fast. The resolved value flows to
+  // job-runner children via explicit env injection (spawnJobProcess).
+  const redisUrl = resolveRedisUrl();
 
   const worker = new JobWorker({
     redisUrl,

@@ -22,6 +22,7 @@ import { createRealtimeServer } from './RealtimeServer';
 import { logger } from '../../utils/logger';
 import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
+import { resolveRedisUrl } from '../../core/config/redisUrl';
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const WORKSPACES_PATH = process.env.ANT_WORKSPACE_BASE_PATH;
@@ -37,8 +38,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
-  if (!process.env.ANT_REDIS_URL) {
-    logger.error('ANT_REDIS_URL is required for Redis Pub/Sub', { component: 'RealtimeServerProcess' });
+  // Local mode defaults, cloud mode fails fast (core/config/redisUrl.ts).
+  try {
+    resolveRedisUrl();
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error), { component: 'RealtimeServerProcess' });
     process.exit(1);
   }
   

@@ -288,9 +288,11 @@ export function createLLMClient(
       // OpenAI-compatible API — reuse OpenAILLMClient with an injected baseURL
       // and provider tag so the shared stream path knows to attach DeepSeek's
       // thinking param and label events honestly.
+      // ANT_DEEPSEEK_BASE_URL lets a self-hoster route this registry-known model
+      // through an OpenAI-compatible gateway (LiteLLM / vLLM / OpenRouter).
       return new OpenAILLMClient(agentJob, {
         apiKey: resolveProviderApiKey('deepseek'),
-        baseURL: 'https://api.deepseek.com',
+        baseURL: process.env.ANT_DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
         provider: 'deepseek',
         modelName,
         temperature,
@@ -304,7 +306,7 @@ export function createLLMClient(
       // stream path attaches GLM's thinking param and labels events honestly.
       return new OpenAILLMClient(agentJob, {
         apiKey: resolveProviderApiKey('glm'),
-        baseURL: 'https://api.z.ai/api/paas/v4',
+        baseURL: process.env.ANT_GLM_BASE_URL || 'https://api.z.ai/api/paas/v4',
         provider: 'glm',
         modelName,
         temperature,
@@ -319,7 +321,7 @@ export function createLLMClient(
       // (kimi is intentionally absent from THINKING_TOGGLE_PROVIDERS).
       return new OpenAILLMClient(agentJob, {
         apiKey: resolveProviderApiKey('kimi'),
-        baseURL: 'https://api.moonshot.ai/v1',
+        baseURL: process.env.ANT_KIMI_BASE_URL || 'https://api.moonshot.ai/v1',
         provider: 'kimi',
         modelName,
         temperature,

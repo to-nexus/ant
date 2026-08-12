@@ -24,6 +24,7 @@ import { createPreviewServer } from './PreviewServer';
 import { logger } from '../../utils/logger';
 import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
+import { resolveRedisUrl } from '../../core/config/redisUrl';
 
 async function main(): Promise<void> {
   const startTime = new Date().toISOString();
@@ -32,9 +33,11 @@ async function main(): Promise<void> {
     component: 'PreviewServerProcess'
   });
   
-  // Validate required environment
-  if (!process.env.ANT_REDIS_URL) {
-    logger.error('ANT_REDIS_URL is required for Preview Server', {
+  // Local mode defaults, cloud mode fails fast (core/config/redisUrl.ts).
+  try {
+    resolveRedisUrl();
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error), {
       component: 'PreviewServerProcess'
     });
     process.exit(1);

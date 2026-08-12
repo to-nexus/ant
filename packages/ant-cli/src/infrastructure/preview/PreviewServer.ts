@@ -28,6 +28,7 @@ import { PreviewService } from '../../periphery/adapters/http/services/PreviewSe
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
 import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
 import { isSubdomainRouting, getDeployBaseDomain, getPreviewBaseDomain, getPreviewRoutingMode } from '../../core/config/previewRouting';
+import { resolveRedisUrl } from '../../core/config/redisUrl';
 import { extractLabelFromHost } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
@@ -1916,10 +1917,7 @@ export class PreviewServer {
  * Create and start PreviewServer
  */
 export async function createPreviewServer(): Promise<PreviewServer> {
-  const redisUrl = process.env.ANT_REDIS_URL;
-  if (!redisUrl) {
-    throw new Error('ANT_REDIS_URL is required for Preview Server');
-  }
+  const redisUrl = resolveRedisUrl();
 
   const server = new PreviewServer({
     port: parseInt(process.env.PORT || '8080'),

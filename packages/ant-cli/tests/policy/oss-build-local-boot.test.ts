@@ -26,8 +26,9 @@ const savedMode = process.env.ANT_SERVER_MODE;
 const savedRedis = process.env.ANT_REDIS_URL;
 
 beforeEach(() => {
-  // Factory ctor requires a Redis URL (config validation only — never connected
-  // on the Noop paths).
+  // Pin the Redis URL so the test is independent of the local-mode default in
+  // core/config/redisUrl.ts (config resolution only — never connected on the
+  // Noop paths).
   process.env.ANT_REDIS_URL = savedRedis ?? 'redis://localhost:16379';
   __resetCloudModuleCache();
   InfrastructureFactory.reset();
