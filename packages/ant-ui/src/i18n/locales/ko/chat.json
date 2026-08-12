@@ -191,6 +191,14 @@
     "skipped": "건너뜀",
     "allSkipped": "모든 질문 건너뜀"
   },
+  "resumeConfirm": {
+    "title": "중단된 {{work}} 작업을 재개할까요?",
+    "subtitle": "요청: {{directive}}",
+    "resume": "재개",
+    "newJob": "새 작업으로 진행",
+    "resumed": "재개됨",
+    "startedNew": "새 작업으로 진행됨"
+  },
   "cancelled": {
     "taskCancelled": "작업이 중단되었습니다",
     "workCancelled": "{{work}} 작업이 중단되었습니다",
@@ -201,6 +209,8 @@
     "resumed": "재개됨",
     "dismissed": "닫힘",
     "reopen": "작업 다시 재개",
+    "reopenUnavailable": "이 작업은 더 이상 재개할 수 없습니다.",
+    "superseded": "새 작업으로 대체됨",
     "reasons": {
       "recursion_limit": "반복 횟수 한도 도달",
       "user_stopped": "사용자가 중지함",

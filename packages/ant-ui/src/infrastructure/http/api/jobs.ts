@@ -200,10 +200,16 @@ export function inlineAsk(
   featureName: string,
   message: string,
   chatSource: boolean = true,
-): Promise<{ jobId: string; jobType: string }> {
+  /**
+   * chat SSOT §6 — the turnId already minted by `addChatUserMessage`. Omitting
+   * it makes the worker mint its own, which renders the same question as two
+   * user bubbles (the chat.jsonl dedup keys on turnId).
+   */
+  seedTurnId?: string,
+): Promise<{ jobId: string; jobType: string; turnId?: string }> {
   return apiPost(
     `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/inline-ask`,
-    { message, chatSource },
+    { message, chatSource, ...(seedTurnId ? { seedTurnId } : {}) },
   );
 }
 

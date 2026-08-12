@@ -5,6 +5,7 @@ import path from 'node:path';
 import * as fs from 'fs/promises';
 import { getSessionRuntimeDir } from '../../../../core/utils/sessionPaths';
 import { deriveResumableState, deriveRestoreMode } from '../../../../core/session/resumable';
+import { archiveSupersededState } from '../../../../core/session/archive';
 import { resolveResumedActionContext } from '../../../common/graph/resumeActionMetadata.js';
 import {
   loadRecursionLimit, isRecursionLimitError, cleanupChat,
@@ -262,6 +263,11 @@ export async function runDesignGraph(initial: DesignGraphState) {
         if (session.state.userLanguage) {
           initial.context.userLanguage = session.state.userLanguage;
         }
+      } else if (verdict.hasResumableWork && session?.state?.jobId && initial.context.featurePath) {
+        // Fresh takeover of a session slot that still holds resumable work —
+        // preserve the superseded state before this run's checkpoints
+        // overwrite the last-writer-wins slot (symmetric with code/runner.ts).
+        await archiveSupersededState(initial.context.featurePath, 'architect', 'design', session.state);
       }
     } catch (err) {
       console.warn('⚠️  [DesignRunner] Failed to check for resumable session:', err);

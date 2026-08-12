@@ -1,7 +1,8 @@
 import { architectAgent } from "../agents/architect/index";
 import { runPlanGraph } from "../agents/planner";
 import { runAskGraph } from "../agents/architect/graph/ask/runner";
-import { analyzeWorkspace, AgentRegistry, buildTriagePrompt, parseIntentIdTag, deriveTriageGroup, validateIntentId } from "../agents/common/graph/nodes/triage";
+import { analyzeWorkspace, AgentRegistry, buildTriagePrompt, parseIntentIdTag, parseResumeRequestTag, deriveTriageGroup, validateIntentId } from "../agents/common/graph/nodes/triage";
+import { deriveInlineAskWorkRouting, type InterruptedJobSignal } from "../core/session/interruptedSignal";
 import type { IntentId } from "@ant/shared";
 import { LLM_TEMPERATURE } from "../core/ports/llmSampling";
 import { AdapterFactory } from "../infrastructure/adapters/AdapterFactory";
@@ -191,28 +192,20 @@ export async function orchestrator(params: {
           throw new Error('featurePath is required for inline-ask');
         }
 
-        // ✅ Auto-detect interrupted job type from session files
-        const { getAllSessionPaths } = await import("../core/utils/sessionPaths");
-        const fsSync = await import("fs");
-        let interruptedJob = 'design';
-        let interruptedAgent = 'architect';
-        let foundInterruptedSession = false;
-
-        for (const entry of getAllSessionPaths(featurePath)) {
-          if (fsSync.existsSync(entry.path)) {
-            try {
-              const data = JSON.parse(fsSync.readFileSync(entry.path, 'utf-8'));
-              if (data.state?.interruption) {
-                interruptedJob = entry.job;
-                interruptedAgent = entry.agent;
-                foundInterruptedSession = true;
-                console.log(`🔧 [Orchestrator:InlineAsk] Detected interrupted job: ${interruptedAgent}/${interruptedJob}`);
-                break;
-              }
-            } catch {
-              // Skip unreadable session files
-            }
-          }
+        // ✅ Auto-detect the interrupted job from session files — single
+        // derivation SSOT (deriveInterruptedJobSignal), which also surfaces
+        // synthesized-crash sessions the old `state.interruption`-only scan
+        // missed, plus jobId/canResume/dismissed/task names for the dispatch.
+        const { deriveInterruptedJobSignal } = await import("../core/session/interruptedSignal");
+        const interruptedSignal = deriveInterruptedJobSignal(featurePath);
+        const foundInterruptedSession = interruptedSignal !== null;
+        const interruptedJob = interruptedSignal?.jobType ?? 'design';
+        const interruptedAgent = interruptedSignal?.agent ?? 'architect';
+        if (interruptedSignal) {
+          console.log(
+            `🔧 [Orchestrator:InlineAsk] Detected interrupted job: ${interruptedAgent}/${interruptedJob}` +
+            ` (jobId=${interruptedSignal.jobId}, canResume=${interruptedSignal.canResume}, dismissed=${interruptedSignal.dismissed})`,
+          );
         }
 
         if (!foundInterruptedSession) {
@@ -266,6 +259,7 @@ export async function orchestrator(params: {
           memory,
           jobId,
           turnId: seedTurnId,
+          interruptedSignal,
         });
 
         return {
@@ -842,16 +836,36 @@ interface InlineAskDispatchParams {
   jobId?: string;
   /** Current turn id — excluded from the rich-tail scan (P1). */
   turnId?: string;
+  /** Interrupted-session signal — drives the resume-request / newJob rows. */
+  interruptedSignal?: InterruptedJobSignal | null;
+}
+
+export interface InlineAskDispatchResult {
+  status: 'completed';
+  intent: 'ask' | 'work';
+  response?: string;
+  /**
+   * Work-routing verdict for the FE:
+   *  - 'resume-request' — the directive asks to continue the interrupted
+   *    job; the FE must obtain explicit consent (choice card) and call
+   *    /jobs/:id/resume. Never auto-continue.
+   *  - 'newJob'        — dismissed session: implicit continuation consent
+   *    is withdrawn, so the turn MUST start a fresh job (never /continue).
+   *  - undefined       — legacy continue path (live, undismissed
+   *    interruption): FE may POST /jobs/:id/continue as before.
+   */
+  action?: 'resume-request' | 'newJob';
+  resumeJobId?: string;
+  resumeJobType?: string;
+  resumeDismissed?: boolean;
+  /** The turn's directive — the consent card's "start new work" fallback re-executes it. */
+  originalDirective?: string;
 }
 
 async function runInlineAskDispatch(
   params: InlineAskDispatchParams,
-): Promise<{
-  status: 'completed';
-  intent: 'ask' | 'work';
-  response?: string;
-}> {
-  const { message, featurePath, currentJob, currentAgent, projectId, llm, memory, jobId, turnId } = params;
+): Promise<InlineAskDispatchResult> {
+  const { message, featurePath, currentJob, currentAgent, projectId, llm, memory, jobId, turnId, interruptedSignal } = params;
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('💬 INLINE ASK DISPATCH');
@@ -871,12 +885,16 @@ async function runInlineAskDispatch(
     currentAgent,
     workspaceState,
     promptPort,
+    interruptedJob: interruptedSignal ?? undefined,
   });
 
   const messages = [
     { role: 'system', content: system },
     { role: 'user', content: user },
   ];
+
+  const workRouting = (resumeRequested: boolean) =>
+    deriveInlineAskWorkRouting(resumeRequested, interruptedSignal ?? null, message);
 
   // Match the main triage's retry policy: one re-ask before falling back.
   const invokeOnce = async (): Promise<string> => {
@@ -889,25 +907,28 @@ async function runInlineAskDispatch(
     return llm.invoke(messages, opts);
   };
 
-  let intentId = parseIntentIdTag(await invokeOnce());
+  let raw = await invokeOnce();
+  let intentId = parseIntentIdTag(raw);
   if (!intentId) {
     console.warn('[InlineAskDispatch] No <intentId> tag — retrying once');
-    intentId = parseIntentIdTag(await invokeOnce());
+    raw = await invokeOnce();
+    intentId = parseIntentIdTag(raw);
   }
   if (!intentId) {
     console.warn('[InlineAskDispatch] Retry also yielded no intent — defaulting to work');
-    return { status: 'completed', intent: 'work' };
+    return { status: 'completed', intent: 'work', ...workRouting(false) };
   }
   try {
     validateIntentId(intentId);
   } catch {
-    return { status: 'completed', intent: 'work' };
+    return { status: 'completed', intent: 'work', ...workRouting(false) };
   }
+  const resumeRequested = parseResumeRequestTag(raw);
   const group = deriveTriageGroup(intentId as IntentId);
-  console.log(`[InlineAskDispatch] intent=${intentId} group=${group}`);
+  console.log(`[InlineAskDispatch] intent=${intentId} group=${group} resumeRequested=${resumeRequested}`);
 
   if (group !== 'ask') {
-    return { status: 'completed', intent: 'work' };
+    return { status: 'completed', intent: 'work', ...workRouting(resumeRequested) };
   }
 
   // P1 rich tail (e2-humming-spindle): ask previously received ZERO prior

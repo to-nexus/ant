@@ -54,6 +54,22 @@ You map the user's directive to exactly one intent id from the matrix below.
 ### Codebase
 {{#if hasCodebase}}✅ Codebase indexed: {{indexedFileCount}} files{{else}}ℹ️ No codebase{{/if}}
 
+{{#if interruptedJob}}
+## INTERRUPTED WORK (paused, unfinished)
+| Field | Value |
+|-------|-------|
+| Job kind | {{interruptedJob.jobType}} |
+| Resumable from where it stopped | {{#if interruptedJob.canResume}}yes{{else}}no — restart only{{/if}} |
+| Previously set aside by the user | {{#if interruptedJob.dismissed}}yes{{else}}no{{/if}} |
+{{#if interruptedJob.taskNames.length}}
+
+Unfinished tasks:
+{{#each interruptedJob.taskNames}}
+- {{this}}
+{{/each}}
+{{/if}}
+{{/if}}
+
 ## INTENT CATALOG (matrix — exactly 34 intents)
 {{{intentCatalog}}}
 
@@ -64,3 +80,10 @@ Emit exactly one tag, nothing else outside it:
 <intentId>YOUR_CHOICE</intentId>
 
 `YOUR_CHOICE` MUST be one of the ids in the INTENT CATALOG above.
+{{#if interruptedJob}}
+
+Additionally, ONLY when the resume rule applies (the directive's sole content
+is to continue the INTERRUPTED WORK shown above), also emit:
+
+<resumeRequest>true</resumeRequest>
+{{/if}}

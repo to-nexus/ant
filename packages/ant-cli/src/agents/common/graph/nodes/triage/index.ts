@@ -15,7 +15,11 @@ import * as path from 'path';
 import { TriageableState, TriageResult, WorkspaceState } from './types.js';
 import { LLM_TEMPERATURE } from '../../llmConfig';
 import { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
-import { parseIntentIdTag, extractIntentIdRaw } from './parser.js';
+import { parseIntentIdTag, extractIntentIdRaw, parseResumeRequestTag } from './parser.js';
+import {
+  deriveInterruptedJobSignal,
+  type InterruptedJobSignal,
+} from '../../../../../core/session/interruptedSignal.js';
 import {
   deriveTriageGroup,
   deriveTriageMode,
@@ -190,6 +194,15 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
   const currentJob = state.currentJob || 'unknown';
   const currentAgent = state.currentAgent || 'architect';
 
+  // Interrupted-work signal (icy-landing-glade RCA): without this block the
+  // LLM has no evidence that resumable work exists, so an explicit "resume
+  // that job" directive is unrepresentable and MUST be mis-mapped. Skipped on
+  // resume turns — the runner already restored the queue.
+  const interruptedSignal: InterruptedJobSignal | null =
+    !state.isResume && featurePath
+      ? deriveInterruptedJobSignal(featurePath, { excludeJobId: jobId })
+      : null;
+
   const promptPort = state.deps?.promptBuilder;
   if (!promptPort) throw new Error('promptBuilder is required for triage');
   const { system: systemPrompt, user: userPrompt } = await buildTriagePrompt({
@@ -199,6 +212,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     workspaceState,
     featureContext: rehydratedContext,
     promptPort,
+    interruptedJob: interruptedSignal,
   });
 
   const messages = [
@@ -206,7 +220,7 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     { role: 'user', content: userPrompt },
   ];
 
-  const intentId = await invokeAndParseWithRetry(state, llm, messages, {
+  const { intentId, resumeRequested } = await invokeAndParseWithRetry(state, llm, messages, {
     systemLen: systemPrompt.length,
     userLen: userPrompt.length,
     featurePath,
@@ -214,7 +228,11 @@ export async function triage<T extends TriageableState>(state: T): Promise<Parti
     jobId: state._httpJobId || 'unknown',
   });
 
-  const triageResult = buildTriageResult(intentId, state, workspaceState);
+  const triageResult = buildTriageResult(intentId, state, workspaceState, {
+    // Deterministic gate: the tag is honored only against a session that is
+    // actually resumable — the LLM can never mint a resume out of nothing.
+    resumeRequested: resumeRequested && interruptedSignal?.canResume === true,
+  });
   await emitUserTurnMeta({ state, turnId, jobId, jobType, triageResult });
 
   logTriageResult(triageResult);
@@ -253,6 +271,7 @@ function buildTriageResult(
   intentId: IntentId,
   state: TriageableState,
   workspaceState: WorkspaceState,
+  opts: { resumeRequested?: boolean } = {},
 ): TriageResult {
   validateIntentId(intentId);
   const group = deriveTriageGroup(intentId);
@@ -263,6 +282,7 @@ function buildTriageResult(
     group,
     mode,
     domain,
+    ...(opts.resumeRequested ? { resumeRequested: true } : {}),
   };
 }
 
@@ -303,7 +323,7 @@ async function invokeAndParseWithRetry(
     currentAgent: string;
     jobId: string;
   },
-): Promise<IntentId> {
+): Promise<{ intentId: IntentId; resumeRequested: boolean }> {
   const attempt = async (): Promise<{ raw: string; intent: IntentId | null }> => {
     let raw: string;
     if (llm.invokeWithUsage) {
@@ -330,12 +350,12 @@ async function invokeAndParseWithRetry(
   };
 
   const first = await attempt();
-  if (first.intent) return first.intent;
+  if (first.intent) return { intentId: first.intent, resumeRequested: parseResumeRequestTag(first.raw) };
   console.warn(
     `[Triage] Single-tag parse failed — retrying once. Raw="${extractIntentIdRaw(first.raw) ?? '<missing>'}"`,
   );
   const retry = await attempt();
-  if (retry.intent) return retry.intent;
+  if (retry.intent) return { intentId: retry.intent, resumeRequested: parseResumeRequestTag(retry.raw) };
   throw new Error(
     'Triage LLM did not emit a valid <intentId> tag after retry. ' +
       'See prompt log for the raw response.',
@@ -353,8 +373,14 @@ export async function buildTriagePrompt(params: {
   workspaceState: WorkspaceState;
   featureContext?: unknown;
   promptPort: PromptPort;
+  /**
+   * Interrupted-work signal for the INTERRUPTED WORK prompt block. jobId is
+   * deliberately NOT rendered — internal identifiers stay out of prompts;
+   * the LLM binds the directive to the work via job kind + task names.
+   */
+  interruptedJob?: InterruptedJobSignal | null;
 }): Promise<{ system: string; user: string }> {
-  const { userInput, currentJob, currentAgent, workspaceState, featureContext, promptPort } = params;
+  const { userInput, currentJob, currentAgent, workspaceState, featureContext, promptPort, interruptedJob } = params;
 
   // Context Lens P2 — lean profile: digests band only (band-1 user turns
   // already render via the PRIOR USER TURNS block; assistant prose is
@@ -391,6 +417,14 @@ export async function buildTriagePrompt(params: {
     hasCodebase: workspaceState.hasCodebase,
     indexedFileCount: workspaceState.indexedFileCount || 'unknown',
     hasDesignDoc: workspaceState.hasDesignDoc,
+    interruptedJob: interruptedJob
+      ? {
+          jobType: interruptedJob.jobType,
+          canResume: interruptedJob.canResume,
+          dismissed: interruptedJob.dismissed,
+          taskNames: interruptedJob.taskNames,
+        }
+      : undefined,
   };
 
   const [user, system] = await Promise.all([
@@ -513,7 +547,7 @@ ${responseText}
 export * from './types.js';
 export { AgentRegistry } from './AgentRegistry.js';
 export { analyzeWorkspace, formatWorkspaceState } from './workspaceAnalyzer.js';
-export { parseIntentIdTag } from './parser.js';
+export { parseIntentIdTag, parseResumeRequestTag } from './parser.js';
 export {
   deriveTriageGroup,
   deriveTriageMode,

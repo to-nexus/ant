@@ -191,6 +191,14 @@
     "skipped": "Skipped",
     "allSkipped": "All questions skipped"
   },
+  "resumeConfirm": {
+    "title": "Resume the interrupted {{work}} job?",
+    "subtitle": "Request: {{directive}}",
+    "resume": "Resume",
+    "newJob": "Start as new work",
+    "resumed": "Resumed",
+    "startedNew": "Started as new work"
+  },
   "cancelled": {
     "taskCancelled": "Task cancelled",
     "workCancelled": "{{work}} cancelled",
@@ -201,6 +209,8 @@
     "resumed": "Resumed",
     "dismissed": "Dismissed",
     "reopen": "Resume task",
+    "reopenUnavailable": "This work can no longer be resumed.",
+    "superseded": "Superseded",
     "reasons": {
       "recursion_limit": "Recursion limit reached",
       "user_stopped": "Stopped by user",

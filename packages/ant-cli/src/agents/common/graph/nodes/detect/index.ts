@@ -30,6 +30,7 @@ import { emitDetectOutcome, type DetectPathsCompressed } from '../../../../../co
 import { compressPathsByFolder } from '../../../../../core/context/compressPathsByFolder.js';
 import type { FileSystemPort } from '../../../../../core/ports/filesystem.js';
 import { inferRacWithTools } from './inferRacWithTools.js';
+import { deriveInterruptedJobSignal } from '../../../../../core/session/interruptedSignal.js';
 import { mergeReferenceRequests } from '../../../../common/tool/reference/merge.js';
 
 export { type DetectableState, type DetectStrategy, type DetectResult, type DetectAugment } from './types.js';
@@ -446,6 +447,31 @@ function buildAgentJobSwitchChoice(): ChoiceOptions {
 }
 
 /**
+ * DetectResult for a triage-recognized resume request (server-authoritative
+ * coverage — fires when a fresh /execute job's triage sees the directive as
+ * "continue the interrupted work"). Reuses the `redirect-suggested` card
+ * surface + pause path; the positive pick's `resume` action makes the FE
+ * call /jobs/:id/resume, which clears any dismissed marker. Consent stays a
+ * click — the current fresh job ends on the card either way.
+ */
+function buildResumeSuggestedResult<T extends DetectableState>(
+  signal: { jobId: string; jobType: string; taskNames: string[] },
+): DetectResult<T> {
+  const tasks = signal.taskNames.length
+    ? ` (남은 작업: ${signal.taskNames.slice(0, 3).join(', ')}${signal.taskNames.length > 3 ? ' 외' : ''})`
+    : '';
+  return {
+    status: 'redirect-suggested',
+    resumeJobId: signal.jobId,
+    choiceOptions: {
+      positive: { label: '재개', action: 'resume' },
+      negative: { label: '취소', action: 'dismiss' },
+    },
+    displayMessage: `중단된 ${signal.jobType} 작업(${signal.jobId})을 재개할까요?${tasks}`,
+  };
+}
+
+/**
  * DetectResult for the agent/job-switch gate. Reuses the `redirect-suggested`
  * surface so the existing Phase 4 card-render + `routeAfterDetect → __end__`
  * pause path applies unchanged. The single suggested alternative is the
@@ -592,6 +618,19 @@ export function createInferDetectNode<T extends DetectableState>(
         };
         console.log(`⚡ [detect:infer] Explicit: intent=${intentId}, domain=${metadata.domain ?? 'unset'}`);
       } else {
+        // ── Resume-request gate (before agent/job-switch) ──
+        // Triage recognized the directive as an explicit continuation of the
+        // interrupted job (`<resumeRequest>` + deterministic canResume gate).
+        // Running detect/decompose here would build NEW work out of a resume
+        // request — surface the resume consent card and pause instead.
+        let resumeSignal: ReturnType<typeof deriveInterruptedJobSignal> = null;
+        if (state.triageResult?.resumeRequested === true && featurePath) {
+          resumeSignal = deriveInterruptedJobSignal(featurePath, {
+            excludeJobId: state._httpJobId || (state as any).jobId,
+          });
+          if (!resumeSignal?.canResume) resumeSignal = null;
+        }
+
         // ── Agent/job-switch gate ──
         // The resolved intent must belong to the currently selected
         // agent/job. If it crosses that boundary, do NOT silently run it
@@ -602,7 +641,12 @@ export function createInferDetectNode<T extends DetectableState>(
           state.currentAgent && state.currentJob
             ? deriveFromIntent(intentId as IntentId)
             : undefined;
-        if (want && (want.agent !== state.currentAgent || want.jobType !== state.currentJob)) {
+        if (resumeSignal) {
+          console.log(
+            `⏯️ [detect:infer] Resume request — interrupted ${resumeSignal.jobType} job ${resumeSignal.jobId}; offering resume card`,
+          );
+          detectResult = buildResumeSuggestedResult(resumeSignal);
+        } else if (want && (want.agent !== state.currentAgent || want.jobType !== state.currentJob)) {
           console.log(
             `🔀 [detect:infer] Cross-job intent — resolved=${intentId} → ${want.agent}/${want.jobType}, ` +
               `current=${state.currentAgent}/${state.currentJob}; offering switch`,
@@ -712,6 +756,7 @@ export function createInferDetectNode<T extends DetectableState>(
               suggestedAgent: target?.agent,
               suggestedJob: target?.jobType,
               switchIntentId: altIntent,
+              resumeJobId: detectResult.resumeJobId,
             };
             await chatAPI.sendTriageChoice(
               detectResult.displayMessage,

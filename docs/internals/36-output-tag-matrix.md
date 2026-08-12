@@ -73,6 +73,7 @@ A tag's semantics map to exactly 1 cell across 4 orthogonal axes. Two tags in th
 | `<directHints>` | metadata | consumed-suppressed | sealed-state | non-blocking | inside detect |
 | `<specClarify>` | metadata | consumed-suppressed | sealed-state | non-blocking | inside detect |
 | `<triage>` | metadata | stream-action (wrapper) | sealed-state | non-blocking | triage |
+| `<resumeRequest>` | metadata | consumed-suppressed | sealed-state | non-blocking | triage (alongside `<intentId>` when the directive asks to continue interrupted work; honored only past the deterministic `canResume` gate) |
 | `<direct>` | metadata | post-stream + consumed-suppressed | sealed-state | non-blocking | visual direct |
 | `<eval>` | metadata | consumed-suppressed | sealed-state | non-blocking | ask (end of evaluation report) |
 

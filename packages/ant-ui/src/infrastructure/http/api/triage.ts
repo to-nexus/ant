@@ -18,7 +18,7 @@
 
 import { API_BASE, apiPost, featureSeg } from './client';
 
-export type TriageChoiceAction = 'proceed' | 'proceedAnyway' | 'redirect' | 'guide' | 'dismiss';
+export type TriageChoiceAction = 'proceed' | 'proceedAnyway' | 'redirect' | 'guide' | 'dismiss' | 'resume';
 
 export interface ChoiceResolveResponse {
   success: boolean;
@@ -34,6 +34,7 @@ export interface TriageRoutingResponse {
   suggestedJob?: string;
   switchIntentId?: string;
   directive?: string;
+  resumeJobId?: string;
 }
 
 /**
@@ -68,6 +69,7 @@ export interface TriageChoiceResponse {
   suggestedJob?: string;
   switchIntentId?: string;
   directive?: string;
+  resumeJobId?: string;
 }
 
 /**
@@ -117,6 +119,8 @@ function choiceLabelForTriage(choice: TriageChoiceAction): string {
       return 'Guidance shown';
     case 'dismiss':
       return 'Dismissed';
+    case 'resume':
+      return 'Resumed';
     default:
       return 'Resolved';
   }

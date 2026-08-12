@@ -100,6 +100,7 @@ export interface PendingChoiceEnvelope {
   suggestedAgent?: string;
   suggestedJob?: string;
   switchIntentId?: string;
+  resumeJobId?: string;
   choiceOptions?: {
     positive?: { label: string; action: string };
     negative?: { label: string; action: string };

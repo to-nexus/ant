@@ -21,6 +21,7 @@ import type {
 } from '@ant/shared';
 import { TriageChoiceVariant } from './TriageChoiceVariant';
 import { CancelledVariant } from './CancelledVariant';
+import { ResumeConfirmVariant } from './ResumeConfirmVariant';
 import { EvalSaveVariant } from './EvalSaveVariant';
 import { SpecCompleteVariant } from './SpecCompleteVariant';
 import { ClarifyingVariant } from './ClarifyingVariant';
@@ -36,6 +37,8 @@ export const ChoiceCard = memo(function ChoiceCard({ presented, resolved }: Choi
       return <TriageChoiceVariant presented={presented} resolved={resolved} />;
     case 'cancelled':
       return <CancelledVariant presented={presented} resolved={resolved} />;
+    case 'resume_confirm':
+      return <ResumeConfirmVariant presented={presented} resolved={resolved} />;
     case 'eval_save':
       return <EvalSaveVariant presented={presented} resolved={resolved} />;
     case 'clarifying':

@@ -10,6 +10,7 @@ import {
 import { JobTimingManager } from "../../../common/graph/timing/JobTimingManager";
 import { markVerifyEntered } from "./tasks/_shared/verify/markVerifyEntered";
 import { deriveResumableState, deriveRestoreMode } from "../../../../core/session/resumable";
+import { archiveSupersededState } from "../../../../core/session/archive";
 import { resolveResumedActionContext } from "../../../common/graph/resumeActionMetadata.js";
 import type { InterruptionDetails } from "@ant/shared";
 import type { TriageResult } from "../../../common/graph/nodes/triage/types";
@@ -246,6 +247,13 @@ export async function runCodeGraph(initial: ArchitectGraphState): Promise<CodeGr
         if (sRaw.specClarify && !initial.specClarify) {
           initial.specClarify = sRaw.specClarify;
         }
+      } else if (verdict.hasResumableWork && session?.state?.jobId && initial.context.featurePath) {
+        // Fresh takeover of a session slot that still holds resumable work
+        // (dismissed, divergent intent, or directive-less new job). The live
+        // slot is last-writer-wins, so preserve the superseded state first —
+        // this is what keeps the dismissed card's explicit-resume promise
+        // valid after later jobs (icy-landing-glade RCA).
+        await archiveSupersededState(initial.context.featurePath, 'architect', 'code', session.state);
       }
     } catch (err) {
       console.warn('⚠️  Failed to check for resumable session:', err);

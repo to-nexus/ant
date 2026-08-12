@@ -515,6 +515,14 @@ export interface ChatChoiceResolvedLine extends LineBase {
   choiceSelected: string;
   /** Display label to replace the buttons with ('Dismissed', 'Resumed', ...) */
   resolvedLabel: string;
+  /**
+   * Optional i18n key for `resolvedLabel` (e.g. 'cancelled.resumed'). The
+   * FE renders `t(key)` when the key exists in its catalog, falling back to
+   * the literal `resolvedLabel`. BE writers (which win the per-cardId NX
+   * lock for server-driven resumes/dismissals) attach it so the badge is
+   * not locked to the English literal.
+   */
+  resolvedLabelKey?: string;
   /** Free-form response data (clarifying answers, etc.) */
   answer?: Record<string, unknown>;
 }

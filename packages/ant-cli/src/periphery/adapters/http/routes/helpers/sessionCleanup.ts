@@ -14,6 +14,7 @@ import {
 } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
 import { wouldRegressRun } from '../../../../../core/utils/sessionRunGuard';
+import { deleteArchivedState } from '../../../../../core/session/archive';
 
 /**
  * Append (or upsert) a per-jobId kanban snapshot into the session file's
@@ -314,6 +315,9 @@ export async function deleteJobRunFromSession(
   jobType: SessionableJobType,
   jobId: string,
 ): Promise<void> {
+  // Superseded-state archive rides the job's lifecycle — deleting the job
+  // deletes its archived resume state too.
+  await deleteArchivedState(featurePath, jobId).catch(() => {});
   const sessionPath = getSessionFilePathByJob(featurePath, jobType);
   let raw: string | null = null;
   try {

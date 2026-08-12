@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, XCircle } from 'lucide-react';
 import { useStore } from '@/domain/store';
-import { dismissInterruptedJob, resumeJob } from '@/infrastructure/http/api';
+import { dismissInterruptedJob, resumeJob, ApiError } from '@/infrastructure/http/api';
 import type { VariantProps, ResolvedIcon } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout, JobIdChip } from './shared';
 import { Slot } from '@/presentation/extensions/slots';
@@ -11,6 +12,10 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
   const isRunning = useStore(state => state.isRunning);
   const kanbanData = useStore(state => state.kanban);
   const setDismissedInterruptTimestamp = useStore(state => state.setDismissedInterruptTimestamp);
+  // Set when a reopen attempt 404'd — the work is genuinely gone (deleted /
+  // never archived), so the pill degrades to a muted note instead of a
+  // permanently-failing button.
+  const [reopenUnavailable, setReopenUnavailable] = useState(false);
 
   const payload = (presented.payload ?? {}) as Record<string, any>;
   const jobId = payload.jobId as string | undefined;
@@ -84,6 +89,9 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
       setDismissedInterruptTimestamp(prevDismissed);
       state.setLocalSelectedChoice(prevChoice);
       state.setLocalResolvedLabel(prevLabel);
+      if (error instanceof ApiError && error.status === 404) {
+        setReopenUnavailable(true);
+      }
     } finally {
       state.setIsLoading(false);
     }
@@ -141,13 +149,16 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
 
   // Dismissed work stays explicitly resumable (interruption.dismissed is
   // orthogonal to canResume on the BE) — offer a subdued re-open action on
-  // the resolved card, but only while the kanban still points at this job
-  // (a later job replaces the session state and the /resume would 404).
+  // the resolved card. The card's own durable payload.jobId is the gate; the
+  // old `kanban.jobId === jobId` coupling silently killed the pill across
+  // reloads / job-tab switches / identity-less kanban frames, and the BE's
+  // superseded-state archive keeps /resume valid even after later jobs. A
+  // genuinely-gone job 404s once and the pill degrades to a muted note.
   const canReopen =
     state.selectedChoice === 'dismiss' &&
     !!jobId &&
     !isRunning &&
-    kanbanData?.jobId === jobId;
+    !reopenUnavailable;
 
   const reopenAction = canReopen ? (
     <div className="flex justify-center pt-2">
@@ -162,6 +173,12 @@ export function CancelledVariant({ presented, resolved }: VariantProps) {
         <Play className="w-3 h-3" fill="currentColor" />
         {state.isLoading ? t('cancelled.resuming') : t('cancelled.reopen')}
       </button>
+    </div>
+  ) : reopenUnavailable && state.selectedChoice === 'dismiss' ? (
+    <div className="flex justify-center pt-2">
+      <span className="text-xs" style={{ color: 'var(--text-3)' }}>
+        {t('cancelled.reopenUnavailable')}
+      </span>
     </div>
   ) : null;
 

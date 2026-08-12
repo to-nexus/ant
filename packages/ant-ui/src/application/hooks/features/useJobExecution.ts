@@ -86,10 +86,17 @@ export function useJobExecution() {
       setRunning(false);
     }
 
-    // ✅ CRITICAL: Check if this is a Resume or New task
+    // ✅ CRITICAL: Check if this is a Resume or New task. Dismissed reads the
+    // AUTHORITATIVE session marker (interruption.dismissed) first; the
+    // localStorage timestamp is only the optimistic pre-refresh overlay.
+    // A dismissed interruption must NEVER auto-resume from the start button —
+    // re-opening dismissed work stays an explicit affordance (cancelled card
+    // Resume / reopen pill / resume consent card).
     const currentJobId = kanbanData?.jobId;
     const dismissedTimestamp = useStore.getState().dismissedInterruptTimestamp;
-    const interruptionWasDismissed = kanbanData?.interruption?.timestamp === dismissedTimestamp;
+    const interruptionWasDismissed =
+      kanbanData?.interruption?.dismissed === true ||
+      kanbanData?.interruption?.timestamp === dismissedTimestamp;
     const hasInterruption = kanbanData?.interruption?.canResume === true && !interruptionWasDismissed;
     
     // ✅ Redirect bypasses resume: dismiss interrupted job and start fresh

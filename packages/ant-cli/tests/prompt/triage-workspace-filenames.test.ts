@@ -71,3 +71,61 @@ describe('buildTriagePrompt — workspace filename signals', () => {
     expect(withoutDocs.user).toContain('No spec documents');
   });
 });
+
+describe('buildTriagePrompt — interrupted-work signal (resume-request gate)', () => {
+  const signal = {
+    jobId: 'icy-landing-glade',
+    jobType: 'code',
+    agent: 'architect',
+    canResume: true,
+    dismissed: true,
+    taskNames: ['Archetype behavior engine'],
+  } as any;
+
+  it('forwards the signal into template vars WITHOUT the internal jobId', async () => {
+    const render = vi.fn(async () => 'rendered');
+    await buildTriagePrompt({
+      userInput: 'resume the work',
+      currentJob: 'code',
+      currentAgent: 'architect',
+      workspaceState: workspaceState(),
+      promptPort: { render } as any,
+      interruptedJob: signal,
+    });
+
+    const vars = (render.mock.calls as unknown as any[][]).find(c => c[1]?.intentCatalog)![1] as any;
+    expect(vars.interruptedJob).toEqual({
+      jobType: 'code',
+      canResume: true,
+      dismissed: true,
+      taskNames: ['Archetype behavior engine'],
+    });
+    expect(vars.interruptedJob.jobId).toBeUndefined();
+  });
+
+  it('renders the INTERRUPTED WORK block + resumeRequest instruction only when the signal is provided', async () => {
+    const adapter = new FilePromptAdapter();
+    const withSignal = await buildTriagePrompt({
+      userInput: 'x',
+      currentJob: 'code',
+      currentAgent: 'architect',
+      workspaceState: workspaceState(),
+      promptPort: adapter,
+      interruptedJob: signal,
+    });
+    expect(withSignal.user).toContain('INTERRUPTED WORK');
+    expect(withSignal.user).toContain('Archetype behavior engine');
+    expect(withSignal.user).toContain('<resumeRequest>true</resumeRequest>');
+    expect(withSignal.user).not.toContain('icy-landing-glade');
+
+    const withoutSignal = await buildTriagePrompt({
+      userInput: 'x',
+      currentJob: 'code',
+      currentAgent: 'architect',
+      workspaceState: workspaceState(),
+      promptPort: adapter,
+    });
+    expect(withoutSignal.user).not.toContain('INTERRUPTED WORK');
+    expect(withoutSignal.user).not.toContain('resumeRequest');
+  });
+});

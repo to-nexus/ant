@@ -29,6 +29,9 @@ export interface ChoiceEnvelope {
   suggestedJob?: string;
   /** Exact intent to run after the switch — passed to the target as explicit metadata. */
   switchIntentId?: IntentId;
+  // ── Resume target (set when choiceOptions exposes a 'resume' action) ──
+  /** Interrupted job the 'resume' pick re-opens via /jobs/:id/resume. */
+  resumeJobId?: string;
 }
 
 /**
@@ -52,6 +55,7 @@ export interface ChoiceResponse {
   suggestedJob?: string;     // redirect: target job (design/code/plan/visual/learn)
   switchIntentId?: IntentId; // redirect: exact intent to run after switch
   directive?: string;        // redirect: original directive
+  resumeJobId?: string;      // resume: interrupted job to re-open via /jobs/:id/resume
 }
 
 /**

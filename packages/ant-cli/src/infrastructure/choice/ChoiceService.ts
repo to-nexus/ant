@@ -50,6 +50,7 @@ export class ChoiceService {
       suggestedAgent: envelope.suggestedAgent,
       suggestedJob: envelope.suggestedJob,
       switchIntentId: envelope.switchIntentId,
+      resumeJobId: envelope.resumeJobId,
       choiceOptions: envelope.choiceOptions,
     };
   }
@@ -238,6 +239,22 @@ export class ChoiceService {
           suggestedJob: envelope.suggestedJob,
           switchIntentId: envelope.switchIntentId,
           directive: pending.originalDirective,
+        };
+
+      case 'resume':
+        // Explicit consent to re-open the interrupted job — the FE calls
+        // /jobs/:id/resume with this id (the route clears any dismissed
+        // marker). Guarded: without a target the pick degrades to guide.
+        if (envelope.resumeJobId) {
+          return {
+            type: 'continue',
+            action: 'resume',
+            resumeJobId: envelope.resumeJobId,
+          };
+        }
+        return {
+          type: 'guide',
+          message: '재개할 작업을 찾을 수 없습니다. 다시 시도해주세요.',
         };
 
       case 'dismiss':

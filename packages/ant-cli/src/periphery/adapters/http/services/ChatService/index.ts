@@ -676,6 +676,8 @@ export class ChatService {
       cardId: string;
       choiceSelected: string;
       resolvedLabel: string;
+      /** i18n key for resolvedLabel — FE renders t(key) when present. */
+      resolvedLabelKey?: string;
       answer?: Record<string, unknown>;
       /**
        * Card-identity SSOT (Invariant I3): jobType is intentionally NOT
@@ -735,6 +737,7 @@ export class ChatService {
         cardId: args.cardId,
         choiceSelected: args.choiceSelected,
         resolvedLabel: args.resolvedLabel,
+        ...(args.resolvedLabelKey ? { resolvedLabelKey: args.resolvedLabelKey } : {}),
         answer: args.answer,
       };
       await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
@@ -1254,6 +1257,10 @@ export class ChatService {
       userContext?: UserContext;
     } = {},
   ): Promise<number> {
+    // BE-driven labels win the per-cardId NX lock, so attach the i18n key —
+    // the FE localizes it instead of showing the English literal.
+    const resolvedLabelKey =
+      (args.choiceSelected ?? 'resume') === 'dismiss' ? 'cancelled.dismissed' : 'cancelled.resumed';
     const ctx = args.userContext ?? this.defaultUserContext;
     const adapter = this.makeAdapter(projectId, featureName, ctx);
     if (!adapter) return 0;
@@ -1298,6 +1305,7 @@ export class ChatService {
         cardId,
         choiceSelected: args.choiceSelected ?? 'resume',
         resolvedLabel: args.resolvedLabel ?? 'Resumed',
+        resolvedLabelKey,
         userContext: ctx,
       });
       if (result.resolved) resolvedCount++;
@@ -1597,6 +1605,7 @@ export class ChatService {
         cardId: entry.cardId,
         choiceSelected: 'auto_stale',
         resolvedLabel: 'Superseded',
+        resolvedLabelKey: 'cancelled.superseded',
       };
       await this.appendAndBroadcast(adapter, projectId, featureName, resolvedLine, userContext);
     }
