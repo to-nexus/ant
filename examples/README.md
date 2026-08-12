@@ -42,8 +42,18 @@ cp -r examples/custom-agents/ops-team \
 
 The path mirrors the destination one-to-one — `examples/custom-agents/ops-team/`
 → `.ant/agents/ops-team/`. Then register the credential the definition
-references (`OPS_API_TOKEN`) and start the server; both steps are in
-[`mcp-reference-server/README.md`](mcp-reference-server/README.md).
+references (`OPS_API_TOKEN`, whose value is the full `Bearer <token>` string)
+and start the server from the repository root:
+
+```bash
+pnpm build:example:mcp
+MCP_AUTH_TOKEN=dev-token pnpm start:example:mcp    # :8931
+```
+
+Both steps in full, plus stdio mode and the smoke test, are in
+[`mcp-reference-server/README.md`](mcp-reference-server/README.md); the
+end-to-end walkthrough is
+[custom-agent-authoring.md](../docs/guides/custom-agent-authoring.md).
 
 ## Repository wiring
 

@@ -91,7 +91,7 @@ via `tsx src/composition/server.ts`. Test type-checking lives in the sibling
 |---|---|
 | AI | @anthropic-ai/sdk, @langchain/*, openai, @google/genai |
 | Queue | bullmq, ioredis |
-| Web | express, cors, http-proxy-middleware |
+| Web | express, cors, http-proxy |
 | Templates | handlebars |
 | Validation | zod |
 | VCS | simple-git |

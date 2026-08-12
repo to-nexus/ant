@@ -1,23 +1,92 @@
 version: 2
 
-# Grouped weekly updates. Minor/patch bumps arrive as one PR per ecosystem so a
-# single maintainer isn't reviewing a dozen dependency PRs a week; major bumps
-# stay separate because they need a real read.
+# Grouped weekly updates, split by blast radius rather than by semver alone.
+#
+# Why the split: a single "minor-and-patch" group once carried 31 bumps, and one
+# of them — react-icons 5.5 → 5.7, a *minor* that renamed `SiCss3` to `SiCss` —
+# failed typecheck and held the other 30 hostage for weeks. Two lessons are
+# encoded below:
+#
+#   1. semver-minor is not a safety guarantee. On a 0.x package minor IS the
+#      breaking channel (@anthropic-ai/sdk went 0.71 → 0.116 inside that group),
+#      and on generated-export packages (react-icons, lucide-react) the symbol
+#      names were never part of the semver contract at all. Those live in
+#      `volatile`, alone, so they can never block the boring bumps.
+#   2. A red PR that needs a human code migration has no lifecycle — it just
+#      sits there consuming open-pull-requests-limit until Dependabot stops
+#      opening PRs entirely. So majors are not proposed at all; they are handled
+#      deliberately in the quarterly major sweep (see CONTRIBUTING.md).
+#
+# `dev-*` groups are the auto-merge lane (.github/workflows/dependabot-automerge.yml).
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
-    groups:
-      minor-and-patch:
-        update-types:
-          - minor
-          - patch
+    # Three groups now instead of one, and auto-merge turns them over faster.
+    # Headroom so the limit is never the thing that silently stops updates.
+    open-pull-requests-limit: 8
     commit-message:
       prefix: "chore(deps)"
 
+    # Majors never arrive as a PR. Removing an entry here is how you opt into
+    # one deliberately; the quarterly `pnpm outdated -r` sweep is the window.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+    groups:
+      # 0.x packages + generated-export packages. A minor here may be breaking.
+      # Keep this list in sync with the two `exclude-patterns` blocks below —
+      # dependabot.yml does not support YAML anchors.
+      volatile:
+        patterns:
+          - "@anthropic-ai/sdk"
+          - "@google/genai"
+          - "sharp"
+          - "esbuild"
+          - "lucide-react"
+          - "react-icons"
+          - "jpeg-js"
+        update-types:
+          - minor
+          - patch
+
+      # Runtime dependencies — a human reads these.
+      prod-minor-patch:
+        dependency-type: production
+        exclude-patterns:
+          - "@anthropic-ai/sdk"
+          - "@google/genai"
+          - "sharp"
+          - "esbuild"
+          - "lucide-react"
+          - "react-icons"
+          - "jpeg-js"
+        update-types:
+          - minor
+          - patch
+
+      # Development dependencies — auto-merged on green CI.
+      dev-minor-patch:
+        dependency-type: development
+        exclude-patterns:
+          - "@anthropic-ai/sdk"
+          - "@google/genai"
+          - "sharp"
+          - "esbuild"
+          - "lucide-react"
+          - "react-icons"
+          - "jpeg-js"
+        update-types:
+          - minor
+          - patch
+
+  # Deliberately asymmetric: no major-ignore here. Action majors are mechanical
+  # (a tag bump, no source migration) and they are the only channel for runner
+  # deprecations — checkout/setup-node/action-setup @v4 already log "Node.js 20
+  # is deprecated" on every run. Freezing them would hide that.
   - package-ecosystem: github-actions
     directory: /
     schedule:

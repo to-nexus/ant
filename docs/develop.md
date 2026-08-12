@@ -28,7 +28,12 @@ There's also:
 
 ```
 packages/ant-site/   Marketing site (Next.js). Not part of the runtime.
+examples/            Worked examples. Not product code, in no image.
 ```
+
+`examples/*` is a `pnpm-workspace.yaml` member, so one root `pnpm install`
+covers it, `pnpm build` compiles it, and CI typechecks it — but no Dockerfile
+copies it. See [examples/README.md](../examples/README.md).
 
 ## Four-process architecture
 
@@ -129,6 +134,18 @@ LLM-mocked variant (no real Anthropic calls):
 ```bash
 pnpm dev:mock:all
 ```
+
+The reference MCP server, for exercising a custom agent on the `universal`
+runtime against a real MCP connection (fixture-only, no side effects):
+
+```bash
+pnpm build:example:mcp
+MCP_AUTH_TOKEN=dev-token pnpm start:example:mcp   # 8931
+MCP_AUTH_TOKEN=dev-token pnpm test:example:mcp    # smoke, server must be up
+```
+
+The walkthrough that pairs it with the `ops-team` agent definitions is
+[guides/custom-agent-authoring.md](guides/custom-agent-authoring.md).
 
 ## Auth modes — `ANT_SERVER_MODE`
 

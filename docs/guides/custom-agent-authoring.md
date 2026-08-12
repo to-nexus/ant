@@ -29,6 +29,39 @@ against something that actually answers. That tree is **not** loaded by the
 runtime — unlike the builtin above, it exists to be copied, which is why it may
 declare `mcp.servers` at all.
 
+### Start the reference MCP server
+
+`examples/*` is a workspace member, so a root `pnpm install` already fetched it.
+From the repository root:
+
+```bash
+pnpm build:example:mcp                              # compile src/ → dist/
+MCP_AUTH_TOKEN=dev-token pnpm start:example:mcp     # POST /mcp on :8931 · GET /healthz
+```
+
+Verify it in a second terminal — the smoke script exercises `initialize`,
+`tools/list`, one `tools/call`, and the 401 / 405 / 406 negatives:
+
+```bash
+MCP_AUTH_TOKEN=dev-token pnpm test:example:mcp
+```
+
+`pnpm dev:example:mcp` is the same server under `tsx watch` while you edit its
+tools. The server's `.env` is optional — copy its `.env.example` and set
+`MCP_AUTH_TOKEN` there for a token that persists across runs, or keep passing it
+inline as above. Stdio mode (`pnpm start:example:mcp:stdio`) takes no token at
+all: the spawning process is the trust boundary.
+
+Two things that otherwise cost a debugging round:
+
+- The `OPS_API_TOKEN` credential you register in
+  [§2.5](#25-register-the-credentials-the-definition-references)
+  must hold the **full `Bearer <token>` string** — `Bearer dev-token`, not
+  `dev-token`. The value is used as the `Authorization` header verbatim.
+- Port `8931` is the `DEFAULT_PORT` constant in the server's `src/config.ts` and
+  is repeated literally in `weekly-report/job.yaml`'s `url`, because yaml has no
+  interpolation. Override it with `PORT` and both must change together.
+
 ## 1. Scaffold
 
 Use Settings → Agents (register button), or create the files by hand under
@@ -199,6 +232,13 @@ then send a normal turn to execute it.
 - In the UI: open a workspace project and pick the agent and job with the
   chat composer's chips, then chat — one conversation per workspace, with
   per-(agent, job) sessions behind it.
+
+To exercise this against a real MCP server rather than a definition of your
+own, copy `examples/custom-agents/ops-team/` into your account root and start
+its server ([§0](#start-the-reference-mcp-server)). Its `weekly-report` job
+declares the connection; its `chat` job deliberately does not, so that one keeps
+working with the server down — the pair is what an MCP failure looks like from
+both sides.
 
 ## 5.5 What you get without declaring it
 

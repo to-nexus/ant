@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-12
+
 ### Added
 
 - **Codespace / workspace project kinds.** A project is now either a
@@ -34,6 +36,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Resolution never consults `process.env`, and a stdio MCP child receives only
   its declared variables plus a minimal exec baseline — so a definition cannot
   name and exfiltrate the host's secrets.
+- **`examples/` — the custom-agent + MCP example, runnable from the repo root.**
+  A fixture-only ops incident/SLA MCP server (`examples/mcp-reference-server/`)
+  and the agent definitions that consume it (`examples/custom-agents/ops-team/`)
+  ship as workspace members that no image copies. Root scripts drive them —
+  `build:example:mcp`, `dev:example:mcp`, `start:example:mcp`,
+  `start:example:mcp:stdio`, `test:example:mcp` — and the server no longer
+  requires a `.env` to start, so an inline `MCP_AUTH_TOKEN` is enough. The
+  walkthrough lives in `docs/guides/custom-agent-authoring.md`.
 
 ## [1.0.0] - 2026-08-03
 
