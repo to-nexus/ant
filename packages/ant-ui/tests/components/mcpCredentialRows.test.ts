@@ -22,35 +22,52 @@ describe('credentialPanelRows — union of referenced and registered keys', () =
       'referenced only',
       ['A_KEY'],
       {},
+      1,
       [{ key: 'A_KEY', referenced: true, registered: false }],
     ],
     [
       'registered only (orphan stays visible)',
       [],
       { ORPHAN: '2026-08-01T00:00:00Z' },
+      1,
       [{ key: 'ORPHAN', referenced: false, registered: true }],
     ],
     [
       'referenced and registered',
       ['A_KEY'],
       { A_KEY: '2026-08-01T00:00:00Z' },
+      1,
       [{ key: 'A_KEY', referenced: true, registered: true }],
     ],
     [
       'union is sorted and de-duplicated',
       ['B_KEY', 'A_KEY'],
       { B_KEY: 'x', C_KEY: 'y' },
+      1,
       [
         { key: 'A_KEY', referenced: true, registered: false },
         { key: 'B_KEY', referenced: true, registered: true },
         { key: 'C_KEY', referenced: false, registered: true },
       ],
     ],
-    ['empty inputs produce no rows', [], {}, []],
-  ])('%s', (_label, referenced, registeredAt, expected) => {
-    expect(credentialPanelRows(referenced as string[], registeredAt as Record<string, string>)).toEqual(
-      expected,
-    );
+    ['empty inputs produce no rows', [], {}, 1, []],
+    // Account-scoped registry vs definition-scoped editor: a definition that
+    // declares no server has no credential surface at all.
+    [
+      'no declared server hides account-registered keys',
+      [],
+      { ORPHAN: 'x', OTHER: 'y' },
+      0,
+      [],
+    ],
+  ])('%s', (_label, referenced, registeredAt, declaredServerCount, expected) => {
+    expect(
+      credentialPanelRows(
+        referenced as string[],
+        registeredAt as Record<string, string>,
+        declaredServerCount as number,
+      ),
+    ).toEqual(expected);
   });
 });
 

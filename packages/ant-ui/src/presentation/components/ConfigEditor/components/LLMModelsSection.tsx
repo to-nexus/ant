@@ -131,6 +131,13 @@ const BODY_CELL: React.CSSProperties = {
   minWidth: 0,
 };
 
+// Single owner of the model-chip track width. Chips render with `fill`
+// (width:100%), so the track alone decides how wide a button is — an
+// unbounded `1fr` makes the chip swallow the whole card in grids with few
+// columns (universal's 3, auxiliary's 2). Both grids below end with a `1fr`
+// filler track that absorbs the slack instead.
+const MODEL_COL = 'minmax(150px, 190px)';
+
 function resolveIcon(name: string): LucideIcon | null {
   const registry = LucideIcons as unknown as Record<string, LucideIcon>;
   const icon = registry[name];
@@ -162,8 +169,10 @@ export function LLMModelsSection({
 
   // Column widths sized so model chips fit their (suffix-free) display names
   // without truncation; the outer overflowX:auto still scrolls when all node
-  // columns exceed the viewport.
-  const gridTemplate = `minmax(120px, 140px) minmax(150px, 1fr) ${nodeColumns.map(() => 'minmax(150px, 1fr)').join(' ')}`;
+  // columns exceed the viewport. Trailing filler track — see MODEL_COL.
+  const gridTemplate = `minmax(120px, 140px) ${MODEL_COL} ${nodeColumns
+    .map(() => MODEL_COL)
+    .join(' ')} 1fr`;
 
   return (
     <SectionCard
@@ -205,6 +214,8 @@ export function LLMModelsSection({
                   {NODE_LABEL[col] || col}
                 </div>
               ))}
+              {/* Filler cell — keeps the header band running to the card edge. */}
+              <div style={HEAD_CELL} />
 
               {/* Body rows */}
               {jobDefs.map((job) => {
@@ -258,7 +269,7 @@ export function LLMModelsSection({
                     key={key}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'minmax(200px, 260px) minmax(150px, 1fr)',
+                      gridTemplateColumns: `minmax(200px, 260px) ${MODEL_COL} 1fr`,
                       fontFamily: 'var(--font-display)',
                     }}
                   >
@@ -297,6 +308,8 @@ export function LLMModelsSection({
                         compact
                       />
                     </div>
+                    {/* Filler cell — see MODEL_COL. */}
+                    <div style={BODY_CELL} />
                   </div>
                 );
               })}
@@ -476,6 +489,9 @@ function JobRow({
           </div>
         );
       })}
+
+      {/* Filler cell — see MODEL_COL. */}
+      <div style={BODY_CELL} />
     </>
   );
 }

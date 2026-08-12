@@ -376,11 +376,17 @@ export interface CredentialPanelRow {
  * Panel rows = union(referenced keys, registered keys). Registered-but-
  * unreferenced keys stay visible (and deletable) instead of becoming
  * invisible orphans the moment the last binding is removed.
+ *
+ * `registeredAt` is ACCOUNT-scoped while this editor is definition-scoped, so
+ * a definition that declares no server at all gets no credential surface —
+ * otherwise every key the user registered anywhere reads as belonging to it.
  */
 export function credentialPanelRows(
   referencedKeys: string[],
   registeredAt: Record<string, string>,
+  declaredServerCount: number,
 ): CredentialPanelRow[] {
+  if (declaredServerCount === 0) return [];
   const referenced = new Set(referencedKeys);
   const keys = new Set([...referencedKeys, ...Object.keys(registeredAt)]);
   return [...keys]
@@ -611,8 +617,8 @@ export function McpServersEditor({
   }, [servers]);
 
   const panelRows = useMemo(
-    () => credentialPanelRows(referencedCredentialKeys, registry.registeredAt),
-    [referencedCredentialKeys, registry.registeredAt],
+    () => credentialPanelRows(referencedCredentialKeys, registry.registeredAt, names.length),
+    [referencedCredentialKeys, registry.registeredAt, names.length],
   );
 
   const credentialStatusOf = useCallback(

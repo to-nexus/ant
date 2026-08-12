@@ -1,6 +1,6 @@
 /**
  * Overview section cards — canonical `ConfigEditor/aurora` kit (SectionCard +
- * FieldLabel/AuroraInput/AuroraSelect). Each card owns exactly ONE definition
+ * FieldLabel/AuroraInput). Each card owns exactly ONE definition
  * yaml through `DefinitionCard`, offering a structured form and the raw YAML
  * over the same buffer; the shell's single ChangedBar saves every dirty file
  * through the definition write funnel. No card owns a Save button.
@@ -16,11 +16,12 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Plus, SquareArrowOutUpRight, Target } from 'lucide-react';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, AuroraSelect, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { CUSTOM_ID_PATTERN } from '@ant/shared';
 import { DefinitionCard } from './DefinitionCard';
 import { IdRenameField } from './IdRenameField';
 import { McpServersEditor } from './McpServersEditor';
+import { ToolChip } from './ToolChip';
 import type { UseDefinitionDocsResult } from './useDefinitionDocs';
 
 export interface OverviewCtx {
@@ -29,42 +30,6 @@ export interface OverviewCtx {
   docs: UseDefinitionDocsResult;
   builtinToolPreset: string[];
   mutatingBuiltinTools: string[];
-}
-
-/** Pill-toggle used for tool selection and injection binding. */
-export function ChipToggle({
-  label,
-  selected,
-  disabled,
-  onToggle,
-}: {
-  label: string;
-  selected: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onToggle}
-      style={{
-        fontSize: 11,
-        fontFamily: 'var(--font-mono)',
-        padding: '3px 10px',
-        borderRadius: 'var(--r-pill)',
-        border: `1px solid ${selected ? 'var(--violet-300)' : 'var(--border-2)'}`,
-        background: selected ? 'var(--select-fill-violet)' : 'var(--bg-surface)',
-        color: selected ? 'var(--select-fg)' : 'var(--text-3)',
-        fontWeight: selected ? 700 : 500,
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled && !selected ? 0.55 : 1,
-        transition: 'background 120ms ease, color 120ms ease, border-color 120ms ease',
-      }}
-    >
-      {label}
-    </button>
-  );
 }
 
 /** Icon-only row action box — same box metrics as the tree's toolbar icons. */
@@ -106,7 +71,6 @@ export function JobDefinitionCard({
 }) {
   const { t } = useTranslation('agents');
   const { docs } = ctx;
-  const [addingOverride, setAddingOverride] = useState(false);
   const disabled = ctx.readonly || docs.identityDoc?.parseError != null;
 
   // Vocabulary = the universal preset (tools are job-owned; no agent bound).
@@ -124,10 +88,6 @@ export function JobDefinitionCard({
   };
 
   const approval = docs.main.approval;
-  const approvalRows = vocabulary.filter(
-    (tool) => ctx.mutatingBuiltinTools.includes(tool) || approval[tool] !== undefined,
-  );
-  const overrideCandidates = vocabulary.filter((tool) => !approvalRows.includes(tool));
 
   const setApproval = (tool: string, value: string) => {
     const next = { ...approval };
@@ -144,7 +104,7 @@ export function JobDefinitionCard({
       title={t('overview.jobDefinition', 'Job definition')}
       description={t(
         'overview.jobDefinitionDesc',
-        'This job’s name, builtin allowlist and MCP servers — the tool list validates directly against the universal preset. Selecting everything omits the key (full preset).',
+        'This job’s name, builtin allowlist and MCP servers — the tool list validates directly against the universal preset, and each tool carries its own approval policy. Selecting everything omits the key (full preset).',
       )}
       doc={docs.identityDoc}
       readonly={ctx.readonly}
@@ -172,87 +132,25 @@ export function JobDefinitionCard({
 
         <div>
           <FieldLabel>{t('overview.tools', 'Tools')}</FieldLabel>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {vocabulary.map((tool) => (
-              <ChipToggle
-                key={tool}
-                label={tool}
-                selected={effective.has(tool)}
-                disabled={disabled}
-                onToggle={() => toggleTool(tool)}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <FieldLabel>{t('overview.approval', 'Approval overrides')}</FieldLabel>
           <p style={{ margin: '0 0 10px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
             {t(
-              'overview.approvalHint',
-              "Mutating tools default to 'always' (call rejected until approved); everything else to 'never'. Declare 'never' here to pre-approve a mutating tool.",
+              'overview.toolsHint',
+              "Click a name to include or exclude the tool; click its state segment to override approval. Mutating tools default to 'always' (call rejected until approved), everything else to 'never'.",
             )}
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxWidth: 420 }}>
-            {approvalRows.map((tool) => {
-              const isMutating = ctx.mutatingBuiltinTools.includes(tool);
-              return (
-                <div key={tool} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      fontSize: 12,
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-2)',
-                    }}
-                  >
-                    {tool}
-                  </span>
-                  <div style={{ width: 180 }}>
-                    <AuroraSelect
-                      value={approval[tool] ?? 'default'}
-                      disabled={disabled}
-                      onChange={(v) => setApproval(tool, v)}
-                      options={[
-                        {
-                          value: 'default',
-                          label: `${t('overview.approvalDefault', 'default')} (${isMutating ? 'always' : 'never'})`,
-                        },
-                        { value: 'always', label: 'always' },
-                        { value: 'never', label: 'never' },
-                      ]}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            {!disabled && overrideCandidates.length > 0 && !addingOverride && (
-              <div>
-                <Button size="sm" variant="ghost" onClick={() => setAddingOverride(true)}>
-                  <Plus className="w-3 h-3" /> {t('overview.approvalAddButton', 'Add override')}
-                </Button>
-              </div>
-            )}
-            {!disabled && overrideCandidates.length > 0 && addingOverride && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <AuroraSelect
-                    value=""
-                    autoFocus
-                    onChange={(v) => {
-                      setAddingOverride(false);
-                      if (v) setApproval(v, 'never');
-                    }}
-                    placeholder={t('overview.approvalAdd', 'Add override for a tool…')}
-                    options={overrideCandidates.map((tool) => ({ value: tool, label: tool }))}
-                  />
-                </div>
-                <Button size="sm" variant="ghost" onClick={() => setAddingOverride(false)}>
-                  {t('tree.cancel', 'Cancel')}
-                </Button>
-              </div>
-            )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {vocabulary.map((tool) => (
+              <ToolChip
+                key={tool}
+                tool={tool}
+                selected={effective.has(tool)}
+                policy={approval[tool]}
+                inheritedPolicy={ctx.mutatingBuiltinTools.includes(tool) ? 'always' : 'never'}
+                disabled={disabled}
+                onToggle={() => toggleTool(tool)}
+                onPolicyChange={(v) => setApproval(tool, v)}
+              />
+            ))}
           </div>
         </div>
 
