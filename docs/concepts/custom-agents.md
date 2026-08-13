@@ -37,9 +37,9 @@ The model decides *when* to call `refund_payment`; the server decides *whether
 this refund is allowed*.
 
 So a mature custom agent is usually two artifacts with two owners: a definition
-(the judgment) and one or more MCP servers (the guarantees). The organizational
-version of that split is
-[internals/45-org-ax-mcp-orchestration.md](../internals/45-org-ax-mcp-orchestration.md).
+(the judgment) and one or more MCP servers (the guarantees). The trust
+boundaries that split crosses, and the contract a server has to satisfy, are in
+[internals/45-mcp-orchestration.md](../internals/45-mcp-orchestration.md).
 
 ## The two-level model
 
@@ -186,5 +186,6 @@ The full layout, and why the project kind is policy rather than a fork, is in
   build one, start to finish.
 - [internals/44-universal-job.md](../internals/44-universal-job.md) — the
   runtime contract (one JobType, tool sandbox, credential plane, checklist).
-- [internals/45-org-ax-mcp-orchestration.md](../internals/45-org-ax-mcp-orchestration.md)
-  — rolling this out across an organization's departments.
+- [internals/45-mcp-orchestration.md](../internals/45-mcp-orchestration.md)
+  — trust topology, the capability-server contract, and what the runtime
+  can't do yet.

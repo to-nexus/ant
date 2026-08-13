@@ -5,7 +5,7 @@ are here to be read and copied, not to run in production.
 
 | Example | What it shows |
 |---|---|
-| [`mcp-reference-server/`](mcp-reference-server/) | The **external** side of an MCP integration: a fixture-only ops incident/SLA server (streamable HTTP + stdio, bearer auth) that a department copies and refills with its own API. |
+| [`mcp-reference-server/`](mcp-reference-server/) | The **external** side of an MCP integration: a fixture-only ops incident/SLA server (streamable HTTP + stdio, bearer auth) that the team owning a domain copies and refills with its own API. |
 | [`custom-agents/ops-team/`](custom-agents/ops-team/) | The **Ant** side: an agent with two jobs — one that declares the connection above, one that deliberately does not. |
 
 The two halves are one end-to-end example, split at the seam. Read

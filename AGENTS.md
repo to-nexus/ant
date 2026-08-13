@@ -416,7 +416,8 @@ rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src             
 
 Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-container,universal-tool-policy,universal-prompt-injection,universal-checklist,universal-mcp-runtime,mcp-credential-store}.test.ts`.
 Full rationale: [`docs/internals/44-universal-job.md`](docs/internals/44-universal-job.md);
-org rollout: [`docs/internals/45-org-ax-mcp-orchestration.md`](docs/internals/45-org-ax-mcp-orchestration.md).
+MCP orchestration & capability-server contract:
+[`docs/internals/45-mcp-orchestration.md`](docs/internals/45-mcp-orchestration.md).
 
 ---
 

@@ -5,8 +5,8 @@ checklist plane. Owner surfaces: `agents/universal/`, `core/customAgents/`,
 `templates/jobs/universal/`, `utils/userConfig/` (credential store),
 `periphery/adapters/http/routes/{customAgents,accountAgents,mcpCredentials}.routes.ts`.
 
-Strategy and org rollout live in
-[45-org-ax-mcp-orchestration.md](45-org-ax-mcp-orchestration.md); the
+Capability-server topology, the server-side contract, and the known runtime
+gaps live in [45-mcp-orchestration.md](45-mcp-orchestration.md); the
 user-facing view is [concepts/custom-agents.md](../concepts/custom-agents.md)
 and the codespace/workspace vocabulary is
 [concepts/spaces.md](../concepts/spaces.md).

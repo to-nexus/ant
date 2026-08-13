@@ -85,7 +85,7 @@ For binding rules with regression-guard test names, see
 - [42-custom-domains.md](42-custom-domains.md) — deploy-only custom domains (NLB+Caddy on-demand TLS); infra + developer tasks
 - [43-explore-subagent.md](43-explore-subagent.md) — async read-only explore subagent pipeline (all jobs): launch/drain/join, registry, chat card + report overlay
 - [44-universal-job.md](44-universal-job.md) — universal job: file-defined custom agent/job runtime — one JobType, definition loader/scopes, tool sandbox, MCP credential plane, approval + plan-turn gates, checklist plane, projectType policy
-- [45-org-ax-mcp-orchestration.md](45-org-ax-mcp-orchestration.md) — organization AX: universal job + department MCP servers — process/trust topology, gate roadmap, D3 server contract, inventory→definition normalization
+- [45-mcp-orchestration.md](45-mcp-orchestration.md) — MCP orchestration: process/trust topology (child vs peer), capability-server contract, unattended-run design constraints, known runtime gaps
 
 ### Layout
 

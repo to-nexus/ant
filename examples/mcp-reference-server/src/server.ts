@@ -1,6 +1,6 @@
 /**
- * buildServer() — the heart a department copies and refills with its own
- * tools. Rules that must survive the copy:
+ * buildServer() — the heart you copy and refill with your own tools.
+ * Rules that must survive the copy:
  *
  * - `registerTool` only (`server.tool()` is deprecated in SDK 1.30).
  * - `inputSchema` is a flat ZodRawShape (plain object of zod fields, NOT

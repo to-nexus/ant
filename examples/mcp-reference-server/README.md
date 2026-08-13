@@ -1,9 +1,8 @@
 # mcp-reference-server
 
 Reference MCP server for Ant custom agents — a fixture-only incident/SLA API
-for a fictional ops team. Departments copy this directory, keep the
-transport/auth/logging shell, and replace the tools + fixtures with their own
-API. The matching Ant agent definitions are its sibling,
+for a fictional ops team. Copy this directory, keep the transport/auth/logging
+shell, and replace the tools + fixtures with your own API. The matching Ant agent definitions are its sibling,
 [`../custom-agents/ops-team/`](../custom-agents/ops-team/).
 
 **No real backend, no side effects.** Every response is served from
@@ -74,7 +73,7 @@ directory if you prefer.
 
 Full walkthrough: [custom-agent-authoring.md](../../docs/guides/custom-agent-authoring.md).
 
-## Department copy checklist
+## Copy checklist
 
 1. Copy this directory out of the Ant repo into your own, then drop the
    `@ant/` scope from `package.json` and add a lockfile.
