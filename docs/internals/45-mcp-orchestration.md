@@ -160,10 +160,14 @@ current code.
   incompatible with repeatable-job key reuse).
 - **Intents are parameters, not inference.** The runtime never auto-classifies
   intents ([44 §Why one JobType](44-universal-job.md#why-one-jobtype-not-n));
-  `intents` / `overrideDirective` already travel in the execute body. A schedule
-  would store its intent/directive as fixed registration-time parameters, so
-  schedule-destined work carries 0–1 intents decided at registration — do not
-  design intent taxonomies that assume runtime classification.
+  `intents` / `overrideDirective` already travel in the execute body, and an
+  unpinned turn falls back to the catalog's `default: true` intent (else
+  `general`) — deterministically. A schedule would store its intent/directive
+  as fixed registration-time parameters, so schedule-destined work carries 0–1
+  intents decided at registration — do not design intent taxonomies that
+  assume runtime classification. A job built for unattended runs can equally
+  mark its one operational intent `default: true`, which also activates its
+  `clarify: false` knob without any per-call parameter.
 - **Reporting is an MCP tool, not a new subsystem.** "Send the report to the
   channel" is a `notification`-domain server (`send_message`) called by the job
   at the end of its own prompt — the same convergence as every other capability.

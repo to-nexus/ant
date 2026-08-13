@@ -7,10 +7,13 @@
  * list_files / search_files, large-tree safe).
  *
  * Also the SINGLE writer of `state.turnContext` — every field is
- * deterministic from runner inputs (explicit `@intent:`/`@ctx:` mentions,
- * the `@plan` flag), so no LLM pass is involved. Inferred-intent turns get
- * `['general']`, which keeps every definition injection on the TOC
- * (progressive disclosure via read_file on the definition mount).
+ * deterministic from runner inputs plus the loaded definition (explicit
+ * `@intent:`/`@ctx:` mentions, the `@plan` flag, the catalog's `default`
+ * intent), so no LLM pass is involved. Unpinned turns resolve
+ * explicit → catalog default intent → `['general']`; under `general` every
+ * definition injection stays on the TOC, where the rendered Intent Catalog
+ * (id + criterion per row — see `buildCustomJobSystemBlock`) is what makes
+ * read_file self-selection an informed choice.
  *
  * And the plan-consumption gate's deterministic half: lists existing plan
  * documents under `plan/{agentId}/{jobId}/` (disk = SSOT, survives
@@ -22,6 +25,7 @@ import { GENERAL_INTENT } from '@ant/shared';
 import type { ResolveStrategy } from '../../../common/graph/nodes/resolve/types';
 import type { UniversalGraphState, UniversalTurnContext } from '../state';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
+import { defaultIntentOf } from '../../../../core/customAgents/intents';
 
 const OVERVIEW_MAX_ENTRIES = 50;
 const PLAN_DOCS_MAX = 20;
@@ -59,10 +63,22 @@ async function listPlanDocs(state: UniversalGraphState, planDocsDir: string): Pr
   }
 }
 
-function buildTurnContext(state: UniversalGraphState): UniversalTurnContext {
+/**
+ * Unpinned turns resolve `explicit → catalog default intent → general` —
+ * still a pure function; the default is an author registration-time
+ * declaration, so its activation (injections AND the clarify knob) carries
+ * the same authority as a pinned mention.
+ */
+export function buildTurnContext(
+  state: Pick<UniversalGraphState, 'explicitIntents' | 'explicitContext' | 'planRequested'>,
+  defaultIntentId: string | undefined,
+): UniversalTurnContext {
   const explicit = (state.explicitIntents?.length ?? 0) > 0 || (state.explicitContext?.length ?? 0) > 0;
+  const intents = state.explicitIntents?.length
+    ? state.explicitIntents
+    : [defaultIntentId ?? GENERAL_INTENT];
   return {
-    intents: state.explicitIntents?.length ? state.explicitIntents : [GENERAL_INTENT],
+    intents,
     context: state.explicitContext ?? [],
     planTurn: state.planRequested === true,
     source: explicit ? 'explicit' : 'infer',
@@ -75,7 +91,8 @@ async function resolveCommon(state: UniversalGraphState): Promise<Partial<Univer
 
   const artifactsOverview = await buildArtifactsOverview(state);
   const planDocs = await listPlanDocs(state, `plan/${resolved.agentId}/${resolved.jobId}`);
-  return { artifactsOverview, planDocs, turnContext: buildTurnContext(state) };
+  const turnContext = buildTurnContext(state, defaultIntentOf(resolved.intents)?.id);
+  return { artifactsOverview, planDocs, turnContext };
 }
 
 export const universalResolveStrategy: ResolveStrategy<UniversalGraphState> = {

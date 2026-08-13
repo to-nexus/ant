@@ -97,8 +97,10 @@ definition carrying them fails loud at load with a move instruction (the
 settings Prompts view can create/delete the files). Neither `agent.yaml` nor
 `job.yaml` carries a `description`: identity and procedure live in `base/` prose,
 which is what the model actually reads. The one prompt-serving description left
-is the per-intent one in `intents.yaml`, which the model reads off the injection
-table of contents to decide what to pull in.
+is the per-intent one in `intents.yaml`, rendered verbatim into the agent's
+Intent Catalog — it is what the model matches an unpinned request against to
+decide what to pull in, and what an `@intent:` mention selects. Marking one
+intent `default: true` makes unpinned turns run as that intent outright.
 
 See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-agent-authoring.md).
 

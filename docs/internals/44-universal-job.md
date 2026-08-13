@@ -70,22 +70,48 @@ compactRun) — not the graph.
   *decision* (path routing, task-shape contract, budgets — see
   `docs/concepts/execution-tiers.md`), and universal's graph is linear with
   no task plane, so there is nothing for a tier to decide. An earlier
-  iteration had a per-turn detect node LLM-declaring a tier; it was removed
-  because the declaration had zero behavioral consumers (a classifier that
-  routes nothing is a label) and cost one non-streaming LLM call of
-  first-token latency on every turn. `turnContext` (intents / `@ctx` paths /
-  planTurn / provenance) is assembled deterministically in **resolve** — the
-  single writer; inferred-intent turns get `['general']` so definition
-  injections stay on the TOC for read_file self-selection. What replaced the
-  tier's would-be roles: the **checklist contract** (below) for multi-
-  deliverable shape, and the **plan-consumption gate** (resolve lists
-  `plan/{agentId}/{jobId}/` into `state.planDocs`; the agent reads and
-  derives) for refs-grounded work.
+  iteration had a per-turn detect node LLM-declaring a tier AND intent labels;
+  it was removed because the tier had zero behavioral consumers (a classifier
+  that routes nothing is a label) and the pass cost one non-streaming LLM call
+  of first-token latency on every turn. A per-turn intent classifier was
+  prototyped again later and rejected on the same overhead grounds — the
+  replacement is deterministic (next bullet). `turnContext` (intents / `@ctx`
+  paths / planTurn / provenance) is assembled deterministically in
+  **resolve** — the single writer. What replaced the tier's would-be roles:
+  the **checklist contract** (below) for multi-deliverable shape, and the
+  **plan-consumption gate** (resolve lists `plan/{agentId}/{jobId}/` into
+  `state.planDocs`; the agent reads and derives) for refs-grounded work.
 
   ```bash
   rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal
   # Expected: 0 hits.
   ```
+
+- **Unpinned turns: default intent, then the rendered catalog — never a
+  classifier.** An unpinned turn resolves `explicit → the catalog's
+  `default: true` intent → ['general']` (`buildTurnContext` in resolve;
+  `defaultIntentOf` in `core/customAgents/intents.ts`, validated at most one
+  per catalog). Two consumers make an active intent matter — injection
+  inlining (`buildCustomJobSystemBlock`) and the per-intent clarify knob
+  (`isClarifyEnabled`) — and both honor a default-activated intent exactly
+  like a pinned one, because `default` is a registration-time author
+  declaration, not an inference.
+
+  For turns that land on `general`, the authored criteria still reach the
+  model: `buildCustomJobSystemBlock` renders an **Intent Catalog** section
+  (each intent's id + `description` verbatim + the files it carries, via
+  `sanitizeCell` — author text is DATA and cannot restructure the block or
+  escape it), and every TOC row keeps its first-line summary. Self-selection
+  off the TOC is therefore an informed judgment against the authored
+  criteria, not a guess from filenames — that gap (descriptions validated as
+  "the matching criterion" but never rendered anywhere) is what this section
+  fixes. The `general`-suppresses-inlining rule stands: always-on prose
+  belongs in `base/`, and a job that wants one situation always active on
+  unpinned turns declares it `default: true` instead.
+
+  Guards: `universal-turn-context.test.ts` (default-intent resolution rows),
+  `universal-prompt-injection.test.ts` (catalog rendering + sanitize rows),
+  `custom-agent-loader.test.ts` (`default` validation rows).
 
 ## Checklist — the universal to-do plane (NOT tasks)
 

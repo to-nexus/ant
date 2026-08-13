@@ -6,7 +6,11 @@
  *
  * The former detect node (LLM intent/tier classification) was removed:
  * universal has nothing for a classifier to route, so every field below is
- * a pure function of runner inputs + disk.
+ * a pure function of runner inputs + the loaded definition. An unpinned
+ * turn resolves explicit → the catalog's `default: true` intent → general;
+ * there is deliberately NO runtime classification pass — the Intent Catalog
+ * rendered into the agent prompt (see universal-prompt-injection.test.ts)
+ * is what informs the model's own in-turn selection instead.
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
@@ -23,7 +27,7 @@ import type { UniversalGraphState } from '../../src/agents/universal/graph/state
 
 const CATALOG = new Set(['research', 'cite']);
 
-function makeResolved(): ResolvedCustomJob {
+function makeResolved(intents: ResolvedCustomJob['intents'] = []): ResolvedCustomJob {
   return {
     agentId: 'ops',
     jobId: 'weekly',
@@ -32,7 +36,7 @@ function makeResolved(): ResolvedCustomJob {
     jobName: 'Weekly',
     prose: 'p',
     injectionsToc: [],
-    intents: [],
+    intents,
     mcpServers: {},
     builtinTools: [],
     approval: {},
@@ -88,6 +92,34 @@ describe('universalResolveStrategy — deterministic turnContext (single writer)
   it('onResume assembles the same deterministic context (no restore channel needed)', async () => {
     const result = await universalResolveStrategy.onResume!(makeState({ userMessage: '' }));
     expect(result.turnContext).toMatchObject({ intents: ['general'], source: 'infer', planTurn: false });
+  });
+});
+
+describe('universalResolveStrategy — catalog default intent (deterministic, no classification)', () => {
+  const CATALOG_WITH_DEFAULT: ResolvedCustomJob['intents'] = [
+    { id: 'report', description: 'weekly report work', default: true },
+    { id: 'triage', description: 'incident triage' },
+  ];
+
+  it.each([
+    ['unpinned turn runs as the default intent', CATALOG_WITH_DEFAULT, {},
+      { intents: ['report'], source: 'infer' }],
+    ['explicit pin beats the default', CATALOG_WITH_DEFAULT, { explicitIntents: ['triage'] },
+      { intents: ['triage'], source: 'explicit' }],
+    ['catalog without a default falls to general', [{ id: 'report', description: 'x' }], {},
+      { intents: ['general'], source: 'infer' }],
+    ['@ctx alone keeps the default intent (source still explicit)', CATALOG_WITH_DEFAULT,
+      { explicitContext: ['plan/notes.md'] }, { intents: ['report'], source: 'explicit' }],
+  ] as const)('%s', async (_label, intents, overrides, expected) => {
+    activateCustomJob(makeResolved([...intents]));
+    const result = await universalResolveStrategy.loadArtifacts(makeState(overrides as any));
+    expect(result.turnContext).toMatchObject(expected);
+  });
+
+  it('resume without a new message still resolves the default (session identity is deterministic)', async () => {
+    activateCustomJob(makeResolved([...CATALOG_WITH_DEFAULT]));
+    const result = await universalResolveStrategy.onResume!(makeState({ userMessage: '' }));
+    expect(result.turnContext).toMatchObject({ intents: ['report'], source: 'infer' });
   });
 });
 

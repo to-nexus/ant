@@ -48,6 +48,16 @@ export interface CustomIntentDef {
    * disabled wins.
    */
   clarify?: boolean;
+  /**
+   * At most ONE intent per catalog may declare `default: true`: a turn that
+   * pins no `@intent:` runs as this intent (deterministically — there is no
+   * runtime classification). Without a default, an unpinned turn runs as the
+   * reserved `general` intent and self-selects off the rendered catalog.
+   * Because this is a registration-time author declaration, the intent's
+   * `clarify` knob applies on default-activated turns exactly as on pinned
+   * ones.
+   */
+  default?: boolean;
 }
 
 /** Implicit fallback intent — reserved, never declarable, maps no injections. */
@@ -293,7 +303,7 @@ export interface DefinitionValidationResult {
 export interface CustomJobPromptPreview {
   agentId: string;
   jobId: string;
-  /** Intent ids the preview was rendered with (empty = pre-classify TOC-only view). */
+  /** Intent ids the preview was rendered with (empty = no active intents: catalog + TOC only, nothing inlined). */
   activeIntents: string[];
   /** Assembled system block text. */
   system: string;

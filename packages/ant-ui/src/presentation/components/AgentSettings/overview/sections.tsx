@@ -225,7 +225,7 @@ export function IntentsCard({
       title={t('overview.intents', 'Intents')}
       description={t(
         'overview.intentsHint',
-        'Ways this job classifies an incoming request. Open one to edit its matching criteria and prompts.',
+        'Situations this job declares. Each one names its matching criterion and the prompts it carries; the agent reads the catalog on every turn.',
       )}
       doc={docs.intentsDoc}
       readonly={ctx.readonly}
@@ -234,7 +234,7 @@ export function IntentsCard({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {entries.length === 0 && (
           <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)' }}>
-            {t('overview.intentsEmpty', 'No intents — classification is skipped entirely at zero cost until you add one.')}
+            {t('overview.intentsEmpty', 'No intents — every turn runs on base prompts, and injections stay in the on-demand list with only their first line as a hint.')}
           </p>
         )}
 

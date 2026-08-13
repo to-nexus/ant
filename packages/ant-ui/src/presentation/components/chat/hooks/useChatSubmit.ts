@@ -228,7 +228,10 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         useStore.getState().resetActionMetadata();
       }
       if (universalCtx) {
-        // Mentions apply to the run just dispatched; following turns re-infer.
+        // Mentions apply to the run just dispatched only. There is no runtime
+        // classification — an unpinned turn falls back to the catalog's
+        // default intent (or `general`), and the agent self-selects off the
+        // rendered Intent Catalog.
         useStore.getState().resetUniversalTurnMeta();
       }
 

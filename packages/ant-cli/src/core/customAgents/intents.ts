@@ -68,7 +68,7 @@ export function validateIntentsDoc(doc: unknown, agentId: string, jobId?: string
     if (!entry || typeof entry !== 'object') {
       throw new CustomAgentValidationError(`${INTENTS_FILE_NAME}: each intent must be a mapping`, agentId, jobId);
     }
-    const { id, description, injections, clarify } = entry as Record<string, unknown>;
+    const { id, description, injections, clarify, default: isDefault } = entry as Record<string, unknown>;
     if (typeof id !== 'string' || !INTENT_ID_PATTERN.test(id)) {
       throw new CustomAgentValidationError(
         `${INTENTS_FILE_NAME}: intent id must match [a-z0-9][a-z0-9-]* (got: ${String(id)})`,
@@ -136,11 +136,20 @@ export function validateIntentsDoc(doc: unknown, agentId: string, jobId?: string
         jobId,
       );
     }
+    if (isDefault !== undefined && typeof isDefault !== 'boolean') {
+      throw new CustomAgentValidationError(
+        `${INTENTS_FILE_NAME}: intent "${id}" default must be true or false (got: ${JSON.stringify(isDefault)}) — ` +
+        `true makes this the intent an unpinned turn runs as (deterministic; no runtime classification)`,
+        agentId,
+        jobId,
+      );
+    }
     result.push({
       id,
       description: description.trim(),
       ...(injectionList ? { injections: injectionList } : {}),
       ...(clarify !== undefined ? { clarify: clarify as boolean } : {}),
+      ...(isDefault !== undefined ? { default: isDefault as boolean } : {}),
     });
   }
   if (result.length > INTENT_CATALOG_CAP) {
@@ -150,7 +159,21 @@ export function validateIntentsDoc(doc: unknown, agentId: string, jobId?: string
       jobId,
     );
   }
+  const defaults = result.filter((i) => i.default === true);
+  if (defaults.length > 1) {
+    throw new CustomAgentValidationError(
+      `${INTENTS_FILE_NAME}: only one intent may declare default: true (got: ${defaults.map((i) => i.id).join(', ')}) — ` +
+      `the default is what an unpinned turn deterministically runs as, so two defaults have no meaning`,
+      agentId,
+      jobId,
+    );
+  }
   return result;
+}
+
+/** The catalog's declared default intent, if any (validated: at most one). */
+export function defaultIntentOf(intents: readonly CustomIntentDef[]): CustomIntentDef | undefined {
+  return intents.find((i) => i.default === true);
 }
 
 /**

@@ -35,8 +35,9 @@ export interface UniversalToolCall {
  * Universal follows RAC's *structure* without forging canonical identity.
  */
 export interface UniversalTurnContext {
-  /** Active intent ids — explicit `@intent:` mentions, or `['general']`
-   *  (all definition injections stay on the TOC for self-selection). */
+  /** Active intent ids — explicit `@intent:` mentions, else the catalog's
+   *  `default: true` intent, else `['general']` (all definition injections
+   *  stay on the TOC for self-selection off the rendered Intent Catalog). */
   intents: string[];
   /** `@ctx:` workspace paths attached to this turn (advisory, not a read gate). */
   context: string[];

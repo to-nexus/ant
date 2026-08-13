@@ -1,7 +1,10 @@
-# Job intent catalog (optional). An empty catalog costs nothing — the intent
-# classifier is skipped entirely until you declare entries.
+# Job intent catalog (optional). An empty catalog costs nothing — the agent
+# prompt simply carries no Intent Catalog section until you declare entries.
 #
-# Each description is the classification matching criterion; when an intent is
+# There is no runtime classifier: a turn's intents are the `@intent:` mentions
+# (or the execute body's `intents`), else the one entry marked `default: true`,
+# else the reserved `general`. Each description is rendered verbatim into the
+# agent's Intent Catalog as that situation's criterion; when an intent is
 # active its `injections` files (this job's injections/*.md) are inlined in
 # full (otherwise they stay in the on-demand table of contents). Example:
 #
@@ -9,5 +12,6 @@
 #   - id: review
 #     description: 'Review or critique an existing document in the workspace'
 #     injections: [review-checklist.md]
+#     default: true   # unpinned turns run as `review` (at most one per catalog)
 version: 1
 intents: []

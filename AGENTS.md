@@ -393,6 +393,13 @@ debugging session.
   or letting a definition error crash the worker child instead of answering 400
   at accept.
 - Silently ignoring a removed yaml key — an author concludes the knob works.
+- **A per-turn pre-classification LLM pass** (intent, tier, or anything else)
+  before the agent call. Unpinned turns resolve deterministically:
+  explicit → the catalog's `default: true` intent → `general`; the Intent
+  Catalog rendered into the agent prompt is what informs in-turn
+  self-selection. This was built twice and removed twice — the latency/cost
+  of a non-streaming call per turn buys nothing a deterministic default plus
+  an informed prompt doesn't.
 
 ### ✅ Correct
 
@@ -414,7 +421,7 @@ rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal       
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0
 ```
 
-Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-container,universal-tool-policy,universal-prompt-injection,universal-checklist,universal-mcp-runtime,mcp-credential-store}.test.ts`.
+Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-container,universal-tool-policy,universal-prompt-injection,universal-checklist,universal-turn-context,universal-mcp-runtime,mcp-credential-store}.test.ts`.
 Full rationale: [`docs/internals/44-universal-job.md`](docs/internals/44-universal-job.md);
 MCP orchestration & capability-server contract:
 [`docs/internals/45-mcp-orchestration.md`](docs/internals/45-mcp-orchestration.md).

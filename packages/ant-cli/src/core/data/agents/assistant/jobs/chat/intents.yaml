@@ -1,12 +1,17 @@
 # Job intent catalog — intents are job-only (this file lives next to job.yaml).
 #
-# Intents are selected explicitly, never auto-classified: a turn carries the
-# `@intent:` mentions from the composer (or the execute body's `intents`), and
-# those intents' `injections` files (this job's injections/*.md) are inlined in
-# full. Everything else stays in an on-demand table of contents, where each
-# `description` below is the row the model reads to decide what to pull in with
-# read_file — so write it for that judgment. `general` is reserved for a turn
-# with no mention and cannot be declared here.
+# Intents are selected explicitly or by the catalog's `default` — never by a
+# runtime classifier. A turn carries the `@intent:` mentions from the composer
+# (or the execute body's `intents`); a turn that pins nothing runs as the one
+# intent marked `default: true`, or as the reserved `general` when no default
+# is declared. Active intents' `injections` files (this job's injections/*.md)
+# are inlined in full; everything else stays on demand.
+#
+# Every `description` below is rendered verbatim into the agent's Intent
+# Catalog as that situation's criterion — it is what the model reads to decide
+# which files to pull in with read_file, and what an @intent: mention selects.
+# Write it as a trigger condition ("when does this apply"), not a summary.
+# `general` cannot be declared here.
 version: 1
 intents:
   - id: research

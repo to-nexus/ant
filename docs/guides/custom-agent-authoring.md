@@ -201,7 +201,10 @@ intents:
 Precedence: active intents that declare the knob decide (disabled wins when
 several conflict); otherwise `job.clarify`, otherwise `agent.clarify`,
 otherwise enabled. The value must be a real boolean — `clarify: "yes"` fails
-validation at job accept.
+validation at job accept. An intent is *active* when pinned with `@intent:`
+(or the execute body's `intents`) — or on every unpinned turn, if it is the
+catalog's `default: true` intent, which is how a per-intent `clarify: false`
+covers unattended runs without any per-call parameter (§4.5).
 
 ## 4. Prose — base/ and injections/
 
@@ -229,16 +232,26 @@ intents:
   - id: incident            # kebab-case; 'general' is reserved (the no-match fallback)
     description: 'Reporting, investigating, or following up on a service incident'
     injections: [incident-playbook.md]
+    default: true           # optional; at most one — unpinned turns run as this intent
 ```
 
-- **Intents are selected explicitly, never auto-classified.** A turn carries the
-  intents the user mentioned with `@intent:` in the composer (or that an API
-  caller passed in the execute body); those intents' injections are inlined in
-  full. There is no per-turn LLM classification pass.
-- A turn with no explicit mention runs as the reserved `general` intent, so every
-  injection stays on the table of contents and the model pulls what it needs with
-  `read_file` — the `description` is what it reads to decide, so write it for
-  that judgment.
+- **Intents are selected explicitly or by your `default` — never auto-classified.**
+  A turn carries the intents the user mentioned with `@intent:` in the composer
+  (or that an API caller passed in the execute body); those intents' injections
+  are inlined in full. There is no per-turn LLM classification pass.
+- **A turn with no mention runs as the intent marked `default: true`**, exactly
+  as if it had been pinned — injections inline, and its `clarify` knob applies.
+  At most one intent per catalog may be the default; it is the right shape for
+  a job whose unpinned turns overwhelmingly mean one thing (a report job, a
+  scheduled duty).
+- **With no default, an unpinned turn runs as the reserved `general` intent**:
+  no injection inlines, and the model self-selects with `read_file`. It is not
+  guessing from filenames — the runtime renders your whole catalog (each
+  intent's id and `description`, verbatim) into the prompt as an *Intent
+  Catalog*, so the `description` is doing double duty: the criterion the model
+  matches the request against, and the row an `@intent:` mention selects.
+  Write it as a trigger condition ("when does this apply"), not as a summary
+  of the file's contents.
 - The shipped `assistant` agent's catalog
   (`packages/ant-cli/src/core/data/agents/assistant/jobs/chat/intents.yaml`)
   is the working example.

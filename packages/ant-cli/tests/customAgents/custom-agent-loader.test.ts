@@ -445,9 +445,23 @@ describe('loadCustomJob — intents catalog validation table', () => {
     ['injection with path separator', { intents: [{ id: 'a', description: 'x', injections: ['dir/f.md'] }] }, /bare file name/],
     ['injection without .md', { intents: [{ id: 'a', description: 'x', injections: ['f.txt'] }] }, /must be a \.md file/],
     ['missing injection file', { intents: [{ id: 'a', description: 'x', injections: ['ghost.md'] }] }, /does not exist/],
+    ['non-boolean default', { intents: [{ id: 'a', description: 'x', default: 'yes' }] }, /default must be true or false/],
+    ['two defaults in one catalog', { intents: [
+      { id: 'a', description: 'x', default: true }, { id: 'b', description: 'y', default: true },
+    ] }, /only one intent may declare default/],
   ] as const)('%s → throws', (_label, doc, pattern) => {
     setup(doc);
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(pattern);
+  });
+
+  it('default: true survives the load and default: false is kept distinct from absent', () => {
+    setup({ intents: [
+      { id: 'a', description: 'x', default: true },
+      { id: 'b', description: 'y', default: false },
+      { id: 'c', description: 'z' },
+    ] });
+    const { intents } = loadCustomJob(roots(), 'ops', 'weekly');
+    expect(intents.map((i) => i.default)).toEqual([true, false, undefined]);
   });
 
   it('catalog cap (32) is enforced per file', () => {

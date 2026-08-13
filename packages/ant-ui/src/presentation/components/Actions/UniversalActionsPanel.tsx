@@ -90,7 +90,7 @@ export function UniversalActionsPanel() {
           <span className="text-xs text-center" style={{ color: 'var(--text-4)', maxWidth: 380, lineHeight: 1.6 }}>
             {t('universal.noIntents', {
               defaultValue:
-                'This job declares no intents — every turn runs with its base prompt, at no classification cost.',
+                'This job declares no intents — every turn runs with its base prompt.',
             })}
           </span>
         ) : (

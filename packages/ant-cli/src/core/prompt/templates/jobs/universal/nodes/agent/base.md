@@ -59,4 +59,4 @@ The user toggled plan mode for THIS turn. Your job this turn is to produce or up
 
 ## Definition Files (read-only)
 
-Your definition's conditional instruction files are mounted read-only under `{{definitionMount}}`. When the definition's table of contents indicates a file applies to the current situation, load it with `read_file` before acting. This mount is never writable.
+Your definition's conditional instruction files are mounted read-only under `{{definitionMount}}`.

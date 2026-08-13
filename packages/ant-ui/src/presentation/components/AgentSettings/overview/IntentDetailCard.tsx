@@ -1,7 +1,7 @@
 /**
  * Intent detail card — the single editing surface for one intent of the
- * selected job: its id and its matching criteria (the classifier reads the
- * description verbatim). Prompt bindings live in the Prompts section below
+ * selected job: its id and its matching criteria (the agent reads the
+ * description verbatim off its rendered Intent Catalog). Prompt bindings live in the Prompts section below
  * (single surface); deleting happens in this screen's Danger Zone. Edits flow
  * through `useDefinitionDocs`, so the shell's ChangedBar saves them into
  * jobs/{jobId}/intents.yaml with the comment-preserving funnel.
@@ -84,7 +84,7 @@ export function IntentDetailCard({
       title={t('intent.criteriaTitle', 'Matching criteria')}
       description={t(
         'intent.criteriaDesc',
-        'Describe when this intent applies — the classifier reads this text verbatim.',
+        'Describe when this intent applies — the agent reads this text verbatim in its Intent Catalog to decide which prompts to load, and it is what an @intent: mention selects.',
       )}
       bodyMaxWidth={560}
     >
