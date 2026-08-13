@@ -11,7 +11,7 @@ import { REDIS_CHANNELS } from '../../../../infrastructure/state/redisConstants'
 import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { assertJobAccess as assertJobAccessShared } from './helpers/jobAccess';
 import { sendErrorResponse } from './helpers/errorResponse';
-import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
+import { checkApproval, approvalErrorCode, checkTeamMembership } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
 import { deriveResumableState } from '../../../../core/session/resumable';
 import { generateTurnId } from '../../../../composition/recordUserTurn';
@@ -19,7 +19,7 @@ import { readBranchBase } from '../../../../core/utils/branchUtils';
 import { jobExecuteRateLimiter } from '../middleware/rateLimiter';
 import { validateBody, executeJobSchema } from '../middleware/validateBody';
 import { logger } from '../../../../utils/logger';
-import { getConfigSlots, featureNameToSlug, type LogJobType, type SessionableJobType } from '@ant/shared';
+import { getConfigSlots, featureNameToSlug, MEMBERSHIP_REQUIRED, type LogJobType, type SessionableJobType } from '@ant/shared';
 import { isBillingEnabled } from '../../../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import { peekCloudModule } from '../../../../core/cloud/cloudPlugin';
@@ -608,6 +608,14 @@ export function createJobRoutes(deps: {
         return res.status(403).json({ error: 'Account is not approved.', code });
       }
 
+      // Stale-JWT blockade (Phase 1): re-check the live team membership row
+      // before spawning work — a removed member's JWT stays valid for days.
+      if (!(await checkTeamMembership(userContext))) {
+        return res
+          .status(403)
+          .json({ error: 'You are no longer a member of this organization.', code: MEMBERSHIP_REQUIRED });
+      }
+
       // Credit pre-flight gate: block a NEW job when the balance is below the
       // minimum start floor. The live meter + settle debit during/after the
       // job; this gate stops a genuinely empty account from starting work.
@@ -726,6 +734,11 @@ export function createJobRoutes(deps: {
       const notApprovedLearn = await checkApproval(userContext);
       if (notApprovedLearn) {
         return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedLearn.status) });
+      }
+      if (!(await checkTeamMembership(userContext))) {
+        return res
+          .status(403)
+          .json({ error: 'You are no longer a member of this organization.', code: MEMBERSHIP_REQUIRED });
       }
 
       // Credit pre-flight gate — a learn job runs LLM indexing work.
@@ -1090,6 +1103,11 @@ export function createJobRoutes(deps: {
       if (notApprovedResume) {
         return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedResume.status) });
       }
+      if (!(await checkTeamMembership(userContext))) {
+        return res
+          .status(403)
+          .json({ error: 'You are no longer a member of this organization.', code: MEMBERSHIP_REQUIRED });
+      }
 
       // Credit pre-flight gate: a paused job can only resume if the account is
       // back above the minimum start floor (e.g. after a top-up). Mirrors the
@@ -1337,6 +1355,11 @@ export function createJobRoutes(deps: {
       const notApprovedContinue = await checkApproval(userContext);
       if (notApprovedContinue) {
         return res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApprovedContinue.status) });
+      }
+      if (!(await checkTeamMembership(userContext))) {
+        return res
+          .status(403)
+          .json({ error: 'You are no longer a member of this organization.', code: MEMBERSHIP_REQUIRED });
       }
 
       // Credit pre-flight gate (continue = resume-with-new-directive).

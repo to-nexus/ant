@@ -34,6 +34,7 @@ vi.mock('../../src/periphery/adapters/http/routes/helpers/jobAccess', () => ({
 vi.mock('../../src/periphery/adapters/http/routes/helpers/approvalGate', () => ({
   checkApproval: vi.fn(async () => null),
   approvalErrorCode: () => 'X',
+  checkTeamMembership: vi.fn(async () => true),
 }));
 
 vi.mock('../../src/periphery/adapters/http/express/lifecycle/finalizeTerminalJob', () => ({

@@ -3,6 +3,7 @@ import { Route, Routes, useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { AppNavBar } from '@/presentation/components/AppNavBar';
 import { ApprovalBanner } from '@/presentation/components/common/ApprovalBanner';
+import { OrgBanners } from '@/presentation/components/org/OrgBanners';
 import { fetchFeatureSession } from '@/infrastructure/http/api';
 import { useStore } from '@/domain/store';
 import { useKanban } from '@/application/hooks/features/useKanban';
@@ -145,6 +146,23 @@ function AppShell() {
     capturePairingStateFromUrl();
   }, []);
 
+  // ✅ Team invite deep link (`/app/?invite={token}`, Phase 1). Stash the
+  // token (store + sessionStorage so it survives an OAuth round-trip) and
+  // strip it from the URL; OrgBanners consumes it once authenticated.
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const inviteToken = urlParams.get('invite');
+    if (!inviteToken) return;
+    try {
+      sessionStorage.setItem('ant-ui:org:invite-token', inviteToken);
+    } catch { /* storage unavailable — the store copy still covers this page */ }
+    useStore.getState().setInviteTokenFromUrl(inviteToken);
+    urlParams.delete('invite');
+    const rest = urlParams.toString();
+    window.history.replaceState(null, '', `${location.pathname}${rest ? `?${rest}` : ''}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ✅ Handle Google OAuth callback (always relevant regardless of BE mode —
   // the URL param itself is the trigger; if a callback landed in a local-mode
   // build, the BE will simply respond 'no-session' to fetchAuthMeDetailed).
@@ -174,6 +192,7 @@ function AppShell() {
             result.needsOnboarding,
             result.suggestedOrganizationName,
           );
+          useStore.getState().setJoinSurface(result.pendingInvites, result.domainJoinableOrgs);
           if (!result.needsOnboarding) {
             useStore.getState().fetchProjects();
           }
@@ -234,6 +253,7 @@ function AppShell() {
           result.user.approvalStatus,
           result.user.testAccountLevel,
         );
+        useStore.getState().setJoinSurface(result.pendingInvites, result.domainJoinableOrgs);
         if (!hadEmail) {
           if (!result.needsOnboarding) {
             useStore.getState().fetchProjects();
@@ -603,6 +623,7 @@ function AppShell() {
         {/* ✅ GNB uses hooks directly - no props needed */}
         <AppNavBar />
         <ApprovalBanner />
+        <OrgBanners />
 
         {/* Main Layout — both views are always mounted; `display` toggles
             visibility so the IDE iframe (VSCode session + WebSocket) survives

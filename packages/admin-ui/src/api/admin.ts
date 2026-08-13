@@ -6,6 +6,9 @@ import type {
   DefaultApprovalMode,
   BalanceSnapshot,
   SystemConfigResponse,
+  AdminOrgSummary,
+  AdminOrgDetail,
+  OrgDomainClaimView,
 } from '@ant/shared';
 
 /** Same-origin API base — cookies ride automatically (`credentials: 'include'`). */
@@ -54,4 +57,15 @@ export const adminApi = {
   getConfig: () => req<AdminConfig>('GET', '/admin/config'),
   setConfig: (defaultApprovalMode: DefaultApprovalMode) =>
     req<AdminConfig>('PUT', '/admin/config', { defaultApprovalMode }),
+  // Organizations (Phase 1)
+  listOrganizations: () =>
+    req<{ organizations: AdminOrgSummary[] }>('GET', '/admin/organizations'),
+  getOrganization: (orgId: string) =>
+    req<AdminOrgDetail>('GET', `/admin/organizations/${enc(orgId)}`),
+  adminVerifyDomain: (orgId: string, domain: string) =>
+    req<{ domain: OrgDomainClaimView }>('POST', `/admin/organizations/${enc(orgId)}/domains/${enc(domain)}/verify`),
+  adminRejectDomain: (orgId: string, domain: string) =>
+    req<{ domain: OrgDomainClaimView }>('POST', `/admin/organizations/${enc(orgId)}/domains/${enc(domain)}/reject`),
+  adminForceDeleteOrg: (orgId: string) =>
+    req<{ ok: boolean }>('DELETE', `/admin/organizations/${enc(orgId)}`),
 };

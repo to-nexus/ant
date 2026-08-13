@@ -28,6 +28,8 @@ import {
 
 export interface OrgRoutesDeps {
   workspaceResolver: any;
+  /** Phase 1: membership port — team member listing SSOT when wired. */
+  organizationRepository?: import('../../../../core/ports/organizationRepository').OrganizationRepositoryPort;
 }
 
 /** Validate an email param: lowercase, single `@`, no path separators. */
@@ -121,6 +123,22 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
       }
 
       const orgId = userContext.organizationId;
+
+      // Phase 1: membership rows are the SSOT when the repo is wired — a
+      // member who never materialized a workspace directory still appears.
+      // Directory walk stays as the port-less (legacy/local-team) fallback.
+      if (deps.organizationRepository) {
+        const memberships = await deps.organizationRepository.listOrgMemberships(orgId);
+        if (memberships.length > 0) {
+          return res.json({
+            members: memberships.map((m) => ({
+              userId: m.userId,
+              isSelf: m.userId === userContext.userId,
+            })),
+          });
+        }
+      }
+
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();
       const orgPath = path.join(workspacesPath, orgId);
 

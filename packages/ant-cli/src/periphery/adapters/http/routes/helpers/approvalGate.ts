@@ -1,4 +1,5 @@
-import type { ApprovalStatus } from '@ant/shared';
+import type { ApprovalStatus, OrganizationKind } from '@ant/shared';
+import { deriveKindFromOrgId } from '@ant/shared';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { logger } from '../../../../../utils/logger';
 
@@ -29,4 +30,33 @@ export async function checkApproval(
 /** Map a non-approved status to a stable client error code. */
 export function approvalErrorCode(status: ApprovalStatus): 'ACCOUNT_DENIED' | 'ACCOUNT_PENDING_APPROVAL' {
   return status === 'denied' ? 'ACCOUNT_DENIED' : 'ACCOUNT_PENDING_APPROVAL';
+}
+
+/**
+ * Stale-JWT blockade for team orgs (Phase 1). A JWT can carry a team `org`
+ * claim for up to 7 days after the member was removed, so compute start
+ * points (job / chat) re-check the LIVE membership row. `true` = allow.
+ * Kind-dispatch: only `team` kinds have membership semantics — individual
+ * and local pass unconditionally. Soft-deleted orgs refuse too. Fail-open on
+ * infra error, mirroring `checkApproval` (if Redis is down nothing runs
+ * anyway); fail-CLOSED on a missing row (that IS the stale-JWT case).
+ */
+export async function checkTeamMembership(userContext: {
+  userId: string;
+  organizationId: string;
+  organizationKind?: OrganizationKind;
+}): Promise<boolean> {
+  const kind = userContext.organizationKind ?? deriveKindFromOrgId(userContext.organizationId);
+  if (kind !== 'team') return true;
+  try {
+    const repo = getInfrastructureFactory().getOrganizationRepository();
+    const membership = await repo.getMembership(userContext.userId, userContext.organizationId);
+    if (!membership) return false;
+    const org = await repo.getOrganization(userContext.organizationId);
+    if (!org || org.deletedAt) return false;
+    return true;
+  } catch (err) {
+    logger.warn('team membership pre-flight failed — allowing', { component: 'JobRoute' }, err as any);
+    return true;
+  }
 }

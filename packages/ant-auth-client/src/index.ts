@@ -12,6 +12,10 @@ export type {
   AuthUser,
   AuthMeResult,
   AuthBroadcastMessage,
+  OrgRole,
+  OrgMembership,
+  PendingInvite,
+  DomainJoinableOrg,
 } from './types';
 export { AUTH_BROADCAST_CHANNEL } from './types';
 

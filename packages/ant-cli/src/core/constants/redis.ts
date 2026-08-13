@@ -312,6 +312,18 @@ export const REDIS_KEYS = {
      * via SCAN on first listUsers call.
      */
     USER_INDEX: `${REDIS_DOMAINS.AUTH}:user:index`,
+    /** Team invitation record - ant:auth:invite:{id} (JSON) */
+    INVITE: `${REDIS_DOMAINS.AUTH}:invite:`,
+    /** Invite token → inviteId lookup - ant:auth:invite:byToken:{token} (string) */
+    INVITE_BY_TOKEN: `${REDIS_DOMAINS.AUTH}:invite:byToken:`,
+    /** Invite ids issued by an org (SET) - ant:auth:org:invites:{orgId} */
+    ORG_INVITES: `${REDIS_DOMAINS.AUTH}:org:invites:`,
+    /** Invite ids addressed to an email (SET) - ant:auth:invites:byEmail:{emailLower} */
+    INVITES_BY_EMAIL: `${REDIS_DOMAINS.AUTH}:invites:byEmail:`,
+    /** Org domain claim - ant:auth:domain:{domain} (JSON; domain is the global PK) */
+    DOMAIN: `${REDIS_DOMAINS.AUTH}:domain:`,
+    /** Domains claimed by an org (SET) - ant:auth:org:domains:{orgId} */
+    ORG_DOMAINS: `${REDIS_DOMAINS.AUTH}:org:domains:`,
   },
 
   /** Cloud-mode admin (ant:admin:*) */

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import { selectIsApproved } from '@/domain/store/selectors/auth';
 
@@ -9,6 +10,7 @@ import { selectIsApproved } from '@/domain/store/selectors/auth';
  * gate (403 on job/chat start).
  */
 export function ApprovalBanner() {
+  const { t } = useTranslation('common');
   const isApproved = useStore((state) => selectIsApproved(state));
   const approvalStatus = useStore((state) => state.approvalStatus);
   if (isApproved) return null;
@@ -25,8 +27,8 @@ export function ApprovalBanner() {
       }}
     >
       {denied
-        ? '이 계정은 비활성화되었습니다. 작업을 시작할 수 없습니다. 관리자에게 문의해 주세요.'
-        : '관리자 승인 대기 중입니다. 승인이 완료되면 작업과 채팅을 사용할 수 있습니다.'}
+        ? t('approval.denied', 'This account has been deactivated. You cannot start work. Please contact the operator.')
+        : t('approval.pending', 'Waiting for operator approval. Jobs and chat unlock once your account is approved.')}
     </div>
   );
 }

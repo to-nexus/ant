@@ -1,4 +1,11 @@
-import type { AuthMeResult, AuthUser, OrgKind, OrgMembership } from './types';
+import type {
+  AuthMeResult,
+  AuthUser,
+  OrgKind,
+  OrgMembership,
+  PendingInvite,
+  DomainJoinableOrg,
+} from './types';
 
 const ORG_KINDS: ReadonlySet<string> = new Set(['local', 'individual', 'team']);
 
@@ -18,7 +25,52 @@ function parseMemberships(v: unknown): OrgMembership[] {
       organizationId: r.organizationId,
       kind,
       name: typeof r.name === 'string' ? r.name : r.organizationId,
-      role: r.role === 'owner' ? 'owner' : 'member',
+      role: r.role === 'owner' ? 'owner' : r.role === 'admin' ? 'admin' : 'member',
+    });
+  }
+  return out;
+}
+
+function parsePendingInvites(v: unknown): PendingInvite[] {
+  if (!Array.isArray(v)) return [];
+  const out: PendingInvite[] = [];
+  for (const m of v) {
+    if (typeof m !== 'object' || m === null) continue;
+    const r = m as Record<string, unknown>;
+    if (
+      typeof r.id !== 'string' ||
+      typeof r.token !== 'string' ||
+      typeof r.organizationId !== 'string'
+    ) {
+      continue;
+    }
+    out.push({
+      id: r.id,
+      token: r.token,
+      organizationId: r.organizationId,
+      organizationName:
+        typeof r.organizationName === 'string' ? r.organizationName : r.organizationId,
+      role: r.role === 'admin' ? 'admin' : 'member',
+      invitedBy: typeof r.invitedBy === 'string' ? r.invitedBy : '',
+      expiresAt: typeof r.expiresAt === 'string' ? r.expiresAt : '',
+    });
+  }
+  return out;
+}
+
+function parseDomainJoinableOrgs(v: unknown): DomainJoinableOrg[] {
+  if (!Array.isArray(v)) return [];
+  const out: DomainJoinableOrg[] = [];
+  for (const m of v) {
+    if (typeof m !== 'object' || m === null) continue;
+    const r = m as Record<string, unknown>;
+    if (typeof r.organizationId !== 'string' || typeof r.domain !== 'string') continue;
+    out.push({
+      organizationId: r.organizationId,
+      organizationName:
+        typeof r.organizationName === 'string' ? r.organizationName : r.organizationId,
+      domain: r.domain,
+      autoJoinRole: r.autoJoinRole === 'admin' ? 'admin' : 'member',
     });
   }
   return out;
@@ -83,6 +135,8 @@ export async function fetchAuthMeDetailed(
     suggestedOrganizationName?: unknown;
     activeOrg?: unknown;
     memberships?: unknown;
+    pendingInvites?: unknown;
+    domainJoinableOrgs?: unknown;
   };
   const needsOnboarding = envelope.needsOnboarding === true;
   const suggestedOrganizationName =
@@ -122,6 +176,8 @@ export async function fetchAuthMeDetailed(
     },
     activeOrg,
     memberships,
+    pendingInvites: parsePendingInvites(envelope.pendingInvites),
+    domainJoinableOrgs: parseDomainJoinableOrgs(envelope.domainJoinableOrgs),
     needsOnboarding,
     suggestedOrganizationName,
   };

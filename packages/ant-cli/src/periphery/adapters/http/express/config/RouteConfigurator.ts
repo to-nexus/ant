@@ -10,7 +10,8 @@ import {
   createAccountAgentRoutes,
   createMcpCredentialRoutes,
   createAuthRoutes,
-  createAdminRoutes
+  createAdminRoutes,
+  createTeamsRoutes
 } from '../../routes';
 import { AuthService } from '../../../../../core/auth/AuthService';
 import { parseSuperAdminEmails } from '../../../../../core/auth/superAdmin';
@@ -155,6 +156,10 @@ export class RouteConfigurator {
       organizationRepository,
     });
     app.use('/api', adminRoutes);
+
+    // Team org lifecycle (creation / roles / invites / domains) — same
+    // cloud-mode gate as auth: JWT-protected, so local mode never reaches it.
+    app.use('/api', createTeamsRoutes({ organizationRepository }));
 
     // Super-admin reconcile: project `ANT_SUPER_ADMIN_EMAILS` onto DB
     // `isSuperAdmin` flags (+ force-approve). Fire-and-forget — route setup is

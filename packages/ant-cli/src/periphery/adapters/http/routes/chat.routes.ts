@@ -4,7 +4,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
-import { checkApproval, approvalErrorCode } from './helpers/approvalGate';
+import { checkApproval, approvalErrorCode, checkTeamMembership } from './helpers/approvalGate';
+import { MEMBERSHIP_REQUIRED } from '@ant/shared';
 import { ensureSubmitUserTurn } from './helpers/submitUserTurn';
 import { ChoiceService } from '../../../../infrastructure/choice';
 import type { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
@@ -127,6 +128,13 @@ export function createChatRoutes(deps: {
     const notApproved = await checkApproval(userContext);
     if (notApproved) {
       res.status(403).json({ error: 'Account is not approved.', code: approvalErrorCode(notApproved.status) });
+      return;
+    }
+
+    // Stale-JWT blockade (Phase 1): a removed team member's JWT stays valid
+    // for up to 7 days — re-check the live membership row before spawning work.
+    if (!(await checkTeamMembership(userContext))) {
+      res.status(403).json({ error: 'You are no longer a member of this organization.', code: MEMBERSHIP_REQUIRED });
       return;
     }
 

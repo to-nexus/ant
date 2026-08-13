@@ -19,6 +19,9 @@ import {
   INDIVIDUAL_ORG_ID,
   deriveKindFromOrgId,
   type OrganizationKind,
+  type OrgMembershipRole,
+  type PendingInviteView,
+  type DomainJoinableOrgView,
 } from '@ant/shared';
 
 const OIDC_STATE_TTL_SECONDS = 5 * 60; // 5 minutes
@@ -174,7 +177,7 @@ export function createAuthRoutes(deps: {
     organizationId: string;
     kind: OrganizationKind;
     name: string;
-    role: 'owner' | 'member';
+    role: OrgMembershipRole;
   };
 
   /**
@@ -205,6 +208,58 @@ export function createAuthRoutes(deps: {
         : { id: activeOrgId, kind: deriveKindFromOrgId(activeOrgId), name: activeOrgId },
       memberships,
     };
+  }
+
+  /**
+   * Org join surface for `/auth/me` (Phase 1): actionable pending invites
+   * addressed to this email, plus verified-domain one-click join candidates.
+   * Both exclude orgs the user already belongs to and soft-deleted orgs.
+   * Invite expiry is judged lazily here — stored status stays `'pending'`.
+   */
+  async function buildJoinSurface(
+    repo: OrganizationRepositoryPort,
+    userId: string,
+    email: string,
+  ): Promise<{ pendingInvites: PendingInviteView[]; domainJoinableOrgs: DomainJoinableOrgView[] }> {
+    const now = Date.now();
+    const pendingInvites: PendingInviteView[] = [];
+    const invites = await repo.listInvitesByEmail(email);
+    for (const invite of invites) {
+      if (invite.status !== 'pending') continue;
+      if (Date.parse(invite.expiresAt) <= now) continue;
+      if (await repo.getMembership(userId, invite.organizationId)) continue;
+      const org = await repo.getOrganization(invite.organizationId);
+      if (!org || org.deletedAt) continue;
+      pendingInvites.push({
+        id: invite.id,
+        token: invite.token,
+        organizationId: invite.organizationId,
+        organizationName: org.name,
+        role: invite.role,
+        invitedBy: invite.invitedBy,
+        expiresAt: invite.expiresAt,
+      });
+    }
+
+    const domainJoinableOrgs: DomainJoinableOrgView[] = [];
+    const domain = email.split('@')[1]?.toLowerCase() ?? '';
+    if (domain) {
+      const claim = await repo.getDomainClaim(domain);
+      if (claim && claim.status === 'verified') {
+        const org = await repo.getOrganization(claim.organizationId);
+        const alreadyMember = await repo.getMembership(userId, claim.organizationId);
+        if (org && !org.deletedAt && !alreadyMember) {
+          domainJoinableOrgs.push({
+            organizationId: org.id,
+            organizationName: org.name,
+            domain,
+            autoJoinRole: claim.autoJoinRole,
+          });
+        }
+      }
+    }
+
+    return { pendingInvites, domainJoinableOrgs };
   }
 
   // ========================================
@@ -443,6 +498,8 @@ export function createAuthRoutes(deps: {
         memberships: [
           { organizationId, kind: 'local' as OrganizationKind, name: organizationId, role: 'member' as const },
         ],
+        pendingInvites: [],
+        domainJoinableOrgs: [],
         needsOnboarding: false,
         suggestedOrganizationName: null,
       });
@@ -466,6 +523,8 @@ export function createAuthRoutes(deps: {
         user: null,
         activeOrg: null,
         memberships: [],
+        pendingInvites: [],
+        domainJoinableOrgs: [],
         needsOnboarding: false,
         suggestedOrganizationName: null,
       });
@@ -493,6 +552,10 @@ export function createAuthRoutes(deps: {
       const testAccountLevel = userRecord?.testAccountLevel ?? 0;
       const isAdmin = isSuperAdminEmail(payload.email);
 
+      const joinSurface = organizationRepository
+        ? await buildJoinSurface(organizationRepository, payload.sub, payload.email)
+        : { pendingInvites: [], domainJoinableOrgs: [] };
+
       res.json({
         user: {
           email: payload.email,
@@ -507,6 +570,8 @@ export function createAuthRoutes(deps: {
         },
         activeOrg: envelope.activeOrg,
         memberships: envelope.memberships,
+        pendingInvites: joinSurface.pendingInvites,
+        domainJoinableOrgs: joinSurface.domainJoinableOrgs,
         needsOnboarding: false,
         suggestedOrganizationName: null,
       });
@@ -515,6 +580,8 @@ export function createAuthRoutes(deps: {
         user: null,
         activeOrg: null,
         memberships: [],
+        pendingInvites: [],
+        domainJoinableOrgs: [],
         needsOnboarding: false,
         suggestedOrganizationName: null,
       });

@@ -362,7 +362,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   ideWorkspacePath: undefined,
   ideReloadTimestamp: 0,
   mainPanelActiveTab: 'job',
-  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false, billing: false, agentSettings: false },
+  mainPanelOpenTabs: { projectConfig: false, accountConfig: false, fileEdit: false, transfer: false, previewConfig: false, actions: false, billing: false, agentSettings: false, orgSettings: false },
   mainPanelTabOrder: [],
   actionsStep: 'pick-action' as const,
   basisEditInitialTier: undefined,

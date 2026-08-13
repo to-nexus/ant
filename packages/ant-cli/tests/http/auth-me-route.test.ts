@@ -42,6 +42,10 @@ function makeJwtService(): JwtService {
 const stubAuthService = {} as unknown as AuthService;
 const stubWorkspaceResolver = {} as unknown as WorkspaceResolver;
 
+// Optional per-test org repo — set before startApp, cleared in afterEach.
+// Most cases run repo-less (the legacy synthesized envelope).
+let currentOrgRepo: any = undefined;
+
 async function startApp(jwtService: JwtService | undefined): Promise<{
   url: string;
   close: () => Promise<void>;
@@ -54,6 +58,7 @@ async function startApp(jwtService: JwtService | undefined): Promise<{
       authService: stubAuthService,
       workspaceResolver: stubWorkspaceResolver,
       jwtService,
+      organizationRepository: currentOrgRepo,
     }),
   );
   const server = http.createServer(app);
@@ -79,6 +84,7 @@ describe('GET /api/auth/me — cloud mode', () => {
   afterEach(async () => {
     if (originalMode === undefined) delete process.env.ANT_SERVER_MODE;
     else process.env.ANT_SERVER_MODE = originalMode;
+    currentOrgRepo = undefined;
     if (app) await app.close();
   });
 
@@ -86,6 +92,8 @@ describe('GET /api/auth/me — cloud mode', () => {
     user: null,
     activeOrg: null,
     memberships: [],
+    pendingInvites: [],
+    domainJoinableOrgs: [],
     needsOnboarding: false,
     suggestedOrganizationName: null,
   };
@@ -151,6 +159,76 @@ describe('GET /api/auth/me — cloud mode', () => {
       { organizationId: 'individual', kind: 'individual', name: 'individual', role: 'member' },
     ]);
     expect(body.needsOnboarding).toBe(false);
+  });
+
+  it('carries pendingInvites + domainJoinableOrgs when the repo is wired (Phase 1)', async () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    currentOrgRepo = {
+      listMembershipsByUser: async () => [
+        { organizationId: 'individual', userId: 'bob@acme.com', role: 'member', createdAt: future },
+      ],
+      getOrganization: async (id: string) =>
+        id === 'acme'
+          ? { id: 'acme', name: 'Acme Inc', kind: 'team', ownerId: 'kim@acme.com', createdAt: future }
+          : { id, name: id, kind: 'individual', ownerId: null, createdAt: future },
+      getUser: async () => null,
+      getMembership: async () => null, // not yet a member of acme
+      listInvitesByEmail: async () => [
+        {
+          id: 'inv-1',
+          organizationId: 'acme',
+          email: 'bob@acme.com',
+          role: 'member',
+          invitedBy: 'kim@acme.com',
+          token: 'tok-1',
+          status: 'pending',
+          createdAt: future,
+          expiresAt: future,
+        },
+        // expired one must be filtered out lazily
+        {
+          id: 'inv-2',
+          organizationId: 'acme',
+          email: 'bob@acme.com',
+          role: 'member',
+          invitedBy: 'kim@acme.com',
+          token: 'tok-2',
+          status: 'pending',
+          createdAt: future,
+          expiresAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      ],
+      getDomainClaim: async (domain: string) =>
+        domain === 'acme.com'
+          ? {
+              domain: 'acme.com',
+              organizationId: 'acme',
+              claimedBy: 'kim@acme.com',
+              verificationToken: 't',
+              status: 'verified',
+              autoJoinRole: 'member',
+              createdAt: future,
+            }
+          : null,
+    };
+    const jwtService = makeJwtService();
+    const token = jwtService.sign({
+      sub: 'bob@acme.com',
+      email: 'bob@acme.com',
+      org: 'individual',
+      kind: 'individual',
+    });
+    app = await startApp(jwtService);
+    const res = await fetch(`${app.url}/api/auth/me`, {
+      headers: { Cookie: `${JwtService.cookieName}=${token}` },
+    });
+    const body = await res.json();
+    expect(body.pendingInvites).toEqual([
+      expect.objectContaining({ id: 'inv-1', organizationId: 'acme', organizationName: 'Acme Inc', token: 'tok-1' }),
+    ]);
+    expect(body.domainJoinableOrgs).toEqual([
+      { organizationId: 'acme', organizationName: 'Acme Inc', domain: 'acme.com', autoJoinRole: 'member' },
+    ]);
   });
 
   it('kind falls back to deriveKindFromOrgId when the token lacks a kind claim (BC)', async () => {
@@ -232,6 +310,8 @@ describe('GET /api/auth/me — local mode', () => {
       },
       activeOrg: { id: 'local', kind: 'local', name: 'local' },
       memberships: [{ organizationId: 'local', kind: 'local', name: 'local', role: 'member' }],
+      pendingInvites: [],
+      domainJoinableOrgs: [],
       needsOnboarding: false,
       suggestedOrganizationName: null,
     });

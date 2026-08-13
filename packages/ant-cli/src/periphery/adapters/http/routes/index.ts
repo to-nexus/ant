@@ -28,6 +28,7 @@ export { createSSERoutes } from './sse.routes';
 // alike). Only billing routes live in the `@ant/cloud` overlay.
 export { createAuthRoutes } from './auth.routes';
 export { createAdminRoutes } from './admin.routes';
+export { createTeamsRoutes } from './teams.routes';  // Team org lifecycle (Phase 1)
 export { createIDERoutes } from './ide.routes';  // Local IDE
 export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (containers)
 export { createCustomAgentRoutes } from './customAgents.routes';  // Universal custom agents/jobs
@@ -165,6 +166,9 @@ export function createApiRoutes(deps: RoutesDeps): Router {
   if (deps.workspaceResolver) {
     router.use(createOrgRoutes({
       workspaceResolver: deps.workspaceResolver,
+      // Phase 1: team member listing prefers the membership port over the
+      // directory walk (a member who never created a workspace dir still shows).
+      organizationRepository: deps.organizationRepository,
     }));
   }
 

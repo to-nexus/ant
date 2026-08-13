@@ -2,11 +2,16 @@ import { Session } from '@/domain/models/session';
 import { Feature, FileNode, PreviewStatus, KanbanData } from '@/infrastructure/http/api';
 import { JobExecution } from '@/infrastructure/http/cli';
 import type { ChatLine, OrganizationKind } from '@ant/shared';
-import type { OrgMembership as OrgMembershipView } from '@ant/auth-client/types';
+import type {
+  OrgMembership as OrgMembershipView,
+  PendingInvite as PendingInviteView,
+  DomainJoinableOrg as DomainJoinableOrgView,
+} from '@ant/auth-client/types';
 import type { BufferKey, StreamingBuffer } from '@/domain/store/selectors/chat';
 import type { ViewMode } from '@/domain/file/viewMode';
 import type { CurrentFileState } from './slices/fileSlice';
 import type { BillingSliceState } from './slices/billing.types';
+import type { OrgState } from './slices/orgSlice';
 
 // ==================
 // Store State Types
@@ -132,7 +137,8 @@ export type StaticMainPanelTab =
   | 'previewConfig'
   | 'actions'
   | 'billing'
-  | 'agentSettings';
+  | 'agentSettings'
+  | 'orgSettings';
 
 export type EditorMainPanelTabId = `editor:${string}`;
 export type MainPanelTabId = StaticMainPanelTab | EditorMainPanelTabId;
@@ -235,6 +241,7 @@ export interface UIState {
     actions: boolean;
     billing: boolean;
     agentSettings: boolean;
+    orgSettings: boolean;
   };
   mainPanelTabOrder: MainPanelTabOrderItem[];
   // Actions panel state
@@ -345,6 +352,14 @@ export interface AuthState {
    */
   memberships: OrgMembershipView[];
   /**
+   * Actionable pending invites for this email (`/auth/me`, Phase 1). Feeds
+   * the PendingInviteBanner + the switcher dot. Not persisted — replayed on
+   * every `/auth/me`.
+   */
+  pendingInvites: PendingInviteView[];
+  /** Verified-domain one-click join candidates (`/auth/me`, Phase 1). */
+  domainJoinableOrgs: DomainJoinableOrgView[];
+  /**
    * Cloud-mode JWT verification status. Mirrors the `systemConfigStatus`
    * pattern (idle/loading/ready/error) but with semantics that match the
    * lifecycle race fixed by plan `stale-session-lifecycle-cascade`:
@@ -416,14 +431,15 @@ export interface ConfigState {
 // Combined State
 // ==================
 
-export type StoreState = ProjectState & 
-  FileState & 
-  JobState & 
-  SSEState & 
-  UIState & 
-  PreviewSliceState & 
+export type StoreState = ProjectState &
+  FileState &
+  JobState &
+  SSEState &
+  UIState &
+  PreviewSliceState &
   DeploySliceState &
   BillingSliceState &
   AuthState &
+  OrgState &
   ConfigState;
 

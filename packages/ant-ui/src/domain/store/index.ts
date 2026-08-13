@@ -17,6 +17,7 @@ import { createProjectDeletionSlice, ProjectDeletionSlice } from './slices/proje
 import { createFeatureDeletionSlice, FeatureDeletionSlice } from './slices/featureDeletionSlice';
 import { createUniversalSlice, UniversalSlice } from './slices/universalSlice';
 import { createAgentSettingsSlice, AgentSettingsSlice } from './slices/agentSettingsSlice';
+import { createOrgSlice, OrgSlice } from './slices/orgSlice';
 import type { BillingSlice } from './slices/billing.types';
 import { createGitWorldSlice, type GitWorldSlice } from '../git-world';
 import { getOptionalSlices } from './registry';
@@ -42,7 +43,8 @@ export type Store = ProjectSlice &
   TransferSlice &
   BillingSlice &
   UniversalSlice &
-  AgentSettingsSlice;
+  AgentSettingsSlice &
+  OrgSlice;
 
 // Initialize persistent state from localStorage
 function initializePersistentState() {
@@ -92,6 +94,7 @@ export const useStore = create<Store>((set, get, store) => {
     ...createFeatureDeletionSlice(set, get, store),
     ...createUniversalSlice(set, get, store),
     ...createAgentSettingsSlice(set, get, store),
+    ...createOrgSlice(set, get, store),
   };
 
   // Optional cloud slices (billing today) register themselves before the store

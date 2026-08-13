@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AdminUserSummary, DefaultApprovalMode } from '@ant/shared';
 import { adminApi } from './api/admin';
 import { UserDetail } from './UserDetail';
+import { OrganizationsTab } from './OrganizationsTab';
 
 function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ${status}`}>{status}</span>;
 }
 
 export function Dashboard({ adminEmail }: { adminEmail: string }) {
+  // Tab state only — no router in this SPA by design.
+  const [view, setView] = useState<'users' | 'organizations'>('users');
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [policy, setPolicy] = useState<DefaultApprovalMode>('auto-approve');
   const [loading, setLoading] = useState(true);
@@ -49,6 +52,22 @@ export function Dashboard({ adminEmail }: { adminEmail: string }) {
         <span className="muted">{adminEmail}</span>
       </div>
 
+      <div className="tabbar">
+        <button className={`tab ${view === 'users' ? 'active' : ''}`} onClick={() => setView('users')}>
+          사용자
+        </button>
+        <button
+          className={`tab ${view === 'organizations' ? 'active' : ''}`}
+          onClick={() => setView('organizations')}
+        >
+          조직
+        </button>
+      </div>
+
+      {view === 'organizations' && <OrganizationsTab />}
+
+      {view === 'users' && (
+      <>
       <div className="card">
         <div className="row">
           <div>
@@ -111,6 +130,8 @@ export function Dashboard({ adminEmail }: { adminEmail: string }) {
           onClose={() => setSelected(null)}
           onChanged={() => void load()}
         />
+      )}
+      </>
       )}
     </div>
   );

@@ -4,7 +4,12 @@ import { AuthState, AuthStatus, SelectedJobType } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import { resolveAgentForJobType } from '@/shared/utils/constants';
 import { isNonTaskJob, type OrganizationKind } from '@ant/shared';
-import type { OrgMembership, AuthApprovalStatus } from '@ant/auth-client/types';
+import type {
+  OrgMembership,
+  AuthApprovalStatus,
+  PendingInvite,
+  DomainJoinableOrg,
+} from '@ant/auth-client/types';
 
 export interface AuthActions {
   setSelectedAgent: (agent: string) => void;
@@ -41,6 +46,12 @@ export interface AuthActions {
    * Cleared automatically by `clearUser`.
    */
   setOnboardingState: (needsOnboarding: boolean, suggestedOrganizationName: string | null) => void;
+  /**
+   * Phase 1 — org join surface from the `/auth/me` envelope (pending invites
+   * + verified-domain join candidates). Called alongside `setUser`; cleared
+   * by `clearUser`.
+   */
+  setJoinSurface: (pendingInvites: PendingInvite[], domainJoinableOrgs: DomainJoinableOrg[]) => void;
 }
 
 export type AuthSlice = AuthState & AuthActions;
@@ -66,6 +77,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   userId: undefined,
   userOrgKind: undefined,
   memberships: [],
+  pendingInvites: [],
+  domainJoinableOrgs: [],
   authStatus: initialAuthStatus,
   needsOnboarding: false,
   suggestedOrganizationName: null,
@@ -193,6 +206,9 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   setOnboardingState: (needsOnboarding, suggestedOrganizationName) =>
     set({ needsOnboarding, suggestedOrganizationName }),
 
+  setJoinSurface: (pendingInvites, domainJoinableOrgs) =>
+    set({ pendingInvites, domainJoinableOrgs }),
+
   /**
    * Single SSOT for user disappearance — used by both the explicit
    * sign-out flow (AppNavBar.handleSignOut) and the implicit stale-session
@@ -211,6 +227,8 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       userId: undefined,
       userOrgKind: undefined,
       memberships: [],
+      pendingInvites: [],
+      domainJoinableOrgs: [],
       approvalStatus: undefined,
       testAccountLevel: 0,
       authStatus: 'expired',

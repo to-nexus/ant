@@ -112,6 +112,66 @@ class FakeOrgRepo implements OrganizationRepositoryPort {
   async backfillFromWorkspaceTree() {
     return { orgsCreated: 0, usersCreated: 0, membershipsCreated: 0, skipped: 0 };
   }
+
+  // Team lifecycle / invites / domains (Phase 1) — same convention: explicit
+  // throwers so a port change surfaces here instead of orphaning the fake.
+  async createOrganization(): Promise<never> {
+    throw new Error('not used');
+  }
+  async updateOrganizationName(): Promise<never> {
+    throw new Error('not used');
+  }
+  async softDeleteOrganization(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listOrganizations(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listOrgMemberships(): Promise<never> {
+    throw new Error('not used');
+  }
+  async removeMembership(): Promise<never> {
+    throw new Error('not used');
+  }
+  async setMembershipRole(): Promise<never> {
+    throw new Error('not used');
+  }
+  async transferOwnership(): Promise<never> {
+    throw new Error('not used');
+  }
+  async createInvite(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getInvite(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getInviteByToken(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listOrgInvites(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listInvitesByEmail(): Promise<never> {
+    throw new Error('not used');
+  }
+  async updateInvite(): Promise<never> {
+    throw new Error('not used');
+  }
+  async createDomainClaim(): Promise<never> {
+    throw new Error('not used');
+  }
+  async getDomainClaim(): Promise<never> {
+    throw new Error('not used');
+  }
+  async listOrgDomains(): Promise<never> {
+    throw new Error('not used');
+  }
+  async updateDomainClaim(): Promise<never> {
+    throw new Error('not used');
+  }
+  async deleteDomainClaim(): Promise<never> {
+    throw new Error('not used');
+  }
 }
 
 interface TestApp {

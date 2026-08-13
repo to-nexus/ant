@@ -22,8 +22,10 @@ import type {
   Membership,
   MembershipRole,
   UserRecord,
+  Invitation,
+  OrgDomainClaim,
 } from '../../core/auth/types';
-import { deriveKindFromOrgId } from '@ant/shared';
+import { deriveKindFromOrgId, INDIVIDUAL_ORG_ID } from '@ant/shared';
 import type {
   ApprovalStatus,
   AdminConfig,
@@ -60,6 +62,24 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
   }
   private membershipKey(orgId: string, userId: string): string {
     return `${REDIS_KEYS.AUTH.MEMBERSHIP}${orgId}:${userId}`;
+  }
+  private inviteKey(inviteId: string): string {
+    return `${REDIS_KEYS.AUTH.INVITE}${inviteId}`;
+  }
+  private inviteByTokenKey(token: string): string {
+    return `${REDIS_KEYS.AUTH.INVITE_BY_TOKEN}${token}`;
+  }
+  private orgInvitesKey(orgId: string): string {
+    return `${REDIS_KEYS.AUTH.ORG_INVITES}${orgId}`;
+  }
+  private invitesByEmailKey(email: string): string {
+    return `${REDIS_KEYS.AUTH.INVITES_BY_EMAIL}${email.toLowerCase()}`;
+  }
+  private domainKey(domain: string): string {
+    return `${REDIS_KEYS.AUTH.DOMAIN}${domain.toLowerCase()}`;
+  }
+  private orgDomainsKey(orgId: string): string {
+    return `${REDIS_KEYS.AUTH.ORG_DOMAINS}${orgId}`;
   }
 
   // -------- Organizations --------
@@ -134,6 +154,78 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
     return matches;
   }
 
+  // -------- Teams (Phase 1) --------
+
+  async createOrganization(input: {
+    id: string;
+    name: string;
+    kind: import('@ant/shared').OrganizationKind;
+    ownerId: string;
+  }): Promise<Organization | null> {
+    const record: Organization = {
+      id: input.id,
+      name: input.name,
+      kind: input.kind,
+      ownerId: input.ownerId,
+      createdAt: nowIso(),
+    };
+    // Strict SETNX — a soft-deleted org still occupies its id (reuse would
+    // resurrect the previous org's workspace paths under a new owner).
+    const wrote = await this.redis.set(this.orgKey(input.id), JSON.stringify(record), 'NX');
+    if (wrote === null) return null;
+    await this.redis.sadd(REDIS_KEYS.AUTH.ORG_INDEX, input.id);
+    return record;
+  }
+
+  async updateOrganizationName(orgId: string, name: string): Promise<Organization | null> {
+    const org = await this.getOrganization(orgId);
+    if (!org) return null;
+    org.name = name;
+    await this.redis.set(this.orgKey(orgId), JSON.stringify(org));
+    return org;
+  }
+
+  async softDeleteOrganization(orgId: string, deletedBy: string): Promise<void> {
+    const org = await this.getOrganization(orgId);
+    if (!org || org.deletedAt) return;
+
+    const members = await this.listOrgMemberships(orgId);
+    for (const m of members) {
+      await this.removeMembership(m.userId, orgId);
+    }
+
+    const invites = await this.listOrgInvites(orgId);
+    for (const invite of invites) {
+      if (invite.status === 'pending') {
+        invite.status = 'revoked';
+        invite.revokedAt = nowIso();
+        invite.revokedBy = deletedBy;
+        await this.updateInvite(invite);
+      }
+    }
+
+    // Release domain claims so the domain becomes claimable again.
+    const domains = await this.listOrgDomains(orgId);
+    for (const claim of domains) {
+      await this.deleteDomainClaim(claim.domain);
+    }
+
+    org.deletedAt = nowIso();
+    await this.redis.set(this.orgKey(orgId), JSON.stringify(org));
+    logger.info(`[OrgRepo] soft-deleted org ${orgId} by ${deletedBy}`, { component: 'OrgRepo' });
+  }
+
+  async listOrganizations(opts?: { includeDeleted?: boolean }): Promise<Organization[]> {
+    const ids = await this.redis.smembers(REDIS_KEYS.AUTH.ORG_INDEX);
+    if (ids.length === 0) return [];
+    const orgs = (await Promise.all(ids.map((id) => this.getOrganization(id)))).filter(
+      (o): o is Organization => o !== null,
+    );
+    const visible = opts?.includeDeleted ? orgs : orgs.filter((o) => !o.deletedAt);
+    visible.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    return visible;
+  }
+
   // -------- Memberships --------
 
   async attachMembership(input: {
@@ -185,6 +277,160 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
       orgIds.map((orgId) => this.getMembership(userId, orgId)),
     );
     return memberships.filter((m): m is Membership => m !== null);
+  }
+
+  async listOrgMemberships(orgId: string): Promise<Membership[]> {
+    const userIds = await this.redis.smembers(this.orgMembersKey(orgId));
+    if (userIds.length === 0) return [];
+    const rows = await Promise.all(userIds.map((uid) => this.getMembership(uid, orgId)));
+    const memberships = rows.filter((m): m is Membership => m !== null);
+    memberships.sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+    return memberships;
+  }
+
+  async removeMembership(userId: string, orgId: string): Promise<void> {
+    const pipeline = this.redis.multi();
+    pipeline.del(this.membershipKey(orgId, userId));
+    pipeline.srem(this.orgMembersKey(orgId), userId);
+    pipeline.srem(this.userOrgsKey(userId), orgId);
+    await pipeline.exec();
+
+    // A user whose active org was just removed reverts to the shared
+    // individual org so the next JWT refresh lands on a valid tenant.
+    const user = await this.getUser(userId);
+    if (user && user.currentOrganizationId === orgId) {
+      user.currentOrganizationId = INDIVIDUAL_ORG_ID;
+      await this.redis.set(this.userKey(userId), JSON.stringify(user));
+    }
+  }
+
+  async setMembershipRole(
+    userId: string,
+    orgId: string,
+    role: MembershipRole,
+  ): Promise<Membership | null> {
+    const membership = await this.getMembership(userId, orgId);
+    if (!membership) return null;
+    membership.role = role;
+    await this.redis.set(this.membershipKey(orgId, userId), JSON.stringify(membership));
+    return membership;
+  }
+
+  async transferOwnership(orgId: string, fromUserId: string, toUserId: string): Promise<boolean> {
+    const org = await this.getOrganization(orgId);
+    if (!org || org.deletedAt) return false;
+    const from = await this.getMembership(fromUserId, orgId);
+    const to = await this.getMembership(toUserId, orgId);
+    if (!from || !to || from.role !== 'owner') return false;
+
+    from.role = 'admin';
+    to.role = 'owner';
+    org.ownerId = toUserId;
+
+    const pipeline = this.redis.multi();
+    pipeline.set(this.membershipKey(orgId, fromUserId), JSON.stringify(from));
+    pipeline.set(this.membershipKey(orgId, toUserId), JSON.stringify(to));
+    pipeline.set(this.orgKey(orgId), JSON.stringify(org));
+    await pipeline.exec();
+    return true;
+  }
+
+  // -------- Invitations (Phase 1) --------
+
+  private parseInvite(raw: string | null): Invitation | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Invitation;
+    } catch {
+      return null;
+    }
+  }
+
+  async createInvite(invite: Invitation): Promise<void> {
+    const pipeline = this.redis.multi();
+    pipeline.set(this.inviteKey(invite.id), JSON.stringify(invite));
+    pipeline.set(this.inviteByTokenKey(invite.token), invite.id);
+    pipeline.sadd(this.orgInvitesKey(invite.organizationId), invite.id);
+    pipeline.sadd(this.invitesByEmailKey(invite.email), invite.id);
+    await pipeline.exec();
+  }
+
+  async getInvite(inviteId: string): Promise<Invitation | null> {
+    return this.parseInvite(await this.redis.get(this.inviteKey(inviteId)));
+  }
+
+  async getInviteByToken(token: string): Promise<Invitation | null> {
+    const inviteId = await this.redis.get(this.inviteByTokenKey(token));
+    if (!inviteId) return null;
+    return this.getInvite(inviteId);
+  }
+
+  async listOrgInvites(orgId: string): Promise<Invitation[]> {
+    const ids = await this.redis.smembers(this.orgInvitesKey(orgId));
+    if (ids.length === 0) return [];
+    const invites = (await Promise.all(ids.map((id) => this.getInvite(id)))).filter(
+      (i): i is Invitation => i !== null,
+    );
+    invites.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    return invites;
+  }
+
+  async listInvitesByEmail(email: string): Promise<Invitation[]> {
+    const ids = await this.redis.smembers(this.invitesByEmailKey(email));
+    if (ids.length === 0) return [];
+    const invites = (await Promise.all(ids.map((id) => this.getInvite(id)))).filter(
+      (i): i is Invitation => i !== null,
+    );
+    invites.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+    return invites;
+  }
+
+  async updateInvite(invite: Invitation): Promise<void> {
+    await this.redis.set(this.inviteKey(invite.id), JSON.stringify(invite));
+  }
+
+  // -------- Domain claims (Phase 1) --------
+
+  async createDomainClaim(claim: OrgDomainClaim): Promise<OrgDomainClaim | null> {
+    // SETNX on the global domain PK — one org per domain, first writer wins.
+    const wrote = await this.redis.set(this.domainKey(claim.domain), JSON.stringify(claim), 'NX');
+    if (wrote === null) return null;
+    await this.redis.sadd(this.orgDomainsKey(claim.organizationId), claim.domain);
+    return claim;
+  }
+
+  async getDomainClaim(domain: string): Promise<OrgDomainClaim | null> {
+    const raw = await this.redis.get(this.domainKey(domain));
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as OrgDomainClaim;
+    } catch {
+      return null;
+    }
+  }
+
+  async listOrgDomains(orgId: string): Promise<OrgDomainClaim[]> {
+    const domains = await this.redis.smembers(this.orgDomainsKey(orgId));
+    if (domains.length === 0) return [];
+    const claims = (await Promise.all(domains.map((d) => this.getDomainClaim(d)))).filter(
+      (c): c is OrgDomainClaim => c !== null,
+    );
+    claims.sort((a, b) => (a.createdAt ?? '').localeCompare(b.createdAt ?? ''));
+    return claims;
+  }
+
+  async updateDomainClaim(claim: OrgDomainClaim): Promise<void> {
+    await this.redis.set(this.domainKey(claim.domain), JSON.stringify(claim));
+  }
+
+  async deleteDomainClaim(domain: string): Promise<void> {
+    const claim = await this.getDomainClaim(domain);
+    const pipeline = this.redis.multi();
+    pipeline.del(this.domainKey(domain));
+    if (claim) {
+      pipeline.srem(this.orgDomainsKey(claim.organizationId), domain);
+    }
+    await pipeline.exec();
   }
 
   // -------- Users --------

@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot } from 'lucide-react';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot, Building2 } from 'lucide-react';
 import { TabButton, type TabAccent } from './components/TabButton';
 
 const TAB_ACCENTS = {
@@ -13,6 +13,7 @@ const TAB_ACCENTS = {
   fileEdit: 'pink-orange',
   billing: 'violet-pink',
   agentSettings: 'violet-pink',
+  orgSettings: 'cool',
 } as const satisfies Record<string, TabAccent>;
 import { JobIdDropdown } from './components/JobIdDropdown';
 import { EditorTabActions } from './components/EditorTabActions';
@@ -54,7 +55,7 @@ export function MainPanelTabsBar() {
   const getJobTabLabel = () => t('tabs.job');
 
   const renderStaticTab = (
-    tabKey: 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings',
+    tabKey: 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings' | 'orgSettings',
   ) => {
     if (!openTabs[tabKey]) return null;
 
@@ -66,6 +67,7 @@ export function MainPanelTabsBar() {
       actions: { icon: Zap, label: t('tabs.actions', 'Actions') },
       billing: { icon: Coins, label: t('tabs.billing', 'Billing') },
       agentSettings: { icon: Bot, label: t('tabs.agentSettings', 'Agent Settings') },
+      orgSettings: { icon: Building2, label: t('tabs.orgSettings', 'Organization') },
     };
     const config = tabConfig[tabKey];
     if (!config) return null;
@@ -138,7 +140,7 @@ export function MainPanelTabsBar() {
         {tabOrder.map((tabKey) => (
           isEditorTabId(tabKey)
             ? renderEditorTab(tabKey)
-            : renderStaticTab(tabKey as 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings')
+            : renderStaticTab(tabKey as 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings' | 'orgSettings')
         ))}
       </div>
     ),

@@ -24,9 +24,19 @@ import type {
   AdminUserListResponse,
   ApprovalStatus,
   DefaultApprovalMode,
+  AdminOrgSummary,
+  AdminOrgDetail,
 } from '@ant/shared';
-import { ADMIN_REQUIRED, CREDIT_LEDGER_MAX_ENTRIES, INDIVIDUAL_ORG_ID } from '@ant/shared';
+import {
+  ADMIN_REQUIRED,
+  CREDIT_LEDGER_MAX_ENTRIES,
+  INDIVIDUAL_ORG_ID,
+  ORG_NOT_FOUND,
+  DOMAIN_NOT_FOUND,
+} from '@ant/shared';
 import { isSuperAdminEmail } from '../../../../core/auth/superAdmin';
+import { toInviteView, toDomainClaimView, buildMemberViews } from './teams.routes';
+import type { Organization } from '../../../../core/auth/types';
 import { logger } from '../../../../utils/logger';
 
 export interface AdminRoutesDeps {
@@ -157,6 +167,119 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   // NOTE: POST /admin/users/:userId/refund (billing-axis, mutates the ledger)
   // lives in the @ant/cloud overlay (`admin-billing.routes.ts`) — absent on
   // self-hosted deployments where the ledger is Noop.
+
+  // ======== Organizations (superadmin oversight — Phase 1) ========
+
+  async function toOrgSummary(org: Organization): Promise<AdminOrgSummary> {
+    const [members, domains] = await Promise.all([
+      organizationRepository.listOrgMemberships(org.id),
+      organizationRepository.listOrgDomains(org.id),
+    ]);
+    return {
+      id: org.id,
+      name: org.name,
+      kind: org.kind ?? 'team',
+      ownerId: org.ownerId,
+      memberCount: members.length,
+      domainCount: domains.length,
+      createdAt: org.createdAt,
+      ...(org.deletedAt ? { deletedAt: org.deletedAt } : {}),
+    };
+  }
+
+  // GET /admin/organizations → AdminOrgSummary[] (soft-deleted included)
+  router.get('/admin/organizations', async (_req: Request, res: Response) => {
+    try {
+      const orgs = await organizationRepository.listOrganizations({ includeDeleted: true });
+      res.json({ organizations: await Promise.all(orgs.map((o) => toOrgSummary(o))) });
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
+
+  // GET /admin/organizations/:orgId → AdminOrgDetail
+  router.get('/admin/organizations/:orgId', async (req: Request, res: Response) => {
+    try {
+      const org = await organizationRepository.getOrganization(req.params.orgId);
+      if (!org) {
+        res.status(404).json({ error: 'organization not found', code: ORG_NOT_FOUND });
+        return;
+      }
+      const [summary, memberships, invites, domains] = await Promise.all([
+        toOrgSummary(org),
+        organizationRepository.listOrgMemberships(org.id),
+        organizationRepository.listOrgInvites(org.id),
+        organizationRepository.listOrgDomains(org.id),
+      ]);
+      const detail: AdminOrgDetail = {
+        ...summary,
+        members: await buildMemberViews(organizationRepository, memberships),
+        invites: invites.map(toInviteView),
+        domains: domains.map(toDomainClaimView),
+      };
+      res.json(detail);
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
+
+  // POST /admin/organizations/:orgId/domains/:domain/verify — manual verify
+  // (path c of decision 6). `verifiedBy` records the operator email.
+  router.post('/admin/organizations/:orgId/domains/:domain/verify', async (req: Request, res: Response) => {
+    try {
+      const claim = await organizationRepository.getDomainClaim(req.params.domain.toLowerCase());
+      if (!claim || claim.organizationId !== req.params.orgId) {
+        res.status(404).json({ error: 'domain claim not found', code: DOMAIN_NOT_FOUND });
+        return;
+      }
+      const adminEmail = (req as any).user?.email as string;
+      claim.status = 'verified';
+      claim.verifiedAt = new Date().toISOString();
+      claim.verifiedBy = adminEmail;
+      await organizationRepository.updateDomainClaim(claim);
+      logger.info(`[Admin] domain ${claim.domain} manually verified by ${adminEmail}`, { component: 'Admin' });
+      res.json({ domain: toDomainClaimView(claim) });
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
+
+  // POST /admin/organizations/:orgId/domains/:domain/reject — superadmin verdict
+  router.post('/admin/organizations/:orgId/domains/:domain/reject', async (req: Request, res: Response) => {
+    try {
+      const claim = await organizationRepository.getDomainClaim(req.params.domain.toLowerCase());
+      if (!claim || claim.organizationId !== req.params.orgId) {
+        res.status(404).json({ error: 'domain claim not found', code: DOMAIN_NOT_FOUND });
+        return;
+      }
+      const adminEmail = (req as any).user?.email as string;
+      claim.status = 'rejected';
+      claim.verifiedAt = new Date().toISOString();
+      claim.verifiedBy = adminEmail;
+      await organizationRepository.updateDomainClaim(claim);
+      logger.info(`[Admin] domain ${claim.domain} rejected by ${adminEmail}`, { component: 'Admin' });
+      res.json({ domain: toDomainClaimView(claim) });
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
+
+  // DELETE /admin/organizations/:orgId — force soft-delete cascade
+  router.delete('/admin/organizations/:orgId', async (req: Request, res: Response) => {
+    try {
+      const org = await organizationRepository.getOrganization(req.params.orgId);
+      if (!org) {
+        res.status(404).json({ error: 'organization not found', code: ORG_NOT_FOUND });
+        return;
+      }
+      const adminEmail = (req as any).user?.email as string;
+      await organizationRepository.softDeleteOrganization(org.id, adminEmail);
+      logger.info(`[Admin] force-deleted org ${org.id} by ${adminEmail}`, { component: 'Admin' });
+      res.json({ ok: true });
+    } catch (err) {
+      sendErrorResponse(res, 500, err, 'Admin');
+    }
+  });
 
   // GET /admin/config → AdminConfig
   router.get('/admin/config', async (_req: Request, res: Response) => {

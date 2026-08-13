@@ -87,10 +87,37 @@ export function selectIsApproved(state: StoreState): boolean {
   return s !== 'pending' && s !== 'denied';
 }
 
-/** Role in the active org (`'owner' | 'member'`), from memberships. */
-export function selectActiveUserRole(state: StoreState): 'owner' | 'member' | undefined {
+/** Role in the active org (3-role ladder), from memberships. */
+export function selectActiveUserRole(state: StoreState): 'owner' | 'admin' | 'member' | undefined {
   const m = state.memberships.find((x) => x.organizationId === state.userOrganization);
   return m?.role;
+}
+
+/** Is the active org a team? Gates every org-settings surface (kind-dispatch). */
+export function selectIsTeamActive(state: StoreState): boolean {
+  return state.userOrgKind === 'team';
+}
+
+/** admin+ (admin or owner) in the ACTIVE team org — gates manage surfaces. */
+export function selectIsOrgAdmin(state: StoreState): boolean {
+  if (!selectIsTeamActive(state)) return false;
+  const role = selectActiveUserRole(state);
+  return role === 'owner' || role === 'admin';
+}
+
+/**
+ * Pending invites not yet dismissed from the banner (the switcher dot still
+ * counts ALL pending invites — dismissal hides the strip, not the fact).
+ */
+export function selectVisiblePendingInvites(state: StoreState) {
+  return state.pendingInvites.filter((i) => !state.dismissedInviteIds.includes(i.id));
+}
+
+/** Domain-join candidates whose banner wasn't dismissed for that org. */
+export function selectVisibleDomainJoinableOrgs(state: StoreState) {
+  return state.domainJoinableOrgs.filter(
+    (d) => !state.dismissedDomainOrgIds.includes(d.organizationId),
+  );
 }
 
 /**

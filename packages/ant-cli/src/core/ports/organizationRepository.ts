@@ -13,7 +13,14 @@
  * them with the same inputs MUST converge on the same state.
  */
 
-import type { Organization, Membership, MembershipRole, UserRecord } from '../auth/types';
+import type {
+  Organization,
+  Membership,
+  MembershipRole,
+  UserRecord,
+  Invitation,
+  OrgDomainClaim,
+} from '../auth/types';
 import type {
   OrganizationKind,
   ApprovalStatus,
@@ -56,6 +63,32 @@ export interface OrganizationRepositoryPort {
    */
   searchOrganizations(query: string, limit: number): Promise<OrganizationSummary[]>;
 
+  /**
+   * Strict team creation (Phase 1) — SETNX semantics. Returns `null` when an
+   * org with that id already exists (HTTP 409 `ORG_ID_TAKEN` at the route).
+   * Unlike `getOrCreateOrganization`, an existing record is NEVER "joined".
+   */
+  createOrganization(input: {
+    id: string;
+    name: string;
+    kind: OrganizationKind;
+    ownerId: string;
+  }): Promise<Organization | null>;
+
+  /** Rename (display name only — the id/slug is immutable). Null when absent. */
+  updateOrganizationName(orgId: string, name: string): Promise<Organization | null>;
+
+  /**
+   * Soft-delete cascade: stamps `deletedAt`, detaches every membership
+   * (members' `currentOrganizationId` reverts to the shared individual org),
+   * revokes pending invites, and releases domain claims. The org record and
+   * workspace directories are preserved (no hard purge in Phase 1).
+   */
+  softDeleteOrganization(orgId: string, deletedBy: string): Promise<void>;
+
+  /** Superadmin enumeration of every org (soft-deleted included when asked). */
+  listOrganizations(opts?: { includeDeleted?: boolean }): Promise<Organization[]>;
+
   // -------- Memberships --------
 
   /**
@@ -80,6 +113,66 @@ export interface OrganizationRepositoryPort {
    * switcher / `/auth/me` envelope. Order is unspecified.
    */
   listMembershipsByUser(userId: string): Promise<Membership[]>;
+
+  /** Every membership of one org (member management list). */
+  listOrgMemberships(orgId: string): Promise<Membership[]>;
+
+  /**
+   * Detach a membership (leave / admin removal). When the removed user's
+   * `currentOrganizationId` pointed at this org, it reverts to the shared
+   * individual org. Idempotent — absent membership is a no-op.
+   */
+  removeMembership(userId: string, orgId: string): Promise<void>;
+
+  /** Change a member's role. Null when the membership does not exist. */
+  setMembershipRole(
+    userId: string,
+    orgId: string,
+    role: MembershipRole,
+  ): Promise<Membership | null>;
+
+  /**
+   * Atomic ownership transfer: `fromUserId` owner→admin, `toUserId` →owner,
+   * `Organization.ownerId` = toUserId. False when either membership is
+   * missing or `fromUserId` is not the current owner.
+   */
+  transferOwnership(orgId: string, fromUserId: string, toUserId: string): Promise<boolean>;
+
+  // -------- Invitations (Phase 1) --------
+
+  /** Persist a new invite (id/token uniqueness is caller-generated crypto). */
+  createInvite(invite: Invitation): Promise<void>;
+
+  getInvite(inviteId: string): Promise<Invitation | null>;
+
+  getInviteByToken(token: string): Promise<Invitation | null>;
+
+  /** Every invite an org has issued (all statuses; expiry judged lazily). */
+  listOrgInvites(orgId: string): Promise<Invitation[]>;
+
+  /** Every invite addressed to an email (for `/auth/me` pendingInvites). */
+  listInvitesByEmail(email: string): Promise<Invitation[]>;
+
+  /** Full-record update (accept / revoke transitions). */
+  updateInvite(invite: Invitation): Promise<void>;
+
+  // -------- Domain claims (Phase 1) --------
+
+  /**
+   * Claim a domain — SETNX on the global `domain` PK. Returns `null` when the
+   * domain is already claimed by ANY org (HTTP 409 `DOMAIN_ALREADY_CLAIMED`).
+   */
+  createDomainClaim(claim: OrgDomainClaim): Promise<OrgDomainClaim | null>;
+
+  getDomainClaim(domain: string): Promise<OrgDomainClaim | null>;
+
+  listOrgDomains(orgId: string): Promise<OrgDomainClaim[]>;
+
+  /** Full-record update (verify / reject transitions). */
+  updateDomainClaim(claim: OrgDomainClaim): Promise<void>;
+
+  /** Release a claim (owner delete / superadmin reject cleanup). Idempotent. */
+  deleteDomainClaim(domain: string): Promise<void>;
 
   // -------- Users --------
 

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
@@ -44,6 +44,9 @@ export function AppNavBar({}: AppNavBarProps) {
   const userPicture = useStore((state) => state.userPicture);
   const clearUser = useStore((state) => state.clearUser);
   const serverMode = useStore((state) => selectServerMode(state));
+  const userOrgKind = useStore((state) => state.userOrgKind);
+  const pendingInvites = useStore((state) => state.pendingInvites);
+  const undismissAllInvites = useStore((state) => state.undismissAllInvites);
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
   const setOnboardingSkipped = useStore((state) => state.setOnboardingSkipped);
   const setQuickStartProjectId = useStore((state) => state.setQuickStartProjectId);
@@ -461,19 +464,28 @@ export function AppNavBar({}: AppNavBarProps) {
                         >
                           {orgDisplayLabel}
                         </span>
-                        {userPicture ? (
-                          <img
-                            src={userPicture}
-                            alt=""
-                            referrerPolicy="no-referrer"
-                            className="w-5 h-5 rounded-full object-cover"
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <User className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
-                        )}
+                        <span className="relative inline-flex">
+                          {userPicture ? (
+                            <img
+                              src={userPicture}
+                              alt=""
+                              referrerPolicy="no-referrer"
+                              className="w-5 h-5 rounded-full object-cover"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <User className="w-4 h-4" style={{ color: 'var(--text-3)' }} />
+                          )}
+                          {pendingInvites.length > 0 && (
+                            <span
+                              className="absolute -top-0.5 -right-0.5 rounded-full"
+                              style={{ width: 6, height: 6, background: 'var(--violet-500)' }}
+                              aria-label={t('auth.pendingInvitesDot', 'Pending invites')}
+                            />
+                          )}
+                        </span>
                         <span
                           className="hidden sm:inline text-xs font-semibold"
                           style={{ color: 'var(--text-1)' }}
@@ -510,13 +522,48 @@ export function AppNavBar({}: AppNavBarProps) {
                             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
                           >
-                            <User className="w-4 h-4" />
-                            <span className="truncate">{m.kind === 'individual' ? 'Individual' : m.name}</span>
+                            {m.kind === 'team' ? (
+                              <span
+                                className="inline-flex items-center justify-center rounded-full shrink-0 font-semibold"
+                                style={{ width: 20, height: 20, fontSize: 9, color: '#fff', background: 'var(--gradient-cool)' }}
+                              >
+                                {m.name.slice(0, 2).toUpperCase()}
+                              </span>
+                            ) : (
+                              <User className="w-4 h-4" />
+                            )}
+                            <span className="min-w-0">
+                              <span className="block truncate">{m.kind === 'individual' ? 'Individual' : m.name}</span>
+                              {m.kind === 'team' && (
+                                <span className="block text-[10px]" style={{ color: 'var(--text-4)' }}>
+                                  {m.role === 'owner'
+                                    ? t('auth.roleOwner', 'Owner')
+                                    : m.role === 'admin'
+                                      ? t('auth.roleAdmin', 'Admin')
+                                      : t('auth.roleMember', 'Member')}
+                                </span>
+                              )}
+                            </span>
                             {m.organizationId === userOrganization && (
-                              <Check className="w-3.5 h-3.5 ml-auto" style={{ color: 'var(--violet-500)' }} />
+                              <Check className="w-3.5 h-3.5 ml-auto shrink-0" style={{ color: 'var(--violet-500)' }} />
                             )}
                           </button>
                         ))}
+                        {pendingInvites.length > 0 && (
+                          <button
+                            onClick={() => {
+                              undismissAllInvites();
+                              setShowUserMenu(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-xs flex items-center gap-2"
+                            style={{ color: 'var(--violet-400, #a78bfa)' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                            {t('auth.pendingInvitesRow', '{{count}} pending invite(s)', { count: pendingInvites.length })}
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setShowCreateTeam(true);
@@ -531,6 +578,23 @@ export function AppNavBar({}: AppNavBarProps) {
                           {t('auth.createTeam', 'Create team')}
                         </button>
                         <div className="my-1" style={{ height: 1, background: 'var(--border-1)' }}></div>
+                        {userOrgKind === 'team' && (
+                          <button
+                            onClick={() => {
+                              setQuickStartProjectId(undefined);
+                              setOnboardingSkipped(true);
+                              openMainPanelTab('orgSettings');
+                              setShowUserMenu(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm flex items-center gap-2"
+                            style={{ color: 'var(--text-2)' }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            <Building2 className="w-4 h-4" />
+                            {t('auth.orgSettings', 'Organization settings')}
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setQuickStartProjectId(undefined);

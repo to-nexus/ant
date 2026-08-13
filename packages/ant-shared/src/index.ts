@@ -47,6 +47,7 @@ export * from './clarify-policy-matrix';
 export * from './deploy';
 export * from './preview';
 export * from './org';
+export * from './orgTeam';
 export * from './sse-events';
 export * from './verification-scenario';
 export * from './git';

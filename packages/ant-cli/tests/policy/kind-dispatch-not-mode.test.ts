@@ -34,6 +34,19 @@ describe('kind-dispatch (not mode) policy', () => {
     expect(src).toMatch(/organizationKind/);
   });
 
+  it('teams.routes (Phase 1) dispatches on org kind, never on server mode', () => {
+    const src = read('src/periphery/adapters/http/routes/teams.routes.ts');
+    expect(src).not.toMatch(/isLocalServerMode/);
+    // Non-team orgs (individual/local) are indistinguishable 404s.
+    expect(src).toMatch(/!== 'team'/);
+  });
+
+  it('checkTeamMembership gate is kind-dispatched (team only), not mode-gated', () => {
+    const src = read('src/periphery/adapters/http/routes/helpers/approvalGate.ts');
+    expect(src).not.toMatch(/isLocalServerMode/);
+    expect(src).toMatch(/kind !== 'team'/);
+  });
+
   it('the individual members browse is self-only (no shared-org enumeration leak)', () => {
     const src = read('src/periphery/adapters/http/routes/org.routes.ts');
     // The members route returns self-only for any non-team kind; enumeration

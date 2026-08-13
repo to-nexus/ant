@@ -113,5 +113,9 @@
     "moreTitle": "{{count}}개 더",
     "ariaLabel": "컨텍스트 {{totalPct}}, 프롬프트 {{prompt}}, 최대 {{max}}",
     "ariaLabelWithTitle": "{{title}}, 컨텍스트 {{totalPct}}, 프롬프트 {{prompt}}, 최대 {{max}}"
+  },
+  "approval": {
+    "denied": "이 계정은 비활성화되었습니다. 작업을 시작할 수 없습니다. 관리자에게 문의해 주세요.",
+    "pending": "관리자 승인 대기 중입니다. 승인이 완료되면 작업과 채팅을 사용할 수 있습니다."
   }
 }

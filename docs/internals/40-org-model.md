@@ -13,7 +13,7 @@ discriminator (`@ant/shared` `OrganizationKind`):
 |---|---|---|---|---|
 | `local` | local-mode tenant | `local` | `local` | `workspaces/local/` |
 | `individual` | shared cloud org — every cloud signup joins it today | `individual` | full email | `workspaces/individual/{email}/` |
-| `team` | future cloud org subscriber (admin/join **deferred**) | slug/domain | full email | `workspaces/{team-id}/{email}/` |
+| `team` | cloud team org — creation/roles/invites/domains **live (Phase 1)** | slug (user-authored) | full email | `workspaces/{team-id}/{email}/` |
 
 `deriveKindFromOrgId(orgId)` is the safety-net classifier for tokens predating
 the explicit `kind` claim: `local`→local, `individual`→individual, `personal-*`
@@ -53,19 +53,75 @@ Vercel / Slack. The data model already supports this:
 `Membership { userId, organizationId, role }` + `UserRecord.currentOrganizationId`
 (the JWT `org` claim).
 
-**This iteration ships the switch FOUNDATION** (team join itself is deferred):
+The switch foundation:
 
 - `OrganizationRepositoryPort.listMembershipsByUser(userId)` over the by-user
   index (`ant:auth:user:orgs:{userId}`).
-- `/auth/me` returns `{ user{…,kind}, activeOrg{id,kind,name}, memberships[] }`.
+- `/auth/me` returns `{ user{…,kind}, activeOrg{id,kind,name}, memberships[],
+  pendingInvites[], domainJoinableOrgs[] }` (the last two are the Phase 1 join
+  surface — actionable invites addressed to this email + verified-domain
+  one-click join candidates, both excluding orgs already joined).
 - `POST /api/auth/switch-org { organizationId }` validates membership →
   updates `currentOrganizationId` → re-issues the JWT with the new `org`+`kind`.
 - FE: `AppNavBar` shows the active account (kind-aware label) and, when
   `memberships.length > 1`, a switcher dropdown.
 
-Today every user has exactly one membership (`individual`), so the switcher
-renders as a static label and `switch-org`'s only legal target is self. **Deferred:**
-team create/join/admin + the post-login multi-org selection prompt.
+## Team lifecycle (Phase 1 — live)
+
+Team orgs are creatable and manageable through OSS routes
+(`periphery/adapters/http/routes/teams.routes.ts`, mounted cloud-mode only —
+self-hosted and managed identically). Local mode never reaches them
+(JWT-protected; kind-dispatch, not a mode branch).
+
+**Roles**: `MembershipRole = 'owner' | 'admin' | 'member'`
+(`@ant/shared/orgTeam.ts` is the wire SSOT). Gate matrix — authorization always
+reads the LIVE membership row, never the JWT `org` claim:
+
+| action | minimum role |
+|---|---|
+| invite(member) · invite list · revoke · remove(member) · rename · domain claim/verify | admin |
+| invite(admin) · remove(admin) · role change · domain delete · ownership transfer · org delete (sole member only) | owner |
+| leave | member/admin — owner gets 403 `OWNER_MUST_TRANSFER` |
+
+**Creation** (`POST /api/organizations`): open to every APPROVED account
+(decision: open creation + post-hoc superadmin control). `slugify` rejects
+reserved names; the `personal-` prefix is additionally reserved (would
+misclassify under `deriveKindFromOrgId`). SETNX — a taken id is 409
+`ORG_ID_TAKEN`; a soft-deleted org still occupies its id (reuse would resurrect
+its workspace tree). Creation never auto-switches; activation is the explicit
+`switch-org`.
+
+**Invites**: link-delivery v1 (`/app/?invite={token}`) — no email infra. Stored
+at `ant:auth:invite:{id}` (+ byToken / org / byEmail indexes), 14-day TTL judged
+LAZILY on read (stored status never becomes `expired`). Acceptance enforces
+exact invitee-email match (403 `INVITE_EMAIL_MISMATCH`); an already-member
+acceptor gets 200 `{ alreadyMember: true }` (FE switch prompt, not an error).
+
+**Domain claims** (`ant:auth:domain:{domain}`, domain = global PK, one org per
+domain): three verification paths — (a) claimant's login email host exactly
+matches the domain (consumer domains blocked) ⇒ instant `verified`
+(`verifiedBy:'email'`); (b) DNS TXT `_ant-challenge.{domain}` (reuses the deploy
+custom-domain `verification.ts`), explicit verify only, no polling; (c)
+superadmin manual verify/reject via `/admin/organizations/...`. Verified claims
+power one-click join (`join-by-domain` re-validates server-side; grants
+`autoJoinRole`, default member).
+
+**Stale-JWT blockade**: a removed member's JWT stays valid up to 7 days —
+`checkTeamMembership` (`routes/helpers/approvalGate.ts`) re-checks the live row
+at every compute start (chat user-message, job start/learn/resume/continue) and
+403s `MEMBERSHIP_REQUIRED`. Kind-dispatched: only `team` is checked; fail-open
+on infra error (mirrors `checkApproval`), fail-closed on a missing row.
+
+**Deletion** is a soft-delete cascade (`softDeleteOrganization`): stamp
+`deletedAt` → detach every membership (each member's
+`currentOrganizationId` reverts to `individual`) → revoke pending invites →
+release domain claims. Workspace directories are preserved. Owner self-delete
+requires sole membership (409 `ORG_NOT_EMPTY`); superadmin force-delete has no
+such guard. Deleted orgs are indistinguishable 404s on every team route.
+
+**Org-admin approval seam**: team membership itself is the org-level
+authorization; the account-level `approvalStatus` stays superadmin-owned and
+orthogonal.
 
 ## Member / search dispatch (file transfer)
 
@@ -119,7 +175,12 @@ into the new identity. Pre-launch alternative: wipe the legacy cloud trees +
   collision fix; `assertColonFreeUserId`.
 - `tests/auth/organization-repository.test.ts` — `listMembershipsByUser`,
   `searchOrganizations` excludes individual.
-- `tests/http/auth-me-route.test.ts` — envelope (`activeOrg`/`memberships`/`kind`).
+- `tests/http/auth-me-route.test.ts` — envelope (`activeOrg`/`memberships`/`kind`
+  + Phase 1 `pendingInvites`/`domainJoinableOrgs` with lazy-expiry filtering).
+- `tests/http/team-routes.test.ts` — role-gate truth table, invite acceptance
+  edges (mismatch/expired/revoked/already-member), owner-leave 403,
+  domain fast-path/TXT/global-uniqueness, join-by-domain re-validation,
+  soft-delete cascade.
 - `tests/http/org-individual-policy.test.ts` — lookup (404-as-null) + visibility config.
 - `tests/policy/kind-dispatch-not-mode.test.ts` — no `isLocalServerMode` business gate.
 - `tests/deploy/deployVisibilityGate.test.ts` — 404-not-403 private gate.

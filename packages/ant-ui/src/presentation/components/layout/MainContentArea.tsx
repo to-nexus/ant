@@ -6,6 +6,7 @@ import { AgentWorkflowBoard } from '../workflow';
 import { ConfigEditor } from '../ConfigEditor';
 import { AccountConfigEditor } from '../AccountConfigEditor';
 import { AgentSettings } from '../AgentSettings';
+import { OrgSettingsPanel } from '../org/OrgSettingsPanel';
 import { FileEditorPanel } from '../FileEditorPanel';
 import { TransferTab } from '../Transfer/TransferTab';
 import { PreviewConfigEditor } from '../PreviewConfigEditor';
@@ -229,6 +230,17 @@ export function MainContentArea({
         >
           <AgentSettings
             onClose={() => useStore.getState().closeMainPanelTab('agentSettings')}
+          />
+        </div>
+      ) : activeTab === 'orgSettings' && openTabs.orgSettings ? (
+        // Org settings (Phase 1) — static OSS panel, account-scoped like
+        // agentSettings. The entry point is kind-gated (team only).
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-canvas)' }}
+        >
+          <OrgSettingsPanel
+            onClose={() => useStore.getState().closeMainPanelTab('orgSettings')}
           />
         </div>
       ) : (

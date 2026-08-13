@@ -1,4 +1,10 @@
-import type { Organization, Membership, UserRecord } from '../../../core/auth/types';
+import type {
+  Organization,
+  Membership,
+  UserRecord,
+  Invitation,
+  OrgDomainClaim,
+} from '../../../core/auth/types';
 import type {
   OrganizationRepositoryPort,
   OrganizationSummary,
@@ -31,6 +37,84 @@ export class NoopOrganizationRepository implements OrganizationRepositoryPort {
 
   async searchOrganizations(): Promise<OrganizationSummary[]> {
     return [];
+  }
+
+  // -------- Teams (local = no org concept; reads empty, writes refuse) --------
+
+  async createOrganization(): Promise<Organization | null> {
+    return null;
+  }
+
+  async updateOrganizationName(): Promise<Organization | null> {
+    return null;
+  }
+
+  async softDeleteOrganization(): Promise<void> {
+    // intentional no-op
+  }
+
+  async listOrganizations(): Promise<Organization[]> {
+    return [];
+  }
+
+  async listOrgMemberships(): Promise<Membership[]> {
+    return [];
+  }
+
+  async removeMembership(): Promise<void> {
+    // intentional no-op
+  }
+
+  async setMembershipRole(): Promise<Membership | null> {
+    return null;
+  }
+
+  async transferOwnership(): Promise<boolean> {
+    return false;
+  }
+
+  async createInvite(): Promise<void> {
+    // intentional no-op
+  }
+
+  async getInvite(): Promise<Invitation | null> {
+    return null;
+  }
+
+  async getInviteByToken(): Promise<Invitation | null> {
+    return null;
+  }
+
+  async listOrgInvites(): Promise<Invitation[]> {
+    return [];
+  }
+
+  async listInvitesByEmail(): Promise<Invitation[]> {
+    return [];
+  }
+
+  async updateInvite(): Promise<void> {
+    // intentional no-op
+  }
+
+  async createDomainClaim(): Promise<OrgDomainClaim | null> {
+    return null;
+  }
+
+  async getDomainClaim(): Promise<OrgDomainClaim | null> {
+    return null;
+  }
+
+  async listOrgDomains(): Promise<OrgDomainClaim[]> {
+    return [];
+  }
+
+  async updateDomainClaim(): Promise<void> {
+    // intentional no-op
+  }
+
+  async deleteDomainClaim(): Promise<void> {
+    // intentional no-op
   }
 
   async attachMembership(input: {
