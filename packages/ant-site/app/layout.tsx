@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { SiteNavBar } from '@/components/SiteNavBar';
 import { SiteFooter } from '@/components/SiteFooter';
 import { AuroraMesh } from '@/components/AuroraMesh';
@@ -8,18 +8,24 @@ import { AuthSessionProvider } from '@/lib/AuthSessionProvider';
 import { CloudGateProvider } from '@/lib/CloudGateProvider';
 import './globals.css';
 
-const jakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
+// Vendored rather than fetched via `next/font/google`: this is a static export,
+// so the font download happens at build time, and the CodeBuild deploy runner has
+// no egress to fonts.gstatic.com. Both files are the latin-subset variable woff2
+// Google itself serves (one file spans the whole wght axis) — see app/fonts/OFL.txt.
+const jakarta = localFont({
+  src: './fonts/PlusJakartaSans-latin.woff2',
+  weight: '200 800',
   variable: '--font-jakarta',
   display: 'swap',
+  fallback: ['system-ui', 'sans-serif'],
 });
 
-const jetbrains = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
+const jetbrains = localFont({
+  src: './fonts/JetBrainsMono-latin.woff2',
+  weight: '100 800',
   variable: '--font-jetbrains',
   display: 'swap',
+  fallback: ['ui-monospace', 'monospace'],
 });
 
 export const metadata: Metadata = {

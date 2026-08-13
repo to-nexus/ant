@@ -1,0 +1,33 @@
+Vendored web fonts — SIL Open Font License 1.1
+==============================================
+
+Both files are the latin-subset variable woff2 builds that Google Fonts serves.
+They are committed here (rather than fetched via `next/font/google`) because
+ant-site is a static export: the download would otherwise happen at build time,
+and the CodeBuild deploy runner has no egress to fonts.gstatic.com.
+
+  PlusJakartaSans-latin.woff2
+    Family:  Plus Jakarta Sans  (wght 200–800 variable)
+    Source:  https://fonts.google.com/specimen/Plus+Jakarta+Sans
+    Upstream: https://github.com/tokotype/PlusJakartaSans
+    Copyright 2020 The Plus Jakarta Sans Project Authors
+
+  JetBrainsMono-latin.woff2
+    Family:  JetBrains Mono  (wght 100–800 variable)
+    Source:  https://fonts.google.com/specimen/JetBrains+Mono
+    Upstream: https://github.com/JetBrains/JetBrainsMono
+    Copyright 2020 The JetBrains Mono Project Authors
+
+Both are licensed under the SIL Open Font License, Version 1.1, which permits
+embedding and redistribution — including as part of this repository and of the
+built site — provided the fonts are not sold on their own and this notice is
+retained. Full license text:
+
+  https://openfontlicense.org/open-font-license-official-text/
+
+To refresh a file, request the family from the CSS API with a browser
+User-Agent and download the URL from the `unicode-range: U+0000-00FF, …`
+(latin) `@font-face` block:
+
+  curl -A "<modern browser UA>" \
+    'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans&display=swap'

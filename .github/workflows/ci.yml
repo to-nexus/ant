@@ -65,6 +65,20 @@ jobs:
             echo "::error::Cloud UI content leaked into the OSS build"; exit 1
           fi
           echo "OSS UI build is cloud-free."
+      # ant-site's only build was ant-cloud's deploy, so a break here surfaced as
+      # a red deploy on the downstream repo. It resolves @ant/shared as dist (node
+      # resolution) rather than aliasing to source the way vite does — already
+      # satisfied by build:cli above, which builds @ant/shared first.
+      - run: pnpm build:site
+      # next/font must resolve from app/fonts/, never fonts.gstatic.com: this is
+      # a static export, so a remote font is a build-time network dependency, and
+      # the deploy runner has no egress (it failed exactly this way once).
+      - name: Assert ant-site fonts are self-hosted
+        run: |
+          if grep -rq "gstatic" packages/ant-site/out 2>/dev/null; then
+            echo "::error::ant-site build references fonts.gstatic.com"; exit 1
+          fi
+          echo "ant-site fonts are self-hosted."
 
   # Secret scanning only. The seam invariants formerly re-checked here as shell
   # greps are owned by the vitest suite, which `typecheck-and-test` already runs:
