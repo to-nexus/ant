@@ -3,6 +3,7 @@ import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus } from 'lucide-
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
+import { CreateTeamModal } from './auth/CreateTeamModal';
 import { LocalLlmBadge } from './pricing/LocalLlmBadge';
 import { Slot } from '@/presentation/extensions/slots';
 import { useStore } from '@/domain/store';
@@ -605,7 +606,7 @@ export function AppNavBar({}: AppNavBarProps) {
       {/* Async UI Policy — ambient progress bar sits flush with the navbar's
           bottom edge. Does not affect navbar height or body layout. */}
       <AmbientActivityBar />
-      <Slot name="auth.createTeamModal" isOpen={showCreateTeam} onClose={() => setShowCreateTeam(false)} />
+      <CreateTeamModal isOpen={showCreateTeam} onClose={() => setShowCreateTeam(false)} />
     </header>
   );
 }

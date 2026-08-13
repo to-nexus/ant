@@ -1,15 +1,18 @@
 /**
  * OSS / Cloud seam — P0.9 guard #2: OSS / local boot wires the Noop adapters.
  *
- * With `ANT_SERVER_MODE` unset (or `local`), `isBillingEnabled()` is false, so:
- *   - `factory.initCloud()` is a no-op (never probes `@ant/cloud`),
- *   - `getCloudModule()` stays null,
+ * With `ANT_SERVER_MODE` unset (or `local`), the loader is mode-gated
+ * (`loadCloudModule()` never probes `@ant/cloud` in local — free by decision):
+ *   - `factory.initCloud()` resolves without probing the overlay,
+ *   - `getCloudModule()` stays null (so `isBillingEnabled()` stays false),
  *   - the credit-ledger / payment-provider / organization-repository getters all
  *     return the Noop adapters.
  *
  * This is the dormant-fallback contract that lets the public `ant` repo build +
  * boot WITHOUT the cloud overlay. None of the Noop paths touch Redis, so the
- * test never opens a socket.
+ * test never opens a socket. The cloud-mode mirror (self-hosted profile,
+ * mode-keyed org repo, ANT_REQUIRE_BILLING fail-loud) lives in
+ * `oss-cloud-mode-boot.test.ts`.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

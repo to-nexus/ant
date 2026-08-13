@@ -1,14 +1,17 @@
 /**
- * Approval seam — cloud-only gate + dormant no-op fallback (mirrors
+ * Approval seam — identity-axis gate + dormant no-op fallback (mirrors
  * `billing-capability-seam.test.ts`).
  *
- * Locks: on OSS/local the `NoopOrganizationRepository` reports every account as
- * `approved` and exposes no admin surface, and `checkApproval` is a no-op
- * (returns null) when billing is disabled — so a local tenant is NEVER gated.
- * The cloud path returns a block object for a non-approved status.
+ * Locks: approval is an IDENTITY concern, not billing. `checkApproval` has NO
+ * billing short-circuit — it ALWAYS consults the organization-repository port.
+ * Local mode's `NoopOrganizationRepository` reports every account as
+ * `approved` (gate returns null), so a local tenant is never blocked through
+ * the same single code path. Any cloud-mode deployment (self-hosted or
+ * managed, overlay or not) gets the real repo's judgment: a non-approved
+ * status returns a block object.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NoopOrganizationRepository } from '../../src/periphery/adapters/auth/NoopOrganizationRepository';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
 import { approvalErrorCode } from '../../src/periphery/adapters/http/routes/helpers/approvalGate';
@@ -46,15 +49,37 @@ describe('approvalErrorCode', () => {
   });
 });
 
-describe('checkApproval — capability gate', () => {
+describe('checkApproval — always consults the org-repository port (no billing short-circuit)', () => {
   const savedMode = process.env.ANT_SERVER_MODE;
+  beforeEach(() => {
+    // The gate + factory are statically imported at the top of this file, so
+    // the registry must be cleared for vi.doMock to bind on the dynamic import.
+    vi.resetModules();
+  });
   afterEach(() => {
     if (savedMode === undefined) delete process.env.ANT_SERVER_MODE;
     else process.env.ANT_SERVER_MODE = savedMode;
+    vi.doUnmock('../../src/infrastructure/adapters/InfrastructureFactory');
     vi.resetModules();
   });
 
-  it('is a no-op (null) when billing is disabled (local/unset)', async () => {
+  it('local/unset: the Noop repo answers approved → gate returns null (same code path)', async () => {
+    delete process.env.ANT_SERVER_MODE;
+    const getUserApproval = vi.fn(async () => 'approved' as const);
+    vi.doMock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
+      getInfrastructureFactory: () => ({
+        getOrganizationRepository: () => ({ getUserApproval }),
+      }),
+    }));
+    const { checkApproval } = await import(
+      '../../src/periphery/adapters/http/routes/helpers/approvalGate'
+    );
+    expect(await checkApproval({ userId: 'u', organizationId: 'o' })).toBeNull();
+    // The port WAS consulted — there is no capability short-circuit anymore.
+    expect(getUserApproval).toHaveBeenCalledWith('u');
+  });
+
+  it('local/unset against the real factory: Noop repo → null (never gated)', async () => {
     delete process.env.ANT_SERVER_MODE;
     const { checkApproval } = await import(
       '../../src/periphery/adapters/http/routes/helpers/approvalGate'
@@ -62,7 +87,7 @@ describe('checkApproval — capability gate', () => {
     expect(await checkApproval({ userId: 'u', organizationId: 'o' })).toBeNull();
   });
 
-  it('returns a block object for a non-approved account in cloud mode', async () => {
+  it('returns a block object for a non-approved account (cloud mode, overlay irrelevant)', async () => {
     process.env.ANT_SERVER_MODE = 'cloud';
     vi.doMock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
       getInfrastructureFactory: () => ({
@@ -73,6 +98,22 @@ describe('checkApproval — capability gate', () => {
       '../../src/periphery/adapters/http/routes/helpers/approvalGate'
     );
     expect(await checkApproval({ userId: 'u', organizationId: 'o' })).toEqual({ status: 'pending' });
-    vi.doUnmock('../../src/infrastructure/adapters/InfrastructureFactory');
+  });
+
+  it('fails open on a repo read error (infra blip must not lock everyone out)', async () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    vi.doMock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
+      getInfrastructureFactory: () => ({
+        getOrganizationRepository: () => ({
+          getUserApproval: async () => {
+            throw new Error('redis down');
+          },
+        }),
+      }),
+    }));
+    const { checkApproval } = await import(
+      '../../src/periphery/adapters/http/routes/helpers/approvalGate'
+    );
+    expect(await checkApproval({ userId: 'u', organizationId: 'o' })).toBeNull();
   });
 });

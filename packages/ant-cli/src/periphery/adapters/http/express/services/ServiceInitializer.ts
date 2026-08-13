@@ -13,6 +13,7 @@ import { FileJobPrerequisitesAdapter } from '../../../prerequisites/FileJobPrere
 import { WorkspaceServiceAdapter } from '../../../../../infrastructure/workspace/WorkspaceServiceAdapter';
 import { WorkspaceServicePort } from '../../../../../core/ports/workspace';
 import { createJwtServiceFromEnv } from '../../../../../infrastructure/auth/JwtService';
+import { AuthService } from '../../../../../core/auth/AuthService';
 import type { AuthPort } from '../../../../../core/ports/auth';
 import { PortManager } from '../../../../../infrastructure/networking/PortManager';
 import { IDEOrchestratorPort } from '../../../../../core/ports/ideOrchestrator';
@@ -54,20 +55,21 @@ export function initializeServices(
   ideOrchestrator.startIdleCheck();
   logger.info(`IDE Orchestrator: ${ideOrchestrator.constructor.name}`, { component: 'ServiceInitializer' });
   
-  // Cloud auth wiring. JwtService is a neutral OSS HS256 primitive (no
-  // commercial secret) — `createJwtServiceFromEnv()` returns undefined when
-  // ANT_JWT_SECRET is unset (local mode), so JWT auth is naturally absent
-  // there. It is threaded through `deps.jwtService` for WS auth, jwtAuth
-  // middleware, and the cloud auth routes.
+  // Cloud-mode auth wiring — OSS core (identity is not a commercial surface).
+  // JwtService is a neutral HS256 primitive — `createJwtServiceFromEnv()`
+  // returns undefined when ANT_JWT_SECRET is unset (local mode), so JWT auth
+  // is naturally absent there. It is threaded through `deps.jwtService` for
+  // WS auth, jwtAuth middleware, and the auth routes.
   //
-  // AuthService now lives in `@ant/cloud`; it is obtained via the cloud seam
-  // (real in cloud mode, null in OSS/local). WS auth (ExpressServerAdapter)
-  // consumes `deps.authService` as an `AuthPort`. The Google OIDC service is
-  // no longer constructed here — the cloud overlay's `registerRoutes` is its
-  // single owner (`buildOidcServiceFromEnv`).
+  // AuthService is constructed directly (mode-gated) — every cloud-mode
+  // deployment gets it, with or without the `@ant/cloud` billing overlay
+  // (self-hosted cloud is a first-class profile). WS auth
+  // (ExpressServerAdapter) consumes `deps.authService` as an `AuthPort`. The
+  // Google OIDC service is built by RouteConfigurator's auth-route setup
+  // (`createGoogleOidcServiceFromEnv`, single owner).
   const jwtService = config.mode === 'cloud' ? createJwtServiceFromEnv() : undefined;
   const authService: AuthPort | undefined =
-    config.mode === 'cloud' ? factory.getCloudModule()?.createAuthService() : undefined;
+    config.mode === 'cloud' ? new AuthService() : undefined;
 
   if (config.mode === 'cloud') {
     if (jwtService) {

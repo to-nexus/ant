@@ -61,7 +61,7 @@ jobs:
       # The OSS UI build must DCE all cloud chunks. Fail if any cloud marker leaks.
       - name: Assert no cloud chunks in OSS UI build
         run: |
-          if grep -rqE "BillingCenterPanel|NavbarCreditMenu|OrganizationOnboardingScreen|refreshCatalog" packages/ant-ui/dist/assets 2>/dev/null; then
+          if grep -rqE "BillingCenterPanel|NavbarCreditMenu|refreshCatalog" packages/ant-ui/dist/assets 2>/dev/null; then
             echo "::error::Cloud UI content leaked into the OSS build"; exit 1
           fi
           echo "OSS UI build is cloud-free."

@@ -23,8 +23,11 @@ import type { OrganizationRepositoryPort } from '../../../../core/ports/organiza
 export { createJobRoutes } from './job.routes';
 export { createWorkflowRoutes } from './workflow.routes';
 export { createSSERoutes } from './sse.routes';
-// Cloud auth + billing routes moved to `@ant/cloud` (mounted via the cloud
-// overlay's registerRoutes). OSS no longer re-exports them.
+// Cloud-mode auth (OIDC/JWT/switch-org) + admin routes are OSS core — mounted
+// by RouteConfigurator when ANT_SERVER_MODE=cloud (self-hosted and managed
+// alike). Only billing routes live in the `@ant/cloud` overlay.
+export { createAuthRoutes } from './auth.routes';
+export { createAdminRoutes } from './admin.routes';
 export { createIDERoutes } from './ide.routes';  // Local IDE
 export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (containers)
 export { createCustomAgentRoutes } from './customAgents.routes';  // Universal custom agents/jobs

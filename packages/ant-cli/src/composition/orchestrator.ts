@@ -18,7 +18,6 @@ import { WorkflowStateUpdatePort } from "../core/ports/workflow";
 import { PreviewUpdatePort } from "../core/ports/preview";
 import { getChatAPIClient } from "../core/adapters/ChatAPIClient";
 import { recordUserTurn } from "./recordUserTurn";
-import { isBillingEnabled } from "../core/config/billingCapability";
 import { loadCloudModule } from "../core/cloud/cloudPlugin";
 import type { CreditLedgerPort } from "../core/ports/creditLedger";
 import { Redis } from "ioredis";
@@ -35,14 +34,16 @@ let _jobCreditLedger: CreditLedgerPort | undefined | null = null;
 async function getJobCreditLedger(): Promise<CreditLedgerPort | undefined> {
   if (_jobCreditLedger !== null) return _jobCreditLedger ?? undefined;
   const url = process.env.ANT_REDIS_URL;
-  if (!isBillingEnabled() || !url) {
+  if (!url) {
     _jobCreditLedger = undefined;
     return undefined;
   }
   // The concrete credit ledger lives in `@ant/cloud`; obtain it through the OSS
-  // seam. `loadCloudModule()` returns null in OSS/local (billing disabled or
-  // package absent) → no ledger, matching the billing-disabled path. The
-  // dynamic import is cached by cloudPlugin.
+  // seam. `loadCloudModule()` is the capability decision itself: null in local
+  // (never probed) AND in self-hosted cloud (package absent) → no ledger,
+  // unmetered. Do NOT pre-gate on `isBillingEnabled()` here — that predicate
+  // reads the loader's cache, which this call is the first to populate in the
+  // job-runner child. The dynamic import is cached by cloudPlugin.
   const cloud = await loadCloudModule();
   if (!cloud) {
     _jobCreditLedger = undefined;

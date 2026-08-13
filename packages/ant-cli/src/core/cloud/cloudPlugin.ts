@@ -2,17 +2,21 @@
  * Cloud plugin loader — the SINGLE site that names '@ant/cloud'.
  *
  * `loadCloudModule()` attempts an indirected dynamic import of the optional
- * `@ant/cloud` overlay package, gated on `isBillingEnabled()`. The specifier is
- * held in a `const` so esbuild/Rollup cannot statically resolve it, and the
- * package is an optionalDependency — so the OSS build (where `@ant/cloud` is
- * absent) compiles and boots with the Noop adapters.
+ * `@ant/cloud` overlay package. The gate is the SERVER MODE (never probed in
+ * local — local is free by decision), NOT `isBillingEnabled()`:
+ * `isBillingEnabled()` is defined as "overlay loaded", so gating the loader
+ * on it would be circular. The specifier is held in a `const` so
+ * esbuild/Rollup cannot statically resolve it, and the package is an
+ * optionalDependency — so the OSS build (where `@ant/cloud` is absent)
+ * compiles and boots with the Noop adapters.
  *
- * Cloud mode (`ANT_SERVER_MODE=cloud`) expects the package to be present; a
- * load failure there is fatal-by-policy and surfaced to the caller (the factory
- * throws at boot rather than silently degrading to Noop).
+ * Cloud mode WITHOUT the package is a legitimate profile (self-hosted cloud:
+ * identity/org from OSS core, billing off). Managed deployments that must
+ * fail loud instead set `ANT_REQUIRE_BILLING=1` — enforced by
+ * `InfrastructureFactory.initCloud()`, not here.
  */
 
-import { isBillingEnabled } from '../config/billingCapability';
+import { isLocalServerMode } from '../config/serverMode';
 import { logger } from '../../utils/logger';
 import type { CloudModule } from './cloudModule';
 
@@ -20,8 +24,8 @@ let cached: CloudModule | null | undefined; // undefined = not yet probed
 
 export async function loadCloudModule(): Promise<CloudModule | null> {
   if (cached !== undefined) return cached;
-  if (!isBillingEnabled()) {
-    cached = null; // OSS / local: never probe
+  if (isLocalServerMode()) {
+    cached = null; // local: never probe — free by decision
     return null;
   }
   try {
@@ -29,11 +33,10 @@ export async function loadCloudModule(): Promise<CloudModule | null> {
     const mod = (await import(/* @vite-ignore */ spec)) as { default?: CloudModule } & CloudModule;
     cached = (mod.default ?? mod) as CloudModule;
     return cached;
-  } catch (err) {
-    logger.error(
-      '[cloudPlugin] @ant/cloud requested (cloud mode) but not loadable',
+  } catch {
+    logger.info(
+      '[cloudPlugin] @ant/cloud not present — running without billing (self-hosted cloud profile)',
       { component: 'cloudPlugin' },
-      err,
     );
     cached = null;
     return null;

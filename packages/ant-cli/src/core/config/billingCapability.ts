@@ -1,24 +1,40 @@
 /**
  * Billing Capability — SSOT seam.
  *
- * Billing is a COMMERCIAL (cloud) surface: credit metering/debit, the credit
- * badge, the billing/payment center, and the plan catalog exist ONLY in cloud
- * mode. Local mode is FREE — no credits are metered or debited, and the factory
- * hands out the no-op ledger/payment adapters, so the entire surface is hidden.
+ * Billing is a COMMERCIAL surface: credit metering/debit, the credit badge,
+ * the billing/payment center, and the plan catalog exist ONLY when the
+ * `@ant/cloud` overlay is loaded. It is NOT a server-mode proxy anymore:
  *
- * Gated on `ANT_SERVER_MODE` (cloud sets it to `cloud`; local leaves it unset or
- * `local`), NOT on the retired `ANT_BILLING_ENABLED` env. Cloud individual +
- * team both run with `ANT_SERVER_MODE=cloud`, so this does not reintroduce the
- * earlier regression where an unset env blanked cloud billing.
+ *   - Local mode          → overlay never probed → billing off (free).
+ *   - Self-hosted cloud   → `ANT_SERVER_MODE=cloud` without `@ant/cloud`
+ *                           → billing off (unmetered) — a LEGITIMATE profile,
+ *                           identity/org/auth all run from OSS core.
+ *   - Managed cloud       → overlay present → billing on.
  *
- * This remains the single seam point for the FUTURE physical `@ant/cloud`
- * extraction (an OSS build without the package returns `false`); the mode gate
- * is the interim mechanism. Reading the env here is acceptable — this is the
- * config layer (cf. `periphery/.../helpers/userContext.ts::isLocalServerMode`,
- * the HTTP-side mirror of the same rule).
+ * `isBillingEnabled()` therefore reads the RESOLVED overlay (post
+ * `initCloud()` / `loadCloudModule()`), not the mode env. Managed deployments
+ * that must never silently degrade to free set `ANT_REQUIRE_BILLING=1`
+ * (baked into ant-cloud scripts/images) — `initCloud()` fails loud when the
+ * overlay is expected but not loadable.
  */
 
-/** Whether the billing surface is active. Cloud-only; local mode is free. */
+import { peekCloudModule } from '../cloud/cloudPlugin';
+
+/**
+ * Whether the billing surface is active — true iff the `@ant/cloud` overlay
+ * has been loaded. Every process entry awaits `initCloud()` (job-runner
+ * children resolve the ledger via `loadCloudModule()` directly), so this
+ * synchronous read is settled by the time any route/service consults it.
+ */
 export function isBillingEnabled(): boolean {
-  return (process.env.ANT_SERVER_MODE || 'local') === 'cloud';
+  return peekCloudModule() !== null;
+}
+
+/**
+ * Whether this deployment REQUIRES the billing overlay (managed cloud).
+ * When set, a missing/unloadable `@ant/cloud` is a boot failure — never a
+ * silent free tier. Self-hosted cloud and local leave this unset.
+ */
+export function isBillingRequired(): boolean {
+  return process.env.ANT_REQUIRE_BILLING === '1';
 }

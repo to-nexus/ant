@@ -12,7 +12,7 @@ For deployment-specific recommendations, see
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANT_SERVER_MODE` | `local` | `local` or `cloud`. Decides auth tenant, IDE orchestrator, and Figma transport. |
+| `ANT_SERVER_MODE` | `local` | `local` or `cloud`. Decides auth tenant, IDE orchestrator, and Figma transport. `cloud` runs entirely from this repository (identity, orgs, approval, admin) — the private `@ant/cloud` overlay is only needed for billing. See [guides/self-host-cloud.md](../guides/self-host-cloud.md). |
 | `ANT_REDIS_URL` | `redis://localhost:16379` (local mode only) | Redis connection URL. Local mode defaults to the `pnpm dev:infra:redis` port; **cloud mode has no default and fails fast when unset**. SSOT: `core/config/redisUrl.ts`. |
 | `ANT_ENCRYPTION_KEY` | auto-generated | Optional. When unset, a key is generated and persisted to `<workspaceRoot>/.ant/encryption.key` (mode 0600). To set it manually it must be exactly 64 hex chars: `openssl rand -hex 32`. Encrypts the per-user credential store, including the [MCP credentials](../concepts/custom-agents.md#credentials-for-mcp-servers) custom agents reference. |
 | `ANT_WORKSPACE_BASE_PATH` | sibling `../ant-workspaces`, else `<cwd>/workspaces` | Where Ant stores per-feature data. EFS mount root in cloud. |
@@ -120,6 +120,7 @@ gate sites.
 |----------|---------|---------|
 | `ANT_K8S_NAMESPACE` | unset | Namespace for IDE pods. If unset, falls back to Docker. |
 | `ANT_PREVIEW_BASE_DOMAIN` | unset | Base domain for preview URL routing in cloud. |
+| `ANT_REQUIRE_BILLING` | unset | Managed deployment only: `1` makes a missing/unloadable `@ant/cloud` billing overlay a **boot failure** instead of a silent free tier. Self-hosted cloud and local leave this unset (billing off, unmetered). SSOT: `core/config/billingCapability.ts`. |
 
 Figma MCP transport is selected by `ANT_SERVER_MODE` (desktop MCP locally,
 HTTP bridge in cloud) — there is no separate Figma env var.
@@ -128,7 +129,12 @@ HTTP bridge in cloud) — there is no separate Figma env var.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANT_JWT_SECRET` | — | JWT signing secret. Required in cloud. |
+| `ANT_JWT_SECRET` | — | JWT signing secret. Required in cloud mode; must be **≥ 32 characters** (`openssl rand -hex 32`). |
+| `GOOGLE_CLIENT_ID` | — | Cloud mode: Google OAuth client id (Google Cloud Console). Auth routes answer 503 until the client id/secret and redirect URI all resolve. |
+| `GOOGLE_CLIENT_SECRET` | — | Cloud mode: Google OAuth client secret. |
+| `GOOGLE_REDIRECT_URI` | derived | OAuth callback URL. When unset, derived as `${FRONTEND_URL}/api/auth/google/callback` — register that URI in the Google Cloud Console either way. Set explicitly only when the callback host differs from `FRONTEND_URL`. |
+| `ANT_SUPER_ADMIN_EMAILS` | — | Comma-separated super-admin emails. The env allowlist is the **authoritative** admin gate (`/admin/*` routes, admin dashboard); the DB flag is a projection of it. |
+| `FRONTEND_URL` | — | Cloud mode: the public origin users visit. Drives the CORS allowlist and the `GOOGLE_REDIRECT_URI` derivation. |
 | `ANT_LOCAL_ORG` | — | Local mode only: pin the tenant's org. Requires `ANT_LOCAL_USER`. |
 | `ANT_LOCAL_USER` | — | Local mode only: pin the tenant's user. Requires `ANT_LOCAL_ORG`. |
 

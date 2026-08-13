@@ -8,8 +8,13 @@ import {
   createApiRoutes,
   createCustomAgentRoutes,
   createAccountAgentRoutes,
-  createMcpCredentialRoutes
+  createMcpCredentialRoutes,
+  createAuthRoutes,
+  createAdminRoutes
 } from '../../routes';
+import { AuthService } from '../../../../../core/auth/AuthService';
+import { parseSuperAdminEmails } from '../../../../../core/auth/superAdmin';
+import { createGoogleOidcServiceFromEnv } from '../../../../../infrastructure/auth/GoogleOIDCService';
 import { extractUserContext } from '../../routes/helpers/userContext';
 import { CredentialsStore } from '../../../../../utils/userConfig/CredentialsStore';
 import { parseCompositeUserEmail } from '../../../../../core/utils/compositeUserEmail';
@@ -60,13 +65,15 @@ export class RouteConfigurator {
   configure(app: Express): void {
     this.setupRootRoutes(app);
     this.setupCanonicalBackfillMiddleware(app);
-    // Cloud overlay routers FIRST so cloud /auth/me + /billing/* win over any
-    // OSS fallback. No-op in OSS/local (getCloudModule() === null).
+    // Cloud overlay routers FIRST so /billing/* (and any overlay-mounted
+    // route) wins over an OSS fallback. No-op when the overlay is absent
+    // (local mode, or a self-hosted cloud without @ant/cloud).
     this.setupCloudOverlayRoutes(app);
-    // Auth routes (OAuth/JWT/callback/onboarding/switch-org + cloud /auth/me)
-    // are mounted by the cloud overlay above (`@ant/cloud` registerRoutes).
-    // OSS/local registers no auth routes — there is no authService in local
-    // mode and the FE never calls /auth/me there.
+    // Cloud-mode auth (OAuth/JWT/callback/onboarding/switch-org + /auth/me)
+    // + super-admin routes are OSS core — mounted whenever
+    // ANT_SERVER_MODE=cloud, with or without the commercial overlay. Local
+    // mode registers no auth routes (no authService, FE never calls /auth/me).
+    this.setupAuthRoutes(app);
     this.setupApiRoutes(app);
     this.setupIDERoutes(app);
     this.setupCloudIDERoutes(app);
@@ -99,23 +106,68 @@ export class RouteConfigurator {
   }
 
   /**
-   * Cloud overlay routes (billing, cloud auth, org/team) — mounted by the
-   * `@ant/cloud` package via its CloudModule.registerRoutes(). Absent in
-   * OSS/local where the seam returns null. The overlay is warm-loaded by
-   * `factory.initCloud()` at the composition root BEFORE this adapter is built,
-   * so the synchronous getCloudModule() read here is already resolved.
+   * Cloud overlay routes (billing) — mounted by the `@ant/cloud` package via
+   * its CloudModule.registerRoutes(). Absent in local mode AND in self-hosted
+   * cloud deployments (both legitimate — billing off, Noop ledger). The
+   * overlay is warm-loaded by `factory.initCloud()` at the composition root
+   * BEFORE this adapter is built, so the synchronous getCloudModule() read
+   * here is already resolved.
    */
   private setupCloudOverlayRoutes(app: Express): void {
     const factory = getInfrastructureFactory();
     const cloud = factory.getCloudModule();
     if (!cloud) {
-      logger.info('[RouteConfigurator] Cloud overlay: ABSENT — no /billing/* or cloud auth', {
+      logger.info('[RouteConfigurator] Cloud overlay: ABSENT — no /billing/* (billing disabled)', {
         component: 'RouteConfigurator',
       });
       return;
     }
     cloud.registerRoutes({ app, deps: this.deps, config: this.config, factory });
     logger.info('[RouteConfigurator] Cloud overlay routes registered', {
+      component: 'RouteConfigurator',
+    });
+  }
+
+  /**
+   * Cloud-mode identity routes — OSS core. OAuth/OIDC + `/auth/me` +
+   * switch-org + onboarding, and the super-admin `/admin/*` surface
+   * (approval / test level / default policy). Mounted for EVERY cloud-mode
+   * deployment: managed (with the billing overlay) and self-hosted (without).
+   * Local mode mounts nothing here — single tenant, no authService.
+   */
+  private setupAuthRoutes(app: Express): void {
+    if (this.config.mode !== 'cloud') return;
+    const factory = getInfrastructureFactory();
+    const organizationRepository = factory.getOrganizationRepository();
+
+    const authRoutes = createAuthRoutes({
+      authService: new AuthService(),
+      workspaceResolver: this.deps.workspaceResolver,
+      oidcService: createGoogleOidcServiceFromEnv(),
+      jwtService: this.deps.jwtService,
+      stateStore: factory.getStateStore(),
+      organizationRepository,
+    });
+    app.use('/api', authRoutes);
+
+    const adminRoutes = createAdminRoutes({
+      creditLedger: factory.getCreditLedger(),
+      organizationRepository,
+    });
+    app.use('/api', adminRoutes);
+
+    // Super-admin reconcile: project `ANT_SUPER_ADMIN_EMAILS` onto DB
+    // `isSuperAdmin` flags (+ force-approve). Fire-and-forget — route setup is
+    // sync; login-time stamping in upsertUser is the redundant safety net.
+    const superAdminEmails = parseSuperAdminEmails();
+    if (superAdminEmails.length > 0) {
+      organizationRepository
+        .syncSuperAdmins(superAdminEmails)
+        .then(() => logger.info(`[RouteConfigurator] super-admin reconcile ok (${superAdminEmails.length})`, { component: 'RouteConfigurator' }))
+        .catch((err) => logger.warn('[RouteConfigurator] super-admin reconcile failed', { component: 'RouteConfigurator' }, err));
+    }
+
+    logger.info('[RouteConfigurator] Cloud-mode auth + admin routes registered (OSS core)', {
       component: 'RouteConfigurator',
     });
   }

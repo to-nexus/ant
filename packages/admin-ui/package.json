@@ -1,0 +1,26 @@
+{
+  "name": "@ant/admin-ui",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ANT cloud admin dashboard — standalone SPA served at /admin/. Approval, billing, refunds, test-account level.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ant/auth-client": "workspace:^",
+    "@ant/shared": "workspace:^",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21"
+  }
+}

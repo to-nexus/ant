@@ -1,0 +1,42 @@
+# ANT — self-hosted cloud override (multi-user, Google sign-in, NO billing).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cloud.yml up -d
+#
+# Requires a .env (or exported shell vars) with at least:
+#   ANT_JWT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+# See docs/guides/self-host-cloud.md for the full checklist.
+#
+# YAML anchors are file-local, so this file cannot merge into the base's
+# `x-ant-env-common` anchor. Instead each ant service sets its own
+# `environment:` keys — compose merges per-service environment maps key-wise,
+# so ANT_REDIS_URL / ANT_WORKSPACE_BASE_PATH etc. from the base still apply.
+#
+# ANT_REQUIRE_BILLING is deliberately NOT set here — it is reserved for the
+# managed deployment (fails boot when the @ant/cloud billing overlay is
+# absent). Self-hosted cloud runs unmetered.
+
+x-ant-env-cloud: &ant-env-cloud
+  ANT_SERVER_MODE: cloud
+  ANT_JWT_SECRET: ${ANT_JWT_SECRET:?set ANT_JWT_SECRET in .env (openssl rand -hex 32)}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID in .env (Google Cloud Console OAuth client)}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in .env (Google Cloud Console OAuth client)}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}   # empty = derived as ${FRONTEND_URL}/api/auth/google/callback
+  ANT_SUPER_ADMIN_EMAILS: ${ANT_SUPER_ADMIN_EMAILS:-}
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
+
+services:
+  ant-api:
+    environment:
+      <<: *ant-env-cloud
+
+  ant-realtime:
+    environment:
+      <<: *ant-env-cloud
+
+  ant-job:
+    environment:
+      <<: *ant-env-cloud
+
+  ant-preview:
+    environment:
+      <<: *ant-env-cloud

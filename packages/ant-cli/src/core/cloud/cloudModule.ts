@@ -12,8 +12,6 @@
 import type { Redis } from 'ioredis';
 import type { CreditLedgerPort } from '../ports/creditLedger';
 import type { PaymentProviderPort } from '../ports/paymentProvider';
-import type { OrganizationRepositoryPort } from '../ports/organizationRepository';
-import type { AuthPort } from '../ports/auth';
 
 /** Shared Redis connection handed to cloud adapters (no new socket opened). */
 export interface CloudAdapterContext {
@@ -28,17 +26,16 @@ export interface CloudRouteContext {
   factory: import('../../infrastructure/adapters/InfrastructureFactory').InfrastructureFactory;
 }
 
+/**
+ * The overlay is BILLING-ONLY. Identity (OIDC/JWT/AuthService/organization
+ * repository/admin) is OSS core — every cloud-mode deployment (self-hosted or
+ * managed) runs the same identity code; the overlay adds metering + payment.
+ */
 export interface CloudModule {
   createCreditLedger(ctx: CloudAdapterContext): CreditLedgerPort;
   createPaymentProvider(ledger: CreditLedgerPort): PaymentProviderPort;
-  createOrganizationRepository(ctx: CloudAdapterContext): OrganizationRepositoryPort;
-  createAuthService(): AuthPort;
-  /** GoogleOIDCService | undefined — opaque to OSS. */
-  createOidcServiceFromEnv(): unknown;
-  /** JwtService | undefined — opaque to OSS. */
-  createJwtServiceFromEnv(): unknown;
   /**
-   * Mounts cloud routers (billing, cloud auth, org/team) onto the app.
+   * Mounts cloud routers (billing + billing-axis admin actions) onto the app.
    * Synchronous — Express router registration does no async work, which lets
    * `RouteConfigurator.configure()` stay synchronous. `initCloud()` (the async
    * import) is awaited at the composition root BEFORE the adapter is built.

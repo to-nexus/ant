@@ -36,7 +36,8 @@ import { KubernetesIDEOrchestrator } from '../ide/KubernetesIDEOrchestrator';
 import { NoopCreditLedger } from '../../periphery/adapters/billing/NoopCreditLedger';
 import { NoopPaymentProvider } from '../../periphery/adapters/billing/NoopPaymentProvider';
 import { NoopOrganizationRepository } from '../../periphery/adapters/auth/NoopOrganizationRepository';
-import { isBillingEnabled } from '../../core/config/billingCapability';
+import { RedisOrganizationRepository } from '../auth/RedisOrganizationRepository';
+import { isBillingRequired } from '../../core/config/billingCapability';
 import { loadCloudModule } from '../../core/cloud/cloudPlugin';
 import type { CloudModule } from '../../core/cloud/cloudModule';
 import { resolveRedisUrl } from '../../core/config/redisUrl';
@@ -149,19 +150,21 @@ export class InfrastructureFactory {
    * service touches a (synchronous) adapter getter. Two-phase init mirrors
    * `setDependencies()`: async import here, sync reads later.
    *
-   * - OSS / local (`isBillingEnabled()` false): no-op, getters return Noop.
-   * - Cloud with `@ant/cloud` present: real adapters wired.
-   * - Cloud WITHOUT the package: fail fast at boot (no silent Noop degradation).
+   * - Local: loader never probes — no-op, getters return Noop.
+   * - Cloud with `@ant/cloud` present (managed): real billing adapters wired.
+   * - Cloud WITHOUT the package (self-hosted): billing off, Noop adapters —
+   *   a legitimate profile, identity/org run from OSS core.
+   * - `ANT_REQUIRE_BILLING=1` (managed deployments): a missing overlay is a
+   *   boot failure — never a silent free tier.
    */
   async initCloud(): Promise<void> {
     if (this.cloudInited) return;
     this.cloudInited = true;
-    if (!isBillingEnabled()) return;
     this.cloudModule = await loadCloudModule();
-    if (!this.cloudModule) {
+    if (!this.cloudModule && isBillingRequired()) {
       throw new Error(
-        'ANT_SERVER_MODE=cloud but the @ant/cloud overlay is not installed/loadable. ' +
-          'Install the cloud package or run in local mode.',
+        'ANT_REQUIRE_BILLING=1 but the @ant/cloud overlay is not installed/loadable. ' +
+          'Install the cloud package or unset ANT_REQUIRE_BILLING for a self-hosted (unmetered) deployment.',
       );
     }
   }
@@ -172,22 +175,23 @@ export class InfrastructureFactory {
   }
 
   /**
-   * SSOT for "should this cloud adapter be real?". Returns the overlay when it
-   * must be used, or null when a Noop is correct (OSS/local). It NEVER lets a
-   * cloud-mode process silently fall back to Noop: a null `cloudModule` in cloud
-   * mode means some process skipped `initCloud()` at boot — a DI bug that must
-   * fail loud rather than report a phantom `tier: 'free'`. Mirrors the Vector-DB
+   * SSOT for "should this billing adapter be real?". Returns the overlay when
+   * it is loaded, or null when a Noop is correct (local AND self-hosted cloud
+   * — both unmetered by design). The fail-loud invariant survives via
+   * `ANT_REQUIRE_BILLING`: on a managed deployment a null `cloudModule` means
+   * either a skipped `initCloud()` (DI bug) or a broken overlay install —
+   * throw rather than report a phantom `tier: 'free'`. Mirrors the Vector-DB
    * "no NoOp imposter inside the normal flow" invariant.
    */
   private cloudFor(adapter: string): CloudModule | null {
-    if (!isBillingEnabled()) return null; // OSS/local → Noop is correct
-    if (!this.cloudModule) {
+    if (this.cloudModule) return this.cloudModule;
+    if (isBillingRequired()) {
       throw new Error(
-        `[InfrastructureFactory] ${adapter} requested in cloud mode before initCloud() completed — ` +
-          'call getInfrastructureFactory().initCloud() at process boot.',
+        `[InfrastructureFactory] ${adapter} requested with ANT_REQUIRE_BILLING=1 but no cloud overlay — ` +
+          'either initCloud() was skipped at process boot (DI bug) or @ant/cloud failed to load.',
       );
     }
-    return this.cloudModule;
+    return null; // local / self-hosted cloud → Noop is correct
   }
 
   /**
@@ -244,25 +248,26 @@ export class InfrastructureFactory {
   // ============================================
 
   /**
-   * Get the cloud-mode OrganizationRepository — Phase 3 auth records
-   * (organizations / memberships / users). Shares the StateStore's
-   * Redis connection so we don't open a new socket.
+   * Get the cloud-mode OrganizationRepository — auth records (organizations /
+   * memberships / users / approval). OSS core, keyed on SERVER MODE (identity
+   * axis), NOT on the billing overlay: self-hosted cloud deployments get the
+   * real Redis-backed repo. Shares the StateStore's Redis connection so we
+   * don't open a new socket.
    *
-   * Local mode does not use this — `local:local` is a fixed tenant
-   * with no per-user organization state.
+   * Local mode does not use this — `local:local` is a fixed tenant with no
+   * per-user organization state; dormant org/transfer routes get the NPE-safe
+   * Noop repo.
    */
   getOrganizationRepository(): OrganizationRepositoryPort {
     if (!this.organizationRepository) {
-      const cloud = this.cloudFor('OrganizationRepository');
-      if (!cloud) {
-        // OSS / local: dormant org/transfer routes get a NPE-safe no-op repo.
+      if (this.config.authMode !== 'cloud') {
         this.organizationRepository = new NoopOrganizationRepository();
       } else {
         const stateStore = this.getStateStore() as RedisStateStore;
-        this.organizationRepository = cloud.createOrganizationRepository({
-          redis: stateStore.getRedisClient(),
-        });
-        logger.info('Using cloud OrganizationRepository', {
+        this.organizationRepository = new RedisOrganizationRepository(
+          stateStore.getRedisClient(),
+        );
+        logger.info('Using RedisOrganizationRepository (cloud mode)', {
           component: 'InfrastructureFactory',
         });
       }

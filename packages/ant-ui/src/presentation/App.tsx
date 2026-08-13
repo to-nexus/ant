@@ -36,7 +36,7 @@ import { IdeFrame } from '@/presentation/components/FileEditorPanel/IdeFrame';
 import { ProjectWizardModal } from '@/presentation/components/ProjectWizardModal';
 import { AlertModalProvider } from '@/presentation/providers/AlertModalProvider';
 import { ToastProvider } from '@/presentation/providers/ToastProvider';
-import { Slot } from '@/presentation/extensions/slots';
+import { OrganizationOnboardingScreen } from '@/presentation/components/auth/OrganizationOnboardingScreen';
 import {
   clearOnboardingQueryFlag,
   shouldShowOnboarding,
@@ -527,7 +527,7 @@ function AppShell() {
     return (
       <ToastProvider>
         <AlertModalProvider>
-          <Slot name="auth.onboarding" />
+          <OrganizationOnboardingScreen />
         </AlertModalProvider>
       </ToastProvider>
     );

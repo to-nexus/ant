@@ -7,10 +7,17 @@
  * decides what the OSS build links; if it regains a static cloud import the
  * public build breaks.
  *
- * P2 physically moved the billing/cloud-auth adapters to `@ant/cloud`. The
- * final `describe` below now enforces their ABSENCE from OSS `src` (whole-tree
- * scan) — the inverted ratchet. The job-runner orchestrator obtains the credit
- * ledger through the `loadCloudModule()` seam.
+ * P2 physically moved the BILLING adapters to `@ant/cloud`. The final
+ * `describe` below enforces their ABSENCE from OSS `src` (whole-tree scan) —
+ * the inverted ratchet. The job-runner orchestrator obtains the credit ledger
+ * through the `loadCloudModule()` seam.
+ *
+ * NOTE (identity/billing axis split): cloud-mode IDENTITY code — AuthService,
+ * GoogleOIDCService, RedisOrganizationRepository, auth.routes, admin.routes,
+ * superAdmin — moved BACK into OSS. Self-hosted cloud (mode=cloud, no overlay)
+ * runs real auth/org from OSS core with billing off. Only the billing axis
+ * (credit ledger, payment provider, billing routes, plan catalog) stays in the
+ * overlay.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -35,7 +42,6 @@ const stripComments = (s: string) =>
 const MOVE_TARGET_ADAPTERS = [
   'RedisCreditLedger',
   'MockPaymentProvider',
-  'RedisOrganizationRepository',
 ];
 
 describe('RouteConfigurator — cloud routes only via the seam', () => {
@@ -71,10 +77,20 @@ describe('InfrastructureFactory — Noop adapters only, cloud via dynamic getter
     expect(code).toMatch(/NoopOrganizationRepository/);
   });
 
-  it('warm-loads the overlay via the cloudPlugin seam and throws when absent in cloud mode', () => {
+  it('warm-loads the overlay via the cloudPlugin seam; missing overlay throws ONLY under ANT_REQUIRE_BILLING', () => {
     expect(code).toMatch(/loadCloudModule\s*\(/);
     expect(code).toMatch(/async\s+initCloud\s*\(/);
+    // Self-hosted cloud (no overlay) is legitimate — the fail-loud path is
+    // gated on isBillingRequired(), not on the mode.
+    expect(code).toMatch(/isBillingRequired\s*\(\s*\)/);
     expect(code).toMatch(/throw new Error\([^)]*@ant\/cloud/s);
+  });
+
+  it('organization repository is MODE-keyed (identity axis), not overlay-keyed', () => {
+    // cloud mode → real Redis-backed repo from OSS; local → Noop.
+    expect(code).toMatch(/\bimport\b[^;]*\bRedisOrganizationRepository\b/);
+    expect(code).toMatch(/new RedisOrganizationRepository\s*\(/);
+    expect(code).toMatch(/new NoopOrganizationRepository\s*\(/);
   });
 });
 
@@ -92,11 +108,11 @@ describe('composition roots — await initCloud() before wiring routes', () => {
 });
 
 describe('P2 — moved cloud adapters are absent from OSS src', () => {
-  // Billing + cloud-auth adapters now live in @ant/cloud. No OSS src file may
-  // statically import them. JwtService is intentionally EXCLUDED — it stayed
-  // OSS as a neutral HS256 primitive (see handoff: shared by preview / WS /
-  // jwtAuth middleware).
-  const MOVED = [...MOVE_TARGET_ADAPTERS, 'AuthService', 'GoogleOIDCService'];
+  // BILLING adapters live in @ant/cloud. No OSS src file may statically
+  // import them. Identity code (AuthService / GoogleOIDCService /
+  // RedisOrganizationRepository / auth routes / superAdmin) is intentionally
+  // EXCLUDED — it moved back into OSS with the identity/billing axis split.
+  const MOVED = [...MOVE_TARGET_ADAPTERS, 'createBillingRoutes'];
 
   const walk = (dir: string): string[] => {
     const out: string[] = [];
@@ -135,15 +151,15 @@ describe('P2 — moved cloud adapters are absent from OSS src', () => {
 // used to be a shell loop in ci.yml's oss-guard job; it moved here so the rule
 // has one owner instead of two copies that drift.
 describe('P2 — cloud overlay source is absent from the OSS tree on disk', () => {
+  // Billing-axis files only — the identity files (AuthService, GoogleOIDCService,
+  // RedisOrganizationRepository, auth.routes, admin.routes) are legitimate OSS
+  // residents now.
   const FORBIDDEN_PATHS = [
     'packages/ant-cloud',
     'packages/ant-cli/src/infrastructure/billing/RedisCreditLedger.ts',
     'packages/ant-cli/src/infrastructure/billing/MockPaymentProvider.ts',
-    'packages/ant-cli/src/infrastructure/auth/AuthService.ts',
-    'packages/ant-cli/src/infrastructure/auth/GoogleOIDCService.ts',
-    'packages/ant-cli/src/infrastructure/auth/RedisOrganizationRepository.ts',
+    'packages/ant-cli/src/infrastructure/billing/catalog.ts',
     'packages/ant-cli/src/periphery/adapters/http/routes/billing.routes.ts',
-    'packages/ant-cli/src/periphery/adapters/http/routes/auth.routes.ts',
   ];
 
   it('resolves the repo root (guards against a __dirname depth regression)', () => {
