@@ -245,6 +245,18 @@ connection contract a security surface rather than a convenience.
   **existing** registry singleton — instance identity is a contract, not an
   implementation detail (A1: replacing the singleton made every `mcp__*` call
   resolve to `Unknown tool`).
+- **Result spooling** (`runtime.ts`): a non-error result over
+  `MCP_SPOOL_THRESHOLD_BYTES` (32 KiB) is written to the artifacts sandbox at
+  `mcp-results/{server}/{tool}-{seq}.txt` via `ctx.fileSystem` and only the
+  path + byte/line counts + a head preview enter the context; the agent reads
+  slices back with `read_file`/`search_files`. This is the short form of the
+  cross-tool data plane — without it, moving one system's data toward another
+  (or into artifacts processing) forces the model to re-type the entire
+  payload. Spool writes emit **no side effects**, so they never fold into
+  `_turnToolWrites` or the outputs-contract manifest — they are data-plane
+  intermediates, not job outputs. Error results are never spooled (the model
+  plans recovery from the error text), and a failed spool write falls back to
+  the inline result rather than failing the call.
 - Known gap (A5): `McpCallResult.image` is extracted and then **dropped** at the
   registry handler — MCP results are text-only today.
 

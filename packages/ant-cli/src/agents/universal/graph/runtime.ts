@@ -12,7 +12,7 @@
  */
 
 import type { FileSystemPort } from '../../../core/ports/filesystem';
-import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
+import { McpConnectionManager, type McpToolInfo } from '../../../core/customAgents/McpConnectionManager';
 import { DEFINITION_MOUNT_PREFIX } from '../../../core/customAgents/promptBlock';
 import { XMLStreamParser } from '../../../core/streaming/parsers/XMLStreamParser';
 import { CommonRenderStrategy } from '../../../core/streaming/strategies/CommonRenderStrategy';
@@ -21,6 +21,7 @@ import type { ChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { ToolRegistry } from '../../common/tool/registry';
 import { createUniversalToolRegistry } from '../../common/tool/presets';
 import type { ToolName } from '../../common/tool/toolCatalog';
+import type { ToolExecutionContext } from '../../common/tool/types';
 
 // The mount prefix SSOT lives in core (promptBlock.ts) so the settings API
 // can render TOC paths without importing the graph; re-exported for the
@@ -36,6 +37,53 @@ export function setUniversalMcp(mcp: McpConnectionManager | null): void {
 
 export function getUniversalMcp(): McpConnectionManager | null {
   return _mcp;
+}
+
+/**
+ * MCP result spooling — the cross-tool data plane (short form).
+ *
+ * Without this, every byte an MCP tool returns is forced through the model's
+ * context: moving system A's data into a file (or toward system B) means the
+ * LLM re-types it, which double-bills tokens, caps out on multi-thousand-row
+ * results, and transcribes lossily. Results over the threshold are written to
+ * the artifacts sandbox instead, and only the path + shape + a head preview
+ * enter the context; the agent then reads slices via read_file/search_files.
+ *
+ * Spool files are data-plane intermediates, not job outputs: the write goes
+ * straight through ctx.fileSystem (no side effects emitted), so it never folds
+ * into `_turnToolWrites` / the outputs-contract manifest. Error results are
+ * never spooled — the model plans recovery from the error text itself.
+ */
+export const MCP_SPOOL_THRESHOLD_BYTES = 32 * 1024;
+export const MCP_SPOOL_DIR = 'mcp-results';
+const MCP_SPOOL_PREVIEW_CHARS = 1500;
+
+let _mcpSpoolSeq = 0;
+
+async function spoolMcpResult(
+  ctx: ToolExecutionContext,
+  info: McpToolInfo,
+  text: string,
+): Promise<{ content: string }> {
+  const seq = ++_mcpSpoolSeq;
+  const spoolPath = `${MCP_SPOOL_DIR}/${info.serverName}/${info.toolName}-${seq}.txt`;
+  try {
+    await ctx.fileSystem.writeFile(spoolPath, text);
+  } catch (err: any) {
+    // Spooling is a context optimization — a failed spool write must not fail
+    // the tool call, so fall back to the inline (pre-spooling) behaviour.
+    console.warn(`⚠️ [UniversalMCP] Spool write failed (${spoolPath}), returning inline:`, err?.message);
+    return { content: text };
+  }
+  const bytes = Buffer.byteLength(text, 'utf-8');
+  const lines = text.split('\n').length;
+  const preview = text.slice(0, MCP_SPOOL_PREVIEW_CHARS);
+  return {
+    content:
+      `MCP result too large to return inline — spooled to ${spoolPath} (${bytes} bytes, ${lines} lines).\n` +
+      `Read slices with read_file (offset/limit) or locate rows with search_files; do NOT re-read the whole file at once.\n` +
+      `--- head preview ---\n${preview}\n--- preview truncated ---`,
+  };
 }
 
 /**
@@ -57,12 +105,19 @@ export function buildUniversalRegistry(mcp: McpConnectionManager | null): ToolRe
   if (mcp) {
     for (const info of mcp.listToolInfos()) {
       // MCP names are dynamic — the registry map is string-keyed at runtime.
-      registry.register(info.name as ToolName, async (_ctx, args) => {
+      registry.register(info.name as ToolName, async (ctx, args) => {
         const result = await mcp.callTool(info.name, args as Record<string, unknown>);
-        return {
-          content: result.text || '(empty MCP result)',
-          error: result.isError ? (result.text || 'MCP tool returned an error') : undefined,
-        };
+        if (result.isError) {
+          return {
+            content: result.text || '(empty MCP result)',
+            error: result.text || 'MCP tool returned an error',
+          };
+        }
+        const text = result.text || '';
+        if (Buffer.byteLength(text, 'utf-8') > MCP_SPOOL_THRESHOLD_BYTES) {
+          return spoolMcpResult(ctx, info, text);
+        }
+        return { content: text || '(empty MCP result)' };
       });
     }
   }
@@ -103,6 +158,7 @@ export function _resetUniversalRuntimeForTests(): void {
   _mcp = null;
   _registry = null;
   _turnStreaming = null;
+  _mcpSpoolSeq = 0;
 }
 
 /**

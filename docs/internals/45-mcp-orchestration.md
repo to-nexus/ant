@@ -92,7 +92,13 @@ this list; its README carries the copy checklist.
 6. **Guaranteed rules are server code** — limits, bulk-send prevention,
    permission checks. Never prompt-only (§1).
 7. Errors are human-readable sentences; the model plans recovery from that text.
-8. Response size caps + pagination. Context budget is cost.
+8. Response size caps + pagination. Context budget is cost. Ant spools
+   non-error results over 32 KiB to the artifacts sandbox
+   (`mcp-results/{server}/{tool}-{seq}.txt`, path + preview in context — see
+   [44 §MCP connections](44-universal-job.md#mcp-connections--the-credential-plane-a16a13)),
+   but that is a backstop for legitimately large datasets, not a license to
+   skip pagination: a spooled result still costs a full transfer and a
+   read-back.
 9. Naming: server `{domain}-{system}`, tools `snake_case` verbs.
 10. **Auth is exactly one mechanism**: `headers` (http) / `env` (stdio),
     transport-exclusive, values either literals or `${secret:KEY}` references
@@ -170,6 +176,14 @@ current code.
 - **Audit log is greenfield.** No general action-audit store exists; the nearest
   structural precedent is the append-only credit ledger
   (`core/ports/creditLedger.ts`) — reuse the pattern, not the code.
+- **A scheduler does not solve per-case lifecycles.** A universal session is
+  conversation continuity per (agent, job), not a lifecycle per *case* ("this
+  one refund", "this one review round"). Work shaped as multi-day waits on an
+  external reply, human approval gates, and re-verification loops needs
+  durable per-case state — event fan-in ("the document arrived"), resume-on-
+  reply, loop-back-a-stage — which a cron trigger cannot provide. Treat it as
+  a separate design axis from the scheduler; do not scope "unattended runs" as
+  if cron closes it.
 
 ---
 
@@ -177,12 +191,21 @@ current code.
 
 What the runtime cannot do today, independent of any schedule.
 
+Priority note: **A3 is the highest-leverage gap on this list.** The fail-closed
+approval gate makes every definition read-only by default, so until the
+interactive flow exists, no write-shaped work can ship at all — the other rows
+widen what jobs can do, A3 unlocks a category. The audit log (§4) is a
+precondition for opening writes broadly, which places it ahead of A6 and the
+scheduler for any deployment that intends gated writes.
+
 | Gap | Current behaviour | Shape of the fix |
 |---|---|---|
 | **A3 interactive approval** | Fail-closed: `gateCall` *rejects* gated calls with guidance instead of executing them. A write tool runs only under an explicit `approval: never` declaration, so a definition is read-only by default | Surface the gated call to the user (chat card), pause the graph turn, resume on approve/deny. The session field `pendingApproval` is reserved; the gate itself already exists |
 | **A5 image passthrough** | `McpCallResult.image` is extracted and then dropped at the registry handler — MCP results are text-only | `runtime.ts` registry handler + chat rendering. Small and self-contained; schedule it when the first image-returning tool appears |
 | **A6 single org root** | `deriveCustomAgentScopeRoots` builds `user > org > builtin`, where the org root is one global env var (`ANT_CUSTOM_AGENTS_DIR`, readonly). Projects are `(tenant,user)`-owned, so every artifact lands in a personal project | Multiple org roots, then `team` org-kind activation (creation/join flows — [40-org-model.md](40-org-model.md)). Shared definitions need a shared-project story for their outputs |
-| **Unattended runs** | No scheduler, no failure reporting, no audit log | §4 |
+| **Cross-tool data plane (long form)** | Result spooling ([44 §MCP connections](44-universal-job.md#mcp-connections--the-credential-plane-a16a13)) covers tool→file; tool→tool composition still routes through the model, and computed transforms need `run_command` (approval-gated unless the author declares `never`) | Expose read-tool stubs inside a sandboxed code-execution surface so the model writes a transform instead of transcribing data; keep the approval gate on write tools only. Industry direction: Anthropic "Code execution with MCP" |
+| **MCP 2026-07-28 spec revision** | Client stack + reference server predate the revision (protocol de-sessioning, OAuth changes, DCR→CIMD) | Review pass over `McpConnectionManager` (transport/session assumptions) and `examples/mcp-reference-server`; no known breakage, but the assumption set is unaudited |
+| **Unattended runs** | No scheduler, no failure reporting, no audit log — and a scheduler alone does not provide per-case lifecycles | §4 |
 
 ---
 

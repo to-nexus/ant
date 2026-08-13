@@ -32,6 +32,7 @@ import {
   buildUniversalRegistry,
   getUniversalRegistry,
   _resetUniversalRuntimeForTests,
+  MCP_SPOOL_THRESHOLD_BYTES,
 } from '../../src/agents/universal/graph/runtime';
 
 const READ_TOOL = 'mcp__ops-db__list_incidents';
@@ -129,6 +130,107 @@ describe('universal MCP dispatch — registry instance identity', () => {
 
     expect(result.content).toBe('(empty MCP result)');
     expect(result.error).toBeUndefined();
+  });
+});
+
+/**
+ * MCP result spooling — the cross-tool data plane. An oversized result must
+ * flow tool→file without the model re-typing it: the handler writes the full
+ * text to the artifacts sandbox and returns only path + shape + head preview.
+ * Spool writes go straight through ctx.fileSystem and emit NO side effects,
+ * so they never fold into `_turnToolWrites` / the outputs-contract manifest.
+ */
+describe('universal MCP result spooling', () => {
+  beforeEach(() => {
+    _resetUniversalRuntimeForTests();
+  });
+
+  function spoolCtx(opts: { failWrite?: boolean } = {}): {
+    ctx: ToolExecutionContext;
+    writes: Array<{ path: string; content: string }>;
+  } {
+    const writes: Array<{ path: string; content: string }> = [];
+    const ctx = {
+      fileSystem: {
+        writeFile: async (p: string, c: string) => {
+          if (opts.failWrite) throw new Error('disk full');
+          writes.push({ path: p, content: c });
+        },
+      },
+    } as unknown as ToolExecutionContext;
+    return { ctx, writes };
+  }
+
+  it('a result at the threshold passes inline without touching the filesystem', async () => {
+    const text = 'a'.repeat(MCP_SPOOL_THRESHOLD_BYTES);
+    buildUniversalRegistry(fakeMcp({ text }).mcp);
+
+    // Bare ctx: an inline return must never dereference ctx.fileSystem.
+    const result = await getUniversalRegistry().get(READ_TOOL)!({} as ToolExecutionContext, {});
+
+    expect(result.content).toBe(text);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('an oversized result is spooled: full text on disk, only path + shape + preview in context', async () => {
+    const text = 'row-data\n'.repeat(Math.ceil(MCP_SPOOL_THRESHOLD_BYTES / 9) + 10);
+    buildUniversalRegistry(fakeMcp({ text }).mcp);
+    const { ctx, writes } = spoolCtx();
+
+    const result = await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0].path).toBe('mcp-results/ops-db/list_incidents-1.txt');
+    expect(writes[0].content).toBe(text);
+    const content = result.content as string;
+    expect(content).toContain('mcp-results/ops-db/list_incidents-1.txt');
+    expect(content).toContain(`${Buffer.byteLength(text, 'utf-8')} bytes`);
+    expect(content).toContain('row-data'); // head preview
+    expect(content.length).toBeLessThan(text.length / 4); // not the payload itself
+    expect(result.error).toBeUndefined();
+    expect(result.sideEffects).toBeUndefined(); // never folds into _turnToolWrites
+  });
+
+  it('error results are never spooled, however large', async () => {
+    const text = 'boom '.repeat(MCP_SPOOL_THRESHOLD_BYTES);
+    buildUniversalRegistry(fakeMcp({ text, isError: true }).mcp);
+    const { ctx, writes } = spoolCtx();
+
+    const result = await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
+
+    expect(writes).toHaveLength(0);
+    expect(result.error).toBe(text);
+  });
+
+  it('a failed spool write falls back to the inline result instead of failing the call', async () => {
+    const text = 'b'.repeat(MCP_SPOOL_THRESHOLD_BYTES + 1);
+    buildUniversalRegistry(fakeMcp({ text }).mcp);
+    const { ctx } = spoolCtx({ failWrite: true });
+
+    const result = await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
+
+    expect(result.content).toBe(text);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('the spool sequence increments per call and resets with the runtime', async () => {
+    const text = 'c'.repeat(MCP_SPOOL_THRESHOLD_BYTES + 1);
+    buildUniversalRegistry(fakeMcp({ text }).mcp);
+    const { ctx, writes } = spoolCtx();
+    const handler = getUniversalRegistry().get(READ_TOOL)!;
+
+    await handler(ctx, {});
+    await handler(ctx, {});
+    expect(writes.map((w) => w.path)).toEqual([
+      'mcp-results/ops-db/list_incidents-1.txt',
+      'mcp-results/ops-db/list_incidents-2.txt',
+    ]);
+
+    _resetUniversalRuntimeForTests();
+    buildUniversalRegistry(fakeMcp({ text }).mcp);
+    const fresh = spoolCtx();
+    await getUniversalRegistry().get(READ_TOOL)!(fresh.ctx, {});
+    expect(fresh.writes[0].path).toBe('mcp-results/ops-db/list_incidents-1.txt');
   });
 });
 
