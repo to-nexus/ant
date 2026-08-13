@@ -109,7 +109,21 @@ compactRun) — not the graph.
   belongs in `base/`, and a job that wants one situation always active on
   unpinned turns declares it `default: true` instead.
 
-  Guards: `universal-turn-context.test.ts` (default-intent resolution rows),
+  **The resolution is announced, and `general` says so.** `turnContext.source`
+  names which of the three steps fired — `pinned` / `default` / `unpinned`,
+  never `infer`, since no step classifies — and resolve emits a chat card from
+  it (`core/customAgents/turnContextChat.ts`, plain markdown on the same
+  `chatAPI` path as respond's artifact manifest; no canonical tag is emitted,
+  so `OutputTagRegistry` — which scopes tags the LLM may emit — is not
+  involved). `unpinned` additionally lists the catalog, so an author sees both
+  that no declared intent was active and what the agent was choosing among.
+  Without it, a turn that fell through to `general` (mapped injections left on
+  the TOC, clarify knob unreachable) was indistinguishable in the transcript
+  from one running under the intent the author meant — the input-box
+  `@intent:` chips only ever showed what was *pinned*, and are cleared on send.
+
+  Guards: `universal-turn-context.test.ts` (default-intent resolution rows,
+  `source` rows, card announcement-gate rows),
   `universal-prompt-injection.test.ts` (catalog rendering + sanitize rows),
   `custom-agent-loader.test.ts` (`default` validation rows).
 

@@ -43,8 +43,14 @@ export interface UniversalTurnContext {
   context: string[];
   /** `@plan` — while true the tool node confines writes to `plan/`. */
   planTurn: boolean;
-  /** Whether the user pinned the context explicitly (`@` mentions) or it was inferred. */
-  source: 'explicit' | 'infer';
+  /**
+   * Which of the three deterministic resolution steps produced `intents` —
+   * `@` mentions, the catalog's `default: true` intent, or the `general`
+   * fallback. Never `'infer'`: no step classifies. The chat card reads this,
+   * and `'unpinned'` is the one value the author needs to see (no declared
+   * intent is active, so mapped injections stayed on the TOC).
+   */
+  source: 'pinned' | 'default' | 'unpinned';
 }
 
 export interface UniversalGraphState extends ResolvableState {

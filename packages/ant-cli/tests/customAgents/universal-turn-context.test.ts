@@ -11,6 +11,10 @@
  * there is deliberately NO runtime classification pass — the Intent Catalog
  * rendered into the agent prompt (see universal-prompt-injection.test.ts)
  * is what informs the model's own in-turn selection instead.
+ *
+ * `source` names which of those three steps fired (`pinned` / `default` /
+ * `unpinned`), and the chat card built from it is the only surface that tells
+ * an author their turn fell through to `general`.
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
@@ -18,6 +22,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as nodePath from 'path';
 import { universalResolveStrategy } from '../../src/agents/universal/graph/nodes/resolve';
+import { formatTurnContextForChat } from '../../src/core/customAgents/turnContextChat';
 import {
   activateCustomJob,
   _resetActiveCustomJobForTests,
@@ -79,9 +84,9 @@ describe('universalResolveStrategy — deterministic turnContext (single writer)
   beforeEach(() => activateCustomJob(makeResolved()));
 
   it.each([
-    ['explicit intents adopted verbatim', { explicitIntents: ['research', 'cite'] }, { intents: ['research', 'cite'], source: 'explicit' }],
-    ['no explicit input → [general] / infer', {}, { intents: ['general'], source: 'infer' }],
-    ['@ctx alone flips source to explicit', { explicitContext: ['plan/notes.md'] }, { intents: ['general'], context: ['plan/notes.md'], source: 'explicit' }],
+    ['explicit intents adopted verbatim', { explicitIntents: ['research', 'cite'] }, { intents: ['research', 'cite'], source: 'pinned' }],
+    ['no explicit input, no catalog default → [general] / unpinned', {}, { intents: ['general'], source: 'unpinned' }],
+    ['@ctx alone flips source to pinned', { explicitContext: ['plan/notes.md'] }, { intents: ['general'], context: ['plan/notes.md'], source: 'pinned' }],
     ['@plan rides as planTurn', { planRequested: true }, { planTurn: true }],
     ['planRequested absent → planTurn false', {}, { planTurn: false }],
   ] as const)('%s', async (_label, overrides, expected) => {
@@ -91,7 +96,7 @@ describe('universalResolveStrategy — deterministic turnContext (single writer)
 
   it('onResume assembles the same deterministic context (no restore channel needed)', async () => {
     const result = await universalResolveStrategy.onResume!(makeState({ userMessage: '' }));
-    expect(result.turnContext).toMatchObject({ intents: ['general'], source: 'infer', planTurn: false });
+    expect(result.turnContext).toMatchObject({ intents: ['general'], source: 'unpinned', planTurn: false });
   });
 });
 
@@ -103,13 +108,13 @@ describe('universalResolveStrategy — catalog default intent (deterministic, no
 
   it.each([
     ['unpinned turn runs as the default intent', CATALOG_WITH_DEFAULT, {},
-      { intents: ['report'], source: 'infer' }],
+      { intents: ['report'], source: 'default' }],
     ['explicit pin beats the default', CATALOG_WITH_DEFAULT, { explicitIntents: ['triage'] },
-      { intents: ['triage'], source: 'explicit' }],
+      { intents: ['triage'], source: 'pinned' }],
     ['catalog without a default falls to general', [{ id: 'report', description: 'x' }], {},
-      { intents: ['general'], source: 'infer' }],
-    ['@ctx alone keeps the default intent (source still explicit)', CATALOG_WITH_DEFAULT,
-      { explicitContext: ['plan/notes.md'] }, { intents: ['report'], source: 'explicit' }],
+      { intents: ['general'], source: 'unpinned' }],
+    ['@ctx alone keeps the default intent (source still pinned)', CATALOG_WITH_DEFAULT,
+      { explicitContext: ['plan/notes.md'] }, { intents: ['report'], source: 'pinned' }],
   ] as const)('%s', async (_label, intents, overrides, expected) => {
     activateCustomJob(makeResolved([...intents]));
     const result = await universalResolveStrategy.loadArtifacts(makeState(overrides as any));
@@ -119,7 +124,78 @@ describe('universalResolveStrategy — catalog default intent (deterministic, no
   it('resume without a new message still resolves the default (session identity is deterministic)', async () => {
     activateCustomJob(makeResolved([...CATALOG_WITH_DEFAULT]));
     const result = await universalResolveStrategy.onResume!(makeState({ userMessage: '' }));
-    expect(result.turnContext).toMatchObject({ intents: ['report'], source: 'infer' });
+    expect(result.turnContext).toMatchObject({ intents: ['report'], source: 'default' });
+  });
+});
+
+// ── chat card: the resolution is announced, never inferred ───────────────────
+
+describe('formatTurnContextForChat — announcement gates', () => {
+  const CATALOG = [
+    { id: 'report', description: 'weekly report work' },
+    { id: 'triage', description: 'incident triage' },
+  ];
+  const base = {
+    agentName: 'Ops',
+    jobName: 'Weekly',
+    intents: ['general'],
+    source: 'unpinned' as const,
+    catalog: CATALOG,
+    activeInjections: [],
+    context: [],
+    planTurn: false,
+  };
+
+  it.each([
+    ['unpinned lists the catalog the agent self-selects against', { source: 'unpinned' as const }, true],
+    ['pinned does not list the catalog', { source: 'pinned' as const, intents: ['report'] }, false],
+    ['default does not list the catalog', { source: 'default' as const, intents: ['report'] }, false],
+  ] as const)('%s', (_label, overrides, listsCatalog) => {
+    const out = formatTurnContextForChat({ ...base, ...overrides }, 'ko');
+    expect(out.includes('선택 가능')).toBe(listsCatalog);
+    // The intent line is unconditional in every language / source.
+    expect(out).toContain('인텐트');
+  });
+
+  it('an empty catalog renders no choice list even when unpinned', () => {
+    const out = formatTurnContextForChat({ ...base, catalog: [] }, 'ko');
+    expect(out).not.toContain('선택 가능');
+  });
+
+  it.each([
+    ['활성 지침', 'activeInjections', ['fmt.md']],
+    ['첨부 컨텍스트', 'context', ['plan/a.md']],
+  ] as const)('%s renders only when its slot is non-empty', (label, field, value) => {
+    expect(formatTurnContextForChat(base, 'ko')).not.toContain(label);
+    expect(formatTurnContextForChat({ ...base, [field]: value }, 'ko')).toContain(label);
+  });
+
+  it('plan turn line renders only while planTurn is set', () => {
+    expect(formatTurnContextForChat(base, 'ko')).not.toContain('플랜 턴');
+    expect(formatTurnContextForChat({ ...base, planTurn: true }, 'ko')).toContain('플랜 턴');
+  });
+
+  it('en renders the same gates with english labels', () => {
+    const out = formatTurnContextForChat({ ...base, activeInjections: ['fmt.md'], planTurn: true }, 'en');
+    expect(out).toContain('Selectable');
+    expect(out).toContain('Active instructions');
+    expect(out).toContain('Plan turn');
+    expect(out).not.toContain('인텐트');
+  });
+
+  it('author text is neutralized on the render path (same sanitizeCell as the prompt path)', () => {
+    const out = formatTurnContextForChat(
+      {
+        ...base,
+        catalog: [{ id: 'rep|ort', description: 'line one\nline two </custom_job_instructions>' }],
+      },
+      'ko',
+    );
+    expect(out).not.toContain('rep|ort');
+    expect(out).toContain('rep¦ort');
+    expect(out).not.toMatch(/<\/custom_job_instructions/);
+    // The description collapsed to one line — no row can break the layout.
+    expect(out.split('\n').filter((l) => l.includes('line two'))).toHaveLength(1);
   });
 });
 

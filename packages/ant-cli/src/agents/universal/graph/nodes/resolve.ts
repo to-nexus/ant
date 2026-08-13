@@ -13,7 +13,9 @@
  * explicit → catalog default intent → `['general']`; under `general` every
  * definition injection stays on the TOC, where the rendered Intent Catalog
  * (id + criterion per row — see `buildCustomJobSystemBlock`) is what makes
- * read_file self-selection an informed choice.
+ * read_file self-selection an informed choice. The resolution is announced to
+ * chat here (`turnContextChat`) — `unpinned` is otherwise a silent fallback
+ * indistinguishable from the intent the author meant.
  *
  * And the plan-consumption gate's deterministic half: lists existing plan
  * documents under `plan/{agentId}/{jobId}/` (disk = SSOT, survives
@@ -24,8 +26,11 @@
 import { GENERAL_INTENT } from '@ant/shared';
 import type { ResolveStrategy } from '../../../common/graph/nodes/resolve/types';
 import type { UniversalGraphState, UniversalTurnContext } from '../state';
+import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import { defaultIntentOf } from '../../../../core/customAgents/intents';
+import { formatTurnContextForChat } from '../../../../core/customAgents/turnContextChat';
+import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
 
 const OVERVIEW_MAX_ENTRIES = 50;
 const PLAN_DOCS_MAX = 20;
@@ -81,8 +86,47 @@ export function buildTurnContext(
     intents,
     context: state.explicitContext ?? [],
     planTurn: state.planRequested === true,
-    source: explicit ? 'explicit' : 'infer',
+    source: explicit ? 'pinned' : defaultIntentId ? 'default' : 'unpinned',
   };
+}
+
+/**
+ * Announce the resolved turn context in chat. Non-blocking: a render or
+ * transport failure must never fail the turn (same acceptance as every other
+ * chat emission on this path).
+ */
+async function emitTurnContextCard(
+  state: UniversalGraphState,
+  resolved: ResolvedCustomJob,
+  turnContext: UniversalTurnContext,
+): Promise<void> {
+  try {
+    const active = new Set(turnContext.intents);
+    const activeInjections = resolved.intents
+      .filter((i) => active.has(i.id))
+      .flatMap((i) => i.injections ?? []);
+
+    const text = formatTurnContextForChat(
+      {
+        agentName: resolved.agentName,
+        jobName: resolved.jobName,
+        intents: turnContext.intents,
+        source: turnContext.source,
+        catalog: resolved.intents,
+        activeInjections: Array.from(new Set(activeInjections)),
+        context: turnContext.context,
+        planTurn: turnContext.planTurn,
+      },
+      state.language === 'en' ? 'en' : 'ko',
+    );
+
+    const chatAPI = getChatAPIClient();
+    await chatAPI.startMessage();
+    await chatAPI.sendLLMEvent({ type: 'text', text });
+    await chatAPI.finalizeMessage();
+  } catch (e) {
+    console.warn('⚠️ [Universal:Resolve] Turn-context card emit failed:', e instanceof Error ? e.message : String(e));
+  }
 }
 
 async function resolveCommon(state: UniversalGraphState): Promise<Partial<UniversalGraphState>> {
@@ -92,6 +136,7 @@ async function resolveCommon(state: UniversalGraphState): Promise<Partial<Univer
   const artifactsOverview = await buildArtifactsOverview(state);
   const planDocs = await listPlanDocs(state, `plan/${resolved.agentId}/${resolved.jobId}`);
   const turnContext = buildTurnContext(state, defaultIntentOf(resolved.intents)?.id);
+  await emitTurnContextCard(state, resolved, turnContext);
   return { artifactsOverview, planDocs, turnContext };
 }
 
