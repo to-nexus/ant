@@ -41,7 +41,8 @@ import { ToolName } from '../../../common/tool/toolCatalog';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../common/subagent';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
-import { requiresApproval } from '../../../../core/customAgents/universalToolPolicy';
+import { requiresApproval, isClarifyEnabled, UNIVERSAL_CLARIFY_BUDGET } from '../../../../core/customAgents/universalToolPolicy';
+import { CLARIFY_TOOL_DEFINITION } from '../../../common/clarify/tool';
 import { parseChecklistTag, serializeChecklist } from '../../../../core/customAgents/universalChecklist';
 import { getUniversalMcp, getOrCreateUniversalTurnStreaming } from '../runtime';
 import { compactRun } from '../../../../core/context';
@@ -103,8 +104,16 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
   return sections.filter(Boolean).join('\n\n---\n\n');
 }
 
-/** Builtin allowlist + connected MCP tools, shaped for llm.stream. */
-export function buildAdvertisedTools(resolved: ResolvedCustomJob): Array<{ name: string; description: string; input_schema: any }> {
+/**
+ * Builtin allowlist + connected MCP tools, shaped for llm.stream.
+ * `includeClarify` appends the clarify CONTROL tool (outside the preset
+ * planes) — availability is enforced by ABSENCE from this list (definition
+ * knob × session budget), never by stripping emitted calls.
+ */
+export function buildAdvertisedTools(
+  resolved: ResolvedCustomJob,
+  opts?: { includeClarify?: boolean },
+): Array<{ name: string; description: string; input_schema: any }> {
   const builtinNames = resolved.builtinTools.filter((n): n is ToolName =>
     (Object.values(ToolName) as string[]).includes(n),
   );
@@ -125,7 +134,9 @@ export function buildAdvertisedTools(resolved: ResolvedCustomJob): Array<{ name:
     };
   });
 
-  return [...builtin, ...mcp];
+  const clarify = opts?.includeClarify ? [CLARIFY_TOOL_DEFINITION] : [];
+
+  return [...builtin, ...mcp, ...clarify];
 }
 
 /** Compact the session history against a model-window-keyed budget. */
@@ -173,7 +184,10 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
 
   const resolved = requireActiveCustomJob();
   const systemPrompt = await buildSystemPrompt(state, resolved);
-  const toolDefinitions = buildAdvertisedTools(resolved);
+  const includeClarify =
+    isClarifyEnabled(resolved, state.turnContext?.intents ?? ['general']) &&
+    (state.clarifyRoundsUsed ?? 0) < UNIVERSAL_CLARIFY_BUDGET;
+  const toolDefinitions = buildAdvertisedTools(resolved, { includeClarify });
   const messages = composeUniversalMessages(state);
   const baseHistory = getConv(state.conversations, CONV_KEYS.SESSION_MAIN) as ConversationMessage[];
   const recursionCount = (state.recursionCount ?? 0) + 1;

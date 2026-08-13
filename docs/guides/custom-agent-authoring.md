@@ -169,6 +169,40 @@ works belongs in `base/*.md` prose, which is what the model actually reads.
 Output conventions ("reports live under `reports/`, revisions edit the existing
 file, …") go in that same prose; there is no outputs schema to configure.
 
+## 3.5 Blocking questions — the `clarify` knob
+
+By default every custom job can ask the user **one blocking question** when it
+cannot proceed (wrong-guess-expensive ambiguity), via a built-in `clarify`
+tool the runtime advertises alongside the job's tools. Asking ends the turn:
+the job completes normally, the question renders as an answer card in chat,
+and the session resumes when the user replies — by submitting the card or
+just typing. The model is instructed to prefer sensible defaults; a session
+gets at most **3** questions before the tool disappears for that session.
+
+Declare `clarify: false` to opt out — it means "**this job is intended to run
+autonomous/unattended**": the agent never asks a blocking question and always
+proceeds with defaults, stating its assumptions. The knob exists at three
+granularities:
+
+```yaml
+# agent.yaml — default for every member job
+clarify: false
+
+# jobs/{jobId}/job.yaml — wins over the agent default
+clarify: true
+
+# jobs/{jobId}/intents.yaml — per intent, wins over both while active
+intents:
+  - id: scheduled-run
+    description: 'Unattended scheduled generation'
+    clarify: false
+```
+
+Precedence: active intents that declare the knob decide (disabled wins when
+several conflict); otherwise `job.clarify`, otherwise `agent.clarify`,
+otherwise enabled. The value must be a real boolean — `clarify: "yes"` fails
+validation at job accept.
+
 ## 4. Prose — base/ and injections/
 
 - `base/*.md` is **always injected**, agent files first, then job files,

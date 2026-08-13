@@ -28,8 +28,16 @@ import type { ToolExecutionContext } from '../../../common/tool/types';
 import { ToolResultManager } from '../../../../core/utils/toolResultManager';
 import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
-import { requiresApproval, isMcpToolName, planTurnViolation } from '../../../../core/customAgents/universalToolPolicy';
+import {
+  requiresApproval,
+  isMcpToolName,
+  planTurnViolation,
+  isClarifyEnabled,
+  UNIVERSAL_CLARIFY_BUDGET,
+} from '../../../../core/customAgents/universalToolPolicy';
+import { CLARIFY_TOOL_NAME, clarifyBlockFromArgs } from '../../../common/clarify/tool';
 import { getUniversalMcp, getUniversalRegistry } from '../runtime';
+import { clarifyPauseNode } from './clarifyPause';
 
 const WRITE_SIDE_EFFECTS = new Set(['fileCreated', 'fileModified']);
 
@@ -42,6 +50,20 @@ const PLAN_TURN_EXECUTION_ERROR = (name: string): string =>
 
 const universalResultManager = new ToolResultManager(new TokenBudgetManager());
 
+/**
+ * Clarify availability RIGHT NOW (knob × session budget) — shared by the
+ * pause-route predicate and the gateCall rejection wording. Mirrors the
+ * agent node's advertisement gate; a call that fails this is stale session
+ * memory (the tool was absent from this round's advertised list).
+ */
+export function isClarifyAllowedNow(state: UniversalGraphState): boolean {
+  const resolved = requireActiveCustomJob();
+  return (
+    isClarifyEnabled(resolved, state.turnContext?.intents ?? ['general']) &&
+    (state.clarifyRoundsUsed ?? 0) < UNIVERSAL_CLARIFY_BUDGET
+  );
+}
+
 // Exported for the tool-policy reconciliation test (preset ↔ runtime wiring).
 export const universalToolNodeConfig: import('../../../common/tool/createToolNode').ToolNodeConfig<UniversalGraphState> = {
   getPendingCalls(state) {
@@ -50,6 +72,33 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
 
   gateCall(state, call) {
     const resolved = requireActiveCustomJob();
+
+    // Clarify is a control tool, not a work tool — a call reaching this gate
+    // is always rejected with guidance: the pause path is the wrapper's
+    // (sole allowed call of the round, valid args).
+    if (call.name === CLARIFY_TOOL_NAME) {
+      if (!isClarifyAllowedNow(state)) {
+        return {
+          allowed: false,
+          error:
+            'The clarify tool is not available in this session (disabled by the job definition or the question budget is spent). ' +
+            'Do NOT retry it. Proceed with the most reasonable default and state the assumption you made.',
+        };
+      }
+      const block = clarifyBlockFromArgs(call.args);
+      if (typeof block === 'string') {
+        return {
+          allowed: false,
+          error: `Invalid clarify call: ${block} Re-issue clarify ALONE with a valid question — or proceed with a sensible default and state the assumption.`,
+        };
+      }
+      return {
+        allowed: false,
+        error:
+          'clarify must be the ONLY tool call of its round. Act on the other tool results first, ' +
+          'then re-issue clarify alone — or proceed with sensible defaults and state the assumption.',
+      };
+    }
 
     if (isMcpToolName(call.name)) {
       const info = getUniversalMcp()?.getToolInfo(call.name);
@@ -201,6 +250,27 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
   },
 };
 
-const toolNodeFn = createToolNode<UniversalGraphState>(universalToolNodeConfig);
+const innerToolNode = createToolNode<UniversalGraphState>(universalToolNodeConfig);
+
+/**
+ * Wrapper: exactly one pending call ∧ named clarify ∧ allowed now → the
+ * pause node (end-and-resume). Everything else — mixed rounds, unavailable
+ * clarify, two clarify calls, invalid args — falls to the inner factory
+ * node, whose gateCall answers with the instructive rejection while other
+ * calls in the round execute normally.
+ */
+async function toolNodeFn(state: UniversalGraphState): Promise<Partial<UniversalGraphState>> {
+  const pending = state.pendingToolCalls ?? [];
+  if (pending.length === 1 && pending[0].name === CLARIFY_TOOL_NAME && isClarifyAllowedNow(state)) {
+    const paused = await clarifyPauseNode(state, pending[0]);
+    if (paused) return paused;
+  }
+  return innerToolNode(state);
+}
+
+/** Pure predicate: a clarify pause ends the turn; otherwise loop to agent. */
+export function routeAfterTool(state: UniversalGraphState): 'agent' | 'respond' {
+  return state._clarifyPause ? 'respond' : 'agent';
+}
 
 export { toolNodeFn as toolNode };

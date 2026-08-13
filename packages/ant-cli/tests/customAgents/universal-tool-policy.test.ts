@@ -16,7 +16,9 @@ import {
   planTurnViolation,
   requiresApproval,
   isMcpToolName,
+  isClarifyEnabled,
 } from '../../src/core/customAgents/universalToolPolicy';
+import type { CustomIntentDef } from '@ant/shared';
 import {
   JOB_TOOL_MATRIX,
   JobType,
@@ -145,5 +147,42 @@ describe('requiresApproval — default table', () => {
   it('isMcpToolName recognizes the prefix', () => {
     expect(isMcpToolName('mcp__db__push')).toBe(true);
     expect(isMcpToolName('read_file')).toBe(false);
+  });
+});
+
+describe('clarify — control tool OUTSIDE the preset planes', () => {
+  it('is absent from the preset and the job matrix (availability owner is the knob, not tools.builtin)', () => {
+    expect((UNIVERSAL_BUILTIN_TOOLS as readonly string[]).includes('clarify')).toBe(false);
+    expect((JOB_TOOL_MATRIX[JobType.UNIVERSAL] as readonly string[]).map(String)).not.toContain('clarify');
+    expect(Object.values(ToolName).map(String)).not.toContain('clarify');
+  });
+
+  it('has no registry handler (it never executes — the pause node consumes it)', () => {
+    const registry = createUniversalToolRegistry();
+    expect(registry.has('clarify' as ToolName)).toBe(false);
+  });
+});
+
+describe('isClarifyEnabled — knob truth table', () => {
+  const intent = (id: string, clarify?: boolean): CustomIntentDef => ({
+    id,
+    description: `intent ${id}`,
+    ...(clarify !== undefined ? { clarify } : {}),
+  });
+
+  it.each([
+    // [label, clarifyDefault, intents, activeIntents, expected]
+    ['default enabled (no knob anywhere)', true, [], ['general'], true],
+    ['definition default false (job/agent knob)', false, [], ['general'], false],
+    ['active intent true overrides default false', false, [intent('a', true)], ['a'], true],
+    ['active intent false overrides default true', true, [intent('a', false)], ['a'], false],
+    ['conflicting active intents → disabled wins', true, [intent('a', true), intent('b', false)], ['a', 'b'], false],
+    ['agreeing active intents true', false, [intent('a', true), intent('b', true)], ['a', 'b'], true],
+    ['inactive intent knob is ignored', true, [intent('a', false)], ['b'], true],
+    ['active intent WITHOUT a knob falls through to default', false, [intent('a')], ['a'], false],
+    ['knobless active + knobbed active → the declaring one decides', true, [intent('a'), intent('b', false)], ['a', 'b'], false],
+    ['general-only → default (general matches no declared intent)', false, [intent('a', true)], ['general'], false],
+  ])('%s', (_label, clarifyDefault, intents, activeIntents, expected) => {
+    expect(isClarifyEnabled({ clarifyDefault, intents }, activeIntents)).toBe(expected);
   });
 });

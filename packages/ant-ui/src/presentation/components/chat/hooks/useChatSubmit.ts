@@ -1,8 +1,8 @@
 import { useStore } from '@/domain/store';
-import { selectPausedNonTaskJob } from '@/domain/store/selectors';
+import { selectPausedNonTaskJob, selectUniversalExecuteContext } from '@/domain/store/selectors';
 import { API_BASE, addChatUserMessage, resolveChoice } from '@/infrastructure/http/api';
 import { useTranslation } from 'react-i18next';
-import { deriveFromIntent, formatCustomJobRef } from '@ant/shared';
+import { deriveFromIntent } from '@ant/shared';
 import type { ChatLine, ChatChoicePresentedLine, ChatChoiceResolvedLine, LogJobType } from '@ant/shared';
 
 interface UseChatSubmitOptions {
@@ -30,18 +30,10 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
     // Universal runtime context — the custom (agent, job) pair selected on a
     // universal project. The chat itself rides the constant 'universal'
     // feature slot (set by universalSlice). Takes priority over every other
-    // jobType source below.
-    const {
-      projectType,
-      selectedCustomAgentId,
-      selectedCustomJobId,
-    } = useStore.getState();
-    const universalCtx =
-      projectType === 'universal' && selectedCustomAgentId && selectedCustomJobId
-        ? {
-            customJobRef: formatCustomJobRef({ agentId: selectedCustomAgentId, jobId: selectedCustomJobId }),
-          }
-        : null;
+    // jobType source below. Mapping SSOT: selectUniversalExecuteContext
+    // (shared with useJobExecution's runJob).
+    const { projectType } = useStore.getState();
+    const universalCtx = selectUniversalExecuteContext(useStore.getState());
 
     if (projectType === 'universal' && !universalCtx) {
       showError(t('universal.selectJob', { defaultValue: 'Select a custom agent job first' }));
@@ -185,8 +177,8 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
       : null;
     // Universal context outranks every other jobType/agent source — the
     // custom job the user selected IS the job identity.
-    const resolvedAgent = universalCtx ? 'universal' : (pausedNonTask?.agent ?? derived?.agent ?? selectedAgent);
-    const resolvedJobType = universalCtx ? 'universal' : (pausedNonTask?.jobType ?? derived?.jobType ?? selectedJobType);
+    const resolvedAgent = universalCtx ? universalCtx.agent : (pausedNonTask?.agent ?? derived?.agent ?? selectedAgent);
+    const resolvedJobType = universalCtx ? universalCtx.jobType : (pausedNonTask?.jobType ?? derived?.jobType ?? selectedJobType);
 
     try {
       // Resolved BEFORE the turn is minted: the submit-time jobType stamp is
@@ -217,17 +209,14 @@ export function useChatSubmit({ message, setMessage, showError }: UseChatSubmitO
         actionMetadata: hasMetadata && !universalCtx ? storeActionMetadata : undefined,
         // Universal jobs are addressed explicitly by customJobRef — the
         // triage classifier has nothing to infer.
-        skipTriage: universalCtx ? true : undefined,
+        skipTriage: universalCtx?.skipTriage,
         customJobRef: universalCtx?.customJobRef,
         // Explicit `@intent:` / `@ctx:` / `@plan` mentions — this run only.
-        ...(universalCtx && (() => {
-          const meta = useStore.getState().universalTurnMeta;
-          return {
-            intents: meta.intents.length > 0 ? meta.intents : undefined,
-            context: meta.context.length > 0 ? meta.context : undefined,
-            plan: meta.plan || undefined,
-          };
-        })()),
+        ...(universalCtx && {
+          intents: universalCtx.intents,
+          context: universalCtx.context,
+          plan: universalCtx.plan,
+        }),
         // chat SSOT §6 — forward the API-allocated turnId so the worker
         // reuses it for the durable user_turn line; eliminates the
         // optimistic-vs-durable id mismatch that produced two user

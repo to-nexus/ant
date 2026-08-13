@@ -25,6 +25,12 @@ export interface CustomAgentYaml {
   version?: number;
   /** Shared connection config unioned into every member job (job wins on name collision). */
   mcp?: { servers?: Record<string, McpServerConfig> };
+  /**
+   * Clarify-tool default for every member job. `false` declares the agent's
+   * jobs autonomous/unattended (no blocking questions; proceed with
+   * defaults). Job-level `clarify` wins over this.
+   */
+  clarify?: boolean;
 }
 
 /** Parsed `jobs/{jobId}/job.yaml`. */
@@ -38,6 +44,13 @@ export interface CustomJobYaml {
     builtin?: string[];
     approval?: Record<string, ApprovalPolicy>;
   };
+  /**
+   * Clarify-tool opt-out. `false` declares this job autonomous/unattended:
+   * the agent never asks a blocking question and proceeds with defaults.
+   * Wins over the agent-level default; active intents' `clarify` wins over
+   * this. Default enabled.
+   */
+  clarify?: boolean;
 }
 
 /** One entry of the injections table of contents (body loaded on demand via read_file). */
@@ -84,6 +97,12 @@ export interface ResolvedCustomJob {
   builtinTools: string[];
   /** Job-declared approval map; consult via requiresApproval(). */
   approval: Record<string, ApprovalPolicy>;
+  /**
+   * Effective clarify-tool default: `job.clarify ?? agent.clarify ?? true`.
+   * Active intents that declare `clarify` override this per turn — see
+   * `isClarifyEnabled` in universalToolPolicy.ts.
+   */
+  clarifyDefault: boolean;
   /** Absolute path of the agent definition dir — read-only sandbox root. */
   agentDir: string;
   /** Absolute path of the job definition dir. */

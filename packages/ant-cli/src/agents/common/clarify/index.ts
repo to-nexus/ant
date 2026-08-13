@@ -5,7 +5,13 @@
  * Surfaces:
  *   - `applyClarifyGate` — the ONE turn-terminating content-clarify gate
  *     (policy check + budget + parse + sendClarify + default-and-proceed).
- *     Trigger is the `<clarify>` tag only; the former CLARIFY_TOOL is retired.
+ *     Trigger is the `<clarify>` tag (canonical surfaces).
+ *   - `CLARIFY_TOOL_DEFINITION` / `clarifyBlockFromArgs` — the clarify TOOL,
+ *     the unified trigger going forward (universal first; canonical surfaces
+ *     migrate off the tag in follow-up commits).
+ *   - `findDanglingClarifyToolUse` / `buildClarifyToolResultTurn` — the
+ *     end-and-resume seam: detect a sealed dangling clarify `tool_use` and
+ *     close it with the next user turn as its `tool_result`.
  *   - `sendClarify` — direct ChatAPIClient transport
  *   - `parseClarifyTags` / `stripClarifyTags` — post-stream response parser
  *   - `isIntentCommitted` / `buildIntentClarifyTemplateVars` — intent-level
@@ -31,3 +37,6 @@ export { consumeAwaitingClarify } from './continuation';
 export type { ClarifyContinuableState, ClarifyConsumePatch } from './continuation';
 export { applyClarifyGate } from './phaseGate';
 export type { ClarifyGateInput, ClarifyGateResult } from './phaseGate';
+export { CLARIFY_TOOL_NAME, CLARIFY_TOOL_DEFINITION, clarifyBlockFromArgs } from './tool';
+export { findDanglingClarifyToolUse, buildClarifyToolResultTurn } from './toolResume';
+export type { DanglingClarifyToolUse } from './toolResume';

@@ -120,6 +120,35 @@ export function planTurnViolation(toolName: string, args: Record<string, unknown
 }
 
 /**
+ * Clarify-tool session budget — pauses per (agent, job) session. Once spent,
+ * the tool disappears from the advertised list (enforcement-by-absence).
+ */
+export const UNIVERSAL_CLARIFY_BUDGET = 3;
+
+/**
+ * Effective clarify availability for one turn. The `clarify` tool is a
+ * runtime-advertised control tool OUTSIDE the builtin preset planes —
+ * this predicate (plus the session budget) is its ONLY availability owner.
+ *
+ * Precedence: active intents that declare the knob → AND over them
+ * (disabled wins on conflict); none declare → the definition default
+ * (`job.clarify ?? agent.clarify ?? true`). `['general']` matches no
+ * declared intent, so it falls through to the default.
+ */
+export function isClarifyEnabled(
+  def: Pick<import('./types').ResolvedCustomJob, 'clarifyDefault' | 'intents'>,
+  activeIntents: readonly string[],
+): boolean {
+  const declaring = def.intents.filter(
+    (intent) => activeIntents.includes(intent.id) && intent.clarify !== undefined,
+  );
+  if (declaring.length > 0) {
+    return declaring.every((intent) => intent.clarify === true);
+  }
+  return def.clarifyDefault;
+}
+
+/**
  * Effective approval decision for one tool call.
  *
  * Order: explicit declaration → mutating-builtin default (`always`) →

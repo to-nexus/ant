@@ -17,6 +17,7 @@ import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
+import { findDanglingClarifyToolUse, buildClarifyToolResultTurn } from '../../common/clarify/toolResume';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
 import { buildUniversalRegistry, setUniversalMcp } from './runtime';
@@ -76,6 +77,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let restoredTokenUsage: any;
   let restoredTokenUsageByModel: any;
   let restoredChecklist: import('@ant/shared').UniversalChecklist | undefined;
+  let restoredClarifyRounds: number | undefined;
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
@@ -87,6 +89,9 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         if (Array.isArray(sessionState.checklist?.items) && sessionState.checklist.items.length > 0) {
           restoredChecklist = sessionState.checklist;
         }
+        if (typeof sessionState.clarifyRoundsUsed === 'number' && sessionState.clarifyRoundsUsed > 0) {
+          restoredClarifyRounds = sessionState.clarifyRoundsUsed;
+        }
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
     } catch (e) {
@@ -95,12 +100,31 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   }
 
   // ── Append the new user turn (runner owns turn admission, nodes only read).
+  // A sealed dangling clarify `tool_use` (end-and-resume pause) is closed by
+  // injecting the input as that call's tool_result — WHATEVER the content:
+  // card answer, partial answer, or unrelated message. Detection is
+  // structural; the seal marker is advisory only. Injection precedes
+  // compaction (the pair rides the hot tail in the agent node).
   const conversations = restoredConversations ?? {};
   const main = [...(conversations[CONV_KEYS.SESSION_MAIN] ?? [])];
   if (params.input && params.input.trim().length > 0) {
-    main.push({ role: 'user', content: params.input });
+    const dangling = findDanglingClarifyToolUse(main);
+    if (dangling) {
+      console.log(`🙋 [Universal] Clarify answered — closing tool_use ${dangling.toolUseId}`);
+      main.push(buildClarifyToolResultTurn(dangling.toolUseId, params.input) as ConversationMessage);
+    } else {
+      main.push({ role: 'user', content: params.input });
+    }
   } else if (main.length === 0) {
     throw new Error('[Universal] Empty input on a fresh session — nothing to do');
+  } else {
+    // Empty-input run on a restored session: still close a dangling clarify
+    // tool_use — transcript validity is the invariant, whatever the content.
+    const dangling = findDanglingClarifyToolUse(main);
+    if (dangling) {
+      console.warn(`⚠️ [Universal] Empty input on a clarify-awaiting session — closing tool_use ${dangling.toolUseId} with a no-reply note`);
+      main.push(buildClarifyToolResultTurn(dangling.toolUseId, '(no reply — proceed with sensible defaults and state the assumption)') as ConversationMessage);
+    }
   }
   conversations[CONV_KEYS.SESSION_MAIN] = main;
 
@@ -158,6 +182,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     conversations,
     recursionLimit,
     restoredChecklist,
+    clarifyRoundsUsed: restoredClarifyRounds,
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,
@@ -187,10 +212,13 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     // Best-effort session save so the user turn + partial rounds survive.
     if (params.deps.session) {
       try {
+        // NOTE: this save can never contain a dangling clarify tool_use —
+        // `main` is the pre-graph history; only respond's seal persists one.
         await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
           state: {
             conversations: { [CONV_KEYS.SESSION_MAIN]: main },
             customJobRef: `${resolved.agentId}/${resolved.jobId}`,
+            ...(restoredClarifyRounds !== undefined && { clarifyRoundsUsed: restoredClarifyRounds }),
           },
         });
       } catch { /* best-effort */ }

@@ -170,6 +170,21 @@ function assertMcpServers(servers: Record<string, McpServerConfig> | undefined, 
   if (first) throw new CustomAgentValidationError(first, agentId, jobId);
 }
 
+/**
+ * The `clarify` knob must be a real boolean at every level — a truthy string
+ * like `"yes"`/`"false"` would silently invert the author's intent. The
+ * message states the knob's semantic so the author knows what `false` means.
+ */
+function assertClarifyKnob(value: unknown, level: 'agent.yaml' | 'job.yaml', agentId: string, jobId?: string): void {
+  if (value === undefined || typeof value === 'boolean') return;
+  throw new CustomAgentValidationError(
+    `${level}: "clarify" must be true or false (got: ${JSON.stringify(value)}) — ` +
+    `false declares the job autonomous/unattended: the agent never asks a blocking question and proceeds with sensible defaults`,
+    agentId,
+    jobId,
+  );
+}
+
 function validateBuiltinSubset(
   child: string[] | undefined,
   bound: readonly string[],
@@ -361,6 +376,10 @@ export function loadCustomJob(
   assertMcpServers(agent.mcp?.servers, agentId);
   assertMcpServers(job.mcp?.servers, agentId, jobId);
 
+  assertClarifyKnob(agent.clarify, 'agent.yaml', agentId);
+  assertClarifyKnob(job.clarify, 'job.yaml', agentId, jobId);
+  const clarifyDefault = job.clarify ?? agent.clarify ?? true;
+
   // tools.builtin: job ⊆ universal preset (job-only, mirroring canonical)
   const builtinTools = validateBuiltinSubset(job.tools?.builtin, UNIVERSAL_BUILTIN_TOOLS, 'the universal preset', agentId, jobId);
 
@@ -425,6 +444,7 @@ export function loadCustomJob(
     mcpServers,
     builtinTools,
     approval,
+    clarifyDefault,
     agentDir,
     jobDir,
   };

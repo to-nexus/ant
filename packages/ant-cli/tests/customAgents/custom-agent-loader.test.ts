@@ -482,3 +482,57 @@ describe('loadCustomJob — intents catalog validation table', () => {
     expect(agents[0].jobs[0].intents).toBeUndefined();
   });
 });
+
+describe('loadCustomJob — clarify knob (agent / job / intent)', () => {
+  it.each([
+    // [label, agentClarify, jobClarify, expectedDefault]
+    ['default enabled when undeclared', undefined, undefined, true],
+    ['agent false → false', false, undefined, false],
+    ['agent true → true', true, undefined, true],
+    ['job false wins over agent true', true, false, false],
+    ['job true wins over agent false', false, true, true],
+  ] as const)('clarifyDefault precedence: %s', (_label, agentClarify, jobClarify, expected) => {
+    const dir = writeAgent(roots()[0].root, 'ops', agentClarify !== undefined ? { clarify: agentClarify } : {});
+    writeJob(dir, 'weekly', jobClarify !== undefined ? { clarify: jobClarify } : {});
+    expect(loadCustomJob(roots(), 'ops', 'weekly').clarifyDefault).toBe(expected);
+  });
+
+  it.each([
+    ['agent.yaml string knob', { agent: { clarify: 'yes' } }],
+    ['agent.yaml numeric knob', { agent: { clarify: 1 } }],
+    ['job.yaml string knob', { job: { clarify: 'false' } }],
+    ['job.yaml numeric knob', { job: { clarify: 0 } }],
+  ] as const)('non-boolean %s → validation error stating the unattended semantic', (_label, cfg: any) => {
+    const dir = writeAgent(roots()[0].root, 'ops', cfg.agent ?? {});
+    writeJob(dir, 'weekly', cfg.job ?? {});
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/autonomous\/unattended/);
+  });
+
+  it('intent-level non-boolean knob → validation error stating the unattended semantic', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    fs.writeFileSync(
+      path.join(dir, 'jobs', 'weekly', 'intents.yaml'),
+      yaml.dump({ intents: [{ id: 'a', description: 'x', clarify: 'no' }] }),
+    );
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/autonomous\/unattended/);
+  });
+
+  // @ant/shared contract regression: CustomIntentDef.clarify round-trips the loader.
+  it('intent-level boolean knob round-trips into CustomIntentDef.clarify', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    fs.writeFileSync(
+      path.join(dir, 'jobs', 'weekly', 'intents.yaml'),
+      yaml.dump({ intents: [
+        { id: 'a', description: 'x', clarify: false },
+        { id: 'b', description: 'y', clarify: true },
+        { id: 'c', description: 'z' },
+      ] }),
+    );
+    const { intents } = loadCustomJob(roots(), 'ops', 'weekly');
+    expect(intents.find((i) => i.id === 'a')?.clarify).toBe(false);
+    expect(intents.find((i) => i.id === 'b')?.clarify).toBe(true);
+    expect(intents.find((i) => i.id === 'c')?.clarify).toBeUndefined();
+  });
+});

@@ -40,6 +40,14 @@ export interface CustomIntentDef {
   description: string;
   /** The job's `injections/*.md` filenames inlined in full while this intent is active. */
   injections?: string[];
+  /**
+   * Clarify-tool opt-out at intent granularity. `false` declares turns under
+   * this intent autonomous/unattended: the agent never asks a blocking
+   * question and proceeds with sensible defaults. Omitted = inherit the
+   * job/agent default. When several active intents declare the knob,
+   * disabled wins.
+   */
+  clarify?: boolean;
 }
 
 /** Implicit fallback intent — reserved, never declarable, maps no injections. */

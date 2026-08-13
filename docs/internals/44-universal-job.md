@@ -293,6 +293,58 @@ is exactly the failure a plan turn exists to prevent. The plan itself lands at
 `plan/{agentId}/{jobId}/` and `resolve` lists it into `state.planDocs` on later
 turns (the plan-consumption gate).
 
+## Clarify — blocking questions via end-and-resume
+
+Universal's blocking-question surface is the **`clarify` TOOL**
+(`agents/common/clarify/tool.ts` — the canonical-migration seam; canonical's
+five `<clarify>`-tag surfaces migrate onto it in follow-up commits). Design
+verdicts, each load-bearing:
+
+- **Control tool OUTSIDE the preset planes.** `clarify` is not in `ToolName`,
+  not in `UNIVERSAL_BUILTIN_TOOLS`, has no registry handler, and can never be
+  named in `tools.builtin`. The preset allowlist is narrowing-only; letting it
+  carry clarify would create a second availability owner competing with the
+  `clarify:` knob, and `universal-tool-policy.test.ts` pins preset ≡ matrix ∧
+  schema ∧ handler coverage. Availability is enforced **by ABSENCE from the
+  advertised list** (`buildAdvertisedTools({ includeClarify })`) — no
+  strip/proceed-note machinery over emitted calls.
+- **Availability = knob × budget.** `isClarifyEnabled` (policy SSOT,
+  `universalToolPolicy.ts`): active intents that declare `clarify` AND over it
+  (disabled wins); none declare → `clarifyDefault` (`job.clarify ??
+  agent.clarify ?? true`). `clarify: false` means "this job is intended
+  autonomous/unattended" — the loader's validation message states that
+  semantic. Budget: `UNIVERSAL_CLARIFY_BUDGET = 3` pauses per (agent, job)
+  session, `clarifyRoundsUsed` sealed/restored alongside the checklist.
+- **Sole-call rule.** The pause path runs only when clarify is the round's
+  ONLY pending call (tool.ts wrapper). Mixed rounds, unavailable-but-called
+  (stale session memory), invalid args, and double-clarify rounds all fall to
+  `gateCall`'s instructive rejection while other calls in the round execute
+  normally — zero factory changes.
+- **End-and-resume, no in-process blocking.** A blocked job would hold a
+  worker slot + BullMQ lock for human-timescale waits and die on deploy.
+  Instead `clarifyPauseNode` sends the canonical clarify card
+  (`choice_presented` / `'clarifying'` — same FE surface, no new component),
+  returns with **no tool_result appended**, and `routeAfterTool` routes
+  tool→respond. The job completes normally; `session:main`'s tail is the
+  dangling assistant `tool_use('clarify')`.
+- **Single producer, single closer.** Only respond's seal can persist the
+  dangling call (the runner's catch-block save writes pre-graph history).
+  The runner's turn admission is the one closer: `findDanglingClarifyToolUse`
+  (STRUCTURAL detection — the provider constraint is structural; the seal
+  marker is advisory) → `buildClarifyToolResultTurn` injects the next user
+  input as that call's tool_result under one framing (`"User replied:\n…"`),
+  whatever the content — card answer, partial answer, or unrelated text. The
+  model infers non-answers from content.
+- **I2-compatible seal shape.** `awaitingClarify: true` is a strict BOOLEAN
+  (`JobCleanupManager.shouldSuppressCancelledCardForClarify` checks
+  `=== true`); `clarifyToolUseId` / `clarifyQuestion` ride as separate fields
+  and are omitted on non-paused seals (stale markers self-clear).
+- **No dismiss affordance, by design.** Nothing is running while awaiting —
+  there is no live call to interrupt. Typing past the card IS the dismissal
+  (canonical behavior inherited: answers merge, card resolves `'skipped'`).
+
+Guard: `tests/customAgents/universal-clarify.test.ts`.
+
 ## Prompt injection (1-4)
 
 Two-layer prompt: builtin harness (`templates/jobs/universal/nodes/agent/`,
@@ -302,6 +354,14 @@ registered as `TEMPLATE_PATHS.universalAgent`) + the definition as an
 `PromptBuildConfig.inertSystemAppend` — after merged injections, before
 policy (guardrail-first / policy-last invariants hold). Custom prose is never
 Handlebars-compiled (no partial access).
+
+The shared `output-tag-policy` injection is **excluded** for the universal
+template set (`PromptBuilder.resolveInjections` gates on `inferJob(config)`):
+its core claims are false for universal (bare streamed text IS the reply;
+there is no `<clarify>` tag — the tag body would be shimmer-suppressed and
+discarded, silently losing the question). The invariants universal keeps are
+restated for its channel model in `jobs/universal/nodes/agent/rules.md`
+(Output Channel) — exclusion + locality over a two-contract shared file.
 
 Guard: `tests/customAgents/universal-prompt-injection.test.ts` (gate truth
 table, not prose pinning).

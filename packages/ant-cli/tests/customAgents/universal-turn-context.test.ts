@@ -36,6 +36,7 @@ function makeResolved(): ResolvedCustomJob {
     mcpServers: {},
     builtinTools: [],
     approval: {},
+    clarifyDefault: true,
     agentDir: '/tmp/x',
     jobDir: '/tmp/x/jobs/weekly',
   };

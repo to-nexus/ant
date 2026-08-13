@@ -362,15 +362,27 @@ export class PromptBuilder implements PromptPort {
     const injectionPaths: string[] = [];
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // Always-on: output tag policy (Phase 2 — Output Tag Matrix SSOT)
+    // Always-on for CANONICAL jobs: output tag policy (Phase 2 — Output Tag
+    // Matrix SSOT)
     //
-    // Every LLM-emitting node MUST receive the canonical tag contract
-    // (first-token discipline + no cross-axis nesting + reply ↔ clarify
-    // disambiguation). Prepended so it leads the injections section and
-    // the LLM internalises the contract before any node-specific guidance.
-    // SSOT: docs/internals/36-output-tag-matrix.md.
+    // Every canonical LLM-emitting node MUST receive the canonical tag
+    // contract (first-token discipline + no cross-axis nesting + reply ↔
+    // clarify disambiguation). Prepended so it leads the injections section
+    // and the LLM internalises the contract before any node-specific
+    // guidance. SSOT: docs/internals/36-output-tag-matrix.md.
+    //
+    // UNIVERSAL is EXCLUDED: its channel model contradicts the file's core
+    // claims (bare streamed text IS the reply — there is no <reply> lane, and
+    // no <clarify> tag: blocking questions go through the clarify TOOL).
+    // Injecting it taught models a tag whose body the universal pipeline
+    // suppresses and discards (silent question loss). The invariants
+    // universal keeps are restated for its channel model in
+    // jobs/universal/nodes/agent/rules.md — exclusion + locality over a
+    // two-contract shared file (MECE).
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    injectionPaths.push('jobs/shared/injections/output-tag-policy');
+    if (this.inferJob(config) !== 'universal') {
+      injectionPaths.push('jobs/shared/injections/output-tag-policy');
+    }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     // Always-on: Ant platform identity

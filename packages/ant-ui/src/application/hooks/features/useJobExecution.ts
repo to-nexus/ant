@@ -15,7 +15,7 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatCustomJobRef } from '@ant/shared';
 import { useStore } from '@/domain/store';
-import { selectPausedNonTaskJob } from '@/domain/store/selectors';
+import { selectPausedNonTaskJob, selectUniversalExecuteContext } from '@/domain/store/selectors';
 import { resumeJob, stopJob as stopJobAPI, fetchFeatureSession, fetchQueuePosition, dismissInterruptedJob } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { ApiError } from '@/infrastructure/http/api/client';
@@ -188,18 +188,38 @@ export function useJobExecution() {
       resolveJobId = resolve;
     });
 
+    // Universal runtime — a card submit (e.g. clarify) on a workspace project
+    // must ride the universal path exactly like a chat submit: identity comes
+    // from project context (mapping SSOT: selectUniversalExecuteContext),
+    // never from the caller's agent/jobType args or a paused-job status.
+    const universalCtx = selectUniversalExecuteContext(useStore.getState());
+    if (universalCtx) {
+      useStore.getState().applyJobIdentity({ jobType: universalCtx.jobType, agent: universalCtx.agent });
+    }
+
     try {
       const jobExecution = executeCodeJob({
         projectId: selectedProject,
         featureName: selectedFeature!,
-        jobType: jobType,
-        agent: agent,
+        jobType: universalCtx ? universalCtx.jobType : jobType,
+        agent: universalCtx ? universalCtx.agent : agent,
         chatSource: true,  // ✅ Enable Chat SSE for all jobs
         overrideDirective: directive,  // ✅ Pass directive for redirect
-        skipTriage: options?.skipTriage,  // ✅ Skip triage after proceed choice
-        actionMetadata: options?.actionMetadata,  // ✅ Explicit pipeline metadata (e.g. from spec_complete card)
+        skipTriage: universalCtx?.skipTriage ?? options?.skipTriage,  // ✅ Skip triage after proceed choice
+        actionMetadata: universalCtx ? undefined : options?.actionMetadata,  // ✅ Explicit pipeline metadata (e.g. from spec_complete card)
+        customJobRef: universalCtx?.customJobRef,
+        // Explicit `@intent:` / `@ctx:` / `@plan` mentions — this run only.
+        ...(universalCtx && {
+          intents: universalCtx.intents,
+          context: universalCtx.context,
+          plan: universalCtx.plan,
+        }),
       });
-      
+      if (universalCtx) {
+        // Mentions apply to the run just dispatched; following turns re-infer.
+        useStore.getState().resetUniversalTurnMeta();
+      }
+
       // Store job execution object for stop functionality
       setCurrentJob(jobExecution);
       

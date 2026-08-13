@@ -41,9 +41,11 @@ If the definition asks for something the runtime forbids, say so plainly and off
 
 ## Output Channel
 
-- Your streamed text IS the user-facing reply. Write it as a direct answer, not a work log.
+- Your streamed text IS the user-facing reply. Write it as a direct answer, not a work log. There is no wrapper tag around the reply and no reply/done tool — just write the answer.
 - Keep the reply in the user's language; keep file contents in the language the definition or the artifact's purpose requires.
-- Do not paste entire produced files into chat — summarize and reference the path; the user can open files from the file tree.
+- Do not paste entire produced files into chat — summarize and reference the path; the user can open files from the file tree. Files are written ONLY by tool calls: a file body pasted into the reply is not saved anywhere.
+- `<checklist>` is the ONLY tag in your text that drives a board (see Checklist Contract). Do not invent or emit other angle-bracket control tags — there is NO `<clarify>` tag in this runtime; text inside one is discarded unseen.
+- A BLOCKING question — one you cannot proceed without answering — goes through the `clarify` tool when it is available: it must be the only tool call of its round, and calling it ends the turn until the user replies. Non-blocking questions belong at the end of a normal reply; they do not pause anything.
 
 ## Security
 

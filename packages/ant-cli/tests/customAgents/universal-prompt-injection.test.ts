@@ -150,6 +150,28 @@ describe('PromptBuilder inertSystemAppend gate', () => {
     });
     expect(result.system).toContain('Checklist Contract');
   });
+
+  // D1 (silent question loss): the shared output-tag-policy taught `<clarify>`
+  // to a runtime whose pipeline suppresses the tag and discards its body, and
+  // contradicted universal's bare-text reply channel (D1b). Path truth table
+  // over `result.injections` — paths, never prose.
+  it('output-tag-policy injection: ABSENT for the universal template set, ant-platform-identity stays', async () => {
+    const result = await builder.build({
+      templates: TEMPLATE_PATHS.universalAgent,
+      vars: baseVars,
+    });
+    expect(result.injections).not.toContain('jobs/shared/injections/output-tag-policy');
+    expect(result.injections).toContain('jobs/shared/injections/ant-platform-identity');
+  });
+
+  it('output-tag-policy injection: PRESENT for a canonical template set', async () => {
+    const result = await builder.build({
+      templates: TEMPLATE_PATHS.askAgent,
+      vars: {},
+    });
+    expect(result.injections).toContain('jobs/shared/injections/output-tag-policy');
+    expect(result.injections).toContain('jobs/shared/injections/ant-platform-identity');
+  });
 });
 
 // ── intent-gated injection inlining (buildCustomJobSystemBlock) ──────────────
@@ -167,6 +189,7 @@ function makeResolved(toc: InjectionTocEntry[]): ResolvedCustomJob {
     mcpServers: {},
     builtinTools: [],
     approval: {},
+    clarifyDefault: true,
     agentDir: '/tmp/x',
     jobDir: '/tmp/x/jobs/weekly',
   };

@@ -68,7 +68,7 @@ export function validateIntentsDoc(doc: unknown, agentId: string, jobId?: string
     if (!entry || typeof entry !== 'object') {
       throw new CustomAgentValidationError(`${INTENTS_FILE_NAME}: each intent must be a mapping`, agentId, jobId);
     }
-    const { id, description, injections } = entry as Record<string, unknown>;
+    const { id, description, injections, clarify } = entry as Record<string, unknown>;
     if (typeof id !== 'string' || !INTENT_ID_PATTERN.test(id)) {
       throw new CustomAgentValidationError(
         `${INTENTS_FILE_NAME}: intent id must match [a-z0-9][a-z0-9-]* (got: ${String(id)})`,
@@ -128,7 +128,20 @@ export function validateIntentsDoc(doc: unknown, agentId: string, jobId?: string
       }
       injectionList = [...(injections as string[])];
     }
-    result.push({ id, description: description.trim(), ...(injectionList ? { injections: injectionList } : {}) });
+    if (clarify !== undefined && typeof clarify !== 'boolean') {
+      throw new CustomAgentValidationError(
+        `${INTENTS_FILE_NAME}: intent "${id}" clarify must be true or false (got: ${JSON.stringify(clarify)}) — ` +
+        `false declares turns under this intent autonomous/unattended: the agent never asks a blocking question and proceeds with sensible defaults`,
+        agentId,
+        jobId,
+      );
+    }
+    result.push({
+      id,
+      description: description.trim(),
+      ...(injectionList ? { injections: injectionList } : {}),
+      ...(clarify !== undefined ? { clarify: clarify as boolean } : {}),
+    });
   }
   if (result.length > INTENT_CATALOG_CAP) {
     throw new CustomAgentValidationError(

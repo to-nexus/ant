@@ -31,7 +31,10 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   }
 
   // 1. Final response delivery (fallback path when not already streamed).
-  if (state.response && !state.streamingCompleted) {
+  //    A clarify pause skips this entirely — the clarify card IS the reply.
+  if (state._clarifyPause) {
+    // no-op
+  } else if (state.response && !state.streamingCompleted) {
     await chatAPI.startMessage();
     await chatAPI.sendLLMEvent({ type: 'text', text: state.response });
     await chatAPI.finalizeMessage();
@@ -63,6 +66,16 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
         // acceptance as universal interruption persistence being a no-op).
         ...(checklist && { checklist }),
         ...(state._httpJobId && { jobId: state._httpJobId }),
+        // Clarify markers — I2-compatible shape: `awaitingClarify` is a
+        // STRICT BOOLEAN (JobCleanupManager checks `=== true`), id/question
+        // ride as separate fields. Omitted on non-paused seals, so a stale
+        // marker self-clears at the next seal. Rounds always seal (budget).
+        clarifyRoundsUsed: state.clarifyRoundsUsed ?? 0,
+        ...(state._clarifyPause && {
+          awaitingClarify: true,
+          clarifyToolUseId: state._clarifyPause.toolUseId,
+          clarifyQuestion: state._clarifyPause.question,
+        }),
       };
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });
       console.log('💾 [Universal:Respond] Session sealed');

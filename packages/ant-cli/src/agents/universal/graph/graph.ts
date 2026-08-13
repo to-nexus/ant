@@ -3,8 +3,8 @@
  *
  * Flow:
  *   resolve ──→ agent ⇄ tool
- *                 │
- *                 └──→ respond
+ *                 │       │
+ *                 └──→ respond ←┘  (tool→respond only on a clarify pause)
  *
  * No detect/classification pass: the graph is linear (nothing routes on a
  * classification), turn context is deterministic from runner inputs
@@ -20,7 +20,7 @@ import { UniversalAnnotation } from './state';
 import { createResolveNode } from '../../common/graph/nodes/resolve';
 import { universalResolveStrategy } from './nodes/resolve';
 import { agentNode, routeAfterAgent } from './nodes/agent';
-import { toolNode } from './nodes/tool';
+import { toolNode, routeAfterTool } from './nodes/tool';
 import { respondNode } from './nodes/respond';
 import { withPhaseTracking } from '../../common/graph/llmHelpers';
 
@@ -46,7 +46,16 @@ export function buildUniversalGraph() {
     } as any,
   );
 
-  graph.addEdge('tool' as any, 'agent' as any);
+  graph.addConditionalEdges(
+    'tool' as any,
+    routeAfterTool,
+    {
+      agent: 'agent' as any,
+      // Clarify pause: the turn ends on the question; respond seals the
+      // dangling tool_use and the next user turn closes it (end-and-resume).
+      respond: 'respond' as any,
+    } as any,
+  );
   graph.addEdge('respond' as any, '__end__' as any);
 
   return (graph as any).compile();

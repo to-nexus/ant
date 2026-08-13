@@ -93,6 +93,13 @@ export interface UniversalGraphState extends ResolvableState {
   explicitContext?: string[];
   /** Per-turn plan-mode request (`@plan`) — never sealed, mirrors explicitIntents. */
   planRequested?: boolean;
+  /** Clarify pauses spent this (agent, job) session — seal-restored, budget input. */
+  clarifyRoundsUsed?: number;
+  /**
+   * Set by clarifyPauseNode when THIS run ends on a clarify question —
+   * routes tool→respond and shapes the seal. Per-run only, never restored.
+   */
+  _clarifyPause?: { toolUseId: string; question: string };
 }
 
 export const UniversalAnnotation = Annotation.Root({
@@ -117,6 +124,8 @@ export const UniversalAnnotation = Annotation.Root({
   explicitIntents: Annotation<string[] | undefined>,
   explicitContext: Annotation<string[] | undefined>,
   planRequested: Annotation<boolean | undefined>,
+  clarifyRoundsUsed: Annotation<number | undefined>,
+  _clarifyPause: Annotation<{ toolUseId: string; question: string } | undefined>,
 } as const);
 
 export function createInitialUniversalState(params: {
@@ -131,6 +140,8 @@ export function createInitialUniversalState(params: {
   recursionLimit?: number;
   /** Checklist restored from the sealed session (resume/continuation). */
   restoredChecklist?: UniversalChecklist;
+  /** Clarify pauses already spent this session (restored from the seal). */
+  clarifyRoundsUsed?: number;
   /** `@intent:` mentions for this run (validated at accept). */
   explicitIntents?: string[];
   /** `@ctx:` artifact paths for this run (existence-checked at accept). */
@@ -159,6 +170,7 @@ export function createInitialUniversalState(params: {
     recursionLimit: params.recursionLimit,
     _turnToolWrites: [],
     restoredChecklist: params.restoredChecklist,
+    clarifyRoundsUsed: params.clarifyRoundsUsed,
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,
