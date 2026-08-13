@@ -1082,7 +1082,7 @@ export function createJobRoutes(deps: {
   // Resume existing job
   router.post('/jobs/:jobId/resume', async (req: Request, res: Response) => {
     const requestedJobId = req.params.jobId;
-    const { projectId, featureName, chatSource = true, customJobRef } = req.body;
+    const { projectId, featureName, chatSource = true, customJobRef, intents, context, plan } = req.body;
     
     logger.debug(`\n🔄 [ResumeRoute] Resume request received`);
     logger.debug(`   Project: ${projectId}, Feature: ${featureName}`);
@@ -1142,6 +1142,17 @@ export function createJobRoutes(deps: {
         }
         const universalSession = JSON.parse(fs.readFileSync(universalSessionPath, 'utf-8'));
         const universalJobId = universalSession.state?.jobId ?? requestedJobId;
+        // Explicit turn meta must survive a resume. Without this the resumed
+        // turn fell back to the default/general intent even when the
+        // interrupted one pinned `@intent:` — the definition injections it
+        // had inlined silently vanished mid-job. Validated by the same
+        // funnel as a fresh start.
+        const resumeMeta = await validateUniversalTurnMeta(
+          resolvedUniversal.containerPath, resolvedUniversal.intentIds, intents, context, plan,
+        );
+        if (!resumeMeta.ok) {
+          return res.status(resumeMeta.status).json({ error: resumeMeta.error, code: resumeMeta.code });
+        }
         const universalParams: ExecuteJobParams = {
           agent: 'universal',
           jobType: 'universal',
@@ -1153,6 +1164,7 @@ export function createJobRoutes(deps: {
           jobId: universalJobId,
           isResume: true,
           customJobRef,
+          ...(resumeMeta.meta && { universalTurnMeta: resumeMeta.meta }),
         };
         const universalResult = await deps.executeJob(universalParams);
         await deps.stateStore.releaseLock(`ant:job-completed:${universalJobId}`);

@@ -95,6 +95,8 @@ export const executeJobSchema = z.object({
   intents: z.array(z.string()).optional(),
   /** universal only — explicit `@ctx:` artifact paths (existence-checked at accept). */
   context: z.array(z.string()).optional(),
+  /** universal only — `@plan` per-turn plan mode (adopted only when strictly true). */
+  plan: z.boolean().optional(),
 }).passthrough();
 
 /**

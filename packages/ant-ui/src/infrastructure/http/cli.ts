@@ -25,6 +25,8 @@ export interface ExecuteCodeJobOptions {
   intents?: string[];
   /** Universal only — explicit `@ctx:` artifact paths for this run. */
   context?: string[];
+  /** Universal only — `@plan` per-turn plan-mode request. */
+  plan?: boolean;
 }
 
 export interface JobExecution {
@@ -55,6 +57,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     customJobRef,
     intents,
     context,
+    plan,
   } = options;
 
   if (!featureName) {
@@ -128,6 +131,7 @@ export function executeCodeJob(options: ExecuteCodeJobOptions = {}): JobExecutio
     customJobRef,
     intents,
     context,
+    plan,
   })
     .then((response) => {
       console.log('[cli.ts] executeJob response:', response);
