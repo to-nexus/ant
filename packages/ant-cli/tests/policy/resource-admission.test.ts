@@ -90,31 +90,68 @@ describe('unauthenticated requests cannot spend the full body budget (M-010)', (
 // Per-account SSE connection slots (M-005)
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('workflow SSE takes a connection slot like the feature stream (M-005)', () => {
-  const buildRouter = async (allowed: boolean) => {
+// Both SSE streams decide admission BEFORE res.writeHead, because a committed
+// 200 can carry no status code: a refusal written into a live text/event-stream
+// is invisible to EventSource, which reconnects every 3 s forever.
+//   - budget spent            → 429 (M-005: workflow used to skip the budget)
+//   - state store unreachable → 503 (the slot key was written AFTER writeHead,
+//                              so a dead Redis ended a committed 200)
+type Admission =
+  | { ok: true; reservation: Record<string, never> }
+  | { ok: false; status: 429 | 503; code: string };
+
+const STREAMS: Array<{
+  name: string;
+  path: string;
+  params: Record<string, string>;
+  register: 'registerClient' | 'registerWorkflowClient';
+}> = [
+  {
+    name: 'feature',
+    path: '/projects/:id/features/:feature/stream',
+    params: { id: 'p1', feature: 'universal' },
+    register: 'registerClient',
+  },
+  {
+    name: 'workflow',
+    path: '/jobs/:jobId/workflow/stream',
+    params: { jobId: 'j1' },
+    register: 'registerWorkflowClient',
+  },
+];
+
+const ADMISSIONS: Array<{ label: string; admission: Admission; expected?: 429 | 503 }> = [
+  { label: 'budget spent', admission: { ok: false, status: 429, code: 'connection_limit' }, expected: 429 },
+  { label: 'store unreachable', admission: { ok: false, status: 503, code: 'transport_unavailable' }, expected: 503 },
+  { label: 'admitted', admission: { ok: true, reservation: {} } },
+];
+
+describe('SSE admission is decided before the response is committed (M-005)', () => {
+  const buildRouter = async (admission: Admission, path: string) => {
     const { createSSERoutes } = await import('../../src/periphery/adapters/http/routes/sse.routes.js');
     const sseService = {
-      checkConnectionLimit: vi.fn(async () => allowed),
-      registerWorkflowClient: vi.fn(async () => {}),
-      registerClient: vi.fn(async () => {}),
+      admitConnection: vi.fn(async () => admission),
+      registerWorkflowClient: vi.fn(),
+      registerClient: vi.fn(),
       sendInitialState: vi.fn(),
       getClientCount: vi.fn(() => 1),
     };
     const router: any = createSSERoutes({
       sseService: sseService as any,
       workflowStateService: { getInitialState: vi.fn(async () => null) } as any,
-      kanbanService: {} as any,
-      chatService: {} as any,
-      projectService: {} as any,
+      kanbanService: { getKanbanData: vi.fn(async () => ({})) } as any,
+      chatService: {
+        loadEventsAsync: vi.fn(async () => []),
+        loadTurnBuffersAsync: vi.fn(async () => ({})),
+      } as any,
+      projectService: { getFileTree: vi.fn(async () => []) } as any,
       stateStore: undefined,
     } as any);
-    const handler = router.stack.find(
-      (l: any) => l.route?.path === '/jobs/:jobId/workflow/stream',
-    ).route.stack.at(-1).handle;
+    const handler = router.stack.find((l: any) => l.route?.path === path).route.stack.at(-1).handle;
     return { handler, sseService };
   };
 
-  const call = async (handler: any) => {
+  const call = async (handler: any, params: Record<string, string>) => {
     const res: any = {
       statusCode: 200,
       body: undefined,
@@ -123,36 +160,40 @@ describe('workflow SSE takes a connection slot like the feature stream (M-005)',
       json(payload: unknown) { this.body = payload; return this; },
       writeHead: vi.fn(function (this: any, code: number) { this.headersSent = true; this.statusCode = code; return this; }),
       write: vi.fn(),
+      end: vi.fn(),
       on: vi.fn(),
     };
     await handler(
-      { params: { jobId: 'j1' }, headers: {}, query: {}, user: { id: 'alice' }, organization: { id: 'acme' } } as any,
+      { params, headers: {}, query: {}, user: { id: 'alice' }, organization: { id: 'acme' } } as any,
       res,
     );
     return res;
   };
 
-  it('refuses with 429 before committing the stream when the budget is spent', async () => {
-    const { handler, sseService } = await buildRouter(false);
-    const res = await call(handler);
+  for (const stream of STREAMS) {
+    for (const { label, admission, expected } of ADMISSIONS) {
+      it(`${stream.name} stream — ${label}`, async () => {
+        const { handler, sseService } = await buildRouter(admission, stream.path);
+        const res = await call(handler, stream.params);
 
-    expect(res.statusCode).toBe(429);
-    // the 429 must be a real HTTP status, not JSON written into a committed
-    // 200 stream — that shape made EventSource reconnect forever
-    expect(res.writeHead).not.toHaveBeenCalled();
-    expect(sseService.registerWorkflowClient).not.toHaveBeenCalled();
-  });
+        expect(sseService.admitConnection).toHaveBeenCalled();
 
-  it('opens the stream when the budget allows', async () => {
-    const { handler, sseService } = await buildRouter(true);
-    const res = await call(handler);
-
-    expect(sseService.checkConnectionLimit).toHaveBeenCalled();
-    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
-      'Content-Type': 'text/event-stream',
-    }));
-    expect(sseService.registerWorkflowClient).toHaveBeenCalled();
-  });
+        if (expected) {
+          expect(res.statusCode).toBe(expected);
+          expect(res.writeHead).not.toHaveBeenCalled();
+          expect(res.end).not.toHaveBeenCalled();
+          expect(sseService[stream.register]).not.toHaveBeenCalled();
+        } else {
+          expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+            'Content-Type': 'text/event-stream',
+          }));
+          expect(sseService[stream.register]).toHaveBeenCalled();
+          // a committed stream is never ended by the connect path
+          expect(res.end).not.toHaveBeenCalled();
+        }
+      });
+    }
+  }
 });
 
 // ────────────────────────────────────────────────────────────────────────────

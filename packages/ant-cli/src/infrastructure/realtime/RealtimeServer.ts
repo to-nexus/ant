@@ -243,20 +243,29 @@ export class RealtimeServer {
    * Setup health check endpoint
    */
   private setupHealthCheck(): void {
+    // Redis reachability is reported, not asserted: this process can serve no
+    // stream at all without it, so `{status:'ok'}` while the store is down was
+    // a lie that hid a total outage behind a green health check. The HTTP code
+    // stays 200 (liveness) on purpose — failing it would pull every pod out of
+    // the load balancer on a Redis blip, and the SSE route's own 503 is what
+    // makes the condition actionable per request.
+    const health = () => {
+      const stateStore = getInfrastructureFactory().getStateStore();
+      const redisReady = stateStore.isTransportReady();
+      return {
+        status: redisReady ? 'ok' : 'degraded',
+        service: 'realtime-server',
+        redis: redisReady ? 'ready' : 'unavailable',
+        timestamp: new Date().toISOString(),
+      };
+    };
+
     this.app.get('/health', (req: Request, res: Response) => {
-      res.json({ 
-        status: 'ok',
-        service: 'realtime-server',
-        timestamp: new Date().toISOString()
-      });
+      res.json(health());
     });
-    
+
     this.app.get('/api/health', (req: Request, res: Response) => {
-      res.json({ 
-        status: 'ok',
-        service: 'realtime-server',
-        timestamp: new Date().toISOString()
-      });
+      res.json(health());
     });
 
     this.app.get('/bridge/health', (req: Request, res: Response) => {

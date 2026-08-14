@@ -53,37 +53,34 @@ export function createSSERoutes(deps: {
     const userContext: UserContext = extractUserContext(req);
     logger.debug(`User context resolved`, { component: 'SSE', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
     
-    // Check connection limit BEFORE sending headers.
-    // Previously the limit check lived inside registerClient() which ran AFTER
-    // res.writeHead(200). When the limit was exceeded, registerClient tried to
-    // send res.status(429).json() on an already-committed 200 response, which
-    // wrote JSON into the SSE stream and called res.end(). The browser's
-    // EventSource saw a 200 OK and auto-reconnected, creating an infinite loop.
-    const allowed = await deps.sseService.checkConnectionLimit(userContext);
-    if (!allowed) {
-      logger.warn(`SSE connection limit exceeded`, { component: 'SSE', projectId, featureName });
-      res.status(429).json({ error: 'Too many SSE connections' });
+    // Admit the connection BEFORE sending headers — slot budget, slot key, and
+    // the user's Pub/Sub subscription all need the state store, and a response
+    // once committed can no longer carry a status code.
+    //
+    // Both halves of this were learned the hard way. The limit check used to
+    // live inside registerClient() after res.writeHead(200), so exceeding it
+    // wrote 429 JSON into a live SSE stream; the slot-key write stayed behind
+    // and, when Redis was unreachable, ended a committed 200 — the browser saw
+    // a clean EOF on a valid text/event-stream and reconnected every 3 s
+    // forever, with no status code and nothing surfaced to the user.
+    const admission = await deps.sseService.admitConnection(userContext);
+    if (!admission.ok) {
+      logger.warn(`SSE connection refused (${admission.code})`, { component: 'SSE', projectId, featureName });
+      res.status(admission.status).json({ error: admission.code });
       return;
     }
 
-    // SSE headers — safe to send now that the limit check passed
+    // SSE headers — safe to send now that admission passed
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no'
     });
-    
-    // Register client (await ensures Redis Pub/Sub subscription is active before initial state).
-    // If registration fails after writeHead, we must NOT throw (Express would
-    // attempt a 500 response on the already-committed stream). End the response instead.
-    try {
-      await deps.sseService.registerClient(projectId, featureName, res, userContext);
-    } catch (err) {
-      logger.error(`Failed to register SSE client`, { component: 'SSE', projectId, featureName }, err);
-      try { res.end(); } catch {}
-      return;
-    }
+
+    // In-memory registration only — cannot fail, so nothing here can end the
+    // stream we just committed.
+    deps.sseService.registerClient(projectId, featureName, res, userContext, admission.reservation);
     logger.debug(`Client registered (total: ${deps.sseService.getClientCount(projectId, featureName, userContext)})`, { component: 'SSE', projectId, featureName });
 
     // Collect active jobs for this feature (N concurrent job support).
@@ -285,16 +282,16 @@ export function createSSERoutes(deps: {
       }
     }
 
-    // Same connection-slot budget the feature stream applies (M-005). Ownership
-    // stops another tenant's job being watched; it does not stop one account
-    // pinning unbounded responses, timers and Pub/Sub subscriptions here.
-    // Checked BEFORE writeHead for the same reason as the feature stream: a 429
-    // on a committed 200 would be written into the event stream and the browser
-    // would reconnect forever.
-    const allowed = await deps.sseService.checkConnectionLimit(userContext);
-    if (!allowed) {
-      logger.warn(`Workflow SSE connection limit exceeded`, { component: 'SSE', jobId });
-      res.status(429).json({ error: 'Too many SSE connections' });
+    // Same admission the feature stream applies (M-005). Ownership stops another
+    // tenant's job being watched; it does not stop one account pinning unbounded
+    // responses, timers and Pub/Sub subscriptions here. Decided BEFORE writeHead
+    // for the same reason as the feature stream: neither a 429 nor a 503 can be
+    // expressed once a 200 is committed — it would be written into the event
+    // stream, and the browser would reconnect forever.
+    const admission = await deps.sseService.admitConnection(userContext);
+    if (!admission.ok) {
+      logger.warn(`Workflow SSE connection refused (${admission.code})`, { component: 'SSE', jobId });
+      res.status(admission.status).json({ error: admission.code });
       return;
     }
 
@@ -306,9 +303,9 @@ export function createSSERoutes(deps: {
       'X-Accel-Buffering': 'no'
     });
 
-    // Register workflow client (await ensures Redis Pub/Sub subscription is active)
-    await deps.sseService.registerWorkflowClient(jobId, res, userContext);
-    
+    // In-memory registration only — the slot key and subscription are already secured
+    deps.sseService.registerWorkflowClient(jobId, res, admission.reservation);
+
     // Send initial workflow state (if exists) - Redis subscription now guaranteed active
     const initialState = await deps.workflowStateService.getInitialState(jobId);
     if (initialState) {

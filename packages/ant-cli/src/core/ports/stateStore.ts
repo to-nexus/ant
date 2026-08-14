@@ -870,7 +870,18 @@ export interface StateStorePort {
   // ============================================
   // Lifecycle
   // ============================================
-  
+
+  /**
+   * Whether the command channel is usable right now.
+   *
+   * Callers that are about to commit an irreversible response (SSE headers,
+   * a 200 they cannot take back) ask this FIRST, so an unreachable store is
+   * answered with an explicit failure instead of a committed response that
+   * dies on its first write. Also surfaced by the realtime health endpoint —
+   * a process that cannot reach the store is degraded, not `ok`.
+   */
+  isTransportReady(): boolean;
+
   /**
    * Close connections and cleanup resources
    */

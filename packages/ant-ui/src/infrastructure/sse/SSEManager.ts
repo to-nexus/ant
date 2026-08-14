@@ -59,6 +59,10 @@ interface SSEConnection {
   featureName: string;
   isConnected: boolean;
   reconnectAttempts: number;
+  /** `performance.now()` of the last `onopen` — see MIN_HEALTHY_CONNECTION_MS. */
+  openedAt?: number;
+  /** True once this connection has opened at least once (reconnect detection). */
+  hasOpenedBefore?: boolean;
 }
 
 interface WorkflowConnection {
@@ -67,6 +71,8 @@ interface WorkflowConnection {
   jobId: string;
   isConnected: boolean;
   reconnectAttempts: number;
+  /** `performance.now()` of the last `onopen` — see MIN_HEALTHY_CONNECTION_MS. */
+  openedAt?: number;
 }
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'error';
@@ -86,6 +92,34 @@ class SSEManager {
   private handlerRegistry: Map<HandlerId, { type: SSEMessageType; handler: SSEMessageHandler }> = new Map();
 
   private maxReconnectAttempts = 5;
+
+  /**
+   * How long a connection must survive before its `onopen` counts as recovery.
+   *
+   * `onopen` used to reset `reconnectAttempts` unconditionally, so a stream that
+   * opened with a valid 200 and then closed immediately never reached
+   * `maxReconnectAttempts`: no `statusCallback('error')`, no `/auth/me` probe,
+   * no server-down modal — the browser just reconnected every 3 s forever while
+   * the UI looked idle. A server-side outage produced exactly that shape (200
+   * headers committed, then the stream ended), so an open that dies this fast is
+   * counted as a failed attempt, not as a recovery.
+   */
+  private static readonly MIN_HEALTHY_CONNECTION_MS = 5000;
+
+  /**
+   * Retry budget carried across a self-scheduled reconnect.
+   *
+   * `disconnect()` drops the connection object, so a reconnect we schedule
+   * ourselves would otherwise restart `reconnectAttempts` at 0 and never reach
+   * `maxReconnectAttempts` — the escalation (error status, auth probe, modal)
+   * could never fire, and the backoff would never grow. Keyed by target so a
+   * genuine navigation starts with a fresh budget.
+   */
+  private carriedRetry: { key: string; attempts: number } | null = null;
+
+  private static retryKey(projectId: string, featureName: string, job: string): string {
+    return `${projectId}|${featureName}|${job}`;
+  }
 
   // Connection status callback - notifies Store when SSE connection status changes
   private statusCallback: ConnectionStatusCallback | null = null;
@@ -211,10 +245,16 @@ class SSEManager {
       });
       
       eventSource.onopen = () => {
-        const wasReconnect = (this.unifiedConnection?.reconnectAttempts ?? 0) > 0;
+        // Reconnect detection tracks "has this connection opened before", not the
+        // retry counter — the counter is now cleared by a surviving connection in
+        // onerror, so it no longer means "this is a reopen".
+        const wasReconnect = this.unifiedConnection?.hasOpenedBefore === true;
         if (this.unifiedConnection) {
           this.unifiedConnection.isConnected = true;
-          this.unifiedConnection.reconnectAttempts = 0;
+          this.unifiedConnection.openedAt = performance.now();
+          this.unifiedConnection.hasOpenedBefore = true;
+          // reconnectAttempts is NOT reset here — a connection has to survive
+          // MIN_HEALTHY_CONNECTION_MS before it counts as recovery (see onerror).
         }
         console.log(`[SSE] unified: open${wasReconnect ? ' (reconnect)' : ''}`);
         this.statusCallback?.('connected');
@@ -239,7 +279,17 @@ class SSEManager {
         // which breaks useFileTree, useChat, useUIActionPolicy, etc.
         // Only report 'error' when all reconnection attempts are exhausted.
         if (this.unifiedConnection) {
+          const openedAt = this.unifiedConnection.openedAt;
+          const survived =
+            openedAt !== undefined &&
+            performance.now() - openedAt >= SSEManager.MIN_HEALTHY_CONNECTION_MS;
+          // A connection that lived long enough proves the transport works, so
+          // this error starts a fresh retry budget. One that died on arrival
+          // keeps the budget, so the cycle escalates instead of looping silently.
+          if (survived) this.unifiedConnection.reconnectAttempts = 0;
+
           this.unifiedConnection.isConnected = false;
+          this.unifiedConnection.openedAt = undefined;
           this.unifiedConnection.reconnectAttempts++;
           console.warn(`[SSE] unified: error (attempt ${this.unifiedConnection.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
@@ -249,16 +299,29 @@ class SSEManager {
             this.onErrorCallback?.();
           }
           
-          if (this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts) {
-            // Exponential backoff retry after max attempts
-            const retryDelay = Math.min(30000, 1000 * Math.pow(2, this.unifiedConnection.reconnectAttempts - this.maxReconnectAttempts));
+          // The browser only auto-reconnects after a transport-level failure. On
+          // a non-200 (503 when the server refuses, 401 after session loss) it
+          // sets readyState=CLOSED and never retries — so if we don't schedule
+          // the retry ourselves, one transient refusal leaves the app silently
+          // disconnected until a tab switch or a project change.
+          const browserGaveUp = eventSource.readyState === EventSource.CLOSED;
+          const exhausted = this.unifiedConnection.reconnectAttempts >= this.maxReconnectAttempts;
+
+          if (exhausted || browserGaveUp) {
+            const retryDelay = exhausted
+              ? Math.min(30000, 1000 * Math.pow(2, this.unifiedConnection.reconnectAttempts - this.maxReconnectAttempts))
+              : Math.min(30000, 1000 * Math.pow(2, this.unifiedConnection.reconnectAttempts - 1));
             const savedProjectId = this.unifiedConnection.projectId;
             const savedFeatureName = this.unifiedConnection.featureName;
             const savedUrl = new URL(this.unifiedConnection.url);
             const savedJob = savedUrl.searchParams.get('job') || 'code';
 
             // Report error only when giving up on auto-reconnect
-            this.statusCallback?.('error');
+            if (exhausted) this.statusCallback?.('error');
+            this.carriedRetry = {
+              key: SSEManager.retryKey(savedProjectId, savedFeatureName, savedJob),
+              attempts: this.unifiedConnection.reconnectAttempts,
+            };
             this.disconnect();
 
             // Probe /auth/me before scheduling another reconnect cycle.
@@ -274,13 +337,18 @@ class SSEManager {
         }
       };
       
+      // Inherit the budget only when this is a retry of the same target.
+      const retryKey = SSEManager.retryKey(projectId, featureName, job);
+      const carriedAttempts = this.carriedRetry?.key === retryKey ? this.carriedRetry.attempts : 0;
+      this.carriedRetry = null;
+
       this.unifiedConnection = {
         eventSource,
         url: finalUrl,
         projectId,
         featureName,
         isConnected: false,
-        reconnectAttempts: 0
+        reconnectAttempts: carriedAttempts
       };
 
       this.setupVisibilityHandler();
@@ -434,7 +502,9 @@ class SSEManager {
         const conn = this.workflowConnections.get(jobId);
         if (conn) {
           conn.isConnected = true;
-          conn.reconnectAttempts = 0;
+          conn.openedAt = performance.now();
+          // Same rule as the unified stream: recovery is proven by surviving,
+          // not by opening (see MIN_HEALTHY_CONNECTION_MS).
         }
         console.log(`[SSE] workflow(${jobId}): open`);
       };
@@ -464,22 +534,39 @@ class SSEManager {
       eventSource.onerror = () => {
         const conn = this.workflowConnections.get(jobId);
         if (conn) {
+          const survived =
+            conn.openedAt !== undefined &&
+            performance.now() - conn.openedAt >= SSEManager.MIN_HEALTHY_CONNECTION_MS;
+          if (survived) conn.reconnectAttempts = 0;
+
           conn.isConnected = false;
+          conn.openedAt = undefined;
           conn.reconnectAttempts++;
           console.warn(`[SSE] workflow(${jobId}): error (attempt ${conn.reconnectAttempts}/${this.maxReconnectAttempts})`);
           
-          if (conn.reconnectAttempts >= this.maxReconnectAttempts) {
-            // Exponential backoff retry after max attempts
-            const retryDelay = Math.min(30000, 1000 * Math.pow(2, conn.reconnectAttempts - this.maxReconnectAttempts));
-            
+          // Same rule as the unified stream: on a non-200 the browser sets
+          // readyState=CLOSED and never retries, so we must schedule it.
+          const browserGaveUp = eventSource.readyState === EventSource.CLOSED;
+          const exhausted = conn.reconnectAttempts >= this.maxReconnectAttempts;
+
+          if (exhausted || browserGaveUp) {
+            const retryDelay = exhausted
+              ? Math.min(30000, 1000 * Math.pow(2, conn.reconnectAttempts - this.maxReconnectAttempts))
+              : Math.min(30000, 1000 * Math.pow(2, conn.reconnectAttempts - 1));
+            const carriedAttempts = conn.reconnectAttempts;
+
             this.disconnectWorkflow(jobId);
-            
+
             console.log(`[SSE] workflow(${jobId}): reconnecting in ${retryDelay}ms`);
             setTimeout(() => {
               this.connectWorkflow(jobId);
+              // Carry the budget across our own reconnect so repeated refusals
+              // still escalate instead of restarting at 0 forever.
+              const next = this.workflowConnections.get(jobId);
+              if (next) next.reconnectAttempts = carriedAttempts;
             }, retryDelay);
           }
-          // If under maxReconnectAttempts, EventSource auto-reconnects (browser default)
+          // Otherwise the failure was transport-level and the browser auto-reconnects.
         }
       };
       

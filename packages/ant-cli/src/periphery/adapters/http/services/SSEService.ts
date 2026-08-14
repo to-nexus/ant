@@ -33,6 +33,25 @@ const MAX_SSE_CONNECTIONS_PER_USER = 10;
 const SSE_CONNECTION_KEY_PREFIX = 'ant:sse:conn:';
 const SSE_CONNECTION_TTL_SECONDS = 30; // Per-connection key TTL; refreshed by heartbeat
 
+/**
+ * Redis-backed admission granted by {@link SSEService.admitConnection} and
+ * handed to the register call once the response is committed.
+ */
+export interface SseConnectionReservation {
+  /** Per-connection slot key; the close handler releases it. */
+  connKey?: string;
+}
+
+/**
+ * Outcome of the pre-header admission check. `connection_limit` (429) is the
+ * account's own budget; `transport_unavailable` (503) means the state store
+ * cannot back this stream, so nothing the caller retries helps until it is
+ * reachable again.
+ */
+export type SseAdmission =
+  | { ok: true; reservation: SseConnectionReservation }
+  | { ok: false; status: 429 | 503; code: 'connection_limit' | 'transport_unavailable' };
+
 export class SSEService {
   /**
    * Flush response buffer to ensure SSE data is sent immediately through proxies.
@@ -129,61 +148,87 @@ export class SSEService {
   }
   
   /**
-   * Check whether the user has room for another SSE connection.
-   * Counts per-connection keys (each with a short TTL) instead of a single counter.
-   * Must be called BEFORE res.writeHead() so the caller can still send a 429.
+   * Admit (or refuse) one SSE connection. Runs EVERY step that needs the state
+   * store, and MUST be awaited before the caller commits SSE headers:
+   *
+   *   1. transport reachable?      → 503, nothing retryable
+   *   2. per-account slot budget   → 429
+   *   3. reserve the slot key      → 503 on failure
+   *   4. user Pub/Sub subscription → 503 on failure (an unsubscribed stream
+   *                                  delivers nothing, so admitting it is worse
+   *                                  than refusing it)
+   *
+   * Why the ordering is load-bearing: step 3 used to run inside
+   * `registerClient`, i.e. AFTER `res.writeHead(200)`. When Redis was
+   * unreachable the route ended a committed 200, the browser saw a clean EOF on
+   * a valid `text/event-stream`, and EventSource reconnected every 3 s forever
+   * with no status code and no user-visible error. This is the same failure
+   * shape as the 429-after-writeHead incident (see sse.routes.ts) — one line
+   * further down.
    */
-  async checkConnectionLimit(userContext: UserContext): Promise<boolean> {
-    if (!this.stateStore) return true;
-    try {
-      const prefix = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:`;
-      const count = await this.stateStore.countKeysByPrefix(prefix);
-      return (count < MAX_SSE_CONNECTIONS_PER_USER);
-    } catch {
-      return true;
+  async admitConnection(userContext: UserContext): Promise<SseAdmission> {
+    if (!userContext?.organizationId || !userContext?.userId) {
+      // Refusing beats the old silent early-return, which left the caller with
+      // an open stream that was registered nowhere.
+      return { ok: false, status: 503, code: 'transport_unavailable' };
     }
+
+    if (!this.stateStore) {
+      return { ok: true, reservation: {} };
+    }
+
+    if (!this.stateStore.isTransportReady()) {
+      logger.error('Refusing SSE connection: state store not ready', { component: 'SSEService' });
+      return { ok: false, status: 503, code: 'transport_unavailable' };
+    }
+
+    const prefix = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:`;
+    const connKey = `${prefix}${randomUUID()}`;
+    try {
+      const count = await this.stateStore.countKeysByPrefix(prefix);
+      if (count >= MAX_SSE_CONNECTIONS_PER_USER) {
+        return { ok: false, status: 429, code: 'connection_limit' };
+      }
+      await this.stateStore.setKeyWithTTL(connKey, '1', SSE_CONNECTION_TTL_SECONDS);
+      // MUST be awaited: it guarantees the subscription is live before initial
+      // state is sent, so updates published meanwhile are not lost.
+      await this.subscribeToUserChannels(userContext);
+    } catch (error) {
+      logger.error(
+        `Refusing SSE connection: ${error instanceof Error ? error.message : String(error)}`,
+        { component: 'SSEService' },
+      );
+      this.stateStore.deleteKey(connKey).catch(() => {});
+      return { ok: false, status: 503, code: 'transport_unavailable' };
+    }
+
+    return { ok: true, reservation: { connKey } };
   }
 
   /**
-   * Register SSE client for a project/feature.
-   * Subscribes to user-specific channels on first registration.
+   * Register SSE client for a project/feature — in-memory bookkeeping only.
    *
-   * IMPORTANT: Connection limit must already be checked via checkConnectionLimit()
-   * BEFORE calling res.writeHead(). This method creates a per-connection Redis key.
-   *
-   * CRITICAL: subscribeToUserChannels is awaited to ensure Redis subscription
-   * is active BEFORE returning. This prevents a race condition where updates
-   * published by Job Worker via Redis are lost because the subscription
-   * wasn't established yet when initial state was sent.
+   * Deliberately synchronous and infallible: it runs AFTER the response is
+   * committed, where a throw could only end a live 200. Everything that can
+   * fail belongs to {@link admitConnection}, which runs before `writeHead`.
    */
-  async registerClient(projectId: string, featureName: string, res: Response, userContext: UserContext): Promise<void> {
-    if (!userContext?.organizationId || !userContext?.userId) {
-      logger.error('Cannot register client without userContext', { component: 'SSEService', projectId, featureName });
-      return;
-    }
-    
-    const connId = randomUUID();
-    const connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:${connId}`;
-    if (this.stateStore) {
-      await this.stateStore.setKeyWithTTL(connKey, '1', SSE_CONNECTION_TTL_SECONDS);
-    }
-    
+  registerClient(
+    projectId: string,
+    featureName: string,
+    res: Response,
+    userContext: UserContext,
+    reservation: SseConnectionReservation,
+  ): void {
+    const { connKey } = reservation;
     const key = this.getSessionKey(projectId, featureName, userContext);
-    
+
     if (!this.clients.has(key)) {
       this.clients.set(key, new Set());
     }
-    
+
     this.clients.get(key)!.add(res);
     logger.debug(`Client registered: ${key} (total: ${this.clients.get(key)!.size})`, { component: 'SSEService', projectId, featureName });
-    
-    // Subscribe to user-specific channels (MUST await to prevent race condition)
-    try {
-      await this.subscribeToUserChannels(userContext);
-    } catch (error) {
-      logger.error('Failed to subscribe to user channels', { component: 'SSEService' }, error);
-    }
-    
+
     // Store connKey on response for heartbeat TTL refresh (see sse.routes.ts)
     (res as any).__sseConnKey = connKey;
 
@@ -192,7 +237,7 @@ export class SSEService {
       if (this.clients.get(key)?.size === 0) {
         this.clients.delete(key);
       }
-      if (this.stateStore) {
+      if (connKey && this.stateStore) {
         this.stateStore.deleteKey(connKey).catch((err) => {
           logger.error('Failed to delete SSE connection key', { component: 'SSEService' }, err);
         });
@@ -204,19 +249,15 @@ export class SSEService {
   }
   
   /**
-   * Register workflow SSE client for a job
-   * 
-   * CRITICAL: subscribeToUserChannels is awaited to ensure Redis subscription
-   * is active BEFORE returning (same rationale as registerClient).
+   * Register workflow SSE client for a job — in-memory bookkeeping only, same
+   * contract as {@link registerClient}: the slot key and the Pub/Sub
+   * subscription are already secured by {@link admitConnection} before the
+   * caller committed headers. Both stream kinds share one slot budget, so a
+   * workflow client stays visible to the per-account cap (M-005).
    */
-  async registerWorkflowClient(jobId: string, res: Response, userContext?: UserContext): Promise<void> {
-    // Same per-connection key the feature stream mints, so both stream kinds
-    // are counted by one budget — without it a workflow client was invisible to
-    // `checkConnectionLimit` and the cap could be bypassed entirely (M-005).
-    let connKey: string | undefined;
-    if (this.stateStore && userContext?.organizationId && userContext?.userId) {
-      connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:${randomUUID()}`;
-      await this.stateStore.setKeyWithTTL(connKey, '1', SSE_CONNECTION_TTL_SECONDS);
+  registerWorkflowClient(jobId: string, res: Response, reservation: SseConnectionReservation): void {
+    const { connKey } = reservation;
+    if (connKey) {
       (res as any).__sseConnKey = connKey;
     }
 
@@ -227,15 +268,6 @@ export class SSEService {
     this.workflowClients.get(jobId)!.add(res);
     logger.debug(`Workflow client registered: ${jobId} (total: ${this.workflowClients.get(jobId)!.size})`, { component: 'SSEService', jobId });
 
-    // Subscribe to user-specific workflow channel (MUST await to prevent race condition)
-    if (userContext?.organizationId && userContext?.userId) {
-      try {
-        await this.subscribeToUserChannels(userContext);
-      } catch (error) {
-        logger.error('Failed to subscribe to user workflow channels', { component: 'SSEService' }, error);
-      }
-    }
-    
     // Handle client disconnect
     res.on('close', () => {
       this.workflowClients.get(jobId)?.delete(res);

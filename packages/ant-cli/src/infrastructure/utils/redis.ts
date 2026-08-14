@@ -19,6 +19,8 @@ export interface RedisConnectionOptions {
 export interface RedisTlsOptions {
   rejectUnauthorized?: boolean;
   checkServerIdentity?: () => undefined;
+  /** SNI + certificate-identity hostname, when it differs from the URL host. */
+  servername?: string;
 }
 
 /**
@@ -39,12 +41,32 @@ export function shouldSkipRedisTlsHostnameCheck(): boolean {
 }
 
 /**
+ * Hostname to verify the certificate against, when the URL host is a CNAME in
+ * front of the real endpoint. Keeps FULL verification (SNI and the identity
+ * check both use this name) instead of turning hostname checking off, so it is
+ * strictly preferable to {@link shouldSkipRedisTlsHostnameCheck} whenever the
+ * native endpoint name is known.
+ */
+export function redisTlsServername(): string | undefined {
+  const servername = process.env.ANT_REDIS_TLS_SERVERNAME?.trim();
+  return servername || undefined;
+}
+
+/**
  * TLS options for a Redis URL — single owner of the hostname-check decision.
  * Returns `{}` for plaintext `redis://`; `{ tls: … }` for `rediss://`.
+ *
+ * `servername` and the skip flag are not mutually exclusive by construction,
+ * but the skip flag makes `servername` moot — an authored servername wins so a
+ * leftover skip flag cannot silently keep the weaker posture.
  */
 export function buildRedisTlsOptions(url: string): { tls?: RedisTlsOptions } {
   if (!url.startsWith('rediss://')) {
     return {};
+  }
+  const servername = redisTlsServername();
+  if (servername) {
+    return { tls: { servername } };
   }
   return {
     tls: shouldSkipRedisTlsHostnameCheck() ? { checkServerIdentity: () => undefined } : {},
