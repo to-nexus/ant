@@ -22,6 +22,20 @@ function warnAmbiguousLocalTenant(reason: string): void {
   );
 }
 
+// Fires at most once: a leftover `individual/` tree (cloud-mode artifact) is
+// never served in local mode, so its projects are invisible here by doctrine.
+let warnedIndividualTree = false;
+function warnSkippedIndividualTree(): void {
+  if (warnedIndividualTree) return;
+  warnedIndividualTree = true;
+  logger.warn(
+    `⚠️  Local-mode tenant inference skips the '${INDIVIDUAL_ORG_ID}/' workspace tree (cloud-mode artifact) — ` +
+      'projects under it are invisible to this server. ' +
+      'Set ANT_LOCAL_ORG + ANT_LOCAL_USER to serve that tree explicitly.',
+    { component: 'userContext' },
+  );
+}
+
 /**
  * Single sink for "is the BE running in local mode?". Re-exported from
  * `core/config/serverMode` — `core/` needs the same predicate (codebase-path
@@ -54,6 +68,7 @@ export function declaredLocalTenant(): { organizationId: string; userId: string 
 export function __resetInferredLocalDefaultForTests(): void {
   inferredLocalDefault = undefined;
   warnedMultiTenant = false;
+  warnedIndividualTree = false;
 }
 
 export function inferLocalDefaultTenant(): { organizationId: string; userId: string } | null {
@@ -116,14 +131,24 @@ function inferTenantByProjectId(projectId: string): { organizationId: string; us
     const base = WorkspacePathResolver.getPhysicalWorkspacesPath();
     const candidates: Array<{ organizationId: string; userId: string }> = [];
 
-    const orgDirs = fs
+    const allOrgDirs = fs
       .readdirSync(base, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
       .filter((name) => name !== '.ide-homes' && !name.startsWith('.'));
 
-    // The `local` org is scanned like any other: its user directory is
-    // LOCAL_USER_ID ('local'), so `local/local/<project>` is discoverable here.
+    // Doctrine (docs/internals/40-org-model.md): local mode never serves the
+    // `individual/` tree — it is a cloud-mode artifact. Scanning it here made
+    // project-route inference disagree with the account-route default
+    // (`inferLocalDefaultTenant` already excludes it), so create-vs-list could
+    // land on different tenants. The `local` org IS scanned: its user
+    // directory is LOCAL_USER_ID ('local'), so `local/local/<project>`
+    // resolves here.
+    const orgDirs = allOrgDirs.filter((name) => name !== INDIVIDUAL_ORG_ID);
+    if (allOrgDirs.includes(INDIVIDUAL_ORG_ID)) {
+      warnSkippedIndividualTree();
+    }
+
     for (const org of orgDirs) {
       const usersDir = path.join(base, org);
       let users: string[] = [];

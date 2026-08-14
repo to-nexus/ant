@@ -95,9 +95,12 @@ export class RouteConfigurator {
    */
   private setupCustomAgentRoutes(app: Express): void {
     if (!this.deps.workspaceResolver) return;
-    app.use('/api', createCustomAgentRoutes({ workspaceResolver: this.deps.workspaceResolver }));
+    // Live team roles + org-agent ACL authority (org-owned agents). Local
+    // mode gets the Noop repository — same single code path, kind-dispatch.
+    const organizationRepository = getInfrastructureFactory().getOrganizationRepository();
+    app.use('/api', createCustomAgentRoutes({ workspaceResolver: this.deps.workspaceResolver, organizationRepository }));
     // Account-scoped agent settings (profile menu) — no project required (D-G).
-    app.use('/api/account/agents', createAccountAgentRoutes({ workspaceResolver: this.deps.workspaceResolver }));
+    app.use('/api/account/agents', createAccountAgentRoutes({ workspaceResolver: this.deps.workspaceResolver, organizationRepository }));
     // MCP credential registration — the encrypted per-user store the universal
     // runtime resolves `mcp.servers[].headers`/`env` key names against (A16).
     app.use(

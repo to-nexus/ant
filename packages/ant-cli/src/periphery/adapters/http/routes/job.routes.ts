@@ -75,7 +75,7 @@ function resolveAgentForJobType(jobType: string): string {
  */
 async function resolveUniversalExecuteContext(
   workspaceResolver: WorkspaceResolver,
-  userContext: { userId: string; organizationId: string },
+  userContext: { userId: string; organizationId: string; organizationKind?: import('@ant/shared').OrganizationKind },
   projectId: string,
   customJobRef: unknown,
 ): Promise<
@@ -100,9 +100,15 @@ async function resolveUniversalExecuteContext(
   }
   let intentIds: Set<string>;
   try {
-    const { deriveCustomAgentScopeRoots } = await import('../../../../core/customAgents/scopeRoots');
+    const { deriveCustomAgentScopeRootsForTenant } = await import('../../../../core/customAgents/scopeRoots');
     const { loadCustomJob } = await import('../../../../core/customAgents/CustomAgentLoader');
-    const loaded = loadCustomJob(deriveCustomAgentScopeRoots(projectPath), ref.agentId, ref.jobId);
+    const scopeRoots = deriveCustomAgentScopeRootsForTenant({
+      workspacesPath: workspaceResolver.getPhysicalWorkspacesPath(),
+      userId: userContext.userId,
+      organizationId: userContext.organizationId,
+      organizationKind: userContext.organizationKind ?? 'local',
+    });
+    const loaded = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
     intentIds = new Set(loaded.intents.map((i) => i.id));
   } catch (e) {
     return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e), code: 'invalid-custom-job-definition' };

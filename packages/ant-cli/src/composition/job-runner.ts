@@ -73,6 +73,10 @@ interface JobParams {
   customJobRef?: string;
   /** Universal only — explicit `@intent:`/`@ctx:` turn meta (single JSON env). */
   universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
+  /** Tenant org kind for scope-root derivation (org-owned agents). */
+  orgKind?: import('@ant/shared').OrganizationKind;
+  /** Physical workspaces root (pairs with orgKind). */
+  workspacesRoot?: string;
 }
 
 function getJobParams(): JobParams {
@@ -107,6 +111,8 @@ function getJobParams(): JobParams {
     universalTurnMeta: process.env.ANT_UNIVERSAL_TURN_META
       ? (() => { try { return JSON.parse(process.env.ANT_UNIVERSAL_TURN_META!); } catch { return undefined; } })()
       : undefined,
+    orgKind: process.env.ANT_ORG_KIND as import('@ant/shared').OrganizationKind | undefined,
+    workspacesRoot: process.env.ANT_WORKSPACES_ROOT,
   };
 }
 
@@ -357,9 +363,22 @@ async function main(): Promise<void> {
       throw new Error(`Universal job requires a valid ANT_CUSTOM_JOB_REF (got: ${params.customJobRef})`);
     }
     const { loadCustomJob } = await import('../core/customAgents/CustomAgentLoader');
-    const { deriveCustomAgentScopeRoots } = await import('../core/customAgents/scopeRoots');
+    const { deriveCustomAgentScopeRoots, deriveCustomAgentScopeRootsForTenant } = await import('../core/customAgents/scopeRoots');
     const { activateCustomJob } = await import('../core/customAgents/activeCustomJob');
-    const resolved = loadCustomJob(deriveCustomAgentScopeRoots(params.projectPath), ref.agentId, ref.jobId);
+    // Tenant-aware roots when the worker supplied the org kind; the
+    // project-path derivation stays as BC for in-flight jobs spawned by a
+    // pre-upgrade worker. NEVER derive the kind from the org id here — a
+    // local tenant named like a team org would be misclassified.
+    const scopeRoots = params.orgKind
+      ? deriveCustomAgentScopeRootsForTenant({
+          workspacesPath: params.workspacesRoot
+            ?? path.dirname(path.dirname(path.dirname(params.projectPath))),
+          userId: params.userId,
+          organizationId: params.orgId,
+          organizationKind: params.orgKind,
+        })
+      : deriveCustomAgentScopeRoots(params.projectPath);
+    const resolved = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
     activateCustomJob(resolved);
     console.log(`🧩 [JobRunner] Custom job activated: ${params.customJobRef} (scope: ${resolved.scope})`);
   }

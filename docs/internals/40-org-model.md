@@ -29,6 +29,25 @@ The decider is `kind` (data), not server mode. `inferLocalDefaultTenant`
 excludes both `local` and `individual` from its single-org probe so a stray
 `individual/` folder in a local workspace never becomes the inferred tenant.
 
+`inferTenantByProjectId` (project routes) follows the same doctrine: the
+`individual/` tree is **excluded from the scan** (the `local/` org stays
+scannable — `local/local/{project}` resolves there). Before this, a leftover
+`individual/{email}` tree could repoint PROJECT routes while ACCOUNT routes
+stayed on the fallback tenant, so agent create-vs-list landed on different
+roots (the D3 create/list mismatch). Skipping an individual candidate logs a
+one-time warning naming `ANT_LOCAL_ORG` / `ANT_LOCAL_USER` — the explicit
+override for developers who really want that tree served locally.
+
+### Org-owned custom agents (team kind)
+
+Custom-agent definitions follow the same folder doctrine: personal agents are
+anchored at `workspaces/individual/{email}/.ant/agents` regardless of the
+active org (an org switch never empties the settings list), and org-shared
+agents live at `workspaces/{team-id}/.ant/agents` with a per-agent edit ACL
+in `workspaces/{team-id}/.ant/agent-acl.json` (owner = promoter, delegated
+editors, org admins always allowed via the LIVE membership row). See
+[44-universal-job.md](44-universal-job.md) §Definition loading.
+
 ## Identity = full email (cloud)
 
 `user.id` is the **full lowercased email** for every cloud org (individual and

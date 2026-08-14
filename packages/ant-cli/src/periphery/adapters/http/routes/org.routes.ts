@@ -15,8 +15,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
+import { hasMinRole, resolveLiveTeamMembership } from './helpers/teamRole';
 import { logger } from '../../../../utils/logger';
-import { CANONICAL_FEATURE_DIRS, featureSlugToName, featureNameToSlug } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, ROLE_FORBIDDEN, featureSlugToName, featureNameToSlug } from '@ant/shared';
 import { OrgConfig } from '../../../../core/types/orgConfig';
 import {
   UserConfig,
@@ -339,6 +340,21 @@ export function createOrgRoutes(deps: OrgRoutesDeps): Router {
           error: 'INDIVIDUAL_NO_ORG_CONFIG',
           message: 'Individual accounts have no organization-level configuration.',
         });
+      }
+
+      // Team orgs: writing shared org config requires a LIVE admin+ role
+      // (kind-dispatch; local mode stays ungated — single-developer trust
+      // boundary, and it never carries a team kind).
+      if (userContext.organizationKind === 'team') {
+        const resolved = deps.organizationRepository
+          ? await resolveLiveTeamMembership(deps.organizationRepository, userContext.userId, orgId)
+          : null;
+        if (!resolved || !hasMinRole(resolved.membership.role, 'admin')) {
+          return res.status(403).json({
+            error: 'Organization config requires an admin role.',
+            code: ROLE_FORBIDDEN,
+          });
+        }
       }
 
       const workspacesPath = workspaceResolver.getPhysicalWorkspacesPath();

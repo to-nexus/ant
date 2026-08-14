@@ -15,7 +15,8 @@ import multer from 'multer';
 import { writeBufferVerified } from '../../../../core/utils/binaryIntegrity';
 import { isValidCustomId } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
-import { deriveCustomAgentScopeRoots } from '../../../../core/customAgents/scopeRoots';
+import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
+import { deriveCustomAgentScopeRootsForTenant } from '../../../../core/customAgents/scopeRoots';
 import {
   UNIVERSAL_ARTIFACT_CANONICAL_DIRS,
   UNIVERSAL_SESSIONS_NODE,
@@ -30,26 +31,77 @@ import {
   type CustomAgentScopeRoot,
 } from '../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../core/customAgents/types';
-import { createCollisionMessage, findWritableAgent, patchYamlFile, scaffoldAgent, scaffoldJob } from './helpers/customAgentHandlers';
+import {
+  createCollisionMessage,
+  decorateOrgAgentSummaries,
+  findWritableAgent,
+  patchYamlFile,
+  scaffoldAgent,
+  scaffoldJob,
+  type OrgWriteGate,
+} from './helpers/customAgentHandlers';
+import { readOrgAgentAcl, updateOrgAgentAcl } from './helpers/orgAgentAclStore';
+import { resolveLiveTeamMembership } from './helpers/teamRole';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 
-export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceResolver }): Router {
+export function createCustomAgentRoutes(deps: {
+  workspaceResolver: WorkspaceResolver;
+  organizationRepository: OrganizationRepositoryPort;
+}): Router {
   const router = Router();
 
-  function scopeRootsFor(req: Request, projectId: string): CustomAgentScopeRoot[] {
+  function scopeRootsFor(req: Request): CustomAgentScopeRoot[] {
+    // Definitions are account/org-owned — the projectId in the URL scopes the
+    // container endpoints below, never the definition roots. Local-mode
+    // tenant resolution (including project-id inference) is extractUserContext's job.
     const userContext = extractUserContext(req);
-    const projectPath = deps.workspaceResolver.getProjectPath(userContext, projectId);
-    return deriveCustomAgentScopeRoots(projectPath);
+    return deriveCustomAgentScopeRootsForTenant({
+      workspacesPath: deps.workspaceResolver.getPhysicalWorkspacesPath(),
+      userId: userContext.userId,
+      organizationId: userContext.organizationId,
+      organizationKind: userContext.organizationKind ?? 'local',
+    });
+  }
+
+  /** Request-memoized org write gate — mirrors the account mount (no drift). */
+  function orgGateFor(req: Request): () => Promise<OrgWriteGate> {
+    let cached: Promise<OrgWriteGate> | null = null;
+    return () => {
+      cached ??= (async () => {
+        const userContext = extractUserContext(req);
+        const resolved =
+          userContext.organizationKind === 'team'
+            ? await resolveLiveTeamMembership(
+                deps.organizationRepository,
+                userContext.userId,
+                userContext.organizationId,
+              )
+            : null;
+        return {
+          callerId: userContext.userId,
+          liveRole: resolved?.membership.role ?? null,
+          acl: await readOrgAgentAcl(
+            deps.workspaceResolver.getPhysicalWorkspacesPath(),
+            userContext.organizationId,
+          ),
+        };
+      })();
+      return cached;
+    };
   }
 
   // ── agents ─────────────────────────────────────────────────────────────
 
-  router.get('/projects/:projectId/custom-agents', (req: Request, res: Response) => {
+  router.get('/projects/:projectId/custom-agents', async (req: Request, res: Response) => {
     try {
-      const agents = discoverAgents(scopeRootsFor(req, req.params.projectId));
+      const scopeRoots = scopeRootsFor(req);
+      let agents = discoverAgents(scopeRoots);
+      if (extractUserContext(req).organizationKind === 'team') {
+        agents = decorateOrgAgentSummaries(agents, scopeRoots, await orgGateFor(req)());
+      }
       res.json({ agents });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'CustomAgents');
@@ -63,13 +115,14 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
       if (!isValidCustomId(id ?? '')) {
         return res.status(400).json({ error: `Agent id must match [a-z0-9-]+ (got: ${String(id)})` });
       }
-      const scopeRoots = scopeRootsFor(req, req.params.projectId);
+      const scopeRoots = scopeRootsFor(req);
       const collision = findCreateCollision(scopeRoots, id);
       if (collision) {
         return res.status(409).json({ error: createCollisionMessage(id, collision) });
       }
-      // Definitions are account-owned: creation always targets the user root.
-      const root = scopeRoots.find((r) => r.scope === 'user')!;
+      // Definitions are account-owned: creation always targets the writable,
+      // non-legacy user root.
+      const root = scopeRoots.find((r) => r.scope === 'user' && !r.readonly && !r.legacy)!;
       const agentDir = path.join(root.root, id);
       scaffoldAgent(agentDir, id, name || id);
       logger.info(`Custom agent scaffolded: ${id} (scope: user)`, { component: 'CustomAgents' });
@@ -79,9 +132,9 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     }
   });
 
-  router.patch('/projects/:projectId/custom-agents/:agentId', (req: Request, res: Response) => {
+  router.patch('/projects/:projectId/custom-agents/:agentId', async (req: Request, res: Response) => {
     try {
-      const found = findWritableAgent(res, scopeRootsFor(req, req.params.projectId), req.params.agentId);
+      const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
       if (!found) return;
       const { name } = req.body ?? {};
       patchYamlFile(path.join(found.agentDir, 'agent.yaml'), { name });
@@ -91,11 +144,21 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     }
   });
 
-  router.delete('/projects/:projectId/custom-agents/:agentId', (req: Request, res: Response) => {
+  router.delete('/projects/:projectId/custom-agents/:agentId', async (req: Request, res: Response) => {
     try {
-      const found = findWritableAgent(res, scopeRootsFor(req, req.params.projectId), req.params.agentId);
+      const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
       if (!found) return;
       fs.rmSync(found.agentDir, { recursive: true, force: true });
+      if (found.scopeRoot.aclGoverned) {
+        const userContext = extractUserContext(req);
+        await updateOrgAgentAcl(
+          deps.workspaceResolver.getPhysicalWorkspacesPath(),
+          userContext.organizationId,
+          (acl) => {
+            delete acl.agents[req.params.agentId];
+          },
+        );
+      }
       logger.info(`Custom agent deleted: ${req.params.agentId}`, { component: 'CustomAgents' });
       res.json({ success: true });
     } catch (error: any) {
@@ -107,7 +170,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   router.get('/projects/:projectId/custom-agents/:agentId/jobs', (req: Request, res: Response) => {
     try {
-      const scopeRoots = scopeRootsFor(req, req.params.projectId);
+      const scopeRoots = scopeRootsFor(req);
       const agents = discoverAgents(scopeRoots);
       const agent = agents.find((a) => a.id === req.params.agentId);
       if (!agent) return res.status(404).json({ error: `Custom agent not found: ${req.params.agentId}` });
@@ -117,9 +180,9 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     }
   });
 
-  router.post('/projects/:projectId/custom-agents/:agentId/jobs', (req: Request, res: Response) => {
+  router.post('/projects/:projectId/custom-agents/:agentId/jobs', async (req: Request, res: Response) => {
     try {
-      const found = findWritableAgent(res, scopeRootsFor(req, req.params.projectId), req.params.agentId);
+      const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
       if (!found) return;
       // `description` from older FE builds is accepted-and-dropped — the
       // job.yaml schema no longer carries it (mirrors agent.yaml).
@@ -139,9 +202,9 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     }
   });
 
-  router.patch('/projects/:projectId/custom-agents/:agentId/jobs/:jobId', (req: Request, res: Response) => {
+  router.patch('/projects/:projectId/custom-agents/:agentId/jobs/:jobId', async (req: Request, res: Response) => {
     try {
-      const found = findWritableAgent(res, scopeRootsFor(req, req.params.projectId), req.params.agentId);
+      const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
       if (!found) return;
       const jobYaml = path.join(found.agentDir, 'jobs', req.params.jobId, 'job.yaml');
       if (!isValidCustomId(req.params.jobId) || !fs.existsSync(jobYaml)) {
@@ -155,9 +218,9 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
     }
   });
 
-  router.delete('/projects/:projectId/custom-agents/:agentId/jobs/:jobId', (req: Request, res: Response) => {
+  router.delete('/projects/:projectId/custom-agents/:agentId/jobs/:jobId', async (req: Request, res: Response) => {
     try {
-      const found = findWritableAgent(res, scopeRootsFor(req, req.params.projectId), req.params.agentId);
+      const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
       if (!found) return;
       const jobDir = path.join(found.agentDir, 'jobs', req.params.jobId);
       if (!isValidCustomId(req.params.jobId) || !fs.existsSync(jobDir)) {
@@ -174,7 +237,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   router.get('/projects/:projectId/custom-agents/:agentId/jobs/:jobId/validate', (req: Request, res: Response) => {
     try {
-      const scopeRoots = scopeRootsFor(req, req.params.projectId);
+      const scopeRoots = scopeRootsFor(req);
       const resolved = loadCustomJob(scopeRoots, req.params.agentId, req.params.jobId);
       res.json({
         valid: true,

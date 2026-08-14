@@ -174,12 +174,43 @@ is conditional):
   definition author concludes a knob works.
 - Prose floor: a job with zero non-empty `base/*.md` across both levels fails
   loud — an agent with no prose is a harness with no purpose.
-- Scope roots: `deriveCustomAgentScopeRoots` — user > org
-  (`$ANT_CUSTOM_AGENTS_DIR`, readonly) > builtin (shipped samples under
-  `core/data/agents`, readonly, always present). Definitions are
-  **account/org-owned, never project-owned** — the user root is
-  `workspaces/{org}/{user}/.ant/agents`, shared across the account's
-  projects. Adding org sync later = one more root.
+- Scope roots: `deriveCustomAgentScopeRootsForTenant` (SSOT — dispatches on
+  the org **kind**, never on server mode; both HTTP mounts, job-accept, and
+  the job-runner child all derive through it). Definitions are
+  **account/org-owned, never project-owned**.
+
+  | kind | roots (priority order) |
+  |---|---|
+  | `local` / `individual` | user `{ws}/{orgId}/{userId}/.ant/agents` (writable) > org env-dir > builtin — byte-identical to the historical user-dir derivation |
+  | `team` | ① user `{ws}/individual/{userId}/.ant/agents` (writable — personal agents stay anchored to the individual org, so switching the active org never empties the list) ② user `{ws}/{orgId}/{userId}/.ant/agents` (readonly, `legacy: true` — pre-org-agents BC; discover/run/promote only, edits 403 with a promote hint; no auto-migration — promotion is the official exit) ③ org `{ws}/{orgId}/.ant/agents` (`aclGoverned: true` — per-agent write authority) ④ org `$ANT_CUSTOM_AGENTS_DIR` (readonly) ⑤ builtin |
+
+  `deriveCustomAgentScopeRoots(projectPath)` survives only as the
+  local/individual shim and the job-runner BC fallback for in-flight jobs
+  spawned by a pre-upgrade worker (the worker now passes `ANT_ORG_KIND` +
+  `ANT_WORKSPACES_ROOT`; the kind is NEVER re-derived from the org id — a
+  local tenant named like a team org would be misclassified).
+- **Org-owned agents (team kind).** Any live member may *promote* a personal
+  agent: a MOVE (`fs.rename`, not a copy) of the definition dir into the
+  per-org root, recording the promoter as owner. Runtime container data does
+  not move — sessions/plans are keyed by `agentId` under each project and the
+  id is unchanged. Authority model: every member can list/run; edit/delete =
+  agent owner ∨ delegated `editors` ∨ live org admin/owner role (never the
+  JWT claim — `resolveLiveTeamMembership`). The ACL sidecar is
+  `{ws}/{orgId}/.ant/agent-acl.json` (`routes/helpers/orgAgentAclStore.ts`),
+  deliberately OUTSIDE any agent dir so the definition-file PUT funnel
+  (`resolveDefinitionPath`, confined to `agents/{agentId}/`) structurally
+  cannot rewrite it. Missing/corrupt ACL ⇒ admin-only editing. The single
+  write chokepoint stays `findWritableAgent` (now async, lazy org gate);
+  list summaries are decorated per caller (`readonly` = effective authority,
+  `org: {owner, canEdit, canManageEditors, editors?}`).
+- **`$ANT_CUSTOM_AGENTS_DIR` is a single global directory with NO org
+  separation** — in a multi-tenant deployment every org sees it. It slots
+  BELOW the per-org root and stays a self-host escape hatch only; do not
+  point it at tenant data.
+- **MCP credentials are per-user** (`credentials.json`): an org agent's
+  `${secret:KEY}` references resolve against each running member's own store,
+  so every member must register the keys themselves. Known limit, documented
+  — not a bug.
 - **Builtin samples ship as files** (`src/core/data/agents/`, copied to dist
   by the build script like prompt templates / triage jobs; runtime path =
   `WorkspacePathResolver.getBuiltinAgentsPath()`). Because `discoverAgents`
@@ -202,10 +233,13 @@ is conditional):
   failures are HTTP 400 at job-accept (`resolveUniversalExecuteContext`),
   never a crash inside the child.
 
-Guard: `tests/customAgents/custom-agent-loader.test.ts`,
-`tests/customAgents/builtin-agents.test.ts`,
+Guard: `tests/customAgents/custom-agent-loader.test.ts` (incl. the
+tenant-derivation table), `tests/customAgents/builtin-agents.test.ts`,
 `tests/customAgents/universal-container.test.ts` (feature-slot + gate truth
-tables, container bootstrap, session path shape, thread-plane tombstones).
+tables, container bootstrap, session path shape, thread-plane tombstones),
+`tests/http/account-agent-routes.test.ts` (promotion, org edit matrix,
+editors management, ACL-sidecar unreachability, caller-effective list
+decoration).
 
 ## Tool policy (D3)
 

@@ -550,8 +550,14 @@ export class JobWorker {
       ANT_CODEBASE_PATH: codebasePath,
       ANT_CLI_ROOT: cliRoot,
       ANT_API_URL: process.env.ANT_API_URL || `http://localhost:${process.env.PORT || '4100'}`,
-      ANT_USER_EMAIL: `${payload.userContext.userId}@${payload.userContext.organizationId}`
+      ANT_USER_EMAIL: `${payload.userContext.userId}@${payload.userContext.organizationId}`,
+      // Tenant-aware custom-agent scope-root derivation in the child
+      // (org-owned agents): the org KIND plus the physical workspaces root.
+      ANT_WORKSPACES_ROOT: workspaceBase,
     };
+    if (payload.userContext.organizationKind) {
+      env.ANT_ORG_KIND = payload.userContext.organizationKind;
+    }
     if (payload.overrideDirective) {
       env.ANT_OVERRIDE_DIRECTIVE = payload.overrideDirective;
     }

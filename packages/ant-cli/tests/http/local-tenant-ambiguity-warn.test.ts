@@ -146,4 +146,44 @@ describe('project-id tenant inference covers the local fallback tenant', () => {
       organizationKind: 'local',
     });
   });
+
+  // Doctrine (40-org-model): local mode never serves the `individual/` tree —
+  // it is a cloud-mode artifact. Before this rule, a leftover individual/{email}
+  // tree could repoint PROJECT routes while ACCOUNT routes stayed on the
+  // fallback tenant, so agent create-vs-list landed on different roots (D3).
+  it('a project under individual/{email} is NOT inferred — falls back to local/local with a one-time warning', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+    try {
+      mkdirSync(path.join(base, 'individual', 'probe@to.nexus', 'ws-pilot'), { recursive: true });
+
+      const req = { params: { id: 'ws-pilot' } } as any;
+      expect(extractUserContext(req)).toEqual({
+        organizationId: 'local',
+        userId: 'local',
+        organizationKind: 'local',
+      });
+
+      const skipWarns = warnSpy.mock.calls.filter((c: unknown[]) => /individual/i.test(String(c[0])));
+      expect(skipWarns).toHaveLength(1);
+      // Repeat request — the warning stays one-time.
+      extractUserContext(req);
+      expect(
+        warnSpy.mock.calls.filter((c: unknown[]) => /individual/i.test(String(c[0]))),
+      ).toHaveLength(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('the individual tree never wins even when the same project also exists under another org (no ambiguity from it)', () => {
+    mkdirSync(path.join(base, 'individual', 'probe@to.nexus', 'landing'), { recursive: true });
+    mkdirSync(path.join(base, 'to.nexus', 'probe', 'landing'), { recursive: true });
+
+    const req = { params: { id: 'landing' } } as any;
+    expect(extractUserContext(req)).toEqual({
+      organizationId: 'to.nexus',
+      userId: 'probe',
+      organizationKind: 'local',
+    });
+  });
 });

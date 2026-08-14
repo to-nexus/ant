@@ -203,4 +203,21 @@ describe('account-scoped root derivation', () => {
     // Project-scoped derivation is exactly the user-dir derivation of dirname(project).
     expect(deriveCustomAgentScopeRoots('/ws/org/user/project')).toEqual(roots);
   });
+
+  // Both HTTP mounts (account settings + project composer) derive through
+  // deriveCustomAgentScopeRootsForTenant with the SAME tenant context, so
+  // identical tenants can never see different roots. For non-team kinds the
+  // tenant derivation is byte-identical to the user-dir shim above.
+  it('deriveCustomAgentScopeRootsForTenant (non-team) equals the user-dir derivation of the same tenant', async () => {
+    const { deriveCustomAgentScopeRootsForTenant, deriveCustomAgentScopeRootsFromUserDir } =
+      await import('../../src/core/customAgents/scopeRoots');
+    for (const [kind, orgId, userId] of [
+      ['local', 'local', 'local'],
+      ['individual', 'individual', 'probe@to.nexus'],
+    ] as const) {
+      expect(
+        deriveCustomAgentScopeRootsForTenant({ workspacesPath: '/ws', userId, organizationId: orgId, organizationKind: kind }),
+      ).toEqual(deriveCustomAgentScopeRootsFromUserDir(path.join('/ws', orgId, userId)));
+    }
+  });
 });

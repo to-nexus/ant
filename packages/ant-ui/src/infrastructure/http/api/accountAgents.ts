@@ -7,6 +7,7 @@
 import { API_BASE, authFetch, apiGet, apiPost, apiDelete, apiPut, ApiError } from './client';
 import type {
   CustomAgentSummary,
+  CustomAgentOrgPermissions,
   CustomJobSummary,
   CustomAgentDefinitionFileNode,
   CustomAgentScope,
@@ -72,6 +73,31 @@ export function renameAccountAgentJobId(
 
 export function deleteAccountAgentJob(agentId: string, jobId: string): Promise<void> {
   return apiDelete(`${base()}/${encodeURIComponent(agentId)}/jobs/${encodeURIComponent(jobId)}`);
+}
+
+// ── org-owned agents (promotion + per-agent access) ──────────────────────────
+
+/**
+ * Promote a personal agent into the active team organization — a move (not a
+ * copy); the caller becomes the agent owner in the org ACL.
+ */
+export function promoteAccountAgent(
+  agentId: string,
+): Promise<{ id: string; scope: 'org'; owner: string }> {
+  return apiPost(`${base()}/${encodeURIComponent(agentId)}/promote`, {});
+}
+
+/** Caller-specific permissions of an ACL-governed org agent. */
+export function fetchAgentPermissions(agentId: string): Promise<CustomAgentOrgPermissions> {
+  return apiGet(`${base()}/${encodeURIComponent(agentId)}/permissions`);
+}
+
+/** Replace the delegated editors list (owner ∨ org admin only). */
+export function updateAgentEditors(
+  agentId: string,
+  editors: string[],
+): Promise<CustomAgentOrgPermissions> {
+  return apiPut(`${base()}/${encodeURIComponent(agentId)}/editors`, { editors });
 }
 
 export interface AccountJobValidation {

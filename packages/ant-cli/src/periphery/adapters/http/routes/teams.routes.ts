@@ -30,6 +30,7 @@ import {
   CHALLENGE_PREFIX,
 } from '../../../../infrastructure/deploy/customDomain/verification';
 import { sendErrorResponse } from './helpers/errorResponse';
+import { hasMinRole, resolveLiveTeamMembership } from './helpers/teamRole';
 import { logger } from '../../../../utils/logger';
 import {
   ORG_INVITE_TTL_DAYS,
@@ -67,7 +68,6 @@ export interface TeamsRoutesDeps {
   organizationRepository: OrganizationRepositoryPort;
 }
 
-const ROLE_RANK: Record<OrgMembershipRole, number> = { member: 0, admin: 1, owner: 2 };
 const INVITE_ROLES: readonly OrgInviteRole[] = ['admin', 'member'];
 
 function isInviteExpired(invite: Invitation): boolean {
@@ -163,16 +163,16 @@ export function createTeamsRoutes(deps: TeamsRoutesDeps): Router {
       return null;
     }
 
-    const membership = await repo.getMembership(caller.userId, org.id);
-    if (!membership) {
+    const resolved = await resolveLiveTeamMembership(repo, caller.userId, org.id);
+    if (!resolved) {
       res.status(404).json({ error: 'Organization not found.', code: NOT_A_MEMBER });
       return null;
     }
-    if (ROLE_RANK[membership.role] < ROLE_RANK[minRole]) {
+    if (!hasMinRole(resolved.membership.role, minRole)) {
       res.status(403).json({ error: 'Insufficient role.', code: ROLE_FORBIDDEN });
       return null;
     }
-    return { ...caller, org, membership };
+    return { ...caller, org: resolved.org, membership: resolved.membership };
   }
 
   // ========================================

@@ -54,4 +54,23 @@ describe('kind-dispatch (not mode) policy', () => {
     expect(src).toMatch(/kind !== 'team'/);
     expect(src).toMatch(/members\/lookup/);
   });
+
+  it('custom-agent scope-root derivation dispatches on org KIND, never on server mode', () => {
+    const src = read('src/core/customAgents/scopeRoots.ts');
+    expect(src).not.toMatch(/isLocalServerMode/);
+    expect(src).toMatch(/organizationKind/);
+  });
+
+  it('accountAgents.routes gates org writes on the LIVE role (kind-dispatch, no mode import)', () => {
+    const src = read('src/periphery/adapters/http/routes/accountAgents.routes.ts');
+    expect(src).not.toMatch(/isLocalServerMode/);
+    expect(src).toMatch(/resolveLiveTeamMembership/);
+    expect(src).toMatch(/organizationKind !== 'team'/);
+  });
+
+  it('org.routes PUT /org/config requires a live admin role for team orgs (D4)', () => {
+    const src = read('src/periphery/adapters/http/routes/org.routes.ts');
+    expect(src).toMatch(/resolveLiveTeamMembership/);
+    expect(src).toMatch(/hasMinRole\(resolved\.membership\.role, 'admin'\)/);
+  });
 });

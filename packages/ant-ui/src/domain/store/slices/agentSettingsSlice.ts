@@ -4,6 +4,7 @@ import {
   fetchAccountAgents,
   fetchDefinitionTree,
   fetchDefinitionFile,
+  promoteAccountAgent,
   saveDefinitionFile,
 } from '@/infrastructure/http/api/accountAgents';
 
@@ -58,6 +59,12 @@ export interface AgentSettingsActions {
   closeDefinitionFileBuffer: () => void;
   /** Re-sync the composer chips after a settings mutation (universal project selected). */
   syncComposerAgents: () => void;
+  /**
+   * Promote a personal agent to the active team org (move + owner record),
+   * then re-sync the list and the composer. Errors propagate to the caller
+   * (the settings screen surfaces them through its own error strip).
+   */
+  promoteAgent: (agentId: string) => Promise<void>;
 }
 
 export type AgentSettingsSlice = AgentSettingsState & AgentSettingsActions;
@@ -179,6 +186,17 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
     const state = get();
     if (state.projectType === 'universal' && state.selectedProject && typeof state.loadCustomAgents === 'function') {
       void state.loadCustomAgents(state.selectedProject);
+    }
+  },
+
+  promoteAgent: async (agentId) => {
+    await promoteAccountAgent(agentId);
+    await get().loadAccountAgents();
+    get().syncComposerAgents();
+    // Re-read the tree if the promoted agent is the one on screen — its
+    // scope root (and thus readonly) changed under the same id.
+    if (get().agentSettingsSelection.agentId === agentId) {
+      await get().loadDefinitionTree(agentId);
     }
   },
 });

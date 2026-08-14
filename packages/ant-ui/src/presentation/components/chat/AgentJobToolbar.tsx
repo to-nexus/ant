@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { Send, ChevronDown, Square } from 'lucide-react';
+import { AlertTriangle, Send, ChevronDown, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
@@ -103,6 +103,7 @@ export function AgentJobToolbar({
   // and custom agents never appear in canonical mode).
   const isUniversalMode = useStore((state) => state.projectType === 'universal');
   const customAgents = useStore((state) => state.customAgents);
+  const customAgentsError = useStore((state) => state.customAgentsError);
   const selectedCustomAgentId = useStore((state) => state.selectedCustomAgentId);
   const selectedCustomJobId = useStore((state) => state.selectedCustomJobId);
   const selectCustomJob = useStore((state) => state.selectCustomJob);
@@ -236,6 +237,19 @@ export function AgentJobToolbar({
                   strokeWidth={2.5}
                 />
               </button>
+
+              {/* A failed agent-list load is NOT "no agents" — surface it
+                  (AgentTree's LoadErrorNotice is the settled precedent). */}
+              {customAgentsError && customAgents.length === 0 && (
+                <span
+                  role="alert"
+                  title={customAgentsError}
+                  className="absolute -top-1 -right-1"
+                  style={{ color: 'var(--status-error-fg, var(--text-2))' }}
+                >
+                  <AlertTriangle className="w-3 h-3" />
+                </span>
+              )}
 
               {showAgentMenu && customAgents.length > 0 && (
                 <div

@@ -15,9 +15,13 @@ import * as os from 'os';
 import * as path from 'path';
 import http from 'node:http';
 import express from 'express';
+import * as yaml from 'js-yaml';
 import { createAccountAgentRoutes } from '../../src/periphery/adapters/http/routes/accountAgents.routes';
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
+import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
+import type { OrgMembershipRole } from '@ant/shared';
 
+let wsRoot: string;
 let userDir: string;
 let server: http.Server;
 let baseUrl: string;
@@ -29,15 +33,40 @@ function api(pathname: string, init?: RequestInit): Promise<Response> {
   });
 }
 
+/** Fake org repo — only the two reads the agent routes perform. */
+function fakeOrgRepo(memberships: Map<string, OrgMembershipRole>, orgId = 'acme'): OrganizationRepositoryPort {
+  return {
+    getOrganization: async (id: string) =>
+      id === orgId
+        ? ({ id, name: 'Acme', kind: 'team', ownerId: null, createdAt: new Date().toISOString() } as any)
+        : null,
+    getMembership: async (userId: string, org: string) =>
+      org === orgId && memberships.has(userId)
+        ? ({ userId, organizationId: org, role: memberships.get(userId)!, createdAt: new Date().toISOString() } as any)
+        : null,
+  } as unknown as OrganizationRepositoryPort;
+}
+
 beforeAll(async () => {
-  userDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-account-agents-'));
+  wsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-account-agents-'));
+  // Pin the local tenant explicitly — the tenant-aware root derivation now
+  // consumes {org, user} plus the physical root, so the layout must be the
+  // real `{ws}/{org}/{user}` shape (the fake resolver used to hide this).
+  process.env.ANT_LOCAL_ORG = 'localorg';
+  process.env.ANT_LOCAL_USER = 'localuser';
+  userDir = path.join(wsRoot, 'localorg', 'localuser');
+  fs.mkdirSync(userDir, { recursive: true });
   const resolver = {
     getWorkspacePath: () => userDir,
+    getPhysicalWorkspacesPath: () => wsRoot,
   } as unknown as WorkspaceResolver;
 
   const app = express();
   app.use(express.json());
-  app.use('/api/account/agents', createAccountAgentRoutes({ workspaceResolver: resolver }));
+  app.use(
+    '/api/account/agents',
+    createAccountAgentRoutes({ workspaceResolver: resolver, organizationRepository: fakeOrgRepo(new Map()) }),
+  );
   server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address() as { port: number };
@@ -46,7 +75,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
-  fs.rmSync(userDir, { recursive: true, force: true });
+  fs.rmSync(wsRoot, { recursive: true, force: true });
+  delete process.env.ANT_LOCAL_ORG;
+  delete process.env.ANT_LOCAL_USER;
 });
 
 beforeEach(() => {
@@ -509,5 +540,323 @@ describe('prompt preview', () => {
     const res = await api('/assistant/jobs/chat/prompt-preview');
     expect(res.status).toBe(200);
     expect((await res.json()).system).toContain('<custom_job_instructions id="assistant/chat"');
+  });
+});
+
+// ── org-owned agents (team org) ──────────────────────────────────────────────
+//
+// A second app instance with a JWT-shaped identity middleware (req.user /
+// req.organization) and a fake org repo — extractUserContext takes priority 1,
+// so these rows exercise the team-kind derivation + org ACL gates end-to-end.
+
+describe('org-owned agents (team org)', () => {
+  const ORG = 'acme';
+  const OWNER = 'owner@acme.io';
+  const EDITOR = 'editor@acme.io';
+  const ADMIN = 'admin@acme.io';
+  const MEMBER = 'member@acme.io';
+  const GHOST = 'removed@acme.io'; // stale JWT: org claim without a membership row
+
+  let teamServer: http.Server;
+  let teamBaseUrl: string;
+  let currentUser = OWNER;
+  const memberships = new Map<string, OrgMembershipRole>();
+
+  function teamApi(pathname: string, init?: RequestInit): Promise<Response> {
+    return fetch(`${teamBaseUrl}/api/account/agents${pathname}`, {
+      headers: { 'Content-Type': 'application/json' },
+      ...init,
+    });
+  }
+
+  const personalAgents = () => path.join(wsRoot, 'individual', currentUser, '.ant/agents');
+  const legacyAgents = (user: string) => path.join(wsRoot, ORG, user, '.ant/agents');
+  const orgAgents = () => path.join(wsRoot, ORG, '.ant/agents');
+  const aclPath = () => path.join(wsRoot, ORG, '.ant', 'agent-acl.json');
+
+  function seedAgentDir(container: string, agentId: string): void {
+    const dir = path.join(container, agentId);
+    fs.mkdirSync(path.join(dir, 'base'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'agent.yaml'), yaml.dump({ id: agentId, name: agentId, version: 1 }));
+    fs.writeFileSync(path.join(dir, 'base', 'role.md'), 'Persona.');
+  }
+
+  function seedAcl(agents: Record<string, { owner: string; editors: string[] }>): void {
+    fs.mkdirSync(path.dirname(aclPath()), { recursive: true });
+    fs.writeFileSync(aclPath(), JSON.stringify({ version: 1, agents }, null, 2));
+  }
+
+  function readAcl(): { version: 1; agents: Record<string, { owner: string; editors: string[] }> } {
+    return JSON.parse(fs.readFileSync(aclPath(), 'utf-8'));
+  }
+
+  beforeAll(async () => {
+    const resolver = {
+      getWorkspacePath: () => path.join(wsRoot, ORG, currentUser),
+      getPhysicalWorkspacesPath: () => wsRoot,
+    } as unknown as WorkspaceResolver;
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as any).user = { id: currentUser, email: currentUser };
+      (req as any).organization = { id: ORG, kind: 'team' };
+      next();
+    });
+    app.use(
+      '/api/account/agents',
+      createAccountAgentRoutes({ workspaceResolver: resolver, organizationRepository: fakeOrgRepo(memberships, ORG) }),
+    );
+    teamServer = http.createServer(app);
+    await new Promise<void>((resolve) => teamServer.listen(0, resolve));
+    const address = teamServer.address() as { port: number };
+    teamBaseUrl = `http://127.0.0.1:${address.port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => teamServer.close((e) => (e ? reject(e) : resolve())));
+  });
+
+  beforeEach(() => {
+    currentUser = OWNER;
+    memberships.clear();
+    memberships.set(OWNER, 'member'); // agent owner ≠ org role — plain member by default
+    memberships.set(EDITOR, 'member');
+    memberships.set(ADMIN, 'admin');
+    memberships.set(MEMBER, 'member');
+    fs.rmSync(path.join(wsRoot, 'individual'), { recursive: true, force: true });
+    fs.rmSync(path.join(wsRoot, ORG), { recursive: true, force: true });
+  });
+
+  describe('promotion', () => {
+    it('moves a personal agent into the org root, records the caller as owner → 201', async () => {
+      seedAgentDir(personalAgents(), 'ops');
+      const res = await teamApi('/ops/promote', { method: 'POST', body: '{}' });
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ id: 'ops', scope: 'org', owner: OWNER });
+      expect(fs.existsSync(path.join(personalAgents(), 'ops'))).toBe(false);
+      expect(fs.existsSync(path.join(orgAgents(), 'ops', 'agent.yaml'))).toBe(true);
+      expect(readAcl().agents.ops).toEqual({ owner: OWNER, editors: [] });
+    });
+
+    it('org id already occupied → 409 and nothing moves', async () => {
+      seedAgentDir(personalAgents(), 'ops');
+      seedAgentDir(orgAgents(), 'ops');
+      const res = await teamApi('/ops/promote', { method: 'POST', body: '{}' });
+      expect(res.status).toBe(409);
+      expect(fs.existsSync(path.join(personalAgents(), 'ops'))).toBe(true);
+    });
+
+    it('non-member caller (stale JWT) → 403 MEMBERSHIP_REQUIRED', async () => {
+      currentUser = GHOST;
+      seedAgentDir(personalAgents(), 'ops');
+      const res = await teamApi('/ops/promote', { method: 'POST', body: '{}' });
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe('MEMBERSHIP_REQUIRED');
+    });
+
+    it('org/builtin source → 400 not-user-scope; unknown agent → 404', async () => {
+      seedAgentDir(orgAgents(), 'shared');
+      seedAcl({ shared: { owner: OWNER, editors: [] } });
+      expect((await teamApi('/shared/promote', { method: 'POST', body: '{}' })).status).toBe(400);
+      expect((await teamApi('/ghost/promote', { method: 'POST', body: '{}' })).status).toBe(404);
+    });
+
+    it('non-team active org → 400 not-team-active (local-tenant mount)', async () => {
+      const res = await api('/whatever/promote', { method: 'POST', body: '{}' });
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('not-team-active');
+    });
+
+    it('legacy team-path agent is readonly but promotable (the unlock path)', async () => {
+      seedAgentDir(legacyAgents(OWNER), 'old-agent');
+
+      const list = await (await teamApi('')).json();
+      const legacy = list.agents.find((a: any) => a.id === 'old-agent');
+      expect(legacy).toMatchObject({ scope: 'user', readonly: true });
+
+      const patch = await teamApi('/old-agent', { method: 'PATCH', body: JSON.stringify({ name: 'x' }) });
+      expect(patch.status).toBe(403);
+      expect((await patch.json()).code).toBe('legacy-agent-readonly');
+
+      const res = await teamApi('/old-agent/promote', { method: 'POST', body: '{}' });
+      expect(res.status).toBe(201);
+      expect(fs.existsSync(path.join(orgAgents(), 'old-agent', 'agent.yaml'))).toBe(true);
+      expect(fs.existsSync(path.join(legacyAgents(OWNER), 'old-agent'))).toBe(false);
+    });
+  });
+
+  describe('org agent edit matrix (owner ∨ editors ∨ live admin role)', () => {
+    beforeEach(() => {
+      seedAgentDir(orgAgents(), 'shared');
+      seedAcl({ shared: { owner: OWNER, editors: [EDITOR] } });
+    });
+
+    it.each([
+      ['owner', OWNER, 200],
+      ['delegated editor', EDITOR, 200],
+      ['org admin (not owner/editor)', ADMIN, 200],
+      ['plain member', MEMBER, 403],
+      ['removed member (stale JWT)', GHOST, 403],
+    ] as const)('%s → PATCH %i', async (_label, user, expected) => {
+      currentUser = user;
+      const res = await teamApi('/shared', { method: 'PATCH', body: JSON.stringify({ name: 'renamed' }) });
+      expect(res.status).toBe(expected);
+      if (expected === 403) expect((await res.json()).code).toBe('org-agent-forbidden');
+    });
+
+    it('file PUT and DELETE follow the same gate (member 403, owner 200)', async () => {
+      currentUser = MEMBER;
+      const putDenied = await teamApi('/shared/file', {
+        method: 'PUT',
+        body: JSON.stringify({ path: 'base/role.md', content: 'sabotage' }),
+      });
+      expect(putDenied.status).toBe(403);
+      expect((await teamApi('/shared', { method: 'DELETE' })).status).toBe(403);
+
+      currentUser = OWNER;
+      const putOk = await teamApi('/shared/file', {
+        method: 'PUT',
+        body: JSON.stringify({ path: 'base/role.md', content: 'Updated persona.' }),
+      });
+      expect(putOk.status).toBe(200);
+    });
+
+    it('every member can VIEW an org agent (list + files) regardless of edit rights', async () => {
+      currentUser = MEMBER;
+      const list = await (await teamApi('')).json();
+      expect(list.agents.some((a: any) => a.id === 'shared')).toBe(true);
+      expect((await teamApi('/shared/files')).status).toBe(200);
+    });
+
+    it('DELETE removes the ACL entry with the definition dir', async () => {
+      currentUser = OWNER;
+      expect((await teamApi('/shared', { method: 'DELETE' })).status).toBe(200);
+      expect(fs.existsSync(path.join(orgAgents(), 'shared'))).toBe(false);
+      expect(readAcl().agents.shared).toBeUndefined();
+    });
+  });
+
+  describe('editors management', () => {
+    beforeEach(() => {
+      seedAgentDir(orgAgents(), 'shared');
+      seedAcl({ shared: { owner: OWNER, editors: [] } });
+    });
+
+    it('owner sets editors → 200; membership is validated (non-member → 400)', async () => {
+      const bad = await teamApi('/shared/editors', {
+        method: 'PUT',
+        body: JSON.stringify({ editors: ['stranger@other.io'] }),
+      });
+      expect(bad.status).toBe(400);
+      expect((await bad.json()).code).toBe('editor-not-member');
+
+      const ok = await teamApi('/shared/editors', { method: 'PUT', body: JSON.stringify({ editors: [EDITOR] }) });
+      expect(ok.status).toBe(200);
+      expect((await ok.json()).editors).toEqual([EDITOR]);
+      expect(readAcl().agents.shared.editors).toEqual([EDITOR]);
+    });
+
+    it('the owner is implicit — sending it in the list does not persist it', async () => {
+      const res = await teamApi('/shared/editors', {
+        method: 'PUT',
+        body: JSON.stringify({ editors: [OWNER, EDITOR] }),
+      });
+      expect(res.status).toBe(200);
+      expect(readAcl().agents.shared.editors).toEqual([EDITOR]);
+    });
+
+    it('non-manager callers → 403 (plain member AND delegated editor)', async () => {
+      seedAcl({ shared: { owner: OWNER, editors: [EDITOR] } });
+      for (const user of [MEMBER, EDITOR]) {
+        currentUser = user;
+        const res = await teamApi('/shared/editors', { method: 'PUT', body: JSON.stringify({ editors: [] }) });
+        expect(res.status).toBe(403);
+      }
+    });
+
+    it('org admin manages editors without being owner; permissions endpoint mirrors authority', async () => {
+      currentUser = ADMIN;
+      const res = await teamApi('/shared/editors', { method: 'PUT', body: JSON.stringify({ editors: [MEMBER] }) });
+      expect(res.status).toBe(200);
+
+      const perms = await (await teamApi('/shared/permissions')).json();
+      expect(perms).toMatchObject({ owner: OWNER, canEdit: true, canManageEditors: true, editors: [MEMBER] });
+
+      currentUser = MEMBER;
+      const memberPerms = await (await teamApi('/shared/permissions')).json();
+      expect(memberPerms).toMatchObject({ owner: OWNER, canEdit: true, canManageEditors: false });
+      expect(memberPerms.editors).toBeUndefined();
+    });
+
+    it('permissions/editors on a personal agent → 404 (aclGoverned org agents only)', async () => {
+      seedAgentDir(personalAgents(), 'mine');
+      expect((await teamApi('/mine/permissions')).status).toBe(404);
+      expect((await teamApi('/mine/editors', { method: 'PUT', body: JSON.stringify({ editors: [] }) })).status).toBe(404);
+    });
+  });
+
+  describe('list decoration (caller-effective readonly + org projection)', () => {
+    beforeEach(() => {
+      seedAgentDir(orgAgents(), 'shared');
+      seedAcl({ shared: { owner: OWNER, editors: [EDITOR] } });
+    });
+
+    it.each([
+      // [label, user, readonly, canEdit, canManageEditors, editorsVisible]
+      ['owner', OWNER, false, true, true, true],
+      ['editor', EDITOR, false, true, false, false],
+      ['admin', ADMIN, false, true, true, true],
+      ['member', MEMBER, true, false, false, false],
+      ['removed (stale JWT)', GHOST, true, false, false, false],
+    ] as const)('%s sees the decorated summary', async (_label, user, readonly, canEdit, canManage, editorsVisible) => {
+      currentUser = user;
+      const list = await (await teamApi('')).json();
+      const shared = list.agents.find((a: any) => a.id === 'shared');
+      expect(shared.readonly).toBe(readonly);
+      expect(shared.org).toMatchObject({ owner: OWNER, canEdit, canManageEditors: canManage });
+      if (editorsVisible) expect(shared.org.editors).toEqual([EDITOR]);
+      else expect(shared.org.editors).toBeUndefined();
+    });
+
+    it('personal agents stay undecorated (no org projection) and anchored to the individual root', async () => {
+      seedAgentDir(personalAgents(), 'mine');
+      const list = await (await teamApi('')).json();
+      const mine = list.agents.find((a: any) => a.id === 'mine');
+      expect(mine).toMatchObject({ scope: 'user', readonly: false });
+      expect(mine.org).toBeUndefined();
+    });
+
+    it('creation targets the individual anchor even while a team org is active (D1 fix)', async () => {
+      const res = await teamApi('', { method: 'POST', body: JSON.stringify({ id: 'fresh', name: 'Fresh' }) });
+      expect(res.status).toBe(201);
+      expect(fs.existsSync(path.join(personalAgents(), 'fresh', 'agent.yaml'))).toBe(true);
+      expect(fs.existsSync(path.join(legacyAgents(OWNER), 'fresh'))).toBe(false);
+    });
+  });
+
+  describe('ACL sidecar is structurally unreachable through the definition-file API', () => {
+    beforeEach(() => {
+      seedAgentDir(orgAgents(), 'shared');
+      seedAcl({ shared: { owner: OWNER, editors: [] } });
+    });
+
+    it('GET file with a traversal path → 400; the files tree never lists agent-acl.json', async () => {
+      const res = await teamApi('/shared/file?path=' + encodeURIComponent('../../agent-acl.json'));
+      expect(res.status).toBe(400);
+
+      const tree = await (await teamApi('/shared/files')).json();
+      const flat = JSON.stringify(tree.tree);
+      expect(flat).not.toContain('agent-acl.json');
+    });
+
+    it('PUT with a traversal path stays refused by the whitelist gate (owner included)', async () => {
+      const res = await teamApi('/shared/file', {
+        method: 'PUT',
+        body: JSON.stringify({ path: '../../agent-acl.json', content: '{"version":1,"agents":{}}' }),
+      });
+      expect(res.status).toBe(400);
+      expect(readAcl().agents.shared).toEqual({ owner: OWNER, editors: [] });
+    });
   });
 });

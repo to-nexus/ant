@@ -15,8 +15,11 @@ import {
   validateMcpServers,
   type CustomAgentDefinitionFileNode,
   type DefinitionValidationResult,
+  type CustomAgentSummary,
   type McpServerConfig,
+  type OrgMembershipRole,
 } from '@ant/shared';
+import { canEditOrgAgent, computeOrgAgentPermissions, type OrgAgentAcl } from './orgAgentAclStore';
 import {
   findAgentRoot,
   loadCustomJob,
@@ -93,15 +96,26 @@ export function patchYamlFile(filePath: string, patch: Record<string, unknown>):
   fs.writeFileSync(filePath, yaml.dump(doc), 'utf-8');
 }
 
+/** Caller identity + resolved org authority for the ACL-governed write gate. */
+export interface OrgWriteGate {
+  callerId: string;
+  /** Live team role — null when the caller is no longer a member (stale JWT). */
+  liveRole: OrgMembershipRole | null;
+  acl: OrgAgentAcl;
+}
+
 /**
  * Resolve a writable agent or write the failure response (400 invalid id /
- * 404 not found / 403 readonly scope) and return null.
+ * 404 not found / 403 readonly scope or org-ACL refusal) and return null.
+ * `orgGate` resolves the caller's org authority LAZILY — only invoked when
+ * the agent lives in an ACL-governed (per-org) root.
  */
-export function findWritableAgent(
+export async function findWritableAgent(
   res: Response,
   scopeRoots: CustomAgentScopeRoot[],
   agentId: string,
-): { scopeRoot: CustomAgentScopeRoot; agentDir: string } | null {
+  orgGate?: () => Promise<OrgWriteGate>,
+): Promise<{ scopeRoot: CustomAgentScopeRoot; agentDir: string } | null> {
   if (!isValidCustomId(agentId)) {
     res.status(400).json({ error: `Invalid agent id: ${agentId}` });
     return null;
@@ -112,8 +126,25 @@ export function findWritableAgent(
     return null;
   }
   if (found.scopeRoot.readonly) {
+    if (found.scopeRoot.legacy) {
+      res.status(403).json({
+        error: `Custom agent "${agentId}" lives in a legacy team path and is read-only — promote it to the organization (or import a copy) to edit it`,
+        code: 'legacy-agent-readonly',
+      });
+      return null;
+    }
     res.status(403).json({ error: `Custom agent "${agentId}" is read-only (scope: ${found.scopeRoot.scope})` });
     return null;
+  }
+  if (found.scopeRoot.aclGoverned) {
+    const gate = orgGate ? await orgGate() : null;
+    if (!gate || !canEditOrgAgent(gate.acl.agents[agentId], gate.callerId, gate.liveRole)) {
+      res.status(403).json({
+        error: `You do not have edit access to org agent "${agentId}" — ask the agent owner or an org admin`,
+        code: 'org-agent-forbidden',
+      });
+      return null;
+    }
   }
   return found;
 }
@@ -126,9 +157,35 @@ export function createCollisionMessage(
   agentId: string,
   collision: { scopeRoot: CustomAgentScopeRoot },
 ): string {
-  return collision.scopeRoot.readonly
-    ? `Agent id "${agentId}" is taken by a ${collision.scopeRoot.scope === 'builtin' ? 'built-in' : 'org'} agent — choose another id`
+  if (collision.scopeRoot.scope === 'builtin') {
+    return `Agent id "${agentId}" is taken by a built-in agent — choose another id`;
+  }
+  if (collision.scopeRoot.scope === 'org') {
+    return `Agent id "${agentId}" is taken by an org agent — choose another id`;
+  }
+  return collision.scopeRoot.legacy
+    ? `Agent id "${agentId}" is taken by a legacy team-path agent — promote or delete it first`
     : `Custom agent already exists: ${agentId}`;
+}
+
+/**
+ * Per-caller decoration of org-scope summaries from an ACL-governed root:
+ * `readonly` flips to the caller's effective authority and the `org`
+ * permission projection is attached. env-dir org agents (no ACL root) and
+ * other scopes pass through untouched. Shared by BOTH list mounts.
+ */
+export function decorateOrgAgentSummaries(
+  agents: CustomAgentSummary[],
+  scopeRoots: CustomAgentScopeRoot[],
+  gate: OrgWriteGate,
+): CustomAgentSummary[] {
+  return agents.map((agent) => {
+    if (agent.scope !== 'org') return agent;
+    const found = findAgentRoot(scopeRoots, agent.id);
+    if (!found?.scopeRoot.aclGoverned) return agent;
+    const org = computeOrgAgentPermissions(gate.acl.agents[agent.id], gate.callerId, gate.liveRole);
+    return { ...agent, readonly: !org.canEdit, org };
+  });
 }
 
 // ── definition file surface ──────────────────────────────────────────────────

@@ -26,6 +26,13 @@ export type ProjectType = 'canonical' | 'universal';
 export interface UniversalState {
   projectType: ProjectType;
   customAgents: CustomAgentSummary[];
+  /**
+   * Why the last `loadCustomAgents` failed, or null when it succeeded. An
+   * empty `customAgents` alone is ambiguous — "no agents" and "the request
+   * failed" render identically in the composer picker (same axis as
+   * `accountAgentsError` on the settings screen).
+   */
+  customAgentsError: string | null;
   selectedCustomAgentId: string | undefined;
   selectedCustomJobId: string | undefined;
   /**
@@ -62,6 +69,7 @@ export type UniversalSlice = UniversalState & UniversalActions;
 export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (set, get) => ({
   projectType: 'canonical',
   customAgents: [],
+  customAgentsError: null,
   selectedCustomAgentId: undefined,
   selectedCustomJobId: undefined,
   universalTurnMeta: { intents: [], context: [], plan: false },
@@ -116,7 +124,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
   loadCustomAgents: async (projectId) => {
     try {
       const { agents } = await fetchCustomAgents(projectId);
-      set({ customAgents: agents });
+      set({ customAgents: agents, customAgentsError: null });
       const { selectedCustomAgentId, selectedCustomJobId } = get();
       const current = agents.find((a) => a.id === selectedCustomAgentId);
       const currentJobValid = current?.jobs.some((j) => j.id === selectedCustomJobId) ?? false;
@@ -128,7 +136,10 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
         });
       }
     } catch (e) {
+      // Not silent: the composer picker renders this (an empty list is NOT
+      // the same as a failed load).
       console.warn('[universalSlice] Failed to load custom agents:', e);
+      set({ customAgentsError: e instanceof Error ? e.message : String(e) });
     }
   },
 
@@ -137,6 +148,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       selectedCustomAgentId: undefined,
       selectedCustomJobId: undefined,
       customAgents: [],
+      customAgentsError: null,
       universalTurnMeta: { intents: [], context: [], plan: false },
     }),
 

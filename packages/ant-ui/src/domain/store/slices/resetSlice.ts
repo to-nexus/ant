@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand';
 import { STORAGE_KEYS, removeFromStorage } from '../storage';
+import { MAIN_PANEL_TABS_ALL_CLOSED } from '../types';
 import {
   identityResetPatch,
   tabsToCloseOnTransition,
@@ -75,15 +76,7 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set, get
       currentJob: null,
       connectionStatus: 'disconnected',
       mainPanelActiveTab: 'job',
-      mainPanelOpenTabs: {
-        projectConfig: false,
-        accountConfig: false,
-        fileEdit: false,
-        transfer: false,
-        previewConfig: false,
-        actions: false,
-        billing: false,
-      },
+      mainPanelOpenTabs: { ...MAIN_PANEL_TABS_ALL_CLOSED },
       mainPanelTabOrder: [],
       actionsStep: 'pick-action',
       basisEditInitialTier: undefined,

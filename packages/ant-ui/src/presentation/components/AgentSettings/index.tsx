@@ -14,7 +14,9 @@ import {
   validateAccountAgentJob,
 } from '@/infrastructure/http/api/accountAgents';
 import type { CustomAgentDefinitionFileNode } from '@ant/shared';
+import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { AgentTree } from './AgentTree';
+import { OrgAccessCard } from './OrgAccessCard';
 import { DetailHeader, type DetailLevel } from './DetailHeader';
 import { PromptsCard, type PromptsScope } from './prompts/PromptsCard';
 import { useResizableWidth } from './useResizableWidth';
@@ -81,6 +83,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const loadDefinitionTree = useStore((s) => s.loadDefinitionTree);
   const selectAgentSettingsNode = useStore((s) => s.selectAgentSettingsNode);
   const syncComposerAgents = useStore((s) => s.syncComposerAgents);
+  const promoteAgent = useStore((s) => s.promoteAgent);
+  const isTeamActive = useStore(selectIsTeamActive);
 
   const [error, setError] = useState<string | null>(null);
   const [lastWarnings, setLastWarnings] = useState<string[]>([]);
@@ -165,6 +169,21 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
         );
       }
       if (selection.agentId === agentId) await loadDefinitionTree(agentId);
+    });
+
+  /** Promotion is a MOVE into the org — confirm before it leaves the personal scope. */
+  const handlePromoteAgent = (agentId: string) =>
+    wrap(async () => {
+      const agent = agents.find((a) => a.id === agentId);
+      const ok = window.confirm(
+        t(
+          'promote.confirm',
+          'Promote "{{name}}" to your organization? The agent moves out of your personal scope — every member can then see and run it, and you stay its owner.',
+          { name: agent?.name ?? agentId },
+        ),
+      );
+      if (!ok) return;
+      await promoteAgent(agentId);
     });
 
   const handleImportFolder = (files: FileList) =>
@@ -422,6 +441,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onImportFolder={handleImportFolder}
           loadError={accountAgentsError}
           onRetryLoad={() => void loadAccountAgents()}
+          isTeamActive={isTeamActive}
+          onPromoteAgent={(agentId) => void handlePromoteAgent(agentId)}
         />
         {/* drag handle: 4px hit area on the border */}
         <div
@@ -500,6 +521,15 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
                 id="c3g-agent"
                 agentId={selection.agentId!}
                 onRenameId={handleRenameAgentId}
+              />
+            )}
+            {level === 'agent' && selectedAgent?.org?.canManageEditors && (
+              <OrgAccessCard
+                id="c3g-org-access"
+                agentId={selection.agentId!}
+                org={selectedAgent.org}
+                onSaved={afterMutation}
+                onError={setError}
               />
             )}
             {level === 'intent' && selection.intentId && (

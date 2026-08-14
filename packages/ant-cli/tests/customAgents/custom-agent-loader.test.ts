@@ -377,6 +377,93 @@ describe('discoverAgents — D8 scope priority', () => {
   });
 });
 
+// ── tenant-aware scope-root derivation (org-owned agents) ────────────────────
+
+describe('deriveCustomAgentScopeRootsForTenant', () => {
+  async function forTenant(kind: 'local' | 'individual' | 'team', orgId: string, userId = 'probe@to.nexus') {
+    const { deriveCustomAgentScopeRootsForTenant } = await import('../../src/core/customAgents/scopeRoots');
+    return deriveCustomAgentScopeRootsForTenant({
+      workspacesPath: '/ws',
+      userId,
+      organizationId: orgId,
+      organizationKind: kind,
+    });
+  }
+
+  it('local kind → byte-identical to the historical user-dir derivation', async () => {
+    const { deriveCustomAgentScopeRootsFromUserDir } = await import('../../src/core/customAgents/scopeRoots');
+    expect(await forTenant('local', 'local', 'local')).toEqual(
+      deriveCustomAgentScopeRootsFromUserDir(path.join('/ws', 'local', 'local')),
+    );
+  });
+
+  it('individual kind → anchored on the individual org user dir (same as today)', async () => {
+    const roots = await forTenant('individual', 'individual');
+    expect(roots[0].root).toBe(path.join('/ws', 'individual', 'probe@to.nexus', '.ant/agents'));
+    expect(roots[0]).toMatchObject({ scope: 'user', readonly: false });
+    // No legacy root, no per-org ACL root outside team kind.
+    expect(roots.some((r) => r.legacy)).toBe(false);
+    expect(roots.some((r) => r.aclGoverned)).toBe(false);
+  });
+
+  it('team kind → individual-anchored user root, legacy team-path root, per-org ACL root, builtin (in order)', async () => {
+    const roots = await forTenant('team', 'acme');
+    expect(roots.map((r) => r.scope)).toEqual(['user', 'user', 'org', 'builtin']);
+    // ① personal agents live under the INDIVIDUAL org regardless of active org (D1 fix).
+    expect(roots[0]).toMatchObject({ scope: 'user', readonly: false });
+    expect(roots[0].root).toBe(path.join('/ws', 'individual', 'probe@to.nexus', '.ant/agents'));
+    // ② pre-org-agents team-active user root rides along readonly as legacy BC.
+    expect(roots[1]).toMatchObject({ scope: 'user', readonly: true, legacy: true });
+    expect(roots[1].root).toBe(path.join('/ws', 'acme', 'probe@to.nexus', '.ant/agents'));
+    // ③ the per-org shared root is ACL-governed (structurally writable).
+    expect(roots[2]).toMatchObject({ scope: 'org', readonly: false, aclGoverned: true });
+    expect(roots[2].root).toBe(path.join('/ws', 'acme', '.ant/agents'));
+  });
+
+  it('team kind + ANT_CUSTOM_AGENTS_DIR → env dir slots BELOW the per-org root, readonly', async () => {
+    process.env.ANT_CUSTOM_AGENTS_DIR = '/global/agents';
+    try {
+      const roots = await forTenant('team', 'acme');
+      expect(roots.map((r) => r.scope)).toEqual(['user', 'user', 'org', 'org', 'builtin']);
+      const aclIdx = roots.findIndex((r) => r.aclGoverned);
+      const envIdx = roots.findIndex((r) => r.root === '/global/agents');
+      expect(aclIdx).toBeLessThan(envIdx);
+      expect(roots[envIdx]).toMatchObject({ scope: 'org', readonly: true });
+      expect(roots[envIdx].aclGoverned).toBeUndefined();
+    } finally {
+      delete process.env.ANT_CUSTOM_AGENTS_DIR;
+    }
+  });
+
+  it('discoverAgents projects an aclGoverned root as readonly (conservative default the route layer flips)', () => {
+    const aclRoot: CustomAgentScopeRoot = {
+      scope: 'org',
+      root: path.join(tmpRoot, 'org-acl-agents'),
+      readonly: false,
+      aclGoverned: true,
+    };
+    fs.mkdirSync(aclRoot.root, { recursive: true });
+    const dir = writeAgent(aclRoot.root, 'shared', {});
+    writeJob(dir, 'weekly', {});
+    const agents = discoverAgents([aclRoot]);
+    expect(agents[0]).toMatchObject({ id: 'shared', scope: 'org', readonly: true });
+  });
+
+  it('discoverAgents projects a legacy user root as readonly', () => {
+    const legacyRoot: CustomAgentScopeRoot = {
+      scope: 'user',
+      root: path.join(tmpRoot, 'legacy-agents'),
+      readonly: true,
+      legacy: true,
+    };
+    fs.mkdirSync(legacyRoot.root, { recursive: true });
+    const dir = writeAgent(legacyRoot.root, 'old', {});
+    writeJob(dir, 'weekly', {});
+    const agents = discoverAgents([legacyRoot]);
+    expect(agents[0]).toMatchObject({ id: 'old', scope: 'user', readonly: true });
+  });
+});
+
 describe('activeCustomJob singleton', () => {
   it('activates once; double activation throws; require works', () => {
     const dir = writeAgent(roots()[0].root, 'ops', {});

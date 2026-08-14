@@ -86,6 +86,22 @@ export interface CustomJobSummary {
   intents?: Pick<CustomIntentDef, 'id' | 'description'>[];
 }
 
+/**
+ * Caller-specific permissions carried only by scope-`org` agents that live in
+ * a per-org ACL-governed root. Edit authority = agent owner (the promoter) ∨
+ * delegated editor ∨ live org admin/owner role.
+ */
+export interface CustomAgentOrgPermissions {
+  /** Promoter userId (email) — implicit editor, never removable. */
+  owner?: string;
+  /** owner ∨ editor ∨ org admin/owner (live role, never the JWT claim). */
+  canEdit: boolean;
+  /** owner ∨ org admin/owner — may manage the editors list. */
+  canManageEditors: boolean;
+  /** Delegated editor userIds — present only when `canManageEditors`. */
+  editors?: string[];
+}
+
 /** Summary of one custom agent and its jobs, as listed by the discovery API. */
 export interface CustomAgentSummary {
   /** {@link CUSTOM_ID_PATTERN}, equals the `.ant/agents/{agentId}/` directory name. */
@@ -93,8 +109,14 @@ export interface CustomAgentSummary {
   name: string;
   /** Which scope root this definition was resolved from. */
   scope: CustomAgentScope;
-  /** True when the scope forbids editing through the API (e.g. org members). */
+  /**
+   * Effective editability FOR THE CALLING USER — org agents flip this per
+   * caller (owner/editor/admin see false), builtin/env-dir stay true, and a
+   * legacy team-path user agent is readonly until promoted.
+   */
   readonly: boolean;
+  /** Per-caller org permissions — only on ACL-governed scope-`org` agents. */
+  org?: CustomAgentOrgPermissions;
   jobs: CustomJobSummary[];
 }
 

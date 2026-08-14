@@ -242,7 +242,22 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     if (typeof state.reset === 'function') {
       state.reset();
     }
-    set({ projects: [], projectsStatus: 'idle' } as any);
+    // Agent state is tenant-scoped (org-owned agents differ per active org),
+    // so a user change must not leak the previous identity's lists/selection.
+    set({
+      projects: [],
+      projectsStatus: 'idle',
+      accountAgents: [],
+      accountAgentsError: null,
+      agentSettingsSelection: { agentId: undefined, jobId: undefined, intentId: undefined },
+      definitionTree: [],
+      openDefinitionFile: null,
+      definitionValidation: null,
+      customAgents: [],
+      customAgentsError: null,
+      selectedCustomAgentId: undefined,
+      selectedCustomJobId: undefined,
+    } as any);
     removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
     removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
   },

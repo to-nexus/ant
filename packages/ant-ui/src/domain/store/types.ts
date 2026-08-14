@@ -145,6 +145,24 @@ export type MainPanelTabId = StaticMainPanelTab | EditorMainPanelTabId;
 export type MainPanelTabOrderItem = Exclude<MainPanelTabId, 'job'>;
 
 /**
+ * Every static tab closed — the initial AND post-reset open-tab map (SSOT).
+ * `uiSlice` (initial state) and `resetSlice.reset` both spread this instead of
+ * hand-maintaining literals that rot when a tab is added (agentSettings /
+ * orgSettings were missing from the reset literal once).
+ */
+export const MAIN_PANEL_TABS_ALL_CLOSED: Record<Exclude<StaticMainPanelTab, 'job'>, boolean> = {
+  projectConfig: false,
+  accountConfig: false,
+  fileEdit: false,
+  transfer: false,
+  previewConfig: false,
+  actions: false,
+  billing: false,
+  agentSettings: false,
+  orgSettings: false,
+};
+
+/**
  * IDE session lifecycle — discriminated union, the SSOT for every IDE
  * lifecycle UI signal (startup phase / iframe load / disconnect / failure).
  *

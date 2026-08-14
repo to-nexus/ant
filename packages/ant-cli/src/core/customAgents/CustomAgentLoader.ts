@@ -53,6 +53,18 @@ export interface CustomAgentScopeRoot {
   /** Absolute path of the `agents/` container dir (may not exist yet). */
   root: string;
   readonly: boolean;
+  /**
+   * Writes are gated per-agent by the org ACL (`agent-acl.json`) instead of
+   * the root-level `readonly` flag. Kept `readonly: false` structurally; the
+   * route layer resolves the caller's actual authority.
+   */
+  aclGoverned?: boolean;
+  /**
+   * BC fallback root (pre-org-agents team-active user root) — discoverable
+   * and runnable, but never writable and never a creation target; promotion
+   * is the unlock path.
+   */
+  legacy?: boolean;
 }
 
 /** Cap applied to the merged (agent base + job base) prose, ANTRULES-style. */
@@ -278,7 +290,7 @@ function summarizeJobs(agentDir: string): CustomJobSummary[] {
  */
 export function discoverAgents(scopeRoots: CustomAgentScopeRoot[]): CustomAgentSummary[] {
   const byId = new Map<string, CustomAgentSummary>();
-  for (const { scope, root, readonly } of scopeRoots) {
+  for (const { scope, root, readonly, aclGoverned } of scopeRoots) {
     for (const agentId of listAgentDirs(root)) {
       if (byId.has(agentId)) continue; // earlier (closer) scope wins
       const agentDir = path.join(root, agentId);
@@ -291,7 +303,9 @@ export function discoverAgents(scopeRoots: CustomAgentScopeRoot[]): CustomAgentS
           id: agentId,
           name: agent.name ?? agentId,
           scope,
-          readonly,
+          // Conservative default for ACL-governed roots — the route layer
+          // flips it per caller after resolving the org ACL + live role.
+          readonly: aclGoverned ? true : readonly,
           jobs: summarizeJobs(agentDir),
         });
       } catch {

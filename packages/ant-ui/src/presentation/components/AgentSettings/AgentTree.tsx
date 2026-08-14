@@ -26,7 +26,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Bot, Briefcase, Building2, ChevronDown, ChevronRight, Plus, Target, Upload } from 'lucide-react';
 import { toCustomId, type CustomAgentScope, type CustomAgentSummary } from '@ant/shared';
 import { Button, KebabMenu, type KebabMenuItem } from '@/presentation/components/aurora';
 import { AuroraInput, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
@@ -71,6 +71,9 @@ export interface AgentTreeProps {
   /** Why the agent list is empty, when it is empty because loading failed. */
   loadError?: { kind: 'endpoint-missing' | 'unknown'; message: string } | null;
   onRetryLoad?: () => void;
+  /** Active org is a team — gates the "Promote to organization" menu item. */
+  isTeamActive?: boolean;
+  onPromoteAgent?: (agentId: string) => void;
 }
 
 /**
@@ -200,6 +203,8 @@ export function AgentTree({
   onImportFolder,
   loadError,
   onRetryLoad,
+  isTeamActive,
+  onPromoteAgent,
 }: AgentTreeProps) {
   const { t } = useTranslation('agents');
   const [collapsedAgents, setCollapsedAgents] = useState<Set<string>>(new Set());
@@ -216,10 +221,12 @@ export function AgentTree({
     });
   };
 
-  // Everything writable is scope-gated here (readonly scopes get no menu at
-  // all), so the row markup never asks about readonly again.
-  const agentMenu = (agent: CustomAgentSummary): KebabMenuItem[] =>
-    agent.readonly
+  // Write items are gated by the PER-AGENT effective readonly (org agents can
+  // be editable for their owner/editors; a legacy team-path user agent is
+  // readonly). Promotion is scope-gated: user-scope agents in a team org —
+  // for a legacy readonly agent it is the only item (the unlock path).
+  const agentMenu = (agent: CustomAgentSummary): KebabMenuItem[] => {
+    const items: KebabMenuItem[] = agent.readonly
       ? []
       : [
           { icon: Plus, label: t('tree.menu.newJob', 'New job'), onClick: () => setCreating({ kind: 'job', agentId: agent.id }) },
@@ -229,6 +236,15 @@ export function AgentTree({
             onClick: () => openFilePicker((files) => void onUploadFiles(agent.id, files, '')),
           },
         ];
+    if (isTeamActive && agent.scope === 'user' && onPromoteAgent) {
+      items.push({
+        icon: Building2,
+        label: t('tree.menu.promote', 'Promote to organization'),
+        onClick: () => onPromoteAgent(agent.id),
+      });
+    }
+    return items;
+  };
 
   const jobMenu = (agent: CustomAgentSummary, jobId: string): KebabMenuItem[] =>
     agent.readonly
@@ -301,7 +317,12 @@ export function AgentTree({
               style={{ color: 'var(--text-4)' }}
             >
               {t(`tree.scope.${scope}`, scope)}
-              {scope !== 'user' && <StatusPill state="not-configured" label={t('tree.readonly', 'readonly')} />}
+              {/* readonly is PER AGENT now (org agents can be editable for
+                  their owner/editors) — only a uniformly-readonly group gets
+                  the header pill; mixed groups mark individual rows below. */}
+              {group.every((a) => a.readonly) && (
+                <StatusPill state="not-configured" label={t('tree.readonly', 'readonly')} />
+              )}
             </div>
             {group.map((agent) => {
               const agentCollapsed = collapsedAgents.has(agent.id);
@@ -316,6 +337,9 @@ export function AgentTree({
                   >
                     <Bot size={14} className="shrink-0" />
                     <span className="truncate flex-1">{agent.name}</span>
+                    {agent.readonly && !group.every((a) => a.readonly) && (
+                      <StatusPill state="not-configured" label={t('tree.readonly', 'readonly')} />
+                    )}
                     {/* Agent actions stay visible — the agent row is where a job
                         is born, and a hover-only affordance hid that entry point. */}
                     <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
