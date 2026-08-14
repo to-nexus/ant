@@ -58,6 +58,8 @@
     "mcpRemoveArg": "인자 제거",
     "mcpAddEnv": "변수 추가",
     "mcpRemoveEnv": "변수 제거",
+    "mcpAddHeader": "헤더 추가",
+    "mcpRemoveHeader": "헤더 제거",
     "mcpCredentials": "MCP 크레덴셜",
     "mcpCredentialsHint": "위 서버들이 참조하는 키입니다. 값은 사용자별로 암호화 저장되며 다시 표시되지 않습니다.",
     "mcpCredRegistered": "등록됨",
@@ -150,6 +152,25 @@
     "bindToIntent": "인텐트에 연결…",
     "validationWarnings": "경고와 함께 저장됨 — 수정 전까지 해당 잡은 로드에 실패합니다:",
     "selectFile": "프롬프트 파일을 선택하세요"
+  },
+  "promote": {
+    "title": "조직으로 승급",
+    "desc": "이 에이전트를 조직 전체와 공유합니다. 개인 범위를 벗어나 모든 멤버가 보고 실행할 수 있게 되며, 소유자는 그대로 나입니다.",
+    "button": "조직으로 승급",
+    "promoting": "승급 중…",
+    "confirmTitle": "조직으로 승급",
+    "confirmMessage": "\"{{name}}\" 에이전트를 조직으로 승급할까요? 개인 범위에서 조직으로 이동하며, 모든 멤버가 보고 실행할 수 있게 됩니다. 소유자는 그대로 나입니다."
+  },
+  "orgAccess": {
+    "title": "조직 접근 권한",
+    "desc": "모든 멤버가 이 에이전트를 보고 실행할 수 있습니다. 편집은 소유자, 조직 관리자, 그리고 여기서 위임한 편집자만 가능합니다.",
+    "owner": "소유자",
+    "ownerUnknown": "알 수 없음 (조직 관리자가 관리)",
+    "editors": "편집자",
+    "noMembers": "아직 이 조직에 다른 멤버가 없습니다.",
+    "self": "(나)",
+    "saving": "저장 중…",
+    "save": "편집자 저장"
   },
   "danger": {
     "agentTitle": "이 에이전트 삭제",

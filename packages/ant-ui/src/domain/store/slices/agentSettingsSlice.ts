@@ -192,6 +192,13 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
   promoteAgent: async (agentId) => {
     await promoteAccountAgent(agentId);
     await get().loadAccountAgents();
+    // The move is only real when the refetched summary says so — a promotion
+    // that "succeeded" while the agent is still user-scope must surface, not
+    // silently pretend (the promote POST and the list read different stores).
+    const refetched = (get().accountAgents as CustomAgentSummary[]).find((a) => a.id === agentId);
+    if (refetched && refetched.scope !== 'org') {
+      throw new Error(`Promotion did not take effect: agent "${agentId}" is still ${refetched.scope}-scope after refresh`);
+    }
     get().syncComposerAgents();
     // Re-read the tree if the promoted agent is the one on screen — its
     // scope root (and thus readonly) changed under the same id.

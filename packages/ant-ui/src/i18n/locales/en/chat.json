@@ -340,6 +340,7 @@
   },
   "universal": {
     "selectJob": "Select a custom job",
-    "selectAgent": "Select an agent"
+    "selectAgent": "Select an agent",
+    "agentsLoadFailed": "Could not load agents: {{message}}"
   }
 }

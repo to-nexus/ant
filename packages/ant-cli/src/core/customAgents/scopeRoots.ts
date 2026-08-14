@@ -60,9 +60,10 @@ export interface CustomAgentTenantContext {
  *   derivation (the active org IS the anchor org).
  * - `team` — personal agents stay anchored under the INDIVIDUAL org
  *   (`{ws}/individual/{user}`) so switching the active org never empties the
- *   list; the pre-org-agents team-active user root rides along as a readonly
- *   `legacy` fallback; the per-org shared root (`{ws}/{orgId}/.ant/agents`)
- *   is `aclGoverned` (per-agent write authority via `agent-acl.json`).
+ *   list; the per-org shared root (`{ws}/{orgId}/.ant/agents`) is
+ *   `aclGoverned` (per-agent write authority via `agent-acl.json`). The
+ *   pre-org-agents team-path user root (`{ws}/{orgId}/{user}/.ant/agents`)
+ *   is NOT served — those definitions are retired, not migrated.
  *
  * The `ANT_CUSTOM_AGENTS_DIR` env root stays BELOW the per-org root: it is a
  * single global directory with no org separation (documented multi-tenant
@@ -79,12 +80,6 @@ export function deriveCustomAgentScopeRootsForTenant(ctx: CustomAgentTenantConte
       scope: 'user',
       root: path.join(ctx.workspacesPath, INDIVIDUAL_ORG_ID, ctx.userId, CUSTOM_AGENTS_DIRNAME),
       readonly: false,
-    },
-    {
-      scope: 'user',
-      root: path.join(ctx.workspacesPath, ctx.organizationId, ctx.userId, CUSTOM_AGENTS_DIRNAME),
-      readonly: true,
-      legacy: true,
     },
     {
       scope: 'org',

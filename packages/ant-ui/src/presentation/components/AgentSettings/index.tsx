@@ -17,6 +17,7 @@ import type { CustomAgentDefinitionFileNode } from '@ant/shared';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { AgentTree } from './AgentTree';
 import { OrgAccessCard } from './OrgAccessCard';
+import { PromoteZone } from './PromoteZone';
 import { DetailHeader, type DetailLevel } from './DetailHeader';
 import { PromptsCard, type PromptsScope } from './prompts/PromptsCard';
 import { useResizableWidth } from './useResizableWidth';
@@ -91,6 +92,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const [jobValid, setJobValid] = useState<boolean | null>(null);
   const [dangerArmed, setDangerArmed] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPromoting, setIsPromoting] = useState(false);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const { width: treeWidth, isResizing, startResize } = useResizableWidth();
 
@@ -171,19 +173,19 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       if (selection.agentId === agentId) await loadDefinitionTree(agentId);
     });
 
-  /** Promotion is a MOVE into the org — confirm before it leaves the personal scope. */
+  /**
+   * Promotion is a MOVE into the org. The PromoteZone card owns the confirm
+   * dialog; failures land in the detail error strip via `wrap` — a promote
+   * that silently no-ops is exactly the bug this screen must not reproduce.
+   */
   const handlePromoteAgent = (agentId: string) =>
     wrap(async () => {
-      const agent = agents.find((a) => a.id === agentId);
-      const ok = window.confirm(
-        t(
-          'promote.confirm',
-          'Promote "{{name}}" to your organization? The agent moves out of your personal scope — every member can then see and run it, and you stay its owner.',
-          { name: agent?.name ?? agentId },
-        ),
-      );
-      if (!ok) return;
-      await promoteAgent(agentId);
+      setIsPromoting(true);
+      try {
+        await promoteAgent(agentId);
+      } finally {
+        setIsPromoting(false);
+      }
     });
 
   const handleImportFolder = (files: FileList) =>
@@ -441,8 +443,6 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onImportFolder={handleImportFolder}
           loadError={accountAgentsError}
           onRetryLoad={() => void loadAccountAgents()}
-          isTeamActive={isTeamActive}
-          onPromoteAgent={(agentId) => void handlePromoteAgent(agentId)}
         />
         {/* drag handle: 4px hit area on the border */}
         <div
@@ -570,6 +570,14 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
               onAddExisting={bindToSelectedIntent}
               jobInjectionFiles={jobInjectionFiles}
             />
+            {level === 'agent' && isTeamActive && selectedAgent?.scope === 'user' && (
+              <PromoteZone
+                id="c3g-promote"
+                agentName={selectedAgent?.name ?? selection.agentId!}
+                isPromoting={isPromoting}
+                onPromote={() => void handlePromoteAgent(selection.agentId!)}
+              />
+            )}
             {!readonly && (
               <div id="c3g-danger">
                 <DangerZone

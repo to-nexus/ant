@@ -59,12 +59,6 @@ export interface CustomAgentScopeRoot {
    * route layer resolves the caller's actual authority.
    */
   aclGoverned?: boolean;
-  /**
-   * BC fallback root (pre-org-agents team-active user root) — discoverable
-   * and runnable, but never writable and never a creation target; promotion
-   * is the unlock path.
-   */
-  legacy?: boolean;
 }
 
 /** Cap applied to the merged (agent base + job base) prose, ANTRULES-style. */

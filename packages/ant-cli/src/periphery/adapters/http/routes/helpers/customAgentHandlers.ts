@@ -126,13 +126,6 @@ export async function findWritableAgent(
     return null;
   }
   if (found.scopeRoot.readonly) {
-    if (found.scopeRoot.legacy) {
-      res.status(403).json({
-        error: `Custom agent "${agentId}" lives in a legacy team path and is read-only — promote it to the organization (or import a copy) to edit it`,
-        code: 'legacy-agent-readonly',
-      });
-      return null;
-    }
     res.status(403).json({ error: `Custom agent "${agentId}" is read-only (scope: ${found.scopeRoot.scope})` });
     return null;
   }
@@ -163,9 +156,7 @@ export function createCollisionMessage(
   if (collision.scopeRoot.scope === 'org') {
     return `Agent id "${agentId}" is taken by an org agent — choose another id`;
   }
-  return collision.scopeRoot.legacy
-    ? `Agent id "${agentId}" is taken by a legacy team-path agent — promote or delete it first`
-    : `Custom agent already exists: ${agentId}`;
+  return `Custom agent already exists: ${agentId}`;
 }
 
 /**

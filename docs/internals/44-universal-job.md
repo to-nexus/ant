@@ -182,7 +182,7 @@ is conditional):
   | kind | roots (priority order) |
   |---|---|
   | `local` / `individual` | user `{ws}/{orgId}/{userId}/.ant/agents` (writable) > org env-dir > builtin — byte-identical to the historical user-dir derivation |
-  | `team` | ① user `{ws}/individual/{userId}/.ant/agents` (writable — personal agents stay anchored to the individual org, so switching the active org never empties the list) ② user `{ws}/{orgId}/{userId}/.ant/agents` (readonly, `legacy: true` — pre-org-agents BC; discover/run/promote only, edits 403 with a promote hint; no auto-migration — promotion is the official exit) ③ org `{ws}/{orgId}/.ant/agents` (`aclGoverned: true` — per-agent write authority) ④ org `$ANT_CUSTOM_AGENTS_DIR` (readonly) ⑤ builtin |
+  | `team` | ① user `{ws}/individual/{userId}/.ant/agents` (writable — personal agents stay anchored to the individual org, so switching the active org never empties the list) ② org `{ws}/{orgId}/.ant/agents` (`aclGoverned: true` — per-agent write authority) ③ org `$ANT_CUSTOM_AGENTS_DIR` (readonly) ④ builtin. The pre-org-agents team-path user root (`{ws}/{orgId}/{userId}/.ant/agents`) is retired — not discovered, not promotable, no auto-migration. |
 
   `deriveCustomAgentScopeRoots(projectPath)` survives only as the
   local/individual shim and the job-runner BC fallback for in-flight jobs

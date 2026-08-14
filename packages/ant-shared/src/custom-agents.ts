@@ -111,8 +111,7 @@ export interface CustomAgentSummary {
   scope: CustomAgentScope;
   /**
    * Effective editability FOR THE CALLING USER — org agents flip this per
-   * caller (owner/editor/admin see false), builtin/env-dir stay true, and a
-   * legacy team-path user agent is readonly until promoted.
+   * caller (owner/editor/admin see false), builtin/env-dir stay true.
    */
   readonly: boolean;
   /** Per-caller org permissions — only on ACL-governed scope-`org` agents. */

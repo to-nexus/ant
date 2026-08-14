@@ -120,9 +120,8 @@ export function createCustomAgentRoutes(deps: {
       if (collision) {
         return res.status(409).json({ error: createCollisionMessage(id, collision) });
       }
-      // Definitions are account-owned: creation always targets the writable,
-      // non-legacy user root.
-      const root = scopeRoots.find((r) => r.scope === 'user' && !r.readonly && !r.legacy)!;
+      // Definitions are account-owned: creation always targets the writable user root.
+      const root = scopeRoots.find((r) => r.scope === 'user' && !r.readonly)!;
       const agentDir = path.join(root.root, id);
       scaffoldAgent(agentDir, id, name || id);
       logger.info(`Custom agent scaffolded: ${id} (scope: user)`, { component: 'CustomAgents' });

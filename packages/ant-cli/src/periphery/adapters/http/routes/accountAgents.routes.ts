@@ -54,6 +54,7 @@ import {
   type OrgWriteGate,
 } from './helpers/customAgentHandlers';
 import {
+  canEditOrgAgent,
   computeOrgAgentPermissions,
   readOrgAgentAcl,
   updateOrgAgentAcl,
@@ -118,9 +119,9 @@ export function createAccountAgentRoutes(deps: {
     };
   }
 
-  /** The creation/import destination — the writable, non-legacy user root. */
+  /** The creation/import destination — the writable user root. */
   function creationRoot(scopeRoots: CustomAgentScopeRoot[]): CustomAgentScopeRoot {
-    return scopeRoots.find((r) => r.scope === 'user' && !r.readonly && !r.legacy)!;
+    return scopeRoots.find((r) => r.scope === 'user' && !r.readonly)!;
   }
 
   /** Any-scope resolve (readonly scopes are viewable) or 400/404 response. */
@@ -399,8 +400,7 @@ export function createAccountAgentRoutes(deps: {
    * of the definition dir into `{ws}/{orgId}/.ant/agents/`, recording the
    * caller as the agent owner in the org ACL. Runtime container data stays
    * put: sessions/plans are keyed by agentId under each project and the id
-   * does not change. Any live member may promote (no approval workflow);
-   * the legacy team-path root is a valid source (its only unlock path).
+   * does not change. Any live member may promote (no approval workflow).
    */
   router.post('/:agentId/promote', async (req: Request, res: Response) => {
     try {
@@ -604,14 +604,22 @@ export function createAccountAgentRoutes(deps: {
 
   // ── definition files ─────────────────────────────────────────────────────
 
-  router.get('/:agentId/files', (req: Request, res: Response) => {
+  router.get('/:agentId/files', async (req: Request, res: Response) => {
     try {
       const found = findViewableAgent(res, scopeRootsFor(req), req.params.agentId);
       if (!found) return;
+      // `readonly` is the CALLER's effective authority, mirroring the list
+      // decoration: ACL-governed org agents resolve per caller — the
+      // structural flag alone would tell every member the agent is editable.
+      let readonly = found.scopeRoot.readonly;
+      if (found.scopeRoot.aclGoverned) {
+        const gate = await orgGateFor(req)();
+        readonly = !canEditOrgAgent(gate.acl.agents[req.params.agentId], gate.callerId, gate.liveRole);
+      }
       res.json({
         tree: buildDefinitionTree(found.agentDir),
         scope: found.scopeRoot.scope,
-        readonly: found.scopeRoot.readonly,
+        readonly,
       });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');

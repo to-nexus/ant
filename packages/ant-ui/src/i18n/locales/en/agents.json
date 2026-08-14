@@ -58,6 +58,8 @@
     "mcpRemoveArg": "Remove argument",
     "mcpAddEnv": "Add variable",
     "mcpRemoveEnv": "Remove variable",
+    "mcpAddHeader": "Add header",
+    "mcpRemoveHeader": "Remove header",
     "mcpCredentials": "MCP credentials",
     "mcpCredentialsHint": "Keys referenced by the servers above. Values are stored encrypted per user and never shown again.",
     "mcpCredRegistered": "registered",
@@ -150,6 +152,25 @@
     "bindToIntent": "Bind to intent…",
     "validationWarnings": "Saved with warnings — affected jobs will fail to load until fixed:",
     "selectFile": "Select a prompt file"
+  },
+  "promote": {
+    "title": "Promote to organization",
+    "desc": "Share this agent with your whole organization. It moves out of your personal scope; every member can see and run it, and you remain its owner.",
+    "button": "Promote to organization",
+    "promoting": "Promoting…",
+    "confirmTitle": "Promote to organization",
+    "confirmMessage": "Promote \"{{name}}\" to your organization? The agent moves out of your personal scope — every member can then see and run it, and you stay its owner."
+  },
+  "orgAccess": {
+    "title": "Organization access",
+    "desc": "Every member can see and run this agent. Editing is limited to the owner, org admins, and the editors you delegate here.",
+    "owner": "Owner",
+    "ownerUnknown": "unknown (managed by org admins)",
+    "editors": "Editors",
+    "noMembers": "No other members in this organization yet.",
+    "self": "(you)",
+    "saving": "Saving…",
+    "save": "Save editors"
   },
   "danger": {
     "agentTitle": "Delete this agent",

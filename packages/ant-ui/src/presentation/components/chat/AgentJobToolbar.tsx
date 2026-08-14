@@ -243,7 +243,14 @@ export function AgentJobToolbar({
               {customAgentsError && customAgents.length === 0 && (
                 <span
                   role="alert"
-                  title={customAgentsError}
+                  title={t('universal.agentsLoadFailed', {
+                    defaultValue: 'Could not load agents: {{message}}',
+                    message: customAgentsError,
+                  })}
+                  aria-label={t('universal.agentsLoadFailed', {
+                    defaultValue: 'Could not load agents: {{message}}',
+                    message: customAgentsError,
+                  })}
                   className="absolute -top-1 -right-1"
                   style={{ color: 'var(--status-error-fg, var(--text-2))' }}
                 >

@@ -12,12 +12,14 @@ const apiMock = {
   fetchDefinitionTree: vi.fn(),
   fetchDefinitionFile: vi.fn(),
   saveDefinitionFile: vi.fn(),
+  promoteAccountAgent: vi.fn(),
 };
 vi.mock('@/infrastructure/http/api/accountAgents', () => ({
   fetchAccountAgents: (...a: unknown[]) => apiMock.fetchAccountAgents(...a),
   fetchDefinitionTree: (...a: unknown[]) => apiMock.fetchDefinitionTree(...a),
   fetchDefinitionFile: (...a: unknown[]) => apiMock.fetchDefinitionFile(...a),
   saveDefinitionFile: (...a: unknown[]) => apiMock.saveDefinitionFile(...a),
+  promoteAccountAgent: (...a: unknown[]) => apiMock.promoteAccountAgent(...a),
 }));
 
 import { createAgentSettingsSlice, type AgentSettingsSlice } from '../../src/domain/store/slices/agentSettingsSlice';
@@ -186,6 +188,37 @@ describe('selection + file buffer', () => {
     s.getState().setDefinitionFileContent('id: [broken');
     await expect(s.getState().saveOpenDefinitionFile()).rejects.toThrow(/YAML syntax/);
     expect(s.getState().openDefinitionFile?.savedContent).toBe('id: ops\n');
+  });
+});
+
+describe('promoteAgent', () => {
+  it('promotes, refetches, and passes when the agent flipped to org scope', async () => {
+    apiMock.promoteAccountAgent.mockResolvedValue({ id: 'ops', scope: 'org', owner: 'probe@to.nexus' });
+    apiMock.fetchAccountAgents.mockResolvedValue({
+      agents: [{ ...AGENTS[0], scope: 'org', readonly: false, org: { owner: 'probe@to.nexus', canEdit: true, canManageEditors: true, editors: [] } }],
+      builtinToolPreset: [],
+      mutatingBuiltinTools: [],
+    });
+    const s = makeStore();
+    await s.getState().promoteAgent('ops');
+    expect(apiMock.promoteAccountAgent).toHaveBeenCalledWith('ops');
+    expect(s.getState().accountAgents[0].scope).toBe('org');
+  });
+
+  // A promote POST that "succeeds" while the refetched list still says
+  // user-scope must throw — silently pretending is how the cloud failure
+  // read as "promotion made my agent readonly".
+  it('throws when the refetched agent is still user-scope', async () => {
+    apiMock.promoteAccountAgent.mockResolvedValue({ id: 'ops', scope: 'org', owner: 'probe@to.nexus' });
+    const s = makeStore();
+    await expect(s.getState().promoteAgent('ops')).rejects.toThrow(/did not take effect/);
+  });
+
+  it('propagates a promote refusal (403 membership) to the caller', async () => {
+    apiMock.promoteAccountAgent.mockRejectedValue(new Error('You are not a member of this organization.'));
+    const s = makeStore();
+    await expect(s.getState().promoteAgent('ops')).rejects.toThrow(/not a member/);
+    expect(apiMock.fetchAccountAgents).not.toHaveBeenCalled();
   });
 });
 

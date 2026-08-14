@@ -340,6 +340,7 @@
   },
   "universal": {
     "selectJob": "커스텀 잡을 선택하세요",
-    "selectAgent": "에이전트를 선택하세요"
+    "selectAgent": "에이전트를 선택하세요",
+    "agentsLoadFailed": "에이전트 목록을 불러오지 못했습니다: {{message}}"
   }
 }

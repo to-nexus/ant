@@ -668,21 +668,14 @@ describe('org-owned agents (team org)', () => {
       expect((await res.json()).code).toBe('not-team-active');
     });
 
-    it('legacy team-path agent is readonly but promotable (the unlock path)', async () => {
+    it('pre-org-agents team-path definitions are retired: not listed, not promotable', async () => {
       seedAgentDir(legacyAgents(OWNER), 'old-agent');
 
       const list = await (await teamApi('')).json();
-      const legacy = list.agents.find((a: any) => a.id === 'old-agent');
-      expect(legacy).toMatchObject({ scope: 'user', readonly: true });
-
-      const patch = await teamApi('/old-agent', { method: 'PATCH', body: JSON.stringify({ name: 'x' }) });
-      expect(patch.status).toBe(403);
-      expect((await patch.json()).code).toBe('legacy-agent-readonly');
+      expect(list.agents.some((a: any) => a.id === 'old-agent')).toBe(false);
 
       const res = await teamApi('/old-agent/promote', { method: 'POST', body: '{}' });
-      expect(res.status).toBe(201);
-      expect(fs.existsSync(path.join(orgAgents(), 'old-agent', 'agent.yaml'))).toBe(true);
-      expect(fs.existsSync(path.join(legacyAgents(OWNER), 'old-agent'))).toBe(false);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -727,6 +720,24 @@ describe('org-owned agents (team org)', () => {
       const list = await (await teamApi('')).json();
       expect(list.agents.some((a: any) => a.id === 'shared')).toBe(true);
       expect((await teamApi('/shared/files')).status).toBe(200);
+    });
+
+    it.each([
+      ['owner', OWNER, false],
+      ['delegated editor', EDITOR, false],
+      ['org admin', ADMIN, false],
+      ['plain member', MEMBER, true],
+      ['removed member (stale JWT)', GHOST, true],
+    ] as const)('GET /files readonly is caller-effective: %s → %s', async (_label, user, readonly) => {
+      currentUser = user;
+      const body = await (await teamApi('/shared/files')).json();
+      expect(body).toMatchObject({ scope: 'org', readonly });
+    });
+
+    it('GET /files on a personal agent stays structural (readonly:false)', async () => {
+      seedAgentDir(personalAgents(), 'mine');
+      const body = await (await teamApi('/mine/files')).json();
+      expect(body).toMatchObject({ scope: 'user', readonly: false });
     });
 
     it('DELETE removes the ACL entry with the definition dir', async () => {
