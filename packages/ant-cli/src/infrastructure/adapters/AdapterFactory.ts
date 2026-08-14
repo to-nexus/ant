@@ -16,6 +16,7 @@ import { ChromaMemoryAdapter } from '../../periphery/adapters/memory/ChromaMemor
 import { NoopMemoryAdapter } from '../../periphery/adapters/memory/NoopMemoryAdapter';
 import { ChunkAdapter } from '../../periphery/adapters/chunk/ChunkingAdapter';
 import { isVectorDbEnabled } from '../../core/config/vectorDbCapability';
+import { isLocalServerMode } from '../../core/config/serverMode';
 
 export class AdapterFactory {
   /**
@@ -57,11 +58,19 @@ export class AdapterFactory {
    * to a truthy value (the default). See
    * [`vectorDbCapability.ts`](../../core/config/vectorDbCapability.ts).
    */
-  static createMemoryAdapter(): MemoryPort {
+  static createMemoryAdapter(userContext?: { organizationId: string; userId: string }): MemoryPort {
     if (!isVectorDbEnabled()) {
       return new NoopMemoryAdapter();
     }
-    return new ChromaMemoryAdapter();
+    // Collections are keyed by projectId, which is unique per tenant and not
+    // globally — so in a shared deployment the caller's tenant has to be part
+    // of the key (M-006). Local mode is single-tenant and keeps the legacy
+    // unscoped names, so existing indexes stay readable.
+    const scope =
+      !isLocalServerMode() && userContext?.organizationId && userContext?.userId
+        ? { organizationId: userContext.organizationId, userId: userContext.userId }
+        : null;
+    return new ChromaMemoryAdapter(scope);
   }
 
   /**

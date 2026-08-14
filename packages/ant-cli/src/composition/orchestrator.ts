@@ -125,7 +125,7 @@ export async function orchestrator(params: {
       // sneak into the normal flow. The learn branch above has its own
       // capability gate before `architectAgent` is called, so by the time
       // we wire `memory` into the learn deps below, it is guaranteed truthy.
-      const memory = isVectorDbEnabled() ? AdapterFactory.createMemoryAdapter() : undefined;
+      const memory = isVectorDbEnabled() ? AdapterFactory.createMemoryAdapter(userContext) : undefined;
       const config = new FileConfigAdapter();
       
       // Load project config for git/repo and LLM settings

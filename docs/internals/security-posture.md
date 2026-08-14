@@ -108,10 +108,20 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
 
 ## Axis 5 — Auth / tenant model
 
-- **JWT everywhere.** Authentication is always enforced (never skipped by mode);
-  local mode uses the `local:local` tenant, not "skip auth". Cloud `user.id` is
-  the full lowercased email, scoped under an `org` (see
-  [40-org-model.md](40-org-model.md)).
+- **JWT in cloud mode; single trusted tenant in local mode.** Cloud mode
+  authenticates every request and resolves `(org, user)` from the JWT — `user.id`
+  is the full lowercased email, scoped under an `org` (see
+  [40-org-model.md](40-org-model.md)). **Local mode installs no HTTP auth
+  middleware at all** (`ServerConfigurator.setupAuthentication` early-returns)
+  and resolves the single `local:local` tenant; anything that can reach the port
+  acts as that tenant. That is deliberate — local mode is a single-developer
+  trust boundary — but it means a finding scoped to "authenticated user" is a
+  **cloud-profile** finding, and this repo ships that profile
+  (`docker-compose.cloud.yml`, [self-host-cloud.md](../guides/self-host-cloud.md)).
+- **Cross-tenant guards are explicit, per jobId-addressed route.** ✅
+  `assertJobAccess` on status / queue-position / stop / resume / continue /
+  dismiss / workflow REST / workflow SSE. Adding a jobId-addressed route means
+  adding the guard — the gate is not inherited from the router.
 - **Proxy ownership gate (CRITICAL standard).** Every proxy surface
   (`/ide/`, `/preview/`, `/deploy/`) keyed by an **enumerable**
   `tenant:user:project:feature` urlKey MUST verify the JWT **and** assert
@@ -122,6 +132,18 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   is the **reference implementation**; IDE and Preview are 🔄 remediation
   targets. Public deploy access is the only intentional open path
   (visibility-gated).
+- **A user-authored upstream never receives platform credentials.** ✅ Both the
+  HTTP proxy (`buildCleanHeaders`) and the WebSocket upgrade
+  (`rewriteUpgradeHeaders`) strip the platform session cookie and a *verifiable*
+  platform bearer before replaying to a dev server, while keeping the app's own
+  cookies and handshake headers. The peer-forward hop deliberately keeps them —
+  its upstream is an owner replica that re-verifies ownership.
+- **Service secrets are scoped to the processes that consume them.** ✅
+  `docker-compose.cloud.yml` grants OAuth/admin secrets to `ant-api` only, and
+  the HS256 verification key only to the three processes that verify sessions.
+  `ant-preview` spawns user-authored children under its own UID, so anything in
+  its environment is reachable from user code via `/proc` — the per-UID and
+  mount isolation that would close that path is a deployment-layer control.
 - **Workspace filesystem isolation.** ✅ EFS `subPath` + `assertWorkspacePathInBase`/
   `stripBase` throw on any path outside the tenant base
   ([20-workspace-isolation.md](20-workspace-isolation.md)).

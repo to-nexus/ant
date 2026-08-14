@@ -25,6 +25,8 @@ import {
   resolveUniversalContainerPath,
   resolveUniversalMergedPath,
   UNIVERSAL_ARTIFACT_CANONICAL_DIRS,
+  UNIVERSAL_TREE_MAX_DEPTH,
+  UNIVERSAL_TREE_MAX_ENTRIES,
 } from '../../src/core/customAgents/universalContainer';
 import { createEmptyFigmaData } from '@ant/shared';
 import { ensureCanonicalStructure, getSessionFilePath } from '../../src/core/utils/sessionPaths';
@@ -230,6 +232,62 @@ describe('buildUniversalMergedTree — assembly contract', () => {
     const container = getUniversalContainerPathOf(projectPath);
     const tree = buildUniversalMergedTree(container);
     expect(tree[0]).toMatchObject({ name: 'plan', type: 'directory', children: [] });
+  });
+
+  // H-008: the walk is synchronous over a tree the requesting account controls,
+  // so it needs a bound — otherwise a deep or wide artifact tree plus repeated
+  // polling monopolises the shared event loop.
+  describe('traversal budget', () => {
+    const countNodes = (nodes: any[]): number =>
+      nodes.reduce((n, node) => n + 1 + countNodes(node.children ?? []), 0);
+
+    it('stops descending past the depth cap and marks the cut', () => {
+      ensureUniversalContainer(projectPath);
+      const container = getUniversalContainerPathOf(projectPath);
+      const deep = path.join(
+        container,
+        'artifacts',
+        ...Array.from({ length: UNIVERSAL_TREE_MAX_DEPTH + 5 }, (_, i) => `d${i}`),
+      );
+      fs.mkdirSync(deep, { recursive: true });
+
+      const tree = buildUniversalMergedTree(container);
+      const depthOf = (nodes: any[], d = 1): number =>
+        nodes.reduce((max, n) => Math.max(max, n.children?.length ? depthOf(n.children, d + 1) : d), 0);
+      expect(depthOf(tree)).toBeLessThanOrEqual(UNIVERSAL_TREE_MAX_DEPTH + 1);
+
+      const findTruncated = (nodes: any[]): boolean =>
+        nodes.some((n) => n.truncated === true || findTruncated(n.children ?? []));
+      expect(findTruncated(tree)).toBe(true);
+    });
+
+    it('stops at the entry cap across BOTH roots, not per root', () => {
+      ensureUniversalContainer(projectPath);
+      const container = getUniversalContainerPathOf(projectPath);
+      const wide = path.join(container, 'artifacts', 'many');
+      fs.mkdirSync(wide, { recursive: true });
+      for (let i = 0; i < UNIVERSAL_TREE_MAX_ENTRIES + 200; i++) {
+        fs.writeFileSync(path.join(wide, `f${i}.md`), 'x');
+      }
+      fs.writeFileSync(path.join(container, 'sessions', 'chat.jsonl'), '');
+
+      const tree = buildUniversalMergedTree(container);
+      // canonical placeholders are synthesized, not walked, so allow for them
+      const walked = countNodes(tree) - UNIVERSAL_ARTIFACT_CANONICAL_DIRS.length;
+      expect(walked).toBeLessThanOrEqual(UNIVERSAL_TREE_MAX_ENTRIES + 2);
+    });
+
+    it('leaves an ordinary small tree untouched', () => {
+      ensureUniversalContainer(projectPath);
+      const container = getUniversalContainerPathOf(projectPath);
+      fs.mkdirSync(path.join(container, 'artifacts', 'briefs'), { recursive: true });
+      fs.writeFileSync(path.join(container, 'artifacts', 'briefs', 'a.md'), 'x');
+
+      const tree = buildUniversalMergedTree(container);
+      const briefs = tree.find((n) => n.name === 'briefs');
+      expect(briefs?.truncated).toBeUndefined();
+      expect(briefs?.children).toHaveLength(1);
+    });
   });
 });
 

@@ -285,6 +285,19 @@ export function createSSERoutes(deps: {
       }
     }
 
+    // Same connection-slot budget the feature stream applies (M-005). Ownership
+    // stops another tenant's job being watched; it does not stop one account
+    // pinning unbounded responses, timers and Pub/Sub subscriptions here.
+    // Checked BEFORE writeHead for the same reason as the feature stream: a 429
+    // on a committed 200 would be written into the event stream and the browser
+    // would reconnect forever.
+    const allowed = await deps.sseService.checkConnectionLimit(userContext);
+    if (!allowed) {
+      logger.warn(`Workflow SSE connection limit exceeded`, { component: 'SSE', jobId });
+      res.status(429).json({ error: 'Too many SSE connections' });
+      return;
+    }
+
     // Set SSE headers
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -292,7 +305,7 @@ export function createSSERoutes(deps: {
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no'
     });
-    
+
     // Register workflow client (await ensures Redis Pub/Sub subscription is active)
     await deps.sseService.registerWorkflowClient(jobId, res, userContext);
     
@@ -306,15 +319,22 @@ export function createSSERoutes(deps: {
     logger.debug(`Workflow client registered`, { component: 'SSE', jobId });
     
     // Heartbeat: real SSE data event (not comment) so ALB counts it as traffic
+    const workflowConnKey: string | undefined = (res as any).__sseConnKey;
     const keepAliveInterval = setInterval(() => {
       try {
         res.write(`data: ${JSON.stringify({ type: 'heartbeat', ts: Date.now() })}\n\n`);
         if (typeof (res as any).flush === 'function') (res as any).flush();
+        // Refresh the connection-slot TTL for as long as the stream is live —
+        // otherwise the key expires under a healthy client and the slot is
+        // double-counted on the next connect.
+        if (workflowConnKey && deps.stateStore) {
+          deps.stateStore.expireKey(workflowConnKey, 30).catch(() => {});
+        }
       } catch (error) {
         clearInterval(keepAliveInterval);
       }
     }, 10000);
-    
+
     // Handle disconnect
     res.on('close', () => {
       clearInterval(keepAliveInterval);

@@ -81,6 +81,36 @@ export interface PlatformCredentialFilter {
 }
 
 /**
+ * Drop the platform session cookie from a `Cookie` header value.
+ *
+ * @returns the remaining cookie string, or `null` when nothing survives and the
+ *          header itself should be removed.
+ */
+export function filterPlatformCookie(
+  cookieValue: string,
+  platform: PlatformCredentialFilter,
+): string | null {
+  const kept = cookieValue
+    .split(';')
+    .filter(part => part.trim().split('=')[0] !== platform.cookieName);
+  if (kept.length === 0) return null;
+  return kept.join(';').replace(/^\s+/, '');
+}
+
+/**
+ * Is this `Authorization` value a *platform* bearer token? An app's own bearer
+ * and any other scheme (Basic, …) belong to the upstream and stay.
+ */
+export function isPlatformAuthorization(
+  authValue: string,
+  platform: PlatformCredentialFilter,
+): boolean {
+  if (!platform.isPlatformToken) return false;
+  const match = /^Bearer\s+(.+)$/i.exec(authValue.trim());
+  return !!match && platform.isPlatformToken(match[1]);
+}
+
+/**
  * Remove the platform session cookie and a platform bearer token in place,
  * preserving everything the previewed app itself set.
  */
@@ -92,18 +122,13 @@ function stripPlatformCredentials(
 
   const cookie = headers['cookie'];
   if (cookie) {
-    const kept = cookie
-      .split(';')
-      .filter(part => part.trim().split('=')[0] !== platform.cookieName);
-    if (kept.length === 0) delete headers['cookie'];
-    else headers['cookie'] = kept.join(';').replace(/^\s+/, '');
+    const kept = filterPlatformCookie(cookie, platform);
+    if (kept === null) delete headers['cookie'];
+    else headers['cookie'] = kept;
   }
 
   const auth = headers['authorization'];
-  if (auth && platform.isPlatformToken) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth.trim());
-    if (match && platform.isPlatformToken(match[1])) delete headers['authorization'];
-  }
+  if (auth && isPlatformAuthorization(auth, platform)) delete headers['authorization'];
 }
 
 export interface ForwardingContext {

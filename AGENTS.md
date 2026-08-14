@@ -77,7 +77,11 @@ BullMQ, Pub/Sub, separate processes on individual ports — is identical.
 - A single code path that uses Redis, BullMQ, and Pub/Sub unconditionally.
 - `StateStore` (Redis) is always available — never `undefined`, never behind
   `if (stateStore)`.
-- Authentication is always enforced. Local uses the `local:local` tenant.
+- Tenant resolution is always enforced. Cloud mode authenticates every request
+  (JWT); local mode resolves the single `local:local` tenant WITHOUT an HTTP
+  auth gate — `ServerConfigurator.setupAuthentication` early-returns, because
+  local mode is a single-developer trust boundary. Never widen that fork beyond
+  auth-tenant resolution.
 
 If it doesn't work without Redis, **fix it — do not add an in-memory fallback.**
 

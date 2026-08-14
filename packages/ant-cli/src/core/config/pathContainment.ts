@@ -44,8 +44,13 @@ export function assertProjectSegment(projectId: string): string {
   return projectId;
 }
 
-/** Is `target` at or below `root`, after normalization? (pure string form) */
-function isWithin(root: string, target: string): boolean {
+/**
+ * Is `target` at or below `root`, after normalization? (pure string form)
+ *
+ * Exported so siblings compose this predicate instead of re-deriving it — every
+ * containment defect found so far came from a local re-implementation.
+ */
+export function isPathWithin(root: string, target: string): boolean {
   const rel = path.relative(root, target);
   return rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel));
 }
@@ -62,7 +67,7 @@ function isWithin(root: string, target: string): boolean {
 export function assertWithinRoot(root: string, relPath: string): string {
   const absRoot = path.resolve(root);
   const target = path.resolve(absRoot, relPath);
-  if (!isWithin(absRoot, target)) {
+  if (!isPathWithin(absRoot, target)) {
     throw new Error(`[pathContainment] path escapes its root: ${JSON.stringify(relPath)}`);
   }
 
@@ -85,7 +90,7 @@ export function assertWithinRoot(root: string, relPath: string): string {
   } catch {
     return target; // root itself missing — nothing to redirect through yet
   }
-  if (!isWithin(realRoot, realProbe)) {
+  if (!isPathWithin(realRoot, realProbe)) {
     throw new Error(`[pathContainment] path escapes its root via symlink: ${JSON.stringify(relPath)}`);
   }
   return target;
@@ -98,6 +103,49 @@ export function assertWithinRoot(root: string, relPath: string): string {
 export function resolveWithinRoot(root: string, relPath: string): string | null {
   try {
     return assertWithinRoot(root, relPath);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read-side counterpart of {@link assertWithinRoot}: the target MUST exist, and
+ * the return value is the fully symlink-resolved path.
+ *
+ * The asymmetry is deliberate. A write flow legitimately targets a leaf that
+ * does not exist yet, so `assertWithinRoot` can only check the nearest existing
+ * ancestor and must hand back the *requested* name. A read flow always has a
+ * real file, so it can get the strictly stronger canonical form — the only form
+ * that can be handed to `open()` without re-walking attacker-controlled names.
+ * Two named functions rather than a flag, so each call site declares its
+ * contract.
+ *
+ * @throws when either side cannot be resolved, or the canonical target escapes.
+ */
+export function assertCanonicalWithinRoot(root: string, relOrAbsPath: string): string {
+  const absRoot = path.resolve(root);
+  // Cheap lexical rejection first — `../` and absolute escapes never touch disk.
+  if (!isPathWithin(absRoot, path.resolve(absRoot, relOrAbsPath))) {
+    throw new Error(`[pathContainment] path escapes its root: ${JSON.stringify(relOrAbsPath)}`);
+  }
+
+  const realRoot = fs.realpathSync(absRoot);
+  const realTarget = fs.realpathSync(path.resolve(absRoot, relOrAbsPath));
+  if (!isPathWithin(realRoot, realTarget)) {
+    throw new Error(
+      `[pathContainment] path escapes its root via symlink: ${JSON.stringify(relOrAbsPath)}`,
+    );
+  }
+  return realTarget;
+}
+
+/**
+ * Non-throwing form of {@link assertCanonicalWithinRoot}. `null` means "do not
+ * touch this path" — fail closed.
+ */
+export function resolveCanonicalWithinRoot(root: string, relOrAbsPath: string): string | null {
+  try {
+    return assertCanonicalWithinRoot(root, relOrAbsPath);
   } catch {
     return null;
   }

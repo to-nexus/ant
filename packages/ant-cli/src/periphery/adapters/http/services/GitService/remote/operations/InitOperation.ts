@@ -291,7 +291,7 @@ export class InitOperation {
     console.log(`[${this.operationName}] 🗑️  Clearing Vector DB for fresh start...`);
     try {
       const { AdapterFactory } = await import('../../../../../../../infrastructure/adapters/AdapterFactory');
-      const vectorDB = AdapterFactory.createMemoryAdapter();
+      const vectorDB = AdapterFactory.createMemoryAdapter(userContext);
       await vectorDB.clear(projectId);
       console.log(`[${this.operationName}] ✅ Vector DB cleared`);
     } catch (error) {

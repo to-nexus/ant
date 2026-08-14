@@ -210,13 +210,23 @@ export class SSEService {
    * is active BEFORE returning (same rationale as registerClient).
    */
   async registerWorkflowClient(jobId: string, res: Response, userContext?: UserContext): Promise<void> {
+    // Same per-connection key the feature stream mints, so both stream kinds
+    // are counted by one budget — without it a workflow client was invisible to
+    // `checkConnectionLimit` and the cap could be bypassed entirely (M-005).
+    let connKey: string | undefined;
+    if (this.stateStore && userContext?.organizationId && userContext?.userId) {
+      connKey = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:${randomUUID()}`;
+      await this.stateStore.setKeyWithTTL(connKey, '1', SSE_CONNECTION_TTL_SECONDS);
+      (res as any).__sseConnKey = connKey;
+    }
+
     if (!this.workflowClients.has(jobId)) {
       this.workflowClients.set(jobId, new Set());
     }
-    
+
     this.workflowClients.get(jobId)!.add(res);
     logger.debug(`Workflow client registered: ${jobId} (total: ${this.workflowClients.get(jobId)!.size})`, { component: 'SSEService', jobId });
-    
+
     // Subscribe to user-specific workflow channel (MUST await to prevent race condition)
     if (userContext?.organizationId && userContext?.userId) {
       try {
@@ -231,6 +241,11 @@ export class SSEService {
       this.workflowClients.get(jobId)?.delete(res);
       if (this.workflowClients.get(jobId)?.size === 0) {
         this.workflowClients.delete(jobId);
+      }
+      if (connKey && this.stateStore) {
+        this.stateStore.deleteKey(connKey).catch((err) => {
+          logger.error('Failed to delete workflow SSE connection key', { component: 'SSEService' }, err);
+        });
       }
       logger.debug(`Workflow client disconnected: ${jobId}`, { component: 'SSEService', jobId });
     });

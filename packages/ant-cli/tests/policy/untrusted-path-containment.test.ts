@@ -14,7 +14,7 @@
  * Assertions are on the GATE (accept / reject), never on message prose.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -200,23 +200,103 @@ describe('file routes anchor caller `dirPath` to the feature root (H-007 / L-030
     expect(fs.existsSync(path.join(featurePath, 'docs', 'nested'))).toBe(true);
   });
 
-  it('no escaped directory was created by any rejected request', () => {
+  // The per-file destination axis: `dirPath` was checked, but each
+  // `relativePaths[i]` was only string-prefix tested against it, so a symlink
+  // already inside the feature tree carried the write out of the root (H-007).
+  const DESTINATION_ESCAPES: Array<[label: string, relPath: string]> = [
+    ['parent traversal', '../escaped.txt'],
+    ['deep traversal', '../../escaped.txt'],
+    ['symlink descendant', 'escape-link/planted.txt'],
+    ['absolute path', path.join(os.tmpdir(), 'ant-planted-absolute.txt')],
+  ];
+
+  for (const [label, relPath] of DESTINATION_ESCAPES) {
+    it(`upload rejects a per-file destination with ${label}`, async () => {
+      const handler = handlerFor('post', '/projects/:id/features/:feature/upload');
+      const res = await call(handler, {
+        params: { id: 'p', feature: 'main' },
+        body: { dirPath: '', relativePaths: [relPath] },
+        files: [{ originalname: 'x.txt', buffer: Buffer.from('x') }],
+      });
+      expect(res.statusCode).toBe(400);
+      expect((res.body as any)?.error).toBe('Invalid file path');
+    });
+  }
+
+  it('upload still writes a legitimate nested destination', async () => {
+    const handler = handlerFor('post', '/projects/:id/features/:feature/upload');
+    const res = await call(handler, {
+      params: { id: 'p', feature: 'main' },
+      body: { dirPath: '', relativePaths: ['nested/ok.txt'] },
+      files: [{ originalname: 'ok.txt', buffer: Buffer.from('ok') }],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(fs.readFileSync(path.join(featurePath, 'nested', 'ok.txt'), 'utf8')).toBe('ok');
+  });
+
+  it('upload is all-or-nothing when one destination escapes', async () => {
+    const handler = handlerFor('post', '/projects/:id/features/:feature/upload');
+    const res = await call(handler, {
+      params: { id: 'p', feature: 'main' },
+      body: { dirPath: '', relativePaths: ['first.txt', '../bad.txt'] },
+      files: [
+        { originalname: 'first.txt', buffer: Buffer.from('a') },
+        { originalname: 'bad.txt', buffer: Buffer.from('b') },
+      ],
+    });
+    expect(res.statusCode).toBe(400);
+    // the valid member must NOT have been ingested before the bad one was seen
+    expect(fs.existsSync(path.join(featurePath, 'first.txt'))).toBe(false);
+  });
+
+  const RENAME_ESCAPES: Array<[label: string, body: Record<string, string>]> = [
+    ['traversal in oldPath', { oldPath: '../escaped.txt', newPath: 'y.txt' }],
+    ['traversal in newPath', { oldPath: 'src.txt', newPath: '../escaped.txt' }],
+    ['symlink descendant in newPath', { oldPath: 'src.txt', newPath: 'escape-link/planted.txt' }],
+  ];
+
+  for (const [label, body] of RENAME_ESCAPES) {
+    it(`rename rejects ${label}`, async () => {
+      fs.writeFileSync(path.join(featurePath, 'src.txt'), 'v');
+      const handler = router.stack.find(
+        (l: any) => l.route?.path === '/projects/:id/features/:feature/rename' && l.route?.methods?.patch,
+      ).route.stack.at(-1).handle;
+      const res = await call(handler, { params: { id: 'p', feature: 'main' }, body });
+      expect(res.statusCode).toBe(400);
+      expect((res.body as any)?.error).toBe('Invalid file path');
+    });
+  }
+
+  it('no escaped directory or file was created by any rejected request', () => {
     expect(fs.existsSync(path.join(base, 'features', 'main-escaped'))).toBe(false);
     expect(fs.existsSync(path.join(base, 'outside'))).toBe(false);
     expect(fs.existsSync(path.join(base, 'planted'))).toBe(false);
+    // the destination axis: a write that escaped would land here
+    expect(fs.existsSync(path.join(base, 'escaped.txt'))).toBe(false);
+    expect(fs.existsSync(path.join(base, 'planted.txt'))).toBe(false);
+    expect(fs.existsSync(path.join(base, 'features', 'escaped.txt'))).toBe(false);
+    expect(fs.existsSync(path.join(os.tmpdir(), 'ant-planted-absolute.txt'))).toBe(false);
   });
 });
 
 describe('preview connection source stays in the workspace (H-003)', () => {
   let workspace: string;
 
+  let outside: string;
+
   beforeAll(() => {
-    workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-conn-'));
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-conn-parent-'));
+    workspace = path.join(parent, 'workspace');
+    outside = path.join(parent, 'outside');
     fs.mkdirSync(path.join(workspace, 'apps', 'web'), { recursive: true });
+    fs.mkdirSync(path.join(outside, 'existing'), { recursive: true });
+    // an escaping link and an inward link, both inside the workspace
+    fs.symlinkSync(outside, path.join(workspace, 'jump'), 'dir');
+    fs.symlinkSync(path.join(workspace, 'apps'), path.join(workspace, 'inlink'), 'dir');
   });
 
   afterAll(() => {
-    fs.rmSync(workspace, { recursive: true, force: true });
+    fs.rmSync(path.dirname(workspace), { recursive: true, force: true });
   });
 
   const CASES: Array<[label: string, source: string | undefined, allowed: boolean]> = [
@@ -224,9 +304,17 @@ describe('preview connection source stays in the workspace (H-003)', () => {
     ['undefined source', undefined, true],
     ['monorepo subdir', 'apps/web', true],
     ['not-yet-created subdir', 'apps/api', true],
+    ['deep not-yet-created chain', 'apps/api/sub/deeper', true],
+    ['not-yet-created subdir under an inward link', 'inlink/new-package', true],
     ['parent traversal', '../other-user/project/codebase', false],
     ['deep traversal', '../../../../etc', false],
     ['absolute path', '/etc', false],
+    // The finding: the leaf does not exist, so the old existence-gated realpath
+    // check never looked at `jump` — and the writers then created the directory
+    // and its `.env` outside the workspace.
+    ['not-yet-created subdir under an escaping link', 'jump/new-package', false],
+    ['existing subdir under an escaping link', 'jump/existing', false],
+    ['the escaping link itself', 'jump', false],
   ];
 
   for (const [label, source, allowed] of CASES) {
@@ -282,6 +370,138 @@ describe('codebase indexer does not follow links out of the clone root (H-002)',
     expect(files.some(f => f.endsWith(path.join('src', 'app.ts')))).toBe(true);
     expect(files.some(f => f.includes('src-link'))).toBe(true);
   });
+
+  // H-010: the walk gate and the read gate were separate `realpath` calls, and
+  // the read then re-opened the ORIGINAL name.
+  it('indexFile refuses a path whose canonical target left the root', async () => {
+    const { CodebaseIndexer } = await import('../../src/core/codebase/CodebaseIndexer.js');
+    const chunk = { process: vi.fn(async () => ({ chunks: [], stats: { avgTokens: 0 } })) };
+    const result = await (CodebaseIndexer.prototype as any)['indexFile'].call(
+      Object.create(CodebaseIndexer.prototype),
+      path.join(root, 'stolen', 'credentials.json'),
+      root,
+      'proj',
+      'main',
+      'abc123',
+      { vectorDB: { delete: vi.fn(async () => {}), store: vi.fn(async () => {}) }, chunk },
+    );
+    expect(result).toEqual({ chunks: 0, tokens: 0 });
+    expect(chunk.process).not.toHaveBeenCalled();
+  });
+
+  it('indexFile reads the resolved target but keeps the requested name as identity', async () => {
+    const { CodebaseIndexer } = await import('../../src/core/codebase/CodebaseIndexer.js');
+    const chunk = { process: vi.fn(async () => ({ chunks: [], stats: { avgTokens: 0 } })) };
+    const vectorDB = { delete: vi.fn(async () => {}), store: vi.fn(async () => {}) };
+    await (CodebaseIndexer.prototype as any)['indexFile'].call(
+      Object.create(CodebaseIndexer.prototype),
+      path.join(root, 'src-link', 'app.ts'),
+      root,
+      'proj',
+      'main',
+      'abc123',
+      { vectorDB, chunk },
+    );
+    // content came from the resolved target...
+    expect(chunk.process).toHaveBeenCalled();
+    const processed = (chunk.process as any).mock.calls[0][0];
+    expect(processed.content).toContain('export const a = 1;');
+    // ...but identity stays on the link name, or previously stored chunks of
+    // that path would be orphaned by the incremental delete.
+    expect(processed.source).toContain('src-link');
+    expect(processed.metadata.filePath).toContain('src-link');
+    const deleteFilter = JSON.stringify((vectorDB.delete as any).mock.calls[0]?.[1] ?? {});
+    expect(deleteFilter).toContain('src-link');
+  });
+});
+
+/**
+ * H-010 / H-011 — the shared primitive. Containment must bind to the file
+ * object, not to a name that can be repointed after the check.
+ */
+describe('contained I/O binds the read to the resolved target (H-010 / H-011)', () => {
+  let root: string;
+  let outside: string;
+
+  beforeAll(() => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-containedio-'));
+    root = path.join(base, 'root');
+    outside = path.join(base, 'outside');
+    fs.mkdirSync(path.join(root, 'plan'), { recursive: true });
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(root, 'plan', 'prd.md'), 'contained content');
+    fs.writeFileSync(path.join(outside, 'secret.env'), 'ANT_JWT_SECRET=leak');
+    fs.symlinkSync(path.join(root, 'plan'), path.join(root, 'plan-link'), 'dir');
+    fs.symlinkSync(outside, path.join(root, 'escape-link'), 'dir');
+    fs.symlinkSync(path.join(outside, 'secret.env'), path.join(root, 'leaf-link'));
+    fs.symlinkSync(path.join(root, 'nowhere'), path.join(root, 'broken'));
+  });
+
+  afterAll(() => {
+    fs.rmSync(path.dirname(root), { recursive: true, force: true });
+  });
+
+  const CASES: Array<[label: string, target: string, ok: boolean, reason?: string]> = [
+    ['plain file', 'plan/prd.md', true],
+    ['inward symlink directory', 'plan-link/prd.md', true],
+    ['outward symlink file', 'leaf-link', false],
+    ['outward symlink parent', 'escape-link/secret.env', false],
+    ['parent traversal', '../outside/secret.env', false],
+    ['dangling symlink', 'broken', false, 'missing'],
+    ['directory where a file was expected', 'plan', false, 'not-a-file'],
+  ];
+
+  for (const [label, target, ok, reason] of CASES) {
+    it(`${ok ? 'reads' : 'refuses'} ${label}`, async () => {
+      const { readTextContained } = await import('../../src/core/config/containedIo.js');
+      const result = readTextContained(root, target);
+      expect(result.ok).toBe(ok);
+      if (ok) expect((result as any).text).toBe('contained content');
+      if (reason) expect((result as any).reason).toBe(reason);
+    });
+  }
+
+  it('canonicalPath is the resolved target, not the requested name', async () => {
+    const { readTextContained } = await import('../../src/core/config/containedIo.js');
+    const result = readTextContained(root, 'plan-link/prd.md');
+    expect(result.ok).toBe(true);
+    expect((result as any).canonicalPath.endsWith(path.join('plan', 'prd.md'))).toBe(true);
+  });
+
+  it('enforces maxBytes off the descriptor, reading nothing', async () => {
+    const { readTextContained } = await import('../../src/core/config/containedIo.js');
+    const result = readTextContained(root, 'plan/prd.md', { maxBytes: 4 });
+    expect(result).toEqual({ ok: false, reason: 'too-large' });
+  });
+
+  it('an absolute path inside the root is accepted', async () => {
+    const { readTextContained } = await import('../../src/core/config/containedIo.js');
+    expect(readTextContained(root, path.join(root, 'plan', 'prd.md')).ok).toBe(true);
+  });
+
+  // The TOCTOU row. A real race is not deterministic in a unit test, so it is
+  // pinned at the seam instead: `openCanonical` receives a path that
+  // containment already blessed, and must refuse it if a symlink is sitting
+  // there at open time — which is exactly the post-check swap.
+  it.skipIf(process.platform === 'win32')(
+    'the open refuses a canonical path that became a symlink after resolution',
+    async () => {
+      const { openCanonical } = await import('../../src/core/config/containedIo.js');
+      const swapped = path.join(root, 'plan', 'swapped.md');
+      fs.symlinkSync(path.join(outside, 'secret.env'), swapped);
+      try {
+        expect(openCanonical(swapped)).toEqual({ ok: false, reason: 'swapped' });
+
+        // control: a target that stayed a regular file still opens, so the row
+        // above cannot be satisfied by "always fails"
+        const ok = openCanonical(path.join(root, 'plan', 'prd.md'));
+        expect('fd' in ok).toBe(true);
+        if ('fd' in ok) fs.closeSync(ok.fd);
+      } finally {
+        fs.rmSync(swapped, { force: true });
+      }
+    },
+  );
 });
 
 describe('env keys written to a project .env are bare names (H-003)', () => {

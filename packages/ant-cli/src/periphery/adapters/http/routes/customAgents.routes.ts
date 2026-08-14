@@ -34,6 +34,7 @@ import { createCollisionMessage, findWritableAgent, patchYamlFile, scaffoldAgent
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
+import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 
 export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceResolver }): Router {
   const router = Router();
@@ -191,7 +192,7 @@ export function createCustomAgentRoutes(deps: { workspaceResolver: WorkspaceReso
 
   // ── universal artifact tree (project-shared working tree, D6) ──────────
 
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+  const upload = multer({ storage: multer.memoryStorage(), limits: UPLOAD_LIMITS });
 
   /** Reserved top-level node name — the grafted sessions folder (see tree). */
   const SESSIONS_NODE = UNIVERSAL_SESSIONS_NODE;

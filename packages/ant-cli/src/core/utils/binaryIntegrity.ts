@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { constants as fsConstants } from 'fs';
 import * as path from 'path';
 import { isBinaryPath } from './binaryExtensions';
 
@@ -55,13 +56,31 @@ export async function writeBufferVerified(fullPath: string, content: Buffer): Pr
   if (supplied) throw new CorruptedFileError(path.basename(fullPath), supplied);
 
   await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-  await fs.promises.writeFile(fullPath, content);
 
-  const stats = await fs.promises.stat(fullPath);
-  if (stats.size !== content.length) {
+  // Open with O_NOFOLLOW and verify through the descriptor rather than
+  // re-resolving the name three times (write, then stat, then rm). A symlink
+  // dropped on the leaf between the caller's containment check and this write
+  // would otherwise be followed out of the workspace. Intermediate directories
+  // are still resolved by name — see `core/config/containedIo` on the residual
+  // window. On Windows O_NOFOLLOW is absent and the open degrades to today's
+  // behaviour.
+  const O_NOFOLLOW = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
+  const handle = await fs.promises.open(
+    fullPath,
+    fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | O_NOFOLLOW,
+  );
+  let written: number;
+  try {
+    await handle.write(content, 0, content.length, 0);
+    written = (await handle.stat()).size;
+  } finally {
+    await handle.close();
+  }
+
+  if (written !== content.length) {
     await fs.promises.rm(fullPath, { force: true });
     throw new Error(
-      `File integrity check failed for ${path.basename(fullPath)}: wrote ${stats.size} bytes, expected ${content.length}`,
+      `File integrity check failed for ${path.basename(fullPath)}: wrote ${written} bytes, expected ${content.length}`,
     );
   }
 }

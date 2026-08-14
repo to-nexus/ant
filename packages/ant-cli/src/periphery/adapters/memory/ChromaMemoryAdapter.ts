@@ -1,5 +1,5 @@
 import { MemoryPort, QueryOptions, QueryResult } from "../../../core/ports";
-import { CollectionType, getCollectionName } from "../../../core/types";
+import { CollectionType, getCollectionName, type MemoryTenantScope } from "../../../core/types";
 import type { ChromaClient as ChromaClientType } from "chromadb";
 
 class CustomEmbeddingFunction {
@@ -69,6 +69,12 @@ function getEmbedder(): CustomEmbeddingFunction {
 }
 
 export class ChromaMemoryAdapter implements MemoryPort {
+  /**
+   * Tenant the collections belong to. `null` = single-tenant (local mode),
+   * which keeps the legacy unscoped collection names. See `getCollectionName`.
+   */
+  constructor(private readonly tenantScope: MemoryTenantScope | null = null) {}
+
   
   /**
    * Extract collection type from metadata or explicit parameter
@@ -121,7 +127,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
     const client = await getClient();
     const embedder = getEmbedder();
     for (const [type, docs] of grouped.entries()) {
-      const collectionName = getCollectionName(type, project);
+      const collectionName = getCollectionName(type, project, this.tenantScope);
       
       try {
         const collection = await client.getOrCreateCollection({ 
@@ -165,7 +171,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
     options?: QueryOptions
   ): Promise<QueryResult[]> {
     const type = this.extractCollectionType(options?.where, options?.collectionType);
-    const collectionName = getCollectionName(type, project);
+    const collectionName = getCollectionName(type, project, this.tenantScope);
     const queryStart = Date.now();
     
     try {
@@ -236,7 +242,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
     collectionType?: CollectionType
   ): Promise<void> {
     const type = this.extractCollectionType(where, collectionType);
-    const collectionName = getCollectionName(type, project);
+    const collectionName = getCollectionName(type, project, this.tenantScope);
     
     try {
       const client = await getClient();
@@ -263,7 +269,7 @@ export class ChromaMemoryAdapter implements MemoryPort {
     const client = await getClient();
     
     for (const type of collectionTypes) {
-      const collectionName = getCollectionName(type, project);
+      const collectionName = getCollectionName(type, project, this.tenantScope);
       
       try {
         // Delete the entire collection

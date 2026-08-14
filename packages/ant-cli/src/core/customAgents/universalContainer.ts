@@ -364,37 +364,75 @@ export interface UniversalTreeNode {
   mtimeMs?: number;
   absolutePath: string;
   children?: UniversalTreeNode[];
+  /** Set when the traversal budget cut this directory's listing short. */
+  truncated?: boolean;
 }
 
-function buildSubtree(root: string, rel = '', prefix = ''): UniversalTreeNode[] {
+/**
+ * Traversal budget for the merged tree.
+ *
+ * The walk is synchronous and recursive over a directory the requesting account
+ * controls, so an account that creates a deep or wide artifact tree and polls
+ * the endpoint monopolises the shared event loop and the filesystem (H-008).
+ * Truncation is visible in the response rather than silent: a `truncated`
+ * directory tells the UI it is not showing everything.
+ */
+export const UNIVERSAL_TREE_MAX_DEPTH = 12;
+export const UNIVERSAL_TREE_MAX_ENTRIES = 5000;
+
+interface TraversalBudget {
+  remaining: number;
+}
+
+function buildSubtree(
+  root: string,
+  rel = '',
+  prefix = '',
+  depth = 0,
+  budget: TraversalBudget = { remaining: UNIVERSAL_TREE_MAX_ENTRIES },
+): UniversalTreeNode[] {
   const abs = rel ? path.join(root, rel) : root;
   if (!fs.existsSync(abs)) return [];
-  return fs
+  if (depth >= UNIVERSAL_TREE_MAX_DEPTH || budget.remaining <= 0) return [];
+
+  const entries = fs
     .readdirSync(abs, { withFileTypes: true })
     .filter((e) => !e.name.startsWith('.'))
-    .sort((a, b) => (a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1))
-    .map((e) => {
-      const childRel = rel ? `${rel}/${e.name}` : e.name;
-      const nodePath = prefix ? `${prefix}/${childRel}` : childRel;
-      const absolutePath = path.join(abs, e.name);
-      if (e.isDirectory()) {
-        return {
-          name: e.name,
-          path: nodePath,
-          type: 'directory' as const,
-          absolutePath,
-          children: buildSubtree(root, childRel, prefix),
-        };
-      }
-      let size = 0;
-      let mtimeMs = 0;
-      try {
-        const stats = fs.statSync(absolutePath);
-        size = stats.size;
-        mtimeMs = stats.mtimeMs;
-      } catch { /* skip stat failures */ }
-      return { name: e.name, path: nodePath, type: 'file' as const, size, mtimeMs, absolutePath };
-    });
+    .sort((a, b) => (a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1));
+
+  const nodes: UniversalTreeNode[] = [];
+  for (const e of entries) {
+    if (budget.remaining <= 0) break;
+    budget.remaining -= 1;
+
+    const childRel = rel ? `${rel}/${e.name}` : e.name;
+    const nodePath = prefix ? `${prefix}/${childRel}` : childRel;
+    const absolutePath = path.join(abs, e.name);
+
+    if (e.isDirectory()) {
+      const children = buildSubtree(root, childRel, prefix, depth + 1, budget);
+      const truncated = depth + 1 >= UNIVERSAL_TREE_MAX_DEPTH || budget.remaining <= 0;
+      nodes.push({
+        name: e.name,
+        path: nodePath,
+        type: 'directory' as const,
+        absolutePath,
+        children,
+        ...(truncated ? { truncated: true } : {}),
+      });
+      continue;
+    }
+
+    let size = 0;
+    let mtimeMs = 0;
+    try {
+      const stats = fs.statSync(absolutePath);
+      size = stats.size;
+      mtimeMs = stats.mtimeMs;
+    } catch { /* skip stat failures */ }
+    nodes.push({ name: e.name, path: nodePath, type: 'file' as const, size, mtimeMs, absolutePath });
+  }
+  return nodes;
 }
 
 /**
@@ -407,9 +445,15 @@ export function buildUniversalMergedTree(containerPath: string): UniversalTreeNo
   const artifactsRoot = path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME);
   const sessionsRoot = path.join(containerPath, UNIVERSAL_SESSIONS_NODE);
 
+  // One budget across BOTH walks — the response is a single payload, so
+  // bounding each root separately would double the worst case.
+  const budget: TraversalBudget = { remaining: UNIVERSAL_TREE_MAX_ENTRIES };
+
   // Reserved name: an agent-created `artifacts/sessions/` dir is shadowed by
   // the grafted node (user creation is blocked at upload/mkdir).
-  const artifactNodes = buildSubtree(artifactsRoot).filter((n) => n.name !== UNIVERSAL_SESSIONS_NODE);
+  const artifactNodes = buildSubtree(artifactsRoot, '', '', 0, budget).filter(
+    (n) => n.name !== UNIVERSAL_SESSIONS_NODE,
+  );
 
   const canonicalNodes: UniversalTreeNode[] = UNIVERSAL_ARTIFACT_CANONICAL_DIRS.map(
     (name) =>
@@ -429,7 +473,7 @@ export function buildUniversalMergedTree(containerPath: string): UniversalTreeNo
     path: UNIVERSAL_SESSIONS_NODE,
     type: 'directory',
     absolutePath: sessionsRoot,
-    children: buildSubtree(sessionsRoot, '', UNIVERSAL_SESSIONS_NODE),
+    children: buildSubtree(sessionsRoot, '', UNIVERSAL_SESSIONS_NODE, 0, budget),
   };
   return [...canonicalNodes, ...freeNodes, sessionsNode];
 }

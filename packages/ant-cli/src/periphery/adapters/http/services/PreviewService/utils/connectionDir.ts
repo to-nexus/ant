@@ -9,8 +9,9 @@
  * workspace, so every join goes through here.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
+
+import { assertWithinRoot } from '../../../../../../core/config/pathContainment';
 
 /**
  * Resolve the package directory a connection's `source` designates.
@@ -22,28 +23,20 @@ export function resolveConnectionDir(workspaceRoot: string, source?: string): st
   const root = path.resolve(workspaceRoot);
   if (!source || source === '*') return root;
 
+  // Kept ahead of the SSOT guard: `assertWithinRoot` accepts an absolute path
+  // that happens to sit inside the root, but no legitimate connection source is
+  // ever absolute.
   if (path.isAbsolute(source)) {
     throw new Error(`Invalid connection source (absolute path): ${JSON.stringify(source)}`);
   }
 
-  const target = path.resolve(root, source);
-  const rel = path.relative(root, target);
-  if (rel !== '' && (rel.startsWith('..' + path.sep) || rel === '..' || path.isAbsolute(rel))) {
+  // The containment SSOT walks up to the nearest EXISTING ancestor. The local
+  // check this replaced only realpath'd a target that already existed, so
+  // `jump/new-package` under an escaping symlink passed — and the writers then
+  // created the directory and its `.env` outside the workspace (H-003).
+  try {
+    return assertWithinRoot(root, source);
+  } catch {
     throw new Error(`Invalid connection source (escapes workspace): ${JSON.stringify(source)}`);
   }
-
-  // An existing directory could still be a symlink out of the workspace.
-  try {
-    if (fs.existsSync(target)) {
-      const realRel = path.relative(fs.realpathSync(root), fs.realpathSync(target));
-      if (realRel !== '' && (realRel.startsWith('..' + path.sep) || realRel === '..' || path.isAbsolute(realRel))) {
-        throw new Error(`Invalid connection source (symlink escapes workspace): ${JSON.stringify(source)}`);
-      }
-    }
-  } catch (err: any) {
-    if (typeof err?.message === 'string' && err.message.startsWith('Invalid connection source')) throw err;
-    // realpath failure on a transient path — the string check above already held
-  }
-
-  return target;
 }

@@ -8,9 +8,12 @@
  * whose stdout/stderr is streamed straight back to the requester. So the child
  * environment is *composed* from an explicit allowlist rather than inherited.
  *
- * Job-neutral and dependency-free so both `periphery/.../PreviewService` and
- * `infrastructure/deploy` can use the one implementation.
+ * Job-neutral so both `periphery/.../PreviewService` and `infrastructure/deploy`
+ * can use the one implementation.
  */
+
+import * as fs from 'fs';
+import * as path from 'path';
 
 /**
  * OS/session variables a spawned shell needs to function at all.
@@ -54,7 +57,36 @@ const GO_ENV_NAMES: ReadonlySet<string> = new Set([
  */
 const PASSTHROUGH_ENV_VAR = 'ANT_PREVIEW_ENV_PASSTHROUGH';
 
+/**
+ * Credential-shaped names, rejected even when a toolchain prefix or the
+ * passthrough list would otherwise admit them.
+ *
+ * The prefix list is a *namespace* allowlist, and package managers put registry
+ * credentials in that same namespace: `NODE_AUTH_TOKEN` rides `NODE_`,
+ * `YARN_NPM_AUTH_TOKEN` rides `YARN_`, and `npm_config_//registry:_authToken` /
+ * `NPM_CONFIG__AUTH` ride `npm_` and `NPM_CONFIG_`. A user-authored lifecycle
+ * script printing its own environment then reads the deployment's private
+ * registry authority out of its own build log (M-013, M-014).
+ *
+ * Matched case-insensitively on the whole name — these substrings do not occur
+ * in the non-secret toolchain variables the allowlist exists to pass
+ * (`NODE_OPTIONS`, `npm_config_registry`, `PIP_INDEX_URL`, …).
+ */
+const CREDENTIAL_NAME_MARKERS: readonly string[] = [
+  '_AUTH', 'AUTH_', 'TOKEN', 'PASSWORD', 'PASSWD', 'SECRET', 'CREDENTIAL', 'APIKEY', 'API_KEY',
+  'PRIVATE_KEY', 'ACCESS_KEY', 'SESSION_KEY', 'SIGNING',
+];
+
+function isCredentialShapedName(name: string): boolean {
+  const upper = name.toUpperCase();
+  return CREDENTIAL_NAME_MARKERS.some(marker => upper.includes(marker));
+}
+
 function isAllowedInheritedName(name: string, passthrough: ReadonlySet<string>): boolean {
+  // Applies to the passthrough escape hatch too: an operator naming
+  // `ANTHROPIC_API_KEY` or `ANT_JWT_SECRET` there re-opened the very hole the
+  // allowlist closed (M-015).
+  if (isCredentialShapedName(name)) return false;
   if (BASE_ENV_NAMES.has(name)) return true;
   if (GO_ENV_NAMES.has(name)) return true;
   if (passthrough.has(name)) return true;
@@ -93,6 +125,12 @@ export function composeChildEnv(...overlays: Array<Record<string, string | undef
     if (isAllowedInheritedName(key, passthrough)) env[key] = value;
   }
 
+  const childHome = resolveChildHome();
+  if (childHome) {
+    env.HOME = childHome;
+    if (env.USERPROFILE) env.USERPROFILE = childHome;
+  }
+
   for (const overlay of overlays) {
     if (!overlay) continue;
     for (const [key, value] of Object.entries(overlay)) {
@@ -101,4 +139,34 @@ export function composeChildEnv(...overlays: Array<Record<string, string | undef
   }
 
   return env;
+}
+
+/**
+ * A writable HOME for user-authored children that is NOT the service account's.
+ *
+ * Blocking credential-shaped variable *names* is not sufficient on its own:
+ * package managers also read credentials from files under `$HOME` (`.npmrc`,
+ * `.netrc`, `.docker/config.json`), and `~/.ssh` / `~/.aws` sit there too. A
+ * lifecycle script inheriting the service HOME can simply `cat` them.
+ *
+ * The directory is stable per deployment rather than per run, so toolchain
+ * caches (`~/.npm`, `~/.cache`) still survive between builds — only the service
+ * account's dotfiles are out of reach. Set `ANT_CHILD_HOME` to relocate it; set
+ * it empty to opt out and keep inheriting the service HOME.
+ */
+function resolveChildHome(): string | undefined {
+  const configured = process.env.ANT_CHILD_HOME;
+  if (configured !== undefined) return configured.trim() || undefined;
+
+  const base = process.env.ANT_WORKSPACE_BASE_PATH;
+  if (!base) return undefined;
+
+  const home = path.join(base, '.ant-child-home');
+  try {
+    fs.mkdirSync(home, { recursive: true });
+    return home;
+  } catch {
+    // Unwritable base — keep the service HOME rather than breaking every spawn.
+    return undefined;
+  }
 }

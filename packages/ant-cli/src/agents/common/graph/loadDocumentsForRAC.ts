@@ -30,9 +30,10 @@ import * as path from 'path';
 import type { ResolvedActionContext, ResolvedArtifact, UiSource } from '@ant/shared';
 import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/shared';
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
-import { isBinaryFileSync, formatByteSize } from '../../../core/utils/binaryExtensions';
+import { sniffFd, formatByteSize } from '../../../core/utils/binaryExtensions';
 import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
-import { resolveWithinRoot } from '../../../core/config/pathContainment';
+import { resolveCanonicalWithinRoot } from '../../../core/config/pathContainment';
+import { statContained, withContainedFd, readTextContained } from '../../../core/config/containedIo';
 
 export function loadResolvedArtifacts(
   resolvedAction: ResolvedActionContext,
@@ -125,15 +126,18 @@ function appendPath(
   // that escapes the feature root would exfiltrate another workspace's files.
   // Skip rather than throw: the contract of this function is already
   // "unreadable path → skip" (the statSync catch below).
-  const absolute = resolveWithinRoot(featurePath, relativePath);
-  if (!absolute) return;
-
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(absolute);
-  } catch {
-    return;
-  }
+  //
+  // Containment is bound to the file object, not to the name: a link swapped
+  // between the check and the read used to redirect this at any file the
+  // service account could reach (H-011).
+  const entry = statContained(featurePath, relativePath);
+  if (!entry.ok) return;
+  const stat = entry.stat;
+  // The walk below keeps the REQUESTED name: `rel` becomes
+  // `ResolvedArtifact.path`, drives `uiSourceOfPath` classification and is the
+  // literal the model is told to `read_file`. Canonicalising it would silently
+  // change a UiSource verdict.
+  const absolute = path.resolve(featurePath, relativePath);
 
   if (stat.isDirectory()) {
     // Defense-in-depth for the hard-exclusive UiSource invariant: a directory
@@ -146,7 +150,7 @@ function appendPath(
     for (const child of walkDir(absolute)) {
       // Same containment check per entry: the directory itself is contained,
       // but a symlink inside it can still point out of the feature root.
-      if (!resolveWithinRoot(featurePath, path.relative(featurePath, child))) continue;
+      if (!resolveCanonicalWithinRoot(featurePath, child)) continue;
       const rel = path.relative(featurePath, child).split(path.sep).join('/');
       // Classify against BOTH surfaces (WS2 §3) — a game-art dir child
       // classifies via gameArtSourceOfPath (uiSourceOfPath returns null for it).
@@ -162,23 +166,39 @@ function appendPath(
         }
       }
       if (isStubLoadedPath(rel)) {
-        try {
-          const s = fs.statSync(child);
-          out.push({ path: rel, content: buildHandoffStub(rel, child, s.size), role });
-        } catch { /* unreadable child — skip */ }
+        // One open: kind and size must describe the same inode.
+        const sniff = withContainedFd(featurePath, child, fd => sniffFd(fd, rel));
+        if (sniff.ok) {
+          out.push({
+            path: rel,
+            content: buildHandoffStub(rel, sniff.value.binary ? 'binary' : 'text', sniff.value.size),
+            role,
+          });
+        }
         continue;
       }
-      const content = readAndNormalize(child);
+      const content = readAndNormalize(featurePath, child);
       if (content) out.push({ path: rel, content, role });
     }
     return;
   }
 
   if (isStubLoadedPath(relativePath)) {
-    out.push({ path: relativePath, content: buildHandoffStub(relativePath, absolute, stat.size), role });
+    const sniff = withContainedFd(featurePath, relativePath, fd => sniffFd(fd, relativePath));
+    if (sniff.ok) {
+      out.push({
+        path: relativePath,
+        content: buildHandoffStub(
+          relativePath,
+          sniff.value.binary ? 'binary' : 'text',
+          sniff.value.size,
+        ),
+        role,
+      });
+    }
     return;
   }
-  const content = readAndNormalize(absolute);
+  const content = readAndNormalize(featurePath, relativePath);
   if (content) out.push({ path: relativePath, content, role });
 }
 
@@ -221,8 +241,7 @@ function isCodebaseScopedPath(rel: string): boolean {
 // referenced by path (never read_file'd); text entries advertise on-demand read.
 // Kind comes from the content sniff (extension fast-path + head bytes), so
 // novel asset formats classify correctly without an extension whitelist.
-function buildHandoffStub(relPath: string, absPath: string, sizeBytes: number): string {
-  const kind = isBinaryFileSync(absPath) ? 'binary' : 'text';
+function buildHandoffStub(relPath: string, kind: 'binary' | 'text', sizeBytes: number): string {
   const size = formatByteSize(sizeBytes);
   if (kind === 'binary') {
     return [
@@ -255,11 +274,7 @@ function* walkDir(dirAbs: string): Iterable<string> {
   }
 }
 
-function readAndNormalize(absolute: string): string | null {
-  try {
-    const raw = fs.readFileSync(absolute, 'utf-8');
-    return normalizeTemplateDoc(raw);
-  } catch {
-    return null;
-  }
+function readAndNormalize(featurePath: string, target: string): string | null {
+  const read = readTextContained(featurePath, target);
+  return read.ok ? normalizeTemplateDoc(read.text) : null;
 }

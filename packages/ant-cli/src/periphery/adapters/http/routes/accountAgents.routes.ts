@@ -46,6 +46,7 @@ import {
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
+import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 
 /** Files the settings UI may never delete/rename directly — remove the agent/job instead. */
 function isStructuralFile(relPath: string): boolean {
@@ -55,7 +56,7 @@ function isStructuralFile(relPath: string): boolean {
 
 export function createAccountAgentRoutes(deps: { workspaceResolver: WorkspaceResolver }): Router {
   const router = Router();
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+  const upload = multer({ storage: multer.memoryStorage(), limits: UPLOAD_LIMITS });
 
   function scopeRootsFor(req: Request): CustomAgentScopeRoot[] {
     const userContext = extractUserContext(req);

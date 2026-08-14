@@ -136,9 +136,10 @@ export class RealtimeServer {
     // Cookie parser (required for JWT cookie auth)
     this.app.use(cookieParser());
     
-    // Parse JSON for non-SSE routes
-    this.app.use(express.json({ limit: '10mb' }));
-    
+    // Small budget for the unauthenticated health endpoints below; the full-size
+    // parser is mounted after authentication (M-010).
+    this.app.use(express.json({ limit: '100kb' }));
+
     // JWT cookie authentication (cloud mode only)
     const isCloudMode = process.env.ANT_SERVER_MODE === 'cloud';
     if (isCloudMode) {
@@ -157,7 +158,10 @@ export class RealtimeServer {
       }));
       logger.info('JWT authentication enabled for Realtime Server', { component: 'RealtimeServer' });
     }
-    
+
+    // Full-size parser, reachable only past the JWT gate above.
+    this.app.use(express.json({ limit: '10mb' }));
+
     logger.debug('Middleware configured', { component: 'RealtimeServer' });
   }
   

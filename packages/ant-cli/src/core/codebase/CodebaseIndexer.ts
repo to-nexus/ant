@@ -12,25 +12,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import { GitPort, MemoryPort, ChunkPort } from "../ports";
-
-/**
- * Is `candidate` still inside `root` once symlinks are resolved?
- *
- * The indexed tree is user-supplied (a cloned repository), so a link planted
- * in it would otherwise redirect `readFileSync` at any file the service account
- * can reach — and the contents land in the vector DB and in later LLM context.
- * Unresolvable paths are treated as outside (fail closed).
- */
-function isWithinIndexRoot(root: string, candidate: string): boolean {
-  try {
-    const realRoot = fs.realpathSync(root);
-    const realCandidate = fs.realpathSync(candidate);
-    const rel = path.relative(realRoot, realCandidate);
-    return rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel));
-  } catch {
-    return false;
-  }
-}
+import { resolveCanonicalWithinRoot } from "../config/pathContainment";
+import { readTextContained } from "../config/containedIo";
 
 export interface IndexOptions {
   project: string;
@@ -410,16 +393,20 @@ export class CodebaseIndexer {
     // Ensure we're reading from absolute path
     const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(workingDir, filePath);
 
-    // Second gate on the single-file entry point: `getSourceFiles` is not the
-    // only caller (incremental indexing feeds git-reported paths straight in),
-    // so containment is re-checked at the read itself.
-    if (!isWithinIndexRoot(workingDir, absolutePath)) {
-      console.log(`   ⚠️  Skipping file outside index root: ${filePath}`);
+    // Containment and read are one operation: `getSourceFiles` is not the only
+    // caller (incremental indexing feeds git-reported paths straight in), and a
+    // link re-pointed between a separate check and the read used to redirect
+    // this into any file the service account could reach (H-010).
+    const read = readTextContained(workingDir, absolutePath);
+    if (!read.ok) {
+      console.log(`   ⚠️  Skipping file outside index root: ${filePath} (${read.reason})`);
       return { chunks: 0, tokens: 0 };
     }
+    const content = read.text;
 
-    // Read file content
-    const content = fs.readFileSync(absolutePath, 'utf8');
+    // Identity stays on the REQUESTED name, not the canonical one: `filePath`
+    // is the incremental-delete key in the vector store, so canonicalising it
+    // would orphan previously stored chunks of a symlinked path.
     const relativePath = path.relative(workingDir, absolutePath);
     
     console.log(`   📄 Indexing: ${relativePath} (workingDir: ${workingDir})`);
@@ -509,17 +496,21 @@ export class CodebaseIndexer {
       // can point at anything the service account can read. Resolve the real
       // path first and skip whatever leaves the clone root — links that stay
       // inside it are followed and indexed exactly as before.
-      if (!isWithinIndexRoot(workingDir, currentPath)) {
+      const canonical = resolveCanonicalWithinRoot(workingDir, currentPath);
+      if (!canonical) {
         console.log(`   ⚠️  Skipping link outside index root: ${path.relative(workingDir, currentPath)}`);
         return;
       }
-      const stat = fs.statSync(currentPath);
+      // Listing reads through the resolved path; every identity expression
+      // below stays on `currentPath` so a symlinked directory keeps its own
+      // name in the index (see `indexFile`).
+      const stat = fs.statSync(canonical);
       const relativePath = path.relative(workingDir, currentPath);
 
       if (this.shouldExclude(relativePath, exclude)) return;
 
       if (stat.isDirectory()) {
-        const entries = fs.readdirSync(currentPath);
+        const entries = fs.readdirSync(canonical);
         for (const entry of entries) {
           if (entry.startsWith('.') && !indexableFileNames.includes(entry)) continue;  // ✅ Allow .gitignore etc
           walk(path.join(currentPath, entry));

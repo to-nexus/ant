@@ -53,6 +53,7 @@ describe('files.routes — files-raw content types', () => {
     );
     await fs.writeFile(path.join(featureDir, BUNDLE, 'styles.css'), '@import url("tokens/colors.css");');
     await fs.writeFile(path.join(featureDir, BUNDLE, 'assets', 'mark.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    await fs.writeFile(path.join(featureDir, BUNDLE, 'assets', 'photo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 
     const projectService = {
       readFile: fileOps.readFile.bind(fileOps),
@@ -107,9 +108,24 @@ describe('files.routes — files-raw content types', () => {
     expect(res.headers.get('content-security-policy')).toBeNull();
   });
 
-  it('keeps the existing image behaviour', async () => {
+  it('keeps the existing image content types', async () => {
     const res = await fetch(rawUrl(`${BUNDLE}/assets/mark.svg`));
     expect(res.headers.get('content-type')).toBe('image/svg+xml');
+  });
+
+  // M-001: an SVG opened as a top-level document executes its own script on the
+  // app origin, and the global CSP is disabled. The UI previews SVG through a
+  // blob `<img>`, so nothing legitimate depends on this URL rendering inline.
+  it('serves SVG as an attachment so it cannot execute as a top-level document', async () => {
+    const res = await fetch(rawUrl(`${BUNDLE}/assets/mark.svg`));
+    expect(res.headers.get('content-disposition')).toMatch(/^attachment;/);
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('keeps other images inline', async () => {
+    const res = await fetch(rawUrl(`${BUNDLE}/assets/photo.png`));
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('content-disposition')).toMatch(/^inline;/);
   });
 
   it('still falls back to octet-stream for unknown extensions', async () => {

@@ -21,7 +21,6 @@ import { withBaseHref } from '@/domain/file/htmlPreviewDocument';
 import { Button } from '@/presentation/components/aurora';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import { Eye, FileText, AlertTriangle } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
@@ -660,7 +659,6 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
           >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
               components={MARKDOWN_PREVIEW_COMPONENTS}
             >
               {editedContent}

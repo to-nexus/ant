@@ -12,7 +12,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
 import { Code, Eye, Pencil, Trash2 } from 'lucide-react';
 import { Button, ViewModeButton } from '@/presentation/components/aurora';
 import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora';
@@ -172,7 +171,6 @@ export function PromptEditor({
           >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
               components={MARKDOWN_PREVIEW_COMPONENTS}
             >
               {openFile.content}

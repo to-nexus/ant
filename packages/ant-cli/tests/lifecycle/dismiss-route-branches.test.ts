@@ -42,6 +42,7 @@ vi.mock('../../src/periphery/adapters/http/express/lifecycle/finalizeTerminalJob
 }));
 
 import { createJobRoutes } from '../../src/periphery/adapters/http/routes/job.routes';
+import { assertJobAccess } from '../../src/periphery/adapters/http/routes/helpers/jobAccess';
 import { finalizeTerminalJob } from '../../src/periphery/adapters/http/express/lifecycle/finalizeTerminalJob';
 import { archiveSupersededState } from '../../src/core/session/archive';
 
@@ -160,6 +161,21 @@ describe('POST /job/dismiss — branch × marker matrix', () => {
     expect(fakeDeps.chatService.resolveAllCancelledForJob).toHaveBeenCalledWith(
       'p1', 'f1', 'j1', expect.objectContaining({ choiceSelected: 'dismiss' }),
     );
+  });
+
+  it('a foreign job is refused before finalize runs (M-017)', async () => {
+    // The owner gate is unit-tested in policy/tenant-scoping.test.ts; this row
+    // pins that the dismiss handler consults it at all — it was the one
+    // jobId-addressed handler that never called it.
+    jobStatus = { status: 'paused', type: 'code' };
+    writeCodeSession({ jobId: 'j1', taskQueue: [{ id: 't1' }], interruption: interruption() });
+    (assertJobAccess as any).mockResolvedValueOnce({ code: 403, body: { error: 'Forbidden' } });
+
+    const res = await post('/projects/p1/features/f1/job/dismiss', { jobId: 'j1' });
+    expect(res.status).toBe(403);
+    expect(finalizeTerminalJob).not.toHaveBeenCalled();
+    expect(fakeDeps.chatService.resolveAllCancelledForJob).not.toHaveBeenCalled();
+    expect(readCodeSession().state.interruption.dismissed).toBeUndefined();
   });
 
   it('sealed branch (no Redis record) patches the session marker', async () => {

@@ -1199,26 +1199,18 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         `/api/v1/namespaces/${this.options.namespace}/pods?labelSelector=app=ant-ide`
       );
 
-      return response.items.map(pod => {
+      return response.items.flatMap(pod => {
         const instanceKey = pod.metadata.annotations?.['ant.example.com/instance-key'] || pod.metadata.name;
-        
+
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
         if (!parsed) {
+          // A pod whose key cannot be parsed has no provable owner. Skip it
+          // rather than emitting a half-filled instance — the old fallback
+          // published the pod's host/port/workspacePath under a fabricated
+          // identity.
           logger.warn(`Invalid IDE instance key format: ${instanceKey}`, { component: 'KubernetesIDEOrchestrator' });
-          // Fallback for malformed keys
-          return {
-            instanceId: pod.metadata.name,
-            host: pod.status?.podIP || pod.metadata.name,
-            port: IDE_PORT,
-            url: `/ide/${instanceKey}`,
-            workspacePath: pod.metadata.annotations?.['ant.example.com/workspace-path'] || '/workspace',
-            status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
-            tenantId: '',
-            userId: '',
-            projectId: instanceKey,
-            feature: NO_FEATURE_KEY
-          };
+          return [];
         }
 
         return {
@@ -1240,32 +1232,37 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     }
   }
 
+  /**
+   * The `user=` label selector is a query optimisation only — `sanitizeLabelValue`
+   * is lossy (`a@b-c.com` and `a-b@c.com` collapse to one label), so the selector
+   * can return another user's pods. Ownership is decided here, on the parsed
+   * instance key, against the requester's JWT context.
+   */
   async listByUser(userContext: UserContext): Promise<IDEInstance[]> {
     try {
       const response = await this.k8sRequest<{ items: K8sPod[] }>(
         `/api/v1/namespaces/${this.options.namespace}/pods?labelSelector=app=ant-ide,user=${this.sanitizeLabelValue(userContext.userId)}`
       );
 
-      return response.items.map(pod => {
+      return response.items.flatMap(pod => {
         const instanceKey = pod.metadata.annotations?.['ant.example.com/instance-key'] || pod.metadata.name;
-        
+
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
         if (!parsed) {
           logger.warn(`Invalid IDE instance key format: ${instanceKey}`, { component: 'KubernetesIDEOrchestrator' });
-          // Fallback - use userContext for userId
-          return {
-            instanceId: pod.metadata.name,
-            host: pod.status?.podIP || pod.metadata.name,
-            port: IDE_PORT,
-            url: `/ide/${instanceKey}`,
-            workspacePath: pod.metadata.annotations?.['ant.example.com/workspace-path'] || '/workspace',
-            status: (pod.status?.phase === 'Running' ? 'running' : 'starting') as IDEStatus,
-            tenantId: userContext.organizationId,
-            userId: userContext.userId,
-            projectId: instanceKey,
-            feature: NO_FEATURE_KEY
-          };
+          return [];
+        }
+
+        if (
+          parsed.tenantId !== userContext.organizationId ||
+          parsed.userId !== userContext.userId
+        ) {
+          logger.warn(
+            `Label-selector collision: pod ${pod.metadata.name} belongs to ${parsed.tenantId}/${parsed.userId}, caller is ${userContext.organizationId}/${userContext.userId}`,
+            { component: 'KubernetesIDEOrchestrator' }
+          );
+          return [];
         }
 
         return {

@@ -53,7 +53,7 @@ export class IndexService {
       const { AdapterFactory } = await import('../../../../../../infrastructure/adapters/AdapterFactory');
 
       const git = AdapterFactory.createGitAdapter(codebasePath, projectId);
-      const vectorDB = AdapterFactory.createMemoryAdapter();
+      const vectorDB = AdapterFactory.createMemoryAdapter(userContext);
       const chunk = AdapterFactory.createChunkAdapter();
 
       const indexer = new CodebaseIndexer();

@@ -34,7 +34,13 @@ import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/c
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
-import { extractForwardingContext, parseCookieHeader } from '../../periphery/adapters/http/middleware/proxyForwarding';
+import {
+  extractForwardingContext,
+  parseCookieHeader,
+  filterPlatformCookie,
+  isPlatformAuthorization,
+  type PlatformCredentialFilter,
+} from '../../periphery/adapters/http/middleware/proxyForwarding';
 import { assertProxyOwnership } from '../../periphery/adapters/http/middleware/proxyOwnership';
 import { PortManager } from '../networking/PortManager';
 import { RedisStateStore } from '../state/RedisStateStore';
@@ -131,11 +137,19 @@ export const WS_HANDSHAKE_TIMEOUT_MS = (() => {
  * cross-origin protection (e.g. Next.js dev-resource block) rejects the HMR
  * socket. Deliberately `localhost` (the trusted name) and NOT the connect host
  * (a pod IP in cloud) nor the loopback IP `127.0.0.1` (which Next 16 does not
- * trust). Other headers pass through unchanged. Exported for unit coverage.
+ * trust).
+ *
+ * The upstream is a **user-authored** dev server, so the caller's platform
+ * credentials are removed here exactly as the HTTP proxy's `buildCleanHeaders`
+ * removes them — the WS branch previously replayed `rawHeaders` verbatim and
+ * handed a victim's `ant_session` cookie to a public deploy's backend (H-005).
+ * The app's own cookies, non-platform `Authorization`, and every WebSocket
+ * handshake header pass through unchanged. Exported for unit coverage.
  */
 export function rewriteUpgradeHeaders(
   rawHeaderPairs: readonly string[],
   targetPort: number,
+  platform?: PlatformCredentialFilter,
 ): string[] {
   const rawHeaders: string[] = [];
   for (let i = 0; i < rawHeaderPairs.length; i += 2) {
@@ -146,6 +160,11 @@ export function rewriteUpgradeHeaders(
       rawHeaders.push(`Host: ${LOOPBACK_HOST}:${targetPort}`);
     } else if (lower === 'origin') {
       rawHeaders.push(`Origin: http://${LOOPBACK_HOST}:${targetPort}`);
+    } else if (platform && lower === 'cookie') {
+      const kept = filterPlatformCookie(value, platform);
+      if (kept !== null) rawHeaders.push(`${key}: ${kept}`);
+    } else if (platform && lower === 'authorization') {
+      if (!isPlatformAuthorization(value, platform)) rawHeaders.push(`${key}: ${value}`);
     } else {
       rawHeaders.push(`${key}: ${value}`);
     }
@@ -193,6 +212,7 @@ export function openRawTunnel(
   targetPath: string,
   handshakeTimeoutMs: number = WS_HANDSHAKE_TIMEOUT_MS,
   peerForward: boolean = false,
+  platform?: PlatformCredentialFilter,
 ): void {
   const proxySocket = net.connect(targetPort, targetHost);
 
@@ -211,9 +231,12 @@ export function openRawTunnel(
   });
 
   proxySocket.once('connect', () => {
+    // Peer forward targets another ant-preview replica, which still has to
+    // re-verify ownership — it keeps the credential and strips it on the final
+    // hop to the user-authored upstream.
     const rawHeaders = peerForward
       ? buildPeerForwardUpgradeHeaders(req.rawHeaders)
-      : rewriteUpgradeHeaders(req.rawHeaders, targetPort);
+      : rewriteUpgradeHeaders(req.rawHeaders, targetPort, platform);
 
     const upgradeReq =
       `${req.method} ${targetPath} HTTP/${req.httpVersion}\r\n` +
@@ -1536,6 +1559,18 @@ export class PreviewServer {
       // We intercept HTTP Upgrade requests on the server, extract the serverKey from the URL,
       // look up the dev server port, then create a raw TCP tunnel to the dev server.
       this.server.on('upgrade', async (req: IncomingMessage, socket: net.Socket, head: Buffer) => {
+        // Every non-peer tunnel below terminates at a user-authored dev server,
+        // so the caller's platform session must not travel with the handshake.
+        // Same policy object the HTTP proxy uses.
+        const upgradeJwtService = createJwtServiceFromEnv();
+        const platformCredentials: PlatformCredentialFilter = {
+          cookieName: JwtService.cookieName,
+          isPlatformToken: upgradeJwtService
+            ? (token: string) => {
+                try { upgradeJwtService.verify(token); return true; } catch { return false; }
+              }
+            : undefined,
+        };
         try {
           const urlPath = req.url || '/';
           const segments = urlPath.split('/').filter(Boolean);
@@ -1575,7 +1610,7 @@ export class PreviewServer {
               const target = resolveDeployTarget(state, coords.serviceName, '');
               if (!target) { socket.destroy(); return; }
               // Root-served: forward the path verbatim (no basePath prefix).
-              openRawTunnel(req, socket, head, target.targetHost, target.targetPort, urlPath);
+              openRawTunnel(req, socket, head, target.targetHost, target.targetPort, urlPath, WS_HANDSHAKE_TIMEOUT_MS, false, platformCredentials);
               return;
             }
 
@@ -1622,7 +1657,7 @@ export class PreviewServer {
               if (wsLocal) {
                 const localKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
                 const t = resolvePreviewTarget({ host: wsLocal.host, packages: wsLocal.packages }, pMatch.serviceName, localKey);
-                openRawTunnel(req, socket, head, t?.targetHost ?? wsLocal.host, t?.targetPort ?? wsLocal.port, urlPath);
+                openRawTunnel(req, socket, head, t?.targetHost ?? wsLocal.host, t?.targetPort ?? wsLocal.port, urlPath, WS_HANDSHAKE_TIMEOUT_MS, false, platformCredentials);
                 return;
               }
               // Cross-pod owner-forwarding (mirrors the HTTP proxy): when this
@@ -1661,7 +1696,7 @@ export class PreviewServer {
                 if (!fresh) { socket.destroy(); return; }
                 const localKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
                 const localTarget = resolvePreviewTarget({ host: fresh.host, packages: fresh.packages }, pMatch.serviceName, localKey);
-                openRawTunnel(req, socket, head, localTarget?.targetHost ?? fresh.host, localTarget?.targetPort ?? fresh.port, urlPath);
+                openRawTunnel(req, socket, head, localTarget?.targetHost ?? fresh.host, localTarget?.targetPort ?? fresh.port, urlPath, WS_HANDSHAKE_TIMEOUT_MS, false, platformCredentials);
                 return;
               }
               const internalKey = `${pMatch.tenantId}:${pMatch.userId}:${pMatch.projectId}:${pMatch.feature}`;
@@ -1669,7 +1704,7 @@ export class PreviewServer {
               const targetHost = target?.targetHost ?? pMatch.host;
               const targetPort = target?.targetPort ?? pMatch.port;
               // Root-served: forward the path verbatim (no basePath prefix).
-              openRawTunnel(req, socket, head, targetHost, targetPort, urlPath);
+              openRawTunnel(req, socket, head, targetHost, targetPort, urlPath, WS_HANDSHAKE_TIMEOUT_MS, false, platformCredentials);
               return;
             }
             // No deploy/preview Host match → fall through (path-mode WS, if any).
@@ -1719,7 +1754,7 @@ export class PreviewServer {
 
             // Static server's basePath is `/deploy/<urlKey>`, so the inbound
             // path already lines up with the upstream — forward as-is.
-            openRawTunnel(req, socket, head, target.targetHost, target.targetPort, urlPath);
+            openRawTunnel(req, socket, head, target.targetHost, target.targetPort, urlPath, WS_HANDSHAKE_TIMEOUT_MS, false, platformCredentials);
             return;
           }
 
@@ -1793,7 +1828,7 @@ export class PreviewServer {
             component: 'PreviewServer'
           });
 
-          openRawTunnel(req, socket, head, targetHost, targetPort, targetPath);
+          openRawTunnel(req, socket, head, targetHost, targetPort, targetPath, WS_HANDSHAKE_TIMEOUT_MS, false, platformCredentials);
         } catch (error: any) {
           logger.warn(`[PreviewServer] WS upgrade failed: ${error.message}`, { component: 'PreviewServer' });
           socket.destroy();

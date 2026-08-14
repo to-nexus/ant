@@ -1764,6 +1764,16 @@ export function createJobRoutes(deps: {
 
     try {
       const userContext = extractUserContext(req);
+
+      // Same owner gate as status/stop/resume/continue. `dismiss` reaches
+      // `finalize()` on a jobId-addressed Redis record, so without this a
+      // foreign tenant could seal another tenant's paused job. Untracked jobs
+      // stay allowed, which preserves the idempotent branch below.
+      const deniedDismiss = await assertJobAccess(jobId, userContext);
+      if (deniedDismiss) {
+        return res.status(deniedDismiss.code).json(deniedDismiss.body);
+      }
+
       const jobStatus = await deps.stateStore.getJobStatus(jobId);
 
       // No Redis record → already sealed (terminal) or never existed. Still

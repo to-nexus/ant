@@ -15,6 +15,18 @@ import { logger } from '../../../../../utils/logger';
 import { ServerConfig, ServerDependencies } from '../types';
 
 /**
+ * Body-size budgets, split by whether the caller has been authenticated yet.
+ *
+ * The public endpoints are health, config, the agents catalog, the pricing
+ * catalog and the OAuth callbacks — none carries a meaningful payload, so this
+ * is generous for them and cheap for everyone else.
+ */
+const PUBLIC_JSON_BODY_LIMIT = '100kb';
+
+/** Artifacts and base64-bearing payloads legitimately reach this size. */
+const AUTHENTICATED_JSON_BODY_LIMIT = '50mb';
+
+/**
  * ServerConfigurator
  * 
  * Configures Express app with middleware, body parsers, and authentication.
@@ -36,8 +48,9 @@ export class ServerConfigurator {
    * 4. IDE proxy auth (JWT check before proxy intercepts)
    * 5. IDE stub interceptors (short-circuit cosmetic-noise paths; after JWT, before proxy)
    * 6. Proxy middleware (intercepts /ide/ requests, no next())
-   * 7. Body parsers (must come after proxy)
+   * 7. Small-body parser for PUBLIC endpoints only (must come after proxy)
    * 8. General JWT auth (all other routes)
+   * 9. Full-size body parser — only reached once authenticated
    */
   configure(app: Express): void {
     if (process.env.NODE_ENV === 'production') {
@@ -50,8 +63,9 @@ export class ServerConfigurator {
     this.setupIdeProxyAuth(app);
     this.setupIdeStubInterceptors(app);
     this.setupProxyMiddleware(app);
-    this.setupBodyParsers(app);
+    this.setupPublicBodyParser(app);
     this.setupAuthentication(app);
+    this.setupBodyParsers(app);
   }
 
   /**
@@ -172,10 +186,27 @@ export class ServerConfigurator {
   }
 
   /**
-   * Setup body parsers (must come AFTER proxy middleware)
+   * Small-body parser for the handful of endpoints that answer without a JWT.
+   *
+   * Mounted BEFORE authentication, so it is the only parser an unauthenticated
+   * request can reach — and it is capped at a size no public endpoint needs.
+   * `body-parser` marks a parsed request (`req._body`) and later parsers no-op,
+   * so the full-size parser below never re-reads these.
+   */
+  private setupPublicBodyParser(app: Express): void {
+    app.use(express.json({ limit: PUBLIC_JSON_BODY_LIMIT }));
+  }
+
+  /**
+   * Full-size body parser (must come AFTER proxy middleware AND authentication).
+   *
+   * A 50 MB parser ahead of the JWT check let an unauthenticated caller make the
+   * server buffer and parse arbitrarily many large bodies before they were
+   * rejected (M-010). Ordering it after authentication means only an
+   * authenticated caller can spend that budget.
    */
   private setupBodyParsers(app: Express): void {
-    app.use(express.json({ limit: '50mb' }));
+    app.use(express.json({ limit: AUTHENTICATED_JSON_BODY_LIMIT }));
   }
 
   /**

@@ -14,6 +14,7 @@ import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
 import { writeBufferVerified, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
 import { resolveFeatureScopedFilePath } from './helpers/featureFiles';
+import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 
 /**
  * File operations (read, write, delete, upload)
@@ -82,23 +83,25 @@ export function createFilesRoutes(deps: {
   const HTML_PREVIEW_CSP =
     "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'self'";
 
-  const resolveSafePath = (rootDir: string, relativeFilePath: string): string => {
-    const root = path.resolve(rootDir);
-    const full = path.resolve(rootDir, relativeFilePath);
-    // Prevent path traversal: full must be inside root
-    if (full === root) return full;
-    if (!full.startsWith(root + path.sep)) {
-      throw new Error('Invalid file path');
-    }
+  /**
+   * Anchor a caller-supplied write target under `rootDir` AND under the feature
+   * root. The former keeps a per-file path inside the directory the caller
+   * chose; the latter is the tenancy boundary and is asserted independently.
+   *
+   * Uses the containment SSOT rather than a string prefix test: a symlink
+   * already planted inside the feature tree passes `startsWith` but redirects
+   * the write out of the workspace (H-007).
+   */
+  const resolveWriteTarget = (rootDir: string, featureRoot: string, relativeFilePath: string): string => {
+    const full = assertWithinRoot(rootDir, relativeFilePath);
+    assertWithinRoot(featureRoot, full);
     return full;
   };
-  
+
   // Configure multer for file uploads (use memory storage)
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: {
-      fileSize: 50 * 1024 * 1024, // 50MB max file size
-    },
+    limits: UPLOAD_LIMITS,
   });
   
   // Get file tree for a feature
@@ -165,12 +168,23 @@ export function createFilesRoutes(deps: {
         const mimeType = getMimeTypeFromPath(filePath);
         res.setHeader('Content-Type', mimeType);
         res.setHeader('Cache-Control', 'no-store');
+        // The bytes are user- or LLM-authored and this route is same-origin, so
+        // never let the browser re-sniff a type it was told.
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         if (mimeType.startsWith('text/html')) {
           res.setHeader('Content-Security-Policy', HTML_PREVIEW_CSP);
-          res.setHeader('X-Content-Type-Options', 'nosniff');
         }
-        // Inline rendering in browser (useful for images)
-        res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+        // SVG is an ACTIVE document: opened as a top-level navigation it runs
+        // its own script/event handlers on the app origin, and the global CSP is
+        // disabled. Serving it as an attachment removes that sink without
+        // touching the UI's preview, which renders SVG through a blob `<img>`
+        // (passive context) rather than this URL (M-001). Other image types stay
+        // inline.
+        const disposition = mimeType === 'image/svg+xml' ? 'attachment' : 'inline';
+        res.setHeader(
+          'Content-Disposition',
+          `${disposition}; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}`,
+        );
         res.status(200).send(buf);
       } catch (error: any) {
         if (error.code === 'ENOENT') {
@@ -288,9 +302,9 @@ export function createFilesRoutes(deps: {
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
-      // `dirPath` is caller-supplied. `resolveSafePath` below only re-anchors the
-      // per-file relative paths to `baseDir`, so an escaped baseDir would be
-      // honoured — containment has to be asserted here, against the feature root.
+      // `dirPath` is caller-supplied. `resolveWriteTarget` below anchors each
+      // per-file path to `baseDir`, so an escaped baseDir would be honoured —
+      // containment has to be asserted here too, against the feature root.
       let baseDir: string;
       try {
         baseDir = assertWithinRoot(featurePath, dirPath);
@@ -351,13 +365,24 @@ export function createFilesRoutes(deps: {
         }
       }
 
+      // Destination pre-validation, all-or-nothing like the two loops above: a
+      // path rejected mid-write would leave earlier files already ingested.
+      const destinations: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const relPath = relativePaths[i] || files[i].originalname;
+        try {
+          destinations.push(resolveWriteTarget(baseDir, featurePath, relPath));
+        } catch {
+          return res.status(400).json({ error: 'Invalid file path' });
+        }
+      }
+
       // Write all uploaded files (shared byte-safe core: size + GLB header verification)
       const uploadedFiles: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const relPath = relativePaths[i] || file.originalname;
-        const filePath = resolveSafePath(baseDir, relPath);
-        await writeBufferVerified(filePath, file.buffer);
+        await writeBufferVerified(destinations[i], file.buffer);
         uploadedFiles.push(relPath);
       }
       
@@ -476,8 +501,14 @@ export function createFilesRoutes(deps: {
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
-      const fullOldPath = resolveSafePath(featurePath, oldPath);
-      const fullNewPath = resolveSafePath(featurePath, newPath);
+      let fullOldPath: string;
+      let fullNewPath: string;
+      try {
+        fullOldPath = resolveWriteTarget(featurePath, featurePath, oldPath);
+        fullNewPath = resolveWriteTarget(featurePath, featurePath, newPath);
+      } catch {
+        return res.status(400).json({ error: 'Invalid file path' });
+      }
 
       try {
         await fs.promises.access(fullOldPath);

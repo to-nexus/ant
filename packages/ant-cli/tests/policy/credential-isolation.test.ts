@@ -21,6 +21,7 @@ import * as path from 'node:path';
 import type { Request } from 'express';
 import { composeChildEnv } from '../../src/core/config/childEnv.js';
 import { buildCleanHeaders, buildForwardHeaders } from '../../src/periphery/adapters/http/middleware/proxyForwarding.js';
+import { rewriteUpgradeHeaders, buildPeerForwardUpgradeHeaders } from '../../src/infrastructure/preview/PreviewServer.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Child process environment (C-003)
@@ -111,6 +112,81 @@ describe('preview/deploy child env is composed, not inherited (C-003)', () => {
     const env = composeChildEnv();
     expect(env.CUSTOM_HOST_VAR).toBe('wanted');
     expect(env.OTHER_HOST_VAR).toBeUndefined();
+  });
+
+  // M-013 / M-014: the toolchain prefixes are a NAMESPACE allowlist, and
+  // package managers keep registry credentials in that same namespace.
+  const REGISTRY_CREDENTIALS = [
+    'NODE_AUTH_TOKEN',          // rides NODE_
+    'YARN_NPM_AUTH_TOKEN',      // rides YARN_
+    'NPM_CONFIG__AUTH',         // rides NPM_CONFIG_
+    'NPM_CONFIG__AUTHTOKEN',
+    'npm_config__authToken',    // rides npm_
+    'PIP_INDEX_PASSWORD',       // rides PIP_
+    'CARGO_REGISTRY_TOKEN',     // rides CARGO_
+    'GRADLE_PUBLISH_SECRET',    // rides GRADLE_
+  ];
+
+  for (const name of REGISTRY_CREDENTIALS) {
+    it(`drops credential-shaped ${name} despite its toolchain prefix`, () => {
+      process.env[name] = 'registry-credential';
+      expect(composeChildEnv()[name]).toBeUndefined();
+    });
+  }
+
+  it('keeps non-secret toolchain variables that merely look adjacent', () => {
+    process.env.NPM_CONFIG_REGISTRY = 'https://registry.example.com';
+    process.env.PIP_INDEX_URL = 'https://pypi.example.com/simple';
+    process.env.NODE_EXTRA_CA_CERTS = '/etc/ssl/ca.pem';
+    const env = composeChildEnv();
+    expect(env.NPM_CONFIG_REGISTRY).toBe('https://registry.example.com');
+    expect(env.PIP_INDEX_URL).toBe('https://pypi.example.com/simple');
+    expect(env.NODE_EXTRA_CA_CERTS).toBe('/etc/ssl/ca.pem');
+  });
+
+  // M-015: the escape hatch must not be able to re-open the hole the allowlist
+  // closed. An operator naming a live secret gets it dropped anyway.
+  for (const name of ['ANT_JWT_SECRET', 'ANTHROPIC_API_KEY', 'GOOGLE_CLIENT_SECRET']) {
+    it(`ANT_PREVIEW_ENV_PASSTHROUGH cannot re-admit ${name}`, () => {
+      process.env[name] = 'live-secret';
+      process.env.ANT_PREVIEW_ENV_PASSTHROUGH = name;
+      expect(composeChildEnv()[name]).toBeUndefined();
+    });
+  }
+
+  // M-013 / M-015: blocking names is not enough — `$HOME/.npmrc`, `~/.aws` and
+  // `~/.ssh` are read from the filesystem by the same user-authored scripts.
+  describe('child HOME is not the service account HOME', () => {
+    it('points HOME at a workspace-scoped directory', () => {
+      const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-childhome-'));
+      try {
+        process.env.ANT_WORKSPACE_BASE_PATH = base;
+        delete process.env.ANT_CHILD_HOME;
+        process.env.HOME = '/home/ant-service';
+        const env = composeChildEnv();
+        expect(env.HOME).not.toBe('/home/ant-service');
+        expect(env.HOME!.startsWith(base)).toBe(true);
+        expect(fs.existsSync(env.HOME!)).toBe(true);
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+
+    it('honours an explicit ANT_CHILD_HOME', () => {
+      process.env.ANT_CHILD_HOME = '/tmp/explicit-child-home';
+      expect(composeChildEnv().HOME).toBe('/tmp/explicit-child-home');
+    });
+
+    it('an empty ANT_CHILD_HOME opts out and keeps the service HOME', () => {
+      process.env.ANT_CHILD_HOME = '';
+      process.env.HOME = '/home/ant-service';
+      expect(composeChildEnv().HOME).toBe('/home/ant-service');
+    });
+
+    it('a caller overlay still wins over the derived HOME', () => {
+      process.env.ANT_CHILD_HOME = '/tmp/explicit-child-home';
+      expect(composeChildEnv({ HOME: '/tmp/caller' }).HOME).toBe('/tmp/caller');
+    });
   });
 });
 
@@ -301,5 +377,57 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
       req({ cookie: `ant_session=${PLATFORM_TOKEN}`, host: 'preview.example.com' }),
     );
     expect(headers.cookie).toBe(`ant_session=${PLATFORM_TOKEN}`);
+  });
+
+  // The WebSocket branch is a second, independent sink onto the same
+  // user-authored upstream. It replayed rawHeaders verbatim, so the HTTP-side
+  // policy above never applied to it (H-005).
+  describe('the WebSocket upgrade applies the same policy', () => {
+    const pairs = (headers: Record<string, string>) =>
+      Object.entries(headers).flatMap(([k, v]) => [k, v]);
+
+    const rewrite = (headers: Record<string, string>) =>
+      rewriteUpgradeHeaders(pairs(headers), 3000, PLATFORM).join('\r\n');
+
+    it('removes the platform session cookie', () => {
+      expect(rewrite({ Cookie: `ant_session=${PLATFORM_TOKEN}` })).not.toContain('ant_session');
+    });
+
+    it("keeps the upstream app's own cookies", () => {
+      const out = rewrite({ Cookie: `ant_session=${PLATFORM_TOKEN}; app_sid=abc` });
+      expect(out).toContain('app_sid=abc');
+      expect(out).not.toContain('ant_session');
+    });
+
+    it('removes a platform bearer token', () => {
+      expect(rewrite({ Authorization: `Bearer ${PLATFORM_TOKEN}` })).not.toContain(PLATFORM_TOKEN);
+    });
+
+    it("keeps a non-platform bearer and other auth schemes", () => {
+      expect(rewrite({ Authorization: 'Bearer app-own-token' })).toContain('app-own-token');
+      expect(rewrite({ Authorization: 'Basic dXNlcjpwdw==' })).toContain('Basic dXNlcjpwdw==');
+    });
+
+    it('preserves the WebSocket handshake headers and rewrites Host/Origin', () => {
+      const out = rewrite({
+        Host: 'preview.example.com',
+        Origin: 'https://preview.example.com',
+        Upgrade: 'websocket',
+        Connection: 'Upgrade',
+        'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+        'Sec-WebSocket-Version': '13',
+      });
+      expect(out).toContain('Upgrade: websocket');
+      expect(out).toContain('Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==');
+      expect(out).toContain(`Host: localhost:3000`);
+      expect(out).toContain(`Origin: http://localhost:3000`);
+    });
+
+    it('peer forward KEEPS the cookie for the owner replica hop', () => {
+      const out = buildPeerForwardUpgradeHeaders(
+        pairs({ Cookie: `ant_session=${PLATFORM_TOKEN}` }),
+      ).join('\r\n');
+      expect(out).toContain('ant_session');
+    });
   });
 });

@@ -338,3 +338,61 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
     expect(spec.metadata.labels.user).toBe(selectorUserValue);
   });
 });
+
+/**
+ * M-016 — the `user=` label selector is lossy (`sanitizeLabelValue` maps
+ * `a@b-c.com` and `a-b@c.com` onto one value), so it can only narrow the
+ * candidate set. Ownership is decided on the parsed instance key.
+ */
+describe('KubernetesIDEOrchestrator.listByUser authorization', () => {
+  const caller = { userId: 'alice@corp.com', organizationId: 'acme' } as any;
+
+  const pod = (name: string, instanceKey: string | null) => ({
+    metadata: {
+      name,
+      annotations: instanceKey ? { 'ant.example.com/instance-key': instanceKey } : {},
+    },
+    status: { phase: 'Running', podIP: '10.0.0.9' },
+  });
+
+  const listWith = async (items: unknown[]) => {
+    const orch = makeOrch();
+    (orch as any).k8sRequest = async () => ({ items });
+    return orch.listByUser(caller);
+  };
+
+  it('the sanitizer really does collide two distinct valid emails', () => {
+    const orch = makeOrch();
+    expect((orch as any).sanitizeLabelValue('alice@corp.com')).toBe(
+      (orch as any).sanitizeLabelValue('alice-corp.com'),
+    );
+  });
+
+  it('returns the caller own instance', async () => {
+    const found = await listWith([pod('p1', 'acme:alice@corp.com:proj:feat-x')]);
+    expect(found).toHaveLength(1);
+    expect(found[0].tenantId).toBe('acme');
+    expect(found[0].userId).toBe('alice@corp.com');
+  });
+
+  it('drops a colliding pod owned by another user', async () => {
+    const found = await listWith([
+      pod('p1', 'acme:alice@corp.com:proj:feat-x'),
+      pod('p2', 'acme:alice-corp.com:victim-proj:feat-y'),
+    ]);
+    expect(found).toHaveLength(1);
+    expect(found[0].instanceId).toBe('p1');
+  });
+
+  it('drops a pod of the same user name in another organization', async () => {
+    const found = await listWith([pod('p2', 'other-org:alice@corp.com:proj:feat-x')]);
+    expect(found).toEqual([]);
+  });
+
+  it('skips a malformed key instead of claiming it for the caller', async () => {
+    // The old fallback published this pod's host/port/workspacePath stamped
+    // with the requester identity.
+    const found = await listWith([pod('p3', null), pod('p4', 'not:enough')]);
+    expect(found).toEqual([]);
+  });
+});

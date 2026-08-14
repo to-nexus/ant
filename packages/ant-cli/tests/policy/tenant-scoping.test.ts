@@ -292,3 +292,63 @@ describe("repoType 'local' is honoured in local mode only (C-004)", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Vector memory collections (M-006)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('vector memory collections are tenant-scoped in a shared deployment (M-006)', () => {
+  // `projectId` is unique per tenant, not globally, so two orgs picking the
+  // same project name shared one Chroma collection — readable and poisonable
+  // across the boundary.
+  const BOB_SCOPE = { organizationId: 'globex', userId: 'bob' };
+  const ALICE_SCOPE = { organizationId: 'acme', userId: 'alice' };
+
+  it('separates two tenants that chose the same project name', async () => {
+    const { getCollectionName } = await import('../../src/core/types/agent.js');
+    expect(getCollectionName('codebase', 'shop', ALICE_SCOPE))
+      .not.toBe(getCollectionName('codebase', 'shop', BOB_SCOPE));
+  });
+
+  it('is stable for the same tenant and project', async () => {
+    const { getCollectionName } = await import('../../src/core/types/agent.js');
+    expect(getCollectionName('codebase', 'shop', ALICE_SCOPE))
+      .toBe(getCollectionName('codebase', 'shop', { ...ALICE_SCOPE }));
+  });
+
+  it('still separates collection types within one tenant', async () => {
+    const { getCollectionName } = await import('../../src/core/types/agent.js');
+    expect(getCollectionName('codebase', 'shop', ALICE_SCOPE))
+      .not.toBe(getCollectionName('lessons', 'shop', ALICE_SCOPE));
+  });
+
+  it('produces a Chroma-legal name from an email userId', async () => {
+    const { getCollectionName } = await import('../../src/core/types/agent.js');
+    const name = getCollectionName('codebase', 'shop', { organizationId: 'acme', userId: 'alice@corp.com' });
+    expect(name).toMatch(/^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$/);
+    expect(name.length).toBeLessThanOrEqual(63);
+  });
+
+  it('stays within 63 chars for a long project name', async () => {
+    const { getCollectionName } = await import('../../src/core/types/agent.js');
+    expect(getCollectionName('codebase', 'p'.repeat(120), ALICE_SCOPE).length).toBeLessThanOrEqual(63);
+  });
+
+  it('local mode keeps the legacy unscoped name (one tenant, no reindex)', async () => {
+    const { getCollectionName } = await import('../../src/core/types/agent.js');
+    expect(getCollectionName('codebase', 'shop')).toBe('codebase-shop');
+    expect(getCollectionName('codebase', 'shop', null)).toBe('codebase-shop');
+  });
+
+  it('the factory scopes in cloud mode and does not in local mode', async () => {
+    for (const [mode, expectScoped] of [['cloud', true], ['local', false]] as const) {
+      vi.stubEnv('ANT_SERVER_MODE', mode);
+      vi.stubEnv('ANT_VECTOR_DB_ENABLED', '1');
+      vi.resetModules();
+      const { AdapterFactory } = await import('../../src/infrastructure/adapters/AdapterFactory.js');
+      const adapter = AdapterFactory.createMemoryAdapter(ALICE) as any;
+      expect(Boolean(adapter.tenantScope), mode).toBe(expectScoped);
+      vi.unstubAllEnvs();
+    }
+  });
+});

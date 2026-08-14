@@ -14,29 +14,49 @@
 # ANT_REQUIRE_BILLING is deliberately NOT set here — it is reserved for the
 # managed deployment (fails boot when the @ant/cloud billing overlay is
 # absent). Self-hosted cloud runs unmetered.
+#
+# Secrets are scoped to the services that CONSUME them, not applied uniformly.
+# ant-preview spawns user-authored install and dev commands, and those children
+# share its UID and process namespace — so anything in that service's
+# environment is reachable from user code via /proc. Sign-in secrets have no
+# consumer there, so they are not granted there (report C-001; the remaining
+# UID/mount isolation is a deployment-layer control).
 
-x-ant-env-cloud: &ant-env-cloud
+# Every ant service: mode + the origin CORS and cookie derivation read.
+x-ant-env-cloud-base: &ant-env-cloud-base
   ANT_SERVER_MODE: cloud
+  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
+
+# HS256 verification key. Needed by every process that VERIFIES a session:
+# ant-api (route auth), ant-realtime (SSE/WS auth), ant-preview (proxy
+# ownership). Symmetric, so a verifier also holds signing authority — the
+# durable fix is asymmetric keys, tracked separately.
+x-ant-env-cloud-verify: &ant-env-cloud-verify
   ANT_JWT_SECRET: ${ANT_JWT_SECRET:?set ANT_JWT_SECRET in .env (openssl rand -hex 32)}
+
+# Sign-in and administration. Consumed ONLY by ant-api, which is the only
+# process that mounts the auth and admin routers.
+x-ant-env-cloud-identity: &ant-env-cloud-identity
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?set GOOGLE_CLIENT_ID in .env (Google Cloud Console OAuth client)}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?set GOOGLE_CLIENT_SECRET in .env (Google Cloud Console OAuth client)}
   GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}   # empty = derived as ${FRONTEND_URL}/api/auth/google/callback
   ANT_SUPER_ADMIN_EMAILS: ${ANT_SUPER_ADMIN_EMAILS:-}
-  FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
 
 services:
   ant-api:
     environment:
-      <<: *ant-env-cloud
+      <<: [*ant-env-cloud-base, *ant-env-cloud-verify, *ant-env-cloud-identity]
 
   ant-realtime:
     environment:
-      <<: *ant-env-cloud
+      <<: [*ant-env-cloud-base, *ant-env-cloud-verify]
 
+  # No HTTP surface → verifies nothing, signs nothing.
   ant-job:
     environment:
-      <<: *ant-env-cloud
+      <<: *ant-env-cloud-base
 
+  # Verifies proxy ownership; never serves sign-in.
   ant-preview:
     environment:
-      <<: *ant-env-cloud
+      <<: [*ant-env-cloud-base, *ant-env-cloud-verify]

@@ -103,19 +103,31 @@ export function sniffFile(absPath: string): { binary: boolean; size?: number } {
     return { binary: isBinaryPath(absPath) };
   }
   try {
-    const stat = fs.fstatSync(fd);
-    if (!stat.isFile()) return { binary: false };
-    const size = Number(stat.size);
-    if (isBinaryPath(absPath)) return { binary: true, size };
-    const len = Math.min(size, SNIFF_BYTES);
-    const buf = Buffer.alloc(len);
-    const read = fs.readSync(fd, buf, 0, len, 0);
-    return { binary: isBinaryBuffer(buf.subarray(0, read), size > read), size };
+    return sniffFd(fd, absPath);
   } catch {
     return { binary: isBinaryPath(absPath) };
   } finally {
     fs.closeSync(fd);
   }
+}
+
+/**
+ * Same sniff against an already-open descriptor, so a caller that must bind
+ * kind, size and bytes to ONE file object (see `core/config/containedIo`) does
+ * not reopen an attacker-controlled name between questions.
+ *
+ * Reads at an explicit position, leaving the descriptor's cursor untouched for
+ * a subsequent full read.
+ */
+export function sniffFd(fd: number, pathHint: string): { binary: boolean; size: number } {
+  const stat = fs.fstatSync(fd);
+  const size = Number(stat.size);
+  if (!stat.isFile()) return { binary: false, size };
+  if (isBinaryPath(pathHint)) return { binary: true, size };
+  const len = Math.min(size, SNIFF_BYTES);
+  const buf = Buffer.alloc(len);
+  const read = fs.readSync(fd, buf, 0, len, 0);
+  return { binary: isBinaryBuffer(buf.subarray(0, read), size > read), size };
 }
 
 export function isBinaryFileSync(absPath: string): boolean {
