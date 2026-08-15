@@ -23,8 +23,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { appendJobSnapshotToSession } from '../../src/periphery/adapters/http/routes/helpers/sessionCleanup';
+import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../src/periphery/adapters/http/routes/helpers/sessionCleanup';
 import { getSessionFilePathByJob } from '../../src/core/utils/sessionPaths';
+import { safeParseSession } from '../../src/core/schemas/session.schema';
 import type { SessionRun } from '../../src/core/types/session';
 import type { KanbanData } from '@ant/shared';
 
@@ -113,5 +114,83 @@ describe('non-task job run seal (Job-tab persistence)', () => {
     // The planner's semantic summary survives the merge.
     expect((runs[0].output as any).planSummary).toContain('generate completed');
     expect((runs[0].input as any).summary).toContain('marketing site');
+  });
+});
+
+describe('universal run seal (Job-tab persistence, per-(agentId, customJobId) file)', () => {
+  let container: string;
+  const sessionPath = () => path.join(container, 'sessions', 'assistant', 'chat.json');
+  const readSession = () => JSON.parse(fs.readFileSync(sessionPath(), 'utf-8'));
+  const seedSession = (extra: Record<string, unknown> = {}) => {
+    fs.mkdirSync(path.dirname(sessionPath()), { recursive: true });
+    fs.writeFileSync(sessionPath(), JSON.stringify({
+      sessionId: 'sess-1',
+      project: 'app-review',
+      feature: 'universal',
+      createdAt: '2026-08-15T00:00:00.000Z',
+      updatedAt: '2026-08-15T00:00:00.000Z',
+      runs: [],
+      artifacts: {},
+      state: { customJobRef: 'assistant/chat', conversations: { 'session:main': [{ role: 'user', content: 'hi' }] } },
+      ...extra,
+    }, null, 2));
+  };
+
+  beforeEach(() => {
+    container = fs.mkdtempSync(path.join(os.tmpdir(), 'universal-seal-'));
+  });
+  afterEach(() => {
+    fs.rmSync(container, { recursive: true, force: true });
+  });
+
+  it('seals a jobId-stamped universal run with customJobRef into the container session file', async () => {
+    seedSession();
+    await appendRunToSessionFile(sessionPath(), 'universal', 'vivid-kicking-acorn', emptyBoard('vivid-kicking-acorn'), 'completed', {
+      runExtras: { customJobRef: 'assistant/chat' },
+    });
+    const session = readSession();
+    expect(session.runs).toHaveLength(1);
+    expect(session.runs[0]).toMatchObject({
+      job: 'universal',
+      jobId: 'vivid-kicking-acorn',
+      status: 'completed',
+      customJobRef: 'assistant/chat',
+    });
+    // Conversation memory untouched by the append.
+    expect(session.state.conversations['session:main']).toHaveLength(1);
+  });
+
+  it('re-seal of the same jobId upserts (no phantom second row)', async () => {
+    seedSession();
+    await appendRunToSessionFile(sessionPath(), 'universal', 'j-1', emptyBoard('j-1'), 'completed', {
+      runExtras: { customJobRef: 'assistant/chat' },
+    });
+    await appendRunToSessionFile(sessionPath(), 'universal', 'j-1', emptyBoard('j-1'), 'completed', {
+      runExtras: { customJobRef: 'assistant/chat' },
+    });
+    expect(readSession().runs).toHaveLength(1);
+  });
+
+  it('createIfMissing seeds a SessionSchema-valid skeleton (crash before first respond seal)', async () => {
+    await appendRunToSessionFile(sessionPath(), 'universal', 'j-2', emptyBoard('j-2'), 'failed', {
+      runExtras: { customJobRef: 'assistant/chat' },
+      createIfMissing: { project: 'app-review', feature: 'universal' },
+    });
+    const session = readSession();
+    expect(session.runs[0].jobId).toBe('j-2');
+    expect(safeParseSession(session)).not.toBeNull();
+  });
+
+  // Unlink-hazard regression: FileSessionAdapter.load DELETES a session file
+  // whose safeParseSession fails — for universal that is the conversation
+  // memory. Every value the seal path can write into `runs[i].job` must
+  // therefore be accepted by SessionRunSchema.
+  it.each([
+    ['universal'],
+    ['visual'],
+  ] as const)('a sealed %s run keeps the session file schema-valid (no unlink on next load)', async (job) => {
+    seedSession();
+    await appendRunToSessionFile(sessionPath(), job, 'j-3', emptyBoard('j-3'), 'completed');
+    expect(safeParseSession(readSession())).not.toBeNull();
   });
 });

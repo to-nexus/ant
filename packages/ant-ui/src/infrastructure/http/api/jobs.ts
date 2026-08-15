@@ -19,6 +19,8 @@ export interface JobHistoryEntry {
   /** True when Redis still holds live state (running / paused). */
   live: boolean;
   kanbanSnapshot?: import('@ant/shared').KanbanData;
+  /** Universal only — `{agentId}/{customJobId}` of the definition this run executed. */
+  customJobRef?: string;
 }
 
 export interface ExecuteJobParams {

@@ -17,6 +17,12 @@ import {
   deleteJobRunFromSession,
   broadcastKanbanReset,
 } from './helpers/sessionCleanup';
+import {
+  collectUniversalRuns,
+  findUniversalSessionFileByJobId,
+  deleteUniversalRunFromSession,
+} from './helpers/universalRuns';
+import { resolveUniversalContainerPath } from '../../../../core/customAgents/universalContainer';
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
 import * as fs from 'fs';
 import { GitOperationError } from '../services/GitService/errors';
@@ -65,12 +71,36 @@ export function createFeaturesRoutes(deps: {
   registerFeatureParamDecoders(router);
 
   /**
-   * Resolve featurePath via the projectService's internal workspaceResolver
-   * (kept consistent with the legacy DELETE handler that this file replaces).
+   * Resolve the feature's on-disk root. On a universal project the
+   * `universal` pseudo-feature maps to `{project}/universal` (the container),
+   * NOT `{project}/features/universal` — the canonical resolver is
+   * universal-unaware and would fabricate a phantom plane there (the
+   * pre-fix history/restore/DELETE all read that phantom path and found
+   * nothing). `resolveUniversalContainerPath` self-guards on
+   * featureName + projectType, so canonical features are untouched; partial
+   * resolvers (tests) without `getProjectPath` fall through to the
+   * canonical path.
    */
-  function getFeaturePath(userContext: any, projectId: string, featureName: string): string {
+  function resolveFeaturePathInfo(
+    userContext: any,
+    projectId: string,
+    featureName: string,
+  ): { path: string; isUniversalContainer: boolean } {
     const resolver = deps.workspaceResolver ?? (deps.projectService as any).workspaceResolver;
-    return resolver.getFeaturePath(userContext, projectId, featureName);
+    try {
+      const projectPath = resolver.getProjectPath?.(userContext, projectId);
+      if (projectPath) {
+        const container = resolveUniversalContainerPath(projectPath, featureName);
+        if (container) return { path: container, isUniversalContainer: true };
+      }
+    } catch {
+      /* canonical fallback */
+    }
+    return { path: resolver.getFeaturePath(userContext, projectId, featureName), isUniversalContainer: false };
+  }
+
+  function getFeaturePath(userContext: any, projectId: string, featureName: string): string {
+    return resolveFeaturePathInfo(userContext, projectId, featureName).path;
   }
 
   // Get features for a project
@@ -255,6 +285,8 @@ export function createFeaturesRoutes(deps: {
          * FE shows badges only when this is present.
          */
         kanbanSnapshot?: KanbanData;
+        /** Universal only — `{agentId}/{customJobId}` for row labeling. */
+        customJobRef?: string;
       };
 
       const merged = new Map<string, HistoryEntry>();
@@ -308,13 +340,43 @@ export function createFeaturesRoutes(deps: {
       // fall back to the Redis live entries already collected (parity with the
       // pre-feature-wide behavior, which caught this in the session-merge try).
       let featurePath: string | null = null;
+      let isUniversalContainer = false;
       try {
-        featurePath = getFeaturePath(userContext, projectId, featureName);
+        const info = resolveFeaturePathInfo(userContext, projectId, featureName);
+        featurePath = info.path;
+        isUniversalContainer = info.isUniversalContainer;
       } catch (err) {
         logger.warn(`Failed to resolve feature path for history`, { component: 'Features' }, err);
       }
       for (const t of featurePath ? types : []) {
         try {
+          if (t === 'universal') {
+            // Universal runs live per-(agentId, customJobId) inside the
+            // container — never under sessions/universal/universal.json.
+            // Canonical features have no container, so skip the probe.
+            if (!isUniversalContainer) continue;
+            for (const r of await collectUniversalRuns(featurePath!)) {
+              const existing = merged.get(r.jobId!);
+              if (existing) {
+                if (r.kanbanSnapshot && !existing.kanbanSnapshot) {
+                  existing.kanbanSnapshot = r.kanbanSnapshot as KanbanData;
+                }
+                if (!existing.customJobRef) existing.customJobRef = r.customJobRef;
+                continue;
+              }
+              merged.set(r.jobId!, {
+                jobId: r.jobId!,
+                type: t,
+                status: r.status ?? 'completed',
+                startedAt: r.timestamp,
+                completedAt: r.completedAt ?? r.timestamp,
+                live: false,
+                kanbanSnapshot: (r.kanbanSnapshot as KanbanData | undefined) ?? undefined,
+                customJobRef: r.customJobRef,
+              });
+            }
+            continue;
+          }
           const sessionPath = getSessionFilePathByJob(featurePath!, t);
           let raw: string | null = null;
           try {
@@ -451,15 +513,34 @@ export function createFeaturesRoutes(deps: {
 
       // (2) Snapshot from session file
       try {
-        const featurePath = getFeaturePath(userContext, projectId, featureName);
-        const sessionPath = getSessionFilePathByJob(featurePath, requestedType);
-        const raw = await fs.promises.readFile(sessionPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
-        const match = runs.find((r) => r.jobId === jobId);
-        if (match?.kanbanSnapshot) {
-          res.json(match.kanbanSnapshot);
-          return;
+        const { path: featurePath, isUniversalContainer } = resolveFeaturePathInfo(
+          userContext, projectId, featureName,
+        );
+        if (requestedType === 'universal') {
+          // Universal: locate the per-(agentId, customJobId) file that
+          // references this run instead of the (nonexistent) jobType file.
+          if (isUniversalContainer) {
+            const ref = await findUniversalSessionFileByJobId(featurePath, jobId);
+            if (ref) {
+              const parsed = JSON.parse(await fs.promises.readFile(ref.path, 'utf-8'));
+              const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
+              const match = runs.find((r) => r.jobId === jobId);
+              if (match?.kanbanSnapshot) {
+                res.json(match.kanbanSnapshot);
+                return;
+              }
+            }
+          }
+        } else {
+          const sessionPath = getSessionFilePathByJob(featurePath, requestedType);
+          const raw = await fs.promises.readFile(sessionPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
+          const match = runs.find((r) => r.jobId === jobId);
+          if (match?.kanbanSnapshot) {
+            res.json(match.kanbanSnapshot);
+            return;
+          }
         }
       } catch (err: any) {
         if (err.code !== 'ENOENT') {
@@ -570,12 +651,18 @@ export function createFeaturesRoutes(deps: {
         jobId,
       );
       await scrubJobDebugArtifacts(featurePath, jobType, jobId);
-      await deleteJobRunFromSession(
-        deps.kanbanService,
-        featurePath,
-        jobType,
-        jobId,
-      );
+      if (jobType === 'universal') {
+        // Universal: drop the run from its per-(agentId, customJobId) file
+        // without injecting canonical task-state resets (checklist ≠ tasks).
+        await deleteUniversalRunFromSession(deps.kanbanService, featurePath, jobId);
+      } else {
+        await deleteJobRunFromSession(
+          deps.kanbanService,
+          featurePath,
+          jobType,
+          jobId,
+        );
+      }
 
       // Collapse feature.jsonl lines tied to this jobId so future prompts
       // (resolve → plan/direct) no longer inject its turns as context.
@@ -591,15 +678,19 @@ export function createFeaturesRoutes(deps: {
         );
       }
 
-      // Refresh the kanban so every connected tab clears stale state for this jobType.
-      await broadcastKanbanReset(
-        deps.stateStore,
-        deps.kanbanService,
-        projectId,
-        featureName,
-        jobType,
-        userContext,
-      );
+      // Refresh the kanban so every connected tab clears stale state for this
+      // jobType. Universal has no board (checklist surface) and KanbanService
+      // is universal-unaware — the broadcast would be pure noise, skip it.
+      if (jobType !== 'universal') {
+        await broadcastKanbanReset(
+          deps.stateStore,
+          deps.kanbanService,
+          projectId,
+          featureName,
+          jobType,
+          userContext,
+        );
+      }
 
       logger.debug(`[Features] Deleted job ${jobId} (${jobType})`);
       res.json({ success: true, jobId });

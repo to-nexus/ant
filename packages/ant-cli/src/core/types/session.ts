@@ -97,6 +97,9 @@ export interface SessionRun {
 
   /** ISO timestamp when the run was sealed (history sort key). */
   completedAt?: string;
+
+  /** Universal only — `{agentId}/{jobId}` of the definition this run executed (FE labeling / DELETE routing). */
+  customJobRef?: string;
 }
 
 // ============================================

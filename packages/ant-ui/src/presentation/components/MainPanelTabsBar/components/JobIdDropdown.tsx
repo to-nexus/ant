@@ -303,7 +303,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           isCurrent ? 'cursor-default' : 'cursor-pointer',
                         )}
                         style={{ color: isCurrent ? 'var(--text-1)' : 'var(--text-2)' }}
-                        title={entry.jobId}
+                        title={entry.customJobRef ? `${entry.customJobRef} · ${entry.jobId}` : entry.jobId}
                       >
                         {(() => {
                           // Status priority: live signals (current/amber) take
@@ -384,6 +384,17 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           );
                         })()}
                         <span>{entry.jobId}</span>
+                        {/* Universal rows: which custom job produced this run —
+                            the jobId alone is meaningless across definitions. */}
+                        {entry.customJobRef && (
+                          <span
+                            className="shrink-0 text-[11px]"
+                            style={{ color: 'var(--text-3)' }}
+                            aria-label={entry.customJobRef}
+                          >
+                            {entry.customJobRef}
+                          </span>
+                        )}
                       </button>
                       {/* Always two flex slots after id so gap-2 is even whether a badge is missing */}
                       <span className="inline-flex shrink-0">

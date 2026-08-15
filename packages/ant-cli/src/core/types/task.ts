@@ -85,6 +85,8 @@ export interface JobProjectMapping {
   featureName: string;
   jobType: SessionableJobType | 'inline-ask';
   userContext?: UserContext;
+  /** Universal only — `{agentId}/{jobId}` of the definition this run executed. */
+  customJobRef?: string;
 }
 
 // ============================================

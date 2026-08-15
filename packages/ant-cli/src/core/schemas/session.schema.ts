@@ -56,7 +56,12 @@ export const SessionRunOutputSchema = z.object({
  */
 export const SessionRunSchema = z.object({
   runId: z.number().int().positive(),
-  job: z.enum(['design', 'code', 'learn', 'review', 'plan', 'doc']),
+  // Keep in sync with `AgentJob` (core/types/agent.ts). This enum is
+  // load-bearing beyond validation: `FileSessionAdapter.load` UNLINKS a
+  // session file whose parse fails, so a run appended with a job value
+  // missing here would destroy the session (universal: the conversation
+  // memory) on the next load.
+  job: z.enum(['design', 'code', 'learn', 'review', 'plan', 'doc', 'visual', 'universal']),
   timestamp: z.string().datetime(),
   input: SessionRunInputSchema,
   output: SessionRunOutputSchema,
@@ -67,6 +72,7 @@ export const SessionRunSchema = z.object({
   kanbanSnapshot: z.any().optional().nullable(),
   status: z.enum(['completed', 'failed', 'canceled', 'paused']).optional(),
   completedAt: z.string().datetime().optional(),
+  customJobRef: z.string().optional(),
 });
 
 /**

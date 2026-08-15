@@ -696,7 +696,10 @@ export class RouteConfigurator {
         projectId: params.project,
         featureName: params.feature,
         jobType: jobType,
-        userContext: params.userContext
+        userContext: params.userContext,
+        // Universal: finalize needs the definition ref to locate the
+        // per-(agentId, customJobId) session file for the run-history append.
+        ...(params.customJobRef && { customJobRef: params.customJobRef }),
       });
       
       logger.info(`✅ [JobMapping] Job mapping saved successfully`, { 

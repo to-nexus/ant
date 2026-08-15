@@ -11,8 +11,10 @@ import { getInfrastructureFactory } from '../../../../../infrastructure/adapters
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
-import { appendJobSnapshotToSession } from '../../routes/helpers/sessionCleanup';
-import { isNonTaskJob, type SessionableJobType } from '@ant/shared';
+import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../routes/helpers/sessionCleanup';
+import { findUniversalSessionFileByJobId } from '../../routes/helpers/universalRuns';
+import { resolveUniversalContainerPath } from '../../../../../core/customAgents/universalContainer';
+import { isNonTaskJob, parseCustomJobRef, UNIVERSAL_FEATURE, type KanbanData, type SessionableJobType } from '@ant/shared';
 
 /**
  * Invariant I2 — `cancelled` choice cards (Resume / Dismiss UI) must not
@@ -678,7 +680,7 @@ export class JobCleanupManager {
    * even after Redis state has expired.
    */
   private async broadcastFinalUpdate(
-    mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext },
+    mapping: { projectId: string; featureName: string; jobType: string; userContext?: UserContext; customJobRef?: string },
     jobType: SessionableJobType,
     userContext: UserContext,
     jobId: string,
@@ -755,9 +757,6 @@ export class JobCleanupManager {
 
       // Persist per-jobId kanban snapshot into session.runs[] for dropdown replay.
       // Best-effort: failures here must not block the broadcast.
-      // Skipped for universal — session files there are per-(agentId, jobId)
-      // and owned by the runner; getFeaturePath here would mkdir a phantom
-      // `features/universal` plane.
       if (jobType !== 'universal') {
         try {
           const featurePath = this.deps.workspaceResolver.getFeaturePath(
@@ -769,6 +768,22 @@ export class JobCleanupManager {
         } catch (snapErr) {
           logger.warn(
             `Failed to persist kanban snapshot to session`,
+            { component: 'JobCleanupManager', jobId },
+            snapErr,
+          );
+        }
+      } else {
+        // Universal: session files are per-(agentId, customJobId) inside the
+        // container — never resolve via getFeaturePath (it would mkdir a
+        // phantom `features/universal` plane). Target = the mapping's
+        // customJobRef when present, else the file whose sealed state.jobId /
+        // runs[] references this run. The snapshot here is the synthesized
+        // minimal non-task board (no kanban semantics leak into universal).
+        try {
+          await this.appendUniversalRunSnapshot(mapping, userContext, jobId, kanbanData, derivedStatus);
+        } catch (snapErr) {
+          logger.warn(
+            `Failed to persist universal run snapshot to session`,
             { component: 'JobCleanupManager', jobId },
             snapErr,
           );
@@ -797,13 +812,58 @@ export class JobCleanupManager {
       // Clear live data AFTER broadcast
       this.stateTracker.cleanup(jobId);
     } catch (err) {
-      logger.warn(`Failed to broadcast Kanban update`, { 
-        component: 'JobCleanupManager', 
-        jobId 
+      logger.warn(`Failed to broadcast Kanban update`, {
+        component: 'JobCleanupManager',
+        jobId
       }, err);
-      
+
       // Clean up even if broadcast fails
       this.stateTracker.cleanup(jobId);
     }
+  }
+
+  /**
+   * Universal run-history append — resolves the container and the target
+   * per-(agentId, customJobId) session file, then upserts the run keyed by
+   * this run's BullMQ jobId. Resolution order:
+   *   1. mapping.customJobRef (stamped at enqueue) → direct path
+   *   2. scan for the file whose sealed state.jobId / runs[] holds this jobId
+   *   3. neither → warn + skip (pre-stamp jobs; equals prior behavior)
+   */
+  private async appendUniversalRunSnapshot(
+    mapping: { projectId: string; featureName: string; customJobRef?: string },
+    userContext: UserContext,
+    jobId: string,
+    kanbanData: KanbanData,
+    derivedStatus: SessionRunStatus,
+  ): Promise<void> {
+    const projectPath = this.deps.workspaceResolver.getProjectPath?.(userContext, mapping.projectId);
+    const container = projectPath
+      ? resolveUniversalContainerPath(projectPath, mapping.featureName)
+      : null;
+    if (!container) {
+      logger.warn(
+        `Universal run snapshot skipped — container unresolved (feature=${mapping.featureName})`,
+        { component: 'JobCleanupManager', jobId },
+      );
+      return;
+    }
+    let ref = parseCustomJobRef(mapping.customJobRef);
+    if (!ref) {
+      const found = await findUniversalSessionFileByJobId(container, jobId);
+      if (found) ref = { agentId: found.agentId, jobId: found.customJobId };
+    }
+    if (!ref) {
+      logger.warn(
+        `Universal run snapshot skipped — no session file references this run`,
+        { component: 'JobCleanupManager', jobId },
+      );
+      return;
+    }
+    const sessionPath = path.join(container, 'sessions', ref.agentId, `${ref.jobId}.json`);
+    await appendRunToSessionFile(sessionPath, 'universal', jobId, kanbanData, derivedStatus, {
+      runExtras: { customJobRef: `${ref.agentId}/${ref.jobId}` },
+      createIfMissing: { project: mapping.projectId, feature: UNIVERSAL_FEATURE },
+    });
   }
 }

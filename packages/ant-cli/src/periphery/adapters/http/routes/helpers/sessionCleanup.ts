@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { KanbanService } from '../../services';
 import type { KanbanData, SessionableJobType } from '@ant/shared';
+import type { AgentJob } from '../../../../../core/types/agent';
 import type { SessionRun, SessionRunStatus } from '../../../../../core/types/session';
 import { logger } from '../../../../../utils/logger';
 import {
@@ -17,53 +19,80 @@ import { wouldRegressRun } from '../../../../../core/utils/sessionRunGuard';
 import { deleteArchivedState } from '../../../../../core/session/archive';
 
 /**
- * Append (or upsert) a per-jobId kanban snapshot into the session file's
- * `runs[]` array so the Job-tab dropdown can restore the kanban for past
- * jobs whose Redis state has expired.
+ * Append (or upsert) a per-jobId run record into a session file's `runs[]`
+ * array so the Job-tab dropdown can list past runs and restore their kanban
+ * snapshots after Redis live state has expired.
  *
  * Behavior:
  *   - If a `runs[i]` with the same `jobId` already exists, its
  *     `kanbanSnapshot`, `status`, and `completedAt` are overwritten.
  *   - Otherwise a minimal new run is appended (runId = runs.length + 1).
+ *   - `opts.createIfMissing` seeds a SessionSchema-valid skeleton when the
+ *     file is absent (universal: crash before the first respond seal) —
+ *     without it, a missing file stays a silent no-op.
  *
- * Silent no-op when the session file is missing or malformed — this is a
- * best-effort UX enhancement, not a correctness requirement.
+ * Every write here MUST stay `SessionSchema`-valid: `FileSessionAdapter.load`
+ * unlinks a file whose parse fails, which for universal destroys the
+ * conversation memory.
+ *
+ * Silent no-op when the session file is malformed — this is a best-effort
+ * UX enhancement, not a correctness requirement.
  */
-export async function appendJobSnapshotToSession(
-  featurePath: string,
-  jobType: SessionableJobType,
+export async function appendRunToSessionFile(
+  sessionPath: string,
+  runJob: AgentJob,
   jobId: string,
   kanbanSnapshot: KanbanData,
   status: SessionRunStatus,
+  opts?: {
+    /** Extra fields stamped onto the new/updated run (e.g. customJobRef). */
+    runExtras?: Partial<SessionRun>;
+    /** Seed a schema-valid skeleton when the file is missing. */
+    createIfMissing?: { project: string; feature: string };
+  },
 ): Promise<void> {
-  const sessionPath = getSessionFilePathByJob(featurePath, jobType);
-  let raw: string;
+  let session: any;
+  let raw: string | null = null;
   try {
     raw = await fs.promises.readFile(sessionPath, 'utf-8');
   } catch (err: any) {
-    if (err.code === 'ENOENT') {
-      logger.debug(
-        `[SessionCleanup] No session file to append snapshot (jobId=${jobId}, jobType=${jobType})`,
+    if (err.code !== 'ENOENT') {
+      logger.warn(
+        `[SessionCleanup] Failed to read session for snapshot append`,
+        { component: 'SessionCleanup' },
+        err,
       );
       return;
     }
-    logger.warn(
-      `[SessionCleanup] Failed to read session for snapshot append`,
-      { component: 'SessionCleanup' },
-      err,
-    );
-    return;
+    if (!opts?.createIfMissing) {
+      logger.debug(
+        `[SessionCleanup] No session file to append snapshot (jobId=${jobId}, job=${runJob})`,
+      );
+      return;
+    }
+    const now = new Date().toISOString();
+    session = {
+      sessionId: randomUUID(),
+      project: opts.createIfMissing.project,
+      feature: opts.createIfMissing.feature,
+      createdAt: now,
+      updatedAt: now,
+      runs: [],
+      artifacts: {},
+    };
+    await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true }).catch(() => {});
   }
-  let session: any;
-  try {
-    session = JSON.parse(raw);
-  } catch (err) {
-    logger.warn(
-      `[SessionCleanup] Session file unparseable, skipping snapshot append`,
-      { component: 'SessionCleanup' },
-      err,
-    );
-    return;
+  if (raw !== null) {
+    try {
+      session = JSON.parse(raw);
+    } catch (err) {
+      logger.warn(
+        `[SessionCleanup] Session file unparseable, skipping snapshot append`,
+        { component: 'SessionCleanup' },
+        err,
+      );
+      return;
+    }
   }
   // Identity guard: never persist a board built for a different jobId onto
   // this run. The snapshot's own `jobId` is stamped by the builder; a
@@ -95,12 +124,11 @@ export async function appendJobSnapshotToSession(
       );
       return;
     }
-    runs[idx] = { ...runs[idx], kanbanSnapshot, status, completedAt };
+    runs[idx] = { ...runs[idx], ...opts?.runExtras, kanbanSnapshot, status, completedAt };
   } else {
-    const job: any = jobType === 'plan' ? 'plan' : jobType;
     runs.push({
       runId: runs.length + 1,
-      job,
+      job: runJob,
       timestamp: completedAt,
       input: { type: 'text', summary: '' },
       output: {},
@@ -108,6 +136,7 @@ export async function appendJobSnapshotToSession(
       kanbanSnapshot,
       status,
       completedAt,
+      ...opts?.runExtras,
     });
   }
   session.runs = runs;
@@ -115,7 +144,7 @@ export async function appendJobSnapshotToSession(
   try {
     await atomicWriteFile(sessionPath, JSON.stringify(session, null, 2));
     logger.debug(
-      `[SessionCleanup] Appended kanban snapshot for jobId=${jobId} (${jobType})`,
+      `[SessionCleanup] Appended kanban snapshot for jobId=${jobId} (${runJob})`,
     );
   } catch (err) {
     logger.warn(
@@ -124,6 +153,23 @@ export async function appendJobSnapshotToSession(
       err,
     );
   }
+}
+
+/**
+ * Canonical wrapper — resolves the per-jobType session path under
+ * `{featurePath}/sessions/{agent}/{jobType}.json` and appends the run.
+ * Missing file stays a no-op here (canonical sessions are runner-owned).
+ */
+export async function appendJobSnapshotToSession(
+  featurePath: string,
+  jobType: SessionableJobType,
+  jobId: string,
+  kanbanSnapshot: KanbanData,
+  status: SessionRunStatus,
+): Promise<void> {
+  const sessionPath = getSessionFilePathByJob(featurePath, jobType);
+  const job: AgentJob = jobType === 'plan' ? 'plan' : (jobType as AgentJob);
+  await appendRunToSessionFile(sessionPath, job, jobId, kanbanSnapshot, status);
 }
 
 /**
