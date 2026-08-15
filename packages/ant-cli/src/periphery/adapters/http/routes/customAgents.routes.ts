@@ -339,19 +339,9 @@ export function createCustomAgentRoutes(deps: {
     }
   });
 
-  router.get('/projects/:projectId/universal/artifacts/file', (req: Request, res: Response) => {
-    try {
-      const rel = String(req.query.path || '');
-      if (!rel) return res.status(400).json({ error: 'path query param is required' });
-      const full = resolveMergedPath(req, req.params.projectId, rel);
-      if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
-        return res.status(404).json({ error: `Artifact not found: ${rel}` });
-      }
-      res.download(full);
-    } catch (error: any) {
-      sendErrorResponse(res, 500, error, 'UniversalArtifacts');
-    }
-  });
+  // Download has one owner: GET /projects/:id/features/:feature/download
+  // (files.routes.ts) — it resolves the universal pseudo-feature through the
+  // same merged-view SSOT and zip-streams directories.
 
   router.delete('/projects/:projectId/universal/artifacts/file', (req: Request, res: Response) => {
     try {

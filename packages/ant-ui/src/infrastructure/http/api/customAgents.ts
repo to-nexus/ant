@@ -1,5 +1,7 @@
 import { API_BASE, authFetch, apiGet, apiPost, apiPatch, apiDelete, ApiError } from './client';
+import { UNIVERSAL_FEATURE } from '@ant/shared';
 import type { CustomAgentSummary, CustomJobSummary, CustomAgentScope } from '@ant/shared';
+import { getDownloadUrl } from './files';
 import type { UploadFileEntry } from './files';
 
 export type { CustomAgentSummary, CustomJobSummary, CustomAgentScope };
@@ -133,9 +135,13 @@ export async function uploadUniversalArtifacts(
   return { uploadedFiles: data?.uploadedFiles || [], count: data?.count || 0 };
 }
 
-/** Download URL for a universal artifact file (JWT cookie auth, browser navigation). */
+/**
+ * Download URL for a universal artifact (JWT cookie auth, browser navigation).
+ * Same route the codespace panel uses — it resolves the universal pseudo-feature
+ * to the container's merged view and zip-streams directories.
+ */
 export function getUniversalArtifactDownloadUrl(projectId: string, path: string): string {
-  return `${projectBase(projectId)}/universal/artifacts/file?path=${encodeURIComponent(path)}`;
+  return getDownloadUrl(projectId, UNIVERSAL_FEATURE, path);
 }
 
 export function createUniversalArtifactDirectory(

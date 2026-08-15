@@ -144,8 +144,12 @@ Per-project surfaces — discovery, and the workspace's shared artifact tree
 |------|------|-------|
 | GET  | `/api/projects/:id/custom-agents` | Agents/jobs available to this project. |
 | GET  | `/api/projects/:id/universal/artifacts/tree` | Artifact tree. `plan/` is listed first and is not deletable or renamable; a root `sessions` node is grafted last. |
-| GET  | `/api/projects/:id/universal/artifacts/file` | Read one file. |
 | POST | `/api/projects/:id/universal/artifacts/{upload,create-file,rename,mkdir}` | Mutations. `sessions` is reserved at the artifacts root → 400 `reserved-name-sessions`. |
+| DELETE | `/api/projects/:id/universal/artifacts/file?path=` | Delete. Canonical roots (`plan`, `sessions`) are cleared, not removed. |
+
+Reads and downloads reuse the codespace file routes with `UNIVERSAL_FEATURE`
+(`'universal'`) in the feature slot — `/api/projects/:id/features/universal/{files-raw,download}`
+resolve against the container's merged view; `download` zip-streams directories.
 
 A custom job is started through the normal job route with
 `jobType: 'universal'` plus `customJobRef: "{agentId}/{jobId}"`, and
