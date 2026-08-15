@@ -14,12 +14,22 @@
  * No supertest: a real Express app + node:http server on port 0, called via fetch.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import http from 'node:http';
 import express from 'express';
+
+// DELETE /jobs/:jobId clears BullMQ residue via the real InfrastructureFactory.
+// CI runs the suite with no Redis service, so an unmocked `getJobQueue()` opens
+// an ioredis socket that retries past the 30s test timeout and keeps the
+// in-flight request alive (the afterEach `server.close()` then hangs too).
+const jobQueueCancel = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock('../../src/infrastructure/adapters/InfrastructureFactory', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/infrastructure/adapters/InfrastructureFactory')>()),
+  getInfrastructureFactory: () => ({ getJobQueue: () => ({ cancel: jobQueueCancel }) }),
+}));
 
 import { createFeaturesRoutes } from '../../src/periphery/adapters/http/routes/features.routes';
 import { getSessionFilePathByJob } from '../../src/core/utils/sessionPaths';
@@ -275,6 +285,7 @@ describe('feature routes — universal container (phantom-path regression)', () 
 
     const res = await fetch(`${baseUrl}/projects/p1/features/universal/jobs/uni-1?type=universal`, { method: 'DELETE' });
     expect(res.status).toBe(200);
+    expect(jobQueueCancel).toHaveBeenCalledWith('uni-1');
 
     const session = JSON.parse(await fs.readFile(uniSessionPath(), 'utf-8'));
     expect(session.runs.map((r: any) => r.jobId)).toEqual(['uni-2']);
