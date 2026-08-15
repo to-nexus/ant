@@ -492,7 +492,8 @@ export interface ChatChoicePresentedLine extends LineBase {
   /**
    * Card subtype — renders via the UI's choice-card component:
    * 'triage_choice' | 'cancelled' | 'eval_save' | 'clarifying'
-   * | 'spec_complete' | string  (arbitrary future cardTypes are fine)
+   * | 'spec_complete' | 'plan_complete' | string
+   * (arbitrary future cardTypes are fine)
    */
   cardType: string;
   /** Prompt / title shown above the buttons */

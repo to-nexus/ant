@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as nodePath from 'path';
 import { universalResolveStrategy } from '../../src/agents/universal/graph/nodes/resolve';
+import { planCompleteCardWrites } from '../../src/agents/universal/graph/nodes/respond';
 import { formatTurnContextForChat } from '../../src/core/customAgents/turnContextChat';
 import {
   activateCustomJob,
@@ -294,5 +295,35 @@ describe('validateUniversalTurnMeta — accept gate', () => {
     const validate = await load();
     const result = await validate(container, CATALOG, [], context as unknown as string[]);
     expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+  });
+});
+
+describe('planCompleteCardWrites — deterministic plan-complete CTA gate', () => {
+  const PLAN_CTX = { intents: ['general'], context: [], planTurn: true, source: 'unpinned' } as const;
+
+  it.each([
+    ['plan turn + plan-dir writes → eligible paths',
+      { turnContext: PLAN_CTX, _turnToolWrites: ['plan/ops/weekly/plan.md'] },
+      ['plan/ops/weekly/plan.md']],
+    ['repeated write paths dedup',
+      { turnContext: PLAN_CTX, _turnToolWrites: ['plan/ops/weekly/plan.md', 'plan/ops/weekly/plan.md'] },
+      ['plan/ops/weekly/plan.md']],
+    ['plan turn without writes → no card',
+      { turnContext: PLAN_CTX, _turnToolWrites: [] },
+      null],
+    ['plan turn with only non-plan writes (defense) → no card',
+      { turnContext: PLAN_CTX, _turnToolWrites: ['reports/out.md'] },
+      null],
+    ['non-plan turn never offers the card, even with plan-dir writes',
+      { turnContext: { ...PLAN_CTX, planTurn: false }, _turnToolWrites: ['plan/ops/weekly/plan.md'] },
+      null],
+    ['no turnContext (resolve never ran) → no card',
+      { _turnToolWrites: ['plan/ops/weekly/plan.md'] },
+      null],
+    ['clarify pause suppresses the card — the clarify card IS the reply',
+      { turnContext: PLAN_CTX, _turnToolWrites: ['plan/ops/weekly/plan.md'], _clarifyPause: { toolUseId: 't1', question: 'q' } },
+      null],
+  ] as const)('%s', (_label, state, expected) => {
+    expect(planCompleteCardWrites(state as any)).toEqual(expected);
   });
 });

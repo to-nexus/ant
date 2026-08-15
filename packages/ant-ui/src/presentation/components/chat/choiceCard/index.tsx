@@ -24,6 +24,7 @@ import { CancelledVariant } from './CancelledVariant';
 import { ResumeConfirmVariant } from './ResumeConfirmVariant';
 import { EvalSaveVariant } from './EvalSaveVariant';
 import { SpecCompleteVariant } from './SpecCompleteVariant';
+import { PlanCompleteVariant } from './PlanCompleteVariant';
 import { ClarifyingVariant } from './ClarifyingVariant';
 
 interface ChoiceCardProps {
@@ -45,6 +46,8 @@ export const ChoiceCard = memo(function ChoiceCard({ presented, resolved }: Choi
       return <ClarifyingVariant presented={presented} resolved={resolved} />;
     case 'spec_complete':
       return <SpecCompleteVariant presented={presented} resolved={resolved} />;
+    case 'plan_complete':
+      return <PlanCompleteVariant presented={presented} resolved={resolved} />;
     default:
       return null;
   }

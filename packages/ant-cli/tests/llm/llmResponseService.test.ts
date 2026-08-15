@@ -304,6 +304,23 @@ describe('LLMResponseService — finalized line emission', () => {
     expect((lines[0] as any).workerScope).toBeUndefined();
   });
 
+  it('appendChoicePresented keeps plan_complete on _main_ — universal is single-scope', async () => {
+    // The synthetic-scope branch exists only for parallel-TaskWorker jobs
+    // (spec_complete); universal's linear graph orders by ts within _main_,
+    // so the plan-complete CTA must NOT mint a scope.
+    const { service, store } = makeService();
+    await service.appendChoicePresented({
+      cardId: 'plan-card-1',
+      cardType: 'plan_complete',
+      prompt: 'Plan Complete',
+      payload: { planFiles: ['plan/ops/weekly/plan.md'] },
+    });
+    const lines = emittedLines(store);
+    expect(lines).toHaveLength(1);
+    expect((lines[0] as any).cardType).toBe('plan_complete');
+    expect((lines[0] as any).workerScope).toBeUndefined();
+  });
+
   it('appendChoicePresented mints a synthetic workerScope for spec_complete', async () => {
     // chat-SSOT §섹션-정렬 — `_main_` is pinned to the FE first
     // section. Without a synthetic scope the spec_complete card
@@ -912,5 +929,30 @@ describe('LLMResponseService — cleanup', () => {
   it('drainBroadcaster resolves even when no publishes are pending', async () => {
     const { service } = makeService();
     await expect(service.drainBroadcaster()).resolves.toBeUndefined();
+  });
+});
+
+describe('buildChoiceCardMetadata — per-choice data key whitelist', () => {
+  it.each([
+    ['spec_complete keys', { specFile: 'a.md', specPath: 'architecture/spec/a.md', sourceFiles: ['p.md'], domain: 'service' },
+      { specFile: 'a.md', specPath: 'architecture/spec/a.md', sourceFiles: ['p.md'], domain: 'service' }],
+    ['plan_complete keys', { planFiles: ['plan/ops/weekly/plan.md'], customJobRef: 'ops/weekly', intents: ['report'], intentSource: 'pinned' },
+      { planFiles: ['plan/ops/weekly/plan.md'], customJobRef: 'ops/weekly', intents: ['report'], intentSource: 'pinned' }],
+    ['eval keys (response hoists as evalContent)', { evalType: 'ux', response: 'body' },
+      { evalType: 'ux', evalContent: 'body' }],
+    ['non-whitelisted keys are dropped', { targetJob: 'code', arbitrary: 'x' }, {}],
+  ] as const)('%s', async (_label, data, expected) => {
+    const { buildChoiceCardMetadata } = await import('../../src/core/adapters/ChatAPIClient');
+    const metadata = buildChoiceCardMetadata({
+      type: 'any',
+      title: 'T',
+      choices: [{ id: 'go', label: 'Go', action: 'redirect', data: data as Record<string, any> }],
+    });
+    expect(metadata).toEqual({
+      cardType: 'any',
+      title: 'T',
+      choices: [{ id: 'go', label: 'Go', action: 'redirect', data }],
+      ...expected,
+    });
   });
 });

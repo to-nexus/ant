@@ -101,6 +101,55 @@ async function initializeLLMResponseService(): Promise<LLMResponseService | null
 // Class
 // ═══════════════════════════════════════════════════════════════════════
 
+export interface ChoiceCardInput {
+  type: string;
+  title: string;
+  choices: Array<{
+    id: string;
+    label: string;
+    action: string;
+    data?: Record<string, any>;
+  }>;
+}
+
+/**
+ * Build the choice-card metadata bag: card identity + the per-choice `data`
+ * keys hoisted through an explicit whitelist (a key not listed here is
+ * silently dropped and never reaches the FE payload). Pure — unit-tested
+ * without the client's env gating.
+ */
+export function buildChoiceCardMetadata(card: ChoiceCardInput): Record<string, any> {
+  const metadata: Record<string, any> = {
+    cardType: card.type,
+    title: card.title,
+    choices: card.choices,
+  };
+  for (const choice of card.choices) {
+    if (choice.data) {
+      if (choice.data.evalType) metadata.evalType = choice.data.evalType;
+      if (choice.data.response) metadata.evalContent = choice.data.response;
+      if (choice.data.featurePath) metadata.featurePath = choice.data.featurePath;
+      if (choice.data.specFile) metadata.specFile = choice.data.specFile;
+      // spec_complete: explicit-pipeline metadata for the code job
+      // started from the "Start Development" button. The FE reads
+      // these to construct ActionMetadata so the resulting code job
+      // bypasses LLM detect re-interpretation of the directive.
+      if (choice.data.specPath) metadata.specPath = choice.data.specPath;
+      if (choice.data.sourceFiles) metadata.sourceFiles = choice.data.sourceFiles;
+      if (choice.data.domain) metadata.domain = choice.data.domain;
+      // plan_complete: continuation metadata for the follow-up universal
+      // turn (plan docs as @ctx, plan-turn intents re-pinned). The FE
+      // builds the follow-up from THIS payload, never from the current
+      // store selection (which may have drifted since the card landed).
+      if (choice.data.planFiles) metadata.planFiles = choice.data.planFiles;
+      if (choice.data.customJobRef) metadata.customJobRef = choice.data.customJobRef;
+      if (choice.data.intents) metadata.intents = choice.data.intents;
+      if (choice.data.intentSource) metadata.intentSource = choice.data.intentSource;
+    }
+  }
+  return metadata;
+}
+
 export class ChatAPIClient {
   private projectId: string;
   private featureName: string;
@@ -236,38 +285,9 @@ export class ChatAPIClient {
    * Send a generic choice card to the chat UI. Used for evaluation save
    * prompts and other interactive choices.
    */
-  async sendChoiceCard(card: {
-    type: string;
-    title: string;
-    choices: Array<{
-      id: string;
-      label: string;
-      action: string;
-      data?: Record<string, any>;
-    }>;
-  }): Promise<void> {
+  async sendChoiceCard(card: ChoiceCardInput): Promise<void> {
     if (!this.enabled) return;
-    const metadata: Record<string, any> = {
-      cardType: card.type,
-      title: card.title,
-      choices: card.choices,
-    };
-    for (const choice of card.choices) {
-      if (choice.data) {
-        if (choice.data.evalType) metadata.evalType = choice.data.evalType;
-        if (choice.data.response) metadata.evalContent = choice.data.response;
-        if (choice.data.featurePath) metadata.featurePath = choice.data.featurePath;
-        if (choice.data.specFile) metadata.specFile = choice.data.specFile;
-        // spec_complete: explicit-pipeline metadata for the code job
-        // started from the "Start Development" button. The FE reads
-        // these to construct ActionMetadata so the resulting code job
-        // bypasses LLM detect re-interpretation of the directive.
-        if (choice.data.specPath) metadata.specPath = choice.data.specPath;
-        if (choice.data.sourceFiles) metadata.sourceFiles = choice.data.sourceFiles;
-        if (choice.data.domain) metadata.domain = choice.data.domain;
-      }
-    }
-    await this.showChatStatus('choice_card', metadata);
+    await this.showChatStatus('choice_card', buildChoiceCardMetadata(card));
   }
 
   /**

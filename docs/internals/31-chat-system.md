@@ -180,8 +180,10 @@ A cancelled cardId must be unique across all tasks within one turn, so a turn-le
 |---------|------|
 | `triage_choice` | Work routing choice |
 | `cancelled` | Resume/ignore after work cancellation |
+| `resume_confirm` | Explicit consent before re-opening dismissed work |
 | `eval_save` | Save an evaluation report |
-| `spec_complete` | Confirm spec completion |
+| `spec_complete` | Confirm spec completion → start the code job |
+| `plan_complete` | Universal `@plan` turn wrote plan docs → proceed / review-and-edit / keep planning / later (see [44-universal-job.md](44-universal-job.md)) |
 | `clarifying` | Multiple questions during PRD generation (Compound Card) |
 
 ### Compound Clarifying Card

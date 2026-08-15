@@ -93,7 +93,11 @@ const WRITE_PATH_ARGS: Record<string, readonly string[]> = {
   copy_file: ['dest'],
 };
 
-function isUnderPlanDir(rawPath: string): boolean {
+/**
+ * SSOT for "inside the plan/ directory" — shared by the plan-turn write
+ * confinement below and respond's plan-complete CTA gate.
+ */
+export function isUnderPlanDir(rawPath: string): boolean {
   const normalized = rawPath.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
   return normalized === 'plan' || normalized.startsWith('plan/');
 }

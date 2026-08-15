@@ -367,6 +367,47 @@ is exactly the failure a plan turn exists to prevent. The plan itself lands at
 `plan/{agentId}/{jobId}/` and `resolve` lists it into `state.planDocs` on later
 turns (the plan-consumption gate).
 
+### Plan-complete CTA (`plan_complete` choice card)
+
+When a plan turn ends having actually written plan docs, `respondNode` emits a
+`plan_complete` choice card — the universal analog of the design job's
+`spec_complete` "Start Development" CTA, adapted from Claude Code's post-plan
+trio (proceed / proceed-with-approval / keep planning). ANT has no per-edit
+approval loop; the approval surface is the composer, so the options are:
+
+| Choice | Behavior (all FE-driven; resolution is a pure audit line) |
+|---|---|
+| `proceed` | Follow-up universal turn immediately: card-payload intents re-pinned, plan docs pinned as `@ctx`, auto directive, `plan` off. Resolution persists **after** a successful dispatch so a failed launch never takes the 24h per-cardId NX lock. |
+| `edit` | Arms the composer from the payload: `@intent`/`@ctx` chips into `universalTurnMeta` + directive via `pendingChatInput` — the user edits, then sends. |
+| `keep_planning` | Re-arms `@plan` + re-pins intents; no `@ctx` re-pin (resolve re-lists `plan/{agentId}/{jobId}/` into the Plan Documents band every turn). |
+| `later` | Dismiss. |
+
+The gate is `planCompleteCardWrites` (exported, pure): `turnContext.planTurn`
+∧ no `_clarifyPause` ∧ deduped `_turnToolWrites` filtered by `isUnderPlanDir`
+non-empty — plus an on-disk `fileExists` filter at emit time. Deterministic by
+construction: no LLM judgment, no tag (`OutputTagRegistry` untouched — choice
+cards are imperative `ChatAPIClient.sendChoiceCard` calls). Payload keys
+(`planFiles` / `customJobRef` / `intents` / `intentSource`) ride the explicit
+whitelist in `buildChoiceCardMetadata`; the FE variant pins from the CARD
+payload, never the live composer selection (which may have drifted). `general`
+is never re-pinned — an unpinned plan turn's follow-up re-resolves
+explicit → catalog default → general; a default-resolved id IS pinned to
+freeze it against later catalog edits. No synthetic workerScope: universal is
+single-scope, and the card (emitted after the artifact manifest, before the
+seal) orders by ts within `_main_`.
+
+Known degradation: `_turnToolWrites` is per-run, so a clarify pause loses
+pre-pause writes — a resumed run that writes nothing offers no card (same
+acceptance class as the pause skipping the checklist seal). Emission is
+log-and-swallow and sits before the session seal so a seal failure cannot
+swallow the CTA.
+
+Guards: `planCompleteCardWrites` rows in
+`tests/customAgents/universal-turn-context.test.ts`, the no-synthetic-scope +
+whitelist rows in `tests/llm/llmResponseService.test.ts`, the seam-order row
+in `tests/policy/learn-summary-ordering.test.ts`, and the FE pin table in
+`packages/ant-ui/tests/chat/planCompleteCard.test.ts`.
+
 ## Clarify — blocking questions via end-and-resume
 
 Universal's blocking-question surface is the **`clarify` TOOL**

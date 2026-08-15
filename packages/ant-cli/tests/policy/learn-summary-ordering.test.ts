@@ -86,4 +86,29 @@ describe('learn node job-summary ordering — after terminal signals, before dis
     expect(cardGate).toContain('!_isWorkerContext');
     expect(cardGate).toContain('!hasEarlyTermination');
   });
+
+  it('universal respond: plan-complete CTA is after the artifact manifest, before the session seal', () => {
+    // Same seam rationale as the design CTA: the card is the turn's last
+    // chat signal (follows the manifest it refers to), and it precedes the
+    // seal so a seal failure can't swallow it. `endJob` stays terminal.
+    const src = readFileSync(
+      resolve(__dirname, '../../src/agents/universal/graph/nodes/respond.ts'),
+      'utf-8',
+    );
+
+    const manifest = at(src, 'Artifacts written this turn');
+    const planCard = at(src, 'await emitPlanCompleteCard(');
+    const seal = at(src, 'Session seal');
+    const endJob = at(src, 'workflowUpdate.endJob(');
+
+    expect(manifest).toBeGreaterThan(-1);
+    expect(planCard).toBeGreaterThan(manifest);
+    expect(planCard).toBeLessThan(seal);
+    expect(endJob).toBeGreaterThan(seal);
+
+    // Exactly one emission, gated on the pure deterministic predicate.
+    expect(src.split('await emitPlanCompleteCard(').length - 1).toBe(1);
+    const cardGate = src.slice(Math.max(0, planCard - 300), planCard);
+    expect(cardGate).toContain('planCompleteCardWrites(state)');
+  });
 });

@@ -453,7 +453,7 @@ export function createJobRoutes(deps: {
       // resolve the container path that flows where a featurePath would. The
       // `:feature` URL param must be the constant universal pseudo-feature.
       let universalCtx: { containerPath: string; ref: { agentId: string; jobId: string } } | null = null;
-      let universalTurnMeta: { intents: string[]; context: string[] } | null = null;
+      let universalTurnMeta: { intents: string[]; context: string[]; plan?: boolean } | null = null;
       if (jobType === 'universal') {
         const { UNIVERSAL_FEATURE } = await import('@ant/shared');
         if (featureName !== UNIVERSAL_FEATURE) {

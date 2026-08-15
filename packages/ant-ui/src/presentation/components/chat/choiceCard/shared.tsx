@@ -28,16 +28,6 @@ import { TurnCardShell, type TurnCardAccent } from '../cards/TurnCardShell';
 // Types
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export type ChoiceVariant =
-  | 'triage_choice' | 'cancelled' | 'eval_save'
-  | 'clarifying' | 'spec_complete';
-
-export interface ChoiceCardProps {
-  presented: ChatChoicePresentedLine;
-  resolved?: ChatChoiceResolvedLine;
-  variant: ChoiceVariant;
-}
-
 export interface VariantProps {
   presented: ChatChoicePresentedLine;
   resolved?: ChatChoiceResolvedLine;
@@ -354,9 +344,12 @@ export function VerticalChoiceLayout({
   negativeLabel,
   isLoading,
   loadingAction,
+  loadingLabel = '처리 중...',
   onPositive,
   onNeutral,
   onNegative,
+  dismissLabel,
+  onDismiss,
   theme,
 }: {
   positiveLabel: string;
@@ -364,9 +357,14 @@ export function VerticalChoiceLayout({
   negativeLabel: string;
   isLoading: boolean;
   loadingAction: 'positive' | 'neutral' | null;
+  /** Spinner caption while an action is in flight (defaults to the legacy Korean literal). */
+  loadingLabel?: string;
   onPositive: () => void;
   onNeutral: () => void;
   onNegative: () => void;
+  /** Optional subdued dismiss row under the stack (both required to render). */
+  dismissLabel?: string;
+  onDismiss?: () => void;
   theme: ThemeColor;
 }) {
   const t = THEMES[theme];
@@ -383,7 +381,7 @@ export function VerticalChoiceLayout({
         {isLoading && loadingAction === 'positive' ? (
           <span className="flex items-center justify-center gap-2">
             <Spinner size="md" tone="inverse" />
-            처리 중...
+            {loadingLabel}
           </span>
         ) : (
           positiveLabel
@@ -399,7 +397,7 @@ export function VerticalChoiceLayout({
         {isLoading && loadingAction === 'neutral' ? (
           <span className="flex items-center justify-center gap-2">
             <Spinner size="md" tone="inherit" />
-            처리 중...
+            {loadingLabel}
           </span>
         ) : (
           neutralLabel
@@ -414,6 +412,17 @@ export function VerticalChoiceLayout({
       >
         {negativeLabel}
       </button>
+      {dismissLabel && onDismiss && (
+        <button
+          type="button"
+          onClick={onDismiss}
+          disabled={disabled}
+          className={`w-full px-4 py-1.5 text-xs transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          style={{ background: 'transparent', color: 'var(--text-3)' }}
+        >
+          {dismissLabel}
+        </button>
+      )}
     </div>
   );
 }

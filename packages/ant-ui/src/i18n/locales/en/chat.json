@@ -341,6 +341,18 @@
   "universal": {
     "selectJob": "Select a custom job",
     "selectAgent": "Select an agent",
-    "agentsLoadFailed": "Could not load agents: {{message}}"
+    "agentsLoadFailed": "Could not load agents: {{message}}",
+    "planComplete": {
+      "proceed": "Proceed with this plan",
+      "proceedLoading": "Starting...",
+      "edit": "Review & edit before proceeding",
+      "keepPlanning": "Keep planning",
+      "later": "Later",
+      "proceedDirective": "Proceed with the work as planned in: {{files}}",
+      "resolvedProceed": "Proceeding with the plan",
+      "resolvedEdit": "Editing before proceeding",
+      "resolvedKeepPlanning": "Continuing planning",
+      "dismissed": "Dismissed"
+    }
   }
 }
