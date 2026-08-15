@@ -12,6 +12,7 @@
 import { Annotation } from '@langchain/langgraph';
 import { ResolvableFields } from '../../common/graph/annotationHelpers';
 import type { ResolvableState } from '../../common/graph/annotationHelpers';
+import { GENERAL_INTENT } from '@ant/shared';
 import type { UniversalChecklist } from '@ant/shared';
 import type { Conversations } from '../../common/graph/conversations';
 
@@ -44,13 +45,46 @@ export interface UniversalTurnContext {
   /** `@plan` — while true the tool node confines writes to `plan/`. */
   planTurn: boolean;
   /**
-   * Which of the three deterministic resolution steps produced `intents` —
-   * `@` mentions, the catalog's `default: true` intent, or the `general`
-   * fallback. Never `'infer'`: no step classifies. The chat card reads this,
-   * and `'unpinned'` is the one value the author needs to see (no declared
-   * intent is active, so mapped injections stayed on the TOC).
+   * Which of the four deterministic resolution steps produced `intents` —
+   * `@` mentions, clarify-continuity inheritance, the catalog's
+   * `default: true` intent, or the `general` fallback. Never `'infer'`: no
+   * step classifies. Names the INTENT facet's provenance only (an @ctx-only
+   * turn does not claim `pinned`). The chat card reads this, and `'unpinned'`
+   * is the one value the author needs to see (no declared intent is active,
+   * so mapped injections stayed on the TOC).
    */
-  source: 'pinned' | 'default' | 'unpinned';
+  source: 'pinned' | 'default' | 'unpinned' | 'inherited';
+}
+
+/**
+ * The facets of a paused turn's context that survive the clarify pause
+ * (`source` is re-derived by the answer turn's resolve — never inherited).
+ */
+export type InheritedTurnContext = Pick<UniversalTurnContext, 'intents' | 'context' | 'planTurn'>;
+
+/**
+ * Parse the sealed `clarifyTurnContext` (JSON round-trip — sanitize every
+ * field). Returns undefined when malformed OR contentless: a general-only,
+ * context-free, non-plan seal inherits nothing the answer turn would not
+ * re-derive deterministically, and dropping it keeps the `unpinned` banner
+ * (with its catalog choice list) instead of a meaningless `inherited`.
+ */
+export function parseSealedTurnContext(raw: unknown): InheritedTurnContext | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const intents = Array.isArray(o.intents)
+    ? o.intents.filter((i): i is string => typeof i === 'string')
+    : [];
+  const context = Array.isArray(o.context)
+    ? o.context.filter((c): c is string => typeof c === 'string')
+    : [];
+  const planTurn = o.planTurn === true;
+  // A `['general']` intent list (the paused turn was unpinned) is normalized
+  // to [] so the answer turn re-resolves intents through default/general
+  // while still inheriting context/planTurn when those were the content.
+  const meaningfulIntents = intents.filter((i) => i !== GENERAL_INTENT);
+  if (meaningfulIntents.length === 0 && context.length === 0 && !planTurn) return undefined;
+  return { intents: meaningfulIntents.length > 0 ? intents : [], context, planTurn };
 }
 
 export interface UniversalGraphState extends ResolvableState {
@@ -103,6 +137,14 @@ export interface UniversalGraphState extends ResolvableState {
   /** Clarify pauses spent this (agent, job) session — seal-restored, budget input. */
   clarifyRoundsUsed?: number;
   /**
+   * Clarify continuity — the paused turn's sealed context, restored by the
+   * runner ONLY when THIS run closes a dangling clarify tool_use (structural
+   * gate; the seal marker stays advisory). Input tier below explicit mentions
+   * in buildTurnContext; never re-sealed as-is (respond seals the RESOLVED
+   * turnContext). Per-run input, like explicitIntents.
+   */
+  inheritedTurnContext?: InheritedTurnContext;
+  /**
    * Set by clarifyPauseNode when THIS run ends on a clarify question —
    * routes tool→respond and shapes the seal. Per-run only, never restored.
    */
@@ -132,6 +174,7 @@ export const UniversalAnnotation = Annotation.Root({
   explicitContext: Annotation<string[] | undefined>,
   planRequested: Annotation<boolean | undefined>,
   clarifyRoundsUsed: Annotation<number | undefined>,
+  inheritedTurnContext: Annotation<InheritedTurnContext | undefined>,
   _clarifyPause: Annotation<{ toolUseId: string; question: string } | undefined>,
 } as const);
 
@@ -155,6 +198,8 @@ export function createInitialUniversalState(params: {
   explicitContext?: string[];
   /** `@plan` per-turn plan-mode request. */
   planRequested?: boolean;
+  /** Paused turn's context, adopted only when this run closes a dangling clarify. */
+  inheritedTurnContext?: InheritedTurnContext;
 }): UniversalGraphState {
   return {
     featurePath: params.containerPath,
@@ -181,5 +226,6 @@ export function createInitialUniversalState(params: {
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,
+    inheritedTurnContext: params.inheritedTurnContext,
   } as unknown as UniversalGraphState;
 }

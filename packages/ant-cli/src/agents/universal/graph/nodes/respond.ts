@@ -156,6 +156,11 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
           awaitingClarify: true,
           clarifyToolUseId: state._clarifyPause.toolUseId,
           clarifyQuestion: state._clarifyPause.question,
+          // Clarify continuity: the RESOLVED turn context survives the pause
+          // so the answer turn re-runs under the same intents/@ctx/plan
+          // confinement. Rides only the paused seal — self-clears at the
+          // next non-paused seal, exactly like the markers above.
+          ...(state.turnContext && { clarifyTurnContext: state.turnContext }),
         }),
       };
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });

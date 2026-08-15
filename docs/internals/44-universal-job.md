@@ -454,11 +454,27 @@ verdicts, each load-bearing:
   (`JobCleanupManager.shouldSuppressCancelledCardForClarify` checks
   `=== true`); `clarifyToolUseId` / `clarifyQuestion` ride as separate fields
   and are omitted on non-paused seals (stale markers self-clear).
+- **Turn-context continuity across the pause.** The paused seal additionally
+  carries `clarifyTurnContext` — the RESOLVED turn context (intents / `@ctx`
+  / `planTurn`), not the raw mentions. The runner restores it ONLY when its
+  turn admission structurally closes the dangling `tool_use` (same gate as
+  the closer above; `parseSealedTurnContext` sanitizes, and a general-only
+  content-free seal restores nothing). Resolve's intent ladder is
+  explicit → inherited → catalog default → general, with banner source
+  `inherited` / `승계`. Without this, an answer turn re-resolved from scratch
+  and a `writing`-pinned turn's clarify answer ran as `general`. This rides
+  the state-restore plane (same seal as `conversations` / `checklist`) — it
+  is NOT a second turn-meta transport; `ANT_UNIVERSAL_TURN_META` stays the
+  only cross-process channel, and an explicit mention on the answer turn
+  still wins. The no-reply closure inherits too (plan-write confinement must
+  not drop on a defaults-run); the crash-path save never writes it. Like
+  every marker above it self-clears at the first non-paused seal.
 - **No dismiss affordance, by design.** Nothing is running while awaiting —
   there is no live call to interrupt. Typing past the card IS the dismissal
   (canonical behavior inherited: answers merge, card resolves `'skipped'`).
 
-Guard: `tests/customAgents/universal-clarify.test.ts`.
+Guard: `tests/customAgents/universal-clarify.test.ts` (seal/restore rows) and
+`tests/customAgents/universal-turn-context.test.ts` (inheritance ladder rows).
 
 ## Prompt injection (1-4)
 

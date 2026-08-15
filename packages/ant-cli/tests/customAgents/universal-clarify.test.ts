@@ -26,6 +26,7 @@ import type { CustomIntentDef } from '@ant/shared';
 import { buildAdvertisedTools } from '../../src/agents/universal/graph/nodes/agent';
 import { universalToolNodeConfig, isClarifyAllowedNow, routeAfterTool } from '../../src/agents/universal/graph/nodes/tool';
 import { respondNode } from '../../src/agents/universal/graph/nodes/respond';
+import { parseSealedTurnContext } from '../../src/agents/universal/graph/state';
 import { _resetUniversalRuntimeForTests } from '../../src/agents/universal/graph/runtime';
 import { CONV_KEYS } from '../../src/agents/common/graph/conversations';
 
@@ -231,7 +232,11 @@ describe('routeAfterTool — pure predicate', () => {
 });
 
 describe('respond seal — I2-compatible clarify markers', () => {
-  function makeState(clarifyPause: { toolUseId: string; question: string } | undefined, updateArtifacts: any) {
+  function makeState(
+    clarifyPause: { toolUseId: string; question: string } | undefined,
+    updateArtifacts: any,
+    turnContext?: { intents: string[]; context: string[]; planTurn: boolean; source: string },
+  ) {
     return {
       projectId: 'proj',
       language: 'en',
@@ -241,6 +246,7 @@ describe('respond seal — I2-compatible clarify markers', () => {
       conversations: { [CONV_KEYS.SESSION_MAIN]: [{ role: 'user', content: 'hi' }] },
       clarifyRoundsUsed: 1,
       _clarifyPause: clarifyPause,
+      turnContext,
       deps: { session: { updateArtifacts } },
     } as any;
   }
@@ -266,5 +272,44 @@ describe('respond seal — I2-compatible clarify markers', () => {
     expect('clarifyToolUseId' in sealed).toBe(false);
     expect('clarifyQuestion' in sealed).toBe(false);
     expect(sealed.clarifyRoundsUsed).toBe(1);
+  });
+
+  it('paused seal carries the RESOLVED turn context (clarify continuity)', async () => {
+    activateCustomJob(makeResolved());
+    const updateArtifacts = vi.fn(async (..._args: any[]) => undefined);
+    const tc = { intents: ['writing'], context: ['plan/notes.md'], planTurn: true, source: 'pinned' };
+    await respondNode(makeState({ toolUseId: 'tu_9', question: 'q' }, updateArtifacts, tc));
+    expect(updateArtifacts.mock.calls[0][3].state.clarifyTurnContext).toEqual(tc);
+  });
+
+  it('non-paused seal omits clarifyTurnContext (stale continuity self-clears)', async () => {
+    activateCustomJob(makeResolved());
+    const updateArtifacts = vi.fn(async (..._args: any[]) => undefined);
+    const tc = { intents: ['writing'], context: [], planTurn: false, source: 'pinned' };
+    await respondNode(makeState(undefined, updateArtifacts, tc));
+    expect('clarifyTurnContext' in updateArtifacts.mock.calls[0][3].state).toBe(false);
+  });
+});
+
+// ── restore sanitation (runner-side inheritance input) ──────────────────────
+
+describe('parseSealedTurnContext — restore sanitation table', () => {
+  it.each([
+    ['full pinned seal round-trips (source dropped)',
+      { intents: ['writing'], context: ['a.md'], planTurn: true, source: 'pinned' },
+      { intents: ['writing'], context: ['a.md'], planTurn: true }],
+    ['contentless general seal inherits nothing',
+      { intents: ['general'], context: [], planTurn: false, source: 'unpinned' },
+      undefined],
+    ['general intents but planTurn true → context/plan inherit, intents reset',
+      { intents: ['general'], context: [], planTurn: true, source: 'default' },
+      { intents: [], context: [], planTurn: true }],
+    ['missing seal → undefined', undefined, undefined],
+    ['malformed (string) → undefined', 'nope', undefined],
+    ['non-string entries filtered, non-boolean planTurn coerced false',
+      { intents: ['a', 7], context: [null, 'b.md'], planTurn: 'yes' },
+      { intents: ['a'], context: ['b.md'], planTurn: false }],
+  ] as const)('%s', (_label, raw, expected) => {
+    expect(parseSealedTurnContext(raw as any)).toEqual(expected);
   });
 });

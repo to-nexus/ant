@@ -8,14 +8,16 @@
  *
  * Also the SINGLE writer of `state.turnContext` — every field is
  * deterministic from runner inputs plus the loaded definition (explicit
- * `@intent:`/`@ctx:` mentions, the `@plan` flag, the catalog's `default`
- * intent), so no LLM pass is involved. Unpinned turns resolve
- * explicit → catalog default intent → `['general']`; under `general` every
- * definition injection stays on the TOC, where the rendered Intent Catalog
- * (id + criterion per row — see `buildCustomJobSystemBlock`) is what makes
- * read_file self-selection an informed choice. The resolution is announced to
- * chat here (`turnContextChat`) — `unpinned` is otherwise a silent fallback
- * indistinguishable from the intent the author meant.
+ * `@intent:`/`@ctx:` mentions, the `@plan` flag, the sealed clarify
+ * continuity, the catalog's `default` intent), so no LLM pass is involved.
+ * Intents resolve explicit → inherited (clarify continuity) → catalog
+ * default → `['general']`; under `general` every definition injection stays
+ * on the TOC, where the rendered Intent Catalog (id + criterion per row —
+ * see `buildCustomJobSystemBlock`) is what makes read_file self-selection an
+ * informed choice. `source` names the intent facet's provenance only. The
+ * resolution is announced to chat here (`turnContextChat`) — `unpinned` is
+ * otherwise a silent fallback indistinguishable from the intent the author
+ * meant.
  *
  * And the plan-consumption gate's deterministic half: lists existing plan
  * documents under `plan/{agentId}/{jobId}/` (disk = SSOT, survives
@@ -69,24 +71,46 @@ async function listPlanDocs(state: UniversalGraphState, planDocsDir: string): Pr
 }
 
 /**
- * Unpinned turns resolve `explicit → catalog default intent → general` —
- * still a pure function; the default is an author registration-time
- * declaration, so its activation (injections AND the clarify knob) carries
- * the same authority as a pinned mention.
+ * Per-facet deterministic resolution — still a pure function, no LLM:
+ *   intents:  explicit `@intent:` > inherited (clarify continuity) >
+ *             catalog default > general
+ *   context:  explicit `@ctx:` (replace, never merged) > inherited
+ *   planTurn: `@plan` OR inherited (plan-write confinement never drops
+ *             mid-plan across a clarify pause)
+ * The default is an author registration-time declaration, so its activation
+ * (injections AND the clarify knob) carries the same authority as a pinned
+ * mention; an inherited intent outranks it because the paused turn already
+ * resolved against the catalog. `source` names the INTENT facet's provenance
+ * only — an @ctx-only turn no longer claims `pinned` while its intents fell
+ * back to default/general.
  */
 export function buildTurnContext(
-  state: Pick<UniversalGraphState, 'explicitIntents' | 'explicitContext' | 'planRequested'>,
+  state: Pick<UniversalGraphState, 'explicitIntents' | 'explicitContext' | 'planRequested' | 'inheritedTurnContext'>,
   defaultIntentId: string | undefined,
 ): UniversalTurnContext {
-  const explicit = (state.explicitIntents?.length ?? 0) > 0 || (state.explicitContext?.length ?? 0) > 0;
-  const intents = state.explicitIntents?.length
-    ? state.explicitIntents
-    : [defaultIntentId ?? GENERAL_INTENT];
+  const inherited = state.inheritedTurnContext;
+  const pinnedIntents = (state.explicitIntents?.length ?? 0) > 0;
+  const inheritedIntents = !pinnedIntents && (inherited?.intents.length ?? 0) > 0;
+
+  const intents = pinnedIntents
+    ? state.explicitIntents!
+    : inheritedIntents
+      ? inherited!.intents
+      : [defaultIntentId ?? GENERAL_INTENT];
+  const context = state.explicitContext?.length
+    ? state.explicitContext
+    : inherited?.context ?? [];
   return {
     intents,
-    context: state.explicitContext ?? [],
-    planTurn: state.planRequested === true,
-    source: explicit ? 'pinned' : defaultIntentId ? 'default' : 'unpinned',
+    context,
+    planTurn: state.planRequested === true || inherited?.planTurn === true,
+    source: pinnedIntents
+      ? 'pinned'
+      : inheritedIntents
+        ? 'inherited'
+        : defaultIntentId
+          ? 'default'
+          : 'unpinned',
   };
 }
 

@@ -21,7 +21,7 @@
 import type { CustomIntentDef } from '@ant/shared';
 import { sanitizeCell } from './promptBlock.js';
 
-export type TurnContextSource = 'pinned' | 'default' | 'unpinned';
+export type TurnContextSource = 'pinned' | 'default' | 'unpinned' | 'inherited';
 
 export interface TurnContextChatInput {
   agentName: string;
@@ -45,6 +45,7 @@ interface Labels {
   sourcePinned: string;
   sourceDefault: string;
   sourceUnpinned: string;
+  sourceInherited: string;
   choices: string;
   injections: string;
   context: string;
@@ -58,6 +59,7 @@ const KO: Labels = {
   sourcePinned: '지정됨',
   sourceDefault: '카탈로그 기본값',
   sourceUnpinned: '미지정 — 기본 인텐트 없음',
+  sourceInherited: '승계 — 질문 턴에서 이어짐',
   choices: '선택 가능',
   injections: '활성 지침',
   context: '첨부 컨텍스트',
@@ -71,6 +73,7 @@ const EN: Labels = {
   sourcePinned: 'pinned',
   sourceDefault: 'catalog default',
   sourceUnpinned: 'unpinned — no default intent',
+  sourceInherited: 'inherited — carried across the clarify pause',
   choices: 'Selectable',
   injections: 'Active instructions',
   context: 'Attached context',
@@ -83,6 +86,7 @@ function sourceLabel(source: TurnContextSource, l: Labels): string {
     case 'pinned': return l.sourcePinned;
     case 'default': return l.sourceDefault;
     case 'unpinned': return l.sourceUnpinned;
+    case 'inherited': return l.sourceInherited;
   }
 }
 

@@ -12,7 +12,7 @@
 
 import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { buildUniversalGraph } from './graph';
-import { createInitialUniversalState, type UniversalGraphState } from './state';
+import { createInitialUniversalState, parseSealedTurnContext, type InheritedTurnContext, type UniversalGraphState } from './state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph/conversations';
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
@@ -78,6 +78,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let restoredTokenUsageByModel: any;
   let restoredChecklist: import('@ant/shared').UniversalChecklist | undefined;
   let restoredClarifyRounds: number | undefined;
+  let restoredClarifyContext: InheritedTurnContext | undefined;
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
@@ -92,6 +93,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         if (typeof sessionState.clarifyRoundsUsed === 'number' && sessionState.clarifyRoundsUsed > 0) {
           restoredClarifyRounds = sessionState.clarifyRoundsUsed;
         }
+        restoredClarifyContext = parseSealedTurnContext(sessionState.clarifyTurnContext);
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
     } catch (e) {
@@ -107,24 +109,28 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   // compaction (the pair rides the hot tail in the agent node).
   const conversations = restoredConversations ?? {};
   const main = [...(conversations[CONV_KEYS.SESSION_MAIN] ?? [])];
+  // Clarify continuity applies ONLY when this run structurally closes the
+  // dangling call — the sealed context is advisory, like the seal markers.
+  const dangling = findDanglingClarifyToolUse(main);
+  let inheritedTurnContext: InheritedTurnContext | undefined;
   if (params.input && params.input.trim().length > 0) {
-    const dangling = findDanglingClarifyToolUse(main);
     if (dangling) {
       console.log(`🙋 [Universal] Clarify answered — closing tool_use ${dangling.toolUseId}`);
       main.push(buildClarifyToolResultTurn(dangling.toolUseId, params.input) as ConversationMessage);
+      inheritedTurnContext = restoredClarifyContext;
     } else {
       main.push({ role: 'user', content: params.input });
     }
   } else if (main.length === 0) {
     throw new Error('[Universal] Empty input on a fresh session — nothing to do');
-  } else {
+  } else if (dangling) {
     // Empty-input run on a restored session: still close a dangling clarify
     // tool_use — transcript validity is the invariant, whatever the content.
-    const dangling = findDanglingClarifyToolUse(main);
-    if (dangling) {
-      console.warn(`⚠️ [Universal] Empty input on a clarify-awaiting session — closing tool_use ${dangling.toolUseId} with a no-reply note`);
-      main.push(buildClarifyToolResultTurn(dangling.toolUseId, '(no reply — proceed with sensible defaults and state the assumption)') as ConversationMessage);
-    }
+    // The defaults-run inherits too: plan confinement and pinned intents
+    // must not silently drop on a no-reply closure.
+    console.warn(`⚠️ [Universal] Empty input on a clarify-awaiting session — closing tool_use ${dangling.toolUseId} with a no-reply note`);
+    main.push(buildClarifyToolResultTurn(dangling.toolUseId, '(no reply — proceed with sensible defaults and state the assumption)') as ConversationMessage);
+    inheritedTurnContext = restoredClarifyContext;
   }
   conversations[CONV_KEYS.SESSION_MAIN] = main;
 
@@ -186,6 +192,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     explicitIntents: params.explicitIntents,
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,
+    inheritedTurnContext,
   });
   if (restoredTokenUsage) (initialState as any).tokenUsage = restoredTokenUsage;
   if (restoredTokenUsageByModel) (initialState as any).tokenUsageByModel = restoredTokenUsageByModel;
