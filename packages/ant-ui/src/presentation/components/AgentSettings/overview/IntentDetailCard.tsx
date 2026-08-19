@@ -20,7 +20,7 @@
  * and no directory is created before it is real.
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Textarea } from '@/presentation/components/aurora';
 import { AuroraSelect, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
@@ -52,6 +52,30 @@ export function IntentDetailCard({
     if (empty) textareaRef.current?.focus();
   }, [empty, intentId]);
 
+  // The criterion is markdown prose an author hard-wraps at their own column,
+  // so a fixed row count clips it mid-line. Size to the rendered height,
+  // clamped so a criterion near the 1000-char cap scrolls instead of stretching
+  // the card. Measured on mount too (the raw ⇄ form toggle remounts the field)
+  // and on resize, since the wrap depends on the card's width.
+  const fit = useCallback((el: HTMLTextAreaElement | null) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 150), 420)}px`;
+  }, []);
+  const attachTextarea = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      textareaRef.current = el;
+      fit(el);
+    },
+    [fit],
+  );
+  useEffect(() => {
+    fit(textareaRef.current);
+    const onResize = () => fit(textareaRef.current);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fit, entry?.description, intentId]);
+
   if (!docs.loaded) return null;
 
   const clarifyValue = entry?.clarify === undefined ? 'inherit' : entry.clarify ? 'on' : 'off';
@@ -69,7 +93,6 @@ export function IntentDetailCard({
       doc={doc}
       readonly={ctx.readonly}
       onRawChange={(text) => docs.setRaw(inferDocKey(intentId), text)}
-      bodyMaxWidth={560}
       rawLabel={t('overview.viewRaw', 'Raw')}
       parseErrorLabel={t('overview.inferParseError', 'Frontmatter error — the form is disabled and saving is blocked')}
     >
@@ -91,12 +114,13 @@ export function IntentDetailCard({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <Textarea
-              ref={textareaRef}
+              ref={attachTextarea}
               value={entry.description}
               disabled={disabled}
               onChange={(e) => docs.updateIntent(intentId, { description: e.target.value })}
               placeholder={t('overview.intentDescription', 'When does this intent apply? (rendered verbatim as a catalog entry)')}
               rows={6}
+              style={{ lineHeight: 1.6, resize: 'none', overflowY: 'auto' }}
             />
             <span style={{ fontSize: 10.5, color: 'var(--text-4)', alignSelf: 'flex-end' }}>
               {t('intent.criteriaChars', '{{count}}/{{max}}', {
