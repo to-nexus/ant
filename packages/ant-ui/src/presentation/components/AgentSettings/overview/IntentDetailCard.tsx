@@ -45,7 +45,7 @@ export function IntentDetailCard({
   const doc = docs.inferDocs[intentId] ?? null;
   const entry = docs.intents.find((e) => e.id === intentId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const empty = entry != null && entry.description.trim().length === 0;
+  const empty = entry != null && entry.infer.trim().length === 0;
   const disabled = ctx.readonly || doc?.parseError != null;
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export function IntentDetailCard({
     const onResize = () => fit(textareaRef.current);
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [fit, entry?.description, intentId]);
+  }, [fit, entry?.infer, intentId]);
 
   if (!docs.loaded) return null;
 
@@ -115,16 +115,16 @@ export function IntentDetailCard({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <Textarea
               ref={attachTextarea}
-              value={entry.description}
+              value={entry.infer}
               disabled={disabled}
-              onChange={(e) => docs.updateIntent(intentId, { description: e.target.value })}
-              placeholder={t('overview.intentDescription', 'When does this intent apply? (rendered verbatim as a catalog entry)')}
+              onChange={(e) => docs.updateIntent(intentId, { infer: e.target.value })}
+              placeholder={t('overview.intentInfer', 'When does this intent apply? (rendered verbatim as a catalog entry)')}
               rows={6}
               style={{ lineHeight: 1.6, resize: 'none', overflowY: 'auto' }}
             />
             <span style={{ fontSize: 10.5, color: 'var(--text-4)', alignSelf: 'flex-end' }}>
               {t('intent.criteriaChars', '{{count}}/{{max}}', {
-                count: entry.description.length,
+                count: entry.infer.length,
                 max: INFER_CRITERION_MAX,
               })}
             </span>

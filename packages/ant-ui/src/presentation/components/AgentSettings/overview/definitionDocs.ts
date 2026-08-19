@@ -284,12 +284,12 @@ export function applyMcpServers(doc: Document, servers: Record<string, McpServer
 }
 
 /**
- * Intent edits are SURGICAL per file: `description`/`clarify` splice the
+ * Intent edits are SURGICAL per file: `infer`/`clarify` splice the
  * infer.md text (`applyInferBody` / `applyInferClarify` — fence comments
  * survive), `hooks` routes to the sibling hooks.yaml document. There is no
  * yaml entry document anymore — infer.md is prose + a one-key fence.
  */
-export type IntentPatch = Partial<Pick<CustomIntentDef, 'description' | 'hooks' | 'clarify'>>;
+export type IntentPatch = Partial<Pick<CustomIntentDef, 'infer' | 'hooks' | 'clarify'>>;
 
 /** Write one hooks.yaml's `hooks.stop` list; an empty list deletes the `hooks` key. */
 export function applyHooks(doc: Document, stop: IntentStopHook[]): void {

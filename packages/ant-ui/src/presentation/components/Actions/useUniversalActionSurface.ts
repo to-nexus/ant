@@ -64,10 +64,12 @@ export function useUniversalActionSurface(): UniversalActionSurface {
       }),
       icon: Briefcase,
     })),
+    // No subtitle: an intent's `infer` criterion is prompt text (rendered into
+    // the Intent Catalog every turn), not UI copy — the same rule the tab strip
+    // follows. The full criterion stays on the intent detail page.
     intentChipItems: intents.map((intent) => ({
       id: intent.id,
       label: intent.id,
-      description: intent.description,
       icon: Target,
       selected: armedIntents.includes(intent.id),
     })),

@@ -129,7 +129,7 @@ export function buildCustomJobSystemBlock(
         )
         .join(', ');
       const head = `- **${sanitizeCell(intent.id)}**${hookSuffix ? ` — stop hook: ${hookSuffix}` : ''}`;
-      const criterion = `  applies when: ${sanitizeBlock(intent.description)}`;
+      const criterion = `  applies when: ${sanitizeBlock(intent.infer)}`;
       // A loadable path next to already-present content invites a wasted
       // round-trip, so an inlined prompt is marked instead of pathed.
       const promptLine = inlinedSet.has(intent.id)

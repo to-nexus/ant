@@ -40,8 +40,16 @@ export const CUSTOM_AGENT_SCOPE_PRIORITY: readonly CustomAgentScope[] = [
 export interface CustomIntentDef {
   /** {@link CUSTOM_ID_PATTERN} — IS the `intents/{intentId}/` directory name (never declared in a file); `'general'` is reserved. */
   id: string;
-  /** Inference criterion — the `infer.md` prose body, rendered into the Intent Catalog every turn. */
-  description: string;
+  /**
+   * Inference criterion — the `infer.md` prose body, rendered into the Intent
+   * Catalog every turn as `applies when: …`.
+   *
+   * PROMPT TEXT, NOT UI COPY. It is never posted as a user message (a job
+   * directive is minted from a localized template), never a chip or tab
+   * subtitle, and never a job description. The field is deliberately NOT
+   * called `description` — that name is what let it leak into all three.
+   */
+  infer: string;
   /**
    * Clarify-tool opt-out at intent granularity (`infer.md` frontmatter).
    * `false` declares turns under this intent autonomous/unattended: the agent

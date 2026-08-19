@@ -100,7 +100,7 @@ export function validateInferFile(
   intentId: string,
   agentId: string,
   jobId?: string,
-): { description: string; clarify?: boolean } {
+): { infer: string; clarify?: boolean } {
   assertNotGeneral(intentId, agentId, jobId);
   const label = inferFileLabel(intentId);
   const { frontmatter, body, unterminated } = splitFrontmatter(raw);
@@ -160,22 +160,22 @@ export function validateInferFile(
     }
   }
 
-  const description = body.trim();
-  if (description.length === 0) {
+  const infer = body.trim();
+  if (infer.length === 0) {
     throw new CustomAgentValidationError(
       `${label} requires a non-empty body — the prose below the frontmatter IS the inference criterion ("applies when does this intent fire")`,
       agentId,
       jobId,
     );
   }
-  if (description.length > INFER_BODY_MAX) {
+  if (infer.length > INFER_BODY_MAX) {
     throw new CustomAgentValidationError(
       `${label} body exceeds ${INFER_BODY_MAX} chars — the criterion is rendered into every turn's Intent Catalog; move procedure/detail into ${INTENT_PROMPT_FILE_NAME}`,
       agentId,
       jobId,
     );
   }
-  return { description, ...(clarify !== undefined ? { clarify } : {}) };
+  return { infer, ...(clarify !== undefined ? { clarify } : {}) };
 }
 
 /**
@@ -274,7 +274,7 @@ export function readIntentDir(
   }
 
   const inferRaw = fs.readFileSync(path.join(intentDirPath, INTENT_INFER_FILE_NAME), 'utf-8');
-  const { description, clarify } = validateInferFile(inferRaw, intentId, agentId, jobId);
+  const { infer, clarify } = validateInferFile(inferRaw, intentId, agentId, jobId);
 
   let hooks: IntentHooks | undefined;
   if (entries.includes(INTENT_HOOKS_FILE_NAME)) {
@@ -294,7 +294,7 @@ export function readIntentDir(
 
   const def: CustomIntentDef = {
     id: intentId,
-    description,
+    infer,
     ...(clarify !== undefined ? { clarify } : {}),
     ...(hooks ? { hooks } : {}),
     ...(promptBody !== undefined ? { hasPrompt: true } : {}),

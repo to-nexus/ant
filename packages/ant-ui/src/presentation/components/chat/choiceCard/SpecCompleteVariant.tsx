@@ -1,10 +1,10 @@
 import { Play } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ActionMetadata, Domain, IntentId } from '@ant/shared';
-import { INTENT_DEFINITIONS } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { addChatUserMessage } from '@/infrastructure/http/api';
 import { executeCodeJob } from '@/infrastructure/http/cli';
+import { canonicalBuildDirective } from '@/presentation/components/Actions/buildDirective';
 import type { VariantProps } from './shared';
 import { useChoiceCardState, ChoiceCardShell, TwoButtonLayout } from './shared';
 
@@ -38,12 +38,13 @@ export function SpecCompleteVariant({ presented, resolved }: VariantProps) {
     // on the user_turn — instead of a silent backend redirect that
     // bypassed the chat SSOT.
     const lang = (i18n.language as 'en' | 'ko') === 'ko' ? 'ko' : 'en';
-    const intentDef = INTENT_DEFINITIONS.find((d) => d.id === SPEC_INTENT);
-    const buildDirective =
-      t(`buildDirective.${SPEC_INTENT}`, { defaultValue: '' }) ||
-      intentDef?.description[lang] ||
-      intentDef?.description.en ||
-      `Implement ${specFile}`;
+    const buildDirective = canonicalBuildDirective({
+      intentId: SPEC_INTENT,
+      domain,
+      lang,
+      t,
+      fallback: `Implement ${specFile}`,
+    });
 
     // Build the explicit ActionMetadata directly from the card payload.
     // We deliberately do NOT touch `store.actionMetadata` so the user's

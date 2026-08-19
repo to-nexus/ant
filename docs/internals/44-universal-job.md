@@ -697,8 +697,8 @@ kinds only observe evidence; no author code ever runs.
 UI surfaces: discovery (`tryReadJobIntentSummaries` → `CustomJobSummary.intents`)
 carries the FULL `CustomIntentDef[]` (hooks/clarify/hasPrompt — bounded 32×8),
 so the actions tab's universal `intent-detail` step and the settings tree render
-without a second fetch. Agent Settings edits intents SURGICALLY — description
-and clarify splice the infer.md text (`applyInferBody` / `applyInferClarify`
+without a second fetch. Agent Settings edits intents SURGICALLY — the infer
+criterion and clarify splice the infer.md text (`applyInferBody` / `applyInferClarify`
 in `definitionDocs.ts`, fence comments preserved; the clarify edit is
 line-level BECAUSE the yaml lib deletes a pair's leading comments with it),
 hooks go through per-field YAML node edits on hooks.yaml — the historical
@@ -743,7 +743,10 @@ The actions tab mirrors the canonical UX: an intent chip NAVIGATES to the
 `universalTurnMeta.intents`), and the detail page carries the canonical bottom
 menu (`ActionFooter` `universal-intent` variant): **Chat** arms the intent as
 an `@intent:` mention and focuses the composer (prepare, never send); **Build**
-posts the intent's description as the user turn and dispatches a universal run
+posts a localized run request as the user turn (`universalBuildDirective`,
+`actions:universal.buildDirective` — never the intent's `infer` criterion, which
+is prompt text already rendered into the Intent Catalog) and dispatches a
+universal run
 with the intent pinned via `selectUniversalExecuteContext` (the
 `PlanCompleteVariant.handleProceed` precedent — composer-independent, so a
 collapsed chat sidebar cannot defer it).

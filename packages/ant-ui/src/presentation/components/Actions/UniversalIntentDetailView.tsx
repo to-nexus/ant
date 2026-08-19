@@ -125,7 +125,7 @@ export function UniversalIntentDetailView({ surface }: { surface: UniversalActio
               className="text-[12.5px] whitespace-pre-wrap m-0"
               style={{ color: 'var(--text-2)', lineHeight: 1.6 }}
             >
-              {intent.description}
+              {intent.infer}
             </p>
           </Section>
 
@@ -183,7 +183,7 @@ export function UniversalIntentDetailView({ surface }: { surface: UniversalActio
         </div>
       </PageTransition>
 
-      <ActionFooter variant="universal-intent" intent={intent} />
+      <ActionFooter variant="universal-intent" intentId={intent.id} />
     </div>
   );
 }

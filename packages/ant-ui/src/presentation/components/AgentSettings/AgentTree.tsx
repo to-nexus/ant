@@ -482,7 +482,7 @@ export function AgentTree({
                               return (
                                 <div
                                   key={intent.id}
-                                  title={intent.description}
+                                  title={intent.infer}
                                   className="flex items-center gap-1 py-1 pl-10 pr-1 rounded cursor-pointer hover:bg-[color:var(--bg-hover)]"
                                   style={{
                                     fontSize: 11,

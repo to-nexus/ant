@@ -611,7 +611,7 @@ describe('loadCustomJob — intents catalog validation table', () => {
   it('comments-only frontmatter is valid — guidance comments never reach the criterion', () => {
     setup({ a: { infer: '---\n# authoring guidance lives here\n---\nApplies when the user asks for x.\n' } });
     const { intents } = loadCustomJob(roots(), 'ops', 'weekly');
-    expect(intents[0].description).toBe('Applies when the user asks for x.');
+    expect(intents[0].infer).toBe('Applies when the user asks for x.');
     expect(intents[0].clarify).toBeUndefined();
   });
 
@@ -646,12 +646,12 @@ describe('loadCustomJob — intents catalog validation table', () => {
   it('discovery projects the job catalog into CustomJobSummary.intents (lenient)', () => {
     setup({ a: { infer: 'job-a\n' } });
     const agents = discoverAgents(roots());
-    expect(agents[0].jobs[0].intents).toEqual([{ id: 'a', description: 'job-a' }]);
+    expect(agents[0].jobs[0].intents).toEqual([{ id: 'a', infer: 'job-a' }]);
   });
 
   it('discovery carries the FULL intent defs — hooks/clarify/hasPrompt reach the summary', () => {
     // The actions-tab detail view renders off the discovery summary, so the
-    // projection must not strip fields (the historical {id, description} map).
+    // projection must not strip fields (the historical {id, infer} map).
     setup({
       a: {
         infer: '---\nclarify: false\n---\njob-a\n',
@@ -661,7 +661,7 @@ describe('loadCustomJob — intents catalog validation table', () => {
     });
     const agents = discoverAgents(roots());
     expect(agents[0].jobs[0].intents).toEqual([
-      { id: 'a', description: 'job-a', clarify: false,
+      { id: 'a', infer: 'job-a', clarify: false,
         hooks: { stop: [{ artifact: 'reports/*-weekly.md' }] }, hasPrompt: true },
     ]);
   });

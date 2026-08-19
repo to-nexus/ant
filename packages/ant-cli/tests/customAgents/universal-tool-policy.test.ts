@@ -166,7 +166,7 @@ describe('clarify — control tool OUTSIDE the preset planes', () => {
 describe('isClarifyEnabled — knob truth table', () => {
   const intent = (id: string, clarify?: boolean): CustomIntentDef => ({
     id,
-    description: `intent ${id}`,
+    infer: `intent ${id}`,
     ...(clarify !== undefined ? { clarify } : {}),
   });
 

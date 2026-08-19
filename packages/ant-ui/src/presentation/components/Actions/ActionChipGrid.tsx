@@ -88,7 +88,8 @@ export function ActionChipGrid({ readiness, variant, onSelect, agentFilter, titl
 export interface ChipItem {
   id: string;
   label: string;
-  description: string;
+  /** Optional subtitle — real UI copy only; see `ActionChipProps.description`. */
+  description?: string;
   icon?: any;
   bg?: string;
   text?: string;

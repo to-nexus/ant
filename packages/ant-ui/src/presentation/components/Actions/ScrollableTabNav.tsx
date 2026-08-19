@@ -17,7 +17,7 @@ export interface TabItem {
    * Optional one-line subtitle. Supply it ONLY for real, human-facing UI copy
    * (the localized canonical action/intent descriptions). Universal surfaces
    * pass nothing: a custom job has no description by design
-   * (`CustomJobSummary`), and `CustomIntentDef.description` is the `infer.md`
+   * (`CustomJobSummary`), and `CustomIntentDef.infer` is the `infer.md`
    * inference criterion — prompt text rendered into the Intent Catalog every
    * turn, already shown in full by the intent detail body.
    */

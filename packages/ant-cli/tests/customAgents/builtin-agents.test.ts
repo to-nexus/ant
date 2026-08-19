@@ -181,7 +181,7 @@ describe('shipped assistant definition', () => {
       expect(resolved.intentPrompts[intent.id]?.trim().length ?? 0).toBeGreaterThan(0);
       // The guidance comments live inside the frontmatter fence — the rendered
       // criterion must be prose only.
-      expect(intent.description).not.toContain('#');
+      expect(intent.infer).not.toContain('#');
     }
   });
 

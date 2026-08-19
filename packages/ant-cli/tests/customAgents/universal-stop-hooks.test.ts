@@ -68,9 +68,9 @@ describe('normalizeArtifactPath', () => {
 
 describe('activeStopHooksOf', () => {
   const catalog: CustomIntentDef[] = [
-    { id: 'report', description: 'x', hooks: { stop: [{ artifact: 'reports/*.md' }, { action: 'create_file' }] } },
-    { id: 'escalate', description: 'y', hooks: { stop: [{ action: 'mcp__ops-api__create_incident' }] } },
-    { id: 'chat', description: 'z' },
+    { id: 'report', infer: 'x', hooks: { stop: [{ artifact: 'reports/*.md' }, { action: 'create_file' }] } },
+    { id: 'escalate', infer: 'y', hooks: { stop: [{ action: 'mcp__ops-api__create_incident' }] } },
+    { id: 'chat', infer: 'z' },
   ];
 
   it('flattens the ACTIVE intents\' hooks only', () => {

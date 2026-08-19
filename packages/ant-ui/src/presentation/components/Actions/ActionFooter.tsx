@@ -2,10 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
 import {
   deriveFromIntent,
-  INTENT_DEFINITIONS,
-  getIntentDescriptionLocalized,
   UNIVERSAL_FEATURE,
-  type CustomIntentDef,
   type IntentGroup,
   type LogJobType,
 } from '@ant/shared';
@@ -14,6 +11,7 @@ import { addChatUserMessage } from '@/infrastructure/http/api';
 import { selectUniversalExecuteContext } from '@/domain/store/selectors/universalExecuteContext';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 import { Button, WizardStepIndicator, type WizardStep } from '@/presentation/components/aurora';
+import { canonicalBuildDirective, universalBuildDirective } from './buildDirective';
 import type { WizardStepDef } from './basis/types';
 
 const SHELL_STYLE: React.CSSProperties = {
@@ -46,8 +44,12 @@ interface WizardFooterProps {
 
 interface UniversalIntentFooterProps {
   variant: 'universal-intent';
-  /** The custom-job intent this detail page shows. */
-  intent: CustomIntentDef;
+  /**
+   * The custom-job intent this detail page shows — its ID ONLY. Passing the
+   * whole `CustomIntentDef` is what let its `infer` criterion become the
+   * directive; narrowing the prop makes that a type error.
+   */
+  intentId: string;
 }
 
 export type ActionFooterProps = IntentFooterProps | WizardFooterProps | UniversalIntentFooterProps;
@@ -98,14 +100,7 @@ function IntentVariant(_props: IntentFooterProps) {
     const hasMetadata = Object.keys(metadata).length > 0;
     const intentId = metadata.intent || '';
     const lang = i18n.language as 'en' | 'ko';
-    // D28-revised — pass the workspace domain through i18next `context`
-    // so plan-related directives (`gen-plan` / `explain-plan`) resolve
-    // their `_game` variant when the workspace is a game project.
-    const i18nDirective = intentId ? t(`buildDirective.${intentId}`, { defaultValue: '', context: metadata.domain }) : '';
-    const intentDef = INTENT_DEFINITIONS.find(d => d.id === intentId);
-    const buildDirective = i18nDirective
-      || (intentDef ? getIntentDescriptionLocalized(intentDef, metadata.domain, lang) : '')
-      || t('footer.build');
+    const buildDirective = canonicalBuildDirective({ intentId, domain: metadata.domain, lang, t });
 
     try {
       const { turnId } = await addChatUserMessage(
@@ -195,24 +190,24 @@ function IntentVariant(_props: IntentFooterProps) {
  *  actions ride the universal wire instead of the RAC pipeline:
  *  - Chat  = arm this intent as an `@intent:` mention + focus the composer
  *            (canonical parity: prepare, never send).
- *  - Build = post the intent's description as the user turn and dispatch a
+ *  - Build = post a localized run request as the user turn and dispatch a
  *            universal run with this intent pinned (the
  *            PlanCompleteVariant.handleProceed precedent — composer-
  *            independent, so a collapsed chat sidebar cannot defer it).
  * ================================================================ */
 
-function UniversalIntentVariant({ intent }: UniversalIntentFooterProps) {
+function UniversalIntentVariant({ intentId }: UniversalIntentFooterProps) {
   const { t } = useTranslation('actions');
 
   const selectedProject = useStore((s) => s.selectedProject);
   const isRunning = useStore((s) => s.isRunning);
-  const armed = useStore((s) => s.universalTurnMeta.intents.includes(intent.id));
+  const armed = useStore((s) => s.universalTurnMeta.intents.includes(intentId));
   const addIntent = useStore((s) => s.addUniversalIntentMention);
   const removeIntent = useStore((s) => s.removeUniversalIntentMention);
 
   const handleChatStart = () => {
     if (!selectedProject) return;
-    addIntent(intent.id);
+    addIntent(intentId);
     requestAnimationFrame(() => {
       const input = document.querySelector('textarea[data-chat-input]') as HTMLTextAreaElement | null;
       input?.focus();
@@ -223,15 +218,18 @@ function UniversalIntentVariant({ intent }: UniversalIntentFooterProps) {
     if (!selectedProject || isRunning) return;
 
     const store = useStore.getState();
-    // The directive is the intent's matching criterion — the same fallback
-    // canonical BUILD uses (getIntentDescriptionLocalized) for its directive.
-    const directive = intent.description;
+    // One localized template covers every custom intent: the work statement
+    // already rides the pinned intent's prompt.md and the job/agent base
+    // prompts, so the directive only states that this run carries no further
+    // input. Minting it from the intent's criterion instead double-injected
+    // the same prose and dragged the turn's locale to the author's language.
+    const directive = universalBuildDirective({ intentId, t });
 
     if (store.selectedJobType !== 'universal' || store.selectedAgent !== 'universal') {
       store.applyJobIdentity({ jobType: 'universal', agent: 'universal' });
     }
     // Pin this intent, then read the wire params off the ONE mapping SSOT.
-    store.addUniversalIntentMention(intent.id);
+    store.addUniversalIntentMention(intentId);
     const ctx = selectUniversalExecuteContext(useStore.getState());
     if (!ctx) return;
 
@@ -310,7 +308,7 @@ function UniversalIntentVariant({ intent }: UniversalIntentFooterProps) {
           <button
             type="button"
             className="underline underline-offset-2 hover:text-[color:var(--text-2)]"
-            onClick={() => removeIntent(intent.id)}
+            onClick={() => removeIntent(intentId)}
           >
             {t('universal.disarm', { defaultValue: 'Disarm' })}
           </button>

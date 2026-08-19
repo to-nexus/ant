@@ -65,7 +65,13 @@ const FALLBACK_GRADIENT = {
 
 export interface ActionChipProps {
   label: string;
-  description: string;
+  /**
+   * Optional one-line subtitle. Supply it ONLY for real, human-facing UI copy.
+   * Universal intent chips pass nothing: the intent's `infer` criterion is
+   * prompt text rendered into the Intent Catalog every turn, not a subtitle
+   * (same rule `ScrollableTabNav.TabItem.description` states).
+   */
+  description?: string;
   variant: 'compact' | 'large';
   onClick: () => void;
   /** When set, picks ACTION_GRADIENTS[actionId]; else uses iconBg/iconColor overrides. */
@@ -143,7 +149,7 @@ export function ActionChip(props: ActionChipProps) {
 
 interface LargeTileProps {
   label: string;
-  description: string;
+  description?: string;
   onClick: () => void;
   IconCmp?: React.ComponentType<{ className?: string }>;
   gradient: string;
@@ -324,19 +330,21 @@ function LargeTile({
         >
           {label}
         </span>
-        <span
-          style={{
-            fontSize: 11.5,
-            lineHeight: 1.35,
-            color: 'oklch(100% 0 0 / 0.88)',
-            display: '-webkit-box',
-            WebkitBoxOrient: 'vertical',
-            WebkitLineClamp: 2,
-            overflow: 'hidden',
-          }}
-        >
-          {description}
-        </span>
+        {description && (
+          <span
+            style={{
+              fontSize: 11.5,
+              lineHeight: 1.35,
+              color: 'oklch(100% 0 0 / 0.88)',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+          >
+            {description}
+          </span>
+        )}
         {disabled && blockReason && (
           <span
             style={{
@@ -360,7 +368,7 @@ function LargeTile({
 
 interface CompactRowProps {
   label: string;
-  description: string;
+  description?: string;
   onClick: () => void;
   IconCmp?: React.ComponentType<{ className?: string }>;
   gradient: string;
@@ -459,19 +467,21 @@ function CompactRow({
         >
           {label}
         </span>
-        <span
-          style={{
-            fontSize: 11,
-            lineHeight: 1.4,
-            color: disabled && blockReason ? 'var(--amber-600)' : 'var(--text-3)',
-            display: '-webkit-box',
-            WebkitBoxOrient: 'vertical',
-            WebkitLineClamp: 1,
-            overflow: 'hidden',
-          }}
-        >
-          {disabled && blockReason ? blockReason : description}
-        </span>
+        {((disabled && blockReason) || description) && (
+          <span
+            style={{
+              fontSize: 11,
+              lineHeight: 1.4,
+              color: disabled && blockReason ? 'var(--amber-600)' : 'var(--text-3)',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 1,
+              overflow: 'hidden',
+            }}
+          >
+            {disabled && blockReason ? blockReason : description}
+          </span>
+        )}
       </span>
     </button>
   );

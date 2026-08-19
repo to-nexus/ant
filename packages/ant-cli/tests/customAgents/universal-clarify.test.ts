@@ -3,7 +3,7 @@
  *   advertisement (knob × budget), the sole-call gate, args validation,
  *   end-and-resume seams (dangling tool_use detect / close), routing, and
  *   the I2-compatible seal shape. Schema/gate truth tables — no prompt or
- *   description prose pinning.
+ *   criterion prose pinning.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -51,7 +51,7 @@ function makeResolved(overrides?: Partial<Pick<ResolvedCustomJob, 'clarifyDefaul
 
 const intent = (id: string, clarify?: boolean): CustomIntentDef => ({
   id,
-  description: `intent ${id}`,
+  infer: `intent ${id}`,
   ...(clarify !== undefined ? { clarify } : {}),
 });
 

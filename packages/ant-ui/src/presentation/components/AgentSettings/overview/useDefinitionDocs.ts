@@ -93,7 +93,7 @@ export interface UseDefinitionDocsResult {
   setName: (name: string) => void;
   setMcpServers: (servers: Record<string, McpServerConfig>) => void;
   setMain: (patch: Partial<MainDraft>) => void;
-  /** Surgical per-field intent edit — `hooks` routes to hooks.yaml, description/clarify to infer.md. */
+  /** Surgical per-field intent edit — `hooks` routes to hooks.yaml, infer/clarify to infer.md. */
   updateIntent: (intentId: string, patch: IntentPatch) => void;
   /** Add a PHANTOM intent draft — nothing touches disk until Save. */
   addIntent: (intentId: string) => void;
@@ -267,7 +267,7 @@ export function useDefinitionDocs(
           const hasPrompt = (promptDocs[intentId]?.raw.trim() ?? '') !== '';
           return {
             id: intentId,
-            description: infer.body.trim(),
+            infer: infer.body.trim(),
             ...(infer.clarify !== undefined ? { clarify: infer.clarify } : {}),
             ...(hooks ? { hooks } : {}),
             ...(hasPrompt ? { hasPrompt: true } : {}),
@@ -326,8 +326,8 @@ export function useDefinitionDocs(
           edit(hooksDocKey(intentId), (doc) => applyHooks(doc, stop));
         }
       }
-      if ('description' in patch) {
-        const body = patch.description ?? '';
+      if ('infer' in patch) {
+        const body = patch.infer ?? '';
         editInfer(intentId, (raw) => applyInferBody(raw, body.endsWith('\n') || body === '' ? body : body + '\n'));
       }
       if ('clarify' in patch) {

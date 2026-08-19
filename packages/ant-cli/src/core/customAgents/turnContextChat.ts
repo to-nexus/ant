@@ -106,7 +106,7 @@ export function formatTurnContextForChat(
   if (input.source === 'unpinned' && input.catalog.length > 0) {
     lines.push(`   └ ${l.choices}:`);
     for (const intent of input.catalog) {
-      lines.push(`      - \`${sanitizeCell(intent.id)}\` — ${sanitizeCell(intent.description)}`);
+      lines.push(`      - \`${sanitizeCell(intent.id)}\` — ${sanitizeCell(intent.infer)}`);
     }
   }
 

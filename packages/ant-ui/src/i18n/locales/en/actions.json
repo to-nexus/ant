@@ -203,6 +203,7 @@
     "hookActionMeaning": "This tool must have been successfully called this turn.",
     "hooksNone": "No hooks — the turn ends when the agent stops.",
     "hooksVerified": "Checked at the turn's stop event, from actual tool results — never from the model's claims. Unmet hooks re-prompt the agent a bounded number of times, then pause the job resumably.",
+    "buildDirective": "Please run the \"{{intent}}\" intent. There is no further input beyond this request \u2014 treat the intent's own definition as the complete specification and carry it out end to end",
     "armedHint": "Armed — this intent rides the next chat turn.",
     "disarm": "Disarm",
     "intentDetailPrompt": "Prompt",

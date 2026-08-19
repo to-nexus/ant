@@ -324,7 +324,7 @@ export function IntentsCard({
                       whiteSpace: 'pre-wrap',
                     }}
                   >
-                    {entry.description || t('overview.intentNoDescription', 'No matching criteria yet.')}
+                    {entry.infer || t('overview.intentNoInfer', 'No matching criteria yet.')}
                   </p>
                   {stopHooks.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>

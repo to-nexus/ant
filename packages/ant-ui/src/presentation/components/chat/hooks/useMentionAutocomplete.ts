@@ -257,9 +257,9 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     if (isUniversal) {
       if (prefix === '@intent:') {
         return universalJobIntents
-          .filter(i => i.id.toLowerCase().includes(q) || i.description.toLowerCase().includes(q))
+          .filter(i => i.id.toLowerCase().includes(q) || i.infer.toLowerCase().includes(q))
           .slice(0, 8)
-          .map(i => ({ type: 'intent' as const, id: i.id, label: i.id, description: i.description }));
+          .map(i => ({ type: 'intent' as const, id: i.id, label: i.id, description: i.infer }));
       }
       if (prefix === '@ctx:') {
         return allFilePaths
