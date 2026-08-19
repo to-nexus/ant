@@ -61,11 +61,14 @@ export function ActionHookInput({
   ];
 
   const hint = actionHint(value, effectiveBuiltins, presetBuiltins, mcpServerNames);
+  // Same frame as the artifact row: a fixed-basis picker followed by the
+  // free-text field it reveals, so both kinds line up column for column.
+  const hasNameField = selection.source === 'mcp' || selection.source === 'custom';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <div style={{ flex: hasNameField ? '0 1 150px' : '1 1 0', minWidth: 0 }}>
           <AuroraSelect
             value={selectValue}
             disabled={disabled}
@@ -83,7 +86,7 @@ export function ActionHookInput({
           />
         </div>
         {selection.source === 'mcp' && (
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <AuroraInput
               value={selection.tool}
               mono
@@ -95,7 +98,7 @@ export function ActionHookInput({
           </div>
         )}
         {selection.source === 'custom' && (
-          <div style={{ flex: 1.4, minWidth: 0 }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0 }}>
             <AuroraInput
               value={value}
               mono

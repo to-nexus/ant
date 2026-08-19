@@ -1,28 +1,32 @@
 /**
  * Artifact-glob field — a structured editor for one artifact hook's glob so
- * authors never have to hand-type `*`/`**` syntax blind. Two modes per row:
- * the segment BUILDER (chips: one unit per path segment, each switchable
- * between a typed name, `*` = any name, `**` = any depth) and the RAW mono
- * input. Both edit the same string through `parseGlob ⇄ composeGlob` (a total
- * round-trip), and a live natural-language preview says what the glob means.
- * Validation authority stays `validateStopHookEntry` (@ant/shared) — the
- * builder only paints the offending segment.
+ * authors never have to hand-type `*`/`**` syntax blind. It mirrors the
+ * action row's shape ([picker] [name]) on purpose: ONE location picker
+ * (artifact root / a folder path / `*` / `**`) plus ONE file-name field, with
+ * a nested directory typed as a whole path in the single folder field rather
+ * than one control per level. Root is an explicit option in that picker — not
+ * "remove every folder chip".
+ *
+ * Raw mode (owned by the row, passed in) swaps the parts for the mono string.
+ * Both edit the same value through `splitGlob ⇄ joinGlob`, and a live
+ * natural-language preview says what the glob means. Validation authority
+ * stays `validateStopHookEntry` (@ant/shared) — the fields only paint red.
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Braces, FileText, Plus, X } from 'lucide-react';
-import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora';
-import { ViewModeButton } from '@/presentation/components/aurora';
+import { FolderTree } from 'lucide-react';
+import { AuroraInput, AuroraSelect } from '@/presentation/components/ConfigEditor/aurora';
 import {
   GLOB_PRESETS,
-  composeGlob,
   describeGlob,
-  isSegmentValid,
-  parseGlob,
+  isDirPathValid,
+  isFileNameValid,
+  joinGlob,
+  splitGlob,
   type GlobDescription,
   type GlobDirDesc,
-  type GlobSegment,
+  type GlobLocationKind,
 } from './globBuilder';
 
 function useGlobPreview(): (raw: string) => string | null {
@@ -65,186 +69,135 @@ function useGlobPreview(): (raw: string) => string | null {
   };
 }
 
-const SEG_KIND_LABELS = { pattern: 'abc', any: '*', globstar: '**' } as const;
-
-function SegmentChip({
-  segment,
-  isFile,
-  disabled,
-  onChange,
-  onRemove,
-  removable,
-}: {
-  segment: GlobSegment;
-  isFile: boolean;
-  disabled: boolean;
-  onChange: (next: GlobSegment) => void;
-  onRemove: () => void;
-  removable: boolean;
-}) {
-  const { t } = useTranslation('agents');
-  const invalid = !isSegmentValid(segment);
-  return (
-    <div
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '2px 4px 2px 6px',
-        borderRadius: 'var(--r-md)',
-        border: `1px solid ${invalid ? 'var(--status-error-fg)' : 'var(--border-2)'}`,
-        background: 'var(--bg-surface)',
-      }}
-    >
-      {isFile && <FileText size={11} style={{ color: 'var(--text-4)', flexShrink: 0 }} />}
-      {segment.kind === 'pattern' ? (
-        <input
-          value={segment.text}
-          disabled={disabled}
-          onChange={(e) => onChange({ kind: 'pattern', text: e.target.value })}
-          placeholder={isFile ? t('intent.globSegmentFile', 'file-name') : t('intent.globSegmentFolder', 'folder')}
-          style={{
-            width: `${Math.max((segment.text.length || 9) + 1, 6)}ch`,
-            maxWidth: 220,
-            fontSize: 11.5,
-            fontFamily: 'var(--font-mono)',
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            color: 'var(--text-1)',
-          }}
-        />
-      ) : (
-        <span
-          style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: 'var(--violet-400)' }}
-          title={
-            segment.kind === 'any'
-              ? t('intent.globStarHint', '* matches any characters within one path segment')
-              : t('intent.globGlobstarHint', '** matches any depth — valid only as a whole segment')
-          }
-        >
-          {segment.kind === 'any' ? '*' : '**'}
-        </span>
-      )}
-      {/* Kind switch: typed name ↔ * ↔ ** */}
-      <select
-        aria-label={t('intent.globSegmentKind', 'Segment type')}
-        disabled={disabled}
-        value={segment.kind}
-        onChange={(e) => {
-          const kind = e.target.value as GlobSegment['kind'];
-          onChange(
-            kind === 'pattern'
-              ? { kind: 'pattern', text: segment.kind === 'pattern' ? segment.text : '' }
-              : kind === 'any'
-                ? { kind: 'any' }
-                : { kind: 'globstar' },
-          );
-        }}
-        style={{
-          fontSize: 10,
-          fontFamily: 'var(--font-mono)',
-          background: 'transparent',
-          border: 'none',
-          outline: 'none',
-          color: 'var(--text-4)',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          width: 34,
-        }}
-      >
-        {(Object.keys(SEG_KIND_LABELS) as Array<keyof typeof SEG_KIND_LABELS>).map((k) => (
-          <option key={k} value={k}>
-            {SEG_KIND_LABELS[k]}
-          </option>
-        ))}
-      </select>
-      {removable && !disabled && (
-        <button
-          type="button"
-          aria-label={t('intent.globRemoveSegment', 'Remove segment')}
-          onClick={onRemove}
-          className="inline-flex items-center justify-center h-3.5 w-3.5 rounded text-[color:var(--text-4)] hover:text-[color:var(--text-2)]"
-        >
-          <X size={10} />
-        </button>
-      )}
-    </div>
-  );
+/**
+ * Does the glob carry a directory part? If it does, an empty file name leaves
+ * it ending in '/' — invalid. A `folder` location whose path is still empty
+ * composes as root, so it does not count.
+ */
+function hasDirPart(location: GlobLocationKind, dir: string): boolean {
+  if (location === 'root') return false;
+  return location !== 'folder' || dir !== '';
 }
 
 export function ArtifactGlobInput({
   value,
   disabled,
   hasError,
+  rawMode,
   onChange,
 }: {
   value: string;
   disabled: boolean;
   hasError: boolean;
+  /** Row-owned mode: the mono string instead of the parts. */
+  rawMode: boolean;
   onChange: (next: string) => void;
 }) {
   const { t } = useTranslation('agents');
-  const [rawMode, setRawMode] = useState(false);
   const preview = useGlobPreview();
 
-  const segments = parseGlob(value);
-  const setSegments = (next: GlobSegment[]) => onChange(composeGlob(next));
+  const parts = splitGlob(value);
+  // A folder location whose path is still empty composes as root, so the
+  // picker would snap back to Root mid-typing. Pin the author's choice until
+  // they pick another one.
+  const [pinnedFolder, setPinnedFolder] = useState(false);
+  const location: GlobLocationKind =
+    pinnedFolder && parts.location === 'root' ? 'folder' : parts.location;
+  const emit = (next: Partial<{ location: GlobLocationKind; dir: string; file: string }>) =>
+    onChange(joinGlob({ location, dir: parts.dir, file: parts.file, ...next }));
+
+  const locationOptions = [
+    { value: 'root', label: t('intent.globLocOptRoot', 'Artifact root') },
+    { value: 'folder', label: t('intent.globLocOptFolder', 'Folder…') },
+    { value: 'any', label: t('intent.globLocOptAny', 'Any one folder (*)') },
+    { value: 'anyDepth', label: t('intent.globLocOptAnyDepth', 'Any depth (**)') },
+  ];
+
+  const separator = (
+    <span
+      aria-hidden
+      style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-4)', lineHeight: '36px' }}
+    >
+      /
+    </span>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {rawMode ? (
-            <AuroraInput
-              value={value}
-              mono
-              disabled={disabled}
-              hasError={hasError}
-              placeholder={t('intent.hookArtifactPlaceholder', 'reports/*-weekly.md')}
-              onChange={onChange}
-            />
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
-              {segments.map((seg, i) => (
-                <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  {i > 0 && <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: 'var(--text-4)' }}>/</span>}
-                  <SegmentChip
-                    segment={seg}
-                    isFile={i === segments.length - 1}
-                    disabled={disabled}
-                    removable={segments.length > 1}
-                    onChange={(next) => setSegments(segments.map((s, j) => (j === i ? next : s)))}
-                    onRemove={() => setSegments(segments.filter((_, j) => j !== i))}
-                  />
-                </span>
-              ))}
-              {!disabled && (
-                <button
-                  type="button"
-                  title={t('intent.globAddFolder', 'Add a folder segment before the file name')}
-                  aria-label={t('intent.globAddFolder', 'Add a folder segment before the file name')}
-                  onClick={() =>
-                    setSegments([
-                      ...segments.slice(0, -1),
-                      { kind: 'pattern', text: '' },
-                      segments[segments.length - 1],
-                    ])
-                  }
-                  className="inline-flex items-center justify-center h-5 w-5 shrink-0 rounded text-[color:var(--text-4)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors"
-                >
-                  <Plus size={11} />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        <ViewModeButton
-          icon={Braces}
-          label={rawMode ? t('intent.globModeBuilder', 'Builder') : t('intent.globModeRaw', 'Raw')}
-          active={rawMode}
-          onClick={() => setRawMode((m) => !m)}
+      {rawMode ? (
+        <AuroraInput
+          value={value}
+          mono
+          disabled={disabled}
+          hasError={hasError}
+          placeholder={t('intent.hookArtifactPlaceholder', 'reports/*-weekly.md')}
+          onChange={onChange}
         />
-      </div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <div style={{ flex: '0 1 150px', minWidth: 0 }}>
+            <AuroraSelect
+              value={location}
+              disabled={disabled}
+              options={locationOptions}
+              onChange={(v) => {
+                const next = v as GlobLocationKind;
+                setPinnedFolder(next === 'folder');
+                emit({
+                  location: next,
+                  dir: next === 'folder' ? parts.dir : '',
+                  // A token location with no name yet would compose the
+                  // trailing-slash `**/`; seed the name so every pick is a
+                  // valid glob on its own.
+                  file:
+                    hasDirPart(next, parts.dir) && parts.file === '' ? '*' : parts.file,
+                });
+              }}
+            />
+          </div>
+          {/* The path fields wrap as ONE unit, so a narrow card never splits `dir / file`. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '1 1 200px', minWidth: 0 }}>
+            {location === 'folder' && (
+              <>
+                <div style={{ flex: '1.4 1 0', minWidth: 0 }}>
+                  <AuroraInput
+                    value={parts.dir}
+                    mono
+                    disabled={disabled}
+                    hasError={!isDirPathValid(parts.dir)}
+                    prefix={<FolderTree size={12} />}
+                    placeholder={t('intent.globDirPlaceholder', 'reports/weekly')}
+                    onChange={(dir) => emit({ dir })}
+                  />
+                </div>
+                {separator}
+              </>
+            )}
+            {(location === 'any' || location === 'anyDepth') && separator}
+            <div style={{ flex: '1 1 0', minWidth: 0 }}>
+              <AuroraInput
+                value={parts.file}
+                mono
+                disabled={disabled}
+                // Empty is "not typed yet" until a directory part exists —
+                // after that it would leave the glob ending in '/'.
+                hasError={
+                  !isFileNameValid(parts.file) ||
+                  (parts.file === '' && hasDirPart(location, parts.dir))
+                }
+                placeholder={t('intent.globFilePlaceholder', '*.md')}
+                onChange={(file) => emit({ file })}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!rawMode && location === 'folder' && (
+        <p style={{ margin: 0, fontSize: 10.5, lineHeight: 1.5, color: 'var(--text-4)' }}>
+          {t('intent.globDirHint', 'One field for the whole path — nest it with "/" (reports/weekly/kr).')}
+        </p>
+      )}
 
       {value.trim().length === 0 && !disabled && (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
@@ -255,7 +208,10 @@ export function ArtifactGlobInput({
             <button
               key={preset}
               type="button"
-              onClick={() => onChange(preset)}
+              onClick={() => {
+                setPinnedFolder(false);
+                onChange(preset);
+              }}
               style={{
                 fontSize: 10.5,
                 fontFamily: 'var(--font-mono)',

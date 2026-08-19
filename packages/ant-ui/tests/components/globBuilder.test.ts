@@ -1,7 +1,8 @@
 /**
- * Artifact-glob builder model — the raw ⇄ segments round-trip the hook editor
- * runs on, the natural-language description truth table, and the guarantee
- * that every offered preset passes the shared validator.
+ * Artifact-glob builder model — the two round-trips the hook editor runs on
+ * (raw ⇄ segments for the description, raw ⇄ location+file for the fields),
+ * the natural-language description truth table, and the guarantee that every
+ * offered preset passes the shared validator.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -10,8 +11,12 @@ import {
   GLOB_PRESETS,
   composeGlob,
   describeGlob,
+  isDirPathValid,
+  isFileNameValid,
   isSegmentValid,
+  joinGlob,
   parseGlob,
+  splitGlob,
 } from '../../src/presentation/components/AgentSettings/overview/globBuilder';
 
 describe('parseGlob ⇄ composeGlob', () => {
@@ -90,5 +95,60 @@ describe('describeGlob truth table', () => {
 describe('presets', () => {
   it.each(GLOB_PRESETS.map((p) => [p] as const))('%s passes the shared validator', (preset) => {
     expect(validateStopHookEntry({ artifact: preset }).error).toBeUndefined();
+  });
+});
+
+describe('splitGlob ⇄ joinGlob (the editor\'s location + file-name shape)', () => {
+  it.each([
+    // raw                     location      dir                file
+    ['plan.md', 'root', '', 'plan.md'],
+    ['', 'root', '', ''],
+    ['docs/*.md', 'folder', 'docs', '*.md'],
+    // A nested directory is ONE value, not one control per level.
+    ['reports/weekly/kr/*.md', 'folder', 'reports/weekly/kr', '*.md'],
+    ['a/**/draft-*', 'folder', 'a/**', 'draft-*'],
+    ['*/x', 'any', '', 'x'],
+    ['**/x.md', 'anyDepth', '', 'x.md'],
+    ['output/**', 'folder', 'output', '**'],
+    ['**', 'root', '', '**'],
+  ] as const)('%j splits and rejoins', (raw, location, dir, file) => {
+    expect(splitGlob(raw)).toEqual({ location, dir, file });
+    expect(joinGlob({ location, dir, file })).toBe(raw);
+  });
+
+  it('an empty folder path composes as root rather than the invalid "/name"', () => {
+    expect(joinGlob({ location: 'folder', dir: '', file: 'plan.md' })).toBe('plan.md');
+  });
+
+  it('repairs stray separators around a typed folder path', () => {
+    expect(joinGlob({ location: 'folder', dir: '/reports/', file: '*.md' })).toBe('reports/*.md');
+  });
+});
+
+describe('field-level validity', () => {
+  it.each([
+    ['', true],
+    ['reports', true],
+    ['reports/weekly/kr', true],
+    ['a/**/b', true],
+    ['a/*/b', true],
+    ['reports//weekly', false],
+    ['a/../b', false],
+    ['a/x**y', false],
+    ['a/{week}', false],
+  ] as const)('isDirPathValid(%j) → %s', (dir, expected) => {
+    expect(isDirPathValid(dir)).toBe(expected);
+  });
+
+  it.each([
+    ['', true],
+    ['*', true],
+    ['**', true],
+    ['*.md', true],
+    ['x**y', false],
+    ['..', false],
+    ['{week}', false],
+  ] as const)('isFileNameValid(%j) → %s', (file, expected) => {
+    expect(isFileNameValid(file)).toBe(expected);
   });
 });

@@ -1,10 +1,17 @@
 /**
  * Artifact-glob model for the hook editor — pure and React-free so the
- * raw ⇄ segments round-trip and the natural-language description are testable
+ * raw ⇄ builder round-trip and the natural-language description are testable
  * without a DOM. The hook entry's raw glob string stays the SSOT
  * (`validateStopHookEntry` from @ant/shared is the validation authority);
- * this module only projects it into an editable segment strip and a
- * human-readable preview.
+ * this module only projects it into editable parts and a human-readable
+ * preview.
+ *
+ * Two projections, one string:
+ *   • `splitGlob ⇄ joinGlob` — the editor's shape: ONE location (root / a
+ *     nested folder path / `*` / `**`) + ONE file name. A deep directory is
+ *     typed as a path in a single field, never as one control per level.
+ *   • `parseGlob ⇄ composeGlob` — the per-segment view the description and
+ *     the segment-level charset rules are built on.
  */
 
 import { ARTIFACT_GLOB_CHARSET } from '@ant/shared';
@@ -36,6 +43,72 @@ export function isSegmentValid(segment: GlobSegment): boolean {
   if (text === '' || text === '.' || text === '..') return false;
   if (text.includes('**')) return false; // '**' must stand as a whole segment
   return ARTIFACT_GLOB_CHARSET.test(text);
+}
+
+// ── editor projection: location + file name ──────────────────────────────────
+
+/**
+ * Where the file must land. `folder` carries a nested path in ONE value
+ * (`a/b/c`); `root` is the artifact root, and it is a first-class choice in
+ * the same picker rather than "delete every folder chip".
+ */
+export type GlobLocationKind = 'root' | 'folder' | 'any' | 'anyDepth';
+
+export interface GlobParts {
+  location: GlobLocationKind;
+  /** Folder path, possibly nested. Meaningful only for `location === 'folder'`. */
+  dir: string;
+  /** Last path segment — the file-name pattern. */
+  file: string;
+}
+
+/** Total: every raw string splits (the last `/` divides folders from the name). */
+export function splitGlob(raw: string): GlobParts {
+  const cut = raw.lastIndexOf('/');
+  if (cut < 0) return { location: 'root', dir: '', file: raw };
+  const dir = raw.slice(0, cut);
+  const file = raw.slice(cut + 1);
+  if (dir === '*') return { location: 'any', dir: '', file };
+  if (dir === '**') return { location: 'anyDepth', dir: '', file };
+  return { location: 'folder', dir, file };
+}
+
+/**
+ * Compose the parts back into a glob. A `folder` location whose path is still
+ * empty composes as root rather than as the invalid `/name` — the picker keeps
+ * showing the folder field (that state lives in the component), so clearing the
+ * path never yields a value the validator has to reject.
+ */
+export function joinGlob({ location, dir, file }: GlobParts): string {
+  if (location === 'any') return `*/${file}`;
+  if (location === 'anyDepth') return `**/${file}`;
+  if (location === 'folder') {
+    const path = dir.replace(/^\/+|\/+$/g, '');
+    return path === '' ? file : `${path}/${file}`;
+  }
+  return file;
+}
+
+/** One typed segment: the `*` / `**` tokens stand whole, anything else is a pattern. */
+function isTypedSegmentValid(text: string): boolean {
+  if (text === '*' || text === '**') return true;
+  return isSegmentValid({ kind: 'pattern', text });
+}
+
+/**
+ * Folder-path field validity — empty is "not typed yet", never red. A nested
+ * path is judged segment by segment, so a whole `**` level passes while a
+ * segment like `x**y` does not.
+ */
+export function isDirPathValid(dir: string): boolean {
+  if (dir === '') return true;
+  return dir.split('/').every(isTypedSegmentValid);
+}
+
+/** File-name field validity — empty is "not typed yet", `*` / `**` are tokens. */
+export function isFileNameValid(file: string): boolean {
+  if (file === '') return true;
+  return isTypedSegmentValid(file);
 }
 
 // ── natural-language description ─────────────────────────────────────────────

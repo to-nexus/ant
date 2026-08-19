@@ -3,9 +3,15 @@
  * (v1's single event: verified when the turn stops). Hooks are structured
  * data (kind + value), edited as rows: a kind select (`artifact` glob /
  * `action` tool name) dispatching to the dedicated value editors —
- * ArtifactGlobInput (segment builder + natural-language preview) and
- * ActionHookInput (picker over this job's builtins and declared MCP servers)
- * — capped at INTENT_STOP_HOOKS_CAP entries.
+ * ArtifactGlobInput (location + file-name builder with a natural-language
+ * preview) and ActionHookInput (picker over this job's builtins and declared
+ * MCP servers) — capped at INTENT_STOP_HOOKS_CAP entries.
+ *
+ * Every row is the SAME three-column frame regardless of kind — [kind]
+ * [value editor] [row actions] — so the trailing controls line up down the
+ * list: the raw/builder toggle and the delete button are equal-footprint icon
+ * buttons in the trailing cluster, which keeps a fixed width even on rows
+ * (action) that have no toggle.
  *
  * Validation here is the shared syntax rule set (`validateStopHookEntry`,
  * no builtin predicate — that judgement stays with the BE save gate, the
@@ -14,9 +20,10 @@
  * non-blocking amber hints.
  */
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2 } from 'lucide-react';
-import { Button } from '@/presentation/components/aurora';
+import { Braces, Plus, Trash2 } from 'lucide-react';
+import { Button, IconButton } from '@/presentation/components/aurora';
 import { AuroraSelect } from '@/presentation/components/ConfigEditor/aurora';
 import { INTENT_STOP_HOOKS_CAP, validateStopHookEntry, type IntentStopHook } from '@ant/shared';
 import { ArtifactGlobInput } from './ArtifactGlobInput';
@@ -35,6 +42,104 @@ function valueOf(hook: IntentStopHook): string {
 
 function makeHook(kind: HookKind, value: string): IntentStopHook {
   return kind === 'artifact' ? { artifact: value } : { action: value };
+}
+
+/** Width of the trailing icon cluster — kept fixed so every row's delete button lands in one column. */
+const ROW_ACTIONS_WIDTH = 62;
+/** The height of one Aurora control — the trailing icons centre against the first line. */
+const CONTROL_ROW_HEIGHT = 36;
+
+function HookRow({
+  hook,
+  disabled,
+  effectiveBuiltins,
+  presetBuiltins,
+  mcpServerNames,
+  onChange,
+  onRemove,
+}: {
+  hook: IntentStopHook;
+  disabled: boolean;
+  effectiveBuiltins: string[];
+  presetBuiltins: string[];
+  mcpServerNames: string[];
+  onChange: (next: IntentStopHook) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useTranslation('agents');
+  const [rawMode, setRawMode] = useState(false);
+
+  const kind = kindOf(hook);
+  const value = valueOf(hook);
+  // Non-empty rows carry the shared syntax judgement; an empty row is
+  // "being typed", so only the save gate complains about it.
+  const rowError = value.trim().length > 0 && validateStopHookEntry(hook).error != null;
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+      <div style={{ width: 118, flexShrink: 0 }}>
+        <AuroraSelect
+          value={kind}
+          disabled={disabled}
+          options={[
+            { value: 'artifact', label: t('intent.hookKindArtifact', 'artifact') },
+            { value: 'action', label: t('intent.hookKindAction', 'action') },
+          ]}
+          onChange={(v) => onChange(makeHook(v as HookKind, ''))}
+        />
+      </div>
+      {kind === 'artifact' ? (
+        <ArtifactGlobInput
+          value={value}
+          disabled={disabled}
+          hasError={rowError}
+          rawMode={rawMode}
+          onChange={(v) => onChange(makeHook(kind, v))}
+        />
+      ) : (
+        <ActionHookInput
+          value={value}
+          disabled={disabled}
+          hasError={rowError}
+          effectiveBuiltins={effectiveBuiltins}
+          presetBuiltins={presetBuiltins}
+          mcpServerNames={mcpServerNames}
+          onChange={(v) => onChange(makeHook(kind, v))}
+        />
+      )}
+      <div
+        style={{
+          width: ROW_ACTIONS_WIDTH,
+          height: CONTROL_ROW_HEIGHT,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 2,
+        }}
+      >
+        {kind === 'artifact' && (
+          <IconButton
+            size="sm"
+            icon={<Braces size={13} />}
+            active={rawMode}
+            title={rawMode ? t('intent.globModeBuilder', 'Builder') : t('intent.globModeRaw', 'Raw')}
+            aria-label={rawMode ? t('intent.globModeBuilder', 'Builder') : t('intent.globModeRaw', 'Raw')}
+            onClick={() => setRawMode((m) => !m)}
+          />
+        )}
+        {!disabled && (
+          <IconButton
+            size="sm"
+            icon={<Trash2 size={13} />}
+            title={t('intent.removeHook', 'Remove hook')}
+            aria-label={t('intent.removeHook', 'Remove hook')}
+            onClick={onRemove}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function StopHooksEditor({
@@ -71,58 +176,18 @@ export function StopHooksEditor({
             {t('intent.hooksNone', 'No hooks — the turn ends when the agent stops.')}
           </p>
         )}
-        {hooks.map((hook, i) => {
-          const kind = kindOf(hook);
-          const value = valueOf(hook);
-          // Non-empty rows carry the shared syntax judgement; an empty row is
-          // "being typed", so only the save gate complains about it.
-          const rowError = value.trim().length > 0 && validateStopHookEntry(hook).error != null;
-          return (
-            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ width: 118, flexShrink: 0 }}>
-                <AuroraSelect
-                  value={kind}
-                  disabled={disabled}
-                  options={[
-                    { value: 'artifact', label: t('intent.hookKindArtifact', 'artifact') },
-                    { value: 'action', label: t('intent.hookKindAction', 'action') },
-                  ]}
-                  onChange={(v) => replaceAt(i, makeHook(v as HookKind, ''))}
-                />
-              </div>
-              {kind === 'artifact' ? (
-                <ArtifactGlobInput
-                  value={value}
-                  disabled={disabled}
-                  hasError={rowError}
-                  onChange={(v) => replaceAt(i, makeHook(kind, v))}
-                />
-              ) : (
-                <ActionHookInput
-                  value={value}
-                  disabled={disabled}
-                  hasError={rowError}
-                  effectiveBuiltins={effectiveBuiltins}
-                  presetBuiltins={presetBuiltins}
-                  mcpServerNames={mcpServerNames}
-                  onChange={(v) => replaceAt(i, makeHook(kind, v))}
-                />
-              )}
-              {!disabled && (
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center h-5 w-5 shrink-0 rounded text-[color:var(--text-4)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors"
-                  style={{ marginTop: 8 }}
-                  title={t('intent.removeHook', 'Remove hook')}
-                  aria-label={t('intent.removeHook', 'Remove hook')}
-                  onClick={() => onChange(hooks.filter((_, j) => j !== i))}
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </div>
-          );
-        })}
+        {hooks.map((hook, i) => (
+          <HookRow
+            key={i}
+            hook={hook}
+            disabled={disabled}
+            effectiveBuiltins={effectiveBuiltins}
+            presetBuiltins={presetBuiltins}
+            mcpServerNames={mcpServerNames}
+            onChange={(next) => replaceAt(i, next)}
+            onRemove={() => onChange(hooks.filter((_, j) => j !== i))}
+          />
+        ))}
         {!disabled && (
           <div>
             <Button
