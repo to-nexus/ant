@@ -375,6 +375,15 @@ export const createSSESlice: StateCreator<any, [], [], SSESlice> = (set, get) =>
       })
     );
 
+    // Pipeline scheduler events — user-scoped (no project/feature on the
+    // envelope) so the approvals inbox folds even from another project view;
+    // the reducer itself filters by selectedProject where it matters.
+    sliceHandlerIds.push(
+      sseManager.registerHandlerWithId('pipeline', (data: SSEMessageMap['pipeline']) => {
+        get().applyPipelineEvent?.(data);
+      }),
+    );
+
     setupConnectionPolicy(sseManager, set, get);
 
     sseManager.connect(state.selectedProject, state.selectedFeature, jobType);

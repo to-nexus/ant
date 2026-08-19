@@ -11,6 +11,7 @@ import { FileEditorPanel } from '../FileEditorPanel';
 import { TransferTab } from '../Transfer/TransferTab';
 import { PreviewConfigEditor } from '../PreviewConfigEditor';
 import { ActionsPanel } from '../Actions';
+import { PipelinesPanel } from '../Pipelines';
 import { Slot } from '@/presentation/extensions/slots';
 import { VirtualDocumentViewer } from '../VirtualDocumentViewer';
 import { useStore } from '@/domain/store';
@@ -231,6 +232,15 @@ export function MainContentArea({
           <AgentSettings
             onClose={() => useStore.getState().closeMainPanelTab('agentSettings')}
           />
+        </div>
+      ) : activeTab === 'pipelines' && openTabs.pipelines ? (
+        // Universal projects only — the panel splits by project kind itself
+        // (ActionsPanel doctrine), so no store-level gate is needed here.
+        <div
+          className="flex-1 h-full overflow-hidden"
+          style={{ background: 'var(--bg-canvas)' }}
+        >
+          <PipelinesPanel />
         </div>
       ) : activeTab === 'orgSettings' && openTabs.orgSettings ? (
         // Org settings (Phase 1) — static OSS panel, account-scoped like

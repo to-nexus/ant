@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot, Building2 } from 'lucide-react';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot, Building2, GitBranch } from 'lucide-react';
 import { TabButton, type TabAccent } from './components/TabButton';
 
 const TAB_ACCENTS = {
@@ -14,6 +14,7 @@ const TAB_ACCENTS = {
   billing: 'violet-pink',
   agentSettings: 'violet-pink',
   orgSettings: 'cool',
+  pipelines: 'sunset',
 } as const satisfies Record<string, TabAccent>;
 import { JobIdDropdown } from './components/JobIdDropdown';
 import { EditorTabActions } from './components/EditorTabActions';
@@ -51,11 +52,12 @@ export function MainPanelTabsBar() {
   // Workspace (universal) projects have no tasks — the non-workflow board
   // slot renders the Checklist surface instead of the kanban board.
   const isUniversalProject = useStore((state) => state.projectType === 'universal');
+  const pendingApprovalCount = useStore((state) => state.pipelineApprovals?.length ?? 0);
 
   const getJobTabLabel = () => t('tabs.job');
 
   const renderStaticTab = (
-    tabKey: 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings' | 'orgSettings',
+    tabKey: 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings' | 'orgSettings' | 'pipelines',
   ) => {
     if (!openTabs[tabKey]) return null;
 
@@ -68,9 +70,33 @@ export function MainPanelTabsBar() {
       billing: { icon: Coins, label: t('tabs.billing', 'Billing') },
       agentSettings: { icon: Bot, label: t('tabs.agentSettings', 'Agent Settings') },
       orgSettings: { icon: Building2, label: t('tabs.orgSettings', 'Organization') },
+      pipelines: { icon: GitBranch, label: t('tabs.pipelines', 'Pipelines') },
     };
     const config = tabConfig[tabKey];
     if (!config) return null;
+
+    // Pending-approval amber badge on the pipelines chip — visible even when
+    // the tab is collapsed (`showTrailingWhenCollapsed`).
+    const pipelineBadge =
+      tabKey === 'pipelines' && pendingApprovalCount > 0 ? (
+        <span
+          style={{
+            minWidth: 16,
+            height: 16,
+            padding: '0 4px',
+            borderRadius: 8,
+            fontSize: 10,
+            fontWeight: 700,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'var(--amber-500, #f59e0b)',
+            color: 'var(--text-on-brand, #fff)',
+          }}
+        >
+          {pendingApprovalCount}
+        </span>
+      ) : undefined;
 
     return (
       <TabButton
@@ -81,6 +107,8 @@ export function MainPanelTabsBar() {
         showText={activeTab === tabKey}
         showCloseButton={true}
         accent={TAB_ACCENTS[tabKey] ?? 'aurora'}
+        trailing={pipelineBadge}
+        showTrailingWhenCollapsed={!!pipelineBadge}
         onClick={() => selectMainPanelTab(tabKey)}
         onClose={() => closeMainPanelTab(tabKey)}
       />
@@ -140,7 +168,7 @@ export function MainPanelTabsBar() {
         {tabOrder.map((tabKey) => (
           isEditorTabId(tabKey)
             ? renderEditorTab(tabKey)
-            : renderStaticTab(tabKey as 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings' | 'orgSettings')
+            : renderStaticTab(tabKey as 'projectConfig' | 'accountConfig' | 'transfer' | 'previewConfig' | 'actions' | 'billing' | 'agentSettings' | 'orgSettings' | 'pipelines')
         ))}
       </div>
     ),

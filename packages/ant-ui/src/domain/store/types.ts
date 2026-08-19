@@ -138,7 +138,8 @@ export type StaticMainPanelTab =
   | 'actions'
   | 'billing'
   | 'agentSettings'
-  | 'orgSettings';
+  | 'orgSettings'
+  | 'pipelines';
 
 export type EditorMainPanelTabId = `editor:${string}`;
 export type MainPanelTabId = StaticMainPanelTab | EditorMainPanelTabId;
@@ -160,6 +161,7 @@ export const MAIN_PANEL_TABS_ALL_CLOSED: Record<Exclude<StaticMainPanelTab, 'job
   billing: false,
   agentSettings: false,
   orgSettings: false,
+  pipelines: false,
 };
 
 /**
@@ -260,6 +262,7 @@ export interface UIState {
     billing: boolean;
     agentSettings: boolean;
     orgSettings: boolean;
+    pipelines: boolean;
   };
   mainPanelTabOrder: MainPanelTabOrderItem[];
   // Actions panel state ('intent-detail' is universal-only — the panel splits

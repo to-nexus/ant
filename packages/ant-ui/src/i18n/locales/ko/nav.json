@@ -19,6 +19,7 @@
   "viewMode": {
     "agents": "에이전트",
     "code": "코드",
+    "pipelines": "파이프라인",
     "openEditor": "에디터에서 코드베이스 열기",
     "selectProjectFirst": "프로젝트를 먼저 선택하세요",
     "failedToOpenIde": "IDE 열기 실패",
@@ -110,7 +111,8 @@
     "deleteJobIdFailed": "Job 삭제에 실패했습니다",
     "featureDeleteBlocked": "이 Feature 에서 진행 중인 Job 이 있어 삭제할 수 없습니다. 먼저 Job 을 중지하세요.",
     "agentSettings": "에이전트 설정",
-    "orgSettings": "조직"
+    "orgSettings": "조직",
+    "pipelines": "파이프라인"
   },
   "splitLayout": {
     "columns": "3열 그리드 (가로 배치)",

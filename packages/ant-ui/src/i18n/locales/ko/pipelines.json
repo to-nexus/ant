@@ -1,0 +1,146 @@
+{
+  "panel": {
+    "universalOnly": "파이프라인은 커스텀 에이전트 잡을 스케줄로 실행합니다.\n워크스페이스(universal) 프로젝트에서 사용할 수 있어요."
+  },
+  "rail": {
+    "new": "새 파이프라인",
+    "newDraft": "새 파이프라인 (저장 전)",
+    "empty": "아직 파이프라인이 없습니다.\n에이전트 잡을 스케줄로 엮어보세요.",
+    "toggle": "파이프라인 활성화",
+    "runNow": "지금 실행",
+    "awaiting": "{{n}}건 대기",
+    "running": "실행 중",
+    "enabled": "켜짐",
+    "disabled": "꺼짐",
+    "steps": "스텝 {{n}}개",
+    "discardConfirm": "저장하지 않은 변경사항을 버릴까요?"
+  },
+  "inbox": {
+    "title": "승인 대기",
+    "approve": "승인",
+    "reject": "거절",
+    "timeout": "{{when}}에 자동 결정"
+  },
+  "editor": {
+    "pickOne": "왼쪽에서 파이프라인을 선택하거나\n새로 만들어 보세요.",
+    "namePlaceholder": "파이프라인 이름",
+    "enabled": "활성화",
+    "on": "켜짐",
+    "off": "꺼짐",
+    "runNow": "지금 실행",
+    "runNowAccepted": "발화했습니다 — Runs에서 확인하세요.",
+    "viewEditor": "에디터",
+    "viewRuns": "실행 이력",
+    "viewMode": "에디터 뷰",
+    "unsaved": "저장되지 않은 변경사항",
+    "unsavedNew": "아직 저장되지 않음",
+    "badCron": "저장하려면 스케줄을 고쳐주세요.",
+    "needSteps": "스텝을 하나 이상 추가하세요.",
+    "discard": "되돌리기",
+    "save": "저장",
+    "emptyCanvas": "트리거 노드의 + 버튼으로 첫 스텝을 추가하세요."
+  },
+  "canvas": {
+    "trigger": "스케줄",
+    "approval": "승인 게이트",
+    "unconfigured": "잡을 선택하세요…",
+    "noTimeout": "타임아웃 없음"
+  },
+  "inspector": {
+    "trigger": "트리거·정책",
+    "step": "잡 스텝",
+    "gate": "승인 게이트",
+    "close": "닫기",
+    "deleteStep": "스텝 삭제"
+  },
+  "trigger": {
+    "preset": "주기",
+    "presets": {
+      "hourly": "매시간",
+      "daily": "매일",
+      "weekly": "매주",
+      "monthly": "매월",
+      "custom": "커스텀 (cron)"
+    },
+    "cron": "Cron 표현식",
+    "tz": "타임존",
+    "nextFires": "다음 발화",
+    "onMissed": "발화를 놓쳤을 때",
+    "onMissedSkip": "건너뛰기 (기본)",
+    "onMissedRunOnce": "복구 시 1회 실행",
+    "overlap": "이전 run이 아직 살아있을 때",
+    "overlapSkip": "이번 발화 건너뛰기 (기본)",
+    "overlapQueue": "끝날 때까지 대기",
+    "onStepFailure": "스텝이 실패하면",
+    "failAbort": "run 중단 (기본)",
+    "failContinue": "다른 브랜치 계속"
+  },
+  "step": {
+    "agent": "에이전트",
+    "job": "잡",
+    "pickAgent": "에이전트 선택",
+    "pickJob": "잡 선택",
+    "intent": "인텐트 (최대 1개)",
+    "noIntent": "없음 (잡이 결정)",
+    "intentsUnavailable": "인텐트 카탈로그 파스 실패 — 에이전트 설정에서 정의를 고쳐주세요.",
+    "directive": "지시문",
+    "directivePlaceholder": "이 run이 무엇을 해야 하나요?",
+    "context": "컨텍스트 핀 (@ctx)",
+    "addContext": "추가",
+    "removeContext": "핀 제거",
+    "on": "이전 스텝이 …일 때 실행",
+    "onSuccess": "성공했을 때 (기본)",
+    "onFailure": "실패했을 때 (실패 브랜치)",
+    "onAlways": "성공/실패 무관"
+  },
+  "gate": {
+    "prompt": "승인 문구",
+    "promptPlaceholder": "무엇을 승인받나요?",
+    "timeout": "타임아웃",
+    "noTimeout": "무기한 대기",
+    "customTimeout": "커스텀…",
+    "onTimeout": "타임아웃 시",
+    "timeoutReject": "거절 (안전 기본값)",
+    "timeoutApprove": "자동 승인",
+    "channels": "채널",
+    "inApp": "인앱",
+    "comingSoon": "곧 제공됩니다"
+  },
+  "runs": {
+    "empty": "아직 실행 이력이 없습니다 — 지금 실행으로 테스트해 보세요.",
+    "pickOne": "run을 선택하면 타임라인이 표시됩니다.",
+    "timeline": "스텝 타임라인",
+    "cancel": "run 취소",
+    "cron": "스케줄",
+    "manual": "수동",
+    "running": "실행 중",
+    "awaiting": "승인 대기",
+    "completed": "완료",
+    "failed": "실패",
+    "partial": "부분 완료",
+    "cancelled": "취소됨",
+    "expired": "만료됨",
+    "gateExpired": "타임아웃 → {{action}}",
+    "gateDecided": "{{who}}이(가) {{decision}}"
+  },
+  "danger": {
+    "title": "파이프라인 삭제",
+    "desc": "정의와 실행 이력이 제거됩니다. 진행 중인 run은 취소됩니다.",
+    "delete": "삭제",
+    "confirm": "정말 삭제할까요?",
+    "deleting": "삭제 중…"
+  },
+  "card": {
+    "title": "파이프라인 승인",
+    "approve": "승인",
+    "reject": "거절",
+    "approved": "승인됨",
+    "rejected": "거절됨",
+    "timeoutHint": "{{when}} 자동 {{action}}"
+  },
+  "time": {
+    "inMinutes": "{{n}}분 후",
+    "inHours": "{{n}}시간 후",
+    "inDays": "{{n}}일 후"
+  }
+}

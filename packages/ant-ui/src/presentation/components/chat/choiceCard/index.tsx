@@ -26,6 +26,7 @@ import { EvalSaveVariant } from './EvalSaveVariant';
 import { SpecCompleteVariant } from './SpecCompleteVariant';
 import { PlanCompleteVariant } from './PlanCompleteVariant';
 import { ClarifyingVariant } from './ClarifyingVariant';
+import { PipelineApprovalVariant } from './PipelineApprovalVariant';
 
 interface ChoiceCardProps {
   presented: ChatChoicePresentedLine;
@@ -48,6 +49,8 @@ export const ChoiceCard = memo(function ChoiceCard({ presented, resolved }: Choi
       return <SpecCompleteVariant presented={presented} resolved={resolved} />;
     case 'plan_complete':
       return <PlanCompleteVariant presented={presented} resolved={resolved} />;
+    case 'pipeline_approval':
+      return <PipelineApprovalVariant presented={presented} resolved={resolved} />;
     default:
       return null;
   }

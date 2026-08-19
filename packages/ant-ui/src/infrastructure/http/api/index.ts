@@ -26,5 +26,6 @@ export * from './ide';
 export * from './triage';
 export * from './transfer';
 export * from './org';
+export * from './pipelines';
 // `organizations` and `billing` API clients moved to @ant/cloud (OSS/cloud split,
 // P2). Cloud consumers import them directly from `@cloud/infrastructure/http/api/*`.

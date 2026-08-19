@@ -19,6 +19,7 @@
   "viewMode": {
     "agents": "Agents",
     "code": "Code",
+    "pipelines": "Pipelines",
     "openEditor": "Open codebase in editor",
     "selectProjectFirst": "Select a project first",
     "failedToOpenIde": "Failed to open IDE",
@@ -110,7 +111,8 @@
     "deleteJobIdFailed": "Failed to delete job",
     "featureDeleteBlocked": "Cannot delete this feature while a job is running. Stop the job first.",
     "agentSettings": "Agent Settings",
-    "orgSettings": "Organization"
+    "orgSettings": "Organization",
+    "pipelines": "Pipelines"
   },
   "splitLayout": {
     "columns": "Columns Grid (Side by Side)",

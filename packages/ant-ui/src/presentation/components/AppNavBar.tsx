@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail, GitBranch } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
@@ -214,6 +214,22 @@ export function AppNavBar({}: AppNavBarProps) {
                 <Bot className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t('viewMode.agents')}</span>
               </button>
+
+              {/* Pipelines Button — universal workspaces only (scheduled runs) */}
+              {isUniversalProject && (
+              <button
+                onClick={() => openMainPanelTab('pipelines')}
+                className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"
+                style={{
+                  ...selectedSegmentStyle(false),
+                  borderRadius: 'var(--r-sm)',
+                }}
+                title={t('viewMode.pipelines', 'Pipelines')}
+              >
+                <GitBranch className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{t('viewMode.pipelines', 'Pipelines')}</span>
+              </button>
+              )}
 
               {/* Editor Button — hidden for universal workspaces (no IDE) */}
               {!isUniversalProject && (

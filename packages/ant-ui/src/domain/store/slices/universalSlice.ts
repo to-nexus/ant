@@ -105,6 +105,10 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       }
       if (state.selectedProject) {
         void get().loadCustomAgents(state.selectedProject);
+        // Pipelines rail rides the same bootstrap chain — data is ready
+        // before the tab is opened, and re-runs on universal↔universal
+        // project switches for the same reason as the agent list.
+        void get().loadPipelines?.(state.selectedProject);
       }
     } else {
       state.clearUniversalSelection();

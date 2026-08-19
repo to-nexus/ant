@@ -1,0 +1,146 @@
+{
+  "panel": {
+    "universalOnly": "Pipelines schedule custom agent jobs.\nOpen a workspace (universal) project to use them."
+  },
+  "rail": {
+    "new": "New pipeline",
+    "newDraft": "New pipeline (unsaved)",
+    "empty": "No pipelines yet.\nChain your agent jobs on a schedule.",
+    "toggle": "Enable pipeline",
+    "runNow": "Run now",
+    "awaiting": "{{n}} waiting",
+    "running": "Running",
+    "enabled": "On",
+    "disabled": "Off",
+    "steps": "{{n}} steps",
+    "discardConfirm": "Discard unsaved changes?"
+  },
+  "inbox": {
+    "title": "Waiting for you",
+    "approve": "Approve",
+    "reject": "Reject",
+    "timeout": "Auto-decides {{when}}"
+  },
+  "editor": {
+    "pickOne": "Select a pipeline on the left,\nor create a new one.",
+    "namePlaceholder": "Pipeline name",
+    "enabled": "Enabled",
+    "on": "On",
+    "off": "Off",
+    "runNow": "Run now",
+    "runNowAccepted": "Fired — watch Runs.",
+    "viewEditor": "Editor",
+    "viewRuns": "Runs",
+    "viewMode": "Editor view",
+    "unsaved": "Unsaved changes",
+    "unsavedNew": "Not saved yet",
+    "badCron": "Fix the schedule to save.",
+    "needSteps": "Add at least one step.",
+    "discard": "Discard",
+    "save": "Save",
+    "emptyCanvas": "Press + on the trigger node to add the first step."
+  },
+  "canvas": {
+    "trigger": "Schedule",
+    "approval": "Approval",
+    "unconfigured": "Choose a job…",
+    "noTimeout": "no timeout"
+  },
+  "inspector": {
+    "trigger": "Trigger & policies",
+    "step": "Job step",
+    "gate": "Approval gate",
+    "close": "Close",
+    "deleteStep": "Remove step"
+  },
+  "trigger": {
+    "preset": "Frequency",
+    "presets": {
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "custom": "Custom (cron)"
+    },
+    "cron": "Cron expression",
+    "tz": "Timezone",
+    "nextFires": "Next fires",
+    "onMissed": "If a fire is missed",
+    "onMissedSkip": "Skip it (default)",
+    "onMissedRunOnce": "Run once on recovery",
+    "overlap": "If the previous run is still live",
+    "overlapSkip": "Skip this fire (default)",
+    "overlapQueue": "Queue until it finishes",
+    "onStepFailure": "When a step fails",
+    "failAbort": "Abort the run (default)",
+    "failContinue": "Continue other branches"
+  },
+  "step": {
+    "agent": "Agent",
+    "job": "Job",
+    "pickAgent": "Choose an agent",
+    "pickJob": "Choose a job",
+    "intent": "Intent (max 1)",
+    "noIntent": "None (job decides)",
+    "intentsUnavailable": "Intent catalog failed to parse — fix the definition in Agent Settings.",
+    "directive": "Directive",
+    "directivePlaceholder": "What should this run do?",
+    "context": "Context pins (@ctx)",
+    "addContext": "Add",
+    "removeContext": "Remove pin",
+    "on": "Run when the previous step…",
+    "onSuccess": "Succeeded (default)",
+    "onFailure": "Failed (failure branch)",
+    "onAlways": "Finished either way"
+  },
+  "gate": {
+    "prompt": "Approval prompt",
+    "promptPlaceholder": "What is being approved?",
+    "timeout": "Timeout",
+    "noTimeout": "Wait forever",
+    "customTimeout": "Custom…",
+    "onTimeout": "On timeout",
+    "timeoutReject": "Reject (safe default)",
+    "timeoutApprove": "Auto-approve",
+    "channels": "Channels",
+    "inApp": "In-app",
+    "comingSoon": "Coming soon"
+  },
+  "runs": {
+    "empty": "No runs yet — press Run now to test this pipeline.",
+    "pickOne": "Select a run to inspect its timeline.",
+    "timeline": "Step timeline",
+    "cancel": "Cancel run",
+    "cron": "Scheduled",
+    "manual": "Manual",
+    "running": "Running",
+    "awaiting": "Awaiting approval",
+    "completed": "Completed",
+    "failed": "Failed",
+    "partial": "Partial",
+    "cancelled": "Cancelled",
+    "expired": "Expired",
+    "gateExpired": "Timed out → {{action}}",
+    "gateDecided": "{{decision}} by {{who}}"
+  },
+  "danger": {
+    "title": "Delete pipeline",
+    "desc": "Removes the definition and its run history. Live runs are cancelled.",
+    "delete": "Delete",
+    "confirm": "Really delete?",
+    "deleting": "Deleting…"
+  },
+  "card": {
+    "title": "Pipeline approval",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approved": "Approved",
+    "rejected": "Rejected",
+    "timeoutHint": "auto-{{action}} {{when}}"
+  },
+  "time": {
+    "inMinutes": "in {{n}}m",
+    "inHours": "in {{n}}h",
+    "inDays": "in {{n}}d"
+  }
+}
