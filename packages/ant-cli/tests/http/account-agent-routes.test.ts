@@ -19,7 +19,7 @@ import * as yaml from 'js-yaml';
 import { createAccountAgentRoutes } from '../../src/periphery/adapters/http/routes/accountAgents.routes';
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
-import type { OrgMembershipRole } from '@ant/shared';
+import { getDefinitionDirPolicy, type OrgMembershipRole } from '@ant/shared';
 
 let wsRoot: string;
 let userDir: string;
@@ -527,6 +527,130 @@ describe('definition file endpoints', () => {
   });
 });
 
+describe('definition dir policy (create/upload vocabulary)', () => {
+  it.each([
+    ['', ['agent.yaml'], undefined, ['base', 'jobs'], undefined],
+    ['base', [], ['.md'], [], undefined],
+    ['jobs', [], undefined, [], 'job'],
+    ['jobs/weekly', ['job.yaml'], undefined, ['base', 'intents'], undefined],
+    ['jobs/weekly/base', [], ['.md'], [], undefined],
+    ['jobs/weekly/intents', [], undefined, [], 'intent'],
+    ['jobs/weekly/intents/research', ['infer.md', 'prompt.md', 'hooks.yaml'], undefined, [], undefined],
+  ])('%s', (dir, fixedFiles, acceptedExtensions, fixedDirs, customIdChild) => {
+    const policy = getDefinitionDirPolicy(dir as string);
+    expect(policy.fixedFiles).toEqual(fixedFiles);
+    expect(policy.acceptedExtensions).toEqual(acceptedExtensions);
+    expect(policy.fixedDirs).toEqual(fixedDirs);
+    expect(policy.customIdChild).toEqual(customIdChild);
+  });
+
+  it.each(['foo', 'base/nested', 'jobs/weekly/intents/research/deeper', '../escape'])(
+    'off-whitelist dir → unknown (%s)',
+    (dir) => {
+      expect(getDefinitionDirPolicy(dir).kind).toBe('unknown');
+    },
+  );
+});
+
+describe('mkdir', () => {
+  beforeEach(async () => {
+    await createAgent();
+  });
+
+  it('a missing container is created; an existing one 409s; off-whitelist 400', async () => {
+    // The agent scaffold already ships base/ and jobs/ — a job's base/ is the
+    // container that can still be absent.
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    fs.rmSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base'), { recursive: true, force: true });
+
+    const ok = await api('/ops/files/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'jobs/weekly/base' }),
+    });
+    expect(ok.status).toBe(200);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base'))).toBe(true);
+
+    const dup = await api('/ops/files/mkdir', { method: 'POST', body: JSON.stringify({ path: 'base' }) });
+    expect(dup.status).toBe(409);
+
+    const bad = await api('/ops/files/mkdir', { method: 'POST', body: JSON.stringify({ path: 'foo' }) });
+    expect(bad.status).toBe(400);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/foo'))).toBe(false);
+  });
+
+  it('intents container under an existing job is allowed', async () => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    const res = await api('/ops/files/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'jobs/weekly/intents' }),
+    });
+    expect(res.status).toBe(200);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents'))).toBe(true);
+  });
+
+  it('job / intent dirs are refused with a pointer — creation has one owner each', async () => {
+    const job = await api('/ops/files/mkdir', { method: 'POST', body: JSON.stringify({ path: 'jobs/weekly' }) });
+    expect(job.status).toBe(400);
+    expect((await job.json()).error).toMatch(/POST \/:agentId\/jobs/);
+
+    const intent = await api('/ops/files/mkdir', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'jobs/weekly/intents/research' }),
+    });
+    expect(intent.status).toBe(400);
+    expect((await intent.json()).error).toMatch(/infer\.md/);
+  });
+});
+
+describe('directory-unit upload (replaceDir)', () => {
+  beforeEach(async () => {
+    await createAgent();
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    fs.writeFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base/stale.md'), 'stale\n');
+  });
+
+  function jobUpload(fields: Record<string, string> = {}): FormData {
+    const form = new FormData();
+    form.append('files', new Blob(['id: weekly\nname: Fresh\n']), 'job.yaml');
+    form.append('relativePaths', 'jobs/weekly/job.yaml');
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    return form;
+  }
+
+  it('replaces the target directory — files absent from the upload are gone', async () => {
+    const res = await fetch(`${baseUrl}/api/account/agents/ops/files/upload`, {
+      method: 'POST',
+      body: jobUpload({ replaceDir: 'jobs/weekly' }),
+    });
+    expect(res.status).toBe(200);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base/stale.md'))).toBe(false);
+    expect(
+      fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/job.yaml'), 'utf-8'),
+    ).toContain('Fresh');
+  });
+
+  it('without replaceDir it merges — siblings survive', async () => {
+    const res = await fetch(`${baseUrl}/api/account/agents/ops/files/upload`, {
+      method: 'POST',
+      body: jobUpload(),
+    });
+    expect(res.status).toBe(200);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base/stale.md'))).toBe(true);
+  });
+
+  it.each([
+    ['foo', 'off-whitelist'],
+    ['', 'agent root'],
+    ['jobs/other', 'paths outside it'],
+  ])('rejects replaceDir=%s and writes nothing', async (replaceDir) => {
+    const body = replaceDir === '' ? jobUpload({ replaceDir: '.' }) : jobUpload({ replaceDir });
+    const res = await fetch(`${baseUrl}/api/account/agents/ops/files/upload`, { method: 'POST', body });
+    expect(res.status).toBe(400);
+    // The pre-existing directory is untouched — validation precedes the rm.
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/base/stale.md'))).toBe(true);
+  });
+});
+
 describe('folder import', () => {
   it('missing agent.yaml → 400; valid folder → 201 with skip-with-reason for off-whitelist files', async () => {
     const form = new FormData();
@@ -556,6 +680,41 @@ describe('folder import', () => {
     ]);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/base/system.md'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/intents.yaml'))).toBe(false);
+  });
+
+  it('same-id import → 409; with overwrite → REPLACE (stale definition files gone)', async () => {
+    await createAgent('imported');
+    fs.writeFileSync(path.join(userDir, '.ant/agents/imported/base/stale.md'), 'stale\n');
+
+    const build = (fields: Record<string, string> = {}) => {
+      const form = new FormData();
+      form.append('files', new Blob(['id: imported\nname: Fresh\n']), 'agent.yaml');
+      form.append('relativePaths', 'imported/agent.yaml');
+      for (const [k, v] of Object.entries(fields)) form.append(k, v);
+      return form;
+    };
+
+    const blocked = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: build() });
+    expect(blocked.status).toBe(409);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/base/stale.md'))).toBe(true);
+
+    const ok = await fetch(`${baseUrl}/api/account/agents/import`, {
+      method: 'POST',
+      body: build({ overwrite: 'true' }),
+    });
+    expect(ok.status).toBe(201);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/imported/base/stale.md'))).toBe(false);
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/imported/agent.yaml'), 'utf-8')).toContain('Fresh');
+  });
+
+  it('overwrite does NOT apply to a readonly (builtin) id — still 409', async () => {
+    const form = new FormData();
+    form.append('files', new Blob(['id: assistant\nname: Mine\n']), 'agent.yaml');
+    form.append('relativePaths', 'assistant/agent.yaml');
+    form.append('overwrite', 'true');
+    const res = await fetch(`${baseUrl}/api/account/agents/import`, { method: 'POST', body: form });
+    expect(res.status).toBe(409);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/assistant'))).toBe(false);
   });
 
   it('importing a folder named after a builtin agent → 409 (no silent shadowing)', async () => {

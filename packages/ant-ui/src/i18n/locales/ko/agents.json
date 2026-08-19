@@ -2,7 +2,6 @@
   "title": "에이전트 설정",
   "tree": {
     "newAgent": "새 에이전트",
-    "upload": "업로드",
     "newJob": "새 잡",
     "agentName": "에이전트 이름",
     "jobName": "잡 이름",
@@ -20,17 +19,26 @@
       "agentActions": "에이전트 작업",
       "jobActions": "잡 작업",
       "newJob": "새 잡",
-      "upload": "파일 업로드…"
+      "newIntent": "새 인텐트",
+      "uploadJobFolder": "잡 폴더 업로드…",
+      "uploadIntentFolder": "인텐트 폴더 업로드…",
+      "newNamed": "새 {{name}}",
+      "newNamedDir": "새 {{name}}/"
     },
     "scope": {
       "user": "내 에이전트",
       "org": "조직 에이전트",
-      "builtin": "빌트인 에이전트"
+      "builtin": "빌트인 에이전트",
+      "emptyUser": "아직 만든 에이전트가 없습니다 — 위의 + 로 만드세요.",
+      "emptyOrg": "이 조직에 공유된 에이전트가 없습니다.",
+      "emptyOrgNoTeam": "팀에 참여하면 조직 에이전트를 공유할 수 있습니다.",
+      "emptyBuiltin": "빌트인 에이전트를 불러오지 못했습니다."
     },
     "toggleToFiles": "구조 뷰 — 파일 뷰로 전환",
     "toggleToHuman": "파일 뷰 — 구조 뷰로 전환",
     "filesLoading": "파일 불러오는 중…",
-    "filesEmpty": "아직 파일이 없습니다."
+    "filesEmpty": "아직 파일이 없습니다.",
+    "uploadAgentFolder": "에이전트 폴더 업로드… (agent.yaml 포함)"
   },
   "detail": {
     "selectAgent": "왼쪽에서 에이전트, 잡, 인텐트를 선택하세요",
@@ -238,6 +246,14 @@
     "deleting": "삭제 중…"
   },
   "import": {
-    "skipped": "{{count}}개 파일을 건너뛰고 가져왔습니다: "
+    "skipped": "{{count}}개 파일을 건너뛰고 가져왔습니다: ",
+    "badFolderName": "폴더 하나만 업로드하세요. 폴더 이름이 id 가 됩니다 ([a-z0-9-]).",
+    "missingJobYaml": "잡 폴더 최상단에 job.yaml 이 있어야 합니다.",
+    "missingInferMd": "인텐트 폴더 최상단에 infer.md 가 있어야 합니다.",
+    "conflictReadonly": "\"{{id}}\" 는 읽기 전용 에이전트가 쓰는 id 입니다 — 폴더 이름을 바꾸세요.",
+    "replaceTitle": "이미 존재합니다",
+    "replaceMessage": "같은 디렉토리가 이미 있습니다. 덮어쓰면 정의 파일이 교체되며, 업로드에 없는 파일은 삭제됩니다.",
+    "replaceAgentTitle": "에이전트가 이미 존재합니다",
+    "replaceAgentMessage": "같은 id 의 에이전트가 있습니다. 덮어쓰면 정의 파일이 교체됩니다. 과거 세션 데이터는 유지됩니다."
   }
 }

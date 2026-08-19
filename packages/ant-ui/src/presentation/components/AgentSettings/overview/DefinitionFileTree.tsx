@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, SquareArrowOutUpRight } from 'lucide-react';
 import type { CustomAgentDefinitionFileNode } from '@ant/shared';
+import { KebabMenu, type KebabMenuItem } from '@/presentation/components/aurora';
 import { selectedRowLabel, selectedRowStyle } from '@/presentation/components/aurora/selection';
 import { DEFINITION_DIR_KINDS, classifyDefinitionPath } from './definitionDocs';
 
@@ -42,6 +43,8 @@ function NodeRow({
   selectedPath,
   dense,
   baseIndent,
+  dirActions,
+  renderBelow,
 }: {
   node: CustomAgentDefinitionFileNode;
   level: number;
@@ -51,6 +54,8 @@ function NodeRow({
   selectedPath?: string | null;
   dense?: boolean;
   baseIndent?: number;
+  dirActions?: (node: CustomAgentDefinitionFileNode) => KebabMenuItem[];
+  renderBelow?: (path: string) => React.ReactNode;
 }) {
   const isDir = node.type === 'directory';
   const isOpen = expanded.has(node.path);
@@ -58,71 +63,84 @@ function NodeRow({
   const selected = selectedPath != null && node.path === selectedPath;
   const indentStep = dense ? 12 : 16;
 
+  const actions = isDir && dirActions ? dirActions(node) : [];
+
   return (
     <>
-      <button
-        type="button"
-        data-def-path={node.path}
-        onClick={() => {
-          if (isDir) {
-            onToggle(node.path);
-            if (navigable) onOpenFile(node.path); // a level's dir → that level's screen
-          } else if (navigable) {
-            onOpenFile(node.path);
-          }
-        }}
-        className="w-full flex items-center gap-1.5 rounded transition-colors hover:bg-[color:var(--bg-hover)]"
-        style={{
-          paddingLeft: (baseIndent ?? 0) + level * indentStep + 6,
-          paddingTop: dense ? 2 : 3,
-          paddingBottom: dense ? 2 : 3,
-          paddingRight: 6,
-          cursor: isDir || navigable ? 'pointer' : 'default',
-          textAlign: 'left',
-          background: 'transparent',
-          border: 'none',
-          ...selectedRowStyle('violet', selected),
-        }}
-      >
-        {isDir ? (
-          <>
-            {isOpen ? (
-              <ChevronDown size={12} style={{ color: 'var(--text-4)', flexShrink: 0 }} />
-            ) : (
-              <ChevronRight size={12} style={{ color: 'var(--text-4)', flexShrink: 0 }} />
-            )}
-            {isOpen ? (
-              <FolderOpen size={13} style={{ color: 'var(--amber-500, var(--text-3))', flexShrink: 0 }} />
-            ) : (
-              <Folder size={13} style={{ color: 'var(--amber-500, var(--text-3))', flexShrink: 0 }} />
-            )}
-          </>
-        ) : (
-          <>
-            <span style={{ width: 12, flexShrink: 0 }} />
-            <FileText
-              size={13}
-              style={{ color: navigable ? 'var(--text-3)' : 'var(--text-5, var(--text-4))', flexShrink: 0 }}
-            />
-          </>
-        )}
-        <span
+      <div className="group flex items-center" style={{ position: 'relative' }}>
+        <button
+          type="button"
+          data-def-path={node.path}
+          onClick={() => {
+            if (isDir) {
+              onToggle(node.path);
+              if (navigable) onOpenFile(node.path); // a level's dir → that level's screen
+            } else if (navigable) {
+              onOpenFile(node.path);
+            }
+          }}
+          className="flex-1 min-w-0 flex items-center gap-1.5 rounded transition-colors hover:bg-[color:var(--bg-hover)]"
           style={{
-            fontSize: dense ? 11 : 12,
-            fontFamily: 'var(--font-mono)',
-            color: isDir ? 'var(--text-2)' : navigable ? 'var(--text-2)' : 'var(--text-4)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            ...selectedRowLabel(selected, isDir || navigable ? 'var(--text-2)' : 'var(--text-4)'),
+            paddingLeft: (baseIndent ?? 0) + level * indentStep + 6,
+            paddingTop: dense ? 2 : 3,
+            paddingBottom: dense ? 2 : 3,
+            paddingRight: 6,
+            cursor: isDir || navigable ? 'pointer' : 'default',
+            textAlign: 'left',
+            background: 'transparent',
+            border: 'none',
+            ...selectedRowStyle('violet', selected),
           }}
         >
-          {node.name}
-        </span>
-        {navigable && (
-          <SquareArrowOutUpRight size={10} style={{ color: 'var(--text-4)', flexShrink: 0, marginLeft: 2 }} />
+          {isDir ? (
+            <>
+              {isOpen ? (
+                <ChevronDown size={12} style={{ color: 'var(--text-4)', flexShrink: 0 }} />
+              ) : (
+                <ChevronRight size={12} style={{ color: 'var(--text-4)', flexShrink: 0 }} />
+              )}
+              {isOpen ? (
+                <FolderOpen size={13} style={{ color: 'var(--amber-500, var(--text-3))', flexShrink: 0 }} />
+              ) : (
+                <Folder size={13} style={{ color: 'var(--amber-500, var(--text-3))', flexShrink: 0 }} />
+              )}
+            </>
+          ) : (
+            <>
+              <span style={{ width: 12, flexShrink: 0 }} />
+              <FileText
+                size={13}
+                style={{ color: navigable ? 'var(--text-3)' : 'var(--text-5, var(--text-4))', flexShrink: 0 }}
+              />
+            </>
+          )}
+          <span
+            style={{
+              fontSize: dense ? 11 : 12,
+              fontFamily: 'var(--font-mono)',
+              color: isDir ? 'var(--text-2)' : navigable ? 'var(--text-2)' : 'var(--text-4)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              ...selectedRowLabel(selected, isDir || navigable ? 'var(--text-2)' : 'var(--text-4)'),
+            }}
+          >
+            {node.name}
+          </span>
+          {navigable && (
+            <SquareArrowOutUpRight size={10} style={{ color: 'var(--text-4)', flexShrink: 0, marginLeft: 2 }} />
+          )}
+        </button>
+        {actions.length > 0 && (
+          <span
+            className="opacity-0 group-hover:opacity-100 shrink-0 pr-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <KebabMenu items={actions} />
+          </span>
         )}
-      </button>
+      </div>
+      {renderBelow?.(node.path)}
       {isDir &&
         isOpen &&
         (node.children ?? []).map((child) => (
@@ -136,6 +154,8 @@ function NodeRow({
             selectedPath={selectedPath}
             dense={dense}
             baseIndent={baseIndent}
+            dirActions={dirActions}
+            renderBelow={renderBelow}
           />
         ))}
     </>
@@ -148,6 +168,8 @@ export function DefinitionFileTree({
   selectedPath,
   dense,
   baseIndent,
+  dirActions,
+  renderBelow,
 }: {
   tree: CustomAgentDefinitionFileNode[];
   onOpenFile: (path: string) => void;
@@ -157,6 +179,10 @@ export function DefinitionFileTree({
   dense?: boolean;
   /** Extra left padding when nested under an agent row. */
   baseIndent?: number;
+  /** Row-level create/upload menu, injected by the owner (the tree only renders it). */
+  dirActions?: (node: CustomAgentDefinitionFileNode) => KebabMenuItem[];
+  /** Inline create form slot, keyed by the directory path it belongs to. */
+  renderBelow?: (path: string) => React.ReactNode;
 }) {
   // Top-level directories start expanded — the first glance already shows the
   // agent.yaml / base/ / jobs/ shape the docs describe. The selected file's
@@ -208,6 +234,8 @@ export function DefinitionFileTree({
           selectedPath={selectedPath}
           dense={dense}
           baseIndent={baseIndent}
+          dirActions={dirActions}
+          renderBelow={renderBelow}
         />
       ))}
     </div>

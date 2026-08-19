@@ -2,7 +2,6 @@
   "title": "Agent Settings",
   "tree": {
     "newAgent": "New Agent",
-    "upload": "Upload",
     "newJob": "New job",
     "agentName": "Agent name",
     "jobName": "Job name",
@@ -20,17 +19,26 @@
       "agentActions": "Agent actions",
       "jobActions": "Job actions",
       "newJob": "New job",
-      "upload": "Upload files…"
+      "newIntent": "New intent",
+      "uploadJobFolder": "Upload job folder…",
+      "uploadIntentFolder": "Upload intent folder…",
+      "newNamed": "New {{name}}",
+      "newNamedDir": "New {{name}}/"
     },
     "scope": {
       "user": "My Agents",
       "org": "Organization Agents",
-      "builtin": "Built-in Agents"
+      "builtin": "Built-in Agents",
+      "emptyUser": "No agents of your own yet — create one with + above.",
+      "emptyOrg": "Nothing shared in this organization yet.",
+      "emptyOrgNoTeam": "Join a team to share agents with an organization.",
+      "emptyBuiltin": "No built-in agents were loaded."
     },
     "toggleToFiles": "Structure view — switch to Files",
     "toggleToHuman": "File view — switch to Structure",
     "filesLoading": "Loading files…",
-    "filesEmpty": "No files yet."
+    "filesEmpty": "No files yet.",
+    "uploadAgentFolder": "Upload agent folder… (must contain agent.yaml)"
   },
   "detail": {
     "selectAgent": "Select an agent, job, or intent on the left",
@@ -238,6 +246,14 @@
     "deleting": "Deleting…"
   },
   "import": {
-    "skipped": "Imported with {{count}} skipped file(s): "
+    "skipped": "Imported with {{count}} skipped file(s): ",
+    "badFolderName": "Upload exactly one folder whose name is the id ([a-z0-9-]).",
+    "missingJobYaml": "The job folder must contain job.yaml at its root.",
+    "missingInferMd": "The intent folder must contain infer.md at its root.",
+    "conflictReadonly": "Agent id \"{{id}}\" is taken by a read-only agent — rename the folder.",
+    "replaceTitle": "Already exists",
+    "replaceMessage": "This directory already exists. Overwriting REPLACES its definition files — anything not in the upload is removed.",
+    "replaceAgentTitle": "Agent already exists",
+    "replaceAgentMessage": "An agent with this id already exists. Overwriting REPLACES its definition files; past session data is left untouched."
   }
 }

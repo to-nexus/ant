@@ -5,6 +5,8 @@ import { ChangedBar, DangerZone, StatusPill } from '@/presentation/components/Co
 import {
   createAccountAgent,
   createAccountAgentJob,
+  createDefinitionDir,
+  createDefinitionFile,
   deleteAccountAgent,
   deleteAccountAgentJob,
   deleteDefinitionFile,
@@ -15,7 +17,12 @@ import {
   uploadDefinitionFiles,
   validateAccountAgentJob,
 } from '@/infrastructure/http/api/accountAgents';
-import type { CustomAgentDefinitionFileNode } from '@ant/shared';
+import type { CustomAgentDefinitionFileNode, FileNode } from '@ant/shared';
+import { isValidCustomId } from '@ant/shared';
+import type { UploadFileEntry } from '@/infrastructure/http/api/files';
+import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
+import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
+import { entriesUnder, findDefinitionNode, hasEntry, pickedFolderName } from './definitionUpload';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { AgentTree } from './AgentTree';
 import { OrgAccessCard } from './OrgAccessCard';
@@ -238,20 +245,112 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       selectAgentSettingsNode(agentId, id);
     });
 
-  const handleUploadFiles = (agentId: string, files: FileList, pathPrefix: string) =>
-    wrap(async () => {
-      const result = await uploadDefinitionFiles(
-        agentId,
-        Array.from(files).map((f) => ({ file: f, relativePath: `${pathPrefix}${f.name}` })),
+  const reportSkipped = useCallback(
+    (skipped: Array<{ path: string; reason: string }>) => {
+      if (skipped.length === 0) return;
+      setError(
+        t('import.skipped', 'Imported with {{count}} skipped file(s): ', { count: skipped.length }) +
+          skipped.map((s) => `${s.path} (${s.reason})`).join(', '),
       );
-      if (result.skipped.length > 0) {
-        setError(
-          t('import.skipped', 'Imported with {{count}} skipped file(s): ', { count: result.skipped.length }) +
-            result.skipped.map((s) => s.path).join(', '),
-        );
+    },
+    [t],
+  );
+
+  /** Post-upload convergence: tree, agent list, and the job's load-validity pill. */
+  const afterDefinitionWrite = useCallback(
+    async (agentId: string) => {
+      await loadDefinitionTree(agentId);
+      await afterMutation();
+      if (agentId === selection.agentId && selection.jobId) {
+        validateAccountAgentJob(agentId, selection.jobId)
+          .then((v) => setJobValid(v.valid))
+          .catch(() => setJobValid(false));
       }
-      if (selection.agentId === agentId) await loadDefinitionTree(agentId);
+    },
+    [loadDefinitionTree, afterMutation, selection.agentId, selection.jobId],
+  );
+
+  // ── uploads (file view: loose files · structure view: unit folders) ─────────
+
+  const doUploadFiles = useCallback(
+    (_dirPath: string, entries: UploadFileEntry[], ctx?: { agentId?: string }) => {
+      const agentId = ctx?.agentId;
+      if (!agentId) return;
+      void wrap(async () => {
+        const result = await uploadDefinitionFiles(agentId, entries);
+        reportSkipped(result.skipped);
+        await afterDefinitionWrite(agentId);
+      });
+    },
+    [wrap, reportSkipped, afterDefinitionWrite],
+  );
+
+  // Copies are off here: `infer (1).md` is outside the definition whitelist, so
+  // "keep both" would be silently skipped by the server.
+  const { requestUpload, modalProps: conflictModalProps } = useUploadConflicts<{
+    tree?: FileNode[] | null;
+    agentId?: string;
+  }>({ upload: doUploadFiles, allowCopy: false });
+
+  const handleUploadFiles = (agentId: string, files: FileList, dirPath: string) =>
+    wrap(async () => {
+      // Re-read rather than `ensure`: the overwrite prompt is only as honest as
+      // the tree it compares against.
+      await loadDefinitionTree(agentId);
+      const tree = (useStore.getState().definitionTrees[agentId]?.tree ?? []) as unknown as FileNode[];
+      requestUpload(
+        dirPath,
+        Array.from(files).map((f) => ({ file: f, relativePath: dirPath ? `${dirPath}/${f.name}` : f.name })),
+        { tree, agentId },
+      );
     });
+
+  /** job / intent FOLDER upload — same-id lands on the replace confirm below. */
+  const [pendingReplace, setPendingReplace] = useState<{
+    agentId: string;
+    dest: string;
+    entries: UploadFileEntry[];
+    label: string;
+  } | null>(null);
+
+  const uploadUnitFolder = (agentId: string, dest: string, entries: UploadFileEntry[]) =>
+    wrap(async () => {
+      const result = await uploadDefinitionFiles(agentId, entries, { replaceDir: dest });
+      reportSkipped(result.skipped);
+      await afterDefinitionWrite(agentId);
+    });
+
+  const handleUploadUnitFolder = async (
+    unit: 'job' | 'intent',
+    agentId: string,
+    jobId: string | undefined,
+    files: FileList,
+  ) => {
+    const picked = pickedFolderName(files);
+    if (!picked || !isValidCustomId(picked)) {
+      setError(t('import.badFolderName', 'Upload exactly one folder whose name is the id ([a-z0-9-]).'));
+      return;
+    }
+    if (unit === 'intent' && !jobId) return;
+    const dest = unit === 'job' ? `jobs/${picked}` : `jobs/${jobId}/intents/${picked}`;
+    const entries = entriesUnder(files, dest);
+    const required = unit === 'job' ? `${dest}/job.yaml` : `${dest}/infer.md`;
+    if (!hasEntry(entries, required)) {
+      setError(
+        unit === 'job'
+          ? t('import.missingJobYaml', 'The job folder must contain job.yaml at its root.')
+          : t('import.missingInferMd', 'The intent folder must contain infer.md at its root.'),
+      );
+      return;
+    }
+    await loadDefinitionTree(agentId);
+    const tree = useStore.getState().definitionTrees[agentId]?.tree ?? [];
+    if (findDefinitionNode(tree, dest)) {
+      setPendingReplace({ agentId, dest, entries, label: dest });
+      return;
+    }
+    await uploadUnitFolder(agentId, dest, entries);
+  };
 
   /**
    * Promotion is a MOVE into the org. The PromoteZone card owns the confirm
@@ -268,22 +367,40 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       }
     });
 
-  const handleImportFolder = (files: FileList) =>
+  const [pendingImport, setPendingImport] = useState<{ entries: UploadFileEntry[]; agentId: string } | null>(null);
+
+  const importFolder = (entries: UploadFileEntry[], overwrite?: boolean) =>
     wrap(async () => {
-      const entries = Array.from(files).map((f) => ({
-        file: f,
-        relativePath: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
-      }));
-      const result = await importAgentFolder(entries);
+      const result = await importAgentFolder(entries, overwrite ? { overwrite: true } : undefined);
       await afterMutation();
-      if (result.skipped.length > 0) {
-        setError(
-          t('import.skipped', 'Imported with {{count}} skipped file(s): ', { count: result.skipped.length }) +
-            result.skipped.map((s) => s.path).join(', '),
-        );
+      reportSkipped(result.skipped);
+      if (result.agentId) {
+        selectAgentSettingsNode(result.agentId);
+        await loadDefinitionTree(result.agentId);
       }
-      if (result.agentId) selectAgentSettingsNode(result.agentId);
     });
+
+  const handleImportFolder = async (files: FileList) => {
+    const entries = Array.from(files).map((f) => ({
+      file: f,
+      relativePath: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
+    }));
+    const picked = pickedFolderName(files);
+    const existing = picked ? agents.find((a) => a.id === picked) : undefined;
+    if (existing && existing.scope !== 'user') {
+      setError(
+        t('import.conflictReadonly', 'Agent id "{{id}}" is taken by a read-only agent — rename the folder.', {
+          id: picked,
+        }),
+      );
+      return;
+    }
+    if (existing && picked) {
+      setPendingImport({ entries, agentId: picked });
+      return;
+    }
+    await importFolder(entries);
+  };
 
   // ── detail handlers ────────────────────────────────────────────────────────
 
@@ -398,11 +515,41 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       selectAgentSettingsNode(selection.agentId, selection.jobId, newId);
     });
 
-  /** New intents are phantom drafts authored on their own screen — Save materializes the files. */
-  const handleCreateIntent = (intentId: string) => {
-    docs.addIntent(intentId);
-    selectAgentSettingsNode(selection.agentId, selection.jobId, intentId);
+  /**
+   * New intents are phantom drafts authored on their own screen — Save
+   * materializes the files. A tree-initiated create can name a job that is not
+   * selected yet, so the draft waits for that job's docs to load.
+   */
+  const [pendingIntentDraft, setPendingIntentDraft] = useState<{
+    agentId: string;
+    jobId: string;
+    intentId: string;
+  } | null>(null);
+
+  const handleCreateIntent = (agentId: string, jobId: string, intentId: string) => {
+    setPendingIntentDraft({ agentId, jobId, intentId });
+    selectAgentSettingsNode(agentId, jobId, intentId);
   };
+
+  useEffect(() => {
+    if (!pendingIntentDraft || !docs.loaded) return;
+    if (pendingIntentDraft.agentId !== selection.agentId || pendingIntentDraft.jobId !== selection.jobId) return;
+    docs.addIntent(pendingIntentDraft.intentId);
+    setPendingIntentDraft(null);
+  }, [pendingIntentDraft, docs, selection.agentId, selection.jobId]);
+
+  const handleCreateDefinitionFile = (agentId: string, path: string) =>
+    wrap(async () => {
+      await createDefinitionFile(agentId, path);
+      await afterDefinitionWrite(agentId);
+      handleOpenTreeFile(agentId, path);
+    });
+
+  const handleCreateDefinitionDir = (agentId: string, path: string) =>
+    wrap(async () => {
+      await createDefinitionDir(agentId, path);
+      await afterDefinitionWrite(agentId);
+    });
 
   /**
    * Scroll to a card once it EXISTS. Two frames were not enough: a click on
@@ -539,6 +686,11 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onCreateJob={handleCreateJob}
           onUploadFiles={handleUploadFiles}
           onImportFolder={handleImportFolder}
+          onUploadUnitFolder={handleUploadUnitFolder}
+          onCreateIntent={handleCreateIntent}
+          onCreateFile={handleCreateDefinitionFile}
+          onCreateDir={handleCreateDefinitionDir}
+          isTeamActive={isTeamActive}
           loadError={accountAgentsError}
           onRetryLoad={() => void loadAccountAgents()}
           definitionTrees={definitionTrees}
@@ -685,7 +837,9 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
                   ctx={overviewCtx}
                   id="c3g-intents"
                   onSelectIntent={(intentId) => selectAgentSettingsNode(selection.agentId, selection.jobId, intentId)}
-                  onCreateIntent={handleCreateIntent}
+                  onCreateIntent={(intentId) =>
+                    handleCreateIntent(selection.agentId!, selection.jobId!, intentId)
+                  }
                 />
               </div>
             )}
@@ -730,6 +884,44 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           </span>
         </div>
       )}
+
+      <UploadConflictModal {...conflictModalProps} />
+
+      <UploadConflictModal
+        isOpen={pendingReplace != null}
+        conflictingFiles={pendingReplace ? [pendingReplace.label] : []}
+        allowCopy={false}
+        title={t('import.replaceTitle', 'Already exists')}
+        message={t(
+          'import.replaceMessage',
+          'This directory already exists. Overwriting REPLACES its definition files — anything not in the upload is removed.',
+        )}
+        onClose={() => setPendingReplace(null)}
+        onResolve={(resolution) => {
+          const target = pendingReplace;
+          setPendingReplace(null);
+          if (resolution === 'cancel' || !target) return;
+          void uploadUnitFolder(target.agentId, target.dest, target.entries);
+        }}
+      />
+
+      <UploadConflictModal
+        isOpen={pendingImport != null}
+        conflictingFiles={pendingImport ? [pendingImport.agentId] : []}
+        allowCopy={false}
+        title={t('import.replaceAgentTitle', 'Agent already exists')}
+        message={t(
+          'import.replaceAgentMessage',
+          'An agent with this id already exists. Overwriting REPLACES its definition files; past session data is left untouched.',
+        )}
+        onClose={() => setPendingImport(null)}
+        onResolve={(resolution) => {
+          const target = pendingImport;
+          setPendingImport(null);
+          if (resolution === 'cancel' || !target) return;
+          void importFolder(target.entries, true);
+        }}
+      />
     </div>
   );
 }

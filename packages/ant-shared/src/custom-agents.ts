@@ -592,3 +592,74 @@ export function isAllowedDefinitionPath(relPath: string): boolean {
   }
   return false;
 }
+
+export type DefinitionDirKind =
+  | 'agent-root'
+  | 'agent-base'
+  | 'jobs'
+  | 'job'
+  | 'job-base'
+  | 'intents'
+  | 'intent'
+  | 'unknown';
+
+/** Which directories the definition whitelist admits, by shape. */
+export function classifyDefinitionDir(relPath: string): DefinitionDirKind {
+  const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+  if (normalized === '') return 'agent-root';
+  const parts = normalized.split('/');
+  if (parts.some((seg) => seg === '' || seg === '.' || seg === '..')) return 'unknown';
+  if (parts.length === 1) return parts[0] === 'base' ? 'agent-base' : parts[0] === 'jobs' ? 'jobs' : 'unknown';
+  if (parts[0] !== 'jobs' || !isValidCustomId(parts[1])) return 'unknown';
+  if (parts.length === 2) return 'job';
+  if (parts.length === 3) {
+    return parts[2] === 'base' ? 'job-base' : parts[2] === INTENTS_DIR_NAME ? 'intents' : 'unknown';
+  }
+  if (parts.length === 4) {
+    return parts[2] === INTENTS_DIR_NAME && isValidCustomId(parts[3]) ? 'intent' : 'unknown';
+  }
+  return 'unknown';
+}
+
+/**
+ * What a definition directory may hold — the create/upload counterpart of
+ * {@link isAllowedDefinitionPath}. Sibling of `ArtifactDirPolicy`, not an
+ * extension of it: fixed file names and custom-id children are not
+ * expressible as extension rules.
+ */
+export interface DefinitionDirPolicy {
+  kind: DefinitionDirKind;
+  fixedFiles: string[];
+  acceptedExtensions?: string[];
+  fixedDirs: string[];
+  customIdChild?: 'job' | 'intent';
+}
+
+export function getDefinitionDirPolicy(relPath: string): DefinitionDirPolicy {
+  const kind = classifyDefinitionDir(relPath);
+  switch (kind) {
+    case 'agent-root':
+      return { kind, fixedFiles: ['agent.yaml'], fixedDirs: ['base', 'jobs'] };
+    case 'agent-base':
+    case 'job-base':
+      return { kind, fixedFiles: [], acceptedExtensions: ['.md'], fixedDirs: [] };
+    case 'jobs':
+      return { kind, fixedFiles: [], fixedDirs: [], customIdChild: 'job' };
+    case 'job':
+      return { kind, fixedFiles: ['job.yaml'], fixedDirs: ['base', INTENTS_DIR_NAME] };
+    case 'intents':
+      return { kind, fixedFiles: [], fixedDirs: [], customIdChild: 'intent' };
+    case 'intent':
+      return {
+        kind,
+        fixedFiles: [INTENT_INFER_FILE_NAME, INTENT_PROMPT_FILE_NAME, INTENT_HOOKS_FILE_NAME],
+        fixedDirs: [],
+      };
+    default:
+      return { kind: 'unknown', fixedFiles: [], fixedDirs: [] };
+  }
+}
+
+export function isAllowedDefinitionDir(relPath: string): boolean {
+  return classifyDefinitionDir(relPath) !== 'unknown';
+}

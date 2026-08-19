@@ -18,16 +18,9 @@ import { cn } from '@/shared/utils/design-system';
 import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { ApiError } from '@/infrastructure/http/api/client';
-import {
-  UploadConflictModal,
-  type ConflictResolution,
-} from '@/presentation/components/common/UploadConflictModal';
-import {
-  findConflicts,
-  getAllExistingNames,
-  applyPerFileResolutions,
-  fileListToEntries,
-} from '@/shared/utils/upload-utils';
+import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
+import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
+import { fileListToEntries } from '@/shared/utils/upload-utils';
 import {
   UI_PANEL_TOP_LEVEL_DIRS,
   pruneFileTreeForWorkspaceDomain,
@@ -276,14 +269,6 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
   const abortRef = useRef<AbortController | null>(null);
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Upload conflict modal state ──────────────────────────────────
-  const [conflictModal, setConflictModal] = useState<{
-    isOpen: boolean;
-    conflictingFiles: string[];
-    dirPath: string;
-    entries: UploadFileEntry[];
-  }>({ isOpen: false, conflictingFiles: [], dirPath: '', entries: [] });
-
   const dismissUpload = useCallback(() => {
     if (lingerTimerRef.current) {
       clearTimeout(lingerTimerRef.current);
@@ -338,36 +323,11 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     ],
   );
 
-  const checkConflictsAndUpload = useCallback(
-    (dirPath: string, entries: UploadFileEntry[]) => {
-      if (notifyArtifactMutationBlocked()) return;
-      if (!fileTree) {
-        doUpload(dirPath, entries);
-        return;
-      }
-      const conflicts = findConflicts(fileTree, dirPath, entries);
-      if (conflicts.length === 0) {
-        doUpload(dirPath, entries);
-        return;
-      }
-      setConflictModal({ isOpen: true, conflictingFiles: conflicts, dirPath, entries });
-    },
-    [fileTree, doUpload, notifyArtifactMutationBlocked],
-  );
-
-  const handleConflictResolve = useCallback(
-    (resolution: ConflictResolution) => {
-      const { dirPath, entries } = conflictModal;
-      setConflictModal((prev) => ({ ...prev, isOpen: false }));
-
-      if (resolution === 'cancel') return;
-
-      const existingNames = fileTree ? getAllExistingNames(fileTree, dirPath) : [];
-      const finalEntries = applyPerFileResolutions(entries, resolution.perFile, existingNames);
-      doUpload(dirPath, finalEntries);
-    },
-    [conflictModal, doUpload, fileTree],
-  );
+  const { requestUpload: checkConflictsAndUpload, modalProps: conflictModalProps } = useUploadConflicts({
+    tree: fileTree,
+    upload: doUpload,
+    guard: notifyArtifactMutationBlocked,
+  });
 
   const handleUploadFiles = useCallback(
     (dirPath: string, files: FileList) => {
@@ -552,12 +512,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
       </div>
 
       {/* Upload conflict modal */}
-      <UploadConflictModal
-        isOpen={conflictModal.isOpen}
-        onClose={() => setConflictModal((prev) => ({ ...prev, isOpen: false }))}
-        conflictingFiles={conflictModal.conflictingFiles}
-        onResolve={handleConflictResolve}
-      />
+      <UploadConflictModal {...conflictModalProps} />
 
       {/* Bottom-center portal: upload progress OR drop error */}
       {(uploadState || dropError) &&

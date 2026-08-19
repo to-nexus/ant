@@ -158,6 +158,10 @@ export function createDefinitionFile(agentId: string, path: string): Promise<voi
   return apiPost(`${base()}/${encodeURIComponent(agentId)}/files/create`, { path });
 }
 
+export function createDefinitionDir(agentId: string, path: string): Promise<void> {
+  return apiPost(`${base()}/${encodeURIComponent(agentId)}/files/mkdir`, { path });
+}
+
 export function renameDefinitionFile(agentId: string, path: string, newName: string): Promise<void> {
   return apiPost(`${base()}/${encodeURIComponent(agentId)}/files/rename`, { path, newName });
 }
@@ -173,12 +177,17 @@ export interface DefinitionUploadResult {
   agentId?: string;
 }
 
-async function postMultipart(url: string, entries: UploadFileEntry[]): Promise<DefinitionUploadResult> {
+async function postMultipart(
+  url: string,
+  entries: UploadFileEntry[],
+  fields?: Record<string, string>,
+): Promise<DefinitionUploadResult> {
   const formData = new FormData();
   for (const entry of entries) {
     formData.append('files', entry.file);
     formData.append('relativePaths', entry.relativePath);
   }
+  for (const [key, value] of Object.entries(fields ?? {})) formData.append(key, value);
   const response = await authFetch(url, { method: 'POST', body: formData });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -191,11 +200,23 @@ async function postMultipart(url: string, entries: UploadFileEntry[]): Promise<D
   return response.json();
 }
 
-export function uploadDefinitionFiles(agentId: string, entries: UploadFileEntry[]): Promise<DefinitionUploadResult> {
-  return postMultipart(`${base()}/${encodeURIComponent(agentId)}/files/upload`, entries);
+/** `replaceDir` makes this a directory-unit REPLACE (job / intent folder upload). */
+export function uploadDefinitionFiles(
+  agentId: string,
+  entries: UploadFileEntry[],
+  options?: { replaceDir?: string },
+): Promise<DefinitionUploadResult> {
+  return postMultipart(
+    `${base()}/${encodeURIComponent(agentId)}/files/upload`,
+    entries,
+    options?.replaceDir ? { replaceDir: options.replaceDir } : undefined,
+  );
 }
 
 /** Whole-agent import from a folder upload (webkitdirectory). */
-export function importAgentFolder(entries: UploadFileEntry[]): Promise<DefinitionUploadResult> {
-  return postMultipart(`${base()}/import`, entries);
+export function importAgentFolder(
+  entries: UploadFileEntry[],
+  options?: { overwrite?: boolean },
+): Promise<DefinitionUploadResult> {
+  return postMultipart(`${base()}/import`, entries, options?.overwrite ? { overwrite: 'true' } : undefined);
 }

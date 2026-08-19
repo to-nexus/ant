@@ -25,6 +25,10 @@ export interface UploadConflictModalProps {
   onClose: () => void;
   conflictingFiles: string[];
   onResolve: (resolution: ConflictResolution) => void;
+  /** Off where a renamed copy would fall outside the target's path contract. */
+  allowCopy?: boolean;
+  title?: string;
+  message?: string;
 }
 
 function ghostButtonStyle(): React.CSSProperties {
@@ -95,6 +99,9 @@ export function UploadConflictModal({
   onClose,
   conflictingFiles,
   onResolve,
+  allowCopy = true,
+  title,
+  message,
 }: UploadConflictModalProps) {
   const { t } = useTranslation('artifacts');
   const overwriteBtnRef = useRef<HTMLButtonElement>(null);
@@ -158,10 +165,12 @@ export function UploadConflictModal({
       <button onClick={handleCancel} style={ghostButtonStyle()}>
         {t('common:button.cancel')}
       </button>
-      <button onClick={() => handleAction('copy')} style={secondaryButtonStyle()}>
-        <Icon name="plus" size={14} />
-        {t('conflict.keepCopy')}
-      </button>
+      {allowCopy && (
+        <button onClick={() => handleAction('copy')} style={secondaryButtonStyle()}>
+          <Icon name="plus" size={14} />
+          {t('conflict.keepCopy')}
+        </button>
+      )}
       <button
         ref={overwriteBtnRef}
         onClick={() => handleAction('overwrite')}
@@ -177,7 +186,7 @@ export function UploadConflictModal({
     <Modal
       isOpen={isOpen}
       onClose={handleCancel}
-      title={t('conflict.title')}
+      title={title ?? t('conflict.title')}
       size="sm"
       accent="orange"
       eyebrow="UPLOAD"
@@ -196,9 +205,10 @@ export function UploadConflictModal({
                 color: 'var(--text-2)',
               }}
             >
-              {isSingleFile
-                ? t('conflict.messageSingle')
-                : t('conflict.messageMulti', { count: total })}
+              {message ??
+                (isSingleFile
+                  ? t('conflict.messageSingle')
+                  : t('conflict.messageMulti', { count: total }))}
             </p>
           </div>
         </div>
@@ -291,7 +301,7 @@ export function UploadConflictModal({
                 marginBottom: 2,
               }}
             >
-              {t('conflict.title')}
+              {title ?? t('conflict.title')}
             </div>
             <div
               style={{

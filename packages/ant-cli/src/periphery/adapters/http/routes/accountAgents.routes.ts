@@ -21,6 +21,8 @@ import {
   CUSTOM_ID_HINT,
   GENERAL_INTENT,
   MEMBERSHIP_REQUIRED,
+  classifyDefinitionDir,
+  isAllowedDefinitionDir,
   isAllowedDefinitionPath,
   isValidCustomId,
   type CustomJobPromptPreview,
@@ -713,6 +715,33 @@ export function createAccountAgentRoutes(deps: {
     }
   });
 
+  router.post('/:agentId/files/mkdir', async (req: Request, res: Response) => {
+    try {
+      const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
+      if (!found) return;
+      const rel = String(req.body?.path || '').replace(/\\/g, '/').replace(/\/+$/, '');
+      if (!rel) return res.status(400).json({ error: 'path is required' });
+      const kind = classifyDefinitionDir(rel);
+      if (kind === 'unknown') {
+        return res.status(400).json({ error: `Path is outside the definition whitelist: ${rel}` });
+      }
+      // A job/intent directory is BORN by its own creator (POST /jobs, and the
+      // intent's infer.md save) — mkdir must not become a second birth site.
+      if (kind === 'job') {
+        return res.status(400).json({ error: 'Create a job with POST /:agentId/jobs — it scaffolds job.yaml' });
+      }
+      if (kind === 'intent') {
+        return res.status(400).json({ error: 'Create an intent by saving its infer.md — the directory follows' });
+      }
+      const full = resolveDefinitionPath(found.agentDir, rel);
+      if (fs.existsSync(full)) return res.status(409).json({ error: `Already exists: ${rel}` });
+      fs.mkdirSync(full, { recursive: true });
+      res.json({ success: true });
+    } catch (error: any) {
+      sendErrorResponse(res, 500, error, 'AccountAgents');
+    }
+  });
+
   router.post('/:agentId/files/rename', async (req: Request, res: Response) => {
     try {
       const found = await findWritableAgent(res, scopeRootsFor(req), req.params.agentId, orgGateFor(req));
@@ -793,6 +822,20 @@ export function createAccountAgentRoutes(deps: {
       const rawRelPaths = req.body.relativePaths;
       const relativePaths: string[] = Array.isArray(rawRelPaths) ? rawRelPaths : rawRelPaths ? [rawRelPaths] : [];
 
+      // Directory-unit upload = REPLACE: validate everything before the rm so a
+      // rejected request never leaves a half-deleted directory behind.
+      const replaceDir = String(req.body.replaceDir || '').replace(/\\/g, '/').replace(/\/+$/, '');
+      if (replaceDir) {
+        if (!isAllowedDefinitionDir(replaceDir) || classifyDefinitionDir(replaceDir) === 'agent-root') {
+          return res.status(400).json({ error: `Invalid replaceDir: ${replaceDir}` });
+        }
+        const outside = relativePaths.find((p) => !p.replace(/\\/g, '/').startsWith(`${replaceDir}/`));
+        if (outside) {
+          return res.status(400).json({ error: `Upload path outside replaceDir (${replaceDir}): ${outside}` });
+        }
+        fs.rmSync(resolveDefinitionPath(found.agentDir, replaceDir), { recursive: true, force: true });
+      }
+
       const uploaded: string[] = [];
       const skipped: Array<{ path: string; reason: string }> = [];
       for (let i = 0; i < files.length; i++) {
@@ -837,13 +880,17 @@ export function createAccountAgentRoutes(deps: {
       if (!hasAgentYaml) {
         return res.status(400).json({ error: 'The agent folder must contain agent.yaml at its root' });
       }
+      const root = creationRoot(scopeRoots);
       const collision = findCreateCollision(scopeRoots, agentId);
-      if (collision) {
+      const overwrite = String(req.body.overwrite || '') === 'true';
+      // Overwrite is a REPLACE of the definition dir, and only where the caller
+      // may write: a readonly (builtin/org) id stays a 409 no matter the flag.
+      if (collision && !(overwrite && collision.scopeRoot.root === root.root)) {
         return res.status(409).json({ error: createCollisionMessage(agentId, collision) });
       }
 
-      const root = creationRoot(scopeRoots);
       const agentDir = path.join(root.root, agentId);
+      if (collision) fs.rmSync(agentDir, { recursive: true, force: true });
       const uploaded: string[] = [];
       const skipped: Array<{ path: string; reason: string }> = [];
       for (let i = 0; i < files.length; i++) {

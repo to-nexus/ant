@@ -10,10 +10,14 @@
  *   right pane currently expresses is highlighted.
  *
  * The tree CREATES and NAVIGATES; it never edits. Renaming happens in the
- * detail screen's definition card (name and id are both fields there) and
- * deleting in its Danger Zone, so a row's kebab carries only "new child" and
- * "upload files". Intent rows have no menu at all — the intent catalog is
- * owned by the job screen's Intents card. Collapse state is local and
+ * detail screen's definition card and deleting in its Danger Zone.
+ *
+ * A row's actions follow ITS VIEW. Structure rows create and upload the SAME
+ * unit — the child concept's DIRECTORY (root → agent, agent → job, job →
+ * intent), so "upload" can never be read as "upload makes a job?". File rows
+ * are directories, so they carry new-file / new-folder / upload scoped to what
+ * `getDefinitionDirPolicy` says that directory may legally hold. Agent
+ * creation is view-independent (the toolbar). Collapse state is local and
  * unpersisted; the view choice persists (STORAGE_KEYS.AGENT_TREE_VIEW).
  *
  * Row anatomy: the concept icon is the FIRST thing on every row, indented one
@@ -31,8 +35,14 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FolderTree, ListTree, Plus, Target, Upload } from 'lucide-react';
-import { toCustomId, type CustomAgentScope, type CustomAgentSummary } from '@ant/shared';
+import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FilePlus, FolderPlus, FolderTree, ListTree, Plus, Target, Upload } from 'lucide-react';
+import {
+  getDefinitionDirPolicy,
+  toCustomId,
+  type CustomAgentDefinitionFileNode,
+  type CustomAgentScope,
+  type CustomAgentSummary,
+} from '@ant/shared';
 import { Button, KebabMenu, type KebabMenuItem } from '@/presentation/components/aurora';
 import { AuroraInput, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
 import { selectedRowLabel, selectedRowStyle } from '@/presentation/components/aurora/selection';
@@ -74,7 +84,11 @@ function CollapseToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle:
 
 const COLLAPSE_SPACER = <span className="w-4 shrink-0" />;
 
-type Creating = { kind: 'agent' } | { kind: 'job'; agentId: string };
+type Creating =
+  | { kind: 'agent' }
+  | { kind: 'job'; agentId: string; dirPath?: string }
+  | { kind: 'intent'; agentId: string; jobId: string }
+  | { kind: 'file'; agentId: string; dirPath: string };
 
 export interface AgentTreeProps {
   agents: CustomAgentSummary[];
@@ -82,9 +96,17 @@ export interface AgentTreeProps {
   onSelect: (agentId?: string, jobId?: string, intentId?: string) => void;
   onCreateAgent: (id: string, name: string) => Promise<void>;
   onCreateJob: (agentId: string, id: string, name: string) => Promise<void>;
-  /** Upload loose files into the agent (job scope prefixes jobs/{jobId}/). */
-  onUploadFiles: (agentId: string, files: FileList, pathPrefix: string) => Promise<void>;
+  /** Upload loose files into one definition directory (file view). */
+  onUploadFiles: (agentId: string, files: FileList, dirPath: string) => Promise<void>;
+  /** Upload a whole agent folder (both views, toolbar). */
   onImportFolder: (files: FileList) => Promise<void>;
+  /** Upload a job / intent FOLDER — the picked folder name is the id. */
+  onUploadUnitFolder: (unit: 'job' | 'intent', agentId: string, jobId: string | undefined, files: FileList) => Promise<void>;
+  onCreateIntent: (agentId: string, jobId: string, intentId: string) => void;
+  onCreateFile: (agentId: string, path: string) => Promise<void>;
+  onCreateDir: (agentId: string, path: string) => Promise<void>;
+  /** Empty-state copy for the org group depends on whether a team is active. */
+  isTeamActive: boolean;
   /** Why the agent list is empty, when it is empty because loading failed. */
   loadError?: { kind: 'endpoint-missing' | 'unknown'; message: string } | null;
   onRetryLoad?: () => void;
@@ -155,15 +177,18 @@ function InlineCreateForm({
   onSubmit,
   onCancel,
   indent,
+  rawName,
 }: {
   placeholder: string;
   onSubmit: (value: string) => void;
   onCancel: () => void;
   indent: number;
+  /** File names are not ids — skip the id derivation and its preview. */
+  rawName?: boolean;
 }) {
   const { t } = useTranslation('agents');
   const [value, setValue] = useState('');
-  const derived = toCustomId(value);
+  const derived = rawName ? value.trim() : toCustomId(value);
   return (
     <form
       className="py-1 flex flex-col gap-1"
@@ -197,23 +222,26 @@ function InlineCreateForm({
   );
 }
 
-/** Hidden multi-file input wrapped by an imperative opener. */
-function useFilePicker(): [React.ReactNode, (onFiles: (files: FileList) => void) => void] {
+/** Hidden file/folder inputs wrapped by one imperative opener. */
+function useFilePicker(): [React.ReactNode, (onFiles: (files: FileList) => void, directory?: boolean) => void] {
   const [inputKey, setInputKey] = useState(0);
   const [handler, setHandler] = useState<((files: FileList) => void) | null>(null);
-  const open = (onFiles: (files: FileList) => void) => {
+  const [mode, setMode] = useState<'files' | 'directory'>('files');
+  const open = (onFiles: (files: FileList) => void, directory = false) => {
     setHandler(() => onFiles);
+    setMode(directory ? 'directory' : 'files');
     // The input is remounted per pick so re-selecting the same file re-fires.
     setInputKey((k) => k + 1);
     requestAnimationFrame(() => document.getElementById('agent-tree-file-picker')?.click());
   };
   const node = (
     <input
-      key={inputKey}
+      key={`${mode}-${inputKey}`}
       id="agent-tree-file-picker"
       type="file"
       multiple
       className="hidden"
+      {...((mode === 'directory' ? { webkitdirectory: '' } : {}) as Record<string, string>)}
       onChange={(e) => {
         if (e.target.files && e.target.files.length > 0) handler?.(e.target.files);
       }}
@@ -230,6 +258,11 @@ export function AgentTree({
   onCreateJob,
   onUploadFiles,
   onImportFolder,
+  onUploadUnitFolder,
+  onCreateIntent,
+  onCreateFile,
+  onCreateDir,
+  isTeamActive,
   loadError,
   onRetryLoad,
   definitionTrees,
@@ -276,28 +309,153 @@ export function AgentTree({
   // Write items are gated by the PER-AGENT effective readonly (org agents can
   // be editable for their owner/editors). Promotion lives in the detail
   // pane's PromoteZone, not here — the tree only creates and navigates.
-  const agentMenu = (agent: CustomAgentSummary): KebabMenuItem[] =>
-    agent.readonly
-      ? []
-      : [
-          { icon: Plus, label: t('tree.menu.newJob', 'New job'), onClick: () => setCreating({ kind: 'job', agentId: agent.id }) },
-          {
-            icon: Upload,
-            label: t('tree.menu.upload', 'Upload files…'),
-            onClick: () => openFilePicker((files) => void onUploadFiles(agent.id, files, '')),
-          },
-        ];
+  const agentMenu = (agent: CustomAgentSummary): KebabMenuItem[] => {
+    if (agent.readonly) return [];
+    if (view === 'files') return dirMenu(agent.id, '', definitionTrees[agent.id]?.tree ?? []);
+    return [
+      { icon: Plus, label: t('tree.menu.newJob', 'New job'), onClick: () => setCreating({ kind: 'job', agentId: agent.id }) },
+      {
+        icon: Upload,
+        label: t('tree.menu.uploadJobFolder', 'Upload job folder…'),
+        onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, files), true),
+      },
+    ];
+  };
 
   const jobMenu = (agent: CustomAgentSummary, jobId: string): KebabMenuItem[] =>
     agent.readonly
       ? []
       : [
           {
+            icon: Plus,
+            label: t('tree.menu.newIntent', 'New intent'),
+            onClick: () => setCreating({ kind: 'intent', agentId: agent.id, jobId }),
+          },
+          {
             icon: Upload,
-            label: t('tree.menu.upload', 'Upload files…'),
-            onClick: () => openFilePicker((files) => void onUploadFiles(agent.id, files, `jobs/${jobId}/`)),
+            label: t('tree.menu.uploadIntentFolder', 'Upload intent folder…'),
+            onClick: () => openFilePicker((files) => void onUploadUnitFolder('intent', agent.id, jobId, files), true),
           },
         ];
+
+  /**
+   * File-view directory menu — every directory offers create + upload, but only
+   * the children `getDefinitionDirPolicy` admits there; anything else would be
+   * refused by the write whitelist after the fact.
+   */
+  const dirMenu = (agentId: string, dirPath: string, children: CustomAgentDefinitionFileNode[]): KebabMenuItem[] => {
+    const policy = getDefinitionDirPolicy(dirPath);
+    if (policy.kind === 'unknown') return [];
+    const present = new Set(children.map((c) => c.name));
+    const join = (name: string) => (dirPath ? `${dirPath}/${name}` : name);
+    const items: KebabMenuItem[] = [];
+
+    for (const name of policy.fixedFiles.filter((n) => !present.has(n))) {
+      items.push({
+        icon: FilePlus,
+        label: t('tree.menu.newNamed', 'New {{name}}', { name }),
+        onClick: () => void onCreateFile(agentId, join(name)),
+      });
+    }
+    if (policy.acceptedExtensions) {
+      items.push({
+        icon: FilePlus,
+        label: t('artifacts:actions.createFile', 'Create file'),
+        onClick: () => setCreating({ kind: 'file', agentId, dirPath }),
+      });
+    }
+    for (const name of policy.fixedDirs.filter((n) => !present.has(n))) {
+      items.push({
+        icon: FolderPlus,
+        label: t('tree.menu.newNamedDir', 'New {{name}}/', { name }),
+        onClick: () => void onCreateDir(agentId, join(name)),
+      });
+    }
+    if (policy.customIdChild === 'job') {
+      items.push({
+        icon: Plus,
+        label: t('tree.menu.newJob', 'New job'),
+        onClick: () => setCreating({ kind: 'job', agentId, dirPath }),
+      });
+    }
+    if (policy.customIdChild === 'intent') {
+      const jobId = dirPath.split('/')[1];
+      items.push({
+        icon: Plus,
+        label: t('tree.menu.newIntent', 'New intent'),
+        onClick: () => setCreating({ kind: 'intent', agentId, jobId }),
+      });
+    }
+    items.push({
+      icon: Upload,
+      label: t('artifacts:actions.upload', 'Upload'),
+      onClick: () => openFilePicker((files) => void onUploadFiles(agentId, files, dirPath)),
+    });
+    if (policy.customIdChild) {
+      items.push({
+        icon: Upload,
+        label:
+          policy.customIdChild === 'job'
+            ? t('tree.menu.uploadJobFolder', 'Upload job folder…')
+            : t('tree.menu.uploadIntentFolder', 'Upload intent folder…'),
+        onClick: () =>
+          openFilePicker(
+            (files) => void onUploadUnitFolder(policy.customIdChild!, agentId, dirPath.split('/')[1], files),
+            true,
+          ),
+      });
+    }
+    return items;
+  };
+
+  /** Inline create form for the file view, rendered under the directory it targets. */
+  const renderCreateForm = (agentId: string, dirPath: string): React.ReactNode => {
+    if (!creating || creating.kind === 'agent' || creating.agentId !== agentId) return null;
+    const indent = 30;
+    if (creating.kind === 'file' && creating.dirPath === dirPath) {
+      return (
+        <InlineCreateForm
+          placeholder="filename.md"
+          indent={indent}
+          rawName
+          onCancel={() => setCreating(null)}
+          onSubmit={(name) => {
+            setCreating(null);
+            const file = name.endsWith('.md') ? name : `${name}.md`;
+            void onCreateFile(agentId, dirPath ? `${dirPath}/${file}` : file);
+          }}
+        />
+      );
+    }
+    if (creating.kind === 'job' && creating.dirPath === dirPath) {
+      return (
+        <InlineCreateForm
+          placeholder={t('tree.jobName', 'Job name')}
+          indent={indent}
+          onCancel={() => setCreating(null)}
+          onSubmit={(name) => {
+            setCreating(null);
+            void onCreateJob(agentId, toCustomId(name), name);
+          }}
+        />
+      );
+    }
+    if (creating.kind === 'intent' && dirPath === `jobs/${creating.jobId}/intents`) {
+      const jobId = creating.jobId;
+      return (
+        <InlineCreateForm
+          placeholder={t('tree.intentId', 'intent-id')}
+          indent={indent}
+          onCancel={() => setCreating(null)}
+          onSubmit={(name) => {
+            setCreating(null);
+            onCreateIntent(agentId, jobId, toCustomId(name));
+          }}
+        />
+      );
+    }
+    return null;
+  };
 
   const toggleLabel =
     view === 'files'
@@ -321,8 +479,8 @@ export function AgentTree({
           <Plus className="w-3.5 h-3.5" />
         </button>
         <label
-          title={t('tree.upload', 'Upload')}
-          aria-label={t('tree.upload', 'Upload')}
+          title={t('tree.uploadAgentFolder', 'Upload agent folder… (must contain agent.yaml)')}
+          aria-label={t('tree.uploadAgentFolder', 'Upload agent folder… (must contain agent.yaml)')}
           className={`${TOOLBAR_ICON_CLASS} cursor-pointer`}
         >
           <Upload className="w-3.5 h-3.5" />
@@ -367,9 +525,10 @@ export function AgentTree({
 
       {loadError && <LoadErrorNotice error={loadError} onRetry={onRetryLoad} />}
 
+      {/* All three scope headers stay rendered even at zero rows — an absent
+          group is indistinguishable from a group that does not exist. */}
       {SCOPE_ORDER.map((scope) => {
         const group = agents.filter((a) => a.scope === scope);
-        if (group.length === 0) return null;
         return (
           <div key={scope} className="flex flex-col gap-0.5">
             <div
@@ -380,10 +539,21 @@ export function AgentTree({
               {/* readonly is PER AGENT now (org agents can be editable for
                   their owner/editors) — only a uniformly-readonly group gets
                   the header pill; mixed groups mark individual rows below. */}
-              {group.every((a) => a.readonly) && (
+              {group.length > 0 && group.every((a) => a.readonly) && (
                 <StatusPill state="not-configured" label={t('tree.readonly', 'readonly')} />
               )}
             </div>
+            {group.length === 0 && (
+              <div className="py-1 pl-2 pr-1" style={{ fontSize: 10.5, lineHeight: 1.45, color: 'var(--text-4)' }}>
+                {scope === 'user'
+                  ? t('tree.scope.emptyUser', 'No agents of your own yet — create one with + above.')
+                  : scope === 'org'
+                    ? isTeamActive
+                      ? t('tree.scope.emptyOrg', 'Nothing shared in this organization yet.')
+                      : t('tree.scope.emptyOrgNoTeam', 'Join a team to share agents with an organization.')
+                    : t('tree.scope.emptyBuiltin', 'No built-in agents were loaded.')}
+              </div>
+            )}
             {group.map((agent) => {
               const agentCollapsed = collapsedAgents.has(agent.id);
               const agentSelected = selection.agentId === agent.id && !selection.jobId;
@@ -408,7 +578,7 @@ export function AgentTree({
                     <CollapseToggle collapsed={agentCollapsed} onToggle={() => toggle(setCollapsedAgents, agent.id)} />
                   </div>
 
-                  {creating?.kind === 'job' && creating.agentId === agent.id && (
+                  {creating?.kind === 'job' && creating.agentId === agent.id && view === 'human' && (
                     <InlineCreateForm
                       placeholder={t('tree.jobName', 'Job name')}
                       indent={24}
@@ -420,6 +590,7 @@ export function AgentTree({
                     />
                   )}
 
+
                   {!agentCollapsed && view === 'files' && (
                     definitionTrees[agent.id] ? (
                       definitionTrees[agent.id].tree.length > 0 ? (
@@ -430,6 +601,10 @@ export function AgentTree({
                           selectedPath={selectedFileAgentId === agent.id ? selectedFilePath : null}
                           dense
                           baseIndent={18}
+                          dirActions={
+                            agent.readonly ? undefined : (node) => dirMenu(agent.id, node.path, node.children ?? [])
+                          }
+                          renderBelow={(path) => renderCreateForm(agent.id, path)}
                         />
                       ) : (
                         <div className="py-1 pl-8 text-[11px]" style={{ color: 'var(--text-4)' }}>
@@ -460,7 +635,9 @@ export function AgentTree({
                           >
                             <Briefcase size={14} className="shrink-0" />
                             <span className="truncate flex-1">{job.name}</span>
-                            <span className="opacity-0 group-hover:opacity-100 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {/* Visible like the agent row's: the job row is where an
+                                intent is born, and hover-only hid that entry point. */}
+                            <span className="shrink-0" onClick={(e) => e.stopPropagation()}>
                               <KebabMenu items={jobMenu(agent, job.id)} ariaLabel={t('tree.menu.jobActions', 'Job actions')} />
                             </span>
                             {intents.length > 0 ? (
@@ -472,6 +649,21 @@ export function AgentTree({
                               COLLAPSE_SPACER
                             )}
                           </div>
+
+                          {creating?.kind === 'intent' &&
+                            creating.agentId === agent.id &&
+                            creating.jobId === job.id &&
+                            view === 'human' && (
+                              <InlineCreateForm
+                                placeholder={t('tree.intentId', 'intent-id')}
+                                indent={40}
+                                onCancel={() => setCreating(null)}
+                                onSubmit={(name) => {
+                                  setCreating(null);
+                                  onCreateIntent(agent.id, job.id, toCustomId(name));
+                                }}
+                              />
+                            )}
 
                           {!jobCollapsed &&
                             intents.map((intent) => {

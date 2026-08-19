@@ -124,6 +124,8 @@ function findDirectoryNode(
   nodes: FileNode[],
   dirPath: string,
 ): FileNode | undefined {
+  // '' / '.' address the tree root itself (writable-root mounts).
+  if (dirPath === '' || dirPath === '.') return { name: '', path: '', type: 'directory', children: nodes };
   for (const node of nodes) {
     if (node.path === dirPath && node.type === 'directory') return node;
     if (node.children) {
