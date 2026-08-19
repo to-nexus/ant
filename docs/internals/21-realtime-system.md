@@ -43,9 +43,32 @@ All Pub/Sub publishing happens exclusively through broadcaster classes. No code 
 
 `GitStateBroadcaster` has a transport-agnostic design, taking a `publisher: (channel, payload) => Promise<unknown>` callback in its constructor. The Job Worker creates its own ioredis connection, while the HTTP/Realtime Server reuses the existing `stateStore.publish`. Under the single `gitState` SSE type, a `cause` discriminant (`workingTreeChange` | `operationComplete` | `reconnectRefill`) carries three distinct meanings.
 
+### fileTree is push-based, and coalesced
+
+There is no filesystem watcher anywhere in the repo: `fileTree` is published at
+mutation sites. Two owners cover the two planes —
+`ToolOrchestrator.notifyIfTreeMutated` for every tool write (driven off
+`ToolResult.sideEffects`, so a handler that reports no side effect gets no
+refresh) and a mount-level hook on each artifact mutation router for HTTP writes.
+Handlers must NOT call `notifyFileTreeUpdate` themselves; five hand-copied calls
+once left `mkdir` and `run_command` silent, so a workspace project's output
+written into a new directory only appeared after a browser refresh.
+
+Both planes coalesce through `core/realtime/KeyedSingleFlight` per
+`{org, user, project, feature}` (M-009): concurrent notifies join the in-flight
+walk and one trailing walk runs if a write arrived during it, bounding a burst of
+N writes at 2 walks. The orchestrator deliberately does NOT await its notify —
+tool calls in a batch are sequential, so awaiting would let each walk finish
+before the next began (N writes → N walks, on the agent's critical path) and
+there would be nothing concurrent left to coalesce. Nothing is lost at shutdown
+because the broadcaster registers every run with its `InflightTracker` inside
+`run()`, synchronously, and `close()` flushes before `pubRedis.quit()`. It is deliberately timer-free — a scheduled-but-unstarted
+rerun would be invisible to `InflightTracker.flush()` and would drop the
+end-of-job broadcast.
+
 ### gitState 3-cause Publish Paths
 
-- **`workingTreeChange`** — a lightweight hint. Co-emitted by `FileTreeBroadcaster.notifyFileTreeUpdate` (working-tree file changes during a job) and by `GitWatcherService` via `.git/index` mtime polling (Git manipulation from an external terminal). The FE debounces and then re-runs `fetchGitWorldState`.
+- **`workingTreeChange`** — a lightweight hint. Co-emitted by `FileTreeBroadcaster.notifyFileTreeUpdate` (working-tree file changes during a job — skipped for `jobType='universal'`, whose container has no git working tree) and by `GitWatcherService` via `.git/index` mtime polling (Git manipulation from an external terminal). The FE debounces and then re-runs `fetchGitWorldState`.
 - **`operationComplete`** — published from `GitOperation.onSuccess` after a user-initiated Git op succeeds. Carries the full `GitSnapshot` + `GitOperationState` + `GitPatState` so the FE can replace its snapshot immediately.
 - **`reconnectRefill`** — automatically published once by the server when an SSE subscription (re)opens. Ensures a consistent state right after a reload, with no stale UI.
 

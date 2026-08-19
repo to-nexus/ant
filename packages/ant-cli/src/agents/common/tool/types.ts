@@ -359,6 +359,7 @@ export type ToolSideEffect =
   | { type: 'fileCreated'; path: string }
   | { type: 'fileDeleted'; path: string }
   | { type: 'fileNotChanged'; path: string }
+  | { type: 'directoryCreated'; path: string }
   | { type: 'commandExecuted'; exitCode: number; command: string; success: boolean; hasWarnings: boolean; verifies?: Gate; cacheReplayed?: boolean }
   | { type: 'serverStarted'; pid: number; command: string; workingDir: string; port?: number }
   | { type: 'figmaError'; category: 'connection' | 'environment' | 'data' | 'rate_limit' | 'other' }

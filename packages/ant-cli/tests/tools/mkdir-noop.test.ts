@@ -52,3 +52,26 @@ describe('handleMkdir — creation vs no-op', () => {
     expect(result.content).not.toContain('Directory created');
   });
 });
+
+/**
+ * `directoryCreated` is the channel that refreshes the FE file tree:
+ * ToolOrchestrator is the single owner of `notifyFileTreeUpdate` and decides
+ * from `sideEffects`. Before this, mkdir emitted nothing at all, so a
+ * workspace-project output written into a NEW root-level directory needed a
+ * browser refresh to appear.
+ *
+ * Asserted as a side effect, not via a notify spy: the handler no longer
+ * notifies, and the side effect IS the contract the orchestrator consumes.
+ */
+describe('handleMkdir — tree-mutation side effect', () => {
+  it('emits directoryCreated for a real creation', async () => {
+    const result = await handleMkdir(makeCtx(workspacePath), { path: 'architecture/system' });
+    expect(result.sideEffects).toEqual([{ type: 'directoryCreated', path: 'architecture/system' }]);
+  });
+
+  it('emits nothing on the no-op path, so a repeated mkdir costs no tree walk', async () => {
+    fs.mkdirSync(path.join(workspacePath, 'architecture/system'), { recursive: true });
+    const result = await handleMkdir(makeCtx(workspacePath), { path: 'architecture/system' });
+    expect(result.sideEffects).toBeUndefined();
+  });
+});

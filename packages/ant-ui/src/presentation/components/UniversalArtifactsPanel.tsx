@@ -68,10 +68,13 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
     if (!isRunning) void loadTree();
   }, [isRunning, loadTree]);
 
-  // Live refresh during the run: each fileTree SSE update means a write
-  // landed in the container.
+  // Live refresh: each fileTree SSE update means a write landed in the
+  // container. Deliberately NOT gated on `isRunning` — the end-of-job broadcast
+  // races `isRunning` flipping false, and a mutation from another tab (or an
+  // HTTP artifact mutation after the job) arrives while nothing is running.
+  // Gating dropped exactly those.
   useEffect(() => {
-    if (isRunning) void loadTree();
+    void loadTree();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileTreeTick]);
 

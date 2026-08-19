@@ -24,6 +24,27 @@ import type { ToolResultManager, FigmaContext } from '../../../core/utils/toolRe
 import { buildToolResultMessage } from './messageBuilder';
 import { ToolName, TOOL_DISPLAY_NAMES } from './toolCatalog';
 
+/**
+ * Side effects that mean "the file tree the FE renders has changed".
+ *
+ * `commandExecuted` / `serverStarted` are in the set because a shell can create
+ * or delete anything under the working root; there is deliberately NO
+ * command-name allowlist — such a table drifts, and inferring write-ness from a
+ * command's shape is exactly the heuristic this codebase avoids. Bursts collapse
+ * in the notifier's single-flight, so a broad set costs at most one extra walk.
+ *
+ * `fileNotChanged` is deliberately absent: nothing the tree renders changed, so
+ * the walk it used to trigger was waste.
+ */
+const TREE_MUTATING_SIDE_EFFECTS: ReadonlySet<string> = new Set([
+  'fileCreated',
+  'fileModified',
+  'fileDeleted',
+  'directoryCreated',
+  'commandExecuted',
+  'serverStarted',
+]);
+
 export interface OrchestratorConfig {
   registry: ToolRegistry;
   /** Optional for lightweight graphs that don't need truncation. */
@@ -203,6 +224,13 @@ export class ToolOrchestrator {
         console.log(`✅ [Tool] ${name} executed successfully`);
       }
 
+      // Single owner of "a tool mutated the tree → refresh the FE". Per-call
+      // rather than per-batch so a batch containing a slow run_command still
+      // surfaces its earlier create_file immediately.
+      if (!truncatedResult.error) {
+        this.notifyIfTreeMutated(ctx, truncatedResult);
+      }
+
       events.push({
         toolCallId: id,
         toolName: name,
@@ -226,6 +254,40 @@ export class ToolOrchestrator {
       toolResultBlocks,
       updatedCache: this.config.cacheEnabled ? updatedCache : undefined,
     };
+  }
+
+  /**
+   * Refresh the FE file tree when a tool reported a tree-mutating side effect.
+   *
+   * This is the ONE place that calls `notifyFileTreeUpdate` for tool writes.
+   * It used to be five hand-copied blocks in the file handlers, which left
+   * `mkdir` and `run_command` silent — an agent that created a directory (or
+   * wrote via the shell) produced no event at all, so a workspace project's
+   * output only appeared after a browser refresh. Handlers now report WHAT
+   * happened via `sideEffects` and this decides whether the tree changed.
+   *
+   * The gate is the same one the handlers used: a notifier plus a
+   * project/feature pair to address it to.
+   */
+  private notifyIfTreeMutated(ctx: ToolExecutionContext, result: ToolResult): void {
+    if (!ctx.fileTreeUpdate || !ctx.project || !ctx.featureFolder) return;
+    const mutated = result.sideEffects?.some(e => TREE_MUTATING_SIDE_EFFECTS.has(e.type));
+    if (!mutated) return;
+    // NOT awaited, and that is what makes the coalescing work: tool calls in a
+    // batch run sequentially, so awaiting each notify would let every walk
+    // finish before the next one starts — N writes, N walks, all on the agent's
+    // critical path. Firing and forgetting lets calls 2..N join the walk started
+    // by call 1 (KeyedSingleFlight), collapsing the batch to ≤2 walks.
+    //
+    // Nothing is lost at shutdown: the broadcaster registers every run
+    // (initial AND coalesced rerun) with its InflightTracker, and `close()`
+    // flushes before `pubRedis.quit()`. Registration happens synchronously
+    // inside `run()`, so the job cannot end between this call and the tracking.
+    void ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder)
+      .catch((e: Error) => {
+        // A broadcast failure must never fail the tool call that succeeded.
+        console.warn(`⚠️  [Tool] fileTree notify failed:`, e.message);
+      });
   }
 
   private truncateResult(

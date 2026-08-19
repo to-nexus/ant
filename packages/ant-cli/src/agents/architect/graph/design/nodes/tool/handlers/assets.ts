@@ -176,13 +176,13 @@ export async function handleDownloadAsset(
     const sizeKB = (sizeBytes / 1024).toFixed(1);
     console.log(`📥 [Tool] download_asset: ${relativePath} (${sizeKB} KB)`);
 
+    // The tree refresh itself is emitted as a `fileCreated` side effect below —
+    // ToolOrchestrator is the single owner of notifyFileTreeUpdate. Only the
+    // unseen-badge call stays here (it is per-path, not per-mutation).
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
-      const featureName = ctx.featureFolder;
-      ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, featureName);
-
       if ('addUnseenArtifacts' in ctx.fileTreeUpdate) {
         (ctx.fileTreeUpdate as any).addUnseenArtifacts(
-          ctx.project, featureName, [relativePath]
+          ctx.project, ctx.featureFolder, [relativePath]
         );
       }
     }
@@ -203,7 +203,10 @@ export async function handleDownloadAsset(
       sizeBytes,
     });
 
-    return { content: payload };
+    return {
+      content: payload,
+      sideEffects: [{ type: 'fileCreated', path: relativePath }],
+    };
   } catch (err: any) {
     const errMsg = err.name === 'AbortError'
       ? `Download timed out after 30s: ${url}`

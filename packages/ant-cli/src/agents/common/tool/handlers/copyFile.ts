@@ -101,10 +101,6 @@ export async function handleCopyFile(
     });
     ctx.recordFileTouch?.(existed ? 'update' : 'create', resolvedDest.displayPath);
 
-    if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
-      await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
-    }
-
     const sideEffects: ToolSideEffect[] = [
       existed
         ? { type: 'fileModified', path: resolvedDest.displayPath }

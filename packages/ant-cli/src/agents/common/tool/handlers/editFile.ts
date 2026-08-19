@@ -151,7 +151,6 @@ export async function handleEditFile(
     ctx.recordFileTouch?.('update', resolved.displayPath);
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
-      await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
       // Feature-workspace contract: edits under generated-artifact domains
       // (`architecture/`, `visual/`, `meta/evals/`) are surfaced as unseen
       // artifacts in the UI. Path-prefix gate only (no job-type branch) so

@@ -159,9 +159,9 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
       workingDir: fileSystem.getRootPath(),
       featurePath: state.featurePath,
       project: state.projectId,
-      // File handlers gate fileTreeUpdate.notifyFileTreeUpdate on
-      // project ∧ featureFolder — universal's container rides the constant
-      // pseudo-feature, so artifact writes refresh the FE tree live.
+      // ToolOrchestrator gates its fileTree notify on project ∧ featureFolder —
+      // universal's container rides the constant pseudo-feature, so artifact
+      // writes (including mkdir and run_command) refresh the FE tree live.
       featureFolder: UNIVERSAL_FEATURE,
       // Artifact tree has no canonical codebase/ layout — resolve verbatim.
       pathAutoCorrect: 'none',

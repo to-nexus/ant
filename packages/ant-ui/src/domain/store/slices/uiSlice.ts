@@ -43,6 +43,7 @@ import {
   type ProjectConfig,
 } from '@/infrastructure/http/api';
 import i18n from '@/i18n';
+import { planArtifactAutoExpand } from '@/shared/utils/artifactExpansion';
 
 // ─────────────────────────────────────────────────────────────────────────
 // IntentGroup-scoped techTier cache helpers
@@ -242,7 +243,10 @@ export interface UIActions {
   clearHighlightedArtifactDirs: () => void;
   setSpotlightTarget: (target: { type: 'file' | 'dir'; path: string }) => void;
   clearSpotlightTarget: () => void;
+  /** @deprecated Use `resetArtifactExpansion` — this clears only one of the two paired sets. */
   setExpandedArtifactDirs: (next: ReadonlySet<string>) => void;
+  revealNewArtifactTopLevelDirs: (topLevelDirPaths: readonly string[]) => void;
+  resetArtifactExpansion: () => void;
   unionExpandedArtifactDirs: (paths: readonly string[]) => void;
   removeExpandedArtifactDirs: (paths: readonly string[]) => void;
   toggleExpandedArtifactDir: (path: string) => void;
@@ -382,6 +386,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   highlightedArtifactDirs: [] as string[],
   spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
   expandedArtifactDirs: new Set<string>() as ReadonlySet<string>,
+  seenArtifactTopLevelDirs: new Set<string>() as ReadonlySet<string>,
   pendingClarifyAnswers: {},
   pendingClarifyQuestions: [],
   onboardingSkipped: false,
@@ -1755,6 +1760,37 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   setExpandedArtifactDirs: (next: ReadonlySet<string>) => {
     set({ expandedArtifactDirs: next });
+  },
+
+  // Auto-expand ONLY genuinely-new top-level dirs, so an agent-created root dir
+  // is visible without a browser refresh while a dir the user deliberately
+  // collapsed is not force-reopened on every SSE tick. Both sets move in ONE
+  // patch — they are one invariant (see `seenArtifactTopLevelDirs`).
+  revealNewArtifactTopLevelDirs: (topLevelDirPaths: readonly string[]) => {
+    set((s: any) => {
+      const plan = planArtifactAutoExpand(s.seenArtifactTopLevelDirs, topLevelDirPaths);
+      if (!plan) return {};
+      const patch: any = { seenArtifactTopLevelDirs: plan.nextSeen };
+      if (plan.fresh.length > 0) {
+        const nextExpanded = new Set<string>(s.expandedArtifactDirs);
+        let changed = false;
+        for (const p of plan.fresh) {
+          if (!nextExpanded.has(p)) {
+            nextExpanded.add(p);
+            changed = true;
+          }
+        }
+        if (changed) patch.expandedArtifactDirs = nextExpanded;
+      }
+      return patch;
+    });
+  },
+
+  resetArtifactExpansion: () => {
+    set({
+      expandedArtifactDirs: new Set<string>(),
+      seenArtifactTopLevelDirs: new Set<string>(),
+    });
   },
 
   unionExpandedArtifactDirs: (paths: readonly string[]) => {

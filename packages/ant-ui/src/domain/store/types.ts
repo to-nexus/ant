@@ -286,6 +286,11 @@ export interface UIState {
   // expand selection. Reducer-side no-op guards keep ref-stability when the
   // requested mutation is a no-op.
   expandedArtifactDirs: ReadonlySet<string>;
+  // Top-level artifact dirs already offered to auto-expand. Paired lifetime with
+  // `expandedArtifactDirs` — the two express one invariant, so they are always
+  // reset together and mutated in one patch. Lets a root dir that appears
+  // mid-job auto-expand while a dir the user collapsed stays collapsed.
+  seenArtifactTopLevelDirs: ReadonlySet<string>;
   // ✅ Pending clarify answers (shared between compound ChoiceCard and ChatInput)
   pendingClarifyAnswers: Record<number, string>;  // questionIndex → selected answer
   pendingClarifyQuestions: string[];  // original question texts (for combining with free input)

@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import multer from 'multer';
 import { writeBufferVerified } from '../../../../core/utils/binaryIntegrity';
-import { isValidCustomId } from '@ant/shared';
+import { isValidCustomId, UNIVERSAL_FEATURE } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
 import { deriveCustomAgentScopeRootsForTenant } from '../../../../core/customAgents/scopeRoots';
@@ -50,6 +50,8 @@ import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 export function createCustomAgentRoutes(deps: {
   workspaceResolver: WorkspaceResolver;
   organizationRepository: OrganizationRepositoryPort;
+  /** Same shape as `files.routes.ts` — one type, no drift. */
+  fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
 }): Router {
   const router = Router();
 
@@ -296,7 +298,29 @@ export function createCustomAgentRoutes(deps: {
     };
   }
 
-  router.get('/projects/:projectId/universal/artifacts/tree', (req: Request, res: Response) => {
+  // One sub-router for the whole artifacts mount so the tree notify has a
+  // single owner. `files.routes.ts` hand-copies its notify at five call sites;
+  // a mount-level hook means a seventh route cannot be added without it.
+  // `mergeParams` is REQUIRED — without it `req.params.projectId` is undefined
+  // and the notify silently addresses a bogus project.
+  const artifacts = Router({ mergeParams: true });
+  router.use('/projects/:projectId/universal/artifacts', artifacts);
+
+  artifacts.use((req: Request, res: Response, next) => {
+    if (req.method === 'GET') return next();
+    // `finish` fires after the response, so the broadcast never adds latency to
+    // the mutation. The initiating tab already refetches on its own; this is
+    // what reaches every OTHER client of the workspace.
+    res.on('finish', () => {
+      if (res.statusCode >= 400) return;
+      void deps.fileTreeNotifier
+        ?.notifyFileTreeUpdate(req.params.projectId, UNIVERSAL_FEATURE, extractUserContext(req))
+        .catch(() => {});
+    });
+    next();
+  });
+
+  artifacts.get('/tree', (req: Request, res: Response) => {
     try {
       // Assembly SSOT — universalContainer.buildUniversalMergedTree (shared
       // with FileOperationService.getFileTree; single implementation, no drift).
@@ -307,7 +331,7 @@ export function createCustomAgentRoutes(deps: {
     }
   });
 
-  router.post('/projects/:projectId/universal/artifacts/upload', upload.array('files'), async (req: Request, res: Response) => {
+  artifacts.post('/upload', upload.array('files'), async (req: Request, res: Response) => {
     try {
       const dirPath = (req.body.dirPath || '').replace(/\\/g, '/');
       const files = (req.files as Express.Multer.File[]) || [];
@@ -343,7 +367,7 @@ export function createCustomAgentRoutes(deps: {
   // (files.routes.ts) — it resolves the universal pseudo-feature through the
   // same merged-view SSOT and zip-streams directories.
 
-  router.delete('/projects/:projectId/universal/artifacts/file', (req: Request, res: Response) => {
+  artifacts.delete('/file', (req: Request, res: Response) => {
     try {
       const rel = String(req.query.path || '');
       if (!rel) return res.status(400).json({ error: 'path query param is required' });
@@ -366,7 +390,7 @@ export function createCustomAgentRoutes(deps: {
     }
   });
 
-  router.post('/projects/:projectId/universal/artifacts/create-file', (req: Request, res: Response) => {
+  artifacts.post('/create-file', (req: Request, res: Response) => {
     try {
       const rel = String(req.body?.path || '').replace(/\\/g, '/');
       if (!rel) return res.status(400).json({ error: 'path is required' });
@@ -388,7 +412,7 @@ export function createCustomAgentRoutes(deps: {
     }
   });
 
-  router.post('/projects/:projectId/universal/artifacts/rename', (req: Request, res: Response) => {
+  artifacts.post('/rename', (req: Request, res: Response) => {
     try {
       const rel = String(req.body?.path || '').replace(/\\/g, '/');
       const newName = String(req.body?.newName || '');
@@ -414,7 +438,7 @@ export function createCustomAgentRoutes(deps: {
     }
   });
 
-  router.post('/projects/:projectId/universal/artifacts/mkdir', (req: Request, res: Response) => {
+  artifacts.post('/mkdir', (req: Request, res: Response) => {
     try {
       const rel = String(req.body?.path || '');
       if (!rel) return res.status(400).json({ error: 'path is required' });

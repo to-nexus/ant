@@ -4,6 +4,7 @@ import { JobStateTracker } from '../managers/JobStateTracker';
 import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
+import { KeyedSingleFlight } from '../../../../../core/realtime/KeyedSingleFlight';
 
 /**
  * WorkflowBridge
@@ -136,16 +137,8 @@ export class WorkflowBridge {
   /**
    * Notify file tree update.
    *
-   * Single-flight per `{org, user, project, feature}`: every file-mutating tool
-   * call lands here, and each one used to start its own full recursive scan +
-   * Redis write + Pub/Sub publish. A burst of writes (an agent creating a dozen
-   * files, or a client calling the mutation APIs in parallel) multiplied the
-   * shared filesystem and event-loop cost by the number of writes while
-   * producing near-identical payloads (M-009).
-   *
-   * Concurrent callers join the in-flight scan; one further scan is scheduled
-   * when a write arrives DURING a scan, so the last mutation is always
-   * reflected — coalescing, not dropping.
+   * Coalesced per `{org, user, project, feature}` — see `KeyedSingleFlight`
+   * for the M-009 rationale and the no-timer constraint.
    */
   async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
     // Require userContext for user-scoped channel
@@ -159,25 +152,12 @@ export class WorkflowBridge {
     }
 
     const key = `${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName}`;
-    const inFlight = this.fileTreeInFlight.get(key);
-    if (inFlight) {
-      // Mark that a mutation happened during the running scan, then join it.
-      this.fileTreeRerun.add(key);
-      return inFlight;
-    }
-
-    const run = this.runFileTreeUpdate(projectId, featureName, userContext).finally(() => {
-      this.fileTreeInFlight.delete(key);
-      if (this.fileTreeRerun.delete(key)) {
-        void this.notifyFileTreeUpdate(projectId, featureName, userContext);
-      }
-    });
-    this.fileTreeInFlight.set(key, run);
-    return run;
+    return this.fileTreeFlight.run(key, () =>
+      this.runFileTreeUpdate(projectId, featureName, userContext),
+    );
   }
 
-  private readonly fileTreeInFlight = new Map<string, Promise<void>>();
-  private readonly fileTreeRerun = new Set<string>();
+  private readonly fileTreeFlight = new KeyedSingleFlight();
 
   private async runFileTreeUpdate(projectId: string, featureName: string, userContext: UserContext): Promise<void> {
     try {

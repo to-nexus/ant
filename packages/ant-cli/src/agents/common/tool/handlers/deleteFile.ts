@@ -37,10 +37,6 @@ export async function handleDeleteFile(
     await ctx.chatStatus.completeFileDeletion(resolved.displayPath);
     ctx.recordFileTouch?.('delete', resolved.displayPath);
 
-    if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
-      await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
-    }
-
     const sideEffects: ToolSideEffect[] = [
       { type: 'fileDeleted', path: resolved.displayPath },
     ];

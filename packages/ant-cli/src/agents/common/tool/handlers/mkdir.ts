@@ -32,7 +32,14 @@ export async function handleMkdir(
     await fileSystem.createDirectory(resolved.fsPath);
     console.log(`[mkdir] ✅ Created directory: ${resolved.displayPath}`);
 
-    return { content: prependFixMessage(resolved, `Directory created: ${resolved.displayPath}`) };
+    // `directoryCreated` is what makes the FE tree refresh: ToolOrchestrator is
+    // the single owner of that notify and reads it off `sideEffects`. The
+    // no-op return above deliberately emits nothing, so a repeated mkdir costs
+    // no tree walk.
+    return {
+      content: prependFixMessage(resolved, `Directory created: ${resolved.displayPath}`),
+      sideEffects: [{ type: 'directoryCreated', path: resolved.displayPath }],
+    };
   } catch (e) {
     const errorMsg = (e as Error).message;
     console.error(`[mkdir] ❌ Error:`, errorMsg);

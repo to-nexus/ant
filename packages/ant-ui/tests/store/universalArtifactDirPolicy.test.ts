@@ -62,4 +62,19 @@ describe('resolveDirPolicy prop wiring (source-level)', () => {
   it('UniversalArtifactsPanel passes the universal policy table', () => {
     expect(panelSrc).toMatch(/resolveDirPolicy=\{getUniversalArtifactDirPolicy\}/);
   });
+
+  it('refetches on every fileTree SSE tick, with no isRunning gate', () => {
+    // The panel uses `fileTree` purely as a change ticker and pulls its own tree
+    // over REST. Gating that refetch on `isRunning` dropped exactly the events
+    // that matter when no job is running: the end-of-job broadcast (which races
+    // `isRunning` flipping false), an artifact mutation from another tab, and a
+    // post-job HTTP mutation.
+    // The negative lookahead keeps the match from starting at an EARLIER
+    // useEffect and swallowing the isRunning-gated one on its way here.
+    const tickEffect = panelSrc.match(
+      /useEffect\(\(\) => \{(?:(?!useEffect)[\s\S])*?\}, \[fileTreeTick\]\)/,
+    );
+    expect(tickEffect, 'a [fileTreeTick] effect must exist').not.toBeNull();
+    expect(tickEffect![0]).not.toMatch(/isRunning/);
+  });
 });

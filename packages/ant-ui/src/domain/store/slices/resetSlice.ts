@@ -86,6 +86,10 @@ export const createResetSlice: StateCreator<any, [], [], ResetSlice> = (set, get
       // D22: project domain default seed (workspace-level sticky slot).
       actionMetadata: { domain: 'service' },
       highlightedArtifactDirs: [],
+      // Expand state belongs to a tenant's tree — it must not survive into the
+      // next account's. The two sets are one invariant, so both are cleared.
+      expandedArtifactDirs: new Set<string>(),
+      seenArtifactTopLevelDirs: new Set<string>(),
       bridgeConnected: null,
       bridgeDetected: false,
       figmaDesktopReachable: false,

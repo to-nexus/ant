@@ -62,7 +62,6 @@ export async function handleAppendFile(
     ctx.recordFileTouch?.('update', resolved.displayPath);
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
-      await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
       const dp = resolved.displayPath;
       if (
         'addUnseenArtifacts' in ctx.fileTreeUpdate &&

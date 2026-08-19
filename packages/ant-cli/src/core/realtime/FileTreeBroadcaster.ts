@@ -32,6 +32,7 @@ import { ensureCanonicalStructure } from '../utils/sessionPaths';
 import { buildUniversalMergedTree, decorateUniversalTree } from '../customAgents/universalContainer';
 import { GitStateBroadcaster } from './GitStateBroadcaster';
 import { InflightTracker } from './InflightTracker';
+import { KeyedSingleFlight } from './KeyedSingleFlight';
 
 /**
  * Blacklist for depth ≥ 1 only. The feature root is governed by the
@@ -60,6 +61,13 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private readonly userContext?: UserContext;
   private readonly gitStateBroadcaster?: GitStateBroadcaster;
   private readonly inflight = new InflightTracker();
+  // Coalesce per {org,user,project,feature}: every mutating tool call and every
+  // artifact mutation asks for a refresh, and each one is a full tree walk.
+  // `onRun` routes both the initial run and the coalesced rerun into
+  // `inflight` so `close()`'s flush still covers the trailing broadcast.
+  private readonly flight = new KeyedSingleFlight({
+    onRun: (p) => { this.inflight.track(p); },
+  });
 
   constructor(
     options: BroadcasterOptions & { projectPath: string },
@@ -89,31 +97,38 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
    */
   async notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: UserContext): Promise<void> {
     const ctx = userContext || this.userContext;
-    // Fire-and-forget with error logging — tracked so `close()` can flush
-    // the in-flight publish before `pubRedis.quit()`. Without flush-on-close,
-    // a single end-of-graph emission (e.g. plan job) races the connection
-    // shutdown and the FE never receives the fileTree event.
-    this.inflight.track(
-      this.broadcastFileTree(projectId, featureName, ctx)
+    // Hoisted from `broadcastFileTree` so the coalescing key is always
+    // well-formed — a missing userContext can't produce a shared bogus key.
+    if (!ctx?.organizationId || !ctx?.userId) {
+      console.warn(`[FileTreeBroadcaster] ⚠️ Cannot broadcast without userContext`);
+      return;
+    }
+
+    // Tracked via `flight`'s `onRun` so `close()` can flush the in-flight
+    // publish before `pubRedis.quit()`. Without flush-on-close, a single
+    // end-of-graph emission (e.g. plan job) races the connection shutdown and
+    // the FE never receives the fileTree event.
+    const key = `${ctx.organizationId}:${ctx.userId}:${projectId}:${featureName}`;
+    await this.flight.run(key, async () => {
+      await this.broadcastFileTree(projectId, featureName, ctx)
         .catch(err => {
           console.warn(`[FileTreeBroadcaster] Failed to notify file tree update:`, err.message);
-        })
-    );
+        });
 
-    // Co-emit the unified `gitState` (cause='workingTreeChange') so the
-    // frontend refreshes its git snapshot whenever the working tree is
-    // mutated — including plain file writes that don't touch `.git/index`
-    // (GitWatcherService can't detect those). Covered non-git paths
-    // (session JSON writes etc.) produce an inexpensive debounced refetch.
-    if (this.gitStateBroadcaster) {
-      this.inflight.track(
-        this.gitStateBroadcaster
+      // Co-emit the unified `gitState` (cause='workingTreeChange') so the
+      // frontend refreshes its git snapshot whenever the working tree is
+      // mutated — including plain file writes that don't touch `.git/index`
+      // (GitWatcherService can't detect those). Skipped for universal: a
+      // workspace container has no git working tree, so the co-emit would make
+      // the FE refetch git state on every artifact write for nothing.
+      if (this.gitStateBroadcaster && this.jobType !== 'universal') {
+        await this.gitStateBroadcaster
           .notifyWorkingTreeChange(projectId, featureName, ctx)
           .catch(err => {
             console.warn(`[FileTreeBroadcaster] Failed to co-emit gitState:`, err?.message ?? err);
-          })
-      );
-    }
+          });
+      }
+    });
   }
 
   /**

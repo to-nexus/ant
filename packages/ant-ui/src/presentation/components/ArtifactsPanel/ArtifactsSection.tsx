@@ -128,7 +128,8 @@ export function ArtifactsSection({
   // mutation channels below all dispatch through ref-stable store actions
   // with no-op guards, so a parent re-render never wipes user expansion.
   const expandedDirs = useStore((s) => s.expandedArtifactDirs);
-  const setExpandedArtifactDirs = useStore((s) => s.setExpandedArtifactDirs);
+  const resetArtifactExpansion = useStore((s) => s.resetArtifactExpansion);
+  const revealNewArtifactTopLevelDirs = useStore((s) => s.revealNewArtifactTopLevelDirs);
   const unionExpandedArtifactDirs = useStore((s) => s.unionExpandedArtifactDirs);
   const removeExpandedArtifactDirs = useStore((s) => s.removeExpandedArtifactDirs);
   const toggleExpandedArtifactDir = useStore((s) => s.toggleExpandedArtifactDir);
@@ -165,18 +166,16 @@ export function ArtifactsSection({
   // changed — those must preserve the lifted state).
   const prevProjectRef = useRef(selectedProject);
   const prevFeatureRef = useRef(selectedFeature);
-  const initializedRef = useRef(false);
   useEffect(() => {
     if (
       prevProjectRef.current !== selectedProject ||
       prevFeatureRef.current !== selectedFeature
     ) {
-      setExpandedArtifactDirs(new Set());
-      initializedRef.current = false;
+      resetArtifactExpansion();
     }
     prevProjectRef.current = selectedProject;
     prevFeatureRef.current = selectedFeature;
-  }, [selectedProject, selectedFeature, setExpandedArtifactDirs]);
+  }, [selectedProject, selectedFeature, resetArtifactExpansion]);
 
   useEffect(() => {
     if (highlightedDirs.length === 0) return;
@@ -215,17 +214,20 @@ export function ArtifactsSection({
     });
   }, [spotlightTarget, sectionPrefix, unionExpandedArtifactDirs]);
 
-  // First-populate effect — when nodes transition from empty to populated,
-  // union the top-level paths into `expandedDirs` exactly once per project
-  // so the canonical domain roots are open by default. `initializedRef`
-  // ensures later `nodes` ref churn doesn't re-run this and the
-  // project/feature change effect above resets it on workspace switch.
+  // A root-level directory that appears mid-job (an agent's mkdir or
+  // run_command output) must become visible without a browser refresh, while a
+  // dir the user deliberately collapsed must stay collapsed. The store action
+  // unions ONLY paths absent from `seenArtifactTopLevelDirs`, so a tick that
+  // changes nothing is a no-op and every subscriber stays ref-stable. The
+  // first populate still expands the whole top level, as before.
+  //
+  // Files are filtered out: only the universal root is free-form enough to hold
+  // them, and a file path in the expanded set is a dead key.
   useEffect(() => {
-    if (initializedRef.current) return;
-    if (nodes.length === 0) return;
-    initializedRef.current = true;
-    unionExpandedArtifactDirs(nodes.map((n) => n.path));
-  }, [nodes, unionExpandedArtifactDirs]);
+    revealNewArtifactTopLevelDirs(
+      nodes.filter((n) => n.type === 'directory').map((n) => n.path),
+    );
+  }, [nodes, revealNewArtifactTopLevelDirs]);
 
   const [showCreateForm, setShowCreateForm] = useState<string | null>(null);
   const [createType, setCreateType] = useState<'file' | 'directory'>('file');

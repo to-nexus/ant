@@ -607,6 +607,26 @@ same ⋯ menu in the section header for root-level create/upload). Rows render
 the **real directory name**, never a localized label — a translated segment
 would misrepresent the path the agent and the tools actually address.
 
+The artifact mutation routes (`upload` / `create-file` / `rename` / `mkdir` /
+`DELETE file`) live on ONE sub-router mounted at
+`/projects/:projectId/universal/artifacts` with `mergeParams: true`, and a single
+mount-level hook publishes `fileTree` for every non-GET answering < 400. It is
+mounted, not per-route, so a seventh mutation route cannot be added without the
+notify (`files.routes.ts` hand-copies its notify five times — that shape is not
+repeated here). Without `mergeParams` the notify silently addresses an
+`undefined` project, which is the failure mode to watch. The notifier is the same
+`WorkflowBridge` instance the api routes get, wired at
+`RouteConfigurator.setupCustomAgentRoutes`.
+
+Because the artifacts root is free-form (only `plan` is canonical), a root-level
+directory can appear mid-job. The explorer therefore auto-expands only
+*genuinely-new* top-level dirs (`planArtifactAutoExpand` +
+`seenArtifactTopLevelDirs`, paired with `expandedArtifactDirs`), so an agent's
+`mkdir` output is visible without a browser refresh while a dir the user
+collapsed is not force-reopened on every SSE tick. The codespace panel builds its
+top level from a fixed list, so its path set is constant and the rule is inert
+there. The panel's refetch is deliberately NOT gated on `isRunning`.
+
 There is NO thread plane (`universal/agents/**` was removed before release —
 no data migration; stale trees are ignored and removed by `deleteProject`).
 Multi-chat, when it lands, will be designed cross-project-kind, not as a

@@ -168,6 +168,76 @@ describe('universal file tree — HTTP and SSE writers agree on shape', () => {
     expect(flatten(sseTree)).toContain('plan/p.md');
     expect(flatten(sseTree).some((p) => p.startsWith('artifacts/'))).toBe(false);
   });
+
+  const makeBroadcaster = () => {
+    markUniversal();
+    return new FileTreeBroadcaster({
+      redisUrl: 'redis://mock',
+      jobId: 'j',
+      projectId: 'proj',
+      featureName: UNIVERSAL_FEATURE,
+      jobType: 'universal',
+      userContext,
+      projectPath: path.join(projectPath, 'universal'),
+    });
+  };
+
+  it('coalesces a burst of notifies instead of walking the tree N times', async () => {
+    // Every mutating tool call asks for a refresh, and each refresh is a full
+    // recursive walk + Redis write + publish. A 12-file batch used to cost 12
+    // walks producing near-identical payloads.
+    const broadcaster = makeBroadcaster();
+    redisWrites.length = 0;
+
+    await Promise.all(
+      Array.from({ length: 12 }, () =>
+        broadcaster.notifyFileTreeUpdate('proj', UNIVERSAL_FEATURE, userContext),
+      ),
+    );
+    await broadcaster.close();
+
+    const walks = redisWrites.filter((w) => w.key.includes('filetree')).length;
+    expect(walks).toBeGreaterThanOrEqual(1);
+    expect(walks).toBeLessThanOrEqual(2);
+  });
+
+  it('collapses a SEQUENTIAL batch too — the case a tool batch actually produces', async () => {
+    // Tool calls in a batch run one after another. If the orchestrator awaited
+    // each notify, every walk would finish before the next started and N writes
+    // would cost N walks. Fire-and-forget lets calls 2..N join call 1's walk.
+    const broadcaster = makeBroadcaster();
+    redisWrites.length = 0;
+
+    for (let i = 0; i < 12; i++) {
+      // `void` mirrors ToolOrchestrator.notifyIfTreeMutated exactly.
+      void broadcaster.notifyFileTreeUpdate('proj', UNIVERSAL_FEATURE, userContext);
+    }
+    // close() flushes the in-flight walk AND its coalesced trailing run.
+    await broadcaster.close();
+
+    const walks = redisWrites.filter((w) => w.key.includes('filetree')).length;
+    expect(walks).toBeGreaterThanOrEqual(1);
+    expect(walks).toBeLessThanOrEqual(2);
+  });
+
+  it('still reflects a write that lands DURING a walk (coalescing, not dropping)', async () => {
+    const broadcaster = makeBroadcaster();
+    redisWrites.length = 0;
+
+    // First notify starts a walk; the file appears while it is in flight, and
+    // the second notify coalesces into a trailing walk that must see it.
+    const first = broadcaster.notifyFileTreeUpdate('proj', UNIVERSAL_FEATURE, userContext);
+    fs.writeFileSync(path.join(projectPath, 'universal', 'artifacts', 'plan', 'late.md'), 'z');
+    const second = broadcaster.notifyFileTreeUpdate('proj', UNIVERSAL_FEATURE, userContext);
+    await Promise.all([first, second]);
+    await broadcaster.close();
+
+    // close() flushes in-flight AND coalesced runs, so the last payload is the
+    // trailing one — the end-of-job broadcast must never be dropped.
+    const last = [...redisWrites].reverse().find((w) => w.key.includes('filetree'));
+    expect(last).toBeDefined();
+    expect(flatten(JSON.parse(last!.value) as FileNode[])).toContain('plan/late.md');
+  });
 });
 
 describe('resolveFeatureScopedFilePath (files-raw / download seam)', () => {

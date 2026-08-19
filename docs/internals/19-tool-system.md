@@ -136,7 +136,7 @@ The unified context handlers receive instead of graph state. Fields are grouped 
 | Field group | Fields | Used by |
 |-----------|------|--------|
 | Common | `fileSystem`, `chatStatus`, `workingDir`, `featurePath`, `project`, `featureFolder` | All handlers |
-| Ports | `command`, `git`, `redis`, `fileTreeUpdate` | Command execution, git integration, file-tree refresh |
+| Ports | `command`, `git`, `redis`, `fileTreeUpdate` | Command execution, git integration, file-tree refresh (orchestrator-driven — see below) |
 | Figma | `figmaFileKey`, `figmaConfig`, `figmaAvailable` | Figma fetch handlers |
 | Command policy | `activePhase`, `currentTaskType`, `verificationTracker`, `depFileHash`, `retries` | runCommand + CodeCommandPolicy |
 | Reference search | `referenceRequests`, `resolvedActionMode`, `retriever`, `vectorDB`, `workspaceResolver`, `userId`, `organizationId` | search_reference_code |
@@ -145,6 +145,15 @@ The unified context handlers receive instead of graph state. Fields are grouped 
 ## ToolResult + ToolSideEffect
 
 The handler return type.
+
+`sideEffects` is also the file-tree refresh channel: `ToolOrchestrator` is the
+single owner of `notifyFileTreeUpdate` and fires it after any call reporting
+`fileCreated` / `fileModified` / `fileDeleted` / `directoryCreated` /
+`commandExecuted` / `serverStarted`. A handler that mutates the tree but reports
+no side effect gets no refresh — that is how `mkdir` and `run_command` stayed
+invisible to the FE. Do not call `ctx.fileTreeUpdate.notifyFileTreeUpdate` from a
+handler; report what happened and let the orchestrator decide.
+`fileNotChanged` is deliberately excluded (nothing the tree renders changed).
 
 ```typescript
 interface ToolResult {

@@ -123,7 +123,6 @@ export async function handleCreateFile(
     ctx.recordFileTouch?.('create', resolved.displayPath);
 
     if (ctx.fileTreeUpdate && ctx.project && ctx.featureFolder) {
-      await ctx.fileTreeUpdate.notifyFileTreeUpdate(ctx.project, ctx.featureFolder);
       // Feature-workspace contract: files written under generated-artifact
       // domains (`architecture/`, `visual/`, `meta/evals/`) are surfaced
       // with an unseen badge. The gate is path-prefix only (no job-type

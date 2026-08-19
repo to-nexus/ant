@@ -37,6 +37,8 @@ export { WorkflowBroadcaster } from './WorkflowBroadcaster';
 export { FileTreeBroadcaster } from './FileTreeBroadcaster';
 export { PreviewBroadcaster } from './PreviewBroadcaster';
 export { GitStateBroadcaster } from './GitStateBroadcaster';
+export { KeyedSingleFlight } from './KeyedSingleFlight';
+export type { KeyedSingleFlightOptions } from './KeyedSingleFlight';
 
 import { KanbanBroadcaster } from './KanbanBroadcaster';
 import { WorkflowBroadcaster } from './WorkflowBroadcaster';
