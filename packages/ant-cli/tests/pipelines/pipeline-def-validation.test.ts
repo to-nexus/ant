@@ -1,0 +1,125 @@
+/**
+ * Pipeline definition validation — table-driven policy test for the shared
+ * structural rules (`validatePipelineDef`) and the server-side additions
+ * (`validatePipelineDefServer`: cron min-interval, gate-anchor rule).
+ * One axis, one file — add rows here, not new files.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { validatePipelineDef } from '@ant/shared';
+import { validatePipelineDefServer } from '../../src/core/pipelines/store';
+
+function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 1,
+    name: 'Weekly digest',
+    enabled: true,
+    projectId: 'proj-x',
+    on: { schedule: { cron: '0 9 * * 1', tz: 'Asia/Seoul' } },
+    steps: [
+      { id: 'collect', customJobRef: 'research/collect', directive: 'Collect sources' },
+    ],
+    ...overrides,
+  };
+}
+
+describe('validatePipelineDef — structural rules', () => {
+  const valid: Array<[string, Record<string, unknown>]> = [
+    ['minimal single-step pipeline', baseDef()],
+    ['intent + context + template vars', baseDef({
+      steps: [{
+        id: 'collect', customJobRef: 'research/collect', intent: 'gather',
+        directive: 'Collect for {{trigger.fireDate}} run {{run.id}} epoch {{trigger.fireEpoch}}',
+        context: ['plan/spec.md'],
+      }],
+    })],
+    ['approval gate after a job step', baseDef({
+      steps: [
+        { id: 'collect', customJobRef: 'research/collect', directive: 'x' },
+        { id: 'review', type: 'approval', prompt: 'Approve?', timeout: { after: '24h', onTimeout: 'reject' }, channels: ['inApp'] },
+        { id: 'publish', customJobRef: 'writer/digest', directive: 'y', on: 'success' },
+      ],
+    })],
+    ['explicit needs DAG (acyclic)', baseDef({
+      steps: [
+        { id: 'a', customJobRef: 'x/a', directive: 'a' },
+        { id: 'b', customJobRef: 'x/b', directive: 'b', needs: ['a'] },
+        { id: 'c', customJobRef: 'x/c', directive: 'c', needs: ['a'], on: 'failure' },
+      ],
+    })],
+  ];
+
+  it.each(valid)('accepts: %s', (_label, def) => {
+    expect(validatePipelineDef(def)).toEqual([]);
+  });
+
+  const invalid: Array<[string, Record<string, unknown>, RegExp]> = [
+    ['wrong version', baseDef({ version: 2 }), /version must be 1/],
+    ['empty name', baseDef({ name: '' }), /name/],
+    ['missing schedule', baseDef({ on: {} }), /on\.schedule is required/],
+    ['4-field cron', baseDef({ on: { schedule: { cron: '0 9 * *' } } }), /5 fields/],
+    ['cancelPrevious overlap', baseDef({ on: { schedule: { cron: '0 9 * * 1', overlap: 'cancelPrevious' } } }), /not supported yet/],
+    ['unknown top-level key', baseDef({ webhookToken: 'x' }), /unknown key "webhookToken"/],
+    ['reserved step key retry', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', retry: { max: 1 } }] }), /"retry" is not supported yet/],
+    ['reserved step key remindAfter', baseDef({ steps: [{ id: 'a', type: 'approval', prompt: 'p', needs: [], remindAfter: '4h' }] }), /"remindAfter" is not supported yet/],
+    ['steps.* template var', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{steps.b.summary}}' }] }), /not supported yet .*v2 axis/],
+    ['unknown template var', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: '{{fireDate}}' }] }), /unknown template variable/],
+    ['malformed customJobRef', baseDef({ steps: [{ id: 'a', customJobRef: 'not-a-ref', directive: 'a' }] }), /customJobRef/],
+    ['duplicate step ids', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'a', customJobRef: 'x/b', directive: 'b' },
+    ] }), /duplicate step id/],
+    ['unknown needs ref', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', needs: ['ghost'] }] }), /unknown step "ghost"/],
+    ['self-referencing needs', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', needs: ['a'] }] }), /reference itself/],
+    ['cyclic needs', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a', needs: ['b'] },
+      { id: 'b', customJobRef: 'x/b', directive: 'b', needs: ['a'] },
+    ] }), /acyclic/],
+    ['non-inApp channel', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'g', type: 'approval', prompt: 'p', channels: ['slack'] },
+    ] }), /not supported yet .*"inApp"/],
+    ['bad timeout duration', baseDef({ steps: [
+      { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      { id: 'g', type: 'approval', prompt: 'p', timeout: { after: 'tomorrow', onTimeout: 'reject' } },
+    ] }), /duration like/],
+    ['zero steps', baseDef({ steps: [] }), /non-empty array/],
+  ];
+
+  it.each(invalid)('rejects: %s', (_label, def, pattern) => {
+    const errors = validatePipelineDef(def);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.join('\n')).toMatch(pattern);
+  });
+});
+
+describe('validatePipelineDefServer — cron interval + gate anchor', () => {
+  it('rejects a sub-5-minute cron (every minute)', () => {
+    const errors = validatePipelineDefServer(baseDef({ on: { schedule: { cron: '* * * * *' } } }));
+    expect(errors.join('\n')).toMatch(/more often than every 5 minutes/);
+  });
+
+  it('accepts an hourly cron', () => {
+    expect(validatePipelineDefServer(baseDef({ on: { schedule: { cron: '0 * * * *' } } }))).toEqual([]);
+  });
+
+  it('rejects an approval gate as the entry step', () => {
+    const errors = validatePipelineDefServer(baseDef({
+      steps: [
+        { id: 'gate', type: 'approval', prompt: 'p' },
+        { id: 'a', customJobRef: 'x/a', directive: 'a' },
+      ],
+    }));
+    expect(errors.join('\n')).toMatch(/cannot be the entry step/);
+  });
+
+  it('rejects an approval gate with explicit empty needs', () => {
+    const errors = validatePipelineDefServer(baseDef({
+      steps: [
+        { id: 'a', customJobRef: 'x/a', directive: 'a' },
+        { id: 'gate', type: 'approval', prompt: 'p', needs: [] },
+      ],
+    }));
+    expect(errors.join('\n')).toMatch(/cannot be the entry step/);
+  });
+});

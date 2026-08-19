@@ -40,6 +40,9 @@ export interface ServerConfig {
 export interface ServerDependencies {
   workspaceService: any;
   workspaceResolver: any;
+  /** Pipeline scheduling (universal projects) — constructed by ExpressServerAdapter, workers started in start(). */
+  pipelineCoordinator?: any;
+  pipelineScheduleQueue?: any;
   authService?: any;
   oidcService?: any;
   jwtService?: any;

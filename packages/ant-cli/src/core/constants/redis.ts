@@ -35,6 +35,8 @@ export const REDIS_DOMAINS = {
   BILLING: `${APP_PREFIX}:billing`,
   /** Cloud-mode admin config (global default-approval policy). */
   ADMIN: `${APP_PREFIX}:admin`,
+  /** Pipeline scheduling — live-run projections rebuildable from the disk SSOT (`.ant/pipelines`). */
+  PIPE: `${APP_PREFIX}:pipe`,
 } as const;
 
 // ============================================
@@ -388,6 +390,30 @@ export const REDIS_KEYS = {
     GRANT_LOCK: (org: string, user: string): string =>
       `${REDIS_DOMAINS.BILLING}:grantLock:${org}:${user}`,
   },
+
+  /**
+   * Pipeline scheduling (ant:pipe:*) — every key here is a PROJECTION of the
+   * disk SSOT (`.ant/pipelines/{id}/pipeline.yaml` + runs JSONL) and must be
+   * rebuildable by the reconciler. Never promote one to source of truth.
+   */
+  PIPE: {
+    /** Live run state document (JSON RunRecord) - ant:pipe:run:{runId} */
+    RUN: (runId: string): string => `${REDIS_DOMAINS.PIPE}:run:${runId}`,
+    /** Overlap guard (NX, value = runId) - ant:pipe:active:{orgId}:{userId}:{pipelineId} */
+    ACTIVE: (org: string, user: string, pipelineId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:active:${org}:${user}:${pipelineId}`,
+    /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{pipelineId}:{fireEpoch} */
+    FIRED: (org: string, user: string, pipelineId: string, fireEpoch: number): string =>
+      `${REDIS_DOMAINS.PIPE}:fired:${org}:${user}:${pipelineId}:${fireEpoch}`,
+    /** jobId → {runId, stepId} reverse mapping for the status-update consumer - ant:pipe:job:{jobId} */
+    JOB: (jobId: string): string => `${REDIS_DOMAINS.PIPE}:job:${jobId}`,
+    /** Armed HITL gate (JSON) - ant:pipe:hitl:{gateId} */
+    HITL: (gateId: string): string => `${REDIS_DOMAINS.PIPE}:hitl:${gateId}`,
+    /** cardId → gateId reverse mapping for the choice-resolved consumer - ant:pipe:card:{cardId} */
+    CARD: (cardId: string): string => `${REDIS_DOMAINS.PIPE}:card:${cardId}`,
+    /** Per-run coordinator mutation lock - ant:lock:pipe-run:{runId} */
+    RUN_LOCK: (runId: string): string => `${REDIS_DOMAINS.LOCK}:pipe-run:${runId}`,
+  },
 } as const;
 
 // ============================================
@@ -468,6 +494,22 @@ export const REDIS_TTL = {
     CHARGED: 24 * 60 * 60,        // 24 hours
     /** Max ledger entries kept per account (LTRIM). SSOT: @ant/shared. */
     LEDGER_MAX_ENTRIES: CREDIT_LEDGER_MAX_ENTRIES,
+  },
+
+  /** Pipeline scheduling TTLs — projections only (disk JSONL is the record). */
+  PIPE: {
+    /** Live run doc; refreshed on every coordinator write, kept 7d past terminal. */
+    RUN: 7 * 24 * 60 * 60,
+    /** Overlap guard — bounds a single run (incl. human waits) to 30 days. */
+    ACTIVE: 30 * 24 * 60 * 60,
+    /** Fire idempotency window. */
+    FIRED: 48 * 60 * 60,
+    /** jobId → run/step reverse mapping. */
+    JOB: 7 * 24 * 60 * 60,
+    /** Armed gate + card reverse mapping — same 30d bound as ACTIVE. */
+    HITL: 30 * 24 * 60 * 60,
+    /** Coordinator per-run mutation lock. */
+    RUN_LOCK: 30,
   },
 } as const;
 

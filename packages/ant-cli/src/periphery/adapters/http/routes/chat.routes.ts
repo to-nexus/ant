@@ -35,6 +35,8 @@ export function createChatRoutes(deps: {
   chatService?: ChatService;
   choiceService?: ChoiceService;
   workspaceResolver?: any;
+  /** Advances pipeline approval gates after an NX-winning choice-resolved (pipeline_approval cards). */
+  pipelineCoordinator?: { applyResolvedGate(cardId: string, decision: string, decidedBy: string | undefined, via: 'in-app' | 'api'): Promise<boolean> };
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
   stateStore?: {
     addUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void>;
@@ -379,6 +381,23 @@ export function createChatRoutes(deps: {
         answer,
         userContext,
       });
+
+      // 3b. pipeline_approval card — advance the pipeline gate AFTER the
+      //     NX-guarded resolve succeeded, so a racing timeout arm or a second
+      //     click can never double-apply. Same funnel as the pipelines
+      //     approvals route: one authority, one audit line, one NX key.
+      if (cardType === 'pipeline_approval' && result.resolved && deps.pipelineCoordinator) {
+        try {
+          await deps.pipelineCoordinator.applyResolvedGate(
+            cardId,
+            choiceSelected === 'approve' ? 'approved' : 'rejected',
+            userContext.userId,
+            'in-app',
+          );
+        } catch (err) {
+          logger.error('Pipeline gate advance failed after choice-resolved', { component: 'Chat' }, err);
+        }
+      }
 
       res.json({ success: true, resolved: result.resolved, ...(routingResponse ? { routing: routingResponse } : {}) });
     } catch (error: any) {

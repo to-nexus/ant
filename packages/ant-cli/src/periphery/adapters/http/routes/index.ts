@@ -34,6 +34,7 @@ export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (contai
 export { createCustomAgentRoutes } from './customAgents.routes';  // Universal custom agents/jobs
 export { createAccountAgentRoutes } from './accountAgents.routes';  // Account-scoped agent settings
 export { createMcpCredentialRoutes } from './mcpCredentials.routes';  // MCP credential registration (A16)
+export { createPipelinesRoutes } from './pipelines.routes';  // Pipeline scheduling (universal projects)
 
 /**
  * Dependencies for route creation
@@ -62,6 +63,8 @@ export interface RoutesDeps {
   ) => Promise<void>;
   stateTracker?: any;  // JobStateTracker — finalizeTerminalJob requires this
   organizationRepository?: OrganizationRepositoryPort;  // Phase 3 cloud-mode org / membership repo
+  /** PipelineRunCoordinator — chat's choice-resolved funnel advances pipeline gates through this. */
+  pipelineCoordinator?: any;
 }
 
 /**
@@ -108,7 +111,8 @@ export function createApiRoutes(deps: RoutesDeps): Router {
     choiceService: deps.choiceService,
     workspaceResolver: deps.workspaceResolver,
     fileTreeNotifier: deps.fileTreeNotifier,
-    stateStore: deps.stateStore
+    stateStore: deps.stateStore,
+    pipelineCoordinator: deps.pipelineCoordinator
   }));
 
   // Feature log (chat.jsonl + feature.jsonl breadcrumbs) — UI SSOT for chat / timeline.

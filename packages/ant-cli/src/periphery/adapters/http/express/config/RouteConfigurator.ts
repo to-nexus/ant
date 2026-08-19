@@ -11,7 +11,8 @@ import {
   createMcpCredentialRoutes,
   createAuthRoutes,
   createAdminRoutes,
-  createTeamsRoutes
+  createTeamsRoutes,
+  createPipelinesRoutes
 } from '../../routes';
 import { AuthService } from '../../../../../core/auth/AuthService';
 import { parseSuperAdminEmails } from '../../../../../core/auth/superAdmin';
@@ -87,6 +88,25 @@ export class RouteConfigurator {
     // this.setupSSERoutes(app);
     this.setupJobRoutes(app);
     this.setupCustomAgentRoutes(app);
+    this.setupPipelineRoutes(app);
+  }
+
+  /**
+   * Pipeline scheduling surface (universal projects). Services are built by
+   * ExpressServerAdapter; absent (no resolver / no Redis config) ⇒ no routes.
+   */
+  private setupPipelineRoutes(app: Express): void {
+    if (!this.deps.workspaceResolver || !this.deps.pipelineCoordinator || !this.deps.pipelineScheduleQueue) return;
+    app.use(
+      '/api/projects/:projectId/pipelines',
+      createPipelinesRoutes({
+        workspaceResolver: this.deps.workspaceResolver,
+        coordinator: this.deps.pipelineCoordinator,
+        scheduleQueue: this.deps.pipelineScheduleQueue,
+        stateStore: getInfrastructureFactory().getStateStore(),
+        chatService: this.deps.chatService,
+      }),
+    );
   }
 
   /**
@@ -239,6 +259,7 @@ export class RouteConfigurator {
       // so wiring it unconditionally is harmless — the cloud overlay supplies
       // the real Redis-backed repo when present.
       organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
+      pipelineCoordinator: this.deps.pipelineCoordinator,
     });
     app.use('/api', apiRoutes);
   }

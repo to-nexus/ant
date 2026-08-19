@@ -198,6 +198,18 @@ export interface RunRecord {
   defSnapshot?: PipelineDef;
 }
 
+/** One line per TERMINAL run in `runs/index.jsonl`; also the runs-list API row. */
+export interface PipelineRunSummary {
+  runId: string;
+  pipelineId: string;
+  status: PipelineRunStatus;
+  firedBy: PipelineFiredBy;
+  fireEpoch: number;
+  startedAt: string;
+  endedAt?: string;
+  error?: string;
+}
+
 /** Append-only run event line (`.ant/pipelines/{id}/runs/{runId}.jsonl`). */
 export interface PipelineRunEvent {
   ts: string;

@@ -39,6 +39,12 @@ import { WorkflowBridge } from './bridges/WorkflowBridge';
 import { ServerLifecycleManager } from './lifecycle/ServerLifecycleManager';
 import { recoverStaleJobs } from './lifecycle/StaleJobRecovery';
 
+// Pipeline scheduling
+import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
+import { resolveRedisUrl } from '../../../../core/config/redisUrl';
+import { PipelineQueue, PipelineRunCoordinator, reconcilePipelines } from '../../../../infrastructure/scheduling';
+import { checkApproval, checkTeamMembership } from '../routes/helpers/approvalGate';
+
 // Service Initialization
 import { initializeServices } from './services/ServiceInitializer';
 
@@ -70,6 +76,8 @@ export class ExpressServerAdapter implements
   private running: boolean = false;
   // Periodic stale-job reconciliation tick (focal-jetting-ember RCA). Cleared on stop().
   private staleRecoveryTimer?: NodeJS.Timeout;
+  // Periodic pipeline disk→scheduler reconciliation tick. Cleared on stop().
+  private pipelineReconcileTimer?: NodeJS.Timeout;
 
   // Singleton instance for global access
   private static instance: ExpressServerAdapter | null = null;
@@ -128,7 +136,33 @@ export class ExpressServerAdapter implements
     this.sessionWatcher = new SessionFileWatcher(this.stateTracker, this.deps);
     
     this.workflowBridge = new WorkflowBridge(this.stateTracker, this.deps);
-    
+
+    // Pipeline scheduling (universal projects): construct services here so
+    // RouteConfigurator can mount the HTTP surface; the control worker +
+    // reconciliation loop start in start(). Non-fatal — a boot without Redis
+    // config simply has no pipelines surface.
+    if (this.deps.workspaceResolver) {
+      try {
+        const factory = getInfrastructureFactory();
+        const queue = new PipelineQueue(resolveRedisUrl());
+        this.deps.pipelineScheduleQueue = queue;
+        this.deps.pipelineCoordinator = new PipelineRunCoordinator({
+          stateStore: factory.getStateStore(),
+          scheduleQueue: queue,
+          workspacesPath: this.deps.workspaceResolver.getPhysicalWorkspacesPath(),
+          workspaceResolver: this.deps.workspaceResolver,
+          workspaceService: this.deps.workspaceService,
+          chatService: this.deps.chatService,
+          getJobQueue: () => factory.getJobQueue(),
+          getCreditLedger: () => factory.getCreditLedger(),
+          checkApproval,
+          checkTeamMembership,
+        });
+      } catch (err) {
+        logger.warn('Pipeline services unavailable (non-fatal)', { component: 'ExpressServerAdapter' }, err);
+      }
+    }
+
     this.lifecycleManager = new ServerLifecycleManager(
       this.stateTracker,
       this.deps,
@@ -276,6 +310,34 @@ export class ExpressServerAdapter implements
     }, 90_000);
     this.staleRecoveryTimer.unref();
 
+    // Pipeline scheduling: status-update consumer + control worker +
+    // disk→scheduler reconciliation (StaleJobRecovery template — boot run,
+    // 90s interval, cluster lock inside the function).
+    if (this.deps.pipelineCoordinator && this.deps.pipelineScheduleQueue) {
+      const coordinator = this.deps.pipelineCoordinator as PipelineRunCoordinator;
+      const queue = this.deps.pipelineScheduleQueue as PipelineQueue;
+      try {
+        await coordinator.start();
+        queue.startWorker(resolveRedisUrl(), (data, intendedFireAt) =>
+          coordinator.handleControlJob(data, intendedFireAt),
+        );
+        const reconcileDeps = {
+          stateStore: getInfrastructureFactory().getStateStore(),
+          scheduleQueue: queue,
+          workspacesPath: this.deps.workspaceResolver.getPhysicalWorkspacesPath(),
+        };
+        await reconcilePipelines(reconcileDeps);
+        this.pipelineReconcileTimer = setInterval(() => {
+          reconcilePipelines(reconcileDeps).catch((err) => {
+            logger.warn('Periodic pipeline reconciliation error (non-fatal)', { component: 'ExpressServerAdapter' }, err);
+          });
+        }, 90_000);
+        this.pipelineReconcileTimer.unref();
+      } catch (err) {
+        logger.warn('Pipeline scheduler start failed (non-fatal)', { component: 'ExpressServerAdapter' }, err);
+      }
+    }
+
     await new Promise<void>((resolve, reject) => {
       try {
         this.server = this.app.listen(port, () => {
@@ -350,6 +412,14 @@ export class ExpressServerAdapter implements
     if (this.staleRecoveryTimer) {
       clearInterval(this.staleRecoveryTimer);
       this.staleRecoveryTimer = undefined;
+    }
+
+    if (this.pipelineReconcileTimer) {
+      clearInterval(this.pipelineReconcileTimer);
+      this.pipelineReconcileTimer = undefined;
+    }
+    if (this.deps.pipelineScheduleQueue) {
+      await (this.deps.pipelineScheduleQueue as PipelineQueue).close().catch(() => {});
     }
 
     await this.lifecycleManager.shutdown();
