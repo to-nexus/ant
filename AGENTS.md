@@ -21,6 +21,7 @@ the user-facing concepts live in [`docs/concepts/`](docs/concepts/).
 | Set up, build, test                   | [CONTRIBUTING.md](CONTRIBUTING.md) · [docs/develop.md](docs/develop.md) |
 | Add a new agent / job / phase node    | This file, then [docs/internals/](docs/internals/) — incident-driven rationale, enforcement greps, test names |
 | Touch the universal / custom-agent runtime | [Universal Runtime](#universal-runtime--one-jobtype-file-defined-jobs), then [docs/internals/44-universal-job.md](docs/internals/44-universal-job.md) |
+| Touch the pipeline scheduler (cron, chaining, approval gates) | [docs/internals/46-pipeline-scheduling.md](docs/internals/46-pipeline-scheduling.md) |
 | Author or edit a prompt template      | [Prompt Engineering](#prompt-engineering)           |
 | Touch the LangGraph state machine     | [LangGraph State Management](#langgraph-state-management) |
 | Make a change that crosses BE↔FE      | [Cross-Package Contracts](#cross-package-contracts-antshared) |

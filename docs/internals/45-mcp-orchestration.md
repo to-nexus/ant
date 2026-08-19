@@ -161,13 +161,14 @@ current code.
 - **Intents are parameters, not inference.** The runtime never auto-classifies
   intents ([44 §Why one JobType](44-universal-job.md#why-one-jobtype-not-n));
   `intents` / `overrideDirective` already travel in the execute body, and an
-  unpinned turn falls back to the catalog's `default: true` intent (else
-  `general`) — deterministically. A schedule would store its intent/directive
-  as fixed registration-time parameters, so schedule-destined work carries 0–1
-  intents decided at registration — do not design intent taxonomies that
-  assume runtime classification. A job built for unattended runs can equally
-  mark its one operational intent `default: true`, which also activates its
-  `clarify: false` knob without any per-call parameter.
+  unpinned turn resolves deterministically (explicit → inherited clarify
+  continuity → `general` — **there is no catalog default**; the historical
+  `default: true` knob was retired with the intents/{id} cutover). A schedule
+  stores its intent/directive as fixed registration-time parameters, so
+  schedule-destined work carries 0–1 intents decided at registration — do not
+  design intent taxonomies that assume runtime classification. This is now
+  built: a pipeline step pins `(customJobRef, intent ≤ 1)` in its YAML
+  ([46](46-pipeline-scheduling.md)).
 - **Reporting is an MCP tool, not a new subsystem.** "Send the report to the
   channel" is a `notification`-domain server (`send_message`) called by the job
   at the end of its own prompt — the same convergence as every other capability.
@@ -209,7 +210,7 @@ scheduler for any deployment that intends gated writes.
 | **A6 single org root** | `deriveCustomAgentScopeRoots` builds `user > org > builtin`, where the org root is one global env var (`ANT_CUSTOM_AGENTS_DIR`, readonly). Projects are `(tenant,user)`-owned, so every artifact lands in a personal project | Multiple org roots, then `team` org-kind activation (creation/join flows — [40-org-model.md](40-org-model.md)). Shared definitions need a shared-project story for their outputs |
 | **Cross-tool data plane (long form)** | Result spooling ([44 §MCP connections](44-universal-job.md#mcp-connections--the-credential-plane-a16a13)) covers tool→file; tool→tool composition still routes through the model, and computed transforms need `run_command` (approval-gated unless the author declares `never`) | Expose read-tool stubs inside a sandboxed code-execution surface so the model writes a transform instead of transcribing data; keep the approval gate on write tools only. Industry direction: Anthropic "Code execution with MCP" |
 | **MCP 2026-07-28 spec revision** | Client stack + reference server predate the revision (protocol de-sessioning, OAuth changes, DCR→CIMD) | Review pass over `McpConnectionManager` (transport/session assumptions) and `examples/mcp-reference-server`; no known breakage, but the assumption set is unaudited |
-| **Unattended runs** | No scheduler, no failure reporting, no audit log — and a scheduler alone does not provide per-case lifecycles | §4 |
+| **Unattended runs** | Scheduler + chaining + approval gates + run audit shipped as the pipeline runtime ([46](46-pipeline-scheduling.md)). Still open: per-case lifecycles (a separate design axis — §4), clarify/A3 await hand-off (46 Phase 2) | §4 · [46](46-pipeline-scheduling.md) |
 
 ---
 
@@ -218,6 +219,9 @@ scheduler for any deployment that intends gated writes.
 - [44-universal-job.md](44-universal-job.md) — the runtime contract: one
   JobType, definition loader/scopes, tool sandbox, credential plane, approval
   and plan-turn gates, checklist plane.
+- [46-pipeline-scheduling.md](46-pipeline-scheduling.md) — the scheduler §4
+  anticipated: file-defined pipelines chaining universal runs on cron with
+  human approval gates.
 - [guides/custom-agent-authoring.md](../guides/custom-agent-authoring.md) —
   build a definition start to finish.
 - [examples/README.md](../../examples/README.md) — the reference server and the
