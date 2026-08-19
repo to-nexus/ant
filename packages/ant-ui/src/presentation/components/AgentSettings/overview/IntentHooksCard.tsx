@@ -44,7 +44,6 @@ export function IntentHooksCard({
       doc={doc}
       readonly={ctx.readonly}
       onRawChange={(text) => docs.setRaw(hooksDocKey(intentId), text)}
-      bodyMaxWidth={560}
     >
       <StopHooksEditor
         hooks={entry?.hooks?.stop ?? []}

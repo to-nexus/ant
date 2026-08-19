@@ -27,7 +27,6 @@ export function DefinitionCard({
   doc,
   readonly,
   onRawChange,
-  bodyMaxWidth,
   rawLabel,
   parseErrorLabel,
   children,
@@ -40,8 +39,6 @@ export function DefinitionCard({
   doc: DefinitionDoc | null;
   readonly: boolean;
   onRawChange: (text: string) => void;
-  /** Constrains only the FORM view — the raw editor keeps the full width. */
-  bodyMaxWidth?: number;
   /** Raw-view toggle label — defaults to "YAML"; markdown files pass "Raw". */
   rawLabel?: string;
   /** Parse-banner prefix — defaults to the YAML syntax message. */
@@ -101,8 +98,6 @@ export function DefinitionCard({
             <LineNumberedEditor value={doc.raw} onChange={onRawChange} disabled={readonly} />
           </div>
         </div>
-      ) : bodyMaxWidth != null ? (
-        <div style={{ maxWidth: bodyMaxWidth }}>{children}</div>
       ) : (
         children
       )}

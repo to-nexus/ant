@@ -68,7 +68,7 @@ export function ActionHookInput({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <div style={{ flex: hasNameField ? '0 1 150px' : '1 1 0', minWidth: 0 }}>
+        <div style={{ flex: hasNameField ? '0 1 190px' : '1 1 0', minWidth: 0 }}>
           <AuroraSelect
             value={selectValue}
             disabled={disabled}

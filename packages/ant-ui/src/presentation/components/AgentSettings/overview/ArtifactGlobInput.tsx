@@ -135,7 +135,7 @@ export function ArtifactGlobInput({
         />
       ) : (
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, minWidth: 0 }}>
-          <div style={{ flex: '0 1 150px', minWidth: 0 }}>
+          <div style={{ flex: '0 1 190px', minWidth: 0 }}>
             <AuroraSelect
               value={location}
               disabled={disabled}
