@@ -86,7 +86,7 @@ describe('universalResolveStrategy — deterministic turnContext (single writer)
   beforeEach(() => activateCustomJob(makeResolved()));
 
   it.each([
-    ['explicit intents adopted verbatim', { explicitIntents: ['research', 'cite'] }, { intents: ['research', 'cite'], source: 'pinned' }],
+    ['explicit intent adopted verbatim', { explicitIntents: ['research'] }, { intents: ['research'], source: 'pinned' }],
     ['no explicit input → [general] / unpinned', {}, { intents: ['general'], source: 'unpinned' }],
     ['@ctx alone attaches context without forging intent provenance', { explicitContext: ['plan/notes.md'] }, { intents: ['general'], context: ['plan/notes.md'], source: 'unpinned' }],
     ['@plan rides as planTurn', { planRequested: true }, { planTurn: true }],
@@ -293,6 +293,12 @@ describe('validateUniversalTurnMeta — accept gate', () => {
     const validate = await load();
     const result = await validate(container, CATALOG, ['ghost'], []);
     expect(result).toMatchObject({ ok: false, status: 400, code: 'unknown-intent' });
+  });
+
+  it('two distinct intents → 400 multiple-intents (a run binds at most one)', async () => {
+    const validate = await load();
+    const result = await validate(container, CATALOG, ['research', 'cite'], []);
+    expect(result).toMatchObject({ ok: false, status: 400, code: 'multiple-intents' });
   });
 
   it('@plan alone → meta with plan:true (a plan turn needs no intents/context)', async () => {

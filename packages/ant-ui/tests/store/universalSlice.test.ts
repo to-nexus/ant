@@ -120,19 +120,27 @@ describe('loadCustomAgents selection repair', () => {
   });
 });
 
-describe('universalTurnMeta — explicit @intent:/@ctx:/@plan mention accumulation', () => {
-  it('accumulates + dedupes intents and context, removes individually', () => {
+describe('universalTurnMeta — explicit @intent:/@ctx:/@plan mention arming', () => {
+  it('intent is a single slot (last pick replaces); context accumulates + dedupes, removes individually', () => {
     const s = makeStore();
     s.getState().addUniversalIntentMention('research');
-    s.getState().addUniversalIntentMention('cite');
-    s.getState().addUniversalIntentMention('research'); // dedupe
+    s.getState().addUniversalIntentMention('cite'); // replaces — a run binds at most one intent
     s.getState().addUniversalContextMention('plan/a.md');
     s.getState().addUniversalContextMention('plan/a.md'); // dedupe
-    expect(s.getState().universalTurnMeta).toEqual({ intents: ['research', 'cite'], context: ['plan/a.md'], plan: false });
+    s.getState().addUniversalContextMention('plan/b.md');
+    expect(s.getState().universalTurnMeta).toEqual({ intents: ['cite'], context: ['plan/a.md', 'plan/b.md'], plan: false });
 
-    s.getState().removeUniversalIntentMention('research');
+    s.getState().removeUniversalIntentMention('cite');
     s.getState().removeUniversalContextMention('plan/a.md');
-    expect(s.getState().universalTurnMeta).toEqual({ intents: ['cite'], context: [], plan: false });
+    expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: ['plan/b.md'], plan: false });
+  });
+
+  it('re-picking the armed intent keeps reference stability', () => {
+    const s = makeStore();
+    s.getState().addUniversalIntentMention('research');
+    const ref = s.getState().universalTurnMeta;
+    s.getState().addUniversalIntentMention('research'); // no-op
+    expect(s.getState().universalTurnMeta).toBe(ref);
   });
 
   it('resets on job switch (mentions are job-scoped vocabulary)', () => {

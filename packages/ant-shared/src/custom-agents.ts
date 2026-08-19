@@ -502,11 +502,15 @@ export function parseCustomJobRef(raw: string | undefined | null): CustomJobRef 
 }
 
 /**
- * Explicit per-turn metadata for universal jobs — `@intent:` mentions
- * (multiple allowed, catalog-validated at accept) and `@ctx:` artifact paths
- * (existence-checked at accept). Applies to the mentioning run only; travels
- * HTTP body → queue payload → `ANT_UNIVERSAL_TURN_META` env (single JSON —
- * paths may contain commas, so never CSV) → job-runner.
+ * Explicit per-turn metadata for universal jobs — the `@intent:` mention
+ * (catalog-validated at accept) and `@ctx:` artifact paths (existence-checked
+ * at accept). Applies to the mentioning run only; travels HTTP body → queue
+ * payload → `ANT_UNIVERSAL_TURN_META` env (single JSON — paths may contain
+ * commas, so never CSV) → job-runner.
+ *
+ * A run binds AT MOST ONE intent (the intent is the atomic unit of work and
+ * the future schedule node); `intents` keeps the array shape for wire compat,
+ * and the accept gate 400s (`multiple-intents`) on more than one distinct id.
  */
 export interface UniversalTurnMeta {
   intents: string[];

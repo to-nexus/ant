@@ -190,7 +190,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       // `@plan` only while the flag is off (a second toggle is meaningless).
       return [
         ...(universalJobIntents.length > 0
-          ? [{ type: 'command' as const, id: '@intent:', label: t('mention.intent.label'), description: t('mention.universalIntent.description', { defaultValue: 'Attach one or more of this job\'s intents' }) }]
+          ? [{ type: 'command' as const, id: '@intent:', label: t('mention.intent.label'), description: t('mention.universalIntent.description', { defaultValue: 'Attach one of this job\'s intents (a run binds at most one)' }) }]
           : []),
         { type: 'command' as const, id: '@ctx:', label: t('mention.ctx.label'), description: t('mention.ctx.description') },
         ...(!universalPlanOn
@@ -383,8 +383,9 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       return { newMessage: newMessage.trimStart(), newCursorPos: beforeMention.length };
     }
 
-    // Universal: mentions ACCUMULATE into `universalTurnMeta` (multiple
-    // intents legal) — never into the canonical actionMetadata store.
+    // Universal: mentions arm `universalTurnMeta` — never the canonical
+    // actionMetadata store. `@ctx:` accumulates; `@intent:` is a single
+    // slot (a run binds at most one intent — last pick replaces).
     if (isUniversal) {
       if (suggestion.type === 'intent') addUniversalIntentMention(suggestion.id);
       else if (suggestion.type === 'context') addUniversalContextMention(suggestion.id);

@@ -202,12 +202,12 @@ clarify: false
 Unattended scheduled generation.
 ```
 
-Precedence: active intents that declare the knob decide (disabled wins when
-several conflict); otherwise `job.clarify`, otherwise `agent.clarify`,
-otherwise enabled. The value must be a real boolean — `clarify: "yes"` fails
-validation at job accept. An intent is *active* only when pinned with
-`@intent:` (or the execute body's `intents`) — there is no catalog default,
-so an unattended lane pins its intent in the scheduled/API call (§4.5).
+Precedence: the active intent's knob decides when it declares one; otherwise
+`job.clarify`, otherwise `agent.clarify`, otherwise enabled. The value must
+be a real boolean — `clarify: "yes"` fails validation at job accept. An
+intent is *active* only when pinned with `@intent:` (or the execute body's
+`intents`) — there is no catalog default, so an unattended lane pins its
+intent in the scheduled/API call (§4.5).
 
 ## 4. Prose — base/ and per-intent prompt.md
 
@@ -253,10 +253,13 @@ intents.yaml`, and the retired frontmatter keys (`default`, `injections`,
 renders in directory-name order.
 
 - **Intents are selected explicitly — never auto-classified, and there is no
-  default.** A turn carries the intents the user mentioned with `@intent:` in
-  the composer (or that an API caller passed in the execute body); those
-  intents' `prompt.md` files are inlined in full, their `clarify` knobs apply,
-  and their hooks arm. There is no per-turn LLM classification pass.
+  default.** A run binds **at most one** intent: the one the user mentioned
+  with `@intent:` in the composer (or that an API caller passed in the
+  execute body — more than one distinct id is refused at accept,
+  `multiple-intents`). The active intent's `prompt.md` is inlined in full,
+  its `clarify` knob applies, and its hooks arm. There is no per-turn LLM
+  classification pass. The intent is the atomic unit of work — chain steps
+  are separate runs, not co-pinned intents.
 - **An unpinned turn runs as the reserved `general` intent**: nothing inlines
   and no hook arms, but the model self-selects with `read_file` — the runtime
   renders your whole catalog (each intent's id and `infer.md` criterion,
@@ -312,6 +315,8 @@ hooks:
 - `GET /api/account/agents/{agentId}/jobs/{jobId}/prompt-preview?intents=a,b`
   returns the exact composed definition block the runtime will inject — the
   settings screen's "Composed prompt" card renders it per intent selection.
+  (The preview is an authoring aid and accepts several ids to compare
+  blocks; an actual run still binds at most one intent.)
 - A broken definition also fails loudly with HTTP 400 when a job is started —
   never silently inside the worker.
 - In the UI: open a workspace project and pick the agent and job with the

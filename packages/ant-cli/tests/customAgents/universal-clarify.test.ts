@@ -309,6 +309,12 @@ describe('parseSealedTurnContext — restore sanitation table', () => {
     ['non-string entries filtered, non-boolean planTurn coerced false',
       { intents: ['a', 7], context: [null, 'b.md'], planTurn: 'yes' },
       { intents: ['a'], context: ['b.md'], planTurn: false }],
+    ['pre-cutover multi-intent seal truncates to the first non-general id (inheritance bypasses the HTTP gate)',
+      { intents: ['research', 'cite'], context: [], planTurn: false, source: 'pinned' },
+      { intents: ['research'], context: [], planTurn: false }],
+    ['general mixed into a pinned seal is dropped by the single-slot cap',
+      { intents: ['general', 'cite'], context: [], planTurn: false, source: 'pinned' },
+      { intents: ['cite'], context: [], planTurn: false }],
   ] as const)('%s', (_label, raw, expected) => {
     expect(parseSealedTurnContext(raw as any)).toEqual(expected);
   });

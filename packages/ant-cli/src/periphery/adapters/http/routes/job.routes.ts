@@ -142,6 +142,19 @@ export async function validateUniversalTurnMeta(
   const planRequested = rawPlan === true;
   if (intents.length === 0 && context.length === 0 && !planRequested) return { ok: true, meta: null };
 
+  // A run binds at most ONE intent — the intent is the atomic unit of work
+  // (completion contract, future schedule node). Checked on the deduped set
+  // so a repeated mention (['a','a']) stays legal.
+  const uniqueIntents = [...new Set(intents)];
+  if (uniqueIntents.length > 1) {
+    return {
+      ok: false,
+      status: 400,
+      error: `A run binds at most one intent (got: ${uniqueIntents.map((i) => `"${i}"`).join(', ')})`,
+      code: 'multiple-intents',
+    };
+  }
+
   for (const id of intents) {
     if (id !== GENERAL_INTENT && !intentIds.has(id)) {
       return { ok: false, status: 400, error: `Unknown intent id for this job: "${id}"`, code: 'unknown-intent' };

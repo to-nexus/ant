@@ -228,7 +228,10 @@ function UniversalIntentVariant({ intentId }: UniversalIntentFooterProps) {
     if (store.selectedJobType !== 'universal' || store.selectedAgent !== 'universal') {
       store.applyJobIdentity({ jobType: 'universal', agent: 'universal' });
     }
-    // Pin this intent, then read the wire params off the ONE mapping SSOT.
+    // BUILD is a self-contained atomic run of exactly this intent: drop any
+    // pre-armed @ctx/@plan leftovers, then pin this intent and read the wire
+    // params off the ONE mapping SSOT.
+    store.resetUniversalTurnMeta();
     store.addUniversalIntentMention(intentId);
     const ctx = selectUniversalExecuteContext(useStore.getState());
     if (!ctx) return;

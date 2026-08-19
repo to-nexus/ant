@@ -36,9 +36,12 @@ export interface UniversalState {
   selectedCustomAgentId: string | undefined;
   selectedCustomJobId: string | undefined;
   /**
-   * Explicit `@intent:` / `@ctx:` / `@plan` mentions accumulated for the NEXT
+   * Explicit `@intent:` / `@ctx:` / `@plan` mentions armed for the NEXT
    * send — applies to that run only. Reset on job switch and after send.
-   * `plan` requests a plan turn: the run produces a plan document, not the work.
+   * A run binds at most ONE intent (`intents` keeps the array shape for the
+   * wire contract; picking an intent replaces the previous one). Context
+   * paths still accumulate. `plan` requests a plan turn: the run produces a
+   * plan document, not the work.
    */
   universalTurnMeta: { intents: string[]; context: string[]; plan: boolean };
   /**
@@ -59,7 +62,7 @@ export interface UniversalActions {
   /** Fetch the agent list and repair/auto-select the (agent, job) pair. */
   loadCustomAgents: (projectId: string) => Promise<void>;
   clearUniversalSelection: () => void;
-  /** Accumulate an `@intent:` mention (multiple allowed, deduped). */
+  /** Arm an `@intent:` mention — single slot, picking replaces the previous. */
   addUniversalIntentMention: (intentId: string) => void;
   removeUniversalIntentMention: (intentId: string) => void;
   /** Accumulate an `@ctx:` artifact-path mention (deduped). */
@@ -164,8 +167,10 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
 
   addUniversalIntentMention: (intentId) => {
     const meta = get().universalTurnMeta;
-    if (meta.intents.includes(intentId)) return;
-    set({ universalTurnMeta: { ...meta, intents: [...meta.intents, intentId] } });
+    // Single-intent binding: the intent is the atomic unit of a run, so the
+    // slot replaces instead of accumulating (last pick wins).
+    if (meta.intents.length === 1 && meta.intents[0] === intentId) return;
+    set({ universalTurnMeta: { ...meta, intents: [intentId] } });
   },
 
   removeUniversalIntentMention: (intentId) => {

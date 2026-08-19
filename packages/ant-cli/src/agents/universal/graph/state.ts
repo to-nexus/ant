@@ -82,9 +82,13 @@ export function parseSealedTurnContext(raw: unknown): InheritedTurnContext | und
   // A `['general']` intent list (the paused turn was unpinned) is normalized
   // to [] so the answer turn re-resolves intents through default/general
   // while still inheriting context/planTurn when those were the content.
+  // A run binds at most ONE intent; pre-cutover seals may carry several and
+  // inheritance bypasses the HTTP accept gate, so the cap is enforced here —
+  // every restore path goes through this parser. (Stale hookLedger keys for a
+  // truncated intent are harmless: the ledger is a union lookup only.)
   const meaningfulIntents = intents.filter((i) => i !== GENERAL_INTENT);
   if (meaningfulIntents.length === 0 && context.length === 0 && !planTurn) return undefined;
-  return { intents: meaningfulIntents.length > 0 ? intents : [], context, planTurn };
+  return { intents: meaningfulIntents.slice(0, 1), context, planTurn };
 }
 
 export interface UniversalGraphState extends ResolvableState {

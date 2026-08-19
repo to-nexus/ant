@@ -13,9 +13,9 @@ import { planContinuationPins } from '@/presentation/components/chat/choiceCard/
 
 describe('planContinuationPins — payload → follow-up turn pins', () => {
   it.each([
-    ['pinned multi-intents carry over',
+    ['pre-cutover multi-intent payload caps to the first id (a run binds at most one intent)',
       { intents: ['research', 'cite'], planFiles: ['plan/ops/weekly/plan.md'] },
-      { intents: ['research', 'cite'], context: ['plan/ops/weekly/plan.md'] }],
+      { intents: ['research'], context: ['plan/ops/weekly/plan.md'] }],
     ['general pins nothing — BE re-resolves deterministically',
       { intents: ['general'], planFiles: ['plan/ops/weekly/plan.md'] },
       { intents: undefined, context: ['plan/ops/weekly/plan.md'] }],

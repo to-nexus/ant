@@ -75,7 +75,7 @@ describe('universal mention surface (D-E) — source-level invariants', () => {
     expect(useMentionSrc).toMatch(/universalJobIntents\.length > 0/);
   });
 
-  it('universal @intent: mentions ACCUMULATE (multi-label) via universalTurnMeta, never actionMetadata', () => {
+  it('universal mentions arm universalTurnMeta (single intent slot, contexts accumulate), never actionMetadata', () => {
     expect(useMentionSrc).toMatch(/addUniversalIntentMention\(suggestion\.id\)/);
     expect(useMentionSrc).toMatch(/addUniversalContextMention\(suggestion\.id\)/);
   });

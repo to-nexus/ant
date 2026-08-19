@@ -25,7 +25,16 @@ Per-turn axes ride a **second** single-value channel,
 `ANT_UNIVERSAL_TURN_META` — one JSON blob carrying
 `UniversalTurnMeta {intents[], context[], plan?}`. One JSON, never
 comma-separated lists per axis: a CSV env var per axis is how a third axis
-becomes a fourth parse site.
+becomes a fourth parse site. `intents` keeps the array shape for wire
+compat, but **a run binds at most ONE intent** — the intent is the atomic
+unit of work (per-intent stop hooks are the run's completion contract, and
+the future scheduler's node address is `(job, intent)`). Enforced at three
+boundaries: the accept gate (`validateUniversalTurnMeta` → 400
+`multiple-intents` on >1 distinct id), the FE arming slot
+(`addUniversalIntentMention` replaces instead of accumulating), and the
+seal sanitizer (`parseSealedTurnContext` truncates pre-cutover multi-intent
+seals — inheritance rides the state-restore plane, which the HTTP gate
+never sees).
 
 ```bash
 # The ref must never fork into a second channel:
@@ -410,9 +419,9 @@ approval loop; the approval surface is the composer, so the options are:
 
 | Choice | Behavior (all FE-driven; resolution is a pure audit line) |
 |---|---|
-| `proceed` | Follow-up universal turn immediately: card-payload intents re-pinned, plan docs pinned as `@ctx`, auto directive, `plan` off. Resolution persists **after** a successful dispatch so a failed launch never takes the 24h per-cardId NX lock. |
+| `proceed` | Follow-up universal turn immediately: the card-payload intent re-pinned (`planContinuationPins` caps a pre-cutover multi-intent payload to its first id), plan docs pinned as `@ctx`, auto directive, `plan` off. Resolution persists **after** a successful dispatch so a failed launch never takes the 24h per-cardId NX lock. |
 | `edit` | Arms the composer from the payload: `@intent`/`@ctx` chips into `universalTurnMeta` + directive via `pendingChatInput` — the user edits, then sends. |
-| `keep_planning` | Re-arms `@plan` + re-pins intents; no `@ctx` re-pin (resolve re-lists `plan/{agentId}/{jobId}/` into the Plan Documents band every turn). |
+| `keep_planning` | Re-arms `@plan` + re-pins the intent; no `@ctx` re-pin (resolve re-lists `plan/{agentId}/{jobId}/` into the Plan Documents band every turn). |
 | `later` | Dismiss. |
 
 The gate is `planCompleteCardWrites` (exported, pure): `turnContext.planTurn`
@@ -457,9 +466,11 @@ verdicts, each load-bearing:
   advertised list** (`buildAdvertisedTools({ includeClarify })`) — no
   strip/proceed-note machinery over emitted calls.
 - **Availability = knob × budget.** `isClarifyEnabled` (policy SSOT,
-  `universalToolPolicy.ts`): active intents that declare `clarify` AND over it
-  (disabled wins); none declare → `clarifyDefault` (`job.clarify ??
-  agent.clarify ?? true`). `clarify: false` means "this job is intended
+  `universalToolPolicy.ts`): the active intent's `clarify` knob decides when
+  declared; none declared → `clarifyDefault` (`job.clarify ??
+  agent.clarify ?? true`). (The function still ANDs over an intent array —
+  "disabled wins" — but a run binds at most one intent, so the multi-input
+  branch only serves pre-cutover restores.) `clarify: false` means "this job is intended
   autonomous/unattended" — the loader's validation message states that
   semantic. Budget: `UNIVERSAL_CLARIFY_BUDGET = 3` pauses per (agent, job)
   session, `clarifyRoundsUsed` sealed/restored alongside the checklist.
@@ -746,8 +757,9 @@ an `@intent:` mention and focuses the composer (prepare, never send); **Build**
 posts a localized run request as the user turn (`universalBuildDirective`,
 `actions:universal.buildDirective` — never the intent's `infer` criterion, which
 is prompt text already rendered into the Intent Catalog) and dispatches a
-universal run
-with the intent pinned via `selectUniversalExecuteContext` (the
+universal run with EXACTLY this intent pinned — `handleBuild` resets the
+armed turn meta before arming, so pre-armed intents/`@ctx`/`@plan` leftovers
+never ride a Build — via `selectUniversalExecuteContext` (the
 `PlanCompleteVariant.handleProceed` precedent — composer-independent, so a
 collapsed chat sidebar cannot defer it).
 
