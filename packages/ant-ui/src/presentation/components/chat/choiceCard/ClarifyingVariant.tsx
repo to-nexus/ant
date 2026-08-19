@@ -41,6 +41,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
+import { parseCustomJobRef } from '@ant/shared';
 import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { selectPausedNonTaskJob } from '@/domain/store/selectors';
@@ -727,6 +728,18 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
+      // Universal: the answer must return to the job that asked. The card
+      // carries its `customJobRef` (BE stamps it at pause time); re-select it
+      // before dispatch so the live composer selection — which may have
+      // drifted to another job since the pause — cannot hijack the answer
+      // into a session with no dangling clarify.
+      const cardJobRef = parseCustomJobRef(payload.customJobRef);
+      if (cardJobRef) {
+        const s = useStore.getState();
+        if (s.selectedCustomAgentId !== cardJobRef.agentId || s.selectedCustomJobId !== cardJobRef.jobId) {
+          s.selectCustomJob(cardJobRef.agentId, cardJobRef.jobId);
+        }
+      }
       await runJob(enqueueAgent, enqueueJobType, directive);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Failed:', error);

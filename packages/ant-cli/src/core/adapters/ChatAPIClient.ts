@@ -297,10 +297,17 @@ export class ChatAPIClient {
    */
   async sendClarifyCards(blocks: ClarifyBlock[]): Promise<void> {
     if (!this.enabled || blocks.length === 0) return;
+    // Universal: stamp the card with its return address. The answer turn is
+    // a NEW job start, and the FE's live job selection may have drifted since
+    // the pause — without this the answer dispatches into whichever job the
+    // composer happens to have selected (wrong session, no dangling clarify).
+    const { getActiveCustomJob } = await import('../customAgents/activeCustomJob');
+    const active = getActiveCustomJob();
     const metadata: Record<string, any> = {
       cardType: 'clarifying',
       title: blocks.length === 1 ? blocks[0].question : `${blocks.length} questions`,
       clarifyBlocks: blocks,
+      ...(active && { customJobRef: `${active.agentId}/${active.jobId}` }),
     };
     await this.showChatStatus('choice_card', metadata);
   }

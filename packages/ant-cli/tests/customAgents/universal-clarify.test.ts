@@ -319,3 +319,39 @@ describe('parseSealedTurnContext — restore sanitation table', () => {
     expect(parseSealedTurnContext(raw as any)).toEqual(expected);
   });
 });
+
+// ── clarify card return address (answer-turn routing) ───────────────────────
+
+describe('sendClarifyCards — customJobRef stamp', () => {
+  const makeClient = async () => {
+    vi.stubEnv('ANT_PROJECT_ID', 'p');
+    vi.stubEnv('ANT_FEATURE_NAME', 'universal');
+    vi.stubEnv('ANT_JOB_ID', 'j');
+    vi.stubEnv('ANT_REDIS_URL', 'redis://x');
+    const { ChatAPIClient } = await import('../../src/core/adapters/ChatAPIClient');
+    const client = new ChatAPIClient();
+    const spy = vi.spyOn(client, 'showChatStatus').mockResolvedValue(undefined as any);
+    return { client, spy };
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('stamps the active custom job as the card return address (answer must return to the asking job)', async () => {
+    activateCustomJob(makeResolved());
+    const { client, spy } = await makeClient();
+    await client.sendClarifyCards([{ question: 'q?', options: ['a'], allowFreeText: true }]);
+    expect(spy).toHaveBeenCalledWith('choice_card', expect.objectContaining({
+      cardType: 'clarifying',
+      customJobRef: 'ops/weekly',
+    }));
+  });
+
+  it('canonical jobs (no active custom job) carry no customJobRef', async () => {
+    const { client, spy } = await makeClient();
+    await client.sendClarifyCards([{ question: 'q?', options: ['a'], allowFreeText: true }]);
+    const metadata = spy.mock.calls[0][1] as Record<string, unknown>;
+    expect('customJobRef' in metadata).toBe(false);
+  });
+});
