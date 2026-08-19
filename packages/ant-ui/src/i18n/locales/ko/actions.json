@@ -3,6 +3,7 @@
   "subtitle": "작업을 선택하면 필요한 준비물과 실행 방법을 안내합니다",
   "ctaButton": "액션",
   "showAll": "모든 액션 보기",
+  "tabDescriptionFull": "전체 설명 보기",
   "actions": {
     "plan": {
       "label": "기획서 작성",

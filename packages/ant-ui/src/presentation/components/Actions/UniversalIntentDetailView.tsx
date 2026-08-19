@@ -86,7 +86,6 @@ export function UniversalIntentDetailView({ surface }: { surface: UniversalActio
   const tabItems: TabItem[] = surface.intents.map((i) => ({
     id: i.id,
     label: i.id,
-    description: i.description,
     icon: Target,
   }));
 

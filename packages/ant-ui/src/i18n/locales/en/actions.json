@@ -3,6 +3,7 @@
   "subtitle": "Select a task to see what's needed and how to get started",
   "ctaButton": "All actions",
   "showAll": "View all actions",
+  "tabDescriptionFull": "Show full description",
   "actions": {
     "plan": {
       "label": "Create PRD",

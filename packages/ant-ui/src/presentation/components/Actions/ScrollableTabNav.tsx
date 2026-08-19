@@ -1,14 +1,27 @@
-import { useRef, useEffect, useCallback, type WheelEvent } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { useRef, useEffect, useState, useCallback, type WheelEvent } from 'react';
+import { ChevronLeft, Info } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Tooltip } from '@/presentation/components/common/Tooltip';
 
 // ============================================
 // Types
 // ============================================
 
+/** Upper bound on a tab's width — a long description must never push its siblings out of the strip. */
+const TAB_MAX_WIDTH = 260;
+
 export interface TabItem {
   id: string;
   label: string;
-  description: string;
+  /**
+   * Optional one-line subtitle. Supply it ONLY for real, human-facing UI copy
+   * (the localized canonical action/intent descriptions). Universal surfaces
+   * pass nothing: a custom job has no description by design
+   * (`CustomJobSummary`), and `CustomIntentDef.description` is the `infer.md`
+   * inference criterion — prompt text rendered into the Intent Catalog every
+   * turn, already shown in full by the intent detail body.
+   */
+  description?: string;
   icon?: React.ComponentType<{ className?: string }>;
   iconBg?: string;
   iconColor?: string;
@@ -79,59 +92,16 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack, rightAcc
             onWheel={handleWheel}
             className="flex items-stretch gap-1 overflow-x-auto scrollbar-hide scroll-smooth"
           >
-            {items.map(item => {
-              const isSelected = item.id === selectedId;
-              const ItemIcon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  ref={isSelected ? selectedRef : undefined}
-                  type="button"
-                  onClick={() => !isSelected && onSelect(item.id)}
-                  className="shrink-0 px-3 py-1.5 rounded-lg text-left transition-all duration-200"
-                  style={{
-                    background: isSelected ? 'var(--bg-surface)' : 'transparent',
-                    color: isSelected ? 'var(--violet-700)' : 'var(--text-3)',
-                    border: isSelected
-                      ? '1px solid var(--violet-200)'
-                      : '1px solid transparent',
-                    boxShadow: isSelected ? 'var(--shadow-xs)' : undefined,
-                    cursor: isSelected ? 'default' : 'pointer',
-                  }}
-                >
-                  <span className="flex items-center gap-1.5">
-                    {hasIcons && ItemIcon && (
-                      <span className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
-                        isSelected ? (item.iconBg || '') : ''
-                      }`}>
-                        <ItemIcon
-                          className={`w-3 h-3 transition-colors duration-200 ${
-                            isSelected ? (item.iconColor || '') : ''
-                          }`}
-                        />
-                      </span>
-                    )}
-                    <span
-                      className="text-sm whitespace-nowrap transition-colors duration-200"
-                      style={{
-                        color: isSelected ? 'inherit' : 'var(--text-3)',
-                        fontWeight: isSelected ? 600 : 400,
-                      }}
-                    >
-                      {item.label}
-                    </span>
-                  </span>
-                  {isSelected && (
-                    <span
-                      className="block text-xs mt-0.5 whitespace-nowrap"
-                      style={{ color: 'var(--text-3)' }}
-                    >
-                      {item.description}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            {items.map(item => (
+              <Tab
+                key={item.id}
+                item={item}
+                isSelected={item.id === selectedId}
+                hasIcons={hasIcons}
+                selectedRef={selectedRef}
+                onSelect={onSelect}
+              />
+            ))}
           </div>
           <FadeEdges scrollRef={scrollRef} />
         </div>
@@ -148,6 +118,115 @@ export function ScrollableTabNav({ items, selectedId, onSelect, onBack, rightAcc
 // Sub-components
 // ============================================
 
+/**
+ * True while the element's text is visually clipped by `truncate`. Measured
+ * rather than estimated — the same `scrollWidth > clientWidth` probe used by
+ * `TruncatableText` and the chat `FileCard` header.
+ */
+function useIsClipped(ref: React.RefObject<HTMLElement | null>, text: string | undefined): boolean {
+  const [clipped, setClipped] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !text) {
+      setClipped(false);
+      return;
+    }
+    const measure = () => setClipped(el.scrollWidth > el.clientWidth + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, text]);
+
+  return clipped;
+}
+
+interface TabProps {
+  item: TabItem;
+  isSelected: boolean;
+  hasIcons: boolean;
+  selectedRef: React.RefObject<HTMLButtonElement | null>;
+  onSelect: (id: string) => void;
+}
+
+function Tab({ item, isSelected, hasIcons, selectedRef, onSelect }: TabProps) {
+  const { t } = useTranslation('actions');
+  const ItemIcon = item.icon;
+  const descRef = useRef<HTMLSpanElement>(null);
+  const hasDescription = Boolean(item.description);
+  const isDescClipped = useIsClipped(descRef, isSelected ? item.description : undefined);
+
+  return (
+    <button
+      ref={isSelected ? selectedRef : undefined}
+      type="button"
+      onClick={() => !isSelected && onSelect(item.id)}
+      className="shrink-0 min-w-0 px-3 py-1.5 rounded-lg text-left transition-all duration-200"
+      style={{
+        maxWidth: TAB_MAX_WIDTH,
+        background: isSelected ? 'var(--bg-surface)' : 'transparent',
+        color: isSelected ? 'var(--violet-700)' : 'var(--text-3)',
+        border: isSelected
+          ? '1px solid var(--violet-200)'
+          : '1px solid transparent',
+        boxShadow: isSelected ? 'var(--shadow-xs)' : undefined,
+        cursor: isSelected ? 'default' : 'pointer',
+      }}
+    >
+      <span className="flex items-center gap-1.5 min-w-0">
+        {hasIcons && ItemIcon && (
+          <span className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${
+            isSelected ? (item.iconBg || '') : ''
+          }`}>
+            <ItemIcon
+              className={`w-3 h-3 transition-colors duration-200 ${
+                isSelected ? (item.iconColor || '') : ''
+              }`}
+            />
+          </span>
+        )}
+        <span
+          className="text-sm truncate transition-colors duration-200"
+          style={{
+            color: isSelected ? 'inherit' : 'var(--text-3)',
+            fontWeight: isSelected ? 600 : 400,
+          }}
+        >
+          {item.label}
+        </span>
+      </span>
+      {isSelected && hasDescription && (
+        <span className="flex items-center gap-1 mt-0.5 min-w-0">
+          <span
+            ref={descRef}
+            className="text-xs truncate min-w-0"
+            style={{ color: 'var(--text-3)' }}
+          >
+            {item.description}
+          </span>
+          {isDescClipped && (
+            /* Only the icon is wrapped, never the tab button: Tooltip's trigger
+               wrapper hardcodes `inline-flex; align-items:center`, which would
+               break the strip's equal-height rows and remount the button (and
+               with it `selectedRef`) whenever the clip state flips. */
+            <Tooltip content={item.description} trigger="hover" placement="bottom">
+              <span
+                role="button"
+                tabIndex={0}
+                className="inline-flex shrink-0 cursor-help"
+                aria-label={t('tabDescriptionFull', { defaultValue: 'Show full description' })}
+              >
+                <Info className="w-3 h-3" style={{ color: 'var(--text-4)' }} />
+              </span>
+            </Tooltip>
+          )}
+        </span>
+      )}
+    </button>
+  );
+}
+
 function SingleTab({ item }: { item: TabItem }) {
   const ItemIcon = item.icon;
   return (
@@ -161,9 +240,11 @@ function SingleTab({ item }: { item: TabItem }) {
         <h2 className="text-base font-semibold truncate" style={{ color: 'var(--text-1)' }}>
           {item.label}
         </h2>
-        <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
-          {item.description}
-        </p>
+        {item.description && (
+          <p className="text-xs truncate" style={{ color: 'var(--text-3)' }}>
+            {item.description}
+          </p>
+        )}
       </div>
     </div>
   );

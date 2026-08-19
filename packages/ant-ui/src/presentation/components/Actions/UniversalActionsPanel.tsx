@@ -38,7 +38,6 @@ export function UniversalActionsPanel() {
   const jobTabItems: TabItem[] = surface.jobs.map((j) => ({
     id: j.id,
     label: j.name,
-    description: j.id,
     icon: Briefcase,
   }));
 
