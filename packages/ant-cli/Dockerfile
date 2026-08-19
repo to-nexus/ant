@@ -146,6 +146,21 @@ RUN npm install -g tsx
 # Create non-root user
 RUN addgroup -S ant && adduser -S -G ant ant
 
+# Second, unprivileged identity for USER-AUTHORED child processes (dev servers,
+# install lifecycle scripts, build commands). A child sharing the service UID can
+# read /proc/<service-pid>/environ and pick up whatever the service holds,
+# whatever the composed child env says (report C-001). Its primary group is `ant`
+# so it still reads and writes the shared workspace; the umask below keeps
+# group-write on both sides so either identity can clean up the other's files.
+#
+# `ANT_CHILD_UID/GID` are NOT set as image defaults on purpose: changing a
+# child's UID needs an effective CAP_SETUID, which these containers do not have
+# by default. Set them from the deployment once the pod is allowed to drop UIDs
+# (the runtime probes and logs loudly if it is not) — see
+# docs/guides/self-host-cloud.md.
+RUN adduser -S -G ant -u 10001 -H -h /nonexistent ant-child
+ENV ANT_CHILD_UMASK=002
+
 WORKDIR /app
 
 # Copy workspace configuration
@@ -180,7 +195,7 @@ COPY --from=builder /app/packages/ant-cli/tsconfig.json ./packages/ant-cli/tscon
 COPY docs ./docs
 
 # Create workspace directory and fix ownership
-RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces
+RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces && chmod 2775 /cross/workspaces
 RUN mkdir -p /home/ant/go && chown -R ant:ant /home/ant/go
 RUN if [ -d /usr/local/rustup ]; then chown -R ant:ant /usr/local/rustup /usr/local/cargo; fi
 RUN chown -R ant:ant /app
@@ -248,6 +263,11 @@ RUN npm install -g tsx
 # Create non-root user for security (Alpine uses addgroup/adduser)
 RUN addgroup -S ant && adduser -S -G ant ant
 
+# Unprivileged identity for user-authored children — same rationale as the
+# preview stage above (the job worker runs LLM-chosen shell commands).
+RUN adduser -S -G ant -u 10001 -H -h /nonexistent ant-child
+ENV ANT_CHILD_UMASK=002
+
 WORKDIR /app
 
 # Copy workspace configuration
@@ -282,7 +302,7 @@ COPY --from=builder /app/packages/ant-cli/tsconfig.json ./packages/ant-cli/tscon
 COPY docs ./docs
 
 # Create workspace directory
-RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces
+RUN mkdir -p /cross/workspaces && chown -R ant:ant /cross/workspaces && chmod 2775 /cross/workspaces
 
 # Set ownership
 RUN mkdir -p /home/ant/go && chown -R ant:ant /home/ant/go

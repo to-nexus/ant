@@ -9,6 +9,7 @@ import type { ProjectProfile } from '@ant/shared';
 import type { LogCallback } from '../types';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
 import { composeChildEnv } from './envAssembly';
+import { childSpawnIdentity } from '../../../../../../core/config/childIdentity';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
 const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -267,11 +268,19 @@ export class DependencyInstaller {
 
       let settled = false;
       
+      // No credentialEnv here on purpose. `GIT_CONFIG_*` only rewrites git URLs,
+      // which python / rust / java resolvers do not use — but `cargo build`,
+      // `mvn` plugins and `./gradlew` all evaluate user-authored build code, so
+      // passing the PAT would hand it to that code for no functional gain
+      // (M-NEW-001, same axis as the node two-pass install above). Go still gets
+      // it: private module fetch needs it and Go runs no dependency code at
+      // install time — see `installGoDeps`.
       const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe',
-        env: composeChildEnv(credentialEnv),
+        env: composeChildEnv(),
+        ...childSpawnIdentity(),
       });
 
       const onAbort = () => {
@@ -332,8 +341,27 @@ export class DependencyInstaller {
   /**
    * Run package manager install
    */
+  /**
+   * Install node dependencies in two passes, so a user's GitHub PAT never reaches
+   * attacker-authored code.
+   *
+   * `buildCredentialEnv` puts the PAT in `GIT_CONFIG_KEY_0` as a raw value, and a
+   * single install pass hands that environment to every `preinstall` /
+   * `install` / `postinstall` script in the dependency tree — a malicious package
+   * only has to read its own environment (M-NEW-001). The two passes separate the
+   * two needs that were conflated:
+   *
+   *   1. ACQUIRE — credentialed, `--ignore-scripts`. Resolves, fetches and links
+   *      the tree, including private git dependencies. Runs no dependency code.
+   *   2. LIFECYCLE — no credentials, scripts enabled. Everything is already on
+   *      disk, so no network authentication is needed; native builds and legitimate
+   *      lifecycle scripts run exactly as before, just without the PAT in reach.
+   *
+   * Pass 2 is skipped when there was no credential to protect — a plain install is
+   * one pass, as it always was.
+   */
   private async runInstall(
-    packagePath: string, 
+    packagePath: string,
     relativePath: string,
     onLog: LogCallback,
     credentialEnv?: Record<string, string>,
@@ -341,11 +369,45 @@ export class DependencyInstaller {
   ): Promise<void> {
     const projectRoot = this.findProjectRoot(packagePath);
     const pm = this.detectPackageManager(projectRoot);
+    const credentialed = credentialEnv !== undefined && Object.keys(credentialEnv).length > 0;
 
     onLog('stdout', `📦 Installing dependencies for ${relativePath}...`);
     logger.info(`Running ${pm} install in: ${packagePath}`, { component: 'DependencyInstaller' });
 
-    const { command, args } = buildInstallCommand(pm);
+    if (!credentialed) {
+      const plain = buildInstallCommand(pm);
+      await this.spawnInstallPass(plain, { packagePath, relativePath, pm, onLog, signal });
+      return;
+    }
+
+    const acquire = buildInstallCommand(pm, { ignoreScripts: true });
+    await this.spawnInstallPass(acquire, {
+      packagePath, relativePath, pm, onLog, signal, credentialEnv,
+      label: 'dependency fetch',
+    });
+
+    const lifecycle = buildInstallCommand(pm);
+    await this.spawnInstallPass(lifecycle, {
+      packagePath, relativePath, pm, onLog, signal,
+      label: 'build scripts',
+    });
+  }
+
+  /** One install invocation. Owns the timeout / abort / stream / exit contract. */
+  private spawnInstallPass(
+    invocation: { command: string; args: string[] },
+    ctx: {
+      packagePath: string;
+      relativePath: string;
+      pm: PackageManager;
+      onLog: LogCallback;
+      signal?: AbortSignal;
+      credentialEnv?: Record<string, string>;
+      label?: string;
+    },
+  ): Promise<void> {
+    const { command, args } = invocation;
+    const { packagePath, relativePath, pm, onLog, signal, credentialEnv, label } = ctx;
 
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
@@ -360,6 +422,7 @@ export class DependencyInstaller {
         shell: true,
         stdio: 'pipe',
         env: composeChildEnv({ COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' }, credentialEnv),
+        ...childSpawnIdentity(),
       });
 
       const onAbort = () => {
@@ -407,7 +470,9 @@ export class DependencyInstaller {
         signal?.removeEventListener('abort', onAbort);
         
         if (code === 0) {
-          onLog('stdout', `✅ Dependencies installed for ${relativePath}`);
+          onLog('stdout', label
+            ? `✅ ${relativePath}: ${label} complete`
+            : `✅ Dependencies installed for ${relativePath}`);
           resolve();
         } else {
           logger.error(`Install failed in ${packagePath} with code ${code}`, { component: 'DependencyInstaller' });
@@ -571,6 +636,7 @@ export class DependencyInstaller {
         shell: true,
         stdio: 'pipe',
         env: composeChildEnv(env),
+        ...childSpawnIdentity(),
       });
 
       const onAbort = () => {

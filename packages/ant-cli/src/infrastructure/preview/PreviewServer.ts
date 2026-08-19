@@ -27,12 +27,21 @@ import { IncomingMessage } from 'http';
 import { PreviewService } from '../../periphery/adapters/http/services/PreviewService';
 import { createPreviewProxyMiddleware } from '../../periphery/adapters/http/middleware/previewProxy';
 import { createDeployProxyMiddleware } from '../../periphery/adapters/http/middleware/deployProxy';
-import { isSubdomainRouting, getDeployBaseDomain, getPreviewBaseDomain, getPreviewRoutingMode } from '../../core/config/previewRouting';
+import {
+  isSubdomainRouting,
+  getDeployBaseDomain,
+  getPreviewBaseDomain,
+  getPreviewRoutingMode,
+  getPreviewControlPort,
+  getPreviewContentPort,
+  assertPreviewOriginSeparation,
+} from '../../core/config/previewRouting';
 import { resolveRedisUrl } from '../../core/config/redisUrl';
 import { extractLabelFromHost } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
+import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import {
   extractForwardingContext,
@@ -291,14 +300,39 @@ function requireFeature(req: Request, res: Response): string | null {
 // PreviewServer
 // ============================================
 
+/**
+ * Bind a package-level env file to the workspace root.
+ *
+ * `resolveConnectionDir` proves the package dir is inside the workspace at check
+ * time, but it hands back a *name*. A user-authored preview child sharing this
+ * workspace can swap an intermediate component (`apps`) for an external symlink
+ * before the write lands, and a name-based write follows it (H-003). Passing the
+ * workspace root alongside the relative path makes the writer descend from the
+ * root by descriptor, so every ancestor is bound too.
+ */
+function envTarget(workspaceRoot: string, pkgDir: string, fileName: string): { root: string; rel: string } {
+  return { root: workspaceRoot, rel: path.join(path.relative(workspaceRoot, pkgDir), fileName) };
+}
+
 export class PreviewServer {
+  /**
+   * Control plane: `/projects/*` management API, `/health`, `/admin/*`.
+   * Cookie-authenticated.
+   */
   private app: Express;
+  /**
+   * User content: the preview and deploy proxies. Serves attacker-authorable
+   * documents (a deployed SVG or HTML page, a user's own dev server), so it
+   * mounts NO control-plane route — see {@link setupContentRoutes}.
+   */
+  private contentApp: Express;
   private previewService!: PreviewService;
   private deployService!: DeployService;
   private customDomainService!: CustomDomainService;
   private portManager!: PortManager;
   private stateStore!: StateStorePort & PortRegistryPort;
   private server: any;
+  private contentServer: any;
   private options: PreviewServerOptions;
   private workspaceResolver: WorkspaceResolver;
   private cleanupUnsubscribe?: () => void;
@@ -310,6 +344,7 @@ export class PreviewServer {
       options.workspacesPath || process.env.ANT_WORKSPACE_BASE_PATH || '/mnt/workspaces',
     );
     this.app = express();
+    this.contentApp = express();
   }
 
   /**
@@ -551,8 +586,8 @@ export class PreviewServer {
         const pkgDir = resolveConnectionDir(workspacePath, subdir);
         const framework = toToggleFramework(detectFramework(pkgDir));
         syncEnvStructureFromExample(
-          path.join(pkgDir, '.env.example'),
-          path.join(pkgDir, '.env'),
+          envTarget(workspacePath, pkgDir, '.env.example'),
+          envTarget(workspacePath, pkgDir, '.env'),
           framework,
         );
       }
@@ -688,66 +723,78 @@ export class PreviewServer {
   }
 
   /**
-   * Setup Express middleware and routes
-   * 
-   * Middleware order (per plan):
-   * 1. CORS (shared corsConfig)
-   * 2. helmet (security headers)
-   * 3. Health check (before auth)
-   * 4. Preview Proxy middleware (no auth, before body parser)
-   * 5. cookie-parser
-   * 6. Body parsers (json)
-   * 7. JWT auth middleware (cloud only)
-   * 8. Management API routes
+   * Catch-all 404, shared by both listeners.
+   *
+   * A peer-forwarded request reaching the catch-all means the owner pod failed to
+   * recognize its own preview host — always-on diagnostic, since this exact silent
+   * 404 previously masked a lost-Host routing defect.
+   */
+  private notFoundHandler(listener: 'content' | 'control') {
+    return (req: Request, res: Response): void => {
+      if (isSubdomainRouting() && req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1') {
+        logger.warn(
+          `[PreviewServer] Peer-forwarded request missed all proxies (catch-all 404 on ${listener}): ` +
+          `host=${req.headers.host} xfh=${req.headers['x-forwarded-host'] ?? '(none)'} ` +
+          `previewBase=${getPreviewBaseDomain() ?? '(unset)'} deployBase=${getDeployBaseDomain() ?? '(unset)'} url=${req.url}`,
+          { component: 'PreviewServer' },
+        );
+      }
+      res.status(404).json({
+        error: 'Not Found',
+        message: 'Preview endpoint not found',
+      });
+    };
+  }
+
+  /**
+   * Wire both listeners.
+   *
+   * ## Why there are two
+   * This process does two jobs that must not share a browser origin. It serves
+   * USER CONTENT — a public deploy's built output, a user's own dev server — and
+   * it exposes a cookie-authenticated CONTROL PLANE (`/projects/*`), which can
+   * write a feature's `.env` and start/stop previews. On one origin, script in a
+   * deployed SVG or HTML page runs same-origin with that API and drives it with
+   * the viewer's session; no CSP or SVG filter fixes that, because the sink is the
+   * browser's own origin model (H-NEW-001).
+   *
+   * So content gets its own listener with no control-plane route on it, and the
+   * control plane keeps `PORT`. `isSelfOrigin` compares full origins (scheme, host
+   * AND port), and `sameOriginGuard` refuses cookie-authenticated state changes
+   * that did not originate same-origin — so reaching the control plane from the
+   * content origin is neither same-origin nor CORS-allowed.
+   *
+   * Control-plane middleware order is load-bearing: cookie-parser → JWT →
+   * body parser. The 50 MB JSON parser used to run BEFORE authentication, so an
+   * unauthenticated request could make the process buffer and parse 50 MB before
+   * being told 401 (M-010).
    */
   private setupRoutes(): void {
+    this.setupContentRoutes();
+    this.setupControlRoutes();
+  }
+
+  /**
+   * Content listener: preview proxy, deploy proxy, nothing else.
+   *
+   * Deliberately has no cookie-parser, no JWT middleware and no body parser. The
+   * proxies read the raw Cookie header themselves for their own owner gates, and
+   * neither needs a parsed body.
+   */
+  private setupContentRoutes(): void {
     if (process.env.NODE_ENV === 'production') {
-      this.app.set('trust proxy', 1);
+      this.contentApp.set('trust proxy', 1);
     }
-
-    // 1. Shared CORS configuration (same as ant-api and ant-realtime)
-    this.app.use(createCorsMiddleware());
-
-    // 2. Security headers
-    this.app.use(helmet({
+    this.contentApp.use(helmet({
       crossOriginEmbedderPolicy: false,
       crossOriginOpenerPolicy: false,
       contentSecurityPolicy: false,
     }));
 
-    // 3. Health check (before auth, before proxy)
-    this.app.get('/health', async (_req: Request, res: Response) => {
-      const previews = await this.stateStore.listPreviews();
-      res.json({
-        healthy: true,
-        service: 'ant-preview',
-        activeInstances: previews.length,
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    // 3b. Custom-domain TLS ask endpoint (Caddy on-demand TLS).
-    // Caddy pauses the TLS handshake for an unknown SNI and asks here whether a
-    // certificate may be issued. Answer 200 ONLY for a verified (`active`)
-    // custom domain whose target deploy is alive — this is the abuse gate that
-    // stops arbitrary domains from triggering Let's Encrypt issuance. Mounted
-    // before the proxies + auth so it is reachable without a session. Internal
-    // only (NetworkPolicy); an optional shared secret adds defense-in-depth.
-    this.app.get('/internal/tls-ask', async (req: Request, res: Response) => {
-      const secret = process.env.ANT_TLS_ASK_SECRET;
-      if (secret && req.headers['x-ant-tls-ask-secret'] !== secret) {
-        res.status(403).end();
-        return;
-      }
-      const domain = String(req.query.domain || '').split(':')[0].toLowerCase().replace(/\.$/, '');
-      if (!domain) { res.status(400).end(); return; }
-      const coords = await this.deployService.resolveCustomDomain(domain);
-      if (!coords) { res.status(404).end(); return; }
-      const state = await this.deployService.ensureRunning(
-        coords.tenantId, coords.userId, coords.projectId, coords.feature,
-      );
-      if (!state) { res.status(404).end(); return; }
-      res.status(200).end();
+    // Liveness only — no state, no auth. The control listener owns the detailed
+    // `/health`; this exists so the content port can be probed independently.
+    this.contentApp.get('/health', (_req: Request, res: Response) => {
+      res.json({ healthy: true, service: 'ant-preview-content' });
     });
 
     // 4. Preview Proxy - MUST be before body parsers and JWT auth
@@ -755,7 +802,7 @@ export class PreviewServer {
     // JWT cookie (undefined jwtService in local mode → owner-accessible). The
     // proxy runs before cookie-parser, so it parses the raw Cookie header
     // itself. Routes: /:urlKey/* where urlKey = tenantId--userId--projectId--feature
-    this.app.use(createPreviewProxyMiddleware({
+    this.contentApp.use(createPreviewProxyMiddleware({
       portRegistry: this.stateStore,
       pathPrefix: '',
       getBackendPort: async ({ tenantId, userId, projectId, feature }) => {
@@ -799,31 +846,96 @@ export class PreviewServer {
     // apps at their own host root, so the proxy must be a root catch-all (it
     // self-gates on the deploy base domain and defers other hosts via next()).
     if (isSubdomainRouting()) {
-      this.app.use(deployProxy);
+      this.contentApp.use(deployProxy);
     } else {
-      this.app.use('/deploy/', deployProxy);
+      this.contentApp.use('/deploy/', deployProxy);
     }
 
-    // 5. Cookie parser (required for JWT cookie auth)
+    this.contentApp.use(this.notFoundHandler('content'));
+  }
+
+  /** Control listener: management API only. */
+  private setupControlRoutes(): void {
+    if (process.env.NODE_ENV === 'production') {
+      this.app.set('trust proxy', 1);
+    }
+
+    // Shared CORS configuration (same as ant-api and ant-realtime). Exact-origin,
+    // so the content listener's origin is NOT auto-allowed here.
+    this.app.use(createCorsMiddleware());
+
+    this.app.use(helmet({
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+      contentSecurityPolicy: false,
+    }));
+
+    // Health check (before auth)
+    this.app.get('/health', async (_req: Request, res: Response) => {
+      const previews = await this.stateStore.listPreviews();
+      res.json({
+        healthy: true,
+        service: 'ant-preview',
+        activeInstances: previews.length,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Custom-domain TLS ask endpoint (Caddy on-demand TLS).
+    // Caddy pauses the TLS handshake for an unknown SNI and asks here whether a
+    // certificate may be issued. Answer 200 ONLY for a verified (`active`)
+    // custom domain whose target deploy is alive — this is the abuse gate that
+    // stops arbitrary domains from triggering Let's Encrypt issuance. Mounted
+    // before the proxies + auth so it is reachable without a session. Internal
+    // only (NetworkPolicy); an optional shared secret adds defense-in-depth.
+    this.app.get('/internal/tls-ask', async (req: Request, res: Response) => {
+      const secret = process.env.ANT_TLS_ASK_SECRET;
+      if (secret && req.headers['x-ant-tls-ask-secret'] !== secret) {
+        res.status(403).end();
+        return;
+      }
+      const domain = String(req.query.domain || '').split(':')[0].toLowerCase().replace(/\.$/, '');
+      if (!domain) { res.status(400).end(); return; }
+      const coords = await this.deployService.resolveCustomDomain(domain);
+      if (!coords) { res.status(404).end(); return; }
+      const state = await this.deployService.ensureRunning(
+        coords.tenantId, coords.userId, coords.projectId, coords.feature,
+      );
+      if (!state) { res.status(404).end(); return; }
+      res.status(200).end();
+    });
+
+
+    // Cookie parser (required for JWT cookie auth)
     this.app.use(cookieParser());
 
-    // 6. Body parser for API routes
-    this.app.use(express.json({ limit: '50mb' }));
-
-    // 7. JWT cookie authentication (cloud mode only)
+    // JWT cookie authentication (cloud mode only) — BEFORE the body parser.
+    // Every route on this listener requires a session, and a 50 MB JSON parse is
+    // real work: running it first let an unauthenticated client make the process
+    // buffer and parse 50 MB per request before learning it was 401 (M-010). No
+    // route here has an unauthenticated body, so nothing needs a public parser.
     const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
     if (isCloudMode) {
       const jwtService = createJwtServiceFromEnv();
       if (!jwtService) {
-        throw new Error('ANT_JWT_SECRET is required in cloud mode. Set the environment variable to enable authentication.');
+        throw new Error(
+          'A JWT verification key is required in cloud mode: set ANT_JWT_PUBLIC_KEY (recommended) or ANT_JWT_SECRET.',
+        );
       }
       this.app.use(createJwtAuthMiddleware({
         jwtService,
-        publicPaths: ['/health'],
+        publicPaths: ['/health', '/internal/tls-ask'],
         publicPrefixes: [],
       }));
+      // Cookie-authenticated state changes must originate from an allowed origin.
+      // The content listener is a different origin, so a document served there
+      // cannot drive this API with the viewer's session (H-NEW-001).
+      this.app.use(createSameOriginGuard());
       logger.info('JWT authentication enabled for Preview Server', { component: 'PreviewServer' });
     }
+
+    // Body parser for API routes — after authentication, by design (see above).
+    this.app.use(express.json({ limit: '50mb' }));
 
     // 8. Rate limiting for management API (after auth)
     // Bootstrap-time init of every rate limiter — MUST run before the
@@ -1160,16 +1272,16 @@ export class PreviewServer {
           for (const conn of configConnections) {
             const pkgDir = resolveConnectionDir(workspacePath, conn.source);
             const framework = toToggleFramework(detectFramework(pkgDir));
-            upsertConnectionAnnotation(path.join(pkgDir, '.env.example'), conn, framework);
-            mirrorConnectionToEnv(path.join(pkgDir, '.env'), conn, framework);
+            upsertConnectionAnnotation(envTarget(workspacePath, pkgDir, '.env.example'), conn, framework);
+            mirrorConnectionToEnv(envTarget(workspacePath, pkgDir, '.env'), conn, framework);
           }
           for (const conn of removedConns) {
             const pkgDir = resolveConnectionDir(workspacePath, conn.source);
             // Structure delete: drop the annotation from .env.example AND the
             // value/toggle keys from .env (explicit removal knows the envVar,
             // so this is the one safe place to delete .env keys).
-            removeConnectionAnnotation(path.join(pkgDir, '.env.example'), conn);
-            const envPath = path.join(pkgDir, '.env');
+            removeConnectionAnnotation(envTarget(workspacePath, pkgDir, '.env.example'), conn);
+            const envPath = envTarget(workspacePath, pkgDir, '.env');
             removeEnvKey(envPath, conn.envVar);
             if (conn.virtualization?.toggleEnvVar) {
               const framework = toToggleFramework(detectFramework(pkgDir));
@@ -1492,23 +1604,7 @@ export class PreviewServer {
     });
 
     // 404 handler
-    this.app.use((req: Request, res: Response) => {
-      // A peer-forwarded request reaching the catch-all means the owner pod
-      // failed to recognize its own preview host — always-on diagnostic, since
-      // this exact silent 404 previously masked a lost-Host routing defect.
-      if (isSubdomainRouting() && req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1') {
-        logger.warn(
-          `[PreviewServer] Peer-forwarded request missed all proxies (catch-all 404): ` +
-          `host=${req.headers.host} xfh=${req.headers['x-forwarded-host'] ?? '(none)'} ` +
-          `previewBase=${getPreviewBaseDomain() ?? '(unset)'} deployBase=${getDeployBaseDomain() ?? '(unset)'} url=${req.url}`,
-          { component: 'PreviewServer' },
-        );
-      }
-      res.status(404).json({
-        error: 'Not Found',
-        message: 'Preview endpoint not found'
-      });
-    });
+    this.app.use(this.notFoundHandler('control'));
   }
 
   /**
@@ -1520,7 +1616,32 @@ export class PreviewServer {
     this.deployService.startIdleEviction();
     this.setupRoutes();
 
-    const port = this.options.port || parseInt(process.env.PORT || '8080');
+    const port = this.options.port || getPreviewControlPort();
+    const contentPort = getPreviewContentPort(port);
+    // A shared port silently restores the single-origin layout (H-NEW-001).
+    assertPreviewOriginSeparation(port);
+
+    // Content listener: preview + deploy proxies and their HMR/app WebSockets.
+    // Separate origin from the control plane below.
+    this.contentServer = this.contentApp.listen(contentPort, () => {
+      logger.warn(`[PreviewServer] 🌐 Content (preview/deploy) listening on port ${contentPort}`, {
+        component: 'PreviewServer',
+      });
+    });
+    // A bind failure here MUST be fatal. Silently continuing leaves the process
+    // answering the control plane while no origin serves content at all — every
+    // preview and deploy 404s, or worse, resolves to whatever else holds the port.
+    // The default is `PORT + 1`, which is exactly the kind of value another local
+    // service can already own.
+    this.contentServer.on('error', (err: NodeJS.ErrnoException) => {
+      logger.error(
+        `[PreviewServer] content listener failed to bind port ${contentPort} (${err.code ?? err.message}). ` +
+        'Set ANT_PREVIEW_CONTENT_PORT to a free port — user content must have its own origin.',
+        { component: 'PreviewServer' },
+        err,
+      );
+      process.exit(1);
+    });
 
     return new Promise((resolve) => {
       this.server = this.app.listen(port, () => {
@@ -1537,7 +1658,8 @@ export class PreviewServer {
         logger.warn(
           `[PreviewServer] routing diag: build=${PREVIEW_ROUTING_BUILD} mode=${getPreviewRoutingMode()} ` +
           `previewBase=${getPreviewBaseDomain() ?? '(unset)'} deployBase=${getDeployBaseDomain() ?? '(unset)'} ` +
-          `podId=${os.hostname()} POD_IP=${process.env.POD_IP ?? '(unset)'} PORT=${process.env.PORT ?? '(unset→8080)'}`,
+          `podId=${os.hostname()} POD_IP=${process.env.POD_IP ?? '(unset)'} ` +
+          `controlPort=${port} contentPort=${contentPort}`,
           { component: 'PreviewServer' },
         );
 
@@ -1553,12 +1675,25 @@ export class PreviewServer {
         resolve();
       });
 
+      // Same reasoning as the content listener: a control-plane bind failure must
+      // stop the process, not leave a half-started server behind.
+      this.server.on('error', (err: NodeJS.ErrnoException) => {
+        logger.error(
+          `[PreviewServer] control listener failed to bind port ${port} (${err.code ?? err.message})`,
+          { component: 'PreviewServer' },
+          err,
+        );
+        process.exit(1);
+      });
+
       // ✅ WebSocket Upgrade Proxy
       // Next.js dev server requires WebSocket for HMR (Hot Module Replacement).
       // Without this, the HotReload component fails and the page doesn't render properly.
       // We intercept HTTP Upgrade requests on the server, extract the serverKey from the URL,
       // look up the dev server port, then create a raw TCP tunnel to the dev server.
-      this.server.on('upgrade', async (req: IncomingMessage, socket: net.Socket, head: Buffer) => {
+      // Registered on the CONTENT listener: every tunnel below terminates at a
+      // user-authored dev server or deploy app, which is what that listener serves.
+      this.contentServer.on('upgrade', async (req: IncomingMessage, socket: net.Socket, head: Buffer) => {
         // Every non-peer tunnel below terminates at a user-authored dev server,
         // so the caller's platform session must not travel with the handshake.
         // Same policy object the HTTP proxy uses.
@@ -1929,15 +2064,16 @@ export class PreviewServer {
       logger.warn('[PreviewServer] Error closing Redis', { component: 'PreviewServer' }, err);
     }
 
-    // Close HTTP server with timeout
-    if (this.server) {
+    // Close both HTTP listeners with a shared timeout budget
+    for (const [label, server] of [['content', this.contentServer], ['control', this.server]] as const) {
+      if (!server) continue;
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
-          logger.warn('[PreviewServer] Shutdown timed out, forcing', { component: 'PreviewServer' });
+          logger.warn(`[PreviewServer] ${label} listener shutdown timed out, forcing`, { component: 'PreviewServer' });
           resolve();
         }, 5000);
 
-        this.server.close(() => {
+        server.close(() => {
           clearTimeout(timeout);
           resolve();
         });

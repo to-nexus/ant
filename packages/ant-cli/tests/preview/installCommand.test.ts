@@ -36,6 +36,54 @@ describe('buildInstallCommand — always includes devDependencies', () => {
   });
 });
 
+/**
+ * M-NEW-001: `buildCredentialEnv` puts a user's GitHub PAT in `GIT_CONFIG_KEY_0`
+ * as a raw value, and one install pass hands that environment to every
+ * `preinstall` / `install` / `postinstall` script in the tree. The install is now
+ * two passes — credentialed fetch with scripts off, then credential-free
+ * lifecycle — so the pass that holds the PAT runs no dependency code, and the pass
+ * that runs dependency code holds no PAT.
+ */
+describe('credential-safe install: scripts-off acquire, credential-free lifecycle', () => {
+  for (const pm of ['pnpm', 'yarn', 'npm'] as const) {
+    it(`${pm} acquire pass disables lifecycle scripts and keeps dev deps`, () => {
+      const acquire = buildInstallCommand(pm, { ignoreScripts: true });
+      expect(acquire.args).toContain('--ignore-scripts');
+      // The dev-deps contract above must survive the new flag.
+      expect(acquire.args.some(a => /--prod=false|--production=false|--include=dev/.test(a))).toBe(true);
+    });
+
+    it(`${pm} lifecycle pass leaves scripts enabled`, () => {
+      expect(buildInstallCommand(pm).args).not.toContain('--ignore-scripts');
+      expect(buildInstallCommand(pm, {}).args).not.toContain('--ignore-scripts');
+      expect(buildInstallCommand(pm, { ignoreScripts: false }).args).not.toContain('--ignore-scripts');
+    });
+  }
+
+  it('runInstall passes credentials only to the scripts-off pass', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts'),
+      'utf8',
+    );
+    // The acquire pass is the only one that names credentialEnv; the lifecycle
+    // pass is constructed without it.
+    const acquire = src.slice(src.indexOf('const acquire ='), src.indexOf('const lifecycle ='));
+    const lifecycle = src.slice(src.indexOf('const lifecycle ='), src.indexOf('/** One install invocation.'));
+    expect(acquire).toContain('ignoreScripts: true');
+    expect(acquire).toContain('credentialEnv');
+    expect(lifecycle).not.toContain('credentialEnv');
+    expect(lifecycle).not.toContain('ignoreScripts');
+  });
+
+  it('the language installer (rust/python/java) never receives credentials', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts'),
+      'utf8',
+    );
+    expect(src).not.toContain('composeChildEnv(credentialEnv)');
+  });
+});
+
 describe('detectPackageManager — lockfile based', () => {
   const withTempDir = (files: string[], assert: (dir: string) => void) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-'));

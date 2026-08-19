@@ -20,6 +20,7 @@ import { detectFramework } from '../../../../../../infrastructure/deploy';
  * one implementation.
  */
 export function backfillMockToggles(
+  workspaceRoot: string,
   connections: ServiceConnection[] | undefined,
   packageSource: string | undefined,
   pkgPath: string,
@@ -32,7 +33,10 @@ export function backfillMockToggles(
   if (business.length === 0) return;
 
   const framework = toToggleFramework(detectFramework(pkgPath));
-  const envPath = path.join(pkgPath, '.env');
+  // Workspace-bound: a previous run's user-authored child can still be alive and
+  // swapping directory entries under the workspace, so the write descends from
+  // the root rather than resolving `pkgPath/.env` by name (H-003).
+  const envPath = { root: workspaceRoot, rel: path.join(path.relative(workspaceRoot, pkgPath), '.env') };
   for (const conn of business) {
     setToggleDefaultIfAbsent(envPath, conn.virtualization!.toggleEnvVar, framework);
   }

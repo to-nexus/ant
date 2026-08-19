@@ -36,6 +36,7 @@ import { WorkspacePathResolver } from "../core/config/WorkspacePathResolver";
 import { WorkspaceService } from "../infrastructure/workspace/WorkspaceService";
 import { initPartials } from "../periphery/adapters/prompt/FilePromptAdapter";
 import { logCorsConfigSummary } from "../periphery/adapters/http/middleware/corsConfig";
+import { assertJwtAuthorityScope } from "../infrastructure/auth/JwtService";
 import { getInfrastructureFactory } from "../infrastructure/adapters/InfrastructureFactory";
 
 /**
@@ -90,6 +91,15 @@ async function main() {
     console.log(`   ⚠️  Using default workspace path (inside ant source)`);
   }
   console.log(`   Port: ${port}`);
+
+  // The only process that MINTS sessions — so the only one that may hold a
+  // signing key. Fails fast when a key pair is half-configured (C-001).
+  try {
+    assertJwtAuthorityScope('sign');
+  } catch (error) {
+    console.error(`⛔ ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  }
 
   // Surface CORS misconfig at boot (cloud mode w/ no FRONTEND_URL +
   // no ANT_CORS_ORIGINS silently fails any cross-host FE request).

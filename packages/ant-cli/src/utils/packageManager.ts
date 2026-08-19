@@ -58,13 +58,33 @@ export function findProjectRoot(startDir: string): string {
  * process inherits NODE_ENV=production, so each package manager is given its
  * explicit force-dev flag rather than relying on NODE_ENV.
  */
-export function buildInstallCommand(pm: PackageManager): { command: string; args: string[] } {
+export interface InstallCommandOptions {
+  /**
+   * Skip every dependency and project lifecycle script (`preinstall`,
+   * `install`, `postinstall`, `prepare`).
+   *
+   * This is what makes a credential-bearing install safe: the pass that holds a
+   * user's GitHub PAT (as `GIT_CONFIG_KEY_0`) fetches and links the tree and
+   * runs no attacker-authored code, and a second, credential-free pass runs the
+   * lifecycle (M-NEW-001). See `runCredentialSafeInstall`.
+   */
+  ignoreScripts?: boolean;
+}
+
+export function buildInstallCommand(
+  pm: PackageManager,
+  opts: InstallCommandOptions = {},
+): { command: string; args: string[] } {
+  const ignore = opts.ignoreScripts ? ['--ignore-scripts'] : [];
   switch (pm) {
     case 'pnpm':
-      return { command: 'pnpm', args: ['install', '--prod=false', '--config.confirm-modules-purge=false'] };
+      return {
+        command: 'pnpm',
+        args: ['install', '--prod=false', '--config.confirm-modules-purge=false', ...ignore],
+      };
     case 'yarn':
-      return { command: 'yarn', args: ['install', '--production=false'] };
+      return { command: 'yarn', args: ['install', '--production=false', ...ignore] };
     case 'npm':
-      return { command: 'npm', args: ['install', '--include=dev'] };
+      return { command: 'npm', args: ['install', '--include=dev', ...ignore] };
   }
 }

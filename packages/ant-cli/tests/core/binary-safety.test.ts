@@ -144,7 +144,9 @@ describe('filesystem-level gates', () => {
     it('writes a valid GLB byte-identically', async () => {
       const glb = makeValidGlb();
       const dest = path.join(tmp, 'models', 'Duck.glb');
-      await writeBufferVerified(dest, glb);
+      // `tmp` is the containment boundary the write descends from — the argument
+      // is required so no call site can inherit an implicit one.
+      await writeBufferVerified(tmp, 'models/Duck.glb', glb);
       expect(Buffer.compare(await fs.promises.readFile(dest), glb)).toBe(0);
     });
 
@@ -154,7 +156,7 @@ describe('filesystem-level gates', () => {
       const corrupted = utf8RoundTrip(withBin);
       const dest = path.join(tmp, 'Duck.glb');
       // 422-shaped, not a 500: a corrupted supplied file is the caller's problem.
-      await expect(writeBufferVerified(dest, corrupted)).rejects.toMatchObject({
+      await expect(writeBufferVerified(tmp, 'Duck.glb', corrupted)).rejects.toMatchObject({
         code: 'CORRUPTED_FILE',
         filename: 'Duck.glb',
       });

@@ -51,11 +51,47 @@ const GO_ENV_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Extra variable names a deployment explicitly wants forwarded, comma-separated.
- * Escape hatch for a host-level variable the allowlist below does not model —
- * env-driven so nothing needs hardcoding per deployment.
+ * Extra variable names a deployment explicitly wants forwarded to PREVIEW and
+ * DEPLOY children, comma-separated. Escape hatch for a host-level variable the
+ * allowlist below does not model — env-driven so nothing needs hardcoding per
+ * deployment.
+ *
+ * Deliberately NOT read by the code-job command profile: an operator naming a
+ * host variable so a dev server can boot did not thereby consent to it reaching
+ * every LLM-chosen `run_command` and its chat transcript (M-014).
  */
 const PASSTHROUGH_ENV_VAR = 'ANT_PREVIEW_ENV_PASSTHROUGH';
+
+/**
+ * Service-infrastructure namespaces that the passthrough list may never admit.
+ *
+ * The credential-marker test below is a *name-shape* test, and a live connection
+ * credential does not have to look like one: `ANT_REDIS_URL` carries the service's
+ * Redis authority with no `TOKEN` / `SECRET` / `AUTH` anywhere in its name, so an
+ * operator naming it in the passthrough list handed user-authored code the
+ * platform's data plane (M-015). Two namespaces are closed by name instead:
+ *
+ *   - `ANT_*` — the platform's own configuration namespace in its entirety
+ *     (`ANT_REDIS_URL`, `ANT_ENCRYPTION_KEY`, `ANT_JWT_*`, …). Nothing a user
+ *     child legitimately needs lives there; project-owned values arrive through
+ *     the project `.env` overlay, which is a different channel.
+ *   - bare connection-URL names, which are the service's own when inherited.
+ *     The same name in a project `.env` is user-owned and still applies — this
+ *     list gates the INHERITED environment only.
+ */
+const SERVICE_NAMESPACE_PREFIXES: readonly string[] = ['ANT_'];
+
+const SERVICE_CONNECTION_NAMES: ReadonlySet<string> = new Set([
+  'REDIS_URL', 'REDIS_URI', 'DATABASE_URL', 'DATABASE_URI', 'POSTGRES_URL',
+  'POSTGRES_URI', 'MONGO_URL', 'MONGODB_URI', 'AMQP_URL', 'RABBITMQ_URL',
+  'CLICKHOUSE_URL', 'ELASTICSEARCH_URL', 'CHROMA_URL',
+]);
+
+function isServiceOwnedName(name: string): boolean {
+  const upper = name.toUpperCase();
+  if (SERVICE_NAMESPACE_PREFIXES.some(prefix => upper.startsWith(prefix))) return true;
+  return SERVICE_CONNECTION_NAMES.has(upper);
+}
 
 /**
  * Credential-shaped names, rejected even when a toolchain prefix or the
@@ -75,6 +111,10 @@ const PASSTHROUGH_ENV_VAR = 'ANT_PREVIEW_ENV_PASSTHROUGH';
 const CREDENTIAL_NAME_MARKERS: readonly string[] = [
   '_AUTH', 'AUTH_', 'TOKEN', 'PASSWORD', 'PASSWD', 'SECRET', 'CREDENTIAL', 'APIKEY', 'API_KEY',
   'PRIVATE_KEY', 'ACCESS_KEY', 'SESSION_KEY', 'SIGNING',
+  // `GIT_CONFIG_*` carries a PAT in `url.https://<token>@github.com/.insteadOf`
+  // (see `CredentialEnvBuilder`). It is passed deliberately to the credentialed
+  // acquire step; it must never arrive by inheritance.
+  'GIT_CONFIG',
 ];
 
 function isCredentialShapedName(name: string): boolean {
@@ -83,10 +123,11 @@ function isCredentialShapedName(name: string): boolean {
 }
 
 function isAllowedInheritedName(name: string, passthrough: ReadonlySet<string>): boolean {
-  // Applies to the passthrough escape hatch too: an operator naming
-  // `ANTHROPIC_API_KEY` or `ANT_JWT_SECRET` there re-opened the very hole the
+  // Both refusals apply to the passthrough escape hatch too: an operator naming
+  // `ANTHROPIC_API_KEY` or `ANT_REDIS_URL` there re-opened the very hole the
   // allowlist closed (M-015).
   if (isCredentialShapedName(name)) return false;
+  if (isServiceOwnedName(name)) return false;
   if (BASE_ENV_NAMES.has(name)) return true;
   if (GO_ENV_NAMES.has(name)) return true;
   if (passthrough.has(name)) return true;
@@ -111,12 +152,24 @@ function isAllowedInheritedName(name: string, passthrough: ReadonlySet<string>):
  * server. Put it in the project `.env`, or name it in
  * `ANT_PREVIEW_ENV_PASSTHROUGH`.
  */
-export function composeChildEnv(...overlays: Array<Record<string, string | undefined> | undefined>): NodeJS.ProcessEnv {
+/**
+ * Which spawn family a child belongs to. The two differ ONLY in whether the
+ * preview passthrough escape hatch applies; every other rule is shared, so there
+ * is one implementation and no room for the profiles to drift.
+ */
+export type ChildEnvProfile = 'preview' | 'command';
+
+function compose(
+  profile: ChildEnvProfile,
+  overlays: Array<Record<string, string | undefined> | undefined>,
+): NodeJS.ProcessEnv {
   const passthrough = new Set(
-    (process.env[PASSTHROUGH_ENV_VAR] ?? '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean),
+    profile === 'preview'
+      ? (process.env[PASSTHROUGH_ENV_VAR] ?? '')
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean)
+      : [],
   );
 
   const env: NodeJS.ProcessEnv = {};
@@ -139,6 +192,29 @@ export function composeChildEnv(...overlays: Array<Record<string, string | undef
   }
 
   return env;
+}
+
+/**
+ * Environment for a PREVIEW or DEPLOY child: dev servers, dependency installs,
+ * provisioning commands, build commands, static servers. Honours
+ * `ANT_PREVIEW_ENV_PASSTHROUGH`.
+ */
+export function composeChildEnv(
+  ...overlays: Array<Record<string, string | undefined> | undefined>
+): NodeJS.ProcessEnv {
+  return compose('preview', overlays);
+}
+
+/**
+ * Environment for a CODE-JOB command child (`run_command`). Same allowlist, but
+ * no passthrough: the command's stdout reaches the requester's chat card and the
+ * next LLM turn's `tool_result` history, and the operator who named a host
+ * variable for a dev server did not consent to that sink (M-014).
+ */
+export function composeCommandChildEnv(
+  ...overlays: Array<Record<string, string | undefined> | undefined>
+): NodeJS.ProcessEnv {
+  return compose('command', overlays);
 }
 
 /**

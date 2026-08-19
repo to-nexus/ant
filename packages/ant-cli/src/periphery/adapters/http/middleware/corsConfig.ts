@@ -50,23 +50,47 @@ export function isAllowedFrontendOrigin(origin: string | undefined): boolean {
 }
 
 /**
- * Auto-allow when Origin.hostname == request.hostname — the page is served
- * from the very BE host it targets. Safe because the browser-set Origin
- * cannot be forged from another page, and `req.hostname` (trust-proxy
- * aware) reflects X-Forwarded-Host from ALB / ingress.
+ * Auto-allow when the Origin IS this request's own origin — the page is served
+ * from the very endpoint it targets. Safe because the browser-set Origin cannot
+ * be forged from another page.
  *
  * Closes the openvscode-server iframe regression: module scripts (`<script
  * type="module">`, `<script crossorigin>`) always emit an Origin header per
  * CORS spec — even same-origin — so without this gate the BE rejects its
  * own assets unless an operator registers the BE host in its own allowlist.
+ *
+ * The comparison is on the FULL origin (scheme, host and port), not the hostname.
+ * A hostname-only test made every port and scheme on the same host "self",
+ * which silently re-merged origins that are deliberately separate — notably
+ * ant-preview's user-content listener and its control-plane API, whose whole
+ * point is being a different origin (H-NEW-001). `Host` already carries the port,
+ * and `X-Forwarded-Host` / `X-Forwarded-Proto` carry what the browser actually
+ * addressed when an ALB or ingress is in front.
  */
 function isSelfOrigin(req: Request, origin: string): boolean {
-  if (!req.hostname) return false;
+  // Read `headers` directly rather than `req.header()`: this predicate is also
+  // exercised against plain request shapes, and the lookup is the same.
+  const headers = req.headers ?? {};
+  const host = firstHeaderValue(headers['x-forwarded-host']) ?? headers.host;
+  if (!host) return false;
+
+  const proto = firstHeaderValue(headers['x-forwarded-proto']) ?? req.protocol;
+  if (!proto) return false;
+
   try {
-    return new URL(origin).hostname === req.hostname;
+    const parsed = new URL(origin);
+    return parsed.host === host && parsed.protocol === `${proto}:`;
   } catch {
     return false;
   }
+}
+
+/** `X-Forwarded-*` may arrive as a comma-separated hop list; the client is first. */
+function firstHeaderValue(raw: string | string[] | undefined): string | undefined {
+  if (!raw) return undefined;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const first = value?.split(',')[0].trim();
+  return first || undefined;
 }
 
 /**

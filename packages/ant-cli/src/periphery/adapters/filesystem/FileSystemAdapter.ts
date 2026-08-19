@@ -16,6 +16,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { FileSystemPort } from '../../../core/ports/filesystem';
+import {
+  mkdirpContained,
+  readTextContained,
+  writeTextContained,
+} from '../../../core/config/containedIo';
 import { isBinaryPath } from '../../../core/utils/binaryExtensions';
 
 export class FileSystemAdapter implements FileSystemPort {
@@ -65,16 +70,29 @@ export class FileSystemAdapter implements FileSystemPort {
     return fullPath;
   }
   
+  /**
+   * Read a workspace file as text.
+   *
+   * `resolveAbsolute` is a *lexical* test — it compares the resolved string
+   * against the base path and so accepts a symlink inside the workspace that
+   * points out of it. What this adapter reads goes straight into a model
+   * prompt (execute's modify-target section, the `read_file` tool result), so a
+   * link to `/proc/1/environ` would put the job worker's live environment into
+   * an external provider request (M-NEW-005). The containment SSOT binds the
+   * check and the read to one file object and descends by descriptor, so
+   * neither a static external link nor a mid-read component swap resolves.
+   * Symlinks that stay inside the workspace keep working.
+   *
+   * Unreadable / escaped / swapped all return `null` — the caller contract is
+   * already "missing file → null", and a refused path must not be distinguishable
+   * from an absent one.
+   */
   async readFile(relativePath: string): Promise<string | null> {
-    try {
-      const fullPath = this.resolveAbsolute(relativePath);
-      return await fs.promises.readFile(fullPath, 'utf-8');
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
-        return null;  // File not found
-      }
-      throw error;
-    }
+    // Keeps the loud traversal diagnostic for `../` and absolute escapes.
+    this.resolveAbsolute(relativePath);
+
+    const result = readTextContained(this.basePath, relativePath);
+    return result.ok ? result.text : null;
   }
   
   async writeFile(relativePath: string, content: string): Promise<void> {
@@ -94,11 +112,22 @@ export class FileSystemAdapter implements FileSystemPort {
       );
     }
 
-    // Ensure parent directory exists
-    const dir = path.dirname(fullPath);
-    await fs.promises.mkdir(dir, { recursive: true });
+    // Parents and the leaf are both created through the containment SSOT's
+    // descriptor descent — the write twin of `readFile` above. A component
+    // repointed after the lexical check cannot redirect the write.
+    const relative = path.relative(this.basePath, fullPath);
+    const parent = path.dirname(relative);
+    if (parent !== '.' && parent !== '') {
+      const made = mkdirpContained(this.basePath, parent);
+      if (!made.ok) {
+        throw new Error(`Cannot write "${relativePath}": destination is not writable (${made.reason})`);
+      }
+    }
 
-    await fs.promises.writeFile(fullPath, content, 'utf-8');
+    const written = writeTextContained(this.basePath, relative, content);
+    if (!written.ok) {
+      throw new Error(`Cannot write "${relativePath}": destination is not writable (${written.reason})`);
+    }
   }
   
   async fileExists(relativePath: string): Promise<boolean> {

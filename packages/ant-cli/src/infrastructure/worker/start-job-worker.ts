@@ -19,9 +19,14 @@ import 'dotenv/config';
 import { startJobWorker } from './JobWorker';
 import { logger } from '../../utils/logger';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
+import { applySharedWorkspaceUmask } from '../../core/config/childIdentity';
 
 async function main(): Promise<void> {
   logger.info(`Starting Job Worker process... (RECURSION_LIMIT: ${process.env.RECURSION_LIMIT || 'not set'})`, { component: 'JobWorkerProcess' });
+
+  // The worker spawns LLM-chosen shell commands; when they run under a separate
+  // identity both sides need group-write in the shared workspace (no-op when unset).
+  applySharedWorkspaceUmask();
 
   try {
     // Warm-load the cloud overlay (parity with API/realtime composition roots).

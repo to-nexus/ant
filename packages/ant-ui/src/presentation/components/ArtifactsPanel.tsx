@@ -11,6 +11,7 @@ import {
   deleteFileOrDirectory,
   renameFileOrDirectory,
   getDownloadUrl,
+  preflightDirectoryDownload,
   fetchTransferRequests,
 } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
@@ -124,6 +125,23 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     isSessionRestoring,
     setPendingTransferCount,
   ]);
+
+  /**
+   * 413/429 from the upload and download admission gates.
+   *
+   * These endpoints are bounded by request-total bytes and by simultaneous
+   * requests per account, so "too big" and "too many at once" are now ordinary,
+   * expected answers and need to read as guidance rather than as a failure.
+   */
+  const formatLimitError = (error: ApiError): string | null => {
+    if (error.code === 'UPLOAD_REQUEST_TOO_LARGE')
+      return t('error.uploadTooLarge', { limitMb: 200 });
+    if (error.code === 'UPLOAD_CONCURRENCY_LIMIT')
+      return t('error.uploadTooManyInFlight');
+    if (error.code === 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED')
+      return t('error.downloadTooLarge', { entries: 20000, limitGb: 2 });
+    return null;
+  };
 
   const format422Error = (error: ApiError, dirPath: string): string => {
     if (error.code === 'INVALID_EXTENSION' && error.allowed)
@@ -252,8 +270,15 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     });
   };
 
-  const handleDownload = (path: string) => {
+  const handleDownload = async (path: string) => {
     if (!selectedProject || !selectedFeature) return;
+    // A folder download is a navigation, so a refusal would land as raw JSON in a
+    // new tab. Ask first (bounded walk, no archive) and surface a real message.
+    const refusal = await preflightDirectoryDownload(selectedProject, selectedFeature, path);
+    if (refusal) {
+      showError(formatLimitError(refusal) ?? refusal.message, { title: t('common:error.title') });
+      return;
+    }
     const url = getDownloadUrl(selectedProject, selectedFeature, path);
     window.open(url, '_blank');
   };
@@ -302,6 +327,8 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           console.log('[Upload] Cancelled by user');
         } else if (error instanceof ApiError && error.status === 422) {
           showError(format422Error(error, dirPath), { title: t('common:error.title') });
+        } else if (error instanceof ApiError && formatLimitError(error)) {
+          showError(formatLimitError(error)!, { title: t('common:error.title') });
         } else {
           console.error('Failed to upload files:', error);
           showError(t('error.uploadFailed'), { title: t('common:error.title') });

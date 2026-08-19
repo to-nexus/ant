@@ -6,6 +6,7 @@ import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
 import { createIdeFaviconStub, createIdeVsdaStub } from '../../middleware/ideStubInterceptors';
 import { createCorsMiddleware } from '../../middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
+import { createSameOriginGuard } from '../../middleware/sameOriginGuard';
 import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
@@ -246,6 +247,15 @@ export class ServerConfigurator {
         '/api/auth/signout',
       ],
       publicPrefixes: [],
+    }));
+
+    // Cookie-authenticated state changes must originate same-origin (or from the
+    // registered frontend). ant-preview publishes user-authored content — a public
+    // deploy's build output, a user's dev server — and a document served there
+    // must not be able to spend the viewer's session against this API
+    // (H-NEW-001). Bearer-authenticated callers (Ant Desktop) are exempt.
+    app.use(createSameOriginGuard({
+      publicPaths: ['/api/health', '/api/auth/google', '/api/auth/google/callback'],
     }));
 
     // Phase 3: refuse `_pending` JWT on every protected path except the

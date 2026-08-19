@@ -122,6 +122,10 @@ gate sites.
 |----------|---------|---------|
 | `ANT_K8S_NAMESPACE` | unset | Namespace for IDE pods. If unset, falls back to Docker. |
 | `ANT_PREVIEW_BASE_DOMAIN` | unset | Base domain for preview URL routing in cloud. |
+| `ANT_PREVIEW_CONTENT_PORT` | `PORT + 1` | ant-preview serves user CONTENT (preview + deploy proxies) on this port and its cookie-authenticated `/projects/*` control plane on `PORT`. They must not share an origin: a document served from a public deploy would otherwise drive the control plane same-origin with the viewer's session. Equal ports = boot failure. Publish the two listeners under **different hostnames**. |
+| `ANT_CHILD_UID` | unset | Numeric uid for user-authored child processes (dev servers, install scripts, build commands). Unset = children keep the service identity, correct for the single-developer local CLI. Requires the container to be permitted to change uids; the runtime probes once and logs loudly if not. |
+| `ANT_CHILD_GID` | unset | Numeric gid companion to `ANT_CHILD_UID`. |
+| `ANT_CHILD_UMASK` | `002` in the images | Octal umask applied at service bootstrap so the service and the child identity can each clean up the other's files in the shared workspace. Unset = no change. |
 | `ANT_REQUIRE_BILLING` | unset | Managed deployment only: `1` makes a missing/unloadable `@ant/cloud` billing overlay a **boot failure** instead of a silent free tier. Self-hosted cloud and local leave this unset (billing off, unmetered). SSOT: `core/config/billingCapability.ts`. |
 
 Figma MCP transport is selected by `ANT_SERVER_MODE` (desktop MCP locally,
@@ -131,7 +135,10 @@ HTTP bridge in cloud) — there is no separate Figma env var.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANT_JWT_SECRET` | — | JWT signing secret. Required in cloud mode; must be **≥ 32 characters** (`openssl rand -hex 32`). |
+| `ANT_JWT_PUBLIC_KEY` | unset | **Preferred.** ES256 session VERIFICATION key (PEM SPKI, P-256). Its presence selects ES256 for every process. Safe in every process — it cannot mint a session. |
+| `ANT_JWT_PRIVATE_KEY` | unset | ES256 session SIGNING key (PEM PKCS8, P-256). **`ant-api` only** — it is the only process that mints sessions. A verifier that holds one refuses to boot. |
+| `ANT_JWT_SECRET` | — | HS256 shared secret; the single-host fallback when no key pair is configured. **≥ 32 characters** (`openssl rand -hex 32`). Symmetric, so a verifier can also mint: `ant-realtime` / `ant-preview` refuse to boot with it unless `ANT_JWT_ALLOW_SYMMETRIC=true`. |
+| `ANT_JWT_ALLOW_SYMMETRIC` | unset | `true` records that a verifier-only process may hold signing authority (HS256 single-host). Logs loudly and keeps booting. Prefer the key pair — `ant-preview` runs user-authored code under its own UID, so its environment is reachable from that code via `/proc`. |
 | `GOOGLE_CLIENT_ID` | — | Cloud mode: Google OAuth client id (Google Cloud Console). Auth routes answer 503 until the client id/secret and redirect URI all resolve. |
 | `GOOGLE_CLIENT_SECRET` | — | Cloud mode: Google OAuth client secret. |
 | `GOOGLE_REDIRECT_URI` | derived | OAuth callback URL. When unset, derived as `${FRONTEND_URL}/api/auth/google/callback` — register that URI in the Google Cloud Console either way. Set explicitly only when the callback host differs from `FRONTEND_URL`. |
@@ -160,8 +167,22 @@ projects under any other org/user directory are invisible to that server.
 ## Ports
 
 Each backend process reads `PORT` (e.g. `PORT=4110 pnpm dev:api-server`);
-the defaults are 4100 (API), 4101 (realtime), 4102 (preview). There are no
-per-process `ANT_*_PORT` variables.
+the defaults are 4100 (API), 4101 (realtime), 4102 (preview control plane).
+
+ant-preview is the exception: it runs a **second** listener for user content on
+`ANT_PREVIEW_CONTENT_PORT` (default `PORT + 1`, i.e. 4103). That split is a
+security boundary, not a scaling knob — see the Cloud-only table above.
+
+## Frontend build-time (`VITE_*`)
+
+Baked into the ant-ui bundle at build time, so they are deployment identity, never
+secrets.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VITE_CLOUD_BACKEND_BASE` | empty | Where the API and realtime live. Empty = same-origin. |
+| `VITE_PREVIEW_HOST` | empty | ant-preview MANAGEMENT API origin (`/projects/*`). Empty = same-origin. |
+| `VITE_PREVIEW_CONTENT_HOST` | empty | Origin the user's own preview/deploy app is served from. Empty = fall back to `VITE_PREVIEW_HOST` (single-host, pre-split behaviour). Point this at the content listener's hostname — it must differ from the management origin. |
 
 ## Read next
 

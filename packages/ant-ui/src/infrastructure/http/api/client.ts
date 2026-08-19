@@ -56,7 +56,8 @@ export const API_BASE = () => `${getBackendBase()}/api`;
 export const REALTIME_BASE = () => `${getBackendBase()}/realtime`;
 
 /**
- * Preview Server base URL.
+ * Preview Server MANAGEMENT base URL — the control plane (`/projects/*`:
+ * start/stop, preview-config, deploy).
  *
  * Empty string is treated as "same-origin" (single-host deployment).
  * Only fall back to `localhost:4102` when the env was never declared and
@@ -72,12 +73,33 @@ export const getPreviewBase = (): string => {
 export const PREVIEW_BASE = () => getPreviewBase();
 
 /**
+ * Preview/deploy CONTENT base URL — where the user's own app is served.
+ *
+ * A separate origin from the management API above, and that separation is the
+ * point: the content origin serves attacker-authorable documents (a public
+ * deploy's build output, a user's dev server), so it must not be the origin that
+ * the `/projects/*` control plane answers on. Sharing one origin let script in a
+ * deployed page drive that API with the viewer's session (report H-NEW-001).
+ *
+ * Falls back to the management base when unset, which keeps a not-yet-migrated
+ * single-host deployment working exactly as before.
+ */
+export const getPreviewContentBase = (): string => {
+  const contentHost = import.meta.env.VITE_PREVIEW_CONTENT_HOST as string | undefined;
+  if (contentHost !== undefined && contentHost !== '') return contentHost;
+  return getPreviewBase();
+};
+
+export const PREVIEW_CONTENT_BASE = () => getPreviewContentBase();
+
+/**
  * Resolve an app (preview/deploy) URL returned by the backend.
  * Subdomain routing returns an absolute URL on the app's OWN host → use verbatim.
- * Path routing returns a root-relative path → prefix the preview origin.
+ * Path routing returns a root-relative path → prefix the CONTENT origin (this is
+ * where the user's app is served, not where the management API lives).
  */
 export const resolveAppUrl = (pathOrUrl: string): string =>
-  /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${PREVIEW_BASE()}${pathOrUrl}`;
+  /^https?:\/\//i.test(pathOrUrl) ? pathOrUrl : `${PREVIEW_CONTENT_BASE()}${pathOrUrl}`;
 
 /** Server base URL without path prefix (for /ide/* etc.) */
 export const SERVER_BASE = () => getBackendBase();
@@ -99,6 +121,7 @@ if (import.meta.env.DEV) {
   console.log('[API] API_BASE:', API_BASE());
   console.log('[API] REALTIME_BASE:', REALTIME_BASE());
   console.log('[API] PREVIEW_BASE:', PREVIEW_BASE());
+  console.log('[API] PREVIEW_CONTENT_BASE:', PREVIEW_CONTENT_BASE());
 }
 
 /**

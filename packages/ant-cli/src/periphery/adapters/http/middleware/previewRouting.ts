@@ -17,6 +17,7 @@
  */
 
 import * as os from 'os';
+import { getPreviewContentPort } from '../../../../core/config/previewRouting';
 import { logger } from '../../../../utils/logger';
 import { packageSlug, toUrlKey, parseUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { toDnsLabel } from '../services/PreviewService/utils/previewLabel';
@@ -58,8 +59,14 @@ export function selfPodId(): string {
  * ports (Vite/Next, arbitrary high ports) are NOT reachable cross-pod. Mirrors
  * `createPreviewServer`'s `parseInt(process.env.PORT || '8080')`.
  */
+/**
+ * The port a peer pod serves preview CONTENT on — the forward target for
+ * cross-pod owner-forwarding, which is a content request by definition. Content
+ * lives on its own listener (see `core/config/previewRouting`), so this is the
+ * content port, not `PORT`.
+ */
 export function selfServicePort(): number {
-  return parseInt(process.env.PORT || '8080', 10);
+  return getPreviewContentPort();
 }
 
 export interface OwnerForwardDecision {

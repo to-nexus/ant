@@ -14,7 +14,11 @@
 #   in the image). The image-default /data/workspaces is NOT chowned — a named
 #   volume there would be root-owned and Ant would silently fall back to an
 #   ephemeral in-container path.
-# - This compose publishes 4100/4101/4102/4200 — stop `pnpm dev:all` first.
+# - This compose publishes 4100/4101/4102/4103/4200/4201 — stop `pnpm dev:all` first.
+# - :4200 is the app (SPA + control planes); :4201 is the preview/deploy CONTENT
+#   origin. They are deliberately different origins: content is user-authored, and
+#   sharing an origin with the control-plane APIs let a deployed document drive
+#   them with the viewer's session (report H-NEW-001).
 
 name: ant
 
@@ -103,7 +107,8 @@ services:
     command: ["tsx", "src/infrastructure/preview/start-preview-server.ts"]
     environment:
       <<: *ant-env-common
-      PORT: "4102"
+      PORT: "4102"                        # control plane: /projects/* management API
+      ANT_PREVIEW_CONTENT_PORT: "4103"    # user content: preview + deploy proxies
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:4102/health',(r)=>process.exit(r.statusCode===200?0:1))"]
       interval: 30s
@@ -112,6 +117,7 @@ services:
       retries: 3
     ports:
       - "4102:4102"
+      - "4103:4103"
 
   ant-ui:
     build:
@@ -119,11 +125,15 @@ services:
       dockerfile: packages/ant-ui/Dockerfile
       args:
         BUILD_ENV: dev   # uses the committed .env.development: empty VITE_* = same-origin routing
+        # Content is served from the :8081 block (published :4201) — a different
+        # origin from the app and its control planes, on purpose (H-NEW-001).
+        VITE_PREVIEW_CONTENT_HOST: http://localhost:4201
     volumes:
       # The image ships no nginx.conf (cloud mounts one from a K8s ConfigMap).
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "4200:8080"
+      - "4200:8080"    # app + control planes
+      - "4201:8081"    # preview/deploy CONTENT — separate origin, see docker/nginx.conf
     depends_on:
       - ant-api
       - ant-realtime

@@ -19,7 +19,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Request } from 'express';
-import { composeChildEnv } from '../../src/core/config/childEnv.js';
+import { composeChildEnv, composeCommandChildEnv } from '../../src/core/config/childEnv.js';
 import { buildCleanHeaders, buildForwardHeaders } from '../../src/periphery/adapters/http/middleware/proxyForwarding.js';
 import { rewriteUpgradeHeaders, buildPeerForwardUpgradeHeaders } from '../../src/infrastructure/preview/PreviewServer.js';
 
@@ -153,6 +153,75 @@ describe('preview/deploy child env is composed, not inherited (C-003)', () => {
       expect(composeChildEnv()[name]).toBeUndefined();
     });
   }
+
+  // M-015: the credential-marker test is a name-SHAPE test, and a live connection
+  // credential need not look like one — `ANT_REDIS_URL` carries the platform's
+  // data-plane authority with no TOKEN/SECRET/AUTH in its name. Two namespaces are
+  // therefore closed by name, passthrough included.
+  const SERVICE_OWNED_MARKERLESS = [
+    'ANT_REDIS_URL',
+    'ANT_WORKSPACE_BASE_PATH',
+    'ANT_API_URL',
+    'REDIS_URL',
+    'DATABASE_URL',
+    'MONGODB_URI',
+    'AMQP_URL',
+  ];
+
+  for (const name of SERVICE_OWNED_MARKERLESS) {
+    it(`ANT_PREVIEW_ENV_PASSTHROUGH cannot admit service-owned ${name}`, () => {
+      process.env[name] = 'redis://user:pass@service-host:6379';
+      process.env.ANT_PREVIEW_ENV_PASSTHROUGH = name;
+      expect(composeChildEnv()[name]).toBeUndefined();
+      expect(composeCommandChildEnv()[name]).toBeUndefined();
+    });
+  }
+
+  // The project's OWN `.env` is a different channel: those values are user-owned
+  // and must keep working even when the name matches the inherited denylist.
+  it('a project .env overlay still supplies its own DATABASE_URL', () => {
+    process.env.DATABASE_URL = 'postgres://service-owned/db';
+    const env = composeChildEnv({ DATABASE_URL: 'postgres://localhost/app' });
+    expect(env.DATABASE_URL).toBe('postgres://localhost/app');
+  });
+
+  // M-NEW-001 defence in depth: the PAT rides `GIT_CONFIG_KEY_0`, which is passed
+  // deliberately to the credentialed acquire step and must never be inherited.
+  it('drops GIT_CONFIG_* from the inherited environment', () => {
+    process.env.GIT_CONFIG_COUNT = '1';
+    process.env.GIT_CONFIG_KEY_0 = 'url.https://ghp_live@github.com/.insteadOf';
+    process.env.ANT_PREVIEW_ENV_PASSTHROUGH = 'GIT_CONFIG_KEY_0,GIT_CONFIG_COUNT';
+    const env = composeChildEnv();
+    expect(env.GIT_CONFIG_KEY_0).toBeUndefined();
+    expect(env.GIT_CONFIG_COUNT).toBeUndefined();
+  });
+
+  // M-014: the code-job command profile shares every rule EXCEPT the preview
+  // passthrough. `run_command` stdout reaches the requester's chat card and the
+  // next LLM turn's tool_result history — a sink the operator never opted into.
+  describe('command profile ignores the preview passthrough (M-014)', () => {
+    it('does not forward a passthrough-named host variable', () => {
+      process.env.CUSTOM_HOST_VAR = 'wanted-by-dev-server';
+      process.env.ANT_PREVIEW_ENV_PASSTHROUGH = 'CUSTOM_HOST_VAR';
+      expect(composeChildEnv().CUSTOM_HOST_VAR).toBe('wanted-by-dev-server');
+      expect(composeCommandChildEnv().CUSTOM_HOST_VAR).toBeUndefined();
+    });
+
+    it('still forwards the shared toolchain allowlist', () => {
+      process.env.NODE_OPTIONS = '--max-old-space-size=512';
+      process.env.GOFLAGS = '-mod=mod';
+      const env = composeCommandChildEnv();
+      expect(env.NODE_OPTIONS).toBe('--max-old-space-size=512');
+      expect(env.GOFLAGS).toBe('-mod=mod');
+      expect(env.PATH).toBeDefined();
+    });
+
+    it('still drops every service secret', () => {
+      for (const name of SERVICE_SECRETS) process.env[name] = 'live-secret';
+      const env = composeCommandChildEnv();
+      for (const name of SERVICE_SECRETS) expect(env[name]).toBeUndefined();
+    });
+  });
 
   // M-013 / M-015: blocking names is not enough — `$HOME/.npmrc`, `~/.aws` and
   // `~/.ssh` are read from the filesystem by the same user-authored scripts.

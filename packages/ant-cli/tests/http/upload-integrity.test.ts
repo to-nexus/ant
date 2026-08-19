@@ -138,6 +138,32 @@ describe('POST /upload — binary integrity', () => {
     expect(existsSync(path.join(featurePath, DIR, 'Bad.glb'))).toBe(false);
   });
 
+  /**
+   * M-NEW-003: the route's `assertWithinRoot` proved `stage` was inside the
+   * feature at check time, then the write resolved `stage/payload` by name. A
+   * same-workspace preview child that repoints `stage` at a service-writable
+   * directory in between landed the upload outside the feature. The write now
+   * descends from the feature root.
+   */
+  it('refuses an upload whose intermediate directory points out of the feature', async () => {
+    const outside = path.join(tmpWorkspaces, 'outside-target');
+    await fs.mkdir(outside, { recursive: true });
+    await fs.mkdir(path.join(featurePath, DIR), { recursive: true });
+    await fs.symlink(outside, path.join(featurePath, DIR, 'stage'));
+
+    const form = new FormData();
+    form.append('dirPath', DIR);
+    form.append('files', new Blob([new Uint8Array(makeValidGlb())]), 'Duck.glb');
+    form.append('relativePaths', 'stage/Duck.glb');
+    const res = await fetch(`${baseUrl}/projects/${PROJECT_ID}/features/${FEATURE}/upload`, {
+      method: 'POST',
+      body: form,
+    });
+
+    expect(res.status).not.toBe(200);
+    expect(existsSync(path.join(outside, 'Duck.glb'))).toBe(false);
+  });
+
   it('overwriting a poisoned pool file with the intact original succeeds', async () => {
     const dest = path.join(featurePath, DIR, 'Duck.glb');
     await fs.mkdir(path.dirname(dest), { recursive: true });

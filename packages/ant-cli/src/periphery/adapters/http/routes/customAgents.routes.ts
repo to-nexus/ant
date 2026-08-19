@@ -12,7 +12,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import multer from 'multer';
-import { writeBufferVerified } from '../../../../core/utils/binaryIntegrity';
+import { writeBufferVerifiedAbs } from '../../../../core/utils/binaryIntegrity';
+import { boundedMultipart } from '../middleware/boundedMultipart';
+import { treeRateLimiter } from '../middleware/rateLimiter';
+import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
+import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { isValidCustomId, UNIVERSAL_FEATURE } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
@@ -23,6 +27,7 @@ import {
   buildUniversalMergedTree,
   resolveUniversalMergedPath,
   type UniversalTreeNode,
+  buildUniversalMergedTreeResult,
 } from '../../../../core/customAgents/universalContainer';
 import {
   discoverAgents,
@@ -52,6 +57,8 @@ export function createCustomAgentRoutes(deps: {
   organizationRepository: OrganizationRepositoryPort;
   /** Same shape as `files.routes.ts` — one type, no drift. */
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
+  /** Backs the per-account concurrency budget on the tree scan. */
+  stateStore?: StateStorePort;
 }): Router {
   const router = Router();
 
@@ -265,6 +272,12 @@ export function createCustomAgentRoutes(deps: {
     return rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0] ?? '';
   }
 
+  /** Account scope for the cluster-wide concurrency budget. */
+  function accountSlotKey(req: Request): string {
+    const ctx = extractUserContext(req);
+    return `${ctx.organizationId}:${ctx.userId}`;
+  }
+
   function containerRootFor(req: Request, projectId: string): string {
     const userContext = extractUserContext(req);
     return deps.workspaceResolver.getUniversalContainerPath(userContext, projectId);
@@ -320,18 +333,42 @@ export function createCustomAgentRoutes(deps: {
     next();
   });
 
-  artifacts.get('/tree', (req: Request, res: Response) => {
+  artifacts.get('/tree', treeRateLimiter, async (req: Request, res: Response) => {
+    // One scan at a time per account, cluster-wide. The enumeration budget bounds a
+    // single scan; without this an account simply runs many bounded scans in
+    // parallel and occupies the shared pod anyway (H-008).
+    const stateStore = deps.stateStore;
+    const slot = stateStore
+      ? await acquireConcurrencySlot(stateStore, `ant:slots:tree:${accountSlotKey(req)}`, {
+          limit: 2,
+          ttlSeconds: 60,
+        })
+      : { release: async () => {} };
+    if (!slot) {
+      return res.status(429).json({
+        code: 'TREE_SCAN_IN_PROGRESS',
+        error: 'Too many concurrent file-tree scans',
+        message: 'A file-tree scan is already running for your account. Try again shortly.',
+      });
+    }
+
     try {
-      // Assembly SSOT — universalContainer.buildUniversalMergedTree (shared
+      // Assembly SSOT — universalContainer.buildUniversalMergedTreeResult (shared
       // with FileOperationService.getFileTree; single implementation, no drift).
-      const tree = buildUniversalMergedTree(containerRootFor(req, req.params.projectId));
-      res.json({ tree: tree.map(toApiNode) });
+      const tree = buildUniversalMergedTreeResult(containerRootFor(req, req.params.projectId));
+      res.json({
+        tree: tree.nodes.map(toApiNode),
+        // Additive: only present when the artifacts root itself was cut short.
+        ...(tree.truncated ? { truncated: true } : {}),
+      });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'UniversalArtifacts');
+    } finally {
+      await slot.release();
     }
   });
 
-  artifacts.post('/upload', upload.array('files'), async (req: Request, res: Response) => {
+  artifacts.post('/upload', ...boundedMultipart(), upload.array('files'), async (req: Request, res: Response) => {
     try {
       const dirPath = (req.body.dirPath || '').replace(/\\/g, '/');
       const files = (req.files as Express.Multer.File[]) || [];
@@ -350,8 +387,9 @@ export function createCustomAgentRoutes(deps: {
         }
         const filePath = resolveMergedPath(req, req.params.projectId, effectiveRel);
         // Byte-safe write (size + header verification) — uploads must survive
-        // binary payloads unmodified (no utf-8 round-trip).
-        await writeBufferVerified(filePath, files[i].buffer);
+        // binary payloads unmodified (no utf-8 round-trip). The container root is
+        // the boundary the write descends from.
+        await writeBufferVerifiedAbs(containerRootFor(req, req.params.projectId), filePath, files[i].buffer);
         uploadedFiles.push(effectiveRel);
       }
       res.json({ success: true, uploadedFiles, count: uploadedFiles.length });

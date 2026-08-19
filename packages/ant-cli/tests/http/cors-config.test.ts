@@ -52,19 +52,43 @@ describe('isLoopbackOrigin', () => {
  * always emit an Origin header (CORS spec) even on same-origin requests.
  */
 describe('isSelfOrigin', () => {
-  // Express's `req.hostname` is trust-proxy aware (reflects X-Forwarded-Host
-  // chain). Mock the property the predicate reads directly.
-  function mockReq(hostname: string | undefined): any {
-    return { hostname };
+  /**
+   * The predicate compares the FULL origin (scheme + host + port), so the stub
+   * carries what the browser addressed: the `Host` header (port included) and the
+   * scheme, plus the `X-Forwarded-*` pair an ingress sets. A hostname-only test
+   * made every port on a host "self", which would re-merge origins that are
+   * deliberately separate — ant-preview's user-content listener and its
+   * control-plane API (H-NEW-001).
+   */
+  function mockReq(host: string | undefined, protocol = 'https', forwarded?: Record<string, string>): any {
+    return {
+      hostname: host?.split(':')[0],
+      protocol,
+      headers: { ...(host !== undefined ? { host } : {}), ...(forwarded ?? {}) },
+    };
   }
 
-  it('allows when Origin hostname equals request hostname', () => {
+  it('allows when the Origin is the request origin', () => {
     expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'https://ant-server.crosstoken.io')).toBe(true);
-    // Origin with explicit port — hostname comparison ignores port.
+    // `https://host:443` and `https://host` are the same origin — URL normalizes
+    // the default port away, so `parsed.host` has no port and matches Host.
     expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'https://ant-server.crosstoken.io:443')).toBe(true);
   });
 
-  it('rejects when Origin hostname differs from request hostname (spoof attempt)', () => {
+  it('allows an explicit non-default port when the request carries the same one', () => {
+    expect(isSelfOrigin(mockReq('localhost:4102', 'http'), 'http://localhost:4102')).toBe(true);
+  });
+
+  it('rejects a different port on the same host (separate origins by design)', () => {
+    expect(isSelfOrigin(mockReq('localhost:4102', 'http'), 'http://localhost:4103')).toBe(false);
+    expect(isSelfOrigin(mockReq('localhost:4102', 'http'), 'http://localhost')).toBe(false);
+  });
+
+  it('rejects a different scheme on the same host', () => {
+    expect(isSelfOrigin(mockReq('ant-server.crosstoken.io', 'https'), 'http://ant-server.crosstoken.io')).toBe(false);
+  });
+
+  it('rejects when Origin host differs from the request host (spoof attempt)', () => {
     expect(isSelfOrigin(mockReq('ant-server.crosstoken.io'), 'https://evil.com')).toBe(false);
     expect(isSelfOrigin(mockReq('other.host'), 'https://ant-server.crosstoken.io')).toBe(false);
   });
@@ -74,7 +98,16 @@ describe('isSelfOrigin', () => {
     expect(isSelfOrigin(mockReq('ant-server.crosstoken.io.attacker.com'), 'https://ant-server.crosstoken.io')).toBe(false);
   });
 
-  it('rejects when request has no resolvable hostname', () => {
+  it('uses X-Forwarded-Host / -Proto when an ingress terminates TLS', () => {
+    const req = mockReq('10.0.1.7:4102', 'http', {
+      'x-forwarded-host': 'ant-server.crosstoken.io',
+      'x-forwarded-proto': 'https',
+    });
+    expect(isSelfOrigin(req, 'https://ant-server.crosstoken.io')).toBe(true);
+    expect(isSelfOrigin(req, 'http://10.0.1.7:4102')).toBe(false);
+  });
+
+  it('rejects when the request has no resolvable host', () => {
     expect(isSelfOrigin(mockReq(undefined), 'https://ant-server.crosstoken.io')).toBe(false);
     expect(isSelfOrigin(mockReq(''), 'https://ant-server.crosstoken.io')).toBe(false);
   });

@@ -1406,6 +1406,71 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   }
 
   // ============================================
+  // Bounded Slot Set (atomic admission)
+  // ============================================
+
+  /**
+   * ZSET of holders scored by expiry (epoch ms). Prune-count-add in ONE Lua body,
+   * so the count a caller acts on cannot be stale by the time it reserves — the
+   * `SCAN`-then-`SETEX` shape it replaces admitted N concurrent callers past an
+   * N-1 limit (M-005).
+   *
+   * Re-reserving the same member is idempotent (it refreshes rather than
+   * double-counting), so a retry cannot consume two slots. The key carries a TTL
+   * a little beyond the last expiry so an idle set disappears on its own.
+   */
+  private static readonly RESERVE_SLOT_LUA = `
+    local key    = KEYS[1]
+    local member = ARGV[1]
+    local limit  = tonumber(ARGV[2])
+    local now    = tonumber(ARGV[3])
+    local expiry = tonumber(ARGV[4])
+
+    redis.call('ZREMRANGEBYSCORE', key, '-inf', now)
+
+    if redis.call('ZSCORE', key, member) == false then
+      if redis.call('ZCARD', key) >= limit then
+        return 0
+      end
+    end
+
+    redis.call('ZADD', key, expiry, member)
+    redis.call('PEXPIRE', key, math.ceil(expiry - now) + 60000)
+    return 1
+  `;
+
+  async reserveSlot(setKey: string, member: string, limit: number, ttlSeconds: number): Promise<boolean> {
+    const now = Date.now();
+    const result = await this.redis.eval(
+      RedisStateStore.RESERVE_SLOT_LUA,
+      1,
+      setKey,
+      member,
+      String(limit),
+      String(now),
+      String(now + ttlSeconds * 1000),
+    );
+    return Number(result) === 1;
+  }
+
+  async refreshSlot(setKey: string, member: string, ttlSeconds: number): Promise<void> {
+    // Only refreshes an EXISTING member (`XX`): a holder whose slot already expired
+    // must go back through `reserveSlot` and be counted again.
+    const expiry = Date.now() + ttlSeconds * 1000;
+    await this.redis.zadd(setKey, 'XX', String(expiry), member);
+    await this.redis.pexpire(setKey, ttlSeconds * 1000 + 60000);
+  }
+
+  async releaseSlot(setKey: string, member: string): Promise<void> {
+    await this.redis.zrem(setKey, member);
+  }
+
+  async countSlots(setKey: string): Promise<number> {
+    await this.redis.zremrangebyscore(setKey, '-inf', Date.now());
+    return this.redis.zcard(setKey);
+  }
+
+  // ============================================
   // Distributed Locking
   // ============================================
 

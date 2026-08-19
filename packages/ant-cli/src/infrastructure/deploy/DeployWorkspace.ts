@@ -35,6 +35,7 @@ import { spawn } from 'child_process';
 import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
 import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
 import { composeChildEnv } from '../../core/config/childEnv';
+import { childSpawnIdentity } from '../../core/config/childIdentity';
 
 /**
  * Directories/patterns we never copy into the deploy workspace.
@@ -328,6 +329,7 @@ export async function installDeployDependencies(
       env: composeChildEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
+      ...childSpawnIdentity(),
     });
 
     const timer = setTimeout(() => {

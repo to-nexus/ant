@@ -32,13 +32,59 @@ silently degrade to a free tier. Leave it unset when self-hosting.
 |---|---|---|
 | `ANT_SERVER_MODE` | yes | `cloud`. |
 | `ANT_REDIS_URL` | yes | Cloud mode has no default — set it explicitly. The compose base already sets `redis://redis:6379`. |
-| `ANT_JWT_SECRET` | yes | ≥ 32 chars. `openssl rand -hex 32`. |
+| `ANT_JWT_PUBLIC_KEY` + `ANT_JWT_PRIVATE_KEY` | recommended | Session key **pair** (see "Session keys" below). The public half goes to every process; the private half to `ant-api` only. |
+| `ANT_JWT_SECRET` | fallback | HS256 single-secret alternative, ≥ 32 chars (`openssl rand -hex 32`). Symmetric, so `ant-realtime` / `ant-preview` refuse to boot with it unless `ANT_JWT_ALLOW_SYMMETRIC=true`. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | yes | OAuth client from the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Register `${FRONTEND_URL}/api/auth/google/callback` as an authorized redirect URI. |
 | `GOOGLE_REDIRECT_URI` | no | Only when the callback host differs from `FRONTEND_URL`; otherwise derived as `${FRONTEND_URL}/api/auth/google/callback`. |
 | `ANT_SUPER_ADMIN_EMAILS` | recommended | Comma-separated operator emails. This env allowlist is the authoritative admin gate. |
 | `FRONTEND_URL` | yes | Public origin users visit, e.g. `https://ant.example.com`. Drives CORS and the OAuth redirect derivation. |
 
 Full variable reference: [reference/env-vars.md](../reference/env-vars.md).
+
+### Session keys — why a pair is preferred
+
+HS256 is symmetric: any process that can VERIFY a session can also MINT one. Only
+`ant-api` needs to mint, but `ant-realtime` and `ant-preview` need to verify — and
+`ant-preview` runs the install and dev commands from your users' projects under its
+own UID, so anything in its environment is readable from that code through `/proc`.
+With one shared secret, that is the authority to forge any tenant's session.
+
+Generate a P-256 pair once and keep the private half on `ant-api`:
+
+```bash
+openssl ecparam -genkey -name prime256v1 -noout \
+  | openssl pkcs8 -topk8 -nocrypt -out jwt-private.pem
+openssl ec -in jwt-private.pem -pubout -out jwt-public.pem
+
+# then in .env
+ANT_JWT_PUBLIC_KEY="$(cat jwt-public.pem)"
+ANT_JWT_PRIVATE_KEY="$(cat jwt-private.pem)"
+```
+
+`docker-compose.cloud.yml` already routes them: the public key to api / realtime /
+preview, the private key to api alone. Rotating the pair invalidates live sessions
+(users sign in again).
+
+### Two more hardening steps for a multi-user deployment
+
+Both are deployment-layer, so the code ships the seam and the deployment decides.
+
+1. **Give user-authored children their own UID.** The images provision an
+   unprivileged `ant-child` account (uid 10001). Set `ANT_CHILD_UID=10001` and
+   `ANT_CHILD_GID` to the `ant` group on `ant-preview` and `ant-job` once the
+   container is permitted to change uids (a root entrypoint with ambient
+   `CAP_SETUID`, or an equivalent pod security context). Without the privilege the
+   runtime logs a loud error once and keeps previews working under the service
+   identity — it never silently pretends to be isolated.
+
+2. **Serve user content from its own hostname.** `ant-preview` runs two listeners:
+   `PORT` (4102) is the cookie-authenticated `/projects/*` control plane, and
+   `ANT_PREVIEW_CONTENT_PORT` (4103) serves preview and deploy content. Publish
+   them under **different hostnames** and point `VITE_PREVIEW_CONTENT_HOST` at the
+   content one. A public deploy's HTML or SVG is attacker-authorable; on a shared
+   origin its script can call the control plane with the viewer's session. The
+   local compose stack demonstrates the layout: `:4200` is the app, `:4201` is
+   content.
 
 ## Quick start with Docker Compose
 
@@ -48,7 +94,8 @@ cloud profile:
 ```bash
 cp .env.example .env
 # then add to .env:
-#   ANT_JWT_SECRET=<openssl rand -hex 32>
+#   ANT_JWT_PUBLIC_KEY / ANT_JWT_PRIVATE_KEY  (see "Session keys" above)
+#   — or ANT_JWT_SECRET=<openssl rand -hex 32> plus ANT_JWT_ALLOW_SYMMETRIC=true
 #   GOOGLE_CLIENT_ID=...
 #   GOOGLE_CLIENT_SECRET=...
 #   ANT_SUPER_ADMIN_EMAILS=you@example.com

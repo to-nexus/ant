@@ -24,6 +24,7 @@ the user-facing concepts live in [`docs/concepts/`](docs/concepts/).
 | Author or edit a prompt template      | [Prompt Engineering](#prompt-engineering)           |
 | Touch the LangGraph state machine     | [LangGraph State Management](#langgraph-state-management) |
 | Make a change that crosses BE↔FE      | [Cross-Package Contracts](#cross-package-contracts-antshared) |
+| Touch a security boundary (paths, origins, child processes, resource budgets) | [`docs/internals/security-posture.md`](docs/internals/security-posture.md) — the seven-axis SSOT |
 | Self-host, design input, custom prompts | [docs/guides/](docs/guides/)                      |
 | Run the custom-agent + MCP example end-to-end | [examples/README.md](examples/README.md) — not product code, never loaded at runtime |
 
@@ -429,6 +430,82 @@ Guards: `tests/customAgents/{custom-agent-loader,builtin-agents,universal-contai
 Full rationale: [`docs/internals/44-universal-job.md`](docs/internals/44-universal-job.md);
 MCP orchestration & capability-server contract:
 [`docs/internals/45-mcp-orchestration.md`](docs/internals/45-mcp-orchestration.md).
+
+---
+
+## Untrusted Content and the Control Plane Are Different Origins
+
+**A browser origin that serves user-authored content MUST NOT also answer a
+cookie-authenticated control-plane API.** `ant-preview` does both jobs — it serves a
+public deploy's build output and a user's own dev server, and it exposes
+`/projects/*`, which starts previews and writes a feature's `.env`. On one origin,
+script inside a deployed SVG or HTML page runs same-origin with that API and drives
+it with the viewer's session. The session cookie is `HttpOnly`, which does not
+help: the browser attaches it anyway.
+
+### ❌ Forbidden
+
+- Mounting any control-plane route on the content listener (`this.contentApp`).
+- "Fixing" this with an SVG/HTML filter, a blanket CSP, or by stripping cookies on
+  the proxy hop to the upstream. None of them addresses the sink, which is the
+  browser's own origin model.
+- Comparing origins by **hostname**. `isSelfOrigin` compares scheme + host + port;
+  a hostname-only test silently re-merges the two listeners.
+- Accepting a cookie-authenticated state change whose `Sec-Fetch-Site` is
+  `same-site` (that is precisely the content listener) — only `same-origin` /
+  `none`, or an exact-match registered frontend origin.
+
+### ✅ Correct
+
+- Content on `ANT_PREVIEW_CONTENT_PORT`, control plane on `PORT`; the process
+  refuses to boot if they are equal.
+- `createSameOriginGuard()` after cookie-parser on every server that authenticates
+  by cookie. `Authorization: Bearer` callers are exempt — a bearer token is not
+  ambient.
+- Body parsers mount AFTER authentication: an unauthenticated request must not make
+  the process parse a 50 MB body before it is told 401.
+
+```bash
+rg -n "contentApp\.(get|post|put|delete)\('/(projects|admin)" packages/ant-cli/src  # Expected: 0
+```
+
+Guards: `tests/http/preview-origin-split.test.ts`, `tests/http/same-origin-guard.test.ts`,
+`tests/cors/cors-matrix.test.ts`. Rationale: [`docs/internals/security-posture.md`](docs/internals/security-posture.md) Axis 5.
+
+---
+
+## Child Process Boundaries — env profile, credential scope, OS identity
+
+Preview, deploy and code-job children run **user-authored code**, and their
+stdout/stderr is streamed back to the requester. Three separate rules, each violated
+once:
+
+1. **Env profile.** `composeChildEnv()` (preview/deploy) honours
+   `ANT_PREVIEW_ENV_PASSTHROUGH`; `composeCommandChildEnv()` (code-job
+   `run_command`) honours nothing. An operator naming a host variable so a dev
+   server boots did not consent to it reaching every LLM-chosen command and its
+   chat transcript.
+2. **Namespace denial is by NAME, never by value shape.** The credential-marker
+   list is a name test, and a live credential need not look like one —
+   `ANT_REDIS_URL` carries the data plane with no `TOKEN`/`SECRET`/`AUTH` in it. The
+   inherited/passthrough path refuses the whole `ANT_*` namespace plus bare
+   connection-URL names. Project `.env` overlays are a different channel and are
+   unaffected. Do **not** add value-shape heuristics (see the universal-runtime
+   section for why that was deleted once already).
+3. **Credentials are scoped to the step that needs them.** A user's PAT reaches the
+   `--ignore-scripts` dependency-FETCH pass only; the lifecycle pass re-runs the
+   install without it. Installs that cannot use `GIT_CONFIG_*` at all
+   (python/rust/java) never receive it.
+
+Every user-authored `spawn()` also spreads `childSpawnIdentity()`, so a deployment
+that grants the privilege runs those children under their own UID — a same-UID child
+can read `/proc/<service-pid>/environ` whatever the composed env says.
+
+```bash
+rg -n "composeChildEnv\(\)" packages/ant-cli/src/periphery/adapters/command  # Expected: 0 (command profile)
+```
+
+Guards: `tests/policy/credential-isolation.test.ts`, `tests/preview/installCommand.test.ts`.
 
 ---
 

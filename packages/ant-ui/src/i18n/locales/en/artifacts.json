@@ -78,7 +78,11 @@
     "artifactBlockedStopping": "A job is stopping. Wait until it finishes, then try again.",
     "artifactBlockedRunning": "A job is running. Artifact uploads and edits are disabled until it finishes or is stopped.",
     "artifactBlockedSelectContext": "Select a project and feature before changing artifacts.",
-    "artifactBlockedGeneric": "Artifact changes are not available right now."
+    "artifactBlockedGeneric": "Artifact changes are not available right now.",
+    "uploadTooLarge": "These files are too large to upload in one request (limit {{limitMb}} MB total). Upload them in smaller batches.",
+    "uploadTooManyInFlight": "You already have uploads in progress. Wait for them to finish, then try again.",
+    "downloadTooLarge": "This folder is too large to download as a ZIP (limit {{entries}} files or {{limitGb}} GB). Download a subfolder instead.",
+    "treeTruncated": "Showing part of this folder only — it contains too many files to list."
   },
   "editor": {
     "placeholder": "File content...",

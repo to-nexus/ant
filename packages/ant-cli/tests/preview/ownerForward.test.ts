@@ -35,12 +35,29 @@ describe('resolveOwnerForward (podId-based)', () => {
     if (origPort === undefined) delete process.env.PORT; else process.env.PORT = origPort;
   });
 
-  it('forwards to the owner pod on the service port when the owner podId is another replica', () => {
+  // Owner-forwarding carries a preview CONTENT request, and content lives on its
+  // own listener now (H-NEW-001) — so the forward target is the content port, not
+  // the control-plane `PORT`.
+  it('forwards to the owner pod on the CONTENT port when the owner podId is another replica', () => {
     process.env.PORT = '4102';
+    delete process.env.ANT_PREVIEW_CONTENT_PORT;
     expect(resolveOwnerForward(OWNER_POD, OWNER_HOST, false)).toEqual({
       forwardHost: OWNER_HOST,
-      forwardPort: 4102,
+      forwardPort: 4103,
     });
+  });
+
+  it('honours an explicit ANT_PREVIEW_CONTENT_PORT', () => {
+    process.env.PORT = '4102';
+    process.env.ANT_PREVIEW_CONTENT_PORT = '9010';
+    try {
+      expect(resolveOwnerForward(OWNER_POD, OWNER_HOST, false)).toEqual({
+        forwardHost: OWNER_HOST,
+        forwardPort: 9010,
+      });
+    } finally {
+      delete process.env.ANT_PREVIEW_CONTENT_PORT;
+    }
   });
 
   it('does NOT forward when this pod is the owner (podId === self hostname)', () => {
@@ -81,10 +98,11 @@ describe('selfPodId / selfServicePort', () => {
     expect(selfPodId()).toBe(os.hostname());
   });
 
-  it('selfServicePort mirrors the listen port (PORT || 8080)', () => {
+  it('selfServicePort is the content port (PORT + 1, or the explicit override)', () => {
+    delete process.env.ANT_PREVIEW_CONTENT_PORT;
     process.env.PORT = '4102';
-    expect(selfServicePort()).toBe(4102);
+    expect(selfServicePort()).toBe(4103);
     delete process.env.PORT;
-    expect(selfServicePort()).toBe(8080);
+    expect(selfServicePort()).toBe(8081);
   });
 });

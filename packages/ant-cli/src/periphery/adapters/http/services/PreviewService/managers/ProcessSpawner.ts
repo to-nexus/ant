@@ -1,4 +1,5 @@
 import { spawn, ChildProcess, execFileSync } from 'child_process';
+import { childSpawnIdentity } from '../../../../../../core/config/childIdentity';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
@@ -71,11 +72,13 @@ export class ProcessSpawner {
    * by the deploy-side `ProcessServer`).
    */
   private backfillMockToggles(
+    workspaceRoot: string | undefined,
     connections: ServiceConnection[] | undefined,
     packageSource: string | undefined,
     pkgPath: string,
   ): void {
-    backfillMockToggles(connections, packageSource, pkgPath);
+    // No project root (single-package preview) → the package dir is the boundary.
+    backfillMockToggles(workspaceRoot ?? pkgPath, connections, packageSource, pkgPath);
   }
 
   /**
@@ -197,7 +200,7 @@ export class ProcessSpawner {
     // always carries it (greenfield mock-boot, no ECONNREFUSED).
     // `.env` (+ .env.local) is the value/toggle SSOT — the app reads it directly.
     // backfillMockToggles keeps the greenfield mock-on default IN the file.
-    this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
+    this.backfillMockToggles(options.projectRoot, options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
 
     const env = composeChildEnv(projectEnv, {
@@ -222,7 +225,11 @@ export class ProcessSpawner {
       shell: true,
       detached: true,
       env,
-      stdio: 'pipe'
+      stdio: 'pipe',
+      // User-authored dev command. Under the service's own UID it could read
+      // `/proc/<service-pid>/environ` and re-link workspace directory entries
+      // the service writes through (C-001, H-003, M-NEW-003).
+      ...childSpawnIdentity(),
     });
     
     logger.warn(`[Preview] Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });
@@ -320,7 +327,7 @@ export class ProcessSpawner {
 
     // `.env` (+ .env.local) is the value/toggle SSOT — the app reads it directly.
     // backfillMockToggles keeps the greenfield mock-on default IN the file.
-    this.backfillMockToggles(options.connections, options.packageSource, pkg.path);
+    this.backfillMockToggles(options.projectRoot, options.connections, options.packageSource, pkg.path);
     const projectEnv = this.loadProjectEnv(pkg.path, options.projectRoot);
 
     const env = composeChildEnv(projectEnv, {

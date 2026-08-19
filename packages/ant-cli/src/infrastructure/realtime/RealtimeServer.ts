@@ -18,6 +18,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
+import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { createSSERoutes } from '../../periphery/adapters/http/routes';
 import { 
@@ -155,6 +156,10 @@ export class RealtimeServer {
           '/bridge/health',
         ],
         publicPrefixes: [],
+      }));
+      // Same-origin gate for cookie-authenticated state changes (H-NEW-001).
+      this.app.use(createSameOriginGuard({
+        publicPaths: ['/health', '/api/health', '/bridge/health'],
       }));
       logger.info('JWT authentication enabled for Realtime Server', { component: 'RealtimeServer' });
     }

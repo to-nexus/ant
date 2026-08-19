@@ -17,7 +17,8 @@ import { CommandPort, CommandResult, CommandOptions } from "../../../core/ports"
 import { spawn } from "child_process";
 import { isProcessGroupAlive } from "./processTree";
 import { splitOnShellOperators, tokenizeShellSegment } from "../../../core/utils/shellParser";
-import { composeChildEnv } from "../../../core/config/childEnv";
+import { composeCommandChildEnv } from "../../../core/config/childEnv";
+import { childSpawnIdentity } from "../../../core/config/childIdentity";
 
 /**
  * Build the environment for a user command child.
@@ -33,7 +34,7 @@ import { composeChildEnv } from "../../../core/config/childEnv";
  * and `extra` still wins, so a caller's explicit execution settings are kept.
  */
 export function cleanCommandEnv(extra?: Record<string, string>): Record<string, string> {
-  const composed = composeChildEnv();
+  const composed = composeCommandChildEnv();
   delete composed.PORT;
   delete composed.NODE_ENV;
 
@@ -316,6 +317,9 @@ export class NodeCommandAdapter implements CommandPort {
         // Shell-internal pipes (cmd1 | cmd2) and heredocs are unaffected
         // as the shell handles them via -c argument, not spawn's stdin.
         stdio: ['ignore', 'pipe', 'pipe'],
+        // LLM-chosen command running against a user workspace — same OS identity
+        // boundary as the preview children (C-001).
+        ...childSpawnIdentity(),
       });
 
       let stdout = '';

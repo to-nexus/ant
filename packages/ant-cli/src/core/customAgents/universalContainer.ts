@@ -382,6 +382,53 @@ export const UNIVERSAL_TREE_MAX_ENTRIES = 5000;
 
 interface TraversalBudget {
   remaining: number;
+  /** Set when the budget ran out at the very top level, where no parent node can carry the flag. */
+  rootTruncated?: boolean;
+}
+
+/**
+ * Read at most `budget.remaining` entries from a directory, charging the budget as
+ * each raw entry is read.
+ *
+ * `readdirSync` materialises and sorts the WHOLE directory before any budget can
+ * apply, so a directory with a million entries still costs a million `Dirent`s and
+ * a million-element sort even though only 5,000 are returned — the response was
+ * bounded, the work was not (H-008). `opendirSync` + `readSync` charges the budget
+ * at the moment of reading, and closes the handle the instant it is exhausted.
+ *
+ * Hidden entries are skipped from the RESULT but still charged, so a flood of
+ * dotfiles cannot buy unlimited enumeration under the same cap.
+ */
+function readBoundedEntries(abs: string, budget: TraversalBudget): fs.Dirent[] {
+  let dir: fs.Dir;
+  try {
+    dir = fs.opendirSync(abs);
+  } catch {
+    return [];
+  }
+
+  const collected: fs.Dirent[] = [];
+  try {
+    for (;;) {
+      if (budget.remaining <= 0) break;
+      const entry = dir.readSync();
+      if (entry === null) break;
+      budget.remaining -= 1;
+      if (entry.name.startsWith('.')) continue;
+      collected.push(entry);
+    }
+  } finally {
+    try {
+      dir.closeSync();
+    } catch {
+      /* already closed */
+    }
+  }
+
+  // Only the entries actually collected are sorted — bounded input, bounded sort.
+  return collected.sort((a, b) =>
+    a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1,
+  );
 }
 
 function buildSubtree(
@@ -395,15 +442,11 @@ function buildSubtree(
   if (!fs.existsSync(abs)) return [];
   if (depth >= UNIVERSAL_TREE_MAX_DEPTH || budget.remaining <= 0) return [];
 
-  const entries = fs
-    .readdirSync(abs, { withFileTypes: true })
-    .filter((e) => !e.name.startsWith('.'))
-    .sort((a, b) => (a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1));
+  const entries = readBoundedEntries(abs, budget);
+  if (budget.remaining <= 0 && depth === 0) budget.rootTruncated = true;
 
   const nodes: UniversalTreeNode[] = [];
   for (const e of entries) {
-    if (budget.remaining <= 0) break;
-    budget.remaining -= 1;
 
     const childRel = rel ? `${rel}/${e.name}` : e.name;
     const nodePath = prefix ? `${prefix}/${childRel}` : childRel;
@@ -441,7 +484,18 @@ function buildSubtree(
  * the grafted `sessions` node last — same ordering contract as
  * CANONICAL_DIR_DEFS.
  */
-export function buildUniversalMergedTree(containerPath: string): UniversalTreeNode[] {
+export interface UniversalMergedTree {
+  nodes: UniversalTreeNode[];
+  /**
+   * The enumeration budget ran out at the ARTIFACTS ROOT, where there is no parent
+   * node to carry a `truncated` flag. Without this the response looked complete
+   * exactly in the worst case — a single directory wide enough to exhaust the
+   * budget on its own (H-008).
+   */
+  truncated: boolean;
+}
+
+export function buildUniversalMergedTreeResult(containerPath: string): UniversalMergedTree {
   const artifactsRoot = path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME);
   const sessionsRoot = path.join(containerPath, UNIVERSAL_SESSIONS_NODE);
 
@@ -475,7 +529,19 @@ export function buildUniversalMergedTree(containerPath: string): UniversalTreeNo
     absolutePath: sessionsRoot,
     children: buildSubtree(sessionsRoot, '', UNIVERSAL_SESSIONS_NODE, 0, budget),
   };
-  return [...canonicalNodes, ...freeNodes, sessionsNode];
+  return {
+    nodes: [...canonicalNodes, ...freeNodes, sessionsNode],
+    truncated: budget.rootTruncated === true,
+  };
+}
+
+/**
+ * Nodes-only form for callers that render the tree and have no place to show a
+ * root-level truncation flag (the codespace file panel). New callers that DO
+ * surface it should use {@link buildUniversalMergedTreeResult}.
+ */
+export function buildUniversalMergedTree(containerPath: string): UniversalTreeNode[] {
+  return buildUniversalMergedTreeResult(containerPath).nodes;
 }
 
 /**

@@ -6,10 +6,18 @@
  * a ROOT-RELATIVE path in path mode (`/urlKey`). App-link consumers must NOT
  * prefix the preview origin onto an already-absolute URL — otherwise the link
  * becomes `https://origin` + `https://label.base` (the reported broken link).
+ *
+ * The origin it prefixes is the CONTENT origin, not the management one: the user's
+ * app is served from a host that carries no control-plane API, so a document served
+ * there has no same-origin API to drive with the viewer's session (H-NEW-001).
  */
 
 import { describe, expect, it } from 'vitest';
-import { resolveAppUrl, PREVIEW_BASE } from '@/infrastructure/http/api/client';
+import {
+  resolveAppUrl,
+  PREVIEW_BASE,
+  PREVIEW_CONTENT_BASE,
+} from '@/infrastructure/http/api/client';
 
 describe('resolveAppUrl', () => {
   it('returns an absolute https URL verbatim (subdomain mode — no origin prefix)', () => {
@@ -22,15 +30,20 @@ describe('resolveAppUrl', () => {
     expect(resolveAppUrl(abs)).toBe(abs);
   });
 
-  it('prefixes the preview origin onto a root-relative path (path mode)', () => {
+  it('prefixes the CONTENT origin onto a root-relative path (path mode)', () => {
     expect(resolveAppUrl('/individual--probe--proj--main')).toBe(
-      `${PREVIEW_BASE()}/individual--probe--proj--main`,
+      `${PREVIEW_CONTENT_BASE()}/individual--probe--proj--main`,
     );
   });
 
-  it('prefixes the preview origin onto a /deploy/ path (path mode)', () => {
+  it('prefixes the CONTENT origin onto a /deploy/ path (path mode)', () => {
     expect(resolveAppUrl('/deploy/individual--probe--proj--feat')).toBe(
-      `${PREVIEW_BASE()}/deploy/individual--probe--proj--feat`,
+      `${PREVIEW_CONTENT_BASE()}/deploy/individual--probe--proj--feat`,
     );
+  });
+
+  it('falls back to the management origin when no content host is configured', () => {
+    // Keeps a not-yet-migrated single-host deployment working unchanged.
+    expect(PREVIEW_CONTENT_BASE()).toBe(PREVIEW_BASE());
   });
 });

@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { composeChildEnv } from '../../core/config/childEnv';
+import { childSpawnIdentity } from '../../core/config/childIdentity';
 import { logger } from '../../utils/logger';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 
@@ -98,6 +99,7 @@ function startNextServer(options: StaticServerOptions): Promise<StaticServerHand
         NEXT_PUBLIC_BASE_PATH: basePath === '/' ? '' : basePath,
       }),
       stdio: ['ignore', 'pipe', 'pipe'],
+      ...childSpawnIdentity(),
     });
 
     let started = false;

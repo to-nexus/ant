@@ -24,7 +24,7 @@ import { promises as fs } from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
 import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
-import { verifyBufferIntegrity, writeBufferVerified, CorruptedFileError } from '../../../../core/utils/binaryIntegrity';
+import { verifyBufferIntegrity, writeBufferVerifiedAbs, CorruptedFileError } from '../../../../core/utils/binaryIntegrity';
 import { formatByteSize } from '../../../../core/utils/binaryExtensions';
 
 export async function handleCopyFile(
@@ -86,7 +86,7 @@ export async function handleCopyFile(
 
     // writeBufferVerified: mkdir -p + byte-faithful write + written-size
     // verification, failing loud rather than leaving a bad asset in place.
-    await writeBufferVerified(destAbs, buffer);
+    await writeBufferVerifiedAbs(root, destAbs, buffer);
 
     const sizeLabel = formatByteSize(buffer.length);
     console.log(

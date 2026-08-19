@@ -21,6 +21,7 @@ import 'dotenv/config';
 import { createRealtimeServer } from './RealtimeServer';
 import { logger } from '../../utils/logger';
 import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
+import { assertJwtAuthorityScope } from '../auth/JwtService';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { resolveRedisUrl } from '../../core/config/redisUrl';
 
@@ -32,6 +33,14 @@ async function main(): Promise<void> {
   const startTime = new Date().toISOString();
   logger.warn(`🚀 Starting Realtime Server... (${startTime})`, { component: 'RealtimeServerProcess' });
   
+  // Verifier-only: no session is ever minted here (C-001).
+  try {
+    assertJwtAuthorityScope('verify');
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error), { component: 'RealtimeServerProcess' });
+    process.exit(1);
+  }
+
   // Validate required environment variables
   if (!WORKSPACES_PATH) {
     logger.error('ANT_WORKSPACE_BASE_PATH is required', { component: 'RealtimeServerProcess' });

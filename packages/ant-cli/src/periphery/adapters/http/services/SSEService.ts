@@ -30,16 +30,23 @@ export type { SSEMessageType, SSEMessage, SSEBroadcastMessage, SSEWorkflowMessag
  * - realtime:workflow:{orgId}:{userId}   - Workflow state updates
  */
 const MAX_SSE_CONNECTIONS_PER_USER = 10;
-const SSE_CONNECTION_KEY_PREFIX = 'ant:sse:conn:';
-const SSE_CONNECTION_TTL_SECONDS = 30; // Per-connection key TTL; refreshed by heartbeat
+const SSE_CONNECTION_SET_PREFIX = 'ant:sse:slots:';
+const SSE_CONNECTION_TTL_SECONDS = 30; // Slot expiry; refreshed by heartbeat
+
+/** The account's bounded slot set. One set per account, one member per stream. */
+function sseSlotKey(organizationId: string, userId: string): string {
+  return `${SSE_CONNECTION_SET_PREFIX}${organizationId}:${userId}`;
+}
 
 /**
  * Redis-backed admission granted by {@link SSEService.admitConnection} and
  * handed to the register call once the response is committed.
  */
 export interface SseConnectionReservation {
-  /** Per-connection slot key; the close handler releases it. */
-  connKey?: string;
+  /** The account's slot set; the close handler releases this stream's member. */
+  slotKey?: string;
+  /** This stream's member id within the set. */
+  member?: string;
 }
 
 /**
@@ -74,6 +81,14 @@ export class SSEService {
   
   // Track subscribed channels to avoid duplicate subscriptions
   private subscribedChannels: Set<string> = new Set();
+
+  /**
+   * In-flight (or completed) per-account channel subscription, keyed
+   * `{orgId}:{userId}`. Registered BEFORE the first await so concurrent first
+   * connections share one registration instead of each adding a duplicate
+   * callback to the same Redis channel (M-005).
+   */
+  private userSubscriptions: Map<string, Promise<void>> = new Map();
   
   // StateStore for Redis Pub/Sub
   private stateStore?: StateStorePort;
@@ -98,12 +113,36 @@ export class SSEService {
    */
   private async subscribeToUserChannels(userContext: UserContext): Promise<void> {
     if (!this.stateStore) return;
-    
+
     const { organizationId: orgId, userId } = userContext;
     if (!orgId || !userId) {
       logger.warn('Cannot subscribe to user channels: missing userContext', { component: 'SSEService' });
       return;
     }
+
+    // Single-flight per account. The `subscribedChannels` guard below is set AFTER
+    // an await, so concurrent first connections for the same account all passed it
+    // and each registered its own callback on the same Redis channel. Those
+    // callbacks are never removed, so one published event was then processed —
+    // and written to every live response — once per duplicate registration
+    // (M-005). Registering the in-flight promise BEFORE awaiting closes it.
+    const key = `${orgId}:${userId}`;
+    const inFlight = this.userSubscriptions.get(key);
+    if (inFlight) return inFlight;
+
+    const attempt = this.doSubscribeToUserChannels(orgId, userId).catch(err => {
+      // Drop the memo so the next connection retries rather than inheriting a
+      // permanent failure.
+      this.userSubscriptions.delete(key);
+      throw err;
+    });
+    this.userSubscriptions.set(key, attempt);
+    return attempt;
+  }
+
+  /** The actual subscribe. Reached once per account via the single-flight above. */
+  private async doSubscribeToUserChannels(orgId: string, userId: string): Promise<void> {
+    if (!this.stateStore) return;
     
     // Subscribe to SSE broadcast channel for this user
     const broadcastChannel = getRealtimeBroadcastChannel(orgId, userId);
@@ -182,14 +221,20 @@ export class SSEService {
       return { ok: false, status: 503, code: 'transport_unavailable' };
     }
 
-    const prefix = `${SSE_CONNECTION_KEY_PREFIX}${userContext.organizationId}:${userContext.userId}:`;
-    const connKey = `${prefix}${randomUUID()}`;
+    const slotKey = sseSlotKey(userContext.organizationId, userContext.userId);
+    const member = randomUUID();
+    let admitted = false;
     try {
-      const count = await this.stateStore.countKeysByPrefix(prefix);
-      if (count >= MAX_SSE_CONNECTIONS_PER_USER) {
+      // Counting and reserving in ONE atomic step. Counting with `SCAN` and then
+      // reserving with `SETEX` left a window where every one of N concurrent
+      // requests read a pre-limit count and then reserved, so 11 simultaneous
+      // opens all got in under a limit of 10 (M-005).
+      admitted = await this.stateStore.reserveSlot(
+        slotKey, member, MAX_SSE_CONNECTIONS_PER_USER, SSE_CONNECTION_TTL_SECONDS,
+      );
+      if (!admitted) {
         return { ok: false, status: 429, code: 'connection_limit' };
       }
-      await this.stateStore.setKeyWithTTL(connKey, '1', SSE_CONNECTION_TTL_SECONDS);
       // MUST be awaited: it guarantees the subscription is live before initial
       // state is sent, so updates published meanwhile are not lost.
       await this.subscribeToUserChannels(userContext);
@@ -198,11 +243,11 @@ export class SSEService {
         `Refusing SSE connection: ${error instanceof Error ? error.message : String(error)}`,
         { component: 'SSEService' },
       );
-      this.stateStore.deleteKey(connKey).catch(() => {});
+      if (admitted) this.stateStore.releaseSlot(slotKey, member).catch(() => {});
       return { ok: false, status: 503, code: 'transport_unavailable' };
     }
 
-    return { ok: true, reservation: { connKey } };
+    return { ok: true, reservation: { slotKey, member } };
   }
 
   /**
@@ -219,7 +264,7 @@ export class SSEService {
     userContext: UserContext,
     reservation: SseConnectionReservation,
   ): void {
-    const { connKey } = reservation;
+    const { slotKey, member } = reservation;
     const key = this.getSessionKey(projectId, featureName, userContext);
 
     if (!this.clients.has(key)) {
@@ -229,17 +274,17 @@ export class SSEService {
     this.clients.get(key)!.add(res);
     logger.debug(`Client registered: ${key} (total: ${this.clients.get(key)!.size})`, { component: 'SSEService', projectId, featureName });
 
-    // Store connKey on response for heartbeat TTL refresh (see sse.routes.ts)
-    (res as any).__sseConnKey = connKey;
+    // Store the slot on the response for heartbeat refresh (see sse.routes.ts)
+    (res as any).__sseSlot = slotKey && member ? { slotKey, member } : undefined;
 
     const closeHandler = () => {
       this.clients.get(key)?.delete(res);
       if (this.clients.get(key)?.size === 0) {
         this.clients.delete(key);
       }
-      if (connKey && this.stateStore) {
-        this.stateStore.deleteKey(connKey).catch((err) => {
-          logger.error('Failed to delete SSE connection key', { component: 'SSEService' }, err);
+      if (slotKey && member && this.stateStore) {
+        this.stateStore.releaseSlot(slotKey, member).catch((err) => {
+          logger.error('Failed to release SSE connection slot', { component: 'SSEService' }, err);
         });
       }
       logger.debug(`Client disconnected: ${key}`, { component: 'SSEService', projectId, featureName });
@@ -256,9 +301,9 @@ export class SSEService {
    * workflow client stays visible to the per-account cap (M-005).
    */
   registerWorkflowClient(jobId: string, res: Response, reservation: SseConnectionReservation): void {
-    const { connKey } = reservation;
-    if (connKey) {
-      (res as any).__sseConnKey = connKey;
+    const { slotKey, member } = reservation;
+    if (slotKey && member) {
+      (res as any).__sseSlot = { slotKey, member };
     }
 
     if (!this.workflowClients.has(jobId)) {
@@ -274,9 +319,9 @@ export class SSEService {
       if (this.workflowClients.get(jobId)?.size === 0) {
         this.workflowClients.delete(jobId);
       }
-      if (connKey && this.stateStore) {
-        this.stateStore.deleteKey(connKey).catch((err) => {
-          logger.error('Failed to delete workflow SSE connection key', { component: 'SSEService' }, err);
+      if (slotKey && member && this.stateStore) {
+        this.stateStore.releaseSlot(slotKey, member).catch((err) => {
+          logger.error('Failed to release workflow SSE connection slot', { component: 'SSEService' }, err);
         });
       }
       logger.debug(`Workflow client disconnected: ${jobId}`, { component: 'SSEService', jobId });
@@ -632,9 +677,9 @@ export class SSEService {
       clients.forEach(res => {
         const handler = (res as any).__sseCloseHandler;
         if (handler) res.removeListener('close', handler);
-        const connKey = (res as any).__sseConnKey as string | undefined;
-        if (connKey && this.stateStore) {
-          deleteOps.push(this.stateStore.deleteKey(connKey).catch(() => {}));
+        const slot = (res as any).__sseSlot as { slotKey: string; member: string } | undefined;
+        if (slot && this.stateStore) {
+          deleteOps.push(this.stateStore.releaseSlot(slot.slotKey, slot.member).catch(() => {}));
         }
         try { res.end(); } catch { /* ignore */ }
         closed++;

@@ -23,6 +23,8 @@ import 'dotenv/config';
 import { createPreviewServer } from './PreviewServer';
 import { logger } from '../../utils/logger';
 import { logCorsConfigSummary } from '../../periphery/adapters/http/middleware/corsConfig';
+import { assertJwtAuthorityScope } from '../auth/JwtService';
+import { applySharedWorkspaceUmask } from '../../core/config/childIdentity';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { resolveRedisUrl } from '../../core/config/redisUrl';
 
@@ -36,6 +38,21 @@ async function main(): Promise<void> {
   // Local mode defaults, cloud mode fails fast (core/config/redisUrl.ts).
   try {
     resolveRedisUrl();
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error), {
+      component: 'PreviewServerProcess'
+    });
+    process.exit(1);
+  }
+
+  // Group-writable creations so the service and the child identity can each
+  // clean up the other's files in the shared workspace (no-op when unset).
+  applySharedWorkspaceUmask();
+
+  // This process VERIFIES sessions and spawns user-authored children under its
+  // own UID, so it must not hold signing authority (C-001).
+  try {
+    assertJwtAuthorityScope('verify');
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error), {
       component: 'PreviewServerProcess'

@@ -26,6 +26,8 @@ import {
   IDEInstance,
   IDEStatus
 } from '../../core/ports/ideOrchestrator';
+import * as crypto from 'crypto';
+
 import { StateStorePort } from '../../core/ports/stateStore';
 import { UserContext } from '../../core/types/user';
 import { createIDEKey, parseIDEKey, NO_FEATURE_KEY } from '../state/redisKeyUtils';
@@ -35,6 +37,14 @@ import { resolveK8sWorktreeMounts } from './k8sWorktreeMounts';
 import { waitForHttpReady } from './readiness';
 import { createIdePhaseEmitter, IdePhaseEmitter } from './idePhaseEmitter';
 import type { IdePhase } from '@ant/shared';
+
+/**
+ * The RAW instance key (`org:user:project:feature`), recorded verbatim on both the
+ * Pod and the Service. Resource NAMES are digests and labels are RFC-1123-sanitized,
+ * so this annotation is the only exact identity — every reuse, status read and
+ * delete compares against it (M-NEW-002).
+ */
+const INSTANCE_KEY_ANNOTATION = 'ant.example.com/instance-key';
 
 // ============================================
 // Kubernetes Types (simplified, avoid @kubernetes/client-node dependency)
@@ -206,10 +216,107 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   // Format: org:user:project:feature (4 parts)
 
   /**
-   * Create safe K8s resource name from instance key
+   * Create a safe, COLLISION-RESISTANT K8s resource name from an instance key.
+   *
+   * The previous form lower-cased the key, replaced every non-`[a-z0-9-]` character
+   * with `-`, and truncated to 63 characters — all three are lossy. Two real
+   * accounts whose verified emails differ only in where a `-` and an `@` sit
+   * (`a@b-c.com` / `a-b@c.com`) produced the SAME name, and so did any two keys
+   * agreeing on their first 63 characters. The name is what `stop()` / `forceReset()`
+   * hand to the Kubernetes DELETE endpoint, so a collision let one account tear down
+   * another's running IDE (M-NEW-002).
+   *
+   * A digest is injective for practical purposes: 128 bits of SHA-256, hex-encoded,
+   * inside the 63-character limit and always a valid RFC 1123 name. The raw key
+   * lives in the `ant.example.com/instance-key` annotation on BOTH the Pod and the
+   * Service, and every read/reuse/delete path checks it — the digest makes
+   * collisions vanishingly unlikely; the annotation check is what makes ownership
+   * verified rather than assumed.
    */
   private createResourceName(instanceKey: string): string {
+    const digest = crypto.createHash('sha256').update(instanceKey).digest('hex').slice(0, 32);
+    return `ide-${digest}`;
+  }
+
+  /**
+   * The pre-digest resource name.
+   *
+   * Kept ONLY to reclaim resources created before the rename. Without this, every
+   * IDE running at upgrade time becomes an orphan: `start()` looks under the new
+   * digest name, finds nothing, and creates a second pod on the same workspace
+   * mount, while idle eviction can never reach the first one either.
+   *
+   * Reclamation is gated on the raw-key annotation, which pods have always carried
+   * — so the lossiness that made this name unsafe as an identity cannot make the
+   * cleanup touch someone else's pod (M-NEW-002).
+   */
+  private legacyResourceName(instanceKey: string): string {
     return `ide-${instanceKey.replace(/[^a-z0-9-]/g, '-').toLowerCase()}`.substring(0, 63);
+  }
+
+  /**
+   * Delete a pre-rename Pod/Service pair for this exact key, if one exists.
+   *
+   * No-op when the legacy and current names coincide, when nothing is there, or when
+   * what is there belongs to a different key.
+   */
+  private async reclaimLegacyResources(instanceKey: string, resourceName: string): Promise<void> {
+    const legacyName = this.legacyResourceName(instanceKey);
+    if (legacyName === resourceName) return;
+
+    let legacyPod: K8sPod | null;
+    try {
+      legacyPod = await this.getPodIfExists(legacyName);
+    } catch {
+      return; // transport problem — the fresh create below is unaffected
+    }
+    if (!legacyPod) return;
+
+    if (legacyPod.metadata?.annotations?.[INSTANCE_KEY_ANNOTATION] !== instanceKey) {
+      logger.warn(
+        `Legacy IDE pod ${legacyName} does not carry our exact key — leaving it alone`,
+        { component: 'KubernetesIDEOrchestrator' },
+      );
+      return;
+    }
+
+    logger.warn(`Reclaiming pre-rename IDE resources: ${legacyName} → ${resourceName}`, {
+      component: 'KubernetesIDEOrchestrator',
+    });
+    try {
+      await this.deleteResources(legacyName, instanceKey);
+      await this.waitForPodDeletion(legacyName);
+    } catch (err: any) {
+      logger.warn(`Legacy IDE reclamation failed for ${legacyName}: ${err.message}`, {
+        component: 'KubernetesIDEOrchestrator',
+      });
+    }
+  }
+
+  /**
+   * Confirm an existing Pod belongs to `instanceKey` before it is reused, reported
+   * on, or deleted.
+   *
+   * `null` means "no Pod under this name" — the caller proceeds as if absent.
+   * `false` means a Pod exists but under a DIFFERENT raw key (a digest collision, or
+   * a legacy lossy name that two keys share). Reusing, exposing or deleting that Pod
+   * is exactly the cross-user action being closed, so callers must refuse.
+   */
+  private async assertPodOwnership(
+    resourceName: string,
+    instanceKey: string,
+  ): Promise<{ pod: K8sPod | null; owned: boolean }> {
+    const pod = await this.getPodIfExists(resourceName);
+    if (!pod) return { pod: null, owned: true };
+
+    const annotated = pod.metadata?.annotations?.[INSTANCE_KEY_ANNOTATION];
+    if (annotated === instanceKey) return { pod, owned: true };
+
+    logger.error(
+      `Refusing to act on IDE pod ${resourceName}: it belongs to ${annotated ?? '(no annotation)'}, not ${instanceKey}`,
+      { component: 'KubernetesIDEOrchestrator' },
+    );
+    return { pod, owned: false };
   }
 
   /**
@@ -396,7 +503,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           'user': this.sanitizeLabelValue(userContext.userId)
         },
         annotations: {
-          'ant.example.com/instance-key': instanceKey,
+          [INSTANCE_KEY_ANNOTATION]: instanceKey,
           'ant.example.com/workspace-path': workspacePath
         }
       },
@@ -570,6 +677,12 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         labels: {
           'app': 'ant-ide',
           'instance': this.sanitizeLabelValue(instanceKey)
+        },
+        // The RAW key, exact. Labels are lossy (RFC 1123 strips `@`), so the label
+        // above cannot decide ownership — the Service delete path needs the same
+        // exact-match check the Pod path has (M-NEW-002).
+        annotations: {
+          [INSTANCE_KEY_ANNOTATION]: instanceKey
         }
       },
       spec: {
@@ -603,10 +716,26 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     }, { resourceName, namespace: this.options.namespace, workspacePath });
 
     try {
-      // Check if pod already exists
+      // Check if pod already exists — and that it is OURS. A pod under this name
+      // whose annotation names a different raw key must never be reused (its host
+      // would be registered under our key) nor deleted (that is the cross-user
+      // teardown being closed). Fail loudly instead (M-NEW-002).
       logger.debug(`Checking if pod exists: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
-      const existingPod = await this.getPodIfExists(resourceName);
+      const ownership = await this.assertPodOwnership(resourceName, instanceKey);
+      if (!ownership.owned) {
+        return {
+          success: false,
+          message: 'IDE resource name collision — the existing pod belongs to another workspace. Please report this.',
+        };
+      }
+      const existingPod = ownership.pod;
       logger.debug(`Pod exists check: ${existingPod ? 'exists' : 'not found'}`, { component: 'KubernetesIDEOrchestrator' });
+
+      // Nothing under the current name — a pre-rename pod for this same key may
+      // still be running on the workspace mount. Reclaim it before creating.
+      if (!existingPod) {
+        await this.reclaimLegacyResources(instanceKey, resourceName);
+      }
       
       if (existingPod) {
         // Pod exists - check status
@@ -629,7 +758,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             logger.warn(`Mount drift detected — recreating pod: ${resourceName}`, {
               component: 'KubernetesIDEOrchestrator',
             }, { resourceName });
-            await this.deleteResources(resourceName);
+            await this.deleteResources(resourceName, instanceKey);
             await this.waitForPodDeletion(resourceName);
             // fall through to fresh create
           } else {
@@ -639,7 +768,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         } else {
           // Pod exists but not running (Failed, Pending, etc) - delete and recreate
           logger.info(`Pod not running (${existingPod.status?.phase}), recreating: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
-          await this.deleteResources(resourceName);
+          await this.deleteResources(resourceName, instanceKey);
           await this.waitForPodDeletion(resourceName);
         }
       }
@@ -747,7 +876,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
       // Cleanup on failure
       try {
-        await this.deleteResources(resourceName);
+        await this.deleteResources(resourceName, instanceKey);
       } catch {}
 
       return {
@@ -895,6 +1024,26 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   }
 
   /**
+   * Is the Service under this name annotated with `instanceKey`?
+   *
+   * Absent Service → `false` (nothing to delete). Present but annotated with a
+   * different key → `false`, so a Pod-less delete cannot remove someone else's
+   * Service. A Service with no annotation at all is legacy and treated as not-ours;
+   * it is cleaned up when its own Pod is deleted under a verified key.
+   */
+  private async isServiceOwned(resourceName: string, instanceKey: string): Promise<boolean> {
+    try {
+      const svc = await this.k8sRequest<K8sService>(
+        `/api/v1/namespaces/${this.options.namespace}/services/${resourceName}`,
+      );
+      return svc?.metadata?.annotations?.[INSTANCE_KEY_ANNOTATION] === instanceKey;
+    } catch (error: any) {
+      if (error.message?.includes('404')) return false;
+      throw error;
+    }
+  }
+
+  /**
    * Wait for pod to be fully deleted
    */
   private async waitForPodDeletion(resourceName: string, timeoutMs: number = TIMEOUTS.POD_DELETION): Promise<void> {
@@ -988,10 +1137,33 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
    * Pass `gracePeriodSeconds: 0` from `forceReset()` for immediate teardown
    * when the user explicitly asks to escape a stuck pod.
    */
+  /**
+   * Delete the Pod and Service for `resourceName`.
+   *
+   * `instanceKey` is REQUIRED: this issues Kubernetes DELETE calls addressed by
+   * name, and a name is a digest of the key, not the key. Before either delete the
+   * Pod's `instance-key` annotation is compared to the caller's exact key, so a
+   * name collision (or a legacy lossy name shared by two keys) cannot tear down
+   * another account's running IDE (M-NEW-002). The Service is deleted only when the
+   * Pod verified — or, when there is no Pod, only if the Service's own annotation
+   * matches.
+   */
   private async deleteResources(
     resourceName: string,
+    instanceKey: string,
     gracePeriodSeconds: number = POD_DELETION_GRACE_SECONDS,
   ): Promise<void> {
+    const ownership = await this.assertPodOwnership(resourceName, instanceKey);
+    if (!ownership.owned) {
+      throw new Error(
+        `Refusing to delete IDE resources ${resourceName}: they belong to another workspace`,
+      );
+    }
+    // The Service is deleted only on a verified basis: either its Pod was just
+    // verified as ours, or the Service carries our exact annotation itself. A
+    // Pod-less name must not take a Service down on the strength of the name alone.
+    const serviceOwned = ownership.pod !== null || (await this.isServiceOwned(resourceName, instanceKey));
+
     logger.info(`Deleting K8s resources: ${resourceName} (grace=${gracePeriodSeconds}s)`, {
       component: 'KubernetesIDEOrchestrator'
     });
@@ -1014,6 +1186,13 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           component: 'KubernetesIDEOrchestrator'
         });
       }
+    }
+
+    if (!serviceOwned) {
+      logger.info(`Service ${resourceName} not verified as ours — leaving it in place`, {
+        component: 'KubernetesIDEOrchestrator'
+      });
+      return;
     }
 
     try {
@@ -1053,7 +1232,10 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     });
 
     try {
-      await this.deleteResources(resourceName);
+      await this.deleteResources(resourceName, instanceKey);
+      // Also clear a pre-rename pair for the same key, so an explicit stop (and the
+      // idle sweep that calls it) reaches resources created before the upgrade.
+      await this.reclaimLegacyResources(instanceKey, resourceName);
       // Block until the pod is fully gone so the caller (e.g. project deletion)
       // can safely run fs.rm without racing with EFS open file handles.
       // Tolerate timeout: log + proceed — the deletion is in progress, and
@@ -1111,7 +1293,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     });
 
     try {
-      await this.deleteResources(resourceName, 0);
+      await this.deleteResources(resourceName, instanceKey, 0);
 
       try {
         await this.waitForPodDeletion(resourceName);
@@ -1170,6 +1352,16 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         `/api/v1/namespaces/${this.options.namespace}/pods/${resourceName}`
       );
 
+      // Exact-key check before reporting anything: a pod under this name belonging
+      // to another raw key must read as absent, not as the caller's own (M-NEW-002).
+      if (pod.metadata?.annotations?.[INSTANCE_KEY_ANNOTATION] !== instanceKey) {
+        logger.warn(
+          `IDE status for ${resourceName} suppressed: pod belongs to another workspace`,
+          { component: 'KubernetesIDEOrchestrator' },
+        );
+        return null;
+      }
+
       const status: IDEStatus = pod.status?.phase === 'Running' ? 'running' :
         pod.status?.phase === 'Pending' ? 'starting' :
         pod.status?.phase === 'Failed' ? 'error' : 'stopped';
@@ -1200,7 +1392,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       );
 
       return response.items.flatMap(pod => {
-        const instanceKey = pod.metadata.annotations?.['ant.example.com/instance-key'] || pod.metadata.name;
+        const instanceKey = pod.metadata.annotations?.[INSTANCE_KEY_ANNOTATION] || pod.metadata.name;
 
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
@@ -1245,7 +1437,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       );
 
       return response.items.flatMap(pod => {
-        const instanceKey = pod.metadata.annotations?.['ant.example.com/instance-key'] || pod.metadata.name;
+        const instanceKey = pod.metadata.annotations?.[INSTANCE_KEY_ANNOTATION] || pod.metadata.name;
 
         // Use centralized parsing function for IDE instance key
         const parsed = parseIDEKey(instanceKey);
@@ -1312,11 +1504,18 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
 
     this.stopIdleCheck();
 
-    // Delete all pods with our label
+    // Delete all pods with our label. Each pod's OWN annotation supplies the key,
+    // so the ownership check inside `deleteResources` is satisfied by construction
+    // (this path is process shutdown, not a user request).
     try {
-      const instances = await this.list();
-      for (const instance of instances) {
-        await this.deleteResources(instance.instanceId);
+      const response = await this.k8sRequest<{ items: K8sPod[] }>(
+        `/api/v1/namespaces/${this.options.namespace}/pods?labelSelector=app=ant-ide`,
+      );
+      for (const pod of response.items || []) {
+        const name = pod.metadata?.name;
+        const key = pod.metadata?.annotations?.[INSTANCE_KEY_ANNOTATION];
+        if (!name || !key) continue;
+        await this.deleteResources(name, key);
       }
     } catch (error: any) {
       logger.error('Failed to cleanup K8s IDEs', { component: 'KubernetesIDEOrchestrator' }, error);

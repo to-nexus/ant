@@ -18,12 +18,15 @@ import * as path from 'path';
 import { ProcessSpawner } from '../../src/periphery/adapters/http/services/PreviewService/managers/ProcessSpawner';
 import type { ServiceConnection } from '../../src/core/ports/portRegistry';
 
+// The write is bound to a workspace root (H-003) — with no separate project root
+// the package dir IS the boundary, which is what ProcessSpawner passes for a
+// single-package preview.
 const backfill = (
   spawner: ProcessSpawner,
   connections: ServiceConnection[] | undefined,
   packageSource: string | undefined,
   pkgPath: string,
-): void => (spawner as any).backfillMockToggles(connections, packageSource, pkgPath);
+): void => (spawner as any).backfillMockToggles(pkgPath, connections, packageSource, pkgPath);
 
 const readEnv = (dir: string): string => {
   const p = path.join(dir, '.env');

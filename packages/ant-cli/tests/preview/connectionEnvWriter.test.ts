@@ -302,3 +302,56 @@ describe('syncEnvStructureFromExample (.env.example → .env, value-preserving)'
     expect(readEnv()).toContain('USER_ONLY=keepme');
   });
 });
+
+/**
+ * H-003: the panel-save writers took an absolute `pkgDir/.env` path, so a
+ * same-workspace preview child that repointed an intermediate component (`apps`)
+ * after `resolveConnectionDir` had approved it steered the `.env` write outside
+ * the workspace. The writers now take a workspace-bound `{ root, rel }` target
+ * and descend from the root.
+ */
+describe('env writers are bound to the workspace root (H-003)', () => {
+  let base: string;
+  let workspace: string;
+  let outside: string;
+
+  beforeEach(() => {
+    base = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'ant-env-bound-'));
+    workspace = path.join(base, 'workspace');
+    outside = path.join(base, 'outside');
+    fs.mkdirSync(path.join(workspace, 'apps', 'api'), { recursive: true });
+    fs.mkdirSync(outside, { recursive: true });
+  });
+
+  afterEach(() => fs.rmSync(base, { recursive: true, force: true }));
+
+  const target = (rel: string) => ({ root: workspace, rel });
+
+  it('writes a normal package .env through the bound target', () => {
+    mirrorConnectionToEnv(target('apps/api/.env'), {
+      id: 'stripe', envVar: 'STRIPE_API_KEY', category: 'infrastructure', value: 'https://x',
+    } as any);
+    expect(fs.readFileSync(path.join(workspace, 'apps/api/.env'), 'utf-8')).toContain('STRIPE_API_KEY=https://x');
+  });
+
+  it('refuses a write whose intermediate component points out of the workspace', () => {
+    fs.symlinkSync(outside, path.join(workspace, 'jump'));
+    expect(() =>
+      mirrorConnectionToEnv(target('jump/.env'), {
+        id: 'stripe', envVar: 'STRIPE_API_KEY', category: 'infrastructure', value: 'v',
+      } as any),
+    ).toThrow(/outside the allowed boundary/);
+    expect(fs.existsSync(path.join(outside, '.env'))).toBe(false);
+  });
+
+  it('refuses an annotation write through the same escaped component', () => {
+    fs.symlinkSync(outside, path.join(workspace, 'jump'));
+    expect(() =>
+      upsertConnectionAnnotation(target('jump/.env.example'), {
+        id: 'stripe', envVar: 'STRIPE_API_KEY', category: 'infrastructure',
+        resolution: { type: 'url' },
+      } as any),
+    ).toThrow(/outside the allowed boundary/);
+    expect(fs.existsSync(path.join(outside, '.env.example'))).toBe(false);
+  });
+});

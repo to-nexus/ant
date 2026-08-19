@@ -255,3 +255,30 @@ export function getDownloadUrl(
   // Authentication via JWT cookie (credentials: 'include' on fetch, or same-origin browser navigation)
   return `${API_BASE()}/projects/${encodeURIComponent(projectId)}/features/${featureSeg(featureName)}/download?path=${encodeURIComponent(filePath)}`;
 }
+
+/**
+ * Ask whether a folder is within the ZIP download budget, before navigating to it.
+ *
+ * A folder download is a browser navigation, so a refusal body would render as raw
+ * JSON in a new tab. This runs the same bounded walk the server would run anyway —
+ * it builds no archive and holds no stream slot — so asking first costs little and
+ * lets the UI show a real message.
+ *
+ * Resolves `null` when the download may proceed, or the `ApiError` to surface.
+ */
+export async function preflightDirectoryDownload(
+  projectId: string,
+  featureName: string,
+  dirPath: string,
+): Promise<ApiError | null> {
+  const url = `${getDownloadUrl(projectId, featureName, dirPath)}&preflight=1`;
+  try {
+    const res = await authFetch(url, { method: 'GET' });
+    if (res.ok || res.status === 204) return null;
+    const body = await res.json().catch(() => ({}));
+    return new ApiError(body.message ?? body.error ?? 'Download refused', res.status, body);
+  } catch {
+    // A transport failure here must not block the download attempt itself.
+    return null;
+  }
+}

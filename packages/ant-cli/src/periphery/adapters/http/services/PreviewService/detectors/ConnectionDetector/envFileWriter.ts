@@ -1,5 +1,9 @@
-import * as fs from 'fs';
 import * as path from 'path';
+import {
+  mkdirpContained,
+  readTextContained,
+  writeTextContained,
+} from '../../../../../../../core/config/containedIo';
 import { parseEnvLine } from './utils';
 import { findNextEnvLine } from './parseEnvAnnotations';
 import { ServiceConnection } from '../../../../../../../core/ports/portRegistry';
@@ -12,6 +16,54 @@ import {
   serializeAnnotationLine,
   type DeployFramework,
 } from '../../../../../../../core/prompt/builder/serviceVirtualization/connectionModel';
+
+
+/**
+ * Where an env file lives, and what boundary its write is bound to.
+ *
+ * `{ root, rel }` is the form every HTTP-reachable caller must use: the write
+ * descends from `root` one component at a time, so a user-authored preview child
+ * that swaps an intermediate directory (`apps`) for an external symlink between
+ * the route's containment check and this write cannot redirect the `.env` out of
+ * the workspace (H-003).
+ *
+ * A bare absolute path anchors the descent at the file's own parent directory.
+ * That is correct for a path the caller already resolved inside a trusted root
+ * (spawn-time toggle backfill, unit tests) and is what the ancestor-bound form
+ * exists to replace everywhere else.
+ */
+export type EnvFileTarget = string | { root: string; rel: string };
+
+function normalizeTarget(target: EnvFileTarget): { root: string; rel: string } {
+  if (typeof target !== 'string') {
+    return { root: path.resolve(target.root), rel: target.rel };
+  }
+  const abs = path.resolve(target);
+  return { root: path.dirname(abs), rel: path.basename(abs) };
+}
+
+/** `null` = absent / unreadable / refused. Every read in this module goes here. */
+function readEnvFile(target: EnvFileTarget): string | null {
+  const { root, rel } = normalizeTarget(target);
+  const result = readTextContained(root, rel);
+  return result.ok ? result.text : null;
+}
+
+/** Every write in this module goes here. Throws loudly rather than silently skipping. */
+function writeEnvFile(target: EnvFileTarget, text: string): void {
+  const { root, rel } = normalizeTarget(target);
+  const parent = path.dirname(rel);
+  if (parent !== '.' && parent !== '') {
+    const made = mkdirpContained(root, parent);
+    if (!made.ok) {
+      throw new Error(`Cannot write ${rel}: destination is outside the allowed boundary (${made.reason})`);
+    }
+  }
+  const written = writeTextContained(root, rel, text);
+  if (!written.ok) {
+    throw new Error(`Cannot write ${rel}: destination is outside the allowed boundary (${written.reason})`);
+  }
+}
 
 /** POSIX environment variable name. */
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -48,21 +100,19 @@ function assertEnvKey(key: string): void {
  * that's the only payload the toggle endpoint emits today.
  */
 export function setEnvValue(
-  envFilePath: string,
+  target: EnvFileTarget,
   key: string,
   value: string,
 ): void {
   assertEnvKey(key);
   const newLine = `${key}=${value}`;
 
-  if (!fs.existsSync(envFilePath)) {
-    const dir = path.dirname(envFilePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(envFilePath, `${newLine}\n`, 'utf-8');
+  const original = readEnvFile(target);
+  if (original === null) {
+    writeEnvFile(target, `${newLine}\n`);
     return;
   }
 
-  const original = fs.readFileSync(envFilePath, 'utf-8');
   const lines = original.split('\n');
   let replaced = false;
 
@@ -85,13 +135,13 @@ export function setEnvValue(
     next = `${original}${trailingNewline}${newLine}\n`;
   }
 
-  fs.writeFileSync(envFilePath, next, 'utf-8');
+  writeEnvFile(target, next);
 }
 
-/** First candidate (in preference order) already declared in the `.env` file. */
-function findExistingKey(envFilePath: string, candidates: string[]): string | undefined {
+/** First candidate (in preference order) already declared in the given file text. */
+function findExistingKey(text: string, candidates: string[]): string | undefined {
   const present = new Set<string>();
-  for (const line of fs.readFileSync(envFilePath, 'utf-8').split('\n')) {
+  for (const line of text.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
     const [k] = parseEnvLine(trimmed);
@@ -115,7 +165,7 @@ function findExistingKey(envFilePath: string, candidates: string[]): string | un
  * `setEnvValue` for the write — no second writer. Returns the key written.
  */
 export function setToggleEnvValue(
-  envFilePath: string,
+  target: EnvFileTarget,
   bareToggle: string,
   framework: DeployFramework | undefined,
   value: string,
@@ -125,12 +175,11 @@ export function setToggleEnvValue(
   // Prefer the framework-prefixed name; fall back to bare.
   const preference = prefix ? [`${prefix}${bareToggle}`, bareToggle] : [bareToggle];
 
-  const existing = fs.existsSync(envFilePath)
-    ? findExistingKey(envFilePath, preference)
-    : undefined;
+  const current = readEnvFile(target);
+  const existing = current === null ? undefined : findExistingKey(current, preference);
   const targetKey = existing ?? preference[0];
 
-  setEnvValue(envFilePath, targetKey, value);
+  setEnvValue(target, targetKey, value);
   return targetKey;
 }
 
@@ -176,15 +225,15 @@ function annotationIndicesBoundTo(lines: string[], envVar: string): number[] {
  * default-ON lives in the file (one SSOT), not in a runtime injection slot.
  */
 export function setToggleDefaultIfAbsent(
-  envFilePath: string,
+  target: EnvFileTarget,
   bareToggle: string,
   framework: DeployFramework | undefined,
 ): void {
   const prefix = frameworkTogglePrefix(framework);
   const candidates = prefix ? [`${prefix}${bareToggle}`, bareToggle] : [bareToggle];
-  const present =
-    fs.existsSync(envFilePath) && findExistingKey(envFilePath, candidates) !== undefined;
-  if (!present) setToggleEnvValue(envFilePath, bareToggle, framework, 'true');
+  const current = readEnvFile(target);
+  const present = current !== null && findExistingKey(current, candidates) !== undefined;
+  if (!present) setToggleEnvValue(target, bareToggle, framework, 'true');
 }
 
 /**
@@ -200,7 +249,7 @@ export function setToggleDefaultIfAbsent(
  * additionally gets its mock-toggle default line when absent.
  */
 export function upsertConnectionAnnotation(
-  envExamplePath: string,
+  target: EnvFileTarget,
   conn: ServiceConnection,
   framework?: DeployFramework,
 ): void {
@@ -210,22 +259,16 @@ export function upsertConnectionAnnotation(
     resolutionToModifier(conn.resolution),
   );
 
-  if (!fs.existsSync(envExamplePath)) {
-    const dir = path.dirname(envExamplePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(envExamplePath, `${annotationLine}\n${conn.envVar}=\n`, 'utf-8');
+  const original = readEnvFile(target);
+  if (original === null) {
+    writeEnvFile(target, `${annotationLine}\n${conn.envVar}=\n`);
   } else {
-    const original = fs.readFileSync(envExamplePath, 'utf-8');
     const lines = original.split('\n');
     const keyIdx = findKeyLineIndex(lines, conn.envVar);
 
     if (keyIdx === -1) {
       const sep = original === '' || original.endsWith('\n') ? '' : '\n';
-      fs.writeFileSync(
-        envExamplePath,
-        `${original}${sep}${annotationLine}\n${conn.envVar}=\n`,
-        'utf-8',
-      );
+      writeEnvFile(target, `${original}${sep}${annotationLine}\n${conn.envVar}=\n`);
     } else {
       // Locate the existing annotation with the read-side binding rule
       // (comment-tolerant), not strict `keyIdx - 1` adjacency.
@@ -237,12 +280,12 @@ export function upsertConnectionAnnotation(
       } else {
         lines.splice(keyIdx, 0, annotationLine); // KEY present, no annotation → insert above
       }
-      fs.writeFileSync(envExamplePath, lines.join('\n'), 'utf-8');
+      writeEnvFile(target, lines.join('\n'));
     }
   }
 
   if (conn.category === 'business' && conn.virtualization) {
-    setToggleDefaultIfAbsent(envExamplePath, conn.virtualization.toggleEnvVar, framework);
+    setToggleDefaultIfAbsent(target, conn.virtualization.toggleEnvVar, framework);
   }
 }
 
@@ -258,15 +301,15 @@ export function upsertConnectionAnnotation(
  * (Save is the single place the panel toggle lands).
  */
 export function mirrorConnectionToEnv(
-  envPath: string,
+  target: EnvFileTarget,
   conn: ServiceConnection,
   framework?: DeployFramework,
 ): void {
-  setEnvValue(envPath, conn.envVar, conn.value || '');
+  setEnvValue(target, conn.envVar, conn.value || '');
 
   if (conn.category === 'business' && conn.virtualization) {
     setToggleEnvValue(
-      envPath,
+      target,
       conn.virtualization.toggleEnvVar,
       framework,
       conn.virtualization.active ? 'true' : 'false',
@@ -280,17 +323,18 @@ export function mirrorConnectionToEnv(
  * code); only registry membership is dropped.
  */
 export function removeConnectionAnnotation(
-  envExamplePath: string,
+  target: EnvFileTarget,
   conn: ServiceConnection,
 ): void {
-  if (!fs.existsSync(envExamplePath)) return;
-  const lines = fs.readFileSync(envExamplePath, 'utf-8').split('\n');
+  const original = readEnvFile(target);
+  if (original === null) return;
+  const lines = original.split('\n');
   // Same comment-tolerant binding rule as the read/upsert side; removes every
   // annotation bound to this KEY (collapses any leftover duplicates too).
   const bound = annotationIndicesBoundTo(lines, conn.envVar);
   if (bound.length === 0) return;
   for (let j = bound.length - 1; j >= 0; j--) lines.splice(bound[j], 1);
-  fs.writeFileSync(envExamplePath, lines.join('\n'), 'utf-8');
+  writeEnvFile(target, lines.join('\n'));
 }
 
 /**
@@ -300,14 +344,14 @@ export function removeConnectionAnnotation(
  * structure sync never deletes (a `.env` key absent from `.env.example` may be
  * plain user config). No-op when the key or file is absent.
  */
-export function removeEnvKey(envPath: string, key: string): void {
-  if (!fs.existsSync(envPath)) return;
-  const original = fs.readFileSync(envPath, 'utf-8');
+export function removeEnvKey(target: EnvFileTarget, key: string): void {
+  const original = readEnvFile(target);
+  if (original === null) return;
   const lines = original.split('\n');
   const idx = findKeyLineIndex(lines, key);
   if (idx === -1) return;
   lines.splice(idx, 1);
-  fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
+  writeEnvFile(target, lines.join('\n'));
 }
 
 /**
@@ -326,16 +370,18 @@ export function removeEnvKey(envPath: string, key: string): void {
  * `removeEnvKey`. Called at gen-code completion and on panel annotation change.
  */
 export function syncEnvStructureFromExample(
-  envExamplePath: string,
-  envPath: string,
+  exampleTarget: EnvFileTarget,
+  envTarget: EnvFileTarget,
   framework?: DeployFramework,
 ): void {
-  if (!fs.existsSync(envExamplePath)) return;
-  const lines = fs.readFileSync(envExamplePath, 'utf-8').split('\n');
+  const example = readEnvFile(exampleTarget);
+  if (example === null) return;
+  const lines = example.split('\n');
 
   const envKeys = new Set<string>();
-  if (fs.existsSync(envPath)) {
-    for (const line of fs.readFileSync(envPath, 'utf-8').split('\n')) {
+  const envText = readEnvFile(envTarget);
+  if (envText !== null) {
+    for (const line of envText.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
       const [k] = parseEnvLine(trimmed);
@@ -352,11 +398,11 @@ export function syncEnvStructureFromExample(
     if (!envVar || isMockToggleVar(envVar)) continue;
 
     if (!envKeys.has(envVar)) {
-      setEnvValue(envPath, envVar, '');
+      setEnvValue(envTarget, envVar, '');
       envKeys.add(envVar);
     }
     if (annotation.category === 'business') {
-      setToggleDefaultIfAbsent(envPath, deriveToggleVar(annotation.name), framework);
+      setToggleDefaultIfAbsent(envTarget, deriveToggleVar(annotation.name), framework);
     }
   }
 }

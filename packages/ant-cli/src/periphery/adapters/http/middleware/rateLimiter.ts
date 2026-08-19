@@ -63,6 +63,10 @@ let jobExecuteInner: RequestHandler | null = null;
 let chatInner: RequestHandler | null = null;
 let previewInner: RequestHandler | null = null;
 let organizationsInner: RequestHandler | null = null;
+let uploadInner: RequestHandler | null = null;
+let treeInner: RequestHandler | null = null;
+let downloadInner: RequestHandler | null = null;
+let forceRefreshInner: RequestHandler | null = null;
 
 const warnedOnce = new Set<string>();
 
@@ -116,6 +120,23 @@ export const previewRateLimiter: RequestHandler = makeProxy('preview', () => pre
  * `req.user.id`, so `perUserKeyGenerator` works for them too.
  */
 export const organizationsRateLimiter: RequestHandler = makeProxy('organizations', () => organizationsInner);
+
+/**
+ * Expensive-request limiters.
+ *
+ * These endpoints were all owner-checked and path-checked but cost-unbounded: the
+ * gates proved WHOSE data it was, never how much work it was. One authenticated
+ * account could hold multipart buffers, recursive tree scans and ZIP streams open
+ * in parallel and saturate the shared pod (M-007, H-008, M-009, M-NEW-004). Rate is
+ * the first half of the answer; the in-flight semaphore in
+ * `core/redis/concurrencySlot` is the second — a rate limit alone still allows a
+ * few very long, very heavy requests.
+ */
+export const uploadRateLimiter: RequestHandler = makeProxy('upload', () => uploadInner);
+export const treeRateLimiter: RequestHandler = makeProxy('tree', () => treeInner);
+export const downloadRateLimiter: RequestHandler = makeProxy('download', () => downloadInner);
+/** `?force=true` bypasses the tree cache by design; the bypass itself needs a budget. */
+export const forceRefreshRateLimiter: RequestHandler = makeProxy('forceRefresh', () => forceRefreshInner);
 
 /**
  * Bootstrap-time initialization for every rate limiter.
@@ -176,6 +197,50 @@ export function initializeRateLimiters(): void {
     keyGenerator: perUserKeyGenerator,
     store: createStore('organizations'),
     message: { error: 'Too many organization search requests', message: 'Please slow down.' },
+  });
+
+  uploadInner = rateLimit({
+    windowMs: 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('upload'),
+    message: { error: 'Too many uploads', message: 'Please wait before uploading more files.' },
+  });
+
+  treeInner = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('tree'),
+    message: { error: 'Too many file-tree requests', message: 'Please slow down.' },
+  });
+
+  downloadInner = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('download'),
+    message: { error: 'Too many downloads', message: 'Please wait before downloading again.' },
+  });
+
+  // Tighter than the cached read: each one starts a full filesystem walk.
+  forceRefreshInner = rateLimit({
+    windowMs: 60 * 1000,
+    max: 12,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: perUserKeyGenerator,
+    store: createStore('forcerefresh'),
+    message: {
+      error: 'Too many forced refreshes',
+      message: 'The file tree is refreshed automatically; please wait before forcing another.',
+    },
   });
 
   initialized = true;

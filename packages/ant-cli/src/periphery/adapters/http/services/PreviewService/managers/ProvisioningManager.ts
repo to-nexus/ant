@@ -4,6 +4,7 @@ import { logger } from '../../../../../../utils/logger';
 import type { LogCallback, PackageInfo } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { buildPackageEnv, composeChildEnv } from './envAssembly';
+import { childSpawnIdentity } from '../../../../../../core/config/childIdentity';
 import type { PreviewManifestResult } from './previewManifest';
 
 /**
@@ -155,6 +156,7 @@ export class ProvisioningManager {
         shell: cmd.shell,
         stdio: 'pipe',
         env,
+        ...childSpawnIdentity(),
       });
 
       let stderr = '';

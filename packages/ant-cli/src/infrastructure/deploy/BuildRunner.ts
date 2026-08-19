@@ -11,6 +11,7 @@ import { spawn } from 'child_process';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 import { detectPackageManager, buildInstallCommand, findProjectRoot } from '../../utils/packageManager';
 import { composeChildEnv } from '../../core/config/childEnv';
+import { childSpawnIdentity } from '../../core/config/childIdentity';
 
 export interface BuildResult {
   success: boolean;
@@ -152,6 +153,7 @@ async function ensureDependencies(
       env: composeChildEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
+      ...childSpawnIdentity(),
     });
 
     const timer = setTimeout(() => {
@@ -282,6 +284,7 @@ export async function runBuild(
       env: composeChildEnv(envVars, { NODE_ENV: 'production' }),
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
+      ...childSpawnIdentity(),
     });
 
     const timer = setTimeout(() => {

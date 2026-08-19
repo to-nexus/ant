@@ -58,6 +58,15 @@ RUN echo "🔨 Building for environment: ${BUILD_ENV}" && \
       fi; \
     fi
 
+# Preview/deploy CONTENT origin override.
+#
+# The content origin must differ from the origin the control-plane APIs answer on
+# (report H-NEW-001), and which host that is depends on the deployment, not on the
+# committed env file. A build arg appends it so the same env file serves both the
+# single-host default and a split-origin deployment.
+ARG VITE_PREVIEW_CONTENT_HOST=
+RUN if [ -n "${VITE_PREVIEW_CONTENT_HOST}" ]; then       echo "" >> ./packages/ant-ui/.env.production &&       echo "VITE_PREVIEW_CONTENT_HOST=${VITE_PREVIEW_CONTENT_HOST}" >> ./packages/ant-ui/.env.production &&       echo "📄 content origin override applied";     fi
+
 # Build ant-ui (Vite will load .env.production automatically)
 RUN pnpm --filter @ant/ui build
 

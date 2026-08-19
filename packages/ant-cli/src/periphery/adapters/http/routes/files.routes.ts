@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, type RequestHandler } from 'express';
 import { registerFeatureParamDecoders, decodeFeatureSegment } from './helpers/featureParam';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,14 +11,40 @@ import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
-import { writeBufferVerified, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
+import { writeBufferVerifiedAbs, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
+import { boundedMultipart } from '../middleware/boundedMultipart';
+import {
+  downloadRateLimiter,
+  forceRefreshRateLimiter,
+  treeRateLimiter,
+} from '../middleware/rateLimiter';
+import { acquireLock } from '../../../../core/redis/distributedLock';
+import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
-import { resolveFeatureScopedFilePath } from './helpers/featureFiles';
+import { resolveFeatureScopedFilePath, measureArchiveInput } from './helpers/featureFiles';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 
 /**
  * File operations (read, write, delete, upload)
  */
+/** Single-flight window for a forced tree scan. Above a normal walk, below a timeout. */
+const FILE_TREE_SCAN_LOCK_TTL_SECONDS = 30;
+const FILE_TREE_SCAN_WAIT_MS = 250;
+const FILE_TREE_SCAN_WAIT_ATTEMPTS = 8;
+
+/**
+ * The forced-refresh budget applies only to the bypass, not to normal cached reads
+ * — a limiter on every tree read would throttle ordinary UI polling.
+ */
+const forceRefreshOnly: RequestHandler = (req, res, next) =>
+  req.query.force === 'true' ? forceRefreshRateLimiter(req, res, next) : next();
+
+/** Simultaneous directory ZIP streams per account, cluster-wide. */
+const DIRECTORY_DOWNLOAD_MAX_INFLIGHT = 2;
+/** Entries and raw bytes one archive may cover. */
+const DIRECTORY_DOWNLOAD_MAX_ENTRIES = 20_000;
+const DIRECTORY_DOWNLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
 export function createFilesRoutes(deps: {
   projectService: ProjectService;
   stateStore?: StateStorePort;
@@ -104,32 +130,83 @@ export function createFilesRoutes(deps: {
     limits: UPLOAD_LIMITS,
   });
   
-  // Get file tree for a feature
-  router.get('/projects/:id/features/:feature/files', async (req: Request, res: Response) => {
+  /**
+   * Get file tree for a feature.
+   *
+   * `force=true` exists to pick up filesystem changes ANT did not make, so it must
+   * keep bypassing the cache. What it must NOT keep doing is start a fresh
+   * recursive scan per request with no coordination: the mutation-side
+   * single-flight lives in `WorkflowBridge` and is process-local, so concurrent
+   * forced reads — including across pods — each ran the whole walk (M-009).
+   *
+   * Two gates, both cluster-wide:
+   *   - a refresh budget (`forceRefreshRateLimiter`), because each bypass is a full
+   *     filesystem walk;
+   *   - a Redis single-flight per `(org,user,project,feature)`: the lock owner scans
+   *     and caches, and a loser waits briefly and reads the cache the owner just
+   *     wrote rather than starting a second scan.
+   */
+  router.get('/projects/:id/features/:feature/files', treeRateLimiter, forceRefreshOnly, async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
       const userContext = extractUserContext(req);
       const forceRefresh = req.query.force === 'true';
 
+      const readCache = async () => {
+        if (!deps.stateStore) return null;
+        try {
+          return await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
+        } catch {
+          return null; // Fall through to EFS on Redis error
+        }
+      };
+
       // Redis cache first (bypasses EFS/NFS attribute caching in multi-pod cloud deployments)
       // Skip cache when force=true (handles external filesystem changes not tracked by ANT)
-      if (deps.stateStore && !forceRefresh) {
+      if (!forceRefresh) {
+        const cached = await readCache();
+        if (cached) return res.json(cached);
+      }
+
+      const scanAndCache = async () => {
+        const tree = await deps.projectService.getFileTree(projectId, featureName, userContext);
+        if (deps.stateStore && tree) {
+          await deps.stateStore
+            .setFileTreeCache(userContext.userId, projectId, featureName, tree)
+            .catch(() => {});
+        }
+        return tree;
+      };
+
+      if (!forceRefresh || !deps.stateStore) {
+        return res.json(await scanAndCache());
+      }
+
+      const lockKey = `ant:lock:filetree:${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName}`;
+      const lock = await acquireLock(deps.stateStore, lockKey, FILE_TREE_SCAN_LOCK_TTL_SECONDS);
+      if (lock) {
         try {
-          const cached = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName);
-          if (cached) {
-            return res.json(cached);
-          }
-        } catch {
-          // Fall through to EFS on Redis error
+          return res.json(await scanAndCache());
+        } finally {
+          await lock.release();
         }
       }
 
-      const tree = await deps.projectService.getFileTree(projectId, featureName, userContext);
-      if (deps.stateStore && tree) {
-        deps.stateStore.setFileTreeCache(userContext.userId, projectId, featureName, tree).catch(() => {});
+      // Someone else is scanning the same scope. Wait out a short window for the
+      // cache they are about to write; only then tell the client to retry. Falling
+      // back to our own scan here would defeat the single-flight entirely.
+      for (let attempt = 0; attempt < FILE_TREE_SCAN_WAIT_ATTEMPTS; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, FILE_TREE_SCAN_WAIT_MS));
+        const cached = await readCache();
+        if (cached) return res.json(cached);
       }
-      res.json(tree);
+      res.setHeader('Retry-After', '2');
+      return res.status(503).json({
+        code: 'FILE_TREE_SCAN_IN_PROGRESS',
+        error: 'File tree refresh in progress',
+        message: 'A refresh for this feature is already running. Retry in a moment.',
+      });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'Files');
     }
@@ -286,7 +363,7 @@ export function createFilesRoutes(deps: {
   });
 
   // Upload files to a feature directory
-  router.post('/projects/:id/features/:feature/upload', upload.array('files'), async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/upload', ...boundedMultipart({ stateStore: deps.stateStore }), upload.array('files'), async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
@@ -382,7 +459,7 @@ export function createFilesRoutes(deps: {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const relPath = relativePaths[i] || file.originalname;
-        await writeBufferVerified(destinations[i], file.buffer);
+        await writeBufferVerifiedAbs(featurePath, destinations[i], file.buffer);
         uploadedFiles.push(relPath);
       }
       
@@ -601,7 +678,7 @@ export function createFilesRoutes(deps: {
    * - File: sends as attachment (binary)
    * - Directory: sends as zip stream (sessions/ excluded)
    */
-  router.get('/projects/:id/features/:feature/download', async (req: Request, res: Response) => {
+  router.get('/projects/:id/features/:feature/download', downloadRateLimiter, async (req: Request, res: Response) => {
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
@@ -626,32 +703,92 @@ export function createFilesRoutes(deps: {
       const stat = await fs.promises.stat(fullPath);
 
       if (stat.isDirectory()) {
-        // Directory: zip streaming
-        const dirName = path.basename(relativePath) || featureName;
-        res.setHeader('Content-Type', 'application/zip');
-        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(dirName)}.zip"`);
+        // Preflight: answer only whether the archive is within budget. The browser
+        // starts a folder download as a navigation, so a 413 body would render as
+        // raw JSON in a new tab; the UI asks here first and shows a real message.
+        // Cheap by construction — the same bounded walk, no archive, no stream slot.
+        if (req.query.preflight === '1') {
+          const probe = await measureArchiveInput(fullPath, {
+            maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
+            maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
+          });
+          if (!probe.exceeded) return res.status(204).end();
+          return res.status(413).json({
+            code: 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED',
+            error: 'Folder too large to download',
+            limit: { entries: DIRECTORY_DOWNLOAD_MAX_ENTRIES, bytes: DIRECTORY_DOWNLOAD_MAX_BYTES },
+          });
+        }
 
-        const archive = archiver('zip', { zlib: { level: 6 } });
+        // A directory ZIP reads the whole tree, compresses it at zlib level 6 and
+        // holds a response socket open for as long as that takes. Ownership and path
+        // containment say WHOSE tree it is, never how much work it is — so one
+        // account could run these in parallel and occupy the shared API process's
+        // filesystem, CPU and sockets (M-NEW-004). Two gates before the first byte:
+        // a cluster-wide per-account stream budget, and an explicit size preflight.
+        const slot = deps.stateStore
+          ? await acquireConcurrencySlot(
+              deps.stateStore,
+              `ant:slots:zip:${userContext.organizationId}:${userContext.userId}`,
+              { limit: DIRECTORY_DOWNLOAD_MAX_INFLIGHT, ttlSeconds: 15 * 60 },
+            )
+          : { release: async () => {} };
+        if (!slot) {
+          return res.status(429).json({
+            code: 'DIRECTORY_DOWNLOAD_IN_PROGRESS',
+            error: 'Too many downloads in progress',
+            message: 'Wait for your current folder downloads to finish, then try again.',
+          });
+        }
 
-        archive.on('error', (err: Error) => {
-          logger.error('Archive error', { component: 'Files' }, err);
-          if (!res.headersSent) {
-            res.status(500).json({ error: 'Archive creation failed' });
+        try {
+          const measured = await measureArchiveInput(fullPath, {
+            maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
+            maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
+          });
+          if (measured.exceeded) {
+            // Explicit refusal, never a silent partial ZIP: a truncated archive that
+            // looks complete is worse than a clear error.
+            return res.status(413).json({
+              code: 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED',
+              error: 'Folder too large to download',
+              message:
+                `This folder exceeds the download limit (${DIRECTORY_DOWNLOAD_MAX_ENTRIES} files ` +
+                `or ${Math.floor(DIRECTORY_DOWNLOAD_MAX_BYTES / (1024 * 1024 * 1024))} GB). ` +
+                'Download a subfolder instead.',
+              limit: { entries: DIRECTORY_DOWNLOAD_MAX_ENTRIES, bytes: DIRECTORY_DOWNLOAD_MAX_BYTES },
+            });
           }
-        });
 
-        archive.pipe(res);
+          // Directory: zip streaming
+          const dirName = path.basename(relativePath) || featureName;
+          res.setHeader('Content-Type', 'application/zip');
+          res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(dirName)}.zip"`);
 
-        // Add directory contents, excluding sessions/
-        archive.directory(fullPath, false, (entry) => {
-          // Exclude sessions/ directory and its contents
-          if (entry.name === 'sessions' || entry.name.startsWith('sessions/') || entry.name.startsWith('sessions\\')) {
-            return false;
-          }
-          return entry;
-        });
+          const archive = archiver('zip', { zlib: { level: 6 } });
 
-        await archive.finalize();
+          archive.on('error', (err: Error) => {
+            logger.error('Archive error', { component: 'Files' }, err);
+            if (!res.headersSent) {
+              res.status(500).json({ error: 'Archive creation failed' });
+            }
+          });
+
+          archive.pipe(res);
+
+          // Add directory contents, excluding sessions/
+          archive.directory(fullPath, false, (entry) => {
+            // Exclude sessions/ directory and its contents
+            if (entry.name === 'sessions' || entry.name.startsWith('sessions/') || entry.name.startsWith('sessions\\')) {
+              return false;
+            }
+            return entry;
+          });
+
+          await archive.finalize();
+        } finally {
+          await slot.release();
+        }
       } else {
         // File: send as attachment
         const fileName = path.basename(relativePath);

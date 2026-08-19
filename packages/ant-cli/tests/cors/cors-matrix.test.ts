@@ -21,8 +21,19 @@ import {
 
 const { isSelfOrigin } = __testing;
 
-function mockReq(hostname: string): Request {
-  return { hostname } as unknown as Request;
+/**
+ * `isSelfOrigin` compares the FULL origin (scheme + host + port), so the stub
+ * carries what a browser actually addressed: the `Host` header (which includes
+ * the port) and the scheme. A hostname-only comparison used to make every port on
+ * a host "self", which silently re-merged origins that are deliberately separate
+ * (H-NEW-001).
+ */
+function mockReq(host: string, protocol = 'https', forwarded?: Record<string, string>): Request {
+  return {
+    hostname: host.split(':')[0],
+    protocol,
+    headers: { host, ...(forwarded ?? {}) },
+  } as unknown as Request;
 }
 
 describe('CORS persona matrix', () => {
@@ -63,6 +74,38 @@ describe('CORS persona matrix', () => {
   it('3. Persona C same-origin self-host (cloud build, single host) — isSelfOrigin, env=0', () => {
     const req = mockReq('ant.mycompany.com');
     expect(isSelfOrigin(req, 'https://ant.mycompany.com')).toBe(true);
+  });
+
+  // H-NEW-001: ant-preview publishes user content and its control-plane API on
+  // separate listeners. Those are the same HOST but different origins, so the
+  // self-origin auto-allow must not span them.
+  it('3b. a different port on the same host is NOT self-origin', () => {
+    const control = mockReq('ant-preview.crosstoken.io:4102');
+    expect(isSelfOrigin(control, 'https://ant-preview.crosstoken.io:4102')).toBe(true);
+    expect(isSelfOrigin(control, 'https://ant-preview.crosstoken.io:4103')).toBe(false);
+    expect(isSelfOrigin(control, 'https://ant-preview.crosstoken.io')).toBe(false);
+  });
+
+  it('3c. a different scheme on the same host is NOT self-origin', () => {
+    const req = mockReq('ant.mycompany.com', 'https');
+    expect(isSelfOrigin(req, 'http://ant.mycompany.com')).toBe(false);
+  });
+
+  it('3d. X-Forwarded-Host / -Proto decide when an ingress is in front', () => {
+    const req = mockReq('10.0.1.7:4102', 'http', {
+      'x-forwarded-host': 'ant-preview.crosstoken.io',
+      'x-forwarded-proto': 'https',
+    });
+    expect(isSelfOrigin(req, 'https://ant-preview.crosstoken.io')).toBe(true);
+    expect(isSelfOrigin(req, 'http://10.0.1.7:4102')).toBe(false);
+  });
+
+  it('3e. a comma-separated forwarded hop list uses the client-facing value', () => {
+    const req = mockReq('10.0.1.7:4102', 'http', {
+      'x-forwarded-host': 'ant.crosstoken.io, internal-alb',
+      'x-forwarded-proto': 'https, http',
+    });
+    expect(isSelfOrigin(req, 'https://ant.crosstoken.io')).toBe(true);
   });
 
   it('4. Persona C split-host with FRONTEND_URL=https://app.mycompany.com — allowed via FRONTEND_URL', () => {

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
-import { constants as fsConstants } from 'fs';
 import * as path from 'path';
+import { unlinkContained, writeBufferContained } from '../config/containedIo';
 import { isBinaryPath } from './binaryExtensions';
 
 const CORRUPTION_SNIFF_BYTES = 8000;
@@ -50,39 +50,48 @@ export function verifyBufferIntegrity(filePathOrName: string, content: Buffer): 
  * byte count — a poisoned asset pool fails loudly here instead of at app
  * runtime. Callers handling batches should pre-validate with
  * `verifyBufferIntegrity` so a late defect does not leave earlier files written.
+ *
+ * `root` is the containment boundary and is REQUIRED: the write descends from it
+ * one component at a time (see `core/config/containedIo`), so neither a symlink
+ * planted on the leaf nor an intermediate directory swapped after the caller's
+ * own check can redirect the bytes out of the boundary (H-007, M-NEW-003). A
+ * boundary the caller must name is what stops the next call site from inheriting
+ * an implicit one.
  */
-export async function writeBufferVerified(fullPath: string, content: Buffer): Promise<void> {
-  const supplied = verifyBufferIntegrity(fullPath, content);
-  if (supplied) throw new CorruptedFileError(path.basename(fullPath), supplied);
+export async function writeBufferVerified(
+  root: string,
+  relPath: string,
+  content: Buffer,
+): Promise<void> {
+  const supplied = verifyBufferIntegrity(relPath, content);
+  if (supplied) throw new CorruptedFileError(path.basename(relPath), supplied);
 
-  await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
-
-  // Open with O_NOFOLLOW and verify through the descriptor rather than
-  // re-resolving the name three times (write, then stat, then rm). A symlink
-  // dropped on the leaf between the caller's containment check and this write
-  // would otherwise be followed out of the workspace. Intermediate directories
-  // are still resolved by name — see `core/config/containedIo` on the residual
-  // window. On Windows O_NOFOLLOW is absent and the open degrades to today's
-  // behaviour.
-  const O_NOFOLLOW = typeof fsConstants.O_NOFOLLOW === 'number' ? fsConstants.O_NOFOLLOW : 0;
-  const handle = await fs.promises.open(
-    fullPath,
-    fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | O_NOFOLLOW,
-  );
-  let written: number;
-  try {
-    await handle.write(content, 0, content.length, 0);
-    written = (await handle.stat()).size;
-  } finally {
-    await handle.close();
-  }
-
-  if (written !== content.length) {
-    await fs.promises.rm(fullPath, { force: true });
+  const result = writeBufferContained(root, relPath, content);
+  if (!result.ok) {
     throw new Error(
-      `File integrity check failed for ${path.basename(fullPath)}: wrote ${written} bytes, expected ${content.length}`,
+      `Cannot write ${path.basename(relPath)}: destination is outside the allowed boundary (${result.reason})`,
     );
   }
+
+  if (result.written !== content.length) {
+    unlinkContained(root, relPath);
+    throw new Error(
+      `File integrity check failed for ${path.basename(relPath)}: wrote ${result.written} bytes, expected ${content.length}`,
+    );
+  }
+}
+
+/**
+ * Absolute-path form for callers that already hold `(root, absolutePath)` — it
+ * only converts to the relative form the contained writer needs. Kept thin and
+ * separate so the boundary argument is never optional.
+ */
+export async function writeBufferVerifiedAbs(
+  root: string,
+  absolutePath: string,
+  content: Buffer,
+): Promise<void> {
+  return writeBufferVerified(root, path.relative(path.resolve(root), absolutePath), content);
 }
 
 /**

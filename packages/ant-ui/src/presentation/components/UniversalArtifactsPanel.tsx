@@ -47,13 +47,17 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
   const openMainPanelTab = useStore((state) => state.openMainPanelTab);
 
   const [tree, setTree] = useState<FileNode[]>([]);
+  // Set when the server could only enumerate part of the artifacts root. Shown as a
+  // one-line notice so a partial listing is never mistaken for the whole folder.
+  const [treeTruncated, setTreeTruncated] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const loadTree = useCallback(async () => {
     if (!selectedProject) return;
     try {
-      const { tree: nodes } = await fetchUniversalArtifactsTree(selectedProject);
+      const { tree: nodes, truncated } = await fetchUniversalArtifactsTree(selectedProject);
       setTree(nodes as unknown as FileNode[]);
+      setTreeTruncated(truncated === true);
     } catch (err) {
       console.error('[UniversalArtifacts] Failed to load tree:', err);
     }
@@ -139,6 +143,18 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
       onDrop={(e) => e.preventDefault()}
       style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}
     >
+      {treeTruncated && (
+        <div
+          style={{
+            padding: '4px 10px',
+            fontSize: 11,
+            color: 'var(--text-3)',
+            borderBottom: '1px solid var(--border-1)',
+          }}
+        >
+          {t('artifacts:error.treeTruncated')}
+        </div>
+      )}
       <ArtifactsSection
         title={t('artifacts:panel.title', 'Artifacts')}
         accent="orange"

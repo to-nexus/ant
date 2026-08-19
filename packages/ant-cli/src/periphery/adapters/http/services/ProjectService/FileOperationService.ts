@@ -15,7 +15,7 @@ import {
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import { computeFileMeta, shouldEvaluateTemplate } from '../../../../../core/utils/computeFileMeta';
 import { isBinaryPath, isBinaryFileSync, sniffFile } from '../../../../../core/utils/binaryExtensions';
-import { writeBufferVerified } from '../../../../../core/utils/binaryIntegrity';
+import { writeBufferVerifiedAbs } from '../../../../../core/utils/binaryIntegrity';
 
 /**
  * Thrown when the text file API is pointed at binary content. Routes map it
@@ -322,8 +322,8 @@ export class FileOperationService {
     userContext: UserContext
   ): Promise<void> {
     for (const file of files) {
-      const { fullPath } = this.resolveFullPath(projectId, featureName, file.path, userContext);
-      await writeBufferVerified(fullPath, file.content);
+      const { featurePath, fullPath } = this.resolveFullPath(projectId, featureName, file.path, userContext);
+      await writeBufferVerifiedAbs(featurePath, fullPath, file.content);
     }
   }
 }

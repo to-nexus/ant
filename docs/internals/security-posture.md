@@ -5,7 +5,7 @@
 > security standard ANT holds itself to**, so hardening work lands on a
 > stated baseline rather than ad-hoc patches.
 
-The posture has **five axes**. Each names the invariant, the SSOT location, and
+The posture has **seven axes**. Each names the invariant, the SSOT location, and
 the current enforcement state (✅ enforced / 🔄 remediation in progress /
 📋 documented policy only).
 
@@ -140,10 +140,48 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   its upstream is an owner replica that re-verifies ownership.
 - **Service secrets are scoped to the processes that consume them.** ✅
   `docker-compose.cloud.yml` grants OAuth/admin secrets to `ant-api` only, and
-  the HS256 verification key only to the three processes that verify sessions.
-  `ant-preview` spawns user-authored children under its own UID, so anything in
-  its environment is reachable from user code via `/proc` — the per-UID and
-  mount isolation that would close that path is a deployment-layer control.
+  session key material only to the processes that need it.
+- **Session VERIFICATION authority never implies SIGNING authority.** ✅
+  HS256 is symmetric, so a verifier can mint. `ant-preview` verifies sessions and
+  also spawns user-authored install/dev commands under its own UID, whose
+  environment is therefore readable from user code via `/proc` — with a symmetric
+  secret that is platform-wide session forgery. ES256 splits it: `ant-api` holds
+  `ANT_JWT_PRIVATE_KEY`, every verifier holds only `ANT_JWT_PUBLIC_KEY`, and the
+  header `alg` is pinned to the configured mode so the two cannot be confused
+  ([JwtService.ts](../../packages/ant-cli/src/infrastructure/auth/JwtService.ts)).
+  `assertJwtAuthorityScope('verify')` **refuses to boot** a verifier that holds
+  signing authority; `ANT_JWT_ALLOW_SYMMETRIC=true` is the documented,
+  single-host opt-out. Guard: `tests/auth/jwt-algorithm-authority.test.ts`.
+- **User-authored children run under their own OS identity.** 🔄 `childEnv`
+  decides what a child can SEE; it cannot stop a same-UID child reading
+  `/proc/<service-pid>/environ` or re-linking directory entries the service is
+  about to write through. `childSpawnIdentity()`
+  ([childIdentity.ts](../../packages/ant-cli/src/core/config/childIdentity.ts))
+  is applied at every user-authored spawn (preview dev servers, dependency
+  installs, provisioning, deploy builds, static servers, `run_command`), and the
+  images provision an unprivileged `ant-child` account. Whether the drop is
+  *permitted* is a deployment fact (an effective `CAP_SETUID`), so the runtime
+  probes once and logs loudly rather than failing every spawn.
+- **User CONTENT and the CONTROL PLANE are different browser origins.** ✅
+  ant-preview serves attacker-authorable documents (a public deploy's build
+  output, a user's dev server) and a cookie-authenticated `/projects/*` API that
+  can write a feature's `.env`. On one origin, script in such a document runs
+  same-origin with that API and drives it with the viewer's session — a
+  browser-origin sink no CSP or content filter closes. Content is therefore its
+  own listener (`ANT_PREVIEW_CONTENT_PORT`) with no control-plane route mounted,
+  `isSelfOrigin` compares FULL origins (scheme+host+port), and
+  `createSameOriginGuard()` refuses cross-origin cookie-authenticated state
+  changes on all three servers. Publishing the two listeners under different
+  hostnames is the deployment's half (`docs/infra/preview-content-origin-request.md`
+  in ant-cloud). Guards: `tests/http/preview-origin-split.test.ts`,
+  `tests/http/same-origin-guard.test.ts`.
+- **A credential is scoped to the step that needs it.** ✅ A user's GitHub PAT
+  reaches only the credentialed, `--ignore-scripts` dependency-FETCH pass; the
+  lifecycle pass that runs dependency-authored code re-runs the same install
+  without it ([DependencyInstaller.ts](../../packages/ant-cli/src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts)).
+  Python/Rust/Java installs never receive it at all — `GIT_CONFIG_*` does not
+  help them resolve, and their build files are user-authored code.
+  Guard: `tests/preview/installCommand.test.ts`.
 - **Workspace filesystem isolation.** ✅ EFS `subPath` + `assertWorkspacePathInBase`/
   `stripBase` throw on any path outside the tenant base
   ([20-workspace-isolation.md](20-workspace-isolation.md)).
@@ -153,6 +191,57 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   an intentional `ANT_UNSAFE_*` escape hatch (accepted). Multi-org/user
   detection emits a one-shot `logger.warn`. Local mode assumes a
   single-developer trust boundary.
+
+## Axis 6 — Path resolution is bound to the file object, not to a name
+
+`pathContainment` answers "may this path be touched", and that verdict is about a
+**name**. A name can be repointed the instant after it is checked, and every
+consumer that validated a path and then re-opened it by name carried the same
+TOCTOU — with a same-UID, same-workspace preview child as a realistic actor.
+
+- **One SSOT.** `core/config/containedIo` canonicalises, containment-checks the
+  canonical path, then walks it one component at a time, each hop opened
+  `O_NOFOLLOW` relative to the previous hop's descriptor (Linux
+  `/proc/self/fd/<fd>/<name>`, the userspace equivalent of `openat(2)`).
+  Canonicalising first keeps legitimate in-root symlinks working; the descent
+  refuses anything repointed after the check. ✅
+- **Every sink goes through it.** RAC artifact loading, the codebase indexer,
+  `FileSystemAdapter` read/write (whose bytes reach a model prompt), upload writes
+  (`writeBufferVerified`, which now REQUIRES a containment root), and the preview
+  connection `.env` writers. ✅
+- **What it does not close.** Hardlinks, and non-Linux hosts (where the descent
+  degrades to final-component protection). The threat model is the multi-tenant
+  Linux pod; CI is `ubuntu-latest`, so the enforcing branch is the one under test.
+- **Do not** add repeated `realpath()` re-checks or a process-local mutex as a
+  substitute: the former leaves the window, the latter does not span pods.
+- Guard: `tests/security/contained-io-descent.test.ts`.
+
+## Axis 7 — Cost is authorized, not just ownership
+
+An endpoint that proves WHOSE data it is has not bounded how much WORK it is. A
+single authenticated account could hold multipart buffers, recursive tree scans
+and ZIP streams open in parallel and saturate a shared pod while every per-request
+check passed.
+
+- **Atomic admission.** Budgets are counted and reserved in ONE step —
+  `StateStorePort.reserveSlot` (a Redis ZSET + Lua: prune, count, add). A
+  `SCAN`-then-`SETEX` shape admitted N concurrent callers past an N-1 limit. ✅
+- **Two gates per expensive route:** a Redis-backed per-account request rate
+  (`rateLimiter`) and a cluster-wide in-flight semaphore
+  (`core/redis/concurrencySlot`). A process-local `Map` bounds one replica; the
+  same account's requests land on all of them. ✅
+- **Enumeration is charged as it is read.** `readdirSync(...).filter().sort()`
+  bounds the RESPONSE, never the work; the walk uses `opendirSync`/`readSync` and
+  charges the budget per raw `Dirent`, hidden entries included. ✅
+- **Refusals are explicit.** A truncated result says so — including at the
+  response root, where no node can carry the flag — and an over-budget archive
+  returns `DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED` rather than a silent partial ZIP. ✅
+- **Bodies are bounded before they are buffered.** `boundedMultipart` refuses on
+  `Content-Length` when present and on the actual stream when it is not (a chunked
+  body declares no length), interposing the counter by wrapping `pipe` so multer
+  stays the only consumer. ✅
+- Guards: `tests/http/resource-admission.test.ts`,
+  `tests/state/sse-slot-atomicity.test.ts`.
 
 ---
 

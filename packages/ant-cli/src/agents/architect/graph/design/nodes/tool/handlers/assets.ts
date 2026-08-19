@@ -169,8 +169,8 @@ export async function handleDownloadAsset(
 
     // Shared byte-safe write core: size + GLB header verification (fail-loud
     // instead of silently poisoning the asset pool).
-    const { writeBufferVerified } = await import('../../../../../../../core/utils/binaryIntegrity');
-    await writeBufferVerified(destPath, buffer);
+    const { writeBufferVerifiedAbs } = await import('../../../../../../../core/utils/binaryIntegrity');
+    await writeBufferVerifiedAbs(assetsBase, destPath, buffer);
 
     const sizeBytes = buffer.length;
     const sizeKB = (sizeBytes / 1024).toFixed(1);

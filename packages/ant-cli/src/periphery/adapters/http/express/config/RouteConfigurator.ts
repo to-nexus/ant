@@ -104,6 +104,8 @@ export class RouteConfigurator {
       // Same instance createApiRoutes gets — universal artifact mutations must
       // reach every client of the workspace, not just the tab that made them.
       fileTreeNotifier: this.workflowBridge,
+      // Backs the cluster-wide per-account budget on the artifact tree scan.
+      stateStore: getInfrastructureFactory().getStateStore(),
     }));
     // Account-scoped agent settings (profile menu) — no project required (D-G).
     app.use('/api/account/agents', createAccountAgentRoutes({ workspaceResolver: this.deps.workspaceResolver, organizationRepository }));

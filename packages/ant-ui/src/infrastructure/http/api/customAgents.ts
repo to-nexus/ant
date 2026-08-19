@@ -102,9 +102,14 @@ export function validateCustomJob(
 
 // ── Universal artifacts workspace ───────────────────────────────────
 
+/**
+ * `truncated` is additive and only present when the artifacts ROOT itself exhausted
+ * the server's enumeration budget — the one case where no node in the tree can
+ * carry the flag, so the response would otherwise look complete.
+ */
 export function fetchUniversalArtifactsTree(
   projectId: string,
-): Promise<{ tree: UniversalArtifactNode[] }> {
+): Promise<{ tree: UniversalArtifactNode[]; truncated?: boolean }> {
   return apiGet(`${projectBase(projectId)}/universal/artifacts/tree`);
 }
 

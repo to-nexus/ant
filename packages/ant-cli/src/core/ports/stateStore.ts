@@ -846,6 +846,35 @@ export interface StateStorePort {
    * Used for SSE per-connection key counting.
    */
   countKeysByPrefix(prefix: string): Promise<number>;
+
+  // ============================================
+  // Bounded Slot Set (atomic admission)
+  // ============================================
+
+  /**
+   * Atomically admit one holder into a bounded, self-expiring set.
+   *
+   * Returns `true` when the slot was reserved, `false` when the set is already at
+   * `limit`. The count and the reservation happen in ONE round trip, which is the
+   * whole point: counting with `SCAN` and then reserving with `SETEX` left a window
+   * where N concurrent requests each read a pre-limit count and each reserved, so
+   * the limit did not hold under exactly the concurrency it exists to bound
+   * (M-005). Expired members are pruned inside the same operation, so a holder
+   * that died without releasing cannot leak a slot permanently.
+   *
+   * One primitive, two uses: a per-account connection budget (SSE) and a
+   * cluster-wide in-flight semaphore (uploads, tree scans, ZIP streams).
+   */
+  reserveSlot(setKey: string, member: string, limit: number, ttlSeconds: number): Promise<boolean>;
+
+  /** Extend a held slot's expiry — heartbeat for a long-lived holder. */
+  refreshSlot(setKey: string, member: string, ttlSeconds: number): Promise<void>;
+
+  /** Release a held slot. Idempotent. */
+  releaseSlot(setKey: string, member: string): Promise<void>;
+
+  /** Live holders (expired members excluded). Diagnostics and tests. */
+  countSlots(setKey: string): Promise<number>;
   
   // ============================================
   // Distributed Locking
