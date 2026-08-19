@@ -32,6 +32,15 @@ export interface JobPayload {
   customJobRef?: string;
   /** Universal only — explicit `@intent:`/`@ctx:` turn meta (validated at accept). */
   universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
+
+  /**
+   * Pipeline attribution — who started this run. Absent = interactive user
+   * start. Attribution only (job↔run mapping); run history is owned by the
+   * pipeline coordinator's JSONL, never duplicated here.
+   */
+  firedBy?: 'user' | 'schedule' | 'chain';
+  pipelineRunId?: string;
+  pipelineStepId?: string;
   
   // Job configuration
   mode?: 'generate' | 'refactor' | 'explain';

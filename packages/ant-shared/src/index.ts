@@ -69,3 +69,4 @@ export * from './approval';
 export * from './llm-slots';
 export * from './custom-agents';
 export * from './universal-tools';
+export * from './pipeline';

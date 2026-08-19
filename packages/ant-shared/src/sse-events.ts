@@ -21,6 +21,7 @@
 
 import type { GitSnapshot, GitOperationState, GitPatState } from './git';
 import type { CustomDomainStatus, CustomDomainCertStatus, CustomDomainTarget } from './deploy';
+import type { RunRecord, GateDecision, PipelinePendingApproval } from './pipeline';
 
 /**
  * Discriminator for SSE messages routed through the unified stream.
@@ -39,7 +40,8 @@ export type SSEMessageType =
   | 'idePhase'
   | 'projectDeletionPhase'
   | 'featureDeletionPhase'
-  | 'customDomainStatus';
+  | 'customDomainStatus'
+  | 'pipeline';
 
 /**
  * Generic phase status shared by every phased-operation SSE event
@@ -208,6 +210,38 @@ export type GitStateEventData =
     };
 
 /**
+ * Payload for `pipeline` events — one symbol, discriminated on `cause`
+ * (gitState precedent). `runUpdate` carries the whole run record (sans the
+ * frozen def snapshot) so the FE reducer is a pure replace, never a merge.
+ */
+export type PipelineEventData =
+  | {
+      cause: 'runUpdate';
+      projectId: string;
+      pipelineId: string;
+      run: Omit<RunRecord, 'defSnapshot'>;
+    }
+  | {
+      cause: 'approvalRequested';
+      projectId: string;
+      approval: PipelinePendingApproval;
+    }
+  | {
+      cause: 'approvalResolved';
+      projectId: string;
+      pipelineId: string;
+      runId: string;
+      gateId: string;
+      decision: GateDecision;
+      decidedBy?: string;
+    }
+  | {
+      cause: 'defChanged';
+      projectId: string;
+      pipelineId: string;
+    };
+
+/**
  * Map of event type → payload shape. Only events with a stable, shared
  * contract are listed here.
  */
@@ -217,6 +251,7 @@ export interface SSEMessageMap {
   projectDeletionPhase: ProjectDeletionPhaseEventData;
   featureDeletionPhase: FeatureDeletionPhaseEventData;
   customDomainStatus: CustomDomainStatusEventData;
+  pipeline: PipelineEventData;
 }
 
 // Legacy `GitChangeEventData` / `gitChange` event were retired at cutover.

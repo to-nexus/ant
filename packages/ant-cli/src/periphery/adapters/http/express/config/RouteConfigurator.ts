@@ -28,7 +28,7 @@ import { WorkflowBridge } from '../bridges/WorkflowBridge';
 import { ChoiceService } from '../../../../../infrastructure/choice/ChoiceService';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { REDIS_CHANNELS } from '../../../../../infrastructure/state/redisConstants';
-import { isSessionableJobType, isExecutableJobType, type SessionableJobType } from '@ant/shared';
+import { type SessionableJobType } from '@ant/shared';
 
 /**
  * RouteConfigurator
@@ -579,161 +579,27 @@ export class RouteConfigurator {
   }
   
   /**
-   * Create executeJob function that enqueues to BullMQ
+   * Create executeJob function that enqueues to BullMQ.
+   *
+   * The enqueue body lives in `core/scheduling/UniversalDispatchService` —
+   * the single dispatch owner shared with the pipeline scheduler, so a
+   * scheduled fire can never bypass what an HTTP execute does. This closure
+   * only resolves the infrastructure ports and delegates.
    */
   private createExecuteJob() {
     return async (params: any) => {
       const { getInfrastructureFactory } = await import('../../../../../infrastructure/adapters/InfrastructureFactory');
       const factory = getInfrastructureFactory();
-      const jobQueue = factory.getJobQueue();
-      const stateStore = factory.getStateStore();
-
-      // Single source of truth: jobType MUST be an executable type — every
-      // SessionableJobType plus the lightweight `inline-ask` runner. The
-      // legacy `params.jobType || 'code'` fallback silently downcast plan /
-      // visual to code (zonal-dreaming-novel regression — Invariant I1), so
-      // we validate against the executable union (sessionable + inline-ask)
-      // and reject anything else. inline-ask is included because the
-      // `/projects/:id/features/:feature/inline-ask` route routes through
-      // here too — its downstream `composition/orchestrator.ts:140`
-      // dispatches to `runInlineAsk` (no session, no kanban) and
-      // `JobExecutionManager.handleSuccessfulExit` skips session-read for
-      // it. See `vast-curling-perch` resume blocker incident.
-      if (!isExecutableJobType(params.jobType)) {
-        throw new Error(
-          `[RouteConfigurator] Invalid jobType: ${params.jobType}. ` +
-          `Expected one of: code, design, learn, plan, visual, universal, inline-ask.`,
-        );
-      }
-      const jobType = params.jobType;
-
-      // Generate jobId
-      const { generateHumanId } = await import('../../../../../utils/humanId');
-      const jobId = params.jobId || generateHumanId();
-
-      // Preserve the turn anchor across a same-jobId re-launch. Callers that
-      // resume an existing job (/resume, /continue, proceed_without_spec,
-      // supersede-on-new-execute) carry no seedTurnId, but the setJobStatus
-      // below is a FULL overwrite — writing without a turnId erases the
-      // existing JobStatusData.turnId, the only cross-pod-safe anchor the
-      // cancel/resume choice card resolves from. A later interruption then
-      // hits "no turn anchor" and silently drops the card (slow-earning-heron
-      // RCA). Carry the prior turnId forward; an explicit seedTurnId still wins.
-      let seedTurnId: string | undefined = params.seedTurnId;
-      if (!seedTurnId && params.jobId) {
-        const prior = await stateStore.getJobStatus(params.jobId).catch(() => undefined);
-        seedTurnId = prior?.turnId;
-      }
-      
-      // ⏱️ DEBUG: Record enqueue start time for latency analysis
-      const enqueueStartTime = Date.now();
-      const enqueueStartISO = new Date(enqueueStartTime).toISOString();
-      logger.info(`⏱️ [JobTiming] API Server: Starting job enqueue | enqueueStartTime=${enqueueStartISO}`, {
-        component: 'RouteConfigurator',
-        jobId,
-        projectId: params.project,
-        featureName: params.feature
-      });
-      
-      // Get workspace paths
-      const tenantId = `${params.userContext.organizationId}:${params.userContext.userId}`;
-      const handle = await this.deps.workspaceService.createWorkspace(tenantId, params.project);
-      
-      // handle.storagePath is already the full project path
-      // We need to pass base workspace path for JobWorker to calculate paths correctly
-      const workspaceBasePath = this.deps.workspaceResolver.getPhysicalWorkspacesPath();
-      
-      // Enqueue job to BullMQ
-      await jobQueue.enqueue({
-        jobId,
-        projectId: params.project,
-        feature: params.feature,
-        featureName: params.feature,  // Alias for feature
-        type: jobType,
-        agent: params.agent || 'architect',
-        mode: params.mode || 'generate',
-        userContext: params.userContext,
-        workspacePath: workspaceBasePath,  // Base path, not full project path
-        overrideDirective: params.overrideDirective,
-        chatSource: params.chatSource,
-        skipTriage: params.skipTriage,
-        actionMetadata: params.actionMetadata,
-        inputFile: params.inputFile,
-        // Universal (D5): the composite definition ref rides the same
-        // channel as overrideDirective — body → payload → env → runner.
-        customJobRef: params.customJobRef,
-        universalTurnMeta: params.universalTurnMeta,
-        isResume: params.isResume ?? !!params.jobId,
-        originalJobId: params.jobId,
-        // chat SSOT §6 — pre-allocated turnId from /chat/user-message (fresh
-        // jobs) or the preserved prior turnId (same-jobId re-launch), forwarded
-        // to the worker entry so the durable user_turn line shares the same id
-        // as the optimistic SSE broadcast.
-        seedTurnId,
-      });
-      
-      // Set initial job status in Redis
-      await stateStore.setJobStatus(jobId, {
-        jobId,
-        status: 'queued',
-        projectId: params.project,
-        featureName: params.feature,
-        type: jobType,
-        mode: params.mode,
-        userContext: params.userContext,
-        timestamp: new Date().toISOString(),
-        // Persist the pre-allocated turnId so a worker_stalled pause can
-        // anchor its cancellation card from Redis even if the durable
-        // user_turn disk write is lost — see JobStatusData.turnId. On a
-        // same-jobId re-launch this carries the preserved prior turnId so the
-        // full overwrite does not erase the anchor.
-        ...(seedTurnId && { turnId: seedTurnId }),
-      });
-      
-      // ✅ CRITICAL: Register job mapping in Redis for cross-Pod SSE broadcast
-      // Job Worker (separate Pod) needs this to broadcast Kanban updates
-      const userContextStr = params.userContext 
-        ? `${params.userContext.organizationId}:${params.userContext.userId}` 
-        : 'undefined';
-      logger.info(`📝 [JobMapping] Saving job mapping to Redis: ${jobId} → ${params.project}/${params.feature} (${jobType}), userContext: ${userContextStr}`, { 
-        component: 'RouteConfigurator', 
-        jobId
-      });
-      
-      await stateStore.setJobMapping(jobId, {
-        projectId: params.project,
-        featureName: params.feature,
-        jobType: jobType,
-        userContext: params.userContext,
-        // Universal: finalize needs the definition ref to locate the
-        // per-(agentId, customJobId) session file for the run-history append.
-        ...(params.customJobRef && { customJobRef: params.customJobRef }),
-      });
-      
-      logger.info(`✅ [JobMapping] Job mapping saved successfully`, { 
-        component: 'RouteConfigurator', 
-        jobId
-      });
-      
-      // Register in local stateTracker (cache for Kanban routes)
-      this.stateTracker.initializeJob(jobId, params.project, params.feature, jobType, params.userContext);
-      
-      // ⏱️ DEBUG: Record enqueue completion time
-      const enqueueEndTime = Date.now();
-      const enqueueDuration = enqueueEndTime - enqueueStartTime;
-      logger.info(`⏱️ [JobTiming] API Server: Job enqueued to Redis | enqueueStartTime=${enqueueStartISO} | enqueueEndTime=${new Date(enqueueEndTime).toISOString()} | enqueueDurationMs=${enqueueDuration}`, { 
-        component: 'RouteConfigurator', 
-        jobId,
-        projectId: params.project,
-        featureName: params.feature
-      });
-      
-      return {
-        jobId,
-        success: true,
-        message: 'Job enqueued'
-      };
+      const { UniversalDispatchService } = await import('../../../../../core/scheduling/UniversalDispatchService');
+      const service = new UniversalDispatchService(
+        { jobQueue: factory.getJobQueue(), stateStore: factory.getStateStore() },
+        {
+          workspaceService: this.deps.workspaceService,
+          workspaceResolver: this.deps.workspaceResolver,
+          stateTracker: this.stateTracker,
+        },
+      );
+      return service.enqueue(params);
     };
   }
-
 }
