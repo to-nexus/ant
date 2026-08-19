@@ -354,7 +354,17 @@ export function createFeaturesRoutes(deps: {
             // Universal runs live per-(agentId, customJobId) inside the
             // container — never under sessions/universal/universal.json.
             // Canonical features have no container, so skip the probe.
-            if (!isUniversalContainer) continue;
+            if (!isUniversalContainer) {
+              // Explicit type request + no container = a universal project
+              // whose config.json did not read as `projectType: 'universal'`.
+              // Distinguishes "history empty" from "container unresolved".
+              if (requestedType === 'universal') {
+                logger.debug(
+                  `[Features] Universal history skipped — container unresolved for ${projectId}/${featureName}`,
+                );
+              }
+              continue;
+            }
             for (const r of await collectUniversalRuns(featurePath!)) {
               const existing = merged.get(r.jobId!);
               if (existing) {

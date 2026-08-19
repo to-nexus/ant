@@ -12,7 +12,7 @@ import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state
 import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
 import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../routes/helpers/sessionCleanup';
-import { findUniversalSessionFileByJobId } from '../../routes/helpers/universalRuns';
+import { findUniversalSessionFileByJobId, readUniversalRunOverlay } from '../../routes/helpers/universalRuns';
 import { resolveUniversalContainerPath } from '../../../../../core/customAgents/universalContainer';
 import { isNonTaskJob, parseCustomJobRef, UNIVERSAL_FEATURE, type KanbanData, type SessionableJobType } from '@ant/shared';
 
@@ -861,7 +861,10 @@ export class JobCleanupManager {
       return;
     }
     const sessionPath = path.join(container, 'sessions', ref.agentId, `${ref.jobId}.json`);
-    await appendRunToSessionFile(sessionPath, 'universal', jobId, kanbanData, derivedStatus, {
+    // The board handed to us is the synthesized empty non-task one; the run's
+    // checklist / token usage live in the sealed session state next to it.
+    const overlay = await readUniversalRunOverlay(sessionPath);
+    await appendRunToSessionFile(sessionPath, 'universal', jobId, { ...kanbanData, ...overlay }, derivedStatus, {
       runExtras: { customJobRef: `${ref.agentId}/${ref.jobId}` },
       createIfMissing: { project: mapping.projectId, feature: UNIVERSAL_FEATURE },
     });

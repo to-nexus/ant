@@ -14,6 +14,11 @@
  *    selection. Empty + no jobId now preserves the current selection.
  *  - F3: `handleInitialActiveJobs([])` (post-refresh, sealed job) gains the
  *    history fallback that auto-selects the latest same-type run.
+ *  - F6: universal (a NON_TASK job type) must ALSO be restorable from history:
+ *    a workspace project has no other job type, and the jobId chip is the only
+ *    affordance that reaches run history — `restoresLatestRunFromHistory` owns
+ *    that rule, and the restored run's `customJobRef` re-converges the custom
+ *    (agent, job) pair. plan / visual stay excluded (Invariant I4).
  *  - F5: the same identity guard on the job-COMPLETED branch. `isStaleJobUpdate`
  *    above it requires BOTH ids truthy, so it does not fire for an incoming
  *    `undefined` — the branch wrote `currentJobId` unconditionally. Both
@@ -38,8 +43,10 @@ vi.mock('../../src/domain/store/storage', async (orig) => {
 });
 
 const fetchJobHistory = vi.fn();
+const fetchKanbanByJobId = vi.fn();
 vi.mock('@/infrastructure/http/api', () => ({
   fetchJobHistory: (...args: any[]) => fetchJobHistory(...args),
+  fetchKanbanByJobId: (...args: any[]) => fetchKanbanByJobId(...args),
 }));
 
 import { createJobSlice, type JobSlice } from '../../src/domain/store/slices/jobSlice';
@@ -198,6 +205,78 @@ describe('F3 — bootstrap history fallback when activeJobs is empty', () => {
     await flush();
 
     expect(selectJobId).not.toHaveBeenCalled();
+  });
+});
+
+describe('F6 — universal is restorable from history; plan/visual are not', () => {
+  const flush = () => new Promise((r) => setTimeout(r, 25));
+
+  beforeEach(() => {
+    fetchJobHistory.mockReset();
+    fetchKanbanByJobId.mockReset();
+  });
+
+  it.each([
+    ['universal', true],
+    ['plan', false],
+    ['visual', false],
+  ])('bootstrap fallback for %s → restored=%s', async (jobType, restored) => {
+    const selectJobId = vi.fn(async () => {});
+    const s = makeStore({ selectJobId, selectedJobType: jobType });
+    s.setState({ currentJobId: undefined, activeJobs: {}, jobStartPending: false });
+    fetchJobHistory.mockResolvedValue({
+      jobs: [{ jobId: `${jobType}-old`, type: jobType, live: false, customJobRef: 'ops/weekly' }],
+    });
+
+    handleInitialActiveJobs([], s.setState.bind(s), s.getState.bind(s));
+    await flush();
+
+    expect(selectJobId).toHaveBeenCalledTimes(restored ? 1 : 0);
+    if (restored) {
+      expect(selectJobId).toHaveBeenCalledWith(`${jobType}-old`, {
+        live: false,
+        jobType,
+        customJobRef: 'ops/weekly',
+      });
+    }
+  });
+
+  it('selectJobId adopts the run\'s custom (agent, job) pair', async () => {
+    const selectCustomJob = vi.fn();
+    const s = makeStore({
+      selectedJobType: 'universal',
+      selectedFeature: 'universal',
+      selectCustomJob,
+      updateKanban: () => {},
+      applyJobIdentity: () => {},
+    });
+    fetchKanbanByJobId.mockResolvedValue({
+      jobId: 'u1', jobType: 'universal', todo: [], inProgress: [], completed: [],
+      isEstimating: false, dataSource: 'session',
+      checklist: { items: [{ id: 'c1', text: 'a', state: 'done' }] },
+    });
+
+    await s.getState().selectJobId('u1', { live: false, jobType: 'universal', customJobRef: 'ops/weekly' });
+
+    expect(s.getState().currentJobId).toBe('u1');
+    expect(selectCustomJob).toHaveBeenCalledWith('ops', 'weekly');
+  });
+
+  it('leaves the pair alone for a canonical row (no customJobRef)', async () => {
+    const selectCustomJob = vi.fn();
+    const s = makeStore({
+      selectCustomJob,
+      updateKanban: () => {},
+      applyJobIdentity: () => {},
+    });
+    fetchKanbanByJobId.mockResolvedValue({
+      jobId: 'd1', jobType: 'design', todo: [], inProgress: [], completed: [],
+      isEstimating: false, dataSource: 'session',
+    });
+
+    await s.getState().selectJobId('d1', { live: false, jobType: 'design' });
+
+    expect(selectCustomJob).not.toHaveBeenCalled();
   });
 });
 

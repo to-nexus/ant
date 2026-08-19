@@ -13,6 +13,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import type { KanbanData } from '@ant/shared';
 import type { KanbanService } from '../../services';
 import type { SessionRun } from '../../../../../core/types/session';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
@@ -112,6 +113,34 @@ export async function findUniversalSessionFileByJobId(
     if (Array.isArray(session.runs) && session.runs.some((r: any) => r?.jobId === jobId)) return ref;
   }
   return null;
+}
+
+/**
+ * Board fields derivable from the sealed universal session `state` at the end
+ * of a run — the checklist and this run's token usage.
+ *
+ * The finalize-time board is a synthesized empty non-task board (KanbanService
+ * is universal-unaware), so without this overlay every persisted run snapshot
+ * is blank: a past run replays as "no checklist" and the dropdown row shows no
+ * token badge. `respond`'s seal already wrote both into `state`, and each turn
+ * overwrites them, so at finalize they belong to THIS run.
+ *
+ * `jobTiming` is deliberately absent — universal seals no timing.
+ * Best-effort: a missing / malformed file yields `{}`.
+ */
+export async function readUniversalRunOverlay(sessionPath: string): Promise<Partial<KanbanData>> {
+  const session = await readSessionJson(sessionPath);
+  const state = session?.state;
+  if (!state) return {};
+  const overlay: Partial<KanbanData> = {};
+  // Same presence bar as the runner's restore (runner.ts): a checklist with no
+  // items is not a checklist.
+  if (Array.isArray(state.checklist?.items) && state.checklist.items.length > 0) {
+    overlay.checklist = state.checklist;
+  }
+  if (state.tokenUsage) overlay.tokenUsage = state.tokenUsage;
+  if (state.tokenUsageByModel) overlay.tokenUsageByModel = state.tokenUsageByModel;
+  return overlay;
 }
 
 /**

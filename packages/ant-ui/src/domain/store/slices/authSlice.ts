@@ -4,6 +4,7 @@ import { AuthState, AuthStatus, SelectedJobType } from '../types';
 import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from '../storage';
 import { resolveAgentForJobType } from '@/shared/utils/constants';
 import { isNonTaskJob, type OrganizationKind } from '@ant/shared';
+import { restoresLatestRunFromHistory } from './sse/restoresLatestRun';
 import type {
   OrgMembership,
   AuthApprovalStatus,
@@ -158,18 +159,26 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
           // so filter to THIS type — picking a job type must not auto-select a
           // different type's job (that would re-converge the identity back).
           //
-          // Skip for non-task jobs (they never have a board jobId, so this
-          // would always yank the view onto the latest historical plan/visual
-          // job) and while a job start is in flight (a redirect that just
-          // enqueued a new job must not be clobbered by a stale one).
+          // `restoresLatestRunFromHistory` owns the which-types rule (plan /
+          // visual would yank the view onto the latest historical run of a type
+          // that shares the feature with a board). Also skipped while a job
+          // start is in flight (a redirect that just enqueued a new job must
+          // not be clobbered by a stale one).
           const hasBoardJobId = !!kanbanData?.jobId;
           const sameType = history.jobs.filter((j) => j.type === jobType);
-          if (!hasBoardJobId && sameType.length > 0 && !isNonTaskJob(jobType) && !get().jobStartPending) {
+          if (
+            !hasBoardJobId && sameType.length > 0 &&
+            restoresLatestRunFromHistory(jobType) && !get().jobStartPending
+          ) {
             const latest = sameType[0];
             console.log(
               `[Store] ↩️ No current jobId for '${jobType}', auto-selecting latest: ${latest.jobId}`,
             );
-            await get().selectJobId(latest.jobId, { live: latest.live, jobType });
+            await get().selectJobId(latest.jobId, {
+              live: latest.live,
+              jobType,
+              customJobRef: latest.customJobRef,
+            });
           }
         } catch (error) {
           console.error('[Store] Failed to switch job type:', error);

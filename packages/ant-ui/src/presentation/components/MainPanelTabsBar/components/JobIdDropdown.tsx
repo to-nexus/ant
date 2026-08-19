@@ -166,7 +166,13 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
     // Carry the entry's own type so selectJobId fetches the right board AND
     // re-converges the chat identity (agent + jobType) to it — the unified
     // list is cross-type, so the ambient selectedJobType cannot be trusted.
-    void selectJobId(entry.jobId, { live: entry.live, jobType: entry.type });
+    // `customJobRef` (universal rows) also re-converges the custom (agent, job)
+    // pair, so the composer chips name the run being restored.
+    void selectJobId(entry.jobId, {
+      live: entry.live,
+      jobType: entry.type,
+      customJobRef: entry.customJobRef,
+    });
   };
 
   const handleDelete = (id: string, live: boolean, isCurrent: boolean, type: string) => {

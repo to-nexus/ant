@@ -1,4 +1,5 @@
 import { isNonTaskJob } from '@ant/shared';
+import { restoresLatestRunFromHistory } from './restoresLatestRun';
 
 /**
  * Processes the activeJobs array from the SSE initial kanban response.
@@ -54,7 +55,7 @@ export function handleInitialActiveJobs(
     // path has no recovery and the board/tab stay blank. Deferred so the
     // initial-kanban board applied later in this same SSE event wins when it
     // carries a jobId (session-priority board of a stopped job).
-    if (jobs.length === 0 && !isNonTaskJob(currentType)) {
+    if (jobs.length === 0 && restoresLatestRunFromHistory(currentType)) {
       setTimeout(async () => {
         const s = get();
         if (s.currentJobId || s.jobStartPending) return;
@@ -64,7 +65,13 @@ export function handleInitialActiveJobs(
           const history = await fetchJobHistory(s.selectedProject, s.selectedFeature);
           const latest = history.jobs.find((j: any) => j.type === currentType);
           if (latest && !get().currentJobId && !get().jobStartPending) {
-            await get().selectJobId(latest.jobId, { live: latest.live, jobType: currentType });
+            // `customJobRef` (universal only) re-converges the composer's
+            // (agent, job) pair onto the run being restored.
+            await get().selectJobId(latest.jobId, {
+              live: latest.live,
+              jobType: currentType,
+              customJobRef: latest.customJobRef,
+            });
           }
         } catch {
           // best-effort — history fallback must never throw into the SSE handler

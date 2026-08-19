@@ -25,6 +25,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../src/periphery/adapters/http/routes/helpers/sessionCleanup';
 import { getSessionFilePathByJob } from '../../src/core/utils/sessionPaths';
+import { readUniversalRunOverlay } from '../../src/periphery/adapters/http/routes/helpers/universalRuns';
 import { safeParseSession } from '../../src/core/schemas/session.schema';
 import type { SessionRun } from '../../src/core/types/session';
 import type { KanbanData } from '@ant/shared';
@@ -179,6 +180,49 @@ describe('universal run seal (Job-tab persistence, per-(agentId, customJobId) fi
     const session = readSession();
     expect(session.runs[0].jobId).toBe('j-2');
     expect(safeParseSession(session)).not.toBeNull();
+  });
+
+  // Snapshot overlay: the board handed to the seal is the synthesized EMPTY
+  // non-task one (KanbanService is universal-unaware), so without reading the
+  // sealed `state` back, every persisted run replays as "no checklist" and the
+  // dropdown row shows no token badge. `readUniversalRunOverlay` is what
+  // JobCleanupManager merges in — locked here on the same axis as the seal.
+  it('overlays the run-end checklist and token usage onto the sealed snapshot', async () => {
+    seedSession({
+      state: {
+        customJobRef: 'assistant/chat',
+        conversations: { 'session:main': [{ role: 'user', content: 'hi' }] },
+        checklist: { items: [{ id: 'c1', text: 'draft', state: 'done' }] },
+        tokenUsage: { inputTokens: 10, outputTokens: 20, totalTokens: 30 },
+        tokenUsageByModel: { 'claude-x': { inputTokens: 10, outputTokens: 20, totalTokens: 30 } },
+      },
+    });
+    const overlay = await readUniversalRunOverlay(sessionPath());
+    await appendRunToSessionFile(
+      sessionPath(), 'universal', 'j-4', { ...emptyBoard('j-4'), ...overlay }, 'completed',
+      { runExtras: { customJobRef: 'assistant/chat' } },
+    );
+    const snapshot = readSession().runs[0].kanbanSnapshot;
+    expect(snapshot.checklist.items).toHaveLength(1);
+    expect(snapshot.tokenUsage.totalTokens).toBe(30);
+    expect(snapshot.tokenUsageByModel['claude-x'].totalTokens).toBe(30);
+    // jobTiming is NOT overlaid — universal seals no timing.
+    expect(snapshot.jobTiming).toBeUndefined();
+  });
+
+  it.each([
+    ['no checklist key', {}],
+    ['an item-less checklist', { checklist: { items: [] } }],
+  ] as const)('overlay is empty for %s (board stays the synthesized one)', async (_label, extraState) => {
+    seedSession({ state: { customJobRef: 'assistant/chat', ...extraState } });
+    expect(await readUniversalRunOverlay(sessionPath())).toEqual({});
+  });
+
+  it('overlay of a missing / malformed session file is empty, not a throw', async () => {
+    expect(await readUniversalRunOverlay(sessionPath())).toEqual({});
+    fs.mkdirSync(path.dirname(sessionPath()), { recursive: true });
+    fs.writeFileSync(sessionPath(), '{ not json');
+    expect(await readUniversalRunOverlay(sessionPath())).toEqual({});
   });
 
   // Unlink-hazard regression: FileSessionAdapter.load DELETES a session file

@@ -1,4 +1,5 @@
 import { StateCreator } from 'zustand';
+import { parseCustomJobRef } from '@ant/shared';
 import { JobState, QueuePosition, InlineAskContext, ActiveJobEntry } from '../types';
 import { Session } from '@/domain/models/session';
 import { JobExecution } from '@/infrastructure/http/cli';
@@ -30,9 +31,14 @@ export interface JobActions {
    * kanban from BE (live → snapshot fallback), reconnects the workflow SSE
    * only when the target job is still live, and — since the unified job list
    * is cross-type — re-converges the chat identity (agent + jobType) to the
-   * selected job's own type via `applyJobIdentity`.
+   * selected job's own type via `applyJobIdentity`. A universal row's
+   * `customJobRef` additionally re-converges the custom (agent, job) pair, so
+   * the composer chips and the restored board name the same run.
    */
-  selectJobId: (jobId: string, opts?: { live?: boolean; jobType?: string; agent?: string }) => Promise<void>;
+  selectJobId: (
+    jobId: string,
+    opts?: { live?: boolean; jobType?: string; agent?: string; customJobRef?: string },
+  ) => Promise<void>;
   /**
    * Delete every artifact tied to a jobId. If it is the currently selected
    * jobId, the kanban is cleared and `currentJobId` is unset afterwards.
@@ -286,6 +292,15 @@ export const createJobSlice: StateCreator<any, [], [], JobSlice> = (set, get) =>
       const resolvedJobType = (kanbanData.jobType || jobType) as import('../types').SelectedJobType;
       if (resolvedJobType !== get().selectedJobType) {
         get().applyJobIdentity({ jobType: resolvedJobType, agent: opts?.agent, jobId });
+      }
+
+      // Universal: the run belongs to one custom (agent, job) pair, and its
+      // board/checklist is that pair's — so the composer chips must follow it.
+      // Selection is memory-only (`loadCustomAgents` repairs only an INVALID
+      // pair), so adopting a valid pair here is race-safe against entry repair.
+      const ref = parseCustomJobRef(opts?.customJobRef);
+      if (ref) {
+        get().selectCustomJob?.(ref.agentId, ref.jobId);
       }
 
       const isLive = opts?.live === true || kanbanData.dataSource === 'live' || kanbanData.dataSource === 'estimating';
