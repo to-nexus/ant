@@ -1,27 +1,30 @@
 /**
  * Overview section cards — canonical `ConfigEditor/aurora` kit (SectionCard +
- * FieldLabel/AuroraInput). Each card owns exactly ONE definition
- * yaml through `DefinitionCard`, offering a structured form and the raw YAML
+ * FieldLabel/AuroraInput). Each yaml-owning card holds exactly ONE definition
+ * file through `DefinitionCard`, offering a structured form and the raw YAML
  * over the same buffer; the shell's single ChangedBar saves every dirty file
  * through the definition write funnel. No card owns a Save button.
  *
  * Level model: agent = agent.yaml (AgentDefinitionCard.tsx) · job = job.yaml
- * (name + tools + approval) and intents.yaml (catalog) · intent = its own
- * detail card (IntentDetailCard.tsx). The intent catalog card ADDS intents
- * and links into them; editing and deleting one intent happens on that
- * intent's own screen, keeping ONE editing surface per intent.
+ * (name + tools + approval) plus the catalog SUMMARY card (IntentsCard —
+ * list/create/navigate only, no file of its own; it maps to the intents/
+ * directory) · intent = infer.md (IntentDetailCard.tsx), prompt.md
+ * (IntentPromptCard.tsx) and hooks.yaml (IntentHooksCard.tsx), each with its
+ * own editing surface. Editing and deleting one intent happens on that
+ * intent's own screen, keeping ONE editing surface per file.
  */
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Plus, SquareArrowOutUpRight, Target } from 'lucide-react';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, FieldLabel, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 import { CUSTOM_ID_PATTERN } from '@ant/shared';
 import { DefinitionCard } from './DefinitionCard';
 import { IdRenameField } from './IdRenameField';
 import { McpServersEditor } from './McpServersEditor';
 import { ToolChip } from './ToolChip';
+import { INTENT_CATALOG_CAP } from './definitionDocs';
 import type { UseDefinitionDocsResult } from './useDefinitionDocs';
 
 export interface OverviewCtx {
@@ -30,14 +33,30 @@ export interface OverviewCtx {
   docs: UseDefinitionDocsResult;
   builtinToolPreset: string[];
   mutatingBuiltinTools: string[];
+  /** MCP server names declared on the job ∪ agent (the hook editor's picker set). */
+  mcpServerNames: string[];
 }
 
 /** Icon-only row action box — same box metrics as the tree's toolbar icons. */
 const ROW_ICON_CLASS =
   'inline-flex items-center justify-center h-5 w-5 shrink-0 rounded text-[color:var(--text-4)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors';
 
+const CHIP_TONES = {
+  violet: { border: 'var(--violet-300)', fill: 'var(--select-fill-violet)' },
+  emerald: {
+    border: 'oklch(from var(--emerald-500) l c h / 0.55)',
+    fill: 'oklch(from var(--emerald-500) l c h / 0.14)',
+  },
+  amber: {
+    border: 'oklch(from var(--amber-500) l c h / 0.55)',
+    fill: 'oklch(from var(--amber-500) l c h / 0.14)',
+  },
+} as const;
+
+export type ChipTone = keyof typeof CHIP_TONES;
+
 /** Static (non-interactive) counterpart of ChipToggle. */
-function StaticChip({ label }: { label: string }) {
+function StaticChip({ label, tone = 'violet' }: { label: string; tone?: ChipTone }) {
   return (
     <span
       style={{
@@ -45,14 +64,21 @@ function StaticChip({ label }: { label: string }) {
         fontFamily: 'var(--font-mono)',
         padding: '2px 8px',
         borderRadius: 'var(--r-pill)',
-        border: '1px solid var(--violet-300)',
+        border: `1px solid ${CHIP_TONES[tone].border}`,
         color: 'var(--select-fg)',
-        background: 'var(--select-fill-violet)',
+        background: CHIP_TONES[tone].fill,
       }}
     >
       {label}
     </span>
   );
+}
+
+/** Hook-entry chip label — the YAML vocabulary verbatim, never localized. */
+export function stopHookChip(hook: { artifact: string } | { action: string }): { label: string; tone: ChipTone } {
+  return 'artifact' in hook
+    ? { label: `artifact: ${hook.artifact}`, tone: 'emerald' }
+    : { label: `action: ${hook.action}`, tone: 'amber' };
 }
 
 // ── Job definition (job.yaml: name + builtin allowlist + approval) ──────────
@@ -179,7 +205,7 @@ export function JobDefinitionCard({
   );
 }
 
-// ── Intents (catalog: add + navigate; edit/delete live on the intent screen) ─
+// ── Intents (catalog summary: add + navigate; edit/delete live on the intent screen) ─
 
 export function IntentsCard({
   ctx,
@@ -190,7 +216,7 @@ export function IntentsCard({
   ctx: OverviewCtx;
   id: string;
   onSelectIntent: (intentId: string) => void;
-  /** Adds the entry to the draft and opens its screen so the criteria get authored. */
+  /** Adds a phantom draft and opens its screen so the criteria get authored. */
   onCreateIntent: (intentId: string) => void;
 }) {
   const { t } = useTranslation('agents');
@@ -199,7 +225,10 @@ export function IntentsCard({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const { docs } = ctx;
   const entries = docs.intents;
-  const disabled = ctx.readonly || docs.intentsDoc?.parseError != null;
+  // Per-intent files own their errors on their own screens; the summary only
+  // gates creation (readonly / catalog cap).
+  const disabled = ctx.readonly;
+  const atCap = entries.length >= INTENT_CATALOG_CAP;
   const newIdValid = CUSTOM_ID_PATTERN.test(newId) && newId !== 'general' && !entries.some((e) => e.id === newId);
 
   const toggleExpanded = (intentId: string) =>
@@ -218,29 +247,26 @@ export function IntentsCard({
   };
 
   return (
-    <DefinitionCard
+    <SectionCard
       id={id}
       icon="Split"
       accent="sunset"
       title={t('overview.intents', 'Intents')}
       description={t(
         'overview.intentsHint',
-        'Situations this job declares. Each one names its matching criterion and the prompts it carries; the agent reads the catalog on every turn.',
+        'Situations this job declares — each intent lives in its own folder under intents/ (infer.md + optional prompt.md and hooks.yaml). Open one to edit its criterion, prompt, and hooks; the agent reads the catalog on every turn.',
       )}
-      doc={docs.intentsDoc}
-      readonly={ctx.readonly}
-      onRawChange={(text) => docs.setRaw('intents', text)}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {entries.length === 0 && (
           <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)' }}>
-            {t('overview.intentsEmpty', 'No intents — every turn runs on base prompts, and injections stay in the on-demand list with only their first line as a hint.')}
+            {t('overview.intentsEmpty', 'No intents — every turn runs on the base prompts alone.')}
           </p>
         )}
 
         {entries.map((entry) => {
           const isOpen = expanded.has(entry.id);
-          const injections = entry.injections ?? [];
+          const stopHooks = entry.hooks?.stop ?? [];
           return (
             <div
               key={entry.id}
@@ -269,6 +295,11 @@ export function IntentsCard({
                 <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-1)' }}>
                   {entry.id}
                 </span>
+                {entry.hasPrompt === true && (
+                  <span style={{ fontSize: 10, color: 'var(--text-4)', border: '1px solid var(--border-2)', borderRadius: 'var(--r-pill)', padding: '0 6px' }}>
+                    {t('overview.intentHasPrompt', 'prompt')}
+                  </span>
+                )}
                 {/* Navigation is this icon alone — the criteria text is never a link. */}
                 <button
                   type="button"
@@ -295,14 +326,15 @@ export function IntentsCard({
                   >
                     {entry.description || t('overview.intentNoDescription', 'No matching criteria yet.')}
                   </p>
-                  {injections.length > 0 && (
+                  {stopHooks.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontSize: 10.5, color: 'var(--text-4)' }}>
-                        {t('overview.intentBoundFiles', 'Injected prompts')}
+                        {t('overview.intentHooks', 'Hooks')}
                       </span>
-                      {injections.map((file) => (
-                        <StaticChip key={file} label={file} />
-                      ))}
+                      {stopHooks.map((hook, i) => {
+                        const chip = stopHookChip(hook);
+                        return <StaticChip key={i} label={chip.label} tone={chip.tone} />;
+                      })}
                     </div>
                   )}
                 </div>
@@ -313,7 +345,7 @@ export function IntentsCard({
 
         {!disabled && !creating && (
           <div>
-            <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
+            <Button size="sm" variant="ghost" disabled={atCap} onClick={() => setCreating(true)}>
               <Plus className="w-3 h-3" /> {t('overview.addIntent', 'Add intent')}
             </Button>
           </div>
@@ -377,6 +409,6 @@ export function IntentsCard({
           </div>
         )}
       </div>
-    </DefinitionCard>
+    </SectionCard>
   );
 }

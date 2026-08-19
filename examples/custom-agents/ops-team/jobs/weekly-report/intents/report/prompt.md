@@ -1,5 +1,3 @@
-Weekly report document structure — section order, required tables, and tone.
-
 # Weekly report format
 
 Structure `reports/{ISO-week}-weekly.md` as:

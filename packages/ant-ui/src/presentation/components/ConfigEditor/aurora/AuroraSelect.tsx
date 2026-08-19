@@ -5,6 +5,8 @@ import { ChevronDown } from 'lucide-react';
 export interface AuroraSelectOption {
   value: string;
   label: string;
+  /** Options sharing a group label render inside a native <optgroup>. */
+  group?: string;
 }
 
 export interface AuroraSelectProps {
@@ -89,11 +91,31 @@ export function AuroraSelect({
             {placeholder}
           </option>
         )}
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
+        {/* Preserve declaration order: consecutive same-group options fold into one optgroup. */}
+        {options
+          .reduce<Array<{ group?: string; items: AuroraSelectOption[] }>>((acc, opt) => {
+            const last = acc[acc.length - 1];
+            if (last && last.group === opt.group) last.items.push(opt);
+            else acc.push({ group: opt.group, items: [opt] });
+            return acc;
+          }, [])
+          .map((bucket, bi) =>
+            bucket.group != null ? (
+              <optgroup key={`g-${bi}-${bucket.group}`} label={bucket.group}>
+                {bucket.items.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </optgroup>
+            ) : (
+              bucket.items.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))
+            ),
+          )}
       </select>
       <span
         aria-hidden

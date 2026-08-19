@@ -233,6 +233,7 @@
       "insufficient_credits": "크레딧이 모두 소진되었습니다",
       "design_no_output": "산출물이 생성되지 않음",
       "plan_no_output": "산출물이 생성되지 않음",
+      "universal_stop_hook_unmet": "턴 완료 계약이 충족되지 않음",
       "unknown": "알 수 없는 오류"
     },
     "subtitles": {
@@ -256,6 +257,7 @@
       "insufficient_credits": "크레딧을 충전한 후 재개하면 이어서 작업합니다.",
       "design_no_output": "디자인 작업이 문서를 작성하지 못하고 종료됐습니다. 재개하면 다시 시도합니다.",
       "plan_no_output": "기획은 마쳤지만 문서가 작성되지 않았습니다. 재개하면 정리된 브리프로 문서를 작성합니다.",
+      "universal_stop_hook_unmet": "인텐트에 선언된 stop hook이 충족되지 않았습니다. 재개하면 이어서 진행하며, 이미 충족된 훅은 다시 요구하지 않습니다.",
       "unknown": "재개하면 중단된 지점부터 다시 시작합니다."
     },
     "designErrors": {

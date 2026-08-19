@@ -218,7 +218,8 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
     }));
 
     // Real writes only (completion-signal = actual-write): collected from
-    // side effects, consumed by respond's outputs-contract check + manifest.
+    // side effects, consumed by the stop-hook gate (agent node), respond's
+    // stop-hook recomputation, and the artifact manifest.
     const writes: string[] = [];
     for (const e of executionEvents) {
       for (const se of e.result.sideEffects ?? []) {
@@ -240,11 +241,17 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
       }
     }
 
+    // Successful calls only (action stop-hook evidence): a gate-rejected or
+    // failed call carries `result.error`, so "advertised but blocked" never
+    // counts as performed.
+    const actions = executionEvents.filter((e) => !e.result.error).map((e) => e.toolName);
+
     return {
       conversations: { [CONV_KEYS.SESSION_MAIN]: updatedHistory },
       toolCalls: [...state.toolCalls, ...toolCallRecords],
       pendingToolCalls: [],
       _turnToolWrites: [...(state._turnToolWrites ?? []), ...writes],
+      _turnToolActions: [...(state._turnToolActions ?? []), ...actions],
       recursionCount: (state.recursionCount ?? 0) + 1,
     };
   },

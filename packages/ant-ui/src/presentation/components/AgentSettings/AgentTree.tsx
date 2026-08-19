@@ -1,15 +1,20 @@
 /**
- * Agent tree — the settings screen's left rail. Three levels:
- * agent (Bot) › job (Briefcase, the Jobs concept icon) › intent (Target, the
- * `@intent:` mention icon — composer vocabulary reused so the tree reads the
- * same as the chat surface).
+ * Agent tree — the settings screen's left rail, with TWO ISOMORPHIC VIEWS
+ * over the same definitions (the file ↔ section philosophy):
+ *   Structure (human) — agent (Bot) › job (Briefcase) › intent (Target, the
+ *   `@intent:` mention icon — composer vocabulary reused so the tree reads
+ *   the same as the chat surface).
+ *   Files — the same scope groups and agent rows, but under an expanded
+ *   agent the children are its definition FILE TREE (lazy-loaded per agent).
+ *   Clicking a file navigates to the section that owns it, and the file the
+ *   right pane currently expresses is highlighted.
  *
  * The tree CREATES and NAVIGATES; it never edits. Renaming happens in the
  * detail screen's definition card (name and id are both fields there) and
  * deleting in its Danger Zone, so a row's kebab carries only "new child" and
  * "upload files". Intent rows have no menu at all — the intent catalog is
  * owned by the job screen's Intents card. Collapse state is local and
- * unpersisted.
+ * unpersisted; the view choice persists (STORAGE_KEYS.AGENT_TREE_VIEW).
  *
  * Row anatomy: the concept icon is the FIRST thing on every row, indented one
  * step per level, so the three icons read as a ladder. The collapse chevron is
@@ -24,14 +29,26 @@
  * by the BE with 409).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FolderTree, ListTree, Plus, Target, Upload } from 'lucide-react';
 import { toCustomId, type CustomAgentScope, type CustomAgentSummary } from '@ant/shared';
 import { Button, KebabMenu, type KebabMenuItem } from '@/presentation/components/aurora';
 import { AuroraInput, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
 import { selectedRowLabel, selectedRowStyle } from '@/presentation/components/aurora/selection';
-import type { AgentSettingsSelection } from '@/domain/store/slices/agentSettingsSlice';
+import { STORAGE_KEYS } from '@/domain/store/storage';
+import type { AgentSettingsSelection, DefinitionTreeEntry } from '@/domain/store/slices/agentSettingsSlice';
+import { DefinitionFileTree } from './overview/DefinitionFileTree';
+
+type TreeView = 'human' | 'files';
+
+function loadTreeView(): TreeView {
+  try {
+    return localStorage.getItem(STORAGE_KEYS.AGENT_TREE_VIEW) === 'files' ? 'files' : 'human';
+  } catch {
+    return 'human';
+  }
+}
 
 const SCOPE_ORDER: CustomAgentScope[] = ['user', 'org', 'builtin'];
 
@@ -71,6 +88,21 @@ export interface AgentTreeProps {
   /** Why the agent list is empty, when it is empty because loading failed. */
   loadError?: { kind: 'endpoint-missing' | 'unknown'; message: string } | null;
   onRetryLoad?: () => void;
+  /** Per-agent definition trees (file view data), lazy-loaded via onEnsureTree. */
+  definitionTrees: Record<string, DefinitionTreeEntry>;
+  onEnsureTree: (agentId: string) => void;
+  /** File-view click → the shell's section navigation bridge. */
+  onOpenFile: (agentId: string, path: string) => void;
+  /**
+   * Re-fetch every loaded tree. Called on file-view ENTRY — there is no manual
+   * refresh button: the trees are lazy-loaded once and would otherwise stay
+   * stale forever (the shell also re-reads them when the window wakes).
+   */
+  onRefreshTrees: () => void;
+  /** File the right pane currently expresses — highlighted in the file view. */
+  selectedFilePath: string | null;
+  /** The agent that highlight belongs to. */
+  selectedFileAgentId: string | null;
 }
 
 /**
@@ -200,12 +232,37 @@ export function AgentTree({
   onImportFolder,
   loadError,
   onRetryLoad,
+  definitionTrees,
+  onEnsureTree,
+  onOpenFile,
+  onRefreshTrees,
+  selectedFilePath,
+  selectedFileAgentId,
 }: AgentTreeProps) {
   const { t } = useTranslation('agents');
   const [collapsedAgents, setCollapsedAgents] = useState<Set<string>>(new Set());
   const [collapsedJobs, setCollapsedJobs] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState<Creating | null>(null);
   const [filePicker, openFilePicker] = useFilePicker();
+  const [view, setView] = useState<TreeView>(loadTreeView);
+
+  const changeView = (next: TreeView) => {
+    setView(next);
+    if (next === 'files') onRefreshTrees();
+    try {
+      localStorage.setItem(STORAGE_KEYS.AGENT_TREE_VIEW, next);
+    } catch {
+      /* persistence is best-effort */
+    }
+  };
+
+  // File view lazily loads every EXPANDED agent's tree (dedupe in the slice).
+  useEffect(() => {
+    if (view !== 'files') return;
+    for (const agent of agents) {
+      if (!collapsedAgents.has(agent.id)) onEnsureTree(agent.id);
+    }
+  }, [view, agents, collapsedAgents, onEnsureTree]);
 
   const toggle = (set: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) => {
     set((prev) => {
@@ -242,6 +299,11 @@ export function AgentTree({
           },
         ];
 
+  const toggleLabel =
+    view === 'files'
+      ? t('tree.toggleToHuman', 'File view — switch to Structure')
+      : t('tree.toggleToFiles', 'Structure view — switch to Files');
+
   return (
     <div className="h-full overflow-y-auto p-3 flex flex-col gap-3">
       {filePicker}
@@ -276,6 +338,19 @@ export function AgentTree({
             }}
           />
         </label>
+        <span className="flex-1" />
+        {/* Structure ⇄ Files — ONE icon switch: the icon is the current view,
+            the tooltip names both the state and the destination. A segmented
+            pair spent rail width restating a binary the icon already carries. */}
+        <button
+          type="button"
+          title={toggleLabel}
+          aria-label={toggleLabel}
+          className={TOOLBAR_ICON_CLASS}
+          onClick={() => changeView(view === 'files' ? 'human' : 'files')}
+        >
+          {view === 'files' ? <FolderTree className="w-3.5 h-3.5" /> : <ListTree className="w-3.5 h-3.5" />}
+        </button>
       </div>
 
       {creating?.kind === 'agent' && (
@@ -345,7 +420,30 @@ export function AgentTree({
                     />
                   )}
 
-                  {!agentCollapsed &&
+                  {!agentCollapsed && view === 'files' && (
+                    definitionTrees[agent.id] ? (
+                      definitionTrees[agent.id].tree.length > 0 ? (
+                        <DefinitionFileTree
+                          key={agent.id}
+                          tree={definitionTrees[agent.id].tree}
+                          onOpenFile={(path) => onOpenFile(agent.id, path)}
+                          selectedPath={selectedFileAgentId === agent.id ? selectedFilePath : null}
+                          dense
+                          baseIndent={18}
+                        />
+                      ) : (
+                        <div className="py-1 pl-8 text-[11px]" style={{ color: 'var(--text-4)' }}>
+                          {t('tree.filesEmpty', 'No files yet.')}
+                        </div>
+                      )
+                    ) : (
+                      <div className="py-1 pl-8 text-[11px]" style={{ color: 'var(--text-4)' }}>
+                        {t('tree.filesLoading', 'Loading files…')}
+                      </div>
+                    )
+                  )}
+
+                  {!agentCollapsed && view === 'human' &&
                     agent.jobs.map((job) => {
                       const jobKey = `${agent.id}/${job.id}`;
                       const jobCollapsed = collapsedJobs.has(jobKey);
@@ -396,6 +494,15 @@ export function AgentTree({
                                 >
                                   <Target size={12} className="shrink-0" />
                                   <span className="truncate flex-1">{intent.id}</span>
+                                  {(intent.hooks?.stop?.length ?? 0) > 0 && (
+                                    <span
+                                      className="shrink-0 inline-flex"
+                                      title={t('tree.intentHasHooks', 'Declares hooks')}
+                                      style={{ color: 'var(--text-4)' }}
+                                    >
+                                      <CircleCheckBig size={10} />
+                                    </span>
+                                  )}
                                   {COLLAPSE_SPACER}
                                 </div>
                               );

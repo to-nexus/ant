@@ -10,6 +10,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
+  INTENTS_DIR_NAME,
+  INTENT_INFER_FILE_NAME,
+  INTENT_PROMPT_FILE_NAME,
+  INTENT_HOOKS_FILE_NAME,
   isAllowedDefinitionPath,
   isValidCustomId,
   validateMcpServers,
@@ -28,7 +32,11 @@ import {
   type CustomAgentScopeRoot,
 } from '../../../../../core/customAgents/CustomAgentLoader';
 import { CustomAgentValidationError } from '../../../../../core/customAgents/types';
-import { validateIntentsDoc } from '../../../../../core/customAgents/intents';
+import {
+  INTENT_CATALOG_CAP,
+  validateHooksFileDoc,
+  validateInferFile,
+} from '../../../../../core/customAgents/intents';
 
 // ── scaffolds ────────────────────────────────────────────────────────────────
 
@@ -36,16 +44,17 @@ export const AGENT_SCAFFOLD_ROLE_MD = `# Role
 
 Describe this agent's shared persona and working principles here.
 Everything in \`base/\` is always injected for every job of this agent.
-Job-specific procedure, conditional material (\`injections/\`), and the intent
-catalog live under each \`jobs/{jobId}/\` directory.
+Job-specific procedure and the intent catalog (each intent's criterion,
+prompt, and hooks) live under each \`jobs/{jobId}/\` directory.
 `;
 
 export const JOB_SCAFFOLD_SYSTEM_MD = `# Job Procedure
 
 Describe what this job does, step by step, and what a good result looks like.
 This file is always injected on top of the agent's shared \`base/\` prose.
-Put long, situational material into this job's \`injections/\` instead — the
-runtime shows a table of contents and loads files on demand.
+Put long, situational material into an intent's \`prompt.md\` instead — its
+\`infer.md\` criterion says when it applies, and the runtime loads the prompt
+only for turns under that intent.
 `;
 
 /**
@@ -64,27 +73,12 @@ export function scaffoldAgent(agentDir: string, id: string, name: string): void 
   fs.writeFileSync(path.join(agentDir, 'base', AGENT_BASE_DEFAULT_MD), AGENT_SCAFFOLD_ROLE_MD, 'utf-8');
 }
 
-export const JOB_SCAFFOLD_INTENTS_YAML = `# Job intent catalog (optional). An empty catalog costs nothing — the intent
-# classifier is skipped entirely until you declare entries.
-#
-# Each description is the classification matching criterion; when an intent is
-# active its \`injections\` files (this job's injections/*.md) are inlined in
-# full (otherwise they stay in the on-demand table of contents). Example:
-#
-# intents:
-#   - id: review
-#     description: 'Review or critique an existing document in the workspace'
-#     injections: [review-checklist.md]
-version: 1
-intents: []
-`;
-
 export function scaffoldJob(jobDir: string, id: string, name: string): void {
   fs.mkdirSync(path.join(jobDir, 'base'), { recursive: true });
-  fs.mkdirSync(path.join(jobDir, 'injections'), { recursive: true });
   fs.writeFileSync(path.join(jobDir, 'job.yaml'), yaml.dump({ id, name, version: 1 }), 'utf-8');
   fs.writeFileSync(path.join(jobDir, 'base', JOB_BASE_DEFAULT_MD), JOB_SCAFFOLD_SYSTEM_MD, 'utf-8');
-  fs.writeFileSync(path.join(jobDir, 'intents.yaml'), JOB_SCAFFOLD_INTENTS_YAML, 'utf-8');
+  // No intent scaffold: a job without intents/ is a valid empty catalog; the
+  // settings UI creates intents/{id}/infer.md through the PUT funnel.
 }
 
 /** Patch top-level yaml fields in place, preserving the rest of the document. */
@@ -218,10 +212,14 @@ export type DefinitionSaveGate =
 
 /**
  * PRE-WRITE gate for the single definition write funnel: whitelist membership,
- * YAML syntax, the id ≡ directory-name invariant for agent.yaml/job.yaml, and
- * the full intent-catalog contract for intents.yaml (same validator the loader
- * runs at job accept). Failing any of these returns 400 and the file is NOT
- * written — a file the funnel records is always at least structurally loadable.
+ * YAML syntax, the id ≡ directory-name invariant for agent.yaml/job.yaml, the
+ * infer.md contract (frontmatter grammar + criterion body), and the hooks.yaml
+ * contract (same validators the loader runs at job accept). Failing any of
+ * these returns 400 and the file is NOT written — a file the funnel records is
+ * always at least structurally loadable. When `agentDir` is provided, the
+ * cross-file catalog cap is front-loaded against the on-disk siblings too —
+ * the loader stays the authority, this only turns a would-be broken catalog
+ * into an immediate 400.
  */
 /** First MCP contract violation in a parsed agent.yaml/job.yaml, or null. */
 function mcpErrorOf(parsed: unknown): string | null {
@@ -229,26 +227,77 @@ function mcpErrorOf(parsed: unknown): string | null {
   return validateMcpServers(servers)[0] ?? null;
 }
 
-export function gateDefinitionSave(agentId: string, relPath: string, content: string): DefinitionSaveGate {
+export function gateDefinitionSave(
+  agentId: string,
+  relPath: string,
+  content: string,
+  agentDir?: string,
+): DefinitionSaveGate {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   if (!isAllowedDefinitionPath(normalized)) {
-    // Legacy agent-level intent/injection paths get the migration message,
-    // not the generic whitelist refusal.
+    // Legacy intent/injection paths get the migration message, not the
+    // generic whitelist refusal.
     if (normalized === 'intents.yaml') {
       return {
         ok: false,
         status: 400,
-        error: `Agent-level intents.yaml was removed — intents are job-only; save the catalog as jobs/{jobId}/intents.yaml`,
+        error: `Agent-level intents.yaml was removed — intents are job-only; save each intent's criterion as jobs/{jobId}/${INTENTS_DIR_NAME}/{intentId}/${INTENT_INFER_FILE_NAME}`,
       };
     }
-    if (/^injections\/[^/]+\.md$/.test(normalized)) {
+    if (/^jobs\/[^/]+\/intents\.yaml$/.test(normalized)) {
       return {
         ok: false,
         status: 400,
-        error: `Agent-level injections/ was removed — save the file under jobs/{jobId}/injections/`,
+        error: `jobs/{jobId}/intents.yaml was replaced by per-intent directories — save each intent's criterion as jobs/{jobId}/${INTENTS_DIR_NAME}/{intentId}/${INTENT_INFER_FILE_NAME} (prose into ${INTENT_PROMPT_FILE_NAME}, hooks into ${INTENT_HOOKS_FILE_NAME} alongside)`,
+      };
+    }
+    if (/^jobs\/[^/]+\/intents\/[^/]+\/intent\.yaml$/.test(normalized)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `${INTENTS_DIR_NAME}/{intentId}/intent.yaml was replaced by ${INTENT_INFER_FILE_NAME} — save the criterion as the ${INTENT_INFER_FILE_NAME} body (clarify in its frontmatter) and the intent's prose as ${INTENT_PROMPT_FILE_NAME}`,
+      };
+    }
+    if (/^(jobs\/[^/]+\/)?injections\/[^/]+\.md$/.test(normalized)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `injections/ was removed — each intent owns its prose as jobs/{jobId}/${INTENTS_DIR_NAME}/{intentId}/${INTENT_PROMPT_FILE_NAME} (its ${INTENT_INFER_FILE_NAME} criterion says when it applies)`,
       };
     }
     return { ok: false, status: 400, error: `Path is outside the definition whitelist: ${normalized}` };
+  }
+  {
+    const segments = normalized.split('/');
+    if (segments[2] === INTENTS_DIR_NAME && segments[4] === INTENT_INFER_FILE_NAME) {
+      const jobId = segments[1];
+      const intentId = segments[3];
+      try {
+        validateInferFile(content, intentId, agentId, jobId);
+      } catch (e) {
+        if (e instanceof CustomAgentValidationError) return { ok: false, status: 400, error: e.message };
+        throw e;
+      }
+      // An intent directory is born by its first infer.md write — front-load
+      // the catalog cap so the UI gets an immediate 400 instead of a broken
+      // catalog (the loader stays the authority).
+      if (agentDir) {
+        const intentsDir = path.join(agentDir, 'jobs', jobId, INTENTS_DIR_NAME);
+        if (!fs.existsSync(path.join(intentsDir, intentId))) {
+          const existing = fs.existsSync(intentsDir)
+            ? fs.readdirSync(intentsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).length
+            : 0;
+          if (existing >= INTENT_CATALOG_CAP) {
+            return {
+              ok: false,
+              status: 400,
+              error: `${INTENTS_DIR_NAME}/: catalog already has ${existing} intents — cap is ${INTENT_CATALOG_CAP}`,
+            };
+          }
+        }
+      }
+      return { ok: true };
+    }
   }
   if (normalized.endsWith('.yaml')) {
     let parsed: unknown;
@@ -285,13 +334,11 @@ export function gateDefinitionSave(agentId: string, relPath: string, content: st
       }
       const mcpError = mcpErrorOf(parsed);
       if (mcpError) return { ok: false, status: 400, error: mcpError };
-    } else if (segments[segments.length - 1] === 'intents.yaml') {
+    } else if (segments[2] === INTENTS_DIR_NAME && segments[4] === INTENT_HOOKS_FILE_NAME) {
       try {
-        validateIntentsDoc(parsed, agentId, segments[0] === 'jobs' ? segments[1] : undefined);
+        validateHooksFileDoc(parsed, segments[3], agentId, segments[1]);
       } catch (e) {
-        if (e instanceof CustomAgentValidationError) {
-          return { ok: false, status: 400, error: e.message };
-        }
+        if (e instanceof CustomAgentValidationError) return { ok: false, status: 400, error: e.message };
         throw e;
       }
     }

@@ -2,13 +2,13 @@
  * Turn-context chat card — the universal runtime's announcement of what a
  * turn resolved to.
  *
- * Universal resolves its turn context deterministically (`explicit → catalog
- * default → general`), so unlike canonical's detect card this is a statement
- * of a CONSTANT, never of an inference. It exists because the fallback was
- * otherwise silent: a turn that fell through to `general` — no declared
- * intent active, mapped injections left on the TOC, the per-intent clarify
- * knob unreachable — looked exactly like one running under the intent the
- * author meant.
+ * Universal resolves its turn context deterministically (`explicit →
+ * inherited → general`), so unlike canonical's detect card this is a
+ * statement of a CONSTANT, never of an inference. It exists because the
+ * fallback was otherwise silent: a turn that fell through to `general` — no
+ * declared intent active, intent prompts left as pointers, the per-intent
+ * clarify knob unreachable — looked exactly like one running under the
+ * intent the author meant.
  *
  * Plain markdown, not a canonical `<tag>`: no tag is emitted, so the
  * OutputTagRegistry contract (which scopes tags the LLM may emit) does not
@@ -21,7 +21,7 @@
 import type { CustomIntentDef } from '@ant/shared';
 import { sanitizeCell } from './promptBlock.js';
 
-export type TurnContextSource = 'pinned' | 'default' | 'unpinned' | 'inherited';
+export type TurnContextSource = 'pinned' | 'unpinned' | 'inherited';
 
 export interface TurnContextChatInput {
   agentName: string;
@@ -31,8 +31,8 @@ export interface TurnContextChatInput {
   source: TurnContextSource;
   /** The job's full intent catalog — rendered as the choice set on `unpinned`. */
   catalog: readonly CustomIntentDef[];
-  /** Injection files the active intents inline this turn. */
-  activeInjections: readonly string[];
+  /** Prompt files (`intents/{id}/prompt.md`) the active intents inline this turn. */
+  activePrompts: readonly string[];
   /** `@ctx:` paths attached to this turn. */
   context: readonly string[];
   /** `@plan` — writes confined to `plan/`. */
@@ -43,11 +43,10 @@ interface Labels {
   header: string;
   intent: string;
   sourcePinned: string;
-  sourceDefault: string;
   sourceUnpinned: string;
   sourceInherited: string;
   choices: string;
-  injections: string;
+  prompts: string;
   context: string;
   planTurn: string;
   planOn: string;
@@ -57,11 +56,10 @@ const KO: Labels = {
   header: '턴 컨텍스트 확정',
   intent: '인텐트',
   sourcePinned: '지정됨',
-  sourceDefault: '카탈로그 기본값',
-  sourceUnpinned: '미지정 — 기본 인텐트 없음',
+  sourceUnpinned: '미지정 — general로 진행',
   sourceInherited: '승계 — 질문 턴에서 이어짐',
   choices: '선택 가능',
-  injections: '활성 지침',
+  prompts: '활성 지침',
   context: '첨부 컨텍스트',
   planTurn: '플랜 턴',
   planOn: '활성',
@@ -71,11 +69,10 @@ const EN: Labels = {
   header: 'Turn Context Resolved',
   intent: 'Intent',
   sourcePinned: 'pinned',
-  sourceDefault: 'catalog default',
-  sourceUnpinned: 'unpinned — no default intent',
+  sourceUnpinned: 'unpinned — running as general',
   sourceInherited: 'inherited — carried across the clarify pause',
   choices: 'Selectable',
-  injections: 'Active instructions',
+  prompts: 'Active instructions',
   context: 'Attached context',
   planTurn: 'Plan turn',
   planOn: 'on',
@@ -84,7 +81,6 @@ const EN: Labels = {
 function sourceLabel(source: TurnContextSource, l: Labels): string {
   switch (source) {
     case 'pinned': return l.sourcePinned;
-    case 'default': return l.sourceDefault;
     case 'unpinned': return l.sourceUnpinned;
     case 'inherited': return l.sourceInherited;
   }
@@ -114,8 +110,8 @@ export function formatTurnContextForChat(
     }
   }
 
-  if (input.activeInjections.length > 0) {
-    lines.push(`📎 **${l.injections}**: ${input.activeInjections.map((f) => `\`${sanitizeCell(f)}\``).join(', ')}`);
+  if (input.activePrompts.length > 0) {
+    lines.push(`📎 **${l.prompts}**: ${input.activePrompts.map((f) => `\`${sanitizeCell(f)}\``).join(', ')}`);
   }
   if (input.context.length > 0) {
     lines.push(`📚 **${l.context}**: ${input.context.map((p) => `\`${sanitizeCell(p)}\``).join(', ')}`);

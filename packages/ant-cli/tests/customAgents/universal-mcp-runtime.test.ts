@@ -138,7 +138,8 @@ describe('universal MCP dispatch — registry instance identity', () => {
  * flow tool→file without the model re-typing it: the handler writes the full
  * text to the artifacts sandbox and returns only path + shape + head preview.
  * Spool writes go straight through ctx.fileSystem and emit NO side effects,
- * so they never fold into `_turnToolWrites` / the outputs-contract manifest.
+ * so they never fold into `_turnToolWrites` — neither the artifact manifest
+ * nor an artifact stop hook can be satisfied by a spool.
  */
 describe('universal MCP result spooling', () => {
   beforeEach(() => {

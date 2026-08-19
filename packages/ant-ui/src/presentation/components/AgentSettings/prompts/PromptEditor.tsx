@@ -1,30 +1,27 @@
 /**
- * Prompt editor — the full-width bottom half of the Prompts card. Raw editing
- * (LineNumberedEditor) plus a per-file raw/preview toggle rendering the
- * markdown through the chat component factory. This surface is prose only;
- * definition yaml is edited in its own card's YAML view.
+ * Prompt editor — the selected `base/*.md` file inside the Prompts card: the
+ * file-ops row (path · rename · delete · save) above the SHARED prose body.
+ * The viewport and the raw ⇄ preview toggle live in `proseSurface`, which the
+ * intent's prompt.md card uses too — this file owns only what a multi-file
+ * surface adds: which file, renaming it, deleting it, saving it.
  *
  * Saves go through the single definition write funnel (Save button / Cmd+S).
- * Readonly scopes default to preview.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Code, Eye, Pencil, Trash2 } from 'lucide-react';
-import { Button, ViewModeButton } from '@/presentation/components/aurora';
+import { Pencil, Trash2 } from 'lucide-react';
+import { Button } from '@/presentation/components/aurora';
 import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora';
-import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
-import { LineNumberedEditor } from '../../FileEditorPanel/LineNumberedEditor';
+import { ProseBody } from './proseSurface';
 import type { ViewMode } from '@/domain/file/viewMode';
 import type { DefinitionValidationResult } from '@ant/shared';
-
-const MARKDOWN_PREVIEW_COMPONENTS = createMarkdownComponents({ paragraphTag: 'p' });
 
 export interface PromptEditorProps {
   openFile: { path: string; content: string; savedContent: string };
   readonly: boolean;
+  /** Owned by the card, because the toggle renders in the card's header. */
+  mode: ViewMode;
   validation: DefinitionValidationResult | null;
   onChange: (content: string) => void;
   onSave: () => Promise<void>;
@@ -36,6 +33,7 @@ export interface PromptEditorProps {
 export function PromptEditor({
   openFile,
   readonly,
+  mode,
   validation,
   onChange,
   onSave,
@@ -44,11 +42,9 @@ export function PromptEditor({
   saveError,
 }: PromptEditorProps) {
   const { t } = useTranslation('agents');
-  const [modeByPath, setModeByPath] = useState<Record<string, ViewMode>>({});
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  const mode: ViewMode = modeByPath[openFile.path] ?? (readonly ? 'preview' : 'raw');
   const dirty = openFile.content !== openFile.savedContent;
 
   useEffect(() => {
@@ -81,11 +77,10 @@ export function PromptEditor({
     await onDelete();
   };
 
-  const setMode = (next: ViewMode) => setModeByPath((prev) => ({ ...prev, [openFile.path]: next }));
-
   return (
-    <div className="flex flex-col gap-2 p-2">
-      {/* header: path · rename · mode toggle · delete · save */}
+    <div className="flex flex-col gap-2">
+      {/* file ops: path · rename · delete · save (the mode toggle is in the
+          card header, shared with the intent prompt card) */}
       <div className="flex items-center gap-2 flex-wrap">
         {renaming !== null ? (
           <div style={{ maxWidth: 260 }}>
@@ -121,20 +116,6 @@ export function PromptEditor({
           </button>
         )}
         <div className="flex-1" />
-        <div className="flex items-center gap-0.5">
-          <ViewModeButton
-            icon={Code}
-            label={t('prompts.viewRaw', 'Raw')}
-            active={mode === 'raw'}
-            onClick={() => setMode('raw')}
-          />
-          <ViewModeButton
-            icon={Eye}
-            label={t('prompts.viewPreview', 'Preview')}
-            active={mode === 'preview'}
-            onClick={() => setMode('preview')}
-          />
-        </div>
         {!readonly && (
           <Button size="sm" variant="ghost" onClick={() => void handleDelete()}>
             <Trash2 className="w-3 h-3" />
@@ -162,24 +143,7 @@ export function PromptEditor({
         </div>
       )}
 
-      {/* body — one stable box for both modes so toggling never jumps the page */}
-      <div style={{ height: 'min(60vh, 560px)', minHeight: 280 }} className="flex flex-col">
-        {mode === 'preview' ? (
-          <div
-            className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none px-3 py-2 rounded-md"
-            style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={MARKDOWN_PREVIEW_COMPONENTS}
-            >
-              {openFile.content}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <LineNumberedEditor value={openFile.content} onChange={onChange} disabled={readonly} />
-        )}
-      </div>
+      <ProseBody value={openFile.content} mode={mode} readonly={readonly} onChange={onChange} />
     </div>
   );
 }

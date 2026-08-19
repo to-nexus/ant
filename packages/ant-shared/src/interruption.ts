@@ -32,6 +32,7 @@ export type InterruptionReason =
   | 'awaiting_clarify'      // Turn ended on a <clarify> card; user-actionable, resumes on answer
   | 'design_no_output'      // Design execute produced zero artifacts (degenerate loop / drain) — resumable after re-run
   | 'plan_no_output'        // Plan job sealed a brief but authored no document — resumable after re-run
+  | 'universal_stop_hook_unmet' // Universal turn ended with intent stop hooks unmet after the bounce budget — resumable (paused seal carries turn context + hook ledger)
   | 'unknown';              // Unknown reason
 
 /**

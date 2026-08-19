@@ -75,17 +75,21 @@ account-owned and shared across your workspace projects:
   jobs/weekly-report/
     job.yaml
     base/system.md             # job prose — how this job runs (default name)
-    injections/weekly-report-format.md
-    intents.yaml
+    intents/report/            # one directory per intent (§4.5)
+      infer.md                 #   REQUIRED: when it applies (prose criterion + optional clarify frontmatter)
+      prompt.md                #   optional: prose inlined while the intent is active
+      hooks.yaml               #   optional completion contract (§4.7)
 ```
 
 `role.md` / `system.md` are only the names the scaffold and the shipped
 built-in use. Any number of `base/*.md` files is allowed; they are concatenated
-in filename order (agent prose first, then job prose).
+in filename order (agent prose first, then job prose). A fresh job scaffolds
+no intents — `intents/` appears when you add the first one.
 
-Intents, injections, and tools are **job-owned** — there is no agent-level
-`intents.yaml` or `injections/` (a legacy definition carrying them fails loud
-with a move instruction).
+Intents and tools are **job-owned** — there is no agent-level intent catalog,
+and no `injections/` pool at any level (a legacy definition carrying either
+fails loud with a move instruction — each intent owns its prose as its own
+`prompt.md`).
 
 ## 2. agent.yaml — identity + shared connections
 
@@ -191,69 +195,76 @@ clarify: false
 # jobs/{jobId}/job.yaml — wins over the agent default
 clarify: true
 
-# jobs/{jobId}/intents.yaml — per intent, wins over both while active
-intents:
-  - id: scheduled-run
-    description: 'Unattended scheduled generation'
-    clarify: false
+# jobs/{jobId}/intents/scheduled-run/infer.md — per intent (frontmatter), wins over both while active
+---
+clarify: false
+---
+Unattended scheduled generation.
 ```
 
 Precedence: active intents that declare the knob decide (disabled wins when
 several conflict); otherwise `job.clarify`, otherwise `agent.clarify`,
 otherwise enabled. The value must be a real boolean — `clarify: "yes"` fails
-validation at job accept. An intent is *active* when pinned with `@intent:`
-(or the execute body's `intents`) — or on every unpinned turn, if it is the
-catalog's `default: true` intent, which is how a per-intent `clarify: false`
-covers unattended runs without any per-call parameter (§4.5).
+validation at job accept. An intent is *active* only when pinned with
+`@intent:` (or the execute body's `intents`) — there is no catalog default,
+so an unattended lane pins its intent in the scheduled/API call (§4.5).
 
-## 4. Prose — base/ and injections/
+## 4. Prose — base/ and per-intent prompt.md
 
 - `base/*.md` is **always injected**, agent files first, then job files,
   filename order. Keep it under ~8,000 characters combined — overflow is
   truncated with a visible footer. Put the identity and the procedure here.
-- `injections/*.md` (job-level) is **loaded on demand**: the runtime injects
-  only a table of contents (filename + first line as the summary); the model
-  reads a file with `read_file` from the read-only definition mount when it
-  needs it. No size cap. Put report templates, long checklists, and
-  rare-case playbooks here.
+- `intents/{id}/prompt.md` is **situational**: inlined in full while its
+  intent is active, otherwise offered as a `read_file` pointer off the
+  read-only definition mount. No size cap. Put report templates, long
+  checklists, and rare-case playbooks here — the sibling `infer.md` says when
+  they apply.
 
 Prose is inert — it is never template-compiled, and it cannot override the
 runtime's safety or output rules (the harness states this explicitly).
 
-## 4.5 Intents — inlining injections by situation
+## 4.5 Intents — infer.md (when) + prompt.md (what)
 
-An optional `jobs/{jobId}/intents.yaml` maps situations to that job's
-injections, so situational rules arrive in full exactly when they apply
-instead of waiting to be read on demand:
+Each intent is a directory under `jobs/{jobId}/intents/` declaring one
+situation. The directory name IS the intent id (kebab-case; `general` is
+reserved) — no file declares it, so renaming an intent is renaming its
+directory:
 
-```yaml
-version: 1
-intents:
-  - id: incident            # kebab-case; 'general' is reserved (the no-match fallback)
-    description: 'Reporting, investigating, or following up on a service incident'
-    injections: [incident-playbook.md]
-    default: true           # optional; at most one — unpinned turns run as this intent
+```markdown
+<!-- jobs/{jobId}/intents/incident/infer.md -->
+---
+# comments in this fence are the authoring-guidance channel — they never
+# reach the prompt. One optional key is allowed:
+clarify: false
+---
+Reporting, investigating, or following up on a service incident.
 ```
 
-- **Intents are selected explicitly or by your `default` — never auto-classified.**
-  A turn carries the intents the user mentioned with `@intent:` in the composer
-  (or that an API caller passed in the execute body); those intents' injections
-  are inlined in full. There is no per-turn LLM classification pass.
-- **A turn with no mention runs as the intent marked `default: true`**, exactly
-  as if it had been pinned — injections inline, and its `clarify` knob applies.
-  At most one intent per catalog may be the default; it is the right shape for
-  a job whose unpinned turns overwhelmingly mean one thing (a report job, a
-  scheduled duty).
-- **With no default, an unpinned turn runs as the reserved `general` intent**:
-  no injection inlines, and the model self-selects with `read_file`. It is not
-  guessing from filenames — the runtime renders your whole catalog (each
-  intent's id and `description`, verbatim) into the prompt as an *Intent
-  Catalog*, so the `description` is doing double duty: the criterion the model
-  matches the request against, and the row an `@intent:` mention selects.
-  Write it as a trigger condition ("when does this apply"), not as a summary
-  of the file's contents.
+The body below the fence is the **inference criterion** — required, ≤1000
+chars, rendered verbatim into the agent's Intent Catalog on every turn. Write
+it as a trigger condition ("when does this apply"), not as a summary. The
+optional sibling `prompt.md` carries the situation's instructions; the
+optional `hooks.yaml` (§4.7) its completion contract. Anything else in the
+intent directory fails loud (a typo'd `hook.yaml` must not silently disarm a
+contract), as do the retired shapes: a per-intent `intent.yaml`, a job-level
+`injections/` directory (even empty), a single-file `jobs/{jobId}/
+intents.yaml`, and the retired frontmatter keys (`default`, `injections`,
+`description`, `id`, `hooks` — each error names the replacement). The catalog
+renders in directory-name order.
+
+- **Intents are selected explicitly — never auto-classified, and there is no
+  default.** A turn carries the intents the user mentioned with `@intent:` in
+  the composer (or that an API caller passed in the execute body); those
+  intents' `prompt.md` files are inlined in full, their `clarify` knobs apply,
+  and their hooks arm. There is no per-turn LLM classification pass.
+- **An unpinned turn runs as the reserved `general` intent**: nothing inlines
+  and no hook arms, but the model self-selects with `read_file` — the runtime
+  renders your whole catalog (each intent's id and `infer.md` criterion,
+  verbatim, plus its prompt pointer) into the prompt as an *Intent Catalog*.
+  A lane that must run under an intent every time (a scheduled report, an
+  unattended duty) pins it in the call.
 - The shipped `assistant` agent's catalog
-  (`packages/ant-cli/src/core/data/agents/assistant/jobs/chat/intents.yaml`)
+  (`packages/ant-cli/src/core/data/agents/assistant/jobs/chat/intents/`)
   is the working example.
 
 ## 4.6 Plan turns — `@plan` in the composer
@@ -264,6 +275,33 @@ that run produces or updates a plan document instead of doing the work: the
 runtime confines file writes to `plan/` and rejects execution tools
 (`run_command`, `http_request`, mutating MCP) for the turn. Review the plan,
 then send a normal turn to execute it.
+
+## 4.7 Hooks — the turn-completion contract
+
+An intent may declare hooks in the optional `hooks.yaml` next to its
+`infer.md`. Every entry must hold when the turn stops (the `stop` event,
+AND) — verified by the runtime from actual tool results, never from the
+model's claims. Unmet hooks re-prompt the agent a bounded number of times,
+then pause the job resumably.
+
+```yaml
+# jobs/{jobId}/intents/incident/hooks.yaml
+hooks:
+  stop:
+    - artifact: reports/*-incident.md      # a real file write this turn must match this glob
+    - action: mcp__ops-api__create_incident # this tool must have been successfully called
+```
+
+- `artifact` globs address the job's artifact root: `*` matches within one
+  path segment, `**` matches any depth (whole segment only). `sessions/` is
+  reserved and refused.
+- `action` names a tool from this job's `tools.builtin` or a full
+  `mcp__{server}__{tool}` whose server is declared on the job or agent —
+  otherwise the definition fails to load (the hook could never be met).
+- Deleting `hooks.yaml` (or emptying the list in the settings UI) removes the
+  contract; a job without hooks simply ends the turn when the agent stops.
+  Hooks arm only on pinned/inherited turns — unpinned (`general`) turns are
+  never gated.
 
 ## 5. Validate and run
 
@@ -315,8 +353,10 @@ now fails loud with the fix in the message:
 
 | Legacy | Fix |
 |---|---|
-| `{agent}/intents.yaml` | move into `jobs/{jobId}/intents.yaml` |
-| `{agent}/injections/*.md` | move into `jobs/{jobId}/injections/` |
+| `{agent}/intents.yaml` | split into `jobs/{jobId}/intents/{intentId}/infer.md` (+ `prompt.md`, `hooks.yaml`) |
+| `jobs/{jobId}/intents.yaml` | split into `jobs/{jobId}/intents/{intentId}/infer.md` (+ `prompt.md`, `hooks.yaml`) |
+| `intents/{id}/intent.yaml` | `description` → the `infer.md` body; `clarify` → its frontmatter; `injections` → the intent's own `prompt.md`; `default` → removed (pin explicitly) |
+| `{agent}/injections/*.md`, `jobs/{jobId}/injections/*.md` | move each file into the intent that used it, as `intents/{id}/prompt.md`; delete the directory |
 | `agent.yaml: tools` | declare in `jobs/{jobId}/job.yaml` |
 | `agent.yaml: description` | fold into `base/*.md` prose |
 | `job.yaml: description` | fold into the job's `base/*.md` prose |

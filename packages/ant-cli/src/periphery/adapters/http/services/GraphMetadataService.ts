@@ -215,7 +215,7 @@ export const ACTOR_MAPPINGS: Record<string, { actors: string[]; description?: st
   },
   'universal:universal:respond': {
     actors: [COMMON_ACTORS.fileSystem.id, COMMON_ACTORS.localStorage.id],
-    description: 'Final response, outputs-contract check, session seal'
+    description: 'Final response, stop-hook verdict, session seal'
   },
 
   // Creator Visual

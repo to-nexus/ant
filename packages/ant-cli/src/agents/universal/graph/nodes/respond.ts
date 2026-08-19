@@ -13,6 +13,14 @@ import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import { isUnderPlanDir } from '../../../../core/customAgents/universalToolPolicy';
+import {
+  activeStopHooksOf,
+  buildStopHookLedger,
+  checkStopHooks,
+  formatStopHookManifest,
+  verifyChecksOnDisk,
+  type StopHookCheck,
+} from '../../../../core/customAgents/stopHooks';
 
 /** Plan-doc listing cap shared with resolve's PLAN_DOCS_MAX. */
 const PLAN_CARD_FILES_MAX = 20;
@@ -114,11 +122,44 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
     console.warn('[Universal:Respond] No response to send');
   }
 
-  // 2. Artifact manifest — only when writes happened.
-  if (writes.length > 0) {
-    const manifest =
-      (state.language === 'ko' ? `\n\n📦 **이번 턴 산출물**\n` : `\n\n📦 **Artifacts written this turn**\n`) +
-      writes.map((w) => `- \`${w}\``).join('\n');
+  // 1.5. Stop-hook recomputation — respond never trusts the agent node's
+  //      verdict flags: the SAME pure predicate re-runs over the sealed
+  //      evidence plus a disk re-check (planCompleteCardWrites precedent).
+  //      Plan turns are exempt (plan_complete owns their contract); a
+  //      clarify pause DEFERS the contract (the answer turn re-gates via
+  //      intent + ledger inheritance) but still records met hooks below.
+  const fileSystem = state.deps?.fileSystem;
+  const activeHooks =
+    state.turnContext?.planTurn === true
+      ? []
+      : activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? []);
+  let hookChecks: StopHookCheck[] = [];
+  if (activeHooks.length > 0) {
+    const rawChecks = checkStopHooks(activeHooks, {
+      writes: state._turnToolWrites ?? [],
+      actions: state._turnToolActions ?? [],
+      ledger: state.restoredHookLedger,
+    });
+    hookChecks = fileSystem
+      ? await verifyChecksOnDisk(rawChecks, (p) => fileSystem.fileExists(p))
+      : rawChecks;
+  }
+  const hooksUnmet = state._clarifyPause ? [] : hookChecks.filter((c) => !c.met);
+
+  // 2. Artifact manifest — only when writes happened. Stop-hook verdict
+  //    lines share the manifest slot (✓/✗ split, unmet patterns verbatim so
+  //    an author's glob typo is visible).
+  const hookManifest =
+    !state._clarifyPause && hookChecks.length > 0
+      ? formatStopHookManifest(hookChecks, state.language)
+      : null;
+  if (writes.length > 0 || hookManifest) {
+    const writesManifest =
+      writes.length > 0
+        ? (state.language === 'ko' ? `📦 **이번 턴 산출물**\n` : `📦 **Artifacts written this turn**\n`) +
+          writes.map((w) => `- \`${w}\``).join('\n')
+        : null;
+    const manifest = '\n\n' + [writesManifest, hookManifest].filter(Boolean).join('\n\n');
     await chatAPI.startMessage();
     await chatAPI.sendLLMEvent({ type: 'text', text: manifest });
     await chatAPI.finalizeMessage();
@@ -162,6 +203,21 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
           // next non-paused seal, exactly like the markers above.
           ...(state.turnContext && { clarifyTurnContext: state.turnContext }),
         }),
+        // Stop-hook pause markers — the third rider of the clarify pause
+        // rail: honest paused seal + resumable interruption (published by
+        // the runner from `_hooksUnmet`). `hookLedger` records hooks already
+        // met so the resumed turn re-demands only the remainder; it ALSO
+        // rides a clarify pause mid-sequence (A done → clarify → answer turn
+        // must not re-demand A). Both self-clear at the next normal seal —
+        // a fresh request is a fresh contract (disk leftovers never satisfy
+        // it: completion-signal = actual-write).
+        ...(hooksUnmet.length > 0 && {
+          awaitingStopHooks: true,
+          ...(state.turnContext && { hookTurnContext: state.turnContext }),
+          hookLedger: buildStopHookLedger(hookChecks),
+        }),
+        ...(state._clarifyPause &&
+          hookChecks.some((c) => c.met) && { hookLedger: buildStopHookLedger(hookChecks) }),
       };
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });
       console.log('💾 [Universal:Respond] Session sealed');
@@ -181,5 +237,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
     }
   }
 
-  return {};
+  // Respond's recomputed verdict is what the runner surfaces (the agent
+  // node's flag was pre-disk-recheck).
+  return { _hooksUnmet: hooksUnmet.length > 0 ? hooksUnmet : undefined };
 }

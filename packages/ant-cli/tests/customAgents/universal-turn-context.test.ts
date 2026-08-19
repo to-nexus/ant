@@ -7,16 +7,15 @@
  * The former detect node (LLM intent/tier classification) was removed:
  * universal has nothing for a classifier to route, so every field below is
  * a pure function of runner inputs + the loaded definition. Intents resolve
- * explicit → inherited (clarify continuity) → the catalog's `default: true`
- * intent → general; there is deliberately NO runtime classification pass —
- * the Intent Catalog rendered into the agent prompt (see
- * universal-prompt-injection.test.ts) is what informs the model's own
- * in-turn selection instead.
+ * explicit → inherited (clarify continuity) → general; there is deliberately
+ * NO runtime classification pass and NO catalog default — the Intent Catalog
+ * rendered into the agent prompt (see universal-prompt-injection.test.ts) is
+ * what informs the model's own in-turn selection instead.
  *
- * `source` names which of those four steps fired for the INTENT facet
- * (`pinned` / `inherited` / `default` / `unpinned`), and the chat card built
- * from it is the only surface that tells an author their turn fell through
- * to `general`.
+ * `source` names which of those three steps fired for the INTENT facet
+ * (`pinned` / `inherited` / `unpinned`), and the chat card built from it is
+ * the only surface that tells an author their turn fell through to
+ * `general`.
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
@@ -43,8 +42,8 @@ function makeResolved(intents: ResolvedCustomJob['intents'] = []): ResolvedCusto
     agentName: 'Ops',
     jobName: 'Weekly',
     prose: 'p',
-    injectionsToc: [],
     intents,
+    intentPrompts: {},
     mcpServers: {},
     builtinTools: [],
     approval: {},
@@ -88,7 +87,7 @@ describe('universalResolveStrategy — deterministic turnContext (single writer)
 
   it.each([
     ['explicit intents adopted verbatim', { explicitIntents: ['research', 'cite'] }, { intents: ['research', 'cite'], source: 'pinned' }],
-    ['no explicit input, no catalog default → [general] / unpinned', {}, { intents: ['general'], source: 'unpinned' }],
+    ['no explicit input → [general] / unpinned', {}, { intents: ['general'], source: 'unpinned' }],
     ['@ctx alone attaches context without forging intent provenance', { explicitContext: ['plan/notes.md'] }, { intents: ['general'], context: ['plan/notes.md'], source: 'unpinned' }],
     ['@plan rides as planTurn', { planRequested: true }, { planTurn: true }],
     ['planRequested absent → planTurn false', {}, { planTurn: false }],
@@ -118,34 +117,32 @@ describe('universalResolveStrategy — deterministic turnContext (single writer)
   });
 });
 
-describe('universalResolveStrategy — catalog default intent (deterministic, no classification)', () => {
-  const CATALOG_WITH_DEFAULT: ResolvedCustomJob['intents'] = [
-    { id: 'report', description: 'weekly report work', default: true },
+describe('universalResolveStrategy — no catalog default (unpinned is always general)', () => {
+  const CATALOG_INTENTS: ResolvedCustomJob['intents'] = [
+    { id: 'report', description: 'weekly report work' },
     { id: 'triage', description: 'incident triage' },
   ];
 
   it.each([
-    ['unpinned turn runs as the default intent', CATALOG_WITH_DEFAULT, {},
-      { intents: ['report'], source: 'default' }],
-    ['explicit pin beats the default', CATALOG_WITH_DEFAULT, { explicitIntents: ['triage'] },
-      { intents: ['triage'], source: 'pinned' }],
-    ['catalog without a default falls to general', [{ id: 'report', description: 'x' }], {},
+    ['unpinned turn with a populated catalog still runs as general', {},
       { intents: ['general'], source: 'unpinned' }],
-    ['@ctx alone keeps the default intent (source stays default)', CATALOG_WITH_DEFAULT,
-      { explicitContext: ['plan/notes.md'] }, { intents: ['report'], source: 'default' }],
-    ['inheritance beats the catalog default (clarify answer keeps the paused pin)', CATALOG_WITH_DEFAULT,
+    ['explicit pin adopts the catalog intent', { explicitIntents: ['triage'] },
+      { intents: ['triage'], source: 'pinned' }],
+    ['@ctx alone keeps general (source stays unpinned)', { explicitContext: ['plan/notes.md'] },
+      { intents: ['general'], context: ['plan/notes.md'], source: 'unpinned' }],
+    ['inheritance keeps the paused pin (clarify answer turn)',
       { inheritedTurnContext: { intents: ['triage'], context: [], planTurn: false } },
       { intents: ['triage'], source: 'inherited' }],
-  ] as const)('%s', async (_label, intents, overrides, expected) => {
-    activateCustomJob(makeResolved([...intents]));
+  ] as const)('%s', async (_label, overrides, expected) => {
+    activateCustomJob(makeResolved([...CATALOG_INTENTS]));
     const result = await universalResolveStrategy.loadArtifacts(makeState(overrides as any));
     expect(result.turnContext).toMatchObject(expected);
   });
 
-  it('resume without a new message still resolves the default (session identity is deterministic)', async () => {
-    activateCustomJob(makeResolved([...CATALOG_WITH_DEFAULT]));
+  it('resume without a new message resolves general (session identity is deterministic)', async () => {
+    activateCustomJob(makeResolved([...CATALOG_INTENTS]));
     const result = await universalResolveStrategy.onResume!(makeState({ userMessage: '' }));
-    expect(result.turnContext).toMatchObject({ intents: ['report'], source: 'default' });
+    expect(result.turnContext).toMatchObject({ intents: ['general'], source: 'unpinned' });
   });
 });
 
@@ -162,7 +159,7 @@ describe('formatTurnContextForChat — announcement gates', () => {
     intents: ['general'],
     source: 'unpinned' as const,
     catalog: CATALOG,
-    activeInjections: [],
+    activePrompts: [],
     context: [],
     planTurn: false,
   };
@@ -170,7 +167,7 @@ describe('formatTurnContextForChat — announcement gates', () => {
   it.each([
     ['unpinned lists the catalog the agent self-selects against', { source: 'unpinned' as const }, true],
     ['pinned does not list the catalog', { source: 'pinned' as const, intents: ['report'] }, false],
-    ['default does not list the catalog', { source: 'default' as const, intents: ['report'] }, false],
+    ['inherited does not list the catalog', { source: 'inherited' as const, intents: ['report'] }, false],
   ] as const)('%s', (_label, overrides, listsCatalog) => {
     const out = formatTurnContextForChat({ ...base, ...overrides }, 'ko');
     expect(out.includes('선택 가능')).toBe(listsCatalog);
@@ -193,7 +190,7 @@ describe('formatTurnContextForChat — announcement gates', () => {
   });
 
   it.each([
-    ['활성 지침', 'activeInjections', ['fmt.md']],
+    ['활성 지침', 'activePrompts', ['intents/report/prompt.md']],
     ['첨부 컨텍스트', 'context', ['plan/a.md']],
   ] as const)('%s renders only when its slot is non-empty', (label, field, value) => {
     expect(formatTurnContextForChat(base, 'ko')).not.toContain(label);
@@ -206,7 +203,7 @@ describe('formatTurnContextForChat — announcement gates', () => {
   });
 
   it('en renders the same gates with english labels', () => {
-    const out = formatTurnContextForChat({ ...base, activeInjections: ['fmt.md'], planTurn: true }, 'en');
+    const out = formatTurnContextForChat({ ...base, activePrompts: ['intents/report/prompt.md'], planTurn: true }, 'en');
     expect(out).toContain('Selectable');
     expect(out).toContain('Active instructions');
     expect(out).toContain('Plan turn');

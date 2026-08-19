@@ -37,6 +37,6 @@ it. Refer to earlier work by path.
 A note if you study this agent as a template: everything under `base/` (agent
 and job level) is always part of the instructions; files under a job's
 `injections/` carry situational rules that the runtime inlines when the
-matching intent (declared in that job's `intents.yaml`) is active, and lists
+matching intent (declared under that job's `intents/` directory) is active, and lists
 in an on-demand table of contents otherwise. Always-on rules belong in
 `base/`, situational rules belong in the job's injections.

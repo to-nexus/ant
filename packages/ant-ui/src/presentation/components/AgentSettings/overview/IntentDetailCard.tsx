@@ -1,27 +1,32 @@
 /**
- * Intent detail card — the single editing surface for one intent of the
- * selected job: its id and its matching criteria (the agent reads the
- * description verbatim off its rendered Intent Catalog). Prompt bindings live in the Prompts section below
- * (single surface); deleting happens in this screen's Danger Zone. Edits flow
- * through `useDefinitionDocs`, so the shell's ChangedBar saves them into
- * jobs/{jobId}/intents.yaml with the comment-preserving funnel.
+ * Intent criteria card — the single editing surface for one intent's
+ * `intents/{id}/infer.md`, and NOTHING ELSE about the intent: the inference
+ * criterion (the file's prose body, which the agent reads verbatim off its
+ * rendered Intent Catalog) and the clarify frontmatter flag. Those are what the
+ * file declares. The id is the DIRECTORY name, so it belongs to the intent's
+ * identity card above — renaming a file's card must never rename its container.
+ * Hooks live in the sibling card (hooks.yaml), the active-turn prose in the
+ * prompt card (prompt.md); deleting in this screen's Danger Zone. Edits flow
+ * through `useDefinitionDocs`, so the shell's ChangedBar saves them.
  *
- * The id is editable here for the same reason it is on the agent and job
- * screens — one axis, one rule. It is cheaper than those two though: an intent
- * owns no directory, so the rename is a catalog edit that Discard undoes.
- * Bindings travel with the entry; `@intent:` mentions already typed into past
- * turns reference the old id, exactly as an agent/job rename leaves old refs.
+ * This is a DefinitionCard over exactly THIS intent's infer.md — the raw view
+ * shows the file verbatim (frontmatter included), so a frontmatter error
+ * disables only this form (the sibling cards keep working) with the raw
+ * editor available to fix the file in place.
  *
- * A freshly added intent arrives here with an empty description — the textarea
- * takes focus and the save gate stays closed until the criteria are authored,
- * so no placeholder prose can ever reach the classifier.
+ * A freshly added intent arrives here as a PHANTOM draft with an empty
+ * criterion — the textarea takes focus and the save gate stays closed until
+ * the criterion is authored, so no placeholder prose ever reaches the catalog
+ * and no directory is created before it is real.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Textarea } from '@/presentation/components/aurora';
-import { AuroraInput, FieldLabel, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
-import { CUSTOM_ID_PATTERN, GENERAL_INTENT } from '@ant/shared';
+import { AuroraSelect, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { DefinitionCard } from './DefinitionCard';
+import { INFER_CRITERION_MAX } from './definitionDocs';
+import { inferDocKey } from './useDefinitionDocs';
 import type { OverviewCtx } from './sections';
 
 export function IntentDetailCard({
@@ -29,125 +34,131 @@ export function IntentDetailCard({
   id,
   intentId,
   onBackToJob,
-  onRenameId,
 }: {
   ctx: OverviewCtx;
   id: string;
   intentId: string;
   onBackToJob: () => void;
-  /** Applies the catalog edit and reselects under the new id. */
-  onRenameId: (newId: string) => void;
 }) {
   const { t } = useTranslation('agents');
   const { docs } = ctx;
+  const doc = docs.inferDocs[intentId] ?? null;
   const entry = docs.intents.find((e) => e.id === intentId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const empty = entry != null && entry.description.trim().length === 0;
-  const [nextId, setNextId] = useState(intentId);
-  const disabled = ctx.readonly || docs.intentsDoc?.parseError != null;
+  const disabled = ctx.readonly || doc?.parseError != null;
 
   useEffect(() => {
     if (empty) textareaRef.current?.focus();
   }, [empty, intentId]);
 
-  useEffect(() => {
-    setNextId(intentId);
-  }, [intentId]);
-
-  const idWellFormed = CUSTOM_ID_PATTERN.test(nextId) && nextId !== GENERAL_INTENT;
-  const idTaken = nextId !== intentId && docs.intents.some((e) => e.id === nextId);
-  const canRename = !disabled && nextId !== intentId && idWellFormed && !idTaken;
-
   if (!docs.loaded) return null;
-  if (!entry) {
-    // Raw-edit race: the intent vanished from intents.yaml while selected.
-    return (
-      <SectionCard
-        id={id}
-        icon="Target"
-        accent="sunset"
-        title={intentId}
-        description={t('intent.notFound', 'This intent no longer exists in the catalog.')}
-      >
-        <Button size="sm" variant="ghost" onClick={onBackToJob}>
-          {t('intent.backToJob', 'Back to the job')}
-        </Button>
-      </SectionCard>
-    );
-  }
+
+  const clarifyValue = entry?.clarify === undefined ? 'inherit' : entry.clarify ? 'on' : 'off';
 
   return (
-    <SectionCard
+    <DefinitionCard
       id={id}
       icon="Target"
       accent="sunset"
       title={t('intent.criteriaTitle', 'Matching criteria')}
       description={t(
         'intent.criteriaDesc',
-        'Describe when this intent applies — the agent reads this text verbatim in its Intent Catalog to decide which prompts to load, and it is what an @intent: mention selects.',
+        'Prose describing when this intent applies — the agent reads it verbatim in its Intent Catalog every turn, and it is what an @intent: mention selects. The Raw view shows the file with its optional clarify frontmatter.',
       )}
+      doc={doc}
+      readonly={ctx.readonly}
+      onRawChange={(text) => docs.setRaw(inferDocKey(intentId), text)}
       bodyMaxWidth={560}
+      rawLabel={t('overview.viewRaw', 'Raw')}
+      parseErrorLabel={t('overview.inferParseError', 'Frontmatter error — the form is disabled and saving is blocked')}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div>
-          <FieldLabel>{t('intent.id', 'Intent id')}</FieldLabel>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420 }}>
-            <div style={{ flex: 1 }}>
-              <AuroraInput
-                value={nextId}
-                mono
-                disabled={disabled}
-                hasError={nextId.length > 0 && (!idWellFormed || idTaken)}
-                onChange={setNextId}
-              />
-            </div>
-            {!ctx.readonly && (
-              <Button size="sm" disabled={!canRename} onClick={() => onRenameId(nextId)}>
-                {t('agentDef.idApply', 'Apply')}
-              </Button>
-            )}
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
-            {t(
-              'intent.idHint',
-              'Ids are lowercase kebab-case. Renaming rewrites the catalog entry (bindings travel with it) — confirm it with Save above; @intent: mentions already sent keep referring to the old id.',
-            )}
+      {!entry || !doc ? (
+        // Raw-edit race or a broken file: the intent is not derivable. The
+        // DefinitionCard frame stays up, so the parse banner and the YAML
+        // view remain available to repair the file in place.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-3)' }}>
+            {t('intent.notFound', 'This intent no longer exists in the catalog.')}
           </p>
-          {nextId.length > 0 && idTaken && (
-            <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--status-error-fg, var(--text-2))' }}>
-              {t('intent.idTaken', 'This job already has an intent with that id.')}
-            </p>
+          <div>
+            <Button size="sm" variant="ghost" onClick={onBackToJob}>
+              {t('intent.backToJob', 'Back to the job')}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <Textarea
+              ref={textareaRef}
+              value={entry.description}
+              disabled={disabled}
+              onChange={(e) => docs.updateIntent(intentId, { description: e.target.value })}
+              placeholder={t('overview.intentDescription', 'When does this intent apply? (rendered verbatim as a catalog entry)')}
+              rows={6}
+            />
+            <span style={{ fontSize: 10.5, color: 'var(--text-4)', alignSelf: 'flex-end' }}>
+              {t('intent.criteriaChars', '{{count}}/{{max}}', {
+                count: entry.description.length,
+                max: INFER_CRITERION_MAX,
+              })}
+            </span>
+          </div>
+
+          <div>
+            <FieldLabel>{t('intent.flagsTitle', 'Behavior flags')}</FieldLabel>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 420 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-2)', flexShrink: 0 }}>
+                  {t('intent.clarifyLabel', 'Clarify questions')}
+                </span>
+                <div style={{ width: 200 }}>
+                  <AuroraSelect
+                    value={clarifyValue}
+                    disabled={disabled}
+                    options={[
+                      { value: 'inherit', label: t('intent.clarifyInherit', 'Inherit (job/agent default)') },
+                      { value: 'on', label: t('intent.clarifyOn', 'Allowed') },
+                      { value: 'off', label: t('intent.clarifyOff', 'Autonomous (never ask)') },
+                    ]}
+                    onChange={(v) =>
+                      docs.updateIntent(intentId, {
+                        clarify: v === 'inherit' ? undefined : v === 'on',
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.5, color: 'var(--text-4)' }}>
+                {t(
+                  'intent.clarifyHint',
+                  'Autonomous turns never ask a blocking question and proceed with sensible defaults.',
+                )}
+              </p>
+            </div>
+          </div>
+
+          {docs.intentErrors.length > 0 && (
+            <div
+              style={{
+                fontSize: 11.5,
+                borderRadius: 'var(--r-md)',
+                padding: '6px 10px',
+                background: 'var(--status-error-bg, var(--bg-surface-2))',
+                color: 'var(--status-error-fg, var(--text-2))',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+              }}
+            >
+              {docs.intentErrors.map((e, i) => (
+                <span key={i}>{e}</span>
+              ))}
+            </div>
           )}
         </div>
-
-        <Textarea
-          ref={textareaRef}
-          value={entry.description}
-          disabled={ctx.readonly || docs.intentsDoc?.parseError != null}
-          onChange={(e) => docs.updateIntent(entry.id, { description: e.target.value })}
-          placeholder={t('overview.intentDescription', 'Matching criterion (rendered verbatim as a catalog row)')}
-          rows={3}
-        />
-
-        {docs.intentErrors.length > 0 && (
-          <div
-            style={{
-              fontSize: 11.5,
-              borderRadius: 'var(--r-md)',
-              padding: '6px 10px',
-              background: 'var(--status-error-bg, var(--bg-surface-2))',
-              color: 'var(--status-error-fg, var(--text-2))',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-            }}
-          >
-            {docs.intentErrors.map((e, i) => (
-              <span key={i}>{e}</span>
-            ))}
-          </div>
-        )}
-      </div>
-    </SectionCard>
+      )}
+    </DefinitionCard>
   );
 }

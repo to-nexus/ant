@@ -370,8 +370,10 @@ duties; both are plain files:
   jobs/weekly-report/
     job.yaml               # the job contract: tools it may use, what needs approval
     base/system.md         # how this job runs — always in the prompt
-    injections/*.md        # situational prose, pulled in when it applies
-    intents.yaml           # which situations map to which injections
+    intents/report/        # one folder per situation (intent)
+      infer.md             #   when it applies (prose criterion)
+      prompt.md            #   what to do while it is active (optional)
+      hooks.yaml           #   optional completion contract for its turns
 ```
 
 Adding, editing, or removing a job is a **file operation** — no code change, no

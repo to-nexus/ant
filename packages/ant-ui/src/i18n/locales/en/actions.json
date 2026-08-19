@@ -190,7 +190,22 @@
     "noAgentHint": "Agents and their jobs are authored in Agent Settings, from the profile menu.",
     "pickJobTitle": "What should this agent do?",
     "jobIntentCount": "{{count}} intent(s)",
-    "pickIntentHint": "Arm one or more for the next turn — same as an @intent: mention.",
-    "noIntents": "This job declares no intents — every turn runs with its base prompt."
+    "pickIntentHint": "Open an intent to review its contract and start via chat or build.",
+    "noIntents": "This job declares no intents — every turn runs with its base prompt.",
+    "intentDetailCriteria": "Matching criteria",
+    "intentAutonomous": "autonomous",
+    "intentAutonomousHint": "Turns under this intent never ask a blocking question and proceed with sensible defaults.",
+    "intentDetailHooks": "Hooks",
+    "hooksAll": "All required",
+    "hooksAllHint": "Every entry must hold when the turn stops (the stop event, AND), verified from actual tool results.",
+    "hookArtifactMeaning": "A real file write this turn must match this glob.",
+    "hookActionMeaning": "This tool must have been successfully called this turn.",
+    "hooksNone": "No hooks — the turn ends when the agent stops.",
+    "hooksVerified": "Checked at the turn's stop event, from actual tool results — never from the model's claims. Unmet hooks re-prompt the agent a bounded number of times, then pause the job resumably.",
+    "armedHint": "Armed — this intent rides the next chat turn.",
+    "disarm": "Disarm",
+    "intentDetailPrompt": "Prompt",
+    "intentHasPromptHint": "Adds its own prompt.md to the system prompt while active.",
+    "intentNoPromptHint": "No prompt file — this intent runs on the base prompts alone."
   }
 }

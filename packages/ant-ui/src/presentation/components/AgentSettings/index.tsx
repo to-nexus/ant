@@ -7,9 +7,11 @@ import {
   createAccountAgentJob,
   deleteAccountAgent,
   deleteAccountAgentJob,
+  deleteDefinitionFile,
   importAgentFolder,
   renameAccountAgentId,
   renameAccountAgentJobId,
+  renameDefinitionFile,
   uploadDefinitionFiles,
   validateAccountAgentJob,
 } from '@/infrastructure/http/api/accountAgents';
@@ -23,50 +25,70 @@ import { PromptsCard, type PromptsScope } from './prompts/PromptsCard';
 import { useResizableWidth } from './useResizableWidth';
 import { IntentsCard, JobDefinitionCard, type OverviewCtx } from './overview/sections';
 import { AgentDefinitionCard } from './overview/AgentDefinitionCard';
+import { IntentIdentityCard } from './overview/IntentIdentityCard';
 import { IntentDetailCard } from './overview/IntentDetailCard';
+import { IntentPromptCard } from './overview/IntentPromptCard';
+import { IntentHooksCard } from './overview/IntentHooksCard';
+import { CARD_OF_KIND, classifyDefinitionPath } from './overview/definitionDocs';
 import { useDefinitionDocs } from './overview/useDefinitionDocs';
+import { useAgentMcpServerNames } from './overview/useAgentMcpServerNames';
 
 /**
  * Agent Settings — account-scoped standalone screen (profile menu → main
  * panel tab, D-G). Works WITHOUT a selected project: everything reads
  * `/api/account/agents`.
  *
- * Layout: left resizable agent › job › intent tree, right single scroller
- * with a breadcrumb DetailHeader, stacked SectionCards, and one sticky
- * ChangedBar driving save/discard.
+ * FILE ↔ SECTION ISOMORPHISM (the screen's core philosophy): the left tree
+ * and the right sections show the SAME definition content — structured vs
+ * raw. Every mapped section owns exactly one file (or directory), and the
+ * two surfaces sync both ways: a tree click selects the level and scrolls to
+ * the owning card; interacting with a card highlights its file in the tree.
  *
- * Ownership: every definition yaml belongs to exactly one card, which shows
- * it as a structured form OR as raw YAML over the SAME buffer (see
- * `useDefinitionDocs`) — agent.yaml → AgentDefinitionCard, job.yaml →
- * JobDefinitionCard, intents.yaml → IntentsCard. The tree only creates and
- * navigates; renaming (both the display name and the id) is the card's job and
- * deleting is the Danger Zone, so no file has two writers. The Prompts card is
- * prose (.md) only.
+ *   agent.yaml                   → AgentDefinitionCard   (c3g-agent)
+ *   base/*.md                    → PromptsCard           (c3g-prompts)
+ *   jobs/{j}/                    → JobDefinitionCard     (c3g-tools)
+ *   jobs/{j}/job.yaml            → JobDefinitionCard     (c3g-tools)
+ *   jobs/{j}/base/*.md           → PromptsCard           (c3g-prompts)
+ *   jobs/{j}/intents/            → IntentsCard           (c3g-intents)
+ *   intents/{i}/                 → IntentIdentityCard    (c3g-intent)
+ *   intents/{i}/infer.md         → IntentDetailCard      (c3g-intent-criteria)
+ *   intents/{i}/prompt.md        → IntentPromptCard      (c3g-intent-prompt)
+ *   intents/{i}/hooks.yaml       → IntentHooksCard       (c3g-intent-hooks)
+ *   (non-file: OrgAccess / Promote / Danger — outside the mapping)
  *
- * The id is editable at ALL THREE levels, on one rule. agentId and jobId are
- * directory names, so each is a structural move done by its own endpoint
- * (definition dir + the container data keyed by it) through the shared
- * `IdRenameField`; an intentId owns no directory, so it is a catalog edit that
- * rides the ChangedBar like every other intents.yaml change.
+ * A LEVEL's row is its DIRECTORY: clicking `jobs/{j}/` or `intents/{i}/` opens
+ * that level, because the directory is what the level IS.
  *
- * Unlike the other settings shells this screen has NO TocNav rail — its card
- * count is small and the left tree is already the navigation surface, so a
- * second sticky rail only narrowed the cards. `ChangedBar.dirtyCount` carries
- * the dirty signal the rail's per-item dots used to.
+ * Each mapped card shows a structured form OR the raw text over the SAME
+ * buffer (see `useDefinitionDocs`). The tree only creates and navigates;
+ * renaming (display name and id) is the card's job and deleting is the
+ * Danger Zone, so no file has two writers.
+ *
+ * RENAME POLICY (one rule, all three levels): an id IS a directory name, so
+ * renaming lives in the card that owns the level's CONTAINER — never in a card
+ * that owns a file inside it. agent.yaml and job.yaml declare their level's
+ * identity, so those cards carry display name + id; an intent has no declaring
+ * file, so the intent level opens with its own identity card and infer.md's
+ * card keeps only what the file says (criteria + clarify). Every rename is a
+ * structural move done by its own endpoint through the shared `IdRenameField`;
+ * the intent one is a PURE directory rename server-side. A freshly created
+ * intent is a PHANTOM draft (no directory yet): the ChangedBar's save
+ * materializes it, and until then deleting it just drops the draft.
+ *
+ * No TocNav rail and no per-card path captions — the left tree IS the
+ * location surface; `ChangedBar.dirtyCount` carries the dirty signal.
  */
 
-function collectFilePaths(nodes: CustomAgentDefinitionFileNode[], out: string[] = []): string[] {
-  for (const n of nodes) {
-    if (n.type === 'file') out.push(n.path);
-    if (n.children) collectFilePaths(n.children, out);
-  }
-  return out;
-}
-
-function injectionFilesUnder(tree: CustomAgentDefinitionFileNode[], prefix: string): string[] {
-  return collectFilePaths(tree)
-    .filter((p) => p.startsWith(prefix) && p.endsWith('.md') && !p.slice(prefix.length).includes('/'))
-    .map((p) => p.slice(prefix.length));
+/** Intent directory names under `jobs/{jobId}/intents/` in the definition tree. */
+function intentDirsUnder(tree: CustomAgentDefinitionFileNode[], jobId: string | undefined): string[] {
+  if (!jobId) return [];
+  const jobs = tree.find((n) => n.type === 'directory' && n.name === 'jobs');
+  const job = jobs?.children?.find((n) => n.type === 'directory' && n.name === jobId);
+  const intents = job?.children?.find((n) => n.type === 'directory' && n.name === 'intents');
+  return (intents?.children ?? [])
+    .filter((n) => n.type === 'directory')
+    .map((n) => n.name)
+    .sort();
 }
 
 // AccountConfigEditor precedent: the main-panel tab bar owns close — the
@@ -82,12 +104,19 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const mutatingBuiltinTools = useStore((s) => s.mutatingBuiltinTools);
   const loadAccountAgents = useStore((s) => s.loadAccountAgents);
   const loadDefinitionTree = useStore((s) => s.loadDefinitionTree);
+  const definitionTrees = useStore((s) => s.definitionTrees);
+  const ensureDefinitionTree = useStore((s) => s.ensureDefinitionTree);
   const selectAgentSettingsNode = useStore((s) => s.selectAgentSettingsNode);
+  const openDefinitionFileBuffer = useStore((s) => s.openDefinitionFileBuffer);
+  const openDefinitionFile = useStore((s) => s.openDefinitionFile);
   const syncComposerAgents = useStore((s) => s.syncComposerAgents);
   const promoteAgent = useStore((s) => s.promoteAgent);
   const isTeamActive = useStore(selectIsTeamActive);
 
   const [error, setError] = useState<string | null>(null);
+  // Right→tree sync: the file the user last addressed (tree click or card
+  // interaction); cleared whenever the selection changes.
+  const [treeFocusPath, setTreeFocusPath] = useState<string | null>(null);
   const [lastWarnings, setLastWarnings] = useState<string[]>([]);
   const [jobValid, setJobValid] = useState<boolean | null>(null);
   const [dangerArmed, setDangerArmed] = useState(false);
@@ -100,13 +129,64 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     void loadAccountAgents();
   }, [loadAccountAgents]);
 
+  /**
+   * Definition files have no watcher and no SSE channel, and the per-agent
+   * trees are lazy-loaded ONCE — so an out-of-band edit (editor, CLI, git
+   * pull) would stay invisible. Re-reading every loaded tree is a cheap GET
+   * (the loader caches nothing), so the screen re-reads on its own instead of
+   * carrying a refresh button. Reads the map through getState() so the
+   * callback identity survives every tree refresh.
+   */
+  const refreshTrees = useCallback(() => {
+    for (const agentId of Object.keys(useStore.getState().definitionTrees)) void loadDefinitionTree(agentId);
+  }, [loadDefinitionTree]);
+
+  // Window wake = the moment an external edit becomes observable. `focus` can
+  // fire in bursts (focus + visibilitychange for one tab switch), so coalesce.
+  const lastWakeRef = useRef(0);
+  useEffect(() => {
+    const onWake = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastWakeRef.current < 1000) return;
+      lastWakeRef.current = now;
+      void loadAccountAgents();
+      refreshTrees();
+    };
+    window.addEventListener('focus', onWake);
+    document.addEventListener('visibilitychange', onWake);
+    return () => {
+      window.removeEventListener('focus', onWake);
+      document.removeEventListener('visibilitychange', onWake);
+    };
+  }, [loadAccountAgents, refreshTrees]);
+
+  useEffect(() => {
+    setTreeFocusPath(null);
+  }, [selection.agentId, selection.jobId, selection.intentId]);
+
   const selectedAgent = agents.find((a) => a.id === selection.agentId);
   const selectedJob = selectedAgent?.jobs.find((j) => j.id === selection.jobId);
   const readonly = definitionReadonly || (selectedAgent?.readonly ?? false);
   const level: DetailLevel = selection.intentId ? 'intent' : selection.jobId ? 'job' : 'agent';
 
-  // agent level → agent.yaml · job/intent level → the job's yaml pair.
-  const docs = useDefinitionDocs(selection.agentId, selection.jobId);
+  // agent level → agent.yaml · job/intent level → job.yaml + every intent's
+  // file pair. The id list is value-memoized (joined string) so tree object
+  // refreshes with identical content never reset the doc buffers.
+  const intentIdsKey = useMemo(
+    () => intentDirsUnder(definitionTree, selection.jobId).join(','),
+    [definitionTree, selection.jobId],
+  );
+  const intentIds = useMemo(() => intentIdsKey.split(',').filter(Boolean), [intentIdsKey]);
+  const docs = useDefinitionDocs(selection.agentId, selection.jobId, intentIds);
+
+  // Hook-editor picker vocabulary: MCP server names are job ∪ agent (H8's
+  // satisfiability set) — agent.yaml is fetched read-only, never as a buffer.
+  const agentMcpServerNames = useAgentMcpServerNames(selection.jobId ? selection.agentId : undefined);
+  const mcpServerNames = useMemo(
+    () => Array.from(new Set([...Object.keys(docs.mcpServers), ...agentMcpServerNames])).sort(),
+    [docs.mcpServers, agentMcpServerNames],
+  );
 
   // Wire the standalone validate endpoint: shows the definition's
   // load-validity for the selected job as a status pill.
@@ -208,9 +288,10 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   // ── detail handlers ────────────────────────────────────────────────────────
 
   /**
-   * Agent/job deletion removes a directory (immediate, irreversible); intent
-   * deletion is a catalog edit, so it lands in the document and the ChangedBar
-   * confirms it — same funnel as every other intents.yaml change.
+   * All three levels delete a DIRECTORY (immediate, irreversible) — the
+   * intent one removes `intents/{id}/` through the definition-file endpoint.
+   * The only draft-side case is an unsaved phantom intent, which just drops
+   * its buffers.
    */
   const handleDangerAction = async () => {
     if (!selection.agentId) return;
@@ -218,8 +299,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       setDangerArmed(true);
       return;
     }
-    if (selection.intentId && selection.jobId) {
-      docs.removeIntent(selection.intentId);
+    if (selection.intentId && selection.jobId && docs.isPhantomIntent(selection.intentId)) {
+      docs.dropIntentDraft(selection.intentId);
       setDangerArmed(false);
       selectAgentSettingsNode(selection.agentId, selection.jobId);
       return;
@@ -227,7 +308,12 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     setIsDeleting(true);
     setError(null);
     try {
-      if (selection.jobId) {
+      if (selection.intentId && selection.jobId) {
+        await deleteDefinitionFile(selection.agentId, `jobs/${selection.jobId}/intents/${selection.intentId}`);
+        await loadDefinitionTree(selection.agentId);
+        await afterMutation();
+        selectAgentSettingsNode(selection.agentId, selection.jobId);
+      } else if (selection.jobId) {
         await deleteAccountAgentJob(selection.agentId, selection.jobId);
         await afterMutation();
         selectAgentSettingsNode(selection.agentId);
@@ -262,6 +348,11 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       const result = await docs.save();
       setLastWarnings(result?.warnings ?? []);
       await afterMutation();
+      // A phantom intent's directory is created by this save — the tree that
+      // `intentIds` derives from must follow, or the new intent exists in
+      // neither the tree nor the doc buffers. Identical trees are a no-op
+      // (intentIdsKey is value-memoized), so this never resets live buffers.
+      if (selection.agentId) await loadDefinitionTree(selection.agentId);
       if (selection.agentId && selection.jobId) {
         validateAccountAgentJob(selection.agentId, selection.jobId)
           .then((v) => setJobValid(v.valid))
@@ -292,81 +383,92 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       await loadDefinitionTree(selection.agentId);
     });
 
-  /** Catalog edit (not a move) — the ChangedBar confirms it into intents.yaml. */
-  const handleRenameIntentId = (newId: string) => {
-    if (!selection.intentId) return;
-    docs.renameIntent(selection.intentId, newId);
-    selectAgentSettingsNode(selection.agentId, selection.jobId, newId);
-  };
+  /**
+   * Structural move like the agent/job ids: the server renames the
+   * `intents/{id}/` directory — a PURE fs move, since no file declares the
+   * id (create+delete would trip the structural-file rules and lose data on
+   * mid-sequence failure).
+   */
+  const handleRenameIntentId = (newId: string) =>
+    wrap(async () => {
+      if (!selection.agentId || !selection.jobId || !selection.intentId) return;
+      await renameDefinitionFile(selection.agentId, `jobs/${selection.jobId}/intents/${selection.intentId}`, newId);
+      await loadDefinitionTree(selection.agentId);
+      await afterMutation();
+      selectAgentSettingsNode(selection.agentId, selection.jobId, newId);
+    });
 
-  /** New intents are authored on their own screen — the criteria start empty. */
+  /** New intents are phantom drafts authored on their own screen — Save materializes the files. */
   const handleCreateIntent = (intentId: string) => {
     docs.addIntent(intentId);
     selectAgentSettingsNode(selection.agentId, selection.jobId, intentId);
   };
 
-  // ── injection ↔ intent binding maps (Prompts card, job-only model) ─────────
-  const jobInjectionFiles = useMemo(
-    () => (selection.jobId ? injectionFilesUnder(definitionTree, `jobs/${selection.jobId}/injections/`) : []),
-    [definitionTree, selection.jobId],
-  );
-
-  const intentBindings = useMemo(() => {
-    const map: Record<string, string[]> = {};
-    if (!selection.jobId) return map;
-    for (const entry of docs.intents) {
-      for (const f of entry.injections ?? []) {
-        if (jobInjectionFiles.includes(f)) {
-          (map[`jobs/${selection.jobId}/injections/${f}`] ??= []).push(entry.id);
-        }
+  /**
+   * Scroll to a card once it EXISTS. Two frames were not enough: a click on
+   * another agent's file remounts the right pane behind an async doc load, so
+   * the card appears several frames later. Polls per frame, bounded.
+   */
+  const scrollToCard = (cardId: string) => {
+    let frames = 20;
+    const tick = () => {
+      const el = document.getElementById(cardId);
+      if (el) {
+        el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        return;
       }
+      if (frames-- > 0) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
+  /**
+   * Tree→right navigation (both tree views): every mapped file selects the
+   * owning level and scrolls to its card; prose opens in the Prompts editor
+   * AFTER the selection settles (selection changes clear the open buffer).
+   * Clicking a file of a non-selected agent switches agents too.
+   */
+  const handleOpenTreeFile = (agentId: string, path: string) => {
+    const target = classifyDefinitionPath(path);
+    if (target.kind === 'other') return;
+    // Selection changes clear treeFocusPath (effect above) — re-arm it after.
+    const arm = () => setTreeFocusPath(path);
+    if (target.kind === 'agent-yaml') {
+      selectAgentSettingsNode(agentId);
+    } else if (target.kind === 'job-dir' || target.kind === 'job-yaml' || target.kind === 'intents-dir') {
+      selectAgentSettingsNode(agentId, target.jobId);
+    } else if (
+      target.kind === 'intent-dir' ||
+      target.kind === 'intent-infer' ||
+      target.kind === 'intent-prompt' ||
+      target.kind === 'intent-hooks'
+    ) {
+      selectAgentSettingsNode(agentId, target.jobId, target.intentId);
+    } else if (target.kind === 'prose') {
+      selectAgentSettingsNode(agentId, target.jobId);
+      void openDefinitionFileBuffer(agentId, path);
     }
-    return map;
-  }, [docs.intents, jobInjectionFiles, selection.jobId]);
+    requestAnimationFrame(arm);
+    const card = CARD_OF_KIND[target.kind];
+    if (card) scrollToCard(card);
+  };
 
-  const bindableIntentIds = useCallback(
-    (path: string): string[] => {
-      if (!selection.jobId) return [];
-      if (!path.startsWith(`jobs/${selection.jobId}/injections/`)) return [];
-      const fileName = path.split('/').pop() ?? '';
-      return docs.intents
-        .filter((e) => e.id.length > 0 && !(e.injections ?? []).includes(fileName))
-        .map((e) => e.id);
-    },
-    [docs.intents, selection.jobId],
-  );
+  /**
+   * The tree row to highlight: the last explicitly addressed file, else the
+   * open prose buffer, else the selection level's identity file (intent →
+   * infer.md, job → job.yaml, agent → agent.yaml).
+   */
+  const selectedFilePath =
+    treeFocusPath ??
+    openDefinitionFile?.path ??
+    (level === 'intent'
+      ? `jobs/${selection.jobId}/intents/${selection.intentId}`
+      : level === 'job'
+        ? `jobs/${selection.jobId}/job.yaml`
+        : 'agent.yaml');
 
-  const handleBind = useCallback(
-    (intentId: string, path: string) => {
-      const fileName = path.split('/').pop() ?? '';
-      const entry = docs.intents.find((e) => e.id === intentId);
-      if (!entry) return;
-      docs.updateIntent(intentId, { injections: [...(entry.injections ?? []), fileName] });
-    },
-    [docs],
-  );
-
-  const handleUnbind = useCallback(
-    (intentId: string, path: string) => {
-      const fileName = path.split('/').pop() ?? '';
-      const entry = docs.intents.find((e) => e.id === intentId);
-      if (!entry) return;
-      docs.updateIntent(intentId, { injections: (entry.injections ?? []).filter((f) => f !== fileName) });
-    },
-    [docs],
-  );
-
-  /** Intent scope: bind an existing (or freshly created) injections file to the selected intent. */
-  const bindToSelectedIntent = useCallback(
-    (fileName: string) => {
-      if (!selection.intentId) return;
-      const entry = docs.intents.find((e) => e.id === selection.intentId);
-      if (entry && !(entry.injections ?? []).includes(fileName)) {
-        docs.updateIntent(selection.intentId, { injections: [...(entry.injections ?? []), fileName] });
-      }
-    },
-    [docs, selection.intentId],
-  );
+  /** Card→tree sync: interacting with a mapped card highlights its file. */
+  const focusFile = (path: string) => () => setTreeFocusPath(path);
 
   const overviewCtx: OverviewCtx | null =
     selection.agentId && docs.loaded
@@ -376,6 +478,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           docs,
           builtinToolPreset,
           mutatingBuiltinTools,
+          mcpServerNames,
         }
       : null;
 
@@ -388,18 +491,13 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     />
   ) : undefined;
 
+  // The Prompts card is base/*.md prose — an agent/job surface only. The
+  // intent level's prose is its own prompt.md card.
   const promptsScope: PromptsScope | null = !selection.agentId
     ? null
     : level === 'agent'
       ? { level: 'agent' }
-      : level === 'job'
-        ? { level: 'job', jobId: selection.jobId! }
-        : {
-            level: 'intent',
-            jobId: selection.jobId!,
-            intentInjections:
-              docs.intents.find((e) => e.id === selection.intentId)?.injections ?? [],
-          };
+      : { level: 'job', jobId: selection.jobId! };
 
   const dangerCopy = {
     agent: {
@@ -414,12 +512,12 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     },
     intent: {
       title: t('danger.intentTitle', 'Delete this intent'),
-      desc: t('danger.intentDesc', 'Drops the entry from the intents.yaml buffer — confirm it with Save above. Its injection files stay on disk, on-demand only.'),
+      desc: t('danger.intentDesc', 'Removes the intent directory (infer.md, prompt.md, hooks.yaml). An unsaved intent just drops its draft.'),
       button: t('danger.intentButton', 'Delete intent'),
     },
   }[level];
 
-  const detailReady = !!selection.agentId && !!promptsScope && overviewCtx != null;
+  const detailReady = !!selection.agentId && overviewCtx != null;
 
   return (
     <div
@@ -443,6 +541,12 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           onImportFolder={handleImportFolder}
           loadError={accountAgentsError}
           onRetryLoad={() => void loadAccountAgents()}
+          definitionTrees={definitionTrees}
+          onEnsureTree={(agentId) => void ensureDefinitionTree(agentId)}
+          onOpenFile={handleOpenTreeFile}
+          onRefreshTrees={refreshTrees}
+          selectedFilePath={selection.agentId ? selectedFilePath : null}
+          selectedFileAgentId={selection.agentId ?? null}
         />
         {/* drag handle: 4px hit area on the border */}
         <div
@@ -465,7 +569,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       </div>
 
       {/* right — canonical settings scroller */}
-      {detailReady && promptsScope && overviewCtx ? (
+      {detailReady && overviewCtx ? (
         <div ref={scrollerRef} style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto' }}>
           <div
             style={{
@@ -516,12 +620,14 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
             )}
 
             {level === 'agent' && (
-              <AgentDefinitionCard
-                ctx={overviewCtx}
-                id="c3g-agent"
-                agentId={selection.agentId!}
-                onRenameId={handleRenameAgentId}
-              />
+              <div onClickCapture={focusFile('agent.yaml')}>
+                <AgentDefinitionCard
+                  ctx={overviewCtx}
+                  id="c3g-agent"
+                  agentId={selection.agentId!}
+                  onRenameId={handleRenameAgentId}
+                />
+              </div>
             )}
             {level === 'agent' && selectedAgent?.org?.canManageEditors && (
               <OrgAccessCard
@@ -533,43 +639,64 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
               />
             )}
             {level === 'intent' && selection.intentId && (
-              <IntentDetailCard
-                ctx={overviewCtx}
-                id="c3g-intent"
-                intentId={selection.intentId}
-                onBackToJob={() => selectAgentSettingsNode(selection.agentId, selection.jobId)}
-                onRenameId={handleRenameIntentId}
-              />
+              <div onClickCapture={focusFile(`jobs/${selection.jobId}/intents/${selection.intentId}`)}>
+                <IntentIdentityCard
+                  ctx={overviewCtx}
+                  id="c3g-intent"
+                  jobId={selection.jobId!}
+                  intentId={selection.intentId}
+                  onRenameId={handleRenameIntentId}
+                />
+              </div>
+            )}
+            {level === 'intent' && selection.intentId && (
+              <div onClickCapture={focusFile(`jobs/${selection.jobId}/intents/${selection.intentId}/infer.md`)}>
+                <IntentDetailCard
+                  ctx={overviewCtx}
+                  id="c3g-intent-criteria"
+                  intentId={selection.intentId}
+                  onBackToJob={() => selectAgentSettingsNode(selection.agentId, selection.jobId)}
+                />
+              </div>
+            )}
+            {level === 'intent' && selection.intentId && (
+              <div onClickCapture={focusFile(`jobs/${selection.jobId}/intents/${selection.intentId}/prompt.md`)}>
+                <IntentPromptCard ctx={overviewCtx} id="c3g-intent-prompt" intentId={selection.intentId} />
+              </div>
+            )}
+            {level === 'intent' && selection.intentId && (
+              <div onClickCapture={focusFile(`jobs/${selection.jobId}/intents/${selection.intentId}/hooks.yaml`)}>
+                <IntentHooksCard ctx={overviewCtx} id="c3g-intent-hooks" intentId={selection.intentId} />
+              </div>
             )}
             {level === 'job' && (
-              <JobDefinitionCard
-                ctx={overviewCtx}
-                id="c3g-tools"
-                jobId={selection.jobId!}
-                onRenameId={handleRenameJobId}
-              />
+              <div onClickCapture={focusFile(`jobs/${selection.jobId}/job.yaml`)}>
+                <JobDefinitionCard
+                  ctx={overviewCtx}
+                  id="c3g-tools"
+                  jobId={selection.jobId!}
+                  onRenameId={handleRenameJobId}
+                />
+              </div>
             )}
             {level === 'job' && (
-              <IntentsCard
-                ctx={overviewCtx}
-                id="c3g-intents"
-                onSelectIntent={(intentId) => selectAgentSettingsNode(selection.agentId, selection.jobId, intentId)}
-                onCreateIntent={handleCreateIntent}
+              <div onClickCapture={focusFile(`jobs/${selection.jobId}/intents`)}>
+                <IntentsCard
+                  ctx={overviewCtx}
+                  id="c3g-intents"
+                  onSelectIntent={(intentId) => selectAgentSettingsNode(selection.agentId, selection.jobId, intentId)}
+                  onCreateIntent={handleCreateIntent}
+                />
+              </div>
+            )}
+            {level !== 'intent' && promptsScope && (
+              <PromptsCard
+                id="c3g-prompts"
+                agentId={selection.agentId!}
+                readonly={readonly}
+                scope={promptsScope}
               />
             )}
-            <PromptsCard
-              id="c3g-prompts"
-              agentId={selection.agentId!}
-              readonly={readonly}
-              scope={promptsScope}
-              intentBindings={intentBindings}
-              bindableIntentIds={bindableIntentIds}
-              onBind={handleBind}
-              onUnbind={handleUnbind}
-              onCreatedInjection={bindToSelectedIntent}
-              onAddExisting={bindToSelectedIntent}
-              jobInjectionFiles={jobInjectionFiles}
-            />
             {level === 'agent' && isTeamActive && selectedAgent?.scope === 'user' && (
               <PromoteZone
                 id="c3g-promote"

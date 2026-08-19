@@ -1,0 +1,14 @@
+# hooks.stop — the turn's deterministic completion contract (all entries AND).
+# The runtime verifies each entry from ACTUAL tool results at the turn's end,
+# never from the model's statements, and re-prompts until they hold (bounded);
+# once the budget is spent the job pauses resumably. Nothing the author writes
+# here is ever executed — v1 hooks only observe evidence:
+#   - artifact: <glob>   a real file write this turn matches the glob
+#   - action: <tool>     the named tool was successfully called this turn
+# Prose (the intent's prompt.md) still guides the output's format and quality; the
+# hook only judges that the thing exists / the action happened.
+hooks:
+  stop:
+    # Matches the prose convention reports/{ISO-week}-weekly.md
+    # (the sibling prompt.md) — artifact hook demo.
+    - artifact: reports/*-weekly.md

@@ -9,14 +9,16 @@
  * actions vocabulary is offered — the panel and the chat empty state — so a
  * canonical chip can never leak into either.
  *
- * Both writes land on state the chat surface already owns: picking a job is
- * `selectCustomJob` (the toolbar's agent/job chips), arming an intent is
- * `@intent:` turn meta (the mention dropdown). Intents therefore TOGGLE — a
- * turn may carry several, and the selection clears when the turn is sent.
+ * Picking a job lands on state the chat surface already owns
+ * (`selectCustomJob` — the toolbar's agent/job chips). Intent chips NAVIGATE
+ * to the intent-detail page (canonical parity); arming as an `@intent:`
+ * mention happens there, via the footer's Chat/Build actions, and the chip's
+ * `selected` ring mirrors `universalTurnMeta.intents`.
  */
 
 import { useTranslation } from 'react-i18next';
 import { Briefcase, Target } from 'lucide-react';
+import type { CustomIntentDef } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import type { ChipItem } from './ActionChipGrid';
 
@@ -29,8 +31,9 @@ export interface UniversalActionSurface {
   selectedJobId: string | null;
   jobChipItems: ChipItem[];
   intentChipItems: ChipItem[];
+  /** The selected job’s full catalog (hooks/clarify/hasPrompt) — the detail view’s data. */
+  intents: CustomIntentDef[];
   selectJob: (jobId: string) => void;
-  toggleIntent: (intentId: string) => void;
 }
 
 export function useUniversalActionSurface(): UniversalActionSurface {
@@ -40,8 +43,6 @@ export function useUniversalActionSurface(): UniversalActionSurface {
   const selectedCustomJobId = useStore((s) => s.selectedCustomJobId);
   const selectCustomJob = useStore((s) => s.selectCustomJob);
   const armedIntents = useStore((s) => s.universalTurnMeta.intents);
-  const addIntent = useStore((s) => s.addUniversalIntentMention);
-  const removeIntent = useStore((s) => s.removeUniversalIntentMention);
 
   const agent = customAgents.find((a) => a.id === selectedCustomAgentId);
   const jobs = agent?.jobs ?? [];
@@ -70,10 +71,9 @@ export function useUniversalActionSurface(): UniversalActionSurface {
       icon: Target,
       selected: armedIntents.includes(intent.id),
     })),
+    intents,
     selectJob: (jobId: string) => {
       if (agent) selectCustomJob(agent.id, jobId);
     },
-    toggleIntent: (intentId: string) =>
-      armedIntents.includes(intentId) ? removeIntent(intentId) : addIntent(intentId),
   };
 }

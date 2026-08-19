@@ -144,6 +144,55 @@ describe('loadAccountAgents', () => {
   });
 });
 
+describe('definitionTrees map (rail file view)', () => {
+  it('loadDefinitionTree fills the per-agent map and mirrors ONLY the selected agent', async () => {
+    const s = makeStore();
+    s.getState().selectAgentSettingsNode('ops');
+    await new Promise((r) => setTimeout(r, 0)); // selection triggers the async load
+    expect(s.getState().definitionTrees.ops.tree).toHaveLength(1);
+    expect(s.getState().definitionTree).toHaveLength(1);
+
+    // A non-selected agent's load fills the map but never the mirror slot.
+    apiMock.fetchDefinitionTree.mockResolvedValueOnce({
+      tree: [
+        { name: 'agent.yaml', path: 'agent.yaml', type: 'file' },
+        { name: 'base', path: 'base', type: 'directory', children: [] },
+      ],
+      scope: 'builtin',
+      readonly: true,
+    });
+    await s.getState().loadDefinitionTree('assistant');
+    expect(s.getState().definitionTrees.assistant.tree).toHaveLength(2);
+    expect(s.getState().definitionTrees.assistant.readonly).toBe(true);
+    expect(s.getState().definitionTree).toHaveLength(1); // mirror untouched
+  });
+
+  it('ensureDefinitionTree loads once — present entries and in-flight loads are skipped', async () => {
+    const s = makeStore();
+    let release: (v: { tree: unknown[]; scope: string; readonly: boolean }) => void = () => {};
+    apiMock.fetchDefinitionTree.mockImplementationOnce(
+      () => new Promise((r) => { release = r as typeof release; }),
+    );
+    const first = s.getState().ensureDefinitionTree('ops');
+    const second = s.getState().ensureDefinitionTree('ops'); // in-flight → dedupe
+    release({ tree: [], scope: 'user', readonly: false });
+    await Promise.all([first, second]);
+    expect(apiMock.fetchDefinitionTree).toHaveBeenCalledTimes(1);
+
+    await s.getState().ensureDefinitionTree('ops'); // present → skip
+    expect(apiMock.fetchDefinitionTree).toHaveBeenCalledTimes(1);
+  });
+
+  it('a vanished agent is evicted from the map with its selection', async () => {
+    const s = makeStore();
+    s.getState().selectAgentSettingsNode('ghost');
+    await s.getState().loadDefinitionTree('ghost');
+    expect(s.getState().definitionTrees.ghost).toBeDefined();
+    await s.getState().loadAccountAgents();
+    expect(s.getState().definitionTrees.ghost).toBeUndefined();
+  });
+});
+
 describe('selection + file buffer', () => {
   it('selecting an agent loads its tree; re-selecting the same node is a no-op', async () => {
     const s = makeStore();

@@ -4,8 +4,8 @@
  * The file layout (`.ant/agents/{agentId}/` ⊃ `jobs/{jobId}/`) is the D4
  * contract of the universal runtime. The agent contributes identity (name),
  * always-on `base/*.md` prose, and shared MCP connections; everything else —
- * tools, intents, injections — is job-owned, mirroring the canonical system
- * where tool sets and intents belong to jobs. The BE↔FE summary types live in
+ * tools and intents — is job-owned, mirroring the canonical system where tool
+ * sets and intents belong to jobs. The BE↔FE summary types live in
  * `@ant/shared/custom-agents.ts`; this module owns the full parsed shapes the
  * loader and the runtime consume.
  */
@@ -53,24 +53,6 @@ export interface CustomJobYaml {
   clarify?: boolean;
 }
 
-/** One entry of the injections table of contents (body loaded on demand via read_file). */
-export interface InjectionTocEntry {
-  /** File name relative to the job's `injections/` dir. */
-  file: string;
-  /** First non-empty line of the file — the loader's one-line summary. */
-  summary: string;
-  /** Absolute path, for the read-only definition sandbox. */
-  absolutePath: string;
-  /** Intent ids that inline this file (reverse mapping from `intents.yaml`). */
-  intents?: string[];
-  /**
-   * Full body, preloaded ONLY for intent-mapped entries — the loader already
-   * reads the file for its summary, so this is free; the prompt builder must
-   * never re-read the disk mid-job.
-   */
-  body?: string;
-}
-
 /**
  * The single immutable result of loading agent.yaml + job.yaml.
  * Everything downstream (prompt builder, tool node, respond node) reads this.
@@ -83,14 +65,18 @@ export interface ResolvedCustomJob {
   jobName: string;
   /** Concatenated agent `base/*.md` + job `base/*.md` (capped, footer on truncation). */
   prose: string;
-  /** The job's `injections/*.md` TOC. */
-  injectionsToc: InjectionTocEntry[];
   /**
-   * Job intent catalog (`jobs/{jobId}/intents.yaml`). Code-exterior data — a
-   * per-job runtime vocabulary, never the compile-time `IntentId` union.
-   * Empty = every turn runs as `general`, so all injections stay on the TOC.
+   * Job intent catalog (`jobs/{jobId}/intents/{intentId}/`). Code-exterior
+   * data — a per-job runtime vocabulary, never the compile-time `IntentId`
+   * union. Empty = every turn runs as `general`.
    */
   intents: CustomIntentDef[];
+  /**
+   * `prompt.md` bodies of intents that have one, preloaded at job load — the
+   * prompt builder never re-reads disk mid-job (same rule the retired
+   * injections TOC bodies followed). Keyed by intent id.
+   */
+  intentPrompts: Record<string, string>;
   /** Union of MCP servers (job definition wins on name collision). */
   mcpServers: Record<string, McpServerConfig>;
   /** Effective builtin allowlist (job ⊆ universal preset). */

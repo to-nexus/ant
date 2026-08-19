@@ -1,5 +1,3 @@
-Sourcing rules for web-derived claims: fetch before citing, link on the claim, date volatile facts.
-
 - Search to map the landscape, fetch to verify. Never cite a page you have not
   actually fetched this conversation.
 - Cite with a markdown link placed on the claim itself, pointing at the

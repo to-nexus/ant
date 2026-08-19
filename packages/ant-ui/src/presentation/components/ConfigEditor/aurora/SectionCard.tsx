@@ -17,7 +17,14 @@ export interface SectionCardProps {
   description?: string;
   accent?: SectionAccent;
   status?: ReactNode;
+  /** Badge-like node rendered INLINE, right after the title. */
   statusAction?: ReactNode;
+  /**
+   * Trailing header control — RIGHT-aligned at the header's far edge (view
+   * toggles and the like). Use `statusAction` for badges that belong beside
+   * the title instead.
+   */
+  headerAction?: ReactNode;
   children: ReactNode;
   /** If false, body has no internal padding. Default true. */
   padded?: boolean;
@@ -55,6 +62,7 @@ export function SectionCard({
   accent = 'aurora',
   status,
   statusAction,
+  headerAction,
   children,
   padded = true,
   id,
@@ -151,6 +159,7 @@ export function SectionCard({
             </p>
           )}
         </div>
+        {headerAction && <div style={{ flexShrink: 0, alignSelf: 'center' }}>{headerAction}</div>}
       </header>
       <div style={{ padding: padded ? '14px 18px 16px 22px' : 0 }}>
         {bodyMaxWidth != null ? (

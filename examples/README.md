@@ -55,6 +55,20 @@ Both steps in full, plus stdio mode and the smoke test, are in
 end-to-end walkthrough is
 [custom-agent-authoring.md](../docs/guides/custom-agent-authoring.md).
 
+## Stop hooks
+
+`weekly-report/intents/{report,escalate}/hooks.yaml` demonstrate per-intent
+`hooks.stop` — the deterministic turn-completion contract. The `report` intent
+declares an `artifact` hook (`reports/*-weekly.md`: a real file write must
+match), the `escalate` intent an `action` hook (`mcp__ops-api__create_incident`
+must be successfully called — an approval-rejected call does not count). Unmet hooks
+re-prompt the agent a bounded number of times, then pause the job resumably;
+the resumed turn re-demands only the remaining hooks. Prose keeps guiding the
+output's format; the hook only judges existence/performance. Ant's builtin
+`assistant/chat` intents deliberately declare no hooks — they are
+conversational, and forcing artifacts there would turn everyday turns into
+pauses.
+
 ## Repository wiring
 
 `examples/*` is a `pnpm-workspace.yaml` member, so `pnpm install` at the repo

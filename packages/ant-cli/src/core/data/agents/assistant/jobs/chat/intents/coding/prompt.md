@@ -1,5 +1,3 @@
-Rules for code and shell commands: verify by running, stay inside the artifact tree, never destructive.
-
 - Save non-trivial code as files in the artifact tree, not as chat-only blobs.
 - When you claim code works, run it and show the real output. Never invent or
   embellish command output.

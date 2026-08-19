@@ -3,23 +3,33 @@
  * cards run on. One row per direction: structured edit lands in the raw text
  * (comments intact), a raw edit lands in the derived form, a syntax error is
  * reported instead of thrown, and a freshly added intent is invalid until its
- * criteria are authored (the save gate).
+ * criterion is authored (the save gate). The infer.md rows pin the shared
+ * frontmatter fence contract (splitFrontmatter — BE and FE parse the same
+ * bytes the same way).
  */
 
 import { describe, it, expect } from 'vitest';
 import { validateMcpServers } from '@ant/shared';
 import {
-  applyIntentsDraft,
+  CARD_OF_KIND,
+  DEFINITION_DIR_KINDS,
+  applyHooks,
+  applyInferBody,
+  applyInferClarify,
   applyMainDraft,
   applyMcpServers,
   applyName,
-  deriveIntents,
+  classifyDefinitionPath,
+  deriveHooks,
   deriveMainDraft,
   deriveMcpServers,
   deriveName,
   editRaw,
+  parseInferMd,
   parseYamlDoc,
-  validateIntentsDraft,
+  planSaves,
+  validateHooksDoc,
+  validateInferDoc,
 } from '../../src/presentation/components/AgentSettings/overview/definitionDocs';
 
 const JOB_YAML = `# the weekly report job
@@ -36,14 +46,21 @@ mcp:
       command: figma-mcp
 `;
 
-const INTENTS_YAML = `# weekly's classification lanes
-version: 1
-intents:
-  - id: research
-    description: fact-finding requests
-    injections: [style.md]
-  - id: triage
-    description: incident reports
+// One infer.md carrying frontmatter guidance comments plus the clarify flag —
+// comments must survive every structured edit, and guidance inside the fence
+// never reaches the derived criterion.
+const INFER_MD = `---
+# the report lane (authored while drafting v2)
+clarify: false
+---
+produce the weekly report
+`;
+
+const HOOKS_YAML = `# completion contract
+hooks:
+  stop:
+    # matches the prose convention reports/{ISO-week}-weekly.md
+    - artifact: reports/*-weekly.md
 `;
 
 const docOf = (raw: string) => parseYamlDoc(raw).doc;
@@ -66,15 +83,51 @@ describe('raw → structured derivation', () => {
     });
   });
 
-  it('reads the intent catalog, injections included', () => {
-    expect(deriveIntents(docOf(INTENTS_YAML))).toEqual([
-      { id: 'research', description: 'fact-finding requests', injections: ['style.md'] },
-      { id: 'triage', description: 'incident reports' },
-    ]);
+  it('reads one infer.md — clarify frontmatter + criterion body, guidance comments excluded', () => {
+    expect(parseInferMd(INFER_MD)).toEqual({
+      value: { clarify: false, body: 'produce the weekly report\n' },
+      error: null,
+    });
   });
 
-  it('an absent intents.yaml (empty buffer) derives an empty catalog', () => {
-    expect(deriveIntents(docOf(''))).toEqual([]);
+  it('a fenceless infer.md is body-verbatim with no flags', () => {
+    expect(parseInferMd('just a criterion\n')).toEqual({
+      value: { body: 'just a criterion\n' },
+      error: null,
+    });
+  });
+
+  it('a comments-only fence is valid (guidance channel) and derives no clarify', () => {
+    const raw = '---\n# guidance only\n---\nCriterion.\n';
+    expect(parseInferMd(raw)).toEqual({ value: { body: 'Criterion.\n' }, error: null });
+  });
+
+  it.each([
+    ['unterminated fence', '---\nclarify: false\nno close\n', /never closes/],
+    ['non-mapping fence', '---\n- a\n---\nx\n', /must be a YAML mapping/],
+    ['unknown frontmatter key', '---\nfoo: 1\n---\nx\n', /allows only "clarify"/],
+    ['retired default key', '---\ndefault: true\n---\nx\n', /allows only "clarify"/],
+    ['non-boolean clarify', '---\nclarify: maybe\n---\nx\n', /clarify must be true or false/],
+  ] as const)('parseInferMd reports %s', (_label, raw, pattern) => {
+    expect(parseInferMd(raw).error).toMatch(pattern);
+  });
+
+  it('a "---" line NOT at offset 0 is body text, never a fence (markdown hr survives)', () => {
+    const raw = 'criterion first\n---\nmore prose\n';
+    expect(parseInferMd(raw)).toEqual({ value: { body: raw }, error: null });
+  });
+
+  it('reads one hooks.yaml declaration', () => {
+    expect(deriveHooks(docOf(HOOKS_YAML))).toEqual({ stop: [{ artifact: 'reports/*-weekly.md' }] });
+  });
+
+  it('a malformed hooks value is omitted from the draft, never coerced', () => {
+    const raw = 'hooks:\n  stop:\n    - nonsense\n';
+    expect(deriveHooks(docOf(raw))).toBeUndefined();
+  });
+
+  it('an absent hooks.yaml (empty buffer) derives no hooks', () => {
+    expect(deriveHooks(docOf(''))).toBeUndefined();
   });
 });
 
@@ -99,7 +152,6 @@ describe('structured → raw application', () => {
     expect(next).not.toContain('tools:');
   });
 
-  // The `intents` node is replaced wholesale, so only comments outside it survive.
   /**
    * A nested set/delete over an absent or scalar key throws inside `yaml`
    * ("Expected YAML collection at tools") — the scaffolded id/name/version
@@ -135,25 +187,53 @@ describe('structured → raw application', () => {
     expect(editRaw(raw, (doc) => applyMcpServers(doc, {}))).toBe(raw);
   });
 
-  it('intent edits round-trip through the catalog and keep the document comment', () => {
-    const next = editRaw(INTENTS_YAML, (doc) =>
-      applyIntentsDraft(
-        doc,
-        deriveIntents(doc).map((e) => (e.id === 'triage' ? { ...e, description: 'paging alerts' } : e)),
-      ),
-    );
-    expect(next).toContain("# weekly's classification lanes");
-    expect(deriveIntents(docOf(next))).toEqual([
-      { id: 'research', description: 'fact-finding requests', injections: ['style.md'] },
-      { id: 'triage', description: 'paging alerts' },
-    ]);
+  // The regression the splice primitives exist for: a body edit must keep the
+  // fence (its comments included) byte-verbatim, and a clarify edit must keep
+  // the body and the fence comments.
+  it('a body edit keeps the frontmatter fence byte-verbatim', () => {
+    const next = applyInferBody(INFER_MD, 'produce or revise the weekly report\n');
+    expect(next).toContain('# the report lane (authored while drafting v2)');
+    expect(next).toContain('clarify: false');
+    expect(parseInferMd(next).value.body).toBe('produce or revise the weekly report\n');
   });
 
-  it('writes version 1 into a previously absent intents.yaml', () => {
-    const next = editRaw('', (doc) => applyIntentsDraft(doc, [{ id: 'triage', description: 'alerts' }]));
-    expect(next).toContain('version: 1');
-    expect(deriveIntents(docOf(next))).toEqual([{ id: 'triage', description: 'alerts' }]);
+  it('a clarify patch rewrites the flag, keeps fence comments, and undefined deletes the key', () => {
+    const flipped = applyInferClarify(INFER_MD, true);
+    expect(flipped).toContain('# the report lane (authored while drafting v2)');
+    expect(parseInferMd(flipped).value).toEqual({ clarify: true, body: 'produce the weekly report\n' });
+
+    const inherited = applyInferClarify(flipped, undefined);
+    expect(inherited).not.toContain('clarify:');
+    expect(inherited).toContain('# the report lane');
+    expect(parseInferMd(inherited).value.clarify).toBeUndefined();
   });
+
+  it('deleting clarify from a flag-only fence removes the fence entirely', () => {
+    const raw = '---\nclarify: false\n---\ncriterion\n';
+    expect(applyInferClarify(raw, undefined)).toBe('criterion\n');
+  });
+
+  it('setting clarify on a fenceless file mints the fence', () => {
+    const next = applyInferClarify('criterion\n', false);
+    expect(parseInferMd(next).value).toEqual({ clarify: false, body: 'criterion\n' });
+  });
+
+  it('a broken (unterminated) fence makes both splices a no-op — the raw view owns the repair', () => {
+    const broken = '---\nclarify: false\nno close\n';
+    expect(applyInferBody(broken, 'x\n')).toBe(broken);
+    expect(applyInferClarify(broken, true)).toBe(broken);
+  });
+
+  it('applyHooks writes the declaration, keeps file comments, and an empty list deletes the key', () => {
+    const next = editRaw(HOOKS_YAML, (doc) => applyHooks(doc, [{ action: 'create_file' }]));
+    expect(next).toContain('# completion contract');
+    expect(deriveHooks(docOf(next))).toEqual({ stop: [{ action: 'create_file' }] });
+
+    const cleared = editRaw(next, (doc) => applyHooks(doc, []));
+    expect(cleared).not.toContain('stop:');
+    expect(deriveHooks(docOf(cleared))).toBeUndefined();
+  });
+
 });
 
 describe('mcp.servers round-trip', () => {
@@ -266,31 +346,138 @@ describe('syntax errors are reported, never thrown', () => {
   });
 });
 
-describe('intent catalog contract (client mirror of the BE gate)', () => {
-  const cases: Array<[string, Parameters<typeof validateIntentsDraft>[0], RegExp | null]> = [
-    ['valid entry', [{ id: 'triage', description: 'alerts' }], null],
-    ['freshly added intent has no criteria yet', [{ id: 'triage', description: '' }], /requires a description/],
-    ['id must be kebab-lowercase', [{ id: 'Triage', description: 'alerts' }], /must match/],
-    ['general is the implicit fallback', [{ id: 'general', description: 'anything' }], /cannot be declared/],
-    [
-      'duplicate ids',
-      [
-        { id: 'triage', description: 'a' },
-        { id: 'triage', description: 'b' },
-      ],
-      /duplicate/,
-    ],
-    ['description cap', [{ id: 'triage', description: 'x'.repeat(201) }], /exceeds 200/],
-  ];
-
-  it.each(cases)('%s', (_label, entries, expected) => {
-    const errors = validateIntentsDraft(entries);
+describe('per-file intent contract (client mirror of the BE gate)', () => {
+  it.each([
+    ['valid criterion', 'alerts need triage\n', null],
+    ['freshly added intent has no criterion yet', '', /requires a matching criterion/],
+    ['whitespace-only body', '---\nclarify: true\n---\n   \n', /requires a matching criterion/],
+    ['criterion cap', 'x'.repeat(1001), /exceeds 1000/],
+    ['frontmatter error propagates', '---\nfoo: 1\n---\nx\n', /allows only "clarify"/],
+  ] as const)('validateInferDoc: %s', (_label, raw, expected) => {
+    const errors = validateInferDoc(raw, 'triage');
     if (expected === null) expect(errors).toEqual([]);
     else expect(errors.join('\n')).toMatch(expected);
   });
 
-  it('caps the catalog at 32 entries', () => {
-    const many = Array.from({ length: 33 }, (_, i) => ({ id: `intent-${i}`, description: 'x' }));
-    expect(validateIntentsDraft(many).join('\n')).toMatch(/cap of 32/);
+  // Hook docs ride the shared syntax rules on the RAW hooks value (no builtin
+  // predicate: a bare tool name passes here and the BE save gate stays the
+  // authority). Judged on the document, so raw-view mistakes surface pre-save.
+  it.each([
+    ['a valid hook pair', 'hooks:\n  stop:\n    - artifact: reports/*.md\n    - action: create_file\n', null],
+    ['empty document = no hooks', '', null],
+    ['missing hooks wrapper key', 'stop:\n  - artifact: r.md\n', /exactly one top-level "hooks" key/],
+    ['extra top-level key', 'hooks:\n  stop:\n    - artifact: r.md\nextra: 1\n', /exactly one top-level "hooks" key/],
+    ['empty hook value', 'hooks:\n  stop:\n    - artifact: " "\n', /non-empty string/],
+    ['artifact traversal', 'hooks:\n  stop:\n    - artifact: ../escape.md\n', /path segment/],
+    ['malformed mcp action', 'hooks:\n  stop:\n    - action: mcp__Server__tool\n', /mcp__\{server\}__\{tool\}/],
+    ['hook cap', `hooks:\n  stop:\n${Array.from({ length: 9 }, (_, i) => `    - artifact: f${i}.md`).join('\n')}\n`, /cap is 8/],
+  ] as const)('validateHooksDoc: %s', (_label, raw, expected) => {
+    const errors = validateHooksDoc(docOf(raw), 'triage');
+    if (expected === null) expect(errors).toEqual([]);
+    else expect(errors.join('\n')).toMatch(expected);
+  });
+
+});
+
+describe('planSaves — identity-first ordering + optional-file delete-on-empty', () => {
+  const doc = (key: string, path: string, raw: string, savedRaw: string) => ({
+    key,
+    path,
+    raw,
+    savedRaw,
+    dirty: raw !== savedRaw,
+  });
+
+  it('clean docs produce no operations', () => {
+    expect(planSaves([doc('main', 'jobs/w/job.yaml', 'id: w\n', 'id: w\n')])).toEqual([]);
+  });
+
+  it('emptied hooks.yaml/prompt.md become DELETEs; never-existed empty ones are no-ops', () => {
+    const ops = planSaves([
+      doc('hooks:a', 'jobs/w/intents/a/hooks.yaml', '', 'hooks:\n  stop:\n    - artifact: r.md\n'),
+      doc('hooks:b', 'jobs/w/intents/b/hooks.yaml', '', ''),
+      doc('prompt:a', 'jobs/w/intents/a/prompt.md', '', 'Old prose.\n'),
+      doc('prompt:b', 'jobs/w/intents/b/prompt.md', '', ''),
+      doc('prompt:c', 'jobs/w/intents/c/prompt.md', 'New prose.\n', ''),
+    ]);
+    expect(ops).toEqual([
+      { op: 'delete', path: 'jobs/w/intents/a/hooks.yaml' },
+      { op: 'delete', path: 'jobs/w/intents/a/prompt.md' },
+      { op: 'put', path: 'jobs/w/intents/c/prompt.md', content: 'New prose.\n' },
+    ]);
+  });
+
+  it('infer.md is REQUIRED — an emptied one still plans as a PUT, never a delete', () => {
+    const ops = planSaves([doc('infer:a', 'jobs/w/intents/a/infer.md', '', 'old criterion\n')]);
+    expect(ops).toEqual([{ op: 'put', path: 'jobs/w/intents/a/infer.md', content: '' }]);
+  });
+
+  it('identity docs save first; the rest keep insertion order', () => {
+    const ops = planSaves([
+      doc('infer:b', 'jobs/w/intents/b/infer.md', 'y2\n', 'y\n'),
+      doc('main', 'jobs/w/job.yaml', 'id: w\nname: W2\n', 'id: w\nname: W\n'),
+      doc('infer:a', 'jobs/w/intents/a/infer.md', 'x2\n', 'x\n'),
+    ]);
+    expect(ops.map((o) => o.path)).toEqual([
+      'jobs/w/job.yaml',
+      'jobs/w/intents/b/infer.md',
+      'jobs/w/intents/a/infer.md',
+    ]);
+  });
+});
+
+describe('classifyDefinitionPath — file-tree navigation targets', () => {
+  it.each([
+    ['agent.yaml', { kind: 'agent-yaml' }],
+    // A level IS its directory — the row that opens that level's screen.
+    ['jobs/weekly', { kind: 'job-dir', jobId: 'weekly' }],
+    ['jobs/weekly/job.yaml', { kind: 'job-yaml', jobId: 'weekly' }],
+    ['jobs/weekly/intents', { kind: 'intents-dir', jobId: 'weekly' }],
+    ['jobs/weekly/intents/report', { kind: 'intent-dir', jobId: 'weekly', intentId: 'report' }],
+    ['jobs/weekly/intents/report/infer.md', { kind: 'intent-infer', jobId: 'weekly', intentId: 'report' }],
+    ['jobs/weekly/intents/report/prompt.md', { kind: 'intent-prompt', jobId: 'weekly', intentId: 'report' }],
+    ['jobs/weekly/intents/report/hooks.yaml', { kind: 'intent-hooks', jobId: 'weekly', intentId: 'report' }],
+    // Legacy/stray files under an intent dir are 'other', never 'prose' —
+    // they must not open in the Prompts editor.
+    ['jobs/weekly/intents/report/intent.yaml', { kind: 'other' }],
+    ['jobs/weekly/intents/report/notes.md', { kind: 'other' }],
+    ['base/role.md', { kind: 'prose' }],
+    ['jobs/weekly/base/system.md', { kind: 'prose', jobId: 'weekly' }],
+    ['random/notes.txt', { kind: 'other' }],
+  ] as const)('%s', (path, expected) => {
+    expect(classifyDefinitionPath(path)).toEqual(expected);
+  });
+
+  // The other half of the isomorphism: every owned kind must name the card it
+  // scrolls to. 'prose' had no entry, so a base/*.md click opened the buffer
+  // and left the reader on whatever card they were already looking at.
+  // The rename policy in one assertion: a LEVEL's directory and the files
+  // inside it are different cards, so a file card can never own its
+  // container's id (the intent id used to live in infer.md's card).
+  it('a level directory and its files map to different cards', () => {
+    const dir = classifyDefinitionPath('jobs/weekly/intents/report').kind;
+    const infer = classifyDefinitionPath('jobs/weekly/intents/report/infer.md').kind;
+    expect(DEFINITION_DIR_KINDS.has(dir)).toBe(true);
+    expect(DEFINITION_DIR_KINDS.has(infer)).toBe(false);
+    expect(CARD_OF_KIND[dir as 'intent-dir']).not.toBe(CARD_OF_KIND[infer as 'intent-infer']);
+  });
+
+  it('every kind but "other" maps to a card id', () => {
+    const kinds = [
+      'agent.yaml',
+      'jobs/weekly',
+      'jobs/weekly/job.yaml',
+      'jobs/weekly/intents',
+      'jobs/weekly/intents/report',
+      'jobs/weekly/intents/report/infer.md',
+      'jobs/weekly/intents/report/prompt.md',
+      'jobs/weekly/intents/report/hooks.yaml',
+      'base/role.md',
+    ].map((p) => classifyDefinitionPath(p).kind);
+    expect(new Set(kinds).size).toBe(kinds.length);
+    for (const kind of kinds) {
+      expect(kind).not.toBe('other');
+      expect(CARD_OF_KIND[kind as Exclude<typeof kind, 'other'>]).toMatch(/^c3g-/);
+    }
   });
 });

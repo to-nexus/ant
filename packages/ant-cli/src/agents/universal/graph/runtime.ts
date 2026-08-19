@@ -51,8 +51,9 @@ export function getUniversalMcp(): McpConnectionManager | null {
  *
  * Spool files are data-plane intermediates, not job outputs: the write goes
  * straight through ctx.fileSystem (no side effects emitted), so it never folds
- * into `_turnToolWrites` / the outputs-contract manifest. Error results are
- * never spooled — the model plans recovery from the error text itself.
+ * into `_turnToolWrites` — neither the artifact manifest nor an artifact stop
+ * hook can be satisfied by a spool. Error results are never spooled — the
+ * model plans recovery from the error text itself.
  */
 export const MCP_SPOOL_THRESHOLD_BYTES = 32 * 1024;
 export const MCP_SPOOL_DIR = 'mcp-results';

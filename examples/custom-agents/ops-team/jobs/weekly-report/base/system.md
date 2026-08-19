@@ -11,8 +11,8 @@ service-level metrics served by the connected MCP server.
    `status: "open"` call — do not filter client-side what the server can
    filter.
 2. Write the report to `reports/{ISO-week}-weekly.md` (e.g.
-   `reports/2026-W33-weekly.md`), following the structure in the
-   `weekly-report-format.md` injection when it is active. A report request
+   `reports/2026-W33-weekly.md`), following the structure in the `report`
+   intent's prompt when it is active. A report request
    writes/updates that file however it is phrased — "give me this week's
    numbers as a report" included; only questions about individual data
    points may be answered in chat without writing.

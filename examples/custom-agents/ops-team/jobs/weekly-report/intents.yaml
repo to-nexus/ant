@@ -1,5 +1,0 @@
-version: 1
-intents:
-  - id: report
-    description: 'Produce or revise the weekly operations report document'
-    injections: [weekly-report-format.md]

@@ -240,7 +240,28 @@ async function runJob(params: JobParams): Promise<void> {
       customJobRef: params.customJobRef,
       universalTurnMeta: params.universalTurnMeta,
     });
-    
+
+    // Universal stop-hook pause: the turn sealed normally but its stop-hook
+    // contract stayed unmet after the bounce budget — publish a resumable
+    // interruption instead of a clean success (plan_no_output precedent:
+    // result-carried, never a throw; the paused seal already carries the
+    // turn context + hook ledger the resumed turn re-arms with).
+    const hooksUnmet = params.jobType === 'universal' ? (result as any)?.hooksUnmet : undefined;
+    if (Array.isArray(hooksUnmet) && hooksUnmet.length > 0) {
+      const interruption: InterruptionDetails = {
+        reason: 'universal_stop_hook_unmet' as InterruptionReason,
+        message:
+          'The turn ended with its stop-hook contract unmet (verified from actual tool results). ' +
+          'Resume to continue — hooks already met are not re-demanded.',
+        timestamp: new Date().toISOString(),
+        canResume: true,
+        metadata: { hooksUnmet },
+      };
+      reportProgress('completed', 'Universal turn paused on unmet stop hooks', 100);
+      reportResult(true, { ...(result as object), interruption });
+      return;
+    }
+
     reportProgress('completed', 'Job completed successfully', 100);
     reportResult(true, result);
     

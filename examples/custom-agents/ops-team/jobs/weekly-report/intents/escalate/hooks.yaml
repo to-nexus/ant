@@ -1,0 +1,7 @@
+# Action hook demo (pipeline-triggering intent). create_incident is
+# approval-gated fail-closed by default: a rejected/blocked call carries an
+# error and does NOT satisfy the hook — only an approved, successful call
+# counts (the correct semantics).
+hooks:
+  stop:
+    - action: mcp__ops-api__create_incident

@@ -1,5 +1,3 @@
-Rules for analyzing files and data: compute instead of estimating, cite exact paths, never invent numbers.
-
 - Read the actual files before characterizing them; for large trees, survey
   with `explore` before deep-reading.
 - Derive numbers by computing — a small script run via shell — rather than

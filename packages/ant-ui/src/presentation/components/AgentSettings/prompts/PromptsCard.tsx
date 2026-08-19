@@ -1,34 +1,37 @@
 /**
- * Prompts section card — the selection-scoped PROSE surface, stacked
- * vertically: grouped file list (with intent-binding badges) on top, the
- * full-width editor below. Replaces the old fixed-height left-tree /
- * right-editor split — the page scroller stays the single primary scroller.
+ * Prompts section card — the selection-scoped BASE-PROSE surface: file list on
+ * top, the selected file's editor below. Scope model: agent = base/*.md ·
+ * job = jobs/{id}/base/*.md. Renders on agent/job levels only — an intent's
+ * prose is its own prompt.md card, and structured files (yaml, infer.md) are
+ * owned by their own cards above.
  *
- * Scope model: agent = base/*.md · job = its jobs/{id}/ subtree grouped base
- * / injections · intent = only its bound injections (plus the Add-existing
- * picker over the job's unbound ones). Definition yaml never appears here —
- * each yaml is owned by its own card above.
+ * SAME ANATOMY as the intent prompt card (header description + a right-edge
+ * raw ⇄ preview toggle over the shared `proseSurface` body); what a multi-file
+ * scope adds is exactly the list, New file, Upload, and the per-file rename /
+ * delete. The header describes HOW the files apply — "every file under base/",
+ * the collective answer to the intent card's per-file one — instead of tagging
+ * each row with a badge that says the same thing N times.
  *
- * Save rule: catalog fields (bindings) mutate the intents document → shell
- * ChangedBar; file-system ops and .md buffers save immediately here.
+ * Save rule: file-system ops and .md buffers save immediately here, not via
+ * the shell ChangedBar (a different buffer owner than the intent card's docs).
  */
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderInput, Plus, Upload } from 'lucide-react';
+import { Plus, Upload } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, AuroraSelect, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 import {
   createDefinitionFile,
   deleteDefinitionFile,
   renameDefinitionFile,
   uploadDefinitionFiles,
 } from '@/infrastructure/http/api/accountAgents';
-import { type PromptsScope } from './promptGroups';
+import { type PromptsScope } from './promptRows';
+import { ProseModeToggle, useProseMode } from './proseSurface';
 import { PromptFileList } from './PromptFileList';
 import { PromptEditor } from './PromptEditor';
-import { AddExistingPicker } from './AddExistingPicker';
 
 export type { PromptsScope };
 
@@ -37,33 +40,9 @@ export interface PromptsCardProps {
   agentId: string;
   readonly: boolean;
   scope: PromptsScope;
-  /** Definition path → intent ids that inline it (reverse binding map, draft state). */
-  intentBindings: Record<string, string[]>;
-  /** Intent ids the given injections file can still be bound to. */
-  bindableIntentIds: (path: string) => string[];
-  onBind: (intentId: string, path: string) => void;
-  onUnbind: (intentId: string, path: string) => void;
-  /** Intent scope: a file created here is auto-bound to the selected intent. */
-  onCreatedInjection?: (fileName: string) => void;
-  /** Intent scope: bind an existing unbound injections file ("Add existing"). */
-  onAddExisting?: (fileName: string) => void;
-  /** The job's injection file names (Add-existing picker vocabulary). */
-  jobInjectionFiles?: string[];
 }
 
-export function PromptsCard({
-  id,
-  agentId,
-  readonly,
-  scope,
-  intentBindings,
-  bindableIntentIds,
-  onBind,
-  onUnbind,
-  onCreatedInjection,
-  onAddExisting,
-  jobInjectionFiles = [],
-}: PromptsCardProps) {
+export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) {
   const { t } = useTranslation('agents');
   const tree = useStore((s) => s.definitionTree);
   const openFile = useStore((s) => s.openDefinitionFile);
@@ -75,15 +54,10 @@ export function PromptsCard({
 
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [showAddExisting, setShowAddExisting] = useState(false);
-  const [createDir, setCreateDir] = useState('base/');
   const [createName, setCreateName] = useState('');
 
-  const dirOptions = useMemo(() => {
-    if (scope.level === 'agent') return ['base/'];
-    return [`jobs/${scope.jobId}/injections/`, `jobs/${scope.jobId}/base/`];
-  }, [scope]);
-  const defaultDir = scope.level === 'intent' ? `jobs/${scope.jobId}/injections/` : dirOptions[0];
+  const baseDir = scope.level === 'agent' ? 'base/' : `jobs/${scope.jobId}/base/`;
+  const [mode, setMode] = useProseMode(openFile?.path ?? '', readonly);
 
   const dirty = !!openFile && openFile.content !== openFile.savedContent;
 
@@ -103,17 +77,13 @@ export function PromptsCard({
     const name = createName.trim();
     if (!name) return;
     const fileName = name.endsWith('.md') ? name : `${name}.md`;
-    const dir = scope.level === 'intent' ? defaultDir : createDir;
     setSaveError(null);
     try {
-      await createDefinitionFile(agentId, `${dir}${fileName}`);
+      await createDefinitionFile(agentId, `${baseDir}${fileName}`);
       setShowCreate(false);
       setCreateName('');
       await loadDefinitionTree(agentId);
-      await openDefinitionFileBuffer(agentId, `${dir}${fileName}`);
-      if (scope.level === 'intent' && dir.endsWith('injections/')) {
-        onCreatedInjection?.(fileName);
-      }
+      await openDefinitionFileBuffer(agentId, `${baseDir}${fileName}`);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     }
@@ -122,7 +92,7 @@ export function PromptsCard({
   const handleUpload = (files: FileList) => {
     void uploadDefinitionFiles(
       agentId,
-      Array.from(files).map((f) => ({ file: f, relativePath: `${defaultDir}${f.name}` })),
+      Array.from(files).map((f) => ({ file: f, relativePath: `${baseDir}${f.name}` })),
     )
       .then(() => loadDefinitionTree(agentId))
       .catch((err) => setSaveError(err instanceof Error ? err.message : String(err)));
@@ -166,21 +136,15 @@ export function PromptsCard({
     }
   };
 
-  // Add-existing candidates: the job's injection files not bound to this intent.
-  const addExistingCandidates = useMemo(() => {
-    if (scope.level !== 'intent') return [];
-    return jobInjectionFiles.filter((f) => !scope.intentInjections.includes(f));
-  }, [scope, jobInjectionFiles]);
-
-  const boundCountOf = (fileName: string): number =>
-    scope.level === 'intent'
-      ? (intentBindings[`jobs/${scope.jobId}/injections/${fileName}`] ?? []).length
-      : 0;
-
   const description = {
-    agent: t('prompts.agentDescription', "The agent's always-on prompt — the base/*.md prose every job inherits."),
-    job: t('prompts.jobDescription', "This job's prompt surface — base/ (always-on) and injections/ (intent-gated)."),
-    intent: t('prompts.intentDescription', "The injection files this intent inlines when active. Creating a file here binds it automatically."),
+    agent: t(
+      'prompts.agentDescription',
+      'EVERY file under base/ is added to the system prompt on every turn — inherited by all of this agent\'s jobs.',
+    ),
+    job: t(
+      'prompts.jobDescription',
+      "EVERY file under this job's base/ is added to the system prompt on every turn, after the agent's own.",
+    ),
   }[scope.level];
 
   return (
@@ -190,37 +154,32 @@ export function PromptsCard({
       accent="cool"
       title={t('prompts.title', 'Prompts')}
       description={description}
-      padded={false}
+      headerAction={openFile ? <ProseModeToggle mode={mode} onChange={setMode} /> : undefined}
     >
-      <div className="flex flex-col">
-        {/* file list + toolbar */}
-        <div className="p-2 flex flex-col gap-2" style={{ maxHeight: 320, overflowY: 'auto' }}>
+      <div className="flex flex-col gap-3">
+        {/* file list + toolbar — boxed, so the list reads as one control inside
+            the card's padding instead of bleeding into its edges */}
+        <div
+          className="flex flex-col gap-2 p-1.5 rounded-md"
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-1)',
+            maxHeight: 240,
+            overflowY: 'auto',
+          }}
+        >
           <PromptFileList
             tree={tree}
             scope={scope}
-            intentBindings={intentBindings}
-            bindableIntentIds={bindableIntentIds}
             selectedPath={openFile?.path ?? null}
             selectedDirty={dirty}
-            readonly={readonly}
             onOpen={openWithGuard}
-            onBind={onBind}
-            onUnbind={onUnbind}
           />
 
           {!readonly && (
             <div className="flex flex-col gap-1.5">
               {showCreate && (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {scope.level !== 'intent' && dirOptions.length > 1 && (
-                    <div style={{ width: 220 }}>
-                      <AuroraSelect
-                        value={createDir}
-                        onChange={setCreateDir}
-                        options={dirOptions.map((d) => ({ value: d, label: d }))}
-                      />
-                    </div>
-                  )}
                   <div style={{ width: 200 }}>
                     <AuroraInput
                       value={createName}
@@ -241,27 +200,9 @@ export function PromptsCard({
                   </Button>
                 </div>
               )}
-              {showAddExisting && scope.level === 'intent' && (
-                <AddExistingPicker
-                  candidates={addExistingCandidates}
-                  boundCountOf={boundCountOf}
-                  onPick={(fileName) => {
-                    setShowAddExisting(false);
-                    onAddExisting?.(fileName);
-                  }}
-                  onCancel={() => setShowAddExisting(false)}
-                />
-              )}
-              {!showCreate && !showAddExisting && (
+              {!showCreate && (
                 <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setCreateDir(defaultDir);
-                      setShowCreate(true);
-                    }}
-                  >
+                  <Button size="sm" variant="ghost" onClick={() => setShowCreate(true)}>
                     <Plus className="w-3 h-3" /> {t('prompts.newFile', 'New file')}
                   </Button>
                   <label className="cursor-pointer">
@@ -281,11 +222,6 @@ export function PromptsCard({
                       }}
                     />
                   </label>
-                  {scope.level === 'intent' && (
-                    <Button size="sm" variant="ghost" onClick={() => setShowAddExisting(true)}>
-                      <FolderInput className="w-3 h-3" /> {t('prompts.addExisting', 'Add existing')}
-                    </Button>
-                  )}
                 </div>
               )}
               {saveError && !openFile && (
@@ -297,12 +233,13 @@ export function PromptsCard({
           )}
         </div>
 
-        {/* editor */}
-        <div style={{ borderTop: '1px solid var(--border-1)' }}>
+        {/* the selected file */}
+        <div>
           {openFile ? (
             <PromptEditor
               openFile={openFile}
               readonly={readonly}
+              mode={mode}
               validation={validation}
               onChange={setDefinitionFileContent}
               onSave={handleSave}

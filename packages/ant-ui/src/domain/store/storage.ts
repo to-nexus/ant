@@ -15,6 +15,7 @@ export const STORAGE_KEYS = {
   DISMISSED_INTERRUPT_TIMESTAMP: 'ant-ui:dismissed-interrupt-timestamp',
   LANGUAGE: 'ant-ui:language',
   AGENT_TREE_WIDTH: 'ant-ui:agent-settings-tree-width',
+  AGENT_TREE_VIEW: 'ant-ui:agent-settings-tree-view',
   // Per-provider "don't show again" ack for the third-party data-consent gate
   // (DeepSeek, GLM). Keyed by provider so acking one never silently acks another.
   PROVIDER_CONSENT_ACK: (provider: string) => `ant-ui:provider-consent-ack:${provider}`,

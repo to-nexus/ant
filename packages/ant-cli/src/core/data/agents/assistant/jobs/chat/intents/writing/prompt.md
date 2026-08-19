@@ -1,5 +1,3 @@
-Conventions for durable documents: descriptive filenames, in-place updates, change summaries in chat.
-
 - One topic, one file. Use a short descriptive kebab-case filename; group
   related documents in a subdirectory.
 - On follow-up turns, edit the existing document in place — do not fork a

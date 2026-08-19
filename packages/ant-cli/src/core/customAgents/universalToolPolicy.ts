@@ -1,87 +1,30 @@
 /**
- * Universal-job tool policy — the SSOT allowlist and approval defaults.
+ * Universal-job tool policy — approval defaults and runtime confinement.
  *
  * Lives in core (not agents/common/tool) so the loader can validate
  * `job ⊆ preset` without a core→agents dependency. The registry
  * factory in `agents/common/tool/presets.ts` builds the runtime registry
  * from this list; a unit test reconciles the two.
  *
- * Domain-bound tools (search_code, read_workspace_file, list_assets,
- * figma_*, …) are deliberately absent: universal has no canonical codebase,
- * no RAC, no design asset pool. Extra capability comes from MCP.
- *
- * The ant-source family (read_ant_source / list_ant_files / search_ant_code)
- * is IN the preset despite that stance: it is domain-free (reads Ant's own
- * shipped docs/source, no workspace or RAC involved), read-only, and it is
- * what lets any universal agent answer questions about the Ant platform
- * itself from the actual code instead of hedging or web-guessing
- * (steady-caring-depth RCA).
+ * The tool NAME inventory (preset list, mutating/write subsets, mcp prefix)
+ * is the BE↔FE contract and lives in `@ant/shared/universal-tools` — the FE
+ * action picker and satisfiability hints consume the same lists. This module
+ * re-exports it and keeps the runtime-behaviour policy (approval, plan-turn
+ * confinement, clarify) BE-only.
  */
 
-export const UNIVERSAL_BUILTIN_TOOLS = [
-  // read / explore (artifact tree)
-  'read_file',
-  'list_files',
-  'search_files',
-  // write (artifact tree)
-  'create_file',
-  'edit_file',
-  'append_file',
-  'delete_file',
-  'mkdir',
-  'copy_file',
-  // web
-  'fetch_url',
-  'search_web',
-  // external calls
-  'http_request',
-  // command execution
-  'run_command',
-  // subagent
-  'explore',
-  'subagent_report',
-  // state
-  'read_state',
-  // Ant platform self-source (read-only, domain-free)
-  'read_ant_source',
-  'list_ant_files',
-  'search_ant_code',
-] as const;
+import { MUTATING_BUILTIN_TOOLS, isMcpToolName } from '@ant/shared';
 
-export type UniversalBuiltinTool = typeof UNIVERSAL_BUILTIN_TOOLS[number];
-
-export function isUniversalBuiltinTool(name: string): name is UniversalBuiltinTool {
-  return (UNIVERSAL_BUILTIN_TOOLS as readonly string[]).includes(name);
-}
-
-/**
- * Builtin tools that mutate systems outside the artifact sandbox — these
- * default to `approval: always` when the definition doesn't declare a policy.
- * Artifact-tree writes stay approval-free: the sandbox is the boundary.
- */
-export const MUTATING_BUILTIN_TOOLS: readonly UniversalBuiltinTool[] = [
-  'http_request',
-  'run_command',
-];
-
-export const MCP_TOOL_PREFIX = 'mcp__';
-
-export function isMcpToolName(name: string): boolean {
-  return name.startsWith(MCP_TOOL_PREFIX);
-}
-
-/**
- * Builtin tools that mutate the artifact tree — during a plan turn (`@plan`)
- * these are confined to the `plan/` directory.
- */
-export const ARTIFACT_WRITE_TOOLS: readonly UniversalBuiltinTool[] = [
-  'create_file',
-  'edit_file',
-  'append_file',
-  'delete_file',
-  'mkdir',
-  'copy_file',
-];
+export {
+  UNIVERSAL_BUILTIN_TOOLS,
+  isUniversalBuiltinTool,
+  MUTATING_BUILTIN_TOOLS,
+  MCP_TOOL_PREFIX,
+  isMcpToolName,
+  ARTIFACT_WRITE_TOOLS,
+  ARTIFACT_WRITE_EVIDENCE_TOOLS,
+} from '@ant/shared';
+export type { UniversalBuiltinTool } from '@ant/shared';
 
 /** Path-bearing args per artifact-write tool (mirrors the tool node's write collection). */
 const WRITE_PATH_ARGS: Record<string, readonly string[]> = {

@@ -56,10 +56,13 @@ describe('shipped builtin definitions — smoke', () => {
     expect(Object.keys(resolved.mcpServers)).toEqual([]);
     expect(resolved.prose).not.toContain('[... truncated');
 
-    // Every advertised injection must exist where the TOC points.
-    for (const entry of resolved.injectionsToc) {
-      expect(fs.existsSync(entry.absolutePath), `missing injection: ${entry.absolutePath}`).toBe(true);
-      expect(entry.summary.trim().length).toBeGreaterThan(0);
+    // Every intent that advertises a prompt carries a preloaded non-blank body.
+    for (const intent of resolved.intents) {
+      if (intent.hasPrompt) {
+        expect(resolved.intentPrompts[intent.id]?.trim().length ?? 0).toBeGreaterThan(0);
+      } else {
+        expect(resolved.intentPrompts[intent.id]).toBeUndefined();
+      }
     }
   });
 
@@ -98,9 +101,10 @@ describe('committed example definitions — validity + MCP contract', () => {
   it.each(examplePairs)('%s/%s loads with a valid definition', (agentId, jobId) => {
     const resolved = loadCustomJob(exampleRoots, agentId, jobId);
     expect(validateMcpServers(resolved.mcpServers)).toEqual([]);
-    for (const entry of resolved.injectionsToc) {
-      expect(fs.existsSync(entry.absolutePath), `missing injection: ${entry.absolutePath}`).toBe(true);
-      expect(entry.summary.trim().length).toBeGreaterThan(0);
+    for (const intent of resolved.intents) {
+      if (intent.hasPrompt) {
+        expect(resolved.intentPrompts[intent.id]?.trim().length ?? 0).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -164,7 +168,7 @@ describe('builtin scope root wiring', () => {
 });
 
 describe('shipped assistant definition', () => {
-  it('assistant/chat exposes the job catalog, one injection per intent', () => {
+  it('assistant/chat exposes the job catalog — every intent carries its own prompt', () => {
     const resolved = loadCustomJob(builtinRoots, 'assistant', 'chat');
     expect(resolved.intents.map((i) => i.id).sort()).toEqual([
       'analysis',
@@ -172,18 +176,13 @@ describe('shipped assistant definition', () => {
       'research',
       'writing',
     ]);
-    expect(resolved.intents.find((i) => i.id === 'research')?.injections).toEqual([
-      'web-research.md',
-    ]);
-    expect(resolved.intents.find((i) => i.id === 'writing')?.injections).toEqual([
-      'document-workflow.md',
-    ]);
-    expect(resolved.intents.find((i) => i.id === 'coding')?.injections).toEqual([
-      'coding-practices.md',
-    ]);
-    expect(resolved.intents.find((i) => i.id === 'analysis')?.injections).toEqual([
-      'data-analysis.md',
-    ]);
+    for (const intent of resolved.intents) {
+      expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
+      expect(resolved.intentPrompts[intent.id]?.trim().length ?? 0).toBeGreaterThan(0);
+      // The guidance comments live inside the frontmatter fence — the rendered
+      // criterion must be prose only.
+      expect(intent.description).not.toContain('#');
+    }
   });
 
   it('ships the intended tool posture: no http_request, run_command pre-approved', () => {

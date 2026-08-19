@@ -57,6 +57,18 @@ The user toggled plan mode for THIS turn. Your job this turn is to produce or up
 - Do NOT create or edit the actual deliverables this turn — that happens on a normal turn after the user confirms.
 {{/if}}
 
+{{#if turnStopHooks}}
+## 🎯 Turn Completion Contract
+
+This turn is complete ONLY when every item below holds. The runtime verifies each from actual tool results at the turn's end — never from your statements — and re-prompts you until they hold; once the retry budget is spent, the turn ends paused as unmet:
+
+{{#each turnStopHooks}}
+- {{this}}
+{{/each}}
+
+If an item cannot be satisfied, state the reason explicitly instead of stopping silently — do NOT claim completion.
+{{/if}}
+
 ## Definition Files (read-only)
 
-Your definition's conditional instruction files are mounted read-only under `{{definitionMount}}`.
+Your definition — including each intent's prompt file (`intents/{id}/prompt.md`) — is mounted read-only under `{{definitionMount}}`.

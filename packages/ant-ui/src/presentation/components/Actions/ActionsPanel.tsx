@@ -26,7 +26,9 @@ import { BasisWizard } from './basis';
 import { DomainBadge } from './DomainBadge';
 import { UniversalActionsPanel } from './UniversalActionsPanel';
 
-const STEP_ORDER = ['pick-action', 'pick-intent', 'config', 'basis-edit'] as const;
+// readonly string[] so indexOf accepts the full actionsStep union — the
+// universal-only 'intent-detail' never reaches this panel and indexes -1.
+const STEP_ORDER: readonly string[] = ['pick-action', 'pick-intent', 'config', 'basis-edit'];
 
 /**
  * Canonical actions surface. Universal (workspace) projects have no RAC and

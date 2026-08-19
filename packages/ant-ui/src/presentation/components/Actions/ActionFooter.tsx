@@ -1,8 +1,17 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized, type IntentGroup, type LogJobType } from '@ant/shared';
+import {
+  deriveFromIntent,
+  INTENT_DEFINITIONS,
+  getIntentDescriptionLocalized,
+  UNIVERSAL_FEATURE,
+  type CustomIntentDef,
+  type IntentGroup,
+  type LogJobType,
+} from '@ant/shared';
 import { executeCodeJob } from '@/infrastructure/http/cli';
 import { addChatUserMessage } from '@/infrastructure/http/api';
+import { selectUniversalExecuteContext } from '@/domain/store/selectors/universalExecuteContext';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
 import { Button, WizardStepIndicator, type WizardStep } from '@/presentation/components/aurora';
 import type { WizardStepDef } from './basis/types';
@@ -35,10 +44,17 @@ interface WizardFooterProps {
   isAllComplete: boolean;
 }
 
-export type ActionFooterProps = IntentFooterProps | WizardFooterProps;
+interface UniversalIntentFooterProps {
+  variant: 'universal-intent';
+  /** The custom-job intent this detail page shows. */
+  intent: CustomIntentDef;
+}
+
+export type ActionFooterProps = IntentFooterProps | WizardFooterProps | UniversalIntentFooterProps;
 
 export function ActionFooter(props: ActionFooterProps) {
   if (props.variant === 'wizard') return <WizardVariant {...props} />;
+  if (props.variant === 'universal-intent') return <UniversalIntentVariant {...props} />;
   return <IntentVariant {...props} />;
 }
 
@@ -167,6 +183,137 @@ function IntentVariant(_props: IntentFooterProps) {
             : policy.buildDisabledReason === 'refs-not-selected'
               ? t('footer.refsRequired')
               : ''}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================
+ *  Universal-intent variant — the custom-agent detail page's bottom menu.
+ *  Same shell + button vocabulary as the canonical intent variant; the
+ *  actions ride the universal wire instead of the RAC pipeline:
+ *  - Chat  = arm this intent as an `@intent:` mention + focus the composer
+ *            (canonical parity: prepare, never send).
+ *  - Build = post the intent's description as the user turn and dispatch a
+ *            universal run with this intent pinned (the
+ *            PlanCompleteVariant.handleProceed precedent — composer-
+ *            independent, so a collapsed chat sidebar cannot defer it).
+ * ================================================================ */
+
+function UniversalIntentVariant({ intent }: UniversalIntentFooterProps) {
+  const { t } = useTranslation('actions');
+
+  const selectedProject = useStore((s) => s.selectedProject);
+  const isRunning = useStore((s) => s.isRunning);
+  const armed = useStore((s) => s.universalTurnMeta.intents.includes(intent.id));
+  const addIntent = useStore((s) => s.addUniversalIntentMention);
+  const removeIntent = useStore((s) => s.removeUniversalIntentMention);
+
+  const handleChatStart = () => {
+    if (!selectedProject) return;
+    addIntent(intent.id);
+    requestAnimationFrame(() => {
+      const input = document.querySelector('textarea[data-chat-input]') as HTMLTextAreaElement | null;
+      input?.focus();
+    });
+  };
+
+  const handleBuild = async () => {
+    if (!selectedProject || isRunning) return;
+
+    const store = useStore.getState();
+    // The directive is the intent's matching criterion — the same fallback
+    // canonical BUILD uses (getIntentDescriptionLocalized) for its directive.
+    const directive = intent.description;
+
+    if (store.selectedJobType !== 'universal' || store.selectedAgent !== 'universal') {
+      store.applyJobIdentity({ jobType: 'universal', agent: 'universal' });
+    }
+    // Pin this intent, then read the wire params off the ONE mapping SSOT.
+    store.addUniversalIntentMention(intent.id);
+    const ctx = selectUniversalExecuteContext(useStore.getState());
+    if (!ctx) return;
+
+    store.setRunning(true, undefined, 'generate');
+    try {
+      // Post the user_turn first; the pre-allocated turnId MUST ride to the
+      // job start (BE chat-copy dedup keys on turnId).
+      const { turnId } = await addChatUserMessage(
+        selectedProject,
+        UNIVERSAL_FEATURE,
+        directive,
+        undefined,
+        'universal',
+      );
+
+      const jobExecution = executeCodeJob({
+        projectId: selectedProject,
+        featureName: UNIVERSAL_FEATURE,
+        jobType: 'universal',
+        agent: 'universal',
+        overrideDirective: directive,
+        chatSource: true,
+        skipTriage: ctx.skipTriage,
+        customJobRef: ctx.customJobRef,
+        intents: ctx.intents,
+        context: ctx.context,
+        plan: ctx.plan,
+        seedTurnId: turnId,
+      });
+      // Mentions apply to the run just dispatched; following turns re-infer.
+      useStore.getState().resetUniversalTurnMeta();
+
+      store.setCurrentJob(jobExecution);
+      jobExecution.onJobIdReady((jobId) => {
+        useStore.getState().setRunning(true, jobId);
+      });
+      jobExecution.on('exit', (code, _signal) => {
+        const jobFailed = code !== 0 && code !== null;
+        useStore.getState().setLastJobFailed(jobFailed);
+        useStore.getState().setRunning(false);
+        useStore.getState().setCurrentJob(null);
+      });
+    } catch (error) {
+      console.error('[Actions] Universal BUILD failed:', error);
+      useStore.getState().setRunning(false);
+    }
+  };
+
+  return (
+    <div style={SHELL_STYLE} className="flex items-center gap-3">
+      <Button
+        variant="secondary"
+        size="md"
+        iconLeft="message-square"
+        onClick={handleChatStart}
+        disabled={!selectedProject}
+      >
+        {t('footer.chatStart')}
+      </Button>
+
+      <Button
+        variant="primary"
+        size="md"
+        glow
+        iconLeft="zap"
+        loading={isRunning}
+        onClick={handleBuild}
+        disabled={!selectedProject || isRunning}
+      >
+        {isRunning ? t('footer.building') : t('footer.build')}
+      </Button>
+
+      {armed && !isRunning && (
+        <span className="text-xs ml-auto inline-flex items-center gap-2" style={{ color: 'var(--text-3)' }}>
+          {t('universal.armedHint', { defaultValue: 'Armed — this intent rides the next chat turn.' })}
+          <button
+            type="button"
+            className="underline underline-offset-2 hover:text-[color:var(--text-2)]"
+            onClick={() => removeIntent(intent.id)}
+          >
+            {t('universal.disarm', { defaultValue: 'Disarm' })}
+          </button>
         </span>
       )}
     </div>

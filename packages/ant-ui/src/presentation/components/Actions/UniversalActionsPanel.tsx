@@ -21,12 +21,14 @@ import { ScrollableTabNav, type TabItem } from './ScrollableTabNav';
 import { PageTransition } from './PageTransition';
 import { DomainBadge } from './DomainBadge';
 import { useUniversalActionSurface } from './useUniversalActionSurface';
+import { UniversalIntentDetailView } from './UniversalIntentDetailView';
 
 export function UniversalActionsPanel() {
   const { t } = useTranslation('actions');
   const surface = useUniversalActionSurface();
   const step = useStore((s) => s.actionsStep);
   const setActionsStep = useStore((s) => s.setActionsStep);
+  const setDetailIntentId = useStore((s) => s.setUniversalDetailIntentId);
 
   const handleJobSelect = (jobId: string) => {
     surface.selectJob(jobId);
@@ -53,6 +55,10 @@ export function UniversalActionsPanel() {
         </span>
       </div>
     );
+  }
+
+  if (step === 'intent-detail') {
+    return <UniversalIntentDetailView surface={surface} />;
   }
 
   if (step === 'pick-action') {
@@ -96,9 +102,14 @@ export function UniversalActionsPanel() {
         ) : (
           <IntentChipGrid
             items={surface.intentChipItems}
-            onSelect={surface.toggleIntent}
+            onSelect={(intentId) => {
+              // Canonical parity: picking an intent opens its detail page
+              // (arming happens there, via the footer's Chat/Build actions).
+              setDetailIntentId(intentId);
+              setActionsStep('intent-detail');
+            }}
             subtitle={t('universal.pickIntentHint', {
-              defaultValue: 'Arm one or more for the next turn — same as an @intent: mention.',
+              defaultValue: 'Open an intent to review its contract and start via chat or build.',
             })}
           />
         )}

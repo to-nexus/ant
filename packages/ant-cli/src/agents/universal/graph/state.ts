@@ -15,6 +15,7 @@ import type { ResolvableState } from '../../common/graph/annotationHelpers';
 import { GENERAL_INTENT } from '@ant/shared';
 import type { UniversalChecklist } from '@ant/shared';
 import type { Conversations } from '../../common/graph/conversations';
+import type { StopHookCheck, StopHookLedger } from '../../../core/customAgents/stopHooks';
 
 /** Tool call record for debugging / observability. */
 export interface UniversalToolCall {
@@ -36,24 +37,23 @@ export interface UniversalToolCall {
  * Universal follows RAC's *structure* without forging canonical identity.
  */
 export interface UniversalTurnContext {
-  /** Active intent ids — explicit `@intent:` mentions, else the catalog's
-   *  `default: true` intent, else `['general']` (all definition injections
-   *  stay on the TOC for self-selection off the rendered Intent Catalog). */
+  /** Active intent ids — explicit `@intent:` mentions, else `['general']`
+   *  (every intent prompt stays a read_file pointer for self-selection off
+   *  the rendered Intent Catalog; there is no catalog default). */
   intents: string[];
   /** `@ctx:` workspace paths attached to this turn (advisory, not a read gate). */
   context: string[];
   /** `@plan` — while true the tool node confines writes to `plan/`. */
   planTurn: boolean;
   /**
-   * Which of the four deterministic resolution steps produced `intents` —
-   * `@` mentions, clarify-continuity inheritance, the catalog's
-   * `default: true` intent, or the `general` fallback. Never `'infer'`: no
-   * step classifies. Names the INTENT facet's provenance only (an @ctx-only
-   * turn does not claim `pinned`). The chat card reads this, and `'unpinned'`
-   * is the one value the author needs to see (no declared intent is active,
-   * so mapped injections stayed on the TOC).
+   * Which of the three deterministic resolution steps produced `intents` —
+   * `@` mentions, clarify-continuity inheritance, or the `general` fallback.
+   * Never `'infer'`: no step classifies. Names the INTENT facet's provenance
+   * only (an @ctx-only turn does not claim `pinned`). The chat card reads
+   * this, and `'unpinned'` is the one value the author needs to see (no
+   * declared intent is active, so intent prompts stayed pointers).
    */
-  source: 'pinned' | 'default' | 'unpinned' | 'inherited';
+  source: 'pinned' | 'unpinned' | 'inherited';
 }
 
 /**
@@ -102,11 +102,29 @@ export interface UniversalGraphState extends ResolvableState {
   /** Join-barrier redo flag (explore subagent) — same contract as ask. */
   _subagentJoinRedo?: boolean;
   /**
-   * Real file writes THIS RUN (from tool side-effects) — the respond node's
-   * outputs-contract check and artifact manifest read this, never the LLM's
-   * claims (completion-signal = actual-write principle).
+   * Real file writes THIS RUN (from tool side-effects) — the stop-hook gate
+   * (agent node), respond's stop-hook recomputation, and the artifact
+   * manifest read this, never the LLM's claims (completion-signal =
+   * actual-write principle).
    */
   _turnToolWrites: string[];
+  /**
+   * Successful tool-call names THIS RUN (calls whose result carried no
+   * error) — the action stop hooks' evidence. Gate-rejected calls carry
+   * `result.error`, so "advertised but blocked" never counts as performed.
+   */
+  _turnToolActions: string[];
+  /** Stop-hook forced re-entries spent this turn (budget: stopHooks.ts). */
+  hookBounceRounds?: number;
+  /** Stop-hook bounce redo flag — routeAfterAgent reads it (join-redo shape). */
+  _hookRedo?: boolean;
+  /** Unmet checks after the bounce budget — respond recomputes; runner surfaces. */
+  _hooksUnmet?: StopHookCheck[];
+  /**
+   * Hook ledger restored from a paused seal (`hookLedger`) — hooks already
+   * met on a prior turn of the paused sequence are not re-demanded.
+   */
+  restoredHookLedger?: StopHookLedger;
   /** Top-level artifact tree overview built by resolve (existence band). */
   artifactsOverview?: string;
   /** Per-phase cumulative usage history (token popup rows). */
@@ -163,6 +181,11 @@ export const UniversalAnnotation = Annotation.Root({
   chatMessageStarted: Annotation<boolean | undefined>,
   _subagentJoinRedo: Annotation<boolean | undefined>,
   _turnToolWrites: Annotation<string[]>,
+  _turnToolActions: Annotation<string[]>,
+  hookBounceRounds: Annotation<number | undefined>,
+  _hookRedo: Annotation<boolean | undefined>,
+  _hooksUnmet: Annotation<StopHookCheck[] | undefined>,
+  restoredHookLedger: Annotation<StopHookLedger | undefined>,
   artifactsOverview: Annotation<string | undefined>,
   phaseTokenUsages: Annotation<import('@ant/shared').PhaseTokenUsage[] | undefined>,
   // Undeclared channels are DROPPED by LangGraph — declare every field.
@@ -200,6 +223,8 @@ export function createInitialUniversalState(params: {
   planRequested?: boolean;
   /** Paused turn's context, adopted only when this run closes a dangling clarify. */
   inheritedTurnContext?: InheritedTurnContext;
+  /** Hook ledger restored from a paused seal (stop-hook / clarify continuity). */
+  restoredHookLedger?: StopHookLedger;
 }): UniversalGraphState {
   return {
     featurePath: params.containerPath,
@@ -221,6 +246,8 @@ export function createInitialUniversalState(params: {
     pendingToolCalls: [],
     recursionLimit: params.recursionLimit,
     _turnToolWrites: [],
+    _turnToolActions: [],
+    restoredHookLedger: params.restoredHookLedger,
     restoredChecklist: params.restoredChecklist,
     clarifyRoundsUsed: params.clarifyRoundsUsed,
     explicitIntents: params.explicitIntents,

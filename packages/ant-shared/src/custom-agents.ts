@@ -28,43 +28,255 @@ export const CUSTOM_AGENT_SCOPE_PRIORITY: readonly CustomAgentScope[] = [
 ];
 
 /**
- * One intent declared in a job's `intents.yaml` catalog (job-only — mirrors
- * the canonical system where intents belong to jobs, never agents).
+ * One intent of a job's catalog — declared as its own directory
+ * `jobs/{jobId}/intents/{intentId}/` holding `infer.md` (REQUIRED — optional
+ * `clarify` frontmatter + prose body = the inference criterion), an optional
+ * `prompt.md` (prose inlined while the intent is active), and an optional
+ * `hooks.yaml` (job-only — mirrors the canonical system where intents belong
+ * to jobs, never agents).
  * The catalog is code-exterior data: ids are a per-job runtime string
  * vocabulary — they never join the compile-time canonical `IntentId` union.
  */
 export interface CustomIntentDef {
-  /** {@link CUSTOM_ID_PATTERN}, unique within its file; `'general'` is reserved. */
+  /** {@link CUSTOM_ID_PATTERN} — IS the `intents/{intentId}/` directory name (never declared in a file); `'general'` is reserved. */
   id: string;
-  /** Classification matching criterion — rendered verbatim as a catalog row. */
+  /** Inference criterion — the `infer.md` prose body, rendered into the Intent Catalog every turn. */
   description: string;
-  /** The job's `injections/*.md` filenames inlined in full while this intent is active. */
-  injections?: string[];
   /**
-   * Clarify-tool opt-out at intent granularity. `false` declares turns under
-   * this intent autonomous/unattended: the agent never asks a blocking
-   * question and proceeds with sensible defaults. Omitted = inherit the
-   * job/agent default. When several active intents declare the knob,
-   * disabled wins.
+   * Clarify-tool opt-out at intent granularity (`infer.md` frontmatter).
+   * `false` declares turns under this intent autonomous/unattended: the agent
+   * never asks a blocking question and proceeds with sensible defaults.
+   * Omitted = inherit the job/agent default. When several active intents
+   * declare the knob, disabled wins.
    */
   clarify?: boolean;
   /**
-   * At most ONE intent per catalog may declare `default: true`: a turn that
-   * pins no `@intent:` runs as this intent (deterministically — there is no
-   * runtime classification). Without a default, an unpinned turn runs as the
-   * reserved `general` intent and self-selects off the rendered catalog.
-   * Because this is a registration-time author declaration, the intent's
-   * `clarify` knob applies on default-activated turns exactly as on pinned
-   * ones.
+   * Stop-hook contract for turns under this intent: every declared entry
+   * must hold at the turn's stop point (AND), verified deterministically by
+   * the runtime from observed tool evidence. Unmet hooks bounce the agent a
+   * bounded number of times, then end the turn as a resumable pause
+   * (`universal_stop_hook_unmet`).
    */
-  default?: boolean;
+  hooks?: IntentHooks;
+  /** Whether `intents/{id}/prompt.md` exists with a non-blank body. */
+  hasPrompt?: boolean;
+}
+
+/**
+ * One stop-hook entry: a predicate the runtime verifies from tool
+ * side-effects at the turn's stop point — never from LLM claims
+ * (completion-signal = actual-write principle).
+ *   - `artifact`: an artifact-root-relative glob (`*` = one segment,
+ *     `**` = any depth) that a REAL file write this turn must match.
+ *   - `action`: a tool name (universal preset builtin or full
+ *     `mcp__{server}__{tool}`) that must have been SUCCESSFULLY called.
+ * v2 reserves a `command` hook (author-defined verification command) — an
+ * execution surface deferred by design; v1 hooks only observe evidence.
+ */
+export type IntentStopHook =
+  | { artifact: string }
+  | { action: string };
+
+/** Cap on stop-hook entries per intent (all must hold — AND). */
+export const INTENT_STOP_HOOKS_CAP = 8;
+
+/**
+ * Per-intent hook declarations, keyed by event. v1 supports only `stop`
+ * (the turn's stop point); the event-keyed shape reserves schema room for
+ * future events without breaking authored files.
+ *
+ * Hooks are PER-INTENT BY DESIGN — there is no job- or agent-level hook
+ * declaration, and none should be added: a job-wide hook would bind the
+ * reserved `general` (plain-conversation) turns, dragging chat turns into
+ * bounce/pause loops, which is why the runtime's active-hook derivation
+ * excludes `general` deliberately. A turn whose lane needs a contract pins
+ * the intent explicitly (`@intent:` mention / `UniversalTurnMeta.intents`) —
+ * there is no catalog default.
+ */
+export interface IntentHooks {
+  stop: IntentStopHook[];
+}
+
+// ── stop-hook syntax validation (single rule set, BE loader + FE editor) ─────
+
+/** Bounded length for artifact hook globs (H2). */
+export const ARTIFACT_GLOB_MAX = 200;
+/** Whole-pattern charset for artifact hook globs (H5). */
+export const ARTIFACT_GLOB_CHARSET = /^[A-Za-z0-9._\-/*]+$/;
+/** Full `mcp__{server}__{tool}` action name — same vocabulary as the approval map and the advertised tool list. */
+export const MCP_ACTION_PATTERN = /^mcp__[a-z0-9]+(?:-[a-z0-9]+)*__[A-Za-z0-9_-]+$/;
+
+export interface IntentHooksValidationOptions {
+  /**
+   * Predicate for H6's builtin-tool arm. The BE loader injects the universal
+   * preset check. Callers without the preset list (e.g. a form validating a
+   * draft) omit it, which DEFERS the builtin judgement: only names shaped as
+   * mcp actions (`mcp__` prefix) are pattern-checked, everything else passes
+   * and the authoritative save gate re-judges it.
+   */
+  isKnownBuiltinAction?: (name: string) => boolean;
+}
+
+/**
+ * Validate + normalize one `hooks.stop` entry (the per-entry slice of H1–H6).
+ * Returns the trimmed, key-canonical entry or an error message (no thrown
+ * errors — the caller owns failure framing).
+ */
+export function validateStopHookEntry(
+  entry: unknown,
+  opts: IntentHooksValidationOptions = {},
+): { normalized?: IntentStopHook; error?: string } {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    return { error: 'hooks.stop entries must be mappings with exactly one of "artifact" | "action"' };
+  }
+  const keys = Object.keys(entry as Record<string, unknown>);
+  const kindKeys = keys.filter((k) => k === 'artifact' || k === 'action');
+  if (kindKeys.length !== 1 || keys.length !== 1) {
+    return {
+      error: `hooks.stop entry {${keys.join(', ')}} must carry exactly one of "artifact" | "action" and no other keys`,
+    };
+  }
+  const kind = kindKeys[0] as 'artifact' | 'action';
+  const value = (entry as Record<string, unknown>)[kind];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return { error: `hooks.stop ${kind} must be a non-empty string` };
+  }
+  const v = value.trim();
+
+  if (kind === 'artifact') {
+    // H2 — bounded length.
+    if (v.length > ARTIFACT_GLOB_MAX) {
+      return { error: `hooks.stop artifact glob exceeds ${ARTIFACT_GLOB_MAX} chars` };
+    }
+    // H3 — posix relative path shape: no backslashes, no leading '/',
+    // no empty/'.'/'..' segments (globs address the artifact root only).
+    if (v.includes('\\')) {
+      return { error: `hooks.stop artifact "${v}" must use posix separators (no backslashes)` };
+    }
+    if (v.startsWith('/')) {
+      return { error: `hooks.stop artifact "${v}" must be relative to the artifact root (no leading /)` };
+    }
+    const segments = v.split('/');
+    if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+      return { error: `hooks.stop artifact "${v}" has an empty, "." or ".." path segment` };
+    }
+    // H5 — charset, and '**' only as a whole segment.
+    if (!ARTIFACT_GLOB_CHARSET.test(v)) {
+      return { error: `hooks.stop artifact "${v}" has characters outside [A-Za-z0-9._-/*]` };
+    }
+    if (segments.some((s) => s.includes('**') && s !== '**')) {
+      return { error: `hooks.stop artifact "${v}": "**" must stand as a whole path segment` };
+    }
+    // H4 — sessions/ is not writable by tools, so the hook could never hold.
+    if (segments[0] === 'sessions') {
+      return {
+        error: `hooks.stop artifact "${v}" targets sessions/ — a reserved, non-writable area (the hook could never be met)`,
+      };
+    }
+    return { normalized: { artifact: v } };
+  }
+
+  // H6 — builtin from the universal preset, or a full mcp__{server}__{tool}
+  // name. `clarify` is a control tool outside the preset, so it is naturally
+  // excluded. Without a builtin predicate the judgement is deferred: only
+  // mcp-shaped names are pattern-checked.
+  if (opts.isKnownBuiltinAction) {
+    if (!opts.isKnownBuiltinAction(v) && !MCP_ACTION_PATTERN.test(v)) {
+      return {
+        error: `hooks.stop action "${v}" is neither a universal builtin tool nor a full mcp__{server}__{tool} name`,
+      };
+    }
+  } else if (v.startsWith('mcp__') && !MCP_ACTION_PATTERN.test(v)) {
+    return { error: `hooks.stop action "${v}" is not a full mcp__{server}__{tool} name` };
+  }
+  return { normalized: { action: v } };
+}
+
+/**
+ * Validate one intent's `hooks` declaration — the intra-file syntax rules
+ * H1–H6 (cross-file satisfiability H7/H8 stays in the BE loader, which sees
+ * the job's tool/MCP surface). Structural (H1) errors short-circuit; entry
+ * errors are collected in declaration order, so `errors[0]` matches the old
+ * fail-fast behaviour. `normalized` is present only when `errors` is empty.
+ */
+export function validateIntentHooks(
+  raw: unknown,
+  opts: IntentHooksValidationOptions = {},
+): { normalized?: IntentHooks; errors: string[] } {
+  // H1 — event-keyed mapping; only `stop` is a known event (unknown = error,
+  // so an author immediately learns the knob does not exist).
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { errors: ['hooks must be a mapping of event → entries (e.g. hooks: { stop: [...] })'] };
+  }
+  const events = Object.keys(raw as Record<string, unknown>);
+  const unknownEvents = events.filter((e) => e !== 'stop');
+  if (unknownEvents.length > 0) {
+    return { errors: [`hooks declares unknown event(s) "${unknownEvents.join(', ')}" — only "stop" is supported`] };
+  }
+  const stop = (raw as Record<string, unknown>).stop;
+  if (!Array.isArray(stop) || stop.length === 0) {
+    return { errors: ['hooks.stop must be a non-empty list of hook entries'] };
+  }
+  if (stop.length > INTENT_STOP_HOOKS_CAP) {
+    return { errors: [`hooks.stop has ${stop.length} entries — cap is ${INTENT_STOP_HOOKS_CAP}`] };
+  }
+
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  const entries: IntentStopHook[] = [];
+  for (const entry of stop as unknown[]) {
+    const { normalized, error } = validateStopHookEntry(entry, opts);
+    if (!normalized) {
+      errors.push(error as string);
+      continue;
+    }
+    const [kind, v] = 'artifact' in normalized ? ['artifact', normalized.artifact] : ['action', normalized.action];
+    const dedupKey = `${kind}:${v}`;
+    if (seen.has(dedupKey)) {
+      errors.push(`hooks.stop declares duplicate entry ${dedupKey}`);
+      continue;
+    }
+    seen.add(dedupKey);
+    entries.push(normalized);
+  }
+  return errors.length > 0 ? { errors } : { normalized: { stop: entries }, errors: [] };
 }
 
 /** Implicit fallback intent — reserved, never declarable, maps no injections. */
 export const GENERAL_INTENT = 'general' as const;
 
-/** The dedicated single-file intent catalog name (job dir only). */
-export const INTENTS_FILE_NAME = 'intents.yaml' as const;
+/** Per-job intent catalog directory (job dir only) — one subdirectory per intent. */
+export const INTENTS_DIR_NAME = 'intents' as const;
+
+/**
+ * Required per-intent criterion file inside `intents/{intentId}/` — optional
+ * YAML frontmatter (only `clarify: <bool>`) + prose body = the inference
+ * criterion ("applies when"). The intent id is the directory name; no file
+ * declares it.
+ */
+export const INTENT_INFER_FILE_NAME = 'infer.md' as const;
+
+/** Optional per-intent prompt file — prose inlined while the intent is active. */
+export const INTENT_PROMPT_FILE_NAME = 'prompt.md' as const;
+
+/** Optional per-intent hook declaration file inside `intents/{intentId}/`. */
+export const INTENT_HOOKS_FILE_NAME = 'hooks.yaml' as const;
+
+/**
+ * Split an optional leading `---` YAML frontmatter fence off a markdown doc.
+ * Frontmatter exists iff the FIRST line is exactly `---`; it ends at the next
+ * line that is exactly `---`. Returns the RAW (unparsed) frontmatter — YAML
+ * parsing stays caller-side so this package keeps zero runtime deps.
+ * `unterminated: true` when the fence opens but never closes (callers fail
+ * loud). BE loader and FE editor MUST both consume this splitter so the same
+ * bytes never parse two ways.
+ */
+export function splitFrontmatter(raw: string): { frontmatter: string | null; body: string; unterminated?: boolean } {
+  if (!/^---\r?\n/.test(raw)) return { frontmatter: null, body: raw };
+  const m = /^---\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(raw);
+  if (!m) return { frontmatter: null, body: raw, unterminated: true };
+  return { frontmatter: m[1] ?? '', body: raw.slice(m[0].length) };
+}
 
 /**
  * Summary of one custom job inside an agent (chip label / catalog row).
@@ -79,11 +291,13 @@ export interface CustomJobSummary {
   /** UI chip label. */
   name: string;
   /**
-   * Job intent catalog (`jobs/{jobId}/intents.yaml`) for `@intent:` mention
-   * vocabulary and the settings tree. Filled by lenient discovery parsing —
-   * omitted when the catalog fails to parse (fail-loud belongs to load/validate).
+   * Job intent catalog (`jobs/{jobId}/intents/{intentId}/`) for `@intent:`
+   * mention vocabulary, the settings tree, and the actions-tab intent detail
+   * (which needs the full defs — hooks, clarify, hasPrompt). Filled by
+   * lenient discovery parsing — omitted when the catalog fails to parse
+   * (fail-loud belongs to load/validate). Bounded: 32 intents × 8 hooks.
    */
-  intents?: Pick<CustomIntentDef, 'id' | 'description'>[];
+  intents?: CustomIntentDef[];
 }
 
 /**
@@ -319,20 +533,20 @@ export interface DefinitionValidationResult {
 /**
  * Composed-prompt preview for one job (`GET …/jobs/:jobId/prompt-preview`) —
  * the `<custom_job_instructions>` block exactly as the runtime injects it for
- * the given active intents, plus the partition of injection files.
+ * the given active intents, plus the partition of intent prompt files.
  */
 export interface CustomJobPromptPreview {
   agentId: string;
   jobId: string;
-  /** Intent ids the preview was rendered with (empty = no active intents: catalog + TOC only, nothing inlined). */
+  /** Intent ids the preview was rendered with (empty = no active intents: catalog only, nothing inlined). */
   activeIntents: string[];
   /** Assembled system block text. */
   system: string;
   /** Harness template paths that wrap the block (names only, not rendered). */
   harnessTemplates: string[];
-  /** `injections/*.md` inlined in full for the given intents. */
+  /** Intent ids whose `prompt.md` is inlined in full for the given intents. */
   inlined: string[];
-  /** `injections/*.md` left as TOC pointers. */
+  /** Intent ids whose `prompt.md` is left as a read_file pointer. */
   toc: string[];
 }
 
@@ -340,9 +554,12 @@ export interface CustomJobPromptPreview {
  * Write whitelist for definition files — the single vocabulary of paths the
  * settings API may create or edit inside an agent dir:
  *   agent.yaml | base/*.md
- *   jobs/{jobId}/(job.yaml | intents.yaml | base/*.md | injections/*.md)
- * Intents and injections are job-only — agent-level `intents.yaml` and
- * `injections/` are legacy and rejected.
+ *   jobs/{jobId}/(job.yaml | base/*.md)
+ *   jobs/{jobId}/intents/{intentId}/(infer.md | prompt.md | hooks.yaml)
+ * Intents are job-only. Legacy shapes are rejected with move messages at the
+ * save gate: agent-level catalogs, the retired single-file
+ * `jobs/{jobId}/intents.yaml`, per-intent `intent.yaml`, and the retired
+ * `jobs/{jobId}/injections/` pool (each intent owns its prose as prompt.md).
  */
 export function isAllowedDefinitionPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
@@ -354,9 +571,16 @@ export function isAllowedDefinitionPath(relPath: string): boolean {
     return parts[0] === 'base' && MD_NAME.test(parts[1]);
   }
   if (parts[0] !== 'jobs' || !isValidCustomId(parts[1])) return false;
-  if (parts.length === 3) return parts[2] === 'job.yaml' || parts[2] === INTENTS_FILE_NAME;
+  if (parts.length === 3) return parts[2] === 'job.yaml';
   if (parts.length === 4) {
-    return (parts[2] === 'base' || parts[2] === 'injections') && MD_NAME.test(parts[3]);
+    return parts[2] === 'base' && MD_NAME.test(parts[3]);
+  }
+  if (parts.length === 5) {
+    return (
+      parts[2] === INTENTS_DIR_NAME &&
+      isValidCustomId(parts[3]) &&
+      (parts[4] === INTENT_INFER_FILE_NAME || parts[4] === INTENT_PROMPT_FILE_NAME || parts[4] === INTENT_HOOKS_FILE_NAME)
+    );
   }
   return false;
 }

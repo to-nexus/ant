@@ -6,8 +6,8 @@ version: 1
 # autonomous/unattended — the agent never asks a blocking question and
 # proceeds with sensible defaults, which fits a job meant to run on a
 # schedule. Declarable at agent.yaml, job.yaml, and per-intent in
-# intents.yaml (most specific active declaration wins; disabled wins among
-# conflicting active intents).
+# intents/{id}/infer.md frontmatter (most specific active declaration wins;
+# disabled wins among conflicting active intents).
 #   clarify: false
 
 # Connection to the reference server (../../../mcp-reference-server).

@@ -18,6 +18,7 @@ import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../co
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
 import { findDanglingClarifyToolUse, buildClarifyToolResultTurn } from '../../common/clarify/toolResume';
+import { parseSealedHookLedger, type StopHookCheck, type StopHookLedger } from '../../../core/customAgents/stopHooks';
 import { McpConnectionManager } from '../../../core/customAgents/McpConnectionManager';
 import { McpConfigError, isMcpConfigError } from '../../../core/customAgents/McpConfigError';
 import { buildUniversalRegistry, setUniversalMcp } from './runtime';
@@ -54,6 +55,13 @@ export interface UniversalRunnerResult {
   response: string;
   toolCallCount: number;
   tokenUsage?: import('@ant/shared').TaskTokenUsage;
+  /**
+   * Stop hooks still unmet after the bounce budget — the turn sealed a
+   * resumable pause; job-runner publishes it as a `universal_stop_hook_unmet`
+   * interruption instead of a clean success (plan_no_output precedent:
+   * result-carried, never a throw).
+   */
+  hooksUnmet?: StopHookCheck[];
 }
 
 export async function runUniversalGraph(params: UniversalRunnerParams): Promise<UniversalRunnerResult> {
@@ -79,6 +87,9 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   let restoredChecklist: import('@ant/shared').UniversalChecklist | undefined;
   let restoredClarifyRounds: number | undefined;
   let restoredClarifyContext: InheritedTurnContext | undefined;
+  let restoredHookLedger: StopHookLedger | undefined;
+  let restoredHookContext: InheritedTurnContext | undefined;
+  let sealedAwaitingStopHooks = false;
   if (params.deps.session) {
     try {
       const session = await params.deps.session.load(params.projectId, UNIVERSAL_FEATURE, resolved.jobId);
@@ -94,6 +105,14 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
           restoredClarifyRounds = sessionState.clarifyRoundsUsed;
         }
         restoredClarifyContext = parseSealedTurnContext(sessionState.clarifyTurnContext);
+        // Stop-hook continuity — the ledger (hooks already met on a prior
+        // turn of the paused sequence) rides both pause seals; the turn
+        // context rides only the stop-hook pause (clarify has its own slot).
+        restoredHookLedger = parseSealedHookLedger(sessionState.hookLedger);
+        sealedAwaitingStopHooks = sessionState.awaitingStopHooks === true;
+        if (sealedAwaitingStopHooks) {
+          restoredHookContext = parseSealedTurnContext(sessionState.hookTurnContext);
+        }
         console.log(`♻️ [Universal] Restored ${restoredConversations[CONV_KEYS.SESSION_MAIN].length} conversation turns`);
       }
     } catch (e) {
@@ -132,6 +151,17 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     main.push(buildClarifyToolResultTurn(dangling.toolUseId, '(no reply — proceed with sensible defaults and state the assumption)') as ConversationMessage);
     inheritedTurnContext = restoredClarifyContext;
   }
+  // Stop-hook pause continuity — no dangling tool_use to key on (the pause
+  // is a plain sealed turn), so the seal marker itself gates: the next run
+  // re-arms the same intents and the gate re-loads (fresh bounce budget).
+  // Explicit `@intent:` mentions still outrank this in buildTurnContext.
+  if (!inheritedTurnContext && restoredHookContext) {
+    inheritedTurnContext = restoredHookContext;
+  }
+  // The ledger is adopted only alongside a pause continuation (a clarify
+  // closure or a stop-hook pause seal) — never from a normal seal, which
+  // omits it (self-clear: a fresh request is a fresh contract).
+  const adoptedHookLedger = dangling || sealedAwaitingStopHooks ? restoredHookLedger : undefined;
   conversations[CONV_KEYS.SESSION_MAIN] = main;
 
   // ── MCP connect (fail-loud: the definition declared these servers).
@@ -193,6 +223,7 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     explicitContext: params.explicitContext,
     planRequested: params.planRequested,
     inheritedTurnContext,
+    restoredHookLedger: adoptedHookLedger,
   });
   if (restoredTokenUsage) (initialState as any).tokenUsage = restoredTokenUsage;
   if (restoredTokenUsageByModel) (initialState as any).tokenUsageByModel = restoredTokenUsageByModel;
@@ -266,5 +297,6 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
     response: finalState.response || '',
     toolCallCount: finalState.toolCalls.length,
     tokenUsage: finalState.tokenUsage,
+    ...(finalState._hooksUnmet?.length ? { hooksUnmet: finalState._hooksUnmet } : {}),
   };
 }

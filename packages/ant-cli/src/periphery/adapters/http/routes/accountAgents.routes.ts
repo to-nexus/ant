@@ -65,10 +65,28 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 
-/** Files the settings UI may never delete/rename directly — remove the agent/job instead. */
+/**
+ * Files the settings UI may never delete/rename directly — remove the
+ * agent/job/intent directory instead. `intents/{id}/infer.md` is included:
+ * deleting or renaming it alone always breaks the required-file invariant
+ * (the sibling prompt.md and hooks.yaml are optional and stay freely
+ * deletable).
+ */
 function isStructuralFile(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
-  return normalized === 'agent.yaml' || /^jobs\/[^/]+\/job\.yaml$/.test(normalized);
+  return (
+    normalized === 'agent.yaml' ||
+    /^jobs\/[^/]+\/job\.yaml$/.test(normalized) ||
+    /^jobs\/[^/]+\/intents\/[^/]+\/infer\.md$/.test(normalized)
+  );
+}
+
+/** `jobs/{jobId}/intents/{intentId}` (the intent DIRECTORY), or null. */
+function parseIntentDirPath(relPath: string): { jobId: string; intentId: string } | null {
+  const parts = relPath.replace(/\\/g, '/').replace(/^\/+/, '').split('/');
+  if (parts.length !== 4 || parts[0] !== 'jobs' || parts[2] !== 'intents') return null;
+  if (!isValidCustomId(parts[1]) || !isValidCustomId(parts[3])) return null;
+  return { jobId: parts[1], intentId: parts[3] };
 }
 
 export function createAccountAgentRoutes(deps: {
@@ -660,7 +678,7 @@ export function createAccountAgentRoutes(deps: {
       if (!rel || typeof content !== 'string') {
         return res.status(400).json({ error: 'path and content (string) are required' });
       }
-      const gate = gateDefinitionSave(req.params.agentId, rel, content);
+      const gate = gateDefinitionSave(req.params.agentId, rel, content, found.agentDir);
       if (!gate.ok) {
         return res.status(gate.status).json({ error: gate.error, code: 'definition-gate-failed' });
       }
@@ -705,8 +723,33 @@ export function createAccountAgentRoutes(deps: {
       if (newName.includes('/') || newName.includes('\\') || newName.startsWith('.')) {
         return res.status(400).json({ error: `Invalid name: ${newName}` });
       }
+      // Intent rename = pure directory rename, server-side (no file declares
+      // the id — the directory name IS the id). An FE create-new+delete-old
+      // sequence would still trip the structural-file rules, and delete-first
+      // loses data on failure.
+      const intentDir = parseIntentDirPath(rel);
+      if (intentDir) {
+        if (!isValidCustomId(newName)) {
+          return res.status(400).json({ error: `Intent id must be ${CUSTOM_ID_HINT} (got: ${newName})` });
+        }
+        if (newName === GENERAL_INTENT) {
+          return res.status(400).json({
+            error: `"${GENERAL_INTENT}" is the implicit fallback intent and cannot be declared`,
+          });
+        }
+        const from = resolveDefinitionPath(found.agentDir, rel);
+        const to = resolveDefinitionPath(found.agentDir, `jobs/${intentDir.jobId}/intents/${newName}`);
+        if (!fs.existsSync(from) || !fs.statSync(from).isDirectory()) {
+          return res.status(404).json({ error: `Intent directory not found: ${rel}` });
+        }
+        if (fs.existsSync(to)) {
+          return res.status(409).json({ error: `Already exists: jobs/${intentDir.jobId}/intents/${newName}` });
+        }
+        fs.renameSync(from, to);
+        return res.json({ success: true });
+      }
       if (isStructuralFile(rel)) {
-        return res.status(400).json({ error: `"${rel}" cannot be renamed — delete the agent/job instead` });
+        return res.status(400).json({ error: `"${rel}" cannot be renamed — delete the agent/job/intent directory instead` });
       }
       const parentRel = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
       const newRel = parentRel ? `${parentRel}/${newName}` : newName;
@@ -731,7 +774,7 @@ export function createAccountAgentRoutes(deps: {
       const rel = String(req.query.path || '');
       if (!rel) return res.status(400).json({ error: 'path query param is required' });
       if (isStructuralFile(rel)) {
-        return res.status(400).json({ error: `"${rel}" cannot be deleted — delete the agent/job instead` });
+        return res.status(400).json({ error: `"${rel}" cannot be deleted — delete the agent/job/intent directory instead` });
       }
       const full = resolveDefinitionPath(found.agentDir, rel);
       if (!fs.existsSync(full)) return res.status(404).json({ error: `Definition file not found: ${rel}` });

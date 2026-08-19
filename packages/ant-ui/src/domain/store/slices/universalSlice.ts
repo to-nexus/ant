@@ -41,6 +41,12 @@ export interface UniversalState {
    * `plan` requests a plan turn: the run produces a plan document, not the work.
    */
   universalTurnMeta: { intents: string[]; context: string[]; plan: boolean };
+  /**
+   * Subject of the actions panel's `intent-detail` step. Store-held because
+   * the step itself is store-held — a remount mid-detail must not strand
+   * `actionsStep='intent-detail'` with no subject. Cleared on job switch.
+   */
+  universalDetailIntentId: string | null;
 }
 
 export interface UniversalActions {
@@ -62,6 +68,7 @@ export interface UniversalActions {
   /** `@plan` per-turn plan-mode flag. */
   setUniversalPlanMention: (on: boolean) => void;
   resetUniversalTurnMeta: () => void;
+  setUniversalDetailIntentId: (intentId: string | null) => void;
 }
 
 export type UniversalSlice = UniversalState & UniversalActions;
@@ -73,6 +80,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
   selectedCustomAgentId: undefined,
   selectedCustomJobId: undefined,
   universalTurnMeta: { intents: [], context: [], plan: false },
+  universalDetailIntentId: null,
 
   setProjectType: (projectType) => {
     const changed = get().projectType !== projectType;
@@ -118,6 +126,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       selectedCustomJobId: jobId,
       // Mentions are job-scoped vocabulary — a job switch invalidates them.
       universalTurnMeta: { intents: [], context: [], plan: false },
+      universalDetailIntentId: null,
     });
   },
 
@@ -150,6 +159,7 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       customAgents: [],
       customAgentsError: null,
       universalTurnMeta: { intents: [], context: [], plan: false },
+      universalDetailIntentId: null,
     }),
 
   addUniversalIntentMention: (intentId) => {
@@ -187,4 +197,6 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     if (meta.intents.length === 0 && meta.context.length === 0 && !meta.plan) return;
     set({ universalTurnMeta: { intents: [], context: [], plan: false } });
   },
+
+  setUniversalDetailIntentId: (intentId) => set({ universalDetailIntentId: intentId }),
 });

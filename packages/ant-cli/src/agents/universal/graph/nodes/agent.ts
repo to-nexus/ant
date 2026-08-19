@@ -11,7 +11,7 @@
  *      model-window-keyed budget before every round.
  *   2. The system prompt = builtin harness (templates/jobs/universal) with
  *      the active custom-job definition appended as an inert, boundary-tagged
- *      block (prose + injections TOC) — built by core's promptBlock SSOT,
+ *      block (prose + intent catalog + active prompts) — built by core's promptBlock SSOT,
  *      shared with the settings prompt-preview endpoint.
  */
 
@@ -44,6 +44,14 @@ import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
 import { requiresApproval, isClarifyEnabled, UNIVERSAL_CLARIFY_BUDGET } from '../../../../core/customAgents/universalToolPolicy';
 import { CLARIFY_TOOL_DEFINITION } from '../../../common/clarify/tool';
 import { parseChecklistTag, serializeChecklist } from '../../../../core/customAgents/universalChecklist';
+import {
+  UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET,
+  activeStopHooksOf,
+  buildStopHookGateMessage,
+  checkStopHooks,
+  formatStopHookContractLines,
+  verifyChecksOnDisk,
+} from '../../../../core/customAgents/stopHooks';
 import { getUniversalMcp, getOrCreateUniversalTurnStreaming } from '../runtime';
 import { compactRun } from '../../../../core/context';
 import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
@@ -62,6 +70,12 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
   if (!promptBuilder) throw new Error('[Universal:Agent] PromptBuilder not available');
 
   const existingChecklist = state.turnChecklist ?? state.restoredChecklist;
+  // Active stop-hook contract band — plan turns are exempt (their contract is
+  // the plan_complete gate; writes are confined to plan/ anyway).
+  const turnStopHooks =
+    state.turnContext?.planTurn === true
+      ? []
+      : formatStopHookContractLines(activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? []));
   const result = await promptBuilder.build({
     templates: TEMPLATE_PATHS.universalAgent,
     vars: {
@@ -82,8 +96,11 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
       // update this list (full-replace) instead of recreating it.
       existingChecklist: existingChecklist ? serializeChecklist(existingChecklist) : undefined,
       existingChecklistPlan: existingChecklist?.sourcePlanPath,
+      // Turn Completion Contract band — the runtime verifies these from
+      // actual tool results at the turn's stop point.
+      turnStopHooks: turnStopHooks.length > 0 ? turnStopHooks : undefined,
     },
-    // Custom definition rides as an inert system-suffix — after injections,
+    // Custom definition rides as an inert system-suffix — after template injections,
     // before policy (guardrail-first / policy-last invariants intact).
     inertSystemAppend: buildCustomJobSystemBlock(resolved, state.turnContext?.intents ?? []).text,
   });
@@ -355,10 +372,64 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
           streamingCompleted: false,
           chatMessageStarted: streamedAnything,
           _subagentJoinRedo: true,
+          _hookRedo: false,
           tokenUsage: state.tokenUsage,
           ...checklistPatch,
           ...(joined.tokenDelta as any),
         };
+      }
+    }
+
+    // ── Stop-hook gate — the turn's ONLY stop point is this node emitting
+    // zero tool calls, so the deterministic completion contract is judged
+    // here, BEFORE finalize (A14: bouncing after finalize would flush the
+    // turn-scoped parser and tear the round into a new message — the same
+    // reason the join barrier lives inside this node). Evidence is observed
+    // tool results only; plan turns are exempt (plan_complete owns them).
+    let hooksUnmetPatch: Partial<UniversalGraphState> = {};
+    if (toolCalls.length === 0 && state.turnContext?.planTurn !== true) {
+      const activeHooks = activeStopHooksOf(resolved.intents, state.turnContext?.intents ?? []);
+      if (activeHooks.length > 0) {
+        const rawChecks = checkStopHooks(activeHooks, {
+          writes: state._turnToolWrites ?? [],
+          actions: state._turnToolActions ?? [],
+          ledger: state.restoredHookLedger,
+        });
+        const fileSystem = state.deps?.fileSystem;
+        const checks = fileSystem
+          ? await verifyChecksOnDisk(rawChecks, (p) => fileSystem.fileExists(p))
+          : rawChecks;
+        const unmet = checks.filter((c) => !c.met);
+        const bounces = state.hookBounceRounds ?? 0;
+        if (unmet.length > 0 && bounces < UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET) {
+          // Bounce (join-redo shape): re-enter the agent with the ✓/✗ gate
+          // message — no finalize, the turn-scoped pipeline continues (A14).
+          console.log(`🎯 [Universal:Agent] Stop hooks unmet (${unmet.length}/${checks.length}) — bounce ${bounces + 1}/${UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET}`);
+          const redoHistory: ConversationMessage[] = [...baseHistory];
+          if (responseText) redoHistory.push(buildAssistantMessage({ text: responseText }));
+          redoHistory.push({
+            role: 'user',
+            content: buildStopHookGateMessage(checks, bounces + 1, UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET),
+          });
+          return {
+            conversations: { [CONV_KEYS.SESSION_MAIN]: redoHistory },
+            pendingToolCalls: [],
+            response: undefined,
+            streamingCompleted: false,
+            chatMessageStarted: streamedAnything,
+            _hookRedo: true,
+            _subagentJoinRedo: false,
+            hookBounceRounds: bounces + 1,
+            tokenUsage: state.tokenUsage,
+            ...checklistPatch,
+          };
+        }
+        if (unmet.length > 0) {
+          // Budget spent — proceed to respond, which recomputes and seals
+          // the resumable pause (honest report over a phantom success).
+          console.warn(`⚠️ [Universal:Agent] Stop hooks still unmet after ${bounces} bounce(s) — pausing`);
+          hooksUnmetPatch = { _hooksUnmet: unmet };
+        }
       }
     }
 
@@ -391,6 +462,8 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
       chatMessageStarted: streamedAnything,
       tokenUsage: state.tokenUsage,
       _subagentJoinRedo: false,
+      _hookRedo: false,
+      ...hooksUnmetPatch,
       ...checklistPatch,
     };
   } finally {
@@ -402,6 +475,7 @@ export async function agentNode(state: UniversalGraphState): Promise<Partial<Uni
 
 export function routeAfterAgent(state: UniversalGraphState): 'tool' | 'respond' | 'agent' {
   if (state._subagentJoinRedo) return 'agent';
+  if (state._hookRedo) return 'agent';
   if (state.pendingToolCalls && state.pendingToolCalls.length > 0) return 'tool';
   return 'respond';
 }

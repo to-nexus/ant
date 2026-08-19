@@ -24,6 +24,11 @@ export interface AgentSettingsSelection {
   intentId: string | undefined;
 }
 
+export interface DefinitionTreeEntry {
+  tree: CustomAgentDefinitionFileNode[];
+  readonly: boolean;
+}
+
 export interface AgentSettingsState {
   accountAgents: CustomAgentSummary[];
   /**
@@ -40,8 +45,11 @@ export interface AgentSettingsState {
   /** Tools whose approval defaults to 'always' (runtime SSOT, for form labels). */
   mutatingBuiltinTools: string[];
   agentSettingsSelection: AgentSettingsSelection;
+  /** SELECTED agent's tree — mirror of `definitionTrees[selection.agentId]` kept for the detail pane's readers. */
   definitionTree: CustomAgentDefinitionFileNode[];
   definitionReadonly: boolean;
+  /** Per-agent definition trees for the rail's file view; key = agentId. Absent = never loaded. */
+  definitionTrees: Record<string, DefinitionTreeEntry>;
   /** Open prose (.md) buffer for the Prompts card editor — yaml is owned by its card. */
   openDefinitionFile: { path: string; content: string; savedContent: string } | null;
   /** Last save's semantic validation result (warnings surface in the UI). */
@@ -52,6 +60,8 @@ export interface AgentSettingsActions {
   loadAccountAgents: () => Promise<void>;
   selectAgentSettingsNode: (agentId: string | undefined, jobId?: string, intentId?: string) => void;
   loadDefinitionTree: (agentId: string) => Promise<void>;
+  /** Lazy per-agent tree load for the rail's file view — no-op when present or in flight. */
+  ensureDefinitionTree: (agentId: string) => Promise<void>;
   openDefinitionFileBuffer: (agentId: string, path: string) => Promise<void>;
   setDefinitionFileContent: (content: string) => void;
   /** Save via the single write funnel; returns false when the 400 gate refused. */
@@ -69,7 +79,11 @@ export interface AgentSettingsActions {
 
 export type AgentSettingsSlice = AgentSettingsState & AgentSettingsActions;
 
-export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSlice> = (set, get) => ({
+export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSlice> = (set, get) => {
+  /** Dedupe concurrent lazy loads (per-agent, closure-scoped). */
+  const treeLoadsInFlight = new Set<string>();
+
+  return {
   accountAgents: [],
   accountAgentsError: null,
   builtinToolPreset: [],
@@ -77,6 +91,7 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
   agentSettingsSelection: { agentId: undefined, jobId: undefined, intentId: undefined },
   definitionTree: [],
   definitionReadonly: false,
+  definitionTrees: {},
   openDefinitionFile: null,
   definitionValidation: null,
 
@@ -93,9 +108,12 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
       const sel = get().agentSettingsSelection as AgentSettingsSelection;
       const agent = agents.find((a: CustomAgentSummary) => a.id === sel.agentId);
       if (sel.agentId && !agent) {
+        const trees = { ...(get().definitionTrees as Record<string, DefinitionTreeEntry>) };
+        delete trees[sel.agentId];
         set({
           agentSettingsSelection: { agentId: undefined, jobId: undefined, intentId: undefined },
           definitionTree: [],
+          definitionTrees: trees,
           openDefinitionFile: null,
           definitionValidation: null,
         });
@@ -137,10 +155,30 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
   loadDefinitionTree: async (agentId) => {
     try {
       const { tree, readonly } = await fetchDefinitionTree(agentId);
-      set({ definitionTree: tree, definitionReadonly: readonly });
+      // Write the per-agent map AND — for the selected agent — the single
+      // mirror slot the detail pane's readers consume.
+      const trees = { ...(get().definitionTrees as Record<string, DefinitionTreeEntry>), [agentId]: { tree, readonly } };
+      const mirror = get().agentSettingsSelection.agentId === agentId
+        ? { definitionTree: tree, definitionReadonly: readonly }
+        : {};
+      set({ definitionTrees: trees, ...mirror });
     } catch (e) {
       console.warn('[agentSettingsSlice] Failed to load definition tree:', e);
-      set({ definitionTree: [], definitionReadonly: false });
+      const trees = { ...(get().definitionTrees as Record<string, DefinitionTreeEntry>), [agentId]: { tree: [], readonly: false } };
+      const mirror = get().agentSettingsSelection.agentId === agentId
+        ? { definitionTree: [], definitionReadonly: false }
+        : {};
+      set({ definitionTrees: trees, ...mirror });
+    }
+  },
+
+  ensureDefinitionTree: async (agentId) => {
+    if ((get().definitionTrees as Record<string, DefinitionTreeEntry>)[agentId] || treeLoadsInFlight.has(agentId)) return;
+    treeLoadsInFlight.add(agentId);
+    try {
+      await get().loadDefinitionTree(agentId);
+    } finally {
+      treeLoadsInFlight.delete(agentId);
     }
   },
 
@@ -206,4 +244,5 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
       await get().loadDefinitionTree(agentId);
     }
   },
-});
+  };
+};

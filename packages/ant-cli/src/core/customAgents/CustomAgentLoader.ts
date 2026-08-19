@@ -9,11 +9,13 @@
  *     jobs/{jobId}/
  *       job.yaml            job machine contract (tools ⊆ universal preset)
  *       base/*.md           job procedure — always injected
- *       injections/*.md     job conditional prose (TOC injected, body on demand)
- *       intents.yaml        job intent catalog
+ *       intents/{intentId}/ job intent catalog — one directory per intent:
+ *         infer.md          criterion body + optional clarify frontmatter (id ≡ dirname)
+ *         prompt.md         optional prose inlined while the intent is active
+ *         hooks.yaml        optional per-intent hook contract
  *
- * Intents, injections, and tools are JOB-ONLY (mirroring canonical). The
- * agent contributes name, `base/` prose, and shared `mcp` only.
+ * Intents and tools are JOB-ONLY (mirroring canonical). The agent contributes
+ * name, `base/` prose, and shared `mcp` only.
  *
  * Validation failures throw CustomAgentValidationError → HTTP 400 at
  * job-accept (fail-loud, never a silent fallback).
@@ -23,7 +25,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
-  INTENTS_FILE_NAME,
+  INTENTS_DIR_NAME,
+  INTENT_INFER_FILE_NAME,
+  INTENT_PROMPT_FILE_NAME,
+  INTENT_HOOKS_FILE_NAME,
   isValidCustomId,
   validateMcpServers,
   type CustomAgentScope,
@@ -35,17 +40,11 @@ import {
   type ApprovalPolicy,
   type CustomAgentYaml,
   type CustomJobYaml,
-  type InjectionTocEntry,
   type McpServerConfig,
   type ResolvedCustomJob,
 } from './types.js';
-import { UNIVERSAL_BUILTIN_TOOLS } from './universalToolPolicy.js';
-import {
-  intentsFilePathFor,
-  parseIntentsYaml,
-  tryReadJobIntentSummaries,
-  validateIntentInjectionRefs,
-} from './intents.js';
+import { ARTIFACT_WRITE_EVIDENCE_TOOLS, UNIVERSAL_BUILTIN_TOOLS, isUniversalBuiltinTool } from './universalToolPolicy.js';
+import { parseIntentsDir, tryReadJobIntentSummaries } from './intents.js';
 
 /** One discovery root, in D8 priority order (user > org > builtin). */
 export interface CustomAgentScopeRoot {
@@ -63,7 +62,7 @@ export interface CustomAgentScopeRoot {
 
 /** Cap applied to the merged (agent base + job base) prose, ANTRULES-style. */
 export const CUSTOM_PROSE_CAP = 8_000;
-const TRUNCATION_FOOTER = '\n\n[... truncated: custom prose exceeds the size cap — move detail into injections/ ...]';
+const TRUNCATION_FOOTER = '\n\n[... truncated: custom prose exceeds the size cap — move detail into intents/{intentId}/prompt.md ...]';
 
 // ── yaml reading ─────────────────────────────────────────────────────────────
 
@@ -121,7 +120,7 @@ export function validateAgentYamlDoc(doc: unknown, agentId: string): void {
   }
   if (keys.intents !== undefined) {
     throw new CustomAgentValidationError(
-      `agent.yaml: intents belong in jobs/{jobId}/intents.yaml (intents are job-only)`,
+      `agent.yaml: intents belong in jobs/{jobId}/${INTENTS_DIR_NAME}/{intentId}/${INTENT_INFER_FILE_NAME} (intents are job-only)`,
       agentId,
     );
   }
@@ -211,7 +210,7 @@ function validateBuiltinSubset(
   return [...child];
 }
 
-// ── prose / injections ───────────────────────────────────────────────────────
+// ── prose ────────────────────────────────────────────────────────────────────
 
 function listMarkdownFiles(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
@@ -226,17 +225,6 @@ function readBaseProse(dir: string): string {
     .map((f) => fs.readFileSync(path.join(dir, f), 'utf-8').trim())
     .filter((s) => s.length > 0)
     .join('\n\n');
-}
-
-function readInjectionsToc(dir: string): InjectionTocEntry[] {
-  return listMarkdownFiles(dir).map((f) => {
-    const absolutePath = path.join(dir, f);
-    const content = fs.readFileSync(absolutePath, 'utf-8');
-    const summary = content.split('\n').find((l) => l.trim().length > 0)?.trim() ?? '';
-    // Body rides along so intent-mapped entries can be annotated without a
-    // second disk read (the file is already fully read for its summary).
-    return { file: f, summary, absolutePath, body: content };
-  });
 }
 
 // ── discovery ────────────────────────────────────────────────────────────────
@@ -358,17 +346,17 @@ export function loadCustomJob(
   const { scopeRoot, agentDir } = found;
   const jobDir = path.join(agentDir, 'jobs', jobId);
 
-  // Legacy agent-level structure fails loud with the migration instruction.
-  if (fs.existsSync(intentsFilePathFor(agentDir))) {
+  // Legacy structure fails loud with the migration instruction.
+  if (fs.existsSync(path.join(agentDir, 'intents.yaml'))) {
     throw new CustomAgentValidationError(
-      `Agent-level ${INTENTS_FILE_NAME} is no longer supported — intents are job-only. Move the catalog into jobs/{jobId}/${INTENTS_FILE_NAME} and its referenced files into jobs/{jobId}/injections/, then delete the agent-level file (the settings Prompts view can create/delete these files).`,
+      `Agent-level intents.yaml is no longer supported — intents are job-only. Move each intent into jobs/{jobId}/${INTENTS_DIR_NAME}/{intentId}/${INTENT_INFER_FILE_NAME} (criterion body; prose into ${INTENT_PROMPT_FILE_NAME}, hooks into ${INTENT_HOOKS_FILE_NAME} alongside), then delete the agent-level file.`,
       agentId,
       jobId,
     );
   }
-  if (listMarkdownFiles(path.join(agentDir, 'injections')).length > 0) {
+  if (fs.existsSync(path.join(agentDir, 'injections'))) {
     throw new CustomAgentValidationError(
-      `Agent-level injections/ is no longer supported — move the *.md files into jobs/{jobId}/injections/ and delete the agent-level directory.`,
+      `Agent-level injections/ is no longer supported — each intent owns its prose as jobs/{jobId}/${INTENTS_DIR_NAME}/{intentId}/${INTENT_PROMPT_FILE_NAME}; move each file into the intent that used it and delete the directory.`,
       agentId,
       jobId,
     );
@@ -409,36 +397,60 @@ export function loadCustomJob(
     prose = prose.slice(0, CUSTOM_PROSE_CAP) + TRUNCATION_FOOTER;
   }
 
-  // injections TOC + intents: job-only
-  const injectionsToc = readInjectionsToc(path.join(jobDir, 'injections'));
-  const intents = parseIntentsYaml(intentsFilePathFor(jobDir), agentId, jobId);
-  validateIntentInjectionRefs(intents, new Set(injectionsToc.map((e) => e.file)), `job "${jobId}"`, agentId, jobId);
-
-  // Annotate the TOC with the reverse mapping (file → intent ids); body is
-  // kept ONLY on intent-mapped entries (they inline in full at prompt time —
-  // no mid-job disk re-read), and dropped elsewhere.
-  const intentsByFile = new Map<string, string[]>();
-  for (const intent of intents) {
-    for (const f of intent.injections ?? []) {
-      const list = intentsByFile.get(f);
-      if (list) list.push(intent.id);
-      else intentsByFile.set(f, [intent.id]);
-    }
+  // intents: job-only. A leftover injections/ pool fails loud — hard cutover,
+  // no backward compatibility (even an empty directory: delete it).
+  if (fs.existsSync(path.join(jobDir, 'injections'))) {
+    throw new CustomAgentValidationError(
+      `jobs/${jobId}/injections/ was removed — each intent now owns its prose as ${INTENTS_DIR_NAME}/{intentId}/${INTENT_PROMPT_FILE_NAME} (inlined while that intent is active). Move each file into the intent that referenced it and delete the directory.`,
+      agentId,
+      jobId,
+    );
   }
-  for (const entry of injectionsToc) {
-    const mapped = intentsByFile.get(entry.file);
-    if (mapped) {
-      entry.intents = mapped;
-    } else {
-      delete entry.body;
-    }
-  }
+  const { intents, intentPrompts } = parseIntentsDir(jobDir, agentId, jobId);
 
   // mcp servers: union, job wins on name collision
   const mcpServers: Record<string, McpServerConfig> = {
     ...(agent.mcp?.servers ?? {}),
     ...(job.mcp?.servers ?? {}),
   };
+
+  // Stop-hook cross-file rules (H7/H8) — intra-file shape was validated by
+  // parseIntentsDir; here the declaration must be SATISFIABLE by this job's
+  // machine contract, or the hook could never be met at runtime.
+  for (const intent of intents) {
+    const hooksLabel = `${INTENTS_DIR_NAME}/${intent.id}/${INTENT_HOOKS_FILE_NAME}`;
+    for (const hook of intent.hooks?.stop ?? []) {
+      if ('artifact' in hook) {
+        // H7 — an artifact hook needs at least one write-evidence tool.
+        if (!builtinTools.some((t) => (ARTIFACT_WRITE_EVIDENCE_TOOLS as readonly string[]).includes(t))) {
+          throw new CustomAgentValidationError(
+            `${hooksLabel}: intent "${intent.id}" declares an artifact stop hook ("${hook.artifact}") but tools.builtin grants no artifact-write tool (${ARTIFACT_WRITE_EVIDENCE_TOOLS.join(', ')})`,
+            agentId,
+            jobId,
+          );
+        }
+      } else if (isUniversalBuiltinTool(hook.action)) {
+        // H8 — builtin action must be in this job's allowlist.
+        if (!builtinTools.includes(hook.action)) {
+          throw new CustomAgentValidationError(
+            `${hooksLabel}: intent "${intent.id}" declares action stop hook "${hook.action}" which is not in this job's tools.builtin`,
+            agentId,
+            jobId,
+          );
+        }
+      } else {
+        // H8 — MCP action's server must be declared in the merged mcp.servers.
+        const serverName = hook.action.slice('mcp__'.length).split('__')[0];
+        if (!mcpServers[serverName]) {
+          throw new CustomAgentValidationError(
+            `${hooksLabel}: intent "${intent.id}" declares action stop hook "${hook.action}" but no MCP server "${serverName}" is declared in mcp.servers`,
+            agentId,
+            jobId,
+          );
+        }
+      }
+    }
+  }
 
   return {
     agentId,
@@ -447,8 +459,8 @@ export function loadCustomJob(
     agentName: agent.name ?? agentId,
     jobName: job.name ?? jobId,
     prose,
-    injectionsToc,
     intents,
+    intentPrompts,
     mcpServers,
     builtinTools,
     approval,

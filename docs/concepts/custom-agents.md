@@ -51,8 +51,8 @@ Custom agent  (shared persona — a team, a role)
 There is no single-level shortcut: a standalone job is simply an agent with
 one job. The agent contributes identity (name), the always-on persona prose
 (`base/*.md`), and optionally shared MCP connections. Everything else —
-tools, intents, injections — is **job-owned**, mirroring the canonical
-system, where tool sets and intents belong to jobs, never agents.
+tools and intents — is **job-owned**, mirroring the canonical system, where
+tool sets and intents belong to jobs, never agents.
 
 A workspace project has **one chat** (exactly like a codespace feature). You
 switch the active agent and job with the chat composer's chips; each
@@ -88,19 +88,24 @@ customize behavior, build your own agent under its own id.
   jobs/{jobId}/
     job.yaml             # job contract: name, tools (⊆ universal preset), approval
     base/*.md            # job procedure — always injected
-    injections/*.md      # job conditional prose (TOC injected; body via read_file)
-    intents.yaml         # job intent catalog (gates injection inlining)
+    intents/{intentId}/  # job intent catalog — one directory per intent
+      infer.md           #   REQUIRED: when it applies (prose criterion; optional clarify frontmatter)
+      prompt.md          #   optional prose inlined while the intent is active
+      hooks.yaml         #   optional per-intent completion contract
 ```
 
-Agent-level `intents.yaml` and `injections/` are **not** supported — a legacy
-definition carrying them fails loud at load with a move instruction (the
-settings Prompts view can create/delete the files). Neither `agent.yaml` nor
-`job.yaml` carries a `description`: identity and procedure live in `base/` prose,
-which is what the model actually reads. The one prompt-serving description left
-is the per-intent one in `intents.yaml`, rendered verbatim into the agent's
-Intent Catalog — it is what the model matches an unpinned request against to
-decide what to pull in, and what an `@intent:` mention selects. Marking one
-intent `default: true` makes unpinned turns run as that intent outright.
+Legacy shapes — agent-level intent catalogs, `injections/` (agent or job
+level), the retired single-file `jobs/{jobId}/intents.yaml`, and per-intent
+`intent.yaml` — are **not** supported: a definition carrying them fails loud
+at load with a move instruction. Neither `agent.yaml` nor `job.yaml` carries
+a `description`: identity and procedure live in `base/` prose, which is what
+the model actually reads. The one prompt-serving criterion is each intent's
+`infer.md` body, rendered verbatim into the agent's Intent Catalog — it is
+what the model matches an unpinned request against to decide which intent's
+`prompt.md` to pull in, and what an `@intent:` mention selects. There is no
+default intent: an unpinned turn runs as the reserved `general` intent, and a
+lane that needs an intent's prompt, clarify knob, or hooks on every run pins
+it explicitly.
 
 See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-agent-authoring.md).
 

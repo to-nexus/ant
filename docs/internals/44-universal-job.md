@@ -87,45 +87,45 @@ compactRun) — not the graph.
   # Expected: 0 hits.
   ```
 
-- **Unpinned turns: default intent, then the rendered catalog — never a
-  classifier.** An unpinned turn resolves `explicit → the catalog's
-  `default: true` intent → ['general']` (`buildTurnContext` in resolve;
-  `defaultIntentOf` in `core/customAgents/intents.ts`, validated at most one
-  per catalog). Two consumers make an active intent matter — injection
-  inlining (`buildCustomJobSystemBlock`) and the per-intent clarify knob
-  (`isClarifyEnabled`) — and both honor a default-activated intent exactly
-  like a pinned one, because `default` is a registration-time author
-  declaration, not an inference.
+- **Unpinned turns: the rendered catalog — never a classifier, and no catalog
+  default.** An unpinned turn resolves `explicit → inherited (clarify
+  continuity) → ['general']` (`buildTurnContext` in resolve). There is no
+  `default: true` flag anywhere: the three consumers of an active intent —
+  prompt inlining (`buildCustomJobSystemBlock`), the per-intent clarify knob
+  (`isClarifyEnabled`), and stop-hook arming (`activeStopHooksOf`) — fire only
+  for pinned/inherited intents. A lane that needs them on every run pins the
+  intent explicitly (`@intent:` mention / `UniversalTurnMeta.intents` on
+  scheduled and API runs).
 
   For turns that land on `general`, the authored criteria still reach the
-  model: `buildCustomJobSystemBlock` renders an **Intent Catalog** section
-  (each intent's id + `description` verbatim + the files it carries, via
-  `sanitizeCell` — author text is DATA and cannot restructure the block or
-  escape it), and every TOC row keeps its first-line summary. Self-selection
-  off the TOC is therefore an informed judgment against the authored
-  criteria, not a guess from filenames — that gap (descriptions validated as
-  "the matching criterion" but never rendered anywhere) is what this section
-  fixes. The `general`-suppresses-inlining rule stands: always-on prose
-  belongs in `base/`, and a job that wants one situation always active on
-  unpinned turns declares it `default: true` instead.
+  model: `buildCustomJobSystemBlock` renders an **Intent Catalog** section —
+  each intent's id + its `infer.md` criterion verbatim (multi-line prose via
+  `sanitizeBlock`, indented so author text is DATA and cannot restructure the
+  block or escape it) + the state of its `prompt.md` (inlined / pointer /
+  none). Self-selection is therefore an informed judgment against the
+  authored criteria, and the model `read_file`s the applying intents'
+  prompt files off the read-only definition mount. The
+  `general`-suppresses-inlining rule stands: always-on prose belongs in
+  `base/`.
 
   **The resolution is announced, and `general` says so.** `turnContext.source`
-  names which of the three steps fired — `pinned` / `default` / `unpinned`,
+  names which of the three steps fired — `pinned` / `inherited` / `unpinned`,
   never `infer`, since no step classifies — and resolve emits a chat card from
   it (`core/customAgents/turnContextChat.ts`, plain markdown on the same
   `chatAPI` path as respond's artifact manifest; no canonical tag is emitted,
   so `OutputTagRegistry` — which scopes tags the LLM may emit — is not
   involved). `unpinned` additionally lists the catalog, so an author sees both
   that no declared intent was active and what the agent was choosing among.
-  Without it, a turn that fell through to `general` (mapped injections left on
-  the TOC, clarify knob unreachable) was indistinguishable in the transcript
-  from one running under the intent the author meant — the input-box
-  `@intent:` chips only ever showed what was *pinned*, and are cleared on send.
+  Without it, a turn that fell through to `general` (intent prompts left as
+  pointers, clarify knob unreachable, hooks unarmed) was indistinguishable in
+  the transcript from one running under the intent the author meant — the
+  input-box `@intent:` chips only ever showed what was *pinned*, and are
+  cleared on send.
 
-  Guards: `universal-turn-context.test.ts` (default-intent resolution rows,
-  `source` rows, card announcement-gate rows),
-  `universal-prompt-injection.test.ts` (catalog rendering + sanitize rows),
-  `custom-agent-loader.test.ts` (`default` validation rows).
+  Guards: `universal-turn-context.test.ts` (general resolution rows, `source`
+  rows, card announcement-gate rows), `universal-prompt-injection.test.ts`
+  (catalog rendering + sanitize rows), `custom-agent-loader.test.ts`
+  (infer.md validation rows).
 
 ## Checklist — the universal to-do plane (NOT tasks)
 
@@ -168,12 +168,40 @@ is conditional):
   validators (`validateAgentYamlDoc` / `validateJobYamlDoc`) **throw** on every
   removed key rather than ignoring it, each with the migration in the message:
   `agent.yaml: tools | description | intents`, `job.yaml: outputs | plan |
-  description`, and `workspace` / `models` on either file. Intents and
-  injections are job-only for the same reason tool sets are: a duty owns its
-  situational rules, a persona does not. A silently-ignored field is how a
-  definition author concludes a knob works.
+  description`, and `workspace` / `models` on either file. Intents are
+  job-only for the same reason tool sets are: a duty owns its situational
+  rules, a persona does not. A silently-ignored field is how a definition
+  author concludes a knob works.
 - Prose floor: a job with zero non-empty `base/*.md` across both levels fails
   loud — an agent with no prose is a harness with no purpose.
+- **Intent catalog = one directory per intent, three files, no yaml schema**:
+  `jobs/{jobId}/intents/{intentId}/infer.md` (REQUIRED — optional frontmatter
+  fence allowing exactly one key, `clarify: <bool>`; the prose BODY is the
+  inference criterion, capped at `INFER_BODY_MAX` = 1000 chars since it
+  renders into every turn's catalog) + optional `prompt.md` (prose inlined
+  while the intent is active; whitespace-only = absent) + optional
+  `hooks.yaml` (the completion contract; `hooks:` wrapper key kept so shared
+  `validateIntentHooks` is consumed verbatim). The intent id IS the directory
+  name — no file declares it, so rename is a pure directory move. The fence
+  convention is the shared `splitFrontmatter` (`@ant/shared`), consumed by
+  BOTH the BE loader and the FE editor so the same bytes never parse two
+  ways; comments inside the fence are the authoring-guidance channel (they
+  never reach the rendered criterion). Per-file rules live in
+  `validateInferFile` / `validateHooksFileDoc`; the cross-file cap (32)
+  aggregates in `parseIntentsDir` over sorted directory order (catalog order
+  = dirname-lexicographic — an accepted consequence; selection semantics are
+  order-free). Fail-loud shapes, each with its move instruction: an intent
+  dir carrying anything besides those three files, a stray file under
+  `intents/`, a leftover `intent.yaml` or single-file `jobs/{jobId}/
+  intents.yaml`, a `jobs/{jobId}/injections/` directory (even empty — the
+  pool was replaced by per-intent prompt.md, hard cutover), and the retired
+  frontmatter keys `default` / `injections` / `description` / `id` / `hooks`
+  (each names its replacement — a silently-ignored removed key is how an
+  author concludes a knob works). `default: true` is GONE entirely: unpinned
+  turns always run as `general` and lanes that need per-intent behavior pin
+  explicitly. A job without `intents/` is a valid empty catalog — the
+  scaffold ships none; the settings UI creates `intents/{id}/infer.md`
+  through the PUT funnel (which mkdirs parents).
 - Scope roots: `deriveCustomAgentScopeRootsForTenant` (SSOT — dispatches on
   the org **kind**, never on server mode; both HTTP mounts, job-accept, and
   the job-runner child all derive through it). Definitions are
@@ -243,8 +271,13 @@ decoration).
 
 ## Tool policy (D3)
 
-- Allowlist SSOT lives in **core** (`universalToolPolicy.ts`) so the loader
-  can validate subsets without a core→agents dependency; the registry factory
+- Allowlist SSOT: the tool NAME inventory (preset list, mutating/write
+  subsets, mcp prefix) is the BE↔FE contract and lives in
+  `@ant/shared/universal-tools` (the FE action picker and artifact-hook
+  satisfiability hints consume the same lists); `universalToolPolicy.ts` in
+  **core** re-exports it and keeps the runtime-behaviour policy (approval,
+  plan-turn confinement, clarify) BE-only, so the loader still validates
+  subsets without a core→agents dependency; the registry factory
   (`presets.ts::createUniversalToolRegistry`) reads the catalog matrix.
   Reconciliation guard: `tests/customAgents/universal-tool-policy.test.ts`
   (also pins schema/handler/display coverage — a ToolName without a
@@ -391,8 +424,8 @@ cards are imperative `ChatAPIClient.sendChoiceCard` calls). Payload keys
 whitelist in `buildChoiceCardMetadata`; the FE variant pins from the CARD
 payload, never the live composer selection (which may have drifted). `general`
 is never re-pinned — an unpinned plan turn's follow-up re-resolves
-explicit → catalog default → general; a default-resolved id IS pinned to
-freeze it against later catalog edits. No synthetic workerScope: universal is
+explicit → inherited → general (there is no catalog default). No synthetic
+workerScope: universal is
 single-scope, and the card (emitted after the artifact manifest, before the
 seal) orders by ts within `_main_`.
 
@@ -460,7 +493,7 @@ verdicts, each load-bearing:
   turn admission structurally closes the dangling `tool_use` (same gate as
   the closer above; `parseSealedTurnContext` sanitizes, and a general-only
   content-free seal restores nothing). Resolve's intent ladder is
-  explicit → inherited → catalog default → general, with banner source
+  explicit → inherited → general, with banner source
   `inherited` / `승계`. Without this, an answer turn re-resolved from scratch
   and a `writing`-pinned turn's clarify answer ran as `general`. This rides
   the state-restore plane (same seal as `conversations` / `checklist`) — it
@@ -482,9 +515,25 @@ Two-layer prompt: builtin harness (`templates/jobs/universal/nodes/agent/`,
 registered as `TEMPLATE_PATHS.universalAgent`) + the definition as an
 **inert** boundary-tagged block (`wrapCustomJobContent` →
 `<custom_job_instructions id source="workspace">`), injected via
-`PromptBuildConfig.inertSystemAppend` — after merged injections, before
-policy (guardrail-first / policy-last invariants hold). Custom prose is never
-Handlebars-compiled (no partial access).
+`PromptBuildConfig.inertSystemAppend` — after merged template injections,
+before policy (guardrail-first / policy-last invariants hold). Custom prose
+is never Handlebars-compiled (no partial access).
+
+Block structure (`buildCustomJobSystemBlock` in `core/customAgents/
+promptBlock.ts`): merged base prose → `## Active Intent Instructions`
+(active intents' `prompt.md` bodies inlined in full, budget
+`INTENT_PROMPT_INLINE_CAP` = 12k; overflow demotes a prompt WHOLESALE to its
+read_file pointer with an applies-now marker — truncation never) → the
+`## Intent Catalog` (per intent: id + stop-hook suffix, the `infer.md`
+criterion via `sanitizeBlock` — newlines kept but continuation lines
+indented, so author prose cannot mint column-0 headings/rows — and the
+prompt state: `(inlined above — do not re-read)` / active-but-demoted
+pointer / inactive pointer / `(none)`). `general` is not a catalog member,
+so a general-only turn inlines nothing (always-on prose belongs in `base/`).
+The whole definition dir is mounted read-only at `_agent-definition/`, so a
+pointer resolves via plain `read_file`. The prompt-preview endpoint
+(`GET …/prompt-preview?intents=`) renders this exact block; its
+`inlined`/`toc` fields carry intent ids.
 
 The shared `output-tag-policy` injection is **excluded** for the universal
 template set (`PromptBuilder.resolveInjections` gates on `inferJob(config)`):
@@ -567,13 +616,148 @@ paused (non-task job — benign). Kanban/interruption disk-restore never
 existed for universal (per-(agent,job) session files are invisible to the
 static SESSION_SEARCH_MAP by design) — live Redis/SSE state still works.
 
-## Outputs are a contract, not an obligation
+## Stop hooks — the deterministic turn-completion contract
 
-`respond` checks the declared contract ONLY against `_turnToolWrites` — real
-writes recorded from tool side-effects, never LLM claims
-(completion-signal = actual-write principle). Chat-only turns terminate
-normally; contract mismatches are surfaced as warnings in the manifest
-message, not failures.
+An intent may declare `hooks.stop` entries in its
+`intents/{intentId}/hooks.yaml` (the optional sibling of `infer.md`) —
+`artifact` (a glob a REAL write this turn must match) or `action` (a tool name
+that must have been successfully called), all entries AND. This re-introduces
+the removed job-level `outputs` contract (`12177f173`) with the defect fixed:
+that field was post-hoc warning-only (no teeth); hooks are a gate.
+
+Declaration → evidence → gate → bounded bounce → interruption:
+
+- **Declaration**: intra-file syntax rules (event key `stop` only, entry
+  shape, glob charset/traversal/`sessions/` bans, action-name vocabulary) are
+  the shared `validateIntentHooks` in `@ant/shared/custom-agents.ts` — the
+  `validateMcpServers` pattern: ONE rule set consumed by the BE
+  (`validateHooksFileDoc` → loader + `gateDefinitionSave` PUT funnel, which
+  injects the universal-preset predicate) and by the FE structured hook editor
+  (no predicate → builtin judgement deferred to the save gate); cross-file
+  satisfiability (artifact hook ⇒ a write tool in `tools.builtin`; action ⇒
+  builtin allowlisted / MCP server declared) validates in `loadCustomJob`.
+  Hooks are per-intent BY DESIGN — no job/agent level, which would bind
+  `general` turns; a lane that needs a contract on every run pins its intent
+  explicitly (`@intent:` / `UniversalTurnMeta.intents` — there is no catalog
+  default). (The pre-split YAML-anchor reuse trick died with the per-intent
+  file split — anchors resolve within one document only.)
+- **Evidence**: the tool node folds real writes into `_turnToolWrites`
+  (side-effects, never LLM claims) and successful call names into
+  `_turnToolActions` (a gate-rejected call carries `result.error`, so
+  "advertised but blocked" never counts). Judgment is a binary predicate at
+  the stop point, not progress estimation — the hook vocabulary is limited to
+  what the runtime observes deterministically.
+- **Gate**: the turn's ONLY stop point (agent node emits zero tool calls)
+  evaluates `checkStopHooks` + disk re-verification (`stopHooks.ts` SSOT,
+  same predicate family as design `isNoOutputCompletion` / plan
+  `isUnrealizedBrief`). Unmet → a `[stop-hook]` ✓/✗ message re-enters the
+  agent (join-barrier shape, before finalize — A14), at most
+  `UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET` times per turn.
+- **Interruption**: budget spent → respond recomputes (never trusts the
+  agent's flag), prints the ⚠️ ✓/✗ manifest (unmet patterns verbatim — author
+  typos visible), seals `awaitingStopHooks` + `hookTurnContext` +
+  `hookLedger` (clarify-pause rail, self-clearing), and job-runner publishes
+  a resumable `universal_stop_hook_unmet` interruption instead of success
+  (plan_no_output precedent — result-carried, never a throw). The resumed
+  turn re-arms the same intents with a fresh budget; the ledger keeps met
+  hooks met (cross-job loop enforcement without re-demanding done work).
+  The ledger also rides a clarify pause (mid-sequence confirmation case).
+
+Exemptions (all pure code): plan turns (plan_complete owns their contract;
+writes are plan/-confined), clarify pauses (deferred — the answer turn
+re-gates via inheritance), `general` (reserved, cannot declare hooks).
+The checklist is deliberately untouched in both directions: it is LLM
+self-narration (soft), the hook is a code-judged contract (hard).
+
+v2 reserves a `command` hook (author-defined verification command). Deferred
+because it is an execution surface — it needs the stdio-MCP-child treatment
+(sandbox, env allowlist, timeout, credential non-exfiltration). v1's two hook
+kinds only observe evidence; no author code ever runs.
+
+UI surfaces: discovery (`tryReadJobIntentSummaries` → `CustomJobSummary.intents`)
+carries the FULL `CustomIntentDef[]` (hooks/clarify/hasPrompt — bounded 32×8),
+so the actions tab's universal `intent-detail` step and the settings tree render
+without a second fetch. Agent Settings edits intents SURGICALLY — description
+and clarify splice the infer.md text (`applyInferBody` / `applyInferClarify`
+in `definitionDocs.ts`, fence comments preserved; the clarify edit is
+line-level BECAUSE the yaml lib deletes a pair's leading comments with it),
+hooks go through per-field YAML node edits on hooks.yaml — the historical
+wholesale rewrite silently erased every field the form did not model, plus
+comments. The structured hook editor (glob builder + action picker over this
+job's builtins ∪ declared MCP servers) writes through the same per-file
+funnel, gated by the shared syntax rules client-side and by
+`gateDefinitionSave` authoritatively.
+
+### File ↔ section isomorphism (Agent Settings)
+
+The screen's core philosophy: the left rail and the right sections show the
+SAME definition content — structured vs raw — and sync both ways. The rail
+has two ISOMORPHIC views (`AgentTree`, persisted per user): *Structure*
+(scope groups → agent → job → intent, decorated from the discovery summary)
+and *Files* (the same scope groups and agent rows; under an expanded agent,
+its definition file tree — per-agent lazy `GET …/files` into the
+`definitionTrees` store map, `DefinitionFileTree` with the selected file
+highlighted and its ancestors auto-opened). Clicking a mapped node selects
+the owning level and scrolls to the owning card (`classifyDefinitionPath` →
+`handleOpenTreeFile`); interacting with a card highlights its file
+(`treeFocusPath`). No card shows a path caption — the rail is the location
+surface.
+
+| tree node (Files view) | right section (card id) |
+|---|---|
+| `{agent}/` | the agent-level screen |
+| `agent.yaml` | AgentDefinitionCard (`c3g-agent`) |
+| `base/*.md` | PromptsCard file buffers (`c3g-prompts`) |
+| `jobs/{j}/` | the job-level screen |
+| `jobs/{j}/job.yaml` | JobDefinitionCard (`c3g-tools`) |
+| `jobs/{j}/base/*.md` | PromptsCard |
+| `jobs/{j}/intents/` | IntentsCard (`c3g-intents`) |
+| `intents/{i}/` | the intent-level screen |
+| `intents/{i}/infer.md` | IntentDetailCard (`c3g-intent`) |
+| `intents/{i}/prompt.md` | IntentPromptCard (`c3g-intent-prompt`) |
+| `intents/{i}/hooks.yaml` | IntentHooksCard (`c3g-intent-hooks`) |
+| (non-file) | OrgAccess / Promote / Danger — outside the mapping |
+
+The actions tab mirrors the canonical UX: an intent chip NAVIGATES to the
+`intent-detail` step (no toggle-on-chip; the chip's ring mirrors the armed
+`universalTurnMeta.intents`), and the detail page carries the canonical bottom
+menu (`ActionFooter` `universal-intent` variant): **Chat** arms the intent as
+an `@intent:` mention and focuses the composer (prepare, never send); **Build**
+posts the intent's description as the user turn and dispatches a universal run
+with the intent pinned via `selectUniversalExecuteContext` (the
+`PlanCompleteVariant.handleProceed` precedent — composer-independent, so a
+collapsed chat sidebar cannot defer it).
+
+### Structured ⇄ raw coverage matrix (Agent Settings)
+
+Principle: **one editing surface per file per screen** (`DefinitionCard`'s
+Form ⇄ Raw toggle for structured files; plain editors for prose). Since the
+per-intent split each intent's screen holds three files, three cards, three
+surfaces.
+
+| Item | Level | Structured section | Raw surface |
+|---|---|---|---|
+| `agent.yaml` id / name / mcp.servers | agent | AgentDefinitionCard | same card's YAML toggle |
+| `agent.yaml` version / clarify | agent | — (deliberate) | agent YAML toggle (raw-only) |
+| agent `base/*.md` | agent | — (prose) | PromptsCard md editor |
+| `job.yaml` id / name / tools.builtin / tools.approval / mcp.servers | job | JobDefinitionCard | same card's YAML toggle |
+| `job.yaml` version / clarify | job | — (deliberate) | job YAML toggle (raw-only) |
+| job `base/*.md` | job | — (prose) | PromptsCard md editor |
+| intent catalog (list / create phantom / navigate) | job | IntentsCard (plain SectionCard — owns no file; maps to `intents/`) | each intent's own cards |
+| `infer.md` criterion / id | intent | IntentDetailCard (a DefinitionCard; the id renames via the structural `IdRenameField` — a PURE directory move, no file declares the id) | same card's Raw toggle — this intent's infer.md verbatim (frontmatter included) |
+| `infer.md` `clarify` frontmatter | intent | IntentDetailCard "Behavior flags" (tri-state; "inherit" deletes the key — line-level splice, fence comments survive) | same Raw toggle |
+| `intents/{i}/prompt.md` | intent | IntentPromptCard (plain editor — markdown IS the file; emptied = DELETE on save) | the card IS the raw surface |
+| `hooks.yaml` `hooks.stop` | intent | IntentHooksCard (a DefinitionCard, `StopHooksEditor` — glob builder + action picker) | same card's YAML toggle — this intent's hooks.yaml |
+| MCP credential VALUES | agent/job | McpServersEditor (write-only, masked) | **no raw by design** — yaml holds only `${secret:KEY}` references; values live in the encrypted account store |
+
+A broken `infer.md` (frontmatter error) on the intent screen keeps the
+DefinitionCard frame (parse banner + Raw editor) instead of mis-reporting
+"intent no longer exists" — the file is repairable in place, and a broken
+infer.md never locks the prompt or hooks cards (independent files).
+Save-blocking parse errors are DIRTY-doc-only (phantoms excepted: a new
+intent's empty infer.md blocks Save even while clean — the authorship gate):
+with a whole catalog of files loaded, one pre-existing broken file must not
+freeze unrelated saves.
 
 ## Cleanup notes
 

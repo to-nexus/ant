@@ -210,7 +210,22 @@
     "noAgentHint": "에이전트와 잡은 프로필 메뉴의 에이전트 설정에서 작성합니다.",
     "pickJobTitle": "이 에이전트로 무엇을 할까요?",
     "jobIntentCount": "인텐트 {{count}}개",
-    "pickIntentHint": "다음 턴에 적용할 인텐트를 켜세요 — @intent: 멘션과 같습니다.",
-    "noIntents": "이 잡은 인텐트를 선언하지 않았습니다 — 모든 턴이 기본 프롬프트로 실행됩니다."
+    "pickIntentHint": "인텐트를 열어 계약을 확인하고 채팅 또는 빌드로 시작하세요.",
+    "noIntents": "이 잡은 인텐트를 선언하지 않았습니다 — 모든 턴이 기본 프롬프트로 실행됩니다.",
+    "intentDetailCriteria": "매칭 기준",
+    "intentAutonomous": "자율 실행",
+    "intentAutonomousHint": "이 인텐트의 턴은 차단형 질문 없이 합리적인 기본값으로 진행합니다.",
+    "intentDetailHooks": "훅",
+    "hooksAll": "모두 충족",
+    "hooksAllHint": "턴이 멈추는 시점(stop 이벤트)에 모든 항목이 충족되어야 하며(AND), 실제 도구 실행 결과로 검증됩니다.",
+    "hookArtifactMeaning": "이번 턴의 실제 파일 쓰기가 이 글롭과 일치해야 합니다.",
+    "hookActionMeaning": "이번 턴에 이 도구가 성공적으로 호출되어야 합니다.",
+    "hooksNone": "훅 없음 — 에이전트가 멈추면 턴이 종료됩니다.",
+    "hooksVerified": "턴의 stop 이벤트 시점에 모델의 주장이 아니라 실제 도구 실행 결과로 검증됩니다. 미충족 시 제한된 횟수만큼 재시도한 뒤 작업이 재개 가능한 상태로 일시중지됩니다.",
+    "armedHint": "활성화됨 — 이 인텐트가 다음 채팅 턴에 적용됩니다.",
+    "disarm": "해제",
+    "intentDetailPrompt": "프롬프트",
+    "intentHasPromptHint": "활성화된 동안 자신의 prompt.md 를 시스템 프롬프트에 추가합니다.",
+    "intentNoPromptHint": "프롬프트 파일 없음 — 이 인텐트는 기본 프롬프트만으로 실행됩니다."
   }
 }

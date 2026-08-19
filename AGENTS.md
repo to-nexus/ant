@@ -399,11 +399,11 @@ debugging session.
 - Silently ignoring a removed yaml key — an author concludes the knob works.
 - **A per-turn pre-classification LLM pass** (intent, tier, or anything else)
   before the agent call. Unpinned turns resolve deterministically:
-  explicit → the catalog's `default: true` intent → `general`; the Intent
-  Catalog rendered into the agent prompt is what informs in-turn
-  self-selection. This was built twice and removed twice — the latency/cost
-  of a non-streaming call per turn buys nothing a deterministic default plus
-  an informed prompt doesn't.
+  explicit → inherited (clarify continuity) → `general` (there is no catalog
+  default); the Intent Catalog rendered into the agent prompt — each intent's
+  `infer.md` criterion — is what informs in-turn self-selection. This was
+  built twice and removed twice — the latency/cost of a non-streaming call
+  per turn buys nothing an informed prompt doesn't.
 
 ### ✅ Correct
 

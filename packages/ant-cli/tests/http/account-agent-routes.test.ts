@@ -102,7 +102,7 @@ describe('listing + CRUD', () => {
     expect(body.agents.some((a: any) => a.scope === 'builtin')).toBe(true);
   });
 
-  it('agent scaffold is intents-free (job-only); job scaffold includes intents.yaml', async () => {
+  it('agent scaffold is intents-free (job-only); job scaffold ships no intents (absent intents/ = empty catalog)', async () => {
     await createAgent();
     expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/intents.yaml'))).toBe(false);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/injections'))).toBe(false);
@@ -110,7 +110,8 @@ describe('listing + CRUD', () => {
     const jobRes = await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'Weekly' }) });
     expect(jobRes.status).toBe(201);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/job.yaml'))).toBe(true);
-    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'))).toBe(true);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'))).toBe(false);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents'))).toBe(false);
 
     const patch = await api('/ops/jobs/weekly', { method: 'PATCH', body: JSON.stringify({ description: 'd' }) });
     expect(patch.status).toBe(200);
@@ -375,65 +376,90 @@ describe('definition file endpoints', () => {
 
   it.each([
     ['agent-level intents.yaml', 'intents.yaml', /intents are job-only/],
-    ['agent-level injections file', 'injections/style.md', /save the file under jobs/],
+    ['job-level single-file intents.yaml', 'jobs/weekly/intents.yaml', /was replaced by per-intent directories/],
+    ['agent-level injections file', 'injections/style.md', /injections\/ was removed/],
+    ['job-level injections file', 'jobs/weekly/injections/style.md', /injections\/ was removed/],
+    ['per-intent intent.yaml', 'jobs/weekly/intents/review/intent.yaml', /was replaced by infer\.md/],
   ] as const)('PUT legacy path: %s → 400 with move instruction', async (_label, relPath, pattern) => {
     const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content: 'x' }) });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(pattern);
   });
 
-  it('PUT intents contract violation → 400 pre-write gate, NOT written', async () => {
+  it.each([
+    // The per-file contract is enforced pre-write.
+    ['reserved general dirname', 'jobs/weekly/intents/general/infer.md',
+      'nope\n', /implicit fallback/],
+    ['empty criterion body', 'jobs/weekly/intents/review/infer.md',
+      '   \n', /non-empty body/],
+    ['unterminated frontmatter fence', 'jobs/weekly/intents/review/infer.md',
+      '---\nclarify: false\nno close\n', /never closes/],
+    ['frontmatter default (removed knob)', 'jobs/weekly/intents/review/infer.md',
+      '---\ndefault: true\n---\nx\n', /"default" was removed/],
+    ['frontmatter hooks (moved to hooks.yaml)', 'jobs/weekly/intents/review/infer.md',
+      '---\nhooks: {}\n---\nx\n', /"hooks" moved to/],
+    ['oversized criterion body', 'jobs/weekly/intents/review/infer.md',
+      'x'.repeat(1001) + '\n', /exceeds 1000/],
+    ['hooks.yaml without the wrapper key', 'jobs/weekly/intents/review/hooks.yaml',
+      'stop:\n  - artifact: r.md\n', /exactly one top-level "hooks" key/],
+    ['hooks.yaml with an invalid action', 'jobs/weekly/intents/review/hooks.yaml',
+      'hooks:\n  stop:\n    - action: frobnicate\n', /neither a universal builtin/],
+  ] as const)('PUT intent contract violation (%s) → 400 pre-write gate, NOT written', async (_label, relPath, content, pattern) => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
-    // Structurally valid yaml, but the catalog contract is enforced pre-write:
-    // reserved `general` intent must be a hard 400, not saved-with-warnings.
-    const res = await api('/ops/file', {
-      method: 'PUT',
-      body: JSON.stringify({
-        path: 'jobs/weekly/intents.yaml',
-        content: 'version: 1\nintents:\n  - id: general\n    description: nope\n',
-      }),
-    });
+    const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content }) });
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/implicit fallback/);
-    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'), 'utf-8')).not.toContain('general');
+    expect((await res.json()).error).toMatch(pattern);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops', relPath))).toBe(false);
+  });
+
+  it('PUT the 33rd intent infer.md → 400 pre-write catalog cap; editing an existing one stays legal', async () => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    const intentsDir = path.join(userDir, '.ant/agents/ops/jobs/weekly/intents');
+    for (let i = 0; i < 32; i++) {
+      const dir = path.join(intentsDir, `intent-${String(i).padStart(2, '0')}`);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'infer.md'), 'x\n');
+    }
+    const put = (p: string, c: string) => api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: p, content: c }) });
+    const overflow = await put('jobs/weekly/intents/one-more/infer.md', 'y\n');
+    expect(overflow.status).toBe(400);
+    expect((await overflow.json()).error).toMatch(/cap is 32/);
+    expect(fs.existsSync(path.join(intentsDir, 'one-more'))).toBe(false);
+    // Re-saving an existing intent is an edit, not a birth — stays legal.
+    expect((await put('jobs/weekly/intents/intent-00/infer.md', 'updated\n')).status).toBe(200);
   });
 
   it('PUT semantic error → 200 SAVED with validation.errors warnings', async () => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
-    // Catalog-valid but the referenced injection file does not exist — a
-    // cross-file condition the pre-write gate cannot see; post-write dry run
-    // reports it as a warning while the file stays on disk.
-    const res = await api('/ops/file', {
-      method: 'PUT',
-      body: JSON.stringify({
-        path: 'jobs/weekly/intents.yaml',
-        content: 'version: 1\nintents:\n  - id: review\n    description: review things\n    injections: [ghost.md]\n',
-      }),
-    });
+    const put = (p: string, c: string) => api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: p, content: c }) });
+    await put('jobs/weekly/intents/review/infer.md', 'review things\n');
+    // Hook syntax is valid per-file, but its MCP server is not declared — a
+    // cross-file condition (H8) the pre-write gate cannot see; the post-write
+    // dry run reports it as a warning while the file stays on disk.
+    const res = await put('jobs/weekly/intents/review/hooks.yaml', 'hooks:\n  stop:\n    - action: mcp__ghost__do-thing\n');
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.validation.valid).toBe(false);
-    expect(body.validation.errors.join('\n')).toMatch(/does not exist in the .* injections set/);
+    expect(body.validation.errors.join('\n')).toMatch(/no MCP server "ghost"/);
     // The file IS on disk (fix continues in the editor).
-    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'), 'utf-8')).toContain('ghost.md');
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents/review/hooks.yaml'), 'utf-8')).toContain('mcp__ghost__do-thing');
   });
 
-  it('PUT valid intents.yaml → 200, validation.valid true', async () => {
+  it('PUT valid infer.md + prompt.md + hooks.yaml → 200, validation.valid true', async () => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
-    fs.mkdirSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections'), { recursive: true });
-    fs.writeFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections/style.md'), 'Style prose.');
-    const res = await api('/ops/file', {
-      method: 'PUT',
-      body: JSON.stringify({
-        path: 'jobs/weekly/intents.yaml',
-        content: 'version: 1\nintents:\n  - id: research\n    description: research things\n    injections: [style.md]\n',
-      }),
-    });
+    const put = (p: string, c: string) => api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: p, content: c }) });
+    const res = await put('jobs/weekly/intents/research/infer.md', '---\nclarify: false\n---\nresearch things\n');
     expect(res.status).toBe(200);
     expect((await res.json()).validation).toEqual({ valid: true, errors: [] });
+    const prompt = await put('jobs/weekly/intents/research/prompt.md', 'Research procedure prose.\n');
+    expect(prompt.status).toBe(200);
+    expect((await prompt.json()).validation).toEqual({ valid: true, errors: [] });
+    const hooks = await put('jobs/weekly/intents/research/hooks.yaml', 'hooks:\n  stop:\n    - artifact: reports/*-weekly.md\n');
+    expect(hooks.status).toBe(200);
+    expect((await hooks.json()).validation).toEqual({ valid: true, errors: [] });
   });
 
-  it('structural files cannot be deleted or renamed (delete the agent/job instead)', async () => {
+  it('structural files cannot be deleted or renamed (delete the agent/job/intent directory instead)', async () => {
     expect((await api('/ops/file?path=agent.yaml', { method: 'DELETE' })).status).toBe(400);
     const rename = await api('/ops/files/rename', {
       method: 'POST',
@@ -442,9 +468,47 @@ describe('definition file endpoints', () => {
     expect(rename.status).toBe(400);
   });
 
+  it('infer.md alone is structural; the intent DIRECTORY deletes and renames as the unit', async () => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    const put = (p: string, c: string) => api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: p, content: c }) });
+    const INFER = '---\nclarify: false\n---\nreport work\n';
+    await put('jobs/weekly/intents/report/infer.md', INFER);
+    await put('jobs/weekly/intents/report/prompt.md', 'Report prose.\n');
+    await put('jobs/weekly/intents/report/hooks.yaml', 'hooks:\n  stop:\n    - artifact: reports/*.md\n');
+
+    // infer.md alone: neither deletable nor renamable.
+    expect((await api('/ops/file?path=jobs/weekly/intents/report/infer.md', { method: 'DELETE' })).status).toBe(400);
+    expect((await api('/ops/files/rename', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'jobs/weekly/intents/report/infer.md', newName: 'other.md' }),
+    })).status).toBe(400);
+    // The optional prompt.md and hooks.yaml stay freely deletable.
+    expect((await api('/ops/file?path=jobs/weekly/intents/report/hooks.yaml', { method: 'DELETE' })).status).toBe(200);
+
+    // Directory rename is a PURE fs move — no file declares the id, so every
+    // file's bytes survive verbatim.
+    const rename = await api('/ops/files/rename', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'jobs/weekly/intents/report', newName: 'digest' }),
+    });
+    expect(rename.status).toBe(200);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents/report'))).toBe(false);
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents/digest/infer.md'), 'utf-8')).toBe(INFER);
+    // Renaming to the reserved id is refused.
+    expect((await api('/ops/files/rename', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'jobs/weekly/intents/digest', newName: 'general' }),
+    })).status).toBe(400);
+
+    // Directory delete removes the whole intent.
+    const del = await api('/ops/file?path=jobs/weekly/intents/digest', { method: 'DELETE' });
+    expect(del.status).toBe(200);
+    expect(fs.existsSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents/digest'))).toBe(false);
+  });
+
   it('create + delete a whitelisted file round-trips', async () => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
-    const rel = 'jobs/weekly/injections/extra.md';
+    const rel = 'jobs/weekly/base/extra.md';
     const create = await api('/ops/files/create', { method: 'POST', body: JSON.stringify({ path: rel }) });
     expect(create.status).toBe(200);
     expect(fs.existsSync(path.join(userDir, '.ant/agents/ops', rel))).toBe(true);
@@ -509,24 +573,27 @@ describe('prompt preview', () => {
   beforeEach(async () => {
     await createAgent();
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
-    fs.mkdirSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections'), { recursive: true });
-    fs.writeFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/injections/style.md'), 'STYLE-BODY sentinel.');
+    fs.mkdirSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/intents/research'), { recursive: true });
     fs.writeFileSync(
-      path.join(userDir, '.ant/agents/ops/jobs/weekly/intents.yaml'),
-      'version: 1\nintents:\n  - id: research\n    description: research things\n    injections: [style.md]\n',
+      path.join(userDir, '.ant/agents/ops/jobs/weekly/intents/research/infer.md'),
+      'research things\n',
+    );
+    fs.writeFileSync(
+      path.join(userDir, '.ant/agents/ops/jobs/weekly/intents/research/prompt.md'),
+      'STYLE-BODY sentinel.\n',
     );
   });
 
-  it('returns the composed block; intents flip a file between toc and inlined', async () => {
+  it('returns the composed block; active intents flip a prompt between pointer and inlined', async () => {
     const tocOnly = await (await api('/ops/jobs/weekly/prompt-preview')).json();
     expect(tocOnly.system).toContain('<custom_job_instructions id="ops/weekly"');
     expect(tocOnly.inlined).toEqual([]);
-    expect(tocOnly.toc).toEqual(['style.md']);
+    expect(tocOnly.toc).toEqual(['research']);
     expect(tocOnly.harnessTemplates.length).toBe(3);
 
     const active = await (await api('/ops/jobs/weekly/prompt-preview?intents=research')).json();
     expect(active.activeIntents).toEqual(['research']);
-    expect(active.inlined).toEqual(['style.md']);
+    expect(active.inlined).toEqual(['research']);
     expect(active.system).toContain('STYLE-BODY sentinel.');
   });
 
