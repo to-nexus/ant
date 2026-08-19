@@ -9,6 +9,7 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { cn } from '@/shared/utils/design-system';
 import { getJobInfo } from '@/shared/utils/constants';
 import type { JobHistoryEntry, KanbanData } from '@/infrastructure/http/api';
+import { parseCustomJobRef } from '@ant/shared';
 import {
   ElapsedTimeBadge,
   TokenUsageBadge,
@@ -275,6 +276,12 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                 const snapshot: KanbanData | undefined = isCurrent
                   ? (currentKanban as KanbanData | undefined)
                   : entry.kanbanSnapshot;
+                // Universal rows name their definition by the custom job's ID
+                // alone — the `{agentId}/` path form is noise here, and the last
+                // segment still identifies the definition when the ref is malformed.
+                const customJobLabel =
+                  parseCustomJobRef(entry.customJobRef)?.jobId ??
+                  entry.customJobRef?.split('/').pop();
                 const hasTiming = !!snapshot?.jobTiming;
                 const hasTokens = !!(
                   snapshot?.tokenUsage ||
@@ -309,7 +316,7 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                           isCurrent ? 'cursor-default' : 'cursor-pointer',
                         )}
                         style={{ color: isCurrent ? 'var(--text-1)' : 'var(--text-2)' }}
-                        title={entry.customJobRef ? `${entry.customJobRef} · ${entry.jobId}` : entry.jobId}
+                        title={customJobLabel ? `${customJobLabel} · ${entry.jobId}` : entry.jobId}
                       >
                         {(() => {
                           // Status priority: live signals (current/amber) take
@@ -392,13 +399,13 @@ export function JobIdDropdown({ jobId }: JobIdDropdownProps) {
                         <span>{entry.jobId}</span>
                         {/* Universal rows: which custom job produced this run —
                             the jobId alone is meaningless across definitions. */}
-                        {entry.customJobRef && (
+                        {customJobLabel && (
                           <span
                             className="shrink-0 text-[11px]"
                             style={{ color: 'var(--text-3)' }}
-                            aria-label={entry.customJobRef}
+                            aria-label={customJobLabel}
                           >
-                            {entry.customJobRef}
+                            {customJobLabel}
                           </span>
                         )}
                       </button>
