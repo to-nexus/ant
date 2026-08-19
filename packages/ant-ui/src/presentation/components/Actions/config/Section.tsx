@@ -12,7 +12,7 @@ import { Tooltip } from '@/presentation/components/common/Tooltip';
  * does not fit ActionConfigView's call sites. This local Section renders:
  *
  *   ┌─────────────────────────────────────────────┐
- *   │ <icon> Title              <hint chip>       │
+ *   │ <icon> Title       <hint chip> <action>      │
  *   ├─────────────────────────────────────────────┤
  *   │ children…                                   │
  *   └─────────────────────────────────────────────┘
@@ -36,6 +36,8 @@ export interface SectionProps {
   /** Tailwind text-color class for the icon, e.g. `text-[var(--violet-500)]`. */
   iconColor?: string;
   hint?: SectionHint;
+  /** Optional right-aligned header affordance (e.g. an "open in settings" link). */
+  action?: React.ReactNode;
   children?: React.ReactNode;
 }
 
@@ -93,7 +95,7 @@ function HintChip({ hint }: { hint: SectionHint }) {
   );
 }
 
-export function Section({ title, icon: Icon, iconColor, hint, children }: SectionProps) {
+export function Section({ title, icon: Icon, iconColor, hint, action, children }: SectionProps) {
   return (
     <section className="mb-1">
       <header className="flex items-center justify-between gap-2 mb-2 px-1">
@@ -112,7 +114,12 @@ export function Section({ title, icon: Icon, iconColor, hint, children }: Sectio
             {title}
           </h3>
         </div>
-        {hint && <HintChip hint={hint} />}
+        {(hint || action) && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {hint && <HintChip hint={hint} />}
+            {action}
+          </div>
+        )}
       </header>
       <div>{children}</div>
     </section>

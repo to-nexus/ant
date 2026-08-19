@@ -287,3 +287,26 @@ describe('composer re-sync seam (universalSlice untouched otherwise)', () => {
     expect(loadCustomAgentsMock).not.toHaveBeenCalled();
   });
 });
+
+describe('external navigation request (actions tab → settings deep link)', () => {
+  it('carries a definition PATH one-shot: set by the requester, cleared by the screen', () => {
+    const s = makeStore();
+    expect(s.getState().agentSettingsOpenRequest).toBeNull();
+
+    s.getState().requestAgentSettingsFile('ops', 'jobs/weekly/intents/review/prompt.md');
+    expect(s.getState().agentSettingsOpenRequest).toEqual({
+      agentId: 'ops',
+      path: 'jobs/weekly/intents/review/prompt.md',
+    });
+    // The request must not select anything itself — the screen owns the
+    // path→level/card mapping.
+    expect(s.getState().agentSettingsSelection).toEqual({
+      agentId: undefined,
+      jobId: undefined,
+      intentId: undefined,
+    });
+
+    s.getState().clearAgentSettingsOpenRequest();
+    expect(s.getState().agentSettingsOpenRequest).toBeNull();
+  });
+});

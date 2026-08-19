@@ -1,4 +1,8 @@
 {
+  "clamp": {
+    "expand": "더보기",
+    "collapse": "접기"
+  },
   "button": {
     "ok": "확인",
     "cancel": "취소",

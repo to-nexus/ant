@@ -1,4 +1,8 @@
 {
+  "clamp": {
+    "expand": "Show more",
+    "collapse": "Collapse"
+  },
   "button": {
     "ok": "OK",
     "cancel": "Cancel",

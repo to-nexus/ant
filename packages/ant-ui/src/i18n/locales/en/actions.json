@@ -207,7 +207,10 @@
     "armedHint": "Armed — this intent rides the next chat turn.",
     "disarm": "Disarm",
     "intentDetailPrompt": "Prompt",
-    "intentHasPromptHint": "Adds its own prompt.md to the system prompt while active.",
-    "intentNoPromptHint": "No prompt file — this intent runs on the base prompts alone."
+    "intentNoPromptHint": "No prompt file — this intent runs on the base prompts alone.",
+    "intentPromptLoadError": "Could not load prompt.md — open it in Agent Settings to read the file.",
+    "openInSettings": "Agent Settings",
+    "openInSettingsAria": "Open this intent in Agent Settings",
+    "openSectionInSettings": "Open in Agent Settings"
   }
 }

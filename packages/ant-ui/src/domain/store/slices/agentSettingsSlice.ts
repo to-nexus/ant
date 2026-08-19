@@ -54,6 +54,13 @@ export interface AgentSettingsState {
   openDefinitionFile: { path: string; content: string; savedContent: string } | null;
   /** Last save's semantic validation result (warnings surface in the UI). */
   definitionValidation: DefinitionValidationResult | null;
+  /**
+   * One-shot navigation request from OUTSIDE the screen (e.g. the universal
+   * actions tab's "open in Agent Settings" links): the definition file to land
+   * on. A PATH, not a card id — the screen already owns the one file→section
+   * mapping (`handleOpenTreeFile`), so a second mapping here would drift.
+   */
+  agentSettingsOpenRequest: { agentId: string; path: string } | null;
 }
 
 export interface AgentSettingsActions {
@@ -69,6 +76,10 @@ export interface AgentSettingsActions {
   closeDefinitionFileBuffer: () => void;
   /** Re-sync the composer chips after a settings mutation (universal project selected). */
   syncComposerAgents: () => void;
+  /** Ask the settings screen to land on one definition file (see the state field). */
+  requestAgentSettingsFile: (agentId: string, path: string) => void;
+  /** Consumed by the screen once the request has been honored. */
+  clearAgentSettingsOpenRequest: () => void;
   /**
    * Promote a personal agent to the active team org (move + owner record),
    * then re-sync the list and the composer. Errors propagate to the caller
@@ -94,6 +105,7 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
   definitionTrees: {},
   openDefinitionFile: null,
   definitionValidation: null,
+  agentSettingsOpenRequest: null,
 
   loadAccountAgents: async () => {
     try {
@@ -219,6 +231,10 @@ export const createAgentSettingsSlice: StateCreator<any, [], [], AgentSettingsSl
   },
 
   closeDefinitionFileBuffer: () => set({ openDefinitionFile: null, definitionValidation: null }),
+
+  requestAgentSettingsFile: (agentId, path) => set({ agentSettingsOpenRequest: { agentId, path } }),
+
+  clearAgentSettingsOpenRequest: () => set({ agentSettingsOpenRequest: null }),
 
   syncComposerAgents: () => {
     const state = get();

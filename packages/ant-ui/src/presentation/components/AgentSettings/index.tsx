@@ -118,6 +118,8 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const openDefinitionFile = useStore((s) => s.openDefinitionFile);
   const syncComposerAgents = useStore((s) => s.syncComposerAgents);
   const promoteAgent = useStore((s) => s.promoteAgent);
+  const openRequest = useStore((s) => s.agentSettingsOpenRequest);
+  const clearAgentSettingsOpenRequest = useStore((s) => s.clearAgentSettingsOpenRequest);
   const isTeamActive = useStore(selectIsTeamActive);
 
   const [error, setError] = useState<string | null>(null);
@@ -554,10 +556,13 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   /**
    * Scroll to a card once it EXISTS. Two frames were not enough: a click on
    * another agent's file remounts the right pane behind an async doc load, so
-   * the card appears several frames later. Polls per frame, bounded.
+   * the card appears several frames later. Polls per frame, bounded — the bound
+   * covers the slowest path, an external deep link opening this screen cold
+   * (tree fetch → intent doc fetch → cards render); it stops the frame the card
+   * appears, so a generous bound costs nothing on the warm paths.
    */
   const scrollToCard = (cardId: string) => {
-    let frames = 20;
+    let frames = 90;
     const tick = () => {
       const el = document.getElementById(cardId);
       if (el) {
@@ -599,6 +604,19 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     const card = CARD_OF_KIND[target.kind];
     if (card) scrollToCard(card);
   };
+
+  /**
+   * External navigation (the universal actions tab's "open in Agent Settings"
+   * links): honored through the same tree→right path so the level selection and
+   * the card scroll cannot diverge from a tree click's behaviour. One-shot —
+   * cleared immediately, so re-opening the tab does not re-navigate.
+   */
+  useEffect(() => {
+    if (!openRequest) return;
+    handleOpenTreeFile(openRequest.agentId, openRequest.path);
+    clearAgentSettingsOpenRequest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequest]);
 
   /**
    * The tree row to highlight: the last explicitly addressed file, else the
