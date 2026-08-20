@@ -24,7 +24,7 @@ import {
   type McpServerConfig,
 } from '@ant/shared';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, AuroraSelect, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, AuroraSelect, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import {
   deleteMcpCredential,
   fetchMcpCredentials,
@@ -419,12 +419,12 @@ function McpCredentialsPanel({
   return (
     <div style={{ marginTop: 14 }}>
       <FieldLabel optional>{t('agentDef.mcpCredentials', 'MCP credentials')}</FieldLabel>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+      <FieldHint spacing="below">
         {t(
           'agentDef.mcpCredentialsHint',
           'Keys referenced by the servers above. Values are stored encrypted per user and never shown again.',
         )}
-      </p>
+      </FieldHint>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {rows.map(({ key, referenced, registered }) => {
           const isEditing = !registered || editingKeys.has(key);
@@ -652,15 +652,13 @@ export function McpServersEditor({
     <div ref={rootRef}>
       <style>{MCP_LAYOUT_CSS}</style>
       <FieldLabel optional>{t('agentDef.mcpServers', 'MCP servers')}</FieldLabel>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+      <FieldHint spacing="below">
         {t('agentDef.mcpHint', 'env and header values are plain text, or a credential reference (lock toggle) stored encrypted per user — secrets never live in the definition file.')}
-      </p>
+      </FieldHint>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {names.length === 0 && !adding && (
-          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)' }}>
-            {t('agentDef.mcpEmpty', 'None declared.')}
-          </p>
+          <FieldHint tone="muted">{t('agentDef.mcpEmpty', 'None declared.')}</FieldHint>
         )}
 
         {names.map((name) => {

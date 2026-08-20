@@ -1,5 +1,6 @@
 
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export interface FieldLabelProps {
   children: ReactNode;
@@ -16,6 +17,7 @@ export function FieldLabel({
   action,
   htmlFor,
 }: FieldLabelProps) {
+  const { t } = useTranslation('common');
   return (
     <div
       style={{
@@ -60,7 +62,7 @@ export function FieldLabel({
             fontStyle: 'italic',
           }}
         >
-          선택사항
+          {t('label.optional', 'Optional')}
         </span>
       ) : null}
     </div>

@@ -23,11 +23,19 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Textarea } from '@/presentation/components/aurora';
-import { AuroraSelect, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraSelect, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { DefinitionCard } from './DefinitionCard';
 import { INFER_CRITERION_MAX } from './definitionDocs';
 import { inferDocKey } from './useDefinitionDocs';
 import type { OverviewCtx } from './sections';
+
+/**
+ * Collapsed floor for the criterion textarea: 4 lines of its own metrics
+ * (14px × 1.6 line-height + 12px padding top and bottom). The previous 150
+ * left a typical 3–4 line criterion sitting above ~1.5 blank lines, which
+ * reads as a mis-sized box rather than as room to type.
+ */
+const MIN_CRITERION_HEIGHT = Math.round(24 + 4 * 14 * 1.6);
 
 export function IntentDetailCard({
   ctx,
@@ -53,14 +61,14 @@ export function IntentDetailCard({
   }, [empty, intentId]);
 
   // The criterion is markdown prose an author hard-wraps at their own column,
-  // so a fixed row count clips it mid-line. Size to the rendered height,
+  // so a fixed row count clips it mid-line. Size to the RENDERED height,
   // clamped so a criterion near the 1000-char cap scrolls instead of stretching
   // the card. Measured on mount too (the raw ⇄ form toggle remounts the field)
   // and on resize, since the wrap depends on the card's width.
   const fit = useCallback((el: HTMLTextAreaElement | null) => {
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(Math.max(el.scrollHeight, 150), 420)}px`;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, MIN_CRITERION_HEIGHT), 420)}px`;
   }, []);
   const attachTextarea = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -101,9 +109,7 @@ export function IntentDetailCard({
         // DefinitionCard frame stays up, so the parse banner and the YAML
         // view remain available to repair the file in place.
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-3)' }}>
-            {t('intent.notFound', 'This intent no longer exists in the catalog.')}
-          </p>
+          <FieldHint>{t('intent.notFound', 'This intent no longer exists in the catalog.')}</FieldHint>
           <div>
             <Button size="sm" variant="ghost" onClick={onBackToJob}>
               {t('intent.backToJob', 'Back to the job')}
@@ -154,12 +160,12 @@ export function IntentDetailCard({
                   />
                 </div>
               </div>
-              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.5, color: 'var(--text-4)' }}>
+              <FieldHint tone="muted">
                 {t(
                   'intent.clarifyHint',
                   'Autonomous turns never ask a blocking question and proceed with sensible defaults.',
                 )}
-              </p>
+              </FieldHint>
             </div>
           </div>
 

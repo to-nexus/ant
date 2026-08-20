@@ -19,6 +19,11 @@ export type { DockedConsoleProps, DockedConsoleLog } from './DockedConsole';
 export { FieldLabel } from './FieldLabel';
 export type { FieldLabelProps } from './FieldLabel';
 
+export { FieldHint } from './FieldHint';
+export type { FieldHintProps, FieldHintTone } from './FieldHint';
+
+export { PROSE_MEASURE } from './measures';
+
 export { AuroraInput } from './AuroraInput';
 export type { AuroraInputProps } from './AuroraInput';
 

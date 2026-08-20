@@ -16,7 +16,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FolderTree } from 'lucide-react';
-import { AuroraInput, AuroraSelect } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, AuroraSelect, FieldHint } from '@/presentation/components/ConfigEditor/aurora';
 import {
   GLOB_PRESETS,
   describeGlob,
@@ -194,9 +194,9 @@ export function ArtifactGlobInput({
       )}
 
       {!rawMode && location === 'folder' && (
-        <p style={{ margin: 0, fontSize: 10.5, lineHeight: 1.5, color: 'var(--text-4)' }}>
+        <FieldHint tone="muted">
           {t('intent.globDirHint', 'One field for the whole path — nest it with "/" (reports/weekly/kr).')}
-        </p>
+        </FieldHint>
       )}
 
       {value.trim().length === 0 && !disabled && (
@@ -230,7 +230,7 @@ export function ArtifactGlobInput({
       )}
 
       {preview(value) != null && (
-        <p style={{ margin: 0, fontSize: 11, lineHeight: 1.5, color: 'var(--text-3)' }}>{preview(value)}</p>
+        <FieldHint>{preview(value)}</FieldHint>
       )}
     </div>
   );

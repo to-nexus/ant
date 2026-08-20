@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Plus, SquareArrowOutUpRight, Target } from 'lucide-react';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, FieldLabel, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, FieldHint, FieldLabel, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 import { CUSTOM_ID_PATTERN } from '@ant/shared';
 import { DefinitionCard } from './DefinitionCard';
 import { IdRenameField } from './IdRenameField';
@@ -158,12 +158,12 @@ export function JobDefinitionCard({
 
         <div>
           <FieldLabel>{t('overview.tools', 'Tools')}</FieldLabel>
-          <p style={{ margin: '0 0 10px', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+          <FieldHint spacing="below">
             {t(
               'overview.toolsHint',
               "Click a name to include or exclude the tool; click its state segment to override approval. Mutating tools default to 'always' (call rejected until approved), everything else to 'never'.",
             )}
-          </p>
+          </FieldHint>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {vocabulary.map((tool) => (
               <ToolChip
@@ -259,9 +259,9 @@ export function IntentsCard({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {entries.length === 0 && (
-          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)' }}>
+          <FieldHint tone="muted">
             {t('overview.intentsEmpty', 'No intents — every turn runs on the base prompts alone.')}
-          </p>
+          </FieldHint>
         )}
 
         {entries.map((entry) => {
@@ -315,13 +315,17 @@ export function IntentsCard({
 
               {isOpen && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingLeft: 27 }}>
+                  {/* No `pre-wrap`: the criterion is prose the author hard-wraps at
+                      their own column, and honouring those newlines lays this preview
+                      out at the AUTHOR's width — ragged lines with dead space to the
+                      right of the card. Reflowing to the row is what a preview wants;
+                      the full markdown render lives on the intent's own card. */}
                   <p
                     style={{
                       margin: 0,
                       fontSize: 11.5,
                       lineHeight: 1.6,
                       color: 'var(--text-3)',
-                      whiteSpace: 'pre-wrap',
                     }}
                   >
                     {entry.infer || t('overview.intentNoInfer', 'No matching criteria yet.')}

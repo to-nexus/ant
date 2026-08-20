@@ -9,7 +9,7 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { AuroraInput, AuroraSelect } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, AuroraSelect, FieldHint } from '@/presentation/components/ConfigEditor/aurora';
 import { actionHint, composeMcpAction, isValidMcpAction, parseActionValue } from './actionHook';
 
 const CUSTOM = '__custom__';
@@ -116,13 +116,13 @@ export function ActionHookInput({
         </span>
       )}
       {hint != null && (
-        <p style={{ margin: 0, fontSize: 11, lineHeight: 1.5, color: 'var(--amber-500, var(--text-3))' }}>
+        <FieldHint tone="warn">
           {hint === 'not-in-builtin'
             ? t('intent.hintActionNotInBuiltin', "'{{tool}}' is not in this job's tools.builtin — the hook could never be met. Add the tool to the job or pick another.", { tool: value })
             : hint === 'unknown-server'
               ? t('intent.hintMcpServerUnknown', 'No MCP server "{{server}}" is declared on this job or agent — the hook could never be met.', { server: value.startsWith('mcp__') ? value.slice('mcp__'.length).split('__')[0] : value })
               : t('intent.hintActionUnknownTool', "'{{tool}}' is not a universal builtin tool — saving will be refused unless it is a full mcp__{server}__{tool} name.", { tool: value })}
-        </p>
+        </FieldHint>
       )}
     </div>
   );

@@ -72,6 +72,25 @@ function FileBox({ maxHeight, children }: { maxHeight: number; children: React.R
   );
 }
 
+/**
+ * Read-only body for one authored `.md` file — markdown, never `pre-wrap`.
+ *
+ * `infer.md` and `prompt.md` are prose an author hard-wraps at their own
+ * column, so preserving those newlines lays the text out at the AUTHOR's width
+ * instead of the box's: ragged short lines with dead space to the right. Markdown
+ * folds a single newline into a space and keeps blank lines as paragraph breaks,
+ * so the prose reflows to whatever width the box actually has.
+ */
+function MarkdownBody({ children }: { children: string }) {
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none min-w-0 px-3 py-2.5 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 /** Muted caption for an absent/unreadable file — never a blank section. */
 function Caption({ children }: { children: React.ReactNode }) {
   return (
@@ -104,7 +123,7 @@ function StopHookRow({ hook }: { hook: IntentStopHook }) {
   const tone = HOOK_TONE[kind];
   return (
     <div
-      className="flex items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2"
+      className="flex items-start gap-2.5 rounded-[var(--r-md)] px-3 py-2"
       style={{ border: '1px solid var(--border-2)', background: 'var(--bg-surface)' }}
     >
       <span
@@ -115,9 +134,8 @@ function StopHookRow({ hook }: { hook: IntentStopHook }) {
       </span>
       <div className="flex flex-col gap-0.5 min-w-0">
         <span
-          className="text-[12px] truncate"
-          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-1)' }}
-          title={value}
+          className="text-[12px] break-all"
+          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-1)', lineHeight: 1.45 }}
         >
           {value}
         </span>
@@ -263,12 +281,7 @@ export function UniversalIntentDetailView({ surface }: { surface: UniversalActio
             action={<SectionLink label={sectionLinkLabel} onClick={() => openInSettings('infer.md')} />}
           >
             <FileBox maxHeight={CRITERIA_MAX_HEIGHT}>
-              <p
-                className="text-[12.5px] whitespace-pre-wrap m-0 px-3 py-2.5"
-                style={{ color: 'var(--text-2)', lineHeight: 1.6 }}
-              >
-                {intent.infer}
-              </p>
+              <MarkdownBody>{intent.infer}</MarkdownBody>
             </FileBox>
           </Section>
 
@@ -294,11 +307,7 @@ export function UniversalIntentDetailView({ surface }: { surface: UniversalActio
                 {prompt.status === 'loading' ? (
                   <PromptSkeleton />
                 ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none px-3 py-2.5">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
-                      {prompt.body}
-                    </ReactMarkdown>
-                  </div>
+                  <MarkdownBody>{prompt.body}</MarkdownBody>
                 )}
               </FileBox>
             )}

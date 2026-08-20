@@ -24,7 +24,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Braces, Plus, Trash2 } from 'lucide-react';
 import { Button, IconButton } from '@/presentation/components/aurora';
-import { AuroraSelect } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraSelect, FieldHint } from '@/presentation/components/ConfigEditor/aurora';
 import { INTENT_STOP_HOOKS_CAP, validateStopHookEntry, type IntentStopHook } from '@ant/shared';
 import { ArtifactGlobInput } from './ArtifactGlobInput';
 import { ActionHookInput } from './ActionHookInput';
@@ -172,9 +172,9 @@ export function StopHooksEditor({
     <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {hooks.length === 0 && (
-          <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-4)' }}>
+          <FieldHint tone="muted">
             {t('intent.hooksNone', 'No hooks — the turn ends when the agent stops.')}
-          </p>
+          </FieldHint>
         )}
         {hooks.map((hook, i) => (
           <HookRow
@@ -202,30 +202,30 @@ export function StopHooksEditor({
         )}
 
         {hasArtifactHook && jobLacksArtifactWriter(effectiveBuiltins) && (
-          <p style={{ margin: 0, fontSize: 11, lineHeight: 1.5, color: 'var(--amber-500, var(--text-3))' }}>
+          <FieldHint tone="warn">
             {t(
               'intent.hintArtifactNoWriter',
               "This job's tool list has no file-writing tool (create_file / edit_file / append_file / copy_file) — an artifact hook could never be met.",
             )}
-          </p>
+          </FieldHint>
         )}
 
         {hasArtifactHook && (
-          <p style={{ margin: 0, fontSize: 10.5, lineHeight: 1.6, color: 'var(--text-4)' }}>
+          <FieldHint tone="muted">
             <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>*</span>{' '}
             {t('intent.globStarHint', '* matches any characters within one path segment')}
             {' · '}
             <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-3)' }}>**</span>{' '}
             {t('intent.globGlobstarHint', '** matches any depth — valid only as a whole segment')}
-          </p>
+          </FieldHint>
         )}
       </div>
-      <p style={{ margin: '8px 0 0', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+      <FieldHint spacing="above">
         {t(
           'intent.hooksHint',
           "Every entry must hold when the turn stops — the stop event — verified from actual tool results (AND), never from the model's claims. An artifact glob must match a real file write this turn; an action names a tool that must have been successfully called. Unmet hooks re-prompt the agent a bounded number of times, then pause the job resumably.",
         )}
-      </p>
+      </FieldHint>
     </div>
   );
 }

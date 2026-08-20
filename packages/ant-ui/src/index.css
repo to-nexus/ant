@@ -11,6 +11,17 @@
     font-size: var(--fs-base);
     line-height: var(--lh-normal);
     -webkit-font-smoothing: antialiased;
+
+    /* Korean copy must break between words, not inside them. The CSS default
+       for CJK breaks anywhere a line runs out, so a 단어 gets split across two
+       lines ("이름입니 / 다.") — which reads as a rendering fault rather than
+       as wrapping. `keep-all` is CJK-only (Latin text is untouched), and
+       `break-word` keeps one long unbroken token — a path, a URL, an
+       mcp__server__tool name — from overflowing its box instead. Components
+       that need character-level breaking still set their own `break-all` /
+       `overflow-wrap: anywhere`. */
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
 
   code,

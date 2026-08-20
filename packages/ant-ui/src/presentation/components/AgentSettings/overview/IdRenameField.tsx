@@ -12,8 +12,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { isValidCustomId } from '@ant/shared';
+
+/** Width of the id input + Apply pair — a control measure, never a prose one. */
+const CONTROL_WIDTH = 420;
 
 export function IdRenameField({
   label,
@@ -66,36 +69,40 @@ export function IdRenameField({
   };
 
   return (
-    <div style={{ maxWidth: 420 }}>
-      <FieldLabel>{label}</FieldLabel>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <AuroraInput
-            value={nextId}
-            mono
-            disabled={disabled || renaming}
-            hasError={nextId.length > 0 && !isValidCustomId(nextId)}
-            onChange={(v) => {
-              setNextId(v);
-              setArmed(false);
-            }}
-          />
+    // The 420 cap belongs to the input + Apply ROW only: prose wrapped at a
+    // control's width becomes a second, narrower text column inside the card.
+    <div>
+      <div style={{ maxWidth: CONTROL_WIDTH }}>
+        <FieldLabel>{label}</FieldLabel>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <AuroraInput
+              value={nextId}
+              mono
+              disabled={disabled || renaming}
+              hasError={nextId.length > 0 && !isValidCustomId(nextId)}
+              onChange={(v) => {
+                setNextId(v);
+                setArmed(false);
+              }}
+            />
+          </div>
+          {!readonly && (
+            <Button size="sm" disabled={!canRename || renaming} onClick={() => void submitRename()}>
+              {renaming
+                ? t('agentDef.idRenaming', 'Moving…')
+                : armed
+                  ? t('danger.confirm', 'Click again to confirm')
+                  : t('agentDef.idApply', 'Apply')}
+            </Button>
+          )}
         </div>
-        {!readonly && (
-          <Button size="sm" disabled={!canRename || renaming} onClick={() => void submitRename()}>
-            {renaming
-              ? t('agentDef.idRenaming', 'Moving…')
-              : armed
-                ? t('danger.confirm', 'Click again to confirm')
-                : t('agentDef.idApply', 'Apply')}
-          </Button>
-        )}
       </div>
-      <p style={{ margin: '8px 0 0', fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>{hint}</p>
+      <FieldHint spacing="above">{hint}</FieldHint>
       {nextId.length > 0 && !isValidCustomId(nextId) && (
-        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--status-error-fg, var(--text-2))' }}>
+        <FieldHint spacing="above" style={{ color: 'var(--status-error-fg, var(--text-2))' }}>
           {t('agentDef.idInvalid', 'Ids are lowercase kebab-case: a-z, 0-9 and single hyphens between them.')}
-        </p>
+        </FieldHint>
       )}
       {yamlIdDrifted && (
         <p
@@ -113,9 +120,9 @@ export function IdRenameField({
         </p>
       )}
       {idChanged && dirtyCount > 0 && !yamlIdDrifted && (
-        <p style={{ margin: '8px 0 0', fontSize: 11.5, color: 'var(--text-3)' }}>
+        <FieldHint spacing="above">
           {t('agentDef.idDirtyBlocked', 'Save or discard your pending changes first — the move reloads this file.')}
-        </p>
+        </FieldHint>
       )}
     </div>
   );

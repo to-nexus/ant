@@ -15,7 +15,7 @@
  */
 
 import { useTranslation } from 'react-i18next';
-import { SectionCard } from '@/presentation/components/ConfigEditor/aurora';
+import { FieldHint, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 import { IdRenameField } from './IdRenameField';
 import type { OverviewCtx } from './sections';
 
@@ -50,13 +50,13 @@ export function IntentIdentityCard({
       })}
     >
       {docs.isPhantomIntent(intentId) ? (
-        <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+        <FieldHint>
           {t(
             'intent.phantomHint',
             'New intent — nothing is on disk yet. Author the matching criteria and Save to create intents/{{id}}/.',
             { id: intentId },
           )}
-        </p>
+        </FieldHint>
       ) : (
         <IdRenameField
           label={t('intent.id', 'Intent id')}
