@@ -70,6 +70,7 @@
     "body": "'{{projectId}}' 프로젝트를 삭제하고 관련 리소스를 정리하고 있습니다…",
     "step": {
       "cancelJobs": "실행 중인 작업 취소",
+      "pipelineCleanup": "파이프라인 활성화 해제",
       "ideCleanup": "IDE pod 중지",
       "previewCleanup": "프리뷰 서버 중지",
       "redisCleanup": "Redis 상태 정리",

@@ -69,6 +69,22 @@ describe('pipeline↔project mutual exclusion', () => {
     expect(routes.match(/code:\s*'pipeline-has-activations'/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 
+  it('deactivation has ONE authority: route and delete/rename cascade both call deactivatePipelineBinding', () => {
+    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    const projectService = read('periphery/adapters/http/services/ProjectService/index.ts');
+    expect(routes).toMatch(/deactivatePipelineBinding\(/);
+    expect(projectService).toMatch(/deactivatePipelineBinding\(/);
+    expect(projectService).toMatch(/'pipelineCleanup'/);
+    // The leg sequence must not resurface as an inline copy anywhere else.
+    for (const file of walk(SRC)) {
+      if (file.endsWith(path.join('infrastructure', 'scheduling', 'deactivateBinding.ts'))) continue;
+      const src = fs.readFileSync(file, 'utf-8');
+      if (src.includes('deleteActivationRecord(') && src.includes('.removeCron(')) {
+        throw new Error(`inline deactivation leg copy in ${path.relative(SRC, file)}`);
+      }
+    }
+  });
+
   it('the fire path resolves definitions ONLY at the activation-pinned scope (no closest-wins)', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
     expect(coordinator).toMatch(/resolveDefRoot\(this\.tenantCtx\(owner\), activation\.pipelineScope\)/);

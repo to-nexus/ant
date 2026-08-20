@@ -98,13 +98,14 @@ export type IdePhaseEventData = {
 };
 
 /**
- * Project deletion cascade sub-phases observable to the FE. Mirrors the 5
- * stages of `ProjectService.deleteProject` (`stopProjectRuntime` 4 + final
+ * Project deletion cascade sub-phases observable to the FE. Mirrors the 6
+ * stages of `ProjectService.deleteProject` (`stopProjectRuntime` 5 + final
  * fs verification). Each phase carries a status so the FE can render the
  * step rail (pending → active → complete | failed).
  */
 export type ProjectDeletionPhase =
   | 'cancelJobs'
+  | 'pipelineCleanup'
   | 'ideCleanup'
   | 'previewCleanup'
   | 'redisCleanup'

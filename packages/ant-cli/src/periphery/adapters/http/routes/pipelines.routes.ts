@@ -80,6 +80,7 @@ import type { OrganizationRepositoryPort } from '../../../../core/ports/organiza
 import type { ScheduleQueuePort, PipelineOwner } from '../../../../core/ports/scheduler';
 import type { PipelineRunCoordinator } from '../../../../infrastructure/scheduling/PipelineRunCoordinator';
 import { schedulerIdFor, PIPELINE_OWNER_FILE } from '../../../../infrastructure/scheduling/PipelineReconciler';
+import { deactivatePipelineBinding } from '../../../../infrastructure/scheduling/deactivateBinding';
 import { REDIS_KEYS, REDIS_TTL } from '../../../../core/constants/redis';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
@@ -237,11 +238,6 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       activation.pipelineId,
       REDIS_TTL.PIPE.ACTIVATION,
     );
-  }
-
-  async function clearActivationProjections(owner: PipelineOwner, projectId: string): Promise<void> {
-    await deps.stateStore.deleteKey(REDIS_KEYS.PIPE.ACTIVATION(owner.organizationId, owner.userId, projectId)).catch(() => {});
-    await deps.stateStore.deleteKey(REDIS_KEYS.PIPE.PROJECT(owner.organizationId, owner.userId, projectId)).catch(() => {});
   }
 
   /** One activation row hydrated with live state (Redis) + last run (disk). */
@@ -1081,19 +1077,19 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
           return;
         }
       }
-      // Order: cron off → live run cancelled + running steps killed → SSOT
-      // unlink (activation.json only — runs survive) → projections cleared.
-      await deps.scheduleQueue.removeCron(schedulerIdFor(owner, projectId));
-      await deps.coordinator.deactivate(owner, projectId);
-      deleteActivationRecord(actRoot, projectId);
-      await clearActivationProjections(owner, projectId);
-      await publishPipelineEvent(owner, {
-        cause: 'activationChanged',
-        pipelineId,
+      // Legs live in `deactivatePipelineBinding` — the ONE deactivation
+      // authority, shared with the project delete/rename cascade.
+      await deactivatePipelineBinding(
+        {
+          workspacesPath: deps.workspaceResolver.getPhysicalWorkspacesPath(),
+          scheduleQueue: deps.scheduleQueue,
+          coordinator: deps.coordinator,
+          stateStore: deps.stateStore,
+        },
+        owner,
         projectId,
-        activation: null,
-        activatedBy: owner.userId,
-      });
+        { pipelineIdHint: pipelineId },
+      );
       res.json({ success: true });
     } catch (error) {
       sendErrorResponse(res, 500, error, 'PipelinesDeactivate');

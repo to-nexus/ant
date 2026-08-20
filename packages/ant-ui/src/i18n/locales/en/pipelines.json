@@ -5,10 +5,8 @@
     "awaiting": "{{n}} waiting",
     "running": "Running",
     "enabled": "Enabled",
-    "draft": "Draft",
+    "draft": "Disabled",
     "readonly": "readonly",
-    "activations": "{{n}} active",
-    "steps": "{{n}} steps",
     "discardConfirm": "Discard unsaved changes?",
     "orphanHint": "This activation references a pipeline that no longer exists.",
     "scope": {
@@ -17,7 +15,9 @@
       "emptyUser": "No pipelines of your own yet.",
       "emptyOrg": "Nothing shared with the organization yet.",
       "emptyOrgNoTeam": "Join a team organization to share pipelines."
-    }
+    },
+    "collapse": "Collapse",
+    "expand": "Expand"
   },
   "views": {
     "wiring": "Wiring",
@@ -34,25 +34,31 @@
     "activationsTitle": "Activations",
     "activationsCount": "{{n}} project(s)",
     "noActivations": "Not activated anywhere yet.",
-    "enableFirst": "This pipeline is disabled — enable it in the Wiring view to activate projects.",
-    "pickProject": "Choose a workspace project…",
-    "alreadyBound": "bound to \"{{pipelineId}}\"",
-    "activate": "Activate",
     "deactivate": "Deactivate",
     "stateWaiting": "Waiting",
     "stateRunning": "Working",
     "stateAwaiting": "Awaiting approval",
     "stateBroken": "Broken",
-    "nextFire": "Next fire: {{when}}"
+    "nextFire": "Next fire: {{when}}",
+    "selectProjectFirst": "Select a project first to activate this pipeline there.",
+    "notUniversal": "Pipelines activate on Workspace (universal) projects only.",
+    "boundToOther": "This project is bound to another pipeline.",
+    "enableFirstShort": "Enable the pipeline (header toggle) to activate it here.",
+    "activeHere": "Active in this project",
+    "activeHereBy": "Active here — by {{who}}",
+    "activateHere": "Activate in this project",
+    "thisProject": "This project",
+    "activatedByYou": "you"
   },
   "availability": {
-    "enabledTitle": "Enabled",
-    "disabledTitle": "Disabled (draft)",
-    "enabledDesc": "Activatable on projects. Disable to edit — only possible while no one has it activated.",
-    "disabledDesc": "Editable, but not activatable. Enable to let projects activate it.",
     "enable": "Enable",
     "disable": "Disable",
-    "saveFirst": "Save your changes before enabling."
+    "saveFirst": "Save your changes before enabling.",
+    "finishEditing": "Finish editing (Done) before changing availability.",
+    "hint": {
+      "label": "Availability",
+      "body": "Enabled: projects can activate this pipeline and the wiring is locked. Disable to edit, delete, or promote — only possible while no project has it activated."
+    }
   },
   "promote": {
     "title": "Promote to organization",
@@ -88,15 +94,15 @@
     "runNow": "Run now",
     "runNowAccepted": "Fired — watch the run history.",
     "viewMode": "Pipeline view",
-    "readOnlyEnabled": "Enabled — disable the pipeline below to edit the wiring.",
     "readOnlyShared": "Shared by {{owner}} — read-only for you.",
-    "unsaved": "Unsaved changes",
-    "unsavedNew": "Not saved yet",
     "badCron": "Fix the schedule to save.",
     "needSteps": "Add at least one step.",
     "discard": "Discard",
     "save": "Save",
-    "emptyCanvas": "Press + on the trigger node to add the first step."
+    "emptyCanvas": "Press + on the trigger node to add the first step.",
+    "edit": "Edit",
+    "done": "Done",
+    "editBlockedEnabled": "Disable the pipeline (toggle) to edit its wiring."
   },
   "canvas": {
     "trigger": "Schedule",
@@ -184,11 +190,9 @@
     "gateDecided": "{{decision}} by {{who}}"
   },
   "danger": {
-    "title": "Delete pipeline",
-    "desc": "Removes the definition. Run history stays with each activation.",
     "delete": "Delete",
-    "confirm": "Really delete?",
-    "deleting": "Deleting…"
+    "confirmTitle": "Delete pipeline",
+    "confirmMessage": "Delete \"{{name}}\"? The definition is removed; run history stays with each activation."
   },
   "card": {
     "title": "Pipeline approval",

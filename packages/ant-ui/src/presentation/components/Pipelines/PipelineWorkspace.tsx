@@ -1,25 +1,27 @@
 /**
  * PipelineWorkspace — the right-hand surface of the pipelines tab, split into
- * two views: Wiring (the definition canvas — editable only while the pipeline
- * is DISABLED and the caller may edit it) and Execution (activations incl.
- * org members' read-only rows, per-activation run history, live monitor).
- * All editor surfaces edit ONE draft (dirty-buffer doctrine); save is gated by
- * the shared validator + the server cron preview (form-disable leg).
+ * two views: Wiring (the definition canvas, with an explicit view/edit mode)
+ * and Execution (full-screen per-project activations). Everything the user
+ * acts on lives in ONE header row: name, edit-mode controls (Save / Discard /
+ * Delete / Done), the availability Toggle (+ info hint), and the view toggle.
  *
- * Availability state machine: enable = publish (activatable, read-only),
- * disable = reclaim for editing (only with zero activations — the server
- * refuses otherwise and lists the holders).
+ * Edit mode is a UI mode on top of the BE availability machine: entering it
+ * requires a DISABLED, writable pipeline (the Edit button is disabled with a
+ * tooltip while enabled, hidden while readonly); a NEW draft is forced-edit.
+ * All editor surfaces edit ONE draft (dirty-buffer doctrine); save is gated
+ * by the shared validator + the server cron preview (form-disable leg).
  */
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PencilRuler, PlayCircle, Lock, Power, PowerOff } from 'lucide-react';
+import { Check, Pencil, PencilRuler, PlayCircle, Trash2 } from 'lucide-react';
 import { validatePipelineDef, type PipelineDef, type PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { pipelineDraftIsDirty } from '@/domain/store/slices/pipelineSlice';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
-import { Button, BoardViewModeToggle } from '../aurora';
-import { DangerZone, SectionCard } from '../ConfigEditor/aurora';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { Button, BoardViewModeToggle, Toggle } from '../aurora';
+import { HintBadge } from '../common/HintBadge';
 import { OrgAccessCard } from '../shared/org/OrgAccessCard';
 import { PromoteZone } from '../shared/org/PromoteZone';
 import { updatePipelineEditors } from '@/infrastructure/http/api/pipelines';
@@ -30,6 +32,11 @@ import { TRIGGER_NODE_ID, insertStepAfter, makeGateStep, makeJobStep } from './d
 
 type PanelView = 'editor' | 'execution';
 
+/** Thin vertical separator between the header's control clusters. */
+const HeaderDivider = () => (
+  <span aria-hidden style={{ width: 1, alignSelf: 'stretch', margin: '2px 0', background: 'var(--border-1)' }} />
+);
+
 export function PipelineWorkspace() {
   const { t } = useTranslation('pipelines');
   const draft = useStore((s) => s.pipelineDraft);
@@ -38,13 +45,16 @@ export function PipelineWorkspace() {
   const selectedId = useStore((s) => s.selectedPipelineId);
   const saveError = useStore((s) => s.pipelineSaveError);
   const view = useStore((s) => s.pipelinePanelView);
+  const wiringMode = useStore((s) => s.pipelineWiringMode);
   const selectedNodeId = useStore((s) => s.selectedPipelineNodeId);
   const runDetail = useStore((s) => s.pipelineRunDetail);
   const pipelines = useStore((s) => s.pipelines);
+  const accountAgents = useStore((s) => s.accountAgents);
   const setPipelineDraft = useStore((s) => s.setPipelineDraft);
   const discardPipelineDraft = useStore((s) => s.discardPipelineDraft);
   const savePipelineDraft = useStore((s) => s.savePipelineDraft);
   const setPipelinePanelView = useStore((s) => s.setPipelinePanelView);
+  const setPipelineWiringMode = useStore((s) => s.setPipelineWiringMode);
   const selectPipelineNode = useStore((s) => s.selectPipelineNode);
   const deletePipelineById = useStore((s) => s.deletePipelineById);
   const enablePipelineById = useStore((s) => s.enablePipelineById);
@@ -52,10 +62,9 @@ export function PipelineWorkspace() {
   const promotePipelineById = useStore((s) => s.promotePipelineById);
   const loadPipelines = useStore((s) => s.loadPipelines);
   const isTeamActive = useStore(selectIsTeamActive);
+  const { showConfirm } = useAlertModalContext();
 
   const [cronOk, setCronOk] = useState(true);
-  const [dangerArmed, setDangerArmed] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
   const [isPromoting, setIsPromoting] = useState(false);
   const [orgError, setOrgError] = useState<string | null>(null);
@@ -66,10 +75,21 @@ export function PipelineWorkspace() {
   const readonly = isSaved ? entry?.readonly ?? false : false;
   // The availability machine's edit gate: published or not-yours ⇒ read-only.
   const editLocked = enabled || readonly;
+  // UI edit mode on top of the gate — a new draft is forced-edit.
+  const editing = wiringMode === 'edit' || draftIsNew;
+  const editable = editing && !editLocked;
 
   const dirty = pipelineDraftIsDirty(draft, saved);
   const validationErrors = useMemo(() => (draft ? validatePipelineDef(draft) : []), [draft]);
-  const canSave = !!draft && !editLocked && dirty && validationErrors.length === 0 && cronOk && draft.steps.length > 0;
+  const canSave = !!draft && editable && dirty && validationErrors.length === 0 && cronOk && draft.steps.length > 0;
+  const saveBlockedReason = !canSave
+    ? validationErrors[0] ??
+      (!cronOk
+        ? t('editor.badCron', 'Fix the schedule to save.')
+        : draft && draft.steps.length === 0
+          ? t('editor.needSteps', 'Add at least one step.')
+          : undefined)
+    : undefined;
 
   if (!draft) {
     return (
@@ -80,22 +100,58 @@ export function PipelineWorkspace() {
   }
 
   const patch = (next: PipelineDef) => {
-    if (editLocked) return;
+    if (!editable) return;
     setPipelineDraft(next);
   };
 
   const cronSummary = `${draft.on.schedule.cron}${draft.on.schedule.tz ? ` · ${draft.on.schedule.tz}` : ''}`;
 
   const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate') => {
-    if (editLocked) return;
+    if (!editable) return;
     const step = kind === 'gate' ? makeGateStep(draft) : makeJobStep(draft);
     patch(insertStepAfter(draft, afterNodeId, step));
     selectPipelineNode(step.id);
   };
 
+  const exitEditMode = () => {
+    if (dirty) {
+      showConfirm(t('rail.discardConfirm', 'Discard unsaved changes?'), {
+        onConfirm: () => {
+          discardPipelineDraft();
+          setPipelineWiringMode('view');
+        },
+      });
+      return;
+    }
+    setPipelineWiringMode('view');
+  };
+
+  const confirmDelete = () => {
+    showConfirm(
+      t('danger.confirmMessage', 'Delete "{{name}}"? The definition is removed; run history stays with each activation.', { name: draft.name }),
+      {
+        title: t('danger.confirmTitle', 'Delete pipeline'),
+        type: 'error',
+        confirmText: t('danger.delete', 'Delete'),
+        onConfirm: () => void deletePipelineById(selectedId!),
+      },
+    );
+  };
+
+  const availabilityDisabled = readonly || availabilityBusy || editing || (!enabled && dirty);
+  const availabilityHint = readonly
+    ? t('editor.readOnlyShared', 'Shared by {{owner}} — read-only for you.', { owner: entry?.org?.owner ?? 'the organization' })
+    : editing
+      ? t('availability.finishEditing', 'Finish editing (Done) before changing availability.')
+      : !enabled && dirty
+        ? t('availability.saveFirst', 'Save your changes before enabling.')
+        : enabled
+          ? t('availability.disable', 'Disable')
+          : t('availability.enable', 'Enable');
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* Header */}
+      {/* Header — the one control row: name · edit cluster · availability · view. */}
       <div
         style={{
           display: 'flex',
@@ -107,25 +163,117 @@ export function PipelineWorkspace() {
           flexWrap: 'wrap',
         }}
       >
-        <input
-          value={draft.name}
-          onChange={(e) => patch({ ...draft, name: e.target.value })}
-          placeholder={t('editor.namePlaceholder', 'Pipeline name')}
-          readOnly={editLocked}
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: 'var(--text-1)',
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            minWidth: 120,
-            flex: '0 1 260px',
-            ...(editLocked ? { opacity: 0.75, cursor: 'default' } : {}),
-          }}
-        />
+        {editable ? (
+          <input
+            value={draft.name}
+            onChange={(e) => patch({ ...draft, name: e.target.value })}
+            placeholder={t('editor.namePlaceholder', 'Pipeline name')}
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: 'var(--text-1)',
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              minWidth: 120,
+              flex: '0 1 260px',
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: 'var(--text-1)',
+              minWidth: 0,
+              flex: '0 1 auto',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {draft.name}
+          </span>
+        )}
 
         <div style={{ flex: 1 }} />
+
+        {view === 'editor' && (
+          <>
+            {editing ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                {editable && dirty && saveBlockedReason && (
+                  <span style={{ fontSize: 11, color: 'var(--red-500)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={saveBlockedReason}>
+                    {saveBlockedReason}
+                  </span>
+                )}
+                {editable && dirty && (
+                  <Button variant="ghost" size="xs" onClick={discardPipelineDraft}>
+                    {t('editor.discard', 'Discard')}
+                  </Button>
+                )}
+                {editable && dirty && (
+                  <Button variant="primary" size="xs" disabled={!canSave} onClick={() => void savePipelineDraft()}>
+                    {t('editor.save', 'Save')}
+                  </Button>
+                )}
+                {isSaved && !editLocked && (
+                  <Button variant="ghost" size="xs" onClick={confirmDelete} title={t('danger.confirmTitle', 'Delete pipeline')}>
+                    <Trash2 size={13} style={{ color: 'var(--red-500)' }} />
+                  </Button>
+                )}
+                {isSaved && (
+                  <Button variant="secondary" size="xs" onClick={exitEditMode}>
+                    <Check size={13} /> {t('editor.done', 'Done')}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              !readonly &&
+              isSaved && (
+                <span title={enabled ? t('editor.editBlockedEnabled', 'Disable the pipeline (toggle) to edit its wiring.') : undefined}>
+                  <Button variant="ghost" size="xs" disabled={enabled} onClick={() => setPipelineWiringMode('edit')}>
+                    <Pencil size={13} /> {t('editor.edit', 'Edit')}
+                  </Button>
+                </span>
+              )
+            )}
+            <HeaderDivider />
+          </>
+        )}
+
+        {isSaved && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span title={availabilityHint} style={{ display: 'inline-flex' }}>
+                <Toggle
+                  size="sm"
+                  checked={enabled}
+                  disabled={availabilityDisabled}
+                  aria-label={enabled ? t('availability.disable', 'Disable') : t('availability.enable', 'Enable')}
+                  onChange={async (next) => {
+                    setAvailabilityBusy(true);
+                    try {
+                      if (next) await enablePipelineById(selectedId!);
+                      else await disablePipelineById(selectedId!);
+                    } finally {
+                      setAvailabilityBusy(false);
+                    }
+                  }}
+                />
+              </span>
+              <HintBadge
+                isCompact
+                label={t('availability.hint.label', 'Availability')}
+                tooltip={t(
+                  'availability.hint.body',
+                  'Enabled: projects can activate this pipeline and the wiring is locked. Disable to edit, delete, or promote — only possible while no project has it activated.',
+                )}
+              />
+            </div>
+            <HeaderDivider />
+          </>
+        )}
 
         <BoardViewModeToggle<PanelView>
           value={view}
@@ -138,65 +286,10 @@ export function PipelineWorkspace() {
         />
       </div>
 
-      {/* Read-only banner — published (enabled) or shared without edit rights. */}
-      {editLocked && view === 'editor' && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '7px 14px',
-            borderBottom: '1px solid var(--border-1)',
-            background: 'color-mix(in srgb, var(--amber-500, #f59e0b) 8%, var(--bg-surface))',
-            fontSize: 12,
-            color: 'var(--text-2)',
-          }}
-        >
-          <Lock size={12} />
-          <span>
-            {readonly
-              ? t('editor.readOnlyShared', 'Shared by {{owner}} — read-only for you.', { owner: entry?.org?.owner ?? 'the organization' })
-              : t('editor.readOnlyEnabled', 'Enabled — disable the pipeline below to edit the wiring.')}
-          </span>
-        </div>
-      )}
-
-      {/* Dirty / validation bar */}
-      {(dirty || saveError) && view === 'editor' && !editLocked && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '7px 14px',
-            borderBottom: '1px solid var(--border-1)',
-            background: 'color-mix(in srgb, var(--violet-500) 6%, var(--bg-surface))',
-            fontSize: 12,
-            flexWrap: 'wrap',
-          }}
-        >
-          {dirty && (
-            <>
-              <span style={{ color: 'var(--text-2)', fontWeight: 600 }}>
-                {draftIsNew ? t('editor.unsavedNew', 'Not saved yet') : t('editor.unsaved', 'Unsaved changes')}
-              </span>
-              {validationErrors.length > 0 ? (
-                <span style={{ color: 'var(--red-500)' }}>{validationErrors[0]}</span>
-              ) : !cronOk ? (
-                <span style={{ color: 'var(--red-500)' }}>{t('editor.badCron', 'Fix the schedule to save.')}</span>
-              ) : draft.steps.length === 0 ? (
-                <span style={{ color: 'var(--text-3)' }}>{t('editor.needSteps', 'Add at least one step.')}</span>
-              ) : null}
-              <div style={{ flex: 1 }} />
-              <Button variant="ghost" size="xs" onClick={discardPipelineDraft}>
-                {t('editor.discard', 'Discard')}
-              </Button>
-              <Button variant="primary" size="xs" disabled={!canSave} onClick={() => void savePipelineDraft()}>
-                {t('editor.save', 'Save')}
-              </Button>
-            </>
-          )}
-          {saveError && <span style={{ color: 'var(--red-500)' }}>{saveError}</span>}
+      {/* Error strip — save/availability refusals (e.g. disable's 409 holder list). */}
+      {saveError && (
+        <div style={{ padding: '6px 14px', borderBottom: '1px solid var(--border-1)', background: 'var(--bg-surface)', fontSize: 12, color: 'var(--red-500)' }}>
+          {saveError}
         </div>
       )}
 
@@ -211,13 +304,14 @@ export function PipelineWorkspace() {
             <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
               <PipelineCanvas
                 def={draft}
+                customAgents={accountAgents}
                 cronSummary={cronSummary}
                 run={runDetail && runDetail.pipelineId === (selectedId ?? '') ? runDetail : null}
                 selectedNodeId={selectedNodeId}
                 onSelectNode={selectPipelineNode}
-                onAddAfter={editLocked ? undefined : handleAddAfter}
+                onAddAfter={editable ? handleAddAfter : undefined}
               />
-              {draft.steps.length === 0 && (
+              {editable && draft.steps.length === 0 && (
                 <div
                   style={{
                     position: 'absolute',
@@ -233,7 +327,9 @@ export function PipelineWorkspace() {
                 </div>
               )}
             </div>
-            {selectedNodeId && (selectedNodeId === TRIGGER_NODE_ID || draft.steps.some((s) => s.id === selectedNodeId)) && (
+            {/* Inspector is an EDITOR tool — in view mode its inputs would
+                silently no-op (patch gates on editable), so it never renders. */}
+            {editable && selectedNodeId && (selectedNodeId === TRIGGER_NODE_ID || draft.steps.some((s) => s.id === selectedNodeId)) && (
               <StepInspector
                 def={draft}
                 nodeId={selectedNodeId}
@@ -244,57 +340,9 @@ export function PipelineWorkspace() {
             )}
           </div>
 
-          {/* Detail footer — saved pipelines only: availability, org access, promote, danger. */}
-          {isSaved && (
-            <div style={{ borderTop: '1px solid var(--border-1)', padding: '10px 14px', background: 'var(--bg-surface)', display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '45%', overflowY: 'auto' }}>
-              {!readonly && (
-                <SectionCard
-                  id="pipe-availability"
-                  icon={enabled ? 'Power' : 'PowerOff'}
-                  accent="cool"
-                  title={enabled ? t('availability.enabledTitle', 'Enabled') : t('availability.disabledTitle', 'Disabled (draft)')}
-                  description={
-                    enabled
-                      ? t('availability.enabledDesc', 'Activatable on projects. Disable to edit — only possible while no one has it activated.')
-                      : t('availability.disabledDesc', 'Editable, but not activatable. Enable to let projects activate it.')
-                  }
-                  bodyMaxWidth={480}
-                >
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Button
-                      size="sm"
-                      type="button"
-                      variant={enabled ? 'secondary' : 'primary'}
-                      disabled={availabilityBusy || (!enabled && dirty)}
-                      onClick={async () => {
-                        setAvailabilityBusy(true);
-                        try {
-                          if (enabled) await disablePipelineById(selectedId!);
-                          else await enablePipelineById(selectedId!);
-                        } finally {
-                          setAvailabilityBusy(false);
-                        }
-                      }}
-                    >
-                      {enabled ? (
-                        <>
-                          <PowerOff size={13} /> {t('availability.disable', 'Disable')}
-                        </>
-                      ) : (
-                        <>
-                          <Power size={13} /> {t('availability.enable', 'Enable')}
-                        </>
-                      )}
-                    </Button>
-                    {!enabled && dirty && (
-                      <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>
-                        {t('availability.saveFirst', 'Save your changes before enabling.')}
-                      </span>
-                    )}
-                  </div>
-                </SectionCard>
-              )}
-
+          {/* Sharing & access — the agents-detail precedent: org cards above nothing else. */}
+          {isSaved && (entry?.org?.canManageEditors || (isTeamActive && entry?.scope === 'user' && !enabled) || orgError) && (
+            <div style={{ borderTop: '1px solid var(--border-1)', padding: '10px 14px', background: 'var(--bg-surface)', display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '40%', overflowY: 'auto' }}>
               {entry?.org?.canManageEditors && (
                 <OrgAccessCard
                   id="pipe-org-access"
@@ -323,30 +371,6 @@ export function PipelineWorkspace() {
               )}
 
               {orgError && <span style={{ fontSize: 12, color: 'var(--red-500)' }}>{orgError}</span>}
-
-              {!editLocked && (
-                <DangerZone
-                  title={t('danger.title', 'Delete pipeline')}
-                  description={t('danger.desc', 'Removes the definition. Run history stays with each activation.')}
-                  buttonText={dangerArmed ? t('danger.confirm', 'Really delete?') : t('danger.delete', 'Delete')}
-                  loadingText={t('danger.deleting', 'Deleting…')}
-                  isLoading={deleting}
-                  onAction={async () => {
-                    if (!dangerArmed) {
-                      setDangerArmed(true);
-                      setTimeout(() => setDangerArmed(false), 4000);
-                      return;
-                    }
-                    setDeleting(true);
-                    try {
-                      await deletePipelineById(selectedId!);
-                    } finally {
-                      setDeleting(false);
-                      setDangerArmed(false);
-                    }
-                  }}
-                />
-              )}
             </div>
           )}
         </div>

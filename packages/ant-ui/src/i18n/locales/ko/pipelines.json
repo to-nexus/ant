@@ -5,10 +5,8 @@
     "awaiting": "{{n}}건 대기",
     "running": "실행 중",
     "enabled": "사용 가능",
-    "draft": "드래프트",
+    "draft": "사용 불능",
     "readonly": "읽기 전용",
-    "activations": "{{n}}곳 활성",
-    "steps": "스텝 {{n}}개",
     "discardConfirm": "저장하지 않은 변경사항을 버릴까요?",
     "orphanHint": "존재하지 않는 파이프라인을 참조하는 활성화입니다.",
     "scope": {
@@ -17,7 +15,9 @@
       "emptyUser": "아직 내 파이프라인이 없습니다.",
       "emptyOrg": "아직 조직에 공유된 파이프라인이 없습니다.",
       "emptyOrgNoTeam": "팀 조직에 참여하면 파이프라인을 공유할 수 있습니다."
-    }
+    },
+    "collapse": "접기",
+    "expand": "펼치기"
   },
   "views": {
     "wiring": "배선도",
@@ -34,25 +34,31 @@
     "activationsTitle": "활성화 현황",
     "activationsCount": "프로젝트 {{n}}곳",
     "noActivations": "아직 어디에도 활성화되지 않았습니다.",
-    "enableFirst": "이 파이프라인은 사용 불능 상태입니다 — 배선도 뷰에서 사용 가능으로 전환해야 활성화할 수 있습니다.",
-    "pickProject": "워크스페이스 프로젝트를 선택하세요…",
-    "alreadyBound": "\"{{pipelineId}}\"에 바인딩됨",
-    "activate": "활성화",
     "deactivate": "비활성화",
     "stateWaiting": "대기",
     "stateRunning": "작업 중",
     "stateAwaiting": "승인 대기",
     "stateBroken": "손상됨",
-    "nextFire": "다음 실행: {{when}}"
+    "nextFire": "다음 실행: {{when}}",
+    "selectProjectFirst": "먼저 프로젝트를 선택해야 이 파이프라인을 활성화할 수 있습니다.",
+    "notUniversal": "파이프라인은 워크스페이스(universal) 프로젝트에서만 활성화할 수 있습니다.",
+    "boundToOther": "이 프로젝트는 다른 파이프라인에 바인딩되어 있습니다.",
+    "enableFirstShort": "헤더의 토글로 사용 가능으로 전환하면 여기에 활성화할 수 있습니다.",
+    "activeHere": "이 프로젝트에서 활성",
+    "activeHereBy": "이 프로젝트에서 활성 — {{who}}",
+    "activateHere": "이 프로젝트에서 활성화",
+    "thisProject": "이 프로젝트",
+    "activatedByYou": "나"
   },
   "availability": {
-    "enabledTitle": "사용 가능",
-    "disabledTitle": "사용 불능 (드래프트)",
-    "enabledDesc": "프로젝트에 활성화할 수 있는 상태입니다. 편집하려면 사용 불능으로 전환하세요 — 활성화가 하나도 없을 때만 가능합니다.",
-    "disabledDesc": "편집할 수 있지만 활성화는 불가합니다. 사용 가능으로 전환하면 프로젝트에서 활성화할 수 있습니다.",
     "enable": "사용 가능으로 전환",
     "disable": "사용 불능으로 전환",
-    "saveFirst": "전환하기 전에 변경사항을 저장하세요."
+    "saveFirst": "전환하기 전에 변경사항을 저장하세요.",
+    "finishEditing": "가용성을 바꾸려면 먼저 편집을 마치세요 (완료).",
+    "hint": {
+      "label": "사용 가능 여부",
+      "body": "사용 가능: 프로젝트에서 이 파이프라인을 활성화할 수 있고 배선도는 잠깁니다. 편집·삭제·승급하려면 사용 불능으로 전환하세요 — 활성화가 하나도 없을 때만 가능합니다."
+    }
   },
   "promote": {
     "title": "조직으로 승급",
@@ -88,15 +94,15 @@
     "runNow": "지금 실행",
     "runNowAccepted": "발화했습니다 — 실행 이력에서 확인하세요.",
     "viewMode": "파이프라인 뷰",
-    "readOnlyEnabled": "사용 가능 상태입니다 — 배선도를 편집하려면 아래에서 사용 불능으로 전환하세요.",
     "readOnlyShared": "{{owner}}이(가) 공유함 — 내게는 읽기 전용입니다.",
-    "unsaved": "저장되지 않은 변경사항",
-    "unsavedNew": "아직 저장되지 않음",
     "badCron": "저장하려면 스케줄을 고쳐주세요.",
     "needSteps": "스텝을 하나 이상 추가하세요.",
     "discard": "되돌리기",
     "save": "저장",
-    "emptyCanvas": "트리거 노드의 + 버튼으로 첫 스텝을 추가하세요."
+    "emptyCanvas": "트리거 노드의 + 버튼으로 첫 스텝을 추가하세요.",
+    "edit": "편집",
+    "done": "완료",
+    "editBlockedEnabled": "배선도를 편집하려면 토글로 사용 불능으로 전환하세요."
   },
   "canvas": {
     "trigger": "스케줄",
@@ -184,11 +190,9 @@
     "gateDecided": "{{who}}이(가) {{decision}}"
   },
   "danger": {
-    "title": "파이프라인 삭제",
-    "desc": "정의가 제거됩니다. 실행 이력은 각 활성화에 남습니다.",
     "delete": "삭제",
-    "confirm": "정말 삭제할까요?",
-    "deleting": "삭제 중…"
+    "confirmTitle": "파이프라인 삭제",
+    "confirmMessage": "\"{{name}}\" 파이프라인을 삭제할까요? 정의가 제거되며, 실행 이력은 각 활성화에 남습니다."
   },
   "card": {
     "title": "파이프라인 승인",

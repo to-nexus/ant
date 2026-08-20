@@ -467,7 +467,14 @@ migration).
 - **Cascading or force-deactivating on disable.** Disable refuses while ANY
   activation exists (`pipeline-has-activations`, holders listed) — not even
   an org admin may kill another member's activation; they deactivate
-  themselves. No hidden "clean up their binding" path.
+  themselves. No hidden "clean up their binding" path. The ONE carve-out is
+  the **project delete/rename cascade** (`stopProjectRuntime`'s
+  `pipelineCleanup` step): the binding's project itself is going away, and
+  activations are keyed under the activator's own account, so only the
+  deleting user's binding can exist there — without the sweep the reconciler
+  re-registers the cron forever against the dead project. The cascade calls
+  the same `deactivatePipelineBinding` legs as the deactivate route (one
+  deactivation authority — never a second leg copy).
 - **Resolving a fired definition closest-wins.** The fire/reconcile path uses
   ONLY the activation's pinned `pipelineScope` — falling back across scopes
   lets a same-id definition hijack a running schedule.

@@ -22,6 +22,7 @@ import {
   PipelineValidationError,
 } from '../../src/core/pipelines/store';
 import { reconcilePipelines } from '../../src/infrastructure/scheduling/PipelineReconciler';
+import { deactivatePipelineBinding } from '../../src/infrastructure/scheduling/deactivateBinding';
 
 let tmp: string;
 
@@ -88,6 +89,74 @@ describe('activation store round-trip (activator account, projectId-keyed)', () 
       'alice:proj-a',
       'bob:proj-b',
     ]);
+  });
+});
+
+describe('deactivatePipelineBinding — the ONE deactivation authority (route + delete/rename cascade)', () => {
+  const OWNER = { userId: 'user', organizationId: 'local', organizationKind: 'local' as const };
+
+  function makeBindingDeps() {
+    const removed: string[] = [];
+    const deactivated: string[] = [];
+    const deletedKeys: string[] = [];
+    const published: any[] = [];
+    return {
+      removed,
+      deactivated,
+      deletedKeys,
+      published,
+      deps: {
+        workspacesPath: tmp,
+        scheduleQueue: { removeCron: async (id: string) => void removed.push(id) },
+        coordinator: { deactivate: async (_o: any, projectId: string) => void deactivated.push(projectId) },
+        stateStore: {
+          deleteKey: async (k: string) => void deletedKeys.push(k),
+          publish: async (_ch: string, msg: any) => void published.push(msg),
+        },
+      },
+    };
+  }
+
+  const actRoot = () => path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations');
+
+  it('runs every leg in order: cron off → run cancelled → unlink (runs survive) → projections → SSE', async () => {
+    await saveActivationRecord(actRoot(), ACT('p1', 'proj-a'));
+    fs.mkdirSync(path.join(actRoot(), 'proj-a', 'runs'), { recursive: true });
+    fs.writeFileSync(path.join(actRoot(), 'proj-a', 'runs', 'index.jsonl'), '');
+    const { deps, removed, deactivated, deletedKeys, published } = makeBindingDeps();
+    const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a');
+    expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
+    expect(removed).toEqual(['pipe|local|user|proj-a']);
+    expect(deactivated).toEqual(['proj-a']);
+    expect(loadActivationByProject(actRoot(), 'proj-a')).toBeNull();
+    expect(fs.existsSync(path.join(actRoot(), 'proj-a', 'runs', 'index.jsonl'))).toBe(true);
+    expect(deletedKeys.sort()).toEqual(['ant:pipe:actv:local:user:proj-a', 'ant:pipe:proj:local:user:proj-a']);
+    expect(published).toHaveLength(1);
+    expect(published[0].data).toMatchObject({
+      cause: 'activationChanged',
+      pipelineId: 'p1',
+      projectId: 'proj-a',
+      activation: null,
+    });
+  });
+
+  it('no activation = idempotent no-op success that still heals orphan cron/projections, no SSE', async () => {
+    const { deps, removed, deletedKeys, published } = makeBindingDeps();
+    const result = await deactivatePipelineBinding(deps as any, OWNER, 'ghost');
+    expect(result).toEqual({ hadActivation: false, pipelineId: null });
+    expect(removed).toEqual(['pipe|local|user|ghost']);
+    expect(deletedKeys).toHaveLength(2);
+    expect(published).toEqual([]);
+  });
+
+  it('an unreadable sidecar is cleared; the SSE pipelineId comes from the hint', async () => {
+    fs.mkdirSync(path.join(actRoot(), 'proj-a'), { recursive: true });
+    fs.writeFileSync(path.join(actRoot(), 'proj-a', 'activation.json'), '{"broken":');
+    const { deps, published } = makeBindingDeps();
+    const result = await deactivatePipelineBinding(deps as any, OWNER, 'proj-a', { pipelineIdHint: 'p1' });
+    expect(result).toEqual({ hadActivation: true, pipelineId: 'p1' });
+    expect(fs.existsSync(path.join(actRoot(), 'proj-a', 'activation.json'))).toBe(false);
+    expect(published[0].data).toMatchObject({ pipelineId: 'p1', activation: null });
   });
 });
 

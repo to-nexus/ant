@@ -26,6 +26,7 @@ const SPACE_STORAGE_KEY = 'ant-ui:pipelines-space';
 export function PipelinesPanel() {
   const { t } = useTranslation('pipelines');
   const loadPipelines = useStore((s) => s.loadPipelines);
+  const loadAccountAgents = useStore((s) => s.loadAccountAgents);
   const { width, isResizing, startResize } = useResizableWidth({
     storageKey: 'ant-ui:pipelines-rail-width',
     min: 220,
@@ -40,10 +41,12 @@ export function PipelinesPanel() {
     localStorage.setItem(SPACE_STORAGE_KEY, next);
   };
 
-  // Lazy account-scoped bootstrap — the tab is the only consumer of the list.
+  // Lazy account-scoped bootstrap — the pipeline list, plus the account agent
+  // catalog the canvas/inspector resolve step display names from.
   useEffect(() => {
     void loadPipelines();
-  }, [loadPipelines]);
+    void loadAccountAgents();
+  }, [loadPipelines, loadAccountAgents]);
 
   return (
     <div style={{ height: '100%', display: 'flex', background: 'var(--bg-canvas)', minHeight: 0, overflow: 'hidden' }}>

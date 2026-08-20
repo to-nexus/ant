@@ -161,6 +161,14 @@ export class ExpressServerAdapter implements
           checkApproval,
           checkTeamMembership,
         });
+        // Late-bind the delete/rename cascade's pipelineCleanup step —
+        // ProjectService is constructed before these services exist.
+        this.deps.projectService?.setPipelineCleanup?.({
+          workspacesPath: this.deps.workspaceResolver.getPhysicalWorkspacesPath(),
+          scheduleQueue: queue,
+          coordinator: this.deps.pipelineCoordinator,
+          stateStore: factory.getStateStore(),
+        });
       } catch (err) {
         logger.warn('Pipeline services unavailable (non-fatal)', { component: 'ExpressServerAdapter' }, err);
       }

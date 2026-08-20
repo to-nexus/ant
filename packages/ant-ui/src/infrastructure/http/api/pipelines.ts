@@ -89,10 +89,6 @@ export function updatePipelineEditors(pipelineId: string, editors: string[]): Pr
   return apiPut(`${base()}/${encodeURIComponent(pipelineId)}/editors`, { editors });
 }
 
-export function fetchPipelineActivations(pipelineId: string): Promise<{ activations: PipelineActivationView[] }> {
-  return apiGet(`${base()}/${encodeURIComponent(pipelineId)}/activations`);
-}
-
 export function activatePipeline(pipelineId: string, projectId: string): Promise<{ id: string; activation: PipelineActivation; nextFireAt?: string }> {
   return apiPost(`${base()}/${encodeURIComponent(pipelineId)}/activate`, { projectId });
 }

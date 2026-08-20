@@ -15,6 +15,10 @@ import type { IDEOrchestratorPort } from '../../../../../core/ports/ideOrchestra
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import type { JobQueuePort } from '../../../../../core/ports/queue';
 import { logger } from '../../../../../utils/logger';
+import {
+  deactivatePipelineBinding,
+  type DeactivateBindingDeps,
+} from '../../../../../infrastructure/scheduling/deactivateBinding';
 import { requestPreviewCleanup } from './previewCleanup';
 import { cancelAllProjectJobs, cancelScopedJobs } from './projectJobCascade';
 import { DeletionVerificationError, FeatureDeletionError, ProjectDeletionError } from './errors';
@@ -54,6 +58,9 @@ export class ProjectService {
   private readonly ideOrchestrator?: IDEOrchestratorPort;
   private readonly stateStore?: StateStorePort;
   private readonly jobQueue?: JobQueuePort;
+  // Late-bound: the pipeline scheduler/coordinator are constructed after
+  // service init (ExpressServerAdapter) — absent when Redis config is missing.
+  private pipelineCleanup?: DeactivateBindingDeps;
 
   // Sub-services
   private readonly projectCrud: ProjectCrudService;
@@ -85,6 +92,11 @@ export class ProjectService {
     // ✅ Inject WorktreeService into FeatureCrudService for worktree-based feature isolation
     const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
     this.featureCrud.setWorktreeService(worktreeService);
+  }
+
+  /** Wires the project delete/rename cascade's `pipelineCleanup` step (see `stopProjectRuntime`). */
+  setPipelineCleanup(deps: DeactivateBindingDeps): void {
+    this.pipelineCleanup = deps;
   }
   
   // =====================================
@@ -149,18 +161,21 @@ export class ProjectService {
   }
 
   /**
-   * Delete a project end-to-end. Step 1-4 share `stopProjectRuntime`
+   * Delete a project end-to-end. Step 1-5 share `stopProjectRuntime`
    * with `renameProject`; only the final disk action differs (rm vs rename).
    *
    * Each step closes a "Project already exists" failure mode:
    *   1. cancelAllProjectJobs — Redis seal + child exit wait so EFS open
    *      file handles are released before fs.rm runs.
-   *   2. ideOrchestrator.cleanupProject — stop pods/containers + delete IDE
+   *   2. deactivatePipelineBinding — drop the project's pipeline activation
+   *      (cron + live run + activation.json + projections); without this the
+   *      reconciler re-registers the cron forever against the dead project.
+   *   3. ideOrchestrator.cleanupProject — stop pods/containers + delete IDE
    *      home dir. waitForPodDeletion happens inside KubernetesIDEOrchestrator.stop.
-   *   3. requestPreviewCleanup — Redis pub/sub to ant-preview process.
+   *   4. requestPreviewCleanup — Redis pub/sub to ant-preview process.
    *      ack timeout is logged + tolerated (preview may not be running in dev).
-   *   4. stateStore.cleanupProject — DEL all project-scoped Redis keys.
-   *   5. projectCrud.deleteProject — fs.rm with verification loop.
+   *   5. stateStore.cleanupProject — DEL all project-scoped Redis keys.
+   *   6. projectCrud.deleteProject — fs.rm with verification loop.
    *
    * Progress is published as `projectDeletionPhase` SSE events so the FE
    * renders a per-step rail. Failures wrap into `ProjectDeletionError` so
@@ -211,9 +226,10 @@ export class ProjectService {
   }
 
   /**
-   * SSOT cascade: cancel jobs → stop IDE → preview cleanup → Redis cleanup.
+   * SSOT cascade: cancel jobs → drop pipeline activation → stop IDE →
+   * preview cleanup → Redis cleanup.
    *
-   * Shared by `deleteProject` and `renameProject` so the four lifecycle
+   * Shared by `deleteProject` and `renameProject` so the lifecycle
    * steps cannot drift.
    *
    * Step behavior:
@@ -275,6 +291,27 @@ export class ProjectService {
           }
         : null,
       'Some jobs failed to cancel cleanly. Try Force Delete to skip the strict wait.',
+    );
+
+    // Before redisCleanup: the binding's cron must be gone before the sweep,
+    // or the reconciler re-writes the ant:pipe:* projections it just cleared.
+    // Also fires on rename — the old projectId's binding is stale either way.
+    await runStep(
+      'pipelineCleanup',
+      this.pipelineCleanup
+        ? async () => {
+            await deactivatePipelineBinding(
+              this.pipelineCleanup!,
+              {
+                userId: userContext.userId,
+                organizationId: userContext.organizationId,
+                organizationKind: userContext.organizationKind ?? 'local',
+              },
+              projectId,
+            );
+          }
+        : null,
+      'Pipeline deactivation failed. Try Force Delete to skip the strict gate.',
     );
 
     await runStep(

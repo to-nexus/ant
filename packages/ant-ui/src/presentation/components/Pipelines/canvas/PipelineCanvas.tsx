@@ -10,9 +10,9 @@ import ReactFlow, { Background, BackgroundVariant, Controls, MarkerType, type Ed
 import 'reactflow/dist/style.css';
 import dagre from 'dagre';
 import { useTranslation } from 'react-i18next';
-import { isApprovalStep, type PipelineDef, type PipelineStepStatus } from '@ant/shared';
+import { isApprovalStep, parseCustomJobRef, type PipelineDef, type PipelineStepStatus } from '@ant/shared';
 import type { PipelineRunPublic } from '@/domain/store/slices/pipelineSlice';
-import { TriggerNode, StepNode, GateNode, type PipelineNodeData } from './nodes';
+import { TriggerNode, StepNode, GateNode, NODE_WIDTH, type PipelineNodeData } from './nodes';
 import { TRIGGER_NODE_ID, effectiveNeedsOf, stepsAreLinear } from '../draft';
 
 const nodeTypes: NodeTypes = {
@@ -21,19 +21,37 @@ const nodeTypes: NodeTypes = {
   pipelineGate: GateNode,
 };
 
-const NODE_WIDTH = 210;
-const NODE_HEIGHT = 78;
+/** Agent catalog rows the canvas resolves display names from (accountAgents shape). */
+export interface CanvasAgentSummary {
+  id: string;
+  name: string;
+  jobs: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Dagre needs a height BEFORE the DOM renders — estimate from the text the
+ * card will wrap (width 230 − padding/icon ≈ 24 chars per title line at 12px,
+ * 28 per subtitle line at 11px). The DOM box itself is height-auto, so the
+ * estimate only spaces ranks; a line over/under never clips.
+ */
+function estimateNodeHeight(data: PipelineNodeData): number {
+  const titleLines = Math.max(1, Math.ceil(data.title.length / 24));
+  const subtitleLines = data.subtitle ? Math.max(1, Math.ceil(data.subtitle.length / 28)) : 0;
+  return 24 + titleLines * 17 + subtitleLines * 15 + (data.chip ? 20 : 0) + (data.status ? 18 : 0) + 16;
+}
 
 export interface PipelineCanvasProps {
   def: PipelineDef;
   cronSummary: string;
+  /** Account agent catalog for step display names — raw ids fall back when absent. */
+  customAgents?: CanvasAgentSummary[];
   run?: PipelineRunPublic | null;
   selectedNodeId: string | null;
   onSelectNode: (nodeId: string | null) => void;
   onAddAfter?: (afterNodeId: string, kind: 'job' | 'gate') => void;
 }
 
-export function PipelineCanvas({ def, cronSummary, run, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
+export function PipelineCanvas({ def, cronSummary, customAgents, run, selectedNodeId, onSelectNode, onAddAfter }: PipelineCanvasProps) {
   const { t } = useTranslation('pipelines');
   const linear = stepsAreLinear(def);
 
@@ -65,18 +83,32 @@ export function PipelineCanvas({ def, cronSummary, run, selectedNodeId, onSelect
       const invalid = gate
         ? step.prompt.trim().length === 0
         : step.customJobRef.trim().length === 0 || step.directive.trim().length === 0;
+      // Agent name / job name each on their own line — display names resolved
+      // from the account catalog, raw ids as the graceful fallback.
+      let title: string;
+      let subtitle: string | undefined;
+      if (gate) {
+        title = t('canvas.approval', 'Approval');
+        subtitle = step.timeout ? `${step.timeout.after} → ${step.timeout.onTimeout}` : t('canvas.noTimeout', 'no timeout');
+      } else {
+        const ref = parseCustomJobRef(step.customJobRef);
+        if (!ref) {
+          title = t('canvas.unconfigured', 'Choose a job…');
+          subtitle = undefined;
+        } else {
+          const agent = customAgents?.find((a) => a.id === ref.agentId);
+          title = agent?.name ?? ref.agentId;
+          subtitle = agent?.jobs.find((j) => j.id === ref.jobId)?.name ?? ref.jobId;
+        }
+      }
       rfNodes.push({
         id: step.id,
         type: gate ? 'pipelineGate' : 'pipelineStep',
         position: { x: 0, y: 0 },
         data: {
           nodeId: step.id,
-          title: gate ? t('canvas.approval', 'Approval') : step.customJobRef || t('canvas.unconfigured', 'Choose a job…'),
-          subtitle: gate
-            ? step.timeout
-              ? `${step.timeout.after} → ${step.timeout.onTimeout}`
-              : t('canvas.noTimeout', 'no timeout')
-            : step.id,
+          title,
+          subtitle,
           chip: !gate && step.intent ? step.intent : undefined,
           status: statusOf.get(step.id),
           selected: selectedNodeId === step.id,
@@ -114,16 +146,16 @@ export function PipelineCanvas({ def, cronSummary, run, selectedNodeId, onSelect
     const g = new dagre.graphlib.Graph();
     g.setDefaultEdgeLabel(() => ({}));
     g.setGraph({ rankdir: 'LR', nodesep: 44, ranksep: 70 });
-    for (const n of rfNodes) g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    for (const n of rfNodes) g.setNode(n.id, { width: NODE_WIDTH, height: estimateNodeHeight(n.data) });
     for (const e of rfEdges) g.setEdge(e.source, e.target);
     dagre.layout(g);
     for (const n of rfNodes) {
       const pos = g.node(n.id);
-      n.position = { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 };
+      n.position = { x: pos.x - NODE_WIDTH / 2, y: pos.y - g.node(n.id).height / 2 };
     }
 
     return { nodes: rfNodes, edges: rfEdges };
-  }, [def, run, selectedNodeId, cronSummary, onAddAfter, linear, t]);
+  }, [def, run, selectedNodeId, cronSummary, customAgents, onAddAfter, linear, t]);
 
   return (
     <ReactFlow

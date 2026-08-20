@@ -78,6 +78,12 @@ export interface PipelineSliceState {
   pipelineDraftIsNew: boolean;
   pipelineSaveError: string | null;
   pipelinePanelView: 'editor' | 'execution';
+  /**
+   * Wiring view mode. 'view' = read-only canvas; 'edit' = mutable draft
+   * (still gated by the BE availability machine — enabled/readonly lock it).
+   * A NEW draft is forced-edit regardless of this flag.
+   */
+  pipelineWiringMode: 'view' | 'edit';
   /** Canvas selection — a step id, or the trigger pseudo-node. */
   selectedPipelineNodeId: string | null;
   /** Per-activation run history — see `activationRunsKey`. */
@@ -86,10 +92,8 @@ export interface PipelineSliceState {
   pipelineApprovals: PipelinePendingApproval[];
   /** Per-project active-pipeline lock signal (chat surface). null = none. */
   activePipelineByProject: Record<string, ActivePipelineInfo | null>;
-  /** Universal projects the Execution view's picker offers. */
+  /** Universal projects activatable by the caller (also the projectId→name map). */
   pipelineActivatableProjects: PipelineActivatableProject[];
-  /** Execution-view picker selection for a NEW activation. */
-  pipelineExecutionProjectId: string | null;
   pipelineActivationError: string | null;
 }
 
@@ -110,13 +114,13 @@ export interface PipelineSliceActions {
   deactivatePipelineById: (pipelineId: string, projectId: string) => Promise<boolean>;
   loadActivatableProjects: () => Promise<void>;
   loadActivePipeline: (projectId: string) => Promise<void>;
-  setPipelineExecutionProject: (projectId: string | null) => void;
   loadActivationRuns: (pipelineId: string, projectId: string, userId?: string) => Promise<void>;
   loadPipelineRunDetail: (runId: string, projectId: string) => Promise<void>;
   clearPipelineRunDetail: () => void;
   loadPipelineApprovals: () => Promise<void>;
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject') => Promise<void>;
   setPipelinePanelView: (view: 'editor' | 'execution') => void;
+  setPipelineWiringMode: (mode: 'view' | 'edit') => void;
   selectPipelineNode: (nodeId: string | null) => void;
   applyPipelineEvent: (event: PipelineEventData) => void;
 }
@@ -141,13 +145,13 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineDraftIsNew: false,
   pipelineSaveError: null,
   pipelinePanelView: 'editor',
+  pipelineWiringMode: 'view',
   selectedPipelineNodeId: null,
   pipelineRunsByActivation: {},
   pipelineRunDetail: null,
   pipelineApprovals: [],
   activePipelineByProject: {},
   pipelineActivatableProjects: [],
-  pipelineExecutionProjectId: null,
   pipelineActivationError: null,
 
   loadPipelines: async () => {
@@ -169,11 +173,11 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
 
   selectPipeline: async (pipelineId: string | null) => {
     if (pipelineId === null) {
-      set({ selectedPipelineId: null, pipelineDraft: null, pipelineSavedDef: null, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null, pipelineExecutionProjectId: null });
+      set({ selectedPipelineId: null, pipelineDraft: null, pipelineSavedDef: null, pipelineDraftIsNew: false, pipelineSaveError: null, pipelineWiringMode: 'view', selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null });
       return;
     }
     // The current view survives selection — only a NEW draft forces the editor.
-    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null });
+    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, pipelineWiringMode: 'view', selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null });
     try {
       const detail = await fetchPipeline(pipelineId);
       // Stale guard — the user may have clicked another pipeline meanwhile.
@@ -181,7 +185,6 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       set({
         pipelineDraft: detail.def,
         pipelineSavedDef: detail.def,
-        pipelineExecutionProjectId: null,
         pipelines: get().pipelines.map((p: PipelineListEntry) =>
           p.id === pipelineId
             ? { ...p, scope: detail.scope, readonly: detail.readonly, enabled: detail.enabled, org: detail.org, activations: detail.activations }
@@ -211,10 +214,10 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       pipelineDraftIsNew: true,
       pipelineSaveError: null,
       pipelinePanelView: 'editor',
+      pipelineWiringMode: 'edit',
       selectedPipelineNodeId: 'trigger',
       pipelineRunDetail: null,
       pipelineActivationError: null,
-      pipelineExecutionProjectId: null,
     });
   },
 
@@ -260,6 +263,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     if (get().selectedPipelineId === pipelineId) {
       await get().selectPipeline(null);
     }
+    set({ pipelineWiringMode: 'view' });
     void get().loadPipelines();
   },
 
@@ -379,8 +383,6 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     }
   },
 
-  setPipelineExecutionProject: (projectId) => set({ pipelineExecutionProjectId: projectId }),
-
   loadActivationRuns: async (pipelineId: string, projectId: string, userId?: string) => {
     try {
       const { runs } = await fetchPipelineRuns(pipelineId, projectId, userId);
@@ -426,6 +428,8 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   },
 
   setPipelinePanelView: (view) => set({ pipelinePanelView: view }),
+
+  setPipelineWiringMode: (mode) => set({ pipelineWiringMode: mode }),
 
   selectPipelineNode: (nodeId) => set({ selectedPipelineNodeId: nodeId }),
 

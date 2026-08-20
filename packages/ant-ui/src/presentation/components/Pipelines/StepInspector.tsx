@@ -39,7 +39,9 @@ const TIMEOUT_PRESETS = ['4h', '24h', '72h', '7d'];
 
 export function StepInspector({ def, nodeId, onChange, onClose, onCronValidity }: StepInspectorProps) {
   const { t } = useTranslation('pipelines');
-  const customAgents = useStore((s) => s.customAgents);
+  // Account-scoped catalog — the pipelines tab is account-scoped, so the
+  // project-scoped `customAgents` slice can be legitimately empty here.
+  const customAgents = useStore((s) => s.accountAgents);
 
   const step = def.steps.find((s) => s.id === nodeId);
   const isTrigger = nodeId === TRIGGER_NODE_ID;

@@ -1,26 +1,46 @@
 /**
- * PipelineRail — the left list rail on the AgentTree model: approval inbox
- * pinned on top, then the pipelines grouped by SCOPE (My / Organization —
- * both headers always render so an empty group is distinguishable from a
- * nonexistent one), invalid rows, orphan-activation rows, "+ New pipeline",
- * and the SPACE toggle (Workspace / Codespace) pinned in the footer —
- * icon-only when the rail is narrow. Activation is controlled ONLY in the
- * Execution view — the rail just reports it.
+ * PipelineRail — the left rail on the AgentTree model: an icon-only toolbar
+ * on top (+ New pipeline), the approval inbox, then the pipelines grouped by
+ * SCOPE (My / Organization — both headers always render so an empty group is
+ * distinguishable from a nonexistent one, and each group collapses
+ * independently), invalid rows, orphan-activation rows, and the SPACE toggle
+ * (Workspace / Codespace) pinned in the footer — icon-only when the rail is
+ * narrow. Availability is an icon, not a control: activation is managed ONLY
+ * in the Execution view; enable/disable lives in the workspace header.
  */
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, AlertTriangle, User, Building2, Boxes, Code2, Unlink } from 'lucide-react';
+import {
+  AlertTriangle,
+  Building2,
+  Boxes,
+  ChevronDown,
+  ChevronRight,
+  CircleCheck,
+  CircleSlash,
+  Code2,
+  Lock,
+  Plus,
+  Unlink,
+  User,
+} from 'lucide-react';
 import type { PipelineActivationView, PipelineListEntry, PipelineScope } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { pipelineDraftIsDirty } from '@/domain/store/slices/pipelineSlice';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
-import { Button } from '../aurora';
-import { StatusPill } from '../ConfigEditor/aurora';
+import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
+import { Badge, Button } from '../aurora';
+import { selectedRowStyle, selectedRowLabel } from '../aurora/selection';
 import { ApprovalInbox } from './ApprovalInbox';
 import { relativeFromNow } from './CronBuilder';
 import type { PipelineSpace } from './index';
 
 const SCOPE_ORDER: PipelineScope[] = ['user', 'org'];
+
+/** AgentTree's toolbar icon box, verbatim, so the two rails read identically. */
+const TOOLBAR_ICON_CLASS =
+  'inline-flex items-center justify-center h-6 w-6 rounded text-[color:var(--text-3)] hover:text-[color:var(--text-2)] hover:bg-[color:var(--bg-hover)] transition-colors';
 
 export function PipelineRail({
   space,
@@ -44,13 +64,27 @@ export function PipelineRail({
   const newPipelineDraft = useStore((s) => s.newPipelineDraft);
   const deactivatePipelineById = useStore((s) => s.deactivatePipelineById);
   const isTeamActive = useStore(selectIsTeamActive);
+  const { showConfirm } = useAlertModalContext();
+
+  // Collapse state is per-scope and unpersisted (AgentTree doctrine).
+  const [collapsed, setCollapsed] = useState<Set<PipelineScope>>(new Set());
+  const toggleScope = (scope: PipelineScope) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(scope)) next.delete(scope);
+      else next.add(scope);
+      return next;
+    });
 
   const codespace = space === 'codespace';
   const compact = railWidth < 250;
 
-  const guardDirty = (): boolean => {
-    if (!pipelineDraftIsDirty(draft, saved)) return true;
-    return window.confirm(t('rail.discardConfirm', 'Discard unsaved changes?'));
+  const withDirtyGuard = (action: () => void) => {
+    if (!pipelineDraftIsDirty(draft, saved)) {
+      action();
+      return;
+    }
+    showConfirm(t('rail.discardConfirm', 'Discard unsaved changes?'), { onConfirm: action });
   };
 
   const groups = SCOPE_ORDER.map((scope) => ({
@@ -60,98 +94,112 @@ export function PipelineRail({
   }));
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--bg-surface)' }}>
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+    <div className="h-full flex flex-col min-h-0" style={{ background: 'var(--bg-surface)' }}>
+      <div className="flex-1 overflow-y-auto min-h-0">
         {codespace ? (
           <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '24px 14px', textAlign: 'center', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
             {t('space.codespaceRail', 'Pipelines are Workspace-only for now.')}
           </div>
         ) : (
-          <>
+          <div className="p-3 flex flex-col gap-3">
+            {/* Icon-only toolbar — labels survive as the accessible names. */}
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                title={t('rail.new', 'New pipeline')}
+                aria-label={t('rail.new', 'New pipeline')}
+                className={TOOLBAR_ICON_CLASS}
+                onClick={() => withDirtyGuard(() => newPipelineDraft())}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <ApprovalInbox />
-            <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {draftIsNew && (
-                <div
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 'var(--r-md)',
-                    border: '1px dashed var(--violet-500)',
-                    fontSize: 12,
-                    color: 'var(--violet-500)',
-                    fontWeight: 600,
-                  }}
-                >
-                  {t('rail.newDraft', 'New pipeline (unsaved)')}
-                </div>
-              )}
-              {groups.map(({ scope, entries, invalid: invalidRows }) => (
-                <div key={scope} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 2px 2px', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-3)' }}>
+            {draftIsNew && (
+              <div
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 'var(--r-md)',
+                  border: '1px dashed var(--violet-500)',
+                  fontSize: 12,
+                  color: 'var(--violet-500)',
+                  fontWeight: 600,
+                }}
+              >
+                {t('rail.newDraft', 'New pipeline (unsaved)')}
+              </div>
+            )}
+            {/* Both scope headers stay rendered even at zero rows — an absent
+                group is indistinguishable from a group that does not exist. */}
+            {groups.map(({ scope, entries, invalid: invalidRows }) => {
+              const isCollapsed = collapsed.has(scope);
+              const count = entries.length + invalidRows.length;
+              return (
+                <div key={scope} className="flex flex-col gap-0.5">
+                  <div
+                    className="text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1.5 px-1 cursor-pointer select-none"
+                    style={{ color: 'var(--text-4)' }}
+                    onClick={() => toggleScope(scope)}
+                  >
                     {scope === 'user' ? <User size={11} /> : <Building2 size={11} />}
-                    <span>{scope === 'user' ? t('rail.scope.user', 'My pipelines') : t('rail.scope.org', 'Organization pipelines')}</span>
-                  </div>
-                  {entries.map((p) => (
-                    <RailRow
-                      key={p.id}
-                      entry={p}
-                      active={selectedId === p.id}
-                      onSelect={() => {
-                        if (!guardDirty()) return;
-                        void selectPipeline(p.id);
-                      }}
-                    />
-                  ))}
-                  {invalidRows.map((entry) => (
-                    <div
-                      key={entry.id}
-                      title={entry.error}
-                      style={{
-                        padding: '9px 12px',
-                        borderRadius: 'var(--r-md)',
-                        border: '1px solid var(--red-500)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 7,
-                        fontSize: 12,
-                        color: 'var(--red-500)',
+                    <span className="flex-1 truncate">
+                      {scope === 'user' ? t('rail.scope.user', 'My pipelines') : t('rail.scope.org', 'Organization pipelines')}
+                    </span>
+                    {isCollapsed && count > 0 && <span>{count}</span>}
+                    <button
+                      type="button"
+                      className="p-0.5 shrink-0 text-[color:var(--text-4)] hover:text-[color:var(--text-2)]"
+                      aria-label={isCollapsed ? t('rail.expand', 'Expand') : t('rail.collapse', 'Collapse')}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleScope(scope);
                       }}
                     >
-                      <AlertTriangle size={13} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.id}</span>
-                    </div>
-                  ))}
-                  {!loading && entries.length === 0 && invalidRows.length === 0 && (
-                    <div style={{ fontSize: 11.5, color: 'var(--text-3)', padding: '4px 6px 8px', lineHeight: 1.6 }}>
-                      {scope === 'user'
-                        ? t('rail.scope.emptyUser', 'No pipelines of your own yet.')
-                        : isTeamActive
-                          ? t('rail.scope.emptyOrg', 'Nothing shared with the organization yet.')
-                          : t('rail.scope.emptyOrgNoTeam', 'Join a team organization to share pipelines.')}
-                    </div>
+                      {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+                  </div>
+                  {!isCollapsed && (
+                    <>
+                      {entries.map((p) => (
+                        <RailRow
+                          key={p.id}
+                          entry={p}
+                          active={selectedId === p.id}
+                          onSelect={() => withDirtyGuard(() => void selectPipeline(p.id))}
+                        />
+                      ))}
+                      {invalidRows.map((entry) => (
+                        <div
+                          key={entry.id}
+                          title={entry.error}
+                          className="flex items-center gap-1.5 py-1.5 pl-2 pr-1 rounded text-xs"
+                          style={{ color: 'var(--red-500)' }}
+                        >
+                          <AlertTriangle size={13} className="shrink-0" />
+                          <span className="truncate flex-1">{entry.id}</span>
+                        </div>
+                      ))}
+                      {!loading && entries.length === 0 && invalidRows.length === 0 && (
+                        <div className="py-1 pl-2 pr-1" style={{ fontSize: 10.5, lineHeight: 1.45, color: 'var(--text-4)' }}>
+                          {scope === 'user'
+                            ? t('rail.scope.emptyUser', 'No pipelines of your own yet.')
+                            : isTeamActive
+                              ? t('rail.scope.emptyOrg', 'Nothing shared with the organization yet.')
+                              : t('rail.scope.emptyOrgNoTeam', 'Join a team organization to share pipelines.')}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-              ))}
-              {orphans.map((o) => (
-                <OrphanRow key={`${o.pipelineId}:${o.projectId}`} view={o} onDeactivate={() => void deactivatePipelineById(o.pipelineId, o.projectId)} />
-              ))}
-            </div>
-          </>
+              );
+            })}
+            {orphans.map((o) => (
+              <OrphanRow key={`${o.pipelineId}:${o.projectId}`} view={o} onDeactivate={() => void deactivatePipelineById(o.pipelineId, o.projectId)} />
+            ))}
+          </div>
         )}
       </div>
-      <div style={{ padding: 10, borderTop: '1px solid var(--border-1)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {!codespace && (
-          <Button
-            variant="secondary"
-            size="sm"
-            fullWidth
-            onClick={() => {
-              if (!guardDirty()) return;
-              newPipelineDraft();
-            }}
-          >
-            <Plus size={13} /> {t('rail.new', 'New pipeline')}
-          </Button>
-        )}
+      <div style={{ padding: 10, borderTop: '1px solid var(--border-1)' }}>
         {/* Space toggle — Workspace is the only supported space for now. */}
         <div style={{ display: 'flex', gap: 4, borderRadius: 'var(--r-md)', border: '1px solid var(--border-1)', padding: 3 }}>
           {(
@@ -203,60 +251,45 @@ function RailRow({
 }) {
   const { t } = useTranslation('pipelines');
   const awaiting = entry.pendingApprovalCount > 0;
-  const mine = entry.activations.filter((a) => a.mine);
   const running = entry.activations.some((a) => a.state === 'running' || a.state === 'awaiting_human');
+  const nextFire = entry.nextFireAt ? relativeFromNow(entry.nextFireAt, t as any) : null;
   return (
     <div
       onClick={onSelect}
-      style={{
-        padding: '9px 10px',
-        borderRadius: 'var(--r-md)',
-        border: `1px solid ${active ? 'var(--violet-500)' : 'var(--border-1)'}`,
-        background: active ? 'color-mix(in srgb, var(--violet-500) 7%, transparent)' : 'var(--bg-surface)',
-        cursor: 'pointer',
-      }}
+      title={nextFire ? `${entry.name} · ${nextFire}` : entry.name}
+      className="group flex items-center gap-1.5 py-1.5 pl-2 pr-1 rounded text-xs cursor-pointer hover:bg-[color:var(--bg-hover)]"
+      style={{ ...selectedRowStyle('violet', active), ...selectedRowLabel(active, 'var(--text-2)') }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {entry.name}
-        </span>
-        {entry.activations.length > 0 && (
-          <span
-            title={entry.activations.map((a) => `${a.projectId} (${a.activatedBy})`).join('\n')}
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              padding: '1px 7px',
-              borderRadius: 8,
-              background: 'color-mix(in srgb, var(--violet-500) 12%, transparent)',
-              color: 'var(--violet-400)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {t('rail.activations', '{{n}} active', { n: entry.activations.length })}
-          </span>
-        )}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
-        {awaiting ? (
-          <StatusPill state="warning" label={t('rail.awaiting', '{{n}} waiting', { n: entry.pendingApprovalCount })} />
-        ) : running ? (
-          <StatusPill state="checking" label={t('rail.running', 'Running')} />
-        ) : entry.enabled ? (
-          <StatusPill state="connected" label={t('rail.enabled', 'Enabled')} />
-        ) : (
-          <StatusPill state="not-configured" label={t('rail.draft', 'Draft')} />
-        )}
-        {entry.readonly && <StatusPill state="not-configured" label={t('rail.readonly', 'readonly')} />}
-        {mine.length > 0 && entry.nextFireAt && (
-          <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>
-            {relativeFromNow(entry.nextFireAt, t as any)}
-          </span>
-        )}
-        <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>
-          {t('rail.steps', '{{n}} steps', { n: entry.stepCount })}
-        </span>
-      </div>
+      {entry.enabled ? (
+        <CircleCheck size={13} className="shrink-0" style={{ color: 'var(--emerald-500)' }} aria-label={t('rail.enabled', 'Enabled')} />
+      ) : (
+        <CircleSlash size={13} className="shrink-0" style={{ color: 'var(--red-500)' }} aria-label={t('rail.draft', 'Disabled')} />
+      )}
+      <span className="truncate flex-1">{entry.name}</span>
+      {awaiting && (
+        <Badge tone="warning" size="sm" title={t('rail.awaiting', '{{n}} waiting', { n: entry.pendingApprovalCount })}>
+          {entry.pendingApprovalCount}
+        </Badge>
+      )}
+      {running && (
+        <span
+          className="shrink-0 rounded-full animate-pulse"
+          style={{ width: 7, height: 7, background: 'var(--violet-500)' }}
+          title={t('rail.running', 'Running')}
+        />
+      )}
+      {entry.activations.length > 0 && (
+        <Badge
+          tone="brand"
+          size="sm"
+          title={entry.activations.map((a) => `${a.projectId} (${a.activatedBy})`).join('\n')}
+        >
+          {entry.activations.length}
+        </Badge>
+      )}
+      {entry.readonly && (
+        <Lock size={11} className="shrink-0" style={{ color: 'var(--text-4)' }} aria-label={t('rail.readonly', 'readonly')} />
+      )}
     </div>
   );
 }
@@ -267,19 +300,11 @@ function OrphanRow({ view, onDeactivate }: { view: PipelineActivationView; onDea
   return (
     <div
       title={t('rail.orphanHint', 'This activation references a pipeline that no longer exists.')}
-      style={{
-        padding: '9px 10px',
-        borderRadius: 'var(--r-md)',
-        border: '1px dashed var(--red-500)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        fontSize: 11.5,
-        color: 'var(--text-2)',
-      }}
+      className="flex items-center gap-1.5 py-1.5 pl-2 pr-1 rounded"
+      style={{ border: '1px dashed var(--red-500)', fontSize: 11.5, color: 'var(--text-2)' }}
     >
-      <Unlink size={12} style={{ color: 'var(--red-500)', flexShrink: 0 }} />
-      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <Unlink size={12} className="shrink-0" style={{ color: 'var(--red-500)' }} />
+      <span className="truncate flex-1 min-w-0">
         {view.pipelineId} · {view.projectId}
       </span>
       <Button variant="ghost" size="xs" onClick={onDeactivate}>

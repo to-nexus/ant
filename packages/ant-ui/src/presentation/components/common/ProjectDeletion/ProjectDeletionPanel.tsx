@@ -24,6 +24,7 @@ export interface ProjectDeletionPanelProps {
 
 export const PROJECT_DELETION_STEP_ORDER: readonly ProjectDeletionPhase[] = [
   'cancelJobs',
+  'pipelineCleanup',
   'ideCleanup',
   'previewCleanup',
   'redisCleanup',

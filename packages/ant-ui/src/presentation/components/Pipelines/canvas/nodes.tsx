@@ -11,8 +11,13 @@ import { Clock, Bot, ShieldCheck, Plus, Zap, Ban } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { PipelineStepStatus } from '@ant/shared';
 
+/** Card width — PipelineCanvas feeds it to dagre alongside the height estimate. */
+export const NODE_WIDTH = 230;
+
 export interface PipelineNodeData {
+  /** Primary identity line (agent display name / Schedule / Approval) — wraps, never truncates. */
   title: string;
+  /** Secondary identity line (job display name / cron / timeout) — wraps, never truncates. */
   subtitle?: string;
   /** Intent chip (job steps). */
   chip?: string;
@@ -122,7 +127,7 @@ function shell(data: PipelineNodeData, accentVar: string): React.CSSProperties {
   const statusColor = data.status ? STATUS_COLOR[data.status] : undefined;
   return {
     position: 'relative',
-    width: 210,
+    width: NODE_WIDTH,
     borderRadius: 'var(--r-md)',
     background: 'var(--bg-surface)',
     border: `1.5px solid ${data.selected ? accentVar : statusColor ?? 'var(--border-1)'}`,
@@ -180,12 +185,14 @@ function NodeHeader({ icon, title, subtitle, chip, invalid }: { icon: React.Reac
       >
         {icon}
       </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {/* Identity lines wrap instead of truncating — the card's job is to name
+          the step, and an ellipsised name names nothing. */}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, lineHeight: '17px', color: 'var(--text-1)', overflowWrap: 'anywhere' }}>
           {title}
         </div>
         {subtitle && (
-          <div style={{ fontSize: 10.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 11, fontWeight: 500, lineHeight: '15px', marginTop: 1, color: 'var(--text-2)', overflowWrap: 'anywhere' }}>
             {subtitle}
           </div>
         )}
