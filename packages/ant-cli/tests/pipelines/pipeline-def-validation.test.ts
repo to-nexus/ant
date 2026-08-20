@@ -6,15 +6,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, PIPELINE_DEF_VERSION } from '@ant/shared';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
 function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    version: 1,
+    version: PIPELINE_DEF_VERSION,
     name: 'Weekly digest',
-    enabled: true,
-    projectId: 'proj-x',
     on: { schedule: { cron: '0 9 * * 1', tz: 'Asia/Seoul' } },
     steps: [
       { id: 'collect', customJobRef: 'research/collect', directive: 'Collect sources' },
@@ -54,7 +52,12 @@ describe('validatePipelineDef — structural rules', () => {
   });
 
   const invalid: Array<[string, Record<string, unknown>, RegExp]> = [
-    ['wrong version', baseDef({ version: 2 }), /version must be 1/],
+    ['v1 version', baseDef({ version: 1 }), /version must be 2/],
+    ['wrong version', baseDef({ version: 3 }), /version must be 2/],
+    ['v1 enabled key (moved to activation)', baseDef({ enabled: true }), /"enabled" moved to activation/],
+    ['v1 projectId key (moved to activation)', baseDef({ projectId: 'proj-x' }), /"projectId" moved to activation/],
+    ['reserved step key jobType (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', jobType: 'code' }] }), /"jobType" is not supported yet/],
+    ['reserved step key feature (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', feature: 'main' }] }), /"feature" is not supported yet/],
     ['empty name', baseDef({ name: '' }), /name/],
     ['missing schedule', baseDef({ on: {} }), /on\.schedule is required/],
     ['4-field cron', baseDef({ on: { schedule: { cron: '0 9 * *' } } }), /5 fields/],
@@ -121,5 +124,28 @@ describe('validatePipelineDefServer — cron interval + gate anchor', () => {
       ],
     }));
     expect(errors.join('\n')).toMatch(/cannot be the entry step/);
+  });
+});
+
+describe('validatePipelineActivation — the pipeline↔project binding record', () => {
+  const valid: Array<[string, Record<string, unknown>]> = [
+    ['minimal binding', { projectId: 'proj-x', activatedAt: '2026-08-20T00:00:00.000Z' }],
+    ['with activatedBy', { projectId: 'proj-x', activatedAt: '2026-08-20T00:00:00.000Z', activatedBy: 'user-1' }],
+  ];
+  it.each(valid)('accepts: %s', (_label, raw) => {
+    expect(validatePipelineActivation(raw)).toEqual([]);
+  });
+
+  const invalid: Array<[string, unknown, RegExp]> = [
+    ['non-object', 'proj-x', /must be an object/],
+    ['missing projectId', { activatedAt: '2026-08-20T00:00:00.000Z' }, /projectId/],
+    ['bad timestamp', { projectId: 'p', activatedAt: 'yesterday' }, /ISO timestamp/],
+    ['unknown key', { projectId: 'p', activatedAt: '2026-08-20T00:00:00.000Z', token: 'x' }, /unknown key "token"/],
+    ['featureId reserved (canonical future axis)', { projectId: 'p', activatedAt: '2026-08-20T00:00:00.000Z', featureId: 'main' }, /not supported yet/],
+  ];
+  it.each(invalid)('rejects: %s', (_label, raw, pattern) => {
+    const errors = validatePipelineActivation(raw);
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.join('\n')).toMatch(pattern);
   });
 });

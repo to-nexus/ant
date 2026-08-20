@@ -25,6 +25,7 @@ import {
   resolveUniversalExecuteContext,
   validateUniversalTurnMeta,
   findDuplicateActiveJob,
+  findProjectPipelineActivation,
   checkStartCredits as checkStartCreditsGate,
 } from '../../../../core/scheduling/UniversalDispatchGate';
 import type { JobStateTracker } from '../express/managers/JobStateTracker';
@@ -308,6 +309,27 @@ export function createJobRoutes(deps: {
         );
         return res.status(status).json({ error, code });
       };
+
+      // Pipeline mutual exclusion: an ACTIVE pipeline owns its project —
+      // interactive starts never supersede or queue behind a scheduled step.
+      // Gate owner: `findProjectPipelineActivation` (UniversalDispatchGate).
+      const pipelineOwner = await findProjectPipelineActivation(deps.stateStore, userContext, projectId);
+      if (pipelineOwner) {
+        await emitConflictAssistantMessage(
+          projectId,
+          featureName,
+          effectiveTurnId,
+          `pipe-${effectiveTurnId ?? Date.now()}`,
+          userContext,
+          '이 프로젝트는 활성화된 파이프라인이 소유하고 있습니다. 파이프라인을 비활성화한 후 작업을 시작할 수 있습니다.',
+          jobType,
+        );
+        return res.status(409).json({
+          error: 'An active pipeline owns this project. Deactivate it before starting interactive work.',
+          code: 'project-pipeline-active',
+          pipelineId: pipelineOwner.pipelineId,
+        });
+      }
 
       // Reverse gate (D6): canonical job types never run on a workspace project.
       if (jobType !== 'universal') {
@@ -1003,6 +1025,19 @@ export function createJobRoutes(deps: {
         });
       }
 
+      // Pipeline mutual exclusion — resuming interactive work in a
+      // pipeline-owned project is still an interactive start.
+      if (projectId) {
+        const pipelineOwnerResume = await findProjectPipelineActivation(deps.stateStore, userContext, projectId);
+        if (pipelineOwnerResume) {
+          return res.status(409).json({
+            error: 'An active pipeline owns this project. Deactivate it before resuming interactive work.',
+            code: 'project-pipeline-active',
+            pipelineId: pipelineOwnerResume.pipelineId,
+          });
+        }
+      }
+
       // ── Universal resume: the (agent, job) conversation is always-valid
       // resume context (non-task job — no task-queue checkpoint to gate on).
       // The FE supplies the definition ref; it round-trips through the
@@ -1272,6 +1307,16 @@ export function createJobRoutes(deps: {
         return res.status(continueRejected.status).json({ error: continueRejected.error, code: continueRejected.code });
       }
 
+      // Pipeline mutual exclusion — continue is an interactive start too.
+      const pipelineOwnerContinue = await findProjectPipelineActivation(deps.stateStore, userContext, projectId);
+      if (pipelineOwnerContinue) {
+        return res.status(409).json({
+          error: 'An active pipeline owns this project. Deactivate it before continuing interactive work.',
+          code: 'project-pipeline-active',
+          pipelineId: pipelineOwnerContinue.pipelineId,
+        });
+      }
+
       const featurePath = deps.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
       let jobType: string | null = null;
@@ -1390,6 +1435,18 @@ export function createJobRoutes(deps: {
       const inlineAskRejected = await rejectCanonicalJobOnUniversalProject(deps.workspaceResolver, userContext, projectId, 'inline-ask');
       if (inlineAskRejected) {
         return res.status(inlineAskRejected.status).json({ error: inlineAskRejected.error, code: inlineAskRejected.code });
+      }
+
+      // Pipeline mutual exclusion — even a read-only ask is a job start that
+      // would collide with the project-level duplicate gate a scheduled step
+      // relies on.
+      const pipelineOwnerAsk = await findProjectPipelineActivation(deps.stateStore, userContext, projectId);
+      if (pipelineOwnerAsk) {
+        return res.status(409).json({
+          error: 'An active pipeline owns this project. Deactivate it before starting interactive work.',
+          code: 'project-pipeline-active',
+          pipelineId: pipelineOwnerAsk.pipelineId,
+        });
       }
 
       // Without a threaded turnId the worker's recordUserTurn mints a fresh

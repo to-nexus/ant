@@ -8,6 +8,7 @@
 import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { Clock, Bot, ShieldCheck, Plus, Zap, Ban } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { PipelineStepStatus } from '@ant/shared';
 
 export interface PipelineNodeData {
@@ -35,6 +36,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 function AddButton({ data }: { data: PipelineNodeData }) {
+  const { t } = useTranslation('pipelines');
   const [open, setOpen] = useState(false);
   if (!data.onAdd) return null;
   return (
@@ -85,7 +87,7 @@ function AddButton({ data }: { data: PipelineNodeData }) {
             }}
             style={menuItemStyle}
           >
-            <Zap size={12} /> Job step
+            <Zap size={12} /> {t('canvas.addJobStep', 'Job step')}
           </button>
           <button
             onClick={() => {
@@ -94,7 +96,7 @@ function AddButton({ data }: { data: PipelineNodeData }) {
             }}
             style={menuItemStyle}
           >
-            <ShieldCheck size={12} /> Approval gate
+            <ShieldCheck size={12} /> {t('canvas.addGate', 'Approval gate')}
           </button>
         </div>
       )}

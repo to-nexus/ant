@@ -3,6 +3,8 @@ import { AlertTriangle, Send, ChevronDown, Square } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { useChatPolicy } from '@/application/hooks/ui/useChatPolicy';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
+import { selectActivePipelineForSelectedProject } from '@/domain/store/selectors/pipelines';
+import { cancelPipelineRun } from '@/infrastructure/http/api/pipelines';
 import { useTranslation } from 'react-i18next';
 import type { Agent } from '@/infrastructure/http/api';
 import type { AgentWithMetadata, JobWithMetadata } from './hooks/useAgentJobOptions';
@@ -172,7 +174,25 @@ export function AgentJobToolbar({
     }
   };
 
-  const handleStop = () => stopJob();
+  // A running pipeline STEP must never be raw-stopped (the scheduler would
+  // see a silent kill): confirm, then cancel the whole pipeline RUN through
+  // the pipeline API.
+  const activePipeline = useStore((state) => selectActivePipelineForSelectedProject(state));
+  const handleStop = () => {
+    if (activePipeline && (chatPolicy.reason === 'pipeline-running' || chatPolicy.reason === 'pipeline-active')) {
+      if (!activePipeline.currentRunId) return;
+      const confirmed = window.confirm(
+        t('input.pipelineStopConfirm', {
+          defaultValue: 'This job is a step of pipeline "{{name}}". Stopping it cancels the whole pipeline run.',
+          name: activePipeline.pipelineName,
+        }),
+      );
+      if (!confirmed) return;
+      void cancelPipelineRun(activePipeline.currentRunId, activePipeline.pipelineId);
+      return;
+    }
+    stopJob();
+  };
 
   // The agent chip is marked by `AgentLogo` (the Ant character) in both
   // runtimes — an agent may be user-authored, so there is no per-agent art to

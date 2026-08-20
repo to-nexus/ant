@@ -9,6 +9,7 @@
     "sendMessage": "Send message",
     "completeSelection": "Complete selection to enable",
     "stopJob": "Stop the running job",
+    "pipelineStopConfirm": "This job is a step of pipeline \"{{name}}\". Stopping it cancels the whole pipeline run.",
     "stop": "Stop",
     "stopping": "Stopping...",
     "filesEdited": "{{count}} File(s) Edited"
@@ -283,6 +284,12 @@
       "searching_code": "Code Search"
     }
   },
+  "banner": {
+    "pipelineWorking": "working",
+    "pipelineWaiting": "waiting",
+    "pipelineNextFire": "next: {{when}}",
+    "pipelineManage": "Manage"
+  },
   "policy": {
     "signInPlaceholder": "Please sign in to start chatting...",
     "signInMessage": "Please sign in from the navigation bar to continue",
@@ -295,6 +302,8 @@
     "selectJobPlaceholder": "Select a job type to continue...",
     "selectJobMessage": "Please select a job type from the selector below",
     "jobRunningPlaceholder": "Job is running. Stop the job to send a new message...",
+    "pipelineActivePlaceholder": "Pipeline \"{{name}}\" owns this project (next run: {{when}}). Deactivate it to chat.",
+    "pipelineRunningPlaceholder": "Pipeline \"{{name}}\" is running a step — chat is locked.",
     "queueWaitingPlaceholder": "Waiting in queue ({{position}}/{{total}}). Stop to cancel...",
     "interruptedPlaceholder": "Send a message to continue with additional feedback...",
     "firstMessagePlaceholder": "Start your conversation with the agent...",

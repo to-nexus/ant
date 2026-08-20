@@ -179,6 +179,34 @@ export async function findDuplicateActiveJob(
 }
 
 /**
+ * Pipeline mutual-exclusion gate: while a project has an ACTIVE pipeline, the
+ * pipeline owns the project — every interactive job start (execute / resume /
+ * continue / inline-ask) is rejected so scheduled steps are never superseded
+ * or queued behind a human. Reads the `ant:pipe:proj` PROJECTION (disk
+ * `activation.json` is SSOT; the TTL+reconciler refresh means the gate fails
+ * OPEN when the projection lapses, never closed). This is a separate gate
+ * axis from `decideProjectJobGate` (project×jobType truth table) — never fold
+ * it in there. The pipeline coordinator itself never calls this: the pipeline
+ * is exempt from its own lock.
+ */
+export async function findProjectPipelineActivation(
+  stateStore: { getKey(key: string): Promise<string | null> },
+  userContext: { userId: string; organizationId: string },
+  projectId: string,
+): Promise<{ pipelineId: string } | null> {
+  const { REDIS_KEYS } = await import('../constants/redis');
+  try {
+    const pipelineId = await stateStore.getKey(
+      REDIS_KEYS.PIPE.PROJECT(userContext.organizationId, userContext.userId, projectId),
+    );
+    return pipelineId ? { pipelineId } : null;
+  } catch (err) {
+    logger.warn('pipeline-activation gate read failed — allowing job', { component: 'DispatchGate' }, err as any);
+    return null;
+  }
+}
+
+/**
  * Pre-flight credit gate for STARTING / RESUMING a job. Returns a 402 payload
  * `{ balance, required }` when the account is below the cloud overlay's
  * `minStartCredits`, else null (allow). No-op (null) when billing is disabled

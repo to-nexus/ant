@@ -224,6 +224,7 @@ export class ChatService {
     userContext?: UserContext,
     actionMetadata?: import('@ant/shared').ActionMetadata,
     jobType?: LogJobType,
+    pipeline?: import('@ant/shared').ChatUserTurnLine['pipeline'],
   ): Promise<void> {
     const ctx = userContext ?? this.defaultUserContext;
     const line: ChatUserTurnLine = {
@@ -240,6 +241,7 @@ export class ChatService {
       ...(actionMetadata && Object.keys(actionMetadata).length > 0
         ? { actionMetadata }
         : {}),
+      ...(pipeline && { pipeline }),
     };
     const adapter = this.makeAdapter(projectId, featureName, ctx);
     await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);
@@ -263,6 +265,7 @@ export class ChatService {
       turnId?: string | null;
       jobType?: LogJobType;
       userContext?: UserContext;
+      kind?: import('@ant/shared').ChatAssistantMessageKind;
     },
   ): Promise<void> {
     if (!text) return;
@@ -280,6 +283,7 @@ export class ChatService {
       turnId,
       jobType: args.jobType ?? DEFAULT_JOB_TYPE,
       text,
+      ...(args.kind && { kind: args.kind }),
     };
 
     await this.appendAndBroadcast(adapter, projectId, featureName, line, ctx);

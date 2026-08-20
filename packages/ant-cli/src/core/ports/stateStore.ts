@@ -46,6 +46,10 @@ export interface JobStatusData {
    * `ChatService.resolveCancelledCardTurnId`.
    */
   turnId?: string;
+  /** Pipeline attribution — absent on interactive starts. */
+  firedBy?: 'user' | 'schedule' | 'chain';
+  pipelineRunId?: string;
+  pipelineStepId?: string;
 }
 
 // ============================================

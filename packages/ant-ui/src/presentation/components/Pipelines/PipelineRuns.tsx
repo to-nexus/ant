@@ -40,7 +40,6 @@ export function PipelineRuns({ pipelineId }: { pipelineId: string }) {
   const detail = useStore((s) => s.pipelineRunDetail);
   const loadPipelineRuns = useStore((s) => s.loadPipelineRuns);
   const loadPipelineRunDetail = useStore((s) => s.loadPipelineRunDetail);
-  const selectedProject = useStore((s) => s.selectedProject);
 
   useEffect(() => {
     void loadPipelineRuns(pipelineId);
@@ -73,7 +72,7 @@ export function PipelineRuns({ pipelineId }: { pipelineId: string }) {
             live={detail.status === 'running' || detail.status === 'awaiting_human'}
             onCancel={
               detail.status === 'running' || detail.status === 'awaiting_human'
-                ? () => selectedProject && void cancelPipelineRun(selectedProject, detail.runId, pipelineId)
+                ? () => void cancelPipelineRun(detail.runId, pipelineId)
                 : undefined
             }
           />

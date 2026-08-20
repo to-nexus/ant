@@ -87,6 +87,10 @@ export interface JobProjectMapping {
   userContext?: UserContext;
   /** Universal only — `{agentId}/{jobId}` of the definition this run executed. */
   customJobRef?: string;
+  /** Pipeline attribution — absent on interactive starts. */
+  firedBy?: 'user' | 'schedule' | 'chain';
+  pipelineRunId?: string;
+  pipelineStepId?: string;
 }
 
 // ============================================

@@ -40,6 +40,43 @@ describe('single dispatch owner', () => {
     expect(coordinator).toMatch(/findDuplicateActiveJob/);
     expect(coordinator).toMatch(/checkStartCredits/);
   });
+
+  it('the coordinator has chat/tracker parity with the HTTP path (user turn before enqueue, stateTracker forwarded)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/appendUserTurn/);
+    expect(coordinator).toMatch(/stateTracker:\s*this\.deps\.stateTracker/);
+    // The pipeline is exempt from its own project lock — the coordinator
+    // never reads the mutual-exclusion gate.
+    expect(coordinator).not.toMatch(/findProjectPipelineActivation/);
+  });
+});
+
+describe('pipeline↔project mutual exclusion', () => {
+  it('every interactive job-start path re-judges the pipeline-owned gate', () => {
+    const routes = read('periphery/adapters/http/routes/job.routes.ts');
+    expect(routes).toMatch(/findProjectPipelineActivation/);
+    // execute + resume + continue + inline-ask all answer the same code.
+    expect(routes.match(/project-pipeline-active/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+  });
+
+  it('the definition is edit-locked while activated (PUT + DELETE answer pipeline-activated)', () => {
+    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    expect(routes.match(/code:\s*'pipeline-activated'/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('activation requires a quiet project (live-job gate) and a universal project', () => {
+    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    expect(routes).toMatch(/project-has-live-job/);
+    expect(routes).toMatch(/project-has-active-pipeline/);
+    expect(routes).toMatch(/project-not-universal/);
+    expect(routes).toMatch(/findDuplicateActiveJob/);
+  });
+
+  it('pipeline routes mount account-scoped, not project-scoped', () => {
+    const rc = read('periphery/adapters/http/express/config/RouteConfigurator.ts');
+    expect(rc).toMatch(/'\/api\/pipelines'/);
+    expect(rc).not.toMatch(/'\/api\/projects\/:projectId\/pipelines'/);
+  });
 });
 
 describe('scheduler confinement', () => {

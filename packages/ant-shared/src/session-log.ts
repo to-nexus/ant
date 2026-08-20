@@ -397,6 +397,13 @@ export interface ChatUserTurnLine extends LineBase {
   sourceRef: string;
   /** Structured context from the Actions panel (intent, target, refs, context). Persisted so badges survive page refresh. */
   actionMetadata?: import('./actions').ActionMetadata;
+  /** Present when the turn was minted by the pipeline scheduler, not a human. */
+  pipeline?: {
+    pipelineId: string;
+    runId: string;
+    stepId: string;
+    firedBy: 'cron' | 'manual';
+  };
 }
 
 export interface ChatThinkingLine extends LineBase {

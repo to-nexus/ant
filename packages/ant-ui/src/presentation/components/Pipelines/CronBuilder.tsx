@@ -10,7 +10,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuroraSelect, AuroraInput, FieldLabel } from '../ConfigEditor/aurora';
 import { previewPipelineFires } from '@/infrastructure/http/api/pipelines';
-import { useStore } from '@/domain/store';
 
 const PRESETS: Array<{ id: string; cron: string }> = [
   { id: 'hourly', cron: '0 * * * *' },
@@ -30,7 +29,6 @@ export interface CronBuilderProps {
 
 export function CronBuilder({ cron, tz, onChange, onValidity }: CronBuilderProps) {
   const { t } = useTranslation('pipelines');
-  const selectedProject = useStore((s) => s.selectedProject);
   const [preview, setPreview] = useState<{ ok: boolean; error?: string; fires: string[] } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -43,11 +41,10 @@ export function CronBuilder({ cron, tz, onChange, onValidity }: CronBuilderProps
   }, [browserTz, tz]);
 
   useEffect(() => {
-    if (!selectedProject) return;
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const result = await previewPipelineFires(selectedProject, cron, tz);
+        const result = await previewPipelineFires(cron, tz);
         setPreview(result);
         onValidity(result.ok);
       } catch {
@@ -56,7 +53,7 @@ export function CronBuilder({ cron, tz, onChange, onValidity }: CronBuilderProps
     }, 350);
     return () => clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cron, tz, selectedProject]);
+  }, [cron, tz]);
 
   const fmt = useMemo(
     () => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz || undefined }),

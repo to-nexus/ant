@@ -1,19 +1,19 @@
 /**
  * PipelinesPanel — the `pipelines` main-panel tab: resizable rail (approval
- * inbox + pipeline list) beside the n8n-style editor. Universal (workspace)
- * projects only; the panel splits by project kind itself (ActionsPanel
- * doctrine) instead of threading a store-level tab gate.
+ * inbox + pipeline list) beside the three-view workspace (editor / execution
+ * / run history). ACCOUNT-scoped: definitions are cross-project, so the panel
+ * renders regardless of the selected project; the project binding happens in
+ * the Execution view's activation flow.
  */
 
-import { useTranslation } from 'react-i18next';
+import { useEffect } from 'react';
 import { useStore } from '@/domain/store';
 import { useResizableWidth } from '../AgentSettings/useResizableWidth';
 import { PipelineRail } from './PipelineRail';
-import { PipelineEditor } from './PipelineEditor';
+import { PipelineWorkspace } from './PipelineWorkspace';
 
 export function PipelinesPanel() {
-  const { t } = useTranslation('pipelines');
-  const isUniversal = useStore((s) => s.projectType === 'universal');
+  const loadPipelines = useStore((s) => s.loadPipelines);
   const { width, isResizing, startResize } = useResizableWidth({
     storageKey: 'ant-ui:pipelines-rail-width',
     min: 220,
@@ -21,13 +21,10 @@ export function PipelinesPanel() {
     defaultWidth: 280,
   });
 
-  if (!isUniversal) {
-    return (
-      <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 13, textAlign: 'center', lineHeight: 1.7, whiteSpace: 'pre-line' }}>
-        {t('panel.universalOnly', 'Pipelines schedule custom agent jobs.\nOpen a workspace (universal) project to use them.')}
-      </div>
-    );
-  }
+  // Lazy account-scoped bootstrap — the tab is the only consumer of the list.
+  useEffect(() => {
+    void loadPipelines();
+  }, [loadPipelines]);
 
   return (
     <div style={{ height: '100%', display: 'flex', background: 'var(--bg-canvas)', minHeight: 0, overflow: 'hidden' }}>
@@ -46,7 +43,7 @@ export function PipelinesPanel() {
         />
       </div>
       <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-        <PipelineEditor />
+        <PipelineWorkspace />
       </div>
     </div>
   );

@@ -1,19 +1,37 @@
 {
-  "panel": {
-    "universalOnly": "파이프라인은 커스텀 에이전트 잡을 스케줄로 실행합니다.\n워크스페이스(universal) 프로젝트에서 사용할 수 있어요."
-  },
   "rail": {
     "new": "새 파이프라인",
     "newDraft": "새 파이프라인 (저장 전)",
     "empty": "아직 파이프라인이 없습니다.\n에이전트 잡을 스케줄로 엮어보세요.",
-    "toggle": "파이프라인 활성화",
-    "runNow": "지금 실행",
     "awaiting": "{{n}}건 대기",
     "running": "실행 중",
-    "enabled": "켜짐",
-    "disabled": "꺼짐",
+    "active": "활성",
+    "inactive": "비활성",
     "steps": "스텝 {{n}}개",
     "discardConfirm": "저장하지 않은 변경사항을 버릴까요?"
+  },
+  "views": {
+    "editor": "에디터",
+    "execution": "실행",
+    "runs": "실행 이력"
+  },
+  "execution": {
+    "saveFirst": "먼저 파이프라인을 저장하세요 — 활성화는 저장된 파이프라인을 프로젝트에 바인딩합니다.",
+    "project": "프로젝트",
+    "pickProject": "워크스페이스 프로젝트를 선택하세요…",
+    "noProjects": "워크스페이스(universal) 프로젝트가 없습니다.",
+    "alreadyBound": "\"{{pipelineId}}\"에 바인딩됨",
+    "activate": "활성화",
+    "deactivate": "비활성화",
+    "stateInactive": "비활성",
+    "stateWaiting": "활성 · 대기",
+    "stateRunning": "활성 · 작업 중",
+    "nextFire": "다음 실행: {{when}}",
+    "currentStep": "현재 스텝: {{step}}",
+    "boundTo": "프로젝트 \"{{projectId}}\"에 바인딩됨 — 활성 상태에서는 해당 프로젝트의 수동 작업이 잠깁니다."
+  },
+  "chip": {
+    "firedByPipeline": "파이프라인 \"{{name}}\"이(가) 시작한 작업"
   },
   "inbox": {
     "title": "승인 대기",
@@ -24,14 +42,11 @@
   "editor": {
     "pickOne": "왼쪽에서 파이프라인을 선택하거나\n새로 만들어 보세요.",
     "namePlaceholder": "파이프라인 이름",
-    "enabled": "활성화",
-    "on": "켜짐",
-    "off": "꺼짐",
     "runNow": "지금 실행",
-    "runNowAccepted": "발화했습니다 — Runs에서 확인하세요.",
-    "viewEditor": "에디터",
-    "viewRuns": "실행 이력",
-    "viewMode": "에디터 뷰",
+    "runNowAccepted": "발화했습니다 — 실행 이력에서 확인하세요.",
+    "viewMode": "파이프라인 뷰",
+    "readOnlyActivated": "\"{{projectId}}\"에 활성화됨 — 편집하려면 실행 탭에서 비활성화하세요.",
+    "goExecution": "실행 탭 열기",
     "unsaved": "저장되지 않은 변경사항",
     "unsavedNew": "아직 저장되지 않음",
     "badCron": "저장하려면 스케줄을 고쳐주세요.",
@@ -44,7 +59,9 @@
     "trigger": "스케줄",
     "approval": "승인 게이트",
     "unconfigured": "잡을 선택하세요…",
-    "noTimeout": "타임아웃 없음"
+    "noTimeout": "타임아웃 없음",
+    "addJobStep": "잡 스텝",
+    "addGate": "승인 게이트"
   },
   "inspector": {
     "trigger": "트리거·정책",
@@ -125,7 +142,7 @@
   },
   "danger": {
     "title": "파이프라인 삭제",
-    "desc": "정의와 실행 이력이 제거됩니다. 진행 중인 run은 취소됩니다.",
+    "desc": "정의와 실행 이력이 제거됩니다.",
     "delete": "삭제",
     "confirm": "정말 삭제할까요?",
     "deleting": "삭제 중…"

@@ -105,10 +105,10 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
       }
       if (state.selectedProject) {
         void get().loadCustomAgents(state.selectedProject);
-        // Pipelines rail rides the same bootstrap chain — data is ready
-        // before the tab is opened, and re-runs on universal↔universal
-        // project switches for the same reason as the agent list.
-        void get().loadPipelines?.(state.selectedProject);
+        // Chat lock signal: does THIS project have an active pipeline? The
+        // pipelines LIST itself loads lazily on tab open (account-scoped);
+        // only the per-project activation state must be known before chat.
+        void get().loadActivePipeline?.(state.selectedProject);
       }
     } else {
       state.clearUniversalSelection();

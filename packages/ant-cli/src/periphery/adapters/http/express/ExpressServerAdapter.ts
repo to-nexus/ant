@@ -153,6 +153,9 @@ export class ExpressServerAdapter implements
           workspaceResolver: this.deps.workspaceResolver,
           workspaceService: this.deps.workspaceService,
           chatService: this.deps.chatService,
+          // Parity with the HTTP dispatch path: without this the in-memory
+          // kanban cache never learns about pipeline-dispatched jobs.
+          stateTracker: this.stateTracker,
           getJobQueue: () => factory.getJobQueue(),
           getCreditLedger: () => factory.getCreditLedger(),
           checkApproval,

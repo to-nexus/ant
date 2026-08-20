@@ -138,6 +138,10 @@ export class UniversalDispatchService {
       // Persist the anchor so a worker_stalled pause can resolve its
       // cancellation card from Redis (JobStatusData.turnId).
       ...(seedTurnId && { turnId: seedTurnId }),
+      // Pipeline attribution — readable by kanban/chat surfaces.
+      ...(params.firedBy && { firedBy: params.firedBy }),
+      ...(params.pipelineRunId && { pipelineRunId: params.pipelineRunId }),
+      ...(params.pipelineStepId && { pipelineStepId: params.pipelineStepId }),
     });
 
     // Cross-pod SSE broadcast needs the job → project/feature mapping.
@@ -157,6 +161,9 @@ export class UniversalDispatchService {
       // Universal: finalize locates the per-(agentId, customJobId) session
       // file for the run-history append via the ref.
       ...(params.customJobRef && { customJobRef: params.customJobRef }),
+      ...(params.firedBy && { firedBy: params.firedBy }),
+      ...(params.pipelineRunId && { pipelineRunId: params.pipelineRunId }),
+      ...(params.pipelineStepId && { pipelineStepId: params.pipelineStepId }),
     });
 
     this.deps.stateTracker?.initializeJob(jobId, params.project, params.feature, jobType, params.userContext);

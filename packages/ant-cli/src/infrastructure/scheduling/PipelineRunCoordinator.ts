@@ -23,10 +23,12 @@ import {
   isApprovalStep,
   parseCustomJobRef,
   parsePipelineDuration,
+  DEFAULT_PIPELINE_CAPS,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
   type GateDecision,
   type JobStepDef,
+  type PipelineActivation,
   type PipelineDef,
   type PipelineEventData,
   type PipelinePendingApproval,
@@ -38,10 +40,11 @@ import type { StateStorePort } from '../../core/ports/stateStore';
 import type { ScheduleQueuePort, PipelineControlJobData, PipelineFireJobData, PipelineOwner } from '../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL, getRealtimeBroadcastChannel, REDIS_CHANNELS } from '../../core/constants/redis';
 import { generateHumanId } from '../../utils/humanId';
+import { generateTurnId } from '../../composition/recordUserTurn';
 import { logger } from '../../utils/logger';
 import { buildInitialSteps, planAdvance, applyStepOutcome, effectiveNeeds, type StepDispatch } from '../../core/pipelines/ChainExecutor';
 import { derivePipelinesRoot, type PipelineTenantContext } from '../../core/pipelines/paths';
-import { appendRunEvent, appendRunIndex, loadPipeline, readRunEvents } from '../../core/pipelines/store';
+import { appendRunEvent, appendRunIndex, listActivations, loadActivation, loadPipeline, readRunEvents } from '../../core/pipelines/store';
 import {
   resolveUniversalExecuteContext,
   validateUniversalTurnMeta,
@@ -55,6 +58,8 @@ const COMPONENT = 'PipelineCoordinator';
 const STALE_FIRE_MS = 10 * 60 * 1000;
 const MAX_OVERLAP_REQUEUES = 60; // 60 × 60s = 1h of queueing before giving up
 const MAX_DUPLICATE_RETRIES = 60;
+const MAX_OUTCOME_RETRIES = 5; // × 30s — lock-starved outcome re-applies
+const OUTCOME_RETRY_DELAY_MS = 30_000;
 const RUN_LOCK_RETRIES = 20;
 const RUN_LOCK_RETRY_DELAY_MS = 250;
 
@@ -71,6 +76,27 @@ export interface PipelineCoordinatorDeps {
   chatService?: {
     appendChoicePresented(projectId: string, featureName: string, args: any): Promise<void>;
     appendChoiceResolved(projectId: string, featureName: string, args: any): Promise<{ resolved: boolean }>;
+    appendUserTurn(
+      projectId: string,
+      featureName: string,
+      text: string,
+      turnId: string,
+      jobId?: string,
+      userContext?: any,
+      actionMetadata?: any,
+      jobType?: any,
+      pipeline?: { pipelineId: string; runId: string; stepId: string; firedBy: 'cron' | 'manual' },
+    ): Promise<void>;
+    appendAssistantMessage(
+      projectId: string,
+      featureName: string,
+      text: string,
+      args: { jobId: string; turnId?: string | null; jobType?: any; userContext?: any; kind?: string },
+    ): Promise<void>;
+  };
+  /** In-memory kanban cache (API server) — parity with the HTTP dispatch path. */
+  stateTracker?: {
+    initializeJob(jobId: string, projectId: string, featureName: string, jobType: any, userContext?: any): void;
   };
   getJobQueue(): { enqueue(payload: any): Promise<string> };
   getCreditLedger(): { getBalance(orgId: string, userId: string): Promise<{ credits: number }> };
@@ -121,6 +147,8 @@ export class PipelineRunCoordinator {
         return this.handleGateTimeout(data.gateId);
       case 'step-retry':
         return this.handleStepRetry(data.owner, data.pipelineId, data.runId, data.stepId, data.retries);
+      case 'outcome-retry':
+        return this.handleOutcomeRetry(data);
       default:
         logger.warn(`[Pipeline] unknown control job kind: ${(data as any).kind}`, { component: COMPONENT });
     }
@@ -141,7 +169,31 @@ export class PipelineRunCoordinator {
       logger.warn(`[Pipeline] fire skipped — definition invalid: ${pipelineId}`, { component: COMPONENT }, e);
       return;
     }
-    if (!def.enabled && data.firedBy === 'cron') return;
+
+    // Activation is the fire authority (def.enabled is gone): no activation ⇒
+    // orphan scheduler — skip; the reconciler removes the cron entry.
+    let activation: PipelineActivation | null;
+    try {
+      activation = loadActivation(root, pipelineId);
+    } catch (e) {
+      logger.warn(`[Pipeline] fire skipped — activation invalid: ${pipelineId}`, { component: COMPONENT }, e);
+      return;
+    }
+    if (!activation) {
+      logger.info(`[Pipeline] fire skipped — not activated: ${pipelineId}`, { component: COMPONENT });
+      return;
+    }
+
+    // Caps: bound the owner's simultaneously-live runs across all pipelines
+    // (enforce-at-fire = skip + log, caps doctrine).
+    const liveRuns = await this.countLiveRuns(owner, root);
+    if (liveRuns >= DEFAULT_PIPELINE_CAPS.maxConcurrentRuns) {
+      logger.warn(
+        `[Pipeline] fire skipped — maxConcurrentRuns reached (${liveRuns}/${DEFAULT_PIPELINE_CAPS.maxConcurrentRuns}): ${pipelineId}`,
+        { component: COMPONENT },
+      );
+      return;
+    }
 
     const fireEpoch = data.fireEpoch ?? Math.floor(intendedFireAt / 60_000) * 60_000;
 
@@ -180,20 +232,31 @@ export class PipelineRunCoordinator {
     const run: RunRecord = {
       runId,
       pipelineId,
-      projectId: def.projectId,
+      projectId: activation.projectId,
       firedBy: data.firedBy === 'cron' ? 'cron' : 'manual',
       fireEpoch,
       status: 'running',
       steps: buildInitialSteps(def),
       startedAt: new Date().toISOString(),
       defSnapshot: def,
+      activationSnapshot: activation,
     };
 
-    await this.appendEvent(owner, pipelineId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch } });
+    await this.appendEvent(owner, pipelineId, { ts: run.startedAt, event: 'fired', runId, detail: { firedBy: run.firedBy, fireEpoch, projectId: activation.projectId } });
     const plan = planAdvance(def, run);
     await this.saveRun(plan.run);
-    await this.publish(owner, { cause: 'runUpdate', projectId: def.projectId, pipelineId, run: this.publicRun(plan.run) });
+    await this.publish(owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId, run: this.publicRun(plan.run) });
     await this.executeDispatches(owner, pipelineId, def, plan.run, plan.dispatches);
+  }
+
+  /** Live-run count across the owner's activated pipelines (≤ maxPipelines GETs). */
+  private async countLiveRuns(owner: PipelineOwner, root: string): Promise<number> {
+    let count = 0;
+    for (const { pipelineId } of listActivations(root)) {
+      const runId = await this.getActiveRunId(owner, pipelineId);
+      if (runId) count += 1;
+    }
+    return count;
   }
 
   // ============================================
@@ -246,7 +309,7 @@ export class PipelineRunCoordinator {
     if (lowCredits) return void (await fail('insufficient-credits'));
 
     // Definition + turn-meta accept gates (same owners as the HTTP route).
-    const resolved = await resolveUniversalExecuteContext(this.deps.workspaceResolver, owner, def.projectId, step.customJobRef);
+    const resolved = await resolveUniversalExecuteContext(this.deps.workspaceResolver, owner, run.projectId, step.customJobRef);
     if (!resolved.ok) return void (await fail(`${resolved.code}: ${resolved.error}`));
     const meta = await validateUniversalTurnMeta(
       resolved.containerPath,
@@ -256,9 +319,10 @@ export class PipelineRunCoordinator {
     );
     if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
 
-    // Project-level duplicate gate: re-arm instead of failing — chained runs
-    // legitimately queue behind an interactive run.
-    const duplicate = await findDuplicateActiveJob(this.deps.stateStore as any, owner, def.projectId, UNIVERSAL_FEATURE, 'universal');
+    // Project-level duplicate gate — with the pipeline-owned project gate on
+    // the interactive side, the only expected collision left is the seal race
+    // between a finishing step's job and this dispatch: re-arm absorbs it.
+    const duplicate = await findDuplicateActiveJob(this.deps.stateStore as any, owner, run.projectId, UNIVERSAL_FEATURE, 'universal');
     if (duplicate) {
       if (retries >= MAX_DUPLICATE_RETRIES) return void (await fail('duplicate-job-timeout'));
       await this.deps.scheduleQueue.armDelayed(
@@ -269,9 +333,37 @@ export class PipelineRunCoordinator {
       return;
     }
 
+    // Chat parity with the interactive execute path: the step's directive is
+    // a durable, live-broadcast user_turn (pipeline-attributed), and the run's
+    // FIRST step also carries a run-started notice on the same turn.
+    const directive = this.renderDirective(step.directive, run);
+    const turnId = generateTurnId();
+    const isFirstTurn = !run.steps.some((s) => s.turnId);
+    if (this.deps.chatService) {
+      try {
+        await this.deps.chatService.appendUserTurn(
+          run.projectId,
+          UNIVERSAL_FEATURE,
+          directive,
+          turnId,
+          undefined,
+          owner,
+          undefined,
+          'universal',
+          { pipelineId, runId: run.runId, stepId: step.id, firedBy: run.firedBy },
+        );
+      } catch (e) {
+        logger.warn(`[Pipeline] failed to append step user_turn: ${run.runId}/${step.id}`, { component: COMPONENT }, e);
+      }
+    }
+
     const dispatcher = new UniversalDispatchService(
       { jobQueue: this.deps.getJobQueue() as any, stateStore: this.deps.stateStore as any },
-      { workspaceService: this.deps.workspaceService, workspaceResolver: this.deps.workspaceResolver },
+      {
+        workspaceService: this.deps.workspaceService,
+        workspaceResolver: this.deps.workspaceResolver,
+        stateTracker: this.deps.stateTracker,
+      },
     );
 
     let jobId: string;
@@ -279,19 +371,35 @@ export class PipelineRunCoordinator {
       const result = await dispatcher.enqueue({
         jobType: 'universal',
         agent: 'universal',
-        project: def.projectId,
+        project: run.projectId,
         feature: UNIVERSAL_FEATURE,
         userContext: owner,
-        overrideDirective: this.renderDirective(step.directive, run),
+        overrideDirective: directive,
         customJobRef: step.customJobRef,
         universalTurnMeta: meta.meta ?? undefined,
         firedBy: 'schedule',
         pipelineRunId: run.runId,
         pipelineStepId: step.id,
+        seedTurnId: turnId,
       });
       jobId = result.jobId;
     } catch (e) {
       return void (await fail(`enqueue-failed: ${e instanceof Error ? e.message : String(e)}`));
+    }
+
+    if (isFirstTurn && this.deps.chatService) {
+      const startedText = run.firedBy === 'cron'
+        ? `🔁 파이프라인 "${def.name}" 실행이 시작되었습니다. (run: ${run.runId})`
+        : `🔁 파이프라인 "${def.name}" 실행이 수동으로 시작되었습니다. (run: ${run.runId})`;
+      this.deps.chatService
+        .appendAssistantMessage(run.projectId, UNIVERSAL_FEATURE, startedText, {
+          jobId,
+          turnId,
+          jobType: 'universal',
+          userContext: owner,
+          kind: 'system_notice',
+        })
+        .catch((e) => logger.warn('[Pipeline] run-started notice failed', { component: COMPONENT }, e));
     }
 
     await this.deps.stateStore.setKeyWithTTL(
@@ -301,7 +409,7 @@ export class PipelineRunCoordinator {
     );
     await this.mutateRun(owner, pipelineId, run.runId, async (live, liveDef) => {
       const steps = live.steps.map((s): StepRecord =>
-        s.stepId === step.id ? { ...s, status: 'running', jobId, startedAt: new Date().toISOString() } : s,
+        s.stepId === step.id ? { ...s, status: 'running', jobId, turnId, startedAt: new Date().toISOString() } : s,
       );
       return { run: { ...live, steps }, dispatches: [] };
     });
@@ -311,6 +419,7 @@ export class PipelineRunCoordinator {
       runId: run.runId,
       stepId: step.id,
       jobId,
+      detail: { turnId },
     });
   }
 
@@ -380,7 +489,7 @@ export class PipelineRunCoordinator {
     // resume_confirm precedent; ChatAPIClient is job-runner-child-only).
     if (this.deps.chatService) {
       try {
-        await this.deps.chatService.appendChoicePresented(def.projectId, UNIVERSAL_FEATURE, {
+        await this.deps.chatService.appendChoicePresented(run.projectId, UNIVERSAL_FEATURE, {
           jobId: anchorJobId,
           cardId,
           cardType: 'pipeline_approval',
@@ -420,14 +529,14 @@ export class PipelineRunCoordinator {
     });
     await this.publish(owner, {
       cause: 'approvalRequested',
-      projectId: def.projectId,
+      projectId: run.projectId,
       approval: {
         gateId,
         cardId,
         runId: run.runId,
         pipelineId,
         pipelineName: def.name,
-        projectId: def.projectId,
+        projectId: run.projectId,
         stepId: step.id,
         prompt: step.prompt,
         armedAt: new Date().toISOString(),
@@ -469,16 +578,18 @@ export class PipelineRunCoordinator {
     if (!raw) return false;
     const hitl = JSON.parse(raw) as HitlRecord;
 
-    await this.deps.scheduleQueue.cancelDelayed(`gto-${gateId}`);
-    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gateId));
-    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(cardId));
-
     const approved = decision === 'approved' || decision === 'expired_approve';
     const decidedAt = new Date().toISOString();
-    await this.applyOutcome(hitl.owner, hitl.pipelineId, hitl.runId, hitl.stepId, approved ? 'succeeded' : 'failed', undefined, (record) => ({
+    const applied = await this.applyOutcome(hitl.owner, hitl.pipelineId, hitl.runId, hitl.stepId, approved ? 'succeeded' : 'failed', undefined, (record) => ({
       ...record,
       gate: record.gate ? { ...record.gate, decision, decidedBy, decidedAt, via } : record.gate,
     }));
+    // Keys are deleted only AFTER the outcome landed — a crash/lock-starved
+    // apply keeps the HITL record recoverable (the timeout arm re-funnels).
+    if (!applied) return false;
+    await this.deps.scheduleQueue.cancelDelayed(`gto-${gateId}`);
+    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(gateId));
+    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(cardId));
 
     await this.appendEvent(hitl.owner, hitl.pipelineId, {
       ts: decidedAt,
@@ -589,7 +700,45 @@ export class PipelineRunCoordinator {
       jobId: data.jobId,
       detail: { outcome, ...(error && { error }) },
     });
-    await this.applyOutcome(owner, pipelineId, runId, stepId, outcome, error ? { error } : undefined);
+    const applied = await this.applyOutcome(owner, pipelineId, runId, stepId, outcome, error ? { error } : undefined);
+    if (!applied) {
+      // Lock starvation would otherwise DROP the outcome and hang the run
+      // `running` until the overlap TTL — re-arm a bounded re-apply instead.
+      await this.deps.scheduleQueue.armDelayed(`outcome-retry-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
+        kind: 'outcome-retry',
+        owner,
+        pipelineId,
+        runId,
+        stepId,
+        outcome,
+        ...(error && { error }),
+        retries: 0,
+      });
+    }
+  }
+
+  private async handleOutcomeRetry(data: {
+    owner: PipelineOwner;
+    pipelineId: string;
+    runId: string;
+    stepId: string;
+    outcome: 'succeeded' | 'failed';
+    error?: string;
+    retries: number;
+  }): Promise<void> {
+    const applied = await this.applyOutcome(
+      data.owner, data.pipelineId, data.runId, data.stepId, data.outcome,
+      data.error ? { error: data.error } : undefined,
+    );
+    if (!applied && data.retries < MAX_OUTCOME_RETRIES) {
+      await this.deps.scheduleQueue.armDelayed(
+        `outcome-retry-${data.runId}-${data.stepId}`,
+        OUTCOME_RETRY_DELAY_MS,
+        { ...data, kind: 'outcome-retry', retries: data.retries + 1 },
+      );
+    } else if (!applied) {
+      logger.warn(`[Pipeline] outcome dropped after retries: ${data.runId}/${data.stepId}`, { component: COMPONENT });
+    }
   }
 
   private async detectClarifySeal(owner: PipelineOwner, runId: string, stepId: string, jobId: string): Promise<boolean> {
@@ -609,7 +758,11 @@ export class PipelineRunCoordinator {
     }
   }
 
-  /** Apply one step outcome under the run lock, dispatch what unblocks, finalize when terminal. */
+  /**
+   * Apply one step outcome under the run lock, dispatch what unblocks,
+   * finalize when terminal. Returns false when the mutation could NOT be
+   * applied (lock starvation / missing run) — callers re-arm, never drop.
+   */
   private async applyOutcome(
     owner: PipelineOwner,
     pipelineId: string,
@@ -618,7 +771,7 @@ export class PipelineRunCoordinator {
     outcome: 'succeeded' | 'failed',
     patch?: Partial<StepRecord>,
     decorate?: (record: StepRecord) => StepRecord,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const result = await this.mutateRun(owner, pipelineId, runId, async (live, def) => {
       if (!def) return { run: live, dispatches: [] };
       const already = live.steps.find((s) => s.stepId === stepId);
@@ -632,7 +785,7 @@ export class PipelineRunCoordinator {
       }
       return plan;
     });
-    if (!result) return;
+    if (!result) return false;
 
     if (result.dispatches.length > 0) {
       const def = result.run.defSnapshot!;
@@ -641,6 +794,7 @@ export class PipelineRunCoordinator {
       await this.finalizeRun(owner, pipelineId, result.run);
     }
     await this.publish(owner, { cause: 'runUpdate', projectId: result.run.projectId, pipelineId, run: this.publicRun(result.run) });
+    return true;
   }
 
   async cancelRun(owner: PipelineOwner, pipelineId: string, runId: string): Promise<boolean> {
@@ -667,6 +821,38 @@ export class PipelineRunCoordinator {
     return true;
   }
 
+  /**
+   * Deactivation side effects owned by the coordinator: cancel the live run
+   * (gates disarmed inside cancelRun) and KILL any step job still running —
+   * mirrors the `/jobs/:jobId/stop` legs (mark-user-stopped + poison + STOP
+   * pub/sub; the seal arrives via the normal worker-exit path and no-ops
+   * against the already-terminal run). The activation file/keys/cron are the
+   * ROUTE's responsibility — this method never touches activation state.
+   */
+  async deactivate(owner: PipelineOwner, pipelineId: string): Promise<void> {
+    const runId = await this.getActiveRunId(owner, pipelineId);
+    if (!runId) return;
+    const run = await this.getRun(runId);
+    if (run && !this.isTerminal(run.status)) {
+      for (const step of run.steps) {
+        if (step.status !== 'running' || !step.jobId) continue;
+        try {
+          await this.deps.stateStore.markUserStopped(step.jobId);
+          await this.deps.stateStore.acquireLock(`ant:job-poisoned:${step.jobId}`, 600).catch(() => false);
+          await this.deps.stateStore.publish(REDIS_CHANNELS.JOB_WORKER.STOP, {
+            jobId: step.jobId,
+            projectId: run.projectId,
+            featureName: UNIVERSAL_FEATURE,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (e) {
+          logger.warn(`[Pipeline] failed to stop step job ${step.jobId}`, { component: COMPONENT }, e);
+        }
+      }
+      await this.cancelRun(owner, pipelineId, runId);
+    }
+  }
+
   private async finalizeRun(owner: PipelineOwner, pipelineId: string, run: RunRecord): Promise<void> {
     const endedAt = run.endedAt ?? new Date().toISOString();
     const sealed: RunRecord = { ...run, endedAt };
@@ -680,6 +866,7 @@ export class PipelineRunCoordinator {
     await appendRunIndex(derivePipelinesRoot(this.tenantCtx(owner)), pipelineId, {
       runId: run.runId,
       pipelineId,
+      projectId: run.projectId,
       status: run.status,
       firedBy: run.firedBy,
       fireEpoch: run.fireEpoch,
@@ -691,6 +878,41 @@ export class PipelineRunCoordinator {
     const holder = await this.deps.stateStore.getKey(activeKey);
     if (holder === run.runId) {
       await this.deps.stateStore.deleteKey(activeKey).catch(() => {});
+    }
+    await this.emitRunFinishedNotice(owner, sealed);
+  }
+
+  /**
+   * Run-lifecycle chat line, anchored to the LAST step turn the run minted
+   * (doc 46 §5: no rootless lines). A run that never dispatched a job step
+   * has no turn — log only.
+   */
+  private async emitRunFinishedNotice(owner: PipelineOwner, run: RunRecord): Promise<void> {
+    if (!this.deps.chatService) return;
+    const anchor = [...run.steps].reverse().find((s) => s.turnId && s.jobId);
+    if (!anchor) return;
+    const name = run.defSnapshot?.name ?? run.pipelineId;
+    const failedStep = run.steps.find((s) => s.status === 'failed');
+    const text =
+      run.status === 'completed'
+        ? `✅ 파이프라인 "${name}" 실행이 완료되었습니다. (run: ${run.runId})`
+        : run.status === 'failed'
+          ? `❌ 파이프라인 "${name}" 실행이 실패했습니다.${failedStep ? ` (step: ${failedStep.stepId}${failedStep.error ? ` — ${failedStep.error}` : ''})` : ''}`
+          : run.status === 'partial'
+            ? `⚠️ 파이프라인 "${name}" 실행이 일부 실패로 종료되었습니다. (run: ${run.runId})`
+            : run.status === 'cancelled'
+              ? `⏹️ 파이프라인 "${name}" 실행이 취소되었습니다. (run: ${run.runId})`
+              : `⚠️ 파이프라인 "${name}" 실행이 종료되었습니다. (status: ${run.status})`;
+    try {
+      await this.deps.chatService.appendAssistantMessage(run.projectId, UNIVERSAL_FEATURE, text, {
+        jobId: anchor.jobId!,
+        turnId: anchor.turnId,
+        jobType: 'universal',
+        userContext: owner,
+        kind: 'system_notice',
+      });
+    } catch (e) {
+      logger.warn(`[Pipeline] run-finished notice failed: ${run.runId}`, { component: COMPONENT }, e);
     }
   }
 

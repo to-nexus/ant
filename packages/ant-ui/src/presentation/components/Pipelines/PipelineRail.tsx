@@ -1,15 +1,16 @@
 /**
  * PipelineRail — the left list rail (AgentTree analogue): approval inbox
- * pinned on top, then one row per pipeline (StatusPill, next fire, inline
- * enable Toggle, run-now), "+ New pipeline" at the bottom.
+ * pinned on top, then one row per pipeline (activation chip + next fire),
+ * "+ New pipeline" at the bottom. Activation is controlled ONLY in the
+ * Execution view — the rail just reports it.
  */
 
 import { useTranslation } from 'react-i18next';
-import { Plus, Play, AlertTriangle } from 'lucide-react';
+import { Plus, AlertTriangle } from 'lucide-react';
 import type { PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { pipelineDraftIsDirty } from '@/domain/store/slices/pipelineSlice';
-import { Toggle, Button } from '../aurora';
+import { Button } from '../aurora';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { ApprovalInbox } from './ApprovalInbox';
 import { relativeFromNow } from './CronBuilder';
@@ -25,8 +26,6 @@ export function PipelineRail() {
   const saved = useStore((s) => s.pipelineSavedDef);
   const selectPipeline = useStore((s) => s.selectPipeline);
   const newPipelineDraft = useStore((s) => s.newPipelineDraft);
-  const togglePipelineEnabled = useStore((s) => s.togglePipelineEnabled);
-  const runPipelineNowById = useStore((s) => s.runPipelineNowById);
 
   const guardDirty = (): boolean => {
     if (!pipelineDraftIsDirty(draft, saved)) return true;
@@ -61,8 +60,6 @@ export function PipelineRail() {
                 if (!guardDirty()) return;
                 void selectPipeline(p.id);
               }}
-              onToggle={(enabled) => void togglePipelineEnabled(p.id, enabled)}
-              onRunNow={() => void runPipelineNowById(p.id)}
             />
           ))}
           {invalid.map((entry) => (
@@ -112,18 +109,15 @@ function RailRow({
   entry,
   active,
   onSelect,
-  onToggle,
-  onRunNow,
 }: {
   entry: PipelineListEntry;
   active: boolean;
   onSelect: () => void;
-  onToggle: (enabled: boolean) => void;
-  onRunNow: () => void;
 }) {
   const { t } = useTranslation('pipelines');
   const awaiting = entry.pendingApprovalCount > 0;
   const liveStatus = entry.lastRun?.status;
+  const activated = !!entry.activation;
   return (
     <div
       onClick={onSelect}
@@ -139,32 +133,37 @@ function RailRow({
         <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {entry.name}
         </span>
-        <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex' }}>
-          <Toggle checked={entry.enabled} onChange={onToggle} size="sm" aria-label={t('rail.toggle', 'Enable pipeline')} />
-        </span>
-        <button
-          aria-label={t('rail.runNow', 'Run now')}
-          title={t('rail.runNow', 'Run now')}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRunNow();
-          }}
-          style={{ background: 'none', border: 'none', color: 'var(--text-3)', cursor: 'pointer', display: 'flex' }}
-        >
-          <Play size={13} />
-        </button>
+        {activated && (
+          <span
+            title={entry.activation!.projectId}
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              padding: '1px 7px',
+              borderRadius: 8,
+              background: 'color-mix(in srgb, var(--violet-500) 12%, transparent)',
+              color: 'var(--violet-400)',
+              maxWidth: 110,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {entry.activation!.projectId}
+          </span>
+        )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
         {awaiting ? (
           <StatusPill state="warning" label={t('rail.awaiting', '{{n}} waiting', { n: entry.pendingApprovalCount })} />
-        ) : liveStatus === 'running' ? (
+        ) : liveStatus === 'running' || liveStatus === 'awaiting_human' ? (
           <StatusPill state="checking" label={t('rail.running', 'Running')} />
-        ) : entry.enabled ? (
-          <StatusPill state="connected" label={t('rail.enabled', 'On')} />
+        ) : activated ? (
+          <StatusPill state="connected" label={t('rail.active', 'Active')} />
         ) : (
-          <StatusPill state="not-configured" label={t('rail.disabled', 'Off')} />
+          <StatusPill state="not-configured" label={t('rail.inactive', 'Inactive')} />
         )}
-        {entry.enabled && entry.nextFireAt && (
+        {activated && entry.nextFireAt && (
           <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>
             {relativeFromNow(entry.nextFireAt, t as any)}
           </span>

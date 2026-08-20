@@ -45,10 +45,27 @@ export interface PipelineStepRetryJobData {
   retries: number;
 }
 
+/**
+ * Re-arm for a step OUTCOME that lost the per-run lock (starvation): without
+ * this the outcome is dropped and the run hangs `running` until the overlap
+ * TTL. Bounded like the duplicate-gate retry.
+ */
+export interface PipelineOutcomeRetryJobData {
+  kind: 'outcome-retry';
+  owner: PipelineOwner;
+  pipelineId: string;
+  runId: string;
+  stepId: string;
+  outcome: 'succeeded' | 'failed';
+  error?: string;
+  retries: number;
+}
+
 export type PipelineControlJobData =
   | PipelineFireJobData
   | PipelineGateTimeoutJobData
-  | PipelineStepRetryJobData;
+  | PipelineStepRetryJobData
+  | PipelineOutcomeRetryJobData;
 
 export interface ScheduleQueuePort {
   /** Idempotent upsert of a cron scheduler (`schedulerId` = owner-scoped pipeline key). */

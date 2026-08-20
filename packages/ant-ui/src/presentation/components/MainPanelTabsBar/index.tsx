@@ -1,6 +1,6 @@
 import { useStore } from '@/domain/store';
 import { Bar } from '../Bar';
-import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot, Building2, GitBranch } from 'lucide-react';
+import { Briefcase, Settings, FileEdit, User, ArrowLeftRight, Monitor, Zap, LayoutGrid, ListTodo, Workflow, Coins, Bot, Building2, Waypoints } from 'lucide-react';
 import { TabButton, type TabAccent } from './components/TabButton';
 
 const TAB_ACCENTS = {
@@ -70,7 +70,7 @@ export function MainPanelTabsBar() {
       billing: { icon: Coins, label: t('tabs.billing', 'Billing') },
       agentSettings: { icon: Bot, label: t('tabs.agentSettings', 'Agent Settings') },
       orgSettings: { icon: Building2, label: t('tabs.orgSettings', 'Organization') },
-      pipelines: { icon: GitBranch, label: t('tabs.pipelines', 'Pipelines') },
+      pipelines: { icon: Waypoints, label: t('tabs.pipelines', 'Pipelines') },
     };
     const config = tabConfig[tabKey];
     if (!config) return null;

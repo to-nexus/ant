@@ -1,19 +1,37 @@
 {
-  "panel": {
-    "universalOnly": "Pipelines schedule custom agent jobs.\nOpen a workspace (universal) project to use them."
-  },
   "rail": {
     "new": "New pipeline",
     "newDraft": "New pipeline (unsaved)",
     "empty": "No pipelines yet.\nChain your agent jobs on a schedule.",
-    "toggle": "Enable pipeline",
-    "runNow": "Run now",
     "awaiting": "{{n}} waiting",
     "running": "Running",
-    "enabled": "On",
-    "disabled": "Off",
+    "active": "Active",
+    "inactive": "Inactive",
     "steps": "{{n}} steps",
     "discardConfirm": "Discard unsaved changes?"
+  },
+  "views": {
+    "editor": "Editor",
+    "execution": "Execution",
+    "runs": "Run history"
+  },
+  "execution": {
+    "saveFirst": "Save the pipeline first — activation binds a saved pipeline to a project.",
+    "project": "Project",
+    "pickProject": "Choose a workspace project…",
+    "noProjects": "No workspace (universal) projects found.",
+    "alreadyBound": "bound to \"{{pipelineId}}\"",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "stateInactive": "Inactive",
+    "stateWaiting": "Active · waiting",
+    "stateRunning": "Active · working",
+    "nextFire": "Next fire: {{when}}",
+    "currentStep": "Current step: {{step}}",
+    "boundTo": "Bound to project \"{{projectId}}\" — interactive work there is locked while active."
+  },
+  "chip": {
+    "firedByPipeline": "Started by pipeline \"{{name}}\""
   },
   "inbox": {
     "title": "Waiting for you",
@@ -24,14 +42,11 @@
   "editor": {
     "pickOne": "Select a pipeline on the left,\nor create a new one.",
     "namePlaceholder": "Pipeline name",
-    "enabled": "Enabled",
-    "on": "On",
-    "off": "Off",
     "runNow": "Run now",
     "runNowAccepted": "Fired — watch Runs.",
-    "viewEditor": "Editor",
-    "viewRuns": "Runs",
-    "viewMode": "Editor view",
+    "viewMode": "Pipeline view",
+    "readOnlyActivated": "Activated on \"{{projectId}}\" — deactivate it in the Execution view to edit.",
+    "goExecution": "Open Execution",
     "unsaved": "Unsaved changes",
     "unsavedNew": "Not saved yet",
     "badCron": "Fix the schedule to save.",
@@ -44,7 +59,9 @@
     "trigger": "Schedule",
     "approval": "Approval",
     "unconfigured": "Choose a job…",
-    "noTimeout": "no timeout"
+    "noTimeout": "no timeout",
+    "addJobStep": "Job step",
+    "addGate": "Approval gate"
   },
   "inspector": {
     "trigger": "Trigger & policies",
@@ -125,7 +142,7 @@
   },
   "danger": {
     "title": "Delete pipeline",
-    "desc": "Removes the definition and its run history. Live runs are cancelled.",
+    "desc": "Removes the definition and its run history.",
     "delete": "Delete",
     "confirm": "Really delete?",
     "deleting": "Deleting…"

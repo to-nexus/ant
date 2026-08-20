@@ -40,6 +40,7 @@ import type {
 import { isJobType } from '@ant/shared';
 
 import { ActionMetadataBadges } from './ActionMetadataBadges';
+import { PipelineOriginChip } from '../Pipelines/PipelineOriginChip';
 import { ShimmerCard } from './ShimmerCard';
 import { WorkingCard } from './WorkingCard';
 import { TerminalCard } from './TerminalCard';
@@ -148,6 +149,11 @@ const UserBubble = memo(function UserBubble({
         borderRadius: 'var(--r-md)',
       }}
     >
+      {user.pipeline && (
+        <div className="pb-1.5">
+          <PipelineOriginChip pipelineId={user.pipeline.pipelineId} />
+        </div>
+      )}
       {user.actionMetadata && Object.keys(user.actionMetadata).length > 0 && (
         <ActionMetadataBadges metadata={user.actionMetadata} readOnly className="pb-1.5" />
       )}

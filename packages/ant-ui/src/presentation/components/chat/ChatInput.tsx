@@ -22,6 +22,7 @@ import { useMentionAutocomplete } from './hooks/useMentionAutocomplete';
 import { useBaselineEstimate } from '@/application/hooks/baseline/useBaselineEstimate';
 import { ChatFileChangeSummary } from './ChatFileChangeSummary';
 import { AgentJobToolbar, CHAT_INPUT_MIN_WIDTH_PX } from './AgentJobToolbar';
+import { PipelineActiveBanner } from './PipelineActiveBanner';
 import { ActionMetadataBadges } from './ActionMetadataBadges';
 import { UniversalTurnMetaBadges } from './UniversalTurnMetaBadges';
 import { MentionDropdown } from './MentionDropdown';
@@ -292,6 +293,9 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             />
           </div>
 
+          {/* Pipeline-owned project — persistent lock indicator */}
+          <PipelineActiveBanner />
+
           {/* Action Metadata Badges */}
           <ActionMetadataBadges />
 
@@ -330,6 +334,11 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
               }
               if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
                 e.preventDefault();
+                // Pipeline-owned project: Enter must neither submit nor stop —
+                // a silent stop would kill a scheduled step under the scheduler.
+                if (chatPolicy.reason === 'pipeline-active' || chatPolicy.reason === 'pipeline-running') {
+                  return;
+                }
                 if (isRunning) {
                   stopJob();
                 } else {
@@ -339,7 +348,7 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
             }}
             onCompositionStart={() => setIsComposing(true)}
             onCompositionEnd={() => setIsComposing(false)}
-            disabled={disabled || isRunning}
+            disabled={disabled || isRunning || chatPolicy.reason === 'pipeline-active' || chatPolicy.reason === 'pipeline-running'}
           />
 
           {/* Bottom Toolbar */}

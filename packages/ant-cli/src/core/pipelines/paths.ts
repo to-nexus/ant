@@ -7,12 +7,13 @@
  *
  * Layout:
  *   {userDir}/.ant/pipelines/{pipelineId}/pipeline.yaml
+ *   {userDir}/.ant/pipelines/{pipelineId}/activation.json   ← project binding (absence = deactivated)
  *   {userDir}/.ant/pipelines/{pipelineId}/runs/{runId}.jsonl
  *   {userDir}/.ant/pipelines/{pipelineId}/runs/index.jsonl
  */
 
 import * as path from 'path';
-import { INDIVIDUAL_ORG_ID, type OrganizationKind } from '@ant/shared';
+import { INDIVIDUAL_ORG_ID, PIPELINE_ACTIVATION_FILE_NAME, type OrganizationKind } from '@ant/shared';
 
 export const PIPELINES_DIRNAME = '.ant/pipelines';
 
@@ -43,6 +44,10 @@ export function pipelineDir(root: string, pipelineId: string): string {
 
 export function pipelineDefPath(root: string, pipelineId: string): string {
   return path.join(root, pipelineId, 'pipeline.yaml');
+}
+
+export function pipelineActivationPath(root: string, pipelineId: string): string {
+  return path.join(root, pipelineId, PIPELINE_ACTIVATION_FILE_NAME);
 }
 
 export function pipelineRunsDir(root: string, pipelineId: string): string {

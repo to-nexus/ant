@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail, GitBranch } from 'lucide-react';
+import { Sun, Moon, Bot, Code2, User, LogOut, Globe, Check, Plus, Building2, Mail, Waypoints } from 'lucide-react';
 import { DesktopStatusIndicator } from './DesktopStatusIndicator';
 import { AmbientActivityBar } from './common/async';
 import { LocalUserBadge } from './auth/LocalUserBadge';
@@ -215,22 +215,6 @@ export function AppNavBar({}: AppNavBarProps) {
                 <span className="hidden sm:inline">{t('viewMode.agents')}</span>
               </button>
 
-              {/* Pipelines Button — universal workspaces only (scheduled runs) */}
-              {isUniversalProject && (
-              <button
-                onClick={() => openMainPanelTab('pipelines')}
-                className="px-1.5 sm:px-3 py-1 text-xs font-medium flex items-center gap-1.5"
-                style={{
-                  ...selectedSegmentStyle(false),
-                  borderRadius: 'var(--r-sm)',
-                }}
-                title={t('viewMode.pipelines', 'Pipelines')}
-              >
-                <GitBranch className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('viewMode.pipelines', 'Pipelines')}</span>
-              </button>
-              )}
-
               {/* Editor Button — hidden for universal workspaces (no IDE) */}
               {!isUniversalProject && (
               <button
@@ -267,6 +251,25 @@ export function AppNavBar({}: AppNavBarProps) {
                 </div>
               )}
             </div>
+
+            {/* Pipelines launcher — a top-level tab opener, deliberately OUTSIDE
+                the view-mode segmented control (it is not a view mode) and with
+                no pressed/active state (the tab bar owns open/close). */}
+            <button
+              onClick={() => openMainPanelTab('pipelines')}
+              className="px-1.5 sm:px-3 py-1.5 ml-1 sm:ml-2 text-xs font-medium flex items-center gap-1.5"
+              style={{
+                background: 'var(--bg-surface-2)',
+                color: 'var(--text-3)',
+                borderRadius: 'var(--r-md)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--text-1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-3)'; }}
+              title={t('viewMode.pipelines', 'Pipelines')}
+            >
+              <Waypoints className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t('viewMode.pipelines', 'Pipelines')}</span>
+            </button>
           </div>
 
           <div className="flex items-center space-x-1.5 sm:space-x-3">

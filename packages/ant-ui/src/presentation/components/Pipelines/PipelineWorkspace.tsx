@@ -1,50 +1,58 @@
 /**
- * PipelineEditor — everything a pipeline needs on one screen: header (name,
- * enabled, Run now, Editor|Runs switch, save/discard), n8n-style canvas with
- * an inspector drawer, run history, danger zone. All surfaces edit ONE draft
- * (dirty-buffer doctrine); save is gated by the shared validator + the
- * server cron preview (form-disable leg).
+ * PipelineWorkspace — the right-hand surface of the pipelines tab, split into
+ * three views: Editor (definition editing — locked while activated),
+ * Execution (project binding, activate/deactivate, live monitor), and Runs
+ * (history). All editor surfaces edit ONE draft (dirty-buffer doctrine); save
+ * is gated by the shared validator + the server cron preview (form-disable
+ * leg). Activation state lives ONLY in the Execution view — the definition
+ * itself is account-scoped and project-free.
  */
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, ListChecks, PencilRuler } from 'lucide-react';
-import { validatePipelineDef, type PipelineDef } from '@ant/shared';
+import { ListChecks, PencilRuler, PlayCircle, Lock } from 'lucide-react';
+import { validatePipelineDef, type PipelineDef, type PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { pipelineDraftIsDirty } from '@/domain/store/slices/pipelineSlice';
-import { Toggle, Button, BoardViewModeToggle } from '../aurora';
+import { Button, BoardViewModeToggle } from '../aurora';
 import { DangerZone } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
 import { StepInspector } from './StepInspector';
 import { PipelineRuns } from './PipelineRuns';
+import { PipelineExecutionView } from './PipelineExecutionView';
 import { TRIGGER_NODE_ID, insertStepAfter, makeGateStep, makeJobStep } from './draft';
 
-export function PipelineEditor() {
+type PanelView = 'editor' | 'execution' | 'runs';
+
+export function PipelineWorkspace() {
   const { t } = useTranslation('pipelines');
   const draft = useStore((s) => s.pipelineDraft);
   const saved = useStore((s) => s.pipelineSavedDef);
   const draftIsNew = useStore((s) => s.pipelineDraftIsNew);
   const selectedId = useStore((s) => s.selectedPipelineId);
   const saveError = useStore((s) => s.pipelineSaveError);
-  const view = useStore((s) => s.pipelineEditorView);
+  const view = useStore((s) => s.pipelinePanelView);
   const selectedNodeId = useStore((s) => s.selectedPipelineNodeId);
   const runDetail = useStore((s) => s.pipelineRunDetail);
+  const pipelines = useStore((s) => s.pipelines);
   const setPipelineDraft = useStore((s) => s.setPipelineDraft);
   const discardPipelineDraft = useStore((s) => s.discardPipelineDraft);
   const savePipelineDraft = useStore((s) => s.savePipelineDraft);
-  const setPipelineEditorView = useStore((s) => s.setPipelineEditorView);
+  const setPipelinePanelView = useStore((s) => s.setPipelinePanelView);
   const selectPipelineNode = useStore((s) => s.selectPipelineNode);
-  const runPipelineNowById = useStore((s) => s.runPipelineNowById);
   const deletePipelineById = useStore((s) => s.deletePipelineById);
 
   const [cronOk, setCronOk] = useState(true);
   const [dangerArmed, setDangerArmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [runNowNote, setRunNowNote] = useState<string | null>(null);
+
+  const entry: PipelineListEntry | undefined = pipelines.find((p: PipelineListEntry) => p.id === selectedId);
+  const activation = !draftIsNew && selectedId ? entry?.activation ?? null : null;
+  const editLocked = !!activation;
 
   const dirty = pipelineDraftIsDirty(draft, saved);
   const validationErrors = useMemo(() => (draft ? validatePipelineDef(draft) : []), [draft]);
-  const canSave = !!draft && dirty && validationErrors.length === 0 && cronOk && draft.steps.length > 0;
+  const canSave = !!draft && !editLocked && dirty && validationErrors.length === 0 && cronOk && draft.steps.length > 0;
 
   if (!draft) {
     return (
@@ -54,11 +62,15 @@ export function PipelineEditor() {
     );
   }
 
-  const patch = (next: PipelineDef) => setPipelineDraft(next);
+  const patch = (next: PipelineDef) => {
+    if (editLocked) return;
+    setPipelineDraft(next);
+  };
 
   const cronSummary = `${draft.on.schedule.cron}${draft.on.schedule.tz ? ` · ${draft.on.schedule.tz}` : ''}`;
 
   const handleAddAfter = (afterNodeId: string, kind: 'job' | 'gate') => {
+    if (editLocked) return;
     const step = kind === 'gate' ? makeGateStep(draft) : makeJobStep(draft);
     patch(insertStepAfter(draft, afterNodeId, step));
     selectPipelineNode(step.id);
@@ -82,6 +94,7 @@ export function PipelineEditor() {
           value={draft.name}
           onChange={(e) => patch({ ...draft, name: e.target.value })}
           placeholder={t('editor.namePlaceholder', 'Pipeline name')}
+          readOnly={editLocked}
           style={{
             fontSize: 14,
             fontWeight: 700,
@@ -91,46 +104,53 @@ export function PipelineEditor() {
             outline: 'none',
             minWidth: 120,
             flex: '0 1 260px',
+            ...(editLocked ? { opacity: 0.75, cursor: 'default' } : {}),
           }}
         />
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-3)' }}>
-          <Toggle
-            checked={draft.enabled}
-            onChange={(enabled) => patch({ ...draft, enabled })}
-            size="sm"
-            aria-label={t('editor.enabled', 'Enabled')}
-          />
-          {draft.enabled ? t('editor.on', 'On') : t('editor.off', 'Off')}
-        </span>
 
         <div style={{ flex: 1 }} />
 
-        {!draftIsNew && selectedId && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              const err = await runPipelineNowById(selectedId);
-              setRunNowNote(err ?? t('editor.runNowAccepted', 'Fired — watch Runs.'));
-              setTimeout(() => setRunNowNote(null), 4000);
-            }}
-          >
-            <Play size={13} /> {t('editor.runNow', 'Run now')}
-          </Button>
-        )}
-        <BoardViewModeToggle
-          value={view === 'runs' ? 'workflow' : 'kanban'}
-          onChange={(v) => setPipelineEditorView(v === 'workflow' ? 'runs' : 'editor')}
+        <BoardViewModeToggle<PanelView>
+          value={view}
+          onChange={(v) => setPipelinePanelView(v)}
           options={[
-            { id: 'kanban', label: t('editor.viewEditor', 'Editor'), icon: PencilRuler },
-            { id: 'workflow', label: t('editor.viewRuns', 'Runs'), icon: ListChecks },
+            { id: 'editor', label: t('views.editor', 'Editor'), icon: PencilRuler },
+            { id: 'execution', label: t('views.execution', 'Execution'), icon: PlayCircle },
+            { id: 'runs', label: t('views.runs', 'Run history'), icon: ListChecks },
           ]}
-          ariaLabel={t('editor.viewMode', 'Editor view')}
+          ariaLabel={t('editor.viewMode', 'Pipeline view')}
         />
       </div>
 
+      {/* Read-only banner — the definition is edit-locked while activated. */}
+      {editLocked && view === 'editor' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '7px 14px',
+            borderBottom: '1px solid var(--border-1)',
+            background: 'color-mix(in srgb, var(--amber-500, #f59e0b) 8%, var(--bg-surface))',
+            fontSize: 12,
+            color: 'var(--text-2)',
+          }}
+        >
+          <Lock size={12} />
+          <span>
+            {t('editor.readOnlyActivated', 'Activated on "{{projectId}}" — deactivate it in the Execution view to edit.', {
+              projectId: activation?.projectId ?? '',
+            })}
+          </span>
+          <div style={{ flex: 1 }} />
+          <Button variant="ghost" size="xs" onClick={() => setPipelinePanelView('execution')}>
+            {t('editor.goExecution', 'Open Execution')}
+          </Button>
+        </div>
+      )}
+
       {/* Dirty / validation bar */}
-      {(dirty || saveError || runNowNote) && view === 'editor' && (
+      {(dirty || saveError) && view === 'editor' && !editLocked && (
         <div
           style={{
             display: 'flex',
@@ -165,7 +185,6 @@ export function PipelineEditor() {
             </>
           )}
           {saveError && <span style={{ color: 'var(--red-500)' }}>{saveError}</span>}
-          {runNowNote && <span style={{ color: 'var(--text-2)' }}>{runNowNote}</span>}
         </div>
       )}
 
@@ -173,6 +192,10 @@ export function PipelineEditor() {
       {view === 'runs' && selectedId ? (
         <div style={{ flex: 1, minHeight: 0 }}>
           <PipelineRuns pipelineId={selectedId} />
+        </div>
+      ) : view === 'execution' ? (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <PipelineExecutionView def={draft} draftIsNew={draftIsNew} pipelineId={selectedId} entry={entry ?? null} />
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -183,20 +206,19 @@ export function PipelineEditor() {
               run={runDetail && runDetail.pipelineId === (selectedId ?? '') ? runDetail : null}
               selectedNodeId={selectedNodeId}
               onSelectNode={selectPipelineNode}
-              onAddAfter={handleAddAfter}
+              onAddAfter={editLocked ? undefined : handleAddAfter}
             />
             {draft.steps.length === 0 && (
               <div
                 style={{
                   position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  bottom: 16,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
                   pointerEvents: 'none',
                 }}
               >
-                <span style={{ fontSize: 12.5, color: 'var(--text-3)', background: 'var(--bg-surface)', padding: '8px 14px', borderRadius: 'var(--r-md)', border: '1px dashed var(--border-1)' }}>
+                <span style={{ fontSize: 12.5, color: 'var(--text-3)', background: 'var(--bg-surface)', padding: '8px 14px', borderRadius: 'var(--r-md)', border: '1px dashed var(--border-1)', whiteSpace: 'nowrap' }}>
                   {t('editor.emptyCanvas', 'Press + on the trigger node to add the first step.')}
                 </span>
               </div>
@@ -214,12 +236,12 @@ export function PipelineEditor() {
         </div>
       )}
 
-      {/* Danger zone — editor view, saved pipelines only */}
-      {view === 'editor' && !draftIsNew && selectedId && (
+      {/* Danger zone — editor view, saved + deactivated pipelines only */}
+      {view === 'editor' && !draftIsNew && selectedId && !editLocked && (
         <div style={{ borderTop: '1px solid var(--border-1)', padding: '10px 14px', background: 'var(--bg-surface)' }}>
           <DangerZone
             title={t('danger.title', 'Delete pipeline')}
-            description={t('danger.desc', 'Removes the definition and its run history. Live runs are cancelled.')}
+            description={t('danger.desc', 'Removes the definition and its run history.')}
             buttonText={dangerArmed ? t('danger.confirm', 'Really delete?') : t('danger.delete', 'Delete')}
             loadingText={t('danger.deleting', 'Deleting…')}
             isLoading={deleting}

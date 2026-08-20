@@ -413,6 +413,14 @@ export const REDIS_KEYS = {
     CARD: (cardId: string): string => `${REDIS_DOMAINS.PIPE}:card:${cardId}`,
     /** Per-run coordinator mutation lock - ant:lock:pipe-run:{runId} */
     RUN_LOCK: (runId: string): string => `${REDIS_DOMAINS.LOCK}:pipe-run:${runId}`,
+    /** Activation record projection (JSON PipelineActivation) - ant:pipe:actv:{orgId}:{userId}:{pipelineId} */
+    ACTIVATION: (org: string, user: string, pipelineId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:actv:${org}:${user}:${pipelineId}`,
+    /** projectId → pipelineId reverse mapping — the job-start mutual-exclusion
+     *  gate read. TTL-bounded and refreshed by the reconciler: a stale entry
+     *  self-clears, so the gate fails OPEN, never closed. - ant:pipe:proj:{orgId}:{userId}:{projectId} */
+    PROJECT: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:proj:${org}:${user}:${projectId}`,
   },
 } as const;
 
@@ -510,6 +518,13 @@ export const REDIS_TTL = {
     HITL: 30 * 24 * 60 * 60,
     /** Coordinator per-run mutation lock. */
     RUN_LOCK: 30,
+    /**
+     * Activation + project reverse-map projections. Refreshed by the
+     * reconciler (90s) and the activate route; must comfortably exceed the
+     * refresh interval so a live activation never lapses mid-use, while a
+     * crash between disk unlink and Redis delete self-clears within this.
+     */
+    ACTIVATION: 10 * 60,
   },
 } as const;
 

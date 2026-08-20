@@ -9,6 +9,7 @@
     "sendMessage": "메시지 전송",
     "completeSelection": "선택을 완료하면 활성화됩니다",
     "stopJob": "실행 중인 작업 중지",
+    "pipelineStopConfirm": "이 작업은 파이프라인 \"{{name}}\"의 실행 스텝입니다. 중지하면 파이프라인 실행 전체가 취소됩니다.",
     "stop": "중지",
     "stopping": "중지 중...",
     "filesEdited": "{{count}}개 파일 편집됨"
@@ -283,6 +284,12 @@
       "searching_code": "코드 검색"
     }
   },
+  "banner": {
+    "pipelineWorking": "작업 중",
+    "pipelineWaiting": "대기 중",
+    "pipelineNextFire": "다음 실행: {{when}}",
+    "pipelineManage": "관리"
+  },
   "policy": {
     "signInPlaceholder": "로그인 후 채팅을 시작하세요...",
     "signInMessage": "네비게이션 바에서 로그인해주세요",
@@ -295,6 +302,8 @@
     "selectJobPlaceholder": "작업 유형을 선택하여 계속하세요...",
     "selectJobMessage": "아래 선택기에서 작업 유형을 선택해주세요",
     "jobRunningPlaceholder": "작업 실행 중입니다. 새 메시지를 보내려면 작업을 중지하세요...",
+    "pipelineActivePlaceholder": "파이프라인 \"{{name}}\"이(가) 이 프로젝트를 소유 중입니다 (다음 실행: {{when}}). 채팅하려면 비활성화하세요.",
+    "pipelineRunningPlaceholder": "파이프라인 \"{{name}}\"의 스텝이 실행 중입니다 — 채팅이 잠겨 있습니다.",
     "queueWaitingPlaceholder": "큐 대기 중 ({{position}}/{{total}}). 중지하여 취소...",
     "interruptedPlaceholder": "추가 피드백과 함께 메시지를 보내 계속하세요...",
     "firstMessagePlaceholder": "에이전트와 대화를 시작하세요...",

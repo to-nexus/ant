@@ -105,8 +105,9 @@ function seed(useStore: ReturnType<typeof buildStore>) {
       previewConfig: true,
       actions: false,
       billing: false,
+      pipelines: true,
     },
-    mainPanelTabOrder: ['projectConfig', 'fileEdit', 'transfer', 'previewConfig'],
+    mainPanelTabOrder: ['projectConfig', 'fileEdit', 'transfer', 'previewConfig', 'pipelines'],
     // per-feature preview + deploy buckets (server "running")
     previewByFeature: { [key]: { status: { running: true, phase: 'running' }, isLoading: false, stopGuardUntil: 0 } } as any,
     deployByFeature: { [key]: { status: undefined, logs: [], isLoading: false, stopGuardUntil: 0 } } as any,
@@ -188,6 +189,10 @@ describe('applyIdentityTransition — project change', () => {
     expect(s.mainPanelOpenTabs.transfer).toBe(false);
     // active tab was previewConfig (now closed) → falls back to 'job'.
     expect(s.mainPanelActiveTab).toBe('job');
+  });
+
+  it('keeps the pipelines tab open — the panel is account-scoped (cross-project)', () => {
+    expect(useStore.getState().mainPanelOpenTabs.pipelines).toBe(true);
   });
 
   it('evicts the previous feature buckets', () => {

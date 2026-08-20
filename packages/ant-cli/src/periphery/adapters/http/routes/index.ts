@@ -34,7 +34,7 @@ export { createCloudIDERoutes } from './cloud-ide.routes';  // Cloud IDE (contai
 export { createCustomAgentRoutes } from './customAgents.routes';  // Universal custom agents/jobs
 export { createAccountAgentRoutes } from './accountAgents.routes';  // Account-scoped agent settings
 export { createMcpCredentialRoutes } from './mcpCredentials.routes';  // MCP credential registration (A16)
-export { createPipelinesRoutes } from './pipelines.routes';  // Pipeline scheduling (universal projects)
+export { createPipelinesRoutes, createActivePipelineRoute } from './pipelines.routes';  // Pipeline scheduling (account-scoped defs + per-project activation)
 
 /**
  * Dependencies for route creation

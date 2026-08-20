@@ -12,7 +12,8 @@ import {
   createAuthRoutes,
   createAdminRoutes,
   createTeamsRoutes,
-  createPipelinesRoutes
+  createPipelinesRoutes,
+  createActivePipelineRoute
 } from '../../routes';
 import { AuthService } from '../../../../../core/auth/AuthService';
 import { parseSuperAdminEmails } from '../../../../../core/auth/superAdmin';
@@ -92,21 +93,22 @@ export class RouteConfigurator {
   }
 
   /**
-   * Pipeline scheduling surface (universal projects). Services are built by
+   * Pipeline scheduling surface. Definitions are ACCOUNT-scoped
+   * (`/api/pipelines` — cross-project); the only project-scoped read is the
+   * chat surface's `active-pipeline`. Services are built by
    * ExpressServerAdapter; absent (no resolver / no Redis config) ⇒ no routes.
    */
   private setupPipelineRoutes(app: Express): void {
     if (!this.deps.workspaceResolver || !this.deps.pipelineCoordinator || !this.deps.pipelineScheduleQueue) return;
-    app.use(
-      '/api/projects/:projectId/pipelines',
-      createPipelinesRoutes({
-        workspaceResolver: this.deps.workspaceResolver,
-        coordinator: this.deps.pipelineCoordinator,
-        scheduleQueue: this.deps.pipelineScheduleQueue,
-        stateStore: getInfrastructureFactory().getStateStore(),
-        chatService: this.deps.chatService,
-      }),
-    );
+    const pipelineDeps = {
+      workspaceResolver: this.deps.workspaceResolver,
+      coordinator: this.deps.pipelineCoordinator,
+      scheduleQueue: this.deps.pipelineScheduleQueue,
+      stateStore: getInfrastructureFactory().getStateStore(),
+      chatService: this.deps.chatService,
+    };
+    app.use('/api/pipelines', createPipelinesRoutes(pipelineDeps));
+    app.use('/api/projects/:projectId/active-pipeline', createActivePipelineRoute(pipelineDeps));
   }
 
   /**

@@ -76,9 +76,9 @@ const FEATURE_SCOPED_TABS: StaticMainPanelTab[] = ['fileEdit', 'transfer'];
  * closes it, since a preview tab with no feature has no context.
  */
 export function tabsToCloseOnTransition(scope: IdentityScope): StaticMainPanelTab[] {
-  // `pipelines` is project-scoped (universal projects only): a PROJECT change
-  // closes it; feature changes never apply (universal rides one pseudo-feature).
+  // `pipelines` is ACCOUNT-scoped (definitions are cross-project; the project
+  // binding is the activation record) — it survives every identity change.
   return scope === 'project'
-    ? [...FEATURE_SCOPED_TABS, 'previewConfig', 'pipelines']
+    ? [...FEATURE_SCOPED_TABS, 'previewConfig']
     : [...FEATURE_SCOPED_TABS];
 }

@@ -13,8 +13,11 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
   PIPELINE_FILE_NAME,
+  PIPELINE_ACTIVATION_FILE_NAME,
   validatePipelineDef,
+  validatePipelineActivation,
   isApprovalStep,
+  type PipelineActivation,
   type PipelineDef,
   type PipelineRunEvent,
   type PipelineRunSummary,
@@ -22,6 +25,7 @@ import {
 import { atomicWriteFile } from '../utils/atomicWriteFile';
 import { checkMinInterval } from './cron';
 import {
+  pipelineActivationPath,
   pipelineDefPath,
   pipelineDir,
   pipelineRunIndexPath,
@@ -117,6 +121,75 @@ export async function savePipeline(root: string, pipelineId: string, def: Pipeli
 
 export function deletePipeline(root: string, pipelineId: string): void {
   fs.rmSync(pipelineDir(root, pipelineId), { recursive: true, force: true });
+}
+
+// ============================================
+// Activation (activation.json — disk SSOT; absence = deactivated)
+// ============================================
+
+/** Missing file → null. Unreadable/invalid file → throw (never silently deactivate). */
+export function loadActivation(root: string, pipelineId: string): PipelineActivation | null {
+  const activationPath = pipelineActivationPath(root, pipelineId);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(activationPath, 'utf-8'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw new PipelineValidationError(
+      `Cannot read ${PIPELINE_ACTIVATION_FILE_NAME}: ${e instanceof Error ? e.message : String(e)}`,
+      pipelineId,
+    );
+  }
+  const errors = validatePipelineActivation(raw);
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors[0], pipelineId);
+  }
+  return raw as PipelineActivation;
+}
+
+export async function saveActivation(
+  root: string,
+  pipelineId: string,
+  activation: PipelineActivation,
+): Promise<void> {
+  const errors = validatePipelineActivation(activation);
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors[0], pipelineId);
+  }
+  fs.mkdirSync(pipelineDir(root, pipelineId), { recursive: true });
+  await atomicWriteFile(pipelineActivationPath(root, pipelineId), `${JSON.stringify(activation, null, 2)}\n`);
+}
+
+export function deleteActivation(root: string, pipelineId: string): void {
+  fs.rmSync(pipelineActivationPath(root, pipelineId), { force: true });
+}
+
+/** Every activated pipeline under the account root. Invalid sidecars are skipped (reconciler logs them). */
+export function listActivations(root: string): Array<{ pipelineId: string; activation: PipelineActivation }> {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: Array<{ pipelineId: string; activation: PipelineActivation }> = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    try {
+      const activation = loadActivation(root, entry.name);
+      if (activation) out.push({ pipelineId: entry.name, activation });
+    } catch {
+      // Invalid sidecar: not activated for scheduling purposes; surfaced by the reconciler's log.
+    }
+  }
+  return out.sort((a, b) => a.pipelineId.localeCompare(b.pipelineId));
+}
+
+export function findActivationByProject(
+  root: string,
+  projectId: string,
+): { pipelineId: string; activation: PipelineActivation } | null {
+  return listActivations(root).find((item) => item.activation.projectId === projectId) ?? null;
 }
 
 // ============================================

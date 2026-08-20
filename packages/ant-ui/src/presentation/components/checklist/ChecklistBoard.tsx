@@ -3,9 +3,11 @@ import { Check, FileText, ListTodo } from 'lucide-react';
 import { BoardContainer } from '../BoardContainer';
 import { ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from '../kanban/KanbanHeader';
 import { useStore } from '@/domain/store';
+import { selectActivePipelineForSelectedProject } from '@/domain/store/selectors/pipelines';
 import type { UniversalChecklistItem } from '@ant/shared';
 import { KanbanData } from '@/infrastructure/http/api';
 import { Spinner } from '@/presentation/components/common/async';
+import { PipelineOriginChip } from '../Pipelines/PipelineOriginChip';
 
 interface ChecklistBoardProps {
   kanbanData: KanbanData;
@@ -23,6 +25,10 @@ interface ChecklistBoardProps {
 export function ChecklistBoard({ kanbanData }: ChecklistBoardProps) {
   const { t } = useTranslation('nav');
   const systemRecursionLimit = useStore((state) => state.recursionLimit);
+  // The work tab marks pipeline-driven work: while the project's active
+  // pipeline is running, the current job IS a pipeline step.
+  const activePipeline = useStore((state) => selectActivePipelineForSelectedProject(state));
+  const pipelineRunning = activePipeline && (activePipeline.state === 'running' || activePipeline.state === 'awaiting_human');
   const checklist = kanbanData.checklist;
   const items = checklist?.items ?? [];
   const doneCount = items.filter((i) => i.state === 'done').length;
@@ -32,6 +38,7 @@ export function ChecklistBoard({ kanbanData }: ChecklistBoardProps) {
       className="checklist-board"
       titleActions={
         <>
+          {pipelineRunning && <PipelineOriginChip pipelineId={activePipeline!.pipelineId} />}
           <ElapsedTimeBadge jobTiming={kanbanData.jobTiming} completedTasks={[]} inProgressTasks={[]} />
           <TokenUsageBadge
             jobId={kanbanData.jobId}

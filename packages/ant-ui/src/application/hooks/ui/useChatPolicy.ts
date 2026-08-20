@@ -6,6 +6,7 @@
 
 import { useStore } from '@/domain/store';
 import { selectIsAuthenticated } from '@/domain/store/selectors/auth';
+import { selectActivePipelineForSelectedProject } from '@/domain/store/selectors/pipelines';
 import { useTranslation } from 'react-i18next';
 
 export interface ChatPolicy {
@@ -29,7 +30,7 @@ export interface ChatPolicy {
   canChangeJob: boolean;  // ✅ Job 변경 가능 여부
   
   // Metadata
-  reason: 'not-authenticated' | 'no-agent' | 'no-workspace' | 'no-project' | 'no-job' | 'ready' | 'job-running' | 'job-interrupted';
+  reason: 'not-authenticated' | 'no-agent' | 'no-workspace' | 'no-project' | 'no-job' | 'ready' | 'job-running' | 'job-interrupted' | 'pipeline-active' | 'pipeline-running';
 }
 
 export function useChatPolicy(messageCount: number = 0): ChatPolicy {
@@ -43,6 +44,7 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
   const queuePosition = useStore((state) => state.queuePosition);
   const kanbanData = useStore((state) => state.kanban);
   const dismissedInterruptTimestamp = useStore((state) => state.dismissedInterruptTimestamp);
+  const activePipeline = useStore((state) => selectActivePipelineForSelectedProject(state));
 
   // ✅ Check authentication status. Cloud (or unresolved BE mode) requires
   // a signed-in user; local skips the gate entirely. SSOT: selectIsAuthenticated.
@@ -137,6 +139,28 @@ export function useChatPolicy(messageCount: number = 0): ChatPolicy {
       jobButtonLabel: t('sidebar.offline'),
       canChangeJob: true,
       reason: 'no-job'
+    };
+  }
+
+  // ✅ Pipeline owns the project — BEFORE the isRunning branch, so a
+  // pipeline-driven isRunning never falls into the plain job-running stop
+  // semantics (raw stop would kill a scheduled step under the scheduler).
+  if (activePipeline) {
+    const running = activePipeline.state === 'running' || activePipeline.state === 'awaiting_human';
+    const when = activePipeline.nextFireAt ? new Date(activePipeline.nextFireAt).toLocaleString() : '';
+    return {
+      headerText: t('sidebar.chatWith', { agent: getAgentDisplayName(selectedAgent) }),
+      isOffline: false,
+      canSendMessage: false,
+      inputPlaceholder: running
+        ? t('policy.pipelineRunningPlaceholder', { name: activePipeline.pipelineName })
+        : t('policy.pipelineActivePlaceholder', { name: activePipeline.pipelineName, when }),
+      canResizeInput: true,
+      emptyStateMessage: null,
+      readyEmptyStateMessage: null,
+      jobButtonLabel: selectedJobType,
+      canChangeJob: false,
+      reason: running ? 'pipeline-running' : 'pipeline-active'
     };
   }
 

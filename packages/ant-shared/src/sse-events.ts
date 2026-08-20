@@ -21,7 +21,7 @@
 
 import type { GitSnapshot, GitOperationState, GitPatState } from './git';
 import type { CustomDomainStatus, CustomDomainCertStatus, CustomDomainTarget } from './deploy';
-import type { RunRecord, GateDecision, PipelinePendingApproval } from './pipeline';
+import type { RunRecord, GateDecision, PipelinePendingApproval, PipelineActivation } from './pipeline';
 
 /**
  * Discriminator for SSE messages routed through the unified stream.
@@ -237,8 +237,17 @@ export type PipelineEventData =
     }
   | {
       cause: 'defChanged';
-      projectId: string;
       pipelineId: string;
+    }
+  | {
+      cause: 'activationChanged';
+      pipelineId: string;
+      /** On deactivation this is the PREVIOUS project so the FE can clear its badge. */
+      projectId: string;
+      /** null = deactivated. */
+      activation: PipelineActivation | null;
+      /** Server-computed next fire; present only when activated. */
+      nextFireAt?: string;
     };
 
 /**

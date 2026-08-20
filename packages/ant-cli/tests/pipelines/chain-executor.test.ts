@@ -10,10 +10,8 @@ import { buildInitialSteps, planAdvance, applyStepOutcome } from '../../src/core
 
 function def(steps: any[], onStepFailure: 'abort' | 'continue' = 'abort'): PipelineDef {
   return {
-    version: 1,
+    version: 2,
     name: 'p',
-    enabled: true,
-    projectId: 'proj',
     on: { schedule: { cron: '0 9 * * 1' } },
     defaults: { onStepFailure },
     steps,

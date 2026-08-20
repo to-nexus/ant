@@ -6,7 +6,10 @@
  * dispatch, or an approval gate that issues no job).
  *
  * The definition lives on disk (`.ant/pipelines/{id}/pipeline.yaml`, account
- * scope — disk is SSOT); Redis holds only rebuildable projections. This module
+ * scope — disk is SSOT); Redis holds only rebuildable projections. A definition
+ * is account-scoped and cross-project: the project binding lives in a separate
+ * ACTIVATION record (`activation.json` sidecar, absence = deactivated) — at
+ * most one project per pipeline and one active pipeline per project. This module
  * is dependency-free by package doctrine: structural validation only. Cron
  * parsing / next-fire computation is server-side (`core/pipelines/cron.ts`) —
  * the FE never computes cron locally, it round-trips `preview-fires`.
@@ -23,7 +26,7 @@ import { parseCustomJobRef, isValidCustomId, GENERAL_INTENT } from './custom-age
 // ============================================
 
 export const PIPELINE_FILE_NAME = 'pipeline.yaml';
-export const PIPELINE_DEF_VERSION = 1;
+export const PIPELINE_DEF_VERSION = 2;
 
 /** Missed-fire policy: drop the stale fire, or run it once on recovery. */
 export type PipelineOnMissed = 'skip' | 'runOnce';
@@ -87,12 +90,65 @@ export function isApprovalStep(step: PipelineStepDef): step is ApprovalStepDef {
 export interface PipelineDef {
   version: typeof PIPELINE_DEF_VERSION;
   name: string;
-  enabled: boolean;
-  /** All steps' sessions/artifacts land in this universal container. */
-  projectId: string;
   on: { schedule: PipelineScheduleTrigger };
   defaults?: { onStepFailure?: StepFailurePolicy };
   steps: PipelineStepDef[];
+}
+
+// ============================================
+// Activation (activation.json sidecar) — the pipeline↔project binding
+// ============================================
+
+export const PIPELINE_ACTIVATION_FILE_NAME = 'activation.json';
+
+/**
+ * Activating binds one pipeline to one project (1:1 both directions,
+ * enforced at activate time and healed by the reconciler). While a project
+ * has an active pipeline, interactive job starts in that project are
+ * rejected and the definition is edit-locked — the pipeline owns the project.
+ */
+export interface PipelineActivation {
+  /** All steps' sessions/artifacts land in this universal container. */
+  projectId: string;
+  activatedAt: string;
+  activatedBy?: string;
+  /** Reserved for the canonical phase (project+feature scope). Universal ⇒ omitted. */
+  featureId?: string;
+}
+
+const ACTIVATION_KEYS = ['projectId', 'activatedAt', 'activatedBy', 'featureId'];
+
+/** Plain messages, empty = valid (validateMcpServers precedent). */
+export function validatePipelineActivation(raw: unknown): string[] {
+  if (!isPlainObject(raw)) return ['activation must be an object'];
+  const errors: string[] = [];
+  errors.push(...unknownKeyErrors(raw, ACTIVATION_KEYS, 'activation'));
+  if (typeof raw.projectId !== 'string' || raw.projectId.trim().length === 0) {
+    errors.push('activation.projectId must be a non-empty string');
+  }
+  if (typeof raw.activatedAt !== 'string' || Number.isNaN(Date.parse(raw.activatedAt))) {
+    errors.push('activation.activatedAt must be an ISO timestamp');
+  }
+  if (raw.activatedBy !== undefined && typeof raw.activatedBy !== 'string') {
+    errors.push('activation.activatedBy must be a string');
+  }
+  if (raw.featureId !== undefined) {
+    errors.push('activation.featureId is not supported yet (canonical pipelines are a future axis)');
+  }
+  return errors;
+}
+
+/**
+ * Per-project active-pipeline surface (`GET /api/projects/:id/active-pipeline`
+ * + derived FE state). Activation alone means `waiting`; a live run makes it
+ * `running` / `awaiting_human`.
+ */
+export interface ActivePipelineInfo {
+  pipelineId: string;
+  pipelineName: string;
+  state: 'waiting' | 'running' | 'awaiting_human';
+  nextFireAt?: string;
+  currentRunId?: string;
 }
 
 /**
@@ -181,6 +237,8 @@ export interface StepRecord {
   endedAt?: string;
   error?: string;
   gate?: GateRecord;
+  /** Chat turn the step's user-turn line was minted under (coordinator-owned). */
+  turnId?: string;
 }
 
 export interface RunRecord {
@@ -196,12 +254,16 @@ export interface RunRecord {
   error?: string;
   /** Frozen definition compiled at fire time — in-flight runs never see YAML edits. Omitted from list APIs/SSE. */
   defSnapshot?: PipelineDef;
+  /** Frozen activation at fire time — `projectId` above is sourced from it. */
+  activationSnapshot?: PipelineActivation;
 }
 
 /** One line per TERMINAL run in `runs/index.jsonl`; also the runs-list API row. */
 export interface PipelineRunSummary {
   runId: string;
   pipelineId: string;
+  /** The project the run's activation bound at fire time (activation can move between runs). */
+  projectId: string;
   status: PipelineRunStatus;
   firedBy: PipelineFiredBy;
   fireEpoch: number;
@@ -236,11 +298,12 @@ export interface PipelineRunEvent {
 export interface PipelineListEntry {
   id: string;
   name: string;
-  enabled: boolean;
-  projectId: string;
+  /** null = deactivated. Set = bound to `activation.projectId`. */
+  activation: PipelineActivation | null;
   cron: string;
   tz?: string;
   stepCount: number;
+  /** Only present while activated (a deactivated pipeline never fires). */
   nextFireAt?: string;
   lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
   pendingApprovalCount: number;
@@ -264,7 +327,12 @@ export interface PipelinePendingApproval {
 // ============================================
 
 const STEP_ID_HINT = 'lowercase letters, digits and hyphens (e.g. "collect-sources")';
-const DEF_KEYS = ['version', 'name', 'enabled', 'projectId', 'on', 'defaults', 'steps'];
+const DEF_KEYS = ['version', 'name', 'on', 'defaults', 'steps'];
+/** Keys that existed in def v1 or belong to future axes — reject loudly, never ignore. */
+const RESERVED_DEF_KEYS: Record<string, string> = {
+  enabled: '"enabled" moved to activation — activate the pipeline onto a project instead (POST /api/pipelines/{id}/activate)',
+  projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
+};
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];
 const JOB_STEP_KEYS = ['id', 'customJobRef', 'intent', 'directive', 'context', 'needs', 'on'];
 const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', 'timeout'];
@@ -272,6 +340,8 @@ const APPROVAL_STEP_KEYS = ['id', 'type', 'prompt', 'needs', 'on', 'channels', '
 const RESERVED_STEP_KEYS: Record<string, string> = {
   retry: 'step "retry" is not supported yet (scheduler-level retry is a v2 knob)',
   remindAfter: 'step "remindAfter" is not supported yet (reminder arms are a v2 knob)',
+  jobType: 'step "jobType" is not supported yet (canonical pipeline steps are a future axis)',
+  feature: 'step "feature" is not supported yet (canonical pipeline steps are a future axis)',
 };
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -363,7 +433,7 @@ export function validatePipelineDef(
 ): string[] {
   if (!isPlainObject(raw)) return ['pipeline definition must be a mapping (YAML object)'];
   const errors: string[] = [];
-  errors.push(...unknownKeyErrors(raw, DEF_KEYS, 'pipeline'));
+  errors.push(...unknownKeyErrors(raw, DEF_KEYS, 'pipeline', RESERVED_DEF_KEYS));
 
   if (raw.version !== PIPELINE_DEF_VERSION) {
     errors.push(`version must be ${PIPELINE_DEF_VERSION} (got: ${String(raw.version)})`);
@@ -372,10 +442,6 @@ export function validatePipelineDef(
     errors.push('name must be a non-empty string');
   } else if (raw.name.length > 100) {
     errors.push('name must be at most 100 characters');
-  }
-  if (typeof raw.enabled !== 'boolean') errors.push('enabled must be a boolean');
-  if (typeof raw.projectId !== 'string' || raw.projectId.trim().length === 0) {
-    errors.push('projectId must be a non-empty string');
   }
 
   // Trigger
