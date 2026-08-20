@@ -17,7 +17,7 @@ export class VisualProcessorClient implements BackgroundRemovalPort {
   private baseUrl: string;
   private timeoutMs: number;
 
-  constructor(baseUrl: string = 'http://localhost:4103', timeoutMs: number = 60_000) {
+  constructor(baseUrl: string = 'http://localhost:4104', timeoutMs: number = 60_000) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.timeoutMs = timeoutMs;
   }

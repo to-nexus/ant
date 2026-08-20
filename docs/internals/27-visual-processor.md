@@ -129,8 +129,13 @@ orchestrator.ts
 |--------|------|
 | ant-api | 4100 |
 | ant-realtime | 4101 |
-| ant-preview | 4102 |
-| **visual-processor** | **4103** |
+| ant-preview (control plane) | 4102 |
+| ant-preview (user content origin) | 4103 |
+| **visual-processor** | **4104** (host) → 4103 (in-container) |
+
+4103 on the host belongs to ant-preview's content listener
+(`getPreviewContentPort` = `PORT + 1`), whose bind failure is fatal by design —
+so the sidecar publishes on 4104 and keeps 4103 inside the container.
 
 ### pnpm Scripts
 
@@ -144,7 +149,7 @@ orchestrator.ts
 
 | Variable | Default | Purpose |
 |------|--------|------|
-| `ANT_VISUAL_PROCESSOR_URL` | `http://localhost:4103` | Sidecar connection URL |
+| `ANT_VISUAL_PROCESSOR_URL` | `http://localhost:4104` | Sidecar connection URL |
 
 For server-side environment variables, see [visual-processor/README.md](../../packages/ant-cli/src/periphery/integrations/visual-processor/README.md).
 

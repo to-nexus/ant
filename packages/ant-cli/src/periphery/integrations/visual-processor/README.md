@@ -71,12 +71,12 @@ All errors use the shape `{"detail": "...", "request_id": "..."}`.
 **curl examples:**
 
 ```bash
-curl -X POST http://localhost:4103/remove-bg \
+curl -X POST http://localhost:4104/remove-bg \
   -F "file=@input.jpg" \
   -o output.png
 
 # Specific model + request ID
-curl -X POST "http://localhost:4103/remove-bg?model=birefnet-portrait" \
+curl -X POST "http://localhost:4104/remove-bg?model=birefnet-portrait" \
   -H "X-Request-Id: my-trace-123" \
   -F "file=@portrait.jpg" \
   -o output.png

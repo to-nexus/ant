@@ -719,7 +719,7 @@ export async function orchestrator(params: {
 
       const { VisualProcessorClient } = await import('../periphery/adapters/visualProcessor/VisualProcessorClient');
       const { NoopBackgroundRemoval } = await import('../periphery/adapters/visualProcessor/NoopBackgroundRemoval');
-      const visualProcessorUrl = process.env.ANT_VISUAL_PROCESSOR_URL || 'http://localhost:4103';
+      const visualProcessorUrl = process.env.ANT_VISUAL_PROCESSOR_URL || 'http://localhost:4104';
       const backgroundRemoval = configData.visualSettings?.removeBackground !== false
         ? new VisualProcessorClient(visualProcessorUrl)
         : new NoopBackgroundRemoval();

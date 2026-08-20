@@ -10,7 +10,9 @@ services:
       dockerfile: Dockerfile
     container_name: ant-visual-processor
     ports:
-      - "4103:4103"
+      # Host 4104, not 4103: ant-preview's content origin owns 4103 on the host
+      # (getPreviewContentPort = PORT + 1 = 4102 + 1), and its bind failure is fatal.
+      - "4104:4103"
     environment:
       - REMBG_MODEL=${REMBG_MODEL:-u2net}
       - UVICORN_WORKERS=${UVICORN_WORKERS:-1}

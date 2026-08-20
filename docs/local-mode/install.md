@@ -125,7 +125,7 @@ unless you run image-generation flows.
 
 ```bash
 # In .env:
-ANT_VISUAL_PROCESSOR_URL=http://localhost:4103
+ANT_VISUAL_PROCESSOR_URL=http://localhost:4104
 ```
 
 ## Run

@@ -47,6 +47,12 @@ entry point and env vars decide which one starts:
 | `ant-job` | — | `infrastructure/worker/start-job-worker.ts` |
 | `ant-preview` | 4102 | `infrastructure/preview/start-preview-server.ts` |
 
+`ant-preview` binds **two** ports: 4102 for the control plane and **4103 for the
+user-content origin** (`ANT_PREVIEW_CONTENT_PORT`, defaulting to `PORT + 1`).
+Both are reserved — the content bind failure is fatal by design, so a sidecar
+that squats 4103 takes the preview process down with it. Optional sidecars start
+at 4104 (visual-processor).
+
 Inter-process communication is exclusively via Redis (Pub/Sub, KV,
 BullMQ). **There is no direct HTTP between processes.** Local and
 cloud modes share the same data plane; local just runs all four on
