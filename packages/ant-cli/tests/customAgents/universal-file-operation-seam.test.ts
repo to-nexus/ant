@@ -16,6 +16,7 @@ import type { FileNode } from '@ant/shared';
 import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { FileOperationService } from '../../src/periphery/adapters/http/services/ProjectService/FileOperationService';
 import { resolveFeatureScopedFilePath } from '../../src/periphery/adapters/http/routes/helpers/featureFiles';
+import { FeatureCrudService } from '../../src/periphery/adapters/http/services/ProjectService/FeatureCrudService';
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 
 const redisWrites: Array<{ key: string; value: string }> = [];
@@ -252,6 +253,41 @@ describe('resolveFeatureScopedFilePath (files-raw / download seam)', () => {
     );
     expect(() => resolveFeatureScopedFilePath(resolver, userContext, 'proj', 'main', '../../escape')).toThrow(
       /Invalid file path/,
+    );
+  });
+});
+
+describe('resolveExistingFeature — plane-root authority (gates files/tree/SSE)', () => {
+  const authority = () => new FeatureCrudService(makeResolver());
+
+  it('universal project + pseudo-feature → the container (no features/ plane exists)', async () => {
+    markUniversal();
+    await expect(authority().resolveExistingFeature('proj', UNIVERSAL_FEATURE, userContext)).resolves.toBe(
+      path.join(projectPath, 'universal'),
+    );
+  });
+
+  it('resolves BEFORE the container is materialized — a fresh workspace must not 404', async () => {
+    // ensureUniversalContainer runs lazily (first turn / first chat write); the
+    // explorer and the SSE stream open before that.
+    fs.writeFileSync(path.join(projectPath, 'config.json'), JSON.stringify({ projectType: 'universal' }));
+    await expect(authority().resolveExistingFeature('proj', UNIVERSAL_FEATURE, userContext)).resolves.toBe(
+      path.join(projectPath, 'universal'),
+    );
+    expect(fs.existsSync(path.join(projectPath, 'features'))).toBe(false);
+  });
+
+  it('universal project + any other slug → null (ghost gate intact)', async () => {
+    markUniversal();
+    await expect(authority().resolveExistingFeature('proj', 'ghost', userContext)).resolves.toBeNull();
+  });
+
+  it('canonical project: the name falls through to the features/ disk check', async () => {
+    fs.writeFileSync(path.join(projectPath, 'config.json'), JSON.stringify({ projectType: 'canonical' }));
+    await expect(authority().resolveExistingFeature('proj', UNIVERSAL_FEATURE, userContext)).resolves.toBeNull();
+    fs.mkdirSync(path.join(projectPath, 'features', 'universal'), { recursive: true });
+    await expect(authority().resolveExistingFeature('proj', UNIVERSAL_FEATURE, userContext)).resolves.toBe(
+      path.join(projectPath, 'features', 'universal'),
     );
   });
 });

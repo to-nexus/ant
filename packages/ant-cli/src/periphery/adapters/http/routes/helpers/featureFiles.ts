@@ -21,6 +21,29 @@ import {
   resolveUniversalMergedPath,
 } from '../../../../../core/customAgents/universalContainer';
 
+/**
+ * The universal container root for `(project, feature)`, or null when the pair
+ * addresses a canonical feature plane. Single owner of the "which plane is
+ * this" question: routes that anchor a write by NAME (`getFeaturePath`) must
+ * refuse the universal answer rather than write into the phantom
+ * `features/universal` tree.
+ */
+export function resolveUniversalPlaneRoot(
+  workspaceResolver: WorkspaceResolver,
+  userContext: UserContext,
+  projectId: string,
+  featureName: string,
+): string | null {
+  try {
+    return resolveUniversalContainerPath(
+      workspaceResolver.getProjectPath(userContext, projectId),
+      featureName,
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function resolveFeatureScopedFilePath(
   workspaceResolver: WorkspaceResolver,
   userContext: UserContext,
@@ -28,8 +51,7 @@ export function resolveFeatureScopedFilePath(
   featureName: string,
   relPath: string,
 ): string {
-  const projectPath = workspaceResolver.getProjectPath(userContext, projectId);
-  const containerPath = resolveUniversalContainerPath(projectPath, featureName);
+  const containerPath = resolveUniversalPlaneRoot(workspaceResolver, userContext, projectId, featureName);
   if (containerPath) {
     return resolveUniversalMergedPath(containerPath, relPath);
   }

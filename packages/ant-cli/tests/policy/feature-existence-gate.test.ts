@@ -10,6 +10,9 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import express from 'express';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import type * as http from 'http';
 
 import { createFilesRoutes } from '../../src/periphery/adapters/http/routes/files.routes';
@@ -17,7 +20,7 @@ import { createFilesRoutes } from '../../src/periphery/adapters/http/routes/file
 describe('feature-existence gate on file routes', () => {
   let server: http.Server;
 
-  const start = (exists: boolean) => {
+  const start = (exists: boolean, opts: { projectPath?: string } = {}) => {
     const writeFile = vi.fn(async () => ({ path: 'plan/a.md' }));
     const getFileTree = vi.fn(async () => [{ name: 'root', path: '', type: 'directory', children: [] }]);
     const setFileTreeCache = vi.fn(async () => {});
@@ -26,7 +29,12 @@ describe('feature-existence gate on file routes', () => {
       writeFile,
       getFileTree,
       resolveExistingFeatureForMutation: async () => (exists ? '/tmp/feat' : null),
-      workspaceResolver: { getFeaturePath: () => '/tmp/feat' },
+      workspaceResolver: {
+        getFeaturePath: () => '/tmp/feat',
+        // Only consulted by the universal-plane refusal; a path with no
+        // config.json reads as a canonical project.
+        getProjectPath: () => opts.projectPath ?? '/tmp/ant-no-such-project',
+      },
     } as any;
     const stateStore = { getFileTreeCache: async () => null, setFileTreeCache } as any;
 
@@ -91,5 +99,74 @@ describe('feature-existence gate on file routes', () => {
     expect(res.status).toBe(404);
     expect(spies.getFileTree).not.toHaveBeenCalled();
     expect(spies.setFileTreeCache).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A workspace project's plane root is `{project}/universal`, so the pseudo-
+   * feature passes the existence authority. The three routes that then anchor a
+   * write by NAME must refuse it — honouring them would write into the phantom
+   * `features/universal` tree, which is invisible in the merged view. The
+   * `universal/artifacts` mount owns those operations.
+   */
+  describe('universal plane', () => {
+    let universalProject: string;
+
+    const startUniversal = () => {
+      universalProject = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-gate-universal-'));
+      fs.writeFileSync(
+        path.join(universalProject, 'config.json'),
+        JSON.stringify({ projectType: 'universal' }),
+      );
+      return start(true, { projectPath: universalProject });
+    };
+
+    afterEach(() => {
+      if (universalProject) fs.rmSync(universalProject, { recursive: true, force: true });
+    });
+
+    it('directory-create is refused with 409 universal-plane', async () => {
+      const { base } = await startUniversal();
+      const res = await fetch(`${base}/projects/p1/features/universal/directory`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'briefs' }),
+      });
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('universal-plane');
+      expect(fs.existsSync(path.join(universalProject, 'features'))).toBe(false);
+    });
+
+    it('upload is refused with 409 universal-plane', async () => {
+      const { base } = await startUniversal();
+      const form = new FormData();
+      form.append('dirPath', '');
+      form.append('files', new Blob(['x'], { type: 'text/markdown' }), 'a.md');
+      const res = await fetch(`${base}/projects/p1/features/universal/upload`, { method: 'POST', body: form });
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('universal-plane');
+      expect(fs.existsSync(path.join(universalProject, 'features'))).toBe(false);
+    });
+
+    it('rename is refused with 409 universal-plane', async () => {
+      const { base } = await startUniversal();
+      const res = await fetch(`${base}/projects/p1/features/universal/rename`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ oldPath: 'a.md', newPath: 'b.md' }),
+      });
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('universal-plane');
+    });
+
+    it('PUT still writes — the container seam owns the path', async () => {
+      const { base, spies } = await startUniversal();
+      const res = await fetch(`${base}/projects/p1/features/universal/files/plan/a.md`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content: 'x' }),
+      });
+      expect(res.status).toBe(200);
+      expect(spies.writeFile).toHaveBeenCalledTimes(1);
+    });
   });
 });

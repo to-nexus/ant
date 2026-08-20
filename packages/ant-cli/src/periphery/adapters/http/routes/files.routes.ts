@@ -9,6 +9,7 @@ import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
+import type { UserContext } from '../../../../core/types/user';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
 import { writeBufferVerifiedAbs, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
@@ -21,7 +22,7 @@ import {
 import { acquireLock } from '../../../../core/redis/distributedLock';
 import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
-import { resolveFeatureScopedFilePath, measureArchiveInput } from './helpers/featureFiles';
+import { resolveFeatureScopedFilePath, resolveUniversalPlaneRoot, measureArchiveInput } from './helpers/featureFiles';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
 import { mkdirpContainedBase, renameContainedBase, toBaseRelative } from '../../../../core/config/containedIo';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
@@ -145,6 +146,32 @@ export function createFilesRoutes(deps: {
    */
   const HTML_PREVIEW_CSP =
     "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; frame-ancestors 'self'";
+
+  /**
+   * Refuse a canonical-plane write aimed at a workspace project's universal
+   * container, and answer the response when it does.
+   *
+   * `upload` / `directory` / `rename` anchor their target at the plane root and
+   * walk it by name, so honouring the `universal` pseudo-feature here would
+   * write into the phantom `features/universal` tree instead of the container.
+   * The container's merged-path routing and reserved-root guards (`sessions/`,
+   * `pipeline-runs/`) live in the `/projects/:id/universal/artifacts` mount,
+   * which owns these three operations for workspace projects.
+   */
+  const refusedUniversalPlane = (
+    res: Response,
+    userContext: UserContext,
+    projectId: string,
+    featureName: string,
+  ): boolean => {
+    const workspaceResolver = (deps.projectService as any).workspaceResolver;
+    if (!resolveUniversalPlaneRoot(workspaceResolver, userContext, projectId, featureName)) return false;
+    res.status(409).json({
+      code: 'universal-plane',
+      error: 'Workspace projects manage files through /projects/:id/universal/artifacts',
+    });
+    return true;
+  };
 
   /**
    * Anchor a caller-supplied write target under `rootDir` AND under the feature
@@ -434,12 +461,14 @@ export function createFilesRoutes(deps: {
       }
       
       const userContext = extractUserContext(req);
-      if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+      // The authority answers the plane root — re-deriving it from the name
+      // would leave the plane it just resolved.
+      const featurePath = await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext);
+      if (!featurePath) {
         res.status(404).json({ error: 'Feature not found' });
         return;
       }
-      const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      if (refusedUniversalPlane(res, userContext, projectId, featureName)) return;
 
       // `dirPath` is caller-supplied. `resolveWriteTarget` below anchors each
       // per-file path to `baseDir`, so an escaped baseDir would be honoured —
@@ -590,11 +619,11 @@ export function createFilesRoutes(deps: {
       }
       
       const userContext = extractUserContext(req);
-      if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+      const featurePath = await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext);
+      if (!featurePath) {
         return res.status(404).json({ error: 'Feature not found' });
       }
-      const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      if (refusedUniversalPlane(res, userContext, projectId, featureName)) return;
       // Security: must stay within the feature directory. A bare `startsWith`
       // compares no separator, so `../<feature>-escaped` normalizes to a sibling
       // that still shares the prefix — the shared helper compares by segment and
@@ -649,11 +678,11 @@ export function createFilesRoutes(deps: {
       }
 
       const userContext = extractUserContext(req);
-      if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+      const featurePath = await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext);
+      if (!featurePath) {
         return res.status(404).json({ error: 'Feature not found' });
       }
-      const workspaceResolver = (deps.projectService as any).workspaceResolver;
-      const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+      if (refusedUniversalPlane(res, userContext, projectId, featureName)) return;
 
       let fullOldPath: string;
       let fullNewPath: string;

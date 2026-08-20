@@ -378,11 +378,15 @@ export class ProjectService {
   }
 
   /**
-   * Authoritative feature reference for mutation/cache routes — the absolute
-   * feature path iff the feature was really created, else `null`. Routes gate
+   * Authoritative plane root for mutation/cache routes — the absolute root of
+   * the `(project, feature)` pair iff it really exists, else `null`. Routes gate
    * every disk write and file-tree cache write on this so an arbitrary
    * `:feature` slug cannot create ghost artifacts or cache keys (M-NEW-017,
    * M-NEW-008).
+   *
+   * The root is a canonical feature dir OR the universal container of a
+   * workspace project (which has no `features/` plane) — a route that then
+   * re-derives `getFeaturePath` from the same name would leave that plane.
    */
   async resolveExistingFeatureForMutation(
     projectId: string,

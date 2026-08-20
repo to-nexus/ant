@@ -8,6 +8,7 @@ import { acquireLock } from '../../../../../core/redis/distributedLock';
 import { REDIS_KEYS } from '../../../../../core/constants/redis';
 import { WorktreeService } from '../GitService/worktree';
 import { assertValidFeatureName } from '../GitService/helper/featureNameGuard';
+import { resolveUniversalContainerPath } from '../../../../../core/customAgents/universalContainer';
 import {
   applyAfterFeatureCreate,
   applyBeforeBaseFeatureDelete,
@@ -147,19 +148,35 @@ export class FeatureCrudService {
   }
 
   /**
-   * The authoritative feature reference for a mutation/cache path: the absolute
-   * feature path iff a name-valid feature was actually created (its root exists),
-   * else `null`. File mutation and file-tree cache routes must resolve through
-   * this before touching disk or Redis — `getFeaturePath` alone only builds a
-   * path and would let an arbitrary `:feature` slug materialize a ghost feature
-   * directory (M-NEW-017) or a 24h ghost tree-cache key (M-NEW-008). Mirrors the
-   * `fs.access` existence gate `deleteFeature` already uses.
+   * The authoritative PLANE ROOT for a mutation/cache path: the absolute root
+   * iff the `(project, feature)` pair really exists, else `null`. File mutation
+   * and file-tree cache routes must resolve through this before touching disk or
+   * Redis — `getFeaturePath` alone only builds a path and would let an arbitrary
+   * `:feature` slug materialize a ghost feature directory (M-NEW-017) or a 24h
+   * ghost tree-cache key (M-NEW-008).
+   *
+   * Two planes answer: a canonical feature dir (`fs.access`, mirroring the gate
+   * `deleteFeature` uses), and the universal container of a workspace project —
+   * which has no `features/` plane at all, so a features-only test 404s its
+   * every file/tree/SSE request.
    */
   async resolveExistingFeature(
     projectId: string,
     featureName: string,
     userContext: UserContext,
   ): Promise<string | null> {
+    // Universal seam (D6): the workspace pseudo-feature's root is
+    // `{project}/universal`. Existence is proven by the `config.json` read
+    // inside the seam — the container itself is materialized lazily, so a
+    // freshly created workspace project must not 404 before its first turn.
+    try {
+      const container = resolveUniversalContainerPath(
+        this.workspaceResolver.getProjectPath(userContext, projectId),
+        featureName,
+      );
+      if (container) return container;
+    } catch { /* unresolvable project → the canonical branch below returns null */ }
+
     let featurePath: string;
     try {
       assertValidFeatureName(featureName);
