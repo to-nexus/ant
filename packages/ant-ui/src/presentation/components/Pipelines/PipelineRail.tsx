@@ -273,8 +273,13 @@ function RailRow({
       )}
       {running && (
         <span
-          className="shrink-0 rounded-full animate-pulse"
-          style={{ width: 7, height: 7, background: 'var(--violet-500)' }}
+          className="shrink-0 rounded-full"
+          style={{
+            width: 7,
+            height: 7,
+            background: 'var(--violet-500)',
+            animation: 'pulse-soft 1.4s ease-in-out infinite',
+          }}
           title={t('rail.running', 'Running')}
         />
       )}

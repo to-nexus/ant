@@ -160,7 +160,7 @@ function StatusChip({ status }: { status?: PipelineStepStatus }) {
           height: 7,
           borderRadius: 4,
           background: color,
-          animation: pulse ? 'pulse 1.4s ease-in-out infinite' : undefined,
+          animation: pulse ? 'pulse-soft 1.4s ease-in-out infinite' : undefined,
         }}
       />
       {status.replace(/_/g, ' ')}
