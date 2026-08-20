@@ -50,14 +50,24 @@ const HOOKS_MAX_HEIGHT = 260;
  * the three files read as three views of the same thing rather than three
  * layouts. Clamping lives inside it, so a long body fades against the box's own
  * background.
+ *
+ * The fill is the recess token, not `--bg-surface`: the panel behind it is
+ * `--bg-app`, and those two sit ~4% apart in both themes — a box that reads as
+ * having no background at all. `--bg-surface-2` is the one solid container
+ * background all three sections share, so `--bg-surface` stays free to LIFT the
+ * per-item cards inside it (hooks).
  */
+const FILE_BOX_BG = 'var(--bg-surface-2)';
+
 function FileBox({ maxHeight, children }: { maxHeight: number; children: React.ReactNode }) {
   return (
     <div
       className="rounded-[var(--r-md)] overflow-hidden"
-      style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface)' }}
+      style={{ border: '1px solid var(--border-2)', background: FILE_BOX_BG }}
     >
-      <ClampedBlock maxHeight={maxHeight}>{children}</ClampedBlock>
+      <ClampedBlock maxHeight={maxHeight} fadeColor={FILE_BOX_BG}>
+        {children}
+      </ClampedBlock>
     </div>
   );
 }
@@ -95,7 +105,7 @@ function StopHookRow({ hook }: { hook: IntentStopHook }) {
   return (
     <div
       className="flex items-center gap-2.5 rounded-[var(--r-md)] px-3 py-2"
-      style={{ border: '1px solid var(--border-1)', background: 'var(--bg-surface-2)' }}
+      style={{ border: '1px solid var(--border-2)', background: 'var(--bg-surface)' }}
     >
       <span
         className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold shrink-0"
