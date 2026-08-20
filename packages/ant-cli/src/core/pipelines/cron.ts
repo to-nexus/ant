@@ -6,7 +6,8 @@
  * server-side and not next to `validatePipelineDef`.
  */
 
-import { parseExpression } from 'cron-parser';
+import cronParser from 'cron-parser';
+const { parseExpression } = cronParser;
 import { DEFAULT_PIPELINE_CAPS } from '@ant/shared';
 
 export interface CronParseResult {
