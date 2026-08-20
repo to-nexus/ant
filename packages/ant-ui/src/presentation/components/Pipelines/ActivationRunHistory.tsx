@@ -18,7 +18,7 @@ import { cancelPipelineRun } from '@/infrastructure/http/api/pipelines';
 
 const RUN_PILL: Record<string, { state: any; labelKey: string; fallback: string }> = {
   running: { state: 'checking', labelKey: 'runs.running', fallback: 'Running' },
-  awaiting_human: { state: 'warning', labelKey: 'runs.awaiting', fallback: 'Awaiting approval' },
+  awaiting_human: { state: 'warning', labelKey: 'runs.awaiting', fallback: 'Awaiting input' },
   completed: { state: 'connected', labelKey: 'runs.completed', fallback: 'Completed' },
   failed: { state: 'error', labelKey: 'runs.failed', fallback: 'Failed' },
   partial: { state: 'warning', labelKey: 'runs.partial', fallback: 'Partial' },
@@ -32,6 +32,7 @@ const STEP_COLOR: Record<string, string> = {
   running: 'var(--violet-500)',
   dispatched: 'var(--violet-500)',
   awaiting_gate: 'var(--amber-500, #f59e0b)',
+  awaiting_clarify: 'var(--amber-500, #f59e0b)',
   skipped: 'var(--text-3)',
   cancelled: 'var(--text-3)',
   pending: 'var(--text-3)',
@@ -171,7 +172,7 @@ export function RunTimeline({ steps, live, onCancel }: { steps: StepRecord[]; li
                     borderRadius: 6,
                     marginTop: 5,
                     background: color,
-                    boxShadow: live && (step.status === 'running' || step.status === 'awaiting_gate') ? `0 0 0 4px color-mix(in srgb, ${color} 22%, transparent)` : undefined,
+                    boxShadow: live && (step.status === 'running' || step.status === 'awaiting_gate' || step.status === 'awaiting_clarify') ? `0 0 0 4px color-mix(in srgb, ${color} 22%, transparent)` : undefined,
                   }}
                 />
                 {i < steps.length - 1 && <span style={{ flex: 1, width: 2, background: 'var(--border-1)', minHeight: 22 }} />}
@@ -200,6 +201,14 @@ export function RunTimeline({ steps, live, onCancel }: { steps: StepRecord[]; li
                   )}
                 </div>
                 {step.error && <div style={{ fontSize: 11, color: 'var(--red-500)', marginTop: 3 }}>{step.error}</div>}
+                {step.clarify && (
+                  <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
+                    {t('runs.clarifyAsked', 'Q{{round}}: {{question}}', { round: step.clarify.round, question: step.clarify.question })}
+                    {step.clarify.answeredAt
+                      ? ` · ${t('runs.clarifyAnswered', 'answered by {{who}}', { who: step.clarify.answeredBy ?? 'unknown' })} · ${new Date(step.clarify.answeredAt).toLocaleTimeString()}${step.clarify.via ? ` · ${step.clarify.via}` : ''}`
+                      : ` · ${t('runs.clarifyWaiting', 'awaiting answer')}`}
+                  </div>
+                )}
                 {step.gate?.decision && (
                   <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
                     {step.gate.decision.startsWith('expired')

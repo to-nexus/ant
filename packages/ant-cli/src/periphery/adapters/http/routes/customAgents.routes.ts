@@ -24,6 +24,7 @@ import { deriveCustomAgentScopeRootsForTenant } from '../../../../core/customAge
 import {
   UNIVERSAL_ARTIFACT_CANONICAL_DIRS,
   UNIVERSAL_SESSIONS_NODE,
+  UNIVERSAL_PIPELINE_RUNS_NODE,
   buildUniversalMergedTree,
   resolveUniversalMergedPath,
   type UniversalTreeNode,
@@ -247,9 +248,23 @@ export function createCustomAgentRoutes(deps: {
 
   /** Reserved top-level node name — the grafted sessions folder (see tree). */
   const SESSIONS_NODE = UNIVERSAL_SESSIONS_NODE;
+  /** Reserved top-level node name — grafted pipeline run logs (read-only). */
+  const PIPELINE_RUNS_NODE = UNIVERSAL_PIPELINE_RUNS_NODE;
 
   function firstSegment(rel: string): string {
     return rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0] ?? '';
+  }
+
+  /** 400 body for a mutation aimed at a reserved grafted root, or null. */
+  function reservedRootViolation(rel: string): { error: string; code: string } | null {
+    const first = firstSegment(rel);
+    if (first === SESSIONS_NODE) {
+      return { error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' };
+    }
+    if (first === PIPELINE_RUNS_NODE) {
+      return { error: `"${PIPELINE_RUNS_NODE}" is a read-only pipeline run-log folder`, code: 'reserved-name-pipeline-runs' };
+    }
+    return null;
   }
 
   /** Account scope for the cluster-wide concurrency budget. */
@@ -359,12 +374,8 @@ export function createCustomAgentRoutes(deps: {
       for (let i = 0; i < files.length; i++) {
         const relPath = (relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
         const effectiveRel = path.join(dirPath, relPath).replace(/\\/g, '/');
-        if (firstSegment(effectiveRel) === SESSIONS_NODE) {
-          return res.status(400).json({
-            error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`,
-            code: 'reserved-name-sessions',
-          });
-        }
+        const uploadViolation = reservedRootViolation(effectiveRel);
+        if (uploadViolation) return res.status(400).json(uploadViolation);
         const filePath = resolveMergedPath(req, req.params.projectId, effectiveRel);
         // Byte-safe write (size + header verification) — uploads must survive
         // binary payloads unmodified (no utf-8 round-trip). The container root is
@@ -389,6 +400,13 @@ export function createCustomAgentRoutes(deps: {
     try {
       const rel = String(req.query.path || '');
       if (!rel) return res.status(400).json({ error: 'path query param is required' });
+      // Run logs are never deletable — not even root-clear (history SSOT).
+      if (firstSegment(rel) === PIPELINE_RUNS_NODE) {
+        return res.status(400).json({
+          error: `"${PIPELINE_RUNS_NODE}" is a read-only pipeline run-log folder`,
+          code: 'reserved-name-pipeline-runs',
+        });
+      }
       const full = resolveMergedPath(req, req.params.projectId, rel);
       if (!fs.existsSync(full)) {
         return res.status(404).json({ error: `Artifact not found: ${rel}` });
@@ -412,12 +430,8 @@ export function createCustomAgentRoutes(deps: {
     try {
       const rel = String(req.body?.path || '').replace(/\\/g, '/');
       if (!rel) return res.status(400).json({ error: 'path is required' });
-      if (firstSegment(rel) === SESSIONS_NODE) {
-        return res.status(400).json({
-          error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`,
-          code: 'reserved-name-sessions',
-        });
-      }
+      const createViolation = reservedRootViolation(rel);
+      if (createViolation) return res.status(400).json(createViolation);
       const full = resolveMergedPath(req, req.params.projectId, rel);
       if (fs.existsSync(full)) {
         return res.status(409).json({ error: `Already exists: ${rel}` });
@@ -438,11 +452,11 @@ export function createCustomAgentRoutes(deps: {
       if (newName.includes('/') || newName.includes('\\') || newName.startsWith('.')) {
         return res.status(400).json({ error: `Invalid name: ${newName}` });
       }
-      if (firstSegment(rel) === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(rel)) {
+      if (reservedRootViolation(rel) || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(rel)) {
         return res.status(400).json({ error: `"${rel}" cannot be renamed` });
       }
       const parentRel = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
-      if (!parentRel && (newName === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(newName))) {
+      if (!parentRel && (newName === SESSIONS_NODE || newName === PIPELINE_RUNS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(newName))) {
         return res.status(400).json({ error: `"${newName}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' });
       }
       const from = resolveMergedPath(req, req.params.projectId, rel);
@@ -460,12 +474,8 @@ export function createCustomAgentRoutes(deps: {
     try {
       const rel = String(req.body?.path || '');
       if (!rel) return res.status(400).json({ error: 'path is required' });
-      if (firstSegment(rel) === SESSIONS_NODE) {
-        return res.status(400).json({
-          error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`,
-          code: 'reserved-name-sessions',
-        });
-      }
+      const mkdirViolation = reservedRootViolation(rel);
+      if (mkdirViolation) return res.status(400).json(mkdirViolation);
       fs.mkdirSync(resolveMergedPath(req, req.params.projectId, rel), { recursive: true });
       res.json({ success: true });
     } catch (error: any) {

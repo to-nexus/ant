@@ -349,6 +349,13 @@ export interface CustomAgentSummary {
 export const UNIVERSAL_FEATURE = 'universal' as const;
 
 /**
+ * Reserved top-level node in the universal artifacts tree — the grafted
+ * pipeline run-log folder (BE grafts `{actRoot}/{projectId}/runs` under this
+ * name; read-only on every mutation surface). BE↔FE name SSOT.
+ */
+export const UNIVERSAL_PIPELINE_RUNS_DIRNAME = 'pipeline-runs' as const;
+
+/**
  * id charset for agentId / jobId / intentId / MCP server name — strict
  * kebab-case: `a-z0-9` segments joined by SINGLE hyphens, no leading or
  * trailing hyphen. agent and job ids are directory names, so a doubled or

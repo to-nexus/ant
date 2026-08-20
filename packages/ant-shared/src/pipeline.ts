@@ -273,6 +273,7 @@ export type PipelineStepStatus =
   | 'dispatched'
   | 'running'
   | 'awaiting_gate'
+  | 'awaiting_clarify'
   | 'succeeded'
   | 'failed'
   | 'skipped'
@@ -295,6 +296,28 @@ export interface GateRecord {
   via?: 'in-app' | 'api';
 }
 
+/**
+ * Clarify wait on a job step (universal end-and-resume HITL). Latest round
+ * only — multi-round history lives in the run JSONL. No timeout: the wait is
+ * open-ended; the escape hatches are run cancel and deactivation.
+ */
+export interface ClarifyRecord {
+  /** `clr-{runId}-{stepId}-{round}`. */
+  clarifyId: string;
+  /** The job that asked — the funnel key (`ant:pipe:job:{jobId}`) while awaiting. */
+  jobId: string;
+  question: string;
+  toolUseId?: string;
+  /** 1-based round counter (a resumed job may clarify again). */
+  round: number;
+  askedAt: string;
+  answeredBy?: string;
+  answeredAt?: string;
+  /** Truncated audit copy of the answer (full text rides the resume directive). */
+  answer?: string;
+  via?: 'in-app' | 'api';
+}
+
 export interface StepRecord {
   stepId: string;
   status: PipelineStepStatus;
@@ -304,6 +327,7 @@ export interface StepRecord {
   endedAt?: string;
   error?: string;
   gate?: GateRecord;
+  clarify?: ClarifyRecord;
   /** Chat turn the step's user-turn line was minted under (coordinator-owned). */
   turnId?: string;
 }
@@ -408,6 +432,8 @@ export interface PipelineListEntry {
 }
 
 export interface PipelinePendingApproval {
+  /** Absent = gate (pre-clarify rows). Clarify rows carry the clarifyId in gateId/cardId. */
+  kind?: 'gate' | 'clarify';
   gateId: string;
   cardId: string;
   runId: string;
@@ -418,6 +444,8 @@ export interface PipelinePendingApproval {
   prompt: string;
   armedAt: string;
   timeoutAt?: string;
+  /** Clarify rows only: the asking job (funnel key). */
+  jobId?: string;
 }
 
 // ============================================

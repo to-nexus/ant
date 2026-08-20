@@ -140,3 +140,57 @@ describe('approval funnel', () => {
     expect(routes).toMatch(/if \(!result\.resolved\)/);
   });
 });
+
+describe('clarify funnel', () => {
+  it('a clarify seal parks the step instead of failing the run (v1 restriction retired)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).not.toMatch(/awaiting_clarify_unsupported/);
+    expect(coordinator).toMatch(/enterAwaitingClarify/);
+    // Session seal read goes through the sessionPaths SSOT, never a hand-rolled join.
+    expect(coordinator).toMatch(/getSessionFilePath\(/);
+    expect(coordinator).not.toMatch(/join\(containerPath, 'sessions'/);
+  });
+
+  it('the answer re-dispatches the SAME step through the single dispatch owner', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/async applyClarifyAnswer\(/);
+    // applyClarifyAnswer must end in dispatchJobStep (jobId re-pointing rides
+    // the normal dispatch: reverse map + step→running + step_dispatched).
+    expect(coordinator).toMatch(/applyClarifyAnswer[\s\S]*?dispatchJobStep\(/);
+    // The wait is open-ended: no clarify timeout arm exists.
+    expect(coordinator).not.toMatch(/cto-/);
+  });
+
+  it('both funnels exist: chat clarify-card branch (NX-first) and the account-scoped clarify route', () => {
+    const chat = read('periphery/adapters/http/routes/chat.routes.ts');
+    expect(chat).toMatch(/clarifying' && result\.resolved/);
+    const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
+    expect(routes).toMatch(/\/runs\/:runId\/steps\/:stepId\/clarify/);
+    // Own-run check parity with run detail/cancel.
+    expect(routes).toMatch(/clarify-already-resolved/);
+  });
+
+  it('cancel sweeps awaiting_clarify and stale outcomes cannot clobber a waiting step', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/'awaiting_clarify'/);
+    // cancelRun sweep includes the clarify wait.
+    expect(coordinator).toMatch(/s\.status === 'awaiting_clarify' \|\| s\.status === 'dispatched'/);
+    // applyOutcome refuse list includes the clarify wait.
+    expect(coordinator).toMatch(/'succeeded', 'failed', 'skipped', 'cancelled', 'awaiting_clarify'/);
+  });
+});
+
+describe('pipeline run-log graft (read-only)', () => {
+  it('the merged view resolves and grafts the pipeline-runs node from the paths SSOT', () => {
+    const container = read('core/customAgents/universalContainer.ts');
+    expect(container).toMatch(/UNIVERSAL_PIPELINE_RUNS_NODE/);
+    expect(container).toMatch(/getPipelineRunsRootOf/);
+    expect(container).toMatch(/PIPELINE_ACTIVATIONS_DIRNAME/);
+  });
+
+  it('every artifact mutation route blocks the pipeline-runs prefix (delete included — no root-clear)', () => {
+    const routes = read('periphery/adapters/http/routes/customAgents.routes.ts');
+    expect(routes).toMatch(/reservedRootViolation/);
+    expect(routes.match(/reserved-name-pipeline-runs/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+});

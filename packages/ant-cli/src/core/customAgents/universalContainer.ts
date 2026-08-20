@@ -13,8 +13,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { FileNode } from '@ant/shared';
-import { CANONICAL_FEATURE_DIRS, UNIVERSAL_FEATURE, createEmptyFigmaData } from '@ant/shared';
+import { CANONICAL_FEATURE_DIRS, UNIVERSAL_FEATURE, UNIVERSAL_PIPELINE_RUNS_DIRNAME, createEmptyFigmaData } from '@ant/shared';
 import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
+import { PIPELINE_ACTIVATIONS_DIRNAME } from '../pipelines/paths';
 
 export const UNIVERSAL_DIRNAME = 'universal';
 export const UNIVERSAL_ARTIFACTS_DIRNAME = 'artifacts';
@@ -328,6 +329,27 @@ export function reconcileUniversalContainer(projectPath: string): void {
 /** Reserved top-level node name — the grafted sessions folder. */
 export const UNIVERSAL_SESSIONS_NODE = 'sessions';
 
+/**
+ * Reserved top-level node name — the grafted pipeline run-log folder
+ * (read-only: every mutation route blocks the prefix, sessions-guard style).
+ * Name SSOT: `@ant/shared` (the FE panel keys its permissions on it).
+ */
+export const UNIVERSAL_PIPELINE_RUNS_NODE = UNIVERSAL_PIPELINE_RUNS_DIRNAME;
+
+/**
+ * Activation run-log dir for the project that owns this container. Structural
+ * mapping, no activation required: containerPath is
+ * `{ws}/{org}/{user}/{projectId}/universal` and activations anchor at the
+ * SAME active-org account (`deriveActivationsRoot` — no individual fork), so
+ * `{ws}/{org}/{user}/.ant/pipeline-activations/{projectId}/runs` is derivable.
+ * Runs survive deactivation, so the graft outlives the activation too.
+ */
+export function getPipelineRunsRootOf(containerPath: string): string {
+  const projectPath = path.dirname(containerPath);
+  const userDir = path.dirname(projectPath);
+  return path.join(userDir, PIPELINE_ACTIVATIONS_DIRNAME, path.basename(projectPath), 'runs');
+}
+
 /** Path-traversal-safe resolve inside a root. */
 function resolveWithinRoot(root: string, rel: string): string {
   const full = path.resolve(root, rel);
@@ -348,6 +370,10 @@ export function resolveUniversalMergedPath(containerPath: string, rel: string): 
   if (normalized === UNIVERSAL_SESSIONS_NODE || normalized.startsWith(`${UNIVERSAL_SESSIONS_NODE}/`)) {
     const remainder = normalized === UNIVERSAL_SESSIONS_NODE ? '' : normalized.slice(UNIVERSAL_SESSIONS_NODE.length + 1);
     return resolveWithinRoot(path.join(containerPath, UNIVERSAL_SESSIONS_NODE), remainder);
+  }
+  if (normalized === UNIVERSAL_PIPELINE_RUNS_NODE || normalized.startsWith(`${UNIVERSAL_PIPELINE_RUNS_NODE}/`)) {
+    const remainder = normalized === UNIVERSAL_PIPELINE_RUNS_NODE ? '' : normalized.slice(UNIVERSAL_PIPELINE_RUNS_NODE.length + 1);
+    return resolveWithinRoot(getPipelineRunsRootOf(containerPath), remainder);
   }
   return resolveWithinRoot(path.join(containerPath, UNIVERSAL_ARTIFACTS_DIRNAME), normalized);
 }
@@ -503,10 +529,11 @@ export function buildUniversalMergedTreeResult(containerPath: string): Universal
   // bounding each root separately would double the worst case.
   const budget: TraversalBudget = { remaining: UNIVERSAL_TREE_MAX_ENTRIES };
 
-  // Reserved name: an agent-created `artifacts/sessions/` dir is shadowed by
-  // the grafted node (user creation is blocked at upload/mkdir).
+  // Reserved names: agent-created `artifacts/sessions/` or
+  // `artifacts/pipeline-runs/` dirs are shadowed by the grafted nodes
+  // (user creation is blocked at upload/mkdir).
   const artifactNodes = buildSubtree(artifactsRoot, '', '', 0, budget).filter(
-    (n) => n.name !== UNIVERSAL_SESSIONS_NODE,
+    (n) => n.name !== UNIVERSAL_SESSIONS_NODE && n.name !== UNIVERSAL_PIPELINE_RUNS_NODE,
   );
 
   const canonicalNodes: UniversalTreeNode[] = UNIVERSAL_ARTIFACT_CANONICAL_DIRS.map(
@@ -529,8 +556,20 @@ export function buildUniversalMergedTreeResult(containerPath: string): Universal
     absolutePath: sessionsRoot,
     children: buildSubtree(sessionsRoot, '', UNIVERSAL_SESSIONS_NODE, 0, budget),
   };
+  // Pipeline run logs graft in only when the project has (ever had) an
+  // activation — the dir survives deactivation, so history stays reachable.
+  const pipelineRunsRoot = getPipelineRunsRootOf(containerPath);
+  const pipelineRunsNode: UniversalTreeNode | null = fs.existsSync(pipelineRunsRoot)
+    ? {
+        name: UNIVERSAL_PIPELINE_RUNS_NODE,
+        path: UNIVERSAL_PIPELINE_RUNS_NODE,
+        type: 'directory',
+        absolutePath: pipelineRunsRoot,
+        children: buildSubtree(pipelineRunsRoot, '', UNIVERSAL_PIPELINE_RUNS_NODE, 0, budget),
+      }
+    : null;
   return {
-    nodes: [...canonicalNodes, ...freeNodes, sessionsNode],
+    nodes: [...canonicalNodes, ...freeNodes, sessionsNode, ...(pipelineRunsNode ? [pipelineRunsNode] : [])],
     truncated: budget.rootTruncated === true,
   };
 }

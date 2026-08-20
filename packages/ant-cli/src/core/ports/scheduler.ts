@@ -54,6 +54,26 @@ export interface PipelineStepRetryJobData {
   stepId: string;
   /** Duplicate-gate retry counter (bounded). */
   retries: number;
+  /** Clarify-resume re-dispatch: the user's answer replaces the step directive. */
+  directiveOverride?: string;
+}
+
+/**
+ * Re-arm for a clarify-seal transition that lost the per-run lock — parity
+ * with `outcome-retry` (without it the step hangs `running` after the job
+ * already sealed awaiting a clarify answer).
+ */
+export interface PipelineClarifyEnterJobData {
+  kind: 'clarify-enter';
+  owner: PipelineOwner;
+  pipelineId: string;
+  projectId: string;
+  runId: string;
+  stepId: string;
+  jobId: string;
+  question: string;
+  toolUseId?: string;
+  retries: number;
 }
 
 /**
@@ -77,7 +97,8 @@ export type PipelineControlJobData =
   | PipelineFireJobData
   | PipelineGateTimeoutJobData
   | PipelineStepRetryJobData
-  | PipelineOutcomeRetryJobData;
+  | PipelineOutcomeRetryJobData
+  | PipelineClarifyEnterJobData;
 
 export interface ScheduleQueuePort {
   /** Idempotent upsert of a cron scheduler (`schedulerId` = owner-scoped pipeline key). */

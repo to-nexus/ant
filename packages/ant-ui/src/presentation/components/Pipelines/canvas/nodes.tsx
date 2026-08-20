@@ -34,6 +34,7 @@ const STATUS_COLOR: Record<string, string> = {
   running: 'var(--violet-500)',
   dispatched: 'var(--violet-500)',
   awaiting_gate: 'var(--amber-500, #f59e0b)',
+  awaiting_clarify: 'var(--amber-500, #f59e0b)',
   succeeded: 'var(--emerald-500)',
   failed: 'var(--red-500)',
   skipped: 'var(--text-3)',
@@ -140,7 +141,7 @@ function shell(data: PipelineNodeData, accentVar: string): React.CSSProperties {
 function StatusChip({ status }: { status?: PipelineStepStatus }) {
   if (!status || status === 'pending') return null;
   const color = STATUS_COLOR[status] ?? 'var(--text-3)';
-  const pulse = status === 'running' || status === 'dispatched' || status === 'awaiting_gate';
+  const pulse = status === 'running' || status === 'dispatched' || status === 'awaiting_gate' || status === 'awaiting_clarify';
   return (
     <span
       style={{

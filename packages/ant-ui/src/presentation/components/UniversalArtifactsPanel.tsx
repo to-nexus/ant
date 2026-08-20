@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { UI_PANEL_TOP_LEVEL_DIRS, getUniversalArtifactDirPolicy, type ArtifactPermissions } from '@ant/shared';
+import {
+  UI_PANEL_TOP_LEVEL_DIRS,
+  UNIVERSAL_PIPELINE_RUNS_DIRNAME,
+  getUniversalArtifactDirPolicy,
+  type ArtifactPermissions,
+} from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import {
@@ -124,15 +129,24 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
 
   // Sessions subtree carries the SAME restricted permissions as the
   // codespace sessions row — SSOT: the canonical UI_PANEL_TOP_LEVEL_DIRS
-  // entry (delete/download only).
+  // entry (delete/download only). Pipeline run logs are narrower still:
+  // download only (the BE blocks every mutation on the grafted root).
   const sessionsPermissions = useMemo<ArtifactPermissions | undefined>(
     () => UI_PANEL_TOP_LEVEL_DIRS.find((d) => d.name === 'sessions')?.permissions,
     [],
   );
+  const pipelineRunsPermissions = useMemo<ArtifactPermissions>(
+    () => ({ create: false, upload: false, rename: false, send: false, delete: false, download: true }),
+    [],
+  );
   const getNodePermissions = useCallback(
-    (path: string): ArtifactPermissions | undefined =>
-      path.split('/')[0] === 'sessions' ? sessionsPermissions : undefined,
-    [sessionsPermissions],
+    (path: string): ArtifactPermissions | undefined => {
+      const root = path.split('/')[0];
+      if (root === 'sessions') return sessionsPermissions;
+      if (root === UNIVERSAL_PIPELINE_RUNS_DIRNAME) return pipelineRunsPermissions;
+      return undefined;
+    },
+    [sessionsPermissions, pipelineRunsPermissions],
   );
 
   if (!selectedProject) return null;

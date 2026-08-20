@@ -45,6 +45,7 @@ import { parseCustomJobRef } from '@ant/shared';
 import { Spinner } from '@/presentation/components/common/async';
 import { useStore } from '@/domain/store';
 import { selectPausedNonTaskJob } from '@/domain/store/selectors';
+import { selectActivationByProject } from '@/domain/store/selectors/pipelines';
 import { useJobExecution } from '@/application/hooks/features/useJobExecution';
 import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { useImagePreview } from '../useImagePreview';
@@ -664,6 +665,13 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
   const cardState = useChoiceCardState({ presented, resolved });
 
+  // Pipeline-owned project: the BE choice-resolved branch funnels the answer
+  // to the run coordinator, which re-dispatches the step itself — calling
+  // runJob here would 409 against the project-pipeline-active gate.
+  const pipelineOwned = useStore(
+    (state) => !!selectActivationByProject(state as any, cardState.selectedProject),
+  );
+
   const payload = (presented.payload ?? {}) as Record<string, any>;
   const answerMeta = (resolved?.answer ?? {}) as Record<string, any>;
 
@@ -724,10 +732,15 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
     cardState.setLocalSelectedChoice('submitted');
     cardState.setLocalResolvedLabel(label);
 
-    await cardState.persistToBackend('submitted', label, { resolvedAnswers });
+    // `directive` rides the answer payload so the BE clarify branch can
+    // resume a pipeline step without re-deriving the composed text.
+    await cardState.persistToBackend('submitted', label, { resolvedAnswers, directive });
 
     try {
       clearPendingClarify();
+      // Pipeline step: choice-resolved already funneled the answer to the
+      // coordinator — it re-dispatches the step (jobId re-pointing).
+      if (pipelineOwned) return;
       // Universal: the answer must return to the job that asked. The card
       // carries its `customJobRef` (BE stamps it at pause time); re-select it
       // before dispatch so the live composer selection — which may have
@@ -763,6 +776,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
+      if (pipelineOwned) return; // interactive dispatch is 409-gated on a pipeline-owned project
       await runJob(enqueueAgent, enqueueJobType, `[SKETCH_FINALIZE:${sketchIndex}]`);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Sketch select failed:', error);
@@ -784,6 +798,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
+      if (pipelineOwned) return;
       await runJob(enqueueAgent, enqueueJobType, `[SKETCH_FEEDBACK] ${text}`);
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Custom input failed:', error);
@@ -803,6 +818,7 @@ export function ClarifyingVariant({ presented, resolved }: VariantProps) {
 
     try {
       clearPendingClarify();
+      if (pipelineOwned) return;
       await runJob(enqueueAgent, enqueueJobType, '[SKETCH_REGENERATE]');
     } catch (error) {
       console.error('[ChoiceCard:Clarifying] Regenerate failed:', error);

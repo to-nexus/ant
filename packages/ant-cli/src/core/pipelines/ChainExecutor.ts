@@ -121,8 +121,8 @@ export function applyStepOutcome(
   return planAdvance(def, { ...run, steps });
 }
 
-function deriveRunStatus(steps: StepRecord[], policy: 'abort' | 'continue'): PipelineRunStatus {
-  const awaiting = steps.some((s) => s.status === 'awaiting_gate');
+export function deriveRunStatus(steps: StepRecord[], policy: 'abort' | 'continue'): PipelineRunStatus {
+  const awaiting = steps.some((s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify');
   // `pending` is not "live": post-fixpoint a pending step always sits behind
   // an executing or gated ancestor — only actual execution keeps `running`.
   const executing = steps.some((s) => s.status === 'dispatched' || s.status === 'running');

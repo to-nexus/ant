@@ -608,6 +608,46 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
     }
   });
 
+  // ── Clarify answer (inbox/API channel; the chat clarify card is the other) ──
+  // Deliberately NOT funneled through appendChoiceResolved: the chat card is
+  // child-minted and its cardId is not discoverable here — the coordinator's
+  // status guard is the double-submit authority, so an API answer leaves the
+  // card visually open but inert (a later click no-ops).
+  router.post('/runs/:runId/steps/:stepId/clarify', async (req: Request, res: Response) => {
+    try {
+      const owner = ownerOf(req);
+      const answer = req.body?.answer;
+      if (typeof answer !== 'string' || !answer.trim()) {
+        res.status(400).json({ error: 'answer must be a non-empty string' });
+        return;
+      }
+      const run = await deps.coordinator.getRun(req.params.runId);
+      // Own runs only — same structural check as the detail read.
+      if (!run || !hasRunLog(actRootOf(owner), run.projectId, run.runId)) {
+        res.status(404).json({ error: 'run not found', runId: req.params.runId });
+        return;
+      }
+      const step = run.steps.find((s) => s.stepId === req.params.stepId);
+      if (!step || step.status !== 'awaiting_clarify' || !step.clarify) {
+        res.status(409).json({ error: 'clarify-already-resolved', stepId: req.params.stepId });
+        return;
+      }
+      const ok = await deps.coordinator.applyClarifyAnswer({
+        jobId: step.clarify.jobId,
+        answer,
+        answeredBy: owner.userId,
+        via: 'api',
+      });
+      if (!ok) {
+        res.status(409).json({ error: 'clarify-already-resolved', stepId: req.params.stepId });
+        return;
+      }
+      res.json({ success: true });
+    } catch (error) {
+      sendErrorResponse(res, 500, error, 'PipelinesClarify');
+    }
+  });
+
   // ── Per-pipeline ────────────────────────────────────────────────────
   router.get('/:pipelineId', async (req: Request, res: Response) => {
     try {

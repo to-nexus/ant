@@ -275,7 +275,7 @@ still-pending steps on the first failure and seals `failed`; `continue`
 lets independent branches finish and seals `partial` on mixed outcomes.
 
 **FlowProducer was rejected**, not overlooked: ① a step's jobId can change
-mid-step (clarify end-and-resume re-dispatches under a new id — Phase 2) while
+mid-step (clarify end-and-resume re-dispatches under a new id — shipped, §5b) while
 a Flow tree is frozen at enqueue; ② a human gate can wait weeks, holding Flow
 parent state hostage to queue retention; ③ this repo's rule is pub/sub
 fan-out, never BullMQ-internal hooks; ④ the per-project duplicate gate needs
@@ -288,8 +288,8 @@ ADDITIONAL subscriber on `job:status:updates` (note: no `ant:` prefix —
 dispatches what unblocked, appends JSONL, publishes SSE. An interruption
 (pause) on a pipeline job is a step **failure** (`interrupted: {reason}`) —
 unattended chains have nobody to resume. A job that completes but sealed
-`awaitingClarify` fails the step as `awaiting_clarify_unsupported` (v1;
-clarify-await hand-off is the Phase 2 axis). The DAG the run executes is the
+`awaitingClarify` is NOT an outcome: the step parks `awaiting_clarify` until
+a human answers (§5b). The DAG the run executes is the
 **frozen `defSnapshot`** compiled at fire time — editing the YAML never
 mutates an in-flight run.
 
@@ -330,6 +330,63 @@ The reserved v2 contract (user-locked as backlog): a
 (HMAC magic-link `{cardId, choiceId, exp}`) lands in the same choice-resolved
 funnel with `via: 'magic-link'`. No implementation ships in v1; the funnel
 shape is what makes the extension migration-free.
+
+---
+
+## 5b. Clarify HITL — jobId re-pointing, open-ended wait
+
+A step job that ends with a sealed `awaitingClarify` (universal
+end-and-resume, doc 44) did not fail and did not succeed — it asked a
+question. The coordinator reads the seal (`getSessionFilePath` — never a
+hand-rolled join) and parks the step:
+
+```
+seal detected → enterAwaitingClarify (guard: running ∧ same jobId)
+              → step 'awaiting_clarify' + ClarifyRecord {clarifyId, jobId, question, round}
+              → run 'awaiting_human' (chat lock + ant:pipe:active stay held)
+answer       → applyClarifyAnswer (guard: awaiting_clarify ∧ clarify.jobId match)
+              → step 'dispatched' → dispatchJobStep(…, directiveOverride = answer)
+              → NEW jobId (runner's dangling-tool_use detection = structural resume)
+```
+
+- **Funnel key is `ant:pipe:job:{jobId}`** — the reverse map written at
+  dispatch is deliberately NOT deleted while awaiting (it dies only after the
+  answer lands, gate-precedent post-apply ordering). Its TTL and the run
+  projection's are re-set to the `ACTIVE` bound (30d) on entering the wait —
+  `saveRun` derives the TTL from awaiting state, so an open-ended human wait
+  never outlives its own projection.
+- **Two answer channels, one authority.** The chat clarify card (child-minted,
+  carries `customJobRef`) resolves through the NX choice-resolved and then the
+  `clarifying` branch calls `applyClarifyAnswer` — interactive clarify cards
+  no-op instantly (no `ant:pipe:job` mapping). The inbox/API channel is
+  `POST /api/pipelines/runs/:runId/steps/:stepId/clarify` (own-run
+  `hasRunLog` check). The coordinator's status guard is the double-submit
+  authority; an API-path answer leaves the chat card visually open but inert
+  (a later click no-ops). The FE card skips `runJob` on a pipeline-owned
+  project — dispatch is the coordinator's, and the interactive route would
+  409 anyway.
+- **The wait is open-ended — no timeout arm.** Pipelines are long-running by
+  design; the escape hatches are run cancel (sweeps `awaiting_clarify`,
+  deletes the funnel key) and deactivation. Waits beyond the 30d `ACTIVE`
+  bound fall into the same pre-existing limit as any 30d run.
+- **Multi-round works by construction**: the resumed job may seal
+  `awaitingClarify` again under its new jobId → round+1 re-entry. The
+  `clarifyRoundsUsed` budget (3) is per-(agent, job) session, shared with
+  interactive use — exhaustion degrades gracefully (the agent stops asking).
+- Stale outcome-retries cannot clobber a waiting step (`applyOutcome` refuses
+  `awaiting_clarify`); a lock-starved park re-arms via the bounded
+  `clarify-enter` control job (`outcome-retry` parity).
+- Clarify waits ride the approvals inbox as `kind: 'clarify'` rows
+  (`gateId`/`cardId` carry the clarifyId) with an inline answer form; JSONL
+  events reuse `awaiting_human` / `human_resolved` with
+  `detail.kind = 'clarify'`.
+
+**Run-log visibility**: the activation's `runs/` dir is grafted into the
+universal artifacts tree as the reserved read-only `pipeline-runs` node
+(`getPipelineRunsRootOf` — structural containerPath↔actRoot mapping, no
+activation required, so history stays browsable after deactivation). Every
+artifact mutation route blocks the prefix (`reserved-name-pipeline-runs`);
+delete is blocked outright, root-clear included — the run log is the record.
 
 ---
 
@@ -542,8 +599,10 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
   view retired), scope-grouped rail + Workspace/Codespace space toggle
   (Codespace reserved), shared `components/shared/org/` Promote/OrgAccess
   cards.
-- **Phase 2**: clarify-await (jobId re-pointing instead of
-  `awaiting_clarify_unsupported`), A3 approval-await integration (consumes
+- **Phase 1.7 (shipped)**: clarify-await (§5b — `awaiting_clarify` step
+  state, jobId re-pointing, open-ended wait, two-channel answer funnel) and
+  the read-only `pipeline-runs` artifacts-tree graft.
+- **Phase 2**: A3 approval-await integration (consumes
   the runner-axis `pendingApproval` seal), per-step `retry`, `remindAfter`
   re-arms, `{{steps.*}}` output substitution, event triggers
   (`runCompleted` — pipeline→pipeline chaining).

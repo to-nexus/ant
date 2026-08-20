@@ -237,6 +237,21 @@ export type PipelineEventData =
       decidedBy?: string;
     }
   | {
+      cause: 'clarifyRequested';
+      projectId: string;
+      /** kind:'clarify' row — gateId/cardId carry the clarifyId. */
+      clarify: PipelinePendingApproval;
+    }
+  | {
+      cause: 'clarifyAnswered';
+      projectId: string;
+      pipelineId: string;
+      runId: string;
+      stepId: string;
+      clarifyId: string;
+      answeredBy?: string;
+    }
+  | {
       cause: 'defChanged';
       pipelineId: string;
     }

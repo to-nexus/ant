@@ -1,11 +1,15 @@
 /**
- * ApprovalInbox — pending gates pinned at the top of the rail. Resolving
- * here funnels through the same choice-resolved authority as a chat-card
- * click; the SSE `approvalResolved` event folds every surface.
+ * ApprovalInbox — pending gates AND clarify waits pinned at the top of the
+ * rail. Gate rows funnel through the same choice-resolved authority as a
+ * chat-card click; clarify rows post the answer to the pipelines clarify
+ * route (the coordinator's status guard is the double-submit authority).
+ * SSE `approvalResolved` / `clarifyAnswered` fold every surface.
  */
 
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck } from 'lucide-react';
+import { MessageCircleQuestion, ShieldCheck } from 'lucide-react';
+import type { PipelinePendingApproval } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { Button } from '../aurora';
 
@@ -13,6 +17,7 @@ export function ApprovalInbox() {
   const { t } = useTranslation('pipelines');
   const approvals = useStore((s) => s.pipelineApprovals);
   const resolve = useStore((s) => s.resolvePipelineApprovalById);
+  const answerClarify = useStore((s) => s.answerPipelineClarifyById);
 
   if (approvals.length === 0) return null;
 
@@ -53,6 +58,7 @@ export function ApprovalInbox() {
             }}
           >
             <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-1)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {a.kind === 'clarify' && <MessageCircleQuestion size={11} style={{ color: 'var(--amber-500, #f59e0b)', flexShrink: 0 }} />}
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.pipelineName}</span>
               {/* Inbox is account-wide — the project label keeps a "foreign" gate legible. */}
               <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-3)', flexShrink: 0 }}>{a.projectId}</span>
@@ -65,16 +71,68 @@ export function ApprovalInbox() {
                 {t('inbox.timeout', 'Auto-decides {{when}}', { when: new Date(a.timeoutAt).toLocaleString() })}
               </div>
             )}
-            <div style={{ display: 'flex', gap: 6 }}>
-              <Button size="xs" variant="primary" onClick={() => void resolve(a.gateId, 'approve')}>
-                {t('inbox.approve', 'Approve')}
-              </Button>
-              <Button size="xs" variant="ghost" onClick={() => void resolve(a.gateId, 'reject')}>
-                {t('inbox.reject', 'Reject')}
-              </Button>
-            </div>
+            {a.kind === 'clarify' ? (
+              <ClarifyAnswerForm approval={a} onSubmit={answerClarify} />
+            ) : (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <Button size="xs" variant="primary" onClick={() => void resolve(a.gateId, 'approve')}>
+                  {t('inbox.approve', 'Approve')}
+                </Button>
+                <Button size="xs" variant="ghost" onClick={() => void resolve(a.gateId, 'reject')}>
+                  {t('inbox.reject', 'Reject')}
+                </Button>
+              </div>
+            )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ClarifyAnswerForm({
+  approval,
+  onSubmit,
+}: {
+  approval: PipelinePendingApproval;
+  onSubmit: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
+}) {
+  const { t } = useTranslation('pipelines');
+  const [answer, setAnswer] = useState('');
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    if (!answer.trim() || busy) return;
+    setBusy(true);
+    try {
+      await onSubmit(approval.gateId, approval.runId, approval.stepId, answer.trim());
+    } catch {
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <textarea
+        value={answer}
+        onChange={(e) => setAnswer(e.target.value)}
+        placeholder={t('inbox.clarifyPlaceholder', 'Type your answer…')}
+        rows={2}
+        style={{
+          width: '100%',
+          fontSize: 11.5,
+          padding: '6px 8px',
+          borderRadius: 'var(--r-sm, 6px)',
+          border: '1px solid var(--border-1)',
+          background: 'var(--bg-surface)',
+          color: 'var(--text-1)',
+          resize: 'vertical',
+        }}
+      />
+      <div>
+        <Button size="xs" variant="primary" disabled={!answer.trim() || busy} onClick={() => void submit()}>
+          {t('inbox.clarifySubmit', 'Answer & resume')}
+        </Button>
       </div>
     </div>
   );

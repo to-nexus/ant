@@ -516,6 +516,13 @@ verdicts, each load-bearing:
 - **No dismiss affordance, by design.** Nothing is running while awaiting —
   there is no live call to interrupt. Typing past the card IS the dismissal
   (canonical behavior inherited: answers merge, card resolves `'skipped'`).
+- **Pipeline mode (doc 46 §5b).** When the asking job is a pipeline step, the
+  same seal parks the step `awaiting_clarify` and the answer arrives as the
+  coordinator's re-dispatch `overrideDirective` — the runner's structural
+  closer needs no pipeline awareness. The composer stays pipeline-locked;
+  the clarify card is the in-app answer surface (its submit skips `runJob`
+  on a pipeline-owned project), and the approvals inbox/API is the second
+  channel.
 
 Guard: `tests/customAgents/universal-clarify.test.ts` (seal/restore rows) and
 `tests/customAgents/universal-turn-context.test.ts` (inheritance ladder rows).

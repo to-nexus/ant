@@ -27,6 +27,7 @@ import {
   fetchPipelines,
   promotePipeline,
   resolvePipelineApproval,
+  answerPipelineClarify,
   runPipelineNow,
   updatePipeline,
   updatePipelineEditors,
@@ -119,6 +120,7 @@ export interface PipelineSliceActions {
   clearPipelineRunDetail: () => void;
   loadPipelineApprovals: () => Promise<void>;
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject') => Promise<void>;
+  answerPipelineClarifyById: (clarifyId: string, runId: string, stepId: string, answer: string) => Promise<void>;
   setPipelinePanelView: (view: 'editor' | 'execution') => void;
   setPipelineWiringMode: (mode: 'view' | 'edit') => void;
   selectPipelineNode: (nodeId: string | null) => void;
@@ -427,6 +429,12 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== gateId) });
   },
 
+  answerPipelineClarifyById: async (clarifyId: string, runId: string, stepId: string, answer: string) => {
+    await answerPipelineClarify(runId, stepId, answer);
+    // Optimistic removal; the clarifyAnswered SSE event is the durable fold.
+    set({ pipelineApprovals: get().pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== clarifyId) });
+  },
+
   setPipelinePanelView: (view) => set({ pipelinePanelView: view }),
 
   setPipelineWiringMode: (mode) => set({ pipelineWiringMode: mode }),
@@ -447,7 +455,9 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
               ? {
                   ...p,
                   lastRun: { runId: run.runId, status: run.status, firedAt: run.startedAt },
-                  pendingApprovalCount: run.steps.filter((s) => s.status === 'awaiting_gate').length,
+                  pendingApprovalCount: run.steps.filter(
+                    (s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify',
+                  ).length,
                   activations: p.activations.map((a) =>
                     a.mine && a.projectId === event.projectId
                       ? {
@@ -523,6 +533,16 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       }
       case 'approvalResolved': {
         set({ pipelineApprovals: state.pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== event.gateId) });
+        break;
+      }
+      // Clarify rows ride the same inbox list — gateId/cardId carry the clarifyId.
+      case 'clarifyRequested': {
+        const exists = state.pipelineApprovals.some((a: PipelinePendingApproval) => a.gateId === event.clarify.gateId);
+        if (!exists) set({ pipelineApprovals: [event.clarify, ...state.pipelineApprovals] });
+        break;
+      }
+      case 'clarifyAnswered': {
+        set({ pipelineApprovals: state.pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== event.clarifyId) });
         break;
       }
       case 'availabilityChanged': {

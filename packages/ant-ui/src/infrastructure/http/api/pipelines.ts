@@ -135,3 +135,7 @@ export function fetchPipelineApprovals(): Promise<{ approvals: PipelinePendingAp
 export function resolvePipelineApproval(gateId: string, decision: 'approve' | 'reject'): Promise<{ success: boolean }> {
   return apiPost(`${base()}/approvals/${encodeURIComponent(gateId)}`, { decision });
 }
+
+export function answerPipelineClarify(runId: string, stepId: string, answer: string): Promise<{ success: boolean }> {
+  return apiPost(`${base()}/runs/${encodeURIComponent(runId)}/steps/${encodeURIComponent(stepId)}/clarify`, { answer });
+}

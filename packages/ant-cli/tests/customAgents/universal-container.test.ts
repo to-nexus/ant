@@ -202,8 +202,21 @@ describe('resolveUniversalMergedPath — merged-path routing truth table', () =>
   it.each([
     ['traversal out of artifacts', '../outside.md'],
     ['traversal out of sessions', 'sessions/../../outside.md'],
+    ['traversal out of pipeline-runs', 'pipeline-runs/../../../outside.md'],
   ] as const)('rejects %s', (_label, rel) => {
     expect(() => resolveUniversalMergedPath(container(), rel)).toThrow(/Invalid artifact path/);
+  });
+
+  it('pipeline-runs/ resolves into the activation run-log dir (paths-SSOT mapping)', () => {
+    const projectId = path.basename(projectPath);
+    const userDir = path.dirname(projectPath);
+    expect(resolveUniversalMergedPath(container(), 'pipeline-runs/r1.jsonl')).toBe(
+      path.join(userDir, '.ant', 'pipeline-activations', projectId, 'runs', 'r1.jsonl'),
+    );
+    // Name-collision guard: a prefix-sharing artifact dir stays in artifacts.
+    expect(resolveUniversalMergedPath(container(), 'pipeline-runs-x/a.md')).toBe(
+      path.join(projectPath, 'universal', 'artifacts', 'pipeline-runs-x', 'a.md'),
+    );
   });
 });
 
@@ -232,6 +245,29 @@ describe('buildUniversalMergedTree — assembly contract', () => {
     const container = getUniversalContainerPathOf(projectPath);
     const tree = buildUniversalMergedTree(container);
     expect(tree[0]).toMatchObject({ name: 'plan', type: 'directory', children: [] });
+  });
+
+  it('grafts pipeline-runs only when the activation run-log dir exists (survives deactivation)', () => {
+    ensureUniversalContainer(projectPath);
+    const container = getUniversalContainerPathOf(projectPath);
+    // Absent dir → no node (non-pipeline projects stay uncluttered).
+    expect(buildUniversalMergedTree(container).some((n) => n.name === 'pipeline-runs')).toBe(false);
+
+    const runsDir = path.join(path.dirname(projectPath), '.ant', 'pipeline-activations', path.basename(projectPath), 'runs');
+    fs.mkdirSync(runsDir, { recursive: true });
+    fs.writeFileSync(path.join(runsDir, 'r1.jsonl'), '');
+    // Reserved-name shadowing: an agent-created artifacts/pipeline-runs dir is hidden.
+    fs.mkdirSync(path.join(container, 'artifacts', 'pipeline-runs'), { recursive: true });
+    try {
+      const tree = buildUniversalMergedTree(container);
+      const nodes = tree.filter((n) => n.name === 'pipeline-runs');
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0].children?.some((c) => c.path === 'pipeline-runs/r1.jsonl')).toBe(true);
+      // Grafted last, after sessions.
+      expect(tree[tree.length - 1].name).toBe('pipeline-runs');
+    } finally {
+      fs.rmSync(path.join(path.dirname(projectPath), '.ant', 'pipeline-activations', path.basename(projectPath)), { recursive: true, force: true });
+    }
   });
 
   // H-008: the walk is synchronous over a tree the requesting account controls,

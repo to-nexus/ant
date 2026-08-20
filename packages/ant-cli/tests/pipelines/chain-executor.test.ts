@@ -108,6 +108,28 @@ describe('planAdvance — advance, skip cascade, gates', () => {
     expect(s2.dispatches.map((x) => x.stepId)).toEqual(['cleanup']);
   });
 
+  it('an awaiting_clarify step keeps the run awaiting_human and blocks dependents', () => {
+    const d = def([job('a'), job('b')]);
+    const started = planAdvance(d, freshRun(d));
+    const steps = started.run.steps.map((s) =>
+      s.stepId === 'a' ? { ...s, status: 'awaiting_clarify' as const } : s,
+    );
+    const replanned = planAdvance(d, { ...started.run, steps });
+    expect(replanned.dispatches).toEqual([]);
+    expect(replanned.run.status).toBe('awaiting_human');
+    expect(replanned.run.steps.map((s) => s.status)).toEqual(['awaiting_clarify', 'pending']);
+  });
+
+  it('a mixed gate + clarify wait still derives awaiting_human', () => {
+    const d = def([job('a', { needs: [] }), gate('g', { needs: [] })]);
+    const started = planAdvance(d, freshRun(d));
+    const steps = started.run.steps.map((s) =>
+      s.stepId === 'a' ? { ...s, status: 'awaiting_clarify' as const } : s,
+    );
+    const replanned = planAdvance(d, { ...started.run, steps });
+    expect(replanned.run.status).toBe('awaiting_human');
+  });
+
   it('a skipped need is neither success nor failure — downstream skips cascade', () => {
     const d = def([job('a'), job('b', { needs: ['a'] }), job('c', { needs: ['b'] })], 'continue');
     const s1 = planAdvance(d, freshRun(d));

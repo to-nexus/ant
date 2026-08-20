@@ -35,8 +35,11 @@ export function createChatRoutes(deps: {
   chatService?: ChatService;
   choiceService?: ChoiceService;
   workspaceResolver?: any;
-  /** Advances pipeline approval gates after an NX-winning choice-resolved (pipeline_approval cards). */
-  pipelineCoordinator?: { applyResolvedGate(cardId: string, decision: string, decidedBy: string | undefined, via: 'in-app' | 'api'): Promise<boolean> };
+  /** Advances pipeline approval gates / clarify waits after an NX-winning choice-resolved. */
+  pipelineCoordinator?: {
+    applyResolvedGate(cardId: string, decision: string, decidedBy: string | undefined, via: 'in-app' | 'api'): Promise<boolean>;
+    applyClarifyAnswer(params: { jobId: string; answer: string; answeredBy?: string; via: 'in-app' | 'api' }): Promise<boolean>;
+  };
   fileTreeNotifier?: { notifyFileTreeUpdate(projectId: string, featureName: string, userContext?: any): Promise<void> };
   stateStore?: {
     addUnseenArtifacts(userId: string, projectId: string, feature: string, paths: string[]): Promise<void>;
@@ -396,6 +399,30 @@ export function createChatRoutes(deps: {
           );
         } catch (err) {
           logger.error('Pipeline gate advance failed after choice-resolved', { component: 'Chat' }, err);
+        }
+      }
+
+      // 3c. clarifying card — if the asking job is a pipeline step, funnel
+      //     the answer to the coordinator (same NX-first ordering as gates).
+      //     Interactive clarify cards no-op instantly: their jobId has no
+      //     `ant:pipe:job` mapping, so applyClarifyAnswer returns false.
+      if (cardType === 'clarifying' && result.resolved && deps.pipelineCoordinator) {
+        const a = (answer ?? {}) as { directive?: string; resolvedAnswers?: Record<string, string> };
+        const text =
+          typeof a.directive === 'string' && a.directive.trim()
+            ? a.directive
+            : Object.values(a.resolvedAnswers ?? {}).join('\n');
+        if (text.trim()) {
+          try {
+            await deps.pipelineCoordinator.applyClarifyAnswer({
+              jobId: ctx.jobId,
+              answer: text,
+              answeredBy: userContext.userId,
+              via: 'in-app',
+            });
+          } catch (err) {
+            logger.error('Pipeline clarify resume failed after choice-resolved', { component: 'Chat' }, err);
+          }
         }
       }
 

@@ -15,10 +15,16 @@
  * the pipelines approval route then call `applyResolvedGate`. The timeout arm
  * funnels through the same `appendChoiceResolved` so a racing human click and
  * a timeout can never both win.
+ *
+ * Clarify funnel: a step job that seals `awaitingClarify` parks the step
+ * `awaiting_clarify` (open-ended — no timeout arm). The answer arrives via
+ * `applyClarifyAnswer` (chat clarify-card branch or the pipelines clarify
+ * route), which re-dispatches the SAME step with the answer as its directive;
+ * the universal runner's dangling-tool_use detection makes the new job a
+ * structural resume (jobId re-pointing, `ant:pipe:job:{jobId}` re-keyed).
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import {
   isApprovalStep,
   parseCustomJobRef,
@@ -26,6 +32,7 @@ import {
   DEFAULT_PIPELINE_CAPS,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
+  type ClarifyRecord,
   type GateDecision,
   type JobStepDef,
   type PipelineActivation,
@@ -37,12 +44,19 @@ import {
   type StepRecord,
 } from '@ant/shared';
 import type { StateStorePort } from '../../core/ports/stateStore';
-import type { ScheduleQueuePort, PipelineControlJobData, PipelineFireJobData, PipelineOwner } from '../../core/ports/scheduler';
+import type {
+  ScheduleQueuePort,
+  PipelineClarifyEnterJobData,
+  PipelineControlJobData,
+  PipelineFireJobData,
+  PipelineOwner,
+} from '../../core/ports/scheduler';
 import { REDIS_KEYS, REDIS_TTL, getRealtimeBroadcastChannel, REDIS_CHANNELS } from '../../core/constants/redis';
 import { generateHumanId } from '../../utils/humanId';
 import { generateTurnId } from '../../composition/recordUserTurn';
 import { logger } from '../../utils/logger';
-import { buildInitialSteps, planAdvance, applyStepOutcome, effectiveNeeds, type StepDispatch } from '../../core/pipelines/ChainExecutor';
+import { buildInitialSteps, planAdvance, applyStepOutcome, deriveRunStatus, effectiveNeeds, type StepDispatch } from '../../core/pipelines/ChainExecutor';
+import { getSessionFilePath } from '../../core/utils/sessionPaths';
 import { deriveActivationsRoot, type PipelineTenantContext } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import {
@@ -156,9 +170,11 @@ export class PipelineRunCoordinator {
       case 'gate-timeout':
         return this.handleGateTimeout(data.gateId);
       case 'step-retry':
-        return this.handleStepRetry(data.owner, data.runId, data.stepId, data.retries);
+        return this.handleStepRetry(data.owner, data.runId, data.stepId, data.retries, data.directiveOverride);
       case 'outcome-retry':
         return this.handleOutcomeRetry(data);
+      case 'clarify-enter':
+        return this.enterAwaitingClarify(data);
       default:
         logger.warn(`[Pipeline] unknown control job kind: ${(data as any).kind}`, { component: COMPONENT });
     }
@@ -327,6 +343,7 @@ export class PipelineRunCoordinator {
     run: RunRecord,
     step: JobStepDef,
     retries: number,
+    directiveOverride?: string,
   ): Promise<void> {
     const pipelineId = run.pipelineId;
     const fail = (reason: string) =>
@@ -359,7 +376,7 @@ export class PipelineRunCoordinator {
       await this.deps.scheduleQueue.armDelayed(
         `step-retry-${run.runId}-${step.id}`,
         60_000,
-        { kind: 'step-retry', owner, pipelineId, projectId: run.projectId, runId: run.runId, stepId: step.id, retries: retries + 1 },
+        { kind: 'step-retry', owner, pipelineId, projectId: run.projectId, runId: run.runId, stepId: step.id, retries: retries + 1, directiveOverride },
       );
       return;
     }
@@ -367,7 +384,7 @@ export class PipelineRunCoordinator {
     // Chat parity with the interactive execute path: the step's directive is
     // a durable, live-broadcast user_turn (pipeline-attributed), and the run's
     // FIRST step also carries a run-started notice on the same turn.
-    const directive = this.renderDirective(step.directive, run);
+    const directive = directiveOverride ?? this.renderDirective(step.directive, run);
     const turnId = generateTurnId();
     const isFirstTurn = !run.steps.some((s) => s.turnId);
     if (this.deps.chatService) {
@@ -454,7 +471,13 @@ export class PipelineRunCoordinator {
     });
   }
 
-  private async handleStepRetry(owner: PipelineOwner, runId: string, stepId: string, retries: number): Promise<void> {
+  private async handleStepRetry(
+    owner: PipelineOwner,
+    runId: string,
+    stepId: string,
+    retries: number,
+    directiveOverride?: string,
+  ): Promise<void> {
     const run = await this.getRun(runId);
     if (!run || this.isTerminal(run.status)) return;
     const record = run.steps.find((s) => s.stepId === stepId);
@@ -462,7 +485,7 @@ export class PipelineRunCoordinator {
     const def = run.defSnapshot;
     const stepDef = def?.steps.find((s) => s.id === stepId);
     if (!def || !stepDef || isApprovalStep(stepDef)) return;
-    await this.dispatchJobStep(owner, def, run, stepDef, retries);
+    await this.dispatchJobStep(owner, def, run, stepDef, retries, directiveOverride);
   }
 
   // ============================================
@@ -716,13 +739,25 @@ export class PipelineRunCoordinator {
       error = `interrupted: ${interruption.reason ?? 'unknown'}`;
     }
 
-    // Clarify seal detection (v1): a job that ended awaiting a clarify answer
-    // did not do the work — unattended chains cannot answer it (Phase 2 axis).
+    // Clarify seal: the job ended awaiting a human answer (universal
+    // end-and-resume). Not an outcome — the step parks `awaiting_clarify`
+    // until the answer funnels through `applyClarifyAnswer`.
     if (outcome === 'succeeded') {
       const clarify = await this.detectClarifySeal(owner, runId, stepId, data.jobId);
       if (clarify) {
-        outcome = 'failed';
-        error = 'awaiting_clarify_unsupported';
+        await this.enterAwaitingClarify({
+          kind: 'clarify-enter',
+          owner,
+          pipelineId,
+          projectId,
+          runId,
+          stepId,
+          jobId: data.jobId,
+          question: clarify.question,
+          toolUseId: clarify.toolUseId,
+          retries: 0,
+        });
+        return;
       }
     }
 
@@ -777,21 +812,205 @@ export class PipelineRunCoordinator {
     }
   }
 
-  private async detectClarifySeal(owner: PipelineOwner, runId: string, stepId: string, jobId: string): Promise<boolean> {
+  private async detectClarifySeal(
+    owner: PipelineOwner,
+    runId: string,
+    stepId: string,
+    jobId: string,
+  ): Promise<{ question: string; toolUseId?: string } | null> {
     try {
       const run = await this.getRun(runId);
       const stepDef = run?.defSnapshot?.steps.find((s) => s.id === stepId);
-      if (!run || !stepDef || isApprovalStep(stepDef)) return false;
+      if (!run || !stepDef || isApprovalStep(stepDef)) return null;
       const ref = parseCustomJobRef(stepDef.customJobRef);
-      if (!ref) return false;
+      if (!ref) return null;
       const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
-      const sessionPath = path.join(containerPath, 'sessions', ref.agentId, `${ref.jobId}.json`);
+      const sessionPath = getSessionFilePath(containerPath, ref.agentId, ref.jobId);
       const session = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
       const state = session?.state ?? session;
-      return state?.awaitingClarify === true && state?.jobId === jobId;
+      if (state?.awaitingClarify !== true || state?.jobId !== jobId) return null;
+      return {
+        question: typeof state.clarifyQuestion === 'string' ? state.clarifyQuestion : '',
+        ...(typeof state.clarifyToolUseId === 'string' && { toolUseId: state.clarifyToolUseId }),
+      };
     } catch {
-      return false;
+      return null;
     }
+  }
+
+  // ============================================
+  // Clarify HITL (open-ended wait; funnel key = ant:pipe:job:{jobId})
+  // ============================================
+
+  /**
+   * Park a step whose job sealed awaiting a clarify answer. Guarded on
+   * (`running`, same jobId) so duplicate/stale status events no-op. The wait
+   * is open-ended — no timeout arm; run cancel / deactivation are the escape
+   * hatches. `ant:pipe:job:{jobId}` is NOT deleted: it is the answer funnel.
+   */
+  private async enterAwaitingClarify(data: PipelineClarifyEnterJobData): Promise<void> {
+    const { owner, pipelineId, projectId, runId, stepId, jobId } = data;
+    const askedAt = new Date().toISOString();
+    let record: ClarifyRecord | undefined;
+    const result = await this.mutateRun(owner, runId, async (live) => {
+      const step = live.steps.find((s) => s.stepId === stepId);
+      if (!step || this.isTerminal(live.status) || step.status !== 'running' || step.jobId !== jobId) {
+        return { run: live, dispatches: [] };
+      }
+      const round = (step.clarify?.round ?? 0) + 1;
+      record = {
+        clarifyId: `clr-${runId}-${stepId}-${round}`,
+        jobId,
+        question: data.question,
+        ...(data.toolUseId && { toolUseId: data.toolUseId }),
+        round,
+        askedAt,
+      };
+      const steps = live.steps.map((s): StepRecord =>
+        s.stepId === stepId ? { ...s, status: 'awaiting_clarify', clarify: record } : s,
+      );
+      const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
+      return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
+    });
+    if (!result) {
+      // Lock starvation would leave the step `running` forever — bounded
+      // re-arm, parity with outcome-retry.
+      if (data.retries < MAX_OUTCOME_RETRIES) {
+        await this.deps.scheduleQueue.armDelayed(`clarify-enter-${runId}-${stepId}`, OUTCOME_RETRY_DELAY_MS, {
+          ...data,
+          retries: data.retries + 1,
+        });
+      } else {
+        logger.warn(`[Pipeline] clarify-enter dropped after retries: ${runId}/${stepId}`, { component: COMPONENT });
+      }
+      return;
+    }
+    if (!record) return; // guard rejected — stale/duplicate event
+
+    // The funnel key must outlive the open-ended wait (PIPE.JOB is 7d) —
+    // align with the ACTIVE overlap bound.
+    await this.deps.stateStore.setKeyWithTTL(
+      REDIS_KEYS.PIPE.JOB(jobId),
+      JSON.stringify({ runId, stepId, pipelineId, projectId, owner }),
+      REDIS_TTL.PIPE.ACTIVE,
+    );
+
+    await this.appendEvent(owner, projectId, {
+      ts: askedAt,
+      event: 'awaiting_human',
+      runId,
+      stepId,
+      jobId,
+      detail: { kind: 'clarify', clarifyId: record.clarifyId, question: record.question, round: record.round },
+    });
+    await this.publish(owner, {
+      cause: 'clarifyRequested',
+      projectId,
+      clarify: {
+        kind: 'clarify',
+        gateId: record.clarifyId,
+        cardId: record.clarifyId,
+        runId,
+        pipelineId,
+        pipelineName: result.run.defSnapshot?.name ?? pipelineId,
+        projectId,
+        stepId,
+        prompt: record.question,
+        armedAt: askedAt,
+        jobId,
+      },
+    });
+    await this.publish(owner, { cause: 'runUpdate', projectId, pipelineId, run: this.publicRun(result.run) });
+  }
+
+  /**
+   * Clarify answer funnel — called by the chat choice-resolved branch
+   * (in-app card) and the pipelines clarify route (inbox/API). Returns false
+   * when the jobId maps to no pipeline step (interactive clarify cards hit
+   * this as a safe no-op) or the step is no longer awaiting this clarify
+   * (already answered / cancelled / deactivated). On success the SAME step is
+   * re-dispatched through the single dispatch owner with the answer as its
+   * directive — the universal runner's dangling-tool_use detection makes the
+   * new job a structural resume (jobId re-pointing).
+   */
+  async applyClarifyAnswer(params: {
+    jobId: string;
+    answer: string;
+    answeredBy?: string;
+    via: 'in-app' | 'api';
+  }): Promise<boolean> {
+    const raw = await this.deps.stateStore.getKey(REDIS_KEYS.PIPE.JOB(params.jobId));
+    if (!raw) return false;
+    const { runId, stepId, pipelineId, projectId, owner } = JSON.parse(raw) as {
+      runId: string;
+      stepId: string;
+      pipelineId: string;
+      projectId: string;
+      owner: PipelineOwner;
+    };
+
+    const answeredAt = new Date().toISOString();
+    let resolved: ClarifyRecord | undefined;
+    const result = await this.mutateRun(owner, runId, async (live) => {
+      const step = live.steps.find((s) => s.stepId === stepId);
+      if (
+        !step ||
+        this.isTerminal(live.status) ||
+        step.status !== 'awaiting_clarify' ||
+        step.clarify?.jobId !== params.jobId
+      ) {
+        return { run: live, dispatches: [] };
+      }
+      resolved = {
+        ...step.clarify,
+        answeredBy: params.answeredBy,
+        answeredAt,
+        answer: params.answer.slice(0, 500),
+        via: params.via,
+      };
+      const steps = live.steps.map((s): StepRecord =>
+        s.stepId === stepId ? { ...s, status: 'dispatched', clarify: resolved } : s,
+      );
+      const policy = live.defSnapshot?.defaults?.onStepFailure ?? 'abort';
+      return { run: { ...live, steps, status: deriveRunStatus(steps, policy) }, dispatches: [] };
+    });
+    if (!result || !resolved) return false;
+
+    // Post-apply ordering (gate precedent): the funnel key dies only after
+    // the flip landed, so a crash mid-apply keeps the answer recoverable.
+    await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(params.jobId)).catch(() => {});
+    await this.appendEvent(owner, projectId, {
+      ts: answeredAt,
+      event: 'human_resolved',
+      runId,
+      stepId,
+      jobId: params.jobId,
+      detail: {
+        kind: 'clarify',
+        clarifyId: resolved.clarifyId,
+        round: resolved.round,
+        answer: resolved.answer,
+        answeredBy: params.answeredBy,
+        via: params.via,
+      },
+    });
+    await this.publish(owner, {
+      cause: 'clarifyAnswered',
+      projectId,
+      pipelineId,
+      runId,
+      stepId,
+      clarifyId: resolved.clarifyId,
+      answeredBy: params.answeredBy,
+    });
+    await this.publish(owner, { cause: 'runUpdate', projectId, pipelineId, run: this.publicRun(result.run) });
+
+    const def = result.run.defSnapshot;
+    const stepDef = def?.steps.find((s) => s.id === stepId);
+    if (def && stepDef && !isApprovalStep(stepDef)) {
+      await this.dispatchJobStep(owner, def, result.run, stepDef, 0, params.answer);
+    }
+    return true;
   }
 
   /**
@@ -810,7 +1029,9 @@ export class PipelineRunCoordinator {
     const result = await this.mutateRun(owner, runId, async (live, def) => {
       if (!def) return { run: live, dispatches: [] };
       const already = live.steps.find((s) => s.stepId === stepId);
-      if (!already || this.isTerminal(live.status) || ['succeeded', 'failed', 'skipped', 'cancelled'].includes(already.status)) {
+      // `awaiting_clarify` refuses outcomes too: a stale outcome-retry must
+      // never clobber a step parked on a human answer.
+      if (!already || this.isTerminal(live.status) || ['succeeded', 'failed', 'skipped', 'cancelled', 'awaiting_clarify'].includes(already.status)) {
         return { run: live, dispatches: [] };
       }
       const endedPatch = { ...patch, endedAt: new Date().toISOString() };
@@ -836,19 +1057,22 @@ export class PipelineRunCoordinator {
     const result = await this.mutateRun(owner, runId, async (live) => {
       if (this.isTerminal(live.status)) return { run: live, dispatches: [] };
       const steps = live.steps.map((s): StepRecord =>
-        s.status === 'pending' || s.status === 'awaiting_gate' || s.status === 'dispatched'
+        s.status === 'pending' || s.status === 'awaiting_gate' || s.status === 'awaiting_clarify' || s.status === 'dispatched'
           ? { ...s, status: 'cancelled', endedAt: new Date().toISOString() }
           : s,
       );
       return { run: { ...live, steps, status: 'cancelled' as const }, dispatches: [] };
     });
     if (!result) return false;
-    // Disarm any gates the cancel just swept.
+    // Disarm any gates and clarify funnel keys the cancel just swept.
     for (const s of result.run.steps) {
       if (s.gate && !s.gate.decision) {
         await this.deps.scheduleQueue.cancelDelayed(`gto-${s.gate.gateId}`);
         await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.HITL(s.gate.gateId)).catch(() => {});
         await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.CARD(s.gate.cardId)).catch(() => {});
+      }
+      if (s.clarify && !s.clarify.answeredAt) {
+        await this.deps.stateStore.deleteKey(REDIS_KEYS.PIPE.JOB(s.clarify.jobId)).catch(() => {});
       }
     }
     await this.finalizeRun(owner, result.run);
@@ -971,7 +1195,11 @@ export class PipelineRunCoordinator {
   }
 
   private async saveRun(run: RunRecord): Promise<void> {
-    await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.RUN(run.runId), JSON.stringify(run), REDIS_TTL.PIPE.RUN);
+    // Open-ended human waits (gate without timeout, clarify) must outlive the
+    // 7d projection TTL — align with the ACTIVE overlap bound while awaiting.
+    const awaiting = run.steps.some((s) => s.status === 'awaiting_gate' || s.status === 'awaiting_clarify');
+    const ttl = awaiting ? REDIS_TTL.PIPE.ACTIVE : REDIS_TTL.PIPE.RUN;
+    await this.deps.stateStore.setKeyWithTTL(REDIS_KEYS.PIPE.RUN(run.runId), JSON.stringify(run), ttl);
   }
 
   private async mutateRun(
@@ -1016,19 +1244,34 @@ export class PipelineRunCoordinator {
       const run = await this.getRun(runId);
       if (!run) continue;
       for (const s of run.steps) {
-        if (s.status !== 'awaiting_gate' || !s.gate) continue;
-        out.push({
-          gateId: s.gate.gateId,
-          cardId: s.gate.cardId,
-          runId,
-          pipelineId: run.pipelineId,
-          pipelineName: run.defSnapshot?.name ?? run.pipelineId,
-          projectId: run.projectId,
-          stepId: s.stepId,
-          prompt: s.gate.prompt,
-          armedAt: s.gate.armedAt,
-          timeoutAt: s.gate.timeoutAt,
-        });
+        if (s.status === 'awaiting_gate' && s.gate) {
+          out.push({
+            gateId: s.gate.gateId,
+            cardId: s.gate.cardId,
+            runId,
+            pipelineId: run.pipelineId,
+            pipelineName: run.defSnapshot?.name ?? run.pipelineId,
+            projectId: run.projectId,
+            stepId: s.stepId,
+            prompt: s.gate.prompt,
+            armedAt: s.gate.armedAt,
+            timeoutAt: s.gate.timeoutAt,
+          });
+        } else if (s.status === 'awaiting_clarify' && s.clarify) {
+          out.push({
+            kind: 'clarify',
+            gateId: s.clarify.clarifyId,
+            cardId: s.clarify.clarifyId,
+            runId,
+            pipelineId: run.pipelineId,
+            pipelineName: run.defSnapshot?.name ?? run.pipelineId,
+            projectId: run.projectId,
+            stepId: s.stepId,
+            prompt: s.clarify.question,
+            armedAt: s.clarify.askedAt,
+            jobId: s.clarify.jobId,
+          });
+        }
       }
     }
     return out;
