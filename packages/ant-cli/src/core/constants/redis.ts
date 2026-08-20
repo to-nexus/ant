@@ -393,18 +393,20 @@ export const REDIS_KEYS = {
 
   /**
    * Pipeline scheduling (ant:pipe:*) — every key here is a PROJECTION of the
-   * disk SSOT (`.ant/pipelines/{id}/pipeline.yaml` + runs JSONL) and must be
+   * disk SSOT (definition yaml + activation/runs JSONL) and must be
    * rebuildable by the reconciler. Never promote one to source of truth.
+   * Activation-unit keys are keyed by PROJECT (one activation per project is
+   * structural), so the same pipeline may run concurrently on many projects.
    */
   PIPE: {
     /** Live run state document (JSON RunRecord) - ant:pipe:run:{runId} */
     RUN: (runId: string): string => `${REDIS_DOMAINS.PIPE}:run:${runId}`,
-    /** Overlap guard (NX, value = runId) - ant:pipe:active:{orgId}:{userId}:{pipelineId} */
-    ACTIVE: (org: string, user: string, pipelineId: string): string =>
-      `${REDIS_DOMAINS.PIPE}:active:${org}:${user}:${pipelineId}`,
-    /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{pipelineId}:{fireEpoch} */
-    FIRED: (org: string, user: string, pipelineId: string, fireEpoch: number): string =>
-      `${REDIS_DOMAINS.PIPE}:fired:${org}:${user}:${pipelineId}:${fireEpoch}`,
+    /** Overlap guard (NX, value = runId), per activation - ant:pipe:active:{orgId}:{userId}:{projectId} */
+    ACTIVE: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:active:${org}:${user}:${projectId}`,
+    /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{projectId}:{fireEpoch} */
+    FIRED: (org: string, user: string, projectId: string, fireEpoch: number): string =>
+      `${REDIS_DOMAINS.PIPE}:fired:${org}:${user}:${projectId}:${fireEpoch}`,
     /** jobId → {runId, stepId} reverse mapping for the status-update consumer - ant:pipe:job:{jobId} */
     JOB: (jobId: string): string => `${REDIS_DOMAINS.PIPE}:job:${jobId}`,
     /** Armed HITL gate (JSON) - ant:pipe:hitl:{gateId} */
@@ -413,9 +415,9 @@ export const REDIS_KEYS = {
     CARD: (cardId: string): string => `${REDIS_DOMAINS.PIPE}:card:${cardId}`,
     /** Per-run coordinator mutation lock - ant:lock:pipe-run:{runId} */
     RUN_LOCK: (runId: string): string => `${REDIS_DOMAINS.LOCK}:pipe-run:${runId}`,
-    /** Activation record projection (JSON PipelineActivation) - ant:pipe:actv:{orgId}:{userId}:{pipelineId} */
-    ACTIVATION: (org: string, user: string, pipelineId: string): string =>
-      `${REDIS_DOMAINS.PIPE}:actv:${org}:${user}:${pipelineId}`,
+    /** Activation record projection (JSON PipelineActivation) - ant:pipe:actv:{orgId}:{userId}:{projectId} */
+    ACTIVATION: (org: string, user: string, projectId: string): string =>
+      `${REDIS_DOMAINS.PIPE}:actv:${org}:${user}:${projectId}`,
     /** projectId → pipelineId reverse mapping — the job-start mutual-exclusion
      *  gate read. TTL-bounded and refreshed by the reconciler: a stale entry
      *  self-clears, so the gate fails OPEN, never closed. - ant:pipe:proj:{orgId}:{userId}:{projectId} */

@@ -1,6 +1,7 @@
 /**
- * pipelineSlice activation axis — activate/deactivate round-trips, the SSE
- * activation folds, and the per-project lock selector the chat surface reads.
+ * pipelineSlice activation axis — activate/deactivate round-trips (activation
+ * is per PROJECT, N per pipeline), the SSE activation/availability folds, and
+ * the per-project lock selector the chat surface reads.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { create } from 'zustand';
@@ -13,9 +14,14 @@ import {
 const api = vi.hoisted(() => ({
   activatePipeline: vi.fn(),
   deactivatePipeline: vi.fn(),
+  enablePipeline: vi.fn(),
+  disablePipeline: vi.fn(),
+  promotePipeline: vi.fn(),
+  updatePipelineEditors: vi.fn(),
+  fetchPipelineActivations: vi.fn(),
   fetchActivatableProjects: vi.fn().mockResolvedValue({ projects: [] }),
   fetchActivePipeline: vi.fn(),
-  fetchPipelines: vi.fn().mockResolvedValue({ pipelines: [], invalid: [] }),
+  fetchPipelines: vi.fn().mockResolvedValue({ pipelines: [], invalid: [], orphanActivations: [] }),
   fetchPipeline: vi.fn(),
   createPipeline: vi.fn(),
   updatePipeline: vi.fn(),
@@ -30,13 +36,30 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('@/infrastructure/http/api/pipelines', () => api);
 
-const ACTIVATION = { projectId: 'proj-a', activatedAt: '2026-08-20T00:00:00.000Z' };
+const ACTIVATION = {
+  pipelineId: 'p1',
+  pipelineScope: 'user' as const,
+  projectId: 'proj-a',
+  activatedAt: '2026-08-20T00:00:00.000Z',
+  activatedBy: 'me@x.io',
+};
+const ACTIVATION_VIEW = {
+  pipelineId: 'p1',
+  projectId: 'proj-a',
+  activatedBy: 'me@x.io',
+  activatedAt: '2026-08-20T00:00:00.000Z',
+  mine: true,
+  state: 'waiting' as const,
+};
 const ENTRY = (over: Record<string, unknown> = {}) => ({
   id: 'p1',
   name: 'Digest',
-  activation: null,
   cron: '0 9 * * 1',
   stepCount: 1,
+  scope: 'user' as const,
+  readonly: false,
+  enabled: true,
+  activations: [] as unknown[],
   pendingApprovalCount: 0,
   ...over,
 });
@@ -51,27 +74,40 @@ function buildStore() {
 beforeEach(() => {
   vi.clearAllMocks();
   api.fetchActivatableProjects.mockResolvedValue({ projects: [] });
-  api.fetchPipelines.mockResolvedValue({ pipelines: [], invalid: [] });
+  api.fetchPipelines.mockResolvedValue({ pipelines: [], invalid: [], orphanActivations: [] });
   api.fetchPipelineApprovals.mockResolvedValue({ approvals: [] });
+  api.fetchPipelineRuns.mockResolvedValue({ runs: [] });
 });
 
 describe('activatePipelineTo / deactivatePipelineById', () => {
-  it('activate folds the activation onto the rail entry and refreshes the chat lock', async () => {
+  it('activate refetches the selected detail and refreshes the chat lock', async () => {
     const useStore = buildStore();
-    useStore.setState({ pipelines: [ENTRY()] });
+    useStore.setState({ pipelines: [ENTRY()], selectedPipelineId: 'p1' });
     api.activatePipeline.mockResolvedValue({ id: 'p1', activation: ACTIVATION, nextFireAt: '2026-08-24T00:00:00.000Z' });
+    api.fetchPipeline.mockResolvedValue({
+      id: 'p1',
+      def: { version: 2, name: 'Digest', on: { schedule: { cron: '0 9 * * 1' } }, steps: [] },
+      scope: 'user',
+      readonly: false,
+      enabled: true,
+      activations: [ACTIVATION_VIEW],
+    });
     api.fetchActivePipeline.mockResolvedValue({
       active: { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting', nextFireAt: '2026-08-24T00:00:00.000Z' },
+    });
+    // The trailing background list refresh must serve the new activation too.
+    api.fetchPipelines.mockResolvedValue({
+      pipelines: [ENTRY({ activations: [ACTIVATION_VIEW] })],
+      invalid: [],
+      orphanActivations: [],
     });
 
     const ok = await useStore.getState().activatePipelineTo('p1', 'proj-a');
 
     expect(ok).toBe(true);
     expect(api.activatePipeline).toHaveBeenCalledWith('p1', 'proj-a');
-    const s = useStore.getState();
-    expect(s.pipelines[0].activation).toEqual(ACTIVATION);
-    expect(s.pipelineExecutionProjectId).toBe('proj-a');
     await vi.waitFor(() => {
+      expect(useStore.getState().pipelines[0]?.activations).toEqual([ACTIVATION_VIEW]);
       expect(useStore.getState().activePipelineByProject['proj-a']?.pipelineId).toBe('p1');
     });
   });
@@ -87,26 +123,27 @@ describe('activatePipelineTo / deactivatePipelineById', () => {
     expect(useStore.getState().pipelineActivationError).toMatch(/project-has-live-job/);
   });
 
-  it('deactivate clears the entry activation AND the per-project lock', async () => {
+  it('deactivate removes only the own row for THAT project and clears the lock', async () => {
+    const other = { ...ACTIVATION_VIEW, projectId: 'proj-b', activatedBy: 'peer@x.io', mine: false };
     const useStore = buildStore();
     useStore.setState({
-      pipelines: [ENTRY({ activation: ACTIVATION, nextFireAt: '2026-08-24T00:00:00.000Z' })],
+      pipelines: [ENTRY({ activations: [ACTIVATION_VIEW, other] })],
       activePipelineByProject: { 'proj-a': { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting' } },
     });
     api.deactivatePipeline.mockResolvedValue({ success: true });
 
-    const ok = await useStore.getState().deactivatePipelineById('p1');
+    const ok = await useStore.getState().deactivatePipelineById('p1', 'proj-a');
 
     expect(ok).toBe(true);
+    expect(api.deactivatePipeline).toHaveBeenCalledWith('p1', 'proj-a');
     const s = useStore.getState();
-    expect(s.pipelines[0].activation).toBeNull();
-    expect(s.pipelines[0].nextFireAt).toBeUndefined();
+    expect(s.pipelines[0].activations).toEqual([other]);
     expect(s.activePipelineByProject['proj-a']).toBeNull();
   });
 });
 
-describe('applyPipelineEvent — activation folds', () => {
-  it('activationChanged (set) binds the entry and the project lock as waiting', () => {
+describe('applyPipelineEvent — activation / availability folds', () => {
+  it('activationChanged (set) prepends an own row and binds the project lock as waiting', () => {
     const useStore = buildStore();
     useStore.setState({ pipelines: [ENTRY()] });
 
@@ -115,18 +152,21 @@ describe('applyPipelineEvent — activation folds', () => {
       pipelineId: 'p1',
       projectId: 'proj-a',
       activation: ACTIVATION,
+      activatedBy: 'me@x.io',
       nextFireAt: '2026-08-24T00:00:00.000Z',
     } as any);
 
     const s = useStore.getState();
-    expect(s.pipelines[0].activation).toEqual(ACTIVATION);
+    expect(s.pipelines[0].activations).toHaveLength(1);
+    expect(s.pipelines[0].activations[0]).toMatchObject({ projectId: 'proj-a', mine: true, state: 'waiting' });
     expect(s.activePipelineByProject['proj-a']).toMatchObject({ pipelineId: 'p1', state: 'waiting' });
   });
 
-  it('activationChanged (null) clears both — projectId names the PREVIOUS project', () => {
+  it('activationChanged (null) drops the own row and clears the lock — members’ rows survive', () => {
+    const other = { ...ACTIVATION_VIEW, projectId: 'proj-b', activatedBy: 'peer@x.io', mine: false };
     const useStore = buildStore();
     useStore.setState({
-      pipelines: [ENTRY({ activation: ACTIVATION })],
+      pipelines: [ENTRY({ activations: [ACTIVATION_VIEW, other] })],
       activePipelineByProject: { 'proj-a': { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting' } },
     });
 
@@ -138,14 +178,23 @@ describe('applyPipelineEvent — activation folds', () => {
     } as any);
 
     const s = useStore.getState();
-    expect(s.pipelines[0].activation).toBeNull();
+    expect(s.pipelines[0].activations).toEqual([other]);
     expect(s.activePipelineByProject['proj-a']).toBeNull();
+  });
+
+  it('availabilityChanged flips the entry enabled flag', () => {
+    const useStore = buildStore();
+    useStore.setState({ pipelines: [ENTRY({ enabled: true })] });
+
+    useStore.getState().applyPipelineEvent({ cause: 'availabilityChanged', pipelineId: 'p1', enabled: false } as any);
+
+    expect(useStore.getState().pipelines[0].enabled).toBe(false);
   });
 
   it('runUpdate flips the bound project waiting → running → waiting on terminal', () => {
     const useStore = buildStore();
     useStore.setState({
-      pipelines: [ENTRY({ activation: ACTIVATION })],
+      pipelines: [ENTRY({ activations: [ACTIVATION_VIEW] })],
       activePipelineByProject: { 'proj-a': { pipelineId: 'p1', pipelineName: 'Digest', state: 'waiting' } },
     });
     const run = (status: string) => ({
@@ -156,12 +205,15 @@ describe('applyPipelineEvent — activation folds', () => {
     });
 
     useStore.getState().applyPipelineEvent(run('running') as any);
-    expect(useStore.getState().activePipelineByProject['proj-a']).toMatchObject({ state: 'running', currentRunId: 'r1' });
+    let s = useStore.getState();
+    expect(s.activePipelineByProject['proj-a']).toMatchObject({ state: 'running', currentRunId: 'r1' });
+    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'running', currentRunId: 'r1' });
 
     useStore.getState().applyPipelineEvent(run('completed') as any);
-    const after = useStore.getState().activePipelineByProject['proj-a'];
-    expect(after?.state).toBe('waiting');
-    expect(after?.currentRunId).toBeUndefined();
+    s = useStore.getState();
+    expect(s.activePipelineByProject['proj-a']?.state).toBe('waiting');
+    expect(s.activePipelineByProject['proj-a']?.currentRunId).toBeUndefined();
+    expect(s.pipelines[0].activations[0]).toMatchObject({ state: 'waiting' });
   });
 });
 

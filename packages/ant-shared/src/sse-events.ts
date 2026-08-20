@@ -240,12 +240,19 @@ export type PipelineEventData =
       pipelineId: string;
     }
   | {
+      cause: 'availabilityChanged';
+      pipelineId: string;
+      enabled: boolean;
+    }
+  | {
       cause: 'activationChanged';
       pipelineId: string;
       /** On deactivation this is the PREVIOUS project so the FE can clear its badge. */
       projectId: string;
-      /** null = deactivated. */
+      /** null = deactivated (for this project — other activations may remain). */
       activation: PipelineActivation | null;
+      /** Activator userId — events are published on the actor's user channel. */
+      activatedBy?: string;
       /** Server-computed next fire; present only when activated. */
       nextFireAt?: string;
     };

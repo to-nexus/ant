@@ -54,14 +54,14 @@ import {
   scaffoldAgent,
   scaffoldJob,
   validateDefinitionSave,
-  type OrgWriteGate,
 } from './helpers/customAgentHandlers';
 import {
-  canEditOrgAgent,
-  computeOrgAgentPermissions,
+  canEditOrgResource,
+  computeOrgResourcePermissions,
+  createOrgGateResolver,
   readOrgAgentAcl,
   updateOrgAgentAcl,
-} from './helpers/orgAgentAclStore';
+} from './helpers/orgAclStore';
 import { resolveLiveTeamMembership } from './helpers/teamRole';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
@@ -109,36 +109,13 @@ export function createAccountAgentRoutes(deps: {
     });
   }
 
-  /**
-   * Request-memoized org write-gate resolver — live team role + org ACL,
-   * fetched at most once per request and only when an ACL-governed agent is
-   * actually being touched (`findWritableAgent` invokes it lazily).
-   */
-  function orgGateFor(req: Request): () => Promise<OrgWriteGate> {
-    let cached: Promise<OrgWriteGate> | null = null;
-    return () => {
-      cached ??= (async () => {
-        const userContext = extractUserContext(req);
-        const resolved =
-          userContext.organizationKind === 'team'
-            ? await resolveLiveTeamMembership(
-                deps.organizationRepository,
-                userContext.userId,
-                userContext.organizationId,
-              )
-            : null;
-        return {
-          callerId: userContext.userId,
-          liveRole: resolved?.membership.role ?? null,
-          acl: await readOrgAgentAcl(
-            deps.workspaceResolver.getPhysicalWorkspacesPath(),
-            userContext.organizationId,
-          ),
-        };
-      })();
-      return cached;
-    };
-  }
+  const orgGateFor = createOrgGateResolver(
+    {
+      organizationRepository: deps.organizationRepository,
+      workspacesPath: deps.workspaceResolver.getPhysicalWorkspacesPath(),
+    },
+    readOrgAgentAcl,
+  );
 
   /** The creation/import destination — the writable user root. */
   function creationRoot(scopeRoots: CustomAgentScopeRoot[]): CustomAgentScopeRoot {
@@ -270,11 +247,11 @@ export function createAccountAgentRoutes(deps: {
         await updateOrgAgentAcl(
           deps.workspaceResolver.getPhysicalWorkspacesPath(),
           userContext.organizationId,
-          (acl) => {
-            const entry = acl.agents[req.params.agentId];
+          (records) => {
+            const entry = records[req.params.agentId];
             if (entry) {
-              delete acl.agents[req.params.agentId];
-              acl.agents[newId] = entry;
+              delete records[req.params.agentId];
+              records[newId] = entry;
             }
           },
         );
@@ -300,8 +277,8 @@ export function createAccountAgentRoutes(deps: {
         await updateOrgAgentAcl(
           deps.workspaceResolver.getPhysicalWorkspacesPath(),
           userContext.organizationId,
-          (acl) => {
-            delete acl.agents[req.params.agentId];
+          (records) => {
+            delete records[req.params.agentId];
           },
         );
       }
@@ -469,16 +446,16 @@ export function createAccountAgentRoutes(deps: {
       // ACL entry FIRST — an orphan entry is harmless if the move fails (it
       // is ignored on read and removed on delete); a moved dir without an
       // owner record would strand the agent as admin-only.
-      await updateOrgAgentAcl(workspacesPath, userContext.organizationId, (acl) => {
-        acl.agents[agentId] = { owner: userContext.userId, editors: [] };
+      await updateOrgAgentAcl(workspacesPath, userContext.organizationId, (records) => {
+        records[agentId] = { owner: userContext.userId, editors: [] };
       });
       try {
         fs.mkdirSync(path.dirname(destDir), { recursive: true });
         fs.renameSync(found.agentDir, destDir);
       } catch (moveError) {
         try {
-          await updateOrgAgentAcl(workspacesPath, userContext.organizationId, (acl) => {
-            delete acl.agents[agentId];
+          await updateOrgAgentAcl(workspacesPath, userContext.organizationId, (records) => {
+            delete records[agentId];
           });
         } catch { /* best-effort rollback — orphan entries are inert */ }
         throw moveError;
@@ -515,7 +492,7 @@ export function createAccountAgentRoutes(deps: {
     try {
       if (!findOrgAclAgent(res, scopeRootsFor(req), req.params.agentId)) return;
       const gate = await orgGateFor(req)();
-      res.json(computeOrgAgentPermissions(gate.acl.agents[req.params.agentId], gate.callerId, gate.liveRole));
+      res.json(computeOrgResourcePermissions(gate.records[req.params.agentId], gate.callerId, gate.liveRole));
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
@@ -530,8 +507,8 @@ export function createAccountAgentRoutes(deps: {
     try {
       if (!findOrgAclAgent(res, scopeRootsFor(req), req.params.agentId)) return;
       const gate = await orgGateFor(req)();
-      const entry = gate.acl.agents[req.params.agentId];
-      const perms = computeOrgAgentPermissions(entry, gate.callerId, gate.liveRole);
+      const entry = gate.records[req.params.agentId];
+      const perms = computeOrgResourcePermissions(entry, gate.callerId, gate.liveRole);
       if (!perms.canManageEditors) {
         return res.status(403).json({
           error: `You do not have permission to manage editors of "${req.params.agentId}"`,
@@ -557,14 +534,14 @@ export function createAccountAgentRoutes(deps: {
       const updated = await updateOrgAgentAcl(
         deps.workspaceResolver.getPhysicalWorkspacesPath(),
         userContext.organizationId,
-        (acl) => {
+        (records) => {
           // Pre-ACL org agent (no entry): the managing admin adopts ownership.
-          const cur = acl.agents[req.params.agentId] ?? { owner: gate.callerId, editors: [] };
-          acl.agents[req.params.agentId] = { ...cur, editors };
+          const cur = records[req.params.agentId] ?? { owner: gate.callerId, editors: [] };
+          records[req.params.agentId] = { ...cur, editors };
         },
       );
-      const finalEntry = updated.agents[req.params.agentId];
-      res.json(computeOrgAgentPermissions(finalEntry, gate.callerId, gate.liveRole));
+      const finalEntry = updated[req.params.agentId];
+      res.json(computeOrgResourcePermissions(finalEntry, gate.callerId, gate.liveRole));
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'AccountAgents');
     }
@@ -635,7 +612,7 @@ export function createAccountAgentRoutes(deps: {
       let readonly = found.scopeRoot.readonly;
       if (found.scopeRoot.aclGoverned) {
         const gate = await orgGateFor(req)();
-        readonly = !canEditOrgAgent(gate.acl.agents[req.params.agentId], gate.callerId, gate.liveRole);
+        readonly = !canEditOrgResource(gate.records[req.params.agentId], gate.callerId, gate.liveRole);
       }
       res.json({
         tree: buildDefinitionTree(found.agentDir),

@@ -43,10 +43,8 @@ import {
   patchYamlFile,
   scaffoldAgent,
   scaffoldJob,
-  type OrgWriteGate,
 } from './helpers/customAgentHandlers';
-import { readOrgAgentAcl, updateOrgAgentAcl } from './helpers/orgAgentAclStore';
-import { resolveLiveTeamMembership } from './helpers/teamRole';
+import { createOrgGateResolver, readOrgAgentAcl, updateOrgAgentAcl } from './helpers/orgAclStore';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { logger } from '../../../../utils/logger';
@@ -76,31 +74,13 @@ export function createCustomAgentRoutes(deps: {
   }
 
   /** Request-memoized org write gate — mirrors the account mount (no drift). */
-  function orgGateFor(req: Request): () => Promise<OrgWriteGate> {
-    let cached: Promise<OrgWriteGate> | null = null;
-    return () => {
-      cached ??= (async () => {
-        const userContext = extractUserContext(req);
-        const resolved =
-          userContext.organizationKind === 'team'
-            ? await resolveLiveTeamMembership(
-                deps.organizationRepository,
-                userContext.userId,
-                userContext.organizationId,
-              )
-            : null;
-        return {
-          callerId: userContext.userId,
-          liveRole: resolved?.membership.role ?? null,
-          acl: await readOrgAgentAcl(
-            deps.workspaceResolver.getPhysicalWorkspacesPath(),
-            userContext.organizationId,
-          ),
-        };
-      })();
-      return cached;
-    };
-  }
+  const orgGateFor = createOrgGateResolver(
+    {
+      organizationRepository: deps.organizationRepository,
+      workspacesPath: deps.workspaceResolver.getPhysicalWorkspacesPath(),
+    },
+    readOrgAgentAcl,
+  );
 
   // ── agents ─────────────────────────────────────────────────────────────
 
@@ -162,8 +142,8 @@ export function createCustomAgentRoutes(deps: {
         await updateOrgAgentAcl(
           deps.workspaceResolver.getPhysicalWorkspacesPath(),
           userContext.organizationId,
-          (acl) => {
-            delete acl.agents[req.params.agentId];
+          (records) => {
+            delete records[req.params.agentId];
           },
         );
       }

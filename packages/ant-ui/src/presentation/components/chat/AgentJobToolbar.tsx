@@ -188,7 +188,7 @@ export function AgentJobToolbar({
         }),
       );
       if (!confirmed) return;
-      void cancelPipelineRun(activePipeline.currentRunId, activePipeline.pipelineId);
+      void cancelPipelineRun(activePipeline.currentRunId);
       return;
     }
     stopJob();

@@ -1,9 +1,9 @@
 /**
- * Promote zone — the single entry point for moving a personal agent into the
- * active team organization. Rendered above the danger zone on the agent
- * detail, and only while a team org is active and the agent is user-scope.
- * Promotion is a MOVE (not a copy): the whole org can then see and run the
- * agent, and the promoter stays its owner.
+ * Promote zone — the single entry point for moving a personal resource (agent
+ * or pipeline) into the active team organization. Rendered above the danger
+ * zone on the detail surface, only while a team org is active and the resource
+ * is user-scope. Promotion is a MOVE (not a copy): the whole org can then see
+ * and use the resource, and the promoter stays its owner.
  */
 
 import { useTranslation } from 'react-i18next';
@@ -13,24 +13,27 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 
 export function PromoteZone({
   id,
-  agentName,
+  ns = 'agents',
+  resourceName,
   isPromoting,
   onPromote,
 }: {
   id: string;
-  agentName: string;
+  /** i18n namespace carrying `promote.*` keys ('agents' | 'pipelines'). */
+  ns?: string;
+  resourceName: string;
   isPromoting: boolean;
   onPromote: () => void;
 }) {
-  const { t } = useTranslation('agents');
+  const { t } = useTranslation(ns);
   const { showConfirm } = useAlertModalContext();
 
   const confirm = () => {
     showConfirm(
       t(
         'promote.confirmMessage',
-        'Promote "{{name}}" to your organization? The agent moves out of your personal scope — every member can then see and run it, and you stay its owner.',
-        { name: agentName },
+        'Promote "{{name}}" to your organization? It moves out of your personal scope — every member can then see and use it, and you stay its owner.',
+        { name: resourceName },
       ),
       {
         title: t('promote.confirmTitle', 'Promote to organization'),
@@ -47,7 +50,7 @@ export function PromoteZone({
       title={t('promote.title', 'Promote to organization')}
       description={t(
         'promote.desc',
-        'Share this agent with your whole organization. It moves out of your personal scope; every member can see and run it, and you remain its owner.',
+        'Share this with your whole organization. It moves out of your personal scope; every member can see and use it, and you remain its owner.',
       )}
       bodyMaxWidth={480}
     >

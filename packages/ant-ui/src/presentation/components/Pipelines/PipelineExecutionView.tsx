@@ -1,21 +1,25 @@
 /**
- * PipelineExecutionView — where a pipeline meets a project. Pick a universal
- * project, Activate/Deactivate (1:1 both ways — the picker disables projects
- * already bound to another pipeline), run-now, and watch the live run on a
- * read-only canvas (the status overlay doubles as the monitor).
+ * PipelineExecutionView — where a pipeline meets projects. ACTIVATION-centric:
+ * one row per activation (own rows are actionable — run-now / deactivate /
+ * expandable run history; org members' rows are read-only with the activator
+ * shown), an "activate on project…" picker (enabled pipelines only; the
+ * picker disables projects already bound to a pipeline), and the live-run
+ * read-only canvas monitor at the bottom.
  *
- * Activation OWNS the project: while active, interactive job starts in that
- * project are rejected and the definition is edit-locked. States: inactive /
- * active·waiting (nextFireAt) / active·running (current step).
+ * An activation OWNS its project: while active, interactive job starts in
+ * that project are rejected. `broken` rows reference a definition that no
+ * longer resolves — deactivate is their only action.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Power, PowerOff } from 'lucide-react';
-import type { PipelineDef, PipelineListEntry } from '@ant/shared';
+import { ChevronDown, ChevronRight, Play, Power, PowerOff, User } from 'lucide-react';
+import type { PipelineActivationView, PipelineDef, PipelineListEntry } from '@ant/shared';
 import { useStore } from '@/domain/store';
 import { Button } from '../aurora';
+import { StatusPill } from '../ConfigEditor/aurora';
 import { PipelineCanvas } from './canvas/PipelineCanvas';
+import { ActivationRunHistory } from './ActivationRunHistory';
 
 export interface PipelineExecutionViewProps {
   def: PipelineDef;
@@ -38,35 +42,21 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
 
   const [busy, setBusy] = useState(false);
   const [runNowNote, setRunNowNote] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     void loadActivatableProjects();
   }, [loadActivatableProjects]);
 
-  const activation = entry?.activation ?? null;
-  const liveRun = runDetail && runDetail.pipelineId === (pipelineId ?? '') && (runDetail.status === 'running' || runDetail.status === 'awaiting_human')
-    ? runDetail
-    : null;
-  const currentStep = liveRun?.steps.find((s) => s.status === 'running' || s.status === 'awaiting_gate');
-  const pickedProject = executionProjectId ?? activation?.projectId ?? null;
-
+  const activations = entry?.activations ?? [];
+  const enabled = entry?.enabled ?? false;
   const cronSummary = `${def.on.schedule.cron}${def.on.schedule.tz ? ` · ${def.on.schedule.tz}` : ''}`;
 
-  const stateLabel = !activation
-    ? t('execution.stateInactive', 'Inactive')
-    : liveRun
-      ? t('execution.stateRunning', 'Active · working')
-      : t('execution.stateWaiting', 'Active · waiting');
-  const stateColor = !activation ? 'var(--text-3)' : liveRun ? 'var(--green-500, #22c55e)' : 'var(--violet-400)';
-
   const pickerRows = useMemo(() => {
-    const rows = [...activatableProjects];
-    // The bound project always appears, even if the picker fetch is stale.
-    if (activation && !rows.some((r) => r.id === activation.projectId)) {
-      rows.unshift({ id: activation.projectId, name: activation.projectId, activePipelineId: pipelineId });
-    }
-    return rows;
-  }, [activatableProjects, activation, pipelineId]);
+    // Projects already holding an activation (any pipeline) are not offered.
+    const taken = new Set(activations.filter((a) => a.mine).map((a) => a.projectId));
+    return activatableProjects.filter((p) => !taken.has(p.id));
+  }, [activatableProjects, activations]);
 
   if (draftIsNew || !pipelineId) {
     return (
@@ -78,123 +68,93 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-      {/* Activation controls */}
-      <div style={{ padding: '14px', borderBottom: '1px solid var(--border-1)', background: 'var(--bg-surface)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span
+      <div style={{ flex: '0 1 auto', overflowY: 'auto', borderBottom: '1px solid var(--border-1)', background: 'var(--bg-surface)', padding: 14, display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '60%' }}>
+        {/* Activate on a new project */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
+            {t('execution.activationsTitle', 'Activations')}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            {t('execution.activationsCount', '{{n}} project(s)', { n: activations.length })}
+          </span>
+          <div style={{ flex: 1 }} />
+          <select
+            value={executionProjectId ?? ''}
+            onChange={(e) => setPipelineExecutionProject(e.target.value || null)}
+            disabled={!enabled}
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
               fontSize: 12,
-              fontWeight: 700,
-              color: stateColor,
+              padding: '5px 8px',
+              borderRadius: 'var(--r-sm)',
+              border: '1px solid var(--border-2)',
+              background: 'var(--bg-surface-2)',
+              color: 'var(--text-1)',
+              minWidth: 180,
             }}
           >
-            <span style={{ width: 8, height: 8, borderRadius: 4, background: stateColor }} />
-            {stateLabel}
-          </span>
-          {activation && !liveRun && entry?.nextFireAt && (
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-              {t('execution.nextFire', 'Next fire: {{when}}', { when: new Date(entry.nextFireAt).toLocaleString() })}
-            </span>
-          )}
-          {liveRun && currentStep && (
-            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
-              {t('execution.currentStep', 'Current step: {{step}}', { step: currentStep.stepId })}
-            </span>
-          )}
-          <div style={{ flex: 1 }} />
-          {activation && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy || !!liveRun}
-              onClick={async () => {
-                const err = await runPipelineNowById(pipelineId);
-                setRunNowNote(err ?? t('editor.runNowAccepted', 'Fired — watch Runs.'));
-                setTimeout(() => setRunNowNote(null), 4000);
-              }}
-            >
-              <Play size={13} /> {t('editor.runNow', 'Run now')}
-            </Button>
-          )}
-          {activation ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await deactivatePipelineById(pipelineId);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              <PowerOff size={13} /> {t('execution.deactivate', 'Deactivate')}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={busy || !pickedProject}
-              onClick={async () => {
-                if (!pickedProject) return;
-                setBusy(true);
-                try {
-                  await activatePipelineTo(pipelineId, pickedProject);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              <Power size={13} /> {t('execution.activate', 'Activate')}
-            </Button>
-          )}
+            <option value="">{t('execution.pickProject', 'Choose a workspace project…')}</option>
+            {pickerRows.map((p) => (
+              <option key={p.id} value={p.id} disabled={!!p.activePipelineId}>
+                {p.name}
+                {p.activePipelineId ? ` — ${t('execution.alreadyBound', 'bound to "{{pipelineId}}"', { pipelineId: p.activePipelineId })}` : ''}
+              </option>
+            ))}
+          </select>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={busy || !enabled || !executionProjectId}
+            onClick={async () => {
+              if (!executionProjectId) return;
+              setBusy(true);
+              try {
+                const ok = await activatePipelineTo(pipelineId, executionProjectId);
+                if (ok) setPipelineExecutionProject(null);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Power size={13} /> {t('execution.activate', 'Activate')}
+          </Button>
         </div>
-
-        {/* Project picker — activation targets exactly one universal project. */}
-        {!activation && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{t('execution.project', 'Project')}</span>
-            <select
-              value={pickedProject ?? ''}
-              onChange={(e) => setPipelineExecutionProject(e.target.value || null)}
-              style={{
-                fontSize: 12,
-                padding: '5px 8px',
-                borderRadius: 'var(--r-sm)',
-                border: '1px solid var(--border-2)',
-                background: 'var(--bg-surface-2)',
-                color: 'var(--text-1)',
-                minWidth: 200,
-              }}
-            >
-              <option value="">{t('execution.pickProject', 'Choose a workspace project…')}</option>
-              {pickerRows.map((p) => (
-                <option key={p.id} value={p.id} disabled={!!p.activePipelineId && p.activePipelineId !== pipelineId}>
-                  {p.name}
-                  {p.activePipelineId && p.activePipelineId !== pipelineId
-                    ? ` — ${t('execution.alreadyBound', 'bound to "{{pipelineId}}"', { pipelineId: p.activePipelineId })}`
-                    : ''}
-                </option>
-              ))}
-            </select>
-            {pickerRows.length === 0 && (
-              <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
-                {t('execution.noProjects', 'No workspace (universal) projects found.')}
-              </span>
-            )}
+        {!enabled && (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
+            {t('execution.enableFirst', 'This pipeline is disabled — enable it in the Wiring view to activate projects.')}
           </div>
         )}
 
-        {activation && (
-          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>
-            {t('execution.boundTo', 'Bound to project "{{projectId}}" — interactive work there is locked while active.', {
-              projectId: activation.projectId,
-            })}
+        {/* Activation rows */}
+        {activations.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)', padding: '8px 2px' }}>
+            {t('execution.noActivations', 'Not activated anywhere yet.')}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {activations.map((a) => (
+              <ActivationRow
+                key={`${a.activatedBy}:${a.projectId}`}
+                view={a}
+                expanded={expanded === `${a.activatedBy}:${a.projectId}`}
+                onToggle={() =>
+                  setExpanded(expanded === `${a.activatedBy}:${a.projectId}` ? null : `${a.activatedBy}:${a.projectId}`)
+                }
+                busy={busy}
+                onRunNow={async () => {
+                  const err = await runPipelineNowById(pipelineId, a.projectId);
+                  setRunNowNote(err ?? t('editor.runNowAccepted', 'Fired — watch the run history.'));
+                  setTimeout(() => setRunNowNote(null), 4000);
+                }}
+                onDeactivate={async () => {
+                  setBusy(true);
+                  try {
+                    await deactivatePipelineById(pipelineId, a.projectId);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            ))}
           </div>
         )}
 
@@ -215,6 +175,80 @@ export function PipelineExecutionView({ def, draftIsNew, pipelineId, entry }: Pi
           onSelectNode={() => {}}
         />
       </div>
+    </div>
+  );
+}
+
+function ActivationRow({
+  view,
+  expanded,
+  onToggle,
+  busy,
+  onRunNow,
+  onDeactivate,
+}: {
+  view: PipelineActivationView;
+  expanded: boolean;
+  onToggle: () => void;
+  busy: boolean;
+  onRunNow: () => void;
+  onDeactivate: () => void;
+}) {
+  const { t } = useTranslation('pipelines');
+  const stateProps =
+    view.state === 'broken'
+      ? { state: 'error' as const, label: t('execution.stateBroken', 'Broken') }
+      : view.state === 'running'
+        ? { state: 'checking' as const, label: t('execution.stateRunning', 'Working') }
+        : view.state === 'awaiting_human'
+          ? { state: 'warning' as const, label: t('execution.stateAwaiting', 'Awaiting approval') }
+          : { state: 'connected' as const, label: t('execution.stateWaiting', 'Waiting') };
+  const live = view.state === 'running' || view.state === 'awaiting_human';
+  return (
+    <div style={{ border: '1px solid var(--border-1)', borderRadius: 'var(--r-md)', background: 'var(--bg-surface)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={onToggle}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-1)', fontSize: 12.5, fontWeight: 600, minWidth: 0 }}
+        >
+          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{view.projectId}</span>
+        </button>
+        <StatusPill state={stateProps.state} label={stateProps.label} />
+        {!view.mine && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--text-3)' }} title={view.activatedBy}>
+            <User size={10} />
+            <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{view.activatedBy}</span>
+          </span>
+        )}
+        {view.nextFireAt && !live && (
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            {t('execution.nextFire', 'Next fire: {{when}}', { when: new Date(view.nextFireAt).toLocaleString() })}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        {view.mine && view.state !== 'broken' && (
+          <Button variant="ghost" size="xs" disabled={busy || live} onClick={onRunNow}>
+            <Play size={12} /> {t('editor.runNow', 'Run now')}
+          </Button>
+        )}
+        {view.mine && (
+          <Button variant="secondary" size="xs" disabled={busy} onClick={onDeactivate}>
+            <PowerOff size={12} /> {t('execution.deactivate', 'Deactivate')}
+          </Button>
+        )}
+      </div>
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--border-1)', padding: '4px 10px' }}>
+          <ActivationRunHistory
+            pipelineId={view.pipelineId}
+            projectId={view.projectId}
+            userId={view.mine ? undefined : view.activatedBy}
+            mine={view.mine}
+          />
+        </div>
+      )}
     </div>
   );
 }

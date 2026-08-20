@@ -1,42 +1,45 @@
 /**
- * Pipeline definition paths — account-scoped disk SSOT, sibling of
- * `.ant/agents` (scopeRoots precedent). v1 serves the USER scope only:
- * pipelines chain jobs across agents, and owner delegation (D6) makes the
- * owner's account root the natural anchor. No org/builtin pipeline roots —
- * adding one later is "one more root", not a mechanism change.
+ * Pipeline disk layout — two disjoint trees, both SSOT:
  *
- * Layout:
- *   {userDir}/.ant/pipelines/{pipelineId}/pipeline.yaml
- *   {userDir}/.ant/pipelines/{pipelineId}/activation.json   ← project binding (absence = deactivated)
- *   {userDir}/.ant/pipelines/{pipelineId}/runs/{runId}.jsonl
- *   {userDir}/.ant/pipelines/{pipelineId}/runs/index.jsonl
+ * DEFINITIONS live under scope roots (agents precedent — see `scopeRoots.ts`):
+ *   {defRoot}/{pipelineId}/pipeline.yaml
+ *   {defRoot}/{pipelineId}/owner.json          ← authorship coords (never the fire identity)
+ *   {defRoot}/{pipelineId}/availability.json   ← enabled/disabled state machine
+ *
+ * ACTIVATIONS live in the ACTIVATOR's account, anchored at the ACTIVE org
+ * context (NO INDIVIDUAL fork — projectIds are only unique per {org}/{user},
+ * and the activation binds a project):
+ *   {ws}/{organizationId}/{userId}/.ant/pipeline-activations/{projectId}/activation.json
+ *   {ws}/{organizationId}/{userId}/.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl
+ *   {ws}/{organizationId}/{userId}/.ant/pipeline-activations/{projectId}/runs/index.jsonl
+ *
+ * Runs colocate with the activation and SURVIVE deactivation (deactivate
+ * removes only activation.json).
  */
 
 import * as path from 'path';
-import { INDIVIDUAL_ORG_ID, PIPELINE_ACTIVATION_FILE_NAME, type OrganizationKind } from '@ant/shared';
+import { PIPELINE_ACTIVATION_FILE_NAME, PIPELINE_AVAILABILITY_FILE_NAME } from '@ant/shared';
+import { resolveTenantUserDir, type TenantAnchorContext } from '../config/tenantAnchor.js';
 
 export const PIPELINES_DIRNAME = '.ant/pipelines';
+export const PIPELINE_ACTIVATIONS_DIRNAME = '.ant/pipeline-activations';
 
-export interface PipelineTenantContext {
-  /** Physical workspaces root (`ANT_WORKSPACE_BASE_PATH` resolution). */
-  workspacesPath: string;
-  userId: string;
-  organizationId: string;
-  organizationKind: OrganizationKind;
-}
+export type PipelineTenantContext = TenantAnchorContext;
 
 /**
- * The owner's pipelines container dir. Team orgs anchor personal data under
- * the INDIVIDUAL org — same fork as `deriveCustomAgentScopeRootsForTenant`,
- * so switching the active org never re-homes a pipeline.
+ * The caller's PERSONAL definitions root (creation target). Team orgs anchor
+ * under the INDIVIDUAL org — same fork as agents, via `resolveTenantUserDir`.
  */
 export function derivePipelinesRoot(ctx: PipelineTenantContext): string {
-  const userDir =
-    ctx.organizationKind === 'team'
-      ? path.join(ctx.workspacesPath, INDIVIDUAL_ORG_ID, ctx.userId)
-      : path.join(ctx.workspacesPath, ctx.organizationId, ctx.userId);
-  return path.join(userDir, PIPELINES_DIRNAME);
+  return path.join(resolveTenantUserDir(ctx), PIPELINES_DIRNAME);
 }
+
+/** The activator's activations root — ACTIVE org context, no INDIVIDUAL fork. */
+export function deriveActivationsRoot(ctx: PipelineTenantContext): string {
+  return path.join(ctx.workspacesPath, ctx.organizationId, ctx.userId, PIPELINE_ACTIVATIONS_DIRNAME);
+}
+
+// ---- definition tree ----
 
 export function pipelineDir(root: string, pipelineId: string): string {
   return path.join(root, pipelineId);
@@ -46,18 +49,28 @@ export function pipelineDefPath(root: string, pipelineId: string): string {
   return path.join(root, pipelineId, 'pipeline.yaml');
 }
 
-export function pipelineActivationPath(root: string, pipelineId: string): string {
-  return path.join(root, pipelineId, PIPELINE_ACTIVATION_FILE_NAME);
+export function pipelineAvailabilityPath(root: string, pipelineId: string): string {
+  return path.join(root, pipelineId, PIPELINE_AVAILABILITY_FILE_NAME);
 }
 
-export function pipelineRunsDir(root: string, pipelineId: string): string {
-  return path.join(root, pipelineId, 'runs');
+// ---- activation tree (projectId-keyed) ----
+
+export function activationDir(actRoot: string, projectId: string): string {
+  return path.join(actRoot, projectId);
 }
 
-export function pipelineRunLogPath(root: string, pipelineId: string, runId: string): string {
-  return path.join(root, pipelineId, 'runs', `${runId}.jsonl`);
+export function activationFilePath(actRoot: string, projectId: string): string {
+  return path.join(actRoot, projectId, PIPELINE_ACTIVATION_FILE_NAME);
 }
 
-export function pipelineRunIndexPath(root: string, pipelineId: string): string {
-  return path.join(root, pipelineId, 'runs', 'index.jsonl');
+export function activationRunsDir(actRoot: string, projectId: string): string {
+  return path.join(actRoot, projectId, 'runs');
+}
+
+export function activationRunLogPath(actRoot: string, projectId: string, runId: string): string {
+  return path.join(actRoot, projectId, 'runs', `${runId}.jsonl`);
+}
+
+export function activationRunIndexPath(actRoot: string, projectId: string): string {
+  return path.join(actRoot, projectId, 'runs', 'index.jsonl');
 }

@@ -23,7 +23,7 @@ import {
   type McpServerConfig,
   type OrgMembershipRole,
 } from '@ant/shared';
-import { canEditOrgAgent, computeOrgAgentPermissions, type OrgAgentAcl } from './orgAgentAclStore';
+import { canEditOrgResource, computeOrgResourcePermissions, type OrgResourceGate } from './orgAclStore';
 import {
   findAgentRoot,
   loadCustomJob,
@@ -91,12 +91,7 @@ export function patchYamlFile(filePath: string, patch: Record<string, unknown>):
 }
 
 /** Caller identity + resolved org authority for the ACL-governed write gate. */
-export interface OrgWriteGate {
-  callerId: string;
-  /** Live team role — null when the caller is no longer a member (stale JWT). */
-  liveRole: OrgMembershipRole | null;
-  acl: OrgAgentAcl;
-}
+export type OrgWriteGate = OrgResourceGate;
 
 /**
  * Resolve a writable agent or write the failure response (400 invalid id /
@@ -125,7 +120,7 @@ export async function findWritableAgent(
   }
   if (found.scopeRoot.aclGoverned) {
     const gate = orgGate ? await orgGate() : null;
-    if (!gate || !canEditOrgAgent(gate.acl.agents[agentId], gate.callerId, gate.liveRole)) {
+    if (!gate || !canEditOrgResource(gate.records[agentId], gate.callerId, gate.liveRole)) {
       res.status(403).json({
         error: `You do not have edit access to org agent "${agentId}" — ask the agent owner or an org admin`,
         code: 'org-agent-forbidden',
@@ -168,7 +163,7 @@ export function decorateOrgAgentSummaries(
     if (agent.scope !== 'org') return agent;
     const found = findAgentRoot(scopeRoots, agent.id);
     if (!found?.scopeRoot.aclGoverned) return agent;
-    const org = computeOrgAgentPermissions(gate.acl.agents[agent.id], gate.callerId, gate.liveRole);
+    const org = computeOrgResourcePermissions(gate.records[agent.id], gate.callerId, gate.liveRole);
     return { ...agent, readonly: !org.canEdit, org };
   });
 }

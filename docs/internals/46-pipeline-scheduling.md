@@ -20,29 +20,69 @@ rules → phasing.
 
 ## 1. Storage — disk is SSOT, Redis is a rebuildable projection
 
-Definitions live at the ACCOUNT scope, sibling of `.ant/agents`
-(`core/pipelines/paths.ts`):
+Two disjoint disk trees (`core/pipelines/paths.ts`), both SSOT:
+
+**Definitions are scoped TEMPLATES** — the agents scope model
+(`core/pipelines/scopeRoots.ts` mirrors `customAgents/scopeRoots.ts`, minus
+builtin and the env escape hatch), merged closest-wins:
 
 ```
-{ws}/{org}/{user}/.ant/pipelines/{pipelineId}/pipeline.yaml
-{ws}/{org}/{user}/.ant/pipelines/{pipelineId}/owner.json      ← owner coords sidecar
-{ws}/{org}/{user}/.ant/pipelines/{pipelineId}/activation.json ← project binding (absence = deactivated)
-{ws}/{org}/{user}/.ant/pipelines/{pipelineId}/runs/{runId}.jsonl
-{ws}/{org}/{user}/.ant/pipelines/{pipelineId}/runs/index.jsonl ← 1 line per terminal run
+personal: {ws}/{org-anchored}/{user}/.ant/pipelines/{pipelineId}/   ← team kind anchors under INDIVIDUAL
+org:      {ws}/{orgId}/.ant/pipelines/{pipelineId}/                 ← team kind only, ACL-governed
+  each definition dir holds: pipeline.yaml + owner.json (authorship coords)
+                             + availability.json (enabled/disabled state machine)
+ACL:      {ws}/{orgId}/.ant/pipeline-acl.json                       ← {owner, editors[]} per id
+```
+
+The org ACL shares ONE rule set with agents
+(`helpers/orgAclStore.ts`: `canEditOrgResource` / `computeOrgResourcePermissions`
+/ `createOrgGateResolver` — the former `orgAgentAclStore` generalized in
+place; `agent-acl.json`'s on-disk format is unchanged). Promote is the agents
+flow verbatim: team kind only, user-scope only, ACL entry FIRST then
+`fs.rename` MOVE with best-effort rollback. Both anchor forks flow through
+`core/config/tenantAnchor.ts::resolveTenantUserDir` — never a re-encoded copy.
+
+**Activations are the SCHEDULING UNIT** and live in the ACTIVATOR's account,
+anchored at the ACTIVE org context (NO individual fork — projectIds are only
+unique per `{org}/{user}`, and an activation binds a project):
+
+```
+{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/activation.json
+{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl
+{ws}/{orgId}/{userId}/.ant/pipeline-activations/{projectId}/runs/index.jsonl ← 1 line per terminal run
 ```
 
 A pipeline cannot live inside an agent directory because its steps cross
-agents. **The definition itself is project-free** (def v2 — `enabled` and
-`projectId` were v1 fields, now rejected loudly): the project binding is the
-separate ACTIVATION record. `activation.json` (`PipelineActivation`:
-`projectId`, `activatedAt`, `activatedBy?`, reserved `featureId?` for the
-canonical phase) is the SSOT for "this pipeline is live on this project" —
-absence = deactivated, and activation is 1:1 both directions (one project per
-pipeline, one active pipeline per project; enforced at activate, healed by
-the reconciler with earliest-`activatedAt`-wins on hand-edited conflicts).
-Every step's session/artifacts land in the bound universal container.
-Team-org users anchor under the INDIVIDUAL org, the same fork as
-`deriveCustomAgentScopeRootsForTenant` (never a new one).
+agents. **The definition itself is project-free** (def v2 — `projectId` was a
+v1 field, now rejected loudly; `enabled` lives in the availability sidecar):
+one definition may be activated by MANY users onto MANY projects
+concurrently. The activation record is **self-describing**
+(`PipelineActivation`: `pipelineId`, `pipelineScope`, `projectId`,
+`activatedAt`, `activatedBy?`, reserved `featureId?`): it no longer sits
+inside the pipeline dir, and `pipelineScope` PINS which scope root resolves
+the definition at fire time — never closest-wins, so a later same-id
+definition in a nearer scope cannot hijack a running schedule. One activation
+per project is STRUCTURAL (one dir per projectId); absence = deactivated.
+Runs colocate with the activation and SURVIVE deactivation (deactivate
+unlinks only `activation.json`) — history belongs to the activator, and
+billing follows: every step of a fired run bills the ACTIVATOR, whose
+standing is re-judged per dispatch. Every step's session/artifacts land in
+the bound universal container.
+
+**Availability (`availability.json`, missing = disabled/draft)** gates
+ACTIVATABILITY, not execution, and binds the whole write surface:
+- editing / deleting / promoting a definition requires **disabled**;
+- activating requires **enabled**;
+- disabling requires **zero activations** — never cascaded, never
+  force-deactivated (not even by an org admin): holders deactivate
+  themselves, and the 409 lists them.
+
+Consequence: a definition can never change while any activation exists, so
+there is no "re-sync crons on save" machinery at all; in-flight runs are
+additionally protected by the frozen `defSnapshot`. Two race guards close the
+enable/activate window: disable re-scans after writing and rolls back if an
+activation landed; activate re-reads availability after writing its record
+and rolls back if the pipeline was disabled concurrently.
 
 The definition contract is `@ant/shared/pipeline.ts`. `validatePipelineDef`
 follows the `validateMcpServers` precedent — plain messages, empty = valid;
@@ -67,16 +107,25 @@ drift). `@ant/shared` stays dependency-free by package doctrine, which is why
 
 Redis keys (`REDIS_KEYS.PIPE`, all rebuildable):
 
+Activation-unit keys are keyed by **project** (one activation per project is
+structural), so one pipeline runs concurrently on many projects:
+
 | Key | Role |
 |---|---|
 | `ant:pipe:run:{runId}` | live RunRecord JSON (single writer under the run lock; 7d past terminal) |
-| `ant:pipe:active:{org}:{user}:{pipelineId}` | overlap guard, value = runId (NX; released at terminal; reconciler heals a crash-orphaned guard) |
-| `ant:pipe:fired:{org}:{user}:{pipelineId}:{fireEpoch}` | fire idempotency NX (48h) |
-| `ant:pipe:job:{jobId}` | jobId → (runId, stepId, owner) reverse mapping for the status consumer |
+| `ant:pipe:active:{org}:{user}:{projectId}` | per-ACTIVATION overlap guard, value = runId (NX; released at terminal; reconciler heals a crash-orphaned guard) |
+| `ant:pipe:fired:{org}:{user}:{projectId}:{fireEpoch}` | fire idempotency NX (48h) |
+| `ant:pipe:job:{jobId}` | jobId → (runId, stepId, projectId, owner) reverse mapping for the status consumer |
 | `ant:pipe:hitl:{gateId}` / `ant:pipe:card:{cardId}` | armed gate record / card → gate reverse mapping |
 | `ant:lock:pipe-run:{runId}` | per-run mutation lock |
-| `ant:pipe:actv:{org}:{user}:{pipelineId}` | activation projection (JSON; 600s TTL, refreshed by reconciler + activate route) |
+| `ant:pipe:actv:{org}:{user}:{projectId}` | activation projection (JSON; 600s TTL, refreshed by reconciler + activate route) |
 | `ant:pipe:proj:{org}:{user}:{projectId}` | projectId → pipelineId — **the job-start mutual-exclusion gate read** (same TTL/refresh; a lapse fails OPEN, never closed) |
+
+There is deliberately NO Redis reverse index `pipelineId → activations`: the
+remaining consumers (activation lists, the disable gate, the reconciler) use
+bounded disk scans (`listAccountActivations` per account,
+`findActivationsForPipeline` = one readdir per org member), so no extra
+consistency surface exists to drift.
 
 ---
 
@@ -94,13 +143,18 @@ queue runs `attempts: 3` + backoff. **`ant-jobs` keeps `attempts: 1`** — that
 invariant belongs to a different queue and is untouched (a BullMQ retry would
 replay an LLM job's payload without `isResume`).
 
-Fire semantics (`PipelineRunCoordinator.handleFire`):
+Fire semantics (`PipelineRunCoordinator.handleFire`, addressed by
+`(activator, projectId)`):
 - **Activation is the fire authority**: no `activation.json` ⇒ the fire is an
-  orphan scheduler and skips (the reconciler removes the cron entry). The
-  run's `projectId` and `activationSnapshot` are frozen from the activation at
-  fire time, exactly like `defSnapshot`.
+  orphan scheduler and skips (the reconciler removes the cron entry); an
+  `activation.pipelineId` mismatch means the project switched pipelines after
+  the fire was armed — stale, skip. The definition resolves ONLY at the
+  activation's pinned scope (`resolveDefRoot(ctx, activation.pipelineScope)`);
+  a disabled or unresolvable definition skips (defensive — the availability
+  machine forbids reaching this live). The run's `projectId` and
+  `activationSnapshot` are frozen at fire time, exactly like `defSnapshot`.
 - `maxConcurrentRuns` is enforced at fire (skip + log, caps doctrine) by
-  counting the owner's live runs across activated pipelines.
+  counting the activator's live runs across their activations.
 - `fireEpoch` = the intended slot (job creation time + delay, minute-rounded).
 - **Missed fires** (worker downtime > 10 min): `onMissed: skip` drops,
   `runOnce` executes once on recovery.
@@ -113,10 +167,18 @@ Fire semantics (`PipelineRunCoordinator.handleFire`):
 Reconciliation (`PipelineReconciler`) is the StaleJobRecovery template
 verbatim: boot-time run + 90s `setInterval().unref()` in
 `ExpressServerAdapter`, cluster lock (`ant:lock:pipeline-reconcile`) inside
-the function. It scans `{ws}/*/*/.ant/pipelines/**`, upserts a scheduler per
-enabled definition (`schedulerId = pipe|{org}|{user}|{pipelineId}`), and
-removes orphans whose id has no disk counterpart. CRUD routes upsert/remove
-synchronously; reconciliation is the safety net for hand-edited YAML and
+the function. It scans the ACTIVATION dirs
+(`{ws}/*/*/.ant/pipeline-activations/*` — definition dirs are never scanned
+for scheduling), resolves each activation's definition at its pinned scope,
+and upserts one scheduler per enabled+resolvable activation
+(`schedulerId = pipe|{org}|{user}|{projectId}` — the projectId keying means
+switching a project's pipeline upserts the SAME scheduler, no orphan window).
+A broken activation (missing/invalid/disabled def) is unscheduled and logged,
+never auto-deleted — the API surfaces it as `state: 'broken'` and the
+activator deactivates it from the Execution view. Orphan scheduler ids with
+no disk counterpart are removed (this sweep also garbage-collects pre-1.6
+pipelineId-keyed ids). Activate/deactivate routes upsert/remove
+synchronously; reconciliation is the safety net for hand-edited files and
 missed writes.
 
 ---
@@ -146,10 +208,12 @@ Unattended runs must be neither superseded nor delayed by a human, so the
 exclusion is total and three-directional:
 
 1. **Activate requires a quiet project.** `POST /:id/activate {projectId}`
-   gates in order: universal project (400 `project-not-universal`) → 1:1 both
-   ways (409 `pipeline-already-activated` / `project-has-active-pipeline`) →
-   NO live job of any kind, running or paused (409 `project-has-live-job`,
-   via `findDuplicateActiveJob` unfiltered).
+   gates in order: enabled (409 `pipeline-disabled`) → universal project
+   (400 `project-not-universal`) → project free (409
+   `project-has-active-pipeline` — the PROJECT side stays ≤1; the pipeline
+   side is unbounded, more projects welcome) → NO live job of any kind,
+   running or paused (409 `project-has-live-job`, via
+   `findDuplicateActiveJob` unfiltered).
 2. **Interactive starts are rejected while activated.** Every job-start path
    (`execute`, `resume`, `continue`, `inline-ask`) re-judges
    `findProjectPipelineActivation` (`core/scheduling/UniversalDispatchGate`)
@@ -160,12 +224,14 @@ exclusion is total and three-directional:
    (project×jobType truth table) — never fold it in there. This structurally
    removes the old defect where an interactive execute could supersede-kill a
    paused pipeline step.
-3. **The definition is edit-locked while activated.** PUT and DELETE answer
-   409 `pipeline-activated` — deactivate first. (In-flight runs are
-   additionally protected by the frozen `defSnapshot`.) Deactivation:
-   cron off → live run cancelled + running step jobs killed
-   (`coordinator.deactivate` mirrors the `/jobs/:id/stop` legs) →
-   `activation.json` unlinked → projections cleared → SSE.
+3. **The write surface is availability-locked** (§1): PUT/DELETE/promote
+   answer 409 `pipeline-enabled` while enabled, and disable answers 409
+   `pipeline-has-activations` while anyone holds an activation — so an
+   activated definition is transitively immutable. Deactivation (own
+   activation only, `{projectId}` addressed): cron off → live run cancelled +
+   running step jobs killed (`coordinator.deactivate` mirrors the
+   `/jobs/:id/stop` legs) → `activation.json` unlinked (runs stay) →
+   projections cleared → SSE.
 
 The coordinator itself never calls the exclusion gate — the pipeline is
 exempt from its own lock. The project-level duplicate gate's **bounded
@@ -269,45 +335,59 @@ shape is what makes the extension migration-free.
 
 ## 6. Identity, billing, tenancy
 
-**Owner delegation** (user-locked): a pipeline's existence under the owner's
-account root IS the ownership claim. `owner.json` stores coordinates
-(`userId/organizationId/organizationKind`) — never a token — written at save
-time; the fire path builds `UserContext` from it directly (the HTTP execute
-path's JWT extraction has no scheduler equivalent, by design). All work bills
-to the owner; per-step gates above are what keep a revoked owner from
-continuing to spend.
+**Activator delegation** (user-locked): the scheduling identity is the
+ACTIVATOR's — an activation's presence under their account root IS the claim,
+its coordinates ride the fire job data (never a token), and the fire path
+builds `UserContext` from them directly (the HTTP execute path's JWT
+extraction has no scheduler equivalent, by design). All fired work bills to
+the activator; per-step gates above are what keep a revoked activator from
+continuing to spend — an org member who leaves keeps firing until
+`checkTeamMembership` fails their steps, and only THEY (in their own context)
+can deactivate. The definition's `owner.json` is authorship bookkeeping only;
+edit authority for org pipelines is the ACL (`pipeline-acl.json`), exactly
+the agents model.
 
-Caps are first-class (`DEFAULT_PIPELINE_CAPS` in shared): `maxPipelines` 20,
-`maxStepsPerPipeline` 20, `minCronIntervalMinutes` 5 (enforced by sampling
-the next 10 fires — the expression is judged by what it does),
-`maxConcurrentRuns` 3 (enforced at fire — skip + log — by counting the
-owner's live runs across activated pipelines).
+Caps are first-class (`DEFAULT_PIPELINE_CAPS` in shared): `maxPipelines` 20
+(personal creations), `maxStepsPerPipeline` 20, `minCronIntervalMinutes` 5
+(enforced by sampling the next 10 fires — the expression is judged by what it
+does), `maxConcurrentRuns` 3 (enforced at fire — skip + log — by counting the
+activator's live runs across their activations).
 
 ---
 
 ## 7. HTTP / FE surface
 
 Routes (`pipelines.routes.ts`, mounted **account-scoped `/api/pipelines`** —
-definitions are cross-project): list (entries carry `activation`;
-server-computed `nextFireAt` only while activated — the FE never parses
-cron) · create (always deactivated) / get (`{def, activation}`) /
-put (409 `pipeline-activated` while active) / delete (409 while active — no
-more implicit cancel-and-delete) · `activate` `{projectId}` / `deactivate`
-(idempotent) · `activatable-projects` (universal projects + their
-`activePipelineId` — the FE has no project-type metadata of its own) ·
-`preview-fires` · `run-now` (202; 409 `pipeline-not-activated` /
-`existingRunId`) · `runs` + `runs/:runId` (Redis, disk fallback) +
-`runs/:runId/cancel` · `approvals` (account-wide) + `approvals/:gateId`
-(projectId resolved from the run record). The one project-scoped read is
-`GET /api/projects/:projectId/active-pipeline` →
+definitions are cross-project): list (scope-merged closest-wins; entries
+carry `scope` / per-caller `readonly` / `enabled` / `org` permission
+projection / `activations: PipelineActivationView[]` — own rows plus, for
+org-scope pipelines, other members' rows with `mine: false`; the response
+also carries `orphanActivations`, own activations whose pinned def no longer
+resolves; server-computed `nextFireAt` — the FE never parses cron) · create
+(personal root, DISABLED draft, cross-scope id collision 409) / get / put +
+delete (`findWritablePipeline` funnel: 403 `org-pipeline-forbidden` per ACL;
+409 `pipeline-enabled` while enabled) · `enable` (re-validates the def — a
+broken draft never publishes) + `disable` (409 `pipeline-has-activations`
+listing holders; post-write re-scan rollback) · `promote` / `permissions` /
+`editors` (accountAgents mirror) · `activations` · `activate` / `deactivate`
+/ `run-now` (all `{projectId}`-addressed; run-now 409
+`pipeline-not-activated` / `existingRunId`) · `activatable-projects` ·
+`preview-fires` · `runs?projectId=&userId=` (per-activation history; a
+member's `userId` is readable for org-scope pipelines by live members,
+read-only) + `runs/:runId` (own runs only — the caller's own run log must
+exist; `?projectId=` disk fallback) + `runs/:runId/cancel` (own only) ·
+`approvals` (the caller's own activations) + `approvals/:gateId`. The one
+project-scoped read is `GET /api/projects/:projectId/active-pipeline` →
 `{ active: ActivePipelineInfo | null }` — the chat surface's lock signal.
 
 SSE: ONE `pipeline` event, cause-discriminated
 (`runUpdate | approvalRequested | approvalResolved | defChanged |
-activationChanged`) — the gitState pattern. `activationChanged` carries
-`activation | null` plus the projectId (on deactivate: the PREVIOUS project,
-so the FE can clear its lock). Published **user-scoped** (no projectId on the
-envelope) so the approvals inbox folds even while another project is open.
+availabilityChanged | activationChanged`) — the gitState pattern.
+`activationChanged` carries `activation | null` + `activatedBy` plus the
+projectId (on deactivate: the PREVIOUS project, so the FE can clear its
+lock). Published **user-scoped** (no projectId on the envelope) so the
+approvals inbox folds even while another project is open; org members see
+each other's activation changes on refetch (panel bootstrap), not live — v1.
 
 FE (`presentation/components/Pipelines/`): the `pipelines` main-panel tab is
 ACCOUNT-scoped — it renders regardless of the selected project, survives
@@ -315,24 +395,37 @@ project switches (`identityTransition` no longer closes it), and its GNB
 entry is a standalone launcher button (Waypoints icon + label) to the RIGHT
 of the Agents/Code segmented control, never inside it (it opens a tab, not a
 view mode; no pressed state). The panel is an AgentSettings-style resizable
-split — rail (approval inbox pinned, rows with activation chips) beside
-`PipelineWorkspace`, which splits into THREE views: **Editor** (the n8n-style
-canvas — reactflow + dagre — trigger/step/gate nodes, insert-after "+" menus,
-inspector drawer; read-only with a banner while activated), **Execution**
-(project picker over `activatable-projects`, Activate/Deactivate, run-now,
-state card inactive / active·waiting(nextFireAt) / active·working(current
-step), read-only canvas with the live status overlay as the monitor), and
-**Run history**. Every editor surface edits ONE draft object
-(`pipelineSlice.pipelineDraft` vs `pipelineSavedDef`); saving is gated by the
-shared validator client-side plus the `preview-fires` verdict. Chat surfaces:
-`useChatPolicy` locks the input with `pipeline-active` / `pipeline-running`
-(judged BEFORE `isRunning`), `PipelineActiveBanner` sits in the chat input,
-the stop button on a pipeline step confirms and routes to `cancelPipelineRun`
-(never raw stopJob), and pipeline-originated turns / the work board carry
-`PipelineOriginChip`. The `pipeline_approval` chat card is a standard
-ChoiceCard variant. UI-authored definitions stay implicit-linear (`needs`
-omitted); an explicit-`needs` DAG still renders, but node insertion degrades
-to append (v2 opens free-DAG editing on the same wire contract — no
+split — rail beside `PipelineWorkspace`. The rail follows the AgentTree
+model: approval inbox pinned, then SCOPE GROUPS (`My pipelines` /
+`Organization pipelines` — both headers always render, each with its own
+empty copy; the org copy branches on team-active), rows with
+Draft/Enabled/Running pills + per-caller readonly pill + activation count,
+invalid rows, orphan-activation rows (deactivate-only), and the footer SPACE
+toggle — Workspace / Codespace, icon-only when the rail is narrow; Codespace
+is reserved and shows an unsupported notice (pipelines are Workspace-only
+today; pure FE state, locally persisted). The workspace splits into TWO
+views: **Wiring** (배선도 — the n8n-style canvas — reactflow + dagre —
+trigger/step/gate nodes, insert-after "+" menus, inspector drawer; read-only
+with a banner while enabled or shared-readonly; detail footer carries the
+Enable/Disable card, `OrgAccessCard` + `PromoteZone` — the SHARED
+`components/shared/org/` pair the agents screen also uses — and the danger
+zone) and **Execution** (activation rows — own rows actionable with run-now /
+deactivate / expandable per-activation run history via
+`ActivationRunHistory`; members' rows read-only with the activator shown;
+`broken` flagged — plus the "activate on project…" picker gated on enabled,
+and the read-only live-monitor canvas). The standalone run-history view is
+gone — history is a property of an activation. Every editor surface edits ONE
+draft object (`pipelineSlice.pipelineDraft` vs `pipelineSavedDef`); saving is
+gated by the shared validator client-side plus the `preview-fires` verdict;
+selecting a pipeline keeps the current view (only a new draft forces Wiring).
+Chat surfaces: `useChatPolicy` locks the input with `pipeline-active` /
+`pipeline-running` (judged BEFORE `isRunning`), `PipelineActiveBanner` sits
+in the chat input, the stop button on a pipeline step confirms and routes to
+`cancelPipelineRun` (never raw stopJob), and pipeline-originated turns / the
+work board carry `PipelineOriginChip`. The `pipeline_approval` chat card is a
+standard ChoiceCard variant. UI-authored definitions stay implicit-linear
+(`needs` omitted); an explicit-`needs` DAG still renders, but node insertion
+degrades to append (v2 opens free-DAG editing on the same wire contract — no
 migration).
 
 ---
@@ -349,7 +442,7 @@ migration).
   `UniversalDispatchGate` functions** — the whole point of the Phase-0
   extraction is that route and scheduler share one owner.
 - **Promoting a `ant:pipe:*` projection to source of truth.** The reconciler
-  must always be able to rebuild them from `.ant/pipelines/**`.
+  must always be able to rebuild them from the definition + activation trees.
 - **A second gate-resolve path.** Every channel (card, inbox, API, timeout,
   future magic-link) goes through `appendChoiceResolved`'s NX and then
   `applyResolvedGate`. Two paths = double-applied gates.
@@ -371,6 +464,18 @@ migration).
 - **Raw-stopping a pipeline step's job from the FE.** The chat stop control
   must confirm + `cancelPipelineRun`; a raw stop kills the step under the
   scheduler and the run seals `failed(interrupted)` instead of `cancelled`.
+- **Cascading or force-deactivating on disable.** Disable refuses while ANY
+  activation exists (`pipeline-has-activations`, holders listed) — not even
+  an org admin may kill another member's activation; they deactivate
+  themselves. No hidden "clean up their binding" path.
+- **Resolving a fired definition closest-wins.** The fire/reconcile path uses
+  ONLY the activation's pinned `pipelineScope` — falling back across scopes
+  lets a same-id definition hijack a running schedule.
+- **Auto-deleting a broken activation.** Missing/invalid defs unschedule and
+  surface as `broken`; the activation file is the activator's to remove.
+- **A second ACL rule set.** Pipelines and agents share
+  `orgAclStore.ts` (`canEditOrgResource` / gate resolver) — a diverging copy
+  re-opens the per-caller-authority drift the generalization closed.
 
 ### ✅ Correct
 
@@ -387,7 +492,10 @@ rg -n "upsertJobScheduler|'ant-pipelines'" packages/ant-cli/src --glob '!**/infr
 rg -rn "from 'cron-parser'" packages/ant-ui/src packages/ant-shared/src                                   # Expected: 0
 ```
 
-Guards: `tests/pipelines/{pipeline-def-validation,chain-executor,pipeline-dispatch-policy,pipeline-activation}.test.ts`;
+Guards: `tests/pipelines/{pipeline-def-validation,chain-executor,pipeline-dispatch-policy,pipeline-activation}.test.ts`,
+`tests/http/pipeline-routes-policy.test.ts` (availability machine, activate
+gate order, multi-project activation, promote/ACL, per-caller readonly,
+org-visible activations);
 FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActive.test.ts`,
 `tests/store/identity-transition.test.ts` (pipelines tab survives project switches),
 `tests/components/pipelineOriginChip.test.tsx`.
@@ -412,6 +520,21 @@ FE: `tests/store/pipelineActivation.test.ts`, `tests/chat/chatPolicyPipelineActi
   execution / run history) + standalone GNB launcher + chat lock
   banner/policy, defect fixes (`ant:pipe:active` healing, `maxConcurrentRuns`
   enforcement, outcome-retry on lock starvation).
+- **Phase 1.6 (shipped — the scoping/multi-activation overhaul)**:
+  definitions became scoped templates (personal + org roots, agents
+  precedent; `orgAclStore` generalized in place; promote/permissions/editors
+  mirror), the ACTIVATION became the scheduling unit (self-describing record
+  in the activator's account keyed by projectId; N activations per pipeline,
+  one per project structurally; runs colocate and survive deactivation;
+  billing/identity = activator), the AVAILABILITY state machine replaced the
+  edit lock (enable = publish, disable = reclaim, disabled-only writes,
+  holder-gated disable — no cascade), org-visible activation rows
+  (`mine: false`, read-only), projectId-keyed schedulers/projections (same
+  pipeline runs concurrently across projects), FE two-view workspace (Wiring
+  배선도 / Execution with per-activation history — the standalone run-history
+  view retired), scope-grouped rail + Workspace/Codespace space toggle
+  (Codespace reserved), shared `components/shared/org/` Promote/OrgAccess
+  cards.
 - **Phase 2**: clarify-await (jobId re-pointing instead of
   `awaiting_clarify_unsupported`), A3 approval-await integration (consumes
   the runner-axis `pendingApproval` seal), per-step `retry`, `remindAfter`

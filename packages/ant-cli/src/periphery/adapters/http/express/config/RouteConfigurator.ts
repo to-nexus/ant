@@ -105,6 +105,8 @@ export class RouteConfigurator {
       coordinator: this.deps.pipelineCoordinator,
       scheduleQueue: this.deps.pipelineScheduleQueue,
       stateStore: getInfrastructureFactory().getStateStore(),
+      // Live team roles + pipeline ACL authority (org-scope pipelines).
+      organizationRepository: getInfrastructureFactory().getOrganizationRepository(),
       chatService: this.deps.chatService,
     };
     app.use('/api/pipelines', createPipelinesRoutes(pipelineDeps));

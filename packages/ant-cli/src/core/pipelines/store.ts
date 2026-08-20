@@ -1,7 +1,10 @@
 /**
- * Pipeline definition + run-history store. Disk is SSOT (account scope,
- * `atomicWriteFile`, no cache — the agent-definition discipline); Redis holds
- * only rebuildable projections owned by the coordinator.
+ * Pipeline definition + availability + activation + run-history store. Disk is
+ * SSOT (`atomicWriteFile`, no cache — the agent-definition discipline); Redis
+ * holds only rebuildable projections owned by the coordinator.
+ *
+ * Two disjoint trees (see `paths.ts`): definitions under scope roots,
+ * activations (+ their runs) under the activator's account keyed by projectId.
  *
  * Failure shapes: `loadPipeline`/`savePipeline` throw
  * `PipelineValidationError` (loader precedent); HTTP callers catch → 400,
@@ -14,10 +17,13 @@ import * as yaml from 'js-yaml';
 import {
   PIPELINE_FILE_NAME,
   PIPELINE_ACTIVATION_FILE_NAME,
+  PIPELINE_AVAILABILITY_FILE_NAME,
   validatePipelineDef,
   validatePipelineActivation,
+  validatePipelineAvailability,
   isApprovalStep,
   type PipelineActivation,
+  type PipelineAvailability,
   type PipelineDef,
   type PipelineRunEvent,
   type PipelineRunSummary,
@@ -25,12 +31,15 @@ import {
 import { atomicWriteFile } from '../utils/atomicWriteFile';
 import { checkMinInterval } from './cron';
 import {
-  pipelineActivationPath,
+  activationDir,
+  activationFilePath,
+  activationRunIndexPath,
+  activationRunLogPath,
+  activationRunsDir,
+  pipelineAvailabilityPath,
   pipelineDefPath,
   pipelineDir,
-  pipelineRunIndexPath,
-  pipelineRunLogPath,
-  pipelineRunsDir,
+  PIPELINE_ACTIVATIONS_DIRNAME,
 } from './paths';
 
 export class PipelineValidationError extends Error {
@@ -124,12 +133,51 @@ export function deletePipeline(root: string, pipelineId: string): void {
 }
 
 // ============================================
+// Availability (availability.json — missing file = disabled/draft)
+// ============================================
+
+/** Missing file → disabled (draft default). Unreadable/invalid → throw (never silently enable). */
+export function loadAvailability(root: string, pipelineId: string): PipelineAvailability {
+  const availabilityPath = pipelineAvailabilityPath(root, pipelineId);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(availabilityPath, 'utf-8'));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { enabled: false, changedAt: new Date(0).toISOString() };
+    }
+    throw new PipelineValidationError(
+      `Cannot read ${PIPELINE_AVAILABILITY_FILE_NAME}: ${e instanceof Error ? e.message : String(e)}`,
+      pipelineId,
+    );
+  }
+  const errors = validatePipelineAvailability(raw);
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors[0], pipelineId);
+  }
+  return raw as PipelineAvailability;
+}
+
+export async function saveAvailability(
+  root: string,
+  pipelineId: string,
+  record: PipelineAvailability,
+): Promise<void> {
+  const errors = validatePipelineAvailability(record);
+  if (errors.length > 0) {
+    throw new PipelineValidationError(errors[0], pipelineId);
+  }
+  fs.mkdirSync(pipelineDir(root, pipelineId), { recursive: true });
+  await atomicWriteFile(pipelineAvailabilityPath(root, pipelineId), `${JSON.stringify(record, null, 2)}\n`);
+}
+
+// ============================================
 // Activation (activation.json — disk SSOT; absence = deactivated)
 // ============================================
 
 /** Missing file → null. Unreadable/invalid file → throw (never silently deactivate). */
-export function loadActivation(root: string, pipelineId: string): PipelineActivation | null {
-  const activationPath = pipelineActivationPath(root, pipelineId);
+export function loadActivationByProject(actRoot: string, projectId: string): PipelineActivation | null {
+  const activationPath = activationFilePath(actRoot, projectId);
   let raw: unknown;
   try {
     raw = JSON.parse(fs.readFileSync(activationPath, 'utf-8'));
@@ -137,103 +185,127 @@ export function loadActivation(root: string, pipelineId: string): PipelineActiva
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw new PipelineValidationError(
       `Cannot read ${PIPELINE_ACTIVATION_FILE_NAME}: ${e instanceof Error ? e.message : String(e)}`,
-      pipelineId,
     );
   }
   const errors = validatePipelineActivation(raw);
   if (errors.length > 0) {
-    throw new PipelineValidationError(errors[0], pipelineId);
+    throw new PipelineValidationError(errors[0]);
   }
   return raw as PipelineActivation;
 }
 
-export async function saveActivation(
-  root: string,
-  pipelineId: string,
-  activation: PipelineActivation,
-): Promise<void> {
+export async function saveActivationRecord(actRoot: string, activation: PipelineActivation): Promise<void> {
   const errors = validatePipelineActivation(activation);
   if (errors.length > 0) {
-    throw new PipelineValidationError(errors[0], pipelineId);
+    throw new PipelineValidationError(errors[0], activation.pipelineId);
   }
-  fs.mkdirSync(pipelineDir(root, pipelineId), { recursive: true });
-  await atomicWriteFile(pipelineActivationPath(root, pipelineId), `${JSON.stringify(activation, null, 2)}\n`);
+  fs.mkdirSync(activationDir(actRoot, activation.projectId), { recursive: true });
+  await atomicWriteFile(
+    activationFilePath(actRoot, activation.projectId),
+    `${JSON.stringify(activation, null, 2)}\n`,
+  );
 }
 
-export function deleteActivation(root: string, pipelineId: string): void {
-  fs.rmSync(pipelineActivationPath(root, pipelineId), { force: true });
+/** Removes activation.json ONLY — run history survives deactivation. */
+export function deleteActivationRecord(actRoot: string, projectId: string): void {
+  fs.rmSync(activationFilePath(actRoot, projectId), { force: true });
 }
 
-/** Every activated pipeline under the account root. Invalid sidecars are skipped (reconciler logs them). */
-export function listActivations(root: string): Array<{ pipelineId: string; activation: PipelineActivation }> {
+/** Every activation under one account root. Invalid sidecars are skipped (reconciler logs them). */
+export function listAccountActivations(actRoot: string): PipelineActivation[] {
   let entries: fs.Dirent[];
   try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
+    entries = fs.readdirSync(actRoot, { withFileTypes: true });
   } catch {
     return [];
   }
-  const out: Array<{ pipelineId: string; activation: PipelineActivation }> = [];
+  const out: PipelineActivation[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     try {
-      const activation = loadActivation(root, entry.name);
-      if (activation) out.push({ pipelineId: entry.name, activation });
+      const activation = loadActivationByProject(actRoot, entry.name);
+      if (activation) out.push(activation);
     } catch {
       // Invalid sidecar: not activated for scheduling purposes; surfaced by the reconciler's log.
     }
   }
-  return out.sort((a, b) => a.pipelineId.localeCompare(b.pipelineId));
+  return out.sort((a, b) => a.projectId.localeCompare(b.projectId));
 }
 
-export function findActivationByProject(
-  root: string,
-  projectId: string,
-): { pipelineId: string; activation: PipelineActivation } | null {
-  return listActivations(root).find((item) => item.activation.projectId === projectId) ?? null;
+/**
+ * All activations of one pipeline across an org's members — the disk leg of
+ * "who holds this pipeline" (disable gate, org-visible activation list).
+ * Bounded: one readdir per member. Owner kind is derived from the org id the
+ * activation is anchored under (same mapping as the reconciler's path
+ * inference).
+ */
+export function findActivationsForPipeline(
+  workspacesPath: string,
+  organizationId: string,
+  pipelineId: string,
+): Array<{ userId: string; activation: PipelineActivation }> {
+  const orgDir = path.join(workspacesPath, organizationId);
+  let users: fs.Dirent[];
+  try {
+    users = fs.readdirSync(orgDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: Array<{ userId: string; activation: PipelineActivation }> = [];
+  for (const user of users) {
+    if (!user.isDirectory() || user.name.startsWith('.')) continue;
+    const actRoot = path.join(orgDir, user.name, PIPELINE_ACTIVATIONS_DIRNAME);
+    for (const activation of listAccountActivations(actRoot)) {
+      if (activation.pipelineId === pipelineId) out.push({ userId: user.name, activation });
+    }
+  }
+  return out;
 }
 
 // ============================================
 // Run history (append-only JSONL; the coordinator is the single writer)
 // ============================================
 
-export async function appendRunEvent(
-  root: string,
-  pipelineId: string,
-  event: PipelineRunEvent,
-): Promise<void> {
-  const logPath = pipelineRunLogPath(root, pipelineId, event.runId);
+export async function appendRunEvent(actRoot: string, projectId: string, event: PipelineRunEvent): Promise<void> {
+  const logPath = activationRunLogPath(actRoot, projectId, event.runId);
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   await fs.promises.appendFile(logPath, `${JSON.stringify(event)}\n`, 'utf-8');
 }
 
-export async function appendRunIndex(
-  root: string,
-  pipelineId: string,
-  entry: PipelineRunSummary,
-): Promise<void> {
-  const indexPath = pipelineRunIndexPath(root, pipelineId);
+export async function appendRunIndex(actRoot: string, projectId: string, entry: PipelineRunSummary): Promise<void> {
+  const indexPath = activationRunIndexPath(actRoot, projectId);
   fs.mkdirSync(path.dirname(indexPath), { recursive: true });
   await fs.promises.appendFile(indexPath, `${JSON.stringify(entry)}\n`, 'utf-8');
 }
 
-export function readRunEvents(root: string, pipelineId: string, runId: string): PipelineRunEvent[] {
-  return readJsonlSafe<PipelineRunEvent>(pipelineRunLogPath(root, pipelineId, runId));
+export function readRunEvents(actRoot: string, projectId: string, runId: string): PipelineRunEvent[] {
+  return readJsonlSafe<PipelineRunEvent>(activationRunLogPath(actRoot, projectId, runId));
 }
 
-/** Most-recent-first. `limit` bounds the tail read (index lines are terminal runs only). */
-export function readRunIndex(root: string, pipelineId: string, limit = 50): PipelineRunSummary[] {
-  const entries = readJsonlSafe<PipelineRunSummary>(pipelineRunIndexPath(root, pipelineId));
+/**
+ * Most-recent-first. `limit` bounds the tail read (index lines are terminal
+ * runs only). `pipelineId` filters to one pipeline's runs — a project's run
+ * index interleaves every pipeline it ever hosted.
+ */
+export function readRunIndex(
+  actRoot: string,
+  projectId: string,
+  limit = 50,
+  pipelineId?: string,
+): PipelineRunSummary[] {
+  let entries = readJsonlSafe<PipelineRunSummary>(activationRunIndexPath(actRoot, projectId));
+  if (pipelineId) entries = entries.filter((e) => e.pipelineId === pipelineId);
   return entries.slice(-limit).reverse();
 }
 
-export function hasRunLog(root: string, pipelineId: string, runId: string): boolean {
-  return fs.existsSync(pipelineRunLogPath(root, pipelineId, runId));
+export function hasRunLog(actRoot: string, projectId: string, runId: string): boolean {
+  return fs.existsSync(activationRunLogPath(actRoot, projectId, runId));
 }
 
-export function listRunLogIds(root: string, pipelineId: string): string[] {
+export function listRunLogIds(actRoot: string, projectId: string): string[] {
   try {
     return fs
-      .readdirSync(pipelineRunsDir(root, pipelineId))
+      .readdirSync(activationRunsDir(actRoot, projectId))
       .filter((f) => f.endsWith('.jsonl') && f !== 'index.jsonl')
       .map((f) => f.slice(0, -'.jsonl'.length));
   } catch {

@@ -54,7 +54,7 @@ describe('validatePipelineDef — structural rules', () => {
   const invalid: Array<[string, Record<string, unknown>, RegExp]> = [
     ['v1 version', baseDef({ version: 1 }), /version must be 2/],
     ['wrong version', baseDef({ version: 3 }), /version must be 2/],
-    ['v1 enabled key (moved to activation)', baseDef({ enabled: true }), /"enabled" moved to activation/],
+    ['v1 enabled key (lives in the availability sidecar)', baseDef({ enabled: true }), /"enabled" lives in the availability sidecar/],
     ['v1 projectId key (moved to activation)', baseDef({ projectId: 'proj-x' }), /"projectId" moved to activation/],
     ['reserved step key jobType (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', jobType: 'code' }] }), /"jobType" is not supported yet/],
     ['reserved step key feature (canonical future axis)', baseDef({ steps: [{ id: 'a', customJobRef: 'x/a', directive: 'a', feature: 'main' }] }), /"feature" is not supported yet/],
@@ -127,10 +127,11 @@ describe('validatePipelineDefServer — cron interval + gate anchor', () => {
   });
 });
 
-describe('validatePipelineActivation — the pipeline↔project binding record', () => {
+describe('validatePipelineActivation — the self-describing scheduling record', () => {
+  const BASE = { pipelineId: 'digest', pipelineScope: 'user', projectId: 'proj-x', activatedAt: '2026-08-20T00:00:00.000Z' };
   const valid: Array<[string, Record<string, unknown>]> = [
-    ['minimal binding', { projectId: 'proj-x', activatedAt: '2026-08-20T00:00:00.000Z' }],
-    ['with activatedBy', { projectId: 'proj-x', activatedAt: '2026-08-20T00:00:00.000Z', activatedBy: 'user-1' }],
+    ['minimal binding', { ...BASE }],
+    ['org scope with activatedBy', { ...BASE, pipelineScope: 'org', activatedBy: 'user-1' }],
   ];
   it.each(valid)('accepts: %s', (_label, raw) => {
     expect(validatePipelineActivation(raw)).toEqual([]);
@@ -138,10 +139,12 @@ describe('validatePipelineActivation — the pipeline↔project binding record',
 
   const invalid: Array<[string, unknown, RegExp]> = [
     ['non-object', 'proj-x', /must be an object/],
-    ['missing projectId', { activatedAt: '2026-08-20T00:00:00.000Z' }, /projectId/],
-    ['bad timestamp', { projectId: 'p', activatedAt: 'yesterday' }, /ISO timestamp/],
-    ['unknown key', { projectId: 'p', activatedAt: '2026-08-20T00:00:00.000Z', token: 'x' }, /unknown key "token"/],
-    ['featureId reserved (canonical future axis)', { projectId: 'p', activatedAt: '2026-08-20T00:00:00.000Z', featureId: 'main' }, /not supported yet/],
+    ['missing pipelineId (record must self-describe)', { ...BASE, pipelineId: undefined }, /pipelineId/],
+    ['bad pipelineScope', { ...BASE, pipelineScope: 'builtin' }, /pipelineScope/],
+    ['missing projectId', { ...BASE, projectId: undefined }, /projectId/],
+    ['bad timestamp', { ...BASE, activatedAt: 'yesterday' }, /ISO timestamp/],
+    ['unknown key', { ...BASE, token: 'x' }, /unknown key "token"/],
+    ['featureId reserved (canonical future axis)', { ...BASE, featureId: 'main' }, /not supported yet/],
   ];
   it.each(invalid)('rejects: %s', (_label, raw, pattern) => {
     const errors = validatePipelineActivation(raw);

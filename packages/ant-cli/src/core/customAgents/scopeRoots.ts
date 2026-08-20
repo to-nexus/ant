@@ -11,8 +11,9 @@
  */
 
 import * as path from 'path';
-import { INDIVIDUAL_ORG_ID, type OrganizationKind } from '@ant/shared';
+import type { OrganizationKind } from '@ant/shared';
 import { WorkspacePathResolver } from '../config/WorkspacePathResolver.js';
+import { resolveTenantUserDir } from '../config/tenantAnchor.js';
 import type { CustomAgentScopeRoot } from './CustomAgentLoader.js';
 
 export const CUSTOM_AGENTS_DIRNAME = '.ant/agents';
@@ -71,14 +72,12 @@ export interface CustomAgentTenantContext {
  */
 export function deriveCustomAgentScopeRootsForTenant(ctx: CustomAgentTenantContext): CustomAgentScopeRoot[] {
   if (ctx.organizationKind !== 'team') {
-    return deriveCustomAgentScopeRootsFromUserDir(
-      path.join(ctx.workspacesPath, ctx.organizationId, ctx.userId),
-    );
+    return deriveCustomAgentScopeRootsFromUserDir(resolveTenantUserDir(ctx));
   }
   const roots: CustomAgentScopeRoot[] = [
     {
       scope: 'user',
-      root: path.join(ctx.workspacesPath, INDIVIDUAL_ORG_ID, ctx.userId, CUSTOM_AGENTS_DIRNAME),
+      root: path.join(resolveTenantUserDir(ctx), CUSTOM_AGENTS_DIRNAME),
       readonly: false,
     },
     {

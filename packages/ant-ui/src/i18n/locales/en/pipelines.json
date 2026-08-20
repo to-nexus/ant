@@ -2,33 +2,76 @@
   "rail": {
     "new": "New pipeline",
     "newDraft": "New pipeline (unsaved)",
-    "empty": "No pipelines yet.\nChain your agent jobs on a schedule.",
     "awaiting": "{{n}} waiting",
     "running": "Running",
-    "active": "Active",
-    "inactive": "Inactive",
+    "enabled": "Enabled",
+    "draft": "Draft",
+    "readonly": "readonly",
+    "activations": "{{n}} active",
     "steps": "{{n}} steps",
-    "discardConfirm": "Discard unsaved changes?"
+    "discardConfirm": "Discard unsaved changes?",
+    "orphanHint": "This activation references a pipeline that no longer exists.",
+    "scope": {
+      "user": "My pipelines",
+      "org": "Organization pipelines",
+      "emptyUser": "No pipelines of your own yet.",
+      "emptyOrg": "Nothing shared with the organization yet.",
+      "emptyOrgNoTeam": "Join a team organization to share pipelines."
+    }
   },
   "views": {
-    "editor": "Editor",
-    "execution": "Execution",
-    "runs": "Run history"
+    "wiring": "Wiring",
+    "execution": "Execution"
+  },
+  "space": {
+    "workspace": "Workspace",
+    "codespace": "Codespace",
+    "codespaceRail": "Pipelines are Workspace-only for now.",
+    "codespaceUnsupported": "Pipelines are not available for Codespace yet.\nFor now, pipelines run only on Workspace (universal) projects."
   },
   "execution": {
     "saveFirst": "Save the pipeline first — activation binds a saved pipeline to a project.",
-    "project": "Project",
+    "activationsTitle": "Activations",
+    "activationsCount": "{{n}} project(s)",
+    "noActivations": "Not activated anywhere yet.",
+    "enableFirst": "This pipeline is disabled — enable it in the Wiring view to activate projects.",
     "pickProject": "Choose a workspace project…",
-    "noProjects": "No workspace (universal) projects found.",
     "alreadyBound": "bound to \"{{pipelineId}}\"",
     "activate": "Activate",
     "deactivate": "Deactivate",
-    "stateInactive": "Inactive",
-    "stateWaiting": "Active · waiting",
-    "stateRunning": "Active · working",
-    "nextFire": "Next fire: {{when}}",
-    "currentStep": "Current step: {{step}}",
-    "boundTo": "Bound to project \"{{projectId}}\" — interactive work there is locked while active."
+    "stateWaiting": "Waiting",
+    "stateRunning": "Working",
+    "stateAwaiting": "Awaiting approval",
+    "stateBroken": "Broken",
+    "nextFire": "Next fire: {{when}}"
+  },
+  "availability": {
+    "enabledTitle": "Enabled",
+    "disabledTitle": "Disabled (draft)",
+    "enabledDesc": "Activatable on projects. Disable to edit — only possible while no one has it activated.",
+    "disabledDesc": "Editable, but not activatable. Enable to let projects activate it.",
+    "enable": "Enable",
+    "disable": "Disable",
+    "saveFirst": "Save your changes before enabling."
+  },
+  "promote": {
+    "title": "Promote to organization",
+    "desc": "Share this pipeline with your whole organization. It moves out of your personal scope; every member can see and activate it, and you remain its owner.",
+    "button": "Promote to organization",
+    "promoting": "Promoting…",
+    "confirmTitle": "Promote to organization",
+    "confirmMessage": "Promote \"{{name}}\" to your organization? The pipeline moves out of your personal scope — every member can then see and activate it, and you stay its owner."
+  },
+  "orgAccess": {
+    "title": "Organization access",
+    "desc": "Every member can see and activate this pipeline. Editing is limited to the owner, org admins, and the editors you delegate here.",
+    "owner": "Owner",
+    "ownerUnknown": "unknown (managed by org admins)",
+    "editors": "Editors",
+    "noMembers": "No other members in this organization yet.",
+    "self": "(you)",
+    "saving": "Saving…",
+    "save": "Save editors"
   },
   "chip": {
     "firedByPipeline": "Started by pipeline \"{{name}}\""
@@ -43,10 +86,10 @@
     "pickOne": "Select a pipeline on the left,\nor create a new one.",
     "namePlaceholder": "Pipeline name",
     "runNow": "Run now",
-    "runNowAccepted": "Fired — watch Runs.",
+    "runNowAccepted": "Fired — watch the run history.",
     "viewMode": "Pipeline view",
-    "readOnlyActivated": "Activated on \"{{projectId}}\" — deactivate it in the Execution view to edit.",
-    "goExecution": "Open Execution",
+    "readOnlyEnabled": "Enabled — disable the pipeline below to edit the wiring.",
+    "readOnlyShared": "Shared by {{owner}} — read-only for you.",
     "unsaved": "Unsaved changes",
     "unsavedNew": "Not saved yet",
     "badCron": "Fix the schedule to save.",
@@ -125,7 +168,7 @@
   },
   "runs": {
     "empty": "No runs yet — press Run now to test this pipeline.",
-    "pickOne": "Select a run to inspect its timeline.",
+    "emptyOther": "No runs recorded for this activation yet.",
     "timeline": "Step timeline",
     "cancel": "Cancel run",
     "cron": "Scheduled",
@@ -142,7 +185,7 @@
   },
   "danger": {
     "title": "Delete pipeline",
-    "desc": "Removes the definition and its run history.",
+    "desc": "Removes the definition. Run history stays with each activation.",
     "delete": "Delete",
     "confirm": "Really delete?",
     "deleting": "Deleting…"

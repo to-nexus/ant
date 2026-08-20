@@ -1,7 +1,9 @@
 /**
- * Pipeline activation — one axis, one file: the activation.json store
- * round-trip, the 1:1 uniqueness lookups, and the reconciler's disk-conflict
- * rule (earliest activatedAt wins; the loser is not scheduled/projected).
+ * Pipeline activation + availability — one axis, one file: the
+ * activation.json store round-trip (activator-account, projectId-keyed),
+ * the availability sidecar (missing = disabled draft), and the reconciler
+ * (activations drive scheduling; disabled/unresolvable defs never schedule;
+ * orphan crons are swept; stale overlap guards heal per project).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -10,11 +12,13 @@ import * as os from 'os';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
-  saveActivation,
-  loadActivation,
-  deleteActivation,
-  listActivations,
-  findActivationByProject,
+  saveActivationRecord,
+  loadActivationByProject,
+  deleteActivationRecord,
+  listAccountActivations,
+  findActivationsForPipeline,
+  loadAvailability,
+  saveAvailability,
   PipelineValidationError,
 } from '../../src/core/pipelines/store';
 import { reconcilePipelines } from '../../src/infrastructure/scheduling/PipelineReconciler';
@@ -29,47 +33,82 @@ afterEach(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-const ACT = (projectId: string, activatedAt = '2026-08-20T00:00:00.000Z') => ({ projectId, activatedAt });
+const ACT = (pipelineId: string, projectId: string, activatedAt = '2026-08-20T00:00:00.000Z') => ({
+  pipelineId,
+  pipelineScope: 'user' as 'user' | 'org',
+  projectId,
+  activatedAt,
+});
 
-describe('activation store round-trip', () => {
-  it('save → load → delete → null', async () => {
-    await saveActivation(tmp, 'p1', ACT('proj-a'));
-    expect(loadActivation(tmp, 'p1')).toEqual(ACT('proj-a'));
-    deleteActivation(tmp, 'p1');
-    expect(loadActivation(tmp, 'p1')).toBeNull();
+describe('activation store round-trip (activator account, projectId-keyed)', () => {
+  it('save → load → delete → null; runs dir survives deletion', async () => {
+    await saveActivationRecord(tmp, ACT('p1', 'proj-a'));
+    fs.mkdirSync(path.join(tmp, 'proj-a', 'runs'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'proj-a', 'runs', 'index.jsonl'), '');
+    expect(loadActivationByProject(tmp, 'proj-a')).toEqual(ACT('p1', 'proj-a'));
+    deleteActivationRecord(tmp, 'proj-a');
+    expect(loadActivationByProject(tmp, 'proj-a')).toBeNull();
+    expect(fs.existsSync(path.join(tmp, 'proj-a', 'runs', 'index.jsonl'))).toBe(true);
   });
 
   it('missing file reads as deactivated (null), never a throw', () => {
-    expect(loadActivation(tmp, 'ghost')).toBeNull();
+    expect(loadActivationByProject(tmp, 'ghost')).toBeNull();
   });
 
   it('an invalid sidecar throws (never silently deactivates)', () => {
+    fs.mkdirSync(path.join(tmp, 'proj-a'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'proj-a', 'activation.json'), '{"activatedAt": "2026-08-20T00:00:00.000Z"}');
+    expect(() => loadActivationByProject(tmp, 'proj-a')).toThrow(PipelineValidationError);
+  });
+
+  it('saveActivationRecord rejects a record without pipelineId/scope', async () => {
+    await expect(
+      saveActivationRecord(tmp, { projectId: 'proj-a', activatedAt: '2026-08-20T00:00:00.000Z' } as any),
+    ).rejects.toThrow(PipelineValidationError);
+  });
+
+  it('listAccountActivations returns every activated project; one project = one activation (structural)', async () => {
+    await saveActivationRecord(tmp, ACT('p1', 'proj-a'));
+    await saveActivationRecord(tmp, ACT('p2', 'proj-b'));
+    fs.mkdirSync(path.join(tmp, 'proj-c'), { recursive: true }); // deactivated (runs remain)
+    expect(listAccountActivations(tmp).map((a) => `${a.pipelineId}:${a.projectId}`)).toEqual([
+      'p1:proj-a',
+      'p2:proj-b',
+    ]);
+  });
+
+  it('findActivationsForPipeline sweeps every org member (disable gate / org visibility)', async () => {
+    const a = path.join(tmp, 'org', 'alice', '.ant', 'pipeline-activations');
+    const b = path.join(tmp, 'org', 'bob', '.ant', 'pipeline-activations');
+    await saveActivationRecord(a, { ...ACT('shared', 'proj-a'), pipelineScope: 'org' });
+    await saveActivationRecord(b, { ...ACT('shared', 'proj-b'), pipelineScope: 'org' });
+    await saveActivationRecord(b, ACT('other', 'proj-c'));
+    const holders = findActivationsForPipeline(tmp, 'org', 'shared');
+    expect(holders.map((h) => `${h.userId}:${h.activation.projectId}`).sort()).toEqual([
+      'alice:proj-a',
+      'bob:proj-b',
+    ]);
+  });
+});
+
+describe('availability sidecar — missing = disabled draft', () => {
+  it('missing file reads disabled; save → load round-trips', async () => {
     fs.mkdirSync(path.join(tmp, 'p1'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, 'p1', 'activation.json'), '{"activatedAt": "2026-08-20T00:00:00.000Z"}');
-    expect(() => loadActivation(tmp, 'p1')).toThrow(PipelineValidationError);
+    expect(loadAvailability(tmp, 'p1').enabled).toBe(false);
+    await saveAvailability(tmp, 'p1', { enabled: true, changedAt: '2026-08-20T00:00:00.000Z', changedBy: 'me' });
+    expect(loadAvailability(tmp, 'p1').enabled).toBe(true);
   });
 
-  it('saveActivation rejects an invalid record', async () => {
-    await expect(saveActivation(tmp, 'p1', { projectId: '', activatedAt: 'x' } as any)).rejects.toThrow(
-      PipelineValidationError,
-    );
-  });
-});
-
-describe('1:1 uniqueness lookups', () => {
-  it('listActivations returns every activated pipeline; findActivationByProject resolves the binding', async () => {
-    await saveActivation(tmp, 'p1', ACT('proj-a'));
-    await saveActivation(tmp, 'p2', ACT('proj-b'));
-    fs.mkdirSync(path.join(tmp, 'p3'), { recursive: true }); // deactivated
-    expect(listActivations(tmp).map((x) => x.pipelineId)).toEqual(['p1', 'p2']);
-    expect(findActivationByProject(tmp, 'proj-b')?.pipelineId).toBe('p2');
-    expect(findActivationByProject(tmp, 'proj-z')).toBeNull();
+  it('a corrupt sidecar throws (never silently enables)', () => {
+    fs.mkdirSync(path.join(tmp, 'p1'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'p1', 'availability.json'), '{"enabled": "yes"}');
+    expect(() => loadAvailability(tmp, 'p1')).toThrow(PipelineValidationError);
   });
 });
 
-describe('reconciler — activation is the schedule authority, earliest wins a disk conflict', () => {
-  function writePipeline(root: string, id: string, activation?: { projectId: string; activatedAt: string }) {
-    const dir = path.join(root, id);
+describe('reconciler — activations drive scheduling; pinned scope; availability gates', () => {
+  function writeDef(defRoot: string, id: string, opts: { enabled?: boolean } = {}) {
+    const dir = path.join(defRoot, id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       path.join(dir, 'pipeline.yaml'),
@@ -81,15 +120,18 @@ describe('reconciler — activation is the schedule authority, earliest wins a d
       }),
     );
     fs.writeFileSync(
-      path.join(dir, 'owner.json'),
-      JSON.stringify({ userId: 'user', organizationId: 'org', organizationKind: 'local' }),
+      path.join(dir, 'availability.json'),
+      JSON.stringify({ enabled: opts.enabled ?? true, changedAt: '2026-08-20T00:00:00.000Z' }),
     );
-    if (activation) {
-      fs.writeFileSync(path.join(dir, 'activation.json'), JSON.stringify(activation));
-    }
   }
 
-  function makeDeps() {
+  function writeActivation(ws: string, org: string, user: string, activation: ReturnType<typeof ACT>) {
+    const dir = path.join(ws, org, user, '.ant', 'pipeline-activations', activation.projectId);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'activation.json'), JSON.stringify(activation));
+  }
+
+  function makeDeps(registered: string[] = []) {
     const upserts: string[] = [];
     const removed: string[] = [];
     const keys = new Map<string, string>();
@@ -108,7 +150,7 @@ describe('reconciler — activation is the schedule authority, earliest wins a d
         scheduleQueue: {
           upsertCron: async (id: string) => void upserts.push(id),
           removeCron: async (id: string) => void removed.push(id),
-          listCronIds: async () => [],
+          listCronIds: async () => registered,
           armDelayed: async () => {},
           cancelDelayed: async () => {},
           addNow: async () => {},
@@ -119,38 +161,76 @@ describe('reconciler — activation is the schedule authority, earliest wins a d
     };
   }
 
-  it('schedules only ACTIVATED pipelines and projects both Redis keys', async () => {
-    const pipelinesRoot = path.join(tmp, 'org', 'user', '.ant', 'pipelines');
-    writePipeline(pipelinesRoot, 'active-one', ACT('proj-a'));
-    writePipeline(pipelinesRoot, 'dormant');
+  // Fixture org ids matter: the kind derives from the org id ('local' → local,
+  // 'individual' → individual, else team), and a team-kind user's PERSONAL
+  // defs anchor under the INDIVIDUAL org — so local/individual fixtures keep
+  // defs and activations under one org dir.
+  it('schedules an activation of an enabled def and projects both Redis keys (projectId-keyed)', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
     const { deps, upserts, keys } = makeDeps();
     deps.workspacesPath = tmp;
     await reconcilePipelines(deps as any);
-    expect(upserts).toEqual(['pipe|org|user|active-one']);
-    expect(keys.get('ant:pipe:proj:org:user:proj-a')).toBe('active-one');
-    expect(JSON.parse(keys.get('ant:pipe:actv:org:user:active-one') ?? '{}').projectId).toBe('proj-a');
+    expect(upserts).toEqual(['pipe|local|user|proj-a']);
+    expect(keys.get('ant:pipe:proj:local:user:proj-a')).toBe('p1');
+    expect(JSON.parse(keys.get('ant:pipe:actv:local:user:proj-a') ?? '{}').pipelineId).toBe('p1');
   });
 
-  it('two activations naming one project: earliest activatedAt wins, loser is not scheduled', async () => {
-    const pipelinesRoot = path.join(tmp, 'org', 'user', '.ant', 'pipelines');
-    writePipeline(pipelinesRoot, 'later', ACT('proj-a', '2026-08-20T10:00:00.000Z'));
-    writePipeline(pipelinesRoot, 'earlier', ACT('proj-a', '2026-08-19T10:00:00.000Z'));
-    const { deps, upserts, keys } = makeDeps();
+  it('one pipeline, two projects (even across users) — both activations schedule', async () => {
+    writeDef(path.join(tmp, 'individual', 'alice', '.ant', 'pipelines'), 'p1');
+    writeDef(path.join(tmp, 'individual', 'bob', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'individual', 'alice', ACT('p1', 'proj-a'));
+    writeActivation(tmp, 'individual', 'bob', ACT('p1', 'proj-b'));
+    const { deps, upserts } = makeDeps();
     deps.workspacesPath = tmp;
     await reconcilePipelines(deps as any);
-    expect(upserts).toEqual(['pipe|org|user|earlier']);
-    expect(keys.get('ant:pipe:proj:org:user:proj-a')).toBe('earlier');
-    expect(keys.has('ant:pipe:actv:org:user:later')).toBe(false);
+    expect(upserts.sort()).toEqual(['pipe|individual|alice|proj-a', 'pipe|individual|bob|proj-b']);
   });
 
-  it('heals a stale overlap guard whose run doc is terminal', async () => {
-    const pipelinesRoot = path.join(tmp, 'org', 'user', '.ant', 'pipelines');
-    writePipeline(pipelinesRoot, 'p1', ACT('proj-a'));
+  it('a team member ORG-scope activation resolves the def at the org root', async () => {
+    writeDef(path.join(tmp, 'acme', '.ant', 'pipelines'), 'shared');
+    writeActivation(tmp, 'acme', 'alice', { ...ACT('shared', 'proj-a'), pipelineScope: 'org' });
+    const { deps, upserts } = makeDeps();
+    deps.workspacesPath = tmp;
+    await reconcilePipelines(deps as any);
+    expect(upserts).toEqual(['pipe|acme|alice|proj-a']);
+  });
+
+  it('a DISABLED def is never scheduled (hand-edited sidecar)', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1', { enabled: false });
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    const { deps, upserts } = makeDeps();
+    deps.workspacesPath = tmp;
+    await reconcilePipelines(deps as any);
+    expect(upserts).toEqual([]);
+  });
+
+  it('an activation whose pinned def is missing is skipped, never deleted', async () => {
+    writeActivation(tmp, 'local', 'user', ACT('ghost', 'proj-a'));
+    const { deps, upserts } = makeDeps();
+    deps.workspacesPath = tmp;
+    await reconcilePipelines(deps as any);
+    expect(upserts).toEqual([]);
+    expect(fs.existsSync(path.join(tmp, 'local', 'user', '.ant', 'pipeline-activations', 'proj-a', 'activation.json'))).toBe(true);
+  });
+
+  it('sweeps orphan crons, including old-format (pipelineId-keyed) scheduler ids', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
+    const { deps, removed } = makeDeps(['pipe|local|user|proj-a', 'pipe|local|user|p-old', 'other|thing']);
+    deps.workspacesPath = tmp;
+    await reconcilePipelines(deps as any);
+    expect(removed).toEqual(['pipe|local|user|p-old']);
+  });
+
+  it('heals a stale overlap guard whose run doc is terminal (projectId key)', async () => {
+    writeDef(path.join(tmp, 'local', 'user', '.ant', 'pipelines'), 'p1');
+    writeActivation(tmp, 'local', 'user', ACT('p1', 'proj-a'));
     const { deps, keys } = makeDeps();
     deps.workspacesPath = tmp;
-    keys.set('ant:pipe:active:org:user:p1', 'run-dead');
+    keys.set('ant:pipe:active:local:user:proj-a', 'run-dead');
     // No ant:pipe:run:run-dead doc → the guard is stale and must be deleted.
     await reconcilePipelines(deps as any);
-    expect(keys.has('ant:pipe:active:org:user:p1')).toBe(false);
+    expect(keys.has('ant:pipe:active:local:user:proj-a')).toBe(false);
   });
 });

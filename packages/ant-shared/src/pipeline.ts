@@ -5,14 +5,19 @@
  * **Run** = one firing of a pipeline, **Step** = one DAG node (a universal job
  * dispatch, or an approval gate that issues no job).
  *
- * The definition lives on disk (`.ant/pipelines/{id}/pipeline.yaml`, account
- * scope — disk is SSOT); Redis holds only rebuildable projections. A definition
- * is account-scoped and cross-project: the project binding lives in a separate
- * ACTIVATION record (`activation.json` sidecar, absence = deactivated) — at
- * most one project per pipeline and one active pipeline per project. This module
- * is dependency-free by package doctrine: structural validation only. Cron
- * parsing / next-fire computation is server-side (`core/pipelines/cron.ts`) —
- * the FE never computes cron locally, it round-trips `preview-fires`.
+ * The definition lives on disk (`.ant/pipelines/{id}/pipeline.yaml` under a
+ * personal or org scope root, agents precedent — disk is SSOT); Redis holds
+ * only rebuildable projections. A definition is a shareable scoped TEMPLATE:
+ * it can be activated by many users onto many projects concurrently. The
+ * ACTIVATION record is the scheduling unit and lives in the ACTIVATOR's
+ * account (`.ant/pipeline-activations/{projectId}/activation.json`, absence =
+ * deactivated) — one active pipeline per project, N activations per pipeline.
+ * A definition also carries an AVAILABILITY sidecar (`availability.json`):
+ * editing/deleting requires `disabled`, activating requires `enabled`, and
+ * disabling requires zero live activations. This module is dependency-free by
+ * package doctrine: structural validation only. Cron parsing / next-fire
+ * computation is server-side (`core/pipelines/cron.ts`) — the FE never
+ * computes cron locally, it round-trips `preview-fires`.
  *
  * `validatePipelineDef` follows the `validateMcpServers` precedent: every rule
  * as plain messages, empty = valid. Callers decide the failure shape — the
@@ -20,6 +25,16 @@
  */
 
 import { parseCustomJobRef, isValidCustomId, GENERAL_INTENT } from './custom-agents';
+import type { CustomAgentOrgPermissions } from './custom-agents';
+
+/** Definition scope — agents precedent minus builtin (pipelines ship no samples). */
+export type PipelineScope = 'user' | 'org';
+
+/**
+ * Per-caller org permission projection for org-scope pipelines — structurally
+ * identical to the agent one on purpose (same ACL store, same role ladder).
+ */
+export type PipelineOrgPermissions = CustomAgentOrgPermissions;
 
 // ============================================
 // Definition (pipeline.yaml)
@@ -96,18 +111,64 @@ export interface PipelineDef {
 }
 
 // ============================================
-// Activation (activation.json sidecar) — the pipeline↔project binding
+// Availability (availability.json sidecar) — the definition state machine
+// ============================================
+
+export const PIPELINE_AVAILABILITY_FILE_NAME = 'availability.json';
+
+/**
+ * `enabled` gates ACTIVATABILITY, not execution: editing/deleting/promoting a
+ * definition requires `disabled`, activating requires `enabled`, and disabling
+ * requires zero live activations (never cascaded, never force-deactivated —
+ * holders deactivate themselves). A missing sidecar reads as disabled (draft),
+ * so a definition can never change while any activation exists.
+ */
+export interface PipelineAvailability {
+  enabled: boolean;
+  changedAt: string;
+  changedBy?: string;
+}
+
+const AVAILABILITY_KEYS = ['enabled', 'changedAt', 'changedBy'];
+
+/** Plain messages, empty = valid (validateMcpServers precedent). */
+export function validatePipelineAvailability(raw: unknown): string[] {
+  if (!isPlainObject(raw)) return ['availability must be an object'];
+  const errors: string[] = [];
+  errors.push(...unknownKeyErrors(raw, AVAILABILITY_KEYS, 'availability'));
+  if (typeof raw.enabled !== 'boolean') {
+    errors.push('availability.enabled must be a boolean');
+  }
+  if (typeof raw.changedAt !== 'string' || Number.isNaN(Date.parse(raw.changedAt))) {
+    errors.push('availability.changedAt must be an ISO timestamp');
+  }
+  if (raw.changedBy !== undefined && typeof raw.changedBy !== 'string') {
+    errors.push('availability.changedBy must be a string');
+  }
+  return errors;
+}
+
+// ============================================
+// Activation — the scheduling unit, stored in the ACTIVATOR's account
 // ============================================
 
 export const PIPELINE_ACTIVATION_FILE_NAME = 'activation.json';
 
 /**
- * Activating binds one pipeline to one project (1:1 both directions,
- * enforced at activate time and healed by the reconciler). While a project
- * has an active pipeline, interactive job starts in that project are
- * rejected and the definition is edit-locked — the pipeline owns the project.
+ * One activation binds one project to one pipeline. It lives OUTSIDE the
+ * pipeline dir (`.ant/pipeline-activations/{projectId}/activation.json` in the
+ * activator's account), so it is self-describing: `pipelineId` names the
+ * definition and `pipelineScope` PINS which scope root resolves it — the fire
+ * path never falls back to closest-wins, so a later same-id definition in a
+ * nearer scope cannot hijack a running schedule. One activation per project is
+ * structural (one dir per projectId); a pipeline may hold many activations.
+ * While a project has an active pipeline, interactive job starts in that
+ * project are rejected — the pipeline owns the project.
  */
 export interface PipelineActivation {
+  pipelineId: string;
+  /** Scope root the definition was resolved from at activate time. */
+  pipelineScope: PipelineScope;
   /** All steps' sessions/artifacts land in this universal container. */
   projectId: string;
   activatedAt: string;
@@ -116,13 +177,19 @@ export interface PipelineActivation {
   featureId?: string;
 }
 
-const ACTIVATION_KEYS = ['projectId', 'activatedAt', 'activatedBy', 'featureId'];
+const ACTIVATION_KEYS = ['pipelineId', 'pipelineScope', 'projectId', 'activatedAt', 'activatedBy', 'featureId'];
 
 /** Plain messages, empty = valid (validateMcpServers precedent). */
 export function validatePipelineActivation(raw: unknown): string[] {
   if (!isPlainObject(raw)) return ['activation must be an object'];
   const errors: string[] = [];
   errors.push(...unknownKeyErrors(raw, ACTIVATION_KEYS, 'activation'));
+  if (typeof raw.pipelineId !== 'string' || !isValidCustomId(raw.pipelineId)) {
+    errors.push('activation.pipelineId must be a pipeline id (lowercase kebab-case)');
+  }
+  if (raw.pipelineScope !== 'user' && raw.pipelineScope !== 'org') {
+    errors.push(`activation.pipelineScope must be "user" or "org" (got: ${String(raw.pipelineScope)})`);
+  }
   if (typeof raw.projectId !== 'string' || raw.projectId.trim().length === 0) {
     errors.push('activation.projectId must be a non-empty string');
   }
@@ -272,7 +339,7 @@ export interface PipelineRunSummary {
   error?: string;
 }
 
-/** Append-only run event line (`.ant/pipelines/{id}/runs/{runId}.jsonl`). */
+/** Append-only run event line (`.ant/pipeline-activations/{projectId}/runs/{runId}.jsonl`). */
 export interface PipelineRunEvent {
   ts: string;
   event:
@@ -294,18 +361,49 @@ export interface PipelineRunEvent {
 // API shapes
 // ============================================
 
+/**
+ * One activation row as the API serves it — own activations plus (for
+ * org-scope pipelines) other members' activations. `mine` is the ONLY
+ * actionability signal: run-now / deactivate / cancel are offered on `mine`
+ * rows; members' rows are read-only. `broken` = the activation references a
+ * definition that no longer resolves at its pinned scope (hand-edited disk) —
+ * surfaced, never auto-deleted, still deactivatable by its activator.
+ */
+export interface PipelineActivationView {
+  pipelineId: string;
+  projectId: string;
+  activatedBy: string;
+  activatedAt: string;
+  mine: boolean;
+  state: 'waiting' | 'running' | 'awaiting_human' | 'broken';
+  /** Server-computed next fire; absent on `broken`. */
+  nextFireAt?: string;
+  currentRunId?: string;
+  lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
+}
+
 /** List-rail entry. `nextFireAt` is SERVER-computed — the FE never parses cron. */
 export interface PipelineListEntry {
   id: string;
   name: string;
-  /** null = deactivated. Set = bound to `activation.projectId`. */
-  activation: PipelineActivation | null;
   cron: string;
   tz?: string;
   stepCount: number;
-  /** Only present while activated (a deactivated pipeline never fires). */
+  /** Which scope root resolved this definition (closest wins on id collision). */
+  scope: PipelineScope;
+  /** Effective editability FOR THE CALLING USER — org entries flip per caller. */
+  readonly: boolean;
+  /** Availability state machine: false = draft/disabled (editable, not activatable). */
+  enabled: boolean;
+  /** Org permission projection — org-scope entries only. */
+  org?: PipelineOrgPermissions;
+  /** Own activations + (org scope) other members' — see PipelineActivationView. */
+  activations: PipelineActivationView[];
+  /** Earliest next fire across own activations; absent when none are scheduled. */
   nextFireAt?: string;
+  /** Most recent run across own activations. */
   lastRun?: { runId: string; status: PipelineRunStatus; firedAt: string };
+  /** Pending approval gates across own activations. */
   pendingApprovalCount: number;
 }
 
@@ -330,7 +428,7 @@ const STEP_ID_HINT = 'lowercase letters, digits and hyphens (e.g. "collect-sourc
 const DEF_KEYS = ['version', 'name', 'on', 'defaults', 'steps'];
 /** Keys that existed in def v1 or belong to future axes — reject loudly, never ignore. */
 const RESERVED_DEF_KEYS: Record<string, string> = {
-  enabled: '"enabled" moved to activation — activate the pipeline onto a project instead (POST /api/pipelines/{id}/activate)',
+  enabled: '"enabled" lives in the availability sidecar — use POST /api/pipelines/{id}/enable|disable, not the definition',
   projectId: '"projectId" moved to activation — the project binding is set when activating, not in the definition',
 };
 const SCHEDULE_KEYS = ['cron', 'tz', 'onMissed', 'overlap'];

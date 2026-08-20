@@ -59,9 +59,26 @@ describe('pipeline↔project mutual exclusion', () => {
     expect(routes.match(/project-pipeline-active/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
   });
 
-  it('the definition is edit-locked while activated (PUT + DELETE answer pipeline-activated)', () => {
+  it('the availability machine binds the write surface (edit/delete/promote disabled-only, activate enabled-only, disable holder-gated)', () => {
     const routes = read('periphery/adapters/http/routes/pipelines.routes.ts');
-    expect(routes.match(/code:\s*'pipeline-activated'/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // PUT + DELETE + promote all funnel through the same enabled refusal.
+    expect(routes.match(/refuseWhileEnabled\(/g)?.length ?? 0).toBeGreaterThanOrEqual(4); // decl + 3 call sites
+    expect(routes).toMatch(/code:\s*'pipeline-enabled'/);
+    expect(routes).toMatch(/code:\s*'pipeline-disabled'/);
+    // Disable never cascades: it refuses while ANY activation exists.
+    expect(routes.match(/code:\s*'pipeline-has-activations'/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('the fire path resolves definitions ONLY at the activation-pinned scope (no closest-wins)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/resolveDefRoot\(this\.tenantCtx\(owner\), activation\.pipelineScope\)/);
+    const reconciler = read('infrastructure/scheduling/PipelineReconciler.ts');
+    expect(reconciler).toMatch(/resolveDefRoot\(\{ workspacesPath: deps\.workspacesPath, \.\.\.owner \}, activation\.pipelineScope\)/);
+  });
+
+  it('a stale fire is skipped when the project switched pipelines (activation is the authority)', () => {
+    const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+    expect(coordinator).toMatch(/activation\.pipelineId !== pipelineId/);
   });
 
   it('activation requires a quiet project (live-job gate) and a universal project', () => {

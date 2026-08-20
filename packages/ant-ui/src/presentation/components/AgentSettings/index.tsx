@@ -25,8 +25,9 @@ import { UploadConflictModal } from '@/presentation/components/common/UploadConf
 import { entriesUnder, findDefinitionNode, hasEntry, pickedFolderName } from './definitionUpload';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
 import { AgentTree } from './AgentTree';
-import { OrgAccessCard } from './OrgAccessCard';
-import { PromoteZone } from './PromoteZone';
+import { OrgAccessCard } from '../shared/org/OrgAccessCard';
+import { PromoteZone } from '../shared/org/PromoteZone';
+import { updateAgentEditors } from '@/infrastructure/http/api/accountAgents';
 import { DetailHeader, type DetailLevel } from './DetailHeader';
 import { PromptsCard, type PromptsScope } from './prompts/PromptsCard';
 import { useResizableWidth } from './useResizableWidth';
@@ -802,8 +803,9 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
             {level === 'agent' && selectedAgent?.org?.canManageEditors && (
               <OrgAccessCard
                 id="c3g-org-access"
-                agentId={selection.agentId!}
+                resourceId={selection.agentId!}
                 org={selectedAgent.org}
+                onSaveEditors={(editors) => updateAgentEditors(selection.agentId!, editors)}
                 onSaved={afterMutation}
                 onError={setError}
               />
@@ -872,7 +874,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
             {level === 'agent' && isTeamActive && selectedAgent?.scope === 'user' && (
               <PromoteZone
                 id="c3g-promote"
-                agentName={selectedAgent?.name ?? selection.agentId!}
+                resourceName={selectedAgent?.name ?? selection.agentId!}
                 isPromoting={isPromoting}
                 onPromote={() => void handlePromoteAgent(selection.agentId!)}
               />

@@ -1,8 +1,9 @@
 /**
- * Org access card — visible only to callers who may manage an org agent's
+ * Org access card — visible only to callers who may manage an org resource's
  * editors (owner ∨ org admin/owner). Shows the recorded owner and a member
- * checklist that writes the delegated editors list. The owner is implicit —
- * always an editor, never listed as a checkbox.
+ * checklist; `onSaveEditors` writes the delegated editors list (agent and
+ * pipeline mounts pass their own API call). The owner is implicit — always an
+ * editor, never listed as a checkbox.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -11,30 +12,34 @@ import type { CustomAgentOrgPermissions } from '@ant/shared';
 import { Button } from '@/presentation/components/aurora';
 import { SectionCard, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { fetchOrgMembers } from '@/infrastructure/http/api/org';
-import { updateAgentEditors } from '@/infrastructure/http/api/accountAgents';
 
 export function OrgAccessCard({
   id,
-  agentId,
+  ns = 'agents',
+  resourceId,
   org,
+  onSaveEditors,
   onSaved,
   onError,
 }: {
   id: string;
-  agentId: string;
+  /** i18n namespace carrying `orgAccess.*` keys ('agents' | 'pipelines'). */
+  ns?: string;
+  resourceId: string;
   org: CustomAgentOrgPermissions;
-  /** Refresh the agent list after the editors change (readonly flags may flip). */
+  onSaveEditors: (editors: string[]) => Promise<unknown>;
+  /** Refresh the list after the editors change (readonly flags may flip). */
   onSaved: () => Promise<void> | void;
   onError: (message: string) => void;
 }) {
-  const { t } = useTranslation('agents');
+  const { t } = useTranslation(ns);
   const [members, setMembers] = useState<Array<{ userId: string; isSelf: boolean }>>([]);
   const [editors, setEditors] = useState<string[]>(org.editors ?? []);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setEditors(org.editors ?? []);
-  }, [org.editors, agentId]);
+  }, [org.editors, resourceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +49,7 @@ export function OrgAccessCard({
     return () => {
       cancelled = true;
     };
-  }, [agentId]);
+  }, [resourceId]);
 
   const candidates = useMemo(
     () => members.filter((m) => m.userId !== org.owner),
@@ -64,7 +69,7 @@ export function OrgAccessCard({
   const save = async () => {
     setIsSaving(true);
     try {
-      await updateAgentEditors(agentId, editors);
+      await onSaveEditors(editors);
       await onSaved();
     } catch (e) {
       onError(e instanceof Error ? e.message : String(e));
@@ -81,7 +86,7 @@ export function OrgAccessCard({
       title={t('orgAccess.title', 'Organization access')}
       description={t(
         'orgAccess.desc',
-        'Every member can see and run this agent. Editing is limited to the owner, org admins, and the editors you delegate here.',
+        'Every member can see and use this. Editing is limited to the owner, org admins, and the editors you delegate here.',
       )}
       bodyMaxWidth={480}
     >

@@ -1,11 +1,13 @@
 import { StateCreator } from 'zustand';
 import type {
   ActivePipelineInfo,
+  PipelineActivationView,
   PipelineDef,
   PipelineEventData,
   PipelineListEntry,
   PipelinePendingApproval,
   PipelineRunSummary,
+  PipelineScope,
   RunRecord,
 } from '@ant/shared';
 import { PIPELINE_DEF_VERSION } from '@ant/shared';
@@ -14,6 +16,8 @@ import {
   createPipeline,
   deactivatePipeline,
   deletePipeline,
+  disablePipeline,
+  enablePipeline,
   fetchActivatableProjects,
   fetchActivePipeline,
   fetchPipeline,
@@ -21,17 +25,21 @@ import {
   fetchPipelineRun,
   fetchPipelineRuns,
   fetchPipelines,
+  promotePipeline,
   resolvePipelineApproval,
   runPipelineNow,
   updatePipeline,
+  updatePipelineEditors,
 } from '@/infrastructure/http/api/pipelines';
 
 /**
  * pipelineSlice — FE state for the pipeline scheduler tab.
  *
- * Definitions are ACCOUNT-scoped (cross-project); the project binding is the
- * ACTIVATION record. The panel is therefore project-independent; only
- * `activePipelineByProject` (the chat surface's lock signal) is keyed by
+ * Definitions are scoped TEMPLATES (user/org, agents precedent) with an
+ * availability state machine: editable only while disabled, activatable only
+ * while enabled. Activations are the scheduling unit — one per project, many
+ * per pipeline (`entry.activations` includes org members' rows read-only).
+ * Only `activePipelineByProject` (the chat surface's lock signal) is keyed by
  * project and loaded per selected project + folded by SSE.
  *
  * Dirty-buffer doctrine: `pipelineDraft` (the object every editor surface —
@@ -52,9 +60,15 @@ export interface PipelineActivatableProject {
   activePipelineId: string | null;
 }
 
+/** One activation's run-history key: `${pipelineId}:${userId||'me'}:${projectId}`. */
+export const activationRunsKey = (pipelineId: string, projectId: string, userId?: string): string =>
+  `${pipelineId}:${userId ?? 'me'}:${projectId}`;
+
 export interface PipelineSliceState {
   pipelines: PipelineListEntry[];
-  pipelinesInvalid: Array<{ id: string; error: string }>;
+  pipelinesInvalid: Array<{ id: string; error: string; scope: PipelineScope }>;
+  /** Own activations whose pinned definition no longer resolves (deactivate-only rows). */
+  pipelineOrphanActivations: PipelineActivationView[];
   pipelinesLoading: boolean;
   pipelinesError: string | null;
   selectedPipelineId: string | null;
@@ -63,17 +77,18 @@ export interface PipelineSliceState {
   pipelineSavedDef: PipelineDef | null;
   pipelineDraftIsNew: boolean;
   pipelineSaveError: string | null;
-  pipelinePanelView: 'editor' | 'execution' | 'runs';
+  pipelinePanelView: 'editor' | 'execution';
   /** Canvas selection — a step id, or the trigger pseudo-node. */
   selectedPipelineNodeId: string | null;
-  pipelineRunsById: Record<string, PipelineRunSummary[]>;
+  /** Per-activation run history — see `activationRunsKey`. */
+  pipelineRunsByActivation: Record<string, PipelineRunSummary[]>;
   pipelineRunDetail: PipelineRunPublic | null;
   pipelineApprovals: PipelinePendingApproval[];
   /** Per-project active-pipeline lock signal (chat surface). null = none. */
   activePipelineByProject: Record<string, ActivePipelineInfo | null>;
   /** Universal projects the Execution view's picker offers. */
   pipelineActivatableProjects: PipelineActivatableProject[];
-  /** Execution-view picker selection (defaults to the bound project). */
+  /** Execution-view picker selection for a NEW activation. */
   pipelineExecutionProjectId: string | null;
   pipelineActivationError: string | null;
 }
@@ -86,18 +101,22 @@ export interface PipelineSliceActions {
   discardPipelineDraft: () => void;
   savePipelineDraft: () => Promise<boolean>;
   deletePipelineById: (pipelineId: string) => Promise<void>;
-  runPipelineNowById: (pipelineId: string) => Promise<string | null>;
+  enablePipelineById: (pipelineId: string) => Promise<boolean>;
+  disablePipelineById: (pipelineId: string) => Promise<boolean>;
+  promotePipelineById: (pipelineId: string) => Promise<void>;
+  savePipelineEditors: (pipelineId: string, editors: string[]) => Promise<void>;
+  runPipelineNowById: (pipelineId: string, projectId: string) => Promise<string | null>;
   activatePipelineTo: (pipelineId: string, projectId: string) => Promise<boolean>;
-  deactivatePipelineById: (pipelineId: string) => Promise<boolean>;
+  deactivatePipelineById: (pipelineId: string, projectId: string) => Promise<boolean>;
   loadActivatableProjects: () => Promise<void>;
   loadActivePipeline: (projectId: string) => Promise<void>;
   setPipelineExecutionProject: (projectId: string | null) => void;
-  loadPipelineRuns: (pipelineId: string) => Promise<void>;
-  loadPipelineRunDetail: (runId: string, pipelineId: string) => Promise<void>;
+  loadActivationRuns: (pipelineId: string, projectId: string, userId?: string) => Promise<void>;
+  loadPipelineRunDetail: (runId: string, projectId: string) => Promise<void>;
   clearPipelineRunDetail: () => void;
   loadPipelineApprovals: () => Promise<void>;
   resolvePipelineApprovalById: (gateId: string, decision: 'approve' | 'reject') => Promise<void>;
-  setPipelinePanelView: (view: 'editor' | 'execution' | 'runs') => void;
+  setPipelinePanelView: (view: 'editor' | 'execution') => void;
   selectPipelineNode: (nodeId: string | null) => void;
   applyPipelineEvent: (event: PipelineEventData) => void;
 }
@@ -113,6 +132,7 @@ export const pipelineDraftIsDirty = (draft: PipelineDef | null, saved: PipelineD
 export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (set, get) => ({
   pipelines: [],
   pipelinesInvalid: [],
+  pipelineOrphanActivations: [],
   pipelinesLoading: false,
   pipelinesError: null,
   selectedPipelineId: null,
@@ -122,7 +142,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   pipelineSaveError: null,
   pipelinePanelView: 'editor',
   selectedPipelineNodeId: null,
-  pipelineRunsById: {},
+  pipelineRunsByActivation: {},
   pipelineRunDetail: null,
   pipelineApprovals: [],
   activePipelineByProject: {},
@@ -133,8 +153,14 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   loadPipelines: async () => {
     set({ pipelinesLoading: true });
     try {
-      const { pipelines, invalid } = await fetchPipelines();
-      set({ pipelines, pipelinesInvalid: invalid ?? [], pipelinesLoading: false, pipelinesError: null });
+      const { pipelines, invalid, orphanActivations } = await fetchPipelines();
+      set({
+        pipelines,
+        pipelinesInvalid: invalid ?? [],
+        pipelineOrphanActivations: orphanActivations ?? [],
+        pipelinesLoading: false,
+        pipelinesError: null,
+      });
       void get().loadPipelineApprovals();
     } catch (e) {
       set({ pipelinesLoading: false, pipelinesError: e instanceof Error ? e.message : String(e) });
@@ -146,18 +172,25 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       set({ selectedPipelineId: null, pipelineDraft: null, pipelineSavedDef: null, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null, pipelineExecutionProjectId: null });
       return;
     }
-    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, pipelinePanelView: 'editor', selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null });
+    // The current view survives selection — only a NEW draft forces the editor.
+    set({ selectedPipelineId: pipelineId, pipelineDraftIsNew: false, pipelineSaveError: null, selectedPipelineNodeId: null, pipelineRunDetail: null, pipelineActivationError: null });
     try {
-      const { def, activation } = await fetchPipeline(pipelineId);
+      const detail = await fetchPipeline(pipelineId);
       // Stale guard — the user may have clicked another pipeline meanwhile.
       if (get().selectedPipelineId !== pipelineId) return;
       set({
-        pipelineDraft: def,
-        pipelineSavedDef: def,
-        pipelineExecutionProjectId: activation?.projectId ?? null,
-        pipelines: get().pipelines.map((p: PipelineListEntry) => (p.id === pipelineId ? { ...p, activation } : p)),
+        pipelineDraft: detail.def,
+        pipelineSavedDef: detail.def,
+        pipelineExecutionProjectId: null,
+        pipelines: get().pipelines.map((p: PipelineListEntry) =>
+          p.id === pipelineId
+            ? { ...p, scope: detail.scope, readonly: detail.readonly, enabled: detail.enabled, org: detail.org, activations: detail.activations }
+            : p,
+        ),
       });
-      void get().loadPipelineRuns(pipelineId);
+      for (const a of detail.activations.filter((v) => v.mine)) {
+        void get().loadActivationRuns(pipelineId, a.projectId);
+      }
     } catch (e) {
       if (get().selectedPipelineId !== pipelineId) return;
       set({ pipelinesError: e instanceof Error ? e.message : String(e) });
@@ -230,9 +263,59 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     void get().loadPipelines();
   },
 
-  runPipelineNowById: async (pipelineId: string) => {
+  enablePipelineById: async (pipelineId: string) => {
     try {
-      await runPipelineNow(pipelineId);
+      await enablePipeline(pipelineId);
+      set({
+        pipelines: get().pipelines.map((p: PipelineListEntry) => (p.id === pipelineId ? { ...p, enabled: true } : p)),
+        pipelineSaveError: null,
+      });
+      return true;
+    } catch (e) {
+      set({ pipelineSaveError: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  },
+
+  disablePipelineById: async (pipelineId: string) => {
+    try {
+      await disablePipeline(pipelineId);
+      set({
+        pipelines: get().pipelines.map((p: PipelineListEntry) => (p.id === pipelineId ? { ...p, enabled: false } : p)),
+        pipelineSaveError: null,
+      });
+      return true;
+    } catch (e) {
+      // 409 pipeline-has-activations rides the message (holders listed server-side).
+      set({ pipelineSaveError: e instanceof Error ? e.message : String(e) });
+      return false;
+    }
+  },
+
+  promotePipelineById: async (pipelineId: string) => {
+    await promotePipeline(pipelineId);
+    await get().loadPipelines();
+    // Anti-silent-failure (agentSettingsSlice.promoteAgent precedent): the
+    // refetched entry must actually be org-scope, else surface the failure.
+    const entry = get().pipelines.find((p: PipelineListEntry) => p.id === pipelineId);
+    if (!entry || entry.scope !== 'org') {
+      throw new Error(`Promote did not take effect for "${pipelineId}" — check server logs`);
+    }
+    if (get().selectedPipelineId === pipelineId) {
+      await get().selectPipeline(pipelineId);
+    }
+  },
+
+  savePipelineEditors: async (pipelineId: string, editors: string[]) => {
+    const org = await updatePipelineEditors(pipelineId, editors);
+    set({
+      pipelines: get().pipelines.map((p: PipelineListEntry) => (p.id === pipelineId ? { ...p, org } : p)),
+    });
+  },
+
+  runPipelineNowById: async (pipelineId: string, projectId: string) => {
+    try {
+      await runPipelineNow(pipelineId, projectId);
       return null;
     } catch (e: any) {
       return e?.message ?? 'run-now failed';
@@ -242,13 +325,10 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
   activatePipelineTo: async (pipelineId: string, projectId: string) => {
     set({ pipelineActivationError: null });
     try {
-      const { activation, nextFireAt } = await activatePipeline(pipelineId, projectId);
-      set({
-        pipelines: get().pipelines.map((p: PipelineListEntry) =>
-          p.id === pipelineId ? { ...p, activation, nextFireAt } : p,
-        ),
-        pipelineExecutionProjectId: projectId,
-      });
+      await activatePipeline(pipelineId, projectId);
+      // Authoritative refresh — the entry's activations include the new row.
+      if (get().selectedPipelineId === pipelineId) await get().selectPipeline(pipelineId);
+      void get().loadPipelines();
       void get().loadActivatableProjects();
       void get().loadActivePipeline(projectId);
       return true;
@@ -258,19 +338,21 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
     }
   },
 
-  deactivatePipelineById: async (pipelineId: string) => {
+  deactivatePipelineById: async (pipelineId: string, projectId: string) => {
     set({ pipelineActivationError: null });
-    const previous = get().pipelines.find((p: PipelineListEntry) => p.id === pipelineId)?.activation ?? null;
     try {
-      await deactivatePipeline(pipelineId);
+      await deactivatePipeline(pipelineId, projectId);
       set({
         pipelines: get().pipelines.map((p: PipelineListEntry) =>
-          p.id === pipelineId ? { ...p, activation: null, nextFireAt: undefined } : p,
+          p.id === pipelineId
+            ? { ...p, activations: p.activations.filter((a) => !(a.mine && a.projectId === projectId)) }
+            : p,
         ),
+        pipelineOrphanActivations: get().pipelineOrphanActivations.filter(
+          (a: PipelineActivationView) => !(a.pipelineId === pipelineId && a.projectId === projectId),
+        ),
+        activePipelineByProject: { ...get().activePipelineByProject, [projectId]: null },
       });
-      if (previous) {
-        set({ activePipelineByProject: { ...get().activePipelineByProject, [previous.projectId]: null } });
-      }
       void get().loadActivatableProjects();
       return true;
     } catch (e) {
@@ -299,20 +381,27 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
 
   setPipelineExecutionProject: (projectId) => set({ pipelineExecutionProjectId: projectId }),
 
-  loadPipelineRuns: async (pipelineId: string) => {
+  loadActivationRuns: async (pipelineId: string, projectId: string, userId?: string) => {
     try {
-      const { runs } = await fetchPipelineRuns(pipelineId);
-      set({ pipelineRunsById: { ...get().pipelineRunsById, [pipelineId]: runs } });
-      const live = runs.find((r) => r.status === 'running' || r.status === 'awaiting_human');
-      if (live) void get().loadPipelineRunDetail(live.runId, pipelineId);
+      const { runs } = await fetchPipelineRuns(pipelineId, projectId, userId);
+      set({
+        pipelineRunsByActivation: {
+          ...get().pipelineRunsByActivation,
+          [activationRunsKey(pipelineId, projectId, userId)]: runs,
+        },
+      });
+      if (!userId) {
+        const live = runs.find((r) => r.status === 'running' || r.status === 'awaiting_human');
+        if (live) void get().loadPipelineRunDetail(live.runId, projectId);
+      }
     } catch {
-      /* rail keeps last-good */
+      /* keeps last-good */
     }
   },
 
-  loadPipelineRunDetail: async (runId: string, pipelineId: string) => {
+  loadPipelineRunDetail: async (runId: string, projectId: string) => {
     try {
-      const { run } = await fetchPipelineRun(runId, pipelineId);
+      const { run } = await fetchPipelineRun(runId, projectId);
       set({ pipelineRunDetail: run });
     } catch {
       /* keep previous */
@@ -346,7 +435,8 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
       case 'runUpdate': {
         const { run } = event;
         const terminal = run.status !== 'running' && run.status !== 'awaiting_human';
-        // Rail projection.
+        // Rail + activation-row projection (events arrive on the OWN channel,
+        // so the touched activation row is always a `mine` row).
         set({
           pipelines: state.pipelines.map((p: PipelineListEntry) =>
             p.id === event.pipelineId
@@ -354,6 +444,22 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
                   ...p,
                   lastRun: { runId: run.runId, status: run.status, firedAt: run.startedAt },
                   pendingApprovalCount: run.steps.filter((s) => s.status === 'awaiting_gate').length,
+                  activations: p.activations.map((a) =>
+                    a.mine && a.projectId === event.projectId
+                      ? {
+                          ...a,
+                          state: terminal
+                            ? a.state === 'broken'
+                              ? 'broken'
+                              : 'waiting'
+                            : run.status === 'awaiting_human'
+                              ? 'awaiting_human'
+                              : 'running',
+                          currentRunId: terminal ? undefined : run.runId,
+                          lastRun: { runId: run.runId, status: run.status, firedAt: run.startedAt },
+                        }
+                      : a,
+                  ),
                 }
               : p,
           ),
@@ -375,8 +481,9 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
             },
           });
         }
-        // Runs list projection.
-        const runs = state.pipelineRunsById[event.pipelineId];
+        // Per-activation runs projection.
+        const runsKey = activationRunsKey(event.pipelineId, event.projectId);
+        const runs = state.pipelineRunsByActivation[runsKey];
         if (runs) {
           const summary: PipelineRunSummary = {
             runId: run.runId,
@@ -391,7 +498,7 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
           const next = runs.some((r: PipelineRunSummary) => r.runId === run.runId)
             ? runs.map((r: PipelineRunSummary) => (r.runId === run.runId ? summary : r))
             : [summary, ...runs];
-          set({ pipelineRunsById: { ...get().pipelineRunsById, [event.pipelineId]: next } });
+          set({ pipelineRunsByActivation: { ...get().pipelineRunsByActivation, [runsKey]: next } });
         }
         // Open run detail (canvas overlay + timeline) follows live.
         if (state.pipelineRunDetail?.runId === run.runId || state.selectedPipelineId === event.pipelineId) {
@@ -414,27 +521,49 @@ export const createPipelineSlice: StateCreator<any, [], [], PipelineSlice> = (se
         set({ pipelineApprovals: state.pipelineApprovals.filter((a: PipelinePendingApproval) => a.gateId !== event.gateId) });
         break;
       }
-      case 'activationChanged': {
-        const entry = state.pipelines.find((p: PipelineListEntry) => p.id === event.pipelineId);
+      case 'availabilityChanged': {
         set({
           pipelines: state.pipelines.map((p: PipelineListEntry) =>
-            p.id === event.pipelineId ? { ...p, activation: event.activation, nextFireAt: event.nextFireAt } : p,
+            p.id === event.pipelineId ? { ...p, enabled: event.enabled } : p,
           ),
+        });
+        break;
+      }
+      case 'activationChanged': {
+        // Own-channel event: fold the caller's own activation row in/out.
+        set({
+          pipelines: state.pipelines.map((p: PipelineListEntry) => {
+            if (p.id !== event.pipelineId) return p;
+            const without = p.activations.filter((a) => !(a.mine && a.projectId === event.projectId));
+            const activations = event.activation
+              ? [
+                  {
+                    pipelineId: event.pipelineId,
+                    projectId: event.projectId,
+                    activatedBy: event.activatedBy ?? event.activation.activatedBy ?? '',
+                    activatedAt: event.activation.activatedAt,
+                    mine: true,
+                    state: 'waiting' as const,
+                    ...(event.nextFireAt && { nextFireAt: event.nextFireAt }),
+                  },
+                  ...without,
+                ]
+              : without;
+            return { ...p, activations, nextFireAt: event.nextFireAt };
+          }),
           activePipelineByProject: {
             ...state.activePipelineByProject,
             [event.projectId]: event.activation
               ? {
                   pipelineId: event.pipelineId,
-                  pipelineName: entry?.name ?? event.pipelineId,
+                  pipelineName:
+                    state.pipelines.find((p: PipelineListEntry) => p.id === event.pipelineId)?.name ?? event.pipelineId,
                   state: 'waiting',
                   nextFireAt: event.nextFireAt,
                 }
               : null,
           },
         });
-        if (state.selectedPipelineId === event.pipelineId) {
-          set({ pipelineExecutionProjectId: event.activation?.projectId ?? get().pipelineExecutionProjectId });
-        }
         break;
       }
       case 'defChanged': {

@@ -1,7 +1,9 @@
 /**
- * PipelineRuns — fire history (firedBy badge, status, duration) and the
- * per-run step timeline (status chips, jobId chip → job deep link, gate
- * audit line "Approved by … · 14:02 · in-app").
+ * ActivationRunHistory — one activation's fire history (firedBy badge,
+ * status, duration) and the per-run step timeline (status chips, jobId chip →
+ * job deep link, gate audit line). Embedded per-activation inside the
+ * Execution view; members' histories render read-only (no cancel, no detail —
+ * run detail is own-runs-only on the server).
  */
 
 import { useEffect } from 'react';
@@ -9,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { Clock, Play, XCircle } from 'lucide-react';
 import type { PipelineRunSummary, StepRecord } from '@ant/shared';
 import { useStore } from '@/domain/store';
+import { activationRunsKey } from '@/domain/store/slices/pipelineSlice';
 import { StatusPill } from '../ConfigEditor/aurora';
 import { Button } from '../aurora';
 import { cancelPipelineRun } from '@/infrastructure/http/api/pipelines';
@@ -34,59 +37,79 @@ const STEP_COLOR: Record<string, string> = {
   pending: 'var(--text-3)',
 };
 
-export function PipelineRuns({ pipelineId }: { pipelineId: string }) {
+export function ActivationRunHistory({
+  pipelineId,
+  projectId,
+  userId,
+  mine,
+}: {
+  pipelineId: string;
+  projectId: string;
+  /** Set for an org member's activation — read-only summaries. */
+  userId?: string;
+  mine: boolean;
+}) {
   const { t } = useTranslation('pipelines');
-  const runs = useStore((s) => s.pipelineRunsById[pipelineId]) ?? [];
+  const key = activationRunsKey(pipelineId, projectId, mine ? undefined : userId);
+  const runs = useStore((s) => s.pipelineRunsByActivation[key]) ?? [];
   const detail = useStore((s) => s.pipelineRunDetail);
-  const loadPipelineRuns = useStore((s) => s.loadPipelineRuns);
+  const loadActivationRuns = useStore((s) => s.loadActivationRuns);
   const loadPipelineRunDetail = useStore((s) => s.loadPipelineRunDetail);
 
   useEffect(() => {
-    void loadPipelineRuns(pipelineId);
-  }, [pipelineId, loadPipelineRuns]);
+    void loadActivationRuns(pipelineId, projectId, mine ? undefined : userId);
+  }, [pipelineId, projectId, userId, mine, loadActivationRuns]);
 
   if (runs.length === 0) {
     return (
-      <div style={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 13 }}>
-        {t('runs.empty', 'No runs yet — press Run now to test this pipeline.')}
+      <div style={{ color: 'var(--text-3)', fontSize: 12, padding: '10px 4px' }}>
+        {mine
+          ? t('runs.empty', 'No runs yet — press Run now to test this pipeline.')
+          : t('runs.emptyOther', 'No runs recorded for this activation yet.')}
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-      <div style={{ width: 320, flexShrink: 0, borderRight: '1px solid var(--border-1)', overflowY: 'auto', padding: 10 }}>
-        {runs.map((run) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '6px 0' }}>
+      {runs.map((run) => (
+        <div key={run.runId}>
           <RunRow
-            key={run.runId}
             run={run}
-            active={detail?.runId === run.runId}
-            onClick={() => void loadPipelineRunDetail(run.runId, pipelineId)}
+            active={mine && detail?.runId === run.runId}
+            clickable={mine}
+            onClick={() => mine && void loadPipelineRunDetail(run.runId, projectId)}
           />
-        ))}
-      </div>
-      <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '14px 18px' }}>
-        {detail ? (
-          <RunTimeline
-            steps={detail.steps}
-            live={detail.status === 'running' || detail.status === 'awaiting_human'}
-            onCancel={
-              detail.status === 'running' || detail.status === 'awaiting_human'
-                ? () => void cancelPipelineRun(detail.runId, pipelineId)
-                : undefined
-            }
-          />
-        ) : (
-          <div style={{ color: 'var(--text-3)', fontSize: 12.5, paddingTop: 30, textAlign: 'center' }}>
-            {t('runs.pickOne', 'Select a run to inspect its timeline.')}
-          </div>
-        )}
-      </div>
+          {mine && detail?.runId === run.runId && (
+            <div style={{ padding: '10px 6px 4px 18px' }}>
+              <RunTimeline
+                steps={detail.steps}
+                live={detail.status === 'running' || detail.status === 'awaiting_human'}
+                onCancel={
+                  detail.status === 'running' || detail.status === 'awaiting_human'
+                    ? () => void cancelPipelineRun(detail.runId)
+                    : undefined
+                }
+              />
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
-function RunRow({ run, active, onClick }: { run: PipelineRunSummary; active: boolean; onClick: () => void }) {
+function RunRow({
+  run,
+  active,
+  clickable,
+  onClick,
+}: {
+  run: PipelineRunSummary;
+  active: boolean;
+  clickable: boolean;
+  onClick: () => void;
+}) {
   const { t } = useTranslation('pipelines');
   const pill = RUN_PILL[run.status] ?? RUN_PILL.completed;
   const started = new Date(run.startedAt);
@@ -94,31 +117,30 @@ function RunRow({ run, active, onClick }: { run: PipelineRunSummary; active: boo
   return (
     <button
       onClick={onClick}
+      disabled={!clickable}
       style={{
         width: '100%',
         textAlign: 'left',
-        padding: '9px 10px',
+        padding: '8px 10px',
         borderRadius: 'var(--r-md)',
         border: `1px solid ${active ? 'var(--violet-500)' : 'var(--border-1)'}`,
         background: active ? 'color-mix(in srgb, var(--violet-500) 7%, transparent)' : 'var(--bg-surface)',
-        cursor: 'pointer',
-        marginBottom: 6,
+        cursor: clickable ? 'pointer' : 'default',
         display: 'flex',
-        flexDirection: 'column',
-        gap: 5,
+        alignItems: 'center',
+        gap: 10,
+        flexWrap: 'wrap',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-2)' }}>
-          {run.firedBy === 'cron' ? <Clock size={11} /> : <Play size={11} />}
-          {run.firedBy === 'cron' ? t('runs.cron', 'Scheduled') : t('runs.manual', 'Manual')}
-        </span>
-        <StatusPill state={pill.state} label={t(pill.labelKey, pill.fallback)} />
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-2)' }}>
+        {run.firedBy === 'cron' ? <Clock size={11} /> : <Play size={11} />}
+        {run.firedBy === 'cron' ? t('runs.cron', 'Scheduled') : t('runs.manual', 'Manual')}
+      </span>
+      <StatusPill state={pill.state} label={t(pill.labelKey, pill.fallback)} />
+      <span style={{ fontSize: 11, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>
         {started.toLocaleString()} {duration !== null && `· ${duration}s`}
-      </div>
-      <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-3)' }}>{run.runId}</div>
+      </span>
+      <span style={{ fontSize: 10, fontFamily: 'monospace', color: 'var(--text-3)' }}>{run.runId}</span>
     </button>
   );
 }

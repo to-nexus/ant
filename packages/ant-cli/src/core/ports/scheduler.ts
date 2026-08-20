@@ -6,9 +6,14 @@
  * per next fire lives in Redis, any replica's worker collects it).
  */
 
-import type { OrganizationKind } from '@ant/shared';
+import type { OrganizationKind, PipelineScope } from '@ant/shared';
 
-/** Owner coordinates stored at registration — never a token (owner delegation, D6). */
+/**
+ * ACTIVATOR coordinates stored at registration — never a token (owner
+ * delegation, D6). The scheduling unit is an activation, so the "owner" of
+ * every control job is the user who activated the pipeline on the project:
+ * their identity is what dispatch re-judges and what the work bills to.
+ */
 export interface PipelineOwner {
   userId: string;
   organizationId: string;
@@ -19,6 +24,10 @@ export interface PipelineFireJobData {
   kind: 'fire';
   owner: PipelineOwner;
   pipelineId: string;
+  /** Scope root pinned at activate time — fire never resolves closest-wins. */
+  pipelineScope: PipelineScope;
+  /** The activation's project — with `owner`, addresses the activation dir. */
+  projectId: string;
   firedBy: 'cron' | 'manual';
   /** Set on overlap-queue re-arms so the original fire's identity survives. */
   fireEpoch?: number;
@@ -30,6 +39,7 @@ export interface PipelineGateTimeoutJobData {
   kind: 'gate-timeout';
   owner: PipelineOwner;
   pipelineId: string;
+  projectId: string;
   runId: string;
   stepId: string;
   gateId: string;
@@ -39,6 +49,7 @@ export interface PipelineStepRetryJobData {
   kind: 'step-retry';
   owner: PipelineOwner;
   pipelineId: string;
+  projectId: string;
   runId: string;
   stepId: string;
   /** Duplicate-gate retry counter (bounded). */
@@ -54,6 +65,7 @@ export interface PipelineOutcomeRetryJobData {
   kind: 'outcome-retry';
   owner: PipelineOwner;
   pipelineId: string;
+  projectId: string;
   runId: string;
   stepId: string;
   outcome: 'succeeded' | 'failed';
