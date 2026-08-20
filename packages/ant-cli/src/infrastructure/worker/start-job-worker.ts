@@ -20,9 +20,22 @@ import { startJobWorker } from './JobWorker';
 import { logger } from '../../utils/logger';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { applySharedWorkspaceUmask } from '../../core/config/childIdentity';
+import { assertJwtAuthorityScope } from '../auth/JwtService';
 
 async function main(): Promise<void> {
   logger.info(`Starting Job Worker process... (RECURSION_LIMIT: ${process.env.RECURSION_LIMIT || 'not set'})`, { component: 'JobWorkerProcess' });
+
+  // The worker neither signs nor verifies sessions but spawns LLM-chosen shell
+  // commands under its own UID. `dotenv/config` above means a direct-dotenv cloud
+  // launch could load a live JWT secret into this env, reachable from those
+  // commands via /proc — refuse to boot if any JWT key material is present
+  // (M-NEW-016). Compose already withholds it; this makes that a guarantee.
+  try {
+    assertJwtAuthorityScope('none');
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error), { component: 'JobWorkerProcess' });
+    process.exit(1);
+  }
 
   // The worker spawns LLM-chosen shell commands; when they run under a separate
   // identity both sides need group-write in the shared workspace (no-op when unset).

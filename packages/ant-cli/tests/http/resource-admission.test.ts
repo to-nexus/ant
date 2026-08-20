@@ -317,6 +317,7 @@ describe('force=true tree refresh is single-flight (M-009)', () => {
         await new Promise(r => setTimeout(r, 120));
         return [{ name: 'plan', path: 'plan', type: 'directory', children: [] }];
       },
+      resolveExistingFeatureForMutation: async () => '/tmp/nope',
       workspaceResolver: { getFeaturePath: () => '/tmp/nope' },
     } as any;
 

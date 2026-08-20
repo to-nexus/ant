@@ -3,7 +3,13 @@ import {
   mkdirpContained,
   readTextContained,
   writeTextContained,
+  readTextContainedBase,
+  writeTextContainedBase,
+  mkdirpContainedBase,
+  toBaseRelative,
+  type BaseRelative,
 } from '../../../../../../../core/config/containedIo';
+import { WorkspacePathResolver } from '../../../../../../../core/config/WorkspacePathResolver';
 import { parseEnvLine } from './utils';
 import { findNextEnvLine } from './parseEnvAnnotations';
 import { ServiceConnection } from '../../../../../../../core/ports/portRegistry';
@@ -42,8 +48,25 @@ function normalizeTarget(target: EnvFileTarget): { root: string; rel: string } {
   return { root: path.dirname(abs), rel: path.basename(abs) };
 }
 
+/**
+ * Rebind an env target to the service-owned physical workspace base when it
+ * lives under it, so the codebase/feature name components descend O_NOFOLLOW and
+ * a preview child that reparents the codebase root cannot land the `.env` write
+ * on an external target (H-003). `undefined` for out-of-base targets keeps the
+ * `{root, rel}` ancestor-bound form.
+ */
+function baseTargetOf(target: EnvFileTarget): BaseRelative | undefined {
+  const { root, rel } = normalizeTarget(target);
+  return toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), path.resolve(root, rel));
+}
+
 /** `null` = absent / unreadable / refused. Every read in this module goes here. */
 function readEnvFile(target: EnvFileTarget): string | null {
+  const br = baseTargetOf(target);
+  if (br) {
+    const r = readTextContainedBase(br);
+    return r.ok ? r.text : null;
+  }
   const { root, rel } = normalizeTarget(target);
   const result = readTextContained(root, rel);
   return result.ok ? result.text : null;
@@ -51,6 +74,22 @@ function readEnvFile(target: EnvFileTarget): string | null {
 
 /** Every write in this module goes here. Throws loudly rather than silently skipping. */
 function writeEnvFile(target: EnvFileTarget, text: string): void {
+  const br = baseTargetOf(target);
+  if (br) {
+    const parent = path.dirname(br.relative);
+    if (parent !== '.' && parent !== '') {
+      const made = mkdirpContainedBase({ base: br.base, relative: parent });
+      if (!made.ok) {
+        throw new Error(`Cannot write ${br.relative}: destination is outside the allowed boundary (${made.reason})`);
+      }
+    }
+    const written = writeTextContainedBase(br, text);
+    if (!written.ok) {
+      throw new Error(`Cannot write ${br.relative}: destination is outside the allowed boundary (${written.reason})`);
+    }
+    return;
+  }
+
   const { root, rel } = normalizeTarget(target);
   const parent = path.dirname(rel);
   if (parent !== '.' && parent !== '') {

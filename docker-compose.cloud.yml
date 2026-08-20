@@ -42,15 +42,22 @@ x-ant-env-cloud-base: &ant-env-cloud-base
   ANT_SERVER_MODE: cloud
   FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
 
-# Session VERIFICATION. Needed by every process that verifies a session:
-# ant-api (route auth), ant-realtime (SSE/WS auth), ant-preview (proxy
-# ownership). ES256 public key carries no minting authority, so it is safe in
-# ant-preview; the HS256 secret is the symmetric fallback and is gated by
-# ANT_JWT_ALLOW_SYMMETRIC at boot.
+# Session VERIFICATION for a process that runs NO user-authored code
+# (ant-realtime). The ES256 public key carries no minting authority. The HS256
+# secret is the symmetric single-host fallback, gated by ANT_JWT_ALLOW_SYMMETRIC
+# at boot. It is deliberately NOT given to ant-preview: that process spawns user
+# code under its own UID, so a secret there is /proc-readable session forgery
+# (C-001, M-NEW-013) and its boot gate ('verify-usercode') refuses it outright.
 x-ant-env-cloud-verify: &ant-env-cloud-verify
   ANT_JWT_PUBLIC_KEY: ${ANT_JWT_PUBLIC_KEY:-}
   ANT_JWT_SECRET: ${ANT_JWT_SECRET:-}
   ANT_JWT_ALLOW_SYMMETRIC: ${ANT_JWT_ALLOW_SYMMETRIC:-}
+
+# Session VERIFICATION for a process that spawns user-authored code
+# (ant-preview). Public key ONLY — no symmetric secret, no opt-out. A symmetric
+# single-host deployment cannot run preview; it must migrate to an ES256 key pair.
+x-ant-env-cloud-verify-pubonly: &ant-env-cloud-verify-pubonly
+  ANT_JWT_PUBLIC_KEY: ${ANT_JWT_PUBLIC_KEY:-}
 
 # Session SIGNING. Consumed ONLY by ant-api, the only process that mounts the
 # auth router and therefore the only one that mints a session.
@@ -79,7 +86,8 @@ services:
     environment:
       <<: *ant-env-cloud-base
 
-  # Verifies proxy ownership; never serves sign-in.
+  # Verifies proxy ownership; never serves sign-in. Runs user-authored code, so
+  # it receives the public key ONLY (no symmetric secret / opt-out).
   ant-preview:
     environment:
-      <<: [*ant-env-cloud-base, *ant-env-cloud-verify]
+      <<: [*ant-env-cloud-base, *ant-env-cloud-verify-pubonly]

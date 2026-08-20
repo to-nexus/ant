@@ -5,6 +5,7 @@ import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 import { KeyedSingleFlight } from '../../../../../core/realtime/KeyedSingleFlight';
+import { acquireConcurrencySlot } from '../../../../../core/redis/concurrencySlot';
 
 /**
  * WorkflowBridge
@@ -168,19 +169,37 @@ export class WorkflowBridge {
       });
       
       const stateStore = getInfrastructureFactory().getStateStore();
-      
-      const fileTree = await this.deps.projectService.getFileTree(
-        projectId, 
-        featureName, 
-        userContext
+
+      // The pod-local KeyedSingleFlight above coalesces this pod's bursts, but a
+      // mutation storm across pods would still run one scan per pod. Take the same
+      // cluster-wide per-account scan slot the direct tree route uses; if the
+      // budget is spent, skip this best-effort refresh (a later event/cache read
+      // covers it) rather than pile onto the shared filesystem (M-NEW-021).
+      const slot = await acquireConcurrencySlot(
+        stateStore,
+        `ant:slots:tree:${userContext.organizationId}:${userContext.userId}`,
+        { limit: 2, ttlSeconds: 60 },
       );
-      
+      if (!slot) {
+        logger.debug(`[FileTreeUpdate] scan slot busy; skipping background refresh`, {
+          component: 'WorkflowBridge', projectId, featureName,
+        });
+        return;
+      }
+
+      let fileTree;
+      try {
+        fileTree = await this.deps.projectService.getFileTree(projectId, featureName, userContext);
+      } finally {
+        await slot.release();
+      }
+
       // Validate userContext for user-scoped channel
       if (!userContext?.organizationId || !userContext?.userId) {
-        logger.warn(`[FileTreeUpdate] Cannot broadcast without userContext`, { 
-          component: 'WorkflowBridge', 
-          projectId, 
-          featureName 
+        logger.warn(`[FileTreeUpdate] Cannot broadcast without userContext`, {
+          component: 'WorkflowBridge',
+          projectId,
+          featureName
         });
         return;
       }

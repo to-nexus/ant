@@ -51,6 +51,14 @@ const TREE_EXCLUDE = new Set([
 ]);
 
 /**
+ * Single-scan budget for the canonical file tree (M-009). Sized well above any
+ * real feature so normal trees are unaffected; a hostile wide/deep tree stops at
+ * the cap with a partial result instead of walking unbounded on the shared API.
+ */
+const CANONICAL_TREE_MAX_ENTRIES = 20_000;
+const CANONICAL_TREE_MAX_DEPTH = 32;
+
+/**
  * FileOperationService
  * 
  * Handles file and directory operations within features.
@@ -123,7 +131,14 @@ export class FileOperationService {
     // Reconcile canonical dirs/files for existing features (retroactive for newly added entries)
     await ensureCanonicalStructure(featurePath);
 
-    const buildTree = async (dirPath: string, relativePath: string = ''): Promise<FileNode[]> => {
+    // Bound a single scan: an attacker-authored wide/deep tree would otherwise
+    // walk unbounded, holding the shared API's filesystem/CPU/heap (M-009). Every
+    // raw Dirent charges the budget (hidden entries included) and depth is capped;
+    // over-budget stops descending rather than throwing (partial tree, no crash).
+    const budget = { entries: CANONICAL_TREE_MAX_ENTRIES };
+
+    const buildTree = async (dirPath: string, relativePath: string = '', depth = 0): Promise<FileNode[]> => {
+      if (depth > CANONICAL_TREE_MAX_DEPTH || budget.entries <= 0) return [];
       let items: fs.Dirent[] = [];
       try {
         items = await fs.promises.readdir(dirPath, { withFileTypes: true });
@@ -133,6 +148,13 @@ export class FileOperationService {
 
       if (items.length === 0) {
         return [];
+      }
+
+      // Charge every raw entry (pre-filter) so hidden/excluded names cannot make
+      // a wide directory free to enumerate.
+      budget.entries -= items.length;
+      if (budget.entries < 0) {
+        items = items.slice(0, Math.max(0, items.length + budget.entries));
       }
 
       const sorted = items
@@ -152,7 +174,7 @@ export class FileOperationService {
         const itemRelativePath = relativePath ? `${relativePath}/${item.name}` : item.name;
 
         if (item.isDirectory()) {
-          const children = await buildTree(fullPath, itemRelativePath);
+          const children = await buildTree(fullPath, itemRelativePath, depth + 1);
           tree.push({
             name: item.name,
             path: itemRelativePath,

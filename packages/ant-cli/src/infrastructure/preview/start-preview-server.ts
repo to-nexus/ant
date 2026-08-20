@@ -50,9 +50,10 @@ async function main(): Promise<void> {
   applySharedWorkspaceUmask();
 
   // This process VERIFIES sessions and spawns user-authored children under its
-  // own UID, so it must not hold signing authority (C-001).
+  // own UID, so it must be public-key-only — no secret, no private key, and no
+  // ANT_JWT_ALLOW_SYMMETRIC escape hatch (C-001, M-NEW-013).
   try {
-    assertJwtAuthorityScope('verify');
+    assertJwtAuthorityScope('verify-usercode');
   } catch (error) {
     logger.error(error instanceof Error ? error.message : String(error), {
       component: 'PreviewServerProcess'

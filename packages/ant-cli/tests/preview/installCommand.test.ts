@@ -60,6 +60,15 @@ describe('credential-safe install: scripts-off acquire, credential-free lifecycl
     });
   }
 
+  // M-NEW-001 (recheck): --ignore-scripts does not stop pnpm's own
+  // `.pnpmfile.cjs` hook, which can read GIT_CONFIG_KEY_0. The credentialed
+  // acquire pass must also pass --ignore-pnpmfile; the lifecycle pass must not.
+  it('pnpm acquire pass also disables the project pnpmfile hook', () => {
+    expect(buildInstallCommand('pnpm', { ignoreScripts: true }).args).toContain('--ignore-pnpmfile');
+    expect(buildInstallCommand('pnpm').args).not.toContain('--ignore-pnpmfile');
+    expect(buildInstallCommand('pnpm', { ignoreScripts: false }).args).not.toContain('--ignore-pnpmfile');
+  });
+
   it('runInstall passes credentials only to the scripts-off pass', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, '../../src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts'),

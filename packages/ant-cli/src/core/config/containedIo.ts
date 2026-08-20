@@ -565,4 +565,369 @@ export function unlinkContained(root: string, relPath: string): void {
   }
 }
 
-export const __testing = { DESCENT_AVAILABLE, anchorForWrite, componentsUnder };
+// ============================================================================
+// Base-relative descent (root-reparent containment)
+// ============================================================================
+//
+// The functions above anchor the descent at `realpath(root)` — but `root` is a
+// caller-supplied *name* (a feature path), and `openDirDescended` opens that
+// anchor by name. A preview child that reparents the feature root (or an
+// ancestor of it that the shared `ant` group can rename) between the realpath
+// and the open is followed: the descent protects components *below* the root,
+// never the root itself (H-011, H-003, M-NEW-005, M-NEW-018, M-NEW-019).
+//
+// The base-relative variants close that by anchoring at a service-owned
+// **physical workspace base** — the volume mount root, above every tenant
+// directory, which a feature-scoped child cannot rename — and descending the
+// ENTIRE relative path (org/user/project/features/<slug>/…) from it with
+// `O_NOFOLLOW` at every hop. The feature name is now a descended component, not
+// the anchor, so swapping it for a symlink is refused with ELOOP rather than
+// followed. `base` is realpath'd once; nothing below it is ever re-resolved by
+// name. On a non-Linux host (single-developer local CLI) the descent degrades
+// to a name-based join from `realpath(base)`, matching the read/write helpers.
+
+/** A write/read target expressed as a service-owned base plus a relative path. */
+export interface BaseRelative {
+  /** Absolute, service-owned physical base (e.g. ANT_WORKSPACE_BASE_PATH). */
+  base: string;
+  /** Path under `base`; EVERY component is descended O_NOFOLLOW. */
+  relative: string;
+}
+
+/**
+ * Convert an absolute target into a {@link BaseRelative} anchored at the
+ * service-owned physical workspace base. The single conversion owner every sink
+ * uses to opt into root-reparent-safe descent: it turns the feature path (which
+ * is `base + '/' + <org>/<user>/<project>/features/<slug>`) into the pinned base
+ * plus the full relative path, so the feature name descends as a component.
+ *
+ * Returns `undefined` when the target is NOT under the base — a `repoType:'local'`
+ * codebase, or any user-owned path outside the multi-tenant volume — so the
+ * caller keeps its legacy (single-trust) path for those.
+ */
+export function toBaseRelative(base: string, absTarget: string): BaseRelative | undefined {
+  const absBase = path.resolve(base);
+  const abs = path.resolve(absTarget);
+  if (abs !== absBase && !isPathWithin(absBase, abs)) return undefined;
+  const relative = path.relative(absBase, abs);
+  if (relative === '' || relative.startsWith('..')) return undefined;
+  return { base: absBase, relative };
+}
+
+/** realpath the trusted base once — the descent's unreparentable anchor. */
+function baseAnchor(base: string): { path: string } | ContainedFail {
+  try {
+    return { path: fs.realpathSync(path.resolve(base)) };
+  } catch {
+    return { ok: false, reason: 'missing' };
+  }
+}
+
+/** Lexically clean the relative path into descent components. Rejects `..`/absolute. */
+function relativeComponents(relative: string): string[] | ContainedFail {
+  if (path.isAbsolute(relative)) return { ok: false, reason: 'escaped' };
+  const parts = relative.split(/[\\/]+/).filter((p) => p !== '' && p !== '.');
+  if (parts.length === 0) return { ok: false, reason: 'not-a-file' };
+  if (parts.some((p) => p === '..')) return { ok: false, reason: 'escaped' };
+  return parts;
+}
+
+/** Open the leaf of `base/relative` for reading, descending every component. */
+function openLeafBase(anchor: string, components: readonly string[]): { fd: number } | ContainedFail {
+  const leaf = components[components.length - 1];
+  if (!DESCENT_AVAILABLE) {
+    try {
+      return { fd: fs.openSync(path.join(anchor, ...components), fs.constants.O_RDONLY | O_NOFOLLOW) };
+    } catch (err: any) {
+      return { ok: false, reason: failFor(err?.code) };
+    }
+  }
+  const dir = openDirDescended(anchor, components.slice(0, -1), false);
+  if ('ok' in dir) return dir;
+  try {
+    return { fd: fs.openSync(at(dir.fd, leaf), fs.constants.O_RDONLY | O_NOFOLLOW) };
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(dir.fd);
+  }
+}
+
+/** Read-grade base-relative access. Binds one descriptor; runs `fn` against it. */
+export function withContainedFdBase<T>(
+  target: BaseRelative,
+  fn: (fd: number, stat: fs.Stats) => T,
+  opts: ContainedIoOptions = {},
+): ContainedOk<T> | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+
+  const opened = openLeafBase(anchor.path, components);
+  if ('ok' in opened && opened.ok === false) return opened;
+  const fd = (opened as { fd: number }).fd;
+  const canonicalPath = path.join(anchor.path, ...components);
+
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!DESCENT_AVAILABLE && O_NOFOLLOW === 0) {
+      const link = fs.lstatSync(canonicalPath);
+      const identityKnown = Number(link.ino) !== 0 && Number(stat.ino) !== 0;
+      if (link.isSymbolicLink() || (identityKnown && (link.ino !== stat.ino || link.dev !== stat.dev))) {
+        return { ok: false, reason: 'swapped' };
+      }
+    }
+    if (!stat.isFile()) return { ok: false, reason: 'not-a-file' };
+    if (opts.maxBytes !== undefined && Number(stat.size) > opts.maxBytes) {
+      return { ok: false, reason: 'too-large' };
+    }
+    return { ok: true, value: fn(fd, stat), canonicalPath, stat };
+  } catch {
+    return { ok: false, reason: 'io-error' };
+  } finally {
+    closeQuiet(fd);
+  }
+}
+
+/** UTF-8 base-relative read. */
+export function readTextContainedBase(
+  target: BaseRelative,
+  opts: ContainedIoOptions = {},
+): { ok: true; text: string; canonicalPath: string; size: number } | ContainedFail {
+  const result = withContainedFdBase(target, (fd, stat) => readAllFromFd(fd, Number(stat.size)).toString('utf8'), opts);
+  if (!result.ok) return result;
+  return { ok: true, text: result.value, canonicalPath: result.canonicalPath, size: Number(result.stat.size) };
+}
+
+/** Binary base-relative read. */
+export function readBufferContainedBase(
+  target: BaseRelative,
+  opts: ContainedIoOptions = {},
+): { ok: true; bytes: Buffer; canonicalPath: string; size: number } | ContainedFail {
+  const result = withContainedFdBase(target, (fd, stat) => readAllFromFd(fd, Number(stat.size)), opts);
+  if (!result.ok) return result;
+  return { ok: true, bytes: result.value, canonicalPath: result.canonicalPath, size: Number(result.stat.size) };
+}
+
+/** Decision-grade base-relative stat via descent (leaf may be a directory). */
+export function statContainedBase(
+  target: BaseRelative,
+): { ok: true; canonicalPath: string; stat: fs.Stats } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+  const canonicalPath = path.join(anchor.path, ...components);
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      return { ok: true, canonicalPath, stat: fs.lstatSync(canonicalPath) };
+    } catch {
+      return { ok: false, reason: 'missing' };
+    }
+  }
+  const dir = openDirDescended(anchor.path, components.slice(0, -1), false);
+  if ('ok' in dir) return dir;
+  try {
+    const stat = fs.fstatSync(fs.openSync(at(dir.fd, components[components.length - 1]), fs.constants.O_RDONLY | O_NOFOLLOW));
+    return { ok: true, canonicalPath, stat };
+  } catch (err: any) {
+    // A directory leaf opens fine with O_RDONLY on Linux; a swapped symlink is ELOOP.
+    if (err?.code === 'ELOOP') return { ok: false, reason: 'swapped' };
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(dir.fd);
+  }
+}
+
+/** `mkdir -p` for `base/relative`, every component descended O_NOFOLLOW. */
+export function mkdirpContainedBase(target: BaseRelative): { ok: true } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      fs.mkdirSync(path.join(anchor.path, ...components), { recursive: true });
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, reason: failFor(err?.code) };
+    }
+  }
+  const dir = openDirDescended(anchor.path, components, true);
+  if ('ok' in dir) return dir;
+  closeQuiet(dir.fd);
+  return { ok: true };
+}
+
+/** Whole-file base-relative write; parents created on the way down. */
+export function writeBufferContainedBase(
+  target: BaseRelative,
+  content: Buffer,
+): { ok: true; written: number; canonicalPath: string } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+
+  const leaf = components[components.length - 1];
+  const dirs = components.slice(0, -1);
+  const canonicalPath = path.join(anchor.path, ...components);
+  const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC;
+
+  let fd: number;
+  if (!DESCENT_AVAILABLE) {
+    try {
+      if (dirs.length > 0) fs.mkdirSync(path.join(anchor.path, ...dirs), { recursive: true });
+      fd = fs.openSync(canonicalPath, flags | O_NOFOLLOW, 0o644);
+    } catch (err: any) {
+      return { ok: false, reason: failFor(err?.code) };
+    }
+  } else {
+    const dir = openDirDescended(anchor.path, dirs, true);
+    if ('ok' in dir) return dir;
+    try {
+      fd = fs.openSync(at(dir.fd, leaf), flags | O_NOFOLLOW, 0o644);
+    } catch (err: any) {
+      return { ok: false, reason: failFor(err?.code) };
+    } finally {
+      closeQuiet(dir.fd);
+    }
+  }
+
+  try {
+    let offset = 0;
+    while (offset < content.length) {
+      offset += fs.writeSync(fd, content, offset, content.length - offset, offset);
+    }
+    return { ok: true, written: Number(fs.fstatSync(fd).size), canonicalPath };
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(fd);
+  }
+}
+
+/** UTF-8 twin of {@link writeBufferContainedBase}. */
+export function writeTextContainedBase(
+  target: BaseRelative,
+  text: string,
+): { ok: true; written: number; canonicalPath: string } | ContainedFail {
+  return writeBufferContainedBase(target, Buffer.from(text, 'utf8'));
+}
+
+/** Remove the leaf of `base/relative`, its parent descended O_NOFOLLOW. */
+export function unlinkContainedBase(target: BaseRelative): { ok: true } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+  const leaf = components[components.length - 1];
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      fs.rmSync(path.join(anchor.path, ...components), { force: true });
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, reason: failFor(err?.code) };
+    }
+  }
+  const dir = openDirDescended(anchor.path, components.slice(0, -1), false);
+  if ('ok' in dir) return dir;
+  try {
+    fs.unlinkSync(at(dir.fd, leaf));
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(dir.fd);
+  }
+}
+
+/**
+ * Move `oldRel` → `newRel` within one base, both parents descended O_NOFOLLOW.
+ *
+ * `fs.rename` has no `renameat` binding in Node, so the leaf move is expressed
+ * through the parents' `/proc/self/fd/<fd>` links — resolution relative to the
+ * descended descriptors, so a component swapped after the descent no longer
+ * participates (M-NEW-018). Fails closed where the descent is unavailable and
+ * the parents cannot be held (non-Linux falls back to a name-based rename under
+ * the realpath'd base — the single-developer local boundary).
+ */
+export function renameContainedBase(
+  base: string,
+  oldRel: string,
+  newRel: string,
+): { ok: true } | ContainedFail {
+  const anchor = baseAnchor(base);
+  if ('ok' in anchor) return anchor;
+  const oldParts = relativeComponents(oldRel);
+  if ('ok' in oldParts) return oldParts;
+  const newParts = relativeComponents(newRel);
+  if ('ok' in newParts) return newParts;
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      fs.renameSync(path.join(anchor.path, ...oldParts), path.join(anchor.path, ...newParts));
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, reason: failFor(err?.code) };
+    }
+  }
+
+  const srcDir = openDirDescended(anchor.path, oldParts.slice(0, -1), false);
+  if ('ok' in srcDir) return srcDir;
+  const dstDir = openDirDescended(anchor.path, newParts.slice(0, -1), true);
+  if ('ok' in dstDir) {
+    closeQuiet(srcDir.fd);
+    return dstDir;
+  }
+  try {
+    fs.renameSync(at(srcDir.fd, oldParts[oldParts.length - 1]), at(dstDir.fd, newParts[newParts.length - 1]));
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(srcDir.fd);
+    closeQuiet(dstDir.fd);
+  }
+}
+
+/** Recursive remove of `base/relative`, its parent descended O_NOFOLLOW. */
+export function rmrfContainedBase(target: BaseRelative): { ok: true } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+  const leaf = components[components.length - 1];
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      fs.rmSync(path.join(anchor.path, ...components), { recursive: true, force: true });
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, reason: failFor(err?.code) };
+    }
+  }
+  const dir = openDirDescended(anchor.path, components.slice(0, -1), false);
+  if ('ok' in dir) return dir;
+  try {
+    // The leaf is addressed through the parent's descriptor; rm removes a
+    // terminal symlink itself rather than following it into a target.
+    fs.rmSync(at(dir.fd, leaf), { recursive: true, force: true });
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(dir.fd);
+  }
+}
+
+export const __testing = {
+  DESCENT_AVAILABLE,
+  anchorForWrite,
+  componentsUnder,
+  relativeComponents,
+};

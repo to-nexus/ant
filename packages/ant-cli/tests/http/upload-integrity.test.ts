@@ -72,6 +72,7 @@ describe('POST /upload — binary integrity', () => {
     const projectService = {
       readFile: fileOps.readFile.bind(fileOps),
       writeFile: fileOps.writeFile.bind(fileOps),
+      resolveExistingFeatureForMutation: async () => featurePath,
       workspaceResolver: resolver,
     } as any;
 

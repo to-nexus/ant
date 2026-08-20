@@ -376,6 +376,21 @@ export class ProjectService {
   async createFeature(projectId: string, featureName: string, userContext: UserContext, language?: string): Promise<void> {
     return this.featureCrud.createFeature(projectId, featureName, userContext, language);
   }
+
+  /**
+   * Authoritative feature reference for mutation/cache routes — the absolute
+   * feature path iff the feature was really created, else `null`. Routes gate
+   * every disk write and file-tree cache write on this so an arbitrary
+   * `:feature` slug cannot create ghost artifacts or cache keys (M-NEW-017,
+   * M-NEW-008).
+   */
+  async resolveExistingFeatureForMutation(
+    projectId: string,
+    featureName: string,
+    userContext: UserContext,
+  ): Promise<string | null> {
+    return this.featureCrud.resolveExistingFeature(projectId, featureName, userContext);
+  }
   
   /**
    * Delete a feature — mirrors `deleteProject`'s 5-step cascade so the

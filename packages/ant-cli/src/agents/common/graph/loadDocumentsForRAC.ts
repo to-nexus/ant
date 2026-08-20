@@ -33,7 +33,28 @@ import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
 import { sniffFd, formatByteSize } from '../../../core/utils/binaryExtensions';
 import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
 import { resolveCanonicalWithinRoot } from '../../../core/config/pathContainment';
-import { statContained, withContainedFd, readTextContained } from '../../../core/config/containedIo';
+import {
+  statContained,
+  withContainedFd,
+  readTextContained,
+  statContainedBase,
+  withContainedFdBase,
+  readTextContainedBase,
+  toBaseRelative,
+  type BaseRelative,
+} from '../../../core/config/containedIo';
+import { WorkspacePathResolver } from '../../../core/config/WorkspacePathResolver';
+
+/**
+ * Express a feature-relative (or feature-absolute) RAC target as a base-relative
+ * descent target anchored at the service-owned workspace base, so the feature
+ * name descends as a component and a reparented root cannot redirect the read
+ * into another tenant's files (H-011, M-NEW-005). `undefined` for out-of-base
+ * (`repoType:'local'`) targets keeps the name-anchored helper.
+ */
+function racBaseRelative(featurePath: string, target: string): BaseRelative | undefined {
+  return toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), path.resolve(featurePath, target));
+}
 
 export function loadResolvedArtifacts(
   resolvedAction: ResolvedActionContext,
@@ -130,7 +151,8 @@ function appendPath(
   // Containment is bound to the file object, not to the name: a link swapped
   // between the check and the read used to redirect this at any file the
   // service account could reach (H-011).
-  const entry = statContained(featurePath, relativePath);
+  const entryBr = racBaseRelative(featurePath, relativePath);
+  const entry = entryBr ? statContainedBase(entryBr) : statContained(featurePath, relativePath);
   if (!entry.ok) return;
   const stat = entry.stat;
   // The walk below keeps the REQUESTED name: `rel` becomes
@@ -167,7 +189,10 @@ function appendPath(
       }
       if (isStubLoadedPath(rel)) {
         // One open: kind and size must describe the same inode.
-        const sniff = withContainedFd(featurePath, child, fd => sniffFd(fd, rel));
+        const childBr = racBaseRelative(featurePath, child);
+        const sniff = childBr
+          ? withContainedFdBase(childBr, fd => sniffFd(fd, rel))
+          : withContainedFd(featurePath, child, fd => sniffFd(fd, rel));
         if (sniff.ok) {
           out.push({
             path: rel,
@@ -184,7 +209,10 @@ function appendPath(
   }
 
   if (isStubLoadedPath(relativePath)) {
-    const sniff = withContainedFd(featurePath, relativePath, fd => sniffFd(fd, relativePath));
+    const leafBr = racBaseRelative(featurePath, relativePath);
+    const sniff = leafBr
+      ? withContainedFdBase(leafBr, fd => sniffFd(fd, relativePath))
+      : withContainedFd(featurePath, relativePath, fd => sniffFd(fd, relativePath));
     if (sniff.ok) {
       out.push({
         path: relativePath,
@@ -275,6 +303,7 @@ function* walkDir(dirAbs: string): Iterable<string> {
 }
 
 function readAndNormalize(featurePath: string, target: string): string | null {
-  const read = readTextContained(featurePath, target);
+  const br = racBaseRelative(featurePath, target);
+  const read = br ? readTextContainedBase(br) : readTextContained(featurePath, target);
   return read.ok ? normalizeTemplateDoc(read.text) : null;
 }

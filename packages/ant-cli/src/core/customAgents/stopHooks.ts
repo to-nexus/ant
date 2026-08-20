@@ -72,23 +72,83 @@ export function activeStopHooksOf(
 }
 
 /**
- * Hand-rolled glob → RegExp for artifact-root-relative paths:
- * `*` = one segment (no `/`), `**` = any depth (whole segment only — the
- * validator enforces that). The `glob` package is an fs walker and minimatch
- * would be a new dependency for ~12 lines.
+ * One segment of a glob (`*` = any run of non-`/`, everything else literal)
+ * matched against one path segment. Classic linear two-pointer wildcard match:
+ * a single greedy `*` backtrack point, never the nested-quantifier backtracking
+ * a RegExp of repeated `**` produces (that was CWE-1333 ReDoS — a 43-char
+ * pattern froze a job-runner for 2.7s). No RegExp, no catastrophic blowup.
  */
-export function artifactGlobToRegExp(pattern: string): RegExp {
-  const segments = pattern.split('/');
-  const parts = segments.map((segment, i) => {
-    const isLast = i === segments.length - 1;
-    if (segment === '**') {
-      // Any depth, including zero (`reports/**/*.md` matches `reports/a.md`).
-      return isLast ? '.*' : '(?:[^/]+/)*';
+function matchSegment(pattern: string, str: string): boolean {
+  let p = 0;
+  let s = 0;
+  let star = -1;
+  let starS = 0;
+  while (s < str.length) {
+    if (p < pattern.length && pattern[p] !== '*' && pattern[p] === str[s]) {
+      p++;
+      s++;
+    } else if (p < pattern.length && pattern[p] === '*') {
+      star = p;
+      starS = s;
+      p++;
+    } else if (star !== -1) {
+      p = star + 1;
+      starS++;
+      s = starS;
+    } else {
+      return false;
     }
-    const escaped = segment.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*');
-    return isLast ? escaped : `${escaped}/`;
-  });
-  return new RegExp(`^${parts.join('')}$`);
+  }
+  while (p < pattern.length && pattern[p] === '*') p++;
+  return p === pattern.length;
+}
+
+/**
+ * Glob → boolean match for artifact-root-relative paths, evaluated as a
+ * segment-level DP (memoized): `*` = one segment (no `/`), `**` = any depth
+ * (whole segment only — the validator enforces that). A trailing `**` matches
+ * one-or-more remaining segments (`reports/**` needs something under it); an
+ * interior `**` matches zero-or-more (`reports/**​/*.md` matches `reports/a.md`).
+ * The DP is O(patternSegments × pathSegments) — no backtracking to exploit.
+ */
+export function matchArtifactGlob(pattern: string, path: string): boolean {
+  const pSegs = pattern.split('/');
+  const sSegs = path.split('/');
+  const memo = new Map<number, boolean>();
+  const key = (pi: number, si: number) => pi * (sSegs.length + 1) + si;
+
+  const dp = (pi: number, si: number): boolean => {
+    const k = key(pi, si);
+    const cached = memo.get(k);
+    if (cached !== undefined) return cached;
+
+    let result: boolean;
+    if (pi === pSegs.length) {
+      result = si === sSegs.length;
+    } else if (pSegs[pi] === '**') {
+      if (pi === pSegs.length - 1) {
+        // Trailing `**`: at least one remaining segment (regex `.*` after `/`).
+        result = si < sSegs.length;
+      } else {
+        // Interior `**`: zero-or-more segments.
+        result = false;
+        for (let k2 = si; k2 <= sSegs.length; k2++) {
+          if (dp(pi + 1, k2)) {
+            result = true;
+            break;
+          }
+        }
+      }
+    } else if (si >= sSegs.length) {
+      result = false;
+    } else {
+      result = matchSegment(pSegs[pi], sSegs[si]) && dp(pi + 1, si + 1);
+    }
+    memo.set(k, result);
+    return result;
+  };
+
+  return dp(0, 0);
 }
 
 /** Normalize a tool-reported write path to the glob vocabulary (artifact-root relative posix). */
@@ -118,9 +178,9 @@ export function checkStopHooks(
       return { intentId: h.intentId, hook: h.hook, matchedWrites: [], met: true, viaLedger: true };
     }
     if ('artifact' in h.hook) {
-      const re = artifactGlobToRegExp(h.hook.artifact);
+      const glob = h.hook.artifact;
       const matchedWrites = Array.from(new Set(evidence.writes.map(normalizeArtifactPath))).filter((w) =>
-        re.test(w),
+        matchArtifactGlob(glob, w),
       );
       return { intentId: h.intentId, hook: h.hook, matchedWrites, met: matchedWrites.length > 0 };
     }

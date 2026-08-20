@@ -132,11 +132,68 @@ describe('assertJwtAuthorityScope — boot gate (C-001)', () => {
     expect(() => assertJwtAuthorityScope('verify')).toThrow(/symmetric/);
   });
 
-  it('the symmetric refusal is opt-out-able, explicitly', () => {
+  it('the symmetric refusal is opt-out-able, explicitly (verify / non-user-code only)', () => {
     process.env.ANT_SERVER_MODE = 'cloud';
     process.env.ANT_JWT_SECRET = SECRET;
     process.env.ANT_JWT_ALLOW_SYMMETRIC = 'true';
     expect(() => assertJwtAuthorityScope('verify')).not.toThrow();
+  });
+
+  // C-001 (recheck): a dual-key verifier (public key AND a stray secret) used to
+  // boot silently because the predicate only checked `!publicKey && secret`.
+  it('cloud verifier holding BOTH a public key and a secret is refused (dual-key)', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    process.env.ANT_JWT_PUBLIC_KEY = keyPair().publicKey;
+    process.env.ANT_JWT_SECRET = SECRET;
+    expect(() => assertJwtAuthorityScope('verify')).toThrow(/signing authority/);
+  });
+
+  it('dual-key verifier is refused even with ANT_JWT_ALLOW_SYMMETRIC=true when it spawns user code', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    process.env.ANT_JWT_PUBLIC_KEY = keyPair().publicKey;
+    process.env.ANT_JWT_SECRET = SECRET;
+    process.env.ANT_JWT_ALLOW_SYMMETRIC = 'true';
+    expect(() => assertJwtAuthorityScope('verify-usercode')).toThrow(/signing material/);
+  });
+
+  // M-NEW-013: ant-preview ('verify-usercode') is public-key-only, no opt-out.
+  it('preview verifier with public key only passes', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    process.env.ANT_JWT_PUBLIC_KEY = keyPair().publicKey;
+    expect(() => assertJwtAuthorityScope('verify-usercode')).not.toThrow();
+  });
+
+  it('preview verifier with a secret is refused even under ALLOW_SYMMETRIC', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    process.env.ANT_JWT_PUBLIC_KEY = keyPair().publicKey;
+    process.env.ANT_JWT_SECRET = SECRET;
+    process.env.ANT_JWT_ALLOW_SYMMETRIC = 'true';
+    expect(() => assertJwtAuthorityScope('verify-usercode')).toThrow(/signing material/);
+  });
+
+  it('preview verifier with no public key is refused (symmetric-only is not accepted)', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    process.env.ANT_JWT_SECRET = SECRET;
+    process.env.ANT_JWT_ALLOW_SYMMETRIC = 'true';
+    expect(() => assertJwtAuthorityScope('verify-usercode')).toThrow();
+  });
+
+  // M-NEW-016: the job worker ('none') must carry no JWT key material.
+  it('job worker holding a secret is refused', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    process.env.ANT_JWT_SECRET = SECRET;
+    expect(() => assertJwtAuthorityScope('none')).toThrow(/neither signs nor verifies/);
+  });
+
+  it('job worker holding a private key is refused', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    process.env.ANT_JWT_PRIVATE_KEY = keyPair().privateKey;
+    expect(() => assertJwtAuthorityScope('none')).toThrow(/neither signs nor verifies/);
+  });
+
+  it('job worker with no JWT material passes', () => {
+    process.env.ANT_SERVER_MODE = 'cloud';
+    expect(() => assertJwtAuthorityScope('none')).not.toThrow();
   });
 
   it('cloud signer with a public key but no private key is refused', () => {

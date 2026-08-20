@@ -1,5 +1,5 @@
 import { spawn, ChildProcess, execFileSync } from 'child_process';
-import { childSpawnIdentity } from '../../../../../../core/config/childIdentity';
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../../../core/config/childIdentity';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PackageInfo, LogCallback, ExitCallback } from '../types';
@@ -220,15 +220,17 @@ export class ProcessSpawner {
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${pkg.type}) on port ${port}...`);
     options.onLog('stdout', `📋 Command: ${command} ${args.join(' ')}`);
     
+    // User-authored dev command. Under the service's own UID it could read
+    // `/proc/<service-pid>/environ` and re-link workspace directory entries
+    // the service writes through (C-001, H-003, M-NEW-003) — fail closed in
+    // cloud if the OS drop is unavailable.
+    assertUserCodeIsolationOrThrow(`preview:${pkg.type}`);
     const childProcess = spawn(command, args, {
       cwd: pkg.path,
       shell: true,
       detached: true,
       env,
       stdio: 'pipe',
-      // User-authored dev command. Under the service's own UID it could read
-      // `/proc/<service-pid>/environ` and re-link workspace directory entries
-      // the service writes through (C-001, H-003, M-NEW-003).
       ...childSpawnIdentity(),
     });
     
@@ -339,13 +341,18 @@ export class ProcessSpawner {
     logger.warn(`[Preview] Command: ${command} ${args.join(' ')}`, { component: 'ProcessSpawner' });
     options.onLog('stdout', `🚀 Starting ${pkg.name} (${language}) on port ${port}...`);
     options.onLog('stdout', `📋 Command: ${command} ${args.join(' ')}`);
-    
+
+    // User-authored dev command (Go/Python/Rust/Java/…). Fail closed in cloud if
+    // OS isolation is unavailable, and drop to the child UID — the Node path
+    // above had this but these language paths did not (M-015, M-NEW-015).
+    assertUserCodeIsolationOrThrow(`preview:${language}`);
     const childProcess = spawn(command, args, {
       cwd: pkg.path,
       shell: true,
       detached: true,
       env,
-      stdio: 'pipe'
+      stdio: 'pipe',
+      ...childSpawnIdentity(),
     });
     
     logger.warn(`[Preview] Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });

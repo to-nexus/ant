@@ -147,6 +147,35 @@ export class FeatureCrudService {
   }
 
   /**
+   * The authoritative feature reference for a mutation/cache path: the absolute
+   * feature path iff a name-valid feature was actually created (its root exists),
+   * else `null`. File mutation and file-tree cache routes must resolve through
+   * this before touching disk or Redis — `getFeaturePath` alone only builds a
+   * path and would let an arbitrary `:feature` slug materialize a ghost feature
+   * directory (M-NEW-017) or a 24h ghost tree-cache key (M-NEW-008). Mirrors the
+   * `fs.access` existence gate `deleteFeature` already uses.
+   */
+  async resolveExistingFeature(
+    projectId: string,
+    featureName: string,
+    userContext: UserContext,
+  ): Promise<string | null> {
+    let featurePath: string;
+    try {
+      assertValidFeatureName(featureName);
+      featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
+    } catch {
+      return null;
+    }
+    try {
+      await fs.promises.access(featurePath);
+      return featurePath;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Creation-ordered feature list with timestamps (route/API surface).
    */
   async listFeaturesDetailed(

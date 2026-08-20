@@ -20,6 +20,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Request } from 'express';
 import { composeChildEnv, composeCommandChildEnv } from '../../src/core/config/childEnv.js';
+import { assertUserCodeIsolationOrThrow } from '../../src/core/config/childIdentity.js';
 import { buildCleanHeaders, buildForwardHeaders } from '../../src/periphery/adapters/http/middleware/proxyForwarding.js';
 import { rewriteUpgradeHeaders, buildPeerForwardUpgradeHeaders } from '../../src/infrastructure/preview/PreviewServer.js';
 
@@ -497,6 +498,36 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
         pairs({ Cookie: `ant_session=${PLATFORM_TOKEN}` }),
       ).join('\r\n');
       expect(out).toContain('ant_session');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // OS-identity fail-closed for user-authored spawns (M-015 / M-NEW-015/016 / M-014)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('assertUserCodeIsolationOrThrow', () => {
+    const saved: Record<string, string | undefined> = {};
+    const KEYS = ['ANT_SERVER_MODE', 'ANT_CHILD_UID', 'ANT_CHILD_GID'];
+    beforeEach(() => {
+      for (const k of KEYS) { saved[k] = process.env[k]; delete process.env[k]; }
+    });
+    afterEach(() => {
+      for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    });
+
+    it('is a no-op in local (single-user) mode', () => {
+      expect(() => assertUserCodeIsolationOrThrow('preview')).not.toThrow();
+    });
+
+    it('fails closed in cloud when no distinct child UID is configured', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      expect(() => assertUserCodeIsolationOrThrow('preview')).toThrow(/without OS isolation/i);
+    });
+
+    it('fails closed in cloud when the child UID equals the service UID', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      const self = typeof process.getuid === 'function' ? process.getuid() : 0;
+      process.env.ANT_CHILD_UID = String(self);
+      expect(() => assertUserCodeIsolationOrThrow('run_command')).toThrow(/without OS isolation/i);
     });
   });
 });

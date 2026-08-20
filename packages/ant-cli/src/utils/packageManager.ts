@@ -61,12 +61,15 @@ export function findProjectRoot(startDir: string): string {
 export interface InstallCommandOptions {
   /**
    * Skip every dependency and project lifecycle script (`preinstall`,
-   * `install`, `postinstall`, `prepare`).
+   * `install`, `postinstall`, `prepare`) AND the package manager's own project
+   * loader hook (pnpm's `.pnpmfile.cjs`).
    *
    * This is what makes a credential-bearing install safe: the pass that holds a
    * user's GitHub PAT (as `GIT_CONFIG_KEY_0`) fetches and links the tree and
    * runs no attacker-authored code, and a second, credential-free pass runs the
-   * lifecycle (M-NEW-001). See `runCredentialSafeInstall`.
+   * lifecycle (M-NEW-001). `--ignore-scripts` alone does NOT stop a project
+   * `.pnpmfile.cjs` from executing and reading `GIT_CONFIG_KEY_0`, so pnpm also
+   * gets `--ignore-pnpmfile` in this pass. See `runCredentialSafeInstall`.
    */
   ignoreScripts?: boolean;
 }
@@ -80,7 +83,15 @@ export function buildInstallCommand(
     case 'pnpm':
       return {
         command: 'pnpm',
-        args: ['install', '--prod=false', '--config.confirm-modules-purge=false', ...ignore],
+        args: [
+          'install',
+          '--prod=false',
+          '--config.confirm-modules-purge=false',
+          ...ignore,
+          // The project's own pnpm hook file runs even under --ignore-scripts;
+          // disable it too whenever this pass carries a credential.
+          ...(opts.ignoreScripts ? ['--ignore-pnpmfile'] : []),
+        ],
       };
     case 'yarn':
       return { command: 'yarn', args: ['install', '--production=false', ...ignore] };

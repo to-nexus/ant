@@ -144,7 +144,7 @@ describe('SSE admission is decided before the response is committed (M-005)', ()
         loadEventsAsync: vi.fn(async () => []),
         loadTurnBuffersAsync: vi.fn(async () => ({})),
       } as any,
-      projectService: { getFileTree: vi.fn(async () => []) } as any,
+      projectService: { getFileTree: vi.fn(async () => []), resolveExistingFeatureForMutation: async () => '/tmp/feature' } as any,
       stateStore: undefined,
     } as any);
     const handler = router.stack.find((l: any) => l.route?.path === path).route.stack.at(-1).handle;

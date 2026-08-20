@@ -993,9 +993,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   /**
    * List all active previews
    */
+  /**
+   * O(1) count of registered previews via SCARD — the cheap counter the public
+   * `/health` endpoint needs instead of enumerating the whole registry with
+   * SMEMBERS + MGET + JSON.parse per entry (M-NEW-020).
+   */
+  async countPreviews(): Promise<number> {
+    return this.redis.scard(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST));
+  }
+
   async listPreviews(): Promise<PreviewState[]> {
     const portKeys = await this.redis.smembers(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST));
-    
+
     if (portKeys.length === 0) {
       return [];
     }

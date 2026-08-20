@@ -31,12 +31,24 @@ export function isPrivateAddress(ip: string): boolean {
   return false;
 }
 
+/** Ceiling on a single downloaded asset. Generous for design assets, bounded so
+ *  an attacker-controlled response cannot exhaust the worker heap (M-NEW-014). */
+const ASSET_MAX_BYTES = 50 * 1024 * 1024;
+/** Per-worker aggregate in-flight download budget — bounds concurrent heap use. */
+const ASSET_INFLIGHT_MAX_BYTES = 150 * 1024 * 1024;
+const ASSET_MAX_REDIRECT_HOPS = 5;
+const ASSET_FETCH_TIMEOUT_MS = 30_000;
+
+/** Reserved in-flight bytes across concurrent downloads in THIS worker process. */
+let assetInflightBytes = 0;
+
 /**
- * SSRF guard for server-side asset fetches: rejects non-http(s) schemes and
- * hosts that resolve to any internal address (checks every A/AAAA record to
- * blunt DNS-rebinding). Throws on a blocked target.
+ * Validate one hop's URL and resolve it to a single vetted public IP.
+ * Rejects non-http(s) schemes and any host resolving to an internal address
+ * (every A/AAAA record checked). The returned address is what the connection is
+ * pinned to, so a later DNS answer cannot rebind the socket to a private target.
  */
-async function assertPublicHttpUrl(rawUrl: string): Promise<void> {
+async function resolveVettedAddress(rawUrl: string): Promise<{ url: URL; address: string; family: number }> {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -51,6 +63,114 @@ async function assertPublicHttpUrl(rawUrl: string): Promise<void> {
   if (resolved.length === 0 || resolved.some((r) => isPrivateAddress(r.address))) {
     throw new Error(`Blocked internal address for host: ${parsed.hostname}`);
   }
+  return { url: parsed, address: resolved[0].address, family: resolved[0].family };
+}
+
+/**
+ * SSRF-safe, memory-bounded server-side asset fetch (H-NEW-002, M-NEW-014).
+ *
+ * Redirects are followed MANUALLY (`maxRedirections: 0`), re-validating scheme +
+ * every DNS record at each hop, and each connection is pinned to the vetted IP
+ * via a custom `connect.lookup` — so neither a `Location` to a private host nor a
+ * post-check DNS rebind reaches an internal endpoint. Host/SNI stay the original
+ * hostname (TLS + vhosts keep working). The body is read as a bounded stream
+ * with a hard byte cap and a per-worker in-flight reservation, replacing the
+ * unbounded `response.arrayBuffer()`.
+ */
+export async function safeFetchAssetToBuffer(rawUrl: string): Promise<Buffer> {
+  if (assetInflightBytes + ASSET_MAX_BYTES > ASSET_INFLIGHT_MAX_BYTES) {
+    throw new Error('Asset download budget exhausted; retry shortly');
+  }
+  assetInflightBytes += ASSET_MAX_BYTES; // reserve the ceiling up front
+  try {
+    const { Agent, request } = await import('undici');
+    let current = rawUrl;
+
+    for (let hop = 0; hop <= ASSET_MAX_REDIRECT_HOPS; hop++) {
+      const vetted = await resolveVettedAddress(current);
+      const agent = new Agent({
+        connect: {
+          lookup: (_hostname: string, _opts: unknown, cb: (err: Error | null, address: string, family: number) => void) =>
+            cb(null, vetted.address, vetted.family),
+        },
+      });
+
+      try {
+        // undici `request` does not follow redirects on its own — each 3xx is
+        // returned so it can be re-validated below before the next hop.
+        const res = await request(current, {
+          method: 'GET',
+          dispatcher: agent,
+          headersTimeout: ASSET_FETCH_TIMEOUT_MS,
+          bodyTimeout: ASSET_FETCH_TIMEOUT_MS,
+        });
+
+        const status = res.statusCode;
+        if (status >= 300 && status < 400) {
+          const loc = res.headers['location'];
+          await res.body.dump();
+          if (!loc || hop === ASSET_MAX_REDIRECT_HOPS) {
+            throw new Error('Too many redirects or missing redirect target');
+          }
+          current = new URL(Array.isArray(loc) ? loc[0] : loc, current).toString();
+          continue;
+        }
+        if (status >= 400) {
+          await res.body.dump();
+          throw new Error(`HTTP ${status}`);
+        }
+
+        const declared = Number(res.headers['content-length']);
+        if (Number.isFinite(declared) && declared > ASSET_MAX_BYTES) {
+          await res.body.dump();
+          throw new Error(`Asset exceeds ${ASSET_MAX_BYTES} bytes`);
+        }
+
+        const chunks: Buffer[] = [];
+        let total = 0;
+        for await (const chunk of res.body) {
+          total += chunk.length;
+          if (total > ASSET_MAX_BYTES) {
+            res.body.destroy();
+            throw new Error(`Asset exceeds ${ASSET_MAX_BYTES} bytes`);
+          }
+          chunks.push(chunk as Buffer);
+        }
+        return Buffer.concat(chunks, total);
+      } finally {
+        await agent.close().catch(() => {});
+      }
+    }
+    throw new Error('Too many redirects');
+  } finally {
+    assetInflightBytes -= ASSET_MAX_BYTES;
+  }
+}
+
+/** Ceiling exported for tests. */
+export const __ASSET_MAX_BYTES = ASSET_MAX_BYTES;
+
+/** Bounded read of a global-fetch response body (local self-host path). */
+export async function readBoundedResponse(response: Response): Promise<Buffer> {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > ASSET_MAX_BYTES) {
+    throw new Error(`Asset exceeds ${ASSET_MAX_BYTES} bytes`);
+  }
+  if (!response.body) return Buffer.from(await response.arrayBuffer());
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > ASSET_MAX_BYTES) {
+      await reader.cancel();
+      throw new Error(`Asset exceeds ${ASSET_MAX_BYTES} bytes`);
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks, total);
 }
 
 
@@ -144,27 +264,26 @@ export async function handleDownloadAsset(
     if (isCloudMode && isFigmaLocalAssetUrl(url) && ctx.userId && ctx.redis) {
       console.log(`📥 [Tool] download_asset: proxying via bridge for ${sanitized}`);
       buffer = await proxyAssetDownload(ctx.userId, ctx.redis, url);
+    } else if (isCloudMode) {
+      // Server-side fetch of an LLM-supplied URL: SSRF-safe (per-hop DNS
+      // validation + IP pinning + manual redirects) and memory-bounded. Legit
+      // Figma-local URLs took the bridge branch above. (H-NEW-002, M-NEW-014)
+      buffer = await safeFetchAssetToBuffer(url);
     } else {
-      // SSRF guard (cloud only): the direct fetch runs server-side, so an
-      // LLM-supplied URL must not reach internal/metadata endpoints. Legit
-      // Figma-local URLs go through the bridge-proxy branch above in cloud;
-      // in local self-host mode the operator's own loopback (Figma Desktop)
-      // is trusted, so the guard is scoped to cloud.
-      if (isCloudMode) {
-        await assertPublicHttpUrl(url);
-      }
-
+      // Local self-host: the operator's own loopback (Figma Desktop) is trusted,
+      // so the SSRF guard is scoped out — but still bound memory so a huge
+      // response cannot OOM the process.
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30_000);
-
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const timeout = setTimeout(() => controller.abort(), ASSET_FETCH_TIMEOUT_MS);
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        buffer = await readBoundedResponse(response);
+      } finally {
+        clearTimeout(timeout);
       }
-
-      buffer = Buffer.from(await response.arrayBuffer());
     }
 
     // Shared byte-safe write core: size + GLB header verification (fail-loud

@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   UNIVERSAL_STOP_HOOK_BOUNCE_BUDGET,
   activeStopHooksOf,
-  artifactGlobToRegExp,
+  matchArtifactGlob,
   buildStopHookGateMessage,
   buildStopHookLedger,
   checkStopHooks,
@@ -30,7 +30,7 @@ import type { CustomIntentDef } from '@ant/shared';
 
 const hook = (h: ActiveStopHook['hook'], intentId = 'report'): ActiveStopHook => ({ intentId, hook: h });
 
-describe('artifactGlobToRegExp', () => {
+describe('matchArtifactGlob', () => {
   it.each([
     // [pattern, path, matches]
     ['reports/*-weekly.md', 'reports/2026-W34-weekly.md', true],
@@ -50,8 +50,22 @@ describe('artifactGlobToRegExp', () => {
     // regex metacharacters in the pattern are literal
     ['a+b/c(1).md', 'a+b/c(1).md', true],
     ['a+b/c(1).md', 'aab/c1.md', false],
+    // multiple `**` retain zero-or-more semantics
+    ['a/**/b/**/c.md', 'a/b/c.md', true],
+    ['a/**/b/**/c.md', 'a/x/y/b/z/c.md', true],
+    ['a/**/b/**/c.md', 'a/b/c.txt', false],
   ] as const)('%s vs %s → %s', (pattern, p, expected) => {
-    expect(artifactGlobToRegExp(pattern).test(p)).toBe(expected);
+    expect(matchArtifactGlob(pattern, p)).toBe(expected);
+  });
+
+  // CWE-1333 regression: 14 `**` segments + a non-matching 14-segment path is
+  // the shape that froze the old RegExp for ~2.7s. The DP returns fast.
+  it('is not vulnerable to catastrophic backtracking (ReDoS)', () => {
+    const pattern = `${Array(14).fill('**').join('/')}/Z`;
+    const path = `${Array(14).fill('a').join('/')}/Y`;
+    const start = Date.now();
+    expect(matchArtifactGlob(pattern, path)).toBe(false);
+    expect(Date.now() - start).toBeLessThan(100);
   });
 });
 

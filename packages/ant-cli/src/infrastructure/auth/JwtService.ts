@@ -342,31 +342,44 @@ function readPem(raw: string | undefined): string | undefined {
   return pem.trim() ? pem : undefined;
 }
 
-/** Which side of the session contract a process is on. */
-export type JwtAuthorityRole = 'sign' | 'verify';
+/**
+ * Which side of the session contract a process is on.
+ *   - `sign`            — ant-api. Mints sessions; needs a private key or secret.
+ *   - `verify`          — ant-realtime. Verifies only; must hold no signing key.
+ *   - `verify-usercode` — ant-preview. Verifies AND spawns user-authored code
+ *                         under its own UID, so its env is `/proc`-readable.
+ *                         Stricter: must be public-key-only, no escape hatch.
+ *   - `none`            — ant-job. Neither signs nor verifies; must hold no JWT
+ *                         key material at all.
+ */
+export type JwtAuthorityRole = 'sign' | 'verify' | 'verify-usercode' | 'none';
 
 /**
  * Boot-time assertion that a process holds no more session authority than its
  * role needs.
  *
- * `verify` processes are ant-realtime and ant-preview. ant-preview runs
- * user-authored install and dev commands under its own UID and process
- * namespace, so its environment is readable from user code via `/proc`; a
- * symmetric secret or a private key there is platform-wide session forgery
- * (C-001). Refusing at boot is what makes the compose-level scoping a
- * guarantee rather than a convention — an operator who re-adds the key gets a
- * failed start, not a silent regression.
+ * A verifier that also carries signing material (a symmetric secret OR a private
+ * key) can mint sessions, and during an ES256 rollout a secret-only legacy
+ * verifier elsewhere would accept those forged tokens (C-001). The predicate
+ * therefore refuses ANY signing material in a verifier **regardless of whether a
+ * public key is also present** — the earlier `!publicKey && secret` form let a
+ * dual-key (public key + stray secret) verifier boot with a live minting secret
+ * in a `/proc`-readable env.
  *
- * `ANT_JWT_ALLOW_SYMMETRIC=true` is the documented opt-out for a single-host
- * self-hosted deployment that accepts the risk and cannot yet run a key pair.
- * Local mode has no session cookie at all and is never gated.
+ * `verify-usercode` (ant-preview) is stricter still: it spawns user code that
+ * shares its UID, so it must be public-key-only and `ANT_JWT_ALLOW_SYMMETRIC`
+ * does NOT excuse a secret there (M-NEW-013). `none` (ant-job) must carry no JWT
+ * key material at all — direct-dotenv cloud launches otherwise leak a live HS256
+ * secret into LLM command children (M-NEW-016). `ANT_JWT_ALLOW_SYMMETRIC`
+ * remains a documented single-host opt-out only for the non-user-code `verify`
+ * role. Local mode has no session cookie and is never gated.
  */
 export function assertJwtAuthorityScope(role: JwtAuthorityRole): void {
   if (process.env.ANT_SERVER_MODE !== 'cloud') return;
 
   const publicKey = readPem(process.env.ANT_JWT_PUBLIC_KEY);
   const privateKey = readPem(process.env.ANT_JWT_PRIVATE_KEY);
-  const secret = process.env.ANT_JWT_SECRET;
+  const secret = readPem(process.env.ANT_JWT_SECRET);
 
   if (role === 'sign') {
     if (publicKey && !privateKey) {
@@ -384,14 +397,52 @@ export function assertJwtAuthorityScope(role: JwtAuthorityRole): void {
     return;
   }
 
-  const holdsSigningAuthority = privateKey !== undefined || (!publicKey && secret !== undefined);
+  if (role === 'none') {
+    // The job worker neither signs nor verifies; any JWT key material in its env
+    // is reachable by LLM `run_command` children under the same UID (M-NEW-016).
+    if (privateKey !== undefined || secret !== undefined) {
+      throw new Error(
+        'The job worker holds JWT signing material (' +
+        (privateKey ? 'ANT_JWT_PRIVATE_KEY' : 'ANT_JWT_SECRET') +
+        ') but neither signs nor verifies sessions. It spawns user-authored commands ' +
+        'that share its UID, so remove ANT_JWT_SECRET / ANT_JWT_PRIVATE_KEY from the ' +
+        'ant-job environment (Docker Compose and direct-dotenv cloud profiles alike).',
+      );
+    }
+    return;
+  }
+
+  // Any signing material disqualifies a verifier — public key present or not.
+  const holdsSigningAuthority = privateKey !== undefined || secret !== undefined;
+
+  if (role === 'verify-usercode') {
+    // ant-preview: public-key-only, no escape hatch.
+    if (holdsSigningAuthority) {
+      throw new Error(
+        'The preview verifier carries JWT signing material (' +
+        (privateKey ? 'ANT_JWT_PRIVATE_KEY' : 'ANT_JWT_SECRET, which is symmetric') +
+        '). It spawns user-authored code that shares its UID and can read the key from ' +
+        '/proc, so it must be configured with ANT_JWT_PUBLIC_KEY only. Keep the private ' +
+        'key on the API process. ANT_JWT_ALLOW_SYMMETRIC does not apply here.',
+      );
+    }
+    if (!publicKey) {
+      throw new Error(
+        'The preview verifier has no ANT_JWT_PUBLIC_KEY. It must verify sessions with an ' +
+        'ES256 public key; a symmetric secret is not accepted on a process that spawns ' +
+        'user-authored code.',
+      );
+    }
+    return;
+  }
+
+  // role === 'verify' (ant-realtime): no user code, single-host opt-out allowed.
   if (!holdsSigningAuthority) return;
 
   if (process.env.ANT_JWT_ALLOW_SYMMETRIC === 'true') {
     logger.warn(
       '[JwtService] This process only needs to VERIFY sessions but holds signing ' +
-      'authority (ANT_JWT_ALLOW_SYMMETRIC=true). User-authored child processes share ' +
-      'this UID and can read it from /proc. Move to ANT_JWT_PUBLIC_KEY / ' +
+      'authority (ANT_JWT_ALLOW_SYMMETRIC=true). Move to ANT_JWT_PUBLIC_KEY / ' +
       'ANT_JWT_PRIVATE_KEY to close it.',
       { component: 'JwtService' },
     );
@@ -402,8 +453,7 @@ export function assertJwtAuthorityScope(role: JwtAuthorityRole): void {
     'This process only needs to VERIFY sessions, but the environment carries JWT ' +
     'signing authority (' +
     (privateKey ? 'ANT_JWT_PRIVATE_KEY' : 'ANT_JWT_SECRET, which is symmetric') +
-    '). It spawns user-authored processes that share its UID, so that key is reachable ' +
-    'from user code. Configure ANT_JWT_PUBLIC_KEY here and keep ANT_JWT_PRIVATE_KEY on ' +
-    'the API process only, or set ANT_JWT_ALLOW_SYMMETRIC=true to accept the risk.',
+    '). Configure ANT_JWT_PUBLIC_KEY here and keep ANT_JWT_PRIVATE_KEY on the API ' +
+    'process only, or set ANT_JWT_ALLOW_SYMMETRIC=true to accept the risk.',
   );
 }

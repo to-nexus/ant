@@ -40,7 +40,7 @@ import { resolveRedisUrl } from '../../core/config/redisUrl';
 import { extractLabelFromHost } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
-import { previewRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
+import { previewRateLimiter, healthRateLimiter, initializeRateLimiters } from '../../periphery/adapters/http/middleware/rateLimiter';
 import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import {
@@ -870,13 +870,15 @@ export class PreviewServer {
       contentSecurityPolicy: false,
     }));
 
-    // Health check (before auth)
-    this.app.get('/health', async (_req: Request, res: Response) => {
-      const previews = await this.stateStore.listPreviews();
+    // Health check (before auth). Uses the O(1) SCARD count — never enumerates
+    // the whole preview registry — and is rate-limited per IP so anonymous
+    // polling cannot amplify (M-NEW-020).
+    this.app.get('/health', healthRateLimiter, async (_req: Request, res: Response) => {
+      const activeInstances = await this.stateStore.countPreviews();
       res.json({
         healthy: true,
         service: 'ant-preview',
-        activeInstances: previews.length,
+        activeInstances,
         timestamp: new Date().toISOString()
       });
     });

@@ -53,6 +53,10 @@ const EXCLUDE_PATTERNS = [
   '.env.local',
 ];
 
+/** Single-scan budget for the worker's tree broadcast (M-009 mutation-notifier). */
+const BROADCAST_TREE_MAX_ENTRIES = 20_000;
+const BROADCAST_TREE_MAX_DEPTH = 32;
+
 
 export class FileTreeBroadcaster implements FileTreeUpdatePort {
   private pubRedis: Redis;
@@ -203,13 +207,21 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
    * their tree comes from `buildUniversalMergedTree`, whose free-form top level
    * must stay open.
    */
-  private async buildFileTree(dirPath: string, relativePath: string = ''): Promise<FileNode[]> {
+  private async buildFileTree(
+    dirPath: string,
+    relativePath: string = '',
+    budget: { entries: number } = { entries: BROADCAST_TREE_MAX_ENTRIES },
+    depth = 0,
+  ): Promise<FileNode[]> {
     const nodes: FileNode[] = [];
+    if (depth > BROADCAST_TREE_MAX_DEPTH || budget.entries <= 0) return nodes;
 
     try {
       const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+      budget.entries -= entries.length;
 
       for (const entry of entries) {
+        if (budget.entries < 0) break;
         // Feature root: allowlist (same SSOT the ArtifactsPanel renders from).
         // Deeper levels stay blacklist-based — canonical dirs hold user uploads.
         if (relativePath === '') {
@@ -222,7 +234,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
         const relPath = relativePath ? path.join(relativePath, entry.name) : entry.name;
 
         if (entry.isDirectory()) {
-          const children = await this.buildFileTree(fullPath, relPath);
+          const children = await this.buildFileTree(fullPath, relPath, budget, depth + 1);
           nodes.push({
             name: entry.name,
             type: 'directory',

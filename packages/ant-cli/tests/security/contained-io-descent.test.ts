@@ -28,6 +28,12 @@ import {
   readTextContained,
   writeTextContained,
   writeBufferContained,
+  readTextContainedBase,
+  writeTextContainedBase,
+  mkdirpContainedBase,
+  renameContainedBase,
+  unlinkContainedBase,
+  toBaseRelative,
 } from '../../src/core/config/containedIo';
 import { assertCanonicalWithinRoot } from '../../src/core/config/pathContainment';
 
@@ -142,6 +148,66 @@ describe('containedIo — containment bound to the file object', () => {
     it('mkdir -p is idempotent for an existing directory', () => {
       expect(mkdirpContained(root, 'plan')).toMatchObject({ ok: true });
       expect(mkdirpContained(root, 'plan')).toMatchObject({ ok: true });
+    });
+  });
+
+  // Base-relative descent: the feature NAME itself is a descended component, so a
+  // reparented root (the residual gap in the name-anchored helpers above) fails
+  // closed. H-011, H-003, M-NEW-005, M-NEW-018, M-NEW-019.
+  describe('base-relative descent (root reparent)', () => {
+    it('toBaseRelative maps an in-base target and rejects out-of-base', () => {
+      expect(toBaseRelative(base, path.join(root, 'plan/spec.md'))).toEqual({ base, relative: 'feature/plan/spec.md' });
+      expect(toBaseRelative(base, '/etc/passwd')).toBeUndefined();
+      expect(toBaseRelative(base, base)).toBeUndefined();
+    });
+
+    it('reads a normal file with the feature name as a descent component', () => {
+      expect(readTextContainedBase({ base, relative: 'feature/plan/spec.md' })).toMatchObject({ ok: true, text: 'inside' });
+    });
+
+    onLinuxDescent('refuses a read when the feature root is swapped for a symlink out of base', () => {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.symlinkSync(outside, root, 'dir'); // feature -> outside (holds SERVICE-SECRET)
+      const res = readTextContainedBase({ base, relative: 'feature/spec.md' });
+      expect(res.ok).toBe(false);
+      expect((res as any).reason).toBe('swapped');
+    });
+
+    onLinuxDescent('refuses a write through a reparented feature root', () => {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.symlinkSync(outside, root, 'dir');
+      const res = writeTextContainedBase({ base, relative: 'feature/spec.md' }, 'overwritten');
+      expect(res.ok).toBe(false);
+      expect(fs.readFileSync(path.join(outside, 'spec.md'), 'utf-8')).toBe('SERVICE-SECRET');
+    });
+
+    onLinuxDescent('refuses mkdir -p through a reparented feature root', () => {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.symlinkSync(outside, root, 'dir');
+      expect(mkdirpContainedBase({ base, relative: 'feature/deep/dir' }).ok).toBe(false);
+      expect(fs.existsSync(path.join(outside, 'deep'))).toBe(false);
+    });
+
+    it('renameContainedBase moves a leaf within the base', () => {
+      const r = renameContainedBase(base, 'feature/plan/spec.md', 'feature/plan/renamed.md');
+      expect(r.ok).toBe(true);
+      expect(fs.existsSync(path.join(root, 'plan', 'renamed.md'))).toBe(true);
+      expect(fs.existsSync(path.join(root, 'plan', 'spec.md'))).toBe(false);
+    });
+
+    onLinuxDescent('renameContainedBase refuses a source under a reparented root', () => {
+      fs.writeFileSync(path.join(outside, 'victim.md'), 'VICTIM');
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.symlinkSync(outside, root, 'dir');
+      const r = renameContainedBase(base, 'feature/victim.md', 'feature/moved.md');
+      expect(r.ok).toBe(false);
+      // The external file was neither moved nor removed.
+      expect(fs.readFileSync(path.join(outside, 'victim.md'), 'utf-8')).toBe('VICTIM');
+    });
+
+    it('unlinkContainedBase removes an in-base leaf', () => {
+      expect(unlinkContainedBase({ base, relative: 'feature/plan/spec.md' }).ok).toBe(true);
+      expect(fs.existsSync(path.join(root, 'plan', 'spec.md'))).toBe(false);
     });
   });
 });

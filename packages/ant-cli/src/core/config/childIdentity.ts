@@ -19,16 +19,19 @@
  * parent" — today's behaviour, and correct there: local mode is a single-user
  * trust boundary and there is no second account to drop to.
  *
- * ## Why this is a seam and not a switch
+ * ## Probe vs. gate
  * Changing a child's UID requires the spawning process to be privileged (root, or
  * holding an effective CAP_SETUID). The service containers run as the
  * unprivileged `ant` user, so whether the drop is *permitted* is decided by the
  * deployment — pod security context / container capabilities — not by this
- * codebase. The ids are therefore probed ONCE at first use and disabled with a
- * loud log if the platform refuses: a deployment that cannot grant the privilege
- * keeps working previews instead of failing every spawn with EPERM. The
- * complementary control that needs nothing from the deployment is asymmetric
- * session keys (`JwtService`) — that is what removes the authority worth stealing.
+ * codebase. `childSpawnIdentity()` probes ONCE and is fail-OPEN (returns `{}` with
+ * a loud log) so a mis-provisioned deployment does not 500 every request on an
+ * unrelated code path. That is NOT sufficient on its own: a spawn that actually
+ * runs user-authored code must FAIL CLOSED when the drop is unavailable, via
+ * {@link assertUserCodeIsolationOrThrow}. Cloud previews and LLM commands call
+ * that gate before spawning; local mode (a single-user trust boundary) is exempt.
+ * Asymmetric session keys (`JwtService`) remain the complementary control that
+ * removes the authority worth stealing.
  */
 
 import { spawnSync } from 'child_process';
@@ -148,6 +151,40 @@ export function applySharedWorkspaceUmask(): void {
 export function hasChildIdentity(): boolean {
   const { uid, gid } = childSpawnIdentity();
   return uid !== undefined || gid !== undefined;
+}
+
+/**
+ * Fail-closed gate for a cloud spawn of user-authored code.
+ *
+ * `childSpawnIdentity()` is deliberately fail-open (it returns `{}` and logs
+ * loudly when the platform refuses the drop) so a mis-provisioned deployment
+ * does not silently 500 every request. But a spawn that runs user code under the
+ * SERVICE UID leaves the same-UID `/proc` and shared-workspace-rename vectors
+ * open (M-015, M-NEW-015, M-NEW-016, M-014). Where the finding is "user code must
+ * not share the service identity", the call site must fail closed instead — this
+ * is that gate.
+ *
+ * In cloud it throws unless a child UID is configured, differs from the service
+ * UID, and the platform actually permits the drop (config presence alone is not
+ * enough — `hasChildIdentity()` passed on that and was the gap). Local mode is a
+ * single-developer trust boundary with no second account, so it is a no-op.
+ */
+export function assertUserCodeIsolationOrThrow(context: string): void {
+  if (process.env.ANT_SERVER_MODE !== 'cloud') return;
+
+  const uid = readId('ANT_CHILD_UID');
+  const gid = readId('ANT_CHILD_GID');
+  const parentUid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  const distinct = uid !== undefined && (parentUid === undefined || uid !== parentUid);
+
+  if (distinct && isDropPermitted({ uid, gid })) return;
+
+  throw new Error(
+    `[childIdentity] Refusing to run user-authored code (${context}) without OS isolation. ` +
+    'Cloud requires ANT_CHILD_UID (and typically ANT_CHILD_GID) set to an unprivileged account ' +
+    'DIFFERENT from the service UID, with the container granted the privilege to change UIDs. ' +
+    'Same-UID children can read the service /proc environment and rename shared-workspace entries.',
+  );
 }
 
 export const __testing = {

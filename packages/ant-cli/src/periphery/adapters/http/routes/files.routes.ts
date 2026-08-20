@@ -23,6 +23,43 @@ import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
 import { resolveFeatureScopedFilePath, measureArchiveInput } from './helpers/featureFiles';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
+import { mkdirpContainedBase, renameContainedBase, toBaseRelative } from '../../../../core/config/containedIo';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+
+/**
+ * `mkdir -p featurePath/relDir` bound to the physical workspace base by
+ * descriptor descent, so a preview child that swaps an intermediate directory
+ * (or the feature root itself) after `assertWithinRoot` cannot redirect the
+ * mkdir outside the feature (M-NEW-003, M-NEW-018). Targets outside the
+ * multi-tenant base (`repoType:'local'`) keep the plain recursive mkdir — the
+ * single-developer trust boundary. Returns false to fail closed.
+ */
+async function mkdirpContainedOrLegacy(featurePath: string, relDir: string): Promise<boolean> {
+  const absTarget = path.resolve(featurePath, relDir);
+  const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), absTarget);
+  if (br) return mkdirpContainedBase(br).ok === true;
+  await fs.promises.mkdir(absTarget, { recursive: true });
+  return true;
+}
+
+/**
+ * Move `featurePath/oldRel` → `featurePath/newRel` bound to the physical
+ * workspace base by descriptor descent on both parents (M-NEW-018). Legacy
+ * name-based rename only for out-of-base (`repoType:'local'`) targets.
+ */
+async function renameContainedOrLegacy(featurePath: string, oldRel: string, newRel: string): Promise<boolean> {
+  const base = WorkspacePathResolver.getPhysicalWorkspacesPath();
+  const oldBr = toBaseRelative(base, path.resolve(featurePath, oldRel));
+  const newBr = toBaseRelative(base, path.resolve(featurePath, newRel));
+  if (oldBr && newBr && oldBr.base === newBr.base) {
+    const parent = path.dirname(newBr.relative);
+    if (parent && parent !== '.' && !mkdirpContainedBase({ base: newBr.base, relative: parent }).ok) return false;
+    return renameContainedBase(oldBr.base, oldBr.relative, newBr.relative).ok === true;
+  }
+  await fs.promises.mkdir(path.dirname(path.resolve(featurePath, newRel)), { recursive: true });
+  await fs.promises.rename(path.resolve(featurePath, oldRel), path.resolve(featurePath, newRel));
+  return true;
+}
 
 /**
  * File operations (read, write, delete, upload)
@@ -153,6 +190,18 @@ export function createFilesRoutes(deps: {
       const userContext = extractUserContext(req);
       const forceRefresh = req.query.force === 'true';
 
+      // An arbitrary `:feature` slug would otherwise scan to a synthetic root
+      // tree and persist a 24h Redis cache key for a feature that was never
+      // created (M-NEW-008). Resolve the authoritative reference first.
+      const existingFeaturePath = await deps.projectService.resolveExistingFeatureForMutation(
+        projectId,
+        featureName,
+        userContext,
+      );
+      if (!existingFeaturePath) {
+        return res.status(404).json({ error: 'Feature not found' });
+      }
+
       const readCache = async () => {
         if (!deps.stateStore) return null;
         try {
@@ -179,10 +228,13 @@ export function createFilesRoutes(deps: {
         return tree;
       };
 
-      if (!forceRefresh || !deps.stateStore) {
+      if (!deps.stateStore) {
         return res.json(await scanAndCache());
       }
 
+      // Both the cold-cache miss AND force=true reach the SAME unbounded scan
+      // sink, so both go through the per-feature single-flight — otherwise a
+      // cache-miss stampede (many pods, empty cache) each ran a full walk (M-009).
       const lockKey = `ant:lock:filetree:${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName}`;
       const lock = await acquireLock(deps.stateStore, lockKey, FILE_TREE_SCAN_LOCK_TTL_SECONDS);
       if (lock) {
@@ -328,6 +380,12 @@ export function createFilesRoutes(deps: {
 
       const userContext = extractUserContext(req);
 
+      // Reject a write to a feature that was never created — otherwise the
+      // recursive mkdir would materialize a ghost feature directory (M-NEW-017).
+      if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+        return res.status(404).json({ error: 'Feature not found' });
+      }
+
       const parentDir = path.dirname(filePath).replace(/\\/g, '/');
       const extCheck = validateFileForDir(parentDir, path.basename(filePath));
       if (!extCheck.valid) {
@@ -376,6 +434,10 @@ export function createFilesRoutes(deps: {
       }
       
       const userContext = extractUserContext(req);
+      if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+        res.status(404).json({ error: 'Feature not found' });
+        return;
+      }
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
@@ -390,9 +452,14 @@ export function createFilesRoutes(deps: {
         return;
       }
 
-      // Ensure base directory exists
-      await fs.promises.mkdir(baseDir, { recursive: true });
-      
+      // Ensure base directory exists — descriptor-descended from the workspace
+      // base so a swapped intermediate cannot redirect it (M-NEW-003).
+      const baseRel = path.relative(featurePath, baseDir);
+      if (!(await mkdirpContainedOrLegacy(featurePath, baseRel === '' ? '.' : baseRel))) {
+        res.status(400).json({ error: 'Invalid directory path' });
+        return;
+      }
+
       // relativePaths[] preserves folder structure from drag-and-drop uploads
       const rawRelPaths = req.body.relativePaths;
 
@@ -523,6 +590,9 @@ export function createFilesRoutes(deps: {
       }
       
       const userContext = extractUserContext(req);
+      if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+        return res.status(404).json({ error: 'Feature not found' });
+      }
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
       // Security: must stay within the feature directory. A bare `startsWith`
@@ -550,9 +620,13 @@ export function createFilesRoutes(deps: {
         }
       }
 
-      // Create directory recursively
-      await fs.promises.mkdir(fullPath, { recursive: true });
-      
+      // Create directory recursively — descriptor-descended from the workspace
+      // base (M-NEW-018); a swapped intermediate fails closed rather than
+      // creating a directory outside the feature.
+      if (!(await mkdirpContainedOrLegacy(featurePath, path.relative(featurePath, fullPath)))) {
+        return res.status(400).json({ error: 'Invalid directory path' });
+      }
+
       if (deps.fileTreeNotifier) {
         try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
       }
@@ -575,6 +649,9 @@ export function createFilesRoutes(deps: {
       }
 
       const userContext = extractUserContext(req);
+      if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+        return res.status(404).json({ error: 'Feature not found' });
+      }
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       const featurePath = workspaceResolver.getFeaturePath(userContext, projectId, featureName);
 
@@ -604,9 +681,16 @@ export function createFilesRoutes(deps: {
         });
       }
 
-      // Ensure parent directory of new path exists
-      await fs.promises.mkdir(path.dirname(fullNewPath), { recursive: true });
-      await fs.promises.rename(fullOldPath, fullNewPath);
+      // Move descriptor-descended from the workspace base on both parents, so a
+      // swapped intermediate cannot land the rename outside the feature
+      // (M-NEW-018). Parent of the destination is created the same way.
+      if (!(await renameContainedOrLegacy(
+        featurePath,
+        path.relative(featurePath, fullOldPath),
+        path.relative(featurePath, fullNewPath),
+      ))) {
+        return res.status(400).json({ error: 'Invalid file path' });
+      }
 
       if (deps.fileTreeNotifier) {
         try { await deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext); } catch {}
@@ -706,18 +790,38 @@ export function createFilesRoutes(deps: {
         // Preflight: answer only whether the archive is within budget. The browser
         // starts a folder download as a navigation, so a 413 body would render as
         // raw JSON in a new tab; the UI asks here first and shows a real message.
-        // Cheap by construction — the same bounded walk, no archive, no stream slot.
+        // The bounded walk still opens the whole tree, so it takes the SAME
+        // cluster-wide per-account slot as the ZIP stream — otherwise repeated
+        // preflights bypass the admission the stream enforces (M-NEW-004).
         if (req.query.preflight === '1') {
-          const probe = await measureArchiveInput(fullPath, {
-            maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
-            maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
-          });
-          if (!probe.exceeded) return res.status(204).end();
-          return res.status(413).json({
-            code: 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED',
-            error: 'Folder too large to download',
-            limit: { entries: DIRECTORY_DOWNLOAD_MAX_ENTRIES, bytes: DIRECTORY_DOWNLOAD_MAX_BYTES },
-          });
+          const preflightSlot = deps.stateStore
+            ? await acquireConcurrencySlot(
+                deps.stateStore,
+                `ant:slots:zip:${userContext.organizationId}:${userContext.userId}`,
+                { limit: DIRECTORY_DOWNLOAD_MAX_INFLIGHT, ttlSeconds: 60 },
+              )
+            : { release: async () => {} };
+          if (!preflightSlot) {
+            res.setHeader('Retry-After', '2');
+            return res.status(429).json({
+              code: 'TOO_MANY_ARCHIVE_REQUESTS',
+              error: 'Too many folder downloads in progress. Retry shortly.',
+            });
+          }
+          try {
+            const probe = await measureArchiveInput(fullPath, {
+              maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
+              maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
+            });
+            if (!probe.exceeded) return res.status(204).end();
+            return res.status(413).json({
+              code: 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED',
+              error: 'Folder too large to download',
+              limit: { entries: DIRECTORY_DOWNLOAD_MAX_ENTRIES, bytes: DIRECTORY_DOWNLOAD_MAX_BYTES },
+            });
+          } finally {
+            await preflightSlot.release();
+          }
         }
 
         // A directory ZIP reads the whole tree, compresses it at zlib level 6 and

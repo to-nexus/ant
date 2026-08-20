@@ -12,6 +12,7 @@ import { extractUserContext } from './helpers/userContext';
 import { assertJobAccess } from './helpers/jobAccess';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { acquireLock } from '../../../../core/redis/distributedLock';
 import { getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
 import { getSessionKey } from '../../../../core/chat/schema';
 import { getChatSyncChannel } from '../../../../infrastructure/state/redisConstants';
@@ -52,7 +53,16 @@ export function createSSERoutes(deps: {
     // Resolve user context from JWT cookie (set by auth middleware).
     const userContext: UserContext = extractUserContext(req);
     logger.debug(`User context resolved`, { component: 'SSE', projectId, featureName, organizationId: userContext.organizationId, userId: userContext.userId });
-    
+
+    // Reject a stream for a feature that was never created — otherwise the
+    // initial fileTree cache-miss below scans a synthetic tree and persists a
+    // 24h ghost cache key, and a slot is consumed for a ghost (M-NEW-008).
+    // Rejected before admission so no headers are committed.
+    if (!(await deps.projectService.resolveExistingFeatureForMutation(projectId, featureName, userContext))) {
+      res.status(404).json({ error: 'Feature not found' });
+      return;
+    }
+
     // Admit the connection BEFORE sending headers — slot budget, slot key, and
     // the user's Pub/Sub subscription all need the state store, and a response
     // once committed can no longer carry a status code.
@@ -160,9 +170,31 @@ export function createSSERoutes(deps: {
             }
           }
           if (!fileTree) {
-            fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
-            if (deps.stateStore && fileTree) {
-              deps.stateStore.setFileTreeCache(userContext.userId, projectId, featureName, fileTree).catch(() => {});
+            // Cache-miss reaches the same unbounded scan sink as the HTTP GET;
+            // take the same per-feature single-flight so a reconnect storm does
+            // not run one full walk per connection (M-009). If another holder is
+            // scanning, wait briefly for its cache before falling back to a scan.
+            const lockKey = `ant:lock:filetree:${userContext.organizationId}:${userContext.userId}:${projectId}:${featureName}`;
+            const lock = deps.stateStore ? await acquireLock(deps.stateStore, lockKey, 30) : null;
+            if (lock) {
+              try {
+                fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
+                if (deps.stateStore && fileTree) {
+                  deps.stateStore.setFileTreeCache(userContext.userId, projectId, featureName, fileTree).catch(() => {});
+                }
+              } finally {
+                await lock.release();
+              }
+            } else if (deps.stateStore) {
+              for (let attempt = 0; attempt < 8 && !fileTree; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 250));
+                fileTree = await deps.stateStore.getFileTreeCache(userContext.userId, projectId, featureName).catch(() => null);
+              }
+              if (!fileTree) {
+                fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
+              }
+            } else {
+              fileTree = await deps.projectService.getFileTree(projectId, featureName, userContext);
             }
           }
           deps.sseService.sendInitialState(res, 'fileTree', {

@@ -67,6 +67,7 @@ let uploadInner: RequestHandler | null = null;
 let treeInner: RequestHandler | null = null;
 let downloadInner: RequestHandler | null = null;
 let forceRefreshInner: RequestHandler | null = null;
+let healthInner: RequestHandler | null = null;
 
 const warnedOnce = new Set<string>();
 
@@ -137,6 +138,13 @@ export const treeRateLimiter: RequestHandler = makeProxy('tree', () => treeInner
 export const downloadRateLimiter: RequestHandler = makeProxy('download', () => downloadInner);
 /** `?force=true` bypasses the tree cache by design; the bypass itself needs a budget. */
 export const forceRefreshRateLimiter: RequestHandler = makeProxy('forceRefresh', () => forceRefreshInner);
+
+/**
+ * Public preview `/health` limiter (per IP). Unauthenticated and pre-auth, so it
+ * cannot key on a user; a distributed per-IP cap keeps anonymous polling from
+ * hammering the endpoint (M-NEW-020, defense-in-depth on top of the O(1) count).
+ */
+export const healthRateLimiter: RequestHandler = makeProxy('health', () => healthInner);
 
 /**
  * Bootstrap-time initialization for every rate limiter.
@@ -241,6 +249,16 @@ export function initializeRateLimiters(): void {
       error: 'Too many forced refreshes',
       message: 'The file tree is refreshed automatically; please wait before forcing another.',
     },
+  });
+
+  // Public /health — keyed by IP (default keyGenerator), since it is pre-auth.
+  healthInner = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: createStore('health'),
+    message: { error: 'Too many health checks', message: 'Please slow down.' },
   });
 
   initialized = true;

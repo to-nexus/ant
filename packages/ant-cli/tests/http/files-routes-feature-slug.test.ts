@@ -57,6 +57,9 @@ describe('files.routes — slash-named feature content round-trip', () => {
     const projectService = {
       readFile: fileOps.readFile.bind(fileOps),
       writeFile: fileOps.writeFile.bind(fileOps),
+      // The mutation/read gate only needs a truthy authoritative reference here;
+      // this test exercises slug round-tripping, not the feature lifecycle.
+      resolveExistingFeatureForMutation: async () => tmpWorkspaces,
       workspaceResolver: resolver,
     } as any;
 

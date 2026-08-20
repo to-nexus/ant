@@ -357,6 +357,12 @@ export interface StateStorePort {
    * List all active previews
    */
   listPreviews(): Promise<PreviewState[]>;
+
+  /**
+   * O(1) count of active previews (SCARD) — for hot/public paths that need only
+   * the number, not the records (e.g. the unauthenticated `/health` endpoint).
+   */
+  countPreviews(): Promise<number>;
   
   /**
    * List previews by pod

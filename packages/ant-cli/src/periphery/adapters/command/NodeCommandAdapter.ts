@@ -18,7 +18,7 @@ import { spawn } from "child_process";
 import { isProcessGroupAlive } from "./processTree";
 import { splitOnShellOperators, tokenizeShellSegment } from "../../../core/utils/shellParser";
 import { composeCommandChildEnv } from "../../../core/config/childEnv";
-import { childSpawnIdentity } from "../../../core/config/childIdentity";
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from "../../../core/config/childIdentity";
 
 /**
  * Build the environment for a user command child.
@@ -304,7 +304,12 @@ export class NodeCommandAdapter implements CommandPort {
       const [cmd, ...args] = needsShell ? [shell, ...shellArgs] : trimmed.split(/\s+/);
       
       const envForChild = cleanCommandEnv(options.env);
-      
+
+      // LLM-chosen command against a user workspace: fail closed in cloud if the
+      // OS identity drop is unavailable, so it cannot read the worker's /proc
+      // environment under the service UID (M-NEW-016).
+      assertUserCodeIsolationOrThrow('run_command');
+
       // ✅ Spawn with a dedicated process group for proper cleanup
       const child = spawn(cmd, args, {
         cwd,

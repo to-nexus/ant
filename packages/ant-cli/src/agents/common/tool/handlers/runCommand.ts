@@ -29,6 +29,7 @@ import { splitOnShellOperators, hasActualPipe, tokenizeShellSegment, maskQuotedR
 import { terminateProcessTree } from '../../../../periphery/adapters/command/processTree';
 import { getDefaultDevProcessControl } from '../../../../core/process/DevProcessControl';
 import { cleanCommandEnv } from '../../../../periphery/adapters/command/NodeCommandAdapter';
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../core/config/childIdentity';
 import { AsyncMutex } from '../../../../core/utils/AsyncMutex';
 import {
   lookupInjection,
@@ -952,6 +953,10 @@ export async function handleLongRunningCommand(
 
     console.log(`   🐚 Spawning: ${shell} ${shellArgs[0]} "${command}"`);
 
+    // Long-running LLM command shares the worker UID otherwise — drop to the
+    // child identity and fail closed in cloud when the drop is unavailable, the
+    // same as the short command path in NodeCommandAdapter (M-014).
+    assertUserCodeIsolationOrThrow('run_command:long-running');
     const child = spawn(shell, shellArgs, {
       cwd: workingDir,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -960,6 +965,7 @@ export async function handleLongRunningCommand(
       // unbounded. See commandResourceLimits.ts.
       env: cleanCommandEnv(spawnEnv),
       detached: process.platform !== 'win32',
+      ...childSpawnIdentity(),
     });
 
     console.log(`   📋 Process spawned with PID: ${child.pid}`);

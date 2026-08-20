@@ -151,7 +151,10 @@ describe('file routes anchor caller `dirPath` to the feature root (H-007 / L-030
 
     const { createFilesRoutes } = await import('../../src/periphery/adapters/http/routes/files.routes.js');
     router = createFilesRoutes({
-      projectService: { workspaceResolver: { getFeaturePath: () => featurePath } } as any,
+      projectService: {
+        workspaceResolver: { getFeaturePath: () => featurePath },
+        resolveExistingFeatureForMutation: async () => featurePath,
+      } as any,
     });
   });
 

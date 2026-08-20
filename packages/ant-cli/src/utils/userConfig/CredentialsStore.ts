@@ -279,7 +279,20 @@ export class CredentialsStore {
       }
       return Buffer.from(keyString, 'hex');
     }
-    
+
+    // In cloud, the file / auto-generated fallback below would write the key into
+    // the shared workspace volume, where a same-UID preview/command child can read
+    // it and reproduce another tenant's credential decryption (M-NEW-015). Cloud
+    // must supply ANT_ENCRYPTION_KEY out-of-band — fail closed rather than mint a
+    // reachable fallback key. Local single-user mode keeps the fallback.
+    if (process.env.ANT_SERVER_MODE === 'cloud') {
+      throw new Error(
+        'ANT_ENCRYPTION_KEY is required in cloud mode. The workspace-file fallback would place ' +
+          'the decryption key on the shared workspace volume, readable by same-UID user-code children. ' +
+          'Provide a 64-hex-char key out-of-band (openssl rand -hex 32).',
+      );
+    }
+
     // 2. Try file in workspaces/.ant/encryption.key
     const keyFilePath = path.join(this.workspaceRoot, '.ant', 'encryption.key');
     
