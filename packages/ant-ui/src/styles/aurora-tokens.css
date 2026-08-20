@@ -362,12 +362,22 @@ code, pre { font-family: var(--font-mono); }
 /* ============================================================================
    AURORA MESH BACKGROUND
    ============================================================================ */
+/*
+ * The mesh is an UNDERLAY: `z-index: -1`, not 0. It is a positioned sibling of
+ * `#root` (index.html), so at z-index 0 it painted ABOVE every in-flow block —
+ * the drifting blobs washed over each panel that declares a solid background,
+ * making the boxes inside it read as transparent. At -1 it paints above the
+ * canvas background and below all content, so opaque panels stay opaque while
+ * the surfaces that deliberately go transparent (boards, kanban columns,
+ * MainPanel) still show it through. Do not "fix" a washed panel by lifting that
+ * one slot into its own stacking context — the layer order is owned here.
+ */
 .aurora-mesh {
   position: fixed;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
-  z-index: 0;
+  z-index: -1;
 }
 .aurora-mesh::before,
 .aurora-mesh::after {

@@ -171,12 +171,10 @@ export function MainContentArea({
         // is the single source of truth — FileEditorPanel no longer carries a
         // parallel `isStreamingPreviewTab` branch.
         //
-        // `position:relative; zIndex:1` lifts this slot into its own stacking
-        // context ABOVE the page-global `.aurora-mesh` (a `position:fixed;
-        // z-index:0` sibling of `#root`). Without the lift the mesh blobs
-        // paint over the in-flow editor body, so the solid surfaces above read
-        // as a mottled wash. Boards intentionally stay transparent to show the
-        // mesh; the editor opts out here for readability.
+        // `position:relative; zIndex:1` keeps this slot in its own stacking
+        // context. The page-global `.aurora-mesh` is an underlay (`z-index:-1`,
+        // owned in aurora-tokens.css), so this is no longer what keeps the mesh
+        // off the editor body — the solid background is.
         <div
           className="flex-1 h-full overflow-hidden flex flex-col"
           style={{ background: 'var(--bg-canvas)', position: 'relative', zIndex: 1 }}
