@@ -8,10 +8,12 @@
  * (M-007). Ownership and extension checks run in the handler — after the bytes are
  * already resident — so they cannot help.
  *
- * Three gates, all BEFORE multer sees the stream:
+ * Four gates, all BEFORE multer sees the stream:
  *   1. request rate (Redis-backed, per account);
- *   2. simultaneous multipart requests per account, cluster-wide;
- *   3. a whole-request byte budget, enforced on `Content-Length` when it is present
+ *   2. a pod-wide in-flight byte ceiling across ALL accounts (process-local, so
+ *      always enforced) — bounds this replica's heap when many accounts converge;
+ *   3. simultaneous multipart requests per account, cluster-wide;
+ *   4. a whole-request byte budget, enforced on `Content-Length` when it is present
  *      and on the actual stream when it is not (a chunked body has no declared
  *      length, so trusting the header alone bounds only the honest client).
  *
@@ -26,6 +28,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import {
   UPLOAD_MAX_INFLIGHT_PER_USER,
   UPLOAD_REQUEST_MAX_BYTES,
+  UPLOAD_POD_MAX_INFLIGHT_BYTES,
 } from '../../../../core/config/uploadLimits';
 import { acquireConcurrencySlot, type ConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
@@ -44,6 +47,8 @@ export interface BoundedMultipartDeps {
   /** Override for a route with a different shape. Defaults to the shared budget. */
   maxBytes?: number;
   maxInFlight?: number;
+  /** Pod-wide in-flight byte ceiling (test override). Defaults to the SSOT. */
+  podMaxBytes?: number;
 }
 
 let cachedStateStore: StateStorePort | null | undefined;
@@ -63,6 +68,13 @@ async function resolveStateStore(explicit?: StateStorePort): Promise<StateStoreP
 /** Slot TTL: a crash backstop, not the release path. Above the slowest real upload. */
 const SLOT_TTL_SECONDS = 10 * 60;
 
+/**
+ * Process-local sum of in-flight upload bytes reserved across ALL accounts on
+ * this replica (M-007). Reserved before multer buffers anything and released on
+ * every terminal outcome; no Redis dependency, so it is always enforced.
+ */
+let podInflightBytes = 0;
+
 function accountKey(req: Request): string {
   const org = (req as any).organization?.id ?? 'unknown';
   const user = (req as any).user?.id ?? 'unknown';
@@ -80,6 +92,7 @@ function tooLarge(res: Response, maxBytes: number): void {
 export function boundedMultipart(deps: BoundedMultipartDeps = {}): RequestHandler[] {
   const maxBytes = deps.maxBytes ?? UPLOAD_REQUEST_MAX_BYTES;
   const maxInFlight = deps.maxInFlight ?? UPLOAD_MAX_INFLIGHT_PER_USER;
+  const podMaxBytes = deps.podMaxBytes ?? UPLOAD_POD_MAX_INFLIGHT_BYTES;
 
   const gate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     // 1. Declared length — refuse before reading a single byte when we can.
@@ -89,7 +102,35 @@ export function boundedMultipart(deps: BoundedMultipartDeps = {}): RequestHandle
       return;
     }
 
-    // 2. Cluster-wide in-flight budget for this account.
+    // 2. Pod-wide byte reservation across ALL accounts — bounds this replica's
+    //    upload heap even when many different accounts converge here, which the
+    //    per-account slot below cannot (M-007). Reserve the declared length, or
+    //    the whole-request budget when the body is chunked (no declared length),
+    //    so a flood of length-less uploads is bounded too. Fail-closed, no Redis.
+    const reserveBytes = Number.isFinite(declared) && declared > 0
+      ? Math.min(declared, maxBytes)
+      : maxBytes;
+    if (podInflightBytes + reserveBytes > podMaxBytes) {
+      res.setHeader('Retry-After', '2');
+      res.status(429).json({
+        code: 'UPLOAD_POD_BUSY',
+        error: 'Server is handling too many uploads right now',
+        message: 'Too many uploads are in progress on this server. Retry shortly.',
+      });
+      return;
+    }
+    podInflightBytes += reserveBytes;
+    let podReleased = false;
+    const releasePod = () => {
+      if (podReleased) return;
+      podReleased = true;
+      podInflightBytes = Math.max(0, podInflightBytes - reserveBytes);
+    };
+    res.on('finish', releasePod);
+    res.on('close', releasePod);
+    req.on('aborted', releasePod);
+
+    // 3. Cluster-wide in-flight budget for this account.
     let slot: ConcurrencySlot | null = null;
     const stateStore = await resolveStateStore(deps.stateStore);
     if (stateStore) {
@@ -120,7 +161,7 @@ export function boundedMultipart(deps: BoundedMultipartDeps = {}): RequestHandle
     res.on('close', release);
     req.on('aborted', release);
 
-    // 3. Actual bytes. A chunked body declares no length, so the budget has to be
+    // 4. Actual bytes. A chunked body declares no length, so the budget has to be
     //    enforced on the stream itself — and enforced AS IT ARRIVES, so the parse
     //    stops before more Buffers accumulate rather than after.
     //
@@ -167,4 +208,8 @@ export const __testing = {
   resetStateStoreCache: () => {
     cachedStateStore = undefined;
   },
+  resetPodInflight: () => {
+    podInflightBytes = 0;
+  },
+  podInflightBytes: () => podInflightBytes,
 };

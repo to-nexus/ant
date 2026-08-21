@@ -153,6 +153,82 @@ describe('boundedMultipart — whole-request byte budget (M-007)', () => {
   });
 });
 
+describe('boundedMultipart — pod-wide in-flight byte ceiling across accounts (M-007)', () => {
+  const MAX = 4096;      // per-request budget
+  const POD_MAX = 6000;  // pod-wide ceiling — smaller than 2× per-request
+  let server: http.Server;
+  let baseUrl: string;
+  let account = 'a';
+
+  beforeEach(async () => {
+    multipartTesting.resetStateStoreCache();
+    multipartTesting.resetPodInflight();
+    const upload = multer({ storage: multer.memoryStorage(), limits: UPLOAD_LIMITS });
+    const app = express();
+    app.use((req, _res, next) => {
+      // Each request presents a DIFFERENT account — the per-account slot never
+      // fires; only the pod-wide ceiling can bound the convergence.
+      (req as any).user = { id: `u-${account}` };
+      (req as any).organization = { id: `o-${account}` };
+      next();
+    });
+    app.post(
+      '/upload',
+      // No stateStore → per-account slot is skipped; isolate the pod ceiling.
+      ...boundedMultipart({ maxBytes: MAX, podMaxBytes: POD_MAX }),
+      upload.array('files'),
+      (req, res) => { res.json({ count: (req.files as unknown[])?.length ?? 0 }); },
+    );
+    await new Promise<void>(resolve => { server = app.listen(0, () => resolve()); });
+    const addr = server.address();
+    baseUrl = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+  });
+
+  afterEach(async () => {
+    multipartTesting.resetPodInflight();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+
+  const slowForm = () => {
+    // A body that pauses mid-flight so its reservation is still held when the
+    // next request's admission runs.
+    return new ReadableStream({
+      async start(controller) {
+        controller.enqueue(new Uint8Array(16));
+        await new Promise(r => setTimeout(r, 200));
+        controller.close();
+      },
+    });
+  };
+
+  it('refuses a second account once the pod ceiling is reserved, and frees it after', async () => {
+    account = 'a';
+    const first = fetch(`${baseUrl}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'multipart/form-data; boundary=----x', 'Content-Length': String(MAX) },
+      body: slowForm(),
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+
+    await new Promise(r => setTimeout(r, 50));
+    // A different account: per-account slot cannot bound it — only the pod cap.
+    // First reserved MAX(4096); a second MAX(4096) would exceed POD_MAX(6000).
+    account = 'b';
+    const second = new FormData();
+    second.append('files', new Blob([new Uint8Array(2048)]), 'f.bin');
+    const secondRes = await fetch(`${baseUrl}/upload`, { method: 'POST', body: second });
+    expect(secondRes.status).toBe(429);
+    expect((await secondRes.json()).code).toBe('UPLOAD_POD_BUSY');
+
+    await first.catch(() => {});
+    // After the first completes its reservation is released; a new one is admitted.
+    account = 'c';
+    const third = new FormData();
+    third.append('files', new Blob([new Uint8Array(512)]), 'f.bin');
+    expect((await fetch(`${baseUrl}/upload`, { method: 'POST', body: third })).status).toBe(200);
+  });
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // H-008 — artifact tree enumeration budget
 // ────────────────────────────────────────────────────────────────────────────

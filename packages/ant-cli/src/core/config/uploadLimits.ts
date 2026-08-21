@@ -40,3 +40,16 @@ export const UPLOAD_REQUEST_MAX_BYTES = 200 * 1024 * 1024;
  * all of them.
  */
 export const UPLOAD_MAX_INFLIGHT_PER_USER = 3;
+
+/**
+ * Pod-wide in-flight upload byte ceiling.
+ *
+ * The per-account slot + request budget bound ONE account, but `memoryStorage`
+ * keeps every accepted part in heap, and nothing stopped many DIFFERENT accounts
+ * from converging on one replica and summing to an OOM (M-007). This is a
+ * process-local reservation across ALL accounts — no Redis dependency, so it is
+ * always enforced (never fail-open) and bounds this replica's upload heap no
+ * matter how the accounts are distributed. Sized for a healthy replica's heap;
+ * well above the aggregate of a few concurrent legitimate uploads.
+ */
+export const UPLOAD_POD_MAX_INFLIGHT_BYTES = 512 * 1024 * 1024;
