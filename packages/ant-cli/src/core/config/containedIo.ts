@@ -48,6 +48,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { assertCanonicalWithinRoot, isPathWithin } from './pathContainment';
+import { sniffFd } from '../utils/binaryExtensions';
 
 export type ContainedFailure =
   /** canonical target outside the root, or the root itself unresolvable */
@@ -923,6 +924,230 @@ export function rmrfContainedBase(target: BaseRelative): { ok: true } | Containe
   } finally {
     closeQuiet(dir.fd);
   }
+}
+
+// ============================================================================
+// Base-relative enumeration / streaming / metadata (H-017, M-NEW-004/005/024)
+// ============================================================================
+//
+// The read/write helpers above bind a single leaf; these bind a DIRECTORY and
+// serve enumeration, bounded recursive walks, read streams, exclusive create
+// and a binary sniff from the same descent. Every route/service that resolved a
+// path and then re-opened it raw (readdir / createReadStream / archiver.directory
+// / stat / sniffFile / mkdir+writeFile) routes through one of these so the swap
+// window between resolve and use is closed for the content/destructive family.
+
+/** One directory entry, kind decided at descent time. */
+export interface ContainedDirent {
+  name: string;
+  isDirectory: boolean;
+  isFile: boolean;
+  isSymbolicLink: boolean;
+}
+
+/**
+ * List the directory `base/relative`, descended O_NOFOLLOW. On Linux the leaf
+ * directory is opened by descriptor and its entries read through
+ * `/proc/self/fd`; elsewhere it degrades to a name-based readdir under the
+ * realpath'd base (single-developer local boundary). A leaf that is not a
+ * directory, or a component swapped for a symlink, fails closed.
+ */
+export function readdirContainedBase(
+  target: BaseRelative,
+): { ok: true; entries: ContainedDirent[]; canonicalPath: string } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+  const canonicalPath = path.join(anchor.path, ...components);
+
+  const toDirent = (d: fs.Dirent): ContainedDirent => ({
+    name: d.name,
+    isDirectory: d.isDirectory(),
+    isFile: d.isFile(),
+    isSymbolicLink: d.isSymbolicLink(),
+  });
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      const link = fs.lstatSync(canonicalPath);
+      if (link.isSymbolicLink() || !link.isDirectory()) return { ok: false, reason: 'swapped' };
+      return { ok: true, entries: fs.readdirSync(canonicalPath, { withFileTypes: true }).map(toDirent), canonicalPath };
+    } catch (err: any) {
+      return { ok: false, reason: failForDirHop(err?.code) };
+    }
+  }
+
+  const dir = openDirDescended(anchor.path, components, false);
+  if ('ok' in dir) return dir;
+  try {
+    const stat = fs.fstatSync(dir.fd);
+    if (!stat.isDirectory()) return { ok: false, reason: 'not-a-file' };
+    return { ok: true, entries: fs.readdirSync(`${PROC_FD}/${dir.fd}`, { withFileTypes: true }).map(toDirent), canonicalPath };
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(dir.fd);
+  }
+}
+
+export interface WalkBudget {
+  /** Hard cap on entries visited; the walk stops (truncated) once reached. */
+  maxEntries: number;
+  /** Hard cap on directory nesting below the root. */
+  maxDepth: number;
+  /** Hard cap on cumulative file bytes; the walk stops (truncated) once exceeded. */
+  maxBytes?: number;
+}
+
+export interface WalkedFile {
+  /** Path of the file RELATIVE to the walk root (POSIX separators). */
+  relative: string;
+  size: number;
+}
+
+/**
+ * Bounded, contained recursive walk of `base/relative`. Enumerates once and
+ * decrements the entry / depth / byte budget as each entry is read, so the
+ * measurement and the consumer (ZIP, tree) share a single snapshot — a file
+ * added after enumeration is not in the returned list, and an open/stat error
+ * on a component fails that subtree closed rather than being skipped silently
+ * (M-NEW-004). Symlinks are never followed.
+ */
+export function walkContainedBase(
+  target: BaseRelative,
+  budget: WalkBudget,
+): { ok: true; files: WalkedFile[]; truncated: boolean } | ContainedFail {
+  const files: WalkedFile[] = [];
+  let entries = 0;
+  let bytes = 0;
+  let truncated = false;
+
+  // BFS by relative path, re-descending from base per directory (O_NOFOLLOW at
+  // every hop). Re-descent per level is O(depth) but keeps every hop contained.
+  const queue: Array<{ rel: string; depth: number }> = [{ rel: target.relative, depth: 0 }];
+  while (queue.length > 0) {
+    const { rel, depth } = queue.shift()!;
+    if (depth > budget.maxDepth) { truncated = true; continue; }
+    const listed = readdirContainedBase({ base: target.base, relative: rel });
+    if (!listed.ok) {
+      // A missing root is empty; a swap/io error on a subtree fails closed.
+      if (listed.reason === 'missing' && depth === 0) return { ok: true, files: [], truncated: false };
+      return listed;
+    }
+    for (const entry of listed.entries) {
+      if (entry.isSymbolicLink) continue; // never follow
+      if (++entries > budget.maxEntries) { truncated = true; return { ok: true, files, truncated }; }
+      const childRel = `${rel}/${entry.name}`;
+      if (entry.isDirectory) {
+        queue.push({ rel: childRel, depth: depth + 1 });
+      } else if (entry.isFile) {
+        const st = statContainedBase({ base: target.base, relative: childRel });
+        if (!st.ok) return st;
+        const size = Number(st.stat.size);
+        if (budget.maxBytes !== undefined && bytes + size > budget.maxBytes) {
+          truncated = true;
+          return { ok: true, files, truncated };
+        }
+        bytes += size;
+        files.push({ relative: childRel, size });
+      }
+    }
+  }
+  return { ok: true, files, truncated };
+}
+
+/**
+ * Open `base/relative` as a read STREAM bound to the descended leaf descriptor.
+ * The stream owns the fd (`autoClose`), so it is released on end/error. Use for
+ * HTTP downloads and ZIP entry append instead of `fs.createReadStream(name)`.
+ */
+export function createReadStreamContainedBase(
+  target: BaseRelative,
+): { ok: true; stream: fs.ReadStream; size: number; canonicalPath: string } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+  const canonicalPath = path.join(anchor.path, ...components);
+
+  const opened = openLeafBase(anchor.path, components);
+  if ('ok' in opened && opened.ok === false) return opened;
+  const fd = (opened as { fd: number }).fd;
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) { closeQuiet(fd); return { ok: false, reason: 'not-a-file' }; }
+    const stream = fs.createReadStream('', { fd, autoClose: true });
+    return { ok: true, stream, size: Number(stat.size), canonicalPath };
+  } catch (err: any) {
+    closeQuiet(fd);
+    return { ok: false, reason: failFor(err?.code) };
+  }
+}
+
+/**
+ * Create an empty file at `base/relative` with `O_CREAT | O_EXCL` (fails if it
+ * exists), parents created on the way down and the leaf opened O_NOFOLLOW so a
+ * planted symlink is refused. For the universal artifact create-file route.
+ */
+export function createExclusiveContainedBase(target: BaseRelative): { ok: true } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+  const leaf = components[components.length - 1];
+  const dirs = components.slice(0, -1);
+  const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | O_NOFOLLOW;
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      if (dirs.length > 0) fs.mkdirSync(path.join(anchor.path, ...dirs), { recursive: true });
+      closeQuiet(fs.openSync(path.join(anchor.path, ...components), flags, 0o644));
+      return { ok: true };
+    } catch (err: any) {
+      return { ok: false, reason: err?.code === 'EEXIST' ? 'io-error' : failFor(err?.code) };
+    }
+  }
+  const dir = openDirDescended(anchor.path, dirs, true);
+  if ('ok' in dir) return dir;
+  try {
+    closeQuiet(fs.openSync(at(dir.fd, leaf), flags, 0o644));
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(dir.fd);
+  }
+}
+
+/**
+ * Remove every entry directly under `base/relative` (contents-clear), each
+ * removal addressed through the descended directory descriptor. The directory
+ * itself is kept. For canonical session-dir clear and universal artifact
+ * root-clear.
+ */
+export function clearContainedBase(target: BaseRelative): { ok: true } | ContainedFail {
+  const listed = readdirContainedBase(target);
+  if (!listed.ok) return listed.reason === 'missing' ? { ok: true } : listed;
+  for (const entry of listed.entries) {
+    const res = rmrfContainedBase({ base: target.base, relative: `${target.relative}/${entry.name}` });
+    if (!res.ok) return res;
+  }
+  return { ok: true };
+}
+
+/**
+ * Binary sniff + size from the descended leaf descriptor — the contained twin
+ * of `sniffFile(resolveAbsolute(...))`, which reopened the name (M-NEW-024). The
+ * sniff and the size come from the same file object the read would bind.
+ */
+export function sniffContainedBase(
+  target: BaseRelative,
+): { ok: true; binary: boolean; size: number } | ContainedFail {
+  const hint = target.relative.split(/[\\/]+/).pop() ?? target.relative;
+  const result = withContainedFdBase(target, (fd) => sniffFd(fd, hint));
+  if (!result.ok) return result;
+  return { ok: true, binary: result.value.binary, size: Number(result.stat.size) };
 }
 
 export const __testing = {

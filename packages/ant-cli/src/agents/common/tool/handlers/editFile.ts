@@ -14,7 +14,7 @@ import {
 } from './invalidationScope';
 import { enforceManifestPinPolicyForWrite } from './manifestPinPolicy';
 import { packageManagerMutex } from './runCommand';
-import { sniffFile } from '../../../../core/utils/binaryExtensions';
+import { sniffToolFile } from './containedToolMeta';
 
 const MAX_IO_RETRIES = 3;
 
@@ -54,7 +54,7 @@ export async function handleEditFile(
     // the file via U+FFFD round-trip; the write gate in FileSystemAdapter
     // is the backstop, this refusal is the early, cheap one.
     try {
-      const sniffed = sniffFile(fileSystem.resolveAbsolute(resolved.fsPath));
+      const sniffed = sniffToolFile(fileSystem.resolveAbsolute(resolved.fsPath));
       if (sniffed.binary) {
         const msg =
           `Cannot edit binary file: ${resolved.displayPath}. ` +

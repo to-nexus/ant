@@ -7,7 +7,8 @@
 
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { AdapterFactory } from '../../../../infrastructure/adapters/AdapterFactory';
-import { isBinaryPath, sniffFile } from '../../../../core/utils/binaryExtensions';
+import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
+import { sniffToolFile } from './containedToolMeta';
 import { getRefDeps, isRegistered, notRegisteredError } from '../reference/handlerSupport';
 import { resolveReferenceCodebase, ReferenceTargetError } from '../reference/resolve';
 import { refGitRead } from '../reference/refGit';
@@ -57,7 +58,7 @@ export async function handleReadReferenceFile(
       // formats the extension set doesn't know. Missing paths fall through to
       // the canonical not-found reply below.
       try {
-        if (sniffFile(adapter.resolveAbsolute(filePath)).binary) {
+        if (sniffToolFile(adapter.resolveAbsolute(filePath)).binary) {
           return { content: `[Binary file: ${filePath}] cannot be read as text.` };
         }
       } catch {

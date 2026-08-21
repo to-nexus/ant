@@ -34,6 +34,12 @@ import {
   renameContainedBase,
   unlinkContainedBase,
   toBaseRelative,
+  readdirContainedBase,
+  walkContainedBase,
+  createReadStreamContainedBase,
+  createExclusiveContainedBase,
+  clearContainedBase,
+  sniffContainedBase,
 } from '../../src/core/config/containedIo';
 import { assertCanonicalWithinRoot } from '../../src/core/config/pathContainment';
 
@@ -208,6 +214,77 @@ describe('containedIo — containment bound to the file object', () => {
     it('unlinkContainedBase removes an in-base leaf', () => {
       expect(unlinkContainedBase({ base, relative: 'feature/plan/spec.md' }).ok).toBe(true);
       expect(fs.existsSync(path.join(root, 'plan', 'spec.md'))).toBe(false);
+    });
+  });
+
+  describe('enumeration / streaming / metadata (H-017, M-NEW-004/024)', () => {
+    it('readdirContainedBase lists in-base directory entries with kinds', () => {
+      const r = readdirContainedBase({ base, relative: 'feature/plan' });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.entries.map((e) => e.name).sort()).toEqual(['spec.md']);
+    });
+
+    onLinuxDescent('readdirContainedBase refuses a reparented directory root', () => {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.symlinkSync(outside, root, 'dir');
+      const r = readdirContainedBase({ base, relative: 'feature' });
+      expect(r.ok).toBe(false);
+    });
+
+    it('walkContainedBase enumerates files and charges the entry budget', () => {
+      fs.mkdirSync(path.join(root, 'plan', 'sub'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'plan', 'sub', 'a.md'), 'aa');
+      const full = walkContainedBase({ base, relative: 'feature' }, { maxEntries: 100, maxDepth: 10 });
+      expect(full.ok).toBe(true);
+      if (full.ok) {
+        expect(full.files.some((f) => f.relative.endsWith('plan/spec.md'))).toBe(true);
+        expect(full.files.some((f) => f.relative.endsWith('plan/sub/a.md'))).toBe(true);
+      }
+      const capped = walkContainedBase({ base, relative: 'feature' }, { maxEntries: 1, maxDepth: 10 });
+      expect(capped.ok).toBe(true);
+      if (capped.ok) expect(capped.truncated).toBe(true);
+    });
+
+    it('walkContainedBase stops once the byte budget is exceeded', () => {
+      fs.writeFileSync(path.join(root, 'plan', 'big.md'), 'x'.repeat(1000));
+      const r = walkContainedBase({ base, relative: 'feature' }, { maxEntries: 100, maxDepth: 10, maxBytes: 10 });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.truncated).toBe(true);
+    });
+
+    it('createReadStreamContainedBase streams an in-base file', async () => {
+      const r = createReadStreamContainedBase({ base, relative: 'feature/plan/spec.md' });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        const chunks: Buffer[] = [];
+        for await (const c of r.stream) chunks.push(c as Buffer);
+        expect(Buffer.concat(chunks).toString('utf-8')).toBe('inside');
+      }
+    });
+
+    onLinuxDescent('createReadStreamContainedBase refuses a reparented root', () => {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.symlinkSync(outside, root, 'dir');
+      const r = createReadStreamContainedBase({ base, relative: 'feature/spec.md' });
+      expect(r.ok).toBe(false);
+    });
+
+    it('createExclusiveContainedBase creates a new file and refuses an existing one', () => {
+      expect(createExclusiveContainedBase({ base, relative: 'feature/plan/new.md' }).ok).toBe(true);
+      expect(fs.existsSync(path.join(root, 'plan', 'new.md'))).toBe(true);
+      expect(createExclusiveContainedBase({ base, relative: 'feature/plan/spec.md' }).ok).toBe(false);
+    });
+
+    it('clearContainedBase empties a directory but keeps the directory', () => {
+      expect(clearContainedBase({ base, relative: 'feature/plan' }).ok).toBe(true);
+      expect(fs.existsSync(path.join(root, 'plan'))).toBe(true);
+      expect(fs.readdirSync(path.join(root, 'plan'))).toEqual([]);
+    });
+
+    it('sniffContainedBase reports a text file as non-binary with a size', () => {
+      const r = sniffContainedBase({ base, relative: 'feature/plan/spec.md' });
+      expect(r.ok).toBe(true);
+      if (r.ok) { expect(r.binary).toBe(false); expect(r.size).toBe(6); }
     });
   });
 });

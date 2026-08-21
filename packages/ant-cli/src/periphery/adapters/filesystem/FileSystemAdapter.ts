@@ -28,6 +28,7 @@ import {
   renameContainedBase,
   rmrfContainedBase,
   statContainedBase,
+  readdirContainedBase,
   toBaseRelative,
   type BaseRelative,
 } from '../../../core/config/containedIo';
@@ -172,6 +173,8 @@ export class FileSystemAdapter implements FileSystemPort {
   async fileExists(relativePath: string): Promise<boolean> {
     try {
       const fullPath = this.resolveAbsolute(relativePath);
+      const br = this.baseRel(fullPath);
+      if (br) return statContainedBase(br).ok;
       await fs.promises.access(fullPath);
       return true;
     } catch {
@@ -204,9 +207,17 @@ export class FileSystemAdapter implements FileSystemPort {
   
   async readDirectory(relativePath: string): Promise<Array<{ name: string; isDirectory: boolean }>> {
     const fullPath = this.resolveAbsolute(relativePath);
-    
+    const br = this.baseRel(fullPath);
+    if (br) {
+      // Contained enumeration: entry names come from the descended directory
+      // descriptor, so a reparented root cannot leak another tenant's names
+      // (M-NEW-005).
+      const listed = readdirContainedBase(br);
+      if (!listed.ok) throw new Error(`Cannot read directory "${relativePath}" (${listed.reason})`);
+      return listed.entries.map((e) => ({ name: e.name, isDirectory: e.isDirectory }));
+    }
+
     const entries = await fs.promises.readdir(fullPath, { withFileTypes: true });
-    
     return entries.map(entry => ({
       name: entry.name,
       isDirectory: entry.isDirectory()
@@ -237,50 +248,60 @@ export class FileSystemAdapter implements FileSystemPort {
     ];
     
     const allExcludes = [...defaultExcludes, ...exclude];
-    
-    // ✅ Use direct fs.readdirSync (faster and more reliable than glob)
+
     const results: string[] = [];
-    
+
+    // Enumerate through a base descent when the target is inside the multi-tenant
+    // base, so a reparented root cannot leak another tenant's entry names into a
+    // model-facing manifest (M-NEW-005). Out-of-base keeps the raw walk.
     const walk = (currentPath: string) => {
       try {
-        if (!fs.existsSync(currentPath)) return;
-        
-        const stat = fs.statSync(currentPath);
-        if (!stat.isDirectory()) {
-          // If it's a file, add it
-          results.push(path.relative(this.basePath, currentPath));
-          return;
+        const br = this.baseRel(currentPath);
+        let entries: Array<{ name: string; isDir: boolean }>;
+        if (br) {
+          const st = statContainedBase(br);
+          if (!st.ok) return;
+          if (!st.stat.isDirectory()) {
+            results.push(path.relative(this.basePath, currentPath));
+            return;
+          }
+          const listed = readdirContainedBase(br);
+          if (!listed.ok) return;
+          entries = listed.entries.filter((e) => !e.isSymbolicLink).map((e) => ({ name: e.name, isDir: e.isDirectory }));
+        } else {
+          if (!fs.existsSync(currentPath)) return;
+          const stat = fs.statSync(currentPath);
+          if (!stat.isDirectory()) {
+            results.push(path.relative(this.basePath, currentPath));
+            return;
+          }
+          entries = fs.readdirSync(currentPath, { withFileTypes: true }).map((d) => ({ name: d.name, isDir: d.isDirectory() }));
         }
-        
-        const entries = fs.readdirSync(currentPath, { withFileTypes: true });
-        
+
         for (const entry of entries) {
           // Skip hidden files and excluded directories
           if (entry.name.startsWith('.')) continue;
-          
+
           const fullEntryPath = path.join(currentPath, entry.name);
           const relativeEntryPath = path.relative(fullPath, fullEntryPath);
-          
-          // Check if this path should be excluded
-          const shouldExclude = allExcludes.some(pattern => {
-            // Simple pattern matching (exact name or contains)
-            return relativeEntryPath.includes(pattern) || entry.name === pattern;
-          });
-          
+
+          const shouldExclude = allExcludes.some(pattern =>
+            relativeEntryPath.includes(pattern) || entry.name === pattern,
+          );
           if (shouldExclude) continue;
-          
-          if (entry.isDirectory()) {
+
+          if (entry.isDir) {
             walk(fullEntryPath);
           } else {
             results.push(path.relative(this.basePath, fullEntryPath));
           }
         }
-      } catch (error) {
+      } catch {
         // Skip directories that can't be read
         return;
       }
     };
-    
+
     walk(fullPath);
     return results;
   }
@@ -288,6 +309,11 @@ export class FileSystemAdapter implements FileSystemPort {
   async isDirectory(relativePath: string): Promise<boolean> {
     try {
       const fullPath = this.resolveAbsolute(relativePath);
+      const br = this.baseRel(fullPath);
+      if (br) {
+        const st = statContainedBase(br);
+        return st.ok && st.stat.isDirectory();
+      }
       const stat = await fs.promises.stat(fullPath);
       return stat.isDirectory();
     } catch {
@@ -408,24 +434,30 @@ export class FileSystemAdapter implements FileSystemPort {
   async copyDirectory(src: string, dest: string): Promise<void> {
     const srcPath = this.resolveAbsolute(src);
     const destPath = this.resolveAbsolute(dest);
+    const srcBr = this.baseRel(srcPath);
 
-    // Verify source is a directory
-    const srcStat = await fs.promises.stat(srcPath);
-    if (!srcStat.isDirectory()) {
-      throw new Error(`Source is not a directory: ${src}`);
+    // Verify source is a directory (descended for in-base sources — M-NEW-005).
+    let srcEntries: Array<{ name: string; isDir: boolean }>;
+    if (srcBr) {
+      const st = statContainedBase(srcBr);
+      if (!st.ok || !st.stat.isDirectory()) throw new Error(`Source is not a directory: ${src}`);
+      // Ensure destination directory exists (descended for in-base targets).
+      await this.createDirectory(path.relative(this.basePath, destPath));
+      const listed = readdirContainedBase(srcBr);
+      if (!listed.ok) throw new Error(`Cannot read source directory: ${src}`);
+      srcEntries = listed.entries.filter((e) => !e.isSymbolicLink).map((e) => ({ name: e.name, isDir: e.isDirectory }));
+    } else {
+      const srcStat = await fs.promises.stat(srcPath);
+      if (!srcStat.isDirectory()) throw new Error(`Source is not a directory: ${src}`);
+      await this.createDirectory(path.relative(this.basePath, destPath));
+      srcEntries = (await fs.promises.readdir(srcPath, { withFileTypes: true })).map((d) => ({ name: d.name, isDir: d.isDirectory() }));
     }
 
-    // Ensure destination directory exists (descended for in-base targets).
-    await this.createDirectory(path.relative(this.basePath, destPath));
-
-    // Recursive merge: iterate source entries, preserve dest-only entries
-    const entries = await fs.promises.readdir(srcPath, { withFileTypes: true });
-
-    for (const entry of entries) {
+    for (const entry of srcEntries) {
       const srcEntryPath = path.join(srcPath, entry.name);
       const destEntryPath = path.join(destPath, entry.name);
 
-      if (entry.isDirectory()) {
+      if (entry.isDir) {
         // Recursive merge for subdirectories
         await this.copyDirectory(
           path.relative(this.basePath, srcEntryPath),

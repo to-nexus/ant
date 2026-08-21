@@ -15,10 +15,10 @@
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
-import { isBinaryPath, sniffFile, formatByteSize } from '../../../../core/utils/binaryExtensions';
+import { isBinaryPath, formatByteSize } from '../../../../core/utils/binaryExtensions';
+import { sniffToolFile, statToolFileSize } from './containedToolMeta';
 
 /**
  * Threshold above which a `read_file` call without `startLine`/`endLine`
@@ -59,12 +59,12 @@ export async function handleReadFile(
   const fileSystem = ctx.fileSystem;
 
   // Extension fast path. Resolve first so the reply can carry a real size —
-  // `sniffFile` fstats anyway, so this costs nothing beyond the resolve.
+  // the contained sniff fstats anyway, so this costs nothing beyond the resolve.
   if (isBinaryPath(filePath)) {
     let sizeBytes: number | undefined;
     try {
       const early = await resolveToolPath(ctx, filePath);
-      sizeBytes = sniffFile(fileSystem.resolveAbsolute(early.fsPath)).size;
+      sizeBytes = sniffToolFile(fileSystem.resolveAbsolute(early.fsPath)).size;
     } catch {
       // Unresolvable → report without a size rather than guessing.
     }
@@ -86,7 +86,7 @@ export async function handleReadFile(
   // that the LLM tends to discard as noise. Unreadable/missing paths return
   // false and fall through to the canonical not-found path below.
   try {
-    const sniffed = sniffFile(fileSystem.resolveAbsolute(resolved.fsPath));
+    const sniffed = sniffToolFile(fileSystem.resolveAbsolute(resolved.fsPath));
     if (sniffed.binary) {
       return { content: binaryFileMessage(resolved.displayPath, sniffed.size) };
     }
@@ -103,10 +103,10 @@ export async function handleReadFile(
   if (!hasRange) {
     try {
       const absPath = fileSystem.resolveAbsolute(resolved.fsPath);
-      const stat = fs.statSync(absPath);
-      if (stat.size > READ_FILE_FULL_READ_LIMIT) {
+      const size = statToolFileSize(absPath);
+      if (size !== undefined && size > READ_FILE_FULL_READ_LIMIT) {
         const errorMsg =
-          `Error: File too large for full read (${stat.size.toLocaleString()} bytes). ` +
+          `Error: File too large for full read (${size.toLocaleString()} bytes). ` +
           `Use \`read_file("${resolved.displayPath}", startLine, endLine)\` to read a specific range. ` +
           `Compacted documents in the prompt include line-numbered outlines ` +
           `(\`L{N}: <heading>\`) — pass those line numbers as startLine.`;

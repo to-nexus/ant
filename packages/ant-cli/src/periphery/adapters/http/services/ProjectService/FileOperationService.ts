@@ -16,6 +16,18 @@ import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector
 import { computeFileMeta, shouldEvaluateTemplate } from '../../../../../core/utils/computeFileMeta';
 import { isBinaryPath, isBinaryFileSync, sniffFile } from '../../../../../core/utils/binaryExtensions';
 import { writeBufferVerifiedAbs } from '../../../../../core/utils/binaryIntegrity';
+import {
+  toBaseRelative,
+  statContainedBase,
+  readTextContainedBase,
+  writeTextContainedBase,
+  mkdirpContainedBase,
+  sniffContainedBase,
+  unlinkContainedBase,
+  rmrfContainedBase,
+  readdirContainedBase,
+  type BaseRelative,
+} from '../../../../../core/config/containedIo';
 
 /**
  * Thrown when the text file API is pointed at binary content. Routes map it
@@ -97,6 +109,17 @@ export class FileOperationService {
     return resolveUniversalContainerPath(projectPath, featureName);
   }
 
+  /**
+   * A base-relative descent handle for `fullPath`, anchored at the service-owned
+   * physical workspace base — `undefined` when the path is outside that base
+   * (`repoType:'local'`), where the caller keeps its legacy single-trust path.
+   * Every read/write/delete below binds through this instead of re-opening the
+   * resolved name (H-017 / M-026 / M-NEW-024).
+   */
+  private baseRelOf(fullPath: string): BaseRelative | undefined {
+    return toBaseRelative(this.workspaceResolver.getPhysicalWorkspacesPath(), fullPath);
+  }
+
   private resolveFullPath(projectId: string, featureName: string, filePath: string, userContext: UserContext): { featurePath: string; fullPath: string } {
     const containerPath = this.resolveUniversalContainer(projectId, featureName, userContext);
     if (containerPath) {
@@ -139,11 +162,25 @@ export class FileOperationService {
 
     const buildTree = async (dirPath: string, relativePath: string = '', depth = 0): Promise<FileNode[]> => {
       if (depth > CANONICAL_TREE_MAX_DEPTH || budget.entries <= 0) return [];
-      let items: fs.Dirent[] = [];
-      try {
-        items = await fs.promises.readdir(dirPath, { withFileTypes: true });
-      } catch {
-        return [];
+      // Contained enumeration: on the multi-tenant base the readdir/stat/read
+      // below bind through a descent, so a reparented intermediate directory
+      // cannot leak another tenant's entry names or bytes into the tree (H-017 /
+      // M-NEW-005). Out-of-base (local) keeps the raw walk.
+      const dirBr = this.baseRelOf(dirPath);
+      let items: Array<{ name: string; isDir: boolean }> = [];
+      if (dirBr) {
+        const listed = readdirContainedBase(dirBr);
+        if (!listed.ok) return [];
+        items = listed.entries
+          .filter((e) => !e.isSymbolicLink)
+          .map((e) => ({ name: e.name, isDir: e.isDirectory }));
+      } else {
+        try {
+          items = (await fs.promises.readdir(dirPath, { withFileTypes: true }))
+            .map((d) => ({ name: d.name, isDir: d.isDirectory() }));
+        } catch {
+          return [];
+        }
       }
 
       if (items.length === 0) {
@@ -162,9 +199,7 @@ export class FileOperationService {
           ? isFeatureTreeRootEntry(d.name)
           : !d.name.startsWith('.') && !TREE_EXCLUDE.has(d.name)))
         .sort((a, b) => {
-          const ad = a.isDirectory();
-          const bd = b.isDirectory();
-          if (ad !== bd) return ad ? -1 : 1;
+          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
           return a.name.localeCompare(b.name);
         });
 
@@ -173,7 +208,7 @@ export class FileOperationService {
         const fullPath = path.join(dirPath, item.name);
         const itemRelativePath = relativePath ? `${relativePath}/${item.name}` : item.name;
 
-        if (item.isDirectory()) {
+        if (item.isDir) {
           const children = await buildTree(fullPath, itemRelativePath, depth + 1);
           tree.push({
             name: item.name,
@@ -186,17 +221,26 @@ export class FileOperationService {
 
         let size = 0;
         let mtimeMs = 0;
-        try {
-          const stats = await fs.promises.stat(fullPath);
-          size = stats.size;
-          mtimeMs = stats.mtimeMs;
-        } catch { /* skip stat failures */ }
-
         let content: string | null = null;
-        if (shouldEvaluateTemplate(itemRelativePath)) {
+        const fileBr = this.baseRelOf(fullPath);
+        if (fileBr) {
+          const st = statContainedBase(fileBr);
+          if (st.ok) { size = Number(st.stat.size); mtimeMs = Number(st.stat.mtimeMs); }
+          if (shouldEvaluateTemplate(itemRelativePath)) {
+            const read = readTextContainedBase(fileBr);
+            if (read.ok) content = read.text;
+          }
+        } else {
           try {
-            content = await fs.promises.readFile(fullPath, 'utf-8');
-          } catch { /* skip read failures */ }
+            const stats = await fs.promises.stat(fullPath);
+            size = stats.size;
+            mtimeMs = stats.mtimeMs;
+          } catch { /* skip stat failures */ }
+          if (shouldEvaluateTemplate(itemRelativePath)) {
+            try {
+              content = await fs.promises.readFile(fullPath, 'utf-8');
+            } catch { /* skip read failures */ }
+          }
         }
 
         const meta = computeFileMeta({
@@ -249,6 +293,29 @@ export class FileOperationService {
    */
   async readFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<FileResource> {
     const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
+    const br = this.baseRelOf(fullPath);
+
+    if (br) {
+      // Contained: the sniff, the size and the bytes come from the same descended
+      // descriptor — a component swapped after resolve is refused (H-017).
+      const st = statContainedBase(br);
+      if (!st.ok) throw new Error(`Invalid file path: ${filePath}`);
+      if (st.stat.isFile()) {
+        const sniff = sniffContainedBase(br);
+        if (sniff.ok && sniff.binary) {
+          throw new BinaryFileOperationError('BINARY_FILE', filePath, sniff.size);
+        }
+      }
+      const read = readTextContainedBase(br);
+      if (!read.ok) throw new Error(`Invalid file path: ${filePath}`);
+      const meta = computeFileMeta({
+        relativePath: filePath,
+        content: read.text,
+        size: read.size,
+        mtime: Number(st.stat.mtimeMs),
+      });
+      return { projectId, featureName, path: filePath, content: read.text, meta };
+    }
 
     const stats = await fs.promises.stat(fullPath);
     if (stats.isFile()) {
@@ -282,12 +349,7 @@ export class FileOperationService {
    */
   async writeFile(projectId: string, featureName: string, filePath: string, content: string, userContext: UserContext): Promise<FileResource> {
     const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
-
-    if (isBinaryPath(filePath) || isBinaryFileSync(fullPath)) {
-      throw new BinaryFileOperationError('BINARY_TARGET', filePath);
-    }
-
-    await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+    const br = this.baseRelOf(fullPath);
 
     let finalContent = content;
     if (filePath.startsWith('plan/')) {
@@ -297,6 +359,41 @@ export class FileOperationService {
       }
     }
 
+    if (br) {
+      // M-026: the binary gate, the parent mkdir, the write and the size all
+      // resolve through the same descended base — a symlink swapped into an
+      // intermediate directory after the lexical check cannot redirect the write
+      // outside the feature root. `isBinaryPath` is a pure name check (no I/O);
+      // the content sniff binds a descriptor when the file already exists.
+      if (isBinaryPath(filePath)) {
+        throw new BinaryFileOperationError('BINARY_TARGET', filePath);
+      }
+      const existing = sniffContainedBase(br);
+      if (existing.ok && existing.binary) {
+        throw new BinaryFileOperationError('BINARY_TARGET', filePath);
+      }
+      const parent = this.baseRelOf(path.dirname(fullPath));
+      if (parent) {
+        const made = mkdirpContainedBase(parent);
+        if (!made.ok) throw new Error(`Invalid file path: ${filePath}`);
+      }
+      const written = writeTextContainedBase(br, finalContent);
+      if (!written.ok) throw new Error(`Invalid file path: ${filePath}`);
+      const st = statContainedBase(br);
+      const meta = computeFileMeta({
+        relativePath: filePath,
+        content: finalContent,
+        size: st.ok ? Number(st.stat.size) : Buffer.byteLength(finalContent),
+        mtime: st.ok ? Number(st.stat.mtimeMs) : Date.now(),
+      });
+      return { projectId, featureName, path: filePath, content: finalContent, meta };
+    }
+
+    if (isBinaryPath(filePath) || isBinaryFileSync(fullPath)) {
+      throw new BinaryFileOperationError('BINARY_TARGET', filePath);
+    }
+
+    await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
     await fs.promises.writeFile(fullPath, finalContent, 'utf-8');
 
     const stats = await fs.promises.stat(fullPath);
@@ -318,9 +415,36 @@ export class FileOperationService {
    */
   async deleteFile(projectId: string, featureName: string, filePath: string, userContext: UserContext): Promise<void> {
     const { fullPath } = this.resolveFullPath(projectId, featureName, filePath, userContext);
+    const br = this.baseRelOf(fullPath);
+
+    if (br) {
+      // Contained delete: the leaf and every entry removed under a cleared
+      // canonical dir are addressed through descended descriptors, so a
+      // directory component swapped for a symlink after resolve cannot redirect
+      // the rm outside the feature root (H-017).
+      const st = statContainedBase(br);
+      if (!st.ok) {
+        if (st.reason === 'missing') return; // already gone
+        throw new Error(`Invalid file path: ${filePath}`);
+      }
+      if (st.stat.isDirectory()) {
+        if (isCanonicalDir(filePath)) {
+          this.clearCanonicalContained(br, filePath);
+          console.log(`[FileOperationService] Cleared contents: ${filePath}`);
+        } else {
+          const res = rmrfContainedBase(br);
+          if (!res.ok) throw new Error(`Invalid file path: ${filePath}`);
+          console.log(`[FileOperationService] Deleted: ${filePath}`);
+        }
+      } else {
+        const res = unlinkContainedBase(br);
+        if (!res.ok && res.reason !== 'missing') throw new Error(`Invalid file path: ${filePath}`);
+      }
+      return;
+    }
 
     const stat = await fs.promises.stat(fullPath);
-    
+
     if (stat.isDirectory()) {
       if (isCanonicalDir(filePath)) {
         await this.smartClearDirectory(fullPath, filePath);
@@ -331,6 +455,35 @@ export class FileOperationService {
       }
     } else {
       await fs.promises.unlink(fullPath);
+    }
+  }
+
+  /**
+   * Contained twin of `clearCanonicalDirectory`: clears a canonical directory's
+   * contents while preserving canonical subdirectory structure — canonical
+   * subdirs are recursed, non-canonical entries are removed — with every readdir
+   * and rm addressed through a base descent (H-017). `relFromBase` and
+   * `relFromFeature` diverge because canonical-ness is judged on the feature-
+   * relative path while the descent is anchored at the physical base.
+   */
+  private clearCanonicalContained(dir: BaseRelative, featureRelPath: string): void {
+    const listed = readdirContainedBase(dir);
+    if (!listed.ok) return; // missing/failed: nothing to clear
+    for (const entry of listed.entries) {
+      const childBaseRel: BaseRelative = { base: dir.base, relative: `${dir.relative}/${entry.name}` };
+      const childFeatureRel = `${featureRelPath}/${entry.name}`;
+      if (entry.isSymbolicLink) {
+        // Remove the link itself (never followed) rather than its target.
+        unlinkContainedBase(childBaseRel);
+      } else if (entry.isDirectory) {
+        if (isCanonicalDir(childFeatureRel)) {
+          this.clearCanonicalContained(childBaseRel, childFeatureRel);
+        } else {
+          rmrfContainedBase(childBaseRel);
+        }
+      } else {
+        unlinkContainedBase(childBaseRel);
+      }
     }
   }
   
