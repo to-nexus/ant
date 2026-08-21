@@ -24,7 +24,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
 import { JwtService } from '../../../../infrastructure/auth/JwtService';
 import { logger } from '../../../../utils/logger';
-import { isAllowedFrontendOrigin } from './corsConfig';
+import { isAllowedFrontendOrigin, isSelfOrigin } from './corsConfig';
 
 /** Methods that can change state. `GET`/`HEAD`/`OPTIONS` are not gated. */
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -76,6 +76,52 @@ export function createSameOriginGuard(options: SameOriginGuardOptions = {}): Req
   };
 }
 
+/**
+ * Cookie-origin predicate for the IDE proxy (HTTP + WebSocket upgrade).
+ *
+ * The IDE proxy forwards ambient-cookie requests to a user's file/terminal
+ * upstream, so — unlike a normal control-plane call — even a GET is
+ * effectively state-changing, and a WebSocket upgrade (which CORS does not
+ * cover at all) is the highest-value target. `createSameOriginGuard` only
+ * gates POST/PUT/PATCH/DELETE and is mounted AFTER the proxy, so it never
+ * sees these. This predicate covers EVERY method and the upgrade handshake
+ * (H-013).
+ *
+ * Verdict order mirrors the state-changing guard:
+ *   - `Sec-Fetch-Site` present → only `same-origin`/`none` pass; `same-site`
+ *     (the attacker-controlled preview/deploy content origin shares the
+ *     registrable domain) is refused, unless the Origin is the registered
+ *     frontend (split-host deployments).
+ *   - No Fetch Metadata → fall back to Origin: absent means a non-browser
+ *     client (no ambient page to drive it); otherwise it must be the
+ *     registered frontend or this request's own origin.
+ *
+ * Takes a minimal request shape so the raw upgrade `IncomingMessage` works too.
+ */
+export function isTrustedCookieOrigin(req: {
+  headers: Record<string, string | string[] | undefined>;
+  protocol?: string;
+  header?: (name: string) => string | undefined;
+}): boolean {
+  const originOf = (): string | undefined => {
+    if (req.header) return req.header('Origin');
+    const raw = req.headers['origin'];
+    return Array.isArray(raw) ? raw[0] : raw;
+  };
+
+  const fetchSite = req.headers['sec-fetch-site'];
+  const site = Array.isArray(fetchSite) ? fetchSite[0] : fetchSite;
+  if (typeof site === 'string') {
+    if (SAFE_FETCH_SITE.has(site)) return true;
+    return isAllowedFrontendOrigin(originOf());
+  }
+
+  const origin = originOf();
+  if (!origin) return true;
+  if (isAllowedFrontendOrigin(origin)) return true;
+  return isSelfOrigin(req as unknown as Request, origin);
+}
+
 /** Exact origin comparison — scheme, host AND port. */
 function isSameOrigin(req: Request, origin: string): boolean {
   try {
@@ -100,4 +146,4 @@ function refuse(req: Request, res: Response, reason: string): void {
   });
 }
 
-export const __testing = { SAFE_FETCH_SITE, STATE_CHANGING, isSameOrigin };
+export const __testing = { SAFE_FETCH_SITE, STATE_CHANGING, isSameOrigin, isTrustedCookieOrigin };

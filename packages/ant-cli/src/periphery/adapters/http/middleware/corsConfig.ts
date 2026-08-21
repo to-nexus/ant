@@ -67,7 +67,7 @@ export function isAllowedFrontendOrigin(origin: string | undefined): boolean {
  * and `X-Forwarded-Host` / `X-Forwarded-Proto` carry what the browser actually
  * addressed when an ALB or ingress is in front.
  */
-function isSelfOrigin(req: Request, origin: string): boolean {
+export function isSelfOrigin(req: Request, origin: string): boolean {
   // Read `headers` directly rather than `req.header()`: this predicate is also
   // exercised against plain request shapes, and the lookup is the same.
   const headers = req.headers ?? {};

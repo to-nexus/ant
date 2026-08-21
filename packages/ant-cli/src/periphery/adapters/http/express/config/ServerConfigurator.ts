@@ -6,7 +6,7 @@ import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
 import { createIdeFaviconStub, createIdeVsdaStub } from '../../middleware/ideStubInterceptors';
 import { createCorsMiddleware } from '../../middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
-import { createSameOriginGuard } from '../../middleware/sameOriginGuard';
+import { createSameOriginGuard, isTrustedCookieOrigin } from '../../middleware/sameOriginGuard';
 import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
@@ -153,6 +153,18 @@ export class ServerConfigurator {
         res.status(401).json({ error: 'Authentication required for IDE access' });
         return;
       }
+
+      // CSRF: the proxy forwards this ambient-cookie request to a user's IDE
+      // upstream, so even a GET is effectively state-changing. createSameOriginGuard
+      // gates only mutating methods and is mounted AFTER this, so it never sees
+      // `/ide/` — check the origin here, for every method (H-013). Bearer callers
+      // carry no ambient credential and are exempt.
+      const bearer = req.headers.authorization?.startsWith('Bearer ');
+      if (!bearer && !isTrustedCookieOrigin(req)) {
+        res.status(403).json({ error: 'Cross-origin request refused' });
+        return;
+      }
+
       let payload;
       try {
         payload = jwtService.verify(token);

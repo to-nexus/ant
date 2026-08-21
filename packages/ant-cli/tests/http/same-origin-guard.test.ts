@@ -162,3 +162,69 @@ describe('isSameOrigin — exact origin, port included', () => {
     expect(isSameOrigin(req('10.0.1.7:4102', 'http', forwarded), 'https://ant-preview.example.com')).toBe(true);
   });
 });
+
+describe('isTrustedCookieOrigin — IDE proxy + WS upgrade cookie CSRF (H-013)', () => {
+  const { isTrustedCookieOrigin } = __testing;
+  let savedFrontend: string | undefined;
+
+  beforeEach(() => {
+    savedFrontend = process.env.FRONTEND_URL;
+    process.env.FRONTEND_URL = 'https://app.example.com';
+  });
+  afterEach(() => {
+    if (savedFrontend === undefined) delete process.env.FRONTEND_URL;
+    else process.env.FRONTEND_URL = savedFrontend;
+  });
+
+  // Raw upgrade IncomingMessage shape: headers only, no express helpers.
+  const raw = (headers: Record<string, string>) => ({ headers } as any);
+
+  it('accepts same-origin (Sec-Fetch-Site)', () => {
+    expect(isTrustedCookieOrigin(raw({ 'sec-fetch-site': 'same-origin' }))).toBe(true);
+  });
+
+  it('accepts a user-initiated navigation (none)', () => {
+    expect(isTrustedCookieOrigin(raw({ 'sec-fetch-site': 'none' }))).toBe(true);
+  });
+
+  it('REFUSES same-site — attacker preview/deploy content shares the site', () => {
+    expect(isTrustedCookieOrigin(raw({ 'sec-fetch-site': 'same-site' }))).toBe(false);
+  });
+
+  it('REFUSES cross-site', () => {
+    expect(isTrustedCookieOrigin(raw({ 'sec-fetch-site': 'cross-site' }))).toBe(false);
+  });
+
+  it('accepts cross-site from the registered frontend origin', () => {
+    expect(
+      isTrustedCookieOrigin(raw({ 'sec-fetch-site': 'cross-site', origin: 'https://app.example.com' })),
+    ).toBe(true);
+  });
+
+  it('refuses same-site even with an unregistered Origin', () => {
+    expect(
+      isTrustedCookieOrigin(raw({ 'sec-fetch-site': 'same-site', origin: 'https://deploy.example.com' })),
+    ).toBe(false);
+  });
+
+  it('no Fetch Metadata + no Origin → allowed (non-browser client)', () => {
+    expect(isTrustedCookieOrigin(raw({}))).toBe(true);
+  });
+
+  it('no Fetch Metadata + foreign Origin → refused', () => {
+    expect(isTrustedCookieOrigin(raw({ origin: 'https://deploy.example.com' }))).toBe(false);
+  });
+
+  it('no Fetch Metadata + self Origin (X-Forwarded-*) → allowed', () => {
+    expect(
+      isTrustedCookieOrigin(
+        raw({
+          origin: 'https://api.example.com',
+          host: '10.0.1.7:4100',
+          'x-forwarded-host': 'api.example.com',
+          'x-forwarded-proto': 'https',
+        }),
+      ),
+    ).toBe(true);
+  });
+});

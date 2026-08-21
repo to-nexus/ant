@@ -15,6 +15,7 @@ import { WorkspaceServicePort } from '../../../../core/ports/workspace';
 import { logger } from '../../../../utils/logger';
 import { createIDEWebSocketHandler } from '../middleware/ideProxy';
 import { assertProxyOwnership } from '../middleware/proxyOwnership';
+import { isTrustedCookieOrigin } from '../middleware/sameOriginGuard';
 import { parseIDEKey } from '../../../../infrastructure/state/redisKeyUtils';
 import { JwtService } from '../../../../infrastructure/auth/JwtService';
 import { initializeRateLimiters } from '../middleware/rateLimiter';
@@ -376,6 +377,19 @@ export class ExpressServerAdapter implements
             if (!token) {
               logger.warn('IDE WebSocket upgrade rejected: no JWT cookie', { component: 'IDEProxy' });
               socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+              socket.destroy();
+              return;
+            }
+
+            // CSRF: a WebSocket handshake is not covered by CORS, so a page on
+            // the attacker-controlled preview/deploy content origin could open
+            // `wss://<api>/ide/<key>` and the browser would attach this cookie.
+            // Refuse handshakes whose origin is not same-origin / the registered
+            // frontend, before touching the upstream (H-013).
+            const bearer = (req.headers?.authorization as string | undefined)?.startsWith('Bearer ');
+            if (!bearer && !isTrustedCookieOrigin(req)) {
+              logger.warn('IDE WebSocket upgrade rejected: cross-origin handshake', { component: 'IDEProxy' });
+              socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
               socket.destroy();
               return;
             }
