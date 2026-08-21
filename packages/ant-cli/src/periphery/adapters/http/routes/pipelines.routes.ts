@@ -36,6 +36,7 @@ import {
 } from '@ant/shared';
 import { extractUserContext } from './helpers/userContext';
 import { sendErrorResponse } from './helpers/errorResponse';
+import { assertPathSegment } from '../../../../core/config/pathContainment';
 import {
   canEditOrgResource,
   computeOrgResourcePermissions,
@@ -107,6 +108,28 @@ function ownerOf(req: Request): PipelineOwner {
     organizationId: uc.organizationId,
     organizationKind: (uc as any).organizationKind ?? 'local',
   };
+}
+
+/**
+ * Reject a caller-supplied identifier that is not a single path segment with a
+ * clean 400, before it reaches an activation path helper. The helpers throw on
+ * the same values (final boundary), but a route-level check turns the traversal
+ * attempt into a 400 rather than a 500 and stops disk reads from being attempted
+ * at all (H-016, M-025).
+ */
+function isSingleSegment(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    assertPathSegment('id', value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function reject400(res: Response, field: string): null {
+  res.status(400).json({ error: `Invalid ${field}` });
+  return null;
 }
 
 export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
@@ -569,9 +592,11 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
   router.get('/runs/:runId', async (req: Request, res: Response) => {
     try {
       const owner = ownerOf(req);
+      if (!isSingleSegment(req.params.runId)) return void reject400(res, 'runId');
       let run = await deps.coordinator.getRun(req.params.runId);
       if (!run) {
         const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+        if (projectId !== undefined && !isSingleSegment(projectId)) return void reject400(res, 'projectId');
         if (projectId) run = deps.coordinator.readRunFromDisk(owner, projectId, req.params.runId);
       }
       // Own runs only: the caller's own activation dir must hold the run log
@@ -591,6 +616,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
   router.post('/runs/:runId/cancel', async (req: Request, res: Response) => {
     try {
       const owner = ownerOf(req);
+      if (!isSingleSegment(req.params.runId)) return void reject400(res, 'runId');
       const run = await deps.coordinator.getRun(req.params.runId);
       // Own runs only — same structural check as the detail read.
       if (!run || !hasRunLog(actRootOf(owner), run.projectId, run.runId)) {
@@ -616,6 +642,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
   router.post('/runs/:runId/steps/:stepId/clarify', async (req: Request, res: Response) => {
     try {
       const owner = ownerOf(req);
+      if (!isSingleSegment(req.params.runId)) return void reject400(res, 'runId');
       const answer = req.body?.answer;
       if (typeof answer !== 'string' || !answer.trim()) {
         res.status(400).json({ error: 'answer must be a non-empty string' });
@@ -976,6 +1003,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         res.status(400).json({ error: 'projectId is required' });
         return;
       }
+      if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
       const found = findViewablePipeline(res, owner, pipelineId);
       if (!found) return;
       const defRoot = found.scopeRoot.root;
@@ -1096,6 +1124,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         res.status(400).json({ error: 'projectId is required' });
         return;
       }
+      if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
       const actRoot = actRootOf(owner);
       let activation: PipelineActivation | null = null;
       let unreadable = false;
@@ -1146,6 +1175,7 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         res.status(400).json({ error: 'projectId is required' });
         return;
       }
+      if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
       // A run needs an activation — run-now fires the caller's own binding.
       let activation: PipelineActivation | null = null;
       try {
@@ -1190,10 +1220,12 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         res.status(400).json({ error: 'projectId query is required (runs are per activation)' });
         return;
       }
+      if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
       let target = owner;
       if (userId && userId !== owner.userId) {
         // Read-only visibility into an org member's activation history —
         // org-scope pipelines only, live members only.
+        if (!isSingleSegment(userId)) return void reject400(res, 'userId');
         const found = findPipelineRoot(scopeRootsOf(owner), pipelineId);
         if (!found || !found.scopeRoot.aclGoverned) {
           res.status(403).json({ error: 'Only org pipelines expose other members\' runs', code: 'org-pipeline-forbidden' });
@@ -1202,6 +1234,14 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
         const gate = await orgGateFor(req)();
         if (!gate.liveRole) {
           res.status(403).json({ error: 'You are not a member of this organization', code: MEMBERSHIP_REQUIRED });
+          return;
+        }
+        // M-025: the target userId whose activation tree we are about to read
+        // must itself be a live member of the caller's org — the caller's own
+        // role is not authority over an arbitrary target's directory.
+        const targetMembership = await deps.organizationRepository.getMembership(userId, owner.organizationId);
+        if (!targetMembership) {
+          res.status(403).json({ error: `"${userId}" is not a member of this organization`, code: MEMBERSHIP_REQUIRED });
           return;
         }
         target = { userId, organizationId: owner.organizationId, organizationKind: 'team' };
@@ -1246,6 +1286,7 @@ export function createActivePipelineRoute(deps: PipelinesRoutesDeps): Router {
     try {
       const owner = ownerOf(req);
       const projectId = req.params.projectId;
+      if (!isSingleSegment(projectId)) return void reject400(res, 'projectId');
       const ctx: PipelineTenantContext = { workspacesPath: deps.workspaceResolver.getPhysicalWorkspacesPath(), ...owner };
       let bound: PipelineActivation | null = null;
       try {

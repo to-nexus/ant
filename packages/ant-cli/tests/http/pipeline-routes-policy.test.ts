@@ -20,7 +20,7 @@ import http from 'node:http';
 import express from 'express';
 import { createPipelinesRoutes } from '../../src/periphery/adapters/http/routes/pipelines.routes';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
-import type { OrgMembershipRole } from '@ant/shared';
+import { MEMBERSHIP_REQUIRED, type OrgMembershipRole } from '@ant/shared';
 
 let wsRoot: string;
 let userDir: string;
@@ -458,4 +458,73 @@ describe('org scoping (team-kind server, promote/ACL — separate app per role)'
       fs.rmSync(path.join(wsRoot, 'individual'), { recursive: true, force: true });
     }
   });
+
+  it('runs-history refuses a target userId that is not a live org member (M-025)', async () => {
+    const memberships = new Map<string, OrgMembershipRole>([['alice', 'admin']]);
+    // Org-scope def on disk (member alice is authority over the PIPELINE, but
+    // not over an arbitrary target userId's activation directory).
+    const orgDefDir = path.join(wsRoot, 'localorg', '.ant/pipelines/shared');
+    fs.mkdirSync(orgDefDir, { recursive: true });
+    fs.writeFileSync(path.join(orgDefDir, 'pipeline.yaml'), `version: 2\nname: Shared\non:\n  schedule:\n    cron: '0 9 * * 1'\nsteps:\n  - id: collect\n    customJobRef: research/collect\n    directive: x\n`);
+    fs.writeFileSync(path.join(orgDefDir, 'availability.json'), JSON.stringify({ enabled: true, changedAt: '2026-08-20T00:00:00.000Z' }));
+
+    const alice = await teamApp(memberships, 'alice');
+    try {
+      const res = await fetch(`${alice.url}/shared/runs?projectId=proj-a&userId=${encodeURIComponent('stranger@evil.com')}`);
+      expect(res.status).toBe(403);
+      expect((await res.json()).code).toBe(MEMBERSHIP_REQUIRED);
+    } finally {
+      await alice.close();
+      process.env.ANT_LOCAL_ORG = 'localorg';
+      process.env.ANT_LOCAL_USER = 'localuser';
+      fs.rmSync(path.join(wsRoot, 'localorg', '.ant'), { recursive: true, force: true });
+      fs.rmSync(path.join(wsRoot, 'localorg', 'alice'), { recursive: true, force: true });
+      fs.rmSync(path.join(wsRoot, 'individual'), { recursive: true, force: true });
+    }
+  });
+});
+
+describe('path-traversal rejection on activation identifiers (H-016 / M-025)', () => {
+  // Body/query identifiers reach the handler verbatim — every shape applies.
+  const BAD = ['../victim', '..', 'a/b', 'a\\b', '/etc', 'proj\0'];
+  // Path params: a bare `..`/`.` segment is collapsed by HTTP path
+  // normalization before routing (it never arrives as the param), so the
+  // reachable traversal shapes here are the ones carrying an ENCODED separator
+  // or NUL that survive decoding into a single param value.
+  const BAD_PATH = ['..%2Fvictim', 'a%2Fb', 'a%5Cb', 'proj%00'];
+
+  for (const bad of BAD) {
+    it(`deactivate rejects traversal projectId ${JSON.stringify(bad)} with 400`, async () => {
+      const res = await api('/digest/deactivate', {
+        method: 'POST',
+        body: JSON.stringify({ projectId: bad }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it(`run-now rejects traversal projectId ${JSON.stringify(bad)} with 400`, async () => {
+      const res = await api('/digest/run-now', {
+        method: 'POST',
+        body: JSON.stringify({ projectId: bad }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it(`runs-history rejects traversal projectId ${JSON.stringify(bad)} with 400`, async () => {
+      const res = await api(`/digest/runs?projectId=${encodeURIComponent(bad)}`);
+      expect(res.status).toBe(400);
+    });
+
+    it(`runs-history rejects traversal target userId ${JSON.stringify(bad)} with 400`, async () => {
+      const res = await api(`/digest/runs?projectId=proj-a&userId=${encodeURIComponent(bad)}`);
+      expect(res.status).toBe(400);
+    });
+  }
+
+  for (const bad of BAD_PATH) {
+    it(`run-detail rejects traversal runId ${JSON.stringify(bad)} with 400`, async () => {
+      const res = await api(`/runs/${bad}`);
+      expect(res.status).toBe(400);
+    });
+  }
 });

@@ -33,15 +33,25 @@ const SEGMENT_REJECT = /[/\\\0]/;
  * `^[a-zA-Z0-9_-]+$`, so no legitimate id is affected.
  */
 export function assertProjectSegment(projectId: string): string {
-  if (typeof projectId !== 'string' || projectId.length === 0) {
-    throw new Error('[pathContainment] projectId must be a non-empty string');
+  return assertPathSegment('projectId', projectId);
+}
+
+/**
+ * Generic single-segment guard. `assertProjectSegment` is the projectId-named
+ * alias kept for its call sites; siblings that concatenate other caller-supplied
+ * identifiers (`userId`, `runId`, `organizationId`) into a filesystem path use
+ * this directly so the rejection message names the offending field.
+ */
+export function assertPathSegment(label: string, value: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`[pathContainment] ${label} must be a non-empty string`);
   }
-  if (SEGMENT_REJECT.test(projectId) || projectId === '.' || projectId === '..' || path.isAbsolute(projectId)) {
+  if (SEGMENT_REJECT.test(value) || value === '.' || value === '..' || path.isAbsolute(value)) {
     throw new Error(
-      `[pathContainment] projectId must be a single path segment: ${JSON.stringify(projectId)}`,
+      `[pathContainment] ${label} must be a single path segment: ${JSON.stringify(value)}`,
     );
   }
-  return projectId;
+  return value;
 }
 
 /**

@@ -56,6 +56,13 @@ describe('activation store round-trip (activator account, projectId-keyed)', () 
     expect(loadActivationByProject(tmp, 'ghost')).toBeNull();
   });
 
+  it('rejects a traversal projectId at the store boundary before any fs access (H-016)', () => {
+    for (const bad of ['../victim', '..', 'a/b', 'a\\b', '/etc', 'proj\0']) {
+      expect(() => loadActivationByProject(tmp, bad)).toThrow();
+      expect(() => deleteActivationRecord(tmp, bad)).toThrow();
+    }
+  });
+
   it('an invalid sidecar throws (never silently deactivates)', () => {
     fs.mkdirSync(path.join(tmp, 'proj-a'), { recursive: true });
     fs.writeFileSync(path.join(tmp, 'proj-a', 'activation.json'), '{"activatedAt": "2026-08-20T00:00:00.000Z"}');

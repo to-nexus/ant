@@ -23,6 +23,13 @@ import {
   assertWithinRoot,
   resolveWithinRoot,
 } from '../../src/core/config/pathContainment.js';
+import {
+  activationFilePath,
+  activationRunsDir,
+  activationRunIndexPath,
+  activationRunLogPath,
+  deriveActivationsRoot,
+} from '../../src/core/pipelines/paths.js';
 import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver.js';
 import { WorkspaceServiceAdapter } from '../../src/infrastructure/workspace/WorkspaceServiceAdapter.js';
 import { resolveConnectionDir } from '../../src/periphery/adapters/http/services/PreviewService/utils/connectionDir.js';
@@ -70,6 +77,51 @@ describe('projectId is a single path segment (C-002)', () => {
 
   it('assertProjectSegment returns the input unchanged when accepted', () => {
     expect(assertProjectSegment('ok-project')).toBe('ok-project');
+  });
+});
+
+describe('pipeline activation paths are single-segment (H-016 / M-025)', () => {
+  // The activation helpers are the final boundary shared by the HTTP routes,
+  // the reconciler, the run coordinator and the delete/rename cascade. A
+  // traversal projectId/runId/userId must be rejected at the helper before it
+  // reaches readFileSync / rmSync — no matter which caller reaches disk.
+  const ACT_ROOT = '/workspaces/acme/alice/.ant/pipeline-activations';
+  const CTX = {
+    workspacesPath: '/workspaces',
+    organizationId: 'acme',
+    userId: 'alice',
+    organizationKind: 'team' as const,
+  };
+
+  for (const [label, value] of REJECTED_PROJECT_IDS) {
+    it(`activationFilePath rejects projectId: ${label}`, () => {
+      expect(() => activationFilePath(ACT_ROOT, value)).toThrow();
+    });
+    it(`activationRunsDir rejects projectId: ${label}`, () => {
+      expect(() => activationRunsDir(ACT_ROOT, value)).toThrow();
+    });
+    it(`activationRunIndexPath rejects projectId: ${label}`, () => {
+      expect(() => activationRunIndexPath(ACT_ROOT, value)).toThrow();
+    });
+  }
+
+  for (const [label, value] of REJECTED_PROJECT_IDS) {
+    it(`activationRunLogPath rejects runId: ${label}`, () => {
+      expect(() => activationRunLogPath(ACT_ROOT, 'ok-project', value)).toThrow();
+    });
+  }
+
+  for (const [label, value] of REJECTED_PROJECT_IDS) {
+    // M-025: a forged target userId must not re-anchor the activations root.
+    it(`deriveActivationsRoot rejects userId: ${label}`, () => {
+      expect(() => deriveActivationsRoot({ ...CTX, userId: value })).toThrow();
+    });
+  }
+
+  it('accepts legitimate ids (incl. email userId)', () => {
+    expect(() => activationFilePath(ACT_ROOT, 'my-project')).not.toThrow();
+    expect(() => activationRunLogPath(ACT_ROOT, 'my-project', 'happy-brave-otter')).not.toThrow();
+    expect(() => deriveActivationsRoot({ ...CTX, userId: 'probe@to.nexus' })).not.toThrow();
   });
 });
 
