@@ -998,6 +998,13 @@ export interface WalkBudget {
   maxDepth: number;
   /** Hard cap on cumulative file bytes; the walk stops (truncated) once exceeded. */
   maxBytes?: number;
+  /**
+   * Entries for which this returns true are neither counted, walked nor
+   * returned — e.g. excluding `sessions/` from an archive so a folder that is
+   * mostly session logs is not refused for bytes that would never be included.
+   * `relFromRoot` is POSIX-separated and relative to the walk root.
+   */
+  skip?: (relFromRoot: string, isDirectory: boolean) => boolean;
 }
 
 export interface WalkedFile {
@@ -1037,8 +1044,10 @@ export function walkContainedBase(
     }
     for (const entry of listed.entries) {
       if (entry.isSymbolicLink) continue; // never follow
-      if (++entries > budget.maxEntries) { truncated = true; return { ok: true, files, truncated }; }
       const childRel = `${rel}/${entry.name}`;
+      const relFromRoot = childRel.slice(target.relative.length + 1);
+      if (budget.skip?.(relFromRoot, entry.isDirectory)) continue;
+      if (++entries > budget.maxEntries) { truncated = true; return { ok: true, files, truncated }; }
       if (entry.isDirectory) {
         queue.push({ rel: childRel, depth: depth + 1 });
       } else if (entry.isFile) {

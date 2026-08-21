@@ -24,7 +24,15 @@ import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import { assertWithinRoot } from '../../../../core/config/pathContainment';
 import { resolveFeatureScopedFilePath, resolveUniversalPlaneRoot, measureArchiveInput } from './helpers/featureFiles';
 import { UPLOAD_LIMITS } from '../../../../core/config/uploadLimits';
-import { mkdirpContainedBase, renameContainedBase, toBaseRelative } from '../../../../core/config/containedIo';
+import {
+  mkdirpContainedBase,
+  renameContainedBase,
+  toBaseRelative,
+  statContainedBase,
+  readBufferContainedBase,
+  walkContainedBase,
+  createReadStreamContainedBase,
+} from '../../../../core/config/containedIo';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
 
 /**
@@ -312,15 +320,28 @@ export function createFilesRoutes(deps: {
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       // Universal-aware seam (blob/image preview must reach the container).
       const fullPath = resolveFeatureScopedFilePath(workspaceResolver, userContext, projectId, featureName, filePath);
+      const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
 
       try {
-        const stat = await fs.promises.stat(fullPath);
-        if (stat.isDirectory()) {
-          res.status(400).json({ error: 'Path is a directory, not a file' });
-          return;
+        let buf: Buffer;
+        if (br) {
+          // Contained: the type check and the bytes bind to the same descended
+          // descriptor, so a directory component swapped after resolve cannot
+          // return another tenant's file as this attachment (H-017).
+          const st = statContainedBase(br);
+          if (!st.ok) { res.status(404).json({ error: 'File not found' }); return; }
+          if (st.stat.isDirectory()) { res.status(400).json({ error: 'Path is a directory, not a file' }); return; }
+          const read = readBufferContainedBase(br);
+          if (!read.ok) { res.status(404).json({ error: 'File not found' }); return; }
+          buf = read.bytes;
+        } else {
+          const stat = await fs.promises.stat(fullPath);
+          if (stat.isDirectory()) {
+            res.status(400).json({ error: 'Path is a directory, not a file' });
+            return;
+          }
+          buf = await fs.promises.readFile(fullPath);
         }
-
-        const buf = await fs.promises.readFile(fullPath);
         const mimeType = getMimeTypeFromPath(filePath);
         res.setHeader('Content-Type', mimeType);
         res.setHeader('Cache-Control', 'no-store');
@@ -805,17 +826,30 @@ export function createFilesRoutes(deps: {
       const workspaceResolver = (deps.projectService as any).workspaceResolver;
       // Universal-aware seam (download must reach the container).
       const fullPath = resolveFeatureScopedFilePath(workspaceResolver, userContext, projectId, featureName, relativePath);
+      const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
 
-      // Check existence
-      try {
-        await fs.promises.access(fullPath);
-      } catch {
-        return res.status(404).json({ error: 'File or directory not found' });
+      // Existence + kind via the same descent the stream binds (H-017).
+      const skipSessions = (rel: string) =>
+        rel === 'sessions' || rel.startsWith('sessions/') || rel.startsWith('sessions\\');
+      let isDirectory: boolean;
+      let fileSize = 0;
+      if (br) {
+        const st = statContainedBase(br);
+        if (!st.ok) return res.status(404).json({ error: 'File or directory not found' });
+        isDirectory = st.stat.isDirectory();
+        fileSize = Number(st.stat.size);
+      } else {
+        try {
+          await fs.promises.access(fullPath);
+        } catch {
+          return res.status(404).json({ error: 'File or directory not found' });
+        }
+        const stat = await fs.promises.stat(fullPath);
+        isDirectory = stat.isDirectory();
+        fileSize = stat.size;
       }
 
-      const stat = await fs.promises.stat(fullPath);
-
-      if (stat.isDirectory()) {
+      if (isDirectory) {
         // Preflight: answer only whether the archive is within budget. The browser
         // starts a folder download as a navigation, so a 413 body would render as
         // raw JSON in a new tab; the UI asks here first and shows a real message.
@@ -838,11 +872,23 @@ export function createFilesRoutes(deps: {
             });
           }
           try {
-            const probe = await measureArchiveInput(fullPath, {
-              maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
-              maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
-            });
-            if (!probe.exceeded) return res.status(204).end();
+            let exceeded: boolean;
+            if (br) {
+              const walk = walkContainedBase(br, {
+                maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
+                maxDepth: 64,
+                maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
+                skip: skipSessions,
+              });
+              if (!walk.ok) return res.status(404).json({ error: 'File or directory not found' });
+              exceeded = walk.truncated;
+            } else {
+              exceeded = (await measureArchiveInput(fullPath, {
+                maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
+                maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
+              })).exceeded;
+            }
+            if (!exceeded) return res.status(204).end();
             return res.status(413).json({
               code: 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED',
               error: 'Folder too large to download',
@@ -875,14 +921,8 @@ export function createFilesRoutes(deps: {
         }
 
         try {
-          const measured = await measureArchiveInput(fullPath, {
-            maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
-            maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
-          });
-          if (measured.exceeded) {
-            // Explicit refusal, never a silent partial ZIP: a truncated archive that
-            // looks complete is worse than a clear error.
-            return res.status(413).json({
+          const tooLarge = () =>
+            res.status(413).json({
               code: 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED',
               error: 'Folder too large to download',
               message:
@@ -891,6 +931,31 @@ export function createFilesRoutes(deps: {
                 'Download a subfolder instead.',
               limit: { entries: DIRECTORY_DOWNLOAD_MAX_ENTRIES, bytes: DIRECTORY_DOWNLOAD_MAX_BYTES },
             });
+
+          // The single enumeration that both measures AND supplies the archive.
+          // A file added or swapped after this snapshot is not in the list, so it
+          // cannot ride into the ZIP outside the measured budget (M-NEW-004/H-017).
+          let archiveFiles: Array<{ base: string; relative: string; entryName: string }> | null = null;
+          if (br) {
+            const walk = walkContainedBase(br, {
+              maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
+              maxDepth: 64,
+              maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
+              skip: skipSessions,
+            });
+            if (!walk.ok) return res.status(404).json({ error: 'File or directory not found' });
+            if (walk.truncated) return tooLarge();
+            archiveFiles = walk.files.map((f) => ({
+              base: br.base,
+              relative: f.relative,
+              entryName: f.relative.slice(br.relative.length + 1),
+            }));
+          } else {
+            const measured = await measureArchiveInput(fullPath, {
+              maxEntries: DIRECTORY_DOWNLOAD_MAX_ENTRIES,
+              maxBytes: DIRECTORY_DOWNLOAD_MAX_BYTES,
+            });
+            if (measured.exceeded) return tooLarge();
           }
 
           // Directory: zip streaming
@@ -909,14 +974,23 @@ export function createFilesRoutes(deps: {
 
           archive.pipe(res);
 
-          // Add directory contents, excluding sessions/
-          archive.directory(fullPath, false, (entry) => {
-            // Exclude sessions/ directory and its contents
-            if (entry.name === 'sessions' || entry.name.startsWith('sessions/') || entry.name.startsWith('sessions\\')) {
-              return false;
+          if (archiveFiles) {
+            // Append each file from a descriptor-bound stream — never
+            // archive.directory(name), which would re-walk the tree by name.
+            for (const f of archiveFiles) {
+              const s = createReadStreamContainedBase({ base: f.base, relative: f.relative });
+              if (!s.ok) continue; // vanished/swapped since the snapshot: skip, never follow
+              archive.append(s.stream, { name: f.entryName });
             }
-            return entry;
-          });
+          } else {
+            // Out-of-base (local): the raw archive walk, sessions excluded.
+            archive.directory(fullPath, false, (entry) => {
+              if (entry.name === 'sessions' || entry.name.startsWith('sessions/') || entry.name.startsWith('sessions\\')) {
+                return false;
+              }
+              return entry;
+            });
+          }
 
           await archive.finalize();
         } finally {
@@ -926,13 +1000,19 @@ export function createFilesRoutes(deps: {
         // File: send as attachment
         const fileName = path.basename(relativePath);
         const mimeType = getMimeTypeFromPath(fullPath);
-        
+
         res.setHeader('Content-Type', mimeType);
         res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
-        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Content-Length', fileSize);
 
-        const stream = fs.createReadStream(fullPath);
-        stream.pipe(res);
+        if (br) {
+          const s = createReadStreamContainedBase(br);
+          if (!s.ok) return res.status(404).json({ error: 'File not found' });
+          s.stream.pipe(res);
+        } else {
+          const stream = fs.createReadStream(fullPath);
+          stream.pipe(res);
+        }
       }
     } catch (error: any) {
       if (!res.headersSent) {
