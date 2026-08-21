@@ -230,21 +230,24 @@ export class ServerConfigurator {
 
     app.use(createJwtAuthMiddleware({
       jwtService,
+      // Method-aware: each exemption names the method its route actually serves
+      // so a mismatched method (e.g. POST /api/health) is not waved past the
+      // JWT gate to the body parser behind it (M-010).
       publicPaths: [
-        '/api/health',
-        '/api/system/config',
-        '/api/agents',
+        { path: '/api/health', methods: ['GET'] },
+        { path: '/api/system/config', methods: ['GET'] },
+        { path: '/api/agents', methods: ['GET'] },
         // Server-driven pricing catalog — read anonymously by the marketing
         // site (`@ant/site`). Billing is always-on today so this is mounted;
         // a future `@ant/cloud`-absent OSS build leaves the router unmounted
         // (→ 404, which the site degrades to its self-host fallback).
-        '/api/billing/catalog',
-        '/',
-        '/local',
-        '/api/auth/google',
-        '/api/auth/google/callback',
-        '/api/auth/me',
-        '/api/auth/signout',
+        { path: '/api/billing/catalog', methods: ['GET'] },
+        { path: '/', methods: ['GET'] },
+        { path: '/local', methods: ['GET'] },
+        { path: '/api/auth/google', methods: ['GET'] },
+        { path: '/api/auth/google/callback', methods: ['GET'] },
+        { path: '/api/auth/me', methods: ['GET'] },
+        { path: '/api/auth/signout', methods: ['POST'] },
       ],
       publicPrefixes: [],
     }));

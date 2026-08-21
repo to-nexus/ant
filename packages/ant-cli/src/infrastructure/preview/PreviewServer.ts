@@ -926,7 +926,12 @@ export class PreviewServer {
       }
       this.app.use(createJwtAuthMiddleware({
         jwtService,
-        publicPaths: ['/health', '/internal/tls-ask'],
+        // Both are GET-only routes. Method-aware so a POST to either does not
+        // skip auth and reach the 50MB body parser mounted below (M-010).
+        publicPaths: [
+          { path: '/health', methods: ['GET'] },
+          { path: '/internal/tls-ask', methods: ['GET'] },
+        ],
         publicPrefixes: [],
       }));
       // Cookie-authenticated state changes must originate from an allowed origin.

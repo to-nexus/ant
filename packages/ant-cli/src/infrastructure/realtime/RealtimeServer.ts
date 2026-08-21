@@ -150,10 +150,12 @@ export class RealtimeServer {
       }
       this.app.use(createJwtAuthMiddleware({
         jwtService,
+        // Method-aware (M-010): the health probes are GET-only, so a POST to the
+        // same path authenticates rather than reaching the parser behind this.
         publicPaths: [
-          '/health',
-          '/api/health',
-          '/bridge/health',
+          { path: '/health', methods: ['GET'] },
+          { path: '/api/health', methods: ['GET'] },
+          { path: '/bridge/health', methods: ['GET'] },
         ],
         publicPrefixes: [],
       }));
