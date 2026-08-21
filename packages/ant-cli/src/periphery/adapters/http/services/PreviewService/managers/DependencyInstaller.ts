@@ -9,7 +9,7 @@ import type { ProjectProfile } from '@ant/shared';
 import type { LogCallback } from '../types';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
 import { composeChildEnv } from './envAssembly';
-import { childSpawnIdentity } from '../../../../../../core/config/childIdentity';
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../../../core/config/childIdentity';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
 const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -275,6 +275,9 @@ export class DependencyInstaller {
       // (M-NEW-001, same axis as the node two-pass install above). Go still gets
       // it: private module fetch needs it and Go runs no dependency code at
       // install time — see `installGoDeps`.
+      // Runs user-authored resolver/build code (cargo/mvn/gradlew) — fail closed
+      // in cloud unless it drops to a distinct unprivileged UID (M-015).
+      assertUserCodeIsolationOrThrow('preview:install:native');
       const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
@@ -416,7 +419,10 @@ export class DependencyInstaller {
       }
 
       let settled = false;
-      
+
+      // The node install pass runs lifecycle scripts / loaders the project
+      // authors — fail closed in cloud without UID isolation (M-015).
+      assertUserCodeIsolationOrThrow('preview:install:node');
       const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
@@ -631,6 +637,10 @@ export class DependencyInstaller {
 
       let settled = false;
 
+      // `go mod` fetch runs with the user's PAT in env — fail closed in cloud
+      // without UID isolation so a same-UID child cannot read the service /proc
+      // environment while it holds credentials (M-015).
+      assertUserCodeIsolationOrThrow('preview:install:go');
       const proc = spawn('go', args, {
         cwd,
         shell: true,

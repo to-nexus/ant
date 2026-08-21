@@ -35,7 +35,7 @@ import { spawn } from 'child_process';
 import { detectPackageManager, buildInstallCommand } from '../../utils/packageManager';
 import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
 import { composeChildEnv } from '../../core/config/childEnv';
-import { childSpawnIdentity } from '../../core/config/childIdentity';
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
 
 /**
  * Directories/patterns we never copy into the deploy workspace.
@@ -319,6 +319,9 @@ export async function installDeployDependencies(
   const { command, args } = buildInstallCommand(pm);
   onLog?.(`📦 Installing deploy dependencies (${pm}) at workspace root...`);
 
+  // Runs the project's own lifecycle scripts — fail closed in cloud unless the
+  // child drops to a distinct unprivileged UID (M-015).
+  assertUserCodeIsolationOrThrow('deploy:install');
   await new Promise<void>((resolve, reject) => {
     let settled = false;
     // The install runs the project's OWN lifecycle scripts and its output is

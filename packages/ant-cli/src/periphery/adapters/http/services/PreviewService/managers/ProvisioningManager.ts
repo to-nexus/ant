@@ -4,7 +4,7 @@ import { logger } from '../../../../../../utils/logger';
 import type { LogCallback, PackageInfo } from '../types';
 import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { buildPackageEnv, composeChildEnv } from './envAssembly';
-import { childSpawnIdentity } from '../../../../../../core/config/childIdentity';
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../../../core/config/childIdentity';
 import type { PreviewManifestResult } from './previewManifest';
 
 /**
@@ -146,6 +146,9 @@ export class ProvisioningManager {
     onLog: LogCallback,
     signal?: AbortSignal,
   ): Promise<{ ok: boolean; detail?: string }> {
+    // User-declared setup commands run arbitrary project code — fail closed in
+    // cloud unless the child drops to a distinct unprivileged UID (M-015).
+    assertUserCodeIsolationOrThrow('preview:provision');
     return new Promise((resolve) => {
       const env = composeChildEnv(
         buildPackageEnv({ pkgPath: cmd.cwd, projectRoot, connections, packageSource: cmd.packageSource }),

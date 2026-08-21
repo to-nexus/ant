@@ -11,7 +11,7 @@ import { spawn } from 'child_process';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 import { detectPackageManager, buildInstallCommand, findProjectRoot } from '../../utils/packageManager';
 import { composeChildEnv } from '../../core/config/childEnv';
-import { childSpawnIdentity } from '../../core/config/childIdentity';
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
 
 export interface BuildResult {
   success: boolean;
@@ -143,6 +143,9 @@ async function ensureDependencies(
 
   onLog?.(`📦 Installing dependencies (${pm})...`);
 
+  // Lifecycle scripts are user-authored — fail closed in cloud without UID
+  // isolation (M-015).
+  assertUserCodeIsolationOrThrow('deploy:install');
   return new Promise<void>((resolve, reject) => {
     let settled = false;
 
@@ -270,6 +273,9 @@ export async function runBuild(
 
   const BUILD_TIMEOUT_MS = 10 * 60 * 1000;
 
+  // The build script is user-authored — fail closed in cloud without UID
+  // isolation (M-015).
+  assertUserCodeIsolationOrThrow('deploy:build');
   return new Promise<BuildResult>((resolve) => {
     let resolved = false;
     const done = (result: BuildResult) => {

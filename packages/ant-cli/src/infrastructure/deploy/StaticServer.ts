@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { composeChildEnv } from '../../core/config/childEnv';
-import { childSpawnIdentity } from '../../core/config/childIdentity';
+import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
 import { logger } from '../../utils/logger';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 
@@ -85,6 +85,9 @@ function startSpaServer(options: StaticServerOptions): Promise<StaticServerHandl
 function startNextServer(options: StaticServerOptions): Promise<StaticServerHandle> {
   const { port, basePath, workspacePath } = options;
 
+  // `next start` runs the user's built server long-lived — fail closed in cloud
+  // without UID isolation (M-015).
+  assertUserCodeIsolationOrThrow('deploy:static-server');
   return new Promise((resolve, reject) => {
     const nextBin = path.join(workspacePath, 'node_modules', '.bin', 'next');
     const cmd = fs.existsSync(nextBin) ? nextBin : 'npx';

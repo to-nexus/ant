@@ -27,6 +27,7 @@ import { parseSecretRef } from '@ant/shared';
 import { McpConfigError } from './McpConfigError';
 import type { McpCredentialResolver } from './McpCredentialResolver';
 import type { McpServerConfig } from './types';
+import { assertUserCodeIsolationOrThrow, wrapCommandForChildIdentity } from '../config/childIdentity';
 
 const CONNECT_TIMEOUT_MS = 60_000;
 const CALL_TIMEOUT_MS = 60_000;
@@ -142,20 +143,29 @@ export class McpConnectionManager {
     if (this.connected) return;
     for (const [serverName, cfg] of Object.entries(this.servers)) {
       const client = new Client({ name: 'ant-universal', version: '1.0.0' });
-      const transport =
-        cfg.transport === 'stdio'
-          ? new StdioClientTransport({
-              command: cfg.command!,
-              args: cfg.args ?? [],
-              // Declared env ONLY (resolved from the encrypted store), plus the
-              // minimum a process needs to execute. Never `...process.env` — that
-              // handed every third-party server the host's full secret set (LLM
-              // provider keys, JWT secret, Redis URL).
-              env: buildStdioChildEnv(await this.resolveCredentials(cfg.env, 'env', serverName)),
-            })
-          : new StreamableHTTPClientTransport(new URL(cfg.url!), {
-              requestInit: { headers: await this.resolveCredentials(cfg.headers, 'headers', serverName) },
-            });
+      let transport;
+      if (cfg.transport === 'stdio') {
+        // A stdio MCP server is arbitrary code execution. The SDK spawns it
+        // internally with no uid/gid option, so — fail closed in cloud unless a
+        // distinct child UID is configured (H-014), then re-exec under setpriv
+        // so the child actually drops off the service UID (its /proc and the
+        // shared credential store are otherwise readable by a same-UID child).
+        assertUserCodeIsolationOrThrow(`mcp:stdio:${serverName}`);
+        const wrapped = wrapCommandForChildIdentity(cfg.command!, cfg.args ?? []);
+        transport = new StdioClientTransport({
+          command: wrapped.command,
+          args: wrapped.args,
+          // Declared env ONLY (resolved from the encrypted store), plus the
+          // minimum a process needs to execute. Never `...process.env` — that
+          // handed every third-party server the host's full secret set (LLM
+          // provider keys, JWT secret, Redis URL).
+          env: buildStdioChildEnv(await this.resolveCredentials(cfg.env, 'env', serverName)),
+        });
+      } else {
+        transport = new StreamableHTTPClientTransport(new URL(cfg.url!), {
+          requestInit: { headers: await this.resolveCredentials(cfg.headers, 'headers', serverName) },
+        });
+      }
 
       console.log(`🔌 [MCP] Connecting to server "${serverName}" (${cfg.transport})`);
       await withTimeout(client.connect(transport), CONNECT_TIMEOUT_MS, `MCP connect "${serverName}"`);

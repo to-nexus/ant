@@ -20,7 +20,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Request } from 'express';
 import { composeChildEnv, composeCommandChildEnv } from '../../src/core/config/childEnv.js';
-import { assertUserCodeIsolationOrThrow } from '../../src/core/config/childIdentity.js';
+import { assertUserCodeIsolationOrThrow, wrapCommandForChildIdentity } from '../../src/core/config/childIdentity.js';
 import { buildCleanHeaders, buildForwardHeaders } from '../../src/periphery/adapters/http/middleware/proxyForwarding.js';
 import { rewriteUpgradeHeaders, buildPeerForwardUpgradeHeaders } from '../../src/infrastructure/preview/PreviewServer.js';
 
@@ -529,5 +529,60 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
       process.env.ANT_CHILD_UID = String(self);
       expect(() => assertUserCodeIsolationOrThrow('run_command')).toThrow(/without OS isolation/i);
     });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // stdio MCP child drops off the service UID via setpriv (H-014). The SDK
+  // spawns internally with no uid/gid option, so the command is re-execed under
+  // setpriv when a child identity is configured.
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('wrapCommandForChildIdentity', () => {
+    const saved: Record<string, string | undefined> = {};
+    const KEYS = ['ANT_CHILD_UID', 'ANT_CHILD_GID'];
+    beforeEach(() => { for (const k of KEYS) { saved[k] = process.env[k]; delete process.env[k]; } });
+    afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
+
+    it('passes the command through unchanged when no child identity is set (local)', () => {
+      expect(wrapCommandForChildIdentity('npx', ['server'])).toEqual({ command: 'npx', args: ['server'] });
+    });
+
+    it('re-execs under setpriv with reuid/regid on Linux when ids are configured', () => {
+      process.env.ANT_CHILD_UID = '1001';
+      process.env.ANT_CHILD_GID = '1001';
+      const wrapped = wrapCommandForChildIdentity('npx', ['mcp-server', '--flag']);
+      if (process.platform === 'linux') {
+        expect(wrapped.command).toBe('setpriv');
+        expect(wrapped.args).toEqual([
+          '--reuid', '1001', '--regid', '1001', '--clear-groups', '--', 'npx', 'mcp-server', '--flag',
+        ]);
+      } else {
+        // Non-Linux hosts (local dev on macOS): no setpriv, command unchanged.
+        expect(wrapped).toEqual({ command: 'npx', args: ['mcp-server', '--flag'] });
+      }
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Enforcement: every user-authored spawn that spreads childSpawnIdentity()
+  // must be gated by assertUserCodeIsolationOrThrow in the same file (M-015).
+  // A new install/build/static-server spawn added without the gate fails here.
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('user-code spawn sites are gated (M-015 enforcement)', () => {
+    const files = [
+      'src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts',
+      'src/periphery/adapters/http/services/PreviewService/managers/ProvisioningManager.ts',
+      'src/periphery/adapters/http/services/PreviewService/managers/ProcessSpawner.ts',
+      'src/infrastructure/deploy/DeployWorkspace.ts',
+      'src/infrastructure/deploy/BuildRunner.ts',
+      'src/infrastructure/deploy/StaticServer.ts',
+    ];
+    for (const rel of files) {
+      it(`${path.basename(rel)}: assert count >= childSpawnIdentity() spawn count`, () => {
+        const src = fs.readFileSync(path.join(process.cwd(), rel), 'utf-8');
+        const spawns = (src.match(/\.\.\.childSpawnIdentity\(\)/g) ?? []).length;
+        const gates = (src.match(/assertUserCodeIsolationOrThrow\(/g) ?? []).length;
+        expect(gates).toBeGreaterThanOrEqual(spawns);
+      });
+    }
   });
 });

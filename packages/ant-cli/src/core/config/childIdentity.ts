@@ -187,6 +187,36 @@ export function assertUserCodeIsolationOrThrow(context: string): void {
   );
 }
 
+/**
+ * Wrap a command so it drops to the child UID/GID even when the spawner cannot
+ * pass `uid`/`gid` spawn options.
+ *
+ * `spawn(cmd, args, { uid, gid })` is how preview/deploy children drop — but the
+ * MCP SDK's `StdioClientTransport` spawns internally (via cross-spawn) and
+ * exposes no uid/gid, so a same-UID stdio MCP child can read the runner's
+ * `/proc` environment and the shared credential store (H-014). On Linux we
+ * instead re-exec the command under `setpriv`, which changes the UID/GID before
+ * `exec`. Unset ids (local single-user mode) return the command unchanged.
+ *
+ * Pair with {@link assertUserCodeIsolationOrThrow}: the gate guarantees the ids
+ * are present, distinct and droppable in cloud; this seam makes the drop happen.
+ */
+export function wrapCommandForChildIdentity(
+  command: string,
+  args: readonly string[],
+): { command: string; args: string[] } {
+  const uid = readId('ANT_CHILD_UID');
+  const gid = readId('ANT_CHILD_GID');
+  if (uid === undefined && gid === undefined) return { command, args: [...args] };
+  if (process.platform !== 'linux') return { command, args: [...args] };
+
+  const setprivArgs: string[] = [];
+  if (uid !== undefined) setprivArgs.push('--reuid', String(uid));
+  if (gid !== undefined) setprivArgs.push('--regid', String(gid), '--clear-groups');
+  setprivArgs.push('--', command, ...args);
+  return { command: 'setpriv', args: setprivArgs };
+}
+
 export const __testing = {
   reset: () => {
     warned = false;
