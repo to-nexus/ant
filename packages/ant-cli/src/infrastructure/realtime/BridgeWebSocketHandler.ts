@@ -29,6 +29,20 @@ import { logger } from '../../utils/logger';
 
 const COMPONENT = 'BridgeWS';
 
+/**
+ * Pod-local admission caps (M-NEW-022 / M-NEW-025). A WebSocket upgrade holds an
+ * FD, a heap client record and event listeners until it closes; without a cap an
+ * unauthenticated peer accumulates them (M-NEW-025), and an authenticated user
+ * opening many connections multiplies the Redis response fan-out (M-NEW-022).
+ * These are per-pod counters — deliberately conservative and never fail-open —
+ * so a Realtime pod bounds its own resource use even when Redis is unavailable.
+ */
+const MAX_DETECTED_GLOBAL = 256;   // unauthenticated (probe) connections pod-wide
+const MAX_PER_IP = 32;             // any-status connections from one client IP
+const MAX_PER_USER = 8;            // authenticated connections per user
+/** A detected (unauthenticated) connection that never registers is closed. */
+const DETECTED_IDLE_TIMEOUT_MS = 30_000;
+
 /** Per-connection context stored alongside each WebSocket. */
 interface BridgeClient {
   ws: WebSocket;
@@ -44,10 +58,17 @@ interface BridgeClient {
   authStatus: BridgeSessionStatus;
   unsubscribeMcp: (() => void) | null;
   unsubscribeProbe: (() => void) | null;
+  /** Admission bookkeeping (M-NEW-022/025): the IP and user this slot charged. */
+  admitIp: string | null;
+  admitUserId: string | null;
+  admitDetected: boolean;
+  idleTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export interface BridgeWebSocketHandlerDeps {
   stateStore: any;
+  /** Admission caps (test override); production uses the module defaults. */
+  caps?: { maxDetectedGlobal?: number; maxPerIp?: number; maxPerUser?: number };
 }
 
 export class BridgeWebSocketHandler {
@@ -57,10 +78,21 @@ export class BridgeWebSocketHandler {
   private stateStore: any;
   private clients = new Set<BridgeClient>();
 
+  // Pod-local admission counters (M-NEW-022/025).
+  private detectedCount = 0;
+  private readonly perIp = new Map<string, number>();
+  private readonly perUser = new Map<string, number>();
+  private readonly maxDetectedGlobal: number;
+  private readonly maxPerIp: number;
+  private readonly maxPerUser: number;
+
   constructor(deps: BridgeWebSocketHandlerDeps) {
     this.stateStore = deps.stateStore;
     this.sessionManager = new BridgeSessionManager(deps.stateStore);
     this.jwtService = createJwtServiceFromEnv();
+    this.maxDetectedGlobal = deps.caps?.maxDetectedGlobal ?? MAX_DETECTED_GLOBAL;
+    this.maxPerIp = deps.caps?.maxPerIp ?? MAX_PER_IP;
+    this.maxPerUser = deps.caps?.maxPerUser ?? MAX_PER_USER;
 
     this.wss = new WebSocketServer({
       noServer: true,
@@ -88,6 +120,24 @@ export class BridgeWebSocketHandler {
 
     const authResult = this.authenticate(req);
 
+    // Admission BEFORE accepting the upgrade — reject over-cap peers so they
+    // never occupy an FD / client record (M-NEW-022/025). Reservations are
+    // released exactly once in cleanup().
+    const ip = this.clientIp(req);
+    const detected = authResult.status !== 'connected';
+    const ipCount = this.perIp.get(ip) ?? 0;
+    const userCount = authResult.userId ? (this.perUser.get(authResult.userId) ?? 0) : 0;
+    const overCap =
+      ipCount >= this.maxPerIp ||
+      (detected && this.detectedCount >= this.maxDetectedGlobal) ||
+      (!detected && authResult.userId != null && userCount >= this.maxPerUser);
+    if (overCap) {
+      logger.warn(`Bridge upgrade refused (cap): ip=${ip} detected=${detected}`, { component: COMPONENT });
+      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
     const client: BridgeClient = {
       ws: null as any,
       userId: authResult.userId,
@@ -96,13 +146,60 @@ export class BridgeWebSocketHandler {
       authStatus: authResult.status,
       unsubscribeMcp: null,
       unsubscribeProbe: null,
+      admitIp: ip,
+      admitUserId: detected ? null : authResult.userId,
+      admitDetected: detected,
+      idleTimer: null,
     };
+
+    // Charge the reservation as the upgrade is accepted.
+    this.perIp.set(ip, ipCount + 1);
+    if (detected) this.detectedCount += 1;
+    else if (authResult.userId) this.perUser.set(authResult.userId, userCount + 1);
 
     this.wss.handleUpgrade(req, socket, head, (ws) => {
       client.ws = ws;
       this.clients.add(client);
+      // A detected connection that never registers is a dangling idle socket:
+      // close it after a short grace period (M-NEW-025).
+      if (detected) {
+        client.idleTimer = setTimeout(() => {
+          logger.warn('Bridge detected connection idle timeout — closing', { component: COMPONENT });
+          try { ws.close(); } catch { /* already closed */ }
+          void this.cleanup(client);
+        }, DETECTED_IDLE_TIMEOUT_MS);
+      }
       this.wss.emit('connection', ws, req, client);
     });
+  }
+
+  /** First X-Forwarded-For hop, else the socket remote address. */
+  private clientIp(req: IncomingMessage): string {
+    const xff = req.headers['x-forwarded-for'];
+    const raw = Array.isArray(xff) ? xff[0] : xff;
+    const first = raw?.split(',')[0]?.trim();
+    return first || req.socket?.remoteAddress || 'unknown';
+  }
+
+  /** Release the admission reservation this client charged, exactly once. */
+  private releaseAdmission(client: BridgeClient): void {
+    if (client.idleTimer) { clearTimeout(client.idleTimer); client.idleTimer = null; }
+    if (client.admitIp) {
+      const n = (this.perIp.get(client.admitIp) ?? 1) - 1;
+      if (n <= 0) this.perIp.delete(client.admitIp);
+      else this.perIp.set(client.admitIp, n);
+      client.admitIp = null;
+    }
+    if (client.admitDetected) {
+      this.detectedCount = Math.max(0, this.detectedCount - 1);
+      client.admitDetected = false;
+    }
+    if (client.admitUserId) {
+      const n = (this.perUser.get(client.admitUserId) ?? 1) - 1;
+      if (n <= 0) this.perUser.delete(client.admitUserId);
+      else this.perUser.set(client.admitUserId, n);
+      client.admitUserId = null;
+    }
   }
 
   /** Check if this handler should handle the given upgrade request. */
@@ -155,6 +252,8 @@ export class BridgeWebSocketHandler {
   }
 
   private async handleRegister(client: BridgeClient, msg: BridgeRegisterMessage): Promise<void> {
+    // A registering connection is no longer a dangling idle socket.
+    if (client.idleTimer) { clearTimeout(client.idleTimer); client.idleTimer = null; }
     const userId = client.userId || msg.userId || 'anonymous';
     client.userId = userId;
     client.machineId = msg.machineId;
@@ -230,6 +329,17 @@ export class BridgeWebSocketHandler {
     if (msg.type !== 'mcp.response') return;
     const { requestId, result, error } = msg as any;
     if (!requestId || !this.stateStore) return;
+
+    // Single-consumer: the response channel is NOT user-scoped, so with several
+    // connections open (M-NEW-022) each could write the same requestId and
+    // multiply the Redis writes. An atomic single-slot reservation lets only the
+    // FIRST responder write; duplicates are dropped before the serialize + write.
+    if (typeof this.stateStore.reserveSlot === 'function') {
+      const first = await this.stateStore
+        .reserveSlot(`bridge:mcp:respseen:${requestId}`, 'r', 1, 60)
+        .catch(() => true); // Redis unavailable: fall through (correctness over dedup)
+      if (!first) return;
+    }
 
     const responseKey = `bridge:mcp:response:${requestId}`;
     const payload = JSON.stringify(error ? { error } : { result });
@@ -339,6 +449,9 @@ export class BridgeWebSocketHandler {
   private async cleanup(client: BridgeClient): Promise<void> {
     if (this.cleaned.has(client)) return;
     this.cleaned.add(client);
+
+    // Release the admission reservation exactly once (M-NEW-022/025).
+    this.releaseAdmission(client);
 
     if (client.unsubscribeMcp) {
       client.unsubscribeMcp();
