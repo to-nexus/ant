@@ -398,7 +398,7 @@ export class DependencyInstaller {
 
   /** One install invocation. Owns the timeout / abort / stream / exit contract. */
   private spawnInstallPass(
-    invocation: { command: string; args: string[] },
+    invocation: { command: string; args: string[]; env?: Record<string, string> },
     ctx: {
       packagePath: string;
       relativePath: string;
@@ -409,7 +409,7 @@ export class DependencyInstaller {
       label?: string;
     },
   ): Promise<void> {
-    const { command, args } = invocation;
+    const { command, args, env: invocationEnv } = invocation;
     const { packagePath, relativePath, pm, onLog, signal, credentialEnv, label } = ctx;
 
     return new Promise((resolve, reject) => {
@@ -427,7 +427,9 @@ export class DependencyInstaller {
         cwd: packagePath,
         shell: true,
         stdio: 'pipe',
-        env: composeChildEnv({ COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' }, credentialEnv),
+        // invocationEnv carries package-manager loader-isolation flags (e.g.
+        // yarn YARN_IGNORE_PATH) that must apply on the credentialed pass.
+        env: composeChildEnv({ COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...invocationEnv }, credentialEnv),
         ...childSpawnIdentity(),
       });
 

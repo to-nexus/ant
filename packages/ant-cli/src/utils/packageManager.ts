@@ -77,7 +77,7 @@ export interface InstallCommandOptions {
 export function buildInstallCommand(
   pm: PackageManager,
   opts: InstallCommandOptions = {},
-): { command: string; args: string[] } {
+): { command: string; args: string[]; env?: Record<string, string> } {
   const ignore = opts.ignoreScripts ? ['--ignore-scripts'] : [];
   switch (pm) {
     case 'pnpm':
@@ -94,7 +94,21 @@ export function buildInstallCommand(
         ],
       };
     case 'yarn':
-      return { command: 'yarn', args: ['install', '--production=false', ...ignore] };
+      return {
+        command: 'yarn',
+        args: ['install', '--production=false', ...ignore],
+        // Yarn's own project loader runs regardless of --ignore-scripts: a
+        // checked-in `.yarn/releases/yarn-*.cjs` named by `yarnPath` is re-execed
+        // AS yarn, and `.yarnrc.yml` `plugins:` load into yarn's process. Both
+        // would run with the PAT in env during the credentialed acquire pass
+        // (M-NEW-001). YARN_IGNORE_PATH makes the service-managed yarn ignore the
+        // project's yarnPath binary, and YARN_ENABLE_SCRIPTS=false is the Berry
+        // twin of --ignore-scripts. Unknown to older (v1) yarn → harmless no-op,
+        // where --ignore-scripts already covers the script surface.
+        ...(opts.ignoreScripts
+          ? { env: { YARN_IGNORE_PATH: '1', YARN_ENABLE_SCRIPTS: 'false' } }
+          : {}),
+      };
     case 'npm':
       return { command: 'npm', args: ['install', '--include=dev', ...ignore] };
   }

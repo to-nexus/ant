@@ -69,6 +69,18 @@ describe('credential-safe install: scripts-off acquire, credential-free lifecycl
     expect(buildInstallCommand('pnpm', { ignoreScripts: false }).args).not.toContain('--ignore-pnpmfile');
   });
 
+  // M-NEW-001 (recheck): --ignore-scripts does not stop yarn's own project
+  // loader — a checked-in `yarnPath` binary is re-execed AS yarn, and
+  // `.yarnrc.yml` plugins load into yarn's process, both with the PAT in env.
+  // The credentialed acquire pass sets env that neutralizes them; the
+  // lifecycle pass carries no such env.
+  it('yarn acquire pass neutralizes the project yarnPath/plugin loader via env', () => {
+    const acquire = buildInstallCommand('yarn', { ignoreScripts: true });
+    expect(acquire.env).toMatchObject({ YARN_IGNORE_PATH: '1', YARN_ENABLE_SCRIPTS: 'false' });
+    expect(buildInstallCommand('yarn').env).toBeUndefined();
+    expect(buildInstallCommand('yarn', { ignoreScripts: false }).env).toBeUndefined();
+  });
+
   it('runInstall passes credentials only to the scripts-off pass', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, '../../src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts'),
