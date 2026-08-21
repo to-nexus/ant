@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { FileNode, FileResource } from '@ant/shared';
 import { isFeatureTreeRootEntry } from '@ant/shared';
-import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
+import { WorkspaceResolver, WorkspacePathResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { assertWithinRoot } from '../../../../../core/config/pathContainment';
 import { UserContext } from '../../../../../core/types/user';
 import { isCanonicalDir, clearCanonicalDirectory, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
@@ -117,7 +117,7 @@ export class FileOperationService {
    * resolved name (H-017 / M-026 / M-NEW-024).
    */
   private baseRelOf(fullPath: string): BaseRelative | undefined {
-    return toBaseRelative(this.workspaceResolver.getPhysicalWorkspacesPath(), fullPath);
+    return toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
   }
 
   private resolveFullPath(projectId: string, featureName: string, filePath: string, userContext: UserContext): { featurePath: string; fullPath: string } {

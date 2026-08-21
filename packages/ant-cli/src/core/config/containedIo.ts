@@ -991,6 +991,77 @@ export function readdirContainedBase(
   }
 }
 
+/**
+ * Bounded contained directory read: descends to the leaf directory, then reads
+ * at most `max` entries through the held descriptor, closing the handle the
+ * instant the budget is exhausted. Unlike {@link readdirContainedBase} it never
+ * materialises a wide directory in full — the universal tree relies on this to
+ * bound work, not just the response size (H-008), while still binding the read
+ * to the descent (H-017).
+ */
+export function readBoundedDirentsContainedBase(
+  target: BaseRelative,
+  max: number,
+): { ok: true; entries: ContainedDirent[]; truncated: boolean } | ContainedFail {
+  const anchor = baseAnchor(target.base);
+  if ('ok' in anchor) return anchor;
+  const components = relativeComponents(target.relative);
+  if ('ok' in components) return components;
+  const canonicalPath = path.join(anchor.path, ...components);
+
+  const toDirent = (d: fs.Dirent): ContainedDirent => ({
+    name: d.name,
+    isDirectory: d.isDirectory(),
+    isFile: d.isFile(),
+    isSymbolicLink: d.isSymbolicLink(),
+  });
+
+  const readFrom = (openPath: string): { ok: true; entries: ContainedDirent[]; truncated: boolean } | ContainedFail => {
+    let dir: fs.Dir;
+    try {
+      dir = fs.opendirSync(openPath);
+    } catch (err: any) {
+      return { ok: false, reason: failForDirHop(err?.code) };
+    }
+    const entries: ContainedDirent[] = [];
+    let truncated = false;
+    try {
+      for (;;) {
+        if (entries.length >= max) { truncated = true; break; }
+        const e = dir.readSync();
+        if (e === null) break;
+        entries.push(toDirent(e));
+      }
+    } finally {
+      try { dir.closeSync(); } catch { /* already closed */ }
+    }
+    return { ok: true, entries, truncated };
+  };
+
+  if (!DESCENT_AVAILABLE) {
+    try {
+      const link = fs.lstatSync(canonicalPath);
+      if (link.isSymbolicLink() || !link.isDirectory()) return { ok: false, reason: 'swapped' };
+    } catch (err: any) {
+      return { ok: false, reason: failForDirHop(err?.code) };
+    }
+    return readFrom(canonicalPath);
+  }
+
+  const dir = openDirDescended(anchor.path, components, false);
+  if ('ok' in dir) return dir;
+  try {
+    if (!fs.fstatSync(dir.fd).isDirectory()) return { ok: false, reason: 'not-a-file' };
+    // Resolution through the held descriptor's /proc link — the leaf the descent
+    // validated, not a re-resolution of the name.
+    return readFrom(`${PROC_FD}/${dir.fd}`);
+  } catch (err: any) {
+    return { ok: false, reason: failFor(err?.code) };
+  } finally {
+    closeQuiet(dir.fd);
+  }
+}
+
 export interface WalkBudget {
   /** Hard cap on entries visited; the walk stops (truncated) once reached. */
   maxEntries: number;

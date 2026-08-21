@@ -21,6 +21,8 @@ import type { FileNode } from '@ant/shared';
 import { isFeatureTreeRootEntry } from '@ant/shared';
 import { FileTreeUpdatePort } from '../ports';
 import { UserContext } from '../types/user';
+import { WorkspacePathResolver } from '../config/WorkspacePathResolver';
+import { toBaseRelative, readdirContainedBase, statContainedBase, readTextContainedBase } from '../config/containedIo';
 import { 
   getRealtimeBroadcastChannel,
   FileTreeBroadcastMessage,
@@ -217,7 +219,21 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
     if (depth > BROADCAST_TREE_MAX_DEPTH || budget.entries <= 0) return nodes;
 
     try {
-      const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+      // Contained enumeration when in-base: a reparented feature root must not
+      // leak another tenant's entry names/bytes into this SSE-broadcast tree
+      // (H-017). Out-of-base (repoType:local) keeps the raw walk.
+      const dirBr = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), dirPath);
+      let entries: Array<{ name: string; isDir: boolean; isFile: boolean }>;
+      if (dirBr) {
+        const listed = readdirContainedBase(dirBr);
+        if (!listed.ok) return nodes;
+        entries = listed.entries
+          .filter((e) => !e.isSymbolicLink)
+          .map((e) => ({ name: e.name, isDir: e.isDirectory, isFile: e.isFile }));
+      } else {
+        entries = (await fs.promises.readdir(dirPath, { withFileTypes: true }))
+          .map((d) => ({ name: d.name, isDir: d.isDirectory(), isFile: d.isFile() }));
+      }
       budget.entries -= entries.length;
 
       for (const entry of entries) {
@@ -233,7 +249,7 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
         const fullPath = path.join(dirPath, entry.name);
         const relPath = relativePath ? path.join(relativePath, entry.name) : entry.name;
 
-        if (entry.isDirectory()) {
+        if (entry.isDir) {
           const children = await this.buildFileTree(fullPath, relPath, budget, depth + 1);
           nodes.push({
             name: entry.name,
@@ -244,21 +260,30 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
           continue;
         }
 
-        if (!entry.isFile()) continue;
+        if (!entry.isFile) continue;
 
         let size = 0;
         let mtimeMs = 0;
-        try {
-          const stats = await fs.promises.stat(fullPath);
-          size = stats.size;
-          mtimeMs = stats.mtimeMs;
-        } catch { /* skip stat failures */ }
-
         let content: string | null = null;
-        if (shouldEvaluateTemplate(relPath)) {
+        const fileBr = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
+        if (fileBr) {
+          const st = statContainedBase(fileBr);
+          if (st.ok) { size = Number(st.stat.size); mtimeMs = Number(st.stat.mtimeMs); }
+          if (shouldEvaluateTemplate(relPath)) {
+            const read = readTextContainedBase(fileBr);
+            if (read.ok) content = read.text;
+          }
+        } else {
           try {
-            content = await fs.promises.readFile(fullPath, 'utf-8');
-          } catch { /* skip read failures */ }
+            const stats = await fs.promises.stat(fullPath);
+            size = stats.size;
+            mtimeMs = stats.mtimeMs;
+          } catch { /* skip stat failures */ }
+          if (shouldEvaluateTemplate(relPath)) {
+            try {
+              content = await fs.promises.readFile(fullPath, 'utf-8');
+            } catch { /* skip read failures */ }
+          }
         }
 
         const meta = computeFileMeta({

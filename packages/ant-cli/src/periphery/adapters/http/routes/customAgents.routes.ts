@@ -19,6 +19,17 @@ import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
 import { isValidCustomId, UNIVERSAL_FEATURE } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+import {
+  toBaseRelative,
+  statContainedBase,
+  rmrfContainedBase,
+  clearContainedBase,
+  createExclusiveContainedBase,
+  mkdirpContainedBase,
+  renameContainedBase,
+  type BaseRelative,
+} from '../../../../core/config/containedIo';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
 import { deriveCustomAgentScopeRootsForTenant } from '../../../../core/customAgents/scopeRoots';
 import {
@@ -288,6 +299,17 @@ export function createCustomAgentRoutes(deps: {
     return resolveUniversalMergedPath(containerRootFor(req, projectId), rel);
   }
 
+  /**
+   * Base-relative descent handle for a merged artifact path, so every mutation
+   * below (delete/create/rename/mkdir) binds to the descent instead of
+   * re-opening the resolved name — a reparented container root cannot redirect
+   * the mutation to another tenant's tree (H-017). `undefined` out-of-base
+   * (repoType:local) → caller keeps the raw fs op.
+   */
+  function mergedBaseRel(req: Request, projectId: string, rel: string): BaseRelative | undefined {
+    return toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), resolveMergedPath(req, projectId, rel));
+  }
+
   /** API node shape (no absolutePath leak). */
   interface ArtifactTreeNode {
     name: string;
@@ -408,12 +430,25 @@ export function createCustomAgentRoutes(deps: {
         });
       }
       const full = resolveMergedPath(req, req.params.projectId, rel);
+      const br = mergedBaseRel(req, req.params.projectId, rel);
+      const isCanonicalRoot =
+        rel === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(rel);
+      if (br) {
+        if (!statContainedBase(br).ok) return res.status(404).json({ error: `Artifact not found: ${rel}` });
+        // Canonical roots are clearable, never removable (codespace parity).
+        if (isCanonicalRoot) {
+          const cleared = clearContainedBase(br);
+          if (!cleared.ok) return res.status(500).json({ error: `Clear failed: ${cleared.reason}` });
+          return res.json({ success: true, cleared: true });
+        }
+        const removed = rmrfContainedBase(br);
+        if (!removed.ok) return res.status(500).json({ error: `Delete failed: ${removed.reason}` });
+        return res.json({ success: true });
+      }
       if (!fs.existsSync(full)) {
         return res.status(404).json({ error: `Artifact not found: ${rel}` });
       }
-      // Canonical roots are clearable, never removable (codespace parity):
-      // delete on the root clears its contents and keeps the dir.
-      if (rel === SESSIONS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(rel)) {
+      if (isCanonicalRoot) {
         for (const entry of fs.readdirSync(full)) {
           fs.rmSync(path.join(full, entry), { recursive: true, force: true });
         }
@@ -433,6 +468,13 @@ export function createCustomAgentRoutes(deps: {
       const createViolation = reservedRootViolation(rel);
       if (createViolation) return res.status(400).json(createViolation);
       const full = resolveMergedPath(req, req.params.projectId, rel);
+      const br = mergedBaseRel(req, req.params.projectId, rel);
+      if (br) {
+        if (statContainedBase(br).ok) return res.status(409).json({ error: `Already exists: ${rel}` });
+        const created = createExclusiveContainedBase(br);
+        if (!created.ok) return res.status(500).json({ error: `Create failed: ${created.reason}` });
+        return res.json({ success: true });
+      }
       if (fs.existsSync(full)) {
         return res.status(409).json({ error: `Already exists: ${rel}` });
       }
@@ -459,8 +501,18 @@ export function createCustomAgentRoutes(deps: {
       if (!parentRel && (newName === SESSIONS_NODE || newName === PIPELINE_RUNS_NODE || (UNIVERSAL_ARTIFACT_CANONICAL_DIRS as readonly string[]).includes(newName))) {
         return res.status(400).json({ error: `"${newName}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' });
       }
+      const toRel = parentRel ? `${parentRel}/${newName}` : newName;
       const from = resolveMergedPath(req, req.params.projectId, rel);
-      const to = resolveMergedPath(req, req.params.projectId, parentRel ? `${parentRel}/${newName}` : newName);
+      const to = resolveMergedPath(req, req.params.projectId, toRel);
+      const brFrom = mergedBaseRel(req, req.params.projectId, rel);
+      const brTo = mergedBaseRel(req, req.params.projectId, toRel);
+      if (brFrom && brTo && brFrom.base === brTo.base) {
+        if (!statContainedBase(brFrom).ok) return res.status(404).json({ error: `Artifact not found: ${rel}` });
+        if (statContainedBase(brTo).ok) return res.status(409).json({ error: `Already exists: ${newName}` });
+        const moved = renameContainedBase(brFrom.base, brFrom.relative, brTo.relative);
+        if (!moved.ok) return res.status(500).json({ error: `Rename failed: ${moved.reason}` });
+        return res.json({ success: true });
+      }
       if (!fs.existsSync(from)) return res.status(404).json({ error: `Artifact not found: ${rel}` });
       if (fs.existsSync(to)) return res.status(409).json({ error: `Already exists: ${newName}` });
       fs.renameSync(from, to);
@@ -476,6 +528,12 @@ export function createCustomAgentRoutes(deps: {
       if (!rel) return res.status(400).json({ error: 'path is required' });
       const mkdirViolation = reservedRootViolation(rel);
       if (mkdirViolation) return res.status(400).json(mkdirViolation);
+      const br = mergedBaseRel(req, req.params.projectId, rel);
+      if (br) {
+        const made = mkdirpContainedBase(br);
+        if (!made.ok) return res.status(500).json({ error: `mkdir failed: ${made.reason}` });
+        return res.json({ success: true });
+      }
       fs.mkdirSync(resolveMergedPath(req, req.params.projectId, rel), { recursive: true });
       res.json({ success: true });
     } catch (error: any) {

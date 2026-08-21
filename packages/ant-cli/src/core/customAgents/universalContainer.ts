@@ -16,6 +16,14 @@ import type { FileNode } from '@ant/shared';
 import { CANONICAL_FEATURE_DIRS, UNIVERSAL_FEATURE, UNIVERSAL_PIPELINE_RUNS_DIRNAME, createEmptyFigmaData } from '@ant/shared';
 import { computeFileMeta, shouldEvaluateTemplate } from '../utils/computeFileMeta';
 import { PIPELINE_ACTIVATIONS_DIRNAME } from '../pipelines/paths';
+import { WorkspacePathResolver } from '../config/WorkspacePathResolver';
+import {
+  toBaseRelative,
+  readBoundedDirentsContainedBase,
+  statContainedBase,
+  readTextContainedBase,
+  type ContainedDirent,
+} from '../config/containedIo';
 
 export const UNIVERSAL_DIRNAME = 'universal';
 export const UNIVERSAL_ARTIFACTS_DIRNAME = 'artifacts';
@@ -425,35 +433,49 @@ interface TraversalBudget {
  * Hidden entries are skipped from the RESULT but still charged, so a flood of
  * dotfiles cannot buy unlimited enumeration under the same cap.
  */
-function readBoundedEntries(abs: string, budget: TraversalBudget): fs.Dirent[] {
-  let dir: fs.Dir;
-  try {
-    dir = fs.opendirSync(abs);
-  } catch {
-    return [];
-  }
+function readBoundedEntries(abs: string, budget: TraversalBudget): ContainedDirent[] {
+  const collected: ContainedDirent[] = [];
 
-  const collected: fs.Dirent[] = [];
-  try {
-    for (;;) {
-      if (budget.remaining <= 0) break;
-      const entry = dir.readSync();
-      if (entry === null) break;
+  // Contained bounded read when in-base: still charges the budget as it reads
+  // (H-008) but binds enumeration to the descent so a reparented container root
+  // cannot leak another tenant's entry names (H-017). Out-of-base keeps opendir.
+  const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), abs);
+  if (br) {
+    const res = readBoundedDirentsContainedBase(br, budget.remaining);
+    if (!res.ok) return [];
+    for (const e of res.entries) {
       budget.remaining -= 1;
-      if (entry.name.startsWith('.')) continue;
-      collected.push(entry);
+      if (e.name.startsWith('.') || e.isSymbolicLink) continue;
+      collected.push(e);
     }
-  } finally {
+  } else {
+    let dir: fs.Dir;
     try {
-      dir.closeSync();
+      dir = fs.opendirSync(abs);
     } catch {
-      /* already closed */
+      return [];
+    }
+    try {
+      for (;;) {
+        if (budget.remaining <= 0) break;
+        const entry = dir.readSync();
+        if (entry === null) break;
+        budget.remaining -= 1;
+        if (entry.name.startsWith('.')) continue;
+        collected.push({ name: entry.name, isDirectory: entry.isDirectory(), isFile: entry.isFile(), isSymbolicLink: entry.isSymbolicLink() });
+      }
+    } finally {
+      try {
+        dir.closeSync();
+      } catch {
+        /* already closed */
+      }
     }
   }
 
   // Only the entries actually collected are sorted — bounded input, bounded sort.
   return collected.sort((a, b) =>
-    a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1,
+    a.isDirectory === b.isDirectory ? a.name.localeCompare(b.name) : a.isDirectory ? -1 : 1,
   );
 }
 
@@ -465,12 +487,12 @@ function buildSubtree(
   budget: TraversalBudget = { remaining: UNIVERSAL_TREE_MAX_ENTRIES },
 ): UniversalTreeNode[] {
   const abs = rel ? path.join(root, rel) : root;
-  if (!fs.existsSync(abs)) return [];
   if (depth >= UNIVERSAL_TREE_MAX_DEPTH || budget.remaining <= 0) return [];
 
   const entries = readBoundedEntries(abs, budget);
   if (budget.remaining <= 0 && depth === 0) budget.rootTruncated = true;
 
+  const physBase = WorkspacePathResolver.getPhysicalWorkspacesPath();
   const nodes: UniversalTreeNode[] = [];
   for (const e of entries) {
 
@@ -478,7 +500,7 @@ function buildSubtree(
     const nodePath = prefix ? `${prefix}/${childRel}` : childRel;
     const absolutePath = path.join(abs, e.name);
 
-    if (e.isDirectory()) {
+    if (e.isDirectory) {
       const children = buildSubtree(root, childRel, prefix, depth + 1, budget);
       const truncated = depth + 1 >= UNIVERSAL_TREE_MAX_DEPTH || budget.remaining <= 0;
       nodes.push({
@@ -494,11 +516,17 @@ function buildSubtree(
 
     let size = 0;
     let mtimeMs = 0;
-    try {
-      const stats = fs.statSync(absolutePath);
-      size = stats.size;
-      mtimeMs = stats.mtimeMs;
-    } catch { /* skip stat failures */ }
+    const fileBr = toBaseRelative(physBase, absolutePath);
+    if (fileBr) {
+      const st = statContainedBase(fileBr);
+      if (st.ok) { size = Number(st.stat.size); mtimeMs = Number(st.stat.mtimeMs); }
+    } else {
+      try {
+        const stats = fs.statSync(absolutePath);
+        size = stats.size;
+        mtimeMs = stats.mtimeMs;
+      } catch { /* skip stat failures */ }
+    }
     nodes.push({ name: e.name, path: nodePath, type: 'file' as const, size, mtimeMs, absolutePath });
   }
   return nodes;
@@ -607,9 +635,15 @@ export async function decorateUniversalTree(nodes: UniversalTreeNode[]): Promise
     }
     let content: string | null = null;
     if (shouldEvaluateTemplate(n.path)) {
-      try {
-        content = await fs.promises.readFile(n.absolutePath, 'utf-8');
-      } catch { /* skip read failures */ }
+      const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), n.absolutePath);
+      if (br) {
+        const read = readTextContainedBase(br);
+        if (read.ok) content = read.text;
+      } else {
+        try {
+          content = await fs.promises.readFile(n.absolutePath, 'utf-8');
+        } catch { /* skip read failures */ }
+      }
     }
     const meta = computeFileMeta({
       relativePath: n.path,
