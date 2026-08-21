@@ -25,6 +25,8 @@ import { layoutValidityFloorVars } from "../../tasks/_shared/helpers/layoutValid
 import type { BaseTask, FeatureTask } from "@ant/shared";
 import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
+import { toBaseRelative, readBufferContainedBase } from '../../../../../../core/config/containedIo';
+import { WorkspacePathResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { logger } from '../../../../../../utils/logger';
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { formatViolations } from "../../utils/violationFormatter";
@@ -713,14 +715,35 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           } catch {
             continue; // outside workspace — skip silently like before
           }
-          if (!fs.existsSync(abs)) continue;
 
-          const stat = fs.statSync(abs);
-          if (stat.size > maxBytesPerImage) {
-            console.log(`⚠️  [UI Images] Skip (too large): ${rel} (${stat.size} bytes)`);
-            continue;
+          // These bytes leave the trust boundary (base64 → external LLM prompt),
+          // so the size gate and the read must bind to the SAME descended
+          // descriptor — a directory component swapped after resolve must not
+          // redirect this to another tenant's file (H-017). `too-large` from the
+          // contained read replaces the separate stat-size check. Out-of-base
+          // (repoType:local) keeps the raw read.
+          const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), abs);
+          let buf: Buffer;
+          let size: number;
+          if (br) {
+            const read = readBufferContainedBase(br, { maxBytes: maxBytesPerImage });
+            if (!read.ok) {
+              if (read.reason === 'too-large') console.log(`⚠️  [UI Images] Skip (too large): ${rel}`);
+              continue;
+            }
+            buf = read.bytes;
+            size = read.size;
+          } else {
+            if (!fs.existsSync(abs)) continue;
+            const stat = fs.statSync(abs);
+            if (stat.size > maxBytesPerImage) {
+              console.log(`⚠️  [UI Images] Skip (too large): ${rel} (${stat.size} bytes)`);
+              continue;
+            }
+            buf = fs.readFileSync(abs);
+            size = stat.size;
           }
-          if (totalBytes + stat.size > maxTotalBytes) {
+          if (totalBytes + size > maxTotalBytes) {
             console.log(`⚠️  [UI Images] Skip (total budget exceeded): ${rel}`);
             continue;
           }
@@ -730,7 +753,6 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           // is actually JPEG — sage-orbiting-grain RCA). Sniff magic bytes
           // off the buffer; only fall back to extension for SVG (text XML,
           // no binary signature).
-          const buf = fs.readFileSync(abs);
           let mediaType: AnthropicImageMime | 'image/svg+xml' | null =
             detectImageMimeFromBuffer(buf);
           if (!mediaType) {
@@ -740,7 +762,7 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           if (!mediaType) continue;
 
           const data = buf.toString('base64');
-          totalBytes += stat.size;
+          totalBytes += size;
 
           uiImageBlocks.push({
             type: 'text',

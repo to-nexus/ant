@@ -13,6 +13,8 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import { FigmaDataConfig, figmaConfigPathFor, createEmptyFigmaData, migrateFigmaConfig } from '@ant/shared';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+import { toBaseRelative, readTextContainedBase, writeTextContainedBase } from '../../../../core/config/containedIo';
 
 export interface FigmaFilesRoutesDeps {
   workspaceRoot: string;
@@ -67,23 +69,39 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
       const figmaPath = await getFigmaJsonPath(req);
       let config: FigmaDataConfig;
 
+      // Bind the read/migration-write to a base descent when in-base — this
+      // route had no containment check at all, so a reparented feature root
+      // could redirect the read/write to another tenant (H-017).
+      const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), figmaPath);
+
       let content: string | undefined;
-      try {
-        content = await fs.readFile(figmaPath, 'utf-8');
-      } catch {
-        // Middleware guarantees the file exists for valid features. If read
-        // still fails (feature genuinely missing, permission error, etc.),
-        // surface an empty config — callers can persist via PUT.
-        config = createEmptyFigmaData();
-        res.json({ success: true, config });
-        return;
+      if (br) {
+        const read = readTextContainedBase(br);
+        if (!read.ok) {
+          config = createEmptyFigmaData();
+          res.json({ success: true, config });
+          return;
+        }
+        content = read.text;
+      } else {
+        try {
+          content = await fs.readFile(figmaPath, 'utf-8');
+        } catch {
+          // Middleware guarantees the file exists for valid features. If read
+          // still fails (feature genuinely missing, permission error, etc.),
+          // surface an empty config — callers can persist via PUT.
+          config = createEmptyFigmaData();
+          res.json({ success: true, config });
+          return;
+        }
       }
 
       try {
         const raw = JSON.parse(content);
         config = migrateFigmaConfig(raw);
         if (JSON.stringify(config) !== JSON.stringify(raw)) {
-          await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
+          if (br) writeTextContainedBase(br, JSON.stringify(config, null, 2));
+          else await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
         }
       } catch {
         config = createEmptyFigmaData();
@@ -106,7 +124,13 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
       const figmaPath = await getFigmaJsonPath(req);
       const config: FigmaDataConfig = req.body;
 
-      await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
+      const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), figmaPath);
+      if (br) {
+        const w = writeTextContainedBase(br, JSON.stringify(config, null, 2));
+        if (!w.ok) return sendErrorResponse(res, 500, new Error(`figma write failed: ${w.reason}`), 'FigmaConfig');
+      } else {
+        await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
+      }
 
       res.json({ success: true });
     } catch (error: any) {

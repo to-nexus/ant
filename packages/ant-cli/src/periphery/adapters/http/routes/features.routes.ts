@@ -27,6 +27,32 @@ import { getInfrastructureFactory } from '../../../../infrastructure/adapters/In
 import * as fs from 'fs';
 import { GitOperationError } from '../services/GitService/errors';
 import { FeatureDeletionError } from '../services/ProjectService/errors';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+import { toBaseRelative, readTextContainedBase } from '../../../../core/config/containedIo';
+
+/**
+ * Read a session JSON file, binding the read to a base descent when the path is
+ * inside the multi-tenant workspace base — a reparented feature root must not
+ * return another tenant's session runs to this HTTP response (H-017). Returns
+ * null when missing; out-of-base (repoType:local) keeps the raw read.
+ */
+async function readSessionUtf8OrNull(absPath: string): Promise<string | null> {
+  const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), absPath);
+  if (br) {
+    const read = readTextContainedBase(br);
+    if (!read.ok) {
+      if (read.reason === 'missing') return null;
+      throw new Error(`session read failed: ${read.reason}`);
+    }
+    return read.text;
+  }
+  try {
+    return await fs.promises.readFile(absPath, 'utf-8');
+  } catch (err: any) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+}
 
 /**
  * Allowed job types for the per-jobId history / restore / delete endpoints —
@@ -388,12 +414,7 @@ export function createFeaturesRoutes(deps: {
             continue;
           }
           const sessionPath = getSessionFilePathByJob(featurePath!, t);
-          let raw: string | null = null;
-          try {
-            raw = await fs.promises.readFile(sessionPath, 'utf-8');
-          } catch (err: any) {
-            if (err.code !== 'ENOENT') throw err;
-          }
+          const raw = await readSessionUtf8OrNull(sessionPath);
           if (raw) {
             const parsed = JSON.parse(raw);
             const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
@@ -532,7 +553,8 @@ export function createFeaturesRoutes(deps: {
           if (isUniversalContainer) {
             const ref = await findUniversalSessionFileByJobId(featurePath, jobId);
             if (ref) {
-              const parsed = JSON.parse(await fs.promises.readFile(ref.path, 'utf-8'));
+              const refRaw = await readSessionUtf8OrNull(ref.path);
+              const parsed = refRaw ? JSON.parse(refRaw) : {};
               const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
               const match = runs.find((r) => r.jobId === jobId);
               if (match?.kanbanSnapshot) {
@@ -543,8 +565,8 @@ export function createFeaturesRoutes(deps: {
           }
         } else {
           const sessionPath = getSessionFilePathByJob(featurePath, requestedType);
-          const raw = await fs.promises.readFile(sessionPath, 'utf-8');
-          const parsed = JSON.parse(raw);
+          const raw = await readSessionUtf8OrNull(sessionPath);
+          const parsed = raw ? JSON.parse(raw) : {};
           const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
           const match = runs.find((r) => r.jobId === jobId);
           if (match?.kanbanSnapshot) {

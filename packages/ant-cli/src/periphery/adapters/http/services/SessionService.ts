@@ -1,7 +1,8 @@
 import * as fs from 'fs';
-import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
+import { WorkspaceResolver, WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../core/types/user';
 import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { toBaseRelative, readTextContainedBase, statContainedBase } from '../../../../core/config/containedIo';
 
 /**
  * SessionService
@@ -137,14 +138,28 @@ export class SessionService {
     const MAX_RETRIES = 3;
     const BASE_DELAY_MS = 500;
     
+    // Bind the read to a base descent when in-base: a reparented feature root
+    // must not return another tenant's session JSON to this HTTP/SSE response
+    // (H-017). Out-of-base (repoType:local) keeps the raw read + retry.
+    const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), sessionPath);
+
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        if (!fs.existsSync(sessionPath)) {
-          return null;
+        let content: string;
+        if (br) {
+          const read = readTextContainedBase(br);
+          if (!read.ok) {
+            if (read.reason === 'missing') return null;
+            throw new Error(`session read failed: ${read.reason}`);
+          }
+          content = read.text;
+        } else {
+          if (!fs.existsSync(sessionPath)) {
+            return null;
+          }
+          content = fs.readFileSync(sessionPath, 'utf-8');
         }
-        
-        const content = fs.readFileSync(sessionPath, 'utf-8');
-        
+
         // Empty or whitespace-only file: likely still being written (EFS propagation)
         if (!content || content.trim().length === 0) {
           if (attempt < MAX_RETRIES) {
@@ -184,7 +199,10 @@ export class SessionService {
     
     const featurePath = this.workspaceResolver.getFeaturePath(userContext, projectId, featureName);
     const sessionPath = getSessionFilePathByJob(featurePath, job);
-    
+
+    const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), sessionPath);
+    if (br) return statContainedBase(br).ok;
+
     try {
       await fs.promises.access(sessionPath);
       return true;

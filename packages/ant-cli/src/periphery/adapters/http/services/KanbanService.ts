@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
+import { WorkspaceResolver, WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../core/types/user';
+import { toBaseRelative, readTextContainedBase } from '../../../../core/config/containedIo';
 import { StateStorePort } from '../../../../core/ports/stateStore';
 import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task';
 import type { SessionState } from '../../../../core/types/session';
@@ -532,16 +533,32 @@ export class KanbanService {
     const debug = process.env.DEBUG_KANBAN === '1';
     const derr = (...args: any[]) => { if (debug) console.error(...args); };
 
-    try {
-      await fs.promises.access(sessionPath);
-    } catch {
-      return null;
+    // Bind the read to a base descent when in-base so a reparented feature root
+    // cannot return another tenant's session JSON to this HTTP/SSE response
+    // (H-017). Out-of-base (repoType:local) keeps the raw read.
+    const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), sessionPath);
+    if (!br) {
+      try {
+        await fs.promises.access(sessionPath);
+      } catch {
+        return null;
+      }
     }
 
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const raw = await fs.promises.readFile(sessionPath, 'utf-8');
+        let raw: string;
+        if (br) {
+          const read = readTextContainedBase(br);
+          if (!read.ok) {
+            if (read.reason === 'missing') return null;
+            throw new Error(`session read failed: ${read.reason}`);
+          }
+          raw = read.text;
+        } else {
+          raw = await fs.promises.readFile(sessionPath, 'utf-8');
+        }
         if (!raw || raw.trim().length === 0) {
           if (attempt < maxAttempts) {
             await new Promise(r => setTimeout(r, 25 * attempt));
