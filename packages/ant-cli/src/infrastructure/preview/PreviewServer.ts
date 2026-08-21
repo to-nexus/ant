@@ -1762,8 +1762,16 @@ export class PreviewServer {
             // through the SAME resolvePreviewLabel + resolvePreviewTarget SSOTs
             // as the HTTP proxy — symmetric with the deploy branch above.
             const previewLabel = extractLabelFromHost(hostHeader, getPreviewBaseDomain());
+            // O(1) index first (M-NEW-020), same as the HTTP proxy; fall back to
+            // a full scan only on a genuine miss.
+            const store = this.stateStore as any;
+            const indexedPreview = previewLabel && typeof store.getPreviewByLabel === 'function'
+              ? await store.getPreviewByLabel(previewLabel)
+              : null;
             const pMatch = previewLabel
-              ? resolvePreviewLabel(await this.stateStore.listPreviews(), previewLabel)
+              ? (indexedPreview
+                  ? resolvePreviewLabel([indexedPreview], previewLabel)
+                  : resolvePreviewLabel(await this.stateStore.listPreviews(), previewLabel))
               : null;
             if (pMatch) {
               // Cloud mode requires a valid owner session (upgrade bypasses Express middleware).
