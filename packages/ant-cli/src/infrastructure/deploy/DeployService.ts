@@ -850,9 +850,15 @@ export class DeployService {
   async resolveDeployLabel(label: string): Promise<{
     tenantId: string; userId: string; projectId: string; feature: string; serviceName?: string;
   } | null> {
+    // O(1) index first (M-NEW-023): match against the single record this label
+    // maps to; only a genuine miss falls back to the full-registry scan, so
+    // steady-state traffic never enumerates every deploy.
     let deploys: DeployState[];
     try {
-      deploys = await this.stateStore.listDeploys();
+      const indexed = typeof this.stateStore.getDeployByLabel === 'function'
+        ? await this.stateStore.getDeployByLabel(label)
+        : null;
+      deploys = indexed ? [indexed] : await this.stateStore.listDeploys();
     } catch (err: any) {
       logger.warn(`[Deploy] resolveDeployLabel list failed: ${err.message}`, { component: 'DeployService' });
       return null;

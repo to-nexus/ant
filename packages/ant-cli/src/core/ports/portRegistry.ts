@@ -423,6 +423,12 @@ export interface PortRegistryPort {
   ): Promise<void>;
   
   /**
+   * O(1) resolve a preview by its DNS subdomain label (M-NEW-020). Returns null
+   * on a genuine miss; callers fall back to `listPreviews()` only then.
+   */
+  getPreviewByLabel(label: string): Promise<PreviewState | null>;
+
+  /**
    * List all active previews
    */
   listPreviews(): Promise<PreviewState[]>;

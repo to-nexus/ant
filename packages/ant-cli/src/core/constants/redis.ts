@@ -152,6 +152,8 @@ export const REDIS_KEYS = {
     PREVIEW_LIST: `${REDIS_DOMAINS.INFRA}:preview:list`,
     /** Preview by pod index (SET) - ant:infra:preview:byPod:{podId} */
     PREVIEW_BY_POD: `${REDIS_DOMAINS.INFRA}:preview:byPod:`,
+    /** Preview DNS-label → portKey index (O(1) subdomain resolve) - ant:infra:preview:labelidx:{label} */
+    PREVIEW_LABEL_IDX: `${REDIS_DOMAINS.INFRA}:preview:labelidx:`,
     /** IDE port mapping - ant:infra:ide:{portKey} */
     IDE: `${REDIS_DOMAINS.INFRA}:ide:`,
     /** IDE list (SET) - ant:infra:ide:list */
@@ -166,6 +168,8 @@ export const REDIS_KEYS = {
     DEPLOY: `${REDIS_DOMAINS.INFRA}:deploy:`,
     /** Deploy list (SET) - ant:infra:deploy:list */
     DEPLOY_LIST: `${REDIS_DOMAINS.INFRA}:deploy:list`,
+    /** Deploy DNS-label → deployKey index (O(1) subdomain resolve) - ant:infra:deploy:labelidx:{label} */
+    DEPLOY_LABEL_IDX: `${REDIS_DOMAINS.INFRA}:deploy:labelidx:`,
     /** Custom domain record (deploy-only), keyed by lowercased hostname - ant:infra:customdomain:{hostname} */
     CUSTOM_DOMAIN: `${REDIS_DOMAINS.INFRA}:customdomain:`,
     /** Custom domain list (SET of hostnames) - ant:infra:customdomain:list */

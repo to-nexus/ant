@@ -427,6 +427,12 @@ export interface StateStorePort {
   ): Promise<void>;
 
   /**
+   * O(1) resolve a deploy by its DNS subdomain label (M-NEW-023). Returns null
+   * on a genuine miss; callers fall back to `listDeploys()` only then.
+   */
+  getDeployByLabel(label: string): Promise<DeployState | null>;
+
+  /**
    * List all active deploys
    */
   listDeploys(): Promise<DeployState[]>;

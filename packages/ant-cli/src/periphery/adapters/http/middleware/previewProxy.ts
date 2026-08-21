@@ -215,7 +215,15 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const label = extractLabelFromHost(externalHost, getPreviewBaseDomain());
       if (!label) return next();
 
-      const match = resolvePreviewLabel(await portRegistry.listPreviews(), label);
+      // O(1) index first (M-NEW-020): resolve the single record this label maps
+      // to and match against it. Only a genuine index miss falls back to the
+      // full-registry scan, so steady-state traffic never enumerates.
+      const indexed = typeof portRegistry.getPreviewByLabel === 'function'
+        ? await portRegistry.getPreviewByLabel(label)
+        : null;
+      const match = indexed
+        ? resolvePreviewLabel([indexed], label)
+        : resolvePreviewLabel(await portRegistry.listPreviews(), label);
       if (!match) {
         trace(`${externalHost} label=${label} → MISS 404`);
         res.status(404).json({ error: 'Preview not found' });

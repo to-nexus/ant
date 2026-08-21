@@ -197,4 +197,21 @@ describe('DeployService.resolveDeployLabel', () => {
     const miss = await svc.resolveDeployLabel('no--such--label--here');
     expect(miss).toBeNull();
   });
+
+  it('uses the O(1) label index and does NOT enumerate on a hit (M-NEW-023)', async () => {
+    const { DeployService } = await import('../../src/infrastructure/deploy/DeployService');
+    const record = { ...SERVER, packages: [{ slug: 'web', urlKey: 'org--user--proj--feat--web' }] };
+    const stateStore: any = {
+      getDeployByLabel: vi.fn(async (label: string) =>
+        label === 'org--user--proj--feat--web' ? record : null,
+      ),
+      // Enumeration must never be reached on an index hit.
+      listDeploys: vi.fn(async () => { throw new Error('listDeploys must not be called on an index hit'); }),
+    };
+    const svc = new DeployService({ portManager: {} as any, stateStore });
+    const hit = await svc.resolveDeployLabel('org--user--proj--feat--web');
+    expect(hit).toMatchObject({ ...SERVER, serviceName: 'web' });
+    expect(stateStore.getDeployByLabel).toHaveBeenCalledTimes(1);
+    expect(stateStore.listDeploys).not.toHaveBeenCalled();
+  });
 });
