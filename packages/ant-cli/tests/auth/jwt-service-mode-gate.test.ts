@@ -1,8 +1,8 @@
 /**
  * Regression: `createJwtServiceFromEnv` must key on ANT_SERVER_MODE, never on
- * ANT_JWT_SECRET presence.
+ * key-material presence.
  *
- * Root incident: a local-mode .env carrying a leftover ANT_JWT_SECRET (from
+ * Root incident: a local-mode .env carrying leftover JWT key material (from
  * cloud testing) activated the preview/deploy proxy owner gates — local mode
  * has no login flow, so no session cookie can ever exist, and every preview
  * request 403'd `Forbidden: preview belongs to another account`. The
@@ -12,13 +12,20 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as crypto from 'crypto';
 import { createJwtServiceFromEnv, JwtService } from '../../src/infrastructure/auth/JwtService';
 
-const ENV_KEYS = ['ANT_SERVER_MODE', 'ANT_JWT_SECRET'] as const;
+const ENV_KEYS = ['ANT_SERVER_MODE', 'ANT_JWT_PUBLIC_KEY', 'ANT_JWT_PRIVATE_KEY'] as const;
 let saved: Record<string, string | undefined>;
+
+function publicKeyPem(): string {
+  const { publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return publicKey.export({ type: 'spki', format: 'pem' }).toString();
+}
 
 beforeEach(() => {
   saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+  for (const k of ENV_KEYS) delete process.env[k];
 });
 afterEach(() => {
   for (const k of ENV_KEYS) {
@@ -28,27 +35,25 @@ afterEach(() => {
 });
 
 describe('createJwtServiceFromEnv — ANT_SERVER_MODE gate', () => {
-  it('returns undefined in local mode even when ANT_JWT_SECRET is set (the 403 regression)', () => {
+  it('returns undefined in local mode even when a public key is set (the 403 regression)', () => {
     process.env.ANT_SERVER_MODE = 'local';
-    process.env.ANT_JWT_SECRET = 'leftover-from-cloud-testing';
+    process.env.ANT_JWT_PUBLIC_KEY = publicKeyPem();
     expect(createJwtServiceFromEnv()).toBeUndefined();
   });
 
-  it('returns undefined when ANT_SERVER_MODE is unset, regardless of the secret', () => {
-    delete process.env.ANT_SERVER_MODE;
-    process.env.ANT_JWT_SECRET = 'some-secret';
+  it('returns undefined when ANT_SERVER_MODE is unset, regardless of key material', () => {
+    process.env.ANT_JWT_PUBLIC_KEY = publicKeyPem();
     expect(createJwtServiceFromEnv()).toBeUndefined();
   });
 
-  it('returns a JwtService in cloud mode with a secret', () => {
+  it('returns a JwtService in cloud mode with a public key', () => {
     process.env.ANT_SERVER_MODE = 'cloud';
-    process.env.ANT_JWT_SECRET = 'cloud-secret-at-least-32-characters-long';
+    process.env.ANT_JWT_PUBLIC_KEY = publicKeyPem();
     expect(createJwtServiceFromEnv()).toBeInstanceOf(JwtService);
   });
 
-  it('returns undefined in cloud mode without a secret (callers fail loud where required)', () => {
+  it('returns undefined in cloud mode without a public key (callers fail loud where required)', () => {
     process.env.ANT_SERVER_MODE = 'cloud';
-    delete process.env.ANT_JWT_SECRET;
     expect(createJwtServiceFromEnv()).toBeUndefined();
   });
 });

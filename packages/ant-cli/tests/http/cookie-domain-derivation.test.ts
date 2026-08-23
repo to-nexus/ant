@@ -14,10 +14,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as crypto from 'crypto';
 import { JwtService, __testing } from '../../src/infrastructure/auth/JwtService';
 
 const { deriveCookieDomain } = __testing;
-const TEST_SECRET = 'test-secret-at-least-32-characters-long-xx';
+const TEST_KEYS = (() => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return {
+    publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  };
+})();
 
 describe('deriveCookieDomain', () => {
   const originalEnv = process.env.COOKIE_DOMAIN;
@@ -76,7 +83,7 @@ describe('deriveCookieDomain', () => {
 
 describe('JwtService.getCookieOptions / getClearCookieOptions', () => {
   const originalEnv = process.env.COOKIE_DOMAIN;
-  const svc = new JwtService({ secret: TEST_SECRET });
+  const svc = new JwtService(TEST_KEYS);
 
   beforeEach(() => {
     delete process.env.COOKIE_DOMAIN;

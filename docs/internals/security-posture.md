@@ -142,16 +142,17 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   `docker-compose.cloud.yml` grants OAuth/admin secrets to `ant-api` only, and
   session key material only to the processes that need it.
 - **Session VERIFICATION authority never implies SIGNING authority.** ✅
-  HS256 is symmetric, so a verifier can mint. `ant-preview` verifies sessions and
-  also spawns user-authored install/dev commands under its own UID, whose
-  environment is therefore readable from user code via `/proc` — with a symmetric
-  secret that is platform-wide session forgery. ES256 splits it: `ant-api` holds
+  Sessions are ES256 only — a symmetric algorithm would let any verifier mint,
+  and `ant-preview` spawns user-authored install/dev commands under its own UID,
+  whose environment is readable from user code via `/proc`; with a symmetric
+  secret that would be platform-wide session forgery. `ant-api` holds
   `ANT_JWT_PRIVATE_KEY`, every verifier holds only `ANT_JWT_PUBLIC_KEY`, and the
-  header `alg` is pinned to the configured mode so the two cannot be confused
+  header `alg` is pinned so nothing else (including `none`) verifies
   ([JwtService.ts](../../packages/ant-cli/src/infrastructure/auth/JwtService.ts)).
-  `assertJwtAuthorityScope('verify')` **refuses to boot** a verifier that holds
-  signing authority; `ANT_JWT_ALLOW_SYMMETRIC=true` is the documented,
-  single-host opt-out. Guard: `tests/auth/jwt-algorithm-authority.test.ts`.
+  `assertJwtAuthorityScope` **refuses to boot** a process whose key material
+  exceeds its role: `'verify'` (ant-realtime), `'verify-usercode'` (ant-preview —
+  additionally requires `ANT_JWT_PUBLIC_KEY`), and `'none'` (ant-job — no JWT
+  material at all). Guard: `tests/auth/jwt-algorithm-authority.test.ts`.
 - **User-authored children run under their own OS identity.** 🔄 `childEnv`
   decides what a child can SEE; it cannot stop a same-UID child reading
   `/proc/<service-pid>/environ` or re-linking directory entries the service is

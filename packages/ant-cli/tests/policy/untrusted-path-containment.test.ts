@@ -485,7 +485,7 @@ describe('contained I/O binds the read to the resolved target (H-010 / H-011)', 
     fs.mkdirSync(path.join(root, 'plan'), { recursive: true });
     fs.mkdirSync(outside, { recursive: true });
     fs.writeFileSync(path.join(root, 'plan', 'prd.md'), 'contained content');
-    fs.writeFileSync(path.join(outside, 'secret.env'), 'ANT_JWT_SECRET=leak');
+    fs.writeFileSync(path.join(outside, 'secret.env'), 'ANT_JWT_PRIVATE_KEY=leak');
     fs.symlinkSync(path.join(root, 'plan'), path.join(root, 'plan-link'), 'dir');
     fs.symlinkSync(outside, path.join(root, 'escape-link'), 'dir');
     fs.symlinkSync(path.join(outside, 'secret.env'), path.join(root, 'leaf-link'));

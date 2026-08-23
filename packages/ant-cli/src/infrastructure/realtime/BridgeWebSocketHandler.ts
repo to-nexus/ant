@@ -428,7 +428,7 @@ export class BridgeWebSocketHandler {
     }
 
     if (!this.jwtService) {
-      logger.warn(`🔌 [BridgeDiag] authenticate: no JwtService in cloud mode (ANT_JWT_SECRET missing?) → detected`, { component: COMPONENT });
+      logger.warn(`🔌 [BridgeDiag] authenticate: no JwtService in cloud mode (ANT_JWT_PUBLIC_KEY missing?) → detected`, { component: COMPONENT });
       return { userId: null, orgId: null, status: 'detected' };
     }
 

@@ -32,8 +32,7 @@ silently degrade to a free tier. Leave it unset when self-hosting.
 |---|---|---|
 | `ANT_SERVER_MODE` | yes | `cloud`. |
 | `ANT_REDIS_URL` | yes | Cloud mode has no default — set it explicitly. The compose base already sets `redis://redis:6379`. |
-| `ANT_JWT_PUBLIC_KEY` + `ANT_JWT_PRIVATE_KEY` | recommended | Session key **pair** (see "Session keys" below). The public half goes to every process; the private half to `ant-api` only. |
-| `ANT_JWT_SECRET` | fallback | HS256 single-secret alternative, ≥ 32 chars (`openssl rand -hex 32`). Symmetric, so `ant-realtime` / `ant-preview` refuse to boot with it unless `ANT_JWT_ALLOW_SYMMETRIC=true`. |
+| `ANT_JWT_PUBLIC_KEY` + `ANT_JWT_PRIVATE_KEY` | yes | ES256 session key **pair** (see "Session keys" below). The public half goes to `ant-api` / `ant-realtime` / `ant-preview`; the private half to `ant-api` only; `ant-job` gets neither. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | yes | OAuth client from the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Register `${FRONTEND_URL}/api/auth/google/callback` as an authorized redirect URI. |
 | `GOOGLE_REDIRECT_URI` | no | Only when the callback host differs from `FRONTEND_URL`; otherwise derived as `${FRONTEND_URL}/api/auth/google/callback`. |
 | `ANT_SUPER_ADMIN_EMAILS` | recommended | Comma-separated operator emails. This env allowlist is the authoritative admin gate. |
@@ -41,13 +40,13 @@ silently degrade to a free tier. Leave it unset when self-hosting.
 
 Full variable reference: [reference/env-vars.md](../reference/env-vars.md).
 
-### Session keys — why a pair is preferred
+### Session keys — why a pair
 
-HS256 is symmetric: any process that can VERIFY a session can also MINT one. Only
-`ant-api` needs to mint, but `ant-realtime` and `ant-preview` need to verify — and
-`ant-preview` runs the install and dev commands from your users' projects under its
-own UID, so anything in its environment is readable from that code through `/proc`.
-With one shared secret, that is the authority to forge any tenant's session.
+Sessions are ES256 only. A symmetric algorithm would make VERIFY and MINT the
+same capability, and `ant-preview` runs the install and dev commands from your
+users' projects under its own UID — anything in its environment is readable
+from that code through `/proc`. The key pair splits the authority: only
+`ant-api` can mint, and a public key read out of `/proc` buys nothing.
 
 Generate a P-256 pair once and keep the private half on `ant-api`:
 
@@ -94,8 +93,8 @@ cloud profile:
 ```bash
 cp .env.example .env
 # then add to .env:
-#   ANT_JWT_PUBLIC_KEY / ANT_JWT_PRIVATE_KEY  (see "Session keys" above)
-#   — or ANT_JWT_SECRET=<openssl rand -hex 32> plus ANT_JWT_ALLOW_SYMMETRIC=true
+#   ANT_JWT_PUBLIC_KEY / ANT_JWT_PRIVATE_KEY  (see "Session keys" above —
+#   the compose override scopes them per service)
 #   GOOGLE_CLIENT_ID=...
 #   GOOGLE_CLIENT_SECRET=...
 #   ANT_SUPER_ADMIN_EMAILS=you@example.com

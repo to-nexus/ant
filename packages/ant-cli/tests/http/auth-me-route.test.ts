@@ -16,6 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as crypto from 'node:crypto';
 import http from 'node:http';
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -29,10 +30,18 @@ import { createAuthRoutes } from '../../src/periphery/adapters/http/routes/auth.
 import type { AuthService } from '../../src/core/auth/AuthService';
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 
-const TEST_SECRET = 'test-secret-at-least-32-characters-long-xx';
+function keyPair(): { publicKey: string; privateKey: string } {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return {
+    publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  };
+}
+
+const TEST_KEYS = keyPair();
 
 function makeJwtService(): JwtService {
-  return new JwtService({ secret: TEST_SECRET });
+  return new JwtService(TEST_KEYS);
 }
 
 // AuthService / WorkspaceResolver only matter for OAuth routes — the
@@ -117,7 +126,7 @@ describe('GET /api/auth/me — cloud mode', () => {
   it('returns the null envelope when the token signature is wrong', async () => {
     const goodService = makeJwtService();
     const token = goodService.sign({ sub: 'a@x.com', email: 'a@x.com', org: 'individual', kind: 'individual' });
-    const tamperedService = new JwtService({ secret: 'a-different-secret-also-at-least-32-chars' });
+    const tamperedService = new JwtService(keyPair());
     app = await startApp(tamperedService);
     const res = await fetch(`${app.url}/api/auth/me`, {
       headers: { Cookie: `${JwtService.cookieName}=${token}` },

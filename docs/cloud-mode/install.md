@@ -101,7 +101,7 @@ These four variables are mandatory for any cloud deployment:
 | `ANT_SERVER_MODE=cloud` | Disables `local:local` auth bypass; enables OAuth + JWT. |
 | `ANT_REDIS_URL` | `redis://…` or `rediss://…` for TLS. |
 | `ANT_ENCRYPTION_KEY` | 64-char hex. Generate with `openssl rand -hex 32`. |
-| `ANT_JWT_SECRET` | 32+ chars. JWT cookie signing key. |
+| `ANT_JWT_PUBLIC_KEY` + `ANT_JWT_PRIVATE_KEY` | ES256 session key pair — scoped **per service**: the private key to `ant-api` only, the public key to `ant-api` / `ant-realtime` / `ant-preview`, and **neither** to `ant-job` (it boot-refuses any JWT material). See [reference/env-vars.md](../reference/env-vars.md#auth). |
 
 OAuth credentials (Google in-tree):
 
@@ -152,18 +152,28 @@ cd ant
 pnpm install
 
 cp packages/ant-cli/.env.example.local packages/ant-cli/.env
-# Edit packages/ant-cli/.env:
+# Edit packages/ant-cli/.env — this file is shared by every process, so it
+# must NOT carry signing material (ant-job refuses to boot with any JWT
+# variable, ant-realtime/ant-preview with any signing key):
 #   ANT_SERVER_MODE=cloud
 #   ANT_REDIS_URL=redis://localhost:16379
 #   ANT_ENCRYPTION_KEY=<64-char hex>
-#   ANT_JWT_SECRET=<32+ char secret>
+#   ANT_JWT_PUBLIC_KEY=<jwt-public.pem contents>   # verification half only
 #   GOOGLE_CLIENT_ID=...
 #   GOOGLE_CLIENT_SECRET=...
 #   FRONTEND_URL=https://ant.mycompany.com
 #   ANT_API_URL=http://localhost:4100
 
 pnpm dev:infra:redis        # boot Redis in Docker
-pnpm build && pnpm start:all
+pnpm build
+
+# The PRIVATE key reaches ant-api alone (key pair generation: "Session keys"
+# in ../guides/self-host-cloud.md):
+ANT_JWT_PRIVATE_KEY="$(cat jwt-private.pem)" pnpm start:api-server &
+pnpm start:realtime-server &
+pnpm start:job-worker &
+pnpm start:preview-server &
+pnpm start:ui
 ```
 
 Front Ant with a TLS-terminating reverse proxy (nginx / Caddy / Traefik):
@@ -214,7 +224,8 @@ Plus:
   storage (EFS CSI on AWS, Filestore CSI on GCP).
 - **Ingress controller** — ALB / nginx / Traefik. Must disable
   buffering on `/realtime/*` and `/preview/*`.
-- **External Secrets** for `ANT_JWT_SECRET`, `ANT_ENCRYPTION_KEY`,
+- **External Secrets** for `ANT_JWT_PRIVATE_KEY` (mounted into `ant-api`
+  only — never a shared secret bundle), `ANT_ENCRYPTION_KEY`,
   `GOOGLE_CLIENT_SECRET`, LLM keys. Don't put them in ConfigMaps.
 
 #### Operational rules
@@ -295,8 +306,10 @@ but the recovery is faster with snapshots.
 ### Hardening checklist
 
 - [ ] TLS-terminating reverse proxy in front of every public endpoint.
-- [ ] `ANT_ENCRYPTION_KEY` and `ANT_JWT_SECRET` from a secrets manager
-      (AWS Secrets Manager, Vault, K8s External Secrets).
+- [ ] `ANT_ENCRYPTION_KEY` and `ANT_JWT_PRIVATE_KEY` from a secrets manager
+      (AWS Secrets Manager, Vault, K8s External Secrets), scoped per
+      service — the private key to `ant-api` only, no JWT material to
+      `ant-job`.
 - [ ] LLM provider keys rotated quarterly.
 - [ ] Ingress restricted: only the UI origin and your own integrations
       reach `/api/`.

@@ -56,10 +56,10 @@ export function initializeServices(
   logger.info(`IDE Orchestrator: ${ideOrchestrator.constructor.name}`, { component: 'ServiceInitializer' });
   
   // Cloud-mode auth wiring — OSS core (identity is not a commercial surface).
-  // JwtService is a neutral HS256 primitive — `createJwtServiceFromEnv()`
-  // returns undefined when ANT_JWT_SECRET is unset (local mode), so JWT auth
-  // is naturally absent there. It is threaded through `deps.jwtService` for
-  // WS auth, jwtAuth middleware, and the auth routes.
+  // `createJwtServiceFromEnv()` returns undefined when ANT_JWT_PUBLIC_KEY is
+  // unset (local mode), so JWT auth is naturally absent there. It is threaded
+  // through `deps.jwtService` for WS auth, jwtAuth middleware, and the auth
+  // routes.
   //
   // AuthService is constructed directly (mode-gated) — every cloud-mode
   // deployment gets it, with or without the `@ant/cloud` billing overlay
@@ -75,7 +75,7 @@ export function initializeServices(
     if (jwtService) {
       logger.info('JWT authentication enabled', { component: 'ServiceInitializer' });
     } else {
-      logger.warn('ANT_JWT_SECRET not set - JWT authentication disabled in cloud mode', {
+      logger.warn('ANT_JWT_PUBLIC_KEY not set - JWT authentication disabled in cloud mode', {
         component: 'ServiceInitializer'
       });
     }

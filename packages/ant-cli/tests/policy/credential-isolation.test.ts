@@ -31,7 +31,7 @@ import { rewriteUpgradeHeaders, buildPeerForwardUpgradeHeaders } from '../../src
 /** Service-held values whose disclosure is the finding. */
 const SERVICE_SECRETS = [
   'JWT_SECRET',
-  'ANT_JWT_SECRET',
+  'ANT_JWT_PRIVATE_KEY',
   // A bare `GO` prefix in the toolchain allowlist matched this too (C-003).
   'GOOGLE_CLIENT_SECRET',
   'GOOGLE_APPLICATION_CREDENTIALS',
@@ -147,7 +147,7 @@ describe('preview/deploy child env is composed, not inherited (C-003)', () => {
 
   // M-015: the escape hatch must not be able to re-open the hole the allowlist
   // closed. An operator naming a live secret gets it dropped anyway.
-  for (const name of ['ANT_JWT_SECRET', 'ANTHROPIC_API_KEY', 'GOOGLE_CLIENT_SECRET']) {
+  for (const name of ['ANT_JWT_PRIVATE_KEY', 'ANTHROPIC_API_KEY', 'GOOGLE_CLIENT_SECRET']) {
     it(`ANT_PREVIEW_ENV_PASSTHROUGH cannot re-admit ${name}`, () => {
       process.env[name] = 'live-secret';
       process.env.ANT_PREVIEW_ENV_PASSTHROUGH = name;
@@ -275,7 +275,7 @@ vi.mock('child_process', async (importOriginal) => {
 });
 
 describe('user-authored children spawn with a composed env, not an inherited one', () => {
-  const SENTINELS = ['ANT_JWT_SECRET', 'ANTHROPIC_API_KEY', 'ANT_REDIS_URL'];
+  const SENTINELS = ['ANT_JWT_PRIVATE_KEY', 'ANTHROPIC_API_KEY', 'ANT_REDIS_URL'];
   let workspace: string;
   let spawnMock: Mock;
 

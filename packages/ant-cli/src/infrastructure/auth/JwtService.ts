@@ -5,27 +5,17 @@
  * Used by all three publicly exposed servers (ant-api, ant-realtime, ant-preview)
  * to verify httpOnly cookie-based authentication.
  *
- * ## Why two algorithms
- * HS256 is symmetric: a process that can VERIFY a session can also MINT one. Only
- * ant-api ever needs to mint, but ant-realtime and ant-preview need to verify —
- * and ant-preview spawns user-authored install and dev commands that share its
- * UID and process namespace, so anything in its environment is readable from user
- * code through `/proc` (C-001). Handing it a symmetric key therefore hands user
- * code the authority to forge any tenant's session.
- *
- * ES256 splits that: ant-api holds the private key, every verifier holds only the
- * public key. Reading a public key out of `/proc` buys nothing.
- *
- * Mode is decided by which keys are configured, and the header `alg` is then
- * pinned to it — a token declaring the other algorithm (or `none`) is refused, so
- * there is no algorithm-confusion path between the two modes.
+ * ## ES256 only
+ * Sessions are ES256 exclusively: ant-api holds the private key and mints; every
+ * verifier holds only the public key, which carries no minting authority even
+ * when read out of `/proc` by user-authored code (C-001). A symmetric algorithm
+ * would collapse verify and mint into one capability, so none is supported.
+ * The header `alg` is pinned — a token declaring anything else (or `none`) is
+ * refused.
  *
  * Environment (cloud mode):
- *   - `ANT_JWT_PUBLIC_KEY`  — PEM SPKI P-256. Present ⇒ ES256 for every process.
+ *   - `ANT_JWT_PUBLIC_KEY`  — PEM SPKI P-256. Every process that verifies.
  *   - `ANT_JWT_PRIVATE_KEY` — PEM PKCS8 P-256. ant-api only.
- *   - `ANT_JWT_SECRET`      — HS256 fallback for single-host self-hosting.
- *   - `ANT_JWT_ALLOW_SYMMETRIC` — explicit acknowledgement that a verifier-only
- *     process may hold signing authority. See {@link assertJwtAuthorityScope}.
  */
 
 import * as crypto from 'crypto';
@@ -43,13 +33,11 @@ export interface JwtPayload {
   exp: number;        // expiration (epoch seconds)
 }
 
-export type JwtAlgorithm = 'HS256' | 'ES256';
+export type JwtAlgorithm = 'ES256';
 
 export interface JwtServiceConfig {
-  /** HS256 shared secret. Mutually exclusive with the ES256 key pair. */
-  secret?: string;
-  /** ES256 verification key (PEM SPKI). Its presence selects ES256. */
-  publicKey?: string;
+  /** ES256 verification key (PEM SPKI). Required. */
+  publicKey: string;
   /** ES256 signing key (PEM PKCS8). Only the minting process should hold one. */
   privateKey?: string;
   expiresInSeconds?: number;  // default: 7 days
@@ -99,33 +87,21 @@ function deriveCookieDomain(
 export const __testing = { deriveCookieDomain, KNOWN_BASE_DOMAINS };
 
 /**
- * Lightweight JWT implementation using Node.js crypto (HS256).
+ * Lightweight ES256 JWT implementation using Node.js crypto.
  * No external dependency required (jsonwebtoken package not needed).
  */
 export class JwtService {
-  private readonly algorithm: JwtAlgorithm;
-  private readonly secret?: string;
-  private readonly publicKey?: string;
+  private readonly algorithm: JwtAlgorithm = 'ES256';
+  private readonly publicKey: string;
   private readonly privateKey?: string;
   private readonly expiresInSeconds: number;
 
   constructor(config: JwtServiceConfig) {
-    if (config.publicKey || config.privateKey) {
-      // A private key without its public half would leave this instance able to
-      // mint tokens it cannot verify — refuse rather than half-configure.
-      if (!config.publicKey) {
-        throw new Error('ANT_JWT_PUBLIC_KEY is required whenever ANT_JWT_PRIVATE_KEY is set');
-      }
-      this.algorithm = 'ES256';
-      this.publicKey = config.publicKey;
-      this.privateKey = config.privateKey;
-    } else {
-      if (!config.secret || config.secret.length < 32) {
-        throw new Error('ANT_JWT_SECRET must be at least 32 characters');
-      }
-      this.algorithm = 'HS256';
-      this.secret = config.secret;
+    if (!config.publicKey) {
+      throw new Error('ANT_JWT_PUBLIC_KEY is required');
     }
+    this.publicKey = config.publicKey;
+    this.privateKey = config.privateKey;
     this.expiresInSeconds = config.expiresInSeconds ?? DEFAULT_EXPIRY_SECONDS;
   }
 
@@ -134,9 +110,9 @@ export class JwtService {
     return this.algorithm;
   }
 
-  /** Whether this instance can mint tokens (ES256 verifier-only instances cannot). */
+  /** Whether this instance can mint tokens (verifier-only instances cannot). */
   get canSign(): boolean {
-    return this.algorithm === 'HS256' || this.privateKey !== undefined;
+    return this.privateKey !== undefined;
   }
 
   /** Generate a signed JWT token. Optional expiresInSeconds overrides instance default. */
@@ -171,10 +147,9 @@ export class JwtService {
 
     const [header, body, signature] = parts;
 
-    // Pin the algorithm to the configured one BEFORE touching the signature.
-    // Accepting whatever the token declares is the classic confusion bug: an
-    // ES256 deployment would otherwise verify an HS256 token signed with the
-    // public key, and `alg: none` would verify nothing at all.
+    // Pin the algorithm BEFORE touching the signature. Accepting whatever the
+    // token declares is the classic confusion bug: a symmetric token signed
+    // with the public key, or `alg: none`, would otherwise verify.
     let declaredAlg: unknown;
     try {
       declaredAlg = JSON.parse(Buffer.from(header, 'base64url').toString('utf-8'))?.alg;
@@ -266,7 +241,6 @@ export class JwtService {
   }
 
   private signPayload(data: string): string {
-    if (this.algorithm === 'HS256') return this.hmac(data);
     return crypto
       .sign('sha256', Buffer.from(data), {
         key: this.privateKey!,
@@ -276,28 +250,16 @@ export class JwtService {
   }
 
   private verifySignature(data: string, signature: string): boolean {
-    if (this.algorithm === 'HS256') {
-      const expected = Buffer.from(this.hmac(data));
-      const actual = Buffer.from(signature);
-      return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
-    }
     try {
       return crypto.verify(
         'sha256',
         Buffer.from(data),
-        { key: this.publicKey!, dsaEncoding: ES256_DSA_ENCODING },
+        { key: this.publicKey, dsaEncoding: ES256_DSA_ENCODING },
         Buffer.from(signature, 'base64url'),
       );
     } catch {
       return false;
     }
-  }
-
-  private hmac(data: string): string {
-    return crypto
-      .createHmac('sha256', this.secret!)
-      .update(data)
-      .digest('base64url');
   }
 }
 
@@ -306,19 +268,18 @@ export class JwtService {
  *
  * Cloud mode only: JWT session auth exists solely for cloud multi-tenant
  * surfaces. In local mode (single `local:local` tenant, no login flow) this
- * ALWAYS returns undefined — even when ANT_JWT_SECRET happens to be set in
- * .env (e.g. leftover from cloud testing). Secret presence is NOT a mode
- * signal; `ANT_SERVER_MODE` is. Keying on the secret used to activate the
+ * ALWAYS returns undefined — even when key material happens to be set in
+ * .env (e.g. leftover from cloud testing). Key presence is NOT a mode
+ * signal; `ANT_SERVER_MODE` is. Keying on key material used to activate the
  * preview/deploy proxy owner gates in local mode, where no session cookie
  * can ever exist → every preview 403'd "belongs to another account".
  */
 export function createJwtServiceFromEnv(): JwtService | undefined {
-  const secret = process.env.ANT_JWT_SECRET;
   const publicKey = readPem(process.env.ANT_JWT_PUBLIC_KEY);
   const privateKey = readPem(process.env.ANT_JWT_PRIVATE_KEY);
 
   if (process.env.ANT_SERVER_MODE !== 'cloud') {
-    if (secret || publicKey || privateKey) {
+    if (publicKey || privateKey) {
       logger.warn(
         '[JwtService] JWT key material is set but ANT_SERVER_MODE is not "cloud" — JWT auth disabled (local single-tenant)',
         { component: 'JwtService' },
@@ -327,9 +288,8 @@ export function createJwtServiceFromEnv(): JwtService | undefined {
     return undefined;
   }
 
-  if (publicKey) return new JwtService({ publicKey, privateKey });
-  if (!secret) return undefined;
-  return new JwtService({ secret });
+  if (!publicKey) return undefined;
+  return new JwtService({ publicKey, privateKey });
 }
 
 /**
@@ -344,116 +304,55 @@ function readPem(raw: string | undefined): string | undefined {
 
 /**
  * Which side of the session contract a process is on.
- *   - `sign`            — ant-api. Mints sessions; needs a private key or secret.
- *   - `verify`          — ant-realtime. Verifies only; must hold no signing key.
+ *   - `sign`            — ant-api. Mints sessions; holds the key pair.
+ *   - `verify`          — ant-realtime. Verifies only; must hold no private key.
  *   - `verify-usercode` — ant-preview. Verifies AND spawns user-authored code
  *                         under its own UID, so its env is `/proc`-readable.
- *                         Stricter: must be public-key-only, no escape hatch.
- *   - `none`            — ant-job. Neither signs nor verifies; must hold no JWT
- *                         key material at all.
+ *                         Public key required, no private key.
+ *   - `none`            — ant-job. Neither signs nor verifies; must hold no
+ *                         signing material at all.
  */
 export type JwtAuthorityRole = 'sign' | 'verify' | 'verify-usercode' | 'none';
 
 /**
  * Boot-time assertion that a process holds no more session authority than its
- * role needs.
- *
- * A verifier that also carries signing material (a symmetric secret OR a private
- * key) can mint sessions, and during an ES256 rollout a secret-only legacy
- * verifier elsewhere would accept those forged tokens (C-001). The predicate
- * therefore refuses ANY signing material in a verifier **regardless of whether a
- * public key is also present** — the earlier `!publicKey && secret` form let a
- * dual-key (public key + stray secret) verifier boot with a live minting secret
- * in a `/proc`-readable env.
- *
- * `verify-usercode` (ant-preview) is stricter still: it spawns user code that
- * shares its UID, so it must be public-key-only and `ANT_JWT_ALLOW_SYMMETRIC`
- * does NOT excuse a secret there (M-NEW-013). `none` (ant-job) must carry no JWT
- * key material at all — direct-dotenv cloud launches otherwise leak a live HS256
- * secret into LLM command children (M-NEW-016). `ANT_JWT_ALLOW_SYMMETRIC`
- * remains a documented single-host opt-out only for the non-user-code `verify`
- * role. Local mode has no session cookie and is never gated.
+ * role needs: only ant-api may carry ANT_JWT_PRIVATE_KEY (C-001, M-NEW-013,
+ * M-NEW-016). The public key carries no minting authority and is safe
+ * everywhere, but `verify-usercode` requires it because that process cannot
+ * work without verification. Local mode has no session cookie and is never
+ * gated.
  */
 export function assertJwtAuthorityScope(role: JwtAuthorityRole): void {
   if (process.env.ANT_SERVER_MODE !== 'cloud') return;
 
   const publicKey = readPem(process.env.ANT_JWT_PUBLIC_KEY);
   const privateKey = readPem(process.env.ANT_JWT_PRIVATE_KEY);
-  const secret = readPem(process.env.ANT_JWT_SECRET);
 
   if (role === 'sign') {
-    if (publicKey && !privateKey) {
+    if (!publicKey || !privateKey) {
       throw new Error(
-        'ANT_JWT_PRIVATE_KEY is required in this process: it mints sessions but only ' +
-        'a verification key is configured.',
-      );
-    }
-    if (!publicKey && !secret) {
-      throw new Error(
-        'No JWT key material configured. Set ANT_JWT_PUBLIC_KEY + ANT_JWT_PRIVATE_KEY ' +
-        '(recommended) or ANT_JWT_SECRET.',
+        'This process mints sessions and needs the full ES256 key pair: set ' +
+        'ANT_JWT_PUBLIC_KEY and ANT_JWT_PRIVATE_KEY.',
       );
     }
     return;
   }
 
-  if (role === 'none') {
-    // The job worker neither signs nor verifies; any JWT key material in its env
-    // is reachable by LLM `run_command` children under the same UID (M-NEW-016).
-    if (privateKey !== undefined || secret !== undefined) {
-      throw new Error(
-        'The job worker holds JWT signing material (' +
-        (privateKey ? 'ANT_JWT_PRIVATE_KEY' : 'ANT_JWT_SECRET') +
-        ') but neither signs nor verifies sessions. It spawns user-authored commands ' +
-        'that share its UID, so remove ANT_JWT_SECRET / ANT_JWT_PRIVATE_KEY from the ' +
-        'ant-job environment (Docker Compose and direct-dotenv cloud profiles alike).',
-      );
-    }
-    return;
-  }
-
-  // Any signing material disqualifies a verifier — public key present or not.
-  const holdsSigningAuthority = privateKey !== undefined || secret !== undefined;
-
-  if (role === 'verify-usercode') {
-    // ant-preview: public-key-only, no escape hatch.
-    if (holdsSigningAuthority) {
-      throw new Error(
-        'The preview verifier carries JWT signing material (' +
-        (privateKey ? 'ANT_JWT_PRIVATE_KEY' : 'ANT_JWT_SECRET, which is symmetric') +
-        '). It spawns user-authored code that shares its UID and can read the key from ' +
-        '/proc, so it must be configured with ANT_JWT_PUBLIC_KEY only. Keep the private ' +
-        'key on the API process. ANT_JWT_ALLOW_SYMMETRIC does not apply here.',
-      );
-    }
-    if (!publicKey) {
-      throw new Error(
-        'The preview verifier has no ANT_JWT_PUBLIC_KEY. It must verify sessions with an ' +
-        'ES256 public key; a symmetric secret is not accepted on a process that spawns ' +
-        'user-authored code.',
-      );
-    }
-    return;
-  }
-
-  // role === 'verify' (ant-realtime): no user code, single-host opt-out allowed.
-  if (!holdsSigningAuthority) return;
-
-  if (process.env.ANT_JWT_ALLOW_SYMMETRIC === 'true') {
-    logger.warn(
-      '[JwtService] This process only needs to VERIFY sessions but holds signing ' +
-      'authority (ANT_JWT_ALLOW_SYMMETRIC=true). Move to ANT_JWT_PUBLIC_KEY / ' +
-      'ANT_JWT_PRIVATE_KEY to close it.',
-      { component: 'JwtService' },
+  if (privateKey !== undefined) {
+    throw new Error(
+      role === 'none'
+        ? 'The job worker holds ANT_JWT_PRIVATE_KEY but neither signs nor verifies ' +
+          'sessions. It spawns user-authored commands that share its UID, so remove ' +
+          'it from the ant-job environment.'
+        : 'This process only VERIFIES sessions, but the environment carries ' +
+          'ANT_JWT_PRIVATE_KEY. Keep the private key on the API process only.',
     );
-    return;
   }
 
-  throw new Error(
-    'This process only needs to VERIFY sessions, but the environment carries JWT ' +
-    'signing authority (' +
-    (privateKey ? 'ANT_JWT_PRIVATE_KEY' : 'ANT_JWT_SECRET, which is symmetric') +
-    '). Configure ANT_JWT_PUBLIC_KEY here and keep ANT_JWT_PRIVATE_KEY on the API ' +
-    'process only, or set ANT_JWT_ALLOW_SYMMETRIC=true to accept the risk.',
-  );
+  if (role === 'verify-usercode' && !publicKey) {
+    throw new Error(
+      'The preview verifier has no ANT_JWT_PUBLIC_KEY. It must verify sessions ' +
+      'with the ES256 public key.',
+    );
+  }
 }

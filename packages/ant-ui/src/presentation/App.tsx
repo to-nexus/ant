@@ -60,7 +60,7 @@ import {
  *   apiBase=/api  → `VITE_CLOUD_BACKEND_BASE` not baked into the dist
  *   kind=network  → CORS preflight blocked or backend host unreachable
  *   kind=no-session → cookie not arriving on /auth/me (scope/secure)
- *   kind=misconfigured → ANT_JWT_SECRET unset on backend
+ *   kind=misconfigured → JWT key material unset on backend
  */
 function logAuthFailure(phase: 'post-oauth' | 'mount', result: AuthMeResult): void {
   const status = result.kind === 'http-error' ? result.status : '';

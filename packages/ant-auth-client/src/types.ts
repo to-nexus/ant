@@ -72,7 +72,7 @@ export interface AuthUser {
  *
  *   kind=user           → signed-in user payload (carries onboarding flags too)
  *   kind=no-session     → cookie absent or invalid (200 + {user: null})
- *   kind=misconfigured  → backend returned 503 (ANT_JWT_SECRET unset)
+ *   kind=misconfigured  → backend returned 503 (JWT key material unset)
  *   kind=http-error     → any other non-2xx
  *   kind=network        → fetch threw (CORS, offline, abort)
  *   kind=shape          → 200 but body shape unrecognised

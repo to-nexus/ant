@@ -921,7 +921,7 @@ export class PreviewServer {
       const jwtService = createJwtServiceFromEnv();
       if (!jwtService) {
         throw new Error(
-          'A JWT verification key is required in cloud mode: set ANT_JWT_PUBLIC_KEY (recommended) or ANT_JWT_SECRET.',
+          'A JWT verification key is required in cloud mode: set ANT_JWT_PUBLIC_KEY.',
         );
       }
       this.app.use(createJwtAuthMiddleware({

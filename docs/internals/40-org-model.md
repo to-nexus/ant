@@ -183,7 +183,7 @@ account UI hide the Organization owner pill. Team keeps both.
 
 `pnpm --filter @ant/cli migrate:individual-org` (dry-run by default, `--apply` to
 move) re-keys legacy `{personal-*|domain}/{username}` trees to
-`individual/{email}` and the Redis user records. Rotate `ANT_JWT_SECRET` on
+`individual/{email}` and the Redis user records. Rotate the ES256 key pair on
 cutover so stale tokens (old `sub`/`org`) are rejected and users re-authenticate
 into the new identity. Pre-launch alternative: wipe the legacy cloud trees +
 `ant:auth:*` and let first login recreate. `workspaces/local` is never touched.

@@ -146,7 +146,7 @@ export class RealtimeServer {
     if (isCloudMode) {
       const jwtService = createJwtServiceFromEnv();
       if (!jwtService) {
-        throw new Error('ANT_JWT_SECRET is required in cloud mode. Set the environment variable to enable authentication.');
+        throw new Error('ANT_JWT_PUBLIC_KEY is required in cloud mode. Set the environment variable to enable authentication.');
       }
       this.app.use(createJwtAuthMiddleware({
         jwtService,

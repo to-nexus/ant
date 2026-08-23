@@ -27,9 +27,9 @@ async function main(): Promise<void> {
 
   // The worker neither signs nor verifies sessions but spawns LLM-chosen shell
   // commands under its own UID. `dotenv/config` above means a direct-dotenv cloud
-  // launch could load a live JWT secret into this env, reachable from those
-  // commands via /proc — refuse to boot if any JWT key material is present
-  // (M-NEW-016). Compose already withholds it; this makes that a guarantee.
+  // launch could load the live signing key into this env, reachable from those
+  // commands via /proc — refuse to boot if it is present (M-NEW-016). Compose
+  // already withholds it; this makes that a guarantee.
   try {
     assertJwtAuthorityScope('none');
   } catch (error) {

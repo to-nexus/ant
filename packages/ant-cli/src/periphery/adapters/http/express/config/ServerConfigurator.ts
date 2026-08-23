@@ -237,7 +237,7 @@ export class ServerConfigurator {
     // Cloud mode: JWT cookie authentication
     const jwtService = this.deps.jwtService;
     if (!jwtService) {
-      throw new Error('ANT_JWT_SECRET is required in cloud mode. Set the environment variable to enable authentication.');
+      throw new Error('ANT_JWT_PUBLIC_KEY + ANT_JWT_PRIVATE_KEY are required in cloud mode. Set the environment variables to enable authentication.');
     }
 
     app.use(createJwtAuthMiddleware({

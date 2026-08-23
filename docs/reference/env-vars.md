@@ -135,10 +135,8 @@ HTTP bridge in cloud) — there is no separate Figma env var.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANT_JWT_PUBLIC_KEY` | unset | **Preferred.** ES256 session VERIFICATION key (PEM SPKI, P-256). Its presence selects ES256 for every process. Safe in every process — it cannot mint a session. |
-| `ANT_JWT_PRIVATE_KEY` | unset | ES256 session SIGNING key (PEM PKCS8, P-256). **`ant-api` only** — it is the only process that mints sessions. A verifier that holds one refuses to boot. |
-| `ANT_JWT_SECRET` | — | HS256 shared secret; the single-host fallback when no key pair is configured. **≥ 32 characters** (`openssl rand -hex 32`). Symmetric, so a verifier can also mint: `ant-realtime` / `ant-preview` refuse to boot with it unless `ANT_JWT_ALLOW_SYMMETRIC=true`. |
-| `ANT_JWT_ALLOW_SYMMETRIC` | unset | `true` records that a verifier-only process may hold signing authority (HS256 single-host). Logs loudly and keeps booting. Prefer the key pair — `ant-preview` runs user-authored code under its own UID, so its environment is reachable from that code via `/proc`. |
+| `ANT_JWT_PUBLIC_KEY` | unset | ES256 session VERIFICATION key (PEM SPKI, P-256). Safe in every process — it cannot mint a session. Required by `ant-api`, `ant-realtime`, `ant-preview`. |
+| `ANT_JWT_PRIVATE_KEY` | unset | ES256 session SIGNING key (PEM PKCS8, P-256). **`ant-api` only** — it is the only process that mints sessions. Any other process that holds one refuses to boot (`ant-realtime`, `ant-preview`, `ant-job` — the last must hold no JWT material at all). Sessions are ES256 only; there is no symmetric fallback. |
 | `GOOGLE_CLIENT_ID` | — | Cloud mode: Google OAuth client id (Google Cloud Console). Auth routes answer 503 until the client id/secret and redirect URI all resolve. |
 | `GOOGLE_CLIENT_SECRET` | — | Cloud mode: Google OAuth client secret. |
 | `GOOGLE_REDIRECT_URI` | derived | OAuth callback URL. When unset, derived as `${FRONTEND_URL}/api/auth/google/callback` — register that URI in the Google Cloud Console either way. Set explicitly only when the callback host differs from `FRONTEND_URL`. |

@@ -73,7 +73,7 @@ Everything else has a working default in local mode:
   directory if one exists, else `<cwd>/workspaces`. Set it explicitly if
   you want feature data somewhere specific.
 
-`ANT_JWT_SECRET`, `GOOGLE_CLIENT_*`, `FRONTEND_URL`, `ANT_CORS_ORIGINS`,
+`ANT_JWT_PUBLIC_KEY` / `ANT_JWT_PRIVATE_KEY`, `GOOGLE_CLIENT_*`, `FRONTEND_URL`, `ANT_CORS_ORIGINS`,
 `GOOGLE_REDIRECT_URI` — leave them commented out. Local mode skips OAuth
 entirely and accepts loopback origins automatically; setting cloud-only
 variables in local mode has no effect but won't break anything.
@@ -252,7 +252,7 @@ In local mode `<org>=local` and `<user>=local`.
   `dev:all`. There is **no in-memory fallback** — Ant fails fast
   rather than silently using an in-process queue.
 - **OAuth env leftover from a cloud experiment** — local mode ignores
-  `FRONTEND_URL` / `GOOGLE_CLIENT_ID` / `ANT_JWT_SECRET`, but if you
+  `FRONTEND_URL` / `GOOGLE_CLIENT_ID` / `ANT_JWT_PUBLIC_KEY`, but if you
   hit a `[CORS]` startup warn you probably set `ANT_SERVER_MODE=cloud`
   without setting `FRONTEND_URL`. Set `ANT_SERVER_MODE=local`.
 - **`ENOENT` spawning ripgrep** — see

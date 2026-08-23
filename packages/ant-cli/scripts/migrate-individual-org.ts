@@ -27,8 +27,8 @@
  *
  * Simpler alternative (pre-launch, no real data): wipe instead of migrate —
  * delete the legacy cloud org trees + `FLUSH` the `ant:auth:*` namespace, then
- * let first login recreate `individual/{email}`. Also rotate `ANT_JWT_SECRET`
- * on cutover so stale tokens (old `sub`/`org`) are rejected and users
+ * let first login recreate `individual/{email}`. Also rotate the ES256 key
+ * pair on cutover so stale tokens (old `sub`/`org`) are rejected and users
  * re-authenticate into the new identity.
  */
 

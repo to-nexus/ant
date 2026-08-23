@@ -10,10 +10,17 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as crypto from 'crypto';
 import { JwtService } from '../../src/infrastructure/auth/JwtService';
 import { createAuthRoutes } from '../../src/periphery/adapters/http/routes/auth.routes';
 
-const TEST_SECRET = 'test-secret-at-least-32-characters-long-xx';
+const TEST_KEYS = (() => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return {
+    publicKey: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
+  };
+})();
 
 describe('POST /api/auth/signout — dual-clear (legacy drain)', () => {
   const originalEnv = process.env.COOKIE_DOMAIN;
@@ -38,7 +45,7 @@ describe('POST /api/auth/signout — dual-clear (legacy drain)', () => {
       createAuthRoutes({
         authService: {} as any,
         workspaceResolver: {} as any,
-        jwtService: new JwtService({ secret: TEST_SECRET }),
+        jwtService: new JwtService(TEST_KEYS),
       }),
     );
     const server = http.createServer(app);

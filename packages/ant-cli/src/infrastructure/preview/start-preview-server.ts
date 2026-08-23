@@ -50,8 +50,7 @@ async function main(): Promise<void> {
   applySharedWorkspaceUmask();
 
   // This process VERIFIES sessions and spawns user-authored children under its
-  // own UID, so it must be public-key-only — no secret, no private key, and no
-  // ANT_JWT_ALLOW_SYMMETRIC escape hatch (C-001, M-NEW-013).
+  // own UID, so it must be public-key-only — no private key (C-001, M-NEW-013).
   try {
     assertJwtAuthorityScope('verify-usercode');
   } catch (error) {

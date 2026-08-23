@@ -3,7 +3,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.cloud.yml up -d
 #
 # Requires a .env (or exported shell vars) with at least:
-#   ANT_JWT_PUBLIC_KEY + ANT_JWT_PRIVATE_KEY (or ANT_JWT_SECRET — see below),
+#   ANT_JWT_PUBLIC_KEY + ANT_JWT_PRIVATE_KEY (see below),
 #   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 # See docs/guides/self-host-cloud.md for the full checklist.
 #
@@ -22,9 +22,8 @@
 # environment is reachable from user code via /proc. Sign-in secrets have no
 # consumer there, so they are not granted there (report C-001).
 #
-# The session key follows the same rule, but needs asymmetric keys to do it: a
-# verifier that holds an HS256 secret can also MINT sessions. Generate a P-256
-# pair once and put the private half on ant-api only:
+# Sessions are ES256 only. Generate a P-256 pair once and put the private half
+# on ant-api only:
 #
 #   openssl ecparam -genkey -name prime256v1 -noout \
 #     | openssl pkcs8 -topk8 -nocrypt -out jwt-private.pem
@@ -32,9 +31,6 @@
 #   ANT_JWT_PRIVATE_KEY="$(cat jwt-private.pem)"
 #   ANT_JWT_PUBLIC_KEY="$(cat jwt-public.pem)"
 #
-# The HS256 `ANT_JWT_SECRET` path still works for a single-host deployment, but
-# ant-realtime / ant-preview then refuse to boot unless
-# ANT_JWT_ALLOW_SYMMETRIC=true records that the risk is accepted.
 # Child UID isolation (ANT_CHILD_UID/GID below) is the complementary control.
 
 # Every ant service: mode + the origin CORS and cookie derivation read.
@@ -42,21 +38,10 @@ x-ant-env-cloud-base: &ant-env-cloud-base
   ANT_SERVER_MODE: cloud
   FRONTEND_URL: ${FRONTEND_URL:-http://localhost:4200}
 
-# Session VERIFICATION for a process that runs NO user-authored code
-# (ant-realtime). The ES256 public key carries no minting authority. The HS256
-# secret is the symmetric single-host fallback, gated by ANT_JWT_ALLOW_SYMMETRIC
-# at boot. It is deliberately NOT given to ant-preview: that process spawns user
-# code under its own UID, so a secret there is /proc-readable session forgery
-# (C-001, M-NEW-013) and its boot gate ('verify-usercode') refuses it outright.
+# Session VERIFICATION (ant-realtime, ant-preview). The ES256 public key
+# carries no minting authority — safe even where user-authored code can read
+# the env via /proc (C-001, M-NEW-013).
 x-ant-env-cloud-verify: &ant-env-cloud-verify
-  ANT_JWT_PUBLIC_KEY: ${ANT_JWT_PUBLIC_KEY:-}
-  ANT_JWT_SECRET: ${ANT_JWT_SECRET:-}
-  ANT_JWT_ALLOW_SYMMETRIC: ${ANT_JWT_ALLOW_SYMMETRIC:-}
-
-# Session VERIFICATION for a process that spawns user-authored code
-# (ant-preview). Public key ONLY — no symmetric secret, no opt-out. A symmetric
-# single-host deployment cannot run preview; it must migrate to an ES256 key pair.
-x-ant-env-cloud-verify-pubonly: &ant-env-cloud-verify-pubonly
   ANT_JWT_PUBLIC_KEY: ${ANT_JWT_PUBLIC_KEY:-}
 
 # Session SIGNING. Consumed ONLY by ant-api, the only process that mounts the
@@ -87,7 +72,7 @@ services:
       <<: *ant-env-cloud-base
 
   # Verifies proxy ownership; never serves sign-in. Runs user-authored code, so
-  # it receives the public key ONLY (no symmetric secret / opt-out).
+  # it receives the public key ONLY.
   ant-preview:
     environment:
-      <<: [*ant-env-cloud-base, *ant-env-cloud-verify-pubonly]
+      <<: [*ant-env-cloud-base, *ant-env-cloud-verify]

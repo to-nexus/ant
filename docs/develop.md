@@ -190,9 +190,13 @@ Use this when you're iterating on auth / IDE orchestration / onboarding.
 Required env additions:
 
 ```bash
-# packages/ant-cli/.env
+# packages/ant-cli/.env — shared by every process, so only the PUBLIC key
+# goes here; inject ANT_JWT_PRIVATE_KEY into the ant-api process alone.
+#   openssl ecparam -genkey -name prime256v1 -noout \
+#     | openssl pkcs8 -topk8 -nocrypt -out jwt-private.pem
+#   openssl ec -in jwt-private.pem -pubout -out jwt-public.pem
 ANT_SERVER_MODE=cloud
-ANT_JWT_SECRET=$(openssl rand -base64 48)
+ANT_JWT_PUBLIC_KEY="$(cat jwt-public.pem)"
 ANT_API_URL=http://localhost:4100
 
 GOOGLE_CLIENT_ID=...
