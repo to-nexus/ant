@@ -124,16 +124,6 @@ export class MockLLMClient implements LLMClient {
     };
   }
 
-  async invokeStructured<T = any>(
-    _messages: Array<{ role: string; content: string | CacheableContent[] }>,
-    schema: Record<string, any>,
-    schemaName: string,
-    _options?: { temperature?: number; maxTokens?: number; [key: string]: any },
-  ): Promise<T> {
-    console.log(`🧪 [MockLLM] invokeStructured ${this.label()} schema=${schemaName}`);
-    return this.buildFromSchema(schema) as T;
-  }
-
   private label(): string {
     return `(${this.agentJob ?? '?'}/${this.context?.jobType ?? '?'}/${this.context?.nodeType ?? 'default'})`;
   }

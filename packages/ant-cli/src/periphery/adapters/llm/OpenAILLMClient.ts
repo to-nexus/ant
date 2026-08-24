@@ -643,37 +643,5 @@ export class OpenAILLMClient implements LLMClient {
       metadata: metadata(),
     };
   }
-  
-  async invokeStructured<T = any>(
-    messages: Array<{ role: string; content: string }>,
-    schema: Record<string, any>,
-    schemaName: string,
-    options?: { temperature?: number; maxTokens?: number; [key: string]: any }
-  ): Promise<T> {
-    const response = await this.client.chat.completions.create({
-      model: this.modelName,
-      // Provider-neutral guard: strip empty text blocks; see sanitizeMessages.
-      // `options.system` is a port-level contract — materialized as a leading
-      // system message (see applySystemOption).
-      messages: sanitizeMessages(applySystemOption(messages, options?.system)).map(m => ({
-        role: m.role as 'user' | 'assistant' | 'system',
-        content: m.content,
-      })),
-      temperature: options?.temperature ?? this.temperature,
-      max_tokens: options?.maxTokens ?? 16000,
-      response_format: { type: 'json_object' },
-    });
-
-    const content = response.choices[0]?.message?.content || '{}';
-    
-    // ✅ Token usage is tracked in invokeWithUsage, but for structured output we need to track it separately
-    // Since invokeStructured doesn't use invokeWithUsage, we'll log token usage here but won't return it
-    // This is acceptable because invokeStructured is used less frequently (mainly in decompose)
-    if (response.usage) {
-      console.log(`   Tokens: ${response.usage.total_tokens} total (${response.usage.prompt_tokens} in, ${response.usage.completion_tokens} out)`);
-    }
-    
-    return JSON.parse(content) as T;
-  }
 }
 

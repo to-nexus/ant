@@ -254,51 +254,6 @@ export class GeminiLLMClient implements LLMClient {
     };
   }
 
-  async invokeStructured<T = any>(
-    messages: Array<{ role: string; content: string | CacheableContent[] }>,
-    schema: Record<string, any>,
-    schemaName: string,
-    options?: { temperature?: number; maxTokens?: number; [key: string]: any }
-  ): Promise<T> {
-    // `options.system` is a port-level contract — materialized as a leading
-    // system message; convertMessages lifts it into systemInstruction.
-    const { systemInstruction, contents } = this.convertMessages(applySystemOption(messages, options?.system));
-    const temperature = options?.temperature ?? this.temperature;
-
-    console.log(`🔥 [API CALL] provider=google model=${this.modelName} method=invokeStructured schema=${schemaName} temp=${temperature}`);
-
-    const response = await withRetry(
-      async () => {
-        return await this.client.models.generateContent({
-          model: this.modelName,
-          contents,
-          config: {
-            ...(systemInstruction ? { systemInstruction } : {}),
-            temperature,
-            maxOutputTokens: options?.maxTokens ?? this.maxTokens,
-            responseMimeType: 'application/json',
-            responseSchema: schema,
-          },
-        });
-      },
-      {
-        maxAttempts: 6,
-        initialDelayMs: 2000,
-        maxDelayMs: 60000,
-        backoffMultiplier: 2,
-        retryableErrors: ['RESOURCE_EXHAUSTED', 'UNAVAILABLE', 'INTERNAL', '429', '500', '503'],
-      }
-    );
-
-    const text = response.text ?? '';
-
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new Error(`Failed to parse structured response from Gemini: ${text.slice(0, 200)}`);
-    }
-  }
-
   /**
    * Convert unified message format to Gemini SDK format.
    * Extracts system instruction and builds content parts.

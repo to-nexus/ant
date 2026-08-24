@@ -88,14 +88,6 @@ describe('OpenAI-compat options.system delivery', () => {
     expect(payload.messages[0]).toEqual({ role: 'system', content: SYSTEM });
   });
 
-  it('invokeStructured → leading role:system message in the request', async () => {
-    const { client, create } = makeOpenAIClient();
-    create.mockResolvedValue({ choices: [{ message: { content: '{}' } }], usage: undefined });
-    await client.invokeStructured(USER_MSG as any, { type: 'object' }, 'test', { system: SYSTEM } as any);
-    const payload = create.mock.calls[0][0];
-    expect(payload.messages[0]).toEqual({ role: 'system', content: SYSTEM });
-  });
-
   it('no options.system → no system message injected', async () => {
     const { client, create } = makeOpenAIClient();
     create.mockResolvedValue({ choices: [{ message: { content: 'ok' } }], usage: undefined });

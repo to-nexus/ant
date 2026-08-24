@@ -368,22 +368,6 @@ export interface LLMClient {
       [key: string]: any;
     }
   ): AsyncIterable<LLMStreamEvent>;
-  
-  /**
-   * Invoke with structured output (JSON schema enforcement)
-   * Forces LLM to return valid JSON matching the schema
-   * 
-   * @param messages - Chat messages (supports prompt caching)
-   * @param schema - JSON schema for the expected output
-   * @param schemaName - Name of the schema (for tool calling)
-   * @param options - Optional sampling overrides (temperature / maxTokens)
-   * @returns Parsed object matching the schema
-   */
-  invokeStructured<T = any>(
-    messages: Array<{ role: string; content: string | CacheableContent[] }>,
-    schema: Record<string, any>,
-    schemaName: string,
-    options?: { temperature?: number; maxTokens?: number; [key: string]: any }
-  ): Promise<T>;
+
 }
 

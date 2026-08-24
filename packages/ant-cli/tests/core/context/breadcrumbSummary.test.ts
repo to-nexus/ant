@@ -30,7 +30,6 @@ function makeLLM(content: string | (() => Promise<string>)): LLMClient {
     invoke: vi.fn().mockImplementation(async () =>
       typeof content === 'function' ? content() : content,
     ),
-    invokeStructured: vi.fn() as any,
     stream: vi.fn() as any,
   };
 }
@@ -164,7 +163,6 @@ describe('buildLlmBreadcrumbSummary', () => {
         provider: 'test',
         modelName: 'slow',
         invoke: vi.fn().mockReturnValue(slowInvoke),
-        invokeStructured: vi.fn() as any,
         stream: vi.fn() as any,
       };
       const promise = buildLlmBreadcrumbSummary({

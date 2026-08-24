@@ -382,29 +382,6 @@ export class OpenAIResponsesLLMClient implements LLMClient {
     };
   }
 
-  async invokeStructured<T = any>(
-    messages: Array<{ role: string; content: string | CacheableContent[] }>,
-    schema: Record<string, any>,
-    schemaName: string,
-    options?: { temperature?: number; maxTokens?: number; [key: string]: any },
-  ): Promise<T> {
-    const effort = this.resolveEffort(options?.enableThinking ?? false);
-    const response: any = await this.client.responses.create({
-      model: this.modelName,
-      input: this.convertToResponsesInput(applySystemOption(messages, options?.system) as any, false),
-      max_output_tokens: this.resolveMaxOutputTokens(options?.maxTokens, effort),
-      reasoning: { effort },
-      store: false,
-      // Native structured output — strictly better than the chat path's
-      // `json_object` + prose-schema approximation.
-      text: { format: { type: 'json_schema', name: schemaName, schema, strict: false } },
-      ...this.samplingParams(options?.temperature),
-    } as any);
-
-    const content = OpenAIResponsesLLMClient.extractOutputText(response) || '{}';
-    return JSON.parse(content) as T;
-  }
-
   private static extractOutputText(response: any): string {
     if (typeof response?.output_text === 'string' && response.output_text) return response.output_text;
     const parts: string[] = [];

@@ -6,8 +6,7 @@
  * values passed by nodes (e.g. DECOMPOSE 0.2 via callLLMWithToolLoop) never
  * reached the wire on Gemini-routed jobs (visual). Contract:
  *   - per-call `options.temperature` wins when provided;
- *   - constructor value remains the fallback when omitted;
- *   - invokeStructured honors per-call options too.
+ *   - constructor value remains the fallback when omitted.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -55,13 +54,5 @@ describe('GeminiLLMClient — per-call temperature override', () => {
       // drain
     }
     expect(captured[0].config.temperature).toBe(0.3);
-  });
-
-  it('invokeStructured: per-call value wins, constructor fallback otherwise', async () => {
-    const { client, captured } = clientWithCapture();
-    await client.invokeStructured([{ role: 'user', content: 'hi' }], { type: 'object' }, 'S', { temperature: 0.2 });
-    await client.invokeStructured([{ role: 'user', content: 'hi' }], { type: 'object' }, 'S');
-    expect(captured[0].config.temperature).toBe(0.2);
-    expect(captured[1].config.temperature).toBe(0.7);
   });
 });
