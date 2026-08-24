@@ -1,5 +1,6 @@
 import type { SessionState } from '../types/session';
 import { getAgentForJobSafe } from '../utils/sessionPaths';
+import { logger } from '../../utils/logger';
 
 /**
  * Pure projector: shared session-state shape → KanbanData columns.
@@ -92,7 +93,7 @@ export function projectSessionStateToKanban(
     ),
   ];
 
-  console.log(`[KanbanService] RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${todo.length} ip=${inProgress.length} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning} paused=${isPausedSession}`);
+  logger.debug(`RETURN path=SESSION jobId=${sessionJobId ?? 'none'} todo=${todo.length} ip=${inProgress.length} done=${completedTasksDetails.length} ds=session isRunning=${isActuallyRunning} paused=${isPausedSession}`, { component: 'KanbanService' });
 
   return {
     jobId: sessionJobId,

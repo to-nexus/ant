@@ -38,7 +38,7 @@ export class IDEService {
   private instances: Map<string, IDEInstance> = new Map();
   private idleCheckInterval?: NodeJS.Timeout;
   
-  private readonly IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes — counted from the last HTTP/WS hit through the IDE proxy
+  private readonly IDLE_TIMEOUT = 10 * 60 * 1000; // 10 minutes — counted from the registry's lastAccessedAt, i.e. the last HTTP/WS hit through the IDE proxy
   // ✅ Default to OpenVSCode Server (matches @ant/ide usage). Override via ANT_IDE_IMAGE.
   private readonly IMAGE = process.env.ANT_IDE_IMAGE || 'gitpod/openvscode-server:latest';
   
@@ -575,24 +575,41 @@ export class IDEService {
    */
   private async checkIdleContainers(): Promise<void> {
     const now = Date.now();
-    
+
     for (const [key, instance] of this.instances.entries()) {
-      const idleTime = now - instance.lastAccessedAt.getTime();
-      
-      if (idleTime > this.IDLE_TIMEOUT) {
-        logger.info(`Stopping idle IDE: ${key} (idle: ${Math.round(idleTime / 1000)}s)`, { component: 'IDEService' });
-        
-        try {
-          const parts = key.split(':');
-          if (parts.length >= 3) {
-            const [orgId, userId, projId, ...featureParts] = parts;
-            const tenantId = `${orgId}:${userId}`;
-            const feat = featureParts.join(':') || NO_FEATURE_KEY;
-            await this.stopIDE(tenantId, projId, feat);
-          }
-        } catch (error) {
-          logger.warn(`Failed to stop idle IDE: ${key}`, { component: 'IDEService' }, error);
+      const parts = key.split(':');
+      if (parts.length < 3) continue;
+
+      const [orgId, userId, projId, ...featureParts] = parts;
+      const tenantId = `${orgId}:${userId}`;
+      const feat = featureParts.join(':') || NO_FEATURE_KEY;
+
+      // Idle is judged against the REGISTRY's lastAccessedAt — the single owner
+      // the IDE proxy refreshes on every HTTP/WS hit (ideProxy.ts touchIDE) and
+      // the K8s reaper reads (KubernetesIDEOrchestrator.checkIdleInstances).
+      // `instance.lastAccessedAt` only moves on startIDE / getIDEStatus, and no
+      // caller polls those, so judging by it reaped every local IDE ~10min after
+      // start regardless of use. Registry entry absent (TTL expired /
+      // unregistered orphan) → fall back to the in-memory stamp so orphan
+      // containers still get reaped.
+      let lastAccess = instance.lastAccessedAt.getTime();
+      try {
+        const mapping = await this.portRegistry.getIDE(orgId, userId, projId, feat);
+        if (mapping?.lastAccessedAt) {
+          lastAccess = new Date(mapping.lastAccessedAt).getTime();
         }
+      } catch (error) {
+        logger.warn(`Idle check registry read failed: ${key}`, { component: 'IDEService' }, error);
+      }
+
+      const idleTime = now - lastAccess;
+      if (idleTime <= this.IDLE_TIMEOUT) continue;
+
+      logger.info(`Stopping idle IDE: ${key} (idle: ${Math.round(idleTime / 1000)}s)`, { component: 'IDEService' });
+      try {
+        await this.stopIDE(tenantId, projId, feat);
+      } catch (error) {
+        logger.warn(`Failed to stop idle IDE: ${key}`, { component: 'IDEService' }, error);
       }
     }
   }

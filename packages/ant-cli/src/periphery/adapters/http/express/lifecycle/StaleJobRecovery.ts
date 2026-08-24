@@ -118,7 +118,9 @@ async function recoverOrphanedRunningJobs(
 ): Promise<void> {
   const runningJobs = await stateStore.findJobsByStatus('running');
   if (runningJobs.length === 0) {
-    logger.info(`No stale running jobs found`, { component: COMPONENT });
+    // debug, not info: this function runs on a 90s reconciliation interval
+    // (ExpressServerAdapter.start), so "found nothing" is the steady state.
+    logger.debug(`No stale running jobs found`, { component: COMPONENT });
     return;
   }
 

@@ -321,12 +321,12 @@ export class KanbanService {
           agent: getAgentForJobSafe(jobType),
         };
         dlog(`\n🎬 [KanbanService] ESTIMATING STARTED (estimatingLabel=${liveSnapshot.estimatingLabel})`);
-        console.log(`[KanbanService] RETURN path=ESTIMATING jobId=${sessionJobId} todo=${result.todo.length} ip=0 done=${result.completed.length} ds=estimating`);
+        dlog(`[KanbanService] RETURN path=ESTIMATING jobId=${sessionJobId} todo=${result.todo.length} ip=0 done=${result.completed.length} ds=estimating`);
         return result;
       }
       
       dlog(`\n🔴 [KanbanService] LIVE DATA from Redis returned\n`);
-      console.log(`[KanbanService] RETURN path=LIVE jobId=${sessionJobId} todo=${liveQueue.length} ip=${liveCurrentTasks.length} done=${liveCompletedTasks.length} ds=live`);
+      dlog(`[KanbanService] RETURN path=LIVE jobId=${sessionJobId} todo=${liveQueue.length} ip=${liveCurrentTasks.length} done=${liveCompletedTasks.length} ds=live`);
       
       return {
         jobId: sessionJobId,
@@ -356,7 +356,7 @@ export class KanbanService {
     // Priority 2: ESTIMATING (job running but no live snapshot yet)
     if (sessionJobId && !isJobCompleted && isActuallyRunning && !liveSnapshot) {
       dlog(`\n🎯 [KanbanService] ESTIMATING STATE (no live snapshot yet)`);
-      console.log(`[KanbanService] RETURN path=ESTIMATING_NO_SNAPSHOT jobId=${sessionJobId} todo=${sessionTaskQueue.length} ip=0 done=${completedTasksDetails.length} ds=estimating`);
+      dlog(`[KanbanService] RETURN path=ESTIMATING_NO_SNAPSHOT jobId=${sessionJobId} todo=${sessionTaskQueue.length} ip=0 done=${completedTasksDetails.length} ds=estimating`);
       
       return {
         jobId: sessionJobId,

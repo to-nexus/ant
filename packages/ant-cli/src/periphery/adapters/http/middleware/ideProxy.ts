@@ -148,6 +148,27 @@ export function createIDEProxyMiddleware(config: IDEProxyConfig) {
  * IDE (code-server/openvscode) uses WebSocket for terminal and live features
  */
 export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPrefix: string = '/ide') {
+  /**
+   * A rejected upgrade MUST answer before the socket dies. `socket.destroy()`
+   * alone gives the client an unexplained "socket hang up", which the
+   * openvscode workbench treats as a transient network blip and retries
+   * forever — one warn per attempt on our side, indefinitely, after an idle
+   * reap. A real status line is the same answer the HTTP path already gives
+   * (baseProxy.ts 404), so the client stops instead of looping.
+   */
+  const rejectUpgrade = (socket: any, status: number, reason: string) => {
+    try {
+      if (socket && !socket.destroyed && socket.writable) {
+        socket.write(
+          `HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+        );
+      }
+    } catch {
+      // socket already gone — destroy below is the only thing that matters
+    }
+    socket?.destroy();
+  };
+
   // Create a proxy server for WebSocket
   const proxy = httpProxy.createProxyServer({
     ws: true,
@@ -180,7 +201,7 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
       : pathWithoutPrefix.substring(0, firstSlashIndex);
 
     if (!serverKey) {
-      socket.destroy();
+      rejectUpgrade(socket, 400, 'Bad Request');
       return;
     }
 
@@ -188,7 +209,7 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     const parsed = parseIDEKey(serverKey);
     if (!parsed) {
       logger.warn(`Invalid IDE serverKey format for WS: ${serverKey}`, { component: 'IDEProxy' });
-      socket.destroy();
+      rejectUpgrade(socket, 400, 'Bad Request');
       return;
     }
 
@@ -198,8 +219,11 @@ export function createIDEWebSocketHandler(portRegistry: PortRegistryPort, pathPr
     // Lookup port and host (IDE is feature-level)
     const port = await portRegistry.getIDEPort(tenantId, userId, projectId, featureName);
     if (!port) {
-      logger.warn(`No IDE port for WS: ${serverKey}`, { component: 'IDEProxy' });
-      socket.destroy();
+      // debug, not warn: a stopped/reaped IDE makes every queued client retry
+      // land here, and the condition is already observable as a 404 on the
+      // HTTP path.
+      logger.debug(`No IDE port for WS: ${serverKey}`, { component: 'IDEProxy' });
+      rejectUpgrade(socket, 404, 'Not Found');
       return;
     }
 

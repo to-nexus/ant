@@ -21,6 +21,7 @@ import {
   BaseProxyConfig,
   ServerKeyParts,
 } from '../../src/periphery/adapters/http/middleware/baseProxy';
+import { createIDEWebSocketHandler } from '../../src/periphery/adapters/http/middleware/ideProxy';
 
 class TestProxy extends BaseProxyMiddleware {
   public lastTargetUrl: string | undefined;
@@ -167,6 +168,54 @@ describe('IDEProxyMiddlewareImpl.stripPrefix() contract', () => {
     // WS handler must NOT slice the prefix off `req.url` anymore — preserving
     // the prefix for openvscode-server upgrade routing.
     expect(src).not.toMatch(/url\.slice\(\s*`?\$\{?pathPrefix\}?\/\$?\{?serverKey\}?`?\.length\)/);
+  });
+});
+
+/**
+ * Regression — a rejected WS upgrade must ANSWER before the socket dies.
+ *
+ * `socket.destroy()` with no status line gives the client an unexplained
+ * "socket hang up", which the openvscode workbench retries indefinitely. After
+ * an idle reap that produced an endless upgrade→reject→retry loop (one server
+ * log line per attempt, forever). The HTTP path already answers 404 here
+ * (baseProxy.ts), so the upgrade path must too.
+ */
+describe('IDE WS upgrade rejection', () => {
+  function fakeSocket() {
+    return {
+      destroyed: false,
+      writable: true,
+      write: vi.fn(),
+      destroy: vi.fn(),
+    };
+  }
+
+  it('port miss → writes a 404 status line, then destroys', async () => {
+    const registry = {
+      getIDEPort: vi.fn().mockResolvedValue(null),
+      touchIDE: vi.fn(),
+    } as any;
+    const handler = createIDEWebSocketHandler(registry, '/ide');
+    const socket = fakeSocket();
+
+    await handler({ url: '/ide/org:user:proj:base/?type=terminal' } as any, socket, Buffer.alloc(0));
+
+    expect(socket.write).toHaveBeenCalledTimes(1);
+    expect(socket.write.mock.calls[0][0]).toMatch(/^HTTP\/1\.1 404 Not Found\r\n/);
+    expect(socket.write.mock.calls[0][0]).toMatch(/Connection: close/);
+    expect(socket.destroy).toHaveBeenCalled();
+  });
+
+  it('malformed serverKey → 400 status line, then destroys (never a silent hang-up)', async () => {
+    const registry = { getIDEPort: vi.fn(), touchIDE: vi.fn() } as any;
+    const handler = createIDEWebSocketHandler(registry, '/ide');
+    const socket = fakeSocket();
+
+    await handler({ url: '/ide/not-a-valid-key/?type=terminal' } as any, socket, Buffer.alloc(0));
+
+    expect(socket.write.mock.calls[0][0]).toMatch(/^HTTP\/1\.1 400 Bad Request\r\n/);
+    expect(socket.destroy).toHaveBeenCalled();
+    expect(registry.getIDEPort).not.toHaveBeenCalled();
   });
 });
 
