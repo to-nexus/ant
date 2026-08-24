@@ -97,4 +97,48 @@ describe('deploy proxy 404-not-403 existence guard', () => {
     expect(priv.captured.status).toBe(notFound.captured.status);
     expect(priv.captured.body).toEqual(notFound.captured.body);
   });
+
+  // M-NEW-023: an unauthorized caller must not trigger a private deploy's
+  // rehydration. With a side-effect-free visibility read wired, the gate runs
+  // BEFORE ensureRunning, so ensureRunning is never reached for a private deploy
+  // requested without the owner cookie.
+  it('private + unauthorized → ensureRunning is NOT called (no rehydration)', async () => {
+    let ensureCalls = 0;
+    const out = res();
+    const mw = createDeployProxyMiddleware({
+      ...baseDeps,
+      getVisibility: async () => 'private',
+      ensureRunning: async () => { ensureCalls++; return makeState('private'); },
+    });
+    await mw({ path: '/individual--a@x.com--p--f/', url: '/individual--a@x.com--p--f/', method: 'GET', headers: {} } as any, out.r, () => {});
+    expect(out.captured.status).toBe(404);
+    expect(ensureCalls).toBe(0);
+  });
+
+  it('private + authorized owner → ensureRunning IS called (serves normally)', async () => {
+    let ensureCalls = 0;
+    const out = res();
+    const mw = createDeployProxyMiddleware({
+      ...baseDeps,
+      getVisibility: async () => 'private',
+      ensureRunning: async () => { ensureCalls++; return null; }, // null → 404, but ensureRunning was reached
+    });
+    await mw(
+      { path: '/individual--a@x.com--p--f/', url: '/individual--a@x.com--p--f/', method: 'GET', headers: { cookie: `${COOKIE}=individual|a@x.com` } } as any,
+      out.r, () => {},
+    );
+    expect(ensureCalls).toBe(1);
+  });
+
+  it('public → ensureRunning IS called even without a cookie (lazy start preserved)', async () => {
+    let ensureCalls = 0;
+    const out = res();
+    const mw = createDeployProxyMiddleware({
+      ...baseDeps,
+      getVisibility: async () => 'public',
+      ensureRunning: async () => { ensureCalls++; return makeState('public'); },
+    });
+    await mw({ path: '/individual--a@x.com--p--f/', url: '/individual--a@x.com--p--f/', method: 'GET', headers: {} } as any, out.r, () => {});
+    expect(ensureCalls).toBe(1);
+  });
 });

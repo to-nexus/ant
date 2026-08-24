@@ -105,6 +105,32 @@ export function isAuthorizedForPrivateDeploy(
   }
 }
 
+/**
+ * Gate a deploy request BEFORE any side effect (M-NEW-023). Reads visibility
+ * side-effect-free (never rehydrates); a private deploy requires the owner's
+ * cookie. Returns true when the request may proceed to `ensureRunning` — a
+ * public deploy always may (its lazy start is intended), a private one only for
+ * its owner, so an unauthorized caller can never trigger a private deploy's
+ * rehydration. Falls back to allow when no side-effect-free reader is wired: the
+ * post-ensureRunning gate below is then still the authority (old order).
+ */
+async function mayAccessDeploy(
+  req: Request,
+  deps: DeployProxyDeps,
+  coords: { tenantId: string; userId: string; projectId: string; feature: string },
+  cookieName: string,
+): Promise<boolean> {
+  if (!deps.getVisibility) return true; // no side-effect-free read → defer to the post-hydrate gate
+  let visibility: string | undefined;
+  try {
+    visibility = await deps.getVisibility(coords.tenantId, coords.userId, coords.projectId, coords.feature);
+  } catch {
+    visibility = 'private'; // fail closed on a read error
+  }
+  if (visibility !== 'private') return true;
+  return isAuthorizedForPrivateDeploy(req, deps.jwtService, cookieName, coords.tenantId, coords.userId);
+}
+
 export interface DeployProxyDeps {
   /**
    * Rehydrate or look up the running state for a deploy. Returns null when
@@ -117,6 +143,20 @@ export interface DeployProxyDeps {
     projectId: string,
     feature: string,
   ): Promise<DeployState | null>;
+
+  /**
+   * Side-effect-free visibility read: returns the deploy's visibility WITHOUT
+   * rehydrating it (never spawns), so a private deploy's ownership can be
+   * checked before `ensureRunning` is ever called (M-NEW-023). Provided by
+   * DeployService.getStatus. Absent → the proxy falls back to reading
+   * visibility off the (rehydrated) state, preserving the old order.
+   */
+  getVisibility?(
+    tenantId: string,
+    userId: string,
+    projectId: string,
+    feature: string,
+  ): Promise<string | undefined>;
 
   /**
    * Touch lastAccessedAt for idle-eviction bookkeeping. Best effort.
@@ -290,6 +330,13 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
       if (!coords) return next();
       const { tenantId, userId, projectId, feature, serviceName } = coords;
 
+      // Owner/visibility BEFORE ensureRunning: an unauthorized caller must not
+      // rehydrate a private deploy (M-NEW-023). Public deploys still lazy-start.
+      if (!(await mayAccessDeploy(req, deps, { tenantId, userId, projectId, feature }, cookieName))) {
+        res.status(404).json({ error: 'Deploy unavailable' });
+        return;
+      }
+
       const deployState = await deps.ensureRunning(tenantId, userId, projectId, feature);
       if (!deployState) {
         res.status(404).json({ error: 'Deploy unavailable' });
@@ -346,6 +393,14 @@ export function createDeployProxyMiddleware(deps: DeployProxyDeps) {
     }
 
     const { tenantId, userId, projectId, feature, serviceName } = parsed;
+
+    // Owner/visibility BEFORE ensureRunning: an unauthorized caller with a known
+    // private-deploy urlKey must not force its rehydration (M-NEW-023). Public
+    // deploys keep their lazy start.
+    if (!(await mayAccessDeploy(req, deps, { tenantId, userId, projectId, feature }, cookieName))) {
+      res.status(404).json({ error: 'Deploy unavailable' });
+      return;
+    }
 
     // Lazy re-hydration: if the static servers are dead (pod restart, idle
     // eviction, crash), DeployService will re-spawn ALL of them from

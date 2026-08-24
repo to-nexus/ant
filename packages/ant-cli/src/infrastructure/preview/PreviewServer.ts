@@ -884,6 +884,9 @@ export class PreviewServer {
     // raw Cookie header itself.
     const deployProxy = createDeployProxyMiddleware({
       ensureRunning: (t, u, p, f) => this.deployService.ensureRunning(t, u, p, f),
+      // Side-effect-free visibility read so a private deploy's ownership is
+      // checked BEFORE ensureRunning rehydrates it (M-NEW-023).
+      getVisibility: async (t, u, p, f) => (await this.deployService.getStatus(t, u, p, f)).visibility,
       touchDeploy: (t, u, p, f) => this.stateStore.touchDeploy(t, u, p, f),
       updateDeploy: (t, u, p, f, patch) => this.stateStore.updateDeploy(t, u, p, f, patch as any),
       broadcastStatus: (t, u, p, f, status) => this.deployService.broadcastStatus(t, u, p, f, status as any),
