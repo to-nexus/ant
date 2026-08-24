@@ -16,6 +16,7 @@ import {
 } from './invalidationScope';
 import { enforceManifestPinPolicyForWrite } from './manifestPinPolicy';
 import { packageManagerMutex } from './runCommand';
+import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
 
 export async function handleCreateFile(
   ctx: ToolExecutionContext,
@@ -41,6 +42,25 @@ export async function handleCreateFile(
       const rejection = rejectCodebaseMutate('create_file', resolved);
       await ctx.chatStatus.failFileCreation(filePath, rejection.error);
       return rejection;
+    }
+
+    // Binary gate — the target does not exist yet, so the verdict comes from the
+    // extension set (which deliberately excludes text formats behind
+    // asset-looking names: `.svg`, `.gltf`, `.obj`).
+    //
+    // `FileSystemAdapter.writeFile` already refuses these, but in parallel-worker
+    // mode the write goes through `SharedFileBuffer` and is not flushed until
+    // later — so `create_file("codebase/public/shot.png", "<text>")` reported
+    // SUCCESS to the LLM and the rejection surfaced detached from its cause.
+    // `edit_file` refuses at the call; three prompt surfaces and the `copy_file`
+    // schema all state that `create_file` does too. Now it does.
+    if (isBinaryPath(resolved.fsPath)) {
+      const msg =
+        `Cannot create binary file: ${resolved.displayPath}. ` +
+        `Binary bytes cannot be authored as text — a utf-8 write produces a corrupt file. ` +
+        `Place an existing asset with copy_file(source, destination) instead.`;
+      await ctx.chatStatus.failFileCreation(filePath, msg);
+      return { content: msg, error: msg };
     }
 
     // Manifest creates share `packageManagerMutex` with the run_command

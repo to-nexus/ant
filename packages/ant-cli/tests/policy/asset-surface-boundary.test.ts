@@ -16,6 +16,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { ARTIFACT_PREFIX } from '@ant/shared';
+import {
+  effectiveAssetInventory,
+  formatAssetInventoryBlock,
+} from '../../src/infrastructure/workspace/assetInventory';
 
 // ============================================
 // Lint helpers (mirrors the BE validators)
@@ -101,5 +105,90 @@ describe('I6 — Asset Surface Boundary', () => {
         { id: 'b', kind: 'external', src: 'assets/game/sfx/b.mp3' },
       ]),
     ).toEqual([]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// The placeable-file inventory — pool ∪ attachments
+// ────────────────────────────────────────────────────────────────
+
+describe('effectiveAssetInventory — union of the domain pool and this turn\'s attachments', () => {
+  const poolOnly = {
+    files: ['assets/service/images/logo.png'],
+    groups: { images: ['assets/service/images/logo.png'] },
+    count: 1,
+    sizes: { 'assets/service/images/logo.png': 100 },
+    corrupted: {},
+  };
+
+  it('an attached binary outside the pool enters the inventory', () => {
+    // `indexAssetPool` walks one domain pool root, so this was the ONLY place
+    // the code job was ever told real files exist — a plan needing an attached
+    // screenshot had exactly one directory to look in, found it empty, and
+    // planned a placeholder (near-loading-brace).
+    const inv = effectiveAssetInventory({
+      assetInventory: poolOnly,
+      artifacts: [
+        { path: 'visual/ui/handoff/shot.png', kind: 'binary', sizeBytes: 4096 },
+      ],
+    });
+    expect(inv.count).toBe(2);
+    expect(inv.files).toContain('visual/ui/handoff/shot.png');
+    expect(inv.sizes['visual/ui/handoff/shot.png']).toBe(4096);
+    // Grouped by first path segment so the shared formatter needs no special case.
+    expect(inv.groups.visual).toEqual(['visual/ui/handoff/shot.png']);
+  });
+
+  it('renders every row with its full feature-relative path', () => {
+    const block = formatAssetInventoryBlock(
+      effectiveAssetInventory({
+        assetInventory: poolOnly,
+        artifacts: [{ path: 'plan/screenshot.png', kind: 'binary', sizeBytes: 2048 }],
+      }),
+      { assetsRoot: 'assets/service', usage: 'Place with copy_file.' },
+    );
+    expect(block).toContain('assets/service/images/logo.png');
+    expect(block).toContain('plan/screenshot.png');
+  });
+
+  it('text artifacts are documents, not placeable files', () => {
+    const inv = effectiveAssetInventory({
+      assetInventory: poolOnly,
+      artifacts: [{ path: 'plan/prd.md', kind: 'text', sizeBytes: 900 }],
+    });
+    expect(inv.files).not.toContain('plan/prd.md');
+    expect(inv.count).toBe(1);
+  });
+
+  it('SVG is admitted despite sniffing as text — it is both', () => {
+    const inv = effectiveAssetInventory({
+      assetInventory: undefined,
+      artifacts: [{ path: 'visual/ui/handoff/icon.svg', kind: 'text', sizeBytes: 300 }],
+    });
+    expect(inv.files).toEqual(['visual/ui/handoff/icon.svg']);
+  });
+
+  it('an attachment already in the pool is not double-counted', () => {
+    const inv = effectiveAssetInventory({
+      assetInventory: poolOnly,
+      artifacts: [
+        { path: 'assets/service/images/logo.png', kind: 'binary', sizeBytes: 100 },
+      ],
+    });
+    expect(inv.count).toBe(1);
+  });
+
+  it('no attachments → byte-identical to the pool (I6 unchanged)', () => {
+    const inv = effectiveAssetInventory({ assetInventory: poolOnly, artifacts: [] });
+    expect(inv.files).toEqual(poolOnly.files);
+    expect(inv.groups).toEqual(poolOnly.groups);
+    expect(inv.count).toBe(1);
+  });
+
+  it('the other domain\'s pool is still never observed', () => {
+    // The union widens what an EXPLICIT selection can reach; it does not make
+    // a disk walk cross domains. Nothing is added that the caller did not pass.
+    const inv = effectiveAssetInventory({ assetInventory: poolOnly, artifacts: [] });
+    expect(inv.files.some(f => f.startsWith(ARTIFACT_PREFIX.ASSETS_GAME))).toBe(false);
   });
 });

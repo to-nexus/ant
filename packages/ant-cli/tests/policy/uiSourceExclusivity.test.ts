@@ -286,7 +286,16 @@ describe('UiSource hard-exclusive invariant', () => {
   });
 
   describe('mergeWithMetadata funnel — never produces mixed UiSource', () => {
-    it('inferred ant + metadata figma → ant wins after merge', () => {
+    // Authority, not alphabet: the merge combines two lists of DIFFERENT
+    // authority, and exclusivity means one of them loses. The static priority
+    // (ant > figma > handoff) knows nothing about who contributed what, so
+    // applying it blind deleted the source the USER selected in favour of one
+    // inference guessed at — the same class of defect as near-loading-brace,
+    // where the user's two attached screenshots were replaced wholesale.
+    // `mergeWithMetadata` therefore passes the metadata's source as
+    // `preferredSource`. Exclusivity (the invariant this block owns) is
+    // unchanged: exactly one source survives either way.
+    it('inferred ant + metadata figma → the USER-selected figma wins after merge', () => {
       const inferred: InferredAction = {
         intentId: 'gen-code-sys',
         refs: ['visual/ui/ant/ui-tokens.json'],
@@ -295,6 +304,47 @@ describe('UiSource hard-exclusive invariant', () => {
       const merged = mergeWithMetadata(inferred, {
         refs: ['visual/ui/figma/figma.json'],
       } as any);
+      expect(merged.refs).toEqual(['visual/ui/figma/figma.json']);
+    });
+
+    it('inferred ant + attached handoff → the attached handoff survives', () => {
+      const inferred: InferredAction = {
+        intentId: 'gen-code-directive',
+        refs: [],
+        context: ['visual/ui/ant/ui-tokens.json', 'codebase/README.md'],
+      } as unknown as InferredAction;
+      const merged = mergeWithMetadata(inferred, {
+        context: ['visual/ui/handoff/shot.png'],
+      } as any);
+      // Handoff is LAST in the static priority — blind normalization dropped it.
+      expect(merged.context).toContain('visual/ui/handoff/shot.png');
+      expect(merged.context).not.toContain('visual/ui/ant/ui-tokens.json');
+      // Unclassified paths never participate in the source contest.
+      expect(merged.context).toContain('codebase/README.md');
+    });
+
+    it('source precedence spans refs ∪ context (one verdict, not two)', () => {
+      const inferred: InferredAction = {
+        intentId: 'gen-code-sys',
+        refs: ['visual/ui/ant/ui-tokens.json'],
+        context: ['visual/ui/ant/ui-spec.json'],
+      } as unknown as InferredAction;
+      // The user attached a handoff file to CONTEXT only; the refs slot must
+      // still resolve to handoff, otherwise the RAC comes out mixed.
+      const merged = mergeWithMetadata(inferred, {
+        context: ['visual/ui/handoff/page.html'],
+      } as any);
+      const all = [...(merged.refs ?? []), ...(merged.context ?? [])];
+      expect(all).toEqual(['visual/ui/handoff/page.html']);
+    });
+
+    it('no metadata source → static priority still decides', () => {
+      const inferred: InferredAction = {
+        intentId: 'gen-code-sys',
+        refs: ['visual/ui/ant/ui-tokens.json', 'visual/ui/figma/figma.json'],
+        context: [],
+      } as unknown as InferredAction;
+      const merged = mergeWithMetadata(inferred, { context: ['plan/prd.md'] } as any);
       expect(merged.refs).toEqual(['visual/ui/ant/ui-tokens.json']);
     });
 

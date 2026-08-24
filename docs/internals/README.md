@@ -86,6 +86,7 @@ For binding rules with regression-guard test names, see
 - [43-explore-subagent.md](43-explore-subagent.md) — async read-only explore subagent pipeline (all jobs): launch/drain/join, registry, chat card + report overlay
 - [44-universal-job.md](44-universal-job.md) — universal job: file-defined custom agent/job runtime — one JobType, definition loader/scopes, tool sandbox, MCP credential plane, approval + plan-turn gates, checklist plane, projectType policy
 - [45-mcp-orchestration.md](45-mcp-orchestration.md) — MCP orchestration: process/trust topology (child vs peer), capability-server contract, unattended-run design constraints, known runtime gaps
+- [47-attachment-awareness.md](47-attachment-awareness.md) — user-attached files: why the RAC dropped them, and the one rule (selection/bytes outrank the directory allowlist) with its five owners
 
 ### Layout
 

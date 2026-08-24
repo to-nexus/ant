@@ -325,9 +325,49 @@ pipelines get `undefined` and may discover freely), `decideRacGate`, and
 inline tool dispatch, and the shared code `tool` node that serves plan and
 execute. Two families stay RAC-**orthogonal** and are always reachable: paths
 under `codebase/` (classified via `normalizeToCodebasePath`) and the
-`assets/{service,game}/**` pools (existence-only stubs that ride along with every
-selection). Never push this gate into the common `readFile` / `listFiles`
-handlers — design and planner jobs have no RAC to honor.
+`assets/{service,game,gen}/**` pools. Never push this gate into the common
+`readFile` / `listFiles` handlers — design and planner jobs have no RAC to honor.
+
+### The user's selection outranks the directory allowlist
+
+A file's **location must never decide whether the job is told it exists.** Four
+layers used to re-derive "is this a real file I may use?" from a directory
+allowlist, and an attached screenshot lost at every one of them
+(`near-loading-brace`). The owners now key off the user's selection or the bytes:
+
+| Question | Owner | Keyed on |
+|---|---|---|
+| Did the user's slots survive an inferred RAC? | `inferRacWithTools` (`metadata` input → `mergeWithMetadata`) | the FE's `actionMetadata`, additively — inference may ADD, never REPLACE |
+| Which UiSource wins a merge? | `pickUiSource(paths, preferred)` + `filterToUiSource` | the source the USER selected outranks the static `ant > figma > handoff` |
+| Is this artifact existence-only? | `loadResolvedArtifacts` content sniff → `ResolvedArtifact.kind` | the bytes, in any directory |
+| Does it ride along past `task.include`? | `ridesAlongRegardlessOfInclude` | `kind === 'binary'` |
+| May the job place it? | `effectiveAssetInventory` | domain pool ∪ attached binaries |
+
+### ❌ Forbidden
+
+- Dropping `actionMetadata.refs` / `context` / `target` / `basis` because the
+  turn carries no explicit `intent`. Absent intent means "the user did not pick
+  an action", not "the user selected no files".
+- Deciding a UiSource verdict **per slot** when a caller-supplied preference is
+  in play — `refs` and `context` diverge and the RAC comes out mixed. Decide once
+  over refs ∪ context, then filter both.
+- A new directory allowlist answering "is this a real/placeable file". Sniff the
+  bytes (`ResolvedArtifact.kind`) or ask the RAC.
+- A prompt surface that tells the model a real file it was given is not usable
+  (the handoff caption's "generate placeholders" vs the `[asset]` stub's "copy
+  it" — the model obeyed the wrong one and shipped dead placeholders).
+
+```bash
+# The infer path must forward the user's slots — dropping this line is the bug.
+rg -n "metadata: state\.actionMetadata" packages/ant-cli/src/agents/common/graph/nodes/detect/index.ts  # Expected: 1
+# The stub decision is the sniff; the prefix list governs TEXT only.
+rg -n "isStubLoadedPath\(" packages/ant-cli/src --type ts  # Expected: 2 (definition + the one text-branch call)
+```
+
+Guards: `tests/detect/metadata-supplement-merge.test.ts`,
+`tests/policy/{rac-scope-invariant,asset-surface-boundary,uiSourceExclusivity}.test.ts`,
+`tests/prompt/attachment-injection-gate.test.ts`.
+Rationale: [`docs/internals/47-attachment-awareness.md`](docs/internals/47-attachment-awareness.md).
 
 ---
 

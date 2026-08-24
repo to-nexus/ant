@@ -40,9 +40,10 @@ import type { WorkspaceState } from '../triage/types.js';
 import type { DetectResult, MissingPrerequisites, SuggestedAlternative } from './types.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Basis, Domain, IntentId, UiSource } from '@ant/shared';
+import type { ActionMetadata, Basis, Domain, IntentId, UiSource } from '@ant/shared';
 import {
   resolveToRAC,
+  mergeWithMetadata,
   getConfigSlotsForDomain,
   getDefaultTargetPaths,
   deriveChatNeedsRefs,
@@ -77,6 +78,15 @@ export interface InferRacWithToolsInput {
    * re-inferring every axis per job.
    */
   seedBasis?: Basis;
+  /**
+   * The user's own slot selections. Absent `actionMetadata.intent` is what routes
+   * a turn here — it does NOT mean the user selected no files. Inference may ADD
+   * to these and must never REPLACE them (near-loading-brace, doc 47).
+   *
+   * Consumed at three points below: the tool whitelist, the prompt, and the
+   * pre-RAC merge.
+   */
+  metadata?: Pick<ActionMetadata, 'refs' | 'context' | 'target' | 'referenceTargets'>;
 }
 
 /**
@@ -124,8 +134,14 @@ export async function inferRacWithTools(
     slotDirs.push(slots.target.dir);
   }
 
-  // ── 2. Build whitelist (slot dirs ∪ featureContext anchors ∪ codebase/) ──
-  const whitelist = buildDetectWhitelist(slotDirs, input.featureContext);
+  // Attachments seed the whitelist alongside the slot dirs — without this the
+  // LLM is DENIED a file the user just handed it.
+  const attachedRefs = input.metadata?.refs ?? [];
+  const attachedContext = input.metadata?.context ?? [];
+  const attachedPaths = [...attachedRefs, ...attachedContext];
+
+  // ── 2. Build whitelist (slot dirs ∪ attachments ∪ featureContext anchors ∪ codebase/) ──
+  const whitelist = buildDetectWhitelist([...slotDirs, ...attachedPaths], input.featureContext);
 
   // ── 3. Render prompt (shared template) ──
   // PromptBuilder.render auto-enriches Codebase Channel vars; the
@@ -163,6 +179,8 @@ export async function inferRacWithTools(
     // exploration (lapis-oaring-drain RCA).
     chatRequiresRefs: chatNeedsRefs,
     allowTargetMismatch,
+    attachedRefs,
+    attachedContext,
   };
   const systemPrompt = await promptBuilder.render(
     TEMPLATE_PATHS.detect.rules!,
@@ -268,6 +286,16 @@ export async function inferRacWithTools(
     parsedResp.missingPrereq = undefined;
   }
 
+  // A prerequisite the user already handed us is not missing. Enforced here too,
+  // not just in the prompt: a block ends the turn with nothing delivered.
+  if (parsedResp.missingPrereq && attachedRefs.length > 0) {
+    console.log(
+      `[detect:inferRacWithTools] LLM emitted <missingPrereq> for ${intentId} ` +
+        `while the user attached ${attachedRefs.length} ref(s) — bypassing block`,
+    );
+    parsedResp.missingPrereq = undefined;
+  }
+
   // Ungated <targetMismatch> (LLM invented it for a non-revise intent or one
   // with no gen-* sibling) → log + ignore, mirroring the chatRequiresRefs
   // bypass above.
@@ -306,13 +334,33 @@ export async function inferRacWithTools(
       .map(resolveSlotDir)
       .find(d => d != null) ?? null;
 
-  const resolvedAction = resolveToRAC(
-    intentId,
+  // Fold the user's selections in through the shared additive-merge SSOT (which
+  // also makes the attached UiSource outrank the static ant>figma>handoff order).
+  // `intentId` is already final, so the merge's intent field is inert here.
+  //
+  // `source` stays `'infer'`: `computeRacScope` gates every downstream read on
+  // `source === 'explicit'`, so promoting it would RAC-whitelist a job that was
+  // discovering freely. An attachment ADDS to an inferred RAC; it does not pin it.
+  const merged = mergeWithMetadata(
     {
+      intentId,
       target: parsedResp.target,
       refs: narrowSourceTreeParents(parsedResp.refs, uiSourceDir),
       context: narrowSourceTreeParents(parsedResp.context, uiSourceDir),
       domain: input.domain,
+      sourceJob: 'detect',
+    },
+    input.metadata as ActionMetadata | undefined,
+  );
+
+  const resolvedAction = resolveToRAC(
+    intentId,
+    {
+      target: merged.target,
+      refs: merged.refs,
+      context: merged.context,
+      domain: input.domain,
+      referenceTargets: merged.referenceTargets,
     },
     'infer',
     input.seedBasis,

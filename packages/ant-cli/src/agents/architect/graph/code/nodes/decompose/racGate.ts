@@ -98,7 +98,7 @@ export function isWithinRacWhitelist(
  * The gate protects *authority documents* — PRD, system design, spec — from
  * side-loading. Asset pools are not authority: they enter the artifact pool
  * as existence-only path stubs and already ride along with every selection
- * regardless of `task.include` (`ArtifactPipeline.isAssetPoolPath`). Gating
+ * regardless of `task.include` (`ArtifactPipeline.ridesAlongRegardlessOfInclude`). Gating
  * the READ side while the injection side exempts them left the two layers
  * disagreeing — a task told "the spec requires assets/game/models/X.glb"
  * could not `list_files` it, and fell back to whole-filesystem `find`
@@ -111,7 +111,14 @@ export function isWithinRacWhitelist(
 function isAssetPoolReach(target: string): boolean {
   const t = target.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, '');
   if (!t) return false;
-  for (const root of [ARTIFACT_PREFIX.ASSETS_SERVICE, ARTIFACT_PREFIX.ASSETS_GAME]) {
+  for (const root of [
+    ARTIFACT_PREFIX.ASSETS_SERVICE,
+    ARTIFACT_PREFIX.ASSETS_GAME,
+    // Visual-job output. A canonical pool of real files that the read gate
+    // denied while the injection layer happily listed it — the same two-layer
+    // disagreement the service/game pools were exempted for.
+    ARTIFACT_PREFIX.ASSETS_GEN,
+  ]) {
     const r = root.replace(/\/$/, '');
     if (t === r || t.startsWith(r + '/') || r.startsWith(t + '/')) return true;
   }
@@ -125,7 +132,7 @@ function isAssetPoolReach(target: string): boolean {
  * Two RAC-orthogonal families are always reachable:
  *   - codebase-tree paths (anything that normalizes under `codebase/`) —
  *     the user's source code;
- *   - asset pools (`assets/{service,game}/**`) — see `isAssetPoolReach`.
+ *   - asset pools (`assets/{service,game,gen}/**`) — see `isAssetPoolReach`.
  *
  * Every other sibling artifact path (`plan/`, `architecture/`, `visual/`,
  * `meta/`, `sessions/`) is gated through `isWithinRacWhitelist` when

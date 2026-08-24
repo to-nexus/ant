@@ -118,16 +118,29 @@ export function sniffFile(absPath: string): { binary: boolean; size?: number } {
  *
  * Reads at an explicit position, leaving the descriptor's cursor untouched for
  * a subsequent full read.
+ *
+ * `opts.head` also returns the sniffed head bytes, so a caller that needs the
+ * magic-byte signature (image MIME detection) gets it from the same descriptor
+ * instead of reopening the name. Opt-in because the extension fast path can
+ * otherwise answer without reading at all, and the hot callers (`read_file`,
+ * contained tool meta) only need the verdict.
  */
-export function sniffFd(fd: number, pathHint: string): { binary: boolean; size: number } {
+export function sniffFd(
+  fd: number,
+  pathHint: string,
+  opts: { head?: boolean } = {},
+): { binary: boolean; size: number; head?: Buffer } {
   const stat = fs.fstatSync(fd);
   const size = Number(stat.size);
   if (!stat.isFile()) return { binary: false, size };
-  if (isBinaryPath(pathHint)) return { binary: true, size };
+  const fastPathBinary = isBinaryPath(pathHint);
+  if (fastPathBinary && !opts.head) return { binary: true, size };
   const len = Math.min(size, SNIFF_BYTES);
   const buf = Buffer.alloc(len);
   const read = fs.readSync(fd, buf, 0, len, 0);
-  return { binary: isBinaryBuffer(buf.subarray(0, read), size > read), size };
+  const head = buf.subarray(0, read);
+  if (fastPathBinary) return { binary: true, size, head };
+  return { binary: isBinaryBuffer(head, size > read), size, ...(opts.head ? { head } : {}) };
 }
 
 export function isBinaryFileSync(absPath: string): boolean {

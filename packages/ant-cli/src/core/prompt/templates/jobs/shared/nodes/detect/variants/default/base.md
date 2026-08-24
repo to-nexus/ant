@@ -37,6 +37,28 @@ Empty `<slots>` with no refs is valid output for directive-only runs.
 (no matrix slots defined for this intent)
 {{/if}}
 
+{{#if attachedRefs.length}}
+## USER ATTACHMENTS — refs
+
+The user explicitly selected these files for this turn. They are binding inputs:
+carry every one of them into `<refs>`. They already satisfy the ref requirement,
+so do not emit `<missingPrereq>` for a surface they cover.
+
+{{#each attachedRefs}}
+- `{{this}}`
+{{/each}}
+{{/if}}
+{{#if attachedContext.length}}
+## USER ATTACHMENTS — context
+
+The user explicitly selected these files as context for this turn. They are
+binding inputs: carry every one of them into `<context>`.
+
+{{#each attachedContext}}
+- `{{this}}`
+{{/each}}
+{{/if}}
+
 ## TOOL WHITELIST
 
 Your `read_file` and `list_files` calls are gated to these surfaces. Calls

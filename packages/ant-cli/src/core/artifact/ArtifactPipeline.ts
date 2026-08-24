@@ -77,16 +77,27 @@ export function isGameArtArtifactPath(p: string): boolean {
 }
 
 /**
- * Asset-pool artifacts (`assets/{service,game}/**`). These enter the pool as
- * existence-only path stubs (never bodies — see `loadDocumentsForRAC`'s
- * stub-load contract), so they ride along with every selection: `task.include`
- * narrows BODIES, but the existence of an explicitly attached asset must reach
- * every plan/execute prompt. Handoff stubs stay include-gated — they can be
- * hundreds of files and carry the per-source dispatch contract (uiSource
- * exclusivity), unlike the flat asset pools.
+ * Asset-pool artifacts (`assets/{service,game}/**`). Path-only fallback for
+ * artifacts checkpointed before `ResolvedArtifact.kind` existed — prefer
+ * {@link ridesAlongRegardlessOfInclude}.
  */
 export function isAssetPoolPath(p: string): boolean {
   return p.startsWith(ARTIFACT_PREFIX.ASSETS_SERVICE) || p.startsWith(ARTIFACT_PREFIX.ASSETS_GAME);
+}
+
+/**
+ * Does this artifact ride along with every selection, regardless of `task.include`?
+ *
+ * True for existence-only binary stubs — they have no body for `include` to
+ * narrow, and their existence is the only thing a placement can be declared
+ * from. Keyed on the bytes, NOT on the directory: the old `isAssetPoolPath`
+ * predicate dropped an attached `visual/ui/handoff/shot.png` before plan and
+ * execute (doc 47). Path fallback covers artifacts checkpointed before `kind`.
+ *
+ * Handoff *text* stays include-gated — a bundle can be hundreds of files.
+ */
+export function ridesAlongRegardlessOfInclude(a: ResolvedArtifact): boolean {
+  return a.kind === 'binary' || (a.kind === undefined && isAssetPoolPath(a.path));
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -137,12 +148,13 @@ function matchesInclude(rawArtifactPath: string, patterns: string[]): boolean {
  *    legacy taskType default switch was removed — every task's injection is
  *    now governed solely by its authored `include`.
  *
- * Existence-band exception: asset-pool stubs (`isAssetPoolPath`) always ride
- * along (steps 2 and 3), regardless of `include`. `task.include` narrows
- * BODIES; an explicitly attached asset's EXISTENCE (a ~4-line path stub) must
- * reach every prompt — dropping it silently is how the fierce-gaining-gully
- * job concluded an attached Duck.glb "does not exist" and burned tokens
- * searching for it. The verification defensive default (step 1) stays
+ * Existence-band exception: existence-only binary stubs
+ * (`ridesAlongRegardlessOfInclude`) always ride along (steps 2 and 3),
+ * regardless of `include`. `task.include` narrows BODIES; an explicitly
+ * attached asset's EXISTENCE (a ~4-line path stub) must reach every prompt —
+ * dropping it silently is how fierce-gaining-gully concluded an attached
+ * Duck.glb "does not exist" and near-loading-brace shipped placeholders for two
+ * attached screenshots. The verification defensive default (step 1) stays
  * absolute: verification verifies code, not attachments.
  *
  * Role is inherited from the pool's RAC annotation (3-axis Authority: RAC owns
@@ -160,7 +172,7 @@ export function selectArtifacts(
 
   const selectedPaths = new Set(selected.map(a => a.path));
   const assetStubs = candidates.filter(
-    a => isAssetPoolPath(a.path) && !selectedPaths.has(a.path),
+    a => ridesAlongRegardlessOfInclude(a) && !selectedPaths.has(a.path),
   );
 
   return assetStubs.length ? [...selected, ...assetStubs] : selected;

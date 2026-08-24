@@ -545,7 +545,7 @@ const SOURCES_DIR = 'plan';
 // Asset pool RAC slots are domain-gated via `assetsCtx('service'|'game')`
 // (D28 dispatch) — the bare parent `assets/` is never a slot path (that would
 // walk both pools and violate I6). `assets/gen` stays for the visual job.
-const ASSETS_GEN_DIR = 'assets/gen';
+const ASSETS_GEN_DIR = ARTIFACT_PREFIX.ASSETS_GEN.replace(/\/$/, '');
 
 // `gen-sys-fe` matrix-default target stays `fe-system-*.md` only.
 // Consumer-perspective `api-contract-{name}.md` is NOT a matrix default —
@@ -617,6 +617,7 @@ import { deriveFromIntent } from './actions';
 import type { Domain } from './detection';
 import type { UiSource } from './canonical';
 import {
+  ARTIFACT_PREFIX,
   pickUiSource,
   pickGameArtSource,
   widenHandoffRefsToBundleDir,

@@ -685,8 +685,17 @@ export function createInferDetectNode<T extends DetectableState>(
             seedBasis: applyDomainDefaultsToBasis(
               intentId,
               domain,
-              seedBasisFromWorkspace(state, undefined),
+              // `metadata.basis` — the user's wizard tiers — was dropped here
+              // while the explicit branch above honours it. Same helper, same
+              // precedence (explicit tier wins whole, absent tiers fill from
+              // the workspace), so the two branches no longer disagree about
+              // whose basis is authoritative.
+              seedBasisFromWorkspace(state, state.actionMetadata?.basis),
             ),
+            // The user's own slot selections. Absent `actionMetadata.intent` is
+            // what routed this turn to the infer branch — it is NOT a statement
+            // that the user selected no files.
+            metadata: state.actionMetadata,
           });
           detectResult = inferred as DetectResult<T>;
         }

@@ -122,11 +122,15 @@ export async function resolveSpecTargetFileForMode(
  * `assets/game/models/*.glb` was invisible here and downstream).
  */
 export function buildAttachedInputLines(
-  artifacts: ReadonlyArray<{ path: string; role: string }>,
+  artifacts: ReadonlyArray<{ path: string; role: string; kind?: 'binary' | 'text' }>,
 ): string[] {
   if (!artifacts.length) return [];
   const lines = artifacts.map(a => {
-    const assetNote = isAssetPoolPath(a.path) ? ' (asset — reference by path)' : '';
+    // Key off the byte class, not the directory: an attached binary is
+    // "reference by path" wherever the user put it. `kind` absent (checkpoint
+    // restore predating the sniff) falls back to the pool-path test.
+    const isAsset = a.kind === 'binary' || (a.kind === undefined && isAssetPoolPath(a.path));
+    const assetNote = isAsset ? ' (asset — reference by path)' : '';
     return `- ${a.path} [${a.role}]${assetNote}`;
   });
   return ['', 'Attached input files (paths only — bodies are provided to the writing phase):', ...lines];

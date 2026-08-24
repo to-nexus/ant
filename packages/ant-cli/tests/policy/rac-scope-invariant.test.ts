@@ -26,6 +26,7 @@ import {
   type RacScope,
 } from '../../src/agents/architect/graph/code/nodes/decompose/racGate';
 import { handleReadFile, handleListFiles } from '../../src/agents/common/tool/handlers';
+import { selectArtifacts } from '../../src/core/artifact/ArtifactPipeline';
 import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
 import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
 import type { ResolvedActionContext } from '@ant/shared';
@@ -449,5 +450,156 @@ describe('createTaskQueue include RAC validation', () => {
     );
     const navbar = taskQueue.getAll().find(t => t.id === 'feature-navbar')!;
     expect(navbar.include).toEqual(['architecture/system/fe-system-main.md']);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────
+// Byte class, not directory — the `near-loading-brace` axis
+// ────────────────────────────────────────────────────────────────
+
+describe('binary artifacts are classified by content, not by directory', () => {
+  let featurePath: string;
+
+  beforeAll(() => {
+    featurePath = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-rac-binary-'));
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(32),
+    ]);
+    for (const rel of [
+      'visual/ui/handoff/shot.png',
+      'assets/service/images/logo.png',
+      'assets/gen/sketches/sketch.png',
+      'plan/screenshot.png',
+      'meta/stray.png',
+    ]) {
+      const abs = path.join(featurePath, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, png);
+    }
+    fs.mkdirSync(path.join(featurePath, 'plan'), { recursive: true });
+    fs.writeFileSync(path.join(featurePath, 'plan/prd.md'), '# PRD\n\nText.');
+  });
+
+  afterAll(() => {
+    if (featurePath) fs.rmSync(featurePath, { recursive: true, force: true });
+  });
+
+  // The stub/read decision used to be a 4-prefix path allowlist, so a PNG
+  // selected as context from anywhere else was `toString('utf8')`-decoded and
+  // its mojibake injected into the prompt.
+  it.each([
+    ['declared stub family', 'visual/ui/handoff/shot.png'],
+    ['domain asset pool', 'assets/service/images/logo.png'],
+    ['visual-job output pool', 'assets/gen/sketches/sketch.png'],
+    ['a dir that accepts no images by policy', 'plan/screenshot.png'],
+    ['a dir with no upload policy at all', 'meta/stray.png'],
+  ])('a binary in %s becomes an existence-only stub', (_label, rel) => {
+    const artifacts = loadResolvedArtifacts(rac('gen-code-directive', [], [rel]), featurePath);
+    expect(artifacts).toHaveLength(1);
+    const [a] = artifacts;
+    expect(a.kind).toBe('binary');
+    expect(a.sizeBytes).toBe(40);
+    // Bytes never enter the prompt — the content is a manifest line.
+    expect(a.content).toContain('[asset]');
+    expect(a.content).not.toContain('\uFFFD');
+    // Magic-byte sniff, for the image-block builder.
+    expect(a.mediaType).toBe('image');
+    expect(a.mimeType).toBe('image/png');
+    // Bytes are NOT inlined: artifacts are checkpointed to code.json.
+    expect(a.base64).toBeUndefined();
+  });
+
+  // The production path for a handoff attachment: `widenHandoffRefsToBundleDir`
+  // collapses the individual files to the bundle DIR, so the RAC entry the pool
+  // loader receives is a directory and the walk branch — not the leaf branch —
+  // is what classifies each file.
+  it('a directory RAC entry classifies each child by its own bytes', () => {
+    const dirFeature = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-rac-dirwalk-'));
+    try {
+      const handoff = path.join(dirFeature, 'visual/ui/handoff');
+      fs.mkdirSync(handoff, { recursive: true });
+      fs.writeFileSync(
+        path.join(handoff, 'shot.png'),
+        Buffer.concat([
+          Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+          Buffer.alloc(32),
+        ]),
+      );
+      fs.writeFileSync(path.join(handoff, 'notes.md'), '# Notes\n\nSpacing.');
+
+      const artifacts = loadResolvedArtifacts(
+        rac('gen-code-directive', [], ['visual/ui/handoff']),
+        dirFeature,
+      );
+
+      const byPath = new Map(artifacts.map(a => [a.path, a]));
+      const png = byPath.get('visual/ui/handoff/shot.png');
+      expect(png?.kind).toBe('binary');
+      expect(png?.mimeType).toBe('image/png');
+      expect(png?.content).toContain('[asset]');
+      // Handoff text stays a stub (on-demand read), not eager content.
+      const md = byPath.get('visual/ui/handoff/notes.md');
+      expect(md?.kind).toBe('text');
+      expect(md?.content).toContain('[reference file]');
+      expect(md?.content).not.toContain('Spacing');
+    } finally {
+      fs.rmSync(dirFeature, { recursive: true, force: true });
+    }
+  });
+
+  it('text still loads its content and is marked text', () => {
+    const artifacts = loadResolvedArtifacts(rac('gen-code-directive', ['plan/prd.md']), featurePath);
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0].kind).toBe('text');
+    expect(artifacts[0].content).toContain('# PRD');
+  });
+
+  it('assets/gen is RAC-orthogonal like the domain pools', () => {
+    const scope: RacScope = { refs: ['plan/prd.md'], context: [] };
+    expect(decideRacGate('assets/gen/sketches/sketch.png', scope).allowed).toBe(true);
+    expect(decideRacGate('assets/gen', scope).allowed).toBe(true);
+  });
+});
+
+describe('selectArtifacts — existence-only binaries ride along regardless of include', () => {
+  const stub = (p: string, kind?: 'binary' | 'text') => ({
+    path: p,
+    role: 'context' as const,
+    content: `[asset] ${p}`,
+    ...(kind ? { kind } : {}),
+  });
+
+  it('an attached binary OUTSIDE the asset pool survives a non-matching include', () => {
+    // The exemption used to be `isAssetPoolPath`, so a handoff binary reached
+    // decompose and then vanished before plan/execute unless the decompose LLM
+    // happened to name it — how near-loading-brace planned around screenshots
+    // it had been handed.
+    const selected = selectArtifacts(
+      [stub('visual/ui/handoff/shot.png', 'binary'), stub('plan/prd.md', 'text')],
+      { include: ['architecture/spec/'] },
+    );
+    expect(selected.map(a => a.path)).toEqual(['visual/ui/handoff/shot.png']);
+  });
+
+  it('text artifacts stay include-gated', () => {
+    const selected = selectArtifacts([stub('visual/ui/handoff/page.html', 'text')], {
+      include: ['architecture/spec/'],
+    });
+    expect(selected).toEqual([]);
+  });
+
+  it('pool paths still ride along when `kind` is absent (checkpoint restore)', () => {
+    const selected = selectArtifacts([stub('assets/game/models/Duck.glb')], {
+      include: ['architecture/spec/'],
+    });
+    expect(selected.map(a => a.path)).toEqual(['assets/game/models/Duck.glb']);
+  });
+
+  it('verification still drops everything', () => {
+    const selected = selectArtifacts([stub('visual/ui/handoff/shot.png', 'binary')], {
+      taskType: 'verification',
+    });
+    expect(selected).toEqual([]);
   });
 });

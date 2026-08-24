@@ -177,6 +177,16 @@ re-derive it from the visual source alone.
 - Twin scope (verbatim): {{pairedFeature.description}}
 {{/if}}
 
+{{#if assetInventoryBlock}}
+────────────────────────────────────────────────────────────────────────────────
+{{{assetInventoryBlock}}}
+These are real files that already exist on disk — the workspace asset pool plus
+any file attached to this turn. If this task needs one, declare the placement in
+`implementation.assets` as `{ "source": "<exact path above>", "destination":
+"<path under codebase/>" }`; the execute phase performs it with `copy_file`.
+A real file you were given is a binding input: never plan a placeholder in its place.
+{{/if}}
+
 {{#if hasRemainingTasks}}
 ────────────────────────────────────────────────────────────────────────────────
 ## Remaining Tasks

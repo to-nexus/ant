@@ -66,7 +66,11 @@ export function formatAssetInventoryBlock(
   opts: { assetsRoot: string; usage: string },
 ): string {
   if (!inv?.count) return '';
-  let block = `## Asset Files (real, already placed under ${opts.assetsRoot}/)\n`;
+  // Header states the pool ROOT, not that every row lives under it: callers may
+  // pass the union of the pool and the files attached to this turn
+  // (`effectiveAssetInventory`), whose paths are feature-relative and sit
+  // wherever the user put them. Rows always print their full path.
+  let block = `## Asset Files (real files on disk — asset pool root: ${opts.assetsRoot}/)\n`;
   block += `There are ${inv.count} real asset file(s). ${opts.usage}\n`;
   for (const [group, files] of Object.entries(inv.groups ?? {})) {
     if (files.length === 0) continue;
@@ -143,6 +147,56 @@ export function indexAssetPool(params: {
     const seg = rel.split('/');
     const group = seg.length > 1 ? seg[0] : '(root)';
     (groups[group] ||= []).push(f);
+  }
+
+  return { files, groups, count: files.length, sizes, corrupted };
+}
+
+/**
+ * Is this artifact a file the job may PLACE (vs. a document it should read)?
+ *
+ * `kind === 'binary'` is the sniff verdict and covers every image, font, audio
+ * file and model wherever the user put it. SVG is the one asset format that is
+ * also text, so it is admitted by extension. That is the whole exception list —
+ * do not grow it back into a directory/extension allowlist (doc 47).
+ */
+function isPlaceableAsset(a: { path: string; kind?: 'binary' | 'text' }): boolean {
+  return a.kind === 'binary' || a.path.toLowerCase().endsWith('.svg');
+}
+
+/**
+ * The real files this job may place: the domain asset pool UNION the binaries the
+ * user attached to this turn, wherever they sit. Consumed by the execute 📦 block,
+ * the decompose hint and the plan block — which could otherwise only ever name
+ * `assets/{service,game}` paths (near-loading-brace, doc 47).
+ *
+ * Derived on READ, not stored: `state.assetInventory` is written at `resolve`,
+ * the graph's ENTRY point, and the RAC artifacts do not exist until `detect` runs
+ * later — a union computed there would always see an empty pool.
+ *
+ * `indexAssetPool` stays domain-scoped: I6 forbids observing the OTHER domain's
+ * pool, not a file the user handed this job by name. Attachments group under
+ * their first path segment so {@link formatAssetInventoryBlock} needs no case.
+ */
+export function effectiveAssetInventory(state: {
+  assetInventory?: { files?: string[]; groups?: Record<string, string[]>; count?: number; sizes?: Record<string, number>; corrupted?: Record<string, string> };
+  artifacts?: ReadonlyArray<{ path: string; kind?: 'binary' | 'text'; sizeBytes?: number }>;
+}): AssetInventory {
+  const pool = state.assetInventory;
+  const files = [...(pool?.files ?? [])];
+  const groups: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(pool?.groups ?? {})) groups[k] = [...v];
+  const sizes: Record<string, number> = { ...(pool?.sizes ?? {}) };
+  const corrupted: Record<string, string> = { ...(pool?.corrupted ?? {}) };
+
+  const known = new Set(files);
+  for (const a of state.artifacts ?? []) {
+    if (!isPlaceableAsset(a) || known.has(a.path)) continue;
+    known.add(a.path);
+    files.push(a.path);
+    if (a.sizeBytes !== undefined) sizes[a.path] = a.sizeBytes;
+    const group = a.path.split('/')[0] || '(root)';
+    (groups[group] ||= []).push(a.path);
   }
 
   return { files, groups, count: files.length, sizes, corrupted };

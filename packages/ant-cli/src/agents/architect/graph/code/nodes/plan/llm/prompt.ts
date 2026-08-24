@@ -46,6 +46,7 @@ import { hooksForTaskType } from "../../../tasks/_shared/registry";
 import { toPlanPromptResult, type PlanPromptCtx } from "../../../tasks/_shared/types";
 import { formatCodeContext, substantivePrePlanText } from "../../../tasks/_shared/helpers/planPrompt";
 import { renderPriorCompletedFiles } from "../../../tasks/_shared/helpers/priorCompletedFiles";
+import { formatAssetInventoryBlock, effectiveAssetInventory } from "../../../../../../../infrastructure/workspace/assetInventory";
 import { featureUiObservationVars } from "../../../tasks/_shared/helpers/featureUiObservation";
 import { layoutValidityFloorVars } from "../../../tasks/_shared/helpers/layoutValidityFloor";
 import { activePlanBuildPrompt } from "../../../tasks/_shared/verify/activeHooks";
@@ -255,8 +256,18 @@ export async function buildPlanPrompt(
   // Reference-codebase usage vars — sibling-project catalog for the
   // reference-codebase usage partial (register + read mid-plan).
   const refCatVars = await referenceCatalogVars(state);
+  // Placeable-file inventory. The plan node had none, while `plan/rules.md`
+  // requires `implementation.assets[].source` to be "an EXACT path from the
+  // available-assets inventory" — a rule pointing at a surface this phase never
+  // received, so no plan ever declared a placement for an attached file.
+  const assetInventoryBlock = formatAssetInventoryBlock(effectiveAssetInventory(state), {
+    assetsRoot: 'assets',
+    usage: 'Declare the ones this task needs under `implementation.assets`; execute places them with `copy_file`.',
+  }).trimEnd();
+
   const prompt = await promptBuilder.render(TEMPLATE_PATHS.codePlanDefault.base, {
     ...refCatVars,
+    assetInventoryBlock: assetInventoryBlock || undefined,
     taskName: task.name, taskDescription: task.description,
     directive: state.directive || '', taskType: task.type, taskBand,
     // Response-language SSOT — gated `jobs/code/base/injections/response-language`

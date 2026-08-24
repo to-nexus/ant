@@ -135,7 +135,10 @@ describe('buildPlanPromptBlocks — asset inventory injection', () => {
 
     const { blocks } = await buildPlanPromptBlocks(state, TASK);
     const allText = blocks.map((b: any) => b.text).join('\n');
-    expect(allText).toContain('## Asset Files (real, already placed under assets/game/)');
+    // Structural marker + load-bearing data only. The header sentence itself is
+    // prompt prose — pinning it made a wording improvement fail the build.
+    expect(allText).toContain('## Asset Files');
+    expect(allText).toContain('assets/game/');
     expect(allText).toContain('Duck.glb');
     expect(allText).toContain('list_assets');
   });

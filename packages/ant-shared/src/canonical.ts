@@ -453,6 +453,12 @@ export const ARTIFACT_PREFIX = {
   BE_SYSTEM: 'architecture/system/be-system-' as const,
   ASSETS_SERVICE: 'assets/service/' as const,
   ASSETS_GAME: 'assets/game/' as const,
+  /**
+   * Visual-job output pool. Not domain-scoped (there is one gen surface), so
+   * `pickAssetsRoot` never returns it — but it is a real pool of real files and
+   * every "can the job reach an asset pool" predicate must include it.
+   */
+  ASSETS_GEN: 'assets/gen/' as const,
 } as const;
 
 /**
@@ -507,10 +513,18 @@ export const UI_SOURCE_PRIORITY: readonly UiSource[] = ['ant', 'figma', 'handoff
 
 type SourceClassifier = (path: string) => UiSource | null;
 
+/**
+ * `preferred` outranks the static priority for one call. It exists because a
+ * MERGE combines lists of different authority: a source the user explicitly
+ * selected must not lose to one inference guessed at (an attached `handoff`
+ * screenshot losing to an inferred `ant` doc). Absent, or absent from `paths`
+ * → the static priority decides, so every existing caller is unchanged.
+ */
 function pickSourceWith(
   paths: readonly string[] | undefined,
   sourceOf: SourceClassifier,
   priority: readonly UiSource[],
+  preferred?: UiSource | null,
 ): UiSource | null {
   if (!paths?.length) return null;
   const present = new Set<UiSource>();
@@ -519,10 +533,35 @@ function pickSourceWith(
     if (src !== null) present.add(src);
   }
   if (present.size === 0) return null;
+  if (preferred && present.has(preferred)) return preferred;
   for (const id of priority) {
     if (present.has(id)) return id;
   }
   return null;
+}
+
+/**
+ * Apply an ALREADY-DECIDED verdict to a path list: unclassified paths pass, the
+ * winning source passes, every other source is dropped.
+ *
+ * Separate from {@link normalizeSourceRefsWith} because a caller holding several
+ * slots needs ONE verdict across all of them. Deciding per slot is only safe when
+ * the decision is a global static order — the moment a caller-supplied preference
+ * enters, per-slot decisions diverge (`refs` containing only `ant` keeps `ant`
+ * while `context` resolves to `handoff`) and the RAC comes out mixed, which is
+ * precisely what the hard-exclusive invariant forbids.
+ */
+function filterToSourceWith(
+  paths: readonly string[] | undefined,
+  sourceOf: SourceClassifier,
+  winner: UiSource | null,
+): string[] {
+  if (!paths?.length) return [];
+  if (winner === null) return [...paths];
+  return paths.filter(p => {
+    const src = sourceOf(p);
+    return src === null || src === winner;
+  });
 }
 
 function normalizeSourceRefsWith(
@@ -531,12 +570,7 @@ function normalizeSourceRefsWith(
   priority: readonly UiSource[],
 ): string[] {
   if (!paths?.length) return [];
-  const winner = pickSourceWith(paths, sourceOf, priority);
-  if (winner === null) return [...paths];
-  return paths.filter(p => {
-    const src = sourceOf(p);
-    return src === null || src === winner;
-  });
+  return filterToSourceWith(paths, sourceOf, pickSourceWith(paths, sourceOf, priority));
 }
 
 function pickDefaultSourceRefsWith<F>(
@@ -574,8 +608,24 @@ function isTreeParentPathWith(p: string, treePrefix: string, sourceOf: SourceCla
  * Pick the single UiSource a path list should be normalized to. Returns the
  * highest-priority source present, or `null` if no UI paths are involved.
  */
-export function pickUiSource(paths: readonly string[] | undefined): UiSource | null {
-  return pickSourceWith(paths, uiSourceOfPath, UI_SOURCE_PRIORITY);
+export function pickUiSource(
+  paths: readonly string[] | undefined,
+  preferredSource?: UiSource | null,
+): UiSource | null {
+  return pickSourceWith(paths, uiSourceOfPath, UI_SOURCE_PRIORITY, preferredSource);
+}
+
+/**
+ * Apply a decided UiSource verdict to one slot's paths. Pair with
+ * {@link pickUiSource} over the UNION of every slot when more than one slot is
+ * being normalized against a caller-supplied preference — see
+ * `filterToSourceWith` for why the verdict cannot be taken per slot.
+ */
+export function filterToUiSource(
+  paths: readonly string[] | undefined,
+  winner: UiSource | null,
+): string[] {
+  return filterToSourceWith(paths, uiSourceOfPath, winner);
 }
 
 /**

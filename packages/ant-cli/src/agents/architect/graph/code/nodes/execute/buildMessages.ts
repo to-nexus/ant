@@ -65,7 +65,7 @@ import { normalizeToCodebasePath } from "../../../../../../core/utils/pathNormal
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 import { resolveCodebaseRel } from "./codebaseRel";
 import { extractAssetPlacements } from "../../planContract/implementation";
-import { formatAssetInventoryBlock } from "../../../../../../infrastructure/workspace/assetInventory";
+import { formatAssetInventoryBlock, effectiveAssetInventory } from "../../../../../../infrastructure/workspace/assetInventory";
 import { formatByteSize } from "../../../../../../core/utils/binaryExtensions";
 import { TEMPLATE_PATHS } from "../../../../../../core/prompt/builder/templatePaths";
 
@@ -674,10 +674,21 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
     const llmProvider = state.deps?.llm?.provider;
     const canSendImages = llmProvider === 'anthropic';
 
-    if (hasUiArtifacts && canSendImages && state.deps?.fileSystem) {
-      const handoffImages = await ArtifactService.loadHandoffImages(state.context, state.deps.fileSystem);
+    // Attached images from the RAC pool. `mediaType: 'image'` is set by the pool
+    // loader's magic-byte sniff, so this covers an image the user attached
+    // ANYWHERE — the candidate list used to be `visual/ui/handoff/**` only
+    // (`loadHandoffImages` hard-codes it), which meant a screenshot attached from
+    // any other directory was described to the model but never shown to it.
+    const attachedImagePaths = (state.artifacts ?? [])
+      .filter(a => a.mediaType === 'image')
+      .map(a => a.path);
 
-      if (handoffImages) {
+    if ((hasUiArtifacts || attachedImagePaths.length > 0) && canSendImages && state.deps?.fileSystem) {
+      const handoffImages = hasUiArtifacts
+        ? await ArtifactService.loadHandoffImages(state.context, state.deps.fileSystem)
+        : null;
+
+      if (handoffImages || attachedImagePaths.length > 0) {
         const fs = await import('fs');
         const path = await import('path');
 
@@ -687,10 +698,16 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
         const maxBytesPerImage = parseInt(process.env.ANT_UI_IMAGE_MAX_BYTES || `${2 * 1024 * 1024}`, 10);
         const maxTotalBytes = parseInt(process.env.ANT_UI_IMAGE_TOTAL_MAX_BYTES || `${8 * 1024 * 1024}`, 10);
 
-        const candidates: string[] = handoffImages
-          .filter(Boolean)
-          .map(p => (typeof p === 'string' ? p.replace(/\\/g, '/') : p))
-          .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep'));
+        // Handoff first (it carries the design-source contract), then attached
+        // images the handoff walk did not already yield. One budget for both.
+        const candidates: string[] = Array.from(
+          new Set(
+            [...(handoffImages ?? []), ...attachedImagePaths]
+              .filter(Boolean)
+              .map(p => (typeof p === 'string' ? p.replace(/\\/g, '/') : p))
+              .filter(p => !p.includes('/.gitkeep') && !p.endsWith('/.gitkeep')),
+          ),
+        );
 
         let totalBytes = 0;
 
@@ -698,9 +715,9 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
           uiImageBlocks.push({
             type: 'text',
             text:
-              `# UI Handoff Images\n` +
-              `The blocks that follow pair each handoff binary preview with its source path (caption immediately precedes its image). Use the previews to match layout/spacing/visual states. Other binary entries in the stub manifest are path-only references with no attached preview.\n` +
-              `IMPORTANT (runtime packaging, NOT authority): These image files are inputs to this prompt only — they are NOT automatically copied into the app runtime (e.g., not placed under \`public/\`). If the implementation needs runtime images/icons, either (a) generate placeholders in the codebase or (b) follow explicit instructions in \`visual/ui/ant/ui-assets.json\` (including destination paths).\n`,
+              `# Attached Images\n` +
+              `The blocks that follow pair each image preview with its source path (caption immediately precedes its image). Use the previews to match layout/spacing/visual states, and to read any content the image itself carries. Other binary entries in the stub manifest are path-only references with no attached preview.\n` +
+              `IMPORTANT (runtime packaging): nothing is copied into the app runtime automatically — placement is always an explicit \`copy_file\` you perform. Every one of these files is listed in the "📦 Available Assets" section below with its destination; if the implementation needs it at runtime, place it from there. Do NOT substitute a placeholder for a real file you were given.\n`,
           });
         }
 
@@ -958,7 +975,10 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
             violationsCount: state.violations?.length || 0,
             messageCount: messages.length,
             nodeHistoryLength: getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length,
-            runtimeAssetsCount: state.assetInventory?.count || 0,
+            // Effective, not raw: the debug log is the observability surface for
+            // "did the job know this attached file exists", so it must count the
+            // same union the 📦 block renders.
+            runtimeAssetsCount: effectiveAssetInventory(state).count,
             profileLanguage: getTechTier(state)?.language || null,
             profileFramework: getTechTier(state)?.framework || null,
             profilesLoaded: !!promptResult.sections.profiles,
@@ -1225,8 +1245,11 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
   }
 
   // ✅ Runtime assets reminder (text-only, small)
-  if (state.assetInventory?.count && state.assetInventory.count > 0) {
-    const idx = state.assetInventory;
+  // Domain pool ∪ the binaries the user attached to this turn — the location a
+  // real file happens to sit in must not decide whether the job is told it exists.
+  const effectiveAssets = effectiveAssetInventory(state);
+  if (effectiveAssets.count > 0) {
+    const idx = effectiveAssets;
     // Framework-aware destination guidance. Physical placement is a
     // `framework` gate concern (SBS) — the design phase no longer commits
     // `dest` paths (see ui-assets-guide-*.md), so the code phase derives
@@ -1243,7 +1266,7 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     const dest = isGame ? describeGameAssetDestinations() : describeAssetDestinations(framework);
 
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
-    lines.push(`📦 Available Assets (assets/) — real files already placed`);
+    lines.push(`📦 Available Assets — real files already on disk (asset pool + files attached to this turn)`);
     lines.push(`════════════════════════════════════════════════════════════════════════════════`);
     // doc-absent self-judge floor (goal #2): whether or not a design spec doc
     // named these, inspect the list and use the ones that fit THIS task.
@@ -1254,7 +1277,7 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     lines.push(`Place every one of them with the \`copy_file\` tool (source → destination). Binary assets CANNOT be authored as text — \`create_file\` / \`edit_file\` refuse binary targets and a text round-trip corrupts the bytes.`);
     lines.push(``);
     if (state.context?.featurePath) {
-      lines.push(`Source: ${state.context.featurePath.replace(/\\/g, '/')}/assets/`);
+      lines.push(`Source root (paths below are relative to it): ${state.context.featurePath.replace(/\\/g, '/')}/`);
     }
     lines.push(`SVG destination: ${dest.svg}`);
     lines.push(`Raster destination: ${dest.raster}`);
@@ -1273,7 +1296,7 @@ export async function buildTaskInvariantContext(state: ArchitectGraphState): Pro
     const inventoryBlock = groupedCount > 0
       ? formatAssetInventoryBlock(idx, {
           assetsRoot: isGame ? 'assets/game' : 'assets/service',
-          usage: 'Place the ones this task needs with `copy_file`, then reference the destination path.',
+          usage: 'Place the ones this task needs with `copy_file`, then reference the destination path. Paths outside the pool root are files attached to this turn — equally real, equally placeable.',
         })
       : '';
     if (inventoryBlock) {

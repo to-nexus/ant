@@ -11,13 +11,15 @@
  *     separate artifact keeping the original role. Used for UiSource subgroups
  *     in general.
  *
- * Handoff special case:
- *   - Paths under `visual/ui/handoff/` are NEVER eager-loaded. Each
- *     file becomes a STUB artifact (path + size + kind + read_file hint).
- *     The downstream LLM is expected to invoke `read_file` on the text
- *     entries it actually needs and reference binaries by path only. This
- *     mirrors how source code is handled elsewhere and avoids dumping large
- *     html/css/png bundles into the prompt.
+ * Binary files (ANY location):
+ *   - Classified by content sniff, not by directory → existence-only STUB
+ *     (path + size + `kind:'binary'`, plus image MIME when the magic bytes say
+ *     so). `kind` is the SSOT every downstream layer reads instead of
+ *     re-deriving "real placeable file?" from a prefix.
+ *
+ * Handoff / asset-pool text files:
+ *   - Also not eager-loaded (`isStubLoadedPath`): the LLM pulls the body on
+ *     demand, so a large html/css bundle is not dumped into the prompt.
  *
  * Invariants enforced here:
  *   - Hard-exclusive UiSource: a RAC must not mix artifacts from more than one
@@ -31,6 +33,7 @@ import type { ResolvedActionContext, ResolvedArtifact, UiSource } from '@ant/sha
 import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/shared';
 import { normalizeTemplateDoc } from '../../../core/utils/templateDetector';
 import { sniffFd, formatByteSize } from '../../../core/utils/binaryExtensions';
+import { detectImageMimeFromBuffer } from '../../../core/utils/imageMime';
 import { isIgnoredWalkDir, isIgnoredWalkFile } from '../../../core/codebase/walkIgnore';
 import { resolveCanonicalWithinRoot } from '../../../core/config/pathContainment';
 import {
@@ -187,60 +190,76 @@ function appendPath(
           );
         }
       }
-      if (isStubLoadedPath(rel)) {
-        // One open: kind and size must describe the same inode.
-        const childBr = racBaseRelative(featurePath, child);
-        const sniff = childBr
-          ? withContainedFdBase(childBr, fd => sniffFd(fd, rel))
-          : withContainedFd(featurePath, child, fd => sniffFd(fd, rel));
-        if (sniff.ok) {
-          out.push({
-            path: rel,
-            content: buildHandoffStub(rel, sniff.value.binary ? 'binary' : 'text', sniff.value.size),
-            role,
-          });
-        }
-        continue;
-      }
-      const content = readAndNormalize(featurePath, child);
-      if (content) out.push({ path: rel, content, role });
+      appendLeaf(out, featurePath, rel, role);
     }
     return;
   }
 
-  if (isStubLoadedPath(relativePath)) {
-    const leafBr = racBaseRelative(featurePath, relativePath);
-    const sniff = leafBr
-      ? withContainedFdBase(leafBr, fd => sniffFd(fd, relativePath))
-      : withContainedFd(featurePath, relativePath, fd => sniffFd(fd, relativePath));
-    if (sniff.ok) {
-      out.push({
-        path: relativePath,
-        content: buildHandoffStub(
-          relativePath,
-          sniff.value.binary ? 'binary' : 'text',
-          sniff.value.size,
-        ),
-        role,
-      });
-    }
-    return;
-  }
-  const content = readAndNormalize(featurePath, relativePath);
-  if (content) out.push({ path: relativePath, content, role });
+  appendLeaf(out, featurePath, relativePath, role);
 }
 
 /**
- * Stub-loaded paths are NOT eager-read into the pool. Rather than embedding
- * content, we emit a stub so the downstream prompt surfaces a manifest-style
- * entry and the execute-phase LLM picks up files on demand via `read_file`
- * (binaries are tagged path-only — utf-8 reads would be garbage).
+ * Load ONE file into the pool — single owner of the per-file decision, shared by
+ * both branches of {@link appendPath}.
  *
- * Two families qualify:
- *   - handoff sub-sources (`visual/{ui,game-art}/handoff/**`) — WS2 §3C.
- *   - asset pools (`assets/{service,game}/**`) — real binary/asset files the
- *     code/spec job references and copies, never injects as content
- *     (state.artifacts Post-RAC SSOT; Asset Surface Boundary I6).
+ * The order is the contract: **bytes are classified before the path is.** When
+ * the prefix list decided it, a PNG selected from outside the four stub families
+ * was utf-8-decoded into the prompt as mojibake (doc 47).
+ */
+function appendLeaf(
+  out: ResolvedArtifact[],
+  featurePath: string,
+  rel: string,
+  role: 'ref' | 'context',
+): void {
+  // One open: kind, size and the magic-byte head must all describe the same
+  // inode — a name reopened between questions is a name an attacker can swap.
+  const br = racBaseRelative(featurePath, rel);
+  const sniff = br
+    ? withContainedFdBase(br, fd => sniffFd(fd, rel, { head: true }))
+    : withContainedFd(featurePath, rel, fd => sniffFd(fd, rel, { head: true }));
+  if (!sniff.ok) return;
+  const { binary, size, head } = sniff.value;
+
+  if (binary) {
+    // Existence-only: bytes never enter the prompt. `base64` stays unpopulated
+    // on purpose — artifacts are checkpointed to `sessions/**/code.json`, so the
+    // execute image-block builder re-reads bytes under its own budget instead.
+    const imageMime = head ? detectImageMimeFromBuffer(head) : null;
+    out.push({
+      path: rel,
+      content: buildHandoffStub(rel, 'binary', size),
+      role,
+      kind: 'binary',
+      sizeBytes: size,
+      ...(imageMime ? { mediaType: 'image' as const, mimeType: imageMime } : {}),
+    });
+    return;
+  }
+
+  if (isStubLoadedPath(rel)) {
+    out.push({
+      path: rel,
+      content: buildHandoffStub(rel, 'text', size),
+      role,
+      kind: 'text',
+      sizeBytes: size,
+    });
+    return;
+  }
+
+  const content = readAndNormalize(featurePath, rel);
+  if (content) out.push({ path: rel, content, role, kind: 'text', sizeBytes: size });
+}
+
+/**
+ * Directories whose **text** files are still not eager-read — the prompt gets a
+ * manifest entry and the LLM pulls the body on demand. Binaries never consult
+ * this list; {@link appendLeaf}'s sniff decides those.
+ *
+ * Two families qualify: handoff sub-sources (WS2 §3C — a bundle's html/css is
+ * large and usually only partly relevant) and asset pools (a pool entry is a
+ * file to place, not a document to read; Asset Surface Boundary I6).
  */
 function isStubLoadedPath(rel: string): boolean {
   const startsWithRoot = (prefix: string): boolean => {

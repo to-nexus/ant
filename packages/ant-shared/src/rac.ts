@@ -17,7 +17,12 @@
 import type { ActionMetadata, IntentId } from './actions';
 import { deriveFromIntent, INTENT_DEFINITIONS, getIntentDescriptionLocalized, normalizeIntentId } from './actions';
 import type { Mode, IntentGroup, Domain, InferredAction } from './detection';
-import { normalizeUiSourceRefs, widenHandoffRefsToBundleDir } from './canonical';
+import {
+  filterToUiSource,
+  normalizeUiSourceRefs,
+  pickUiSource,
+  widenHandoffRefsToBundleDir,
+} from './canonical';
 
 // ============================================
 // Workspace State (minimal, for infer path)
@@ -445,6 +450,19 @@ export interface ResolvedArtifact {
   mimeType?: string;
   /** Base64-encoded image data (mediaType='image'). */
   base64?: string;
+  /**
+   * Byte class from the content sniff performed at pool load. `'binary'` marks an
+   * existence-only stub: `content` is the `[asset]` manifest line, never the bytes.
+   *
+   * This is the SSOT every downstream layer keys off instead of re-deriving
+   * "is this a real file I may place?" from a directory prefix — the ride-along
+   * exemption in `ArtifactPipeline.selectArtifacts`, the placeable-file inventory,
+   * and the image-block builder all read it. Absent on artifacts produced before
+   * the sniff (treat as `'text'`).
+   */
+  kind?: 'binary' | 'text';
+  /** On-disk size in bytes, from the same sniff that set `kind`. */
+  sizeBytes?: number;
   /** @deprecated Intent-based role resolution replaces label-based matching. */
   label?: string;
 
@@ -649,20 +667,32 @@ function dedup(arr: string[]): string[] {
  *   domain:   from inferred only
  *   basis:    from metadata only (explicit preset from UI)
  *
- * The dedup'd ref/context sets are passed through `normalizeUiSourceRefs`
- * so the merge cannot produce a mixed-UiSource list — the same SSOT funnel
- * `resolveToRAC` uses on its direct inputs.
+ * Exclusivity: exactly one UiSource survives, decided ONCE over refs ∪ context
+ * and then applied to both slots (`pickUiSource` + `filterToUiSource`).
+ *
+ * Source precedence: exclusivity means a source gets dropped, and the static
+ * priority (`ant > figma > handoff`) knows nothing about who contributed which
+ * path. Deciding blind deletes a source the USER selected in favour of one
+ * inference guessed at — an attached handoff screenshot losing to an inferred
+ * `visual/ui/ant` doc. So the source present in `metadata` is the preference and
+ * outranks the static order here. `resolveToRAC` keeps the plain static order:
+ * its inputs are already single-authority by the time they reach it.
  */
 export function mergeWithMetadata(
   inferred: InferredAction,
   metadata?: ActionMetadata,
 ): { intentId: string; target?: string[]; refs?: string[]; context?: string[]; domain?: Domain; basis?: Basis; referenceTargets?: ReferenceTarget[] } {
-  const mergedRefs = normalizeUiSourceRefs(
-    dedup([...(inferred.refs || []), ...(metadata?.refs || [])]),
-  );
-  const mergedCtx = normalizeUiSourceRefs(
-    dedup([...(inferred.context || []), ...(metadata?.context || [])]),
-  );
+  const refsUnion = dedup([...(inferred.refs || []), ...(metadata?.refs || [])]);
+  const ctxUnion = dedup([...(inferred.context || []), ...(metadata?.context || [])]);
+  // ONE verdict over refs ∪ context, then applied to both slots. Deciding per
+  // slot would let `refs` (holding only the inferred `ant` doc) keep `ant` while
+  // `context` resolves to the attached `handoff` — a mixed RAC, which is the
+  // very thing the exclusivity invariant forbids.
+  const winner = pickUiSource([...refsUnion, ...ctxUnion], pickUiSource(
+    [...(metadata?.refs || []), ...(metadata?.context || [])],
+  ));
+  const mergedRefs = filterToUiSource(refsUnion, winner);
+  const mergedCtx = filterToUiSource(ctxUnion, winner);
 
   // Explicit > infer (10.2 invariant): ActionMetadata.domain wins when present.
   const domain = metadata?.domain ?? inferred.domain;

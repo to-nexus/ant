@@ -65,6 +65,7 @@ import { referenceCatalogVars } from "../../../../../common/tool/reference/catal
 import { containsRuntimeErrorPattern } from "../../../../../../core/utils/runtimeErrorPattern";
 import { projectLens } from "../../../../../../core/context/lensProjection";
 import { contextProfileFor } from "../../../../../../core/executionTier/contextProfile";
+import { effectiveAssetInventory } from "../../../../../../infrastructure/workspace/assetInventory";
 import {
   JsonSyntaxViolation,
   buildJsonSyntaxViolationFraming,
@@ -352,7 +353,9 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
     techTier: getTechTier(state),
     codebaseFilePaths,
     hasProjectCode,
-    assetInventory: state.assetInventory,
+    // Domain pool ∪ attached binaries (see `effectiveAssetInventory`) — a file's
+    // directory must not decide whether decompose is told it exists.
+    assetInventory: effectiveAssetInventory(state),
     hasErrorInDirective,
     needsBoundaryClassification: suggestedBoundary === SUGGESTED_BOUNDARY.PENDING,
   };
@@ -364,7 +367,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
   const fileList = (decomposeVars.codebaseFilePaths && decomposeVars.codebaseFilePaths.length > 0)
     ? decomposeVars.codebaseFilePaths.map((f: string) => `- ${f}`).join('\n') : '';
   const assetsHint = decomposeVars.assetInventory && decomposeVars.assetInventory.count > 0
-    ? `\n\n## Available Assets (assets/)\nThere are ${decomposeVars.assetInventory.count} real asset file(s) already placed under assets/.\nDo NOT add a dedicated "copy assets" task. The ui/feature task that actually needs an asset copies it into the app's static-asset root (framework-aware) and references it — placement + wiring happen inside that task's plan/execute.\nAsset file list (first 50):\n${decomposeVars.assetInventory.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
+    ? `\n\n## Available Assets\nThere are ${decomposeVars.assetInventory.count} real asset file(s) on disk — the asset pool plus any file attached to this turn. Paths are feature-relative.\nDo NOT add a dedicated "copy assets" task. The ui/feature task that actually needs an asset copies it into the app's static-asset root (framework-aware) and references it — placement + wiring happen inside that task's plan/execute.\nAsset file list (first 50):\n${decomposeVars.assetInventory.files.slice(0, 50).map((f: string) => `- ${f}`).join('\n')}\n`
     : '';
   // Gate flag — decompose activates design-system task guidance
   // whenever ANY UI artifact (ref or context) is present in the
@@ -643,7 +646,7 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
             mode: decomposeVars.mode,
             hasProjectCode,
             codebaseFilePaths: codebaseFilePaths?.length || 0,
-            runtimeAssetsCount: state.assetInventory?.count || 0,
+            runtimeAssetsCount: decomposeVars.assetInventory?.count || 0,
             techTierLanguage: decomposeVars.techTier?.language || null,
             techTierFramework: decomposeVars.techTier?.framework || null,
             hasBasis: !!state.resolvedAction?.basis,
