@@ -145,6 +145,25 @@ describe('OpenAI-compat thinking toggle (parity with AnthropicLLMClient)', () =>
     expect(payload.thinking).toBeUndefined();
   });
 
+  it('GLM: thinkingBudget is NOT a channel — no budget field reaches the request', async () => {
+    // metal-killing-crowd RCA: hard-toggle providers accept only
+    // `thinking:{type}` — a caller-passed thinkingBudget is silently dropped,
+    // so reasoning shares the single max_tokens budget. The round's output
+    // cap is therefore the ONLY thinking bound on GLM/DeepSeek; callers must
+    // never assume the budget binds here.
+    delete process.env.GLM_THINKING;
+    const payload = await captureCreatePayload('glm', {
+      enableThinking: true,
+      thinkingBudget: 10_000,
+      maxTokens: 16_000,
+    });
+    expect(payload.thinking).toEqual({ type: 'enabled' });
+    expect(payload.thinking.budget_tokens).toBeUndefined();
+    expect(payload.thinking_budget).toBeUndefined();
+    expect(payload.thinkingBudget).toBeUndefined();
+    expect(payload.max_tokens).toBe(16_000);
+  });
+
   /** Drive the non-streaming `invokeWithUsage` and capture the create payload. */
   async function captureInvokePayload(
     provider: string,

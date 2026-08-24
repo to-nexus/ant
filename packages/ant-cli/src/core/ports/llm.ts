@@ -311,7 +311,13 @@ export interface LLMClient {
    *   - `tools`           → tool-use definitions
    *   - `maxTokens`       → output cap
    *   - `enableThinking`  → request extended thinking (provider-dependent)
-   *   - `thinkingBudget`  → token budget for the thinking block
+   *   - `thinkingBudget`  → token budget for the thinking block.
+   *                          Anthropic/Gemini only — OpenAI-compat hard-toggle
+   *                          providers (GLM/DeepSeek) IGNORE it: their
+   *                          `thinking:{type}` param has no budget field, so
+   *                          reasoning shares the single `maxTokens` output
+   *                          budget. The only thinking bound there is the
+   *                          round's output cap (metal-killing-crowd RCA).
    *   - `temperature`     → per-call sampling temperature (see
    *                          `core/ports/llmSampling.ts` LLM_TEMPERATURE for
    *                          the policy table). Provider-dependent: Anthropic

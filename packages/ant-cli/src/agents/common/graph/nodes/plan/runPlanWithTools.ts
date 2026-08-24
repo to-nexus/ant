@@ -97,9 +97,9 @@ export async function runPlanWithTools<TState extends MinimalPlanState>(
   // at the base `maxTokens`; if it truncated MID-`<plan>` (a legitimate
   // large plan JSON), retry the same round exactly once at the larger
   // `escalatedMaxTokens`. A no-`<plan>` truncation (degenerate monologue)
-  // is NOT escalated — the base cap is what terminates it. Design-job
-  // callers omit `escalatedMaxTokens`, so `canEscalate` is false and this
-  // reduces to the prior single-pass behavior.
+  // is NOT escalated — the base cap is what terminates it. Callers that
+  // omit `escalatedMaxTokens` get `canEscalate` false and single-pass
+  // behavior.
   const canEscalate = typeof escalatedMaxTokens === 'number' && escalatedMaxTokens > maxTokens;
   let roundMaxTokens = maxTokens;
   let escalated = false;

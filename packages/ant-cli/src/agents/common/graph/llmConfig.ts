@@ -78,6 +78,10 @@ export const LLM_MAX_TOKENS = {
   // back to the existing recovery path (`onMaxTokensTruncation` → fresh
   // tool-loop restart) and the no-progress streak. This is a round-shape
   // budget, NOT a thinking-time cap — legitimate large plans escalate.
+  //
+  // Also the base budget for the SINGLE-SHOT plan call (`plan/llm/single.ts`,
+  // metal-killing-crowd RCA) and the design plan loop — every plan-round
+  // shape shares this constant; a same-value twin would only drift.
   PLAN_TOOL_LOOP: 16000,
 
   // Per-round output ceiling for the detect slot-inference loop

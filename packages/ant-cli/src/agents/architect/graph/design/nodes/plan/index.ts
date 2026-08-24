@@ -280,7 +280,11 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
       tools,
       enableThinking: isFirstRound,
       thinkingBudget: isFirstRound ? LLM_THINKING_BUDGET.PLAN : undefined,
-      maxTokens: LLM_MAX_TOKENS.DEFAULT,
+      // Round-shape budget (metal-killing-crowd audit): design diagnostic
+      // rounds are small (tool calls / a compact note); only the final
+      // `<plan>` seal is large and escalates exactly once — code-job parity.
+      maxTokens: LLM_MAX_TOKENS.PLAN_TOOL_LOOP,
+      escalatedMaxTokens: LLM_MAX_TOKENS.DEFAULT,
       temperature: LLM_TEMPERATURE.PLAN_GENERATION,
       taskName: currentTask!.name,
       jobType: 'design',
@@ -325,7 +329,7 @@ export async function plan(state: DesignGraphState): Promise<Partial<DesignGraph
               node: 'design-plan',
               round,
               outputTokens,
-              maxTokens: LLM_MAX_TOKENS.DEFAULT,
+              maxTokens: LLM_MAX_TOKENS.PLAN_TOOL_LOOP,
               taskName: currentTask!.name,
               recoveryHint: 'fresh-toolloop-restart',
             }, currentTask!.id)
