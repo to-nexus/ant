@@ -117,7 +117,7 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   acts as that tenant. That is deliberate — local mode is a single-developer
   trust boundary — but it means a finding scoped to "authenticated user" is a
   **cloud-profile** finding, and this repo ships that profile
-  (`docker-compose.cloud.yml`, [self-host-cloud.md](../guides/self-host-cloud.md)).
+  (`docker-compose.cloud.yml`, [self-host.md](../cloud-mode/self-host.md)).
 - **Cross-tenant guards are explicit, per jobId-addressed route.** ✅
   `assertJobAccess` on status / queue-position / stop / resume / continue /
   dismiss / workflow REST / workflow SSE. Adding a jobId-addressed route means

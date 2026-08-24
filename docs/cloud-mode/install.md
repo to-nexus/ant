@@ -168,7 +168,7 @@ pnpm dev:infra:redis        # boot Redis in Docker
 pnpm build
 
 # The PRIVATE key reaches ant-api alone (key pair generation: "Session keys"
-# in ../guides/self-host-cloud.md):
+# in ./self-host.md):
 ANT_JWT_PRIVATE_KEY="$(cat jwt-private.pem)" pnpm start:api-server &
 pnpm start:realtime-server &
 pnpm start:job-worker &

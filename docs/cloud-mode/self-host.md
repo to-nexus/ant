@@ -5,8 +5,9 @@ account approval, an admin dashboard — on your own infrastructure, with **no
 billing**. Everything the profile needs ships in this repository.
 
 For the full installation walkthrough (single VM vs Kubernetes, TLS, OAuth
-client registration), see [cloud-mode/install.md](../cloud-mode/install.md).
-This guide covers what the profile *is* and the compose-based quick path.
+client registration, the required-env table), see [install.md](install.md).
+This guide covers what the profile *is*, the multi-user hardening steps, the
+compose-based quick path, and account approval.
 
 ## The three deployment profiles
 
@@ -26,19 +27,14 @@ documented in `core/config/billingCapability.ts`.
 a missing billing overlay into a boot failure so the managed service can never
 silently degrade to a free tier. Leave it unset when self-hosting.
 
-## Env checklist
+## Env
 
-| Variable | Required | Notes |
-|---|---|---|
-| `ANT_SERVER_MODE` | yes | `cloud`. |
-| `ANT_REDIS_URL` | yes | Cloud mode has no default — set it explicitly. The compose base already sets `redis://redis:6379`. |
-| `ANT_JWT_PUBLIC_KEY` + `ANT_JWT_PRIVATE_KEY` | yes | ES256 session key **pair** (see "Session keys" below). The public half goes to `ant-api` / `ant-realtime` / `ant-preview`; the private half to `ant-api` only; `ant-job` gets neither. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | yes | OAuth client from the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Register `${FRONTEND_URL}/api/auth/google/callback` as an authorized redirect URI. |
-| `GOOGLE_REDIRECT_URI` | no | Only when the callback host differs from `FRONTEND_URL`; otherwise derived as `${FRONTEND_URL}/api/auth/google/callback`. |
-| `ANT_SUPER_ADMIN_EMAILS` | recommended | Comma-separated operator emails. This env allowlist is the authoritative admin gate. |
-| `FRONTEND_URL` | yes | Public origin users visit, e.g. `https://ant.example.com`. Drives CORS and the OAuth redirect derivation. |
-
-Full variable reference: [reference/env-vars.md](../reference/env-vars.md).
+The mandatory variables (`ANT_SERVER_MODE`, `ANT_REDIS_URL`, `ANT_ENCRYPTION_KEY`,
+the JWT key pair, OAuth, `FRONTEND_URL`) and their per-service scoping live in
+the install walkthrough — see [install.md → Required env](install.md#required-env).
+Add `ANT_SUPER_ADMIN_EMAILS` (comma-separated operator emails; the authoritative
+admin gate) for the approval flow below. Full reference:
+[reference/env-vars.md](../reference/env-vars.md).
 
 ### Session keys — why a pair
 
@@ -68,17 +64,33 @@ preview, the private key to api alone. Rotating the pair invalidates live sessio
 
 Both are deployment-layer, so the code ships the seam and the deployment decides.
 
-1. **Give user-authored children their own UID.** The images provision an
-   unprivileged `ant-child` account (uid 10001). Set `ANT_CHILD_UID=10001` and
-   `ANT_CHILD_GID` to the service's shared group on `ant-preview` and `ant-job`,
-   and permit those two containers to change uids (a root entrypoint with
-   `CAP_SETUID`, or an equivalent pod security context — the compose cloud
-   profile ships this shape). This is not optional in cloud mode: the runtime is
-   fail-closed and REFUSES every user-authored spawn (`run_command`, preview dev
-   servers, installs) until the drop is configured, distinct from the service
-   UID, and actually permitted. The values are plain fixed integers baked into
-   the image's `/etc/passwd`, identical on every replica — not secrets, and not
-   per-pod.
+1. **Give user-authored children their own UID and GID.** The images provision
+   an unprivileged `ant-child` account (uid/gid 10001). Set `ANT_CHILD_UID=10001`
+   **and a non-empty `ANT_CHILD_GID`** (10001) on `ant-preview` and `ant-job`,
+   and permit those two containers to change uids/gids (a root entrypoint with
+   `CAP_SETUID`/`CAP_SETGID`, or an equivalent pod security context — the compose
+   cloud profile ships this shape). This is not optional in cloud mode: the
+   runtime is fail-closed and REFUSES every user-authored spawn (`run_command`,
+   stdio MCP servers, preview dev servers, installs) until the drop is
+   configured, distinct from the service UID, and actually permitted. **GID must
+   be non-empty** — an empty `ANT_CHILD_GID` emits no `setpriv --regid`, leaving
+   the "dropped" child at egid 0 with root's supplementary groups (H-014). The
+   values are plain fixed integers baked into the image's `/etc/passwd`,
+   identical on every replica — not secrets, and not per-pod. The UID-drop
+   launcher (`setpriv`) is resolved by absolute path and the stdio MCP `env` may
+   not carry loader/interpreter variables (`LD_*`, `DYLD_*`, `NODE_OPTIONS`, …),
+   so a tenant cannot substitute the launcher or inject into it before the drop.
+
+   **Per-tenant peer isolation (M-NEW-001).** All tenant children share the one
+   `ant-child` UID, so — absent further isolation — a same-UID peer can read a
+   concurrent credentialed install's `/proc/<pid>/environ` (its private-registry
+   PAT). Closing this at the root requires each user-code child to run in its own
+   **PID (+mount) namespace**, which makes peer pids invisible regardless of
+   shared UID. This is a deployment responsibility — a per-job pod, a sandbox
+   runtime (gVisor/Kata), or a securityContext that isolates PIDs — together with
+   a restricted `ptrace_scope`. See
+   [child-isolation infra handoff](../tmp/audit-7/child-isolation-infra-handoff.md)
+   for the exact runtime requirements and the verification procedure.
 
 2. **Serve user content from its own hostname.** `ant-preview` runs two listeners:
    `PORT` (4102) is the cookie-authenticated `/projects/*` control plane, and
@@ -134,6 +146,5 @@ always the case on a self-hosted deployment.
 
 ## Read next
 
-- [cloud-mode/install.md](../cloud-mode/install.md) — single-host vs
-  Kubernetes shapes, TLS, IDE pods.
+- [install.md](install.md) — single-host vs Kubernetes shapes, TLS, IDE pods.
 - [reference/env-vars.md](../reference/env-vars.md) — every runtime knob.

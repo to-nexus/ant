@@ -12,7 +12,7 @@ For deployment-specific recommendations, see
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ANT_SERVER_MODE` | `local` | `local` or `cloud`. Decides auth tenant, IDE orchestrator, and Figma transport. `cloud` runs entirely from this repository (identity, orgs, approval, admin) — the private `@ant/cloud` overlay is only needed for billing. See [guides/self-host-cloud.md](../guides/self-host-cloud.md). |
+| `ANT_SERVER_MODE` | `local` | `local` or `cloud`. Decides auth tenant, IDE orchestrator, and Figma transport. `cloud` runs entirely from this repository (identity, orgs, approval, admin) — the private `@ant/cloud` overlay is only needed for billing. See [cloud-mode/self-host.md](../cloud-mode/self-host.md). |
 | `ANT_REDIS_URL` | `redis://localhost:16379` (local mode only) | Redis connection URL. Local mode defaults to the `pnpm dev:infra:redis` port; **cloud mode has no default and fails fast when unset**. SSOT: `core/config/redisUrl.ts`. |
 | `ANT_REDIS_TLS_SERVERNAME` | unset | `rediss://` only. Hostname to verify the server certificate against (SNI + identity check) when `ANT_REDIS_URL`'s host is a CNAME in front of the real endpoint — e.g. a private CNAME over an ElastiCache node whose cert covers `*.<cluster>.cache.amazonaws.com`. Keeps verification fully on, so prefer it over the skip flag below. SSOT: `infrastructure/utils/redis.ts`. |
 | `ANT_REDIS_TLS_SKIP_HOSTNAME_CHECK` | unset (`false`) | `rediss://` only. Accepts a certificate whose SAN does not match the URL host. The channel stays encrypted but a DNS-redirecting MITM is no longer detected — use the native endpoint or `ANT_REDIS_TLS_SERVERNAME` instead; ignored when that is set. |

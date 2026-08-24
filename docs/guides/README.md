@@ -7,7 +7,7 @@ you've read the [concepts](../concepts/) docs at least once.
 |--------------------------------------------------------------------|-----------------------------------------------------------|
 | [../local-mode/install.md](../local-mode/install.md)               | Self-host on one machine (laptop / single VM, no OAuth).  |
 | [../cloud-mode/install.md](../cloud-mode/install.md)               | Managed account or self-host cloud (OAuth, K8s).          |
-| [self-host-cloud](self-host-cloud.md)                              | Run the multi-user cloud profile yourself — no billing.   |
+| [../cloud-mode/self-host.md](../cloud-mode/self-host.md)           | Run the multi-user cloud profile yourself — no billing.   |
 | [design-input/](design-input/)                                     | Bring your own design — Claude / Figma / native tokens.   |
 | [custom-agent-authoring](custom-agent-authoring.md)                | Define a custom agent/job (universal runtime) with files. *(Experimental.)* |
 | [custom-prompts](custom-prompts.md)                                | Tune Ant's prompt templates for your stack or codebase.   |
