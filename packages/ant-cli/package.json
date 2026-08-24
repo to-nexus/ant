@@ -37,7 +37,7 @@
   "author": "",
   "dependencies": {
     "@ant/shared": "workspace:^",
-    "@anthropic-ai/sdk": "^0.117.1",
+    "@anthropic-ai/sdk": "^0.120.0",
     "@google/genai": "^1.52.0",
     "@langchain/langgraph": "^1.4.10",
     "@modelcontextprotocol/sdk": "^1.30.0",
