@@ -124,6 +124,34 @@ export class OpenAILLMClient implements LLMClient {
     return { thinking: { type: enabled ? 'enabled' : 'disabled' } };
   }
 
+  /**
+   * Sampling-param twin of `resolveThinkingParam` — the OpenAI-compat port of
+   * `AnthropicLLMClient.buildSamplingParams`: the client temperature applies
+   * ONLY to non-thinking rounds, on every provider.
+   *
+   * On hard-toggle providers (GLM/DeepSeek) reasoning shares the completion
+   * decode stream, so a caller temperature reaches the thinking tokens too.
+   * Ant's SSOT temperatures (0.2–0.3, determinism-biased for structured
+   * output) are far below the vendors' reasoning recommendations, and both
+   * vendors document the failure mode this produced verbatim — DeepSeek-R1:
+   * 0.5–0.7 "otherwise endless repetitions"; GLM-4.6 card: 1.0
+   * (jade-hiking-penny RCA: a plan thinking block looped the same thought
+   * for 200+s, 2/2 reproducible). Thinking rounds therefore OMIT temperature
+   * and decode at the provider default; non-thinking rounds keep the SSOT
+   * value. Anthropic never had this pathology because its adapter already
+   * omits temperature on every thinking round.
+   */
+  private resolveSamplingParams(options?: {
+    enableThinking?: boolean;
+    temperature?: number;
+  }): Record<string, unknown> {
+    const thinking = this.resolveThinkingParam(options) as {
+      thinking?: { type: string };
+    };
+    if (thinking.thinking?.type === 'enabled') return {};
+    return { temperature: options?.temperature ?? this.temperature };
+  }
+
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {
     const result = await this.invokeWithUsage(messages as any, options);
     return result.content;
@@ -134,7 +162,7 @@ export class OpenAILLMClient implements LLMClient {
     options?: Record<string, any>
   ): Promise<LLMInvokeResult> {
     // ✅ LOG: Actual API call with model name
-    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=invoke messages=${messages.length} temp=${options?.temperature ?? this.temperature}`);
+    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=invoke messages=${messages.length} temp=${(this.resolveSamplingParams(options) as any).temperature ?? 'omitted (thinking round)'}`);
     
     const toDataUrl = (img: any): string => {
       const mediaType = img?.source?.media_type;
@@ -174,7 +202,7 @@ export class OpenAILLMClient implements LLMClient {
         role: m.role as 'user' | 'assistant' | 'system',
         content: normalizeChatContent(m.content),
       })),
-      temperature: options?.temperature ?? this.temperature,
+      ...this.resolveSamplingParams(options),
       max_tokens: options?.maxTokens || 16000,
       ...this.resolveThinkingParam(options),
     } as any);
@@ -266,7 +294,7 @@ export class OpenAILLMClient implements LLMClient {
     }
   ): AsyncIterable<LLMStreamEvent> {
     const toolsCount = options?.tools?.length || 0;
-    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} temp=${options?.temperature ?? this.temperature}`);
+    console.log(`🔥 [API CALL] provider=${this.provider} model=${this.modelName} method=stream messages=${messages.length} tools=${toolsCount} temp=${(this.resolveSamplingParams(options) as any).temperature ?? 'omitted (thinking round)'}`);
 
     // Cover a stop that lands between rounds, before any HTTP is issued
     // (parity with AnthropicLLMClient). Without this an already-aborted job
@@ -277,9 +305,11 @@ export class OpenAILLMClient implements LLMClient {
     // `options.system` is a port-level contract — materialized as a leading
     // system message before conversion (see applySystemOption).
     const openAIMessages = this.convertToOpenAIMessages(applySystemOption(messages, options?.system));
-    const temperature = options?.temperature ?? this.temperature;
 
     const providerExtra = this.resolveThinkingParam(options);
+    // Twin of providerExtra — omits temperature on thinking rounds
+    // (vendor-documented low-temp reasoning repetition; see the method doc).
+    const samplingParams = this.resolveSamplingParams(options);
 
     // Tool-call constraint (port `toolChoice`) resolved through the shared
     // helper: `{ allow }` narrows the advertised set (drain salvage rounds);
@@ -330,7 +360,7 @@ export class OpenAILLMClient implements LLMClient {
       ...toolsConfig,
       ...toolChoiceParam,
       ...stopParam,
-      temperature,
+      ...samplingParams,
       max_tokens: options?.maxTokens || 16000,
       stream: true,
       stream_options: { include_usage: true },

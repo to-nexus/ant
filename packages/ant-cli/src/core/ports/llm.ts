@@ -321,9 +321,12 @@ export interface LLMClient {
    *   - `temperature`     → per-call sampling temperature (see
    *                          `core/ports/llmSampling.ts` LLM_TEMPERATURE for
    *                          the policy table). Provider-dependent: Anthropic
-   *                          omits it whenever the effective request enables
-   *                          thinking (adaptive models: always), Gemini and
-   *                          OpenAI-compat apply it as-is.
+   *                          AND OpenAI-compat hard-toggle providers
+   *                          (GLM/DeepSeek) omit it whenever the effective
+   *                          request enables thinking (low-temp reasoning is
+   *                          a vendor-documented endless-repetition pathology
+   *                          — jade-hiking-penny RCA); Gemini and real OpenAI
+   *                          apply it as-is.
    *   - `stopSequences`   → hard-stop strings; generation terminates the
    *                          moment any of these appears in the model's
    *                          text output. Used to cut wasted tokens after

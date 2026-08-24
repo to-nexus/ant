@@ -164,6 +164,59 @@ describe('OpenAI-compat thinking toggle (parity with AnthropicLLMClient)', () =>
     expect(payload.max_tokens).toBe(16_000);
   });
 
+  /**
+   * Sampling parity (jade-hiking-penny RCA): the client temperature applies
+   * ONLY to non-thinking rounds — the same invariant AnthropicLLMClient
+   * enforces via buildSamplingParams. On hard-toggle providers reasoning
+   * shares the completion decode stream, and both vendors document low
+   * temperature as an endless-repetition pathology (DeepSeek-R1: 0.5–0.7
+   * mandated; GLM-4.6 card: 1.0). Thinking rounds omit temperature so the
+   * provider default applies; non-thinking rounds keep the SSOT value.
+   */
+  it('GLM: thinking round OMITS temperature (provider default samples the reasoning)', async () => {
+    delete process.env.GLM_THINKING;
+    const enabled = await captureCreatePayload('glm', { enableThinking: true, temperature: 0.3 });
+    expect(enabled.thinking).toEqual({ type: 'enabled' });
+    expect(enabled.temperature).toBeUndefined();
+    const omitted = await captureCreatePayload('glm', { temperature: 0.3 });
+    expect(omitted.temperature).toBeUndefined();
+  });
+
+  it('GLM: non-thinking round keeps the SSOT temperature', async () => {
+    delete process.env.GLM_THINKING;
+    const payload = await captureCreatePayload('glm', { enableThinking: false, temperature: 0.3 });
+    expect(payload.thinking).toEqual({ type: 'disabled' });
+    expect(payload.temperature).toBe(0.3);
+  });
+
+  it('GLM: GLM_THINKING=disabled env → thinking off, temperature flows', async () => {
+    process.env.GLM_THINKING = 'disabled';
+    const payload = await captureCreatePayload('glm', { enableThinking: true, temperature: 0.2 });
+    expect(payload.thinking).toEqual({ type: 'disabled' });
+    expect(payload.temperature).toBe(0.2);
+  });
+
+  it('DeepSeek: same thinking-round temperature omission (generalization)', async () => {
+    const on = await captureCreatePayload('deepseek', { enableThinking: true, temperature: 0.2 });
+    expect(on.temperature).toBeUndefined();
+    const off = await captureCreatePayload('deepseek', { enableThinking: false, temperature: 0.2 });
+    expect(off.temperature).toBe(0.2);
+  });
+
+  it('real OpenAI: temperature always flows (no thinking param universe)', async () => {
+    const payload = await captureCreatePayload('openai', { enableThinking: true, temperature: 0.3 });
+    expect(payload.thinking).toBeUndefined();
+    expect(payload.temperature).toBe(0.3);
+  });
+
+  it('GLM non-streaming (invokeWithUsage): same omission on thinking rounds', async () => {
+    delete process.env.GLM_THINKING;
+    const on = await captureInvokePayload('glm', { enableThinking: true, temperature: 0.3 });
+    expect(on.temperature).toBeUndefined();
+    const off = await captureInvokePayload('glm', { enableThinking: false, temperature: 0.3 });
+    expect(off.temperature).toBe(0.3);
+  });
+
   /** Drive the non-streaming `invokeWithUsage` and capture the create payload. */
   async function captureInvokePayload(
     provider: string,

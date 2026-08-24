@@ -14,8 +14,13 @@
  *   so these keys are inert on the default Anthropic tier.
  * - Anthropic extended-thinking models (Haiku 4.5): applied only on
  *   non-thinking rounds (API forces temperature=1 with thinking enabled).
- * - OpenAI-compat (GLM / DeepSeek / OpenAI) and Gemini: applied as-is.
- *   DeepSeek reasoner ignores it server-side (harmless).
+ * - OpenAI-compat hard-toggle providers (GLM / DeepSeek): applied only on
+ *   non-thinking rounds — thinking rounds omit temperature entirely, because
+ *   reasoning shares the completion decode stream and both vendors document
+ *   low-temperature reasoning as an endless-repetition pathology
+ *   (jade-hiking-penny RCA: DeepSeek-R1 README mandates 0.5–0.7, GLM-4.6
+ *   card recommends 1.0; ant's 0.2–0.3 looped a plan thinking block).
+ * - Real OpenAI and Gemini: applied as-is.
  *
  * Lives in core/ports (not agents/) because core consumers (compactJob,
  * breadcrumbSummary) must not import from agents/. `agents/common/graph/
