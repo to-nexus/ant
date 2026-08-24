@@ -488,7 +488,11 @@ export class RedisOrganizationRepository implements OrganizationRepositoryPort {
       approvedAt: existing?.approvedAt,
       approvedBy: existing?.approvedBy,
       isSuperAdmin: isSuper ? true : existing?.isSuperAdmin,
-      testAccountLevel: existing?.testAccountLevel,
+      // Seeded on the same stamp that force-approves a super admin: leaving this
+      // `undefined` made `assertTestPaymentAllowed` read level 0 for EVERY account,
+      // so even the operator's mock checkout 403'd. `??` (not `||`) so an explicit
+      // admin-set 0 is respected and never silently re-granted.
+      testAccountLevel: existing?.testAccountLevel ?? (isSuper ? 1 : 0),
     };
 
     const pipeline = this.redis.multi();

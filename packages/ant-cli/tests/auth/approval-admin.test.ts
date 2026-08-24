@@ -3,8 +3,9 @@
  *
  * Drives the repo against a minimal in-memory Redis fake (get/set/sadd/smembers/
  * scan/multi) so the approval stamping, bidirectional control, USER_INDEX
- * backfill (+ existing-user "pre-approved" migration), admin config, and
- * super-admin reconcile are locked without a real Redis.
+ * backfill (+ existing-user "pre-approved" migration), admin config,
+ * super-admin reconcile, and test-payment level seeding are locked without a
+ * real Redis.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -139,6 +140,26 @@ describe('super-admin reconcile + login stamp', () => {
     const u = await repo.upsertUser({ id: 'boss@x.com', email: 'boss@x.com', currentOrganizationId: 'individual' });
     expect(u.isSuperAdmin).toBe(true);
     expect(u.approvalStatus).toBe('approved');
+  });
+
+  // The test-payment gate reads `testAccountLevel ?? 0`, so leaving the field unset
+  // 403'd the mock checkout for EVERY cloud account — the operator included.
+  it('seeds testAccountLevel 1 for a super admin and 0 for everyone else', async () => {
+    process.env.ANT_SUPER_ADMIN_EMAILS = 'boss@x.com';
+    const { repo } = makeRepo();
+    const boss = await repo.upsertUser({ id: 'boss@x.com', email: 'boss@x.com', currentOrganizationId: 'individual' });
+    expect(boss.testAccountLevel).toBe(1);
+    const plain = await repo.upsertUser({ id: 'u@x.com', email: 'u@x.com', currentOrganizationId: 'individual' });
+    expect(plain.testAccountLevel).toBe(0);
+  });
+
+  it('never re-grants a test level an admin explicitly revoked to 0', async () => {
+    process.env.ANT_SUPER_ADMIN_EMAILS = 'boss@x.com';
+    const { repo } = makeRepo();
+    await repo.upsertUser({ id: 'boss@x.com', email: 'boss@x.com', currentOrganizationId: 'individual' });
+    await repo.setTestAccountLevel('boss@x.com', 0, 'admin@x.com');
+    const relogin = await repo.upsertUser({ id: 'boss@x.com', email: 'boss@x.com', currentOrganizationId: 'individual' });
+    expect(relogin.testAccountLevel).toBe(0);
   });
 
   it('syncSuperAdmins flags listed emails and clears removed ones', async () => {

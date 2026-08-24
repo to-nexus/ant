@@ -6,10 +6,10 @@ import type {
 } from '../../../core/ports/paymentProvider';
 
 /**
- * No-op `PaymentProviderPort` — the dormant fallback the billing seam selects
- * when `isBillingEnabled()` is false. Billing is always-on at this stage, so
- * this is currently unused; retained for the future `@ant/cloud` extraction.
- * Every operation reports an error outcome — it never charges or grants.
+ * No-op `PaymentProviderPort` — what the billing seam selects when
+ * `isBillingEnabled()` is false, i.e. every OSS build and local mode
+ * (`InfrastructureFactory.getPaymentProvider`). Every operation reports an error
+ * outcome — it never charges or grants; the real provider ships in `@ant/cloud`.
  */
 export class NoopPaymentProvider implements PaymentProviderPort {
   async purchaseCredits(_req: PurchaseRequest): Promise<PurchaseOutcome> {

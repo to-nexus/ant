@@ -159,6 +159,13 @@ export interface PurchaseOutcome {
   amountChargedUsd?: number;
   declineCode?: string;
   reason?: string;
+  /**
+   * Server error code, verbatim (e.g. `TEST_PAYMENT_NOT_ALLOWED`), so the FE can
+   * pick a specific message. Without it every non-`declined` failure collapsed
+   * into one generic string and a 403 gate rejection was indistinguishable from
+   * a 500.
+   */
+  code?: string;
 }
 
 /** Body of `POST /billing/subscribe`. Price resolved server-side from catalog. */

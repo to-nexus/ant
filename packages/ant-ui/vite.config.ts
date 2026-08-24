@@ -218,6 +218,14 @@ export default defineConfig(({ mode }) => {
         // OSS build leaves it unset and Vite DCEs the whole subtree.
         '@cloud': process.env.ANT_CLOUD_UI_DIR || path.resolve(__dirname, '../ant-cloud/src/ui'),
       },
+      // The @ant/cloud overlay compiles into THIS graph through the `@cloud` alias, but
+      // its bare imports resolve from the overlay package's own node_modules — a
+      // different pnpm peer-hash dir. react-i18next holds its i18next instance in a
+      // module-level singleton, so a second copy makes every `t()` fall through to
+      // `notReadyT`, which returns the raw defaultValue (uninterpolated `{{amount}}`,
+      // English regardless of locale). @vitejs/plugin-react dedupes only react/react-dom;
+      // this list is the rest of the singletons the overlay must share with the host.
+      dedupe: ['react', 'react-dom', 'react-i18next', 'i18next', 'zustand'],
     },
     optimizeDeps: {
       esbuildOptions: {
