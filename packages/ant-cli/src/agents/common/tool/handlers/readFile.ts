@@ -43,7 +43,7 @@ function binaryFileMessage(displayPath: string, sizeBytes?: number): string {
     size
       ? `size: ${size} — this is the ONLY size figure for this file; never state one that is not reported here.\n`
       : `size: unknown — do NOT state or estimate one.\n`
-  }\nTo check if file exists: use list_files("${path.dirname(displayPath)}")\nTo use in code: reference the path directly (e.g., url('${displayPath}') or <img src="${displayPath}" />)\nTo copy: use run_command("cp source dest")\n\nProceed with your next action.`;
+  }\nTo check if file exists: use list_files("${path.dirname(displayPath)}")\nTo use in code: reference the path directly (e.g., url('${displayPath}') or <img src="${displayPath}" />)\nTo copy: use copy_file(source, destination)\n\nProceed with your next action.`;
 }
 
 export async function handleReadFile(
@@ -60,15 +60,27 @@ export async function handleReadFile(
 
   // Extension fast path. Resolve first so the reply can carry a real size —
   // the contained sniff fstats anyway, so this costs nothing beyond the resolve.
+  // Existence is verified BEFORE answering: this branch used to fabricate a
+  // "[Binary file: …] size: unknown" success for paths that did not exist,
+  // directly contradicting copy_file's not-found in the same transcript and
+  // looping the agent (zinc-bracing-gavel).
   if (isBinaryPath(filePath)) {
-    let sizeBytes: number | undefined;
     try {
       const early = await resolveToolPath(ctx, filePath);
-      sizeBytes = sniffToolFile(fileSystem.resolveAbsolute(early.fsPath)).size;
+      const exists = await fileSystem.fileExists(early.fsPath);
+      if (!exists) {
+        const errorMsg =
+          `File not found: ${early.displayPath}\n\n` +
+          `Before retrying: use list_files("${path.dirname(early.displayPath)}") to verify the exact path. ` +
+          `Binary files cannot be authored by tools — if this file is missing it must be supplied (uploaded) or copied from an existing source via copy_file.`;
+        return { content: errorMsg, error: `File not found: ${early.displayPath}` };
+      }
+      const sizeBytes = sniffToolFile(fileSystem.resolveAbsolute(early.fsPath)).size;
+      return { content: binaryFileMessage(early.displayPath, sizeBytes) };
     } catch {
       // Unresolvable → report without a size rather than guessing.
+      return { content: binaryFileMessage(filePath, undefined) };
     }
-    return { content: binaryFileMessage(filePath, sizeBytes) };
   }
 
   const resolved = await resolveToolPath(ctx, filePath);

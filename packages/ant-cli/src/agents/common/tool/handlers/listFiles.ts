@@ -3,6 +3,7 @@
  */
 
 import type { ToolExecutionContext, ToolResult } from '../types';
+import { toNfc } from '../../../../core/utils/unicodePath';
 import { resolveToolDirectory, prependFixMessage } from './pathResolver';
 
 /**
@@ -19,7 +20,11 @@ import { resolveToolDirectory, prependFixMessage } from './pathResolver';
  * Both forms are now honored, discriminated by the presence of glob
  * metacharacters, so previously-working substring calls keep working.
  */
-function matchesPattern(name: string, pattern: string): boolean {
+function matchesPattern(rawName: string, rawPattern: string): boolean {
+  // NFC both sides: on-disk entries may be NFD (macOS uploads) while
+  // LLM-emitted patterns are NFC — byte-exact matching missed real files.
+  const name = toNfc(rawName);
+  const pattern = toNfc(rawPattern);
   if (!/[*?[\]]/.test(pattern)) return name.includes(pattern);
 
   const source = pattern.replace(/[.+^${}()|\\]/g, '\\$&')

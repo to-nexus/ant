@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import multer from 'multer';
 import { writeBufferVerifiedAbs } from '../../../../core/utils/binaryIntegrity';
+import { toNfc } from '../../../../core/utils/unicodePath';
 import { boundedMultipart } from '../middleware/boundedMultipart';
 import { treeRateLimiter } from '../middleware/rateLimiter';
 import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
@@ -394,7 +395,8 @@ export function createCustomAgentRoutes(deps: {
 
       const uploadedFiles: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const relPath = (relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
+        // NFC at ingestion — see files.routes.ts upload route.
+        const relPath = toNfc(relativePaths[i] || files[i].originalname).replace(/\\/g, '/');
         const effectiveRel = path.join(dirPath, relPath).replace(/\\/g, '/');
         const uploadViolation = reservedRootViolation(effectiveRel);
         if (uploadViolation) return res.status(400).json(uploadViolation);

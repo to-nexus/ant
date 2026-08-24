@@ -266,6 +266,16 @@ describe('decompose RAC whitelist (Channel A — `discovery-tool RAC bypass (202
     expect(result).toContain('Auth SDK');
   });
 
+  // zinc-bracing-gavel: RAC entries derive from disk (NFD for macOS uploads
+  // on Linux) while the LLM re-emits NFC — byte-exact comparison denied
+  // legitimately-selected artifacts before any handler ran.
+  it('NFC-requested path passes a whitelist whose entry is NFD (and vice versa)', () => {
+    const nfd = 'visual/ui/handoff/스크린샷 2026-08-21.png'.normalize('NFD');
+    const nfc = nfd.normalize('NFC');
+    expect(isWithinRacWhitelist(nfc, { refs: [nfd], context: [] })).toBe(true);
+    expect(isWithinRacWhitelist(nfd, { refs: [nfc], context: [] })).toBe(true);
+  });
+
   it("list_files('.') lists the workspace ROOT (not codebase/) and passes the gate", async () => {
     // Regression: normalizeToCodebasePath's Rule 4 used to silently rewrite
     // '.' → 'codebase/.', making the sibling artifact trees (assets/, plan/,

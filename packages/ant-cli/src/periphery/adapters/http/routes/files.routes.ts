@@ -13,6 +13,7 @@ import type { UserContext } from '../../../../core/types/user';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
 import { writeBufferVerifiedAbs, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
+import { toNfc } from '../../../../core/utils/unicodePath';
 import { boundedMultipart } from '../middleware/boundedMultipart';
 import {
   downloadRateLimiter,
@@ -513,11 +514,15 @@ export function createFilesRoutes(deps: {
       // relativePaths[] preserves folder structure from drag-and-drop uploads
       const rawRelPaths = req.body.relativePaths;
 
-      const relativePaths: string[] = Array.isArray(rawRelPaths)
+      const relativePaths: string[] = (Array.isArray(rawRelPaths)
         ? rawRelPaths
         : typeof rawRelPaths === 'string'
           ? [rawRelPaths]
-          : [];
+          : []
+      ).map(toNfc);
+      // NFC at ingestion: macOS browsers submit NFD filenames; storing them
+      // verbatim on Linux makes every LLM-emitted (NFC) path miss the file.
+      for (const f of files) f.originalname = toNfc(f.originalname);
 
       // Validate file extensions against artifact dir policy
       const normalizedDirPath = dirPath.replace(/\\/g, '/').replace(/\/$/, '');

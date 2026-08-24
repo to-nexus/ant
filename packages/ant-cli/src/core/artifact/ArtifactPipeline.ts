@@ -49,6 +49,7 @@
 import type { ResolvedArtifact, UiSource } from '@ant/shared';
 import { ARTIFACT_PREFIX, uiSourceOfPath, gameArtSourceOfPath } from '@ant/shared';
 import { compactContent } from '../utils/contentCompactor';
+import { toNfc } from '../utils/unicodePath';
 
 // ────────────────────────────────────────────────────────────────
 // UI / game-art artifact recognition
@@ -109,8 +110,12 @@ export interface ArtifactCompactionConfig {
 // Selection
 // ────────────────────────────────────────────────────────────────
 
-function matchesInclude(artifactPath: string, patterns: string[]): boolean {
-  return patterns.some(pattern => {
+function matchesInclude(rawArtifactPath: string, patterns: string[]): boolean {
+  // NFC both sides: pool paths are disk-enumerated (NFD for macOS uploads on
+  // Linux) while task.include is LLM-authored NFC.
+  const artifactPath = toNfc(rawArtifactPath);
+  return patterns.some(rawPattern => {
+    const pattern = toNfc(rawPattern);
     if (pattern.endsWith('*')) {
       return artifactPath.startsWith(pattern.slice(0, -1));
     }

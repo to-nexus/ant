@@ -25,6 +25,7 @@
 
 import type { FeatureContext } from '../../../../../core/context/featureContextBuilder';
 import { normalizeToCodebasePath } from '../../../../../core/utils/pathNormalizer';
+import { toNfc } from '../../../../../core/utils/unicodePath';
 
 export interface DetectWhitelist {
   /** Normalized directory / file paths (trailing slash stripped). */
@@ -34,7 +35,10 @@ export interface DetectWhitelist {
 const CODEBASE_ROOT = 'codebase';
 
 function normalize(input: string): string {
-  return input.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, '');
+  // toNfc: whitelist entries come from disk enumeration (NFD for macOS
+  // uploads on Linux) while LLM-requested paths are NFC. One normalization
+  // site covers both the build side and the compare side.
+  return toNfc(input.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, ''));
 }
 
 /**

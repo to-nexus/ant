@@ -6,6 +6,7 @@
  */
 
 import { normalizeToCodebasePath, normalizeRelPath } from '../../../../core/utils/pathNormalizer';
+import { reconcileOnDiskPath } from '../../../../core/utils/unicodePath';
 import type { ToolExecutionContext } from '../types';
 
 export interface ResolvedToolPath {
@@ -37,32 +38,32 @@ export async function resolveToolPath(
   // auto-correction — Rule 4 would misplace every path under codebase/.
   const skipAutoCorrect = ctx.pathAutoCorrect === 'none';
 
-  if (p.isAbsolute(rawPath)) {
-    const fsPath = normalizeRelPath(p.relative(projectRoot, rawPath));
-    if (skipAutoCorrect) {
-      return { displayPath: fsPath, fsPath, scope: 'workspace', wasFixed: false };
-    }
-    const { corrected, wasFixed } = autoCorrectCodebasePath(fsPath);
-    const fixMessage = wasFixed
-      ? `⚠️ Path corrected: "${fsPath}" → "${corrected}". Always use codebase/ prefix for code files.`
+  const rel = p.isAbsolute(rawPath)
+    ? normalizeRelPath(p.relative(projectRoot, rawPath))
+    : normalizeRelPath(rawPath);
+
+  let displayPath = rel;
+  let wasFixed = false;
+  let fixMessage: string | undefined;
+  if (!skipAutoCorrect) {
+    const corrected = autoCorrectCodebasePath(rel);
+    displayPath = corrected.corrected;
+    wasFixed = corrected.wasFixed;
+    fixMessage = wasFixed
+      ? `⚠️ Path corrected: "${rel}" → "${displayPath}". Always use codebase/ prefix for code files.`
       : undefined;
-    return { displayPath: corrected, fsPath: corrected, scope: 'workspace', wasFixed, fixMessage };
+    if (wasFixed) {
+      console.log(`[resolveToolPath] Auto-corrected path: ${rel} → ${displayPath}`);
+    }
   }
 
-  const rel = normalizeRelPath(rawPath);
-  if (skipAutoCorrect) {
-    return { displayPath: rel, fsPath: rel, scope: 'workspace', wasFixed: false };
-  }
-  const { corrected, wasFixed } = autoCorrectCodebasePath(rel);
-  const fixMessage = wasFixed
-    ? `⚠️ Path corrected: "${rel}" → "${corrected}". Always use codebase/ prefix for code files.`
-    : undefined;
+  // NFC/NFD reconcile: LLM-emitted paths are NFC while macOS uploads land on
+  // Linux disks in NFD. fsPath carries the on-disk byte form; displayPath
+  // stays in the model's own form (identical glyphs) so conversation history
+  // and dedup keys stay stable.
+  const { fsPath } = await reconcileOnDiskPath(fileSystem, displayPath);
 
-  if (wasFixed) {
-    console.log(`[resolveToolPath] Auto-corrected path: ${rel} → ${corrected}`);
-  }
-
-  return { displayPath: corrected, fsPath: corrected, scope: 'workspace', wasFixed, fixMessage };
+  return { displayPath, fsPath, scope: 'workspace', wasFixed, fixMessage };
 }
 
 export async function resolveToolDirectory(

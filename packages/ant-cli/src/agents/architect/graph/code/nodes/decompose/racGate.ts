@@ -20,6 +20,7 @@
 import type { ResolvedActionContext } from '@ant/shared';
 import { ARTIFACT_PREFIX } from '@ant/shared';
 import { normalizeToCodebasePath } from '../../../../../../core/utils/pathNormalizer';
+import { toNfc } from '../../../../../../core/utils/unicodePath';
 
 export const RAC_DENY_MESSAGE =
   'Path is outside the RAC selection (refs/context). Decompose with explicit ' +
@@ -74,11 +75,13 @@ export function isWithinRacWhitelist(
 ): boolean {
   if (!racScope) return true;
 
+  // toNfc both sides: RAC entries derive from disk enumeration (NFD on Linux
+  // for macOS uploads) while the LLM re-emits requested paths in NFC.
   const entries = [...(racScope.refs ?? []), ...(racScope.context ?? [])]
-    .map(p => p.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, ''));
+    .map(p => toNfc(p.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, '')));
   if (entries.length === 0) return true;
 
-  const target = requestedPath.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, '');
+  const target = toNfc(requestedPath.replace(/\\/g, '/').replace(/^\//, '').replace(/\/$/, ''));
 
   for (const entry of entries) {
     if (entry === target) return true;

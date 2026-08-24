@@ -5,6 +5,7 @@ import { isErrorTask } from '../../tasks/error';
 import { isVerificationTask } from '../../tasks/verification';
 import { hooksForTaskType } from '../../tasks/_shared/registry';
 import { containsMachineFailureSignal } from '../../../../../../core/utils/runtimeErrorPattern';
+import { toNfc } from '../../../../../../core/utils/unicodePath';
 
 const VALID_TASK_TYPES: readonly TaskType[] = [
   'setup', 'feature', 'design-system', 'ui',
@@ -316,9 +317,10 @@ export function validateTasks(
   if (artifacts && artifacts.length > 0) {
     for (const t of tasks) {
       if (!t.include?.length) continue;
-      for (const inc of t.include) {
+      for (const rawInc of t.include) {
+        const inc = toNfc(rawInc);
         const prefix = inc.endsWith('*') ? inc.slice(0, -1) : inc;
-        const matches = artifacts.some(a => a.path === inc || a.path.startsWith(prefix));
+        const matches = artifacts.some(a => toNfc(a.path) === inc || toNfc(a.path).startsWith(prefix));
         if (!matches) {
           console.warn(
             `⚠️  [Decompose Validation] Task "${t.id}" include "${inc}" ` +

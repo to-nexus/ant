@@ -22,6 +22,8 @@
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import type { ToolExecutionContext, ToolResult, ToolSideEffect } from '../types';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+import { toBaseRelative, readBufferContainedBase } from '../../../../core/config/containedIo';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
 import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
 import { verifyBufferIntegrity, writeBufferVerifiedAbs, CorruptedFileError } from '../../../../core/utils/binaryIntegrity';
@@ -57,10 +59,17 @@ export async function handleCopyFile(
       return { content: msg, error: msg };
     }
 
-    let buffer: Buffer;
-    try {
-      buffer = await fs.readFile(srcAbs);
-    } catch {
+    // Descriptor-contained source read when in the multi-tenant base
+    // (M-NEW-005/024 posture); raw read only outside it (repoType:'local').
+    let buffer: Buffer | undefined;
+    const srcBr = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), srcAbs);
+    if (srcBr) {
+      const res = readBufferContainedBase(srcBr);
+      if (res.ok) buffer = res.bytes;
+    } else {
+      buffer = await fs.readFile(srcAbs).catch(() => undefined);
+    }
+    if (!buffer) {
       const msg =
         `copy_file source not found: ${resolvedSource.displayPath}\n` +
         `Use list_files("${path.dirname(resolvedSource.displayPath)}") to see what is actually there. ` +

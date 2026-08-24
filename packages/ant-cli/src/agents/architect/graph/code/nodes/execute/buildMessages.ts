@@ -27,6 +27,7 @@ import { CONV_KEYS, getConv } from '../../../../../common/graph/conversations';
 import { TokenBudgetManager } from "../../../../../../core/utils/tokenBudget";
 import { toBaseRelative, readBufferContainedBase } from '../../../../../../core/config/containedIo';
 import { WorkspacePathResolver } from '../../../../../../core/config/WorkspacePathResolver';
+import { reconcileOnDiskPath } from '../../../../../../core/utils/unicodePath';
 import { logger } from '../../../../../../utils/logger';
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { formatViolations } from "../../utils/violationFormatter";
@@ -1039,13 +1040,22 @@ export async function buildAssetPlacementsSection(state: ArchitectGraphState): P
     ``,
   ];
 
+  const fileSystem = state.deps?.fileSystem;
   for (const { source, destination } of placements) {
     let status = 'pending';
     if (featurePath) {
       try {
+        // Reconcile NFC plan paths against NFD on-disk names (macOS uploads on
+        // Linux) so a physically present source never renders "not found".
+        const [srcRel, destRel] = fileSystem
+          ? await Promise.all([
+              reconcileOnDiskPath(fileSystem, source).then(r => r.fsPath),
+              reconcileOnDiskPath(fileSystem, destination).then(r => r.fsPath),
+            ])
+          : [source, destination];
         const [srcStat, destStat] = await Promise.all([
-          fsPromises.stat(path.resolve(featurePath, source)).catch(() => null),
-          fsPromises.stat(path.resolve(featurePath, destination)).catch(() => null),
+          fsPromises.stat(path.resolve(featurePath, srcRel)).catch(() => null),
+          fsPromises.stat(path.resolve(featurePath, destRel)).catch(() => null),
         ]);
         if (!srcStat) status = '⚠️ source not found';
         else if (!destStat) status = 'pending — destination does not exist yet';
@@ -1094,7 +1104,8 @@ export async function buildModifyTargetsSection(state: ArchitectGraphState): Pro
     const { normalized } = normalizeToCodebasePath(p, codebaseRel);
     let content: string | undefined;
     try {
-      content = await fileSystem.readFile(normalized) ?? undefined;
+      const { fsPath } = await reconcileOnDiskPath(fileSystem, normalized);
+      content = await fileSystem.readFile(fsPath) ?? undefined;
     } catch {
       content = undefined;
     }
