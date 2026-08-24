@@ -287,6 +287,8 @@ describe('previewProxy — local-first serving', () => {
     };
     const ensureRunning = vi.fn();
     const portRegistry: any = {
+      // Index-only label resolution (M-NEW-020).
+      getPreviewByLabel: vi.fn(async () => stolen),
       listPreviews: vi.fn(async () => [stolen]),
       touchPreview: vi.fn(async () => {}),
     };

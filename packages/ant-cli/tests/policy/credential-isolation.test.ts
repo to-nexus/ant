@@ -20,7 +20,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Request } from 'express';
 import { composeChildEnv, composeCommandChildEnv } from '../../src/core/config/childEnv.js';
-import { assertUserCodeIsolationOrThrow, wrapCommandForChildIdentity } from '../../src/core/config/childIdentity.js';
+import {
+  assertUserCodeIsolationOrThrow,
+  wrapCommandForChildIdentity,
+  childSpawnIdentity,
+  credentialedAcquireIdentity,
+  assertCredentialedAcquireIsolationOrThrow,
+} from '../../src/core/config/childIdentity.js';
 import { buildCleanHeaders, buildForwardHeaders } from '../../src/periphery/adapters/http/middleware/proxyForwarding.js';
 import { rewriteUpgradeHeaders, buildPeerForwardUpgradeHeaders } from '../../src/infrastructure/preview/PreviewServer.js';
 
@@ -589,6 +595,80 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
       process.env.ANT_CHILD_UID = '1001';
       // no ANT_CHILD_GID
       expect(() => wrapCommandForChildIdentity('npx', ['server'])).toThrow();
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // The credentialed dependency-FETCH pass is the one child holding a user PAT
+  // in its environment. /proc/<pid>/environ is 0400 owned by the process UID, so
+  // it must not share the UID every other user-code child runs under — a
+  // concurrent dev server would otherwise read the PAT out of it (M-NEW-001).
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('credentialed acquire identity (M-NEW-001)', () => {
+    const saved: Record<string, string | undefined> = {};
+    const KEYS = ['ANT_SERVER_MODE', 'ANT_CHILD_UID', 'ANT_CHILD_GID', 'ANT_CHILD_ACQUIRE_UID', 'ANT_CHILD_ACQUIRE_GID'];
+    beforeEach(() => { for (const k of KEYS) { saved[k] = process.env[k]; delete process.env[k]; } });
+    afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
+
+    it('resolves to a DIFFERENT uid than ordinary user-code children', () => {
+      process.env.ANT_CHILD_UID = '10001';
+      process.env.ANT_CHILD_GID = '10001';
+      process.env.ANT_CHILD_ACQUIRE_UID = '10002';
+      const ordinary = childSpawnIdentity();
+      const acquire = credentialedAcquireIdentity();
+      // Whether the platform PERMITS the drop is deployment-dependent; what must
+      // hold is that the two identities never resolve to the same uid.
+      if (acquire.uid !== undefined && ordinary.uid !== undefined) {
+        expect(acquire.uid).not.toBe(ordinary.uid);
+      }
+    });
+
+    it('inherits the child GID when no acquire-specific GID is set (shared workspace group)', () => {
+      process.env.ANT_CHILD_UID = '10001';
+      process.env.ANT_CHILD_GID = '10001';
+      process.env.ANT_CHILD_ACQUIRE_UID = '10002';
+      const acquire = credentialedAcquireIdentity();
+      if (acquire.uid !== undefined) expect(acquire.gid).toBe(10001);
+    });
+
+    it('is a no-op in local (single-user) mode', () => {
+      expect(() => assertCredentialedAcquireIsolationOrThrow('install')).not.toThrow();
+    });
+
+    it('fails closed in cloud when no acquire UID is configured', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      process.env.ANT_CHILD_UID = '10001';
+      process.env.ANT_CHILD_GID = '10001';
+      expect(() => assertCredentialedAcquireIsolationOrThrow('install')).toThrow(/dedicated OS identity/i);
+    });
+
+    it('fails closed in cloud when the acquire UID equals the ordinary child UID', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      process.env.ANT_CHILD_UID = '10001';
+      process.env.ANT_CHILD_GID = '10001';
+      process.env.ANT_CHILD_ACQUIRE_UID = '10001';
+      expect(() => assertCredentialedAcquireIsolationOrThrow('install')).toThrow(/dedicated OS identity/i);
+    });
+
+    it('fails closed in cloud when the acquire UID equals the service UID', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      const self = typeof process.getuid === 'function' ? process.getuid() : 0;
+      process.env.ANT_CHILD_UID = '10001';
+      process.env.ANT_CHILD_ACQUIRE_UID = String(self);
+      expect(() => assertCredentialedAcquireIsolationOrThrow('install')).toThrow(/dedicated OS identity/i);
+    });
+  });
+
+  // Enforcement: the credentialed install pass must spawn under the acquire
+  // identity, and the credential-free lifecycle pass must not.
+  describe('DependencyInstaller wires the acquire identity (M-NEW-001 enforcement)', () => {
+    it('gates the credentialed pass and spawns it under credentialedAcquireIdentity', () => {
+      const src = fs.readFileSync(
+        path.join(process.cwd(), 'src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts'),
+        'utf-8',
+      );
+      expect(src).toMatch(/assertCredentialedAcquireIsolationOrThrow\(/);
+      expect(src).toMatch(/credentialed \? credentialedAcquireIdentity\(\) : childSpawnIdentity\(\)/);
     });
   });
 

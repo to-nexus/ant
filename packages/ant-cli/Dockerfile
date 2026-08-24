@@ -84,6 +84,10 @@ ARG JAVA_VERSION=""
 
 # Base system deps (curl/bash needed by rustup/uv/mise installers)
 # libc6-compat: required to run official Go binaries (glibc-linked) on Alpine (musl)
+# util-linux: provides the real `setpriv`, the UID-drop launcher the stdio-MCP
+# spawn path re-execs through. It is resolved by ABSOLUTE path (a bare name would
+# be looked up through the tenant-controlled child PATH — H-014), so the binary
+# has to exist at /usr/bin/setpriv rather than as a busybox applet.
 RUN apk add --no-cache \
     git \
     ca-certificates \
@@ -94,6 +98,7 @@ RUN apk add --no-cache \
     musl-dev \
     build-base \
     libc6-compat \
+    util-linux \
     docker-cli \
     docker-cli-compose
 
@@ -157,8 +162,17 @@ RUN addgroup -S ant && adduser -S -G ant ant
 # child's UID needs an effective CAP_SETUID, which these containers do not have
 # by default. Set them from the deployment once the pod is allowed to drop UIDs
 # (the runtime probes and logs loudly if it is not) — see
-# docs/guides/self-host-cloud.md.
+# docs/cloud-mode/self-host.md.
 RUN adduser -S -G ant -u 10001 -H -h /nonexistent ant-child
+
+# THIRD identity, for the credentialed dependency-FETCH pass only. That pass is
+# the one child that holds a user's registry/git PAT in its environment, and
+# /proc/<pid>/environ is mode 0400 owned by the process UID — so giving it a UID
+# distinct from `ant-child` is what stops a concurrent user-code child (a dev
+# server, a lifecycle script) from reading that PAT out of it (M-NEW-001). Same
+# `ant` group, so the tree it writes stays writable by the credential-free
+# lifecycle pass that follows.
+RUN adduser -S -G ant -u 10002 -H -h /nonexistent ant-acquire
 ENV ANT_CHILD_UMASK=002
 
 WORKDIR /app
@@ -234,6 +248,7 @@ ARG GO_VERSION="1.23.6"
 #   (pgrep BFS, lsof -ti :PORT, ss -ltnp). Without these, DevProcessControl's
 #   execFileSync calls ENOENT silently and orphan dev servers accumulate
 #   between verification cycles.
+# util-linux: the real /usr/bin/setpriv — see the preview stage (H-014).
 RUN apk add --no-cache \
     git \
     ca-certificates \
@@ -243,7 +258,8 @@ RUN apk add --no-cache \
     procps \
     iproute2 \
     lsof \
-    libc6-compat
+    libc6-compat \
+    util-linux
 
 # Go toolchain (official binary + GOTOOLCHAIN=auto for per-project version switching)
 RUN if [ -n "${GO_VERSION}" ]; then \
@@ -266,6 +282,11 @@ RUN addgroup -S ant && adduser -S -G ant ant
 # Unprivileged identity for user-authored children — same rationale as the
 # preview stage above (the job worker runs LLM-chosen shell commands).
 RUN adduser -S -G ant -u 10001 -H -h /nonexistent ant-child
+
+# Credentialed dependency-FETCH identity — see the preview stage above
+# (M-NEW-001): the one child that carries a user PAT gets its own UID so a
+# same-UID peer cannot read it from /proc/<pid>/environ.
+RUN adduser -S -G ant -u 10002 -H -h /nonexistent ant-acquire
 ENV ANT_CHILD_UMASK=002
 
 WORKDIR /app

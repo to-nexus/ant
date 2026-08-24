@@ -445,6 +445,11 @@ export class FileSystemAdapter implements FileSystemPort {
       await this.createDirectory(path.relative(this.basePath, destPath));
       const listed = readdirContainedBase(srcBr);
       if (!listed.ok) throw new Error(`Cannot read source directory: ${src}`);
+      // moveDirectory() deletes the source after this copy, so a silently
+      // partial enumeration would destroy data. Refuse instead (M-NEW-004).
+      if (listed.truncated) {
+        throw new Error(`Source directory has too many entries to copy safely: ${src}`);
+      }
       srcEntries = listed.entries.filter((e) => !e.isSymbolicLink).map((e) => ({ name: e.name, isDir: e.isDirectory }));
     } else {
       const srcStat = await fs.promises.stat(srcPath);

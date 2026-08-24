@@ -401,6 +401,16 @@ export class PreviewServer {
       logger.warn('[PreviewServer] reconcileOwnedPreviews failed (continuing)', { component: 'PreviewServer' }, { err: err?.message ?? String(err) });
     }
 
+    // Subdomain routing resolves through the DNS-label index alone (there is no
+    // per-request registry scan to fall back on — M-NEW-020/023), so records
+    // written before the index existed, or whose entry expired, are repopulated
+    // here. Best-effort: never blocks boot.
+    try {
+      await this.stateStore.backfillLabelIndexes();
+    } catch (err: any) {
+      logger.warn('[PreviewServer] label-index backfill failed (continuing)', { component: 'PreviewServer' }, { err: err?.message ?? String(err) });
+    }
+
     // Register cross-process cleanup subscriber. ProjectService (API) publishes
     // requests on `ant:lifecycle:cleanup:request`; we run the matching cleanup
     // and ack on `ant:lifecycle:cleanup:ack` so the API can confirm before
@@ -1793,17 +1803,13 @@ export class PreviewServer {
             // through the SAME resolvePreviewLabel + resolvePreviewTarget SSOTs
             // as the HTTP proxy — symmetric with the deploy branch above.
             const previewLabel = extractLabelFromHost(hostHeader, getPreviewBaseDomain());
-            // O(1) index first (M-NEW-020), same as the HTTP proxy; fall back to
-            // a full scan only on a genuine miss.
-            const store = this.stateStore as any;
-            const indexedPreview = previewLabel && typeof store.getPreviewByLabel === 'function'
-              ? await store.getPreviewByLabel(previewLabel)
+            // O(1) index ONLY (M-NEW-020), same as the HTTP proxy: this label is
+            // attacker-controlled on an unauthenticated upgrade, so a miss ends
+            // here rather than enumerating the registry.
+            const indexedPreview = previewLabel
+              ? await this.stateStore.getPreviewByLabel(previewLabel)
               : null;
-            const pMatch = previewLabel
-              ? (indexedPreview
-                  ? resolvePreviewLabel([indexedPreview], previewLabel)
-                  : resolvePreviewLabel(await this.stateStore.listPreviews(), previewLabel))
-              : null;
+            const pMatch = indexedPreview ? resolvePreviewLabel([indexedPreview], previewLabel!) : null;
             if (pMatch) {
               // Cloud mode requires a valid owner session (upgrade bypasses Express middleware).
               const isCloudMode = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';

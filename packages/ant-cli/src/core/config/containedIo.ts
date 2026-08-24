@@ -958,6 +958,23 @@ export interface ContainedDirent {
 }
 
 /**
+ * Default per-directory read ceiling. Sized far above any legitimate directory's
+ * immediate child count (so no real tree, archive or listing changes behaviour)
+ * and far below what would blow the heap or stall the event loop on a hostile
+ * one. Callers with their own smaller budget pass it explicitly; the point of the
+ * default is that a caller CANNOT enumerate without a bound (M-NEW-004).
+ */
+export const MAX_DIRECTORY_READ_ENTRIES = 50_000;
+
+/**
+ * Bound on the read→delete passes a destructive clear will make. Each pass
+ * removes up to {@link MAX_DIRECTORY_READ_ENTRIES} entries, so this covers any
+ * real directory many times over while keeping a concurrently-refilled one from
+ * spinning forever.
+ */
+const CLEAR_MAX_PASSES = 1000;
+
+/**
  * List the directory `base/relative`, descended O_NOFOLLOW. On Linux the leaf
  * directory is opened by descriptor and its entries read through
  * `/proc/self/fd`; elsewhere it degrades to a name-based readdir under the
@@ -966,41 +983,22 @@ export interface ContainedDirent {
  */
 export function readdirContainedBase(
   target: BaseRelative,
-): { ok: true; entries: ContainedDirent[]; canonicalPath: string } | ContainedFail {
+  max: number = MAX_DIRECTORY_READ_ENTRIES,
+): { ok: true; entries: ContainedDirent[]; canonicalPath: string; truncated: boolean } | ContainedFail {
   const anchor = baseAnchor(target.base);
   if ('ok' in anchor) return anchor;
   const components = relativeComponents(target.relative);
   if ('ok' in components) return components;
   const canonicalPath = path.join(anchor.path, ...components);
 
-  const toDirent = (d: fs.Dirent): ContainedDirent => ({
-    name: d.name,
-    isDirectory: d.isDirectory(),
-    isFile: d.isFile(),
-    isSymbolicLink: d.isSymbolicLink(),
-  });
-
-  if (!DESCENT_AVAILABLE) {
-    try {
-      const link = fs.lstatSync(canonicalPath);
-      if (link.isSymbolicLink() || !link.isDirectory()) return { ok: false, reason: 'swapped' };
-      return { ok: true, entries: fs.readdirSync(canonicalPath, { withFileTypes: true }).map(toDirent), canonicalPath };
-    } catch (err: any) {
-      return { ok: false, reason: failForDirHop(err?.code) };
-    }
-  }
-
-  const dir = openDirDescended(anchor.path, components, false);
-  if ('ok' in dir) return dir;
-  try {
-    const stat = fs.fstatSync(dir.fd);
-    if (!stat.isDirectory()) return { ok: false, reason: 'not-a-file' };
-    return { ok: true, entries: fs.readdirSync(`${PROC_FD}/${dir.fd}`, { withFileTypes: true }).map(toDirent), canonicalPath };
-  } catch (err: any) {
-    return { ok: false, reason: failFor(err?.code) };
-  } finally {
-    closeQuiet(dir.fd);
-  }
+  // Delegates to the bounded reader so the WORK is capped, not just whatever the
+  // caller does with the result. `fs.readdirSync` materialised the whole
+  // directory before any caller could charge its budget, leaving the heap and
+  // event-loop cost of a hostile wide directory outside every cap (M-NEW-004).
+  // The bound lives here, in the one primitive, so no call site can opt out.
+  const listed = readBoundedDirentsContainedBase(target, max);
+  if (!listed.ok) return listed;
+  return { ok: true, entries: listed.entries, canonicalPath, truncated: listed.truncated };
 }
 
 /**
@@ -1125,6 +1123,10 @@ export function walkContainedBase(
       if (listed.reason === 'missing' && depth === 0) return { ok: true, files: [], truncated: false };
       return listed;
     }
+    // A directory too wide to enumerate under the per-directory read ceiling is
+    // a truncated walk, not a complete one — the archive route turns this into a
+    // 413 rather than shipping a silently partial ZIP (M-NEW-004).
+    if (listed.truncated) truncated = true;
     for (const entry of listed.entries) {
       if (entry.isSymbolicLink) continue; // never follow
       const childRel = `${rel}/${entry.name}`;
@@ -1219,13 +1221,22 @@ export function createExclusiveContainedBase(target: BaseRelative): { ok: true }
  * root-clear.
  */
 export function clearContainedBase(target: BaseRelative): { ok: true } | ContainedFail {
-  const listed = readdirContainedBase(target);
-  if (!listed.ok) return listed.reason === 'missing' ? { ok: true } : listed;
-  for (const entry of listed.entries) {
-    const res = rmrfContainedBase({ base: target.base, relative: `${target.relative}/${entry.name}` });
-    if (!res.ok) return res;
+  // Destructive: a bounded read must not leave the tail behind and still report
+  // success. Read one bounded batch, delete it, and re-read until the directory
+  // is empty — incremental iteration rather than truncation (M-NEW-004). The
+  // batch count bounds the loop so a directory being refilled concurrently
+  // cannot spin forever.
+  for (let pass = 0; pass < CLEAR_MAX_PASSES; pass++) {
+    const listed = readdirContainedBase(target);
+    if (!listed.ok) return listed.reason === 'missing' ? { ok: true } : listed;
+    if (listed.entries.length === 0) return { ok: true };
+    for (const entry of listed.entries) {
+      const res = rmrfContainedBase({ base: target.base, relative: `${target.relative}/${entry.name}` });
+      if (!res.ok) return res;
+    }
+    if (!listed.truncated) return { ok: true };
   }
-  return { ok: true };
+  return { ok: false, reason: 'io-error' };
 }
 
 /**

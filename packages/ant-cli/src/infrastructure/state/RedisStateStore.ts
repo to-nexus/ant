@@ -829,6 +829,61 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     logger.info(`[Preview] Registered: ${portKey} → ${host}:${port} (pod: ${podId})`, { component: 'RedisStateStore' });
   }
 
+  /**
+   * Populate the DNS-label indexes from the active preview/deploy registries.
+   *
+   * Subdomain routing resolves through the label index ONLY — there is no
+   * per-request full-registry scan any more (M-NEW-020 / M-NEW-023). A record
+   * written before the index existed, or one whose index entry expired, would
+   * otherwise 404 while the record itself is healthy. A label is a pure function
+   * of the record (coordinates + package urlKeys), so it is always recomputable.
+   *
+   * Startup/maintenance only: this is the one place enumeration is the right
+   * tool. Best-effort — a failure here must not block boot.
+   */
+  async backfillLabelIndexes(): Promise<{ previews: number; deploys: number }> {
+    let previews = 0;
+    let deploys = 0;
+
+    try {
+      const all = await this.listPreviews();
+      const pipeline = this.redis.pipeline();
+      for (const p of all) {
+        const portKey = createPreviewKey(p.tenantId, p.userId, p.projectId, p.feature);
+        for (const label of this.previewLabelsOf(p.tenantId, p.userId, p.projectId, p.feature, p.packages)) {
+          pipeline.set(this.key(REDIS_KEYS.INFRA.PREVIEW_LABEL_IDX, label), portKey, 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
+          previews++;
+        }
+      }
+      if (previews > 0) await pipeline.exec();
+    } catch (err: any) {
+      logger.warn(`[Preview] label-index backfill failed: ${err?.message ?? err}`, { component: 'RedisStateStore' });
+    }
+
+    try {
+      const all = await this.listDeploys();
+      const pipeline = this.redis.pipeline();
+      for (const d of all) {
+        const deployKey = createDeployKey(d.tenantId, d.userId, d.projectId, d.feature);
+        for (const label of this.deployLabelsOf(d.tenantId, d.userId, d.projectId, d.feature, d.packages)) {
+          pipeline.set(this.key(REDIS_KEYS.INFRA.DEPLOY_LABEL_IDX, label), deployKey, 'EX', REDIS_TTL.INFRA.DEPLOY);
+          deploys++;
+        }
+      }
+      if (deploys > 0) await pipeline.exec();
+    } catch (err: any) {
+      logger.warn(`[Deploy] label-index backfill failed: ${err?.message ?? err}`, { component: 'RedisStateStore' });
+    }
+
+    if (previews > 0 || deploys > 0) {
+      logger.info(
+        `[Routing] Label index backfilled: ${previews} preview label(s), ${deploys} deploy label(s)`,
+        { component: 'RedisStateStore' },
+      );
+    }
+    return { previews, deploys };
+  }
+
   /** Every DNS label a preview answers to: the entry key + each frontend package. */
   private previewLabelsOf(
     tenantId: string, userId: string, projectId: string, feature: string,
@@ -928,14 +983,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
       lastAccessedAt: new Date()
     };
 
-    await this.redis.set(key, JSON.stringify(updated), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
-    // Refresh the label index when the package set may have changed, so a
-    // newly-added frontend package resolves O(1) (M-NEW-020).
+    // Record and index move together. The index is the ONLY resolution path for
+    // subdomain routing (there is no full-scan fallback any more), so a dropped
+    // index write is a 404 rather than a slow success — it must be awaited, in
+    // the same round trip as the record (M-NEW-020).
+    const pipeline = this.redis.pipeline();
+    pipeline.set(key, JSON.stringify(updated), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
     if (update.packages !== undefined) {
       for (const label of this.previewLabelsOf(tenantId, userId, projectId, feature, updated.packages)) {
-        this.redis.set(this.key(REDIS_KEYS.INFRA.PREVIEW_LABEL_IDX, label), portKey, 'EX', REDIS_TTL.INFRA.PORT_MAPPING).catch(() => {});
+        pipeline.set(this.key(REDIS_KEYS.INFRA.PREVIEW_LABEL_IDX, label), portKey, 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
       }
     }
+    await pipeline.exec();
     logger.debug(`[Preview] Updated: ${portKey}`, { component: 'RedisStateStore' });
   }
 
@@ -958,7 +1017,16 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
 
     const state: PreviewState = JSON.parse(data);
     state.lastAccessedAt = new Date();
-    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
+    // Refresh the label index alongside the record. Refreshing only the record
+    // let a continuously-accessed preview outlive its index entry, and with the
+    // full-scan fallback removed that is a hard 404 on a healthy preview
+    // (M-NEW-020).
+    const pipeline = this.redis.pipeline();
+    pipeline.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
+    for (const label of this.previewLabelsOf(tenantId, userId, projectId, feature, state.packages)) {
+      pipeline.set(this.key(REDIS_KEYS.INFRA.PREVIEW_LABEL_IDX, label), portKey, 'EX', REDIS_TTL.INFRA.PORT_MAPPING);
+    }
+    await pipeline.exec();
   }
 
   // ============================================
@@ -1028,12 +1096,18 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     pipeline.del(key);
     pipeline.srem(this.key(REDIS_KEYS.INFRA.PREVIEW_LIST), portKey);
     
-    // Cleanup pod index if state exists
+    // Cleanup pod + label indexes if state exists
     if (data) {
       const state: PreviewState = JSON.parse(data);
       pipeline.srem(this.key(REDIS_KEYS.INFRA.PREVIEW_BY_POD, state.podId), portKey);
+      // Drop the label entries now rather than leaving them to expire. The
+      // reader's revalidation still prunes anything missed, but an index that is
+      // the sole resolution path should not carry known-dead labels.
+      for (const label of this.previewLabelsOf(tenantId, userId, projectId, feature, state.packages)) {
+        pipeline.del(this.key(REDIS_KEYS.INFRA.PREVIEW_LABEL_IDX, label));
+      }
     }
-    
+
     await pipeline.exec();
     logger.info(`[Preview] Unregistered: ${portKey}`, { component: 'RedisStateStore' });
   }
@@ -1179,12 +1253,16 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     if (!data) return;
     const state: DeployState = JSON.parse(data);
     Object.assign(state, update);
-    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.DEPLOY);
+    // Record and index in one awaited round trip — the index is the only
+    // resolution path for platform-label routing (M-NEW-023).
+    const pipeline = this.redis.pipeline();
+    pipeline.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.DEPLOY);
     if (update.packages !== undefined) {
       for (const label of this.deployLabelsOf(tenantId, userId, projectId, feature, state.packages)) {
-        this.redis.set(this.key(REDIS_KEYS.INFRA.DEPLOY_LABEL_IDX, label), deployKey, 'EX', REDIS_TTL.INFRA.DEPLOY).catch(() => {});
+        pipeline.set(this.key(REDIS_KEYS.INFRA.DEPLOY_LABEL_IDX, label), deployKey, 'EX', REDIS_TTL.INFRA.DEPLOY);
       }
     }
+    await pipeline.exec();
   }
 
   async touchDeploy(
@@ -1196,7 +1274,15 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     if (!data) return;
     const state: DeployState = JSON.parse(data);
     state.lastAccessedAt = new Date();
-    await this.redis.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.DEPLOY);
+    // Refresh the label index with the record: refreshing only the record let a
+    // continuously-served deploy outlive its index entry, which without the
+    // full-scan fallback is a 404 on a healthy deploy (M-NEW-023).
+    const pipeline = this.redis.pipeline();
+    pipeline.set(key, JSON.stringify(state), 'EX', REDIS_TTL.INFRA.DEPLOY);
+    for (const label of this.deployLabelsOf(tenantId, userId, projectId, feature, state.packages)) {
+      pipeline.set(this.key(REDIS_KEYS.INFRA.DEPLOY_LABEL_IDX, label), deployKey, 'EX', REDIS_TTL.INFRA.DEPLOY);
+    }
+    await pipeline.exec();
   }
 
   async unregisterDeploy(
@@ -1204,9 +1290,16 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
   ): Promise<void> {
     const deployKey = createDeployKey(tenantId, userId, projectId, feature);
     const key = this.key(REDIS_KEYS.INFRA.DEPLOY, deployKey);
+    const data = await this.redis.get(key);
     const pipeline = this.redis.pipeline();
     pipeline.del(key);
     pipeline.srem(REDIS_KEYS.INFRA.DEPLOY_LIST, deployKey);
+    if (data) {
+      const state: DeployState = JSON.parse(data);
+      for (const label of this.deployLabelsOf(tenantId, userId, projectId, feature, state.packages)) {
+        pipeline.del(this.key(REDIS_KEYS.INFRA.DEPLOY_LABEL_IDX, label));
+      }
+    }
     await pipeline.exec();
     logger.info(`[Deploy] Unregistered: ${deployKey}`, { component: 'RedisStateStore' });
   }

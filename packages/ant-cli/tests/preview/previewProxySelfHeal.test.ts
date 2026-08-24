@@ -84,6 +84,8 @@ describe('previewProxy subdomain branch self-heal', () => {
 
     const ensureRunning = vi.fn().mockResolvedValue(healedState());
     const portRegistry: any = {
+      // Index-only label resolution (M-NEW-020): the proxy asks by label.
+      getPreviewByLabel: vi.fn(async () => staleMatch()),
       listPreviews: vi.fn(async () => [staleMatch()]),
       touchPreview: vi.fn(async () => {}),
     };
@@ -107,6 +109,8 @@ describe('previewProxy subdomain branch self-heal', () => {
     fetchSpy = vi.spyOn(globalThis, 'fetch' as any).mockRejectedValue(new Error('dead'));
     const ensureRunning = vi.fn().mockResolvedValue(null);
     const portRegistry: any = {
+      // Index-only label resolution (M-NEW-020): the proxy asks by label.
+      getPreviewByLabel: vi.fn(async () => staleMatch()),
       listPreviews: vi.fn(async () => [staleMatch()]),
       touchPreview: vi.fn(async () => {}),
     };

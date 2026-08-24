@@ -79,19 +79,21 @@ services:
   # the dropped child keeps egid 0 + root's groups (H-014). It defaults to the
   # ant-child gid; override both only to match a different image account.
   #
-  # M-NEW-001 (peer /proc credential exposure): all tenant children share this
-  # one UID, so a same-UID peer can read a concurrent credentialed install's
-  # /proc environ. Closing that at the root requires each user-code child to run
-  # in its own PID namespace (peer pids invisible regardless of shared UID),
-  # which is a DEPLOYMENT responsibility — a per-job pod, a sandbox runtime
-  # (gVisor/Kata), or a securityContext that isolates PIDs — plus a restricted
-  # ptrace_scope. See docs/tmp/audit-7/child-isolation-infra-handoff.md.
+  # The credentialed dependency FETCH gets a THIRD identity (ant-acquire, 10002):
+  # it carries a user's registry PAT in its environment, and /proc/<pid>/environ
+  # is readable by any process sharing its UID — so it must not share the one
+  # every other user-code child runs under (M-NEW-001). Same group as ant-child
+  # so the installed tree stays writable by the credential-free lifecycle pass.
   ant-job:
     user: "0:0"
     environment:
       <<: *ant-env-cloud-base
       ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}
       ANT_CHILD_GID: ${ANT_CHILD_GID:-10001}
+      # Credentialed dependency-FETCH runs under its OWN uid so a same-UID peer
+      # cannot read the user's PAT from /proc/<pid>/environ (M-NEW-001).
+      ANT_CHILD_ACQUIRE_UID: ${ANT_CHILD_ACQUIRE_UID:-10002}
+      ANT_CHILD_ACQUIRE_GID: ${ANT_CHILD_ACQUIRE_GID:-10001}
 
   # Verifies proxy ownership; never serves sign-in. Runs user-authored code, so
   # it receives the public key ONLY.
@@ -101,3 +103,7 @@ services:
       <<: [*ant-env-cloud-base, *ant-env-cloud-verify]
       ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}
       ANT_CHILD_GID: ${ANT_CHILD_GID:-10001}
+      # Credentialed dependency-FETCH runs under its OWN uid so a same-UID peer
+      # cannot read the user's PAT from /proc/<pid>/environ (M-NEW-001).
+      ANT_CHILD_ACQUIRE_UID: ${ANT_CHILD_ACQUIRE_UID:-10002}
+      ANT_CHILD_ACQUIRE_GID: ${ANT_CHILD_ACQUIRE_GID:-10001}

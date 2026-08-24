@@ -427,8 +427,10 @@ export interface StateStorePort {
   ): Promise<void>;
 
   /**
-   * O(1) resolve a deploy by its DNS subdomain label (M-NEW-023). Returns null
-   * on a genuine miss; callers fall back to `listDeploys()` only then.
+   * O(1) resolve a deploy by its DNS subdomain label. This is the ONLY
+   * resolution path for platform-label routing — a miss is a miss, never a
+   * fallback to enumerating the registry, so an unauthenticated caller cannot
+   * force a full scan with a made-up label (M-NEW-023).
    */
   getDeployByLabel(label: string): Promise<DeployState | null>;
 

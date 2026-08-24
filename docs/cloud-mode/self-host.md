@@ -81,16 +81,17 @@ Both are deployment-layer, so the code ships the seam and the deployment decides
    not carry loader/interpreter variables (`LD_*`, `DYLD_*`, `NODE_OPTIONS`, …),
    so a tenant cannot substitute the launcher or inject into it before the drop.
 
-   **Per-tenant peer isolation (M-NEW-001).** All tenant children share the one
-   `ant-child` UID, so — absent further isolation — a same-UID peer can read a
-   concurrent credentialed install's `/proc/<pid>/environ` (its private-registry
-   PAT). Closing this at the root requires each user-code child to run in its own
-   **PID (+mount) namespace**, which makes peer pids invisible regardless of
-   shared UID. This is a deployment responsibility — a per-job pod, a sandbox
-   runtime (gVisor/Kata), or a securityContext that isolates PIDs — together with
-   a restricted `ptrace_scope`. See
-   [child-isolation infra handoff](../tmp/audit-7/child-isolation-infra-handoff.md)
-   for the exact runtime requirements and the verification procedure.
+   **The credentialed install gets its own UID too.** A user's private-registry
+   PAT is passed to the dependency-FETCH pass in its environment, and
+   `/proc/<pid>/environ` is readable by any process sharing that UID — so with a
+   single `ant-child` for everything, one tenant's dev server could read another
+   tenant's PAT out of a concurrent install. Set `ANT_CHILD_ACQUIRE_UID=10002`
+   and `ANT_CHILD_ACQUIRE_GID=10001` (the image provisions `ant-acquire`; same
+   group as `ant-child`, so the installed tree stays writable by the
+   credential-free lifecycle pass). No extra capability is needed beyond the
+   UID/GID drop privilege above. Cloud is fail-closed here as well: a
+   credentialed fetch is refused unless this UID is configured and differs from
+   both the service UID and `ANT_CHILD_UID`.
 
 2. **Serve user content from its own hostname.** `ant-preview` runs two listeners:
    `PORT` (4102) is the cookie-authenticated `/projects/*` control plane, and

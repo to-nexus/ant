@@ -849,25 +849,26 @@ export class DeployService {
    * "unavailable — user must re-deploy".
    */
   /**
-   * Subdomain routing: resolve a Host DNS label to a deploy's coordinates by
-   * RECOMPUTE-and-MATCH over the active deploy set (deterministic label; small
-   * set — no extra Redis index). Returns the matched package's `serviceName`
-   * (5-part urlKey) so the proxy can route multi-package deploys.
+   * Subdomain routing: resolve a Host DNS label to a deploy's coordinates via
+   * the O(1) DNS-label index, then recompute-and-match against that ONE record
+   * to derive the matched package's `serviceName` (5-part urlKey) so the proxy
+   * can route multi-package deploys. The index is authoritative — there is no
+   * registry-scan fallback on a miss (M-NEW-023).
    */
   async resolveDeployLabel(label: string): Promise<{
     tenantId: string; userId: string; projectId: string; feature: string; serviceName?: string;
   } | null> {
-    // O(1) index first (M-NEW-023): match against the single record this label
-    // maps to; only a genuine miss falls back to the full-registry scan, so
-    // steady-state traffic never enumerates every deploy.
+    // O(1) index ONLY (M-NEW-023). The label comes from an unauthenticated
+    // Host/X-Forwarded-Host, so a miss must end here: the old `listDeploys()`
+    // fallback let made-up labels drive a full registry scan on the public
+    // routing path. The match loop below still runs — it derives `serviceName`
+    // from the matched package — but over one record instead of all of them.
     let deploys: DeployState[];
     try {
-      const indexed = typeof this.stateStore.getDeployByLabel === 'function'
-        ? await this.stateStore.getDeployByLabel(label)
-        : null;
-      deploys = indexed ? [indexed] : await this.stateStore.listDeploys();
+      const indexed = await this.stateStore.getDeployByLabel(label);
+      deploys = indexed ? [indexed] : [];
     } catch (err: any) {
-      logger.warn(`[Deploy] resolveDeployLabel list failed: ${err.message}`, { component: 'DeployService' });
+      logger.warn(`[Deploy] resolveDeployLabel index lookup failed: ${err.message}`, { component: 'DeployService' });
       return null;
     }
     for (const d of deploys) {

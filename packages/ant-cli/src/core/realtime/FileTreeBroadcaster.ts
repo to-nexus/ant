@@ -225,7 +225,10 @@ export class FileTreeBroadcaster implements FileTreeUpdatePort {
       const dirBr = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), dirPath);
       let entries: Array<{ name: string; isDir: boolean; isFile: boolean }>;
       if (dirBr) {
-        const listed = readdirContainedBase(dirBr);
+        // Pass the REMAINING budget as the read ceiling: charging after a full
+        // readdir bounded the payload but not the work (M-NEW-004). +1 so the
+        // existing over-budget break below still observes the overflow.
+        const listed = readdirContainedBase(dirBr, budget.entries + 1);
         if (!listed.ok) return nodes;
         entries = listed.entries
           .filter((e) => !e.isSymbolicLink)

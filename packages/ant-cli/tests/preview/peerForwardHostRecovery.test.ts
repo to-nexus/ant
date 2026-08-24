@@ -103,8 +103,11 @@ describe('previewProxy subdomain — owner side recovers the label from X-Forwar
     delete process.env.ANT_DEPLOY_BASE_DOMAIN;
   });
 
+  const record = () => ({ ...SERVER, host: '127.0.0.1', port: 3000, packages: [{ name: 'web', slug: 'web', type: 'frontend', port: 3000, urlKey: LABEL }] });
   const registry = () => ({
-    listPreviews: vi.fn(async () => [{ ...SERVER, host: '127.0.0.1', port: 3000, packages: [{ name: 'web', slug: 'web', type: 'frontend', port: 3000, urlKey: LABEL }] }]),
+    // Index-only label resolution (M-NEW-020).
+    getPreviewByLabel: vi.fn(async (label: string) => (label === LABEL ? record() : null)),
+    listPreviews: vi.fn(async () => [record()]),
     touchPreview: vi.fn(async () => {}),
   }) as any;
 

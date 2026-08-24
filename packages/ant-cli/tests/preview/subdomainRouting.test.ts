@@ -16,15 +16,30 @@ import {
 import {
   previewSubdomainAppUrlForUrlKey,
   deploySubdomainAppUrlForUrlKey,
+  toDnsLabel,
 } from '../../src/periphery/adapters/http/services/PreviewService/utils/previewLabel';
+import { toUrlKey } from '../../src/periphery/adapters/http/services/PreviewService/utils/serverKeyUtils';
 
 const BASE = 'ant-preview.test';
 const SERVER = { tenantId: 'org', userId: 'user', projectId: 'proj', feature: 'feat' };
 const LABEL = 'org--user--proj--feat'; // toDnsLabel of the 4-part urlKey
 
 function mockRegistry(packages: any[], port = 3000, host = '127.0.0.1'): any {
+  const record = { ...SERVER, host, port, packages };
+  // Label routing resolves through the O(1) index ONLY — there is no
+  // registry-scan fallback (M-NEW-020), so the double answers by label. It
+  // mirrors the store's own rule: a label matches when it is one the record
+  // actually answers to (entry key or a frontend package urlKey).
+  const labelsOf = (): string[] => {
+    const labels = new Set<string>([toDnsLabel(toUrlKey(`${SERVER.tenantId}:${SERVER.userId}:${SERVER.projectId}:${SERVER.feature}`))]);
+    for (const p of packages || []) {
+      if (p.type === 'frontend') labels.add(toDnsLabel(p.urlKey || toUrlKey(`${SERVER.tenantId}:${SERVER.userId}:${SERVER.projectId}:${SERVER.feature}`)));
+    }
+    return [...labels];
+  };
   return {
-    listPreviews: vi.fn(async () => [{ ...SERVER, host, port, packages }]),
+    getPreviewByLabel: vi.fn(async (label: string) => (labelsOf().includes(label) ? record : null)),
+    listPreviews: vi.fn(async () => [record]),
     touchPreview: vi.fn(async () => {}),
   };
 }
@@ -186,16 +201,23 @@ describe('resolvePreviewLabel (single label SSOT, mirrors resolveDeployLabel)', 
 describe('DeployService.resolveDeployLabel', () => {
   it('matches a deploy label to its coordinates (+ serviceName for 5-part)', async () => {
     const { DeployService } = await import('../../src/infrastructure/deploy/DeployService');
+    const record = { ...SERVER, packages: [{ slug: 'web', urlKey: 'org--user--proj--feat--web' }] };
+    // Index-only resolution (M-NEW-023): the double answers by label, and a
+    // miss must NOT reach listDeploys.
     const stateStore: any = {
-      listDeploys: vi.fn(async () => [
-        { ...SERVER, packages: [{ slug: 'web', urlKey: 'org--user--proj--feat--web' }] },
-      ]),
+      getDeployByLabel: vi.fn(async (label: string) =>
+        label === 'org--user--proj--feat--web' ? record : null,
+      ),
+      listDeploys: vi.fn(async () => {
+        throw new Error('listDeploys must not be called on the public label path');
+      }),
     };
     const svc = new DeployService({ portManager: {} as any, stateStore });
     const single = await svc.resolveDeployLabel('org--user--proj--feat--web');
     expect(single).toMatchObject({ ...SERVER, serviceName: 'web' });
     const miss = await svc.resolveDeployLabel('no--such--label--here');
     expect(miss).toBeNull();
+    expect(stateStore.listDeploys).not.toHaveBeenCalled();
   });
 
   it('uses the O(1) label index and does NOT enumerate on a hit (M-NEW-023)', async () => {
@@ -213,5 +235,39 @@ describe('DeployService.resolveDeployLabel', () => {
     expect(hit).toMatchObject({ ...SERVER, serviceName: 'web' });
     expect(stateStore.getDeployByLabel).toHaveBeenCalledTimes(1);
     expect(stateStore.listDeploys).not.toHaveBeenCalled();
+  });
+
+  // The label is attacker-controlled (public Host / X-Forwarded-Host), so a MISS
+  // must cost one indexed lookup and stop. It used to fall through to
+  // listDeploys() — SMEMBERS + MGET + JSON.parse over every deploy, per request.
+  it('a hostile label MISS never enumerates the registry (M-NEW-023)', async () => {
+    const { DeployService } = await import('../../src/infrastructure/deploy/DeployService');
+    const stateStore: any = {
+      getDeployByLabel: vi.fn(async () => null),
+      listDeploys: vi.fn(async () => { throw new Error('listDeploys must not be called on a miss'); }),
+    };
+    const svc = new DeployService({ portManager: {} as any, stateStore });
+    for (const label of ['nope-1', 'nope-2', 'a--b--c--d']) {
+      expect(await svc.resolveDeployLabel(label)).toBeNull();
+    }
+    expect(stateStore.listDeploys).not.toHaveBeenCalled();
+    expect(stateStore.getDeployByLabel).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('preview label MISS does not enumerate (M-NEW-020)', () => {
+  it('answers 404 from one indexed lookup, never listPreviews()', async () => {
+    process.env.ANT_PREVIEW_BASE_DOMAIN = BASE;
+    const portRegistry: any = {
+      getPreviewByLabel: vi.fn(async () => null),
+      listPreviews: vi.fn(async () => { throw new Error('listPreviews must not be called on a miss'); }),
+      touchPreview: vi.fn(async () => {}),
+    };
+    const mw = createPreviewProxyMiddleware({ portRegistry });
+    const res = mockRes();
+    await mw(mockReq('/', `no-such-label.${BASE}`), res, (() => {}) as NextFunction);
+    expect(res._c.status).toBe(404);
+    expect(portRegistry.listPreviews).not.toHaveBeenCalled();
+    expect(portRegistry.getPreviewByLabel).toHaveBeenCalledTimes(1);
   });
 });

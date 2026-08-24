@@ -423,10 +423,20 @@ export interface PortRegistryPort {
   ): Promise<void>;
   
   /**
-   * O(1) resolve a preview by its DNS subdomain label (M-NEW-020). Returns null
-   * on a genuine miss; callers fall back to `listPreviews()` only then.
+   * O(1) resolve a preview by its DNS subdomain label. This is the ONLY
+   * resolution path for subdomain routing — a miss is a miss, never a fallback
+   * to enumerating the registry, so an unauthenticated caller cannot force a
+   * full scan with a made-up label (M-NEW-020). Lifecycle keeps the index
+   * authoritative: register/update/touch write it, unregister deletes it, and
+   * `backfillLabelIndexes()` repopulates it at boot.
    */
   getPreviewByLabel(label: string): Promise<PreviewState | null>;
+
+  /**
+   * Repopulate the preview/deploy DNS-label indexes from the active registries.
+   * Startup/maintenance only — see the note on {@link getPreviewByLabel}.
+   */
+  backfillLabelIndexes(): Promise<{ previews: number; deploys: number }>;
 
   /**
    * List all active previews

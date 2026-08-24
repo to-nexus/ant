@@ -9,7 +9,12 @@ import type { ProjectProfile } from '@ant/shared';
 import type { LogCallback } from '../types';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
 import { composeChildEnv } from './envAssembly';
-import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../../../../../core/config/childIdentity';
+import {
+  childSpawnIdentity,
+  assertUserCodeIsolationOrThrow,
+  credentialedAcquireIdentity,
+  assertCredentialedAcquireIsolationOrThrow,
+} from '../../../../../../core/config/childIdentity';
 
 // npm install on EFS can be slow; 3 minutes is generous but prevents infinite hang
 const INSTALL_TIMEOUT_MS = 3 * 60 * 1000;
@@ -423,6 +428,18 @@ export class DependencyInstaller {
       // The node install pass runs lifecycle scripts / loaders the project
       // authors — fail closed in cloud without UID isolation (M-015).
       assertUserCodeIsolationOrThrow('preview:install:node');
+
+      // The credentialed FETCH pass holds the user's PAT in its environment, and
+      // /proc/<pid>/environ is readable by any process sharing its UID — which,
+      // with one deployment-wide child UID, means a concurrently running dev
+      // server or lifecycle script (tenant-authored code) could read it. Run
+      // that one pass under its own identity, and refuse rather than fall back
+      // to the shared UID in cloud (M-NEW-001). The credential-free lifecycle
+      // pass keeps the ordinary child identity.
+      const credentialed = credentialEnv !== undefined && Object.keys(credentialEnv).length > 0;
+      if (credentialed) assertCredentialedAcquireIsolationOrThrow('preview:install:node:acquire');
+      const identity = credentialed ? credentialedAcquireIdentity() : childSpawnIdentity();
+
       const installProcess = spawn(command, args, {
         cwd: packagePath,
         shell: true,
@@ -430,7 +447,7 @@ export class DependencyInstaller {
         // invocationEnv carries package-manager loader-isolation flags (e.g.
         // yarn YARN_IGNORE_PATH) that must apply on the credentialed pass.
         env: composeChildEnv({ COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...invocationEnv }, credentialEnv),
-        ...childSpawnIdentity(),
+        ...identity,
       });
 
       const onAbort = () => {

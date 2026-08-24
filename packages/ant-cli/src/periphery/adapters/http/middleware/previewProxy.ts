@@ -215,15 +215,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
       const label = extractLabelFromHost(externalHost, getPreviewBaseDomain());
       if (!label) return next();
 
-      // O(1) index first (M-NEW-020): resolve the single record this label maps
-      // to and match against it. Only a genuine index miss falls back to the
-      // full-registry scan, so steady-state traffic never enumerates.
-      const indexed = typeof portRegistry.getPreviewByLabel === 'function'
-        ? await portRegistry.getPreviewByLabel(label)
-        : null;
-      const match = indexed
-        ? resolvePreviewLabel([indexed], label)
-        : resolvePreviewLabel(await portRegistry.listPreviews(), label);
+      // O(1) index ONLY (M-NEW-020). An unauthenticated caller controls this
+      // label, so a miss must cost one Redis GET and end — the old
+      // `listPreviews()` fallback let a stream of made-up labels drive a full
+      // registry scan (SMEMBERS + MGET + JSON.parse) on the public listener.
+      // Lifecycle keeps the index authoritative (register/update/touch write it,
+      // unregister deletes it, boot backfills it).
+      const indexed = await portRegistry.getPreviewByLabel(label);
+      const match = indexed ? resolvePreviewLabel([indexed], label) : null;
       if (!match) {
         trace(`${externalHost} label=${label} → MISS 404`);
         res.status(404).json({ error: 'Preview not found' });

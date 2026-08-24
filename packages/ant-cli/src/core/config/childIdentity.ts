@@ -110,6 +110,65 @@ export function childSpawnIdentity(): ChildSpawnIdentity {
   return isDropPermitted(identity) ? identity : {};
 }
 
+/**
+ * Spawn identity for the ONE child that carries a user's registry/git credential
+ * — the `--ignore-scripts` dependency-FETCH pass.
+ *
+ * `/proc/<pid>/environ` is mode 0400 owned by the process UID, so a peer running
+ * under a DIFFERENT UID cannot read it. Every other user-authored child shares
+ * one `ANT_CHILD_UID`, which means a concurrent dev server or lifecycle script —
+ * code the tenant wrote — could otherwise read the PAT straight out of the
+ * acquire process's environment (M-NEW-001). Giving the credentialed pass its own
+ * UID is what closes that, and it stays bounded: two fixed role identities, not
+ * one per tenant (a per-tenant range would collide once tenants outnumber it).
+ *
+ * The acquire identity keeps the same primary group, so the tree it writes is
+ * still writable by the credential-free lifecycle pass that follows.
+ *
+ * Falls back to `childSpawnIdentity()` outside cloud (single-user local has no
+ * second account and no cross-tenant peer). In cloud the caller must first pass
+ * {@link assertCredentialedAcquireIsolationOrThrow}.
+ */
+export function credentialedAcquireIdentity(): ChildSpawnIdentity {
+  const uid = readId('ANT_CHILD_ACQUIRE_UID');
+  const gid = readId('ANT_CHILD_ACQUIRE_GID') ?? readId('ANT_CHILD_GID');
+  if (uid === undefined) return childSpawnIdentity();
+
+  const identity: ChildSpawnIdentity = {
+    uid,
+    ...(gid !== undefined ? { gid } : {}),
+  };
+  return isDropPermitted(identity) ? identity : childSpawnIdentity();
+}
+
+/**
+ * Fail-closed gate for a spawn that will carry a user credential in its
+ * environment. In cloud the acquire UID must exist and differ from BOTH the
+ * service UID and the ordinary child UID — otherwise the credential sits in an
+ * environment a tenant's own concurrently-running code can read.
+ *
+ * Local mode is a single-user trust boundary: no-op.
+ */
+export function assertCredentialedAcquireIsolationOrThrow(context: string): void {
+  if (process.env.ANT_SERVER_MODE !== 'cloud') return;
+
+  const acquireUid = readId('ANT_CHILD_ACQUIRE_UID');
+  const childUid = readId('ANT_CHILD_UID');
+  const parentUid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+
+  const distinctFromService = acquireUid !== undefined && (parentUid === undefined || acquireUid !== parentUid);
+  const distinctFromChild = acquireUid !== undefined && acquireUid !== childUid;
+
+  if (distinctFromService && distinctFromChild && isDropPermitted(credentialedAcquireIdentity())) return;
+
+  throw new Error(
+    `[childIdentity] Refusing to run a credentialed dependency fetch (${context}) without a dedicated OS identity. ` +
+    'Cloud requires ANT_CHILD_ACQUIRE_UID set to an unprivileged account DIFFERENT from both the service UID and ' +
+    'ANT_CHILD_UID, with the container permitted to change UIDs. Sharing ANT_CHILD_UID would leave the credential ' +
+    "readable from a concurrent user-code child's /proc.",
+  );
+}
+
 // Keyed by the exact (uid,gid) probed — a single boolean cache answered a probe
 // for one identity with a verdict taken for another. The capability is still a
 // deployment fact, so each distinct identity is probed at most once.

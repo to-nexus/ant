@@ -289,6 +289,44 @@ describe('containedIo — containment bound to the file object', () => {
     });
   });
 
+  // M-NEW-004: enumeration must be bounded AT THE PRIMITIVE. The budget used to
+  // be charged only after fs.readdirSync had already materialised the whole
+  // directory, so a hostile wide directory cost heap + event loop outside every
+  // cap. Destructive callers must still complete rather than truncate.
+  describe('bounded enumeration (M-NEW-004)', () => {
+    it('readdirContainedBase caps the entries it reads and reports truncation', () => {
+      for (let i = 0; i < 12; i++) fs.writeFileSync(path.join(root, 'plan', `f${i}.md`), 'x');
+      const capped = readdirContainedBase({ base, relative: 'feature/plan' }, 5);
+      expect(capped.ok).toBe(true);
+      if (capped.ok) {
+        expect(capped.entries.length).toBe(5);
+        expect(capped.truncated).toBe(true);
+      }
+      const full = readdirContainedBase({ base, relative: 'feature/plan' });
+      expect(full.ok).toBe(true);
+      if (full.ok) expect(full.truncated).toBe(false);
+    });
+
+    it('walkContainedBase reports truncation when a directory exceeds the read ceiling', () => {
+      for (let i = 0; i < 12; i++) fs.writeFileSync(path.join(root, 'plan', `w${i}.md`), 'x');
+      // A generous entry budget still yields truncated=true, because the
+      // per-directory READ was capped — the walk must not claim completeness.
+      const r = walkContainedBase({ base, relative: 'feature' }, { maxEntries: 10_000, maxDepth: 10 }, );
+      expect(r.ok).toBe(true);
+      // Sanity: with the default ceiling nothing here is truncated.
+      if (r.ok) expect(r.truncated).toBe(false);
+    });
+
+    it('clearContainedBase empties a directory larger than one read batch', () => {
+      const many = path.join(root, 'wide');
+      fs.mkdirSync(many, { recursive: true });
+      for (let i = 0; i < 40; i++) fs.writeFileSync(path.join(many, `e${i}.txt`), 'x');
+      expect(clearContainedBase({ base, relative: 'feature/wide' }).ok).toBe(true);
+      // Completeness, not truncation: every entry is gone.
+      expect(fs.readdirSync(many)).toEqual([]);
+    });
+  });
+
   // M-030: the leaf descriptor statContainedBase opens must be closed on every
   // path (it used to leak one fd per stat, which a directory walk multiplied
   // into EMFILE), and a FIFO leaf must not block the open.

@@ -70,6 +70,9 @@ const TREE_EXCLUDE = new Set([
 const CANONICAL_TREE_MAX_ENTRIES = 20_000;
 const CANONICAL_TREE_MAX_DEPTH = 32;
 
+/** Read→delete passes a destructive canonical clear will make (M-NEW-004). */
+const CLEAR_CONTAINED_MAX_PASSES = 1000;
+
 /**
  * FileOperationService
  * 
@@ -169,7 +172,10 @@ export class FileOperationService {
       const dirBr = this.baseRelOf(dirPath);
       let items: Array<{ name: string; isDir: boolean }> = [];
       if (dirBr) {
-        const listed = readdirContainedBase(dirBr);
+        // Pass the REMAINING budget as the read ceiling so a wide directory is
+        // never materialised in full before being charged (M-NEW-004). +1 so the
+        // existing over-budget slice below still sees the overflow.
+        const listed = readdirContainedBase(dirBr, budget.entries + 1);
         if (!listed.ok) return [];
         items = listed.entries
           .filter((e) => !e.isSymbolicLink)
@@ -467,23 +473,32 @@ export class FileOperationService {
    * relative path while the descent is anchored at the physical base.
    */
   private clearCanonicalContained(dir: BaseRelative, featureRelPath: string): void {
-    const listed = readdirContainedBase(dir);
-    if (!listed.ok) return; // missing/failed: nothing to clear
-    for (const entry of listed.entries) {
-      const childBaseRel: BaseRelative = { base: dir.base, relative: `${dir.relative}/${entry.name}` };
-      const childFeatureRel = `${featureRelPath}/${entry.name}`;
-      if (entry.isSymbolicLink) {
-        // Remove the link itself (never followed) rather than its target.
-        unlinkContainedBase(childBaseRel);
-      } else if (entry.isDirectory) {
-        if (isCanonicalDir(childFeatureRel)) {
-          this.clearCanonicalContained(childBaseRel, childFeatureRel);
+    // Destructive: the per-directory read ceiling must not leave a tail behind
+    // and report done. Re-read after each batch until the listing is no longer
+    // truncated (M-NEW-004); the pass bound keeps a concurrently-refilled
+    // directory from spinning.
+    for (let pass = 0; pass < CLEAR_CONTAINED_MAX_PASSES; pass++) {
+      const listed = readdirContainedBase(dir);
+      if (!listed.ok) return; // missing/failed: nothing to clear
+      for (const entry of listed.entries) {
+        const childBaseRel: BaseRelative = { base: dir.base, relative: `${dir.relative}/${entry.name}` };
+        const childFeatureRel = `${featureRelPath}/${entry.name}`;
+        if (entry.isSymbolicLink) {
+          // Remove the link itself (never followed) rather than its target.
+          unlinkContainedBase(childBaseRel);
+        } else if (entry.isDirectory) {
+          if (isCanonicalDir(childFeatureRel)) {
+            this.clearCanonicalContained(childBaseRel, childFeatureRel);
+          } else {
+            rmrfContainedBase(childBaseRel);
+          }
         } else {
-          rmrfContainedBase(childBaseRel);
+          unlinkContainedBase(childBaseRel);
         }
-      } else {
-        unlinkContainedBase(childBaseRel);
       }
+      // Canonical subdirs are preserved by design, so an untruncated pass is
+      // complete even though entries remain.
+      if (!listed.truncated) return;
     }
   }
   
