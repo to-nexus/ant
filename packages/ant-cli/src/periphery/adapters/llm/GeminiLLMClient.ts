@@ -19,6 +19,7 @@ import {
   ToolUseContentBlock,
   resolveToolChoice,
 } from '../../../core/ports/llm';
+import { wireTemperature } from '../../../core/ports/llmSampling';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetry } from '../../../core/utils/retry';
 import { sanitizeMessages, applySystemOption } from '../../../core/utils/sanitizeMessages';
@@ -58,6 +59,19 @@ export class GeminiLLMClient implements LLMClient {
     this.maxTokens = config?.maxTokens ?? 16000;
   }
 
+
+  /**
+   * Explicit verdict, not an omission: Gemini accepts temperature alongside
+   * thinking (thinkingConfig is a separate, server-bounded axis), ant
+   * registers Gemini for short-output visual classification only, and no
+   * reasoning-loop incident has been observed here — so the client
+   * temperature always flows. Flip the predicate the moment a Gemini worker
+   * shows the GLM-class low-temp thinking loop (jade-hiking-penny RCA).
+   */
+  private samplingParams(temperature: number): Record<string, unknown> {
+    return wireTemperature(true, temperature);
+  }
+
   async invoke(
     messages: Array<{ role: string; content: string | CacheableContent[] }>,
     options?: Record<string, any>
@@ -84,7 +98,7 @@ export class GeminiLLMClient implements LLMClient {
           contents,
           config: {
             ...(systemInstruction ? { systemInstruction } : {}),
-            temperature,
+            ...this.samplingParams(temperature),
             maxOutputTokens: options?.maxTokens || this.maxTokens,
           },
         });
@@ -145,7 +159,7 @@ export class GeminiLLMClient implements LLMClient {
       contents,
       config: {
         ...(systemInstruction ? { systemInstruction } : {}),
-        temperature,
+        ...this.samplingParams(temperature),
         maxOutputTokens: options?.maxTokens || this.maxTokens,
         ...(geminiTools ? { tools: geminiTools } : {}),
         // Port `toolChoice` → Gemini functionCallingConfig (native support).

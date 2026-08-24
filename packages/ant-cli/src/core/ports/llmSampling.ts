@@ -59,3 +59,24 @@ export const LLM_TEMPERATURE = {
   /** ask agent · visual explain — grounded Q&A, so 0.5 rather than the old accidental 0.7 */
   CONVERSATIONAL: 0.5,
 } as const;
+
+/**
+ * Single owner of the wire rule "the client temperature reaches the request
+ * only when the model accepts it on this call". The PREDICATE is provider
+ * wire knowledge and stays in each adapter (Anthropic: registry thinkingMode;
+ * OpenAI-compat: the per-round thinking toggle; Responses: registry
+ * `supportsTemperature`; Gemini: always — an explicit verdict, see
+ * `GeminiLLMClient.samplingParams`); this function owns only the application,
+ * so every adapter funnels through one greppable, policy-locked name
+ * (tests/policy/llm-temperature-ssot.test.ts) instead of hand-rolling the
+ * same ternary under a fourth name — the fragmentation that let GLM thinking
+ * rounds receive 0.3 while Anthropic thinking rounds never could
+ * (jade-hiking-penny RCA).
+ */
+export function wireTemperature(
+  sendTemperature: boolean,
+  temperature: number | undefined,
+): { temperature?: number } {
+  if (!sendTemperature || temperature === undefined) return {};
+  return { temperature };
+}

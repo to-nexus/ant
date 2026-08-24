@@ -91,3 +91,36 @@ describe('key sites — table constants wired', () => {
     });
   }
 });
+
+describe('adapters — temperature wire funnel (wireTemperature single owner)', () => {
+  // The rule "client temperature reaches the wire only when the model accepts
+  // it on this call" is owned by core/ports/llmSampling.ts wireTemperature.
+  // The PREDICATE stays per-adapter (Anthropic: registry thinkingMode;
+  // OpenAI-compat: per-round thinking toggle; Responses: supportsTemperature;
+  // Gemini: always — an explicit verdict). Before this funnel the same rule
+  // lived under three names across three adapters with Gemini silently
+  // missing — the fragmentation class that let GLM thinking rounds receive
+  // 0.3 while Anthropic thinking rounds never could (jade-hiking-penny RCA).
+  //
+  // Exempt: GeminiImageClient (image-generation sampling is a different
+  // axis), LLMClientFactory (constructor config passthrough, not wire
+  // assembly), MockLLMClient (no wire).
+  const ADAPTER_DIR = join(SRC, 'periphery/adapters/llm');
+  const FUNNELED = [
+    'AnthropicLLMClient.ts',
+    'OpenAILLMClient.ts',
+    'OpenAIResponsesLLMClient.ts',
+    'GeminiLLMClient.ts',
+  ];
+
+  for (const f of FUNNELED) {
+    it(`${f} routes temperature through wireTemperature`, () => {
+      const src = readFileSync(join(ADAPTER_DIR, f), 'utf8');
+      expect(src).toMatch(/wireTemperature\(/);
+      // The bespoke idioms the funnel replaced — a hand-assembled wire
+      // temperature bypasses every thinking/registry predicate.
+      expect(src).not.toMatch(/temperature:\s*options\?\.temperature\s*\?\?\s*this\.temperature/);
+      expect(src).not.toMatch(/^\s*temperature,\s*$/m);
+    });
+  }
+});

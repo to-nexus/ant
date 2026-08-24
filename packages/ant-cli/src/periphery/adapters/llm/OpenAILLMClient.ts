@@ -19,6 +19,7 @@ import {
   ImageContentBlock,
   resolveToolChoice,
 } from '../../../core/ports/llm';
+import { wireTemperature } from '../../../core/ports/llmSampling';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { getLLMDispatcher } from './llmDispatcher';
@@ -148,8 +149,10 @@ export class OpenAILLMClient implements LLMClient {
     const thinking = this.resolveThinkingParam(options) as {
       thinking?: { type: string };
     };
-    if (thinking.thinking?.type === 'enabled') return {};
-    return { temperature: options?.temperature ?? this.temperature };
+    return wireTemperature(
+      thinking.thinking?.type !== 'enabled',
+      options?.temperature ?? this.temperature,
+    );
   }
 
   async invoke(messages: Array<{ role: string; content: string | CacheableContent[] }>, options?: Record<string, any>): Promise<string> {

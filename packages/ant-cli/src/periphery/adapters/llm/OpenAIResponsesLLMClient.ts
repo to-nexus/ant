@@ -37,6 +37,7 @@ import {
   TextContentBlock,
   resolveToolChoice,
 } from '../../../core/ports/llm';
+import { wireTemperature } from '../../../core/ports/llmSampling';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { getLLMDispatcher } from './llmDispatcher';
@@ -178,8 +179,7 @@ export class OpenAIResponsesLLMClient implements LLMClient {
   }
 
   private samplingParams(temperature?: number): Record<string, unknown> {
-    if (!this.sendsTemperature) return {};
-    return { temperature: temperature ?? this.temperature };
+    return wireTemperature(this.sendsTemperature, temperature ?? this.temperature);
   }
 
   private toolsParam(tools?: ToolDefinition[]): Record<string, unknown> {

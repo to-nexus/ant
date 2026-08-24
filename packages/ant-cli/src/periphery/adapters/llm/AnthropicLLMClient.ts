@@ -13,6 +13,7 @@ import {
   TextContentBlock, ImageContentBlock, ToolUseContentBlock, ToolResultContentBlock, ThinkingContentBlock,
   resolveToolChoice,
 } from '../../../core/ports/llm';
+import { wireTemperature } from '../../../core/ports/llmSampling';
 import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, withRetry, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { sanitizeMessages } from '../../../core/utils/sanitizeMessages';
@@ -170,11 +171,9 @@ export class AnthropicLLMClient implements LLMClient {
     enableThinking: boolean,
     temperature: number | undefined,
   ): Record<string, any> {
-    if (temperature === undefined) return {};
     const mode = getThinkingMode(this.modelName);
-    if (mode === 'adaptive') return {};
-    if (mode === 'extended' && enableThinking) return {};
-    return { temperature };
+    const send = mode !== 'adaptive' && !(mode === 'extended' && enableThinking);
+    return wireTemperature(send, temperature);
   }
 
   // Parsed-event BACKSTOP window, not a liveness judge. Transport-level
