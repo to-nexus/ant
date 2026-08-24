@@ -160,9 +160,17 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   ([childIdentity.ts](../../packages/ant-cli/src/core/config/childIdentity.ts))
   is applied at every user-authored spawn (preview dev servers, dependency
   installs, provisioning, deploy builds, static servers, `run_command`), and the
-  images provision an unprivileged `ant-child` account. Whether the drop is
-  *permitted* is a deployment fact (an effective `CAP_SETUID`), so the runtime
-  probes once and logs loudly rather than failing every spawn.
+  images (OSS `packages/ant-cli/Dockerfile` AND ant-cloud `Dockerfile.cli`)
+  provision an unprivileged `ant-child` account. Whether the drop is *permitted*
+  is a deployment fact (an effective `CAP_SETUID`), probed once and cached.
+  Cloud mode (`ANT_SERVER_MODE=cloud`) is **fail-closed**:
+  `assertUserCodeIsolationOrThrow` refuses every user-authored spawn unless
+  `ANT_CHILD_UID` is set, differs from the service UID, and the drop probe
+  succeeds — so a cloud deployment MUST set `ANT_CHILD_UID` (and typically
+  `ANT_CHILD_GID`) on the job-worker and preview pods and grant them the
+  UID-change privilege, or `run_command`/preview/deploy are dead on arrival
+  (zinc-bracing-gavel). Local mode is a single-developer trust boundary and
+  skips the gate.
 - **User CONTENT and the CONTROL PLANE are different browser origins.** ✅
   ant-preview serves attacker-authorable documents (a public deploy's build
   output, a user's dev server) and a cookie-authenticated `/projects/*` API that

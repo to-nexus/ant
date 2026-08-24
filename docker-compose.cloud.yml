@@ -67,12 +67,25 @@ services:
       <<: [*ant-env-cloud-base, *ant-env-cloud-verify]
 
   # No HTTP surface → verifies nothing, signs nothing.
+  #
+  # Cloud mode REFUSES user-authored spawns (run_command) unless children can be
+  # dropped to a different UID (childIdentity gate). The image ships the
+  # `ant-child` account (uid 10001, no login); changing UIDs needs CAP_SETUID,
+  # which a non-root service does not have — so the two user-code services run
+  # as container root and every user-authored child is dropped to ant-child.
+  # See docs/guides/self-host-cloud.md.
   ant-job:
+    user: "0:0"
     environment:
       <<: *ant-env-cloud-base
+      ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}
+      ANT_CHILD_GID: ${ANT_CHILD_GID:-}
 
   # Verifies proxy ownership; never serves sign-in. Runs user-authored code, so
   # it receives the public key ONLY.
   ant-preview:
+    user: "0:0"
     environment:
       <<: [*ant-env-cloud-base, *ant-env-cloud-verify]
+      ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}
+      ANT_CHILD_GID: ${ANT_CHILD_GID:-}
