@@ -102,6 +102,7 @@ export interface CommandPort {
     onExit?: (code: number) => void;
   }): Promise<{ stdout: string; stderr: string; exitCode: number; success: boolean }>;
   isAllowed(command: string): boolean;
+  notAllowedGuidance?(): string;
 }
 
 export interface GitPort {

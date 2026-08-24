@@ -755,7 +755,7 @@ async function executeCommandLogic(
         return makeRejection(
           ctx,
           command,
-          `❌ COMMAND NOT ALLOWED: ${command}\n\nOnly whitelisted commands are permitted.`,
+          `❌ COMMAND NOT ALLOWED: ${command}\n\n${commandPort.notAllowedGuidance?.() ?? 'Only whitelisted commands are permitted.'}`,
           cardId,
           verifies,
         );

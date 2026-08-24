@@ -50,4 +50,7 @@ export interface CommandPort {
 
   /** Check if a command is allowed to run (allowlist policy). */
   isAllowed(command: string): boolean;
+
+  /** Model-facing guidance appended to allowlist rejections. */
+  notAllowedGuidance(): string;
 }

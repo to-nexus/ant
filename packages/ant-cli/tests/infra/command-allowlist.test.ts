@@ -35,7 +35,8 @@ describe('NodeCommandAdapter.isAllowed', () => {
     });
 
     it('rejects unknown commands', () => {
-      expect(adapter.isAllowed('python script.py')).toBe(false);
+      expect(adapter.isAllowed('perl script.pl')).toBe(false);
+      expect(adapter.isAllowed('ruby script.rb')).toBe(false);
       expect(adapter.isAllowed('bash -c "rm -rf /"')).toBe(false);
     });
 
@@ -78,6 +79,58 @@ describe('NodeCommandAdapter.isAllowed', () => {
 
     it('allows turbo (Turborepo)', () => {
       expect(adapter.isAllowed('turbo run build')).toBe(true);
+    });
+
+    it('allows the Python runtime (python3/python/uv)', () => {
+      // cyan-healing-drake regression: these exact shapes were blocked mid-job.
+      expect(adapter.isAllowed('python3 codebase/gen_report.py')).toBe(true);
+      expect(adapter.isAllowed('python3 -c "import os"')).toBe(true);
+      expect(adapter.isAllowed('cat x | python3 -c "import sys"')).toBe(true);
+      expect(adapter.isAllowed('python script.py')).toBe(true);
+      expect(adapter.isAllowed('uv sync')).toBe(true);
+      expect(adapter.isAllowed('uv run pytest')).toBe(true);
+    });
+
+    it('allows read-only encoding/checksum utilities', () => {
+      expect(adapter.isAllowed('base64 -w 0 "codebase/스크린샷.png" | wc -c')).toBe(true);
+      expect(adapter.isAllowed('od -c file.bin | head')).toBe(true);
+      expect(adapter.isAllowed('xxd file.bin | head')).toBe(true);
+      expect(adapter.isAllowed('sha256sum dist/app.tgz')).toBe(true);
+      expect(adapter.isAllowed('shasum -a 256 dist/app.tgz')).toBe(true);
+      expect(adapter.isAllowed('md5sum dist/app.tgz')).toBe(true);
+      expect(adapter.isAllowed("printf '%s\\n' done")).toBe(true);
+    });
+
+    it('allows archive tools', () => {
+      expect(adapter.isAllowed('tar -xzf assets.tgz -C codebase/assets')).toBe(true);
+      expect(adapter.isAllowed('gunzip data.json.gz')).toBe(true);
+      expect(adapter.isAllowed('gzip -k data.json')).toBe(true);
+      expect(adapter.isAllowed('unzip fonts.zip -d codebase/fonts')).toBe(true);
+      expect(adapter.isAllowed('zip -r out.zip dist/')).toBe(true);
+    });
+
+    it('allows read-only system diagnostics', () => {
+      expect(adapter.isAllowed('uname -a')).toBe(true);
+      expect(adapter.isAllowed('id')).toBe(true);
+      expect(adapter.isAllowed('whoami')).toBe(true);
+      expect(adapter.isAllowed('hostname')).toBe(true);
+      expect(adapter.isAllowed('nproc')).toBe(true);
+    });
+  });
+
+  describe('wrapper commands check the wrapped command', () => {
+    it('allows timeout/env wrapping an allowlisted command', () => {
+      expect(adapter.isAllowed('timeout 30 go test ./...')).toBe(true);
+      expect(adapter.isAllowed('timeout 5s curl http://localhost:4100/api/health')).toBe(true);
+      expect(adapter.isAllowed('env FOO=1 node script.js')).toBe(true);
+      expect(adapter.isAllowed('env timeout 10 npm test')).toBe(true);
+      expect(adapter.isAllowed('env')).toBe(true);
+    });
+
+    it('rejects timeout/env wrapping a disallowed command', () => {
+      expect(adapter.isAllowed('timeout 30 bash -c "ls"')).toBe(false);
+      expect(adapter.isAllowed('env bash -c "ls"')).toBe(false);
+      expect(adapter.isAllowed('env FOO=1 perl evil.pl')).toBe(false);
     });
   });
 
@@ -134,14 +187,12 @@ describe('NodeCommandAdapter.isAllowed', () => {
       expect(adapter.isAllowed('cat f | tr a-z A-Z')).toBe(true);
     });
 
-    it('STILL rejects file-writing and arbitrary-interpreter commands', () => {
-      // File creation must go through <file> tags, not shell redirection.
-      expect(adapter.isAllowed("printf 'shamefully-hoist=true\\n' > .npmrc")).toBe(false);
-      expect(adapter.isAllowed("tee .npmrc")).toBe(false);
+    it('STILL rejects write-policy bypass and shell-escape commands', () => {
+      // tee/ln bypass the write-target policy; sh/bash -c bypasses this allowlist.
+      expect(adapter.isAllowed('tee .npmrc')).toBe(false);
       expect(adapter.isAllowed('ln -s /tmp/test .symlink_test')).toBe(false);
-      // Arbitrary interpreters stay out (node -e already covers scripting needs).
-      expect(adapter.isAllowed('python3 -c "import os"')).toBe(false);
-      expect(adapter.isAllowed('cat x | python3 -c "import sys"')).toBe(false);
+      expect(adapter.isAllowed('sh -c "ls"')).toBe(false);
+      expect(adapter.isAllowed('dd if=/dev/zero of=big.bin')).toBe(false);
     });
   });
 
@@ -162,11 +213,11 @@ describe('NodeCommandAdapter.isAllowed', () => {
     });
 
     it('rejects if any segment in a pipe is disallowed', () => {
-      expect(adapter.isAllowed('cat file | python -c "import os"')).toBe(false);
+      expect(adapter.isAllowed('cat file | perl -e "print"')).toBe(false);
     });
 
     it('rejects if any segment in && is disallowed', () => {
-      expect(adapter.isAllowed('ls && python evil.py')).toBe(false);
+      expect(adapter.isAllowed('ls && perl evil.pl')).toBe(false);
     });
   });
 
@@ -226,7 +277,17 @@ describe('NodeCommandAdapter.isAllowed', () => {
     });
 
     it('rejects disallowed command after quoted env var', () => {
-      expect(adapter.isAllowed('FOO="bar baz" python evil.py')).toBe(false);
+      expect(adapter.isAllowed('FOO="bar baz" perl evil.pl')).toBe(false);
+    });
+  });
+
+  describe('rejection guidance', () => {
+    it('names the head-token rule and the allowed binaries', () => {
+      const guidance = adapter.notAllowedGuidance();
+      expect(guidance).toContain('must start with an allowlisted binary');
+      expect(guidance).toContain('base64');
+      expect(guidance).toContain('python3');
+      expect(guidance).toContain('node_modules/.bin/');
     });
   });
 });

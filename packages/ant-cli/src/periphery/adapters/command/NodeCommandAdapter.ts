@@ -80,7 +80,12 @@ export class NodeCommandAdapter implements CommandPort {
     
     // Runtime - Rust
     'cargo',     // cargo run, cargo build, cargo test
-    
+
+    // Runtime - Python
+    'python3',   // python3 script.py / python3 -m …
+    'python',    // distro alias for python3
+    'uv',        // uv run / uv sync (install locality guarded by codeCommandPolicy)
+
     // Runtime - Bun
     'bun',       // bun run, bun build, bun test
     
@@ -141,7 +146,23 @@ export class NodeCommandAdapter implements CommandPort {
     'yq',        // YAML/JSON query (read-only without -i)
     'printenv',  // Print environment variables (read-only)
     'date',      // Current date/time (read-only)
-    
+    'printf',    // Formatted print (same risk class as echo)
+
+    // Encoding / binary inspection (read-only: stdin/file → stdout)
+    'base64',    // Encode/decode (e.g. embed binary assets as data URIs)
+    'od',        // Octal/hex dump
+    'xxd',       // Hex dump
+    'sha256sum', // Checksum verification
+    'shasum',    // Checksum verification (macOS/perl variant)
+    'md5sum',    // Checksum verification
+
+    // Archives (curl/wget are allowed; downloads must be extractable)
+    'tar',
+    'gzip',
+    'gunzip',
+    'unzip',
+    'zip',
+
     // Network
     'curl',      // HTTP requests / API testing
     'wget',      // Download files
@@ -152,6 +173,11 @@ export class NodeCommandAdapter implements CommandPort {
     // System info
     'pwd',       // Print working directory
     'tree',      // Directory tree (if installed)
+    'uname',     // Kernel/arch (read-only)
+    'id',        // Current uid/gid (read-only)
+    'whoami',    // Current user (read-only)
+    'hostname',  // Host name (read-only)
+    'nproc',     // CPU count (read-only)
     
     // Process management
     'ps',        // Process listing (procps full ps replaces busybox mini-ps)
@@ -170,6 +196,7 @@ export class NodeCommandAdapter implements CommandPort {
     'sleep',
     'true',
     'false',
+    'timeout',   // Bounded runs (`timeout 30 go test ./...`)
 
     // Common shell builtins / env helpers used in compound commands
     'env',
@@ -200,6 +227,16 @@ export class NodeCommandAdapter implements CommandPort {
 
       if (tokens[i] === 'export' || tokens[i] === 'unset') return tokens[i];
 
+      // `env` / `timeout` are wrappers — the command they run must pass the
+      // allowlist itself, so skip the wrapper and its own arguments.
+      while (i < tokens.length && (tokens[i] === 'env' || tokens[i] === 'timeout')) {
+        const wrapper = tokens[i];
+        i++;
+        while (i < tokens.length && (tokens[i].startsWith('-') || isAssignment(tokens[i]))) i++;
+        if (wrapper === 'timeout' && i < tokens.length && /^\d+(\.\d+)?[smhd]?$/.test(tokens[i])) i++;
+        if (i >= tokens.length) return wrapper;
+      }
+
       const token = tokens[i].replace(/^\(+/, '').replace(/\)+$/, '');
       return token || null;
     };
@@ -213,6 +250,18 @@ export class NodeCommandAdapter implements CommandPort {
     }
 
     return true;
+  }
+
+  /**
+   * One-line guidance appended to allowlist rejections so the model can
+   * re-plan onto an allowed binary instead of blind-retrying variants.
+   */
+  notAllowedGuidance(): string {
+    return (
+      `Each command segment (split on |, &&, ||, ;) must start with an allowlisted binary. ` +
+      `Allowed: ${this.ALLOWED_COMMANDS.join(', ')}. ` +
+      `Also allowed: ./<binary>, node_modules/.bin/<name>.`
+    );
   }
 
   /**
@@ -242,7 +291,7 @@ export class NodeCommandAdapter implements CommandPort {
   async execute(command: string, options: CommandOptions): Promise<CommandResult> {
     // Security check
     if (!this.isAllowed(command)) {
-      throw new Error(`Command not allowed: ${command}`);
+      throw new Error(`Command not allowed: ${command}\n${this.notAllowedGuidance()}`);
     }
 
     let cwd = options.cwd || process.cwd();
