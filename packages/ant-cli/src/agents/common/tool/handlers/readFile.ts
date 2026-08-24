@@ -29,6 +29,11 @@ import { sniffToolFile, statToolFileSize } from './containedToolMeta';
  * contract.
  */
 export const READ_FILE_FULL_READ_LIMIT = 100_000;
+// A range read still materialises the whole file before slicing, so it needs its
+// own pre-read ceiling — otherwise `read_file(path, 1, 5)` on a multi-GB file
+// allocates the whole thing (M-032). Generous enough for real source/doc files,
+// bounded enough to keep one tool call from exhausting the job heap.
+export const READ_FILE_RANGE_MAX_BYTES = 10_000_000;
 
 // Reporting the size is the point, not decoration: this is the moment the model
 // reaches for a binary and is told no. With no number in the reply it invented
@@ -134,6 +139,23 @@ export async function handleReadFile(
   } else if (typeof startLine === 'number' && typeof endLine === 'number' && startLine > endLine) {
     const errorMsg = `Error: startLine (${startLine}) > endLine (${endLine}) for ${resolved.displayPath}.`;
     return { content: errorMsg, error: errorMsg };
+  } else {
+    // Range read: bound the pre-read too (M-032). The slice happens after a full
+    // materialise, so an unbounded range on a huge/growing file would still
+    // allocate the whole file. Refuse before reading.
+    try {
+      const absPath = fileSystem.resolveAbsolute(resolved.fsPath);
+      const size = statToolFileSize(absPath);
+      if (size !== undefined && size > READ_FILE_RANGE_MAX_BYTES) {
+        const errorMsg =
+          `Error: File too large to range-read (${size.toLocaleString()} bytes; limit ${READ_FILE_RANGE_MAX_BYTES.toLocaleString()}). ` +
+          `Narrow the file or split it before reading.`;
+        console.error(`[readFile] ${errorMsg}`);
+        return { content: errorMsg, error: errorMsg };
+      }
+    } catch {
+      // stat failure falls through to the canonical not-found path below.
+    }
   }
 
   const mergeIndex = await ctx.chatStatus.addReadingFile(resolved.displayPath, startLine, endLine);

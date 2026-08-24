@@ -15,7 +15,7 @@ import {
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
 import { computeFileMeta, shouldEvaluateTemplate } from '../../../../../core/utils/computeFileMeta';
 import { isBinaryPath, isBinaryFileSync, sniffFile } from '../../../../../core/utils/binaryExtensions';
-import { writeBufferVerifiedAbs } from '../../../../../core/utils/binaryIntegrity';
+import { writeBufferVerifiedContained } from '../../../../../core/utils/binaryIntegrity';
 import {
   toBaseRelative,
   statContainedBase,
@@ -498,7 +498,7 @@ export class FileOperationService {
   ): Promise<void> {
     for (const file of files) {
       const { featurePath, fullPath } = this.resolveFullPath(projectId, featureName, file.path, userContext);
-      await writeBufferVerifiedAbs(featurePath, fullPath, file.content);
+      await writeBufferVerifiedContained(featurePath, fullPath, file.content);
     }
   }
 }

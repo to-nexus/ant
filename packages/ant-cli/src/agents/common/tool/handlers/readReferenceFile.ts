@@ -11,9 +11,12 @@ import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
 import { sniffToolFile } from './containedToolMeta';
 import { getRefDeps, isRegistered, notRegisteredError } from '../reference/handlerSupport';
 import { resolveReferenceCodebase, ReferenceTargetError } from '../reference/resolve';
-import { refGitRead } from '../reference/refGit';
+import { refGitRead, RefGitTooLargeError } from '../reference/refGit';
 
 const READ_REFERENCE_FULL_READ_LIMIT = 100_000;
+// A range read still materialises the whole object before slicing, so it needs
+// its own pre-read ceiling (M-032).
+const READ_REFERENCE_RANGE_MAX_BYTES = 10_000_000;
 
 export async function handleReadReferenceFile(
   ctx: ToolExecutionContext,
@@ -43,9 +46,25 @@ export async function handleReadReferenceFile(
       ctx.project,
     );
 
+    const hasRange = typeof startLine === 'number' || typeof endLine === 'number';
+    // A range read still buffers the whole object, so bound the pre-read for
+    // both modes (M-032): the larger ceiling for range, the full-read cap
+    // otherwise.
+    const preReadLimit = hasRange ? READ_REFERENCE_RANGE_MAX_BYTES : READ_REFERENCE_FULL_READ_LIMIT;
+
     let content: string;
     if (resolution.mode === 'git') {
-      content = await refGitRead(resolution.gitDir, resolution.ref, filePath);
+      try {
+        content = await refGitRead(resolution.gitDir, resolution.ref, filePath, preReadLimit);
+      } catch (e) {
+        if (e instanceof RefGitTooLargeError) {
+          const msg =
+            `Error: reference file too large (${e.size.toLocaleString()} bytes; limit ${e.limit.toLocaleString()}). ` +
+            (hasRange ? 'Narrow the file before reading.' : 'Re-issue with startLine/endLine to read a range.');
+          return { content: msg, error: msg };
+        }
+        throw e;
+      }
     } else {
       const adapter = AdapterFactory.createFileSystemAdapterWithPath(resolution.absPath);
       const isDir = await adapter.isDirectory(filePath);
@@ -56,10 +75,18 @@ export async function handleReadReferenceFile(
       }
       // Content sniff — parity with read_file's two-tier gate: catches binary
       // formats the extension set doesn't know. Missing paths fall through to
-      // the canonical not-found reply below.
+      // the canonical not-found reply below. The sniff also yields the size, so
+      // an oversized object is refused BEFORE it is read into memory (M-032).
       try {
-        if (sniffToolFile(adapter.resolveAbsolute(filePath)).binary) {
+        const sniffed = sniffToolFile(adapter.resolveAbsolute(filePath));
+        if (sniffed.binary) {
           return { content: `[Binary file: ${filePath}] cannot be read as text.` };
+        }
+        if (sniffed.size !== undefined && sniffed.size > preReadLimit) {
+          const msg =
+            `Error: reference file too large (${sniffed.size.toLocaleString()} bytes; limit ${preReadLimit.toLocaleString()}). ` +
+            (hasRange ? 'Narrow the file before reading.' : 'Re-issue with startLine/endLine to read a range.');
+          return { content: msg, error: msg };
         }
       } catch {
         // resolveAbsolute failure → normal read path surfaces the error.
@@ -72,7 +99,6 @@ export async function handleReadReferenceFile(
       content = read;
     }
 
-    const hasRange = typeof startLine === 'number' || typeof endLine === 'number';
     if (!hasRange && content.length > READ_REFERENCE_FULL_READ_LIMIT) {
       const msg =
         `Error: reference file too large for full read (${content.length.toLocaleString()} bytes). ` +

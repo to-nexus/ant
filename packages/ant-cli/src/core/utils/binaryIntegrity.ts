@@ -1,6 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { unlinkContained, writeBufferContained } from '../config/containedIo';
+import {
+  BaseRelative,
+  toBaseRelative,
+  unlinkContained,
+  unlinkContainedBase,
+  writeBufferContained,
+  writeBufferContainedBase,
+} from '../config/containedIo';
+import { WorkspacePathResolver } from '../config/WorkspacePathResolver';
 import { isBinaryPath } from './binaryExtensions';
 
 const CORRUPTION_SNIFF_BYTES = 8000;
@@ -85,6 +93,11 @@ export async function writeBufferVerified(
  * Absolute-path form for callers that already hold `(root, absolutePath)` — it
  * only converts to the relative form the contained writer needs. Kept thin and
  * separate so the boundary argument is never optional.
+ *
+ * INTERNAL/legacy: anchors the descent at `realpath(root)`, and `root` is a
+ * caller-supplied *feature name*, so a reparent of the feature root itself is
+ * followed (H-017). In-base callers MUST use {@link writeBufferVerifiedContained}
+ * instead; this remains only for the out-of-base (`repoType:'local'`) fallback.
  */
 export async function writeBufferVerifiedAbs(
   root: string,
@@ -92,6 +105,55 @@ export async function writeBufferVerifiedAbs(
   content: Buffer,
 ): Promise<void> {
   return writeBufferVerified(root, path.relative(path.resolve(root), absolutePath), content);
+}
+
+/**
+ * Root-reparent-safe verified write bound to a service-owned physical base.
+ * Descends the ENTIRE relative path (feature name included) by descriptor with
+ * O_NOFOLLOW, so a preview child that reparents the feature root between check
+ * and write cannot redirect the bytes to another workspace (H-017). Verifies the
+ * supplied bytes and the written byte count exactly like {@link writeBufferVerified}.
+ */
+export async function writeBufferVerifiedBase(
+  target: BaseRelative,
+  displayName: string,
+  content: Buffer,
+): Promise<void> {
+  const supplied = verifyBufferIntegrity(displayName, content);
+  if (supplied) throw new CorruptedFileError(path.basename(displayName), supplied);
+
+  const result = writeBufferContainedBase(target, content);
+  if (!result.ok) {
+    throw new Error(
+      `Cannot write ${path.basename(displayName)}: destination is outside the allowed boundary (${result.reason})`,
+    );
+  }
+
+  if (result.written !== content.length) {
+    unlinkContainedBase(target);
+    throw new Error(
+      `File integrity check failed for ${path.basename(displayName)}: wrote ${result.written} bytes, expected ${content.length}`,
+    );
+  }
+}
+
+/**
+ * The verified-write entry point every in-base caller should use. Resolves the
+ * service-owned physical workspace base and, when `absolutePath` is under it
+ * (every multi-tenant cloud path), performs the descriptor-bound base-relative
+ * write (H-017). Only a target OUTSIDE the base (a `repoType:'local'` codebase
+ * on the single-developer trust boundary) falls back to the legacy
+ * root-anchored write.
+ */
+export async function writeBufferVerifiedContained(
+  root: string,
+  absolutePath: string,
+  content: Buffer,
+): Promise<void> {
+  const base = WorkspacePathResolver.getPhysicalWorkspacesPath();
+  const br = toBaseRelative(base, absolutePath);
+  if (br) return writeBufferVerifiedBase(br, absolutePath, content);
+  return writeBufferVerifiedAbs(root, absolutePath, content);
 }
 
 /**

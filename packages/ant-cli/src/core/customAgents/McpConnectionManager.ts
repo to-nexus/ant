@@ -23,7 +23,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { ToolDefinition } from '../ports/llm';
 import { extractMCPTextContent, extractMCPImageContent } from '../utils/mcpContent';
 import { MCP_TOOL_PREFIX } from './universalToolPolicy';
-import { parseSecretRef } from '@ant/shared';
+import { parseSecretRef, isForbiddenMcpEnvKey } from '@ant/shared';
 import { McpConfigError } from './McpConfigError';
 import type { McpCredentialResolver } from './McpCredentialResolver';
 import type { McpServerConfig } from './types';
@@ -80,12 +80,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 export const STDIO_EXEC_ENV_KEYS = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TMPDIR', 'SystemRoot'] as const;
 
 /**
- * The exact environment a stdio MCP child receives: the exec baseline plus the
- * ALREADY-RESOLVED declared values, and NOTHING else. Exported because this
- * allowlist IS the isolation boundary — it is guarded directly rather than by
- * spawning a server. Credential decryption happens in the runner process
- * (via {@link McpCredentialResolver}) before this is called; the child only
- * ever sees resolved values, never the store or `ANT_ENCRYPTION_KEY`.
+ * The environment a stdio MCP child receives: the exec baseline plus the
+ * ALREADY-RESOLVED declared values, minus loader/interpreter-steering keys.
+ * Exported because this allowlist IS the isolation boundary. The SDK layers its
+ * own small default set (HOME/PATH/…) underneath; no secret rides through it.
+ * Credential decryption happens in the runner process (via
+ * {@link McpCredentialResolver}) before this is called; the child only ever sees
+ * resolved values, never the store or `ANT_ENCRYPTION_KEY`.
  */
 export function buildStdioChildEnv(resolvedEnv: Record<string, string> | undefined): Record<string, string> {
   const base: Record<string, string> = {};
@@ -93,7 +94,12 @@ export function buildStdioChildEnv(resolvedEnv: Record<string, string> | undefin
     const value = process.env[key];
     if (value !== undefined) base[key] = value;
   }
-  return { ...base, ...resolvedEnv };
+  const safeDeclared: Record<string, string> = {};
+  for (const [key, value] of Object.entries(resolvedEnv ?? {})) {
+    if (isForbiddenMcpEnvKey(key)) continue; // never let the tenant steer the pre-drop loader
+    safeDeclared[key] = value;
+  }
+  return { ...base, ...safeDeclared };
 }
 
 export class McpConnectionManager {

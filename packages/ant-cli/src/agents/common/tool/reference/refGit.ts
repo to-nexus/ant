@@ -24,7 +24,20 @@ async function resolveRef(g: SimpleGit, ref: string): Promise<string> {
   }
 }
 
-export async function refGitRead(repoDir: string, ref: string, filePath: string): Promise<string> {
+/** Thrown when a git-mode object exceeds the caller's byte budget (M-032). */
+export class RefGitTooLargeError extends Error {
+  constructor(readonly size: number, readonly limit: number) {
+    super(`reference object is ${size} bytes, over the ${limit}-byte limit`);
+    this.name = 'RefGitTooLargeError';
+  }
+}
+
+export async function refGitRead(
+  repoDir: string,
+  ref: string,
+  filePath: string,
+  maxBytes?: number,
+): Promise<string> {
   const g = git(repoDir);
   try {
     await g.fetch('origin');
@@ -32,6 +45,18 @@ export async function refGitRead(repoDir: string, ref: string, filePath: string)
     /* best-effort */
   }
   const treeish = await resolveRef(g, ref);
+  // Check the object size BEFORE materialising it — `git show` on a multi-GB
+  // blob would otherwise buffer the whole thing into the job heap (M-032).
+  if (maxBytes !== undefined) {
+    try {
+      const raw = await g.raw(['cat-file', '-s', `${treeish}:${filePath}`]);
+      const size = Number(raw.trim());
+      if (Number.isFinite(size) && size > maxBytes) throw new RefGitTooLargeError(size, maxBytes);
+    } catch (err) {
+      if (err instanceof RefGitTooLargeError) throw err;
+      // cat-file failed (missing path / bad ref) — let git show surface it.
+    }
+  }
   return g.show([`${treeish}:${filePath}`]);
 }
 

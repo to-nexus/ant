@@ -87,6 +87,11 @@ export interface ContainedIoOptions {
  */
 const O_NOFOLLOW = typeof fs.constants.O_NOFOLLOW === 'number' ? fs.constants.O_NOFOLLOW : 0;
 const O_DIRECTORY = typeof fs.constants.O_DIRECTORY === 'number' ? fs.constants.O_DIRECTORY : 0;
+// A user-controlled leaf may be a FIFO/device; opening it O_RDONLY without
+// O_NONBLOCK blocks the worker thread until a writer appears. Every leaf open
+// below ORs this in so the open returns immediately and fstat can classify it
+// (M-030). Regular files ignore the flag.
+const O_NONBLOCK = typeof fs.constants.O_NONBLOCK === 'number' ? fs.constants.O_NONBLOCK : 0;
 
 const PROC_FD = '/proc/self/fd';
 
@@ -638,7 +643,7 @@ function openLeafBase(anchor: string, components: readonly string[]): { fd: numb
   const leaf = components[components.length - 1];
   if (!DESCENT_AVAILABLE) {
     try {
-      return { fd: fs.openSync(path.join(anchor, ...components), fs.constants.O_RDONLY | O_NOFOLLOW) };
+      return { fd: fs.openSync(path.join(anchor, ...components), fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK) };
     } catch (err: any) {
       return { ok: false, reason: failFor(err?.code) };
     }
@@ -646,7 +651,7 @@ function openLeafBase(anchor: string, components: readonly string[]): { fd: numb
   const dir = openDirDescended(anchor, components.slice(0, -1), false);
   if ('ok' in dir) return dir;
   try {
-    return { fd: fs.openSync(at(dir.fd, leaf), fs.constants.O_RDONLY | O_NOFOLLOW) };
+    return { fd: fs.openSync(at(dir.fd, leaf), fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK) };
   } catch (err: any) {
     return { ok: false, reason: failFor(err?.code) };
   } finally {
@@ -730,14 +735,21 @@ export function statContainedBase(
   }
   const dir = openDirDescended(anchor.path, components.slice(0, -1), false);
   if ('ok' in dir) return dir;
+  let leafFd: number | undefined;
   try {
-    const stat = fs.fstatSync(fs.openSync(at(dir.fd, components[components.length - 1]), fs.constants.O_RDONLY | O_NOFOLLOW));
+    // Own the leaf descriptor so it is closed on every path — the inline
+    // openSync used to leak one fd per stat, which a directory walk multiplied
+    // into EMFILE across a shared process (M-030). O_NONBLOCK keeps a FIFO leaf
+    // from blocking the open.
+    leafFd = fs.openSync(at(dir.fd, components[components.length - 1]), fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    const stat = fs.fstatSync(leafFd);
     return { ok: true, canonicalPath, stat };
   } catch (err: any) {
     // A directory leaf opens fine with O_RDONLY on Linux; a swapped symlink is ELOOP.
     if (err?.code === 'ELOOP') return { ok: false, reason: 'swapped' };
     return { ok: false, reason: failFor(err?.code) };
   } finally {
+    if (leafFd !== undefined) closeQuiet(leafFd);
     closeQuiet(dir.fd);
   }
 }

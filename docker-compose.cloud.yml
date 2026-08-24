@@ -68,18 +68,30 @@ services:
 
   # No HTTP surface → verifies nothing, signs nothing.
   #
-  # Cloud mode REFUSES user-authored spawns (run_command) unless children can be
-  # dropped to a different UID (childIdentity gate). The image ships the
-  # `ant-child` account (uid 10001, no login); changing UIDs needs CAP_SETUID,
-  # which a non-root service does not have — so the two user-code services run
-  # as container root and every user-authored child is dropped to ant-child.
-  # See docs/guides/self-host-cloud.md.
+  # Cloud mode REFUSES user-authored spawns (run_command, stdio MCP) unless
+  # children can be dropped to a different UID *and GID* (childIdentity gate).
+  # The image ships the `ant-child` account (uid/gid 10001, no login); changing
+  # UID/GID needs CAP_SETUID/CAP_SETGID, which a non-root service does not have —
+  # so the two user-code services run as container root and every user-authored
+  # child is dropped to ant-child with its supplementary groups cleared.
+  #
+  # ANT_CHILD_GID MUST be non-empty: an empty GID emits no setpriv --regid, and
+  # the dropped child keeps egid 0 + root's groups (H-014). It defaults to the
+  # ant-child gid; override both only to match a different image account.
+  #
+  # M-NEW-001 (peer /proc credential exposure): all tenant children share this
+  # one UID, so a same-UID peer can read a concurrent credentialed install's
+  # /proc environ. Closing that at the root requires each user-code child to run
+  # in its own PID namespace (peer pids invisible regardless of shared UID),
+  # which is a DEPLOYMENT responsibility — a per-job pod, a sandbox runtime
+  # (gVisor/Kata), or a securityContext that isolates PIDs — plus a restricted
+  # ptrace_scope. See docs/tmp/audit-7/child-isolation-infra-handoff.md.
   ant-job:
     user: "0:0"
     environment:
       <<: *ant-env-cloud-base
       ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}
-      ANT_CHILD_GID: ${ANT_CHILD_GID:-}
+      ANT_CHILD_GID: ${ANT_CHILD_GID:-10001}
 
   # Verifies proxy ownership; never serves sign-in. Runs user-authored code, so
   # it receives the public key ONLY.
@@ -88,4 +100,4 @@ services:
     environment:
       <<: [*ant-env-cloud-base, *ant-env-cloud-verify]
       ANT_CHILD_UID: ${ANT_CHILD_UID:-10001}
-      ANT_CHILD_GID: ${ANT_CHILD_GID:-}
+      ANT_CHILD_GID: ${ANT_CHILD_GID:-10001}

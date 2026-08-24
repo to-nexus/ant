@@ -26,6 +26,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { McpToolInfo, McpCallResult } from '../../src/core/customAgents/McpConnectionManager';
 import { McpConnectionManager, STDIO_EXEC_ENV_KEYS, buildStdioChildEnv } from '../../src/core/customAgents/McpConnectionManager';
 import { isMcpConfigError } from '../../src/core/customAgents/McpConfigError';
+import { validateMcpServers } from '@ant/shared';
 import type { McpCredentialResolver } from '../../src/core/customAgents/McpCredentialResolver';
 import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
 import {
@@ -274,6 +275,46 @@ describe('universal MCP runtime — stdio child env isolation', () => {
 
   it('with nothing declared, the child env is the exec baseline and nothing more', () => {
     expect(Object.keys(buildStdioChildEnv(undefined)).every((k) => STDIO_EXEC_ENV_KEYS.includes(k as any))).toBe(true);
+  });
+
+  // H-014: a tenant-declared loader/interpreter var must never reach the child
+  // env, because the UID-drop launcher (setpriv) runs as the SERVICE UID until
+  // it drops and would honor LD_PRELOAD etc. before the drop.
+  it.each(['LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'NODE_OPTIONS', 'BASH_ENV'])(
+    'strips loader/interpreter var %s from the child env',
+    (key) => {
+      expect(buildStdioChildEnv({ [key]: '/tmp/evil', DB_URL: 'ok' })[key]).toBeUndefined();
+      // legitimate declared values still pass
+      expect(buildStdioChildEnv({ [key]: '/tmp/evil', DB_URL: 'ok' }).DB_URL).toBe('ok');
+    },
+  );
+});
+
+/**
+ * H-014 authoring-time gate: a tenant must not be able to declare a
+ * loader/interpreter env KEY on an MCP server (it would hijack the pre-drop
+ * launcher). validateMcpServers is the single rule set behind the editor write,
+ * the file upload, and the whole-agent import.
+ */
+describe('validateMcpServers — MCP env key denylist (H-014)', () => {
+  const base = { transport: 'stdio' as const, command: 'npx' };
+
+  it.each(['LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'NODE_OPTIONS', 'BASH_ENV', 'GCONV_PATH'])(
+    'rejects env key %s',
+    (key) => {
+      const errors = validateMcpServers({ s: { ...base, env: { [key]: 'x' } } });
+      expect(errors.some((e) => e.includes(key))).toBe(true);
+    },
+  );
+
+  it('rejects a malformed env var name', () => {
+    const errors = validateMcpServers({ s: { ...base, env: { 'bad name': 'x' } } });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('accepts an ordinary declared env key', () => {
+    const errors = validateMcpServers({ s: { ...base, env: { DB_URL: 'postgres://x' } } });
+    expect(errors).toEqual([]);
   });
 });
 

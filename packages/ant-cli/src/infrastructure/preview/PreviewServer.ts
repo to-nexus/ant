@@ -538,6 +538,48 @@ export class PreviewServer {
   }
 
   /**
+   * Admit (or refuse) a raw WS upgrade to a deploy tunnel BEFORE any side effect
+   * (M-029). The raw upgrade handler bypasses Express middleware, so this is the
+   * only admission a deploy WS gets. Ordering is the point: visibility is read
+   * side-effect-free via `getStatus` (never `ensureRunning`), so an unauthorized
+   * caller cannot force a private deploy to rehydrate. Public deploys stay open
+   * (lazy start intact). A private deploy requires the owner's session cookie and
+   * refuses an ambient cross-site upgrade (a logged-in victim's browser driven by
+   * attacker content) — same-origin HMR and non-browser callers are unaffected.
+   */
+  private async authorizeDeployUpgrade(
+    req: IncomingMessage,
+    coords: { tenantId: string; userId: string; projectId: string; feature: string },
+  ): Promise<boolean> {
+    let visibility = 'public';
+    try {
+      const status = await this.deployService.getStatus(
+        coords.tenantId, coords.userId, coords.projectId, coords.feature,
+      );
+      visibility = status.visibility ?? 'public';
+    } catch {
+      visibility = 'private'; // fail closed on a read error
+    }
+    if (visibility !== 'private') return true;
+
+    // Ambient cross-site upgrade to a private tunnel: refuse. Absent Fetch
+    // Metadata (non-browser) falls through to the cookie-ownership check.
+    if (String(req.headers['sec-fetch-site'] ?? '') === 'cross-site') return false;
+
+    const jwtService = createJwtServiceFromEnv();
+    if (!jwtService) return true; // no JWT configured (local single-user)
+    const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
+    if (!token) return false;
+    try {
+      return assertProxyOwnership(jwtService.verify(token), {
+        tenantId: coords.tenantId, userId: coords.userId,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Re-detect this project's FACTS — service connections plus the project
    * profile / structureType — from the CURRENT code, and overwrite the derived
    * caches (+ the live PreviewState if running).
@@ -1730,25 +1772,14 @@ export class PreviewServer {
             let coords = label ? await this.deployService.resolveDeployLabel(label) : null;
             if (!coords) coords = await this.deployService.resolveCustomDomain(hostHeader || '');
             if (coords) {
+              // Owner/visibility check BEFORE ensureRunning (M-029): no private
+              // rehydration or tunnel for an unauthorized caller; public keeps
+              // its lazy start.
+              if (!(await this.authorizeDeployUpgrade(req, coords))) { socket.destroy(); return; }
               const state = await this.deployService.ensureRunning(
                 coords.tenantId, coords.userId, coords.projectId, coords.feature,
               );
               if (!state) { socket.destroy(); return; }
-              if (state.visibility === 'private') {
-                const jwtService = createJwtServiceFromEnv();
-                if (jwtService) {
-                  const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
-                  let authorized = false;
-                  if (token) {
-                    try {
-                      authorized = assertProxyOwnership(jwtService.verify(token), {
-                        tenantId: coords.tenantId, userId: coords.userId,
-                      });
-                    } catch { authorized = false; }
-                  }
-                  if (!authorized) { socket.destroy(); return; }
-                }
-              }
               const target = resolveDeployTarget(state, coords.serviceName, '');
               if (!target) { socket.destroy(); return; }
               // Root-served: forward the path verbatim (no basePath prefix).
@@ -1869,6 +1900,11 @@ export class PreviewServer {
             const parsed = parseUrlKey(urlKey);
             if (!parsed) { socket.destroy(); return; }
 
+            // Owner/visibility check BEFORE ensureRunning (M-029): an
+            // unauthorized caller must not trigger a private deploy's
+            // rehydration or tunnel. Public deploys keep their lazy start.
+            if (!(await this.authorizeDeployUpgrade(req, parsed))) { socket.destroy(); return; }
+
             const state = await this.deployService.ensureRunning(
               parsed.tenantId,
               parsed.userId,
@@ -1876,23 +1912,6 @@ export class PreviewServer {
               parsed.feature,
             );
             if (!state) { socket.destroy(); return; }
-
-            // Private-deploy gate — symmetric with the HTTP proxy. Without it,
-            // a private deploy's HMR/runtime assets would tunnel to an
-            // unauthorized client. Failure → silent socket.destroy (no signal).
-            if (state.visibility === 'private') {
-              const jwtService = createJwtServiceFromEnv();
-              if (jwtService) {
-                const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
-                let authorized = false;
-                if (token) {
-                  try {
-                    authorized = assertProxyOwnership(jwtService.verify(token), parsed);
-                  } catch { authorized = false; }
-                }
-                if (!authorized) { socket.destroy(); return; }
-              }
-            }
 
             const target = resolveDeployTarget(state, parsed.serviceName, urlKey);
             if (!target) { socket.destroy(); return; }

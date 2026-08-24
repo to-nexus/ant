@@ -538,7 +538,7 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
   // ──────────────────────────────────────────────────────────────────────────
   describe('wrapCommandForChildIdentity', () => {
     const saved: Record<string, string | undefined> = {};
-    const KEYS = ['ANT_CHILD_UID', 'ANT_CHILD_GID'];
+    const KEYS = ['ANT_SERVER_MODE', 'ANT_CHILD_UID', 'ANT_CHILD_GID'];
     beforeEach(() => { for (const k of KEYS) { saved[k] = process.env[k]; delete process.env[k]; } });
     afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
 
@@ -546,19 +546,49 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
       expect(wrapCommandForChildIdentity('npx', ['server'])).toEqual({ command: 'npx', args: ['server'] });
     });
 
-    it('re-execs under setpriv with reuid/regid on Linux when ids are configured', () => {
+    it('re-execs under an ABSOLUTE-path setpriv with reuid/regid/clear-groups on Linux (H-014)', () => {
       process.env.ANT_CHILD_UID = '1001';
       process.env.ANT_CHILD_GID = '1001';
       const wrapped = wrapCommandForChildIdentity('npx', ['mcp-server', '--flag']);
       if (process.platform === 'linux') {
-        expect(wrapped.command).toBe('setpriv');
-        expect(wrapped.args).toEqual([
-          '--reuid', '1001', '--regid', '1001', '--clear-groups', '--', 'npx', 'mcp-server', '--flag',
-        ]);
+        if (wrapped.command !== 'npx') {
+          // setpriv present: launcher MUST be an absolute path, never the bare
+          // name (which the tenant's env.PATH could redirect), and the drop MUST
+          // clear supplementary groups.
+          expect(path.isAbsolute(wrapped.command)).toBe(true);
+          expect(wrapped.command.endsWith('/setpriv')).toBe(true);
+          expect(wrapped.args).toEqual([
+            '--reuid', '1001', '--regid', '1001', '--clear-groups', '--', 'npx', 'mcp-server', '--flag',
+          ]);
+        } else {
+          // setpriv absent on this host + not cloud → graceful passthrough.
+          expect(wrapped.args).toEqual(['mcp-server', '--flag']);
+        }
       } else {
         // Non-Linux hosts (local dev on macOS): no setpriv, command unchanged.
         expect(wrapped).toEqual({ command: 'npx', args: ['mcp-server', '--flag'] });
       }
+    });
+
+    it('fails closed in cloud when no child identity is configured (H-014)', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      expect(() => wrapCommandForChildIdentity('npx', ['server'])).toThrow(/without a guaranteed UID drop/i);
+    });
+
+    it('fails closed in cloud on a non-Linux runtime — no setpriv drop path (H-014)', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      process.env.ANT_CHILD_UID = '1001';
+      process.env.ANT_CHILD_GID = '1001';
+      if (process.platform !== 'linux') {
+        expect(() => wrapCommandForChildIdentity('npx', ['server'])).toThrow(/non-Linux/i);
+      }
+    });
+
+    it('fails closed in cloud when GID is missing (would leave egid 0) (H-014)', () => {
+      process.env.ANT_SERVER_MODE = 'cloud';
+      process.env.ANT_CHILD_UID = '1001';
+      // no ANT_CHILD_GID
+      expect(() => wrapCommandForChildIdentity('npx', ['server'])).toThrow();
     });
   });
 

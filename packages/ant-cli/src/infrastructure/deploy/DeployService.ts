@@ -33,7 +33,14 @@ import { detectFramework, getBuildOutputDir, runBuild } from './BuildRunner';
 import { startStaticServer, StaticServerHandle } from './StaticServer';
 import { startProcessServer } from './ProcessServer';
 import { DeployMetaStore, DeployMetaPackage } from './DeployMetaStore';
-import { parentHostCandidates } from './customDomain/verification';
+import { parentHostCandidates, normalizeHostname, isValidHostname } from './customDomain/verification';
+
+/**
+ * Upper bound on labels in a routed Host before it is refused (M-027). A valid
+ * custom domain is a handful of labels; a hostile `a.a.a.…a.example.com` would
+ * otherwise force one Redis lookup per label on the public routing path.
+ */
+const MAX_ROUTED_HOSTNAME_LABELS = 10;
 import { resolveDeployWorkspacePath, syncDeployWorkspace, installDeployDependencies } from './DeployWorkspace';
 import { DependencyInstaller } from '../../periphery/adapters/http/services/PreviewService/managers/DependencyInstaller';
 import { getRealtimeBroadcastChannel } from '../state/redisConstants';
@@ -891,8 +898,13 @@ export class DeployService {
   async resolveCustomDomain(host: string): Promise<{
     tenantId: string; userId: string; projectId: string; feature: string; serviceName?: string;
   } | null> {
-    const hostname = (host || '').split(':')[0].toLowerCase().replace(/\.$/, '');
-    if (!hostname) return null;
+    // Canonicalise + validate BEFORE any Redis lookup (M-027): the public
+    // routing path reuses the same hostname parser the register path uses, so an
+    // invalid, oversized, or excessively-labelled Host is a no-match instead of
+    // an amplified sequence of parent lookups.
+    const hostname = normalizeHostname((host || '').split(':')[0]);
+    if (!hostname || !isValidHostname(hostname)) return null;
+    if (hostname.split('.').filter(Boolean).length > MAX_ROUTED_HOSTNAME_LABELS) return null;
 
     const lookup = async (h: string) => {
       try {

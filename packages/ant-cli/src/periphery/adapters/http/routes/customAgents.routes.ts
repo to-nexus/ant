@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import multer from 'multer';
-import { writeBufferVerifiedAbs } from '../../../../core/utils/binaryIntegrity';
+import { writeBufferVerifiedContained } from '../../../../core/utils/binaryIntegrity';
 import { toNfc } from '../../../../core/utils/unicodePath';
 import { boundedMultipart } from '../middleware/boundedMultipart';
 import { treeRateLimiter } from '../middleware/rateLimiter';
@@ -404,7 +404,7 @@ export function createCustomAgentRoutes(deps: {
         // Byte-safe write (size + header verification) — uploads must survive
         // binary payloads unmodified (no utf-8 round-trip). The container root is
         // the boundary the write descends from.
-        await writeBufferVerifiedAbs(containerRootFor(req, req.params.projectId), filePath, files[i].buffer);
+        await writeBufferVerifiedContained(containerRootFor(req, req.params.projectId), filePath, files[i].buffer);
         uploadedFiles.push(effectiveRel);
       }
       res.json({ success: true, uploadedFiles, count: uploadedFiles.length });

@@ -30,6 +30,7 @@ import {
   writeBufferContained,
   readTextContainedBase,
   writeTextContainedBase,
+  statContainedBase,
   mkdirpContainedBase,
   renameContainedBase,
   unlinkContainedBase,
@@ -285,6 +286,31 @@ describe('containedIo — containment bound to the file object', () => {
       const r = sniffContainedBase({ base, relative: 'feature/plan/spec.md' });
       expect(r.ok).toBe(true);
       if (r.ok) { expect(r.binary).toBe(false); expect(r.size).toBe(6); }
+    });
+  });
+
+  // M-030: the leaf descriptor statContainedBase opens must be closed on every
+  // path (it used to leak one fd per stat, which a directory walk multiplied
+  // into EMFILE), and a FIFO leaf must not block the open.
+  describe('statContainedBase leaf-descriptor accounting (M-030)', () => {
+    onLinuxDescent('does not leak a descriptor per stat', () => {
+      const fdCount = () => fs.readdirSync('/proc/self/fd').length;
+      // Warm up (module/handle init) then measure a steady-state delta.
+      for (let i = 0; i < 20; i++) statContainedBase({ base, relative: 'feature/plan/spec.md' });
+      const before = fdCount();
+      for (let i = 0; i < 300; i++) statContainedBase({ base, relative: 'feature/plan/spec.md' });
+      const after = fdCount();
+      expect(after - before).toBeLessThanOrEqual(2); // no per-call accumulation
+    });
+
+    onLinuxDescent('returns promptly for a FIFO leaf instead of blocking on open', () => {
+      const { execFileSync } = require('node:child_process') as typeof import('node:child_process');
+      execFileSync('mkfifo', [path.join(root, 'plan', 'pipe')]);
+      // With O_NONBLOCK the open returns immediately; without it this call (and
+      // the whole test) would hang until a writer appears.
+      const r = statContainedBase({ base, relative: 'feature/plan/pipe' });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.stat.isFIFO()).toBe(true);
     });
   });
 });

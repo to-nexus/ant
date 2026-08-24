@@ -251,7 +251,23 @@ export async function handleDownloadAsset(
     const msg = 'Resolved asset path escapes the assets root';
     return { content: msg, error: msg };
   }
-  await fsMod.mkdir(destDir, { recursive: true });
+  // Descriptor-contained mkdir when under the service-owned base (H-017): a raw
+  // recursive mkdir after a lexical guard follows a reparented feature root.
+  // Raw mkdir only for out-of-base (repoType:'local') targets.
+  {
+    const { toBaseRelative, mkdirpContainedBase } = await import('../../../../../../../core/config/containedIo');
+    const { WorkspacePathResolver } = await import('../../../../../../../core/config/WorkspacePathResolver');
+    const destDirBr = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), destDir);
+    if (destDirBr) {
+      const mk = mkdirpContainedBase(destDirBr);
+      if (!mk.ok) {
+        const msg = `Cannot create asset directory: ${mk.reason}`;
+        return { content: msg, error: msg };
+      }
+    } else {
+      await fsMod.mkdir(destDir, { recursive: true });
+    }
+  }
 
   const relativePath = `${assetsRoot}/${category}/${sanitized}`;
 
@@ -288,8 +304,8 @@ export async function handleDownloadAsset(
 
     // Shared byte-safe write core: size + GLB header verification (fail-loud
     // instead of silently poisoning the asset pool).
-    const { writeBufferVerifiedAbs } = await import('../../../../../../../core/utils/binaryIntegrity');
-    await writeBufferVerifiedAbs(assetsBase, destPath, buffer);
+    const { writeBufferVerifiedContained } = await import('../../../../../../../core/utils/binaryIntegrity');
+    await writeBufferVerifiedContained(assetsBase, destPath, buffer);
 
     const sizeBytes = buffer.length;
     const sizeKB = (sizeBytes / 1024).toFixed(1);

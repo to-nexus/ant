@@ -12,7 +12,7 @@ import type { StateStorePort } from '../../../../core/ports/stateStore';
 import type { UserContext } from '../../../../core/types/user';
 import { getRealtimeBroadcastChannel } from '../../../../infrastructure/state/redisConstants';
 import { getArtifactDirPolicy, validateFileForDir } from '@ant/shared';
-import { writeBufferVerifiedAbs, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
+import { writeBufferVerifiedContained, verifyBufferIntegrity } from '../../../../core/utils/binaryIntegrity';
 import { toNfc } from '../../../../core/utils/unicodePath';
 import { boundedMultipart } from '../middleware/boundedMultipart';
 import {
@@ -581,7 +581,7 @@ export function createFilesRoutes(deps: {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const relPath = relativePaths[i] || file.originalname;
-        await writeBufferVerifiedAbs(featurePath, destinations[i], file.buffer);
+        await writeBufferVerifiedContained(featurePath, destinations[i], file.buffer);
         uploadedFiles.push(relPath);
       }
       
@@ -982,10 +982,27 @@ export function createFilesRoutes(deps: {
           if (archiveFiles) {
             // Append each file from a descriptor-bound stream — never
             // archive.directory(name), which would re-walk the tree by name.
-            for (const f of archiveFiles) {
-              const s = createReadStreamContainedBase({ base: f.base, relative: f.relative });
-              if (!s.ok) continue; // vanished/swapped since the snapshot: skip, never follow
-              archive.append(s.stream, { name: f.entryName });
+            // Open ONE descriptor at a time: wait for the archiver to finish
+            // consuming (close) the current entry's stream before opening the
+            // next. Opening all 20k streams up front held that many fds until
+            // finalize and exhausted the shared process (EMFILE) (M-031).
+            let aborted = false;
+            const onAbort = () => { aborted = true; };
+            res.on('close', onAbort);
+            try {
+              for (const f of archiveFiles) {
+                if (aborted) break;
+                const s = createReadStreamContainedBase({ base: f.base, relative: f.relative });
+                if (!s.ok) continue; // vanished/swapped since the snapshot: skip, never follow
+                const consumed = new Promise<void>((resolve) => {
+                  s.stream.once('close', () => resolve());
+                  s.stream.once('error', () => resolve());
+                });
+                archive.append(s.stream, { name: f.entryName });
+                await consumed;
+              }
+            } finally {
+              res.off('close', onAbort);
             }
           } else {
             // Out-of-base (local): the raw archive walk, sessions excluded.

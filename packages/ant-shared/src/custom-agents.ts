@@ -437,6 +437,26 @@ export function formatSecretRef(key: string): string {
 /** HTTP header names accepted in `headers` keys (RFC token subset). */
 export const MCP_HEADER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 
+/** Env-var NAME shape accepted as a stdio MCP `env` key. */
+export const MCP_ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Env names refused on an MCP `env`: they steer a dynamic loader or interpreter
+ * and so run attacker-chosen code inside the UID-drop launcher BEFORE it drops
+ * off the service identity (H-014). Any `LD_*` / `DYLD_*` is refused by prefix;
+ * the set below covers the node/shell/python launchers. The stdio child-env
+ * assembler strips the same keys as a second line of defense.
+ */
+export const MCP_FORBIDDEN_ENV_KEYS = new Set([
+  'NODE_OPTIONS', 'BASH_ENV', 'ENV', 'PYTHONSTARTUP', 'GCONV_PATH',
+]);
+
+/** True when `key` may hijack the pre-drop launcher and must be refused on MCP `env`. */
+export function isForbiddenMcpEnvKey(key: string): boolean {
+  const upper = key.toUpperCase();
+  return upper.startsWith('LD_') || upper.startsWith('DYLD_') || MCP_FORBIDDEN_ENV_KEYS.has(upper);
+}
+
 /**
  * Every rule the loader enforces, as plain messages. Empty = valid. Callers
  * decide the shape of the failure: the loader throws
@@ -473,6 +493,14 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
       errors.push(`MCP server "${name}": transport must be "stdio" | "http"`);
     }
     for (const [key, value] of Object.entries(cfg?.env ?? {})) {
+      if (!MCP_ENV_KEY_PATTERN.test(key)) {
+        errors.push(`MCP server "${name}": env key "${key}" is not a valid environment variable name`);
+      } else if (isForbiddenMcpEnvKey(key)) {
+        errors.push(
+          `MCP server "${name}": env key "${key}" is not allowed — loader/interpreter variables ` +
+          `(LD_*, DYLD_*, NODE_OPTIONS, …) can run code in the launcher before the privilege drop`,
+        );
+      }
       checkValue(name, `env.${key}`, value);
     }
     for (const [key, value] of Object.entries(cfg?.headers ?? {})) {

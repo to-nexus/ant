@@ -35,6 +35,7 @@
  */
 
 import { spawnSync } from 'child_process';
+import * as fs from 'fs';
 
 import { logger } from '../../utils/logger';
 
@@ -44,6 +45,31 @@ export interface ChildSpawnIdentity {
 }
 
 let warned = false;
+
+/**
+ * Absolute paths the UID-drop launcher may live at. Resolving `setpriv` by an
+ * ABSOLUTE path (never the bare name) is the fix for H-014: a bare name is
+ * looked up through the child env's PATH, which the tenant controls via the MCP
+ * `env`, so an attacker-planted `setpriv` would run as the SERVICE UID before
+ * the drop. An absolute launcher cannot be redirected that way.
+ */
+const SETPRIV_CANDIDATES = ['/usr/bin/setpriv', '/bin/setpriv', '/usr/sbin/setpriv', '/sbin/setpriv'] as const;
+let setprivPathCache: string | null | undefined;
+
+function resolveSetprivAbs(): string | undefined {
+  if (setprivPathCache !== undefined) return setprivPathCache ?? undefined;
+  for (const candidate of SETPRIV_CANDIDATES) {
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      setprivPathCache = candidate;
+      return candidate;
+    } catch {
+      /* try next */
+    }
+  }
+  setprivPathCache = null;
+  return undefined;
+}
 
 function readId(name: string): number | undefined {
   const raw = process.env[name];
@@ -84,17 +110,22 @@ export function childSpawnIdentity(): ChildSpawnIdentity {
   return isDropPermitted(identity) ? identity : {};
 }
 
-let dropPermitted: boolean | undefined;
+// Keyed by the exact (uid,gid) probed — a single boolean cache answered a probe
+// for one identity with a verdict taken for another. The capability is still a
+// deployment fact, so each distinct identity is probed at most once.
+const dropPermittedByIdentity = new Map<string, boolean>();
 
 /**
  * One cheap probe: spawn the shortest possible process under the target identity.
  * `EPERM` means the platform does not let this process change UIDs, which is a
- * deployment fact rather than a per-spawn one — so it is cached for the process
- * lifetime. Any other failure is treated as "permitted" so a transient error does
- * not silently drop the boundary.
+ * deployment fact rather than a per-spawn one — so it is cached per identity.
+ * Any other failure is treated as "permitted" so a transient error does not
+ * silently drop the boundary.
  */
 function isDropPermitted(identity: ChildSpawnIdentity): boolean {
-  if (dropPermitted !== undefined) return dropPermitted;
+  const key = `${identity.uid ?? ''}:${identity.gid ?? ''}`;
+  const cached = dropPermittedByIdentity.get(key);
+  if (cached !== undefined) return cached;
 
   const probe = spawnSync(process.execPath, ['-e', '0'], {
     ...identity,
@@ -102,9 +133,10 @@ function isDropPermitted(identity: ChildSpawnIdentity): boolean {
     timeout: 10_000,
   });
   const code = (probe.error as NodeJS.ErrnoException | undefined)?.code;
-  dropPermitted = code !== 'EPERM' && code !== 'EACCES';
+  const permitted = code !== 'EPERM' && code !== 'EACCES';
+  dropPermittedByIdentity.set(key, permitted);
 
-  if (!dropPermitted) {
+  if (!permitted) {
     logger.error(
       `[childIdentity] ANT_CHILD_UID/GID are set but this process may not change UIDs (${code}). ` +
       'User-authored children keep running under the service identity, so they can read the ' +
@@ -118,7 +150,7 @@ function isDropPermitted(identity: ChildSpawnIdentity): boolean {
       { component: 'childIdentity' },
     );
   }
-  return dropPermitted;
+  return permitted;
 }
 
 /**
@@ -177,13 +209,17 @@ export function assertUserCodeIsolationOrThrow(context: string): void {
   const parentUid = typeof process.getuid === 'function' ? process.getuid() : undefined;
   const distinct = uid !== undefined && (parentUid === undefined || uid !== parentUid);
 
-  if (distinct && isDropPermitted({ uid, gid })) return;
+  // GID is REQUIRED in cloud, not "typically": without it setpriv emits no
+  // --regid and the dropped child keeps egid 0 + root's supplementary groups
+  // (regression from wiring the service as user:"0:0"). Fail closed.
+  if (distinct && gid !== undefined && isDropPermitted({ uid, gid })) return;
 
   throw new Error(
     `[childIdentity] Refusing to run user-authored code (${context}) without OS isolation. ` +
-    'Cloud requires ANT_CHILD_UID (and typically ANT_CHILD_GID) set to an unprivileged account ' +
-    'DIFFERENT from the service UID, with the container granted the privilege to change UIDs. ' +
-    'Same-UID children can read the service /proc environment and rename shared-workspace entries.',
+    'Cloud requires BOTH ANT_CHILD_UID and ANT_CHILD_GID set to an unprivileged account ' +
+    'DIFFERENT from the service UID, with the container granted the privilege to change UID/GID. ' +
+    'Same-UID children can read the service /proc environment and rename shared-workspace entries; ' +
+    'an unset GID leaves the child at egid 0.',
   );
 }
 
@@ -195,11 +231,15 @@ export function assertUserCodeIsolationOrThrow(context: string): void {
  * MCP SDK's `StdioClientTransport` spawns internally (via cross-spawn) and
  * exposes no uid/gid, so a same-UID stdio MCP child can read the runner's
  * `/proc` environment and the shared credential store (H-014). On Linux we
- * instead re-exec the command under `setpriv`, which changes the UID/GID before
- * `exec`. Unset ids (local single-user mode) return the command unchanged.
+ * instead re-exec the command under `setpriv` (resolved to an ABSOLUTE path so
+ * the tenant's `env.PATH` cannot substitute it — see {@link resolveSetprivAbs}),
+ * which changes the UID/GID before `exec`. Unset ids (local single-user mode)
+ * return the command unchanged.
  *
- * Pair with {@link assertUserCodeIsolationOrThrow}: the gate guarantees the ids
- * are present, distinct and droppable in cloud; this seam makes the drop happen.
+ * FAIL-CLOSED in cloud: this is the only isolation the stdio MCP path has, so if
+ * the drop cannot be guaranteed (non-Linux runtime, missing UID/GID, or no
+ * `setpriv` on the image) it THROWS rather than spawning user code under the
+ * service identity. Pair with {@link assertUserCodeIsolationOrThrow}.
  */
 export function wrapCommandForChildIdentity(
   command: string,
@@ -207,19 +247,48 @@ export function wrapCommandForChildIdentity(
 ): { command: string; args: string[] } {
   const uid = readId('ANT_CHILD_UID');
   const gid = readId('ANT_CHILD_GID');
-  if (uid === undefined && gid === undefined) return { command, args: [...args] };
-  if (process.platform !== 'linux') return { command, args: [...args] };
+  const isCloud = process.env.ANT_SERVER_MODE === 'cloud';
+
+  const refuse = (why: string): never => {
+    throw new Error(
+      `[childIdentity] Refusing to launch a stdio MCP child without a guaranteed UID drop: ${why}. ` +
+      'Cloud stdio MCP requires Linux, ANT_CHILD_UID and ANT_CHILD_GID (distinct from the service), ' +
+      'and setpriv on the image.',
+    );
+  };
+
+  if (uid === undefined && gid === undefined) {
+    if (isCloud) refuse('no ANT_CHILD_UID/GID configured');
+    return { command, args: [...args] };
+  }
+  if (process.platform !== 'linux') {
+    if (isCloud) refuse('non-Linux runtime has no setpriv UID-drop path');
+    return { command, args: [...args] };
+  }
+  if (isCloud && (uid === undefined || gid === undefined)) {
+    refuse('cloud requires BOTH ANT_CHILD_UID and ANT_CHILD_GID');
+  }
+  const launcher = resolveSetprivAbs();
+  if (!launcher) {
+    if (isCloud) refuse('setpriv not found on the image (install util-linux)');
+    return { command, args: [...args] };
+  }
 
   const setprivArgs: string[] = [];
   if (uid !== undefined) setprivArgs.push('--reuid', String(uid));
-  if (gid !== undefined) setprivArgs.push('--regid', String(gid), '--clear-groups');
+  if (gid !== undefined) setprivArgs.push('--regid', String(gid));
+  // ALWAYS drop root's supplementary groups when dropping identity, regardless
+  // of whether --regid is present — otherwise a service running as root leaks
+  // group membership into the child.
+  setprivArgs.push('--clear-groups');
   setprivArgs.push('--', command, ...args);
-  return { command: 'setpriv', args: setprivArgs };
+  return { command: launcher, args: setprivArgs };
 }
 
 export const __testing = {
   reset: () => {
     warned = false;
-    dropPermitted = undefined;
+    dropPermittedByIdentity.clear();
+    setprivPathCache = undefined;
   },
 };

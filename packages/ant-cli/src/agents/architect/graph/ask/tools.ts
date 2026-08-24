@@ -15,6 +15,19 @@ import {
   FORBIDDEN_PATTERNS,
   type AntSource as AskSource,
 } from '../../../common/tool/antSource/core';
+import {
+  toBaseRelative,
+  readTextContainedBase,
+  readBoundedDirentsContainedBase,
+} from '../../../../core/config/containedIo';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+
+/** Pre-read byte bound for a workspace file — rejects a huge/growing file
+ * before it is materialised (H-018/M-032); normal docs are far below this and
+ * still get the 30 000-char display truncation. */
+const WORKSPACE_READ_MAX_BYTES = 1_000_000;
+/** Entry cap for a workspace directory listing (bounded, symlinks dropped). */
+const WORKSPACE_LIST_MAX_ENTRIES = 2000;
 
 // ============================================================
 // Path Security (Blacklist approach)
@@ -207,28 +220,47 @@ export async function readWorkspaceFile(args: { path: string }): Promise<ToolRes
   }
   
   const fullPath = path.join(_workspaceFeaturePath, relativePath);
-  
-  if (!fs.existsSync(fullPath)) {
-    return { success: false, error: `File not found: ${relativePath}` };
-  }
-  
-  try {
-    const content = fs.readFileSync(fullPath, 'utf-8');
-    const sanitized = sanitizeOutput(content);
-    
-    // Limit content length (larger limit for workspace files like PRDs)
-    const maxLength = 30000;
-    if (sanitized.length > maxLength) {
-      return {
-        success: true,
-        content: sanitized.substring(0, maxLength) + '\n\n[... truncated, file too large ...]',
-      };
+
+  // Descriptor-bound read anchored at the service-owned physical base: the
+  // lexical check above is a fast pre-filter, but the real containment is the
+  // O_NOFOLLOW descent, which refuses a symlink or a reparented feature root
+  // rather than following it into another workspace (H-018). Raw read only for
+  // out-of-base (repoType:'local') targets.
+  const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
+  let content: string;
+  if (br) {
+    const read = readTextContainedBase(br, { maxBytes: WORKSPACE_READ_MAX_BYTES });
+    if (!read.ok) {
+      if (read.reason === 'too-large') {
+        return { success: false, error: `File too large to read: ${relativePath}` };
+      }
+      if (read.reason === 'not-a-file') {
+        return { success: false, error: `Not a file: ${relativePath}` };
+      }
+      return { success: false, error: `File not found: ${relativePath}` };
     }
-    
-    return { success: true, content: sanitized };
-  } catch (error: any) {
-    return { success: false, error: `Failed to read file: ${error.message}` };
+    content = read.text;
+  } else {
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: `File not found: ${relativePath}` };
+    }
+    try {
+      content = fs.readFileSync(fullPath, 'utf-8');
+    } catch (error: any) {
+      return { success: false, error: `Failed to read file: ${error.message}` };
+    }
   }
+
+  const sanitized = sanitizeOutput(content);
+  // Limit content length (larger limit for workspace files like PRDs)
+  const maxLength = 30000;
+  if (sanitized.length > maxLength) {
+    return {
+      success: true,
+      content: sanitized.substring(0, maxLength) + '\n\n[... truncated, file too large ...]',
+    };
+  }
+  return { success: true, content: sanitized };
 }
 
 /**
@@ -252,28 +284,44 @@ export async function listWorkspaceFiles(args: { path: string }): Promise<ToolRe
   }
   
   const fullPath = path.join(_workspaceFeaturePath, relativePath);
-  
+
+  // Descriptor-bound, entry-bounded listing (H-018): the descent refuses a
+  // symlinked/reparented directory, symlink entries are dropped rather than
+  // resolved, and the read stops at a fixed budget instead of materialising a
+  // wide directory. Raw listing only for out-of-base (repoType:'local').
+  const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
+  if (br) {
+    const listed = readBoundedDirentsContainedBase(br, WORKSPACE_LIST_MAX_ENTRIES);
+    if (!listed.ok) {
+      if (listed.reason === 'not-a-file') {
+        return { success: false, error: `Not a directory: ${relativePath}` };
+      }
+      return { success: false, error: `Directory not found: ${relativePath}` };
+    }
+    const items = listed.entries
+      .filter(e => !e.name.startsWith('.') && !e.isSymbolicLink)
+      .map(e => ({ name: e.name, type: e.isDirectory ? 'dir' : 'file' }));
+    const body = JSON.stringify(items, null, 2);
+    return {
+      success: true,
+      content: listed.truncated
+        ? `${body}\n\n[... truncated, directory too large ...]`
+        : body,
+    };
+  }
+
   if (!fs.existsSync(fullPath)) {
     return { success: false, error: `Directory not found: ${relativePath}` };
   }
-  
   if (!fs.statSync(fullPath).isDirectory()) {
     return { success: false, error: `Not a directory: ${relativePath}` };
   }
-  
   try {
     const entries = fs.readdirSync(fullPath, { withFileTypes: true });
     const items = entries
       .filter(e => !e.name.startsWith('.'))
-      .map(e => ({
-        name: e.name,
-        type: e.isDirectory() ? 'dir' : 'file',
-      }));
-    
-    return {
-      success: true,
-      content: JSON.stringify(items, null, 2),
-    };
+      .map(e => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' }));
+    return { success: true, content: JSON.stringify(items, null, 2) };
   } catch (error: any) {
     return { success: false, error: `Failed to list directory: ${error.message}` };
   }

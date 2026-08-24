@@ -26,7 +26,7 @@ import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathReso
 import { toBaseRelative, readBufferContainedBase } from '../../../../core/config/containedIo';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
 import { rejectCodebaseMutate, shouldRejectCodebaseMutate } from './codebaseGate';
-import { verifyBufferIntegrity, writeBufferVerifiedAbs, CorruptedFileError } from '../../../../core/utils/binaryIntegrity';
+import { verifyBufferIntegrity, writeBufferVerifiedContained, CorruptedFileError } from '../../../../core/utils/binaryIntegrity';
 import { formatByteSize } from '../../../../core/utils/binaryExtensions';
 
 export async function handleCopyFile(
@@ -93,9 +93,10 @@ export async function handleCopyFile(
       .then((s) => s.isFile())
       .catch(() => false);
 
-    // writeBufferVerified: mkdir -p + byte-faithful write + written-size
-    // verification, failing loud rather than leaving a bad asset in place.
-    await writeBufferVerifiedAbs(root, destAbs, buffer);
+    // writeBufferVerifiedContained: descriptor-bound mkdir -p + byte-faithful
+    // write + written-size verification, root-reparent-safe (H-017), failing
+    // loud rather than leaving a bad asset in place.
+    await writeBufferVerifiedContained(root, destAbs, buffer);
 
     const sizeLabel = formatByteSize(buffer.length);
     console.log(
