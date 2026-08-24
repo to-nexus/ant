@@ -7,6 +7,12 @@ import { createIdeFaviconStub, createIdeVsdaStub } from '../../middleware/ideStu
 import { createCorsMiddleware } from '../../middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
 import { createSameOriginGuard, isTrustedCookieOrigin } from '../../middleware/sameOriginGuard';
+import {
+  NAV_TICKET_PARAM,
+  redeemIdeNavTicket,
+  resolveNavTicketStore,
+  stripNavTicket,
+} from '../../middleware/ideNavTicket';
 import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
@@ -148,53 +154,88 @@ export class ServerConfigurator {
     }
 
     app.use('/ide/', (req: Request, res: Response, next: NextFunction) => {
-      const token = req.cookies?.[JwtService.cookieName];
-      if (!token) {
-        res.status(401).json({ error: 'Authentication required for IDE access' });
-        return;
-      }
+      void (async () => {
+        const token = req.cookies?.[JwtService.cookieName];
+        if (!token) {
+          res.status(401).json({ error: 'Authentication required for IDE access' });
+          return;
+        }
 
-      // CSRF: the proxy forwards this ambient-cookie request to a user's IDE
-      // upstream, so even a GET is effectively state-changing. createSameOriginGuard
-      // gates only mutating methods and is mounted AFTER this, so it never sees
-      // `/ide/` — check the origin here, for every method (H-013). Bearer callers
-      // carry no ambient credential and are exempt.
-      const bearer = req.headers.authorization?.startsWith('Bearer ');
-      if (!bearer && !isTrustedCookieOrigin(req)) {
-        res.status(403).json({ error: 'Cross-origin request refused' });
-        return;
-      }
+        // Verified before the origin/ticket decision: it is pure crypto with no
+        // side effect, and it means only a real session can spend a state-store
+        // read on ticket redemption. The H-013 ordering requirement — refuse
+        // before owner check, port touch and upstream forwarding — still holds.
+        let payload;
+        try {
+          payload = jwtService.verify(token);
+        } catch {
+          res.status(401).json({ error: 'Invalid session for IDE access' });
+          return;
+        }
 
-      let payload;
-      try {
-        payload = jwtService.verify(token);
-      } catch {
-        res.status(401).json({ error: 'Invalid session for IDE access' });
-        return;
-      }
+        const serverKey = req.path.split('/').filter(Boolean)[0];
 
-      // Ownership gate: the IDE serverKey embeds the owning (tenant, user) as
-      // its first two segments. A valid session for a DIFFERENT owner must not
-      // reach another account's IDE pod — JWT validity alone is not enough
-      // (urlKeys are enumerable). Unparseable keys fall through unchanged; the
-      // proxy itself returns 404 for those.
-      const serverKey = req.path.split('/').filter(Boolean)[0];
-      const owner = serverKey ? parseIDEKey(serverKey) : null;
-      if (owner && !assertProxyOwnership(payload, owner)) {
-        res.status(403).json({ error: 'Forbidden: IDE belongs to another account' });
-        return;
-      }
+        // CSRF: the proxy forwards this ambient-cookie request to a user's IDE
+        // upstream, so even a GET is effectively state-changing. createSameOriginGuard
+        // gates only mutating methods and is mounted AFTER this, so it never sees
+        // `/ide/` — check the origin here, for every method (H-013).
+        //
+        // Two non-ambient lanes bypass the origin check because neither can be spent
+        // by another origin: `Authorization: Bearer` (Ant Desktop), and a nav ticket
+        // on the iframe's document navigation, which carries no `Origin` for the
+        // predicate to judge. The predicate itself is unchanged and still refuses
+        // `same-site` — see ideNavTicket.ts.
+        const bearer = req.headers.authorization?.startsWith('Bearer ');
+        const navigable = req.method === 'GET' || req.method === 'HEAD';
+        let ticketAdmitted = false;
+        if (!bearer && !isTrustedCookieOrigin(req)) {
+          ticketAdmitted = Boolean(serverKey) && navigable && await redeemIdeNavTicket(
+            await resolveNavTicketStore(),
+            { ticket: req.query?.[NAV_TICKET_PARAM], serverKey, payload },
+          );
+          if (!ticketAdmitted) {
+            logger.warn(`[IDEProxyAuth] refused ${req.method} ${req.path}`, {
+              component: 'IDEProxyAuth',
+            }, {
+              secFetchSite: req.headers['sec-fetch-site'] ?? null,
+              secFetchMode: req.headers['sec-fetch-mode'] ?? null,
+              secFetchDest: req.headers['sec-fetch-dest'] ?? null,
+              hasOrigin: Boolean(req.header('Origin')),
+              navigable,
+              hasTicket: Boolean(req.query?.[NAV_TICKET_PARAM]),
+            });
+            res.status(403).json({ error: 'Cross-origin request refused' });
+            return;
+          }
+        }
 
-      req.user = {
-        id: payload.sub,
-        email: payload.email,
-        organizationId: payload.org,
-      };
-      req.organization = {
-        id: payload.org,
-        name: payload.org,
-      };
-      next();
+        // Ownership gate: the IDE serverKey embeds the owning (tenant, user) as
+        // its first two segments. A valid session for a DIFFERENT owner must not
+        // reach another account's IDE pod — JWT validity alone is not enough
+        // (urlKeys are enumerable). Unparseable keys fall through unchanged; the
+        // proxy itself returns 404 for those.
+        const owner = serverKey ? parseIDEKey(serverKey) : null;
+        if (owner && !assertProxyOwnership(payload, owner)) {
+          res.status(403).json({ error: 'Forbidden: IDE belongs to another account' });
+          return;
+        }
+
+        // Never let the ticket reach the upstream IDE or the proxy's request log.
+        if (ticketAdmitted) {
+          req.url = stripNavTicket(req.url);
+        }
+
+        req.user = {
+          id: payload.sub,
+          email: payload.email,
+          organizationId: payload.org,
+        };
+        req.organization = {
+          id: payload.org,
+          name: payload.org,
+        };
+        next();
+      })().catch(next);
     });
   }
 

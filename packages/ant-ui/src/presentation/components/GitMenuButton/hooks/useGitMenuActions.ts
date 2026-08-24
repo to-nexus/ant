@@ -56,7 +56,7 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
       const result = await runGitOperation(selectedProject, gitOp);
       if (result.success) {
         if (opts.successToast) toast.success(opts.successToast);
-        if (opts.reloadIde) useStore.getState().bumpIdeReloadTimestamp();
+        if (opts.reloadIde) void useStore.getState().bumpIdeReloadTimestamp();
         return { success: true, result: result.result };
       }
       const { handled } = handleGitError(result.error);

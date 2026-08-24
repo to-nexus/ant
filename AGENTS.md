@@ -455,6 +455,12 @@ help: the browser attaches it anyway.
 - Accepting a cookie-authenticated state change whose `Sec-Fetch-Site` is
   `same-site` (that is precisely the content listener) — only `same-origin` /
   `none`, or an exact-match registered frontend origin.
+- Admitting a request on `Sec-Fetch-Mode: navigate` / `Sec-Fetch-Dest`. A GET
+  navigation carries no `Origin`, and in a split-host deployment its
+  `Sec-Fetch-Site` is `same-site` — indistinguishable from attacker content. The
+  `/ide/*` iframe is admitted by a short-lived capability minted through a
+  CSRF-guarded POST instead; see
+  [`docs/internals/23-cloud-ide.md`](docs/internals/23-cloud-ide.md).
 
 ### ✅ Correct
 
@@ -468,10 +474,11 @@ help: the browser attaches it anyway.
 
 ```bash
 rg -n "contentApp\.(get|post|put|delete)\('/(projects|admin)" packages/ant-cli/src  # Expected: 0
+rg -n "sec-fetch-(mode|dest)" packages/ant-cli/src/periphery/adapters/http/middleware/sameOriginGuard.ts  # Expected: 0
 ```
 
 Guards: `tests/http/preview-origin-split.test.ts`, `tests/http/same-origin-guard.test.ts`,
-`tests/cors/cors-matrix.test.ts`. Rationale: [`docs/internals/security-posture.md`](docs/internals/security-posture.md) Axis 5.
+`tests/http/ide-gate-admission.test.ts`, `tests/cors/cors-matrix.test.ts`. Rationale: [`docs/internals/security-posture.md`](docs/internals/security-posture.md) Axis 5.
 
 ---
 

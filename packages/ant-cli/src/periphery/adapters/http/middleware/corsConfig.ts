@@ -37,6 +37,18 @@ function frontendUrlOrigin(): string | null {
 }
 
 /**
+ * The statically-registered frontend origins, as a list. Same source as
+ * `isAllowedFrontendOrigin`, so the two cannot drift — but this is NOT an
+ * authorization surface: it exists for consumers that must *name* the origins
+ * rather than judge one (the IDE proxy's `frame-ancestors`). Loopback is
+ * prefix-matched by the predicate and therefore not enumerable here.
+ */
+export function allowedFrontendOrigins(): string[] {
+  const fe = frontendUrlOrigin();
+  return [...(fe ? [fe] : []), ...parseExtraOrigins()].filter(o => o !== '*');
+}
+
+/**
  * Static FE allowlist: loopback / `FRONTEND_URL` / `ANT_CORS_ORIGINS` csv.
  * Wildcard `'*'` is intentionally NOT honored here — that's a CORS-only
  * policy and using it as an OAuth redirect target would be open-redirect.

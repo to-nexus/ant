@@ -14,10 +14,12 @@ import {
   selectIdeBaseUrl,
   selectIdeWorkspacePath,
   selectIdeReloadTimestamp,
+  selectIdeNavTicket,
   selectIdeOverlayMode,
 } from './ideSelectors';
 
 export const useIdeBaseUrl = () => useStore(selectIdeBaseUrl);
 export const useIdeWorkspacePath = () => useStore(selectIdeWorkspacePath);
 export const useIdeReloadTimestamp = () => useStore(selectIdeReloadTimestamp);
+export const useIdeNavTicket = () => useStore(selectIdeNavTicket);
 export const useIdeOverlayMode = () => useStore(selectIdeOverlayMode);

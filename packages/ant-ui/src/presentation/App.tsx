@@ -28,6 +28,7 @@ import {
   useIdeBaseUrl,
   useIdeOverlayMode,
   useIdeReloadTimestamp,
+  useIdeNavTicket,
   useIdeWorkspacePath,
 } from '@/domain/store/selectors/ideSelectorHooks';
 import { useIdeHealthMonitor } from '@/application/hooks/ide/useIdeHealthMonitor';
@@ -375,6 +376,7 @@ function AppShell() {
   const ideWorkspacePath = useIdeWorkspacePath();
   const setIdeWorkspacePath = useStore((state) => state.setIdeWorkspacePath);
   const ideReloadTimestamp = useIdeReloadTimestamp();
+  const ideNavTicket = useIdeNavTicket();
   const ideBaseUrl = useIdeBaseUrl();
   const overlayMode = useIdeOverlayMode();
 
@@ -643,6 +645,7 @@ function AppShell() {
               ideBaseUrl={ideBaseUrl}
               ideWorkspacePath={ideWorkspacePath}
               ideReloadTimestamp={ideReloadTimestamp}
+              ideNavTicket={ideNavTicket}
             />
             {overlayMode !== 'hidden' && selectedProject && (
               <IdeConnectionPanel

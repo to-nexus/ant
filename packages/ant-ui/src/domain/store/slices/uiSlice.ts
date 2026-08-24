@@ -162,7 +162,7 @@ export interface UIActions {
    * Bump `ideReloadTimestamp` to force-remount the iframe without changing
    * baseUrl. Used after a successful reconnect probe.
    */
-  bumpIdeReloadTimestamp: () => void;
+  bumpIdeReloadTimestamp: () => Promise<void>;
   /**
    * Start an IDE session: BE call → waitForIdeReady → flip to `frameLoading`.
    * Single SSOT — both NavBar click and App.tsx reconnect effect call this so
@@ -354,6 +354,26 @@ function persistWorkspaceDomain(
   });
 }
 
+/**
+ * Mint a fresh IDE navigation ticket, or `undefined` when there is nothing to
+ * mint for. Failure degrades to `undefined` rather than blocking the remount:
+ * local mode has no `/ide/*` gate to satisfy, and in cloud a missing ticket
+ * produces the BE's 403 — which the IDE panel already surfaces as a retryable
+ * failure — rather than a silently dead reload button.
+ */
+async function mintNavTicketOrUndefined(
+  projectId: string | null | undefined,
+  featureName: string | null | undefined,
+): Promise<string | undefined> {
+  if (!projectId || !featureName) return undefined;
+  try {
+    const { mintIdeNavTicket } = await import('@/infrastructure/http/api');
+    return await mintIdeNavTicket(projectId, featureName);
+  } catch {
+    return undefined;
+  }
+}
+
 export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => ({
   // ==================
   // State
@@ -365,6 +385,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   mainView: 'agents',
   ideSession: { kind: 'idle' as const },
   ideWorkspacePath: undefined,
+  ideNavTicket: undefined,
   ideReloadTimestamp: 0,
   mainPanelActiveTab: 'job',
   mainPanelOpenTabs: { ...MAIN_PANEL_TABS_ALL_CLOSED },
@@ -476,8 +497,12 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     saveToStorage(STORAGE_KEYS.MAIN_VIEW, 'codeIde');
   },
 
-  bumpIdeReloadTimestamp: () => {
-    set({ ideReloadTimestamp: Date.now() });
+  bumpIdeReloadTimestamp: async () => {
+    const { selectedProject, selectedFeature } = get();
+    set({
+      ideNavTicket: await mintNavTicketOrUndefined(selectedProject, selectedFeature),
+      ideReloadTimestamp: Date.now(),
+    });
   },
 
   updateIdePhase: (phase, _detail) => {
@@ -556,6 +581,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     }
 
     // alive | unknown — bump iframe key and let onLoad transition to connected.
+    const { selectedProject, selectedFeature } = get();
     set({
       ideSession: {
         kind: 'frameLoading',
@@ -563,6 +589,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
         mountedAt: Date.now(),
         sessionKey: s.sessionKey,
       },
+      ideNavTicket: await mintNavTicketOrUndefined(selectedProject, selectedFeature),
       ideReloadTimestamp: Date.now(),
     });
   },
@@ -615,7 +642,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
     try {
       const { startCloudIDE, SERVER_BASE } = await import('@/infrastructure/http/api');
       const { waitForIdeReady } = await import('@/infrastructure/http/poll');
-      const { instance } = await startCloudIDE(projectId, featureName);
+      const { instance, navTicket } = await startCloudIDE(projectId, featureName);
       const proxyUrl = `${SERVER_BASE()}${instance.url}`;
 
       // Pre-flight: BE says ready but verify the proxy actually serves HTTP
@@ -633,6 +660,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
       set({
         ideSession: { kind: 'frameLoading', baseUrl: proxyUrl, mountedAt: Date.now(), sessionKey },
         ideWorkspacePath: instance.workspacePath || `/${projectId}`,
+        ideNavTicket: navTicket,
         ideReloadTimestamp: Date.now(),
       });
     } catch (error: any) {

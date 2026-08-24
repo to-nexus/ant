@@ -15,6 +15,7 @@ export interface IdeFrameProps {
   ideBaseUrl: string | undefined;
   ideWorkspacePath: string | undefined;
   ideReloadTimestamp: number;
+  ideNavTicket: string | undefined;
 }
 
 /**
@@ -59,6 +60,7 @@ export function IdeFrame({
   ideBaseUrl,
   ideWorkspacePath,
   ideReloadTimestamp,
+  ideNavTicket,
 }: IdeFrameProps) {
   const { t } = useTranslation('async');
   const session = useStore(selectIdeSession);
@@ -104,6 +106,7 @@ export function IdeFrame({
             ideBaseUrl={ideBaseUrl!}
             ideWorkspacePath={ideWorkspacePath}
             ideReloadTimestamp={ideReloadTimestamp}
+            ideNavTicket={ideNavTicket}
             projectId={projectId}
             featureName={featureName}
           />
@@ -120,6 +123,7 @@ export function IdeFrame({
           ideBaseUrl={ideBaseUrl}
           ideWorkspacePath={ideWorkspacePath}
           ideReloadTimestamp={ideReloadTimestamp}
+          ideNavTicket={ideNavTicket}
           projectId={projectId}
           featureName={featureName}
         />
@@ -218,6 +222,7 @@ interface RunningStateProps {
   ideBaseUrl: string;
   ideWorkspacePath: string | undefined;
   ideReloadTimestamp: number;
+  ideNavTicket: string | undefined;
   projectId: string | undefined;
   featureName: string | undefined;
 }
@@ -226,6 +231,7 @@ function RunningState({
   ideBaseUrl,
   ideWorkspacePath,
   ideReloadTimestamp,
+  ideNavTicket,
   projectId,
   featureName,
 }: RunningStateProps) {
@@ -280,7 +286,7 @@ function RunningState({
           key={`ide-${featureName || 'base'}-${ideReloadTimestamp}`}
           src={`${ideBaseUrl}/?folder=${encodeURIComponent(
             ideWorkspacePath || '/workspace',
-          )}&tk=${ideReloadTimestamp}`}
+          )}&tk=${ideReloadTimestamp}${ideNavTicket ? `&ant_nav=${ideNavTicket}` : ''}`}
           className="w-full h-full"
           style={{ border: 'none' }}
           title="ANT Code Editor"

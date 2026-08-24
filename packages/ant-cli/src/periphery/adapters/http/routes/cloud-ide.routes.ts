@@ -16,6 +16,8 @@ import { sendErrorResponse } from './helpers/errorResponse';
 import * as path from 'path';
 import { logger } from '../../../../utils/logger';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
+import { mintIdeNavTicket } from '../middleware/ideNavTicket';
+import { isLocalServerMode } from '../../../../core/config/serverMode';
 import { tryAcquireThrottle } from '../../../../core/redis/distributedLock';
 import { REDIS_KEYS } from '../../../../core/constants/redis';
 import { WorktreeService } from '../services/GitService/worktree';
@@ -36,6 +38,28 @@ export function createCloudIDERoutes(
   // cheap stateless objects — no need to share singletons with other routers.
   // Sharing GitService here would create a circular import (cloud-ide ↔ Git facade).
   const worktreeService = new WorktreeService(workspaceResolver, githubAuthService);
+
+  /**
+   * Mint the credential the iframe's document navigation carries.
+   *
+   * A navigation sends no `Origin`, so the `/ide/*` origin predicate cannot
+   * judge it (see ideNavTicket.ts). Minting is only reachable here — a
+   * cookie-authenticated POST behind `createSameOriginGuard` — which is what
+   * makes the ticket unobtainable from another origin.
+   */
+  async function issueNavTicket(userContext: UserContext, projectId: string, feature: string) {
+    // Local mode has no `/ide/*` gate (`setupIdeProxyAuth` early-returns without
+    // an authService), so a ticket there would satisfy nothing and would ride
+    // the URL all the way into the upstream IDE.
+    if (isLocalServerMode() || !stateStore) return undefined;
+    const { ticket } = await mintIdeNavTicket(stateStore, {
+      org: userContext.organizationId,
+      userId: userContext.userId,
+      projectId,
+      feature,
+    });
+    return ticket;
+  }
 
   /**
    * Race fix — IDE start guarantees worktree validity before pod creation.
@@ -163,6 +187,7 @@ export function createCloudIDERoutes(
       
       res.json({
         success: true,
+        navTicket: await issueNavTicket(userContext, projectId, featureName),
         instance: {
           url: instance.url,
           directUrl: getDirectUrl(req, instance.host, instance.port),
@@ -179,6 +204,30 @@ export function createCloudIDERoutes(
       
     } catch (error: any) {
       logger.warn(`Start failed: ${error.message}`, { component: 'CloudIDERoutes', projectId: req.body?.projectId, featureName: req.body?.featureName }, error);
+      sendErrorResponse(res, 500, error, 'CloudIDE');
+    }
+  });
+
+  /**
+   * POST /cloud-ide/nav-ticket
+   * Re-mint the navigation credential for an already-running instance. The
+   * iframe re-navigates on reload / remount / reconnect, and each navigation
+   * needs its own ticket — they are short-lived by design.
+   */
+  router.post('/nav-ticket', async (req: Request, res: Response) => {
+    try {
+      const { projectId, featureName } = req.body;
+      const userContext: UserContext = extractUserContext(req);
+
+      if (!projectId) {
+        return res.status(400).json({ error: 'projectId is required' });
+      }
+      if (!featureName) {
+        return res.status(400).json({ error: 'featureName is required — the IDE opens a feature codebase' });
+      }
+
+      res.json({ success: true, navTicket: await issueNavTicket(userContext, projectId, featureName) });
+    } catch (error: any) {
       sendErrorResponse(res, 500, error, 'CloudIDE');
     }
   });

@@ -247,6 +247,10 @@ export interface UIState {
   // Orthogonal to ideSession lifecycle — user's selected workspace path,
   // preserved across sessions. Set on first session and rehydrated thereafter.
   ideWorkspacePath: string | undefined;
+  // Credential for the iframe's document navigation (see api/ide.ts). Written
+  // ONLY alongside `ideReloadTimestamp` — the two together define what the
+  // iframe navigates to, so a ticket must never change without a remount.
+  ideNavTicket: string | undefined;
   // iframe force-remount trigger — bumped by `bumpIdeReloadTimestamp()` when
   // we want the iframe to reload but stay on the same baseUrl (post-reconnect
   // success). Combined with baseUrl as the iframe `key`.

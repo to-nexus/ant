@@ -92,7 +92,10 @@ export async function waitForIdeReady(proxyUrl: string, timeoutMs: number = 15_0
           }).then(r => r.status).catch(() => 0)
         )
       );
-      if (results.every(s => s >= 200 && s < 500)) return;
+      // `< 400`, not `< 500`: a 401/403 from the proxy gate is NOT readiness.
+      // Counting it as ready hid an origin-gate refusal behind a green
+      // pre-flight, and the failure only surfaced as JSON inside the iframe.
+      if (results.every(s => s >= 200 && s < 400)) return;
     } catch {
       // connect error — retry
     }

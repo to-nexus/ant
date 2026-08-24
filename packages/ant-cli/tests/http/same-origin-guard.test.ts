@@ -228,3 +228,49 @@ describe('isTrustedCookieOrigin — IDE proxy + WS upgrade cookie CSRF (H-013)',
     ).toBe(true);
   });
 });
+
+/**
+ * Tombstone — the navigation carve-out was considered and REJECTED.
+ *
+ * W3C's Fetch Metadata Resource Isolation Policy admits `Sec-Fetch-Mode:
+ * navigate` GETs. Here that would admit the exact H-013 source: attacker-authored
+ * preview/deploy content is `same-site`, a navigation carries no `Origin`, and
+ * nothing in the headers separates it from the real frontend. The iframe's
+ * document request is admitted by a nav ticket instead (see ide-nav-ticket rows
+ * below); this predicate must stay blind to navigation intent.
+ */
+describe('isTrustedCookieOrigin — navigation is NOT a carve-out (H-013)', () => {
+  const { isTrustedCookieOrigin } = __testing;
+  const raw = (headers: Record<string, string>) => ({ headers } as any);
+  let savedFrontend: string | undefined;
+
+  beforeEach(() => {
+    savedFrontend = process.env.FRONTEND_URL;
+    process.env.FRONTEND_URL = 'https://app.example.com';
+  });
+  afterEach(() => {
+    if (savedFrontend === undefined) delete process.env.FRONTEND_URL;
+    else process.env.FRONTEND_URL = savedFrontend;
+  });
+
+  const NAVIGATION = { 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'iframe' };
+
+  it.each([
+    ['same-site', 'iframe'],
+    ['same-site', 'document'],
+    ['cross-site', 'iframe'],
+    ['cross-site', 'document'],
+  ])('refuses %s navigation (dest=%s) with no Origin', (site, dest) => {
+    expect(
+      isTrustedCookieOrigin(raw({ ...NAVIGATION, 'sec-fetch-site': site, 'sec-fetch-dest': dest })),
+    ).toBe(false);
+  });
+
+  it('a navigation from the registered frontend still needs its Origin to pass', () => {
+    // Present only on a fetch, never on a GET navigation — which is the whole
+    // reason the ticket lane exists.
+    expect(
+      isTrustedCookieOrigin(raw({ ...NAVIGATION, 'sec-fetch-site': 'same-site', origin: 'https://app.example.com' })),
+    ).toBe(true);
+  });
+});

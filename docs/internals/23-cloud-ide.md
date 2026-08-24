@@ -59,6 +59,52 @@ Client -> ALB -> ant-api (/ide/:serverKey/*) -> look up Pod IP in Redis -> K8s P
 
 Because the Pod IP is stored in Redis, whichever ant-api Pod receives the request proxies to the correct IDE Pod.
 
+### Admission — three lanes, then ownership
+
+`setupIdeProxyAuth` runs ahead of the proxy mount and gates EVERY method plus the
+WS upgrade, because the proxy forwards an ambient-cookie request to a user's file
+and terminal upstream — a GET is effectively state-changing there (H-013). Order:
+
+```
+session cookie → JWT verify → (bearer | trusted cookie origin | nav ticket) → assertProxyOwnership
+```
+
+The origin lane is `isTrustedCookieOrigin`, which admits only `Sec-Fetch-Site:
+same-origin` / `none`, or a registered frontend `Origin`. It refuses `same-site`
+on purpose: `ant-preview` serves attacker-authorable documents and is same-site
+with the control plane.
+
+**The nav ticket exists because one request shape has no origin attestation at
+all.** The IDE is embedded as an `<iframe src>`, and a GET navigation carries no
+`Origin`; in a split-host deployment `Sec-Fetch-Site` then reads `same-site` —
+the same value attacker content produces. No Fetch-Metadata rule can separate
+them, so admitting navigations by `Sec-Fetch-Mode`/`Sec-Fetch-Dest` would admit
+the H-013 source verbatim. That carve-out is deliberately NOT taken; a tombstone
+row in `tests/http/same-origin-guard.test.ts` pins it.
+
+Instead the FE carries a capability: `POST /api/cloud-ide/{start,nav-ticket}` —
+cookie-authenticated and behind `createSameOriginGuard`, so an attacker origin
+cannot mint one and cannot read the frontend's across origins — returns a 32-byte
+ticket bound to `(serverKey, org, sub)`, TTL 60s, stored under its own SHA-256.
+The gate redeems it for GET/HEAD only, strips it from `req.url` before the proxy
+forwards, and never accepts it on the WS upgrade (which is same-origin from
+inside the iframe). Deliberately not single-use: the iframe re-navigates on retry
+and under StrictMode, and the window is already short on a value no other origin
+can read.
+
+Everything the iframe loads afterwards is same-origin and needs no ticket. A
+single-origin deployment never exercises the lane at all — which is why routing
+`/ide/*` from the frontend origin is the standing convergence request
+(`docs/tmp/infra/2026-08-24-ide-origin-split-handoff.md`).
+
+`frame-ancestors 'self' <registered frontend origins>` is stamped on every
+`/ide/*` response by the proxy's `overrideResponseHeaders` hook, after the
+upstream header copy so openvscode cannot override it. That is defense in depth
+against clickjacking — `helmet` runs `frameguard: false` and the proxy strips the
+upstream `X-Frame-Options` — **not** the control that admits the request.
+
+Guards: `tests/http/ide-gate-admission.test.ts`, `tests/http/ide-proxy-embedding.test.ts`.
+
 ## Isolation
 
 | Isolation type | Method |

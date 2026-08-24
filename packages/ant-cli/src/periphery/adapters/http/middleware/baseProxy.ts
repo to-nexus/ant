@@ -110,6 +110,14 @@ export abstract class BaseProxyMiddleware {
   }
 
   /**
+   * Response headers this proxy owns regardless of what the upstream sent.
+   * Default no-op; override to stamp a policy the upstream must not control.
+   */
+  protected overrideResponseHeaders(_res: ExpressResponse): void {
+    // no-op
+  }
+
+  /**
    * Create the middleware function
    */
   createMiddleware(): (req: Request, res: ExpressResponse, next: NextFunction) => Promise<void> {
@@ -262,6 +270,9 @@ export abstract class BaseProxyMiddleware {
       });
 
       res.setHeader('cache-control', 'no-cache, no-store, must-revalidate');
+
+      // After the upstream copy, so a header the upstream also sends cannot win.
+      this.overrideResponseHeaders(res);
 
       // Check if content needs rewriting
       const needsRewrite = this.shouldRewriteContent() && (

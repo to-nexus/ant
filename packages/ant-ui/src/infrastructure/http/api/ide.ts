@@ -32,6 +32,12 @@ export interface CloudIDEInstance {
 export interface StartCloudIDEResponse {
   success: boolean;
   instance: CloudIDEInstance;
+  /**
+   * Credential for the iframe's document navigation. A navigation sends no
+   * `Origin`, so the BE's `/ide/*` origin check cannot judge it; this rides the
+   * URL instead. Absent in local mode, where that gate does not exist.
+   */
+  navTicket?: string;
 }
 
 /** Open local IDE (Cursor or VS Code) */
@@ -108,4 +114,21 @@ export async function resetCloudIDE(
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to reset cloud IDE');
   return data;
+}
+
+/**
+ * Re-mint the IDE navigation credential. Tickets are short-lived, so every
+ * fresh iframe navigation (reload, remount, reconnect) needs its own.
+ */
+export async function mintIdeNavTicket(
+  projectId: string,
+  featureName: string,
+): Promise<string | undefined> {
+  const response = await authFetch(`${API_BASE()}/cloud-ide/nav-ticket`, {
+    method: 'POST',
+    body: JSON.stringify({ projectId, featureName }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || data?.message || 'Failed to mint IDE nav ticket');
+  return data?.navTicket;
 }

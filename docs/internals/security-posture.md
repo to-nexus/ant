@@ -176,6 +176,17 @@ the current enforcement state (✅ enforced / 🔄 remediation in progress /
   hostnames is the deployment's half (`docs/infra/preview-content-origin-request.md`
   in ant-cloud). Guards: `tests/http/preview-origin-split.test.ts`,
   `tests/http/same-origin-guard.test.ts`.
+- **A cookie is not the only credential — a navigation needs a non-ambient one.**
+  ✅ The `/ide/*` proxy forwards ambient-cookie requests to a user's file and
+  terminal upstream, so its gate covers every method and the WS upgrade, and
+  refuses `same-site` (H-013). An iframe's document navigation sends no `Origin`
+  and reads `same-site` in a split-host deployment, exactly like attacker
+  content — so it is admitted by a short-lived capability minted through a
+  CSRF-guarded POST, never by relaxing the origin predicate. Admitting
+  navigations on `Sec-Fetch-Mode`/`Sec-Fetch-Dest` would readmit the H-013 source
+  and is pinned shut by a tombstone test.
+  ([23-cloud-ide.md](23-cloud-ide.md#admission--three-lanes-then-ownership)).
+  Guards: `tests/http/ide-gate-admission.test.ts`, `tests/http/same-origin-guard.test.ts`.
 - **A credential is scoped to the step that needs it.** ✅ A user's GitHub PAT
   reaches only the credentialed, `--ignore-scripts` dependency-FETCH pass; the
   lifecycle pass that runs dependency-authored code re-runs the same install

@@ -22,6 +22,7 @@ import {
 import { PortRegistryPort } from '../../../../core/ports/portRegistry';
 import { logger } from '../../../../utils/logger';
 import { parseIDEKey, NO_FEATURE_KEY } from '../../../../infrastructure/state/redisKeyUtils';
+import { allowedFrontendOrigins } from './corsConfig';
 
 
 export interface IDEProxyConfig {
@@ -133,6 +134,30 @@ class IDEProxyMiddlewareImpl extends BaseProxyMiddleware {
   protected stripPrefix(): boolean {
     return false;
   }
+
+  /**
+   * Who may embed the IDE. Defense in depth for the nav-ticket lane, NOT the
+   * control that admits the request — that is the gate in `setupIdeProxyAuth`.
+   * A same-site page (a user's own deployed content) cannot obtain a ticket, but
+   * `helmet` runs with `frameguard: false` and this proxy strips the upstream's
+   * `X-Frame-Options`, so without this nothing bounds who frames a live IDE.
+   */
+  protected overrideResponseHeaders(res: ExpressResponse): void {
+    res.setHeader('content-security-policy', `frame-ancestors ${frameAncestors().join(' ')}`);
+  }
+}
+
+/**
+ * `'self'` covers the single-origin deployment; the registered frontend origins
+ * cover split-host. Loopback is prefix-matched by the origin predicate and so
+ * cannot be enumerated — outside cloud, allow it by pattern instead.
+ */
+function frameAncestors(): string[] {
+  const sources = ["'self'", ...allowedFrontendOrigins()];
+  if (process.env.ANT_SERVER_MODE !== 'cloud') {
+    sources.push('http://localhost:*', 'http://127.0.0.1:*');
+  }
+  return sources;
 }
 
 /**

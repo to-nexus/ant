@@ -23,7 +23,7 @@ export type IdeOverlayMode =
   | 'reconnecting'
   | 'failed';
 
-type SliceState = Pick<UIState, 'ideSession' | 'ideReloadTimestamp' | 'ideWorkspacePath'>;
+type SliceState = Pick<UIState, 'ideSession' | 'ideReloadTimestamp' | 'ideWorkspacePath' | 'ideNavTicket'>;
 
 export const selectIdeSession = (s: SliceState): IdeSessionState => s.ideSession;
 
@@ -33,6 +33,8 @@ export const selectIdeBaseUrl = (s: SliceState): string | undefined =>
 export const selectIdeWorkspacePath = (s: SliceState): string | undefined => s.ideWorkspacePath;
 
 export const selectIdeReloadTimestamp = (s: SliceState): number => s.ideReloadTimestamp;
+
+export const selectIdeNavTicket = (s: SliceState): string | undefined => s.ideNavTicket;
 
 export const selectIdeSessionKey = (s: SliceState): string | undefined =>
   'sessionKey' in s.ideSession ? s.ideSession.sessionKey : undefined;
