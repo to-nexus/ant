@@ -70,11 +70,15 @@ Both are deployment-layer, so the code ships the seam and the deployment decides
 
 1. **Give user-authored children their own UID.** The images provision an
    unprivileged `ant-child` account (uid 10001). Set `ANT_CHILD_UID=10001` and
-   `ANT_CHILD_GID` to the `ant` group on `ant-preview` and `ant-job` once the
-   container is permitted to change uids (a root entrypoint with ambient
-   `CAP_SETUID`, or an equivalent pod security context). Without the privilege the
-   runtime logs a loud error once and keeps previews working under the service
-   identity — it never silently pretends to be isolated.
+   `ANT_CHILD_GID` to the service's shared group on `ant-preview` and `ant-job`,
+   and permit those two containers to change uids (a root entrypoint with
+   `CAP_SETUID`, or an equivalent pod security context — the compose cloud
+   profile ships this shape). This is not optional in cloud mode: the runtime is
+   fail-closed and REFUSES every user-authored spawn (`run_command`, preview dev
+   servers, installs) until the drop is configured, distinct from the service
+   UID, and actually permitted. The values are plain fixed integers baked into
+   the image's `/etc/passwd`, identical on every replica — not secrets, and not
+   per-pod.
 
 2. **Serve user content from its own hostname.** `ant-preview` runs two listeners:
    `PORT` (4102) is the cookie-authenticated `/projects/*` control plane, and
