@@ -92,10 +92,16 @@ inside the iframe). Deliberately not single-use: the iframe re-navigates on retr
 and under StrictMode, and the window is already short on a value no other origin
 can read.
 
-Everything the iframe loads afterwards is same-origin and needs no ticket. A
-single-origin deployment never exercises the lane at all — which is why routing
-`/ide/*` from the frontend origin is the standing convergence request
-(`docs/tmp/infra/2026-08-24-ide-origin-split-handoff.md`).
+Everything the iframe loads afterwards is same-origin and needs no ticket, and a
+single-origin deployment never exercises the lane at all — the origin predicate
+admits first. The ticket is stripped from `req.url` either way, so it never
+reaches the upstream or the proxy log even when it went unused.
+
+If `/ide/*` is ever fronted by a CDN or a second proxy hop, three constraints
+bind: the `/ide/` prefix must be forwarded verbatim (openvscode-server runs with
+`--server-base-path /ide/<key>`), the WebSocket upgrade must be allowed
+(terminal, LSP), and the idle timeout must be long — the IDE holds an idle WS for
+as long as the tab is open.
 
 `frame-ancestors 'self' <registered frontend origins>` is stamped on every
 `/ide/*` response by the proxy's `overrideResponseHeaders` hook, after the

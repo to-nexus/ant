@@ -187,9 +187,8 @@ export class ServerConfigurator {
         // `same-site` — see ideNavTicket.ts.
         const bearer = req.headers.authorization?.startsWith('Bearer ');
         const navigable = req.method === 'GET' || req.method === 'HEAD';
-        let ticketAdmitted = false;
         if (!bearer && !isTrustedCookieOrigin(req)) {
-          ticketAdmitted = Boolean(serverKey) && navigable && await redeemIdeNavTicket(
+          const ticketAdmitted = Boolean(serverKey) && navigable && await redeemIdeNavTicket(
             await resolveNavTicketStore(),
             { ticket: req.query?.[NAV_TICKET_PARAM], serverKey, payload },
           );
@@ -220,10 +219,10 @@ export class ServerConfigurator {
           return;
         }
 
-        // Never let the ticket reach the upstream IDE or the proxy's request log.
-        if (ticketAdmitted) {
-          req.url = stripNavTicket(req.url);
-        }
+        // Unconditional: the ticket never reaches the upstream IDE or the proxy's
+        // request log, including on a same-origin deployment where the origin lane
+        // admits first and the ticket is simply unused.
+        req.url = stripNavTicket(req.url);
 
         req.user = {
           id: payload.sub,

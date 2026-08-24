@@ -132,6 +132,17 @@ describe('/ide/* gate admission', () => {
     expect(url).toContain('folder=%2Fworkspace');
   });
 
+  it('strips the ticket even when the origin lane admitted first', async () => {
+    // A same-origin deployment mints tickets it never needs. They must still not
+    // reach openvscode or the proxy's request log.
+    const res = await call({
+      path: `/ide/${KEY}/?ant_nav=${await ticketFor()}`,
+      cookie: SESSION, site: 'same-origin',
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).url).not.toContain('ant_nav');
+  });
+
   it('REFUSES a ticket on a state-changing method — the lane is navigation-only', async () => {
     const res = await call({
       path: `/ide/${KEY}/?ant_nav=${await ticketFor()}`,
