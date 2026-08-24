@@ -39,7 +39,7 @@
     "@ant/shared": "workspace:^",
     "@anthropic-ai/sdk": "^0.117.1",
     "@google/genai": "^1.52.0",
-    "@langchain/langgraph": "^1.4.10",
+    "@langchain/langgraph": "^1.4.12",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@octokit/rest": "^22.0.1",
     "@types/archiver": "^7.0.0",
