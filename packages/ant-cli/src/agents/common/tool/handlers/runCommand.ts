@@ -210,57 +210,142 @@ function refreshGoPrivateEnv(command: string, projectPath: string): void {
 
 interface WriteViolation { path: string; reason: string; }
 
-function extractWriteTargets(command: string): string[] {
+const WRITE_VERBS = new Set(['mkdir', 'touch', 'cp', 'mv']);
+
+/**
+ * Strip surrounding shell quoting from one token produced by
+ * `tokenizeShellSegment`, reporting whether any part was double-quoted.
+ * Backslash escapes outside single quotes take the next char literally.
+ */
+function unquoteToken(tok: string): { value: string; hadDoubleQuote: boolean; hadSingleQuote: boolean } {
+  let value = '';
+  let hadDoubleQuote = false;
+  let hadSingleQuote = false;
+  let i = 0;
+  while (i < tok.length) {
+    const ch = tok[i];
+    if (ch === "'") {
+      hadSingleQuote = true;
+      const end = tok.indexOf("'", i + 1);
+      if (end === -1) { value += tok.slice(i + 1); i = tok.length; }
+      else { value += tok.slice(i + 1, end); i = end + 1; }
+      continue;
+    }
+    if (ch === '"') {
+      hadDoubleQuote = true;
+      let j = i + 1;
+      while (j < tok.length) {
+        if (tok[j] === '\\' && j + 1 < tok.length) { value += tok[j + 1]; j += 2; }
+        else if (tok[j] === '"') { j++; break; }
+        else { value += tok[j]; j++; }
+      }
+      i = j;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < tok.length) { value += tok[i + 1]; i += 2; continue; }
+    value += ch;
+    i++;
+  }
+  return { value, hadDoubleQuote, hadSingleQuote };
+}
+
+interface ExtractedWrites { targets: string[]; unsafe: string[] }
+
+/**
+ * Extract candidate write targets (redirects, mkdir/touch args, cp/mv
+ * destinations) from a command.
+ *
+ * Tokenization is quote-aware end to end: `splitOnShellOperators` and
+ * `tokenizeShellSegment` both respect quoting, so a quoted path with spaces
+ * ("스크린샷 … .png") survives as ONE token and its real value is checked.
+ * The previous implementation regex-matched the maskQuotedRegions() string,
+ * whose blanked quote interiors split every quoted argument into bare `"`
+ * tokens — rejecting legitimate `cp "…" codebase/…` calls with garbage
+ * violations (zinc-bracing-gavel). Per-token masking is still used so a `>`
+ * inside a quoted JS literal (`node -e "() => {…}"`) is never read as a
+ * redirect.
+ *
+ * `unsafe` carries double-quoted targets containing `$`/backtick (shell would
+ * expand them, so their literal value is unknowable) — the caller rejects
+ * them, preserving the old parser's accidental fail-closed behavior for
+ * quoted expansions. Unquoted `$VAR`/backtick targets keep their historical
+ * skip semantics.
+ */
+function extractWriteTargetsDetailed(command: string): ExtractedWrites {
   const targets: string[] = [];
+  const unsafe: string[] = [];
   const cmdPart = command.split(/<<-?\s*['"]?\w+['"]?/)[0] || command;
-  // Mask quoted/backtick/`$( … )` regions BEFORE regex extraction so that JS
-  // literals (e.g. `() => { … }` inside `node -e "…"`) cannot masquerade as
-  // shell redirects (`> {`) or `mkdir/touch/cp/mv` calls. The masked string
-  // is ONLY used for guard regex matching; the original `command` is what
-  // actually runs.
-  const guard = maskQuotedRegions(cmdPart);
-  const segments = splitOnShellOperators(guard);
+  const segments = splitOnShellOperators(cmdPart);
+
+  const pushTarget = (tok: string): void => {
+    const { value, hadDoubleQuote, hadSingleQuote } = unquoteToken(tok);
+    if (!value) return;
+    if (value.startsWith('&')) return; // fd duplication (`2>&1`), not a file
+    if (value.includes('`') || /\$/.test(value)) {
+      if (hadDoubleQuote) { unsafe.push(value); return; }
+      // Single-quoted `$`/backtick is literal — check it as a real path.
+      // Unquoted expansions keep the historical skip (never resolvable here).
+      if (!hadSingleQuote) return;
+    }
+    if (value.startsWith('/dev/')) return;
+    targets.push(value);
+  };
 
   for (const seg of segments) {
-    const trimmed = seg.trim();
-    if (!trimmed) continue;
+    const tokens = tokenizeShellSegment(seg.trim());
+    if (tokens.length === 0) continue;
 
-    const redirectMatch = trimmed.match(/>{1,2}\s+([^\s;&|><"']+)/);
-    if (redirectMatch) targets.push(redirectMatch[1]);
-
-    const mkdirMatch = trimmed.match(/\bmkdir\s+(?:-p\s+)?(.+)/);
-    if (mkdirMatch) {
-      for (const p of mkdirMatch[1].trim().split(/\s+/)) {
-        if (!p.startsWith('-')) targets.push(p);
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      // Redirect operators: mask quoting inside the token first so quoted
+      // `>` characters can never look like operators.
+      const masked = maskQuotedRegions(tok);
+      const opOnly = masked.match(/^\d*(>{1,2})$/);
+      if (opOnly) {
+        if (tokens[i + 1]) pushTarget(tokens[i + 1]);
+        i++;
+        continue;
+      }
+      const opAttached = masked.match(/^\d*(>{1,2})(?=\S)/);
+      if (opAttached) {
+        pushTarget(tok.slice(opAttached[0].length));
+        continue;
       }
     }
 
-    const touchMatch = trimmed.match(/\btouch\s+(.+)/);
-    if (touchMatch) {
-      for (const p of touchMatch[1].trim().split(/\s+/)) {
-        if (!p.startsWith('-')) targets.push(p);
-      }
-    }
-
-    const cpMatch = trimmed.match(/\bcp\s+(?:-[a-zA-Z]+\s+)*(.+)/);
-    if (cpMatch) {
-      const cpArgs = cpMatch[1].trim().split(/\s+/).filter(a => !a.startsWith('-'));
-      if (cpArgs.length >= 2) targets.push(cpArgs[cpArgs.length - 1]);
-    }
-
-    const mvMatch = trimmed.match(/\bmv\s+(?:-[a-zA-Z]+\s+)*(.+)/);
-    if (mvMatch) {
-      const mvArgs = mvMatch[1].trim().split(/\s+/).filter(a => !a.startsWith('-'));
-      if (mvArgs.length >= 2) targets.push(mvArgs[mvArgs.length - 1]);
+    // Write verbs: first unquoted token occurrence; remaining non-flag
+    // tokens are its args.
+    const verbIdx = tokens.findIndex(t => WRITE_VERBS.has(t));
+    if (verbIdx === -1) continue;
+    const verb = tokens[verbIdx];
+    const argToks = tokens.slice(verbIdx + 1)
+      .filter(t => !t.startsWith('-') && !maskQuotedRegions(t).match(/^\d*>{1,2}/));
+    if (verb === 'mkdir' || verb === 'touch') {
+      for (const t of argToks) pushTarget(t);
+    } else if (argToks.length >= 2) {
+      // cp/mv: the last argument is the destination.
+      pushTarget(argToks[argToks.length - 1]);
     }
   }
 
-  return targets.filter(t => t && !t.startsWith('$') && !t.includes('`') && !t.startsWith('/dev/'));
+  return { targets, unsafe };
+}
+
+function extractWriteTargets(command: string): string[] {
+  return extractWriteTargetsDetailed(command).targets;
 }
 
 function detectWritePathViolations(command: string, workingDir: string, projectPath: string): WriteViolation[] {
-  const targets = extractWriteTargets(command);
+  const { targets, unsafe } = extractWriteTargetsDetailed(command);
   const violations: WriteViolation[] = [];
+
+  // Fail-closed for quoted shell expansions: a double-quoted write target
+  // containing `$`/backtick expands at runtime to a value this guard cannot
+  // see. The old masked parser rejected these by accident; keep rejecting
+  // them on purpose.
+  for (const u of unsafe) {
+    violations.push({ path: u, reason: 'write target contains a shell expansion (`$…`/backtick) whose value cannot be verified — use a literal path' });
+  }
 
   if (/\b(rm|mv|cp|touch|chmod)\b.*\.git\b/.test(command) || />\s*[^\s]*\.git/.test(command)) {
     violations.push({ path: '.git', reason: 'modifying .git files/directories is forbidden' });
