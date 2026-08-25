@@ -9,6 +9,12 @@
  * walk below maps a requested path onto the on-disk byte form when a
  * normalization variant exists, probing ONLY through the FileSystemPort so the
  * contained (descriptor-descended) enumeration primitives stay in force.
+ *
+ * `toNfc` also serves the CONTENT axis: read-only text channels entering
+ * prompts (user-doc funnel `normalizeTemplateDoc`, plan context docs, the
+ * directive intake) normalize to NFC so the model never sees mixed-
+ * normalization Korean (sure-judging-bluff thinking loops). Codebase
+ * read/edit tool paths stay byte-faithful by design.
  */
 
 export function toNfc(s: string): string {

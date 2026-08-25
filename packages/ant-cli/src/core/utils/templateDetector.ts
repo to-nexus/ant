@@ -12,6 +12,8 @@
  * content is returned as-is.
  */
 
+import { toNfc } from './unicodePath';
+
 const TEMPLATE_MARKER = '<!-- ant:template -->';
 const CONTENT_THRESHOLD = 50;
 
@@ -63,10 +65,14 @@ export function getTemplateReason(content: string, fileSize: number): { reason: 
  *
  * - Returns `null` if the content is empty or a template placeholder.
  * - Returns the cleaned content (marker stripped) if real content exists.
+ * - Output is NFC-normalized: user docs authored on macOS carry NFD Hangul
+ *   whose bytes differ from the model's NFC output for visually identical
+ *   text, sending the LLM into reconciliation loops (sure-judging-bluff).
+ *   This funnel is the single owner for eager-doc prompt injection.
  */
 export function normalizeTemplateDoc(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const trimmed = raw.trim();
+  const trimmed = toNfc(raw).trim();
   if (!trimmed) return null;
 
   // If only HTML comments remain, treat as empty

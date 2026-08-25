@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { reconcileOnDiskPath, toNfc, nfcEquals, type ExistenceProbe } from '../../src/core/utils/unicodePath';
+import { normalizeTemplateDoc } from '../../src/core/utils/templateDetector';
 import { handleCopyFile } from '../../src/agents/common/tool/handlers/copyFile';
 import { handleReadFile } from '../../src/agents/common/tool/handlers';
 import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
@@ -174,6 +175,61 @@ describe('NFC/NFD integration — real filesystem (the zinc-bracing-gavel scenar
       expect(result.content).toMatch(/\[Binary file/);
       expect(result.content).toMatch(/copy_file/);
       expect(result.content).not.toMatch(/run_command\("cp/);
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('NFC content normalization at the prompt boundary (sure-judging-bluff)', () => {
+  const NFD_TEXT = '통보 체계 · 환불 처리'.normalize('NFD');
+  const NFC_TEXT = NFD_TEXT.normalize('NFC');
+
+  function makeBoundaryCtx(workspacePath: string): ToolExecutionContext {
+    const noop = async () => undefined as any;
+    return {
+      fileSystem: new FileSystemAdapter(workspacePath),
+      chatStatus: new Proxy({}, { get: () => noop }) as ToolExecutionContext['chatStatus'],
+      workingDir: workspacePath,
+      allowMutateInCodebase: true,
+    } as ToolExecutionContext;
+  }
+
+  it('normalizeTemplateDoc emits strictly NFC content', () => {
+    const out = normalizeTemplateDoc(`# Report\n\n${NFD_TEXT}\n`);
+    expect(out).toBeTruthy();
+    expect(out).toContain(NFC_TEXT);
+    // No conjoining jamo may survive the funnel.
+    expect([...out!].some(c => c.charCodeAt(0) >= 0x1100 && c.charCodeAt(0) <= 0x11ff)).toBe(false);
+  });
+
+  it('normalizeTemplateDoc template-marker semantics are unaffected by NFD input', () => {
+    expect(normalizeTemplateDoc(`<!-- ant:template -->\n# 제목\n`.normalize('NFD'))).toBeNull();
+    const kept = normalizeTemplateDoc(`<!-- ant:template -->\n${NFD_TEXT} — substantial user content beyond the scaffold threshold, long enough to keep.\n`);
+    expect(kept).toBeTruthy();
+    expect(kept).not.toContain('ant:template');
+    expect(kept).toContain(NFC_TEXT);
+  });
+
+  it('toNfc scope pin: canonical singletons fold, NFKC-only compat forms do not', () => {
+    // CJK compatibility ideographs (U+F967 \u2192 U+4E0D) carry CANONICAL
+    // singleton decompositions, so NFC folds them \u2014 which stabilizes the
+    // exact confusable the incident thinking looped on. NFKC-only foldings
+    // (width forms, ligatures) must stay untouched \u2014 NFKC would mangle code.
+    expect(toNfc('\uF967')).toBe('\u4E0D');
+    expect(toNfc('\uFF21')).toBe('\uFF21'); // fullwidth A unchanged (no NFKC)
+  });
+
+  it('read_file tool output stays byte-faithful (stage-2 explicitly out of scope)', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-nfc-'));
+    try {
+      fs.mkdirSync(path.join(ws, 'codebase'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'codebase/page.html'), `<h1>${NFD_TEXT}</h1>\n`);
+      const result = await handleReadFile(makeBoundaryCtx(ws), { path: 'codebase/page.html' });
+      expect(result.error).toBeUndefined();
+      // Stage 1 normalizes read-only doc channels only; codebase reads keep
+      // raw bytes so edit_file old_string matching stays exact.
+      expect(result.content).toContain(NFD_TEXT);
     } finally {
       fs.rmSync(ws, { recursive: true, force: true });
     }

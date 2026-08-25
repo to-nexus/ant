@@ -24,6 +24,7 @@ import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common
 import { hydrateFeatureContext } from '../../../../../core/context/featureContextBuilder';
 import { getChatAPIClient } from '../../../../../core/adapters/ChatAPIClient';
 import { normalizeTemplateDoc } from '../../../../../core/utils/templateDetector';
+import { toNfc } from '../../../../../core/utils/unicodePath';
 import { resolveResumeActionSlots } from '../../../../common/graph/resumeActionMetadata';
 import {
   getCanonicalPlanPath,
@@ -119,7 +120,9 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
   }
   for (const ctxPath of slots.context) {
     try {
-      const content = fs.readFileSync(path.join(featurePath, ctxPath), 'utf-8');
+      // NFC like the ref funnel above — context docs bypass normalizeTemplateDoc
+      // on purpose (template-marker semantics differ), not the NFC boundary.
+      const content = toNfc(fs.readFileSync(path.join(featurePath, ctxPath), 'utf-8'));
       if (content.trim()) documents.push({ path: ctxPath, content, role: 'context' });
     } catch { /* file not found */ }
   }

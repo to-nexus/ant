@@ -46,6 +46,7 @@ import type { InterruptionReason, InterruptionDetails } from '../core/types/sess
 import { resolveKillReason, buildSigtermInterruption } from './sigtermInterruption';
 import { buildInfrastructureInterruption } from '@ant/shared';
 import { isPromptTooLongError } from '../core/utils/apiErrorClassify';
+import { toNfc } from '../core/utils/unicodePath';
 import { isLlmAuthError } from '../core/llm/isLlmAuthError';
 import { isMcpConfigError } from '../core/customAgents/McpConfigError';
 
@@ -214,6 +215,10 @@ async function runJob(params: JobParams): Promise<void> {
         logger.warn(`Could not read input file: ${params.inputFile}`, { component: 'JobRunner' });
       }
     }
+    // NFC intake — pasted-from-macOS directives can carry NFD Hangul whose
+    // bytes differ from the model's NFC output for identical glyphs.
+    input = toNfc(input);
+    const overrideDirective = params.overrideDirective && toNfc(params.overrideDirective);
     
     reportProgress('executing', `Running ${params.agent} ${params.jobType}...`);
     
@@ -231,7 +236,7 @@ async function runJob(params: JobParams): Promise<void> {
       projectPath,
       workspaceResolver,
       userContext,
-      overrideDirective: params.overrideDirective,
+      overrideDirective,
       chatSource: params.chatSource,
       skipTriage: params.skipTriage,
       actionMetadata: params.actionMetadata,
