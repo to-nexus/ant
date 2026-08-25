@@ -9,6 +9,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { DIRECTIVE_MAX_CHARS } from '../routes/helpers/submitUserTurn';
 
 /**
  * Express middleware that validates req.body against a Zod schema.
@@ -82,6 +83,13 @@ export const executeJobSchema = z.object({
   customJobRef: z.string().optional(),
   mode: z.string().optional(),
   language: z.string().optional(),
+  /**
+   * Deliberately uncapped HERE. The ceiling lives with the durable turn writer
+   * (`directiveTooLarge`), which the route applies before the append so all
+   * three job-start directives — execute / inline-ask / continue — answer the
+   * same typed 413 (M-NEW-029). A `.max()` here would shadow that with a
+   * generic 400 and give the axis two owners.
+   */
   overrideDirective: z.string().optional(),
   chatSource: z.boolean().optional(),
   skipTriage: z.boolean().optional(),
@@ -122,7 +130,7 @@ export const createProjectSchema = z.object({
  * overwrite both for every client that omits the field.
  */
 export const chatUserMessageSchema = z.object({
-  content: z.string().min(1, 'Message content is required').max(100000),
+  content: z.string().min(1, 'Message content is required').max(DIRECTIVE_MAX_CHARS),
   jobType: z
     .enum(['code', 'design', 'plan', 'learn', 'ask', 'inline-ask', 'visual', 'universal'])
     .optional(),

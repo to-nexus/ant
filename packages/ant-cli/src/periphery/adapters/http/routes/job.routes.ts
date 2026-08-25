@@ -32,16 +32,8 @@ import type { JobStateTracker } from '../express/managers/JobStateTracker';
 import type { KanbanService } from '../services';
 import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { setSessionDismissed } from './helpers/sessionCleanup';
-import { ensureSubmitUserTurn } from './helpers/submitUserTurn';
+import { ensureSubmitUserTurn, directiveTooLarge } from './helpers/submitUserTurn';
 import { getFallbackModel } from '../../../../core/config/defaultModels';
-
-/**
- * Ceiling on a single continue directive. It is unshifted into the canonical
- * session state and re-read on every subsequent continue, so an unbounded value
- * grows the file the bounded session readers must load (M-NEW-029). Generous for
- * a real multi-paragraph instruction, bounded well under the session budget.
- */
-const CONTINUE_DIRECTIVE_MAX_CHARS = 100_000;
 
 /**
  * Pre-flight credit gate — rule lives in `core/scheduling/UniversalDispatchGate`
@@ -272,6 +264,13 @@ export function createJobRoutes(deps: {
     // so leaves an open chat window with no user message.
     let effectiveTurnId: string | undefined = seedTurnId;
     let userContext: { userId: string; organizationId: string } | null = null;
+    // Before the durable append below — `overrideDirective` reaches chat.jsonl
+    // (and the worker's feature.jsonl copy) ahead of every job-start gate, so
+    // the cap has to be the first thing this route does (M-NEW-029). The zod
+    // schema carries the same ceiling; this is the typed 413 the other two
+    // directive ingresses answer with.
+    const executeTooLarge = directiveTooLarge(overrideDirective, 'overrideDirective');
+    if (executeTooLarge) return res.status(413).json(executeTooLarge);
     try {
       userContext = extractUserContext(req);
 
@@ -1283,13 +1282,8 @@ export function createJobRoutes(deps: {
     // The directive is unshifted into the canonical session state and re-read on
     // every subsequent continue, so an unbounded value grows the session file the
     // bounded readers must then load (M-NEW-029). Cap it at the source.
-    if (newDirective.length > CONTINUE_DIRECTIVE_MAX_CHARS) {
-      return res.status(413).json({
-        error: 'Directive too large',
-        code: 'DIRECTIVE_TOO_LARGE',
-        message: `newDirective exceeds ${CONTINUE_DIRECTIVE_MAX_CHARS} characters`,
-      });
-    }
+    const continueTooLarge = directiveTooLarge(newDirective, 'newDirective');
+    if (continueTooLarge) return res.status(413).json(continueTooLarge);
     
     try {
       const userContext = extractUserContext(req);
@@ -1450,6 +1444,9 @@ export function createJobRoutes(deps: {
         message: 'message is required and must be a string'
       });
     }
+    // Same durable-append budget as /execute and /continue (M-NEW-029).
+    const inlineAskTooLarge = directiveTooLarge(message, 'message');
+    if (inlineAskTooLarge) return res.status(413).json(inlineAskTooLarge);
     
     try {
       const userContext = extractUserContext(req);

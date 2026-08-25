@@ -18,6 +18,7 @@
  */
 
 import * as fs from 'node:fs/promises';
+import { readSessionTextBoundedAsync } from '../utils/sessionPaths';
 import * as path from 'node:path';
 import type { RefineImpactMetadata } from '@ant/shared';
 import { getChatLogAppender } from '../llm-response/chatLogAppenderRegistry';
@@ -72,7 +73,11 @@ async function readDesignCheckpoint(
 ): Promise<DesignSessionCheckpointLike | null> {
   const sessionPath = designSessionPath(featurePath);
   try {
-    const raw = await fs.readFile(sessionPath, 'utf-8');
+    // Bounded on the read's own descriptor (M-NEW-029): this runs on every
+    // post-execute rev-plan turn, so an oversized design session must not be
+    // materialised + parsed in the worker.
+    const raw = await readSessionTextBoundedAsync(sessionPath);
+    if (raw === null) return null;
     const parsed = JSON.parse(raw);
     // Sessions persist `state` as the checkpoint payload; fall back to
     // the parsed root for older formats.

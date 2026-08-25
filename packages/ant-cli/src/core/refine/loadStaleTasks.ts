@@ -8,9 +8,8 @@
  * helper is read-only and tolerant of missing files.
  */
 
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 import type { ChatLine, ChatStatusLine, RefineImpactMetadata } from '@ant/shared';
+import { getChatJsonlPath, readJsonlTailBounded } from '../utils/sessionPaths';
 
 /**
  * Aggregate of stale-task signals collected from the chat log. The
@@ -27,46 +26,20 @@ export interface StaleTaskSummary {
   unscannableTaskIds: string[];
 }
 
-const CHAT_JSONL_TAIL_BYTES = 256 * 1024; // ~256KB tail is plenty for a session's worth of cards.
-
-function chatJsonlPath(featurePath: string): string {
-  return path.join(featurePath, 'sessions', 'chat.jsonl');
-}
-
 /**
- * Read the last N bytes of `chat.jsonl`. Drops any partial first line
- * caused by the byte-window cut so the parser only sees complete JSON
- * objects.
+ * The bounded-window JSONL read has one owner (`readJsonlTailBounded`); this
+ * helper only parses what it hands back. Malformed lines are skipped —
+ * chat.jsonl is append-only, but one corrupt line must not swallow the signal.
  */
-async function readChatJsonlTail(filePath: string): Promise<string> {
-  const handle = await fs.open(filePath, 'r').catch(() => null);
-  if (!handle) return '';
-  try {
-    const stat = await handle.stat();
-    const start = Math.max(0, stat.size - CHAT_JSONL_TAIL_BYTES);
-    const length = stat.size - start;
-    const buf = Buffer.alloc(length);
-    await handle.read(buf, 0, length, start);
-    const text = buf.toString('utf-8');
-    if (start === 0) return text;
-    const newlineIdx = text.indexOf('\n');
-    return newlineIdx >= 0 ? text.slice(newlineIdx + 1) : '';
-  } finally {
-    await handle.close();
-  }
-}
-
-function parseChatLines(jsonlText: string): ChatLine[] {
-  if (!jsonlText) return [];
-  const lines = jsonlText.split('\n');
+async function readChatLines(featurePath: string): Promise<ChatLine[]> {
+  const window = await readJsonlTailBounded(getChatJsonlPath(featurePath));
+  if (!window) return [];
   const out: ChatLine[] = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
+  for (const line of window.lines) {
     try {
       out.push(JSON.parse(line) as ChatLine);
     } catch {
-      // Skip malformed line — chat.jsonl is append-only but we don't
-      // want a single corrupt line to swallow the whole signal.
+      // skip
     }
   }
   return out;
@@ -87,8 +60,7 @@ function isRefineImpactStatus(line: ChatLine): line is ChatStatusLine {
 export async function loadStaleTasks(
   featurePath: string,
 ): Promise<StaleTaskSummary> {
-  const jsonlText = await readChatJsonlTail(chatJsonlPath(featurePath));
-  const lines = parseChatLines(jsonlText);
+  const lines = await readChatLines(featurePath);
 
   const byDoc: Record<string, RefineImpactMetadata> = {};
   for (const line of lines) {

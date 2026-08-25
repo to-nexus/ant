@@ -35,7 +35,7 @@ import {
   createReadStreamContainedBase,
 } from '../../../../core/config/containedIo';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
-import { SESSIONS_DIR_NAME } from '../../../../core/utils/sessionPaths';
+import { isReservedSessionRelativePath } from '../../../../core/utils/sessionPaths';
 
 /**
  * `mkdir -p featurePath/relDir` bound to the physical workspace base by
@@ -248,10 +248,13 @@ export function createFilesRoutes(deps: {
    * does not go through these HTTP file routes — so the whole namespace is
    * off-limits to the generic file surface. Mirrors the universal plane's
    * `reservedRootViolation` (customAgents.routes.ts).
+   *
+   * Pass the FINAL feature-relative target, not the caller's raw string: the
+   * shared predicate normalizes `..`, and upload resolves each part's own
+   * destination below rather than trusting `dirPath` alone.
    */
   const refusedCanonicalSessionPath = (res: Response, relativeFilePath: string): boolean => {
-    const first = (relativeFilePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0] ?? '';
-    if (first !== SESSIONS_DIR_NAME) return false;
+    if (!isReservedSessionRelativePath(relativeFilePath)) return false;
     res.status(409).json({
       code: 'reserved-name-sessions',
       error: '"sessions" is a reserved job-state namespace and cannot be modified through the file API',
@@ -642,6 +645,28 @@ export function createFilesRoutes(deps: {
       // verbatim on Linux makes every LLM-emitted (NFC) path miss the file.
       for (const f of files) f.originalname = toNfc(f.originalname);
 
+      // Destination pre-validation, all-or-nothing and ahead of the content
+      // policy loops below: a path rejected mid-write would leave earlier files
+      // already ingested, and a reserved-namespace target must be refused on its
+      // own terms rather than incidentally by an extension rule.
+      const destinations: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const relPath = relativePaths[i] || files[i].originalname;
+        let destination: string;
+        try {
+          destination = resolveWriteTarget(baseDir, featurePath, relPath);
+        } catch {
+          return res.status(400).json({ error: 'Invalid file path' });
+        }
+        // The reserved-namespace verdict belongs on the RESOLVED target, not on
+        // `dirPath`: a part's own `relativePaths[]` (or its `originalname`
+        // fallback) can climb out of an innocuous `dirPath` and land in
+        // `sessions/**`, which the early `dirPath` check above never sees
+        // (M-NEW-029).
+        if (refusedCanonicalSessionPath(res, path.relative(featurePath, destination))) return;
+        destinations.push(destination);
+      }
+
       // Validate file extensions against artifact dir policy
       const normalizedDirPath = dirPath.replace(/\\/g, '/').replace(/\/$/, '');
       const uploadPolicy = getArtifactDirPolicy(normalizedDirPath);
@@ -679,18 +704,6 @@ export function createFilesRoutes(deps: {
             message: `${filename} is corrupted and was not saved: ${defect}`,
             filename,
           });
-        }
-      }
-
-      // Destination pre-validation, all-or-nothing like the two loops above: a
-      // path rejected mid-write would leave earlier files already ingested.
-      const destinations: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const relPath = relativePaths[i] || files[i].originalname;
-        try {
-          destinations.push(resolveWriteTarget(baseDir, featurePath, relPath));
-        } catch {
-          return res.status(400).json({ error: 'Invalid file path' });
         }
       }
 

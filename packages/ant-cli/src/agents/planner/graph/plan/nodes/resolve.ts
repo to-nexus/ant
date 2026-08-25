@@ -17,6 +17,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { readSessionTextBounded } from '../../../../../core/utils/sessionPaths';
 import { PlanGraphState } from '../state';
 import type { ConversationEntry } from '../../../../../core/types/session';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations';
@@ -160,7 +161,9 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
   let recentTurnSummaries: string[] | undefined;
   const sessionPath = path.join(featurePath, 'sessions/planner/plan.json');
   try {
-    const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+    // Bounded on the read's own descriptor (M-NEW-029). Over budget throws into
+    // the surrounding catch, which continues without conversation history.
+    const sessionData = JSON.parse(readSessionTextBounded(sessionPath) ?? 'null') ?? {};
 
     // Load from new format first, fallback to legacy
     if (sessionData.state?.conversations?.[CONV_KEYS.SESSION_MAIN]) {
@@ -186,7 +189,7 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
       isConversationContinuation = true;
       console.log(`   Conversation: Appended new user message (now ${sessionMain.length} entries)`);
       try {
-        const sessionWriteData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+        const sessionWriteData = JSON.parse(readSessionTextBounded(sessionPath) ?? 'null') ?? {};
         sessionWriteData.state = sessionWriteData.state || {};
         sessionWriteData.state.conversations = {
           ...sessionWriteData.state.conversations,

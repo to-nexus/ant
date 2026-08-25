@@ -1,4 +1,5 @@
 import * as path from 'path';
+import { readSessionTextBounded, SessionTooLargeError } from '../../../../../core/utils/sessionPaths';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../state';
@@ -87,8 +88,19 @@ export async function saveConversationToSession(
 
     let sessionData: any = {};
     try {
-      sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-    } catch {
+      // Bounded on the read's own descriptor (M-NEW-029). An over-budget session
+      // throws and is re-raised below rather than falling into the fresh-session
+      // branch, which would overwrite the existing state with an empty one.
+      const raw = readSessionTextBounded(sessionPath);
+      if (raw === null) throw new Error('no session file');
+      sessionData = JSON.parse(raw);
+    } catch (err) {
+      if (err instanceof SessionTooLargeError) {
+        console.warn(
+          `⚠️ [Plan:SessionWriter] session over budget (${err.size} > ${err.limit} bytes) — skipping persist to preserve existing state`,
+        );
+        return;
+      }
       sessionData = {
         sessionId: state._httpJobId || 'plan-session',
         project: process.env.ANT_PROJECT_ID || 'default',

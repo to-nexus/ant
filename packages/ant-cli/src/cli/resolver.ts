@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { getSessionFilePathByJob } from '../core/utils/sessionPaths';
+import { getSessionFilePathByJob, readSessionTextBounded } from '../core/utils/sessionPaths';
 
 /**
  * Auto-detect project name from path
@@ -107,8 +107,11 @@ export function resolveInputFile(inputPath: string, task: 'design' | 'code' | 'l
       const sessionPath = getSessionFilePathByJob(inputPath, task);
       if (fs.existsSync(sessionPath)) {
         try {
-          const sessionContent = fs.readFileSync(sessionPath, 'utf-8');
-          const session = JSON.parse(sessionContent);
+          // Same bounded seam as every other session reader (M-NEW-029) — the
+          // local CLI is a trusted boundary, but leaving one raw caller means
+          // the adoption guard needs an exception nobody re-reads.
+          const sessionContent = readSessionTextBounded(sessionPath);
+          const session = JSON.parse(sessionContent ?? 'null') ?? {};
           
           // ✅ Check multiple resume scenarios:
           // 1. Session has taskQueue with remaining tasks (work in progress)

@@ -175,4 +175,85 @@ describe('POST /upload — binary integrity', () => {
     expect(res.status).toBe(200);
     expect(Buffer.compare(await fs.readFile(dest), good)).toBe(0);
   });
+
+  /**
+   * M-NEW-029 (audit-9 residual): the reserved `sessions/**` verdict was taken
+   * on `dirPath` only, so a part's own `relativePaths[]` could climb out of an
+   * innocuous directory and land on job-lifecycle state — the one mutation
+   * source the PUT/directory/rename guards did not cover. The verdict now runs
+   * on each part's RESOLVED feature-relative target.
+   */
+  describe('reserved sessions/** namespace', () => {
+    async function uploadRaw(fields: Array<[string, string]>, filename: string): Promise<Response> {
+      const form = new FormData();
+      for (const [k, v] of fields) form.append(k, v);
+      form.append('files', new Blob([new Uint8Array(Buffer.from('{"state":{}}'))]), filename);
+      return fetch(`${baseUrl}/projects/${PROJECT_ID}/features/${FEATURE}/upload`, {
+        method: 'POST',
+        body: form,
+      });
+    }
+
+    // A part that climbs OUT of `dirPath` is already refused by the baseDir
+    // anchor (400). Pinned so that anchor cannot be relaxed without noticing.
+    it('a relativePaths[] climbing out of dirPath is refused by the baseDir anchor', async () => {
+      const res = await uploadRaw(
+        [['dirPath', 'plan'], ['relativePaths', '../sessions/architect/code.json']],
+        'code.json',
+      );
+      expect(res.status).toBe(400);
+      expect(existsSync(path.join(featurePath, 'sessions', 'architect', 'code.json'))).toBe(false);
+    });
+
+    it('refuses a dirPath-less relativePaths[] aimed straight at sessions/**', async () => {
+      const res = await uploadRaw(
+        [['dirPath', ''], ['relativePaths', 'sessions/architect/code.json']],
+        'code.json',
+      );
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('reserved-name-sessions');
+      expect(existsSync(path.join(featurePath, 'sessions', 'architect', 'code.json'))).toBe(false);
+    });
+
+    it('still refuses the plain dirPath aim (the pre-existing fast path)', async () => {
+      const res = await uploadRaw(
+        [['dirPath', 'sessions/architect'], ['relativePaths', 'code.json']],
+        'code.json',
+      );
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('reserved-name-sessions');
+      expect(existsSync(path.join(featurePath, 'sessions', 'architect', 'code.json'))).toBe(false);
+    });
+
+    it('refuses a nested dirPath that itself climbs into sessions/**', async () => {
+      const res = await uploadRaw(
+        [['dirPath', 'plan/../sessions/architect'], ['relativePaths', 'code.json']],
+        'code.json',
+      );
+      expect(res.status).toBe(409);
+      expect(existsSync(path.join(featurePath, 'sessions', 'architect', 'code.json'))).toBe(false);
+    });
+
+    it('all-or-nothing: a legitimate sibling part is not written either', async () => {
+      const form = new FormData();
+      form.append('dirPath', '');
+      form.append('files', new Blob([new Uint8Array(Buffer.from('# ok'))]), 'ok.md');
+      form.append('relativePaths', 'plan/ok.md');
+      form.append('files', new Blob([new Uint8Array(Buffer.from('{}'))]), 'code.json');
+      form.append('relativePaths', 'sessions/architect/code.json');
+      const res = await fetch(`${baseUrl}/projects/${PROJECT_ID}/features/${FEATURE}/upload`, {
+        method: 'POST',
+        body: form,
+      });
+      expect(res.status).toBe(409);
+      expect(existsSync(path.join(featurePath, 'plan', 'ok.md'))).toBe(false);
+      expect(existsSync(path.join(featurePath, 'sessions', 'architect', 'code.json'))).toBe(false);
+    });
+
+    it('a normal artifact upload is unaffected', async () => {
+      const res = await uploadRaw([['dirPath', 'plan'], ['relativePaths', 'notes.md']], 'notes.md');
+      expect(res.status).toBe(200);
+      expect(existsSync(path.join(featurePath, 'plan', 'notes.md'))).toBe(true);
+    });
+  });
 });

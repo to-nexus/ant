@@ -26,6 +26,8 @@ import {
   DEBUG_SUBDIRS,
   getAllSessionPaths,
   getSessionDebugDir,
+  readSessionTextBoundedAsync,
+  SessionTooLargeError,
 } from './sessionPaths';
 import { logger } from '../../utils/logger';
 
@@ -76,21 +78,44 @@ function extractJobId(fileName: string): string | undefined {
   return m ? m[1].toLowerCase() : undefined;
 }
 
-async function readActiveJobIdsFromSessions(featurePath: string): Promise<Set<string>> {
+/**
+ * `indeterminate` means a session could not be read within budget, so the set of
+ * protected job ids is INCOMPLETE. This timer deletes files, and the ids are the
+ * only thing standing between an active job and its own debug artifacts — so an
+ * unreadable session must suppress the prune, never silently shrink the
+ * protection set.
+ */
+async function readActiveJobIdsFromSessions(
+  featurePath: string,
+): Promise<{ ids: Set<string>; indeterminate: boolean }> {
   const ids = new Set<string>();
+  let indeterminate = false;
   await Promise.all(
     getAllSessionPaths(featurePath).map(async ({ path: sessionPath }) => {
       try {
-        const raw = await fs.promises.readFile(sessionPath, 'utf-8');
+        // Bounded on the read's own descriptor: this timer walks EVERY feature
+        // once a minute, so a single oversized session would otherwise be pulled
+        // whole into the service heap and parsed on every tick (M-NEW-029).
+        const raw = await readSessionTextBoundedAsync(sessionPath);
+        if (raw === null) return; // missing / not a regular file — no active job
         const session = JSON.parse(raw);
         const jobId = session?.state?.jobId;
         if (typeof jobId === 'string' && jobId.length > 0) ids.add(jobId.toLowerCase());
-      } catch {
-        // ENOENT / parse error — treat as no active job
+      } catch (err) {
+        if (err instanceof SessionTooLargeError) {
+          indeterminate = true;
+          logger.warn(
+            `[debugRetention] session over budget; skipping prune for this feature`,
+            { component: 'debugRetention' },
+            { sessionPath, size: err.size, limit: err.limit },
+          );
+          return;
+        }
+        // parse error — treat as no active job
       }
     }),
   );
-  return ids;
+  return { ids, indeterminate };
 }
 
 async function readActiveJobIdsFromRedis(
@@ -191,11 +216,14 @@ export async function pruneDebugArtifacts(
   const policy = options.policy ?? DEFAULT_DEBUG_RETENTION;
   const nowMs = options.nowMs ?? Date.now();
 
-  const [sessionIds, redisIds] = await Promise.all([
+  const [sessionScan, redisIds] = await Promise.all([
     readActiveJobIdsFromSessions(featurePath),
     readActiveJobIdsFromRedis(options.stateStore, options.context),
   ]);
-  const protectedJobIds = new Set<string>([...sessionIds, ...redisIds]);
+  // Fail closed: an incomplete protection set would delete a live job's own
+  // debug artifacts. Skipping a tick costs disk; deleting costs the job.
+  if (sessionScan.indeterminate) return { removed: 0, kept: 0, protectedActive: 0 };
+  const protectedJobIds = new Set<string>([...sessionScan.ids, ...redisIds]);
 
   const aggregate: PruneStats = { removed: 0, kept: 0, protectedActive: 0 };
   for (const [agent, subdirs] of Object.entries(DEBUG_SUBDIRS)) {

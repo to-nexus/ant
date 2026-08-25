@@ -7,6 +7,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { readSessionTextBounded } from '../../../../../core/utils/sessionPaths';
 import { VisualGraphState, SketchVariation } from '../types.js';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations.js';
 import { hydrateFeatureContext } from '../../../../../core/context/featureContextBuilder.js';
@@ -53,7 +54,9 @@ async function loadVisualState(state: VisualGraphState): Promise<Partial<VisualG
 
   try {
     if (fs.existsSync(sessionPath)) {
-      const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+      // Bounded on the read's own descriptor (M-NEW-029). Over budget throws
+      // into the surrounding catch, which starts the visual job fresh.
+      const sessionData = JSON.parse(readSessionTextBounded(sessionPath) ?? 'null') ?? {};
 
       if (sessionData.state?.conversations?.[CONV_KEYS.SESSION_MAIN]) {
         conversation = sessionData.state.conversations[CONV_KEYS.SESSION_MAIN];

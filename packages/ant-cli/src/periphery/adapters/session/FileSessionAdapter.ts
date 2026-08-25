@@ -17,6 +17,9 @@ import { Session, SessionRun, SessionArtifacts, SessionState } from "../../../co
 import { parseSession, safeParseSession } from "../../../core/schemas/session.schema";
 import { wouldRegressRun } from "../../../core/utils/sessionRunGuard";
 import * as fs from "fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import * as readline from "node:readline";
+import { pipeline } from "node:stream/promises";
 import * as path from "path";
 import {
   getSessionFilePath,
@@ -24,6 +27,7 @@ import {
   getFeatureJsonlPath,
   getChatJsonlPath,
   readSessionTextBoundedAsync,
+  readJsonlTailBounded,
 } from "../../../core/utils/sessionPaths";
 
 
@@ -613,26 +617,28 @@ export class FileSessionAdapter implements SessionPort {
   }
 
   /**
-   * Read all lines of a JSONL file (returns parsed objects).
+   * Read the JSONL log's newest bounded window and return the parsed objects.
    * Safe against partial writes (skips unparseable lines with warning).
+   *
+   * The single read seam for every public loader below, so the byte/line budget
+   * applies to prompt-context builds, the UI's initial chat load, the feature-log
+   * endpoints and turn dedupe alike — a whole-file read here put an
+   * attacker-influenced allocation into API and worker heap (M-NEW-029). Only the
+   * VIEW is bounded: the file on disk keeps every record, and the collapse
+   * rewriters below stream rather than truncate.
    */
   private async readJsonlLines<T>(filePath: string): Promise<T[]> {
-    try {
-      const raw = await fs.readFile(filePath, 'utf-8');
-      const lines = raw.split('\n').filter(l => l.trim() !== '');
-      const parsed: T[] = [];
-      for (const l of lines) {
-        try {
-          parsed.push(JSON.parse(l));
-        } catch {
-          console.warn(`[FileSessionAdapter] Skipping malformed JSONL line in ${filePath}`);
-        }
+    const window = await readJsonlTailBounded(filePath);
+    if (!window) return [];
+    const parsed: T[] = [];
+    for (const l of window.lines) {
+      try {
+        parsed.push(JSON.parse(l));
+      } catch {
+        console.warn(`[FileSessionAdapter] Skipping malformed JSONL line in ${filePath}`);
       }
-      return parsed;
-    } catch (err: any) {
-      if (err.code === 'ENOENT') return [];
-      throw err;
     }
+    return parsed;
   }
 
   /**
@@ -799,33 +805,71 @@ export class FileSessionAdapter implements SessionPort {
    * same `jobType` has a different `jobId`, so its lines remain visible
    * to future prompts.
    */
+  /**
+   * Rewrite a JSONL log line by line without holding the file in memory.
+   *
+   * The collapse paths are read-modify-write, so the bounded WINDOW the readers
+   * use would be data loss here — anything outside it would be dropped on the
+   * rewrite. Streaming keeps memory flat at one line regardless of file size and
+   * preserves every record (M-NEW-029). Unparseable lines pass through verbatim,
+   * as they did before.
+   *
+   * `transform` returns the replacement object, or `null` to keep the line as-is.
+   * The write lands via tmp + rename so a crash mid-rewrite cannot leave a
+   * half-written log. Callers must already hold the file's lock.
+   */
+  private async rewriteJsonlStreaming(
+    filePath: string,
+    transform: (parsed: any) => unknown | null,
+  ): Promise<void> {
+    try {
+      await fs.access(filePath);
+    } catch {
+      return; // ENOENT — nothing to collapse
+    }
+    const tmpPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    const out = createWriteStream(tmpPath, { encoding: 'utf-8' });
+    try {
+      await pipeline(
+        async function* () {
+          const rl = readline.createInterface({
+            input: createReadStream(filePath, { encoding: 'utf-8' }),
+            crlfDelay: Infinity,
+          });
+          for await (const line of rl) {
+            if (!line.trim()) {
+              yield `${line}\n`;
+              continue;
+            }
+            let replacement: unknown | null = null;
+            try {
+              replacement = transform(JSON.parse(line));
+            } catch {
+              replacement = null; // malformed — pass through
+            }
+            yield `${replacement === null ? line : JSON.stringify(replacement)}\n`;
+          }
+        },
+        out,
+      );
+      await fs.rename(tmpPath, filePath);
+    } catch (err) {
+      await fs.unlink(tmpPath).catch(() => { /* best-effort */ });
+      throw err;
+    }
+  }
+
   async collapseByJobId(jobId: string): Promise<void> {
     const filePath = getFeatureJsonlPath(this.featurePath);
     const lock = this.getJsonlLock(filePath);
-    await lock.runExclusive(async () => {
-      let content: string;
-      try {
-        content = await fs.readFile(filePath, 'utf-8');
-      } catch (err: any) {
-        if (err.code === 'ENOENT') return;
-        throw err;
-      }
-      const lines = content.split('\n');
-      const newLines = lines.map(l => {
-        if (!l.trim()) return l;
-        try {
-          const obj = JSON.parse(l);
-          if (obj.jobId === jobId && obj.type !== 'boundary' && !obj.collapsed) {
-            obj.collapsed = true;
-            return JSON.stringify(obj);
-          }
-          return l;
-        } catch {
-          return l;
+    await lock.runExclusive(() =>
+      this.rewriteJsonlStreaming(filePath, obj => {
+        if (obj.jobId === jobId && obj.type !== 'boundary' && !obj.collapsed) {
+          return { ...obj, collapsed: true };
         }
-      });
-      await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
-    });
+        return null;
+      }),
+    );
   }
 
   /**
@@ -844,30 +888,11 @@ export class FileSessionAdapter implements SessionPort {
 
   private async collapseAllInFile(filePath: string): Promise<void> {
     const lock = this.getJsonlLock(filePath);
-    await lock.runExclusive(async () => {
-      let content: string;
-      try {
-        content = await fs.readFile(filePath, 'utf-8');
-      } catch (err: any) {
-        if (err.code === 'ENOENT') return;
-        throw err;
-      }
-      const lines = content.split('\n');
-      const newLines = lines.map(l => {
-        if (!l.trim()) return l;
-        try {
-          const obj = JSON.parse(l);
-          if (!obj.collapsed) {
-            obj.collapsed = true;
-            return JSON.stringify(obj);
-          }
-          return l;
-        } catch {
-          return l;
-        }
-      });
-      await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
-    });
+    await lock.runExclusive(() =>
+      this.rewriteJsonlStreaming(filePath, obj =>
+        obj.collapsed ? null : { ...obj, collapsed: true },
+      ),
+    );
   }
 
   /**
@@ -875,34 +900,18 @@ export class FileSessionAdapter implements SessionPort {
    * Must be called inside a lock (appendBoundary handles locking).
    */
   private async collapseBeforeBoundaryInternal(filePath: string, boundaryTs: string): Promise<void> {
-    let content: string;
-    try {
-      content = await fs.readFile(filePath, 'utf-8');
-    } catch (err: any) {
-      if (err.code === 'ENOENT') return;
-      throw err;
-    }
-    const lines = content.split('\n');
-    const newLines = lines.map(l => {
-      if (!l.trim()) return l;
-      try {
-        const obj = JSON.parse(l);
-        // Collapse conversational lines (user_turn / user_turn_meta /
-        // assistant_turn / context_summary) before this boundary timestamp.
-        // Breadcrumbs stay (semi-permanent navigation anchors).
-        if (
-          (obj.type === 'user_turn' || obj.type === 'user_turn_meta' || obj.type === 'assistant_turn' || obj.type === 'context_summary') &&
-          !obj.collapsed &&
-          obj.ts < boundaryTs
-        ) {
-          obj.collapsed = true;
-          return JSON.stringify(obj);
-        }
-        return l;
-      } catch {
-        return l;
+    await this.rewriteJsonlStreaming(filePath, obj => {
+      // Collapse conversational lines (user_turn / user_turn_meta /
+      // assistant_turn / context_summary) before this boundary timestamp.
+      // Breadcrumbs stay (semi-permanent navigation anchors).
+      if (
+        (obj.type === 'user_turn' || obj.type === 'user_turn_meta' || obj.type === 'assistant_turn' || obj.type === 'context_summary') &&
+        !obj.collapsed &&
+        obj.ts < boundaryTs
+      ) {
+        return { ...obj, collapsed: true };
       }
+      return null;
     });
-    await fs.writeFile(filePath, newLines.join('\n'), 'utf-8');
   }
 }

@@ -15,7 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SessionableJobType } from '@ant/shared';
-import { getSessionFilePath, SESSION_SEARCH_MAP } from '../utils/sessionPaths';
+import { getSessionFilePath, SESSION_SEARCH_MAP, readSessionTextBoundedAsync } from '../utils/sessionPaths';
 import { atomicWriteFile } from '../utils/atomicWriteFile';
 import type { SessionState } from '../types/session';
 import { deriveResumableState } from './resumable';
@@ -112,12 +112,16 @@ export async function findArchivedState(
 ): Promise<ArchivedStateHit | null> {
   for (const { agent, job } of SESSION_SEARCH_MAP) {
     const p = path.join(archiveDir(featurePath, agent, job), `${jobId}.json`);
-    let raw: string;
+    // Bounded on the read's own descriptor — an archived envelope is the same
+    // job-state shape as a live session and is read on the resume path
+    // (M-NEW-029). Over budget throws and is caught below as "not this one".
+    let raw: string | null;
     try {
-      raw = await fs.promises.readFile(p, 'utf-8');
+      raw = await readSessionTextBoundedAsync(p);
     } catch {
       continue;
     }
+    if (raw === null) continue;
     try {
       const envelope = JSON.parse(raw) as ArchiveEnvelope;
       if (envelope?.state?.jobId !== jobId) continue;
@@ -149,7 +153,13 @@ export async function restoreArchivedState(
   const sessionPath = getSessionFilePath(featurePath, hit.agent, hit.jobType);
   let session: any;
   try {
-    session = JSON.parse(await fs.promises.readFile(sessionPath, 'utf-8'));
+    // Same bounded seam as every other session reader. An over-budget live slot
+    // refuses the restore rather than materialising + parsing it (M-NEW-029);
+    // the archive file is left in place so no work is destroyed.
+    const raw = await readSessionTextBoundedAsync(sessionPath);
+    // null = missing/unreadable; over budget throws. Both mean "cannot restore".
+    if (raw === null) throw new Error('live session unreadable');
+    session = JSON.parse(raw);
   } catch (err) {
     logger.warn(
       `[SessionArchive] Live session unreadable, cannot restore (jobId=${jobId})`,

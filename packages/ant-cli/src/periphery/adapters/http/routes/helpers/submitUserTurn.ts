@@ -18,6 +18,37 @@ import type { ChatService } from '../../services';
 import type { ActionMetadata, LogJobType } from '@ant/shared';
 import { generateTurnId } from '../../../../../composition/recordUserTurn';
 
+/**
+ * Ceiling on a single user directive, applied at EVERY HTTP ingress that reaches
+ * the durable turn writer below.
+ *
+ * `ensureSubmitUserTurn` appends the directive to `chat.jsonl` (and the worker
+ * copies it into `feature.jsonl`) before the job-start gates run, and the
+ * continue path additionally unshifts it into canonical session state that is
+ * re-read on every subsequent turn. An uncapped field therefore rides the 50 MiB
+ * authenticated JSON body straight into files that timers, jobs and the UI then
+ * read back (M-NEW-029). One owner so a new ingress cannot pick a different
+ * number — or none at all, which is how `/execute` and `/inline-ask` were missed.
+ */
+export const DIRECTIVE_MAX_CHARS = 100_000;
+
+/**
+ * 413 body for an over-cap directive, or null when it fits. Callers MUST answer
+ * with this BEFORE calling `ensureSubmitUserTurn` — the durable append is what
+ * is being budgeted, so a check after it protects nothing.
+ */
+export function directiveTooLarge(
+  directive: unknown,
+  field: string,
+): { error: string; code: 'DIRECTIVE_TOO_LARGE'; message: string } | null {
+  if (typeof directive !== 'string' || directive.length <= DIRECTIVE_MAX_CHARS) return null;
+  return {
+    error: 'Directive too large',
+    code: 'DIRECTIVE_TOO_LARGE',
+    message: `${field} exceeds ${DIRECTIVE_MAX_CHARS} characters`,
+  };
+}
+
 export interface SubmitUserTurnArgs {
   chatService?: ChatService;
   /** Used to resolve featurePath/projectPath for metadata enrichment + the universal probe. */

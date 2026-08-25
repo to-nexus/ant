@@ -32,6 +32,8 @@ import { setChatLogLockProvider } from '../../src/periphery/adapters/session/Fil
 import type { StateStorePort } from '../../src/core/ports/stateStore';
 import type { ChatBroadcastEnvelope } from '../../src/core/chat/MessageBroadcaster';
 import type { ExecuteJobParams } from '../../src/core/ports/http';
+import { DIRECTIVE_MAX_CHARS } from '../../src/periphery/adapters/http/routes/helpers/submitUserTurn';
+import { executeJobSchema, chatUserMessageSchema } from '../../src/periphery/adapters/http/middleware/validateBody';
 
 const USER_CTX = { userId: 'local', organizationId: 'local', email: 'local@local' } as any;
 
@@ -235,6 +237,74 @@ describe('job-start routes — submit-time user_turn ownership', () => {
     const assistant = (await chatLog()).filter((l) => l.type === 'assistant_message');
     expect(assistant).toHaveLength(1);
     expect(assistant[0].turnId).toBe(turns[0].turnId);
+  });
+
+
+  // ───────────────────────────────────────────────────────────────────
+  // Directive budget (M-NEW-029) — the cap belongs at EVERY ingress that
+  // reaches the durable turn writer, applied BEFORE the append. `/continue`
+  // had it; `/execute` and `/inline-ask` rode the 50 MiB authenticated JSON
+  // body straight into chat.jsonl.
+  // ───────────────────────────────────────────────────────────────────
+
+  const overCap = 'x'.repeat(DIRECTIVE_MAX_CHARS + 1);
+  const atCap = 'y'.repeat(DIRECTIVE_MAX_CHARS);
+
+  const capCases: Array<{ name: string; url: string; body: (d: string) => any; field: string }> = [
+    {
+      name: '/execute overrideDirective',
+      url: EXECUTE_URL,
+      body: (d) => ({ task: 'code', agent: 'architect', overrideDirective: d }),
+      field: 'overrideDirective',
+    },
+    {
+      name: '/inline-ask message',
+      url: INLINE_ASK_URL,
+      body: (d) => ({ message: d }),
+      field: 'message',
+    },
+  ];
+
+  for (const c of capCases) {
+    it(`${c.name} over the cap → 413 DIRECTIVE_TOO_LARGE, nothing durably appended`, async () => {
+      const res = await harness.call('POST', c.url, c.body(overCap));
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe('DIRECTIVE_TOO_LARGE');
+      expect(res.body.message).toContain(c.field);
+      expect(await chatLog()).toHaveLength(0);
+      expect(executeCalls).toHaveLength(0);
+    });
+
+    it(`${c.name} exactly at the cap is accepted (boundary is inclusive)`, async () => {
+      const res = await harness.call('POST', c.url, c.body(atCap));
+      expect(res.status).toBe(200);
+      const turns = await userTurns();
+      expect(turns).toHaveLength(1);
+      expect(turns[0].text).toHaveLength(DIRECTIVE_MAX_CHARS);
+    });
+  }
+
+  it('/continue over the cap → the same typed 413 (the ingress that already had it)', async () => {
+    const res = await harness.call('POST', '/jobs/job-1/continue', {
+      projectId: 'proj',
+      featureName: 'feat-a',
+      newDirective: overCap,
+    });
+    expect(res.status).toBe(413);
+    expect(res.body.code).toBe('DIRECTIVE_TOO_LARGE');
+    expect(res.body.message).toContain('newDirective');
+    expect(await chatLog()).toHaveLength(0);
+  });
+
+  // One owner: the schema must NOT re-cap `overrideDirective`, or /execute
+  // answers a generic 400 while its two siblings answer 413.
+  it('the /execute schema leaves the ceiling to the route (single owner)', () => {
+    expect(executeJobSchema.safeParse({ task: 'code', overrideDirective: overCap }).success).toBe(true);
+  });
+
+  it('the chat/user-message schema shares the constant (one owner, not a copy)', () => {
+    expect(chatUserMessageSchema.safeParse({ content: overCap }).success).toBe(false);
+    expect(chatUserMessageSchema.safeParse({ content: atCap }).success).toBe(true);
   });
 
   // ───────────────────────────────────────────────────────────────────

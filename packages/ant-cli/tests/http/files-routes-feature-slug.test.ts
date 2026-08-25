@@ -171,6 +171,29 @@ describe('files.routes — slash-named feature content round-trip', () => {
     expect(onDisk).toBe(false);
   });
 
+  // audit-9 residual: the verdict used to read the RAW first segment, so a path
+  // that only normalizes into the reserved tree slipped past it while
+  // `assertWithinRoot` happily resolved and wrote it.
+  it('PUT with a traversal-normalized sessions/** target → 409, nothing written', async () => {
+    const res = await fetch(
+      // `..%2f` is the form that actually survives to the handler: a literal
+      // `..` (and `%2e%2e`) is collapsed by URL/router normalization, but an
+      // encoded separator keeps the segment intact and `req.params` decodes it
+      // back to `plan/../sessions/…` — which `assertWithinRoot` then resolves.
+      `${baseUrl}/projects/${PROJECT_ID}/features/${SLASH_SLUG}/files/plan/..%2fsessions/architect/code.json`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '{"state":{"jobId":"x"}}' }),
+      },
+    );
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('reserved-name-sessions');
+    expect(fsSync.existsSync(
+      path.join(tmpWorkspaces, ORG, USER, PROJECT_ID, 'features', SLASH_SLUG, 'sessions', 'architect', 'code.json'),
+    )).toBe(false);
+  });
+
   it('a non-session PUT still succeeds (guard is scoped to sessions/**)', async () => {
     const res = await fetch(
       `${baseUrl}/projects/${PROJECT_ID}/features/${SLASH_SLUG}/files/plan/ok.md`,

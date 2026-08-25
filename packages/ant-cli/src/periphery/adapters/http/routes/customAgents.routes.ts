@@ -10,6 +10,7 @@
 import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { isReservedSessionRelativePath } from '../../../../core/utils/sessionPaths';
 import * as yaml from 'js-yaml';
 import multer from 'multer';
 import { writeBufferVerifiedContained } from '../../../../core/utils/binaryIntegrity';
@@ -263,14 +264,24 @@ export function createCustomAgentRoutes(deps: {
   /** Reserved top-level node name — grafted pipeline run logs (read-only). */
   const PIPELINE_RUNS_NODE = UNIVERSAL_PIPELINE_RUNS_NODE;
 
+  /**
+   * First segment of the NORMALIZED path. `artifacts/../sessions` has a first
+   * segment of `artifacts` but resolves into the grafted reserved tree, and the
+   * merged-path resolver normalizes before writing — so the verdict has to be
+   * taken on the same shape the write lands on (M-NEW-029).
+   */
   function firstSegment(rel: string): string {
-    return rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0] ?? '';
+    const cleaned = (rel ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (cleaned === '') return '';
+    return path.posix.normalize(cleaned).split('/')[0] ?? '';
   }
 
   /** 400 body for a mutation aimed at a reserved grafted root, or null. */
   function reservedRootViolation(rel: string): { error: string; code: string } | null {
     const first = firstSegment(rel);
-    if (first === SESSIONS_NODE) {
+    // Sessions verdict has one owner across both planes (files.routes.ts uses
+    // the same predicate for the canonical feature root).
+    if (isReservedSessionRelativePath(rel) || first === SESSIONS_NODE) {
       return { error: `"${SESSIONS_NODE}" is a reserved name at the workspace root`, code: 'reserved-name-sessions' };
     }
     if (first === PIPELINE_RUNS_NODE) {

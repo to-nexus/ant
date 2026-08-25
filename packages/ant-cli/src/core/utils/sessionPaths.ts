@@ -90,6 +90,24 @@ export function getAgentForJobSafe(jobType: string): string {
 export const SESSIONS_DIR_NAME = 'sessions';
 
 /**
+ * True when a caller-supplied relative path lands inside the reserved
+ * `sessions/**` namespace. The single owner every mutation guard calls, on both
+ * planes (canonical feature root and universal container).
+ *
+ * The comparison runs on the NORMALIZED path: `plan/../sessions/architect/code.json`
+ * has a first segment of `plan` but resolves into the reserved tree, so a raw
+ * first-segment test waved it through while the containment helper — which
+ * normalizes — happily wrote it (M-NEW-029). Callers that already hold the
+ * resolved absolute target should pass `path.relative(root, target)`.
+ */
+export function isReservedSessionRelativePath(relativePath: string): boolean {
+  const cleaned = (relativePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (cleaned === '') return false;
+  const normalized = path.posix.normalize(cleaned);
+  return normalized.split('/')[0] === SESSIONS_DIR_NAME;
+}
+
+/**
  * Largest a single session JSON may be for a bounded read. Session state is
  * job-runner-authored and small in normal operation; a file past this is a sign
  * of the M-NEW-029 growth vector (or corruption), and every reader refuses it as
@@ -97,6 +115,73 @@ export const SESSIONS_DIR_NAME = 'sessions';
  * real accumulated directive/task history, bounded against the 50 MiB body cap.
  */
 export const SESSION_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Largest window a JSONL log reader may materialise, and the ceiling on how many
+ * lines it will parse out of that window.
+ *
+ * `feature.jsonl` / `chat.jsonl` are append-only journals that grow with normal
+ * use, so unlike a session snapshot they cannot simply be refused — but reading
+ * them whole put an attacker-influenced number of bytes into API and worker heap
+ * on every UI load, prompt build and turn dedupe (M-NEW-029). Readers take the
+ * NEWEST window instead; the file on disk is never truncated.
+ */
+export const JSONL_READ_MAX_BYTES = 16 * 1024 * 1024;
+export const JSONL_MAX_LINES = 200_000;
+
+/**
+ * Read the newest {@link JSONL_READ_MAX_BYTES} of a JSONL log on a single
+ * descriptor and return its complete lines, newest-window-first-truncated.
+ *
+ * The window is taken from the actual opened descriptor's `fstat`, so a file
+ * that grew between a caller's check and this read is still bounded. When the
+ * window starts mid-file the first (partial) line is discarded so the caller
+ * only ever sees whole records, and at most {@link JSONL_MAX_LINES} of them
+ * (the tail is kept — these logs are read for their recent end).
+ *
+ * Returns `null` for a missing/unreadable file so callers can keep their
+ * historical "empty log" contract.
+ */
+export async function readJsonlTailBounded(
+  filePath: string,
+): Promise<{ lines: string[]; truncated: boolean } | null> {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(filePath, 'r');
+  } catch {
+    return null;
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) return null;
+    const size = Number(stat.size);
+    const start = Math.max(0, size - JSONL_READ_MAX_BYTES);
+    const length = size - start;
+    const buf = Buffer.alloc(length);
+    if (length > 0) await handle.read(buf, 0, length, start);
+    let text = buf.toString('utf-8');
+    let truncated = start > 0;
+    if (truncated) {
+      const newlineIdx = text.indexOf('\n');
+      text = newlineIdx >= 0 ? text.slice(newlineIdx + 1) : '';
+    }
+    let lines = text.split('\n').filter(l => l.trim() !== '');
+    if (lines.length > JSONL_MAX_LINES) {
+      lines = lines.slice(lines.length - JSONL_MAX_LINES);
+      truncated = true;
+    }
+    if (truncated) {
+      logger.warn(
+        `[sessionPaths] JSONL log exceeded the read budget; serving the newest window only`,
+        { component: 'sessionPaths' },
+        { filePath, size, budget: JSONL_READ_MAX_BYTES, lines: lines.length },
+      );
+    }
+    return { lines, truncated };
+  } finally {
+    await handle.close();
+  }
+}
 
 /**
  * Read a session file bounded to {@link SESSION_MAX_BYTES} on its own descriptor.
