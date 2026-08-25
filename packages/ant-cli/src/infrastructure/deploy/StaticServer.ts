@@ -10,6 +10,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { createStaticApp } from '../static/staticApp';
+import { staticEntryFile } from '../../periphery/adapters/http/services/PreviewService/detectors/manifest';
 import { composeChildEnv } from '../../core/config/childEnv';
 import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
 import { logger } from '../../utils/logger';
@@ -35,11 +36,16 @@ export interface StaticServerHandle {
  */
 function startSpaServer(options: StaticServerOptions): Promise<StaticServerHandle> {
   const { outputDir, port, basePath } = options;
+  // Re-derived from the manifest SSOT at serve time (works after a pod-restart
+  // rehydration too — the deploy workspace persists on disk). Built frameworks
+  // have a package.json, so this stays undefined and the default index.html holds.
+  const entryFile = staticEntryFile(options.workspacePath) ?? 'index.html';
   const app = createStaticApp({
     root: outputDir,
     basePath,
     cache: 'short',
     fallback: 'always-index',
+    entryFile,
   });
 
   return new Promise((resolve, reject) => {

@@ -112,9 +112,15 @@ describe('canStart parity with the retired quickDetect', () => {
   it.each([
     ['index.html at the root', { 'index.html': '<h1/>' }],
     ['public/index.html', { 'public/index.html': '<h1/>' }],
+    ['a single non-index html at the root', { 'ax-tf-weekly-report.html': '<h1/>' }],
   ])('static site (%s) → true', (label, files) => {
     const dir = fixture(`static-${label.replace(/\W/g, '')}`, files as Record<string, unknown>);
     expect(canStart(dir)).toBe(true);
+  });
+
+  it('only a dot-named html → no answer at all (null)', () => {
+    const dir = fixture('static-dotonly', { '.secret.html': '<h1/>' });
+    expect(canStart(dir)).toBeNull();
   });
 
   it.each([

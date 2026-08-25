@@ -148,8 +148,9 @@ export class ProjectStructureDetector {
 
     throw new Error(
       'No recognized project files found (no package.json, go.mod, go.work, Cargo.toml, ' +
-      'requirements.txt, pom.xml, a Makefile with a dev/run/serve target, or an index.html ' +
-      'for a static site)',
+      'requirements.txt, pom.xml, a Makefile with a dev/run/serve target, or a *.html file ' +
+      'for a static site — index.html preferred; probed in the root and public/, www/, ' +
+      'site/, dist/, build/, src/)',
     );
   }
 
@@ -454,12 +455,14 @@ export class ProjectStructureDetector {
   }
   
   /**
-   * Static site detection — an `index.html` with no build manifest anywhere.
+   * Static site detection — a `*.html` entry with no build manifest anywhere
+   * (`index.html` preferred; otherwise the lexicographically first non-dot
+   * `.html` in a doc-root candidate).
    *
    * Frontend by nature: the package gets a `urlKey`, so the proxy routes it and
    * the FE renders an Open button exactly as it does for a dev server. The doc
-   * root is NOT carried on the package — `ProcessSpawner` re-reads it from the
-   * manifest SSOT, so the two cannot drift.
+   * root and entry file are NOT carried on the package — `ProcessSpawner`
+   * re-reads them from the manifest SSOT, so the two cannot drift.
    */
   private detectStaticProject(localPath: string, profile: ProjectProfile): ProjectStructure {
     logger.debug('Static site detected (no build manifest — serving files directly)', { component: 'ProjectStructureDetector' });

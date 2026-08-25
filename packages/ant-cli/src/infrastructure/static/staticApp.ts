@@ -24,11 +24,18 @@ export interface StaticAppOptions {
   /** `'none'` for a live source dir; `'short'` for an immutable build artifact. */
   cache: 'none' | 'short';
   /**
-   * `'always-index'` — every unmatched path returns `index.html` (SPA routing).
-   * `'navigation-only'` — only extension-less HTML navigations do; a missing
-   * `.css` / `.js` / image 404s, so a typo'd asset stays visible as a typo.
+   * `'always-index'` — every unmatched path returns the entry file (SPA
+   * routing). `'navigation-only'` — only extension-less HTML navigations do; a
+   * missing `.css` / `.js` / image 404s, so a typo'd asset stays visible as a
+   * typo.
    */
   fallback: 'always-index' | 'navigation-only';
+  /**
+   * Entry filename inside `root` that `/` and the fallback serve. Defaults to
+   * `index.html`. Decided at detection time by the manifest SSOT
+   * (`staticEntryFile`) — NEVER derived from request data.
+   */
+  entryFile?: string;
 }
 
 /** Any `/.`-prefixed path segment — `.env`, `.git/config`, `foo/.ssh/id_rsa`. */
@@ -44,6 +51,12 @@ function isHtmlNavigation(reqPath: string, accept: string | undefined): boolean 
 
 export function createStaticApp(options: StaticAppOptions): Express {
   const { root, basePath, cache, fallback } = options;
+  const entryFile = options.entryFile ?? 'index.html';
+  // Fail closed on an entry that could escape `root` or dodge the dotfile
+  // guard — such a value is an upstream bug, never a servable configuration.
+  if (entryFile !== path.basename(entryFile) || entryFile.startsWith('.')) {
+    throw new Error(`Invalid static entry file: ${entryFile}`);
+  }
   const app: Express = express();
 
   // Dotfiles are refused by US, before serve-static gets a say: a preview root
@@ -62,6 +75,7 @@ export function createStaticApp(options: StaticAppOptions): Express {
     basePath,
     express.static(root, {
       dotfiles: 'deny',
+      index: entryFile,
       etag: cache === 'short',
       maxAge: cache === 'short' ? '1h' : 0,
       // `setHeaders` runs before the body is sent — a middleware AFTER
@@ -77,12 +91,12 @@ export function createStaticApp(options: StaticAppOptions): Express {
       res.status(404).send('Not found');
       return;
     }
-    const indexPath = path.join(root, 'index.html');
-    if (fs.existsSync(indexPath)) {
+    const entryPath = path.join(root, entryFile);
+    if (fs.existsSync(entryPath)) {
       if (cache === 'none') res.setHeader('Cache-Control', 'no-store');
-      res.sendFile(indexPath);
+      res.sendFile(entryPath);
     } else {
-      res.status(404).send('index.html not found');
+      res.status(404).send(`${entryFile} not found`);
     }
   });
 

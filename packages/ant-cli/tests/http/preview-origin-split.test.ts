@@ -17,7 +17,7 @@
  * mounted on — a structural property of the file.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -26,6 +26,7 @@ import {
   getPreviewContentPort,
   getPreviewControlPort,
 } from '../../src/core/config/previewRouting';
+import { PreviewServer } from '../../src/infrastructure/preview/PreviewServer';
 
 const SRC = fs.readFileSync(
   path.resolve(__dirname, '../../src/infrastructure/preview/PreviewServer.ts'),
@@ -99,6 +100,98 @@ describe('PreviewServer control middleware order (M-010)', () => {
   it('no second, public body parser was added to work around the ordering', () => {
     expect(controlSection.match(/express\.json\(/g)).toHaveLength(1);
     expect(contentSection).not.toContain('express.json(');
+  });
+});
+
+/**
+ * The split's INFRA half must be self-diagnosing: when the wildcard content
+ * hosts are still ingress-routed at the control port, every preview/deploy
+ * page silently 404'd with the generic catch-all. The control catch-all now
+ * answers 421 with the diagnosis for content hosts — WITHOUT re-mounting any
+ * content proxy there (that would regress H-NEW-001).
+ */
+describe('catch-all misroute diagnosis (origin split, infra half)', () => {
+  const ENV = ['ANT_PREVIEW_BASE_DOMAIN', 'ANT_DEPLOY_BASE_DOMAIN'] as const;
+  let saved: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    saved = Object.fromEntries(ENV.map(k => [k, process.env[k]]));
+    process.env.ANT_PREVIEW_BASE_DOMAIN = 'ant-preview.example.test';
+    process.env.ANT_DEPLOY_BASE_DOMAIN = 'ant-deploy.example.test';
+  });
+  afterEach(() => {
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k]!;
+    }
+  });
+
+  const proto: any = PreviewServer.prototype;
+  function harness() {
+    const self: any = {
+      contentHostKind: proto.contentHostKind,
+      lastMisrouteWarnAt: new Map(),
+      warnThrottled: vi.fn(),
+    };
+    return {
+      self,
+      run(listener: 'content' | 'control', host: string, xfh?: string) {
+        const req: any = { url: '/', headers: { host, ...(xfh ? { 'x-forwarded-host': xfh } : {}) } };
+        const captured: any = { status: undefined, body: undefined };
+        const res: any = {
+          status(code: number) { captured.status = code; return this; },
+          json(body: any) { captured.body = body; return this; },
+        };
+        proto.notFoundHandler.call(self, listener)(req, res);
+        return captured;
+      },
+    };
+  }
+
+  it('a content host on the CONTROL listener → 421 with the ingress diagnosis, logged', () => {
+    const h = harness();
+    const out = h.run('control', 'my-app.ant-preview.example.test');
+    expect(out.status).toBe(421);
+    expect(out.body.message).toContain('content port');
+    expect(h.self.warnThrottled).toHaveBeenCalledTimes(1);
+  });
+
+  it('a deploy host on the CONTROL listener → 421 too', () => {
+    const h = harness();
+    expect(h.run('control', 'my-app.ant-deploy.example.test').status).toBe(421);
+  });
+
+  it('the BARE control host keeps the plain 404 (it is not a content host)', () => {
+    const h = harness();
+    const out = h.run('control', 'ant-preview.example.test');
+    expect(out.status).toBe(404);
+    expect(out.body.message).toBe('Preview endpoint not found');
+  });
+
+  it('an unrelated host on the control listener keeps the plain 404, unlogged', () => {
+    const h = harness();
+    expect(h.run('control', 'scanner.example.org').status).toBe(404);
+    expect(h.self.warnThrottled).not.toHaveBeenCalled();
+  });
+
+  it('a content host missing every proxy on the CONTENT listener 404s but logs the miss', () => {
+    const h = harness();
+    const out = h.run('content', 'my-app.ant-deploy.example.test');
+    expect(out.status).toBe(404);
+    expect(h.self.warnThrottled).toHaveBeenCalledTimes(1);
+  });
+
+  it('X-Forwarded-Host wins over Host for the host judgement', () => {
+    const h = harness();
+    const out = h.run('control', '10.0.0.5:4102', 'my-app.ant-preview.example.test');
+    expect(out.status).toBe(421);
+  });
+
+  it('path routing mode never answers 421', () => {
+    delete process.env.ANT_PREVIEW_BASE_DOMAIN;
+    delete process.env.ANT_DEPLOY_BASE_DOMAIN;
+    const h = harness();
+    expect(h.run('control', 'my-app.ant-preview.example.test').status).toBe(404);
   });
 });
 

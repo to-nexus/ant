@@ -36,6 +36,7 @@ import { detectPackageManager, buildInstallCommand } from '../../utils/packageMa
 import { enumeratePackageJsonManifests } from '../../utils/workspacePackages';
 import { composeChildEnv } from '../../core/config/childEnv';
 import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
+import { isStaticWebProject, readManifests } from '../../periphery/adapters/http/services/PreviewService/detectors/manifest';
 
 /**
  * Directories/patterns we never copy into the deploy workspace.
@@ -57,6 +58,22 @@ const EXCLUDES = [
 ];
 
 const LOG_PATTERN = /\.log$/;
+
+/**
+ * Excludes for one sync run. For a manifest-less static site whose detected doc
+ * root collides with an exclude name (`dist`, `build`), that ONE name is lifted:
+ * there is no build step, so the directory IS the content, and excluding it
+ * produced an empty snapshot that could preview but never deploy. Every other
+ * project keeps the list verbatim (Node's `.next`/`dist` artifact semantics are
+ * untouched).
+ */
+function excludesFor(codebasePath: string): string[] {
+  const m = readManifests(codebasePath);
+  if (m && isStaticWebProject(m) && m.staticEntry && EXCLUDES.includes(m.staticEntry.docRoot)) {
+    return EXCLUDES.filter((e) => e !== m.staticEntry!.docRoot);
+  }
+  return EXCLUDES;
+}
 
 /**
  * Resolve the deploy workspace path as a sibling of the codebase directory.
@@ -88,10 +105,11 @@ export async function syncDeployWorkspace(
 
   onLog?.(`🔄 Syncing codebase → deploy workspace (${deployPath})`);
 
+  const excludes = excludesFor(codebasePath);
   if (await hasRsync()) {
-    await rsyncSync(codebasePath, deployPath, onLog);
+    await rsyncSync(codebasePath, deployPath, excludes, onLog);
   } else {
-    await nodeIncrementalSync(codebasePath, deployPath, onLog);
+    await nodeIncrementalSync(codebasePath, deployPath, excludes, onLog);
   }
 
   onLog?.(`✅ Deploy workspace ready`);
@@ -120,10 +138,11 @@ function hasRsync(): Promise<boolean> {
 function rsyncSync(
   src: string,
   dest: string,
+  excludes: string[],
   onLog?: (line: string) => void
 ): Promise<void> {
   const args = ['-a', '--delete'];
-  for (const ex of EXCLUDES) args.push(`--exclude=${ex}`);
+  for (const ex of excludes) args.push(`--exclude=${ex}`);
   args.push('--exclude=*.log');
   args.push(src.endsWith(path.sep) ? src : `${src}${path.sep}`);
   args.push(dest.endsWith(path.sep) ? dest : `${dest}${path.sep}`);
@@ -156,12 +175,14 @@ function rsyncSync(
 async function nodeIncrementalSync(
   src: string,
   dest: string,
+  excludes: string[],
   onLog?: (line: string) => void
 ): Promise<void> {
   let copied = 0;
   let deleted = 0;
 
-  await walkAndSync(src, dest, (evt) => {
+  const excludeSet = new Set(excludes);
+  await walkAndSync(src, dest, excludeSet, (evt) => {
     if (evt === 'copy') copied++;
     else if (evt === 'delete') deleted++;
   });
@@ -172,6 +193,7 @@ async function nodeIncrementalSync(
 async function walkAndSync(
   srcDir: string,
   destDir: string,
+  excludeSet: Set<string>,
   tally: (evt: 'copy' | 'delete') => void
 ): Promise<void> {
   await fsp.mkdir(destDir, { recursive: true });
@@ -183,14 +205,14 @@ async function walkAndSync(
 
   const srcNames = new Set<string>();
   for (const entry of srcEntries) {
-    if (shouldExclude(entry.name)) continue;
+    if (shouldExclude(entry.name, excludeSet)) continue;
     srcNames.add(entry.name);
 
     const srcChild = path.join(srcDir, entry.name);
     const destChild = path.join(destDir, entry.name);
 
     if (entry.isDirectory()) {
-      await walkAndSync(srcChild, destChild, tally);
+      await walkAndSync(srcChild, destChild, excludeSet, tally);
     } else if (entry.isSymbolicLink()) {
       const link = await fsp.readlink(srcChild);
       const destStat = await fsp.lstat(destChild).catch(() => null);
@@ -207,7 +229,7 @@ async function walkAndSync(
   // Delete dest-only entries (but never touch excluded names — that is how
   // deploy/.next/cache survives across snapshots).
   for (const entry of destEntries) {
-    if (shouldExclude(entry.name)) continue;
+    if (shouldExclude(entry.name, excludeSet)) continue;
     if (srcNames.has(entry.name)) continue;
     const destChild = path.join(destDir, entry.name);
     await fsp.rm(destChild, { recursive: true, force: true });
@@ -224,8 +246,8 @@ async function readDirSafe(dir: string): Promise<fs.Dirent[]> {
   }
 }
 
-function shouldExclude(name: string): boolean {
-  if (EXCLUDES.includes(name)) return true;
+function shouldExclude(name: string, excludeSet: Set<string>): boolean {
+  if (excludeSet.has(name)) return true;
   if (LOG_PATTERN.test(name)) return true;
   return false;
 }

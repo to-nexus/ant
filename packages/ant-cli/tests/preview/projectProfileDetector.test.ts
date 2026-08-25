@@ -19,6 +19,7 @@ import {
   languageFromManifests,
   readManifests,
   staticDocRoot,
+  staticEntryFile,
 } from '../../src/periphery/adapters/http/services/PreviewService/detectors/manifest';
 import { ProjectProfileDetector } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ProjectProfileDetector';
 
@@ -165,14 +166,29 @@ describe('manifest → language / framework', () => {
   });
 
   it.each([
-    ['index.html at the root', 'static-root', { 'index.html': '<h1>hi</h1>' }, '.'],
-    ['public/index.html', 'static-public', { 'public/index.html': '<h1>hi</h1>' }, 'public'],
-  ])('%s → html, docRoot %s', (_label, name, files, docRoot) => {
+    ['index.html at the root', 'static-root', { 'index.html': '<h1>hi</h1>' }, '.', 'index.html'],
+    ['public/index.html', 'static-public', { 'public/index.html': '<h1>hi</h1>' }, 'public', 'index.html'],
+    ['a single non-index html at the root', 'static-named', { 'ax-tf-weekly-report.html': '<h1>hi</h1>' }, '.', 'ax-tf-weekly-report.html'],
+    ['an index.html in a LATER doc root beats a non-index html in an earlier one', 'static-cross-root', { 'report.html': '<h1/>', 'public/index.html': '<h1/>' }, 'public', 'index.html'],
+    ['index.html beats a sibling non-index html', 'static-index-pref', { 'index.html': '<h1/>', 'report.html': '<h1/>' }, '.', 'index.html'],
+    ['multiple non-index html → lexicographically first', 'static-multi', { 'zeta.html': '<h1/>', 'alpha.html': '<h1/>' }, '.', 'alpha.html'],
+    ['dot-named html is skipped, sibling wins', 'static-dot-sibling', { '.secret.html': '<h1/>', 'report.html': '<h1/>' }, '.', 'report.html'],
+  ])('%s → html, docRoot + entry', (_label, name, files, docRoot, entry) => {
     const dir = fixture(name, files as Record<string, unknown>);
     const m = readManifests(dir)!;
     expect(languageFromManifests(m)).toBe('html');
     expect(frameworkFromManifests(m)).toBeUndefined();
     expect(staticDocRoot(dir)).toBe(path.join(dir, docRoot === '.' ? '' : docRoot));
+    expect(staticEntryFile(dir)).toBe(entry);
+  });
+
+  it.each([
+    ['only a dot-named html', 'static-dot-only', { '.secret.html': '<h1/>' }],
+    ['a directory named foo.html', 'static-dir-html', { 'foo.html/readme.txt': 'not html' }],
+  ])('%s is NOT a static project', (_label, name, files) => {
+    const dir = fixture(name, files as Record<string, unknown>);
+    expect(readManifests(dir)).toBeNull();
+    expect(staticEntryFile(dir)).toBeUndefined();
   });
 
   it.each([

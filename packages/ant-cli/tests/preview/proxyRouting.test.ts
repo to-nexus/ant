@@ -232,6 +232,63 @@ describe('previewProxy multi-package routing', () => {
   });
 });
 
+/**
+ * Reserved-path handling is MODE-AWARE. In path routing the first segment is
+ * parsed as a urlKey, so API/system prefixes must defer via next(). In
+ * subdomain routing the HOST decides the route — a user app legitimately owns
+ * paths like /admin or /projects, and skipping them swallowed real app routes
+ * into the catch-all 404.
+ */
+describe('previewProxy reserved paths × routing mode', () => {
+  afterEach(() => {
+    delete process.env.ANT_PREVIEW_BASE_DOMAIN;
+  });
+
+  it('path mode: /deploy/* defers to the deploy proxy mount (next, no fetch)', async () => {
+    const middleware = createPreviewProxyMiddleware({
+      portRegistry: mockRegistry({ port: 3000, packages: [] }),
+    });
+    const next = mockNext();
+    await middleware(mockReq('/deploy/k/index.html'), mockRes(), next);
+    expect(next.called).toBe(true);
+    expect(lastFetchUrl).toBeUndefined();
+  });
+
+  it.each([['/admin/x'], ['/projects/p'], ['/health'], ['/deploy/asset.js']])(
+    'subdomain mode: a matched preview host is proxied for %s',
+    async (reqPath) => {
+      process.env.ANT_PREVIEW_BASE_DOMAIN = 'preview.test';
+      const record = {
+        tenantId: 'org', userId: 'user', projectId: 'proj', feature: 'feat',
+        running: true, ready: true, host: '127.0.0.1', port: 3000,
+        packages: [{ name: 'web', slug: 'web', type: 'frontend' as const, port: 3000, urlKey: URL_KEY_4 }],
+      };
+      const registry: any = {
+        getPreviewByLabel: vi.fn(async () => record),
+        touchPreview: vi.fn(async () => {}),
+      };
+      const middleware = createPreviewProxyMiddleware({
+        portRegistry: registry,
+        // Local-first: this pod owns the dev server, so the request serves
+        // locally with no owner-forward probe.
+        getLocal: () => record as any,
+      });
+
+      const req = {
+        url: reqPath,
+        method: 'GET',
+        path: reqPath,
+        headers: { host: `${URL_KEY_4}.preview.test` },
+      } as any as Request;
+      const next = mockNext();
+      await middleware(req, mockRes(), next);
+
+      expect(next.called).toBe(false);
+      expect(lastFetchUrl).toBe(`http://127.0.0.1:3000${reqPath}`);
+    },
+  );
+});
+
 // Quick sanity test that our urlKey helpers continue to round-trip cleanly —
 // this is the SSOT we rely on in every assertion above.
 describe('serverKeyUtils round-trip (sanity)', () => {

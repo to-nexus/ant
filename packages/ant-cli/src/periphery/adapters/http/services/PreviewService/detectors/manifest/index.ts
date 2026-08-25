@@ -49,10 +49,12 @@ export interface ManifestSet {
   makefileTargets?: string[];
   /**
    * A servable static site: the doc root (relative to `dir`, `'.'` for the
-   * directory itself) holding an `index.html`. Present whenever one is found —
-   * whether it ALONE identifies the project is {@link isStaticWebProject}.
+   * directory itself) and the entry filename inside it (`index.html`, or the
+   * lexicographically first non-dot `*.html` when no index exists). Present
+   * whenever one is found — whether it ALONE identifies the project is
+   * {@link isStaticWebProject}.
    */
-  staticEntry?: { docRoot: string };
+  staticEntry?: { docRoot: string; entryFile: string };
 }
 
 function readIfExists(file: string): string | undefined {
@@ -71,10 +73,35 @@ function exists(file: string): boolean {
  * Read every recognized manifest in `dir`. Returns `null` when the directory
  * holds no recognized project manifest at all (greenfield / not a codebase).
  */
-/** First {@link STATIC_DOC_ROOTS} entry holding an `index.html`, if any. */
-function findStaticEntry(dir: string): { docRoot: string } | undefined {
+/**
+ * Two-pass probe over {@link STATIC_DOC_ROOTS}. Pass 1: the first doc root
+ * holding an `index.html` (an index in a LATER doc root beats a non-index
+ * `*.html` in an earlier one, so no pre-existing project changes its answer).
+ * Pass 2: the first doc root holding any non-dot depth-1 `*.html`; the
+ * lexicographically first (plain code-unit sort — stable across pods,
+ * snapshots and clones, unlike mtime) becomes the entry.
+ *
+ * The entry is decided HERE, from directory contents inside the fixed
+ * allowlist — never from a request or a package field.
+ */
+function findStaticEntry(dir: string): { docRoot: string; entryFile: string } | undefined {
   for (const docRoot of STATIC_DOC_ROOTS) {
-    if (exists(path.join(dir, docRoot, STATIC_ENTRY_FILE))) return { docRoot };
+    if (exists(path.join(dir, docRoot, STATIC_ENTRY_FILE))) {
+      return { docRoot, entryFile: STATIC_ENTRY_FILE };
+    }
+  }
+  for (const docRoot of STATIC_DOC_ROOTS) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(path.join(dir, docRoot), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    const htmlFiles = entries
+      .filter(e => e.isFile() && !e.name.startsWith('.') && e.name.toLowerCase().endsWith('.html'))
+      .map(e => e.name)
+      .sort();
+    if (htmlFiles.length > 0) return { docRoot, entryFile: htmlFiles[0] };
   }
   return undefined;
 }
@@ -141,7 +168,8 @@ function isRecognized(m: ManifestSet): boolean {
 }
 
 /**
- * Is an `index.html` the ONLY thing that identifies this directory?
+ * Is a static entry (`index.html`, or any non-dot `*.html`) the ONLY thing
+ * that identifies this directory?
  *
  * The static fallback is deliberately last-resort: a directory carrying any
  * build manifest — even one that cannot start (`package.json` without a dev
@@ -267,7 +295,7 @@ function matchSubstring(
  * through to `singlePackage(root)` for a script-less Node repo, which would flip
  * `canStart` to true. Locked by `projectProfileCanStartParity.test.ts`.
  *
- * The static rule is the last one consulted and only fires when an `index.html`
+ * The static rule is the last one consulted and only fires when a static entry
  * is the sole signal ({@link isStaticWebProject}) — a script-less Node repo
  * stays `false` so "Missing script: dev" remains the diagnostic.
  */
@@ -300,6 +328,18 @@ export function staticDocRoot(dir: string): string | undefined {
   const m = readManifests(dir);
   if (!m || !isStaticWebProject(m) || !m.staticEntry) return undefined;
   return path.resolve(dir, m.staticEntry.docRoot);
+}
+
+/**
+ * Entry filename (relative to the doc root) for a static web project, or
+ * `undefined` when this directory is not one. Same SSOT contract as
+ * {@link staticDocRoot}: consumers re-derive at use time instead of carrying
+ * the value, so the served entry can never drift from the detected one.
+ */
+export function staticEntryFile(dir: string): string | undefined {
+  const m = readManifests(dir);
+  if (!m || !isStaticWebProject(m) || !m.staticEntry) return undefined;
+  return m.staticEntry.entryFile;
 }
 
 /** Node workspace root: `package.json.workspaces` or `pnpm-workspace.yaml`. */

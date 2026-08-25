@@ -78,9 +78,10 @@ export const RUNNABLE_MAKE_TARGETS: readonly string[] = ['dev', 'run', 'serve'];
 
 /**
  * Doc-root candidates for a manifest-less static site, in probe order — the
- * first directory holding {@link STATIC_ENTRY_FILE} wins. Depth-1 allowlist, so
- * the probe stays a handful of `existsSync` calls (the manifest module's
- * shallow/synchronous contract).
+ * first directory holding {@link STATIC_ENTRY_FILE} wins; when no candidate
+ * has one, the first directory holding any non-dot `*.html` wins instead.
+ * Depth-1 allowlist, so the probe stays a handful of `existsSync`/`readdirSync`
+ * calls (the manifest module's shallow/synchronous contract).
  */
 export const STATIC_DOC_ROOTS: readonly string[] = [
   '.',
@@ -92,5 +93,9 @@ export const STATIC_DOC_ROOTS: readonly string[] = [
   'src',
 ];
 
-/** The file whose presence makes a directory a servable static site. */
+/**
+ * The preferred entry file for a static site. Not the only qualifier: a doc
+ * root whose only web content is non-index `*.html` files still qualifies —
+ * the lexicographically first one becomes the entry (see `findStaticEntry`).
+ */
 export const STATIC_ENTRY_FILE = 'index.html';

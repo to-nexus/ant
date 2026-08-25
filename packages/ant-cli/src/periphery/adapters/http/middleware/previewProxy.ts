@@ -196,11 +196,6 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
   };
 
   return async (req: Request, res: ExpressResponse, next: NextFunction) => {
-    // ✅ Skip reserved API/system routes — handled by Express route handlers
-    if (RESERVED_PATHS.some(p => req.path.startsWith(p))) {
-      return next();
-    }
-
     // ── Subdomain routing (Phase 2) ──
     // Identifier is the Host DNS label, app served at ROOT. No path prefix, no
     // basePath, no `/_next/image` rewrite, no Referer/cookie recovery — the host
@@ -397,6 +392,14 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
           return;
         }
       }
+    }
+
+    // ✅ Skip reserved API/system routes — handled by Express route handlers.
+    // Path routing ONLY: in subdomain mode the HOST decides the route, and a
+    // user app legitimately owns paths like /admin or /projects — skipping them
+    // there swallowed real app routes into the catch-all 404.
+    if (RESERVED_PATHS.some(p => req.path.startsWith(p))) {
+      return next();
     }
 
     // ✅ Extract first path segment to check if it's a urlKey

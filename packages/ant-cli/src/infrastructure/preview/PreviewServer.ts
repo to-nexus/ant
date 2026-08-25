@@ -775,14 +775,77 @@ export class PreviewServer {
   }
 
   /**
+   * Is this request addressed to a subdomain-mode CONTENT host (a preview/deploy
+   * app host under one of the base domains)? Suffix-only test — no Redis lookup,
+   * no existence signal (base domains are public knowledge), so it is safe on
+   * unauthenticated paths (M-NEW-020 stays O(1), nothing is leaked).
+   */
+  private contentHostKind(req: Request): 'preview' | 'deploy' | null {
+    if (!isSubdomainRouting()) return null;
+    const externalHost = extractForwardingContext(req).externalHost ?? '';
+    const hostname = externalHost.split(':')[0].toLowerCase();
+    for (const [kind, base] of [
+      ['preview', getPreviewBaseDomain()],
+      ['deploy', getDeployBaseDomain()],
+    ] as const) {
+      if (base && hostname !== base && hostname.endsWith(`.${base}`)) return kind;
+    }
+    return null;
+  }
+
+  /** Per-key log throttle so a persistent misconfiguration cannot flood. */
+  private lastMisrouteWarnAt = new Map<string, number>();
+  private warnThrottled(key: string, message: string): void {
+    const now = Date.now();
+    if (now - (this.lastMisrouteWarnAt.get(key) ?? 0) < 60_000) return;
+    this.lastMisrouteWarnAt.set(key, now);
+    logger.error(message, { component: 'PreviewServer' });
+  }
+
+  /**
    * Catch-all 404, shared by both listeners.
    *
    * A peer-forwarded request reaching the catch-all means the owner pod failed to
    * recognize its own preview host — always-on diagnostic, since this exact silent
    * 404 previously masked a lost-Host routing defect.
+   *
+   * A CONTENT host reaching the CONTROL listener means the ingress still routes
+   * the wildcard hosts at the control port — the exact misconfiguration that made
+   * every preview/deploy page 404 after the origin split (H-NEW-001's infra
+   * half). Answer 421 with the diagnosis instead of a mute 404, and log it.
+   * Re-mounting the content proxies here would regress H-NEW-001 — the fix is
+   * the ingress mapping, so the code's job is to make the misroute self-evident.
    */
   private notFoundHandler(listener: 'content' | 'control') {
     return (req: Request, res: Response): void => {
+      const contentKind = this.contentHostKind(req);
+      if (listener === 'control' && contentKind) {
+        this.warnThrottled(
+          `control:${contentKind}`,
+          `[PreviewServer] ${contentKind} content host reached the CONTROL listener — ingress misroute: ` +
+          `wildcard *.${contentKind === 'preview' ? getPreviewBaseDomain() : getDeployBaseDomain()} ` +
+          `must target the content port (${getPreviewContentPort()}). ` +
+          `host=${req.headers.host} xfh=${req.headers['x-forwarded-host'] ?? '(none)'} url=${req.url}`,
+        );
+        res.status(421).json({
+          error: 'Misdirected Request',
+          message:
+            `This host serves ${contentKind} content, but the request reached the control-plane ` +
+            `listener — the wildcard ingress must target the content port (${getPreviewContentPort()}).`,
+        });
+        return;
+      }
+      if (listener === 'content' && contentKind) {
+        // Host says content, yet no proxy claimed it: malformed label (dots in
+        // the subdomain), or a deploy-label index miss (deployProxy defers via
+        // next() on unresolved coords). Always-on but throttled — hosts outside
+        // the base domains (scanners) stay unlogged.
+        this.warnThrottled(
+          `content:${contentKind}:${req.headers.host ?? ''}`,
+          `[PreviewServer] ${contentKind} host missed all proxies (catch-all 404 on content): ` +
+          `host=${req.headers.host} xfh=${req.headers['x-forwarded-host'] ?? '(none)'} url=${req.url}`,
+        );
+      }
       if (isSubdomainRouting() && req.headers[PREVIEW_PEER_FORWARD_HEADER] === '1') {
         logger.warn(
           `[PreviewServer] Peer-forwarded request missed all proxies (catch-all 404 on ${listener}): ` +
@@ -845,7 +908,10 @@ export class PreviewServer {
 
     // Liveness only — no state, no auth. The control listener owns the detailed
     // `/health`; this exists so the content port can be probed independently.
-    this.contentApp.get('/health', (_req: Request, res: Response) => {
+    // A CONTENT host's `/health` belongs to the user's app, so it defers to the
+    // proxies — probes address the pod/service directly, never an app subdomain.
+    this.contentApp.get('/health', (req: Request, res: Response, next) => {
+      if (this.contentHostKind(req)) return next();
       res.json({ healthy: true, service: 'ant-preview-content' });
     });
 

@@ -105,16 +105,24 @@ if (detector.isFrontendPackage(packageJson)) {
 
 ## 🗂️ Static sites (no build manifest)
 
-A directory holding only an `index.html` is a first-class project here, not an
+A directory holding only `*.html` files is a first-class project here, not an
 error. The rule lives in `detectors/manifest/index.ts`:
 
-- `isStaticWebProject(m)` — true only when an `index.html` is the **sole**
+- `isStaticWebProject(m)` — true only when a static entry is the **sole**
   recognition signal. Any build manifest (even one that cannot start, like a
   `package.json` without a dev script) keeps its own ecosystem's answer, so this
   rule can never change a currently-working project's detection result.
 - `staticDocRoot(dir)` — the single accessor for *which* directory to serve,
   probing `STATIC_DOC_ROOTS` (`.`, `public`, `www`, `site`, `dist`, `build`,
   `src`) in order. Shared with the deploy build-output resolver.
+- `staticEntryFile(dir)` — the single accessor for *which* file `/` serves:
+  `index.html` when any doc-root candidate has one (probed across ALL
+  candidates first, so an index always wins); otherwise the lexicographically
+  first non-dot depth-1 `*.html` (deterministic across pods/snapshots/clones —
+  mtime is deliberately not used). Individual `.html` files stay reachable at
+  their own URLs either way, matching how static hosts serve such directories.
+  The entry is decided at detection time from directory contents — never from
+  request data.
 
 Such a project detects as `language: 'html'` / `frontend-only`, and
 `ProcessSpawner.spawnStatic` runs `infrastructure/preview/static-preview-server.ts`

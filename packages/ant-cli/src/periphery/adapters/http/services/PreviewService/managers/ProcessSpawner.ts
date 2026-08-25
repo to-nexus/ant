@@ -7,7 +7,7 @@ import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 import { resolveRunScript } from '../detectors/PackageDetector';
-import { staticDocRoot } from '../detectors/manifest';
+import { STATIC_ENTRY_FILE, staticDocRoot, staticEntryFile } from '../detectors/manifest';
 import { WorkspacePathResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
 import { loadProjectEnv as loadProjectEnvShared, composeChildEnv } from './envAssembly';
@@ -276,6 +276,7 @@ export class ProcessSpawner {
    */
   private spawnStatic(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
     const root = staticDocRoot(pkg.path) ?? pkg.path;
+    const entryFile = staticEntryFile(pkg.path) ?? STATIC_ENTRY_FILE;
 
     // Same rule as every other frontend: path routing keeps the urlKey prefix
     // (the proxy forwards `req.url` verbatim), subdomain routing serves at the
@@ -304,13 +305,14 @@ export class ProcessSpawner {
     const env = composeChildEnv({}, {
       PORT: port.toString(),
       ANT_STATIC_ROOT: root,
+      ANT_STATIC_ENTRY: entryFile,
       ANT_BASE_PATH: basePath,
       ...(options.extraEnv || {}),
     });
 
     logger.warn(`[Preview] Starting static site: ${pkg.name} on port ${port} (root=${root})`, { component: 'ProcessSpawner' });
     options.onLog('stdout', `🚀 Starting ${pkg.name} (static) on port ${port}...`);
-    options.onLog('stdout', `📋 Serving: ${root} at ${basePath}`);
+    options.onLog('stdout', `📋 Serving: ${root} at ${basePath} (entry=${entryFile})`);
 
     // This child runs ANT's own code, but it reads the user's workspace and is
     // part of the same preview fleet — hold it to the one isolation policy

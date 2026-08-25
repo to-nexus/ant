@@ -64,6 +64,34 @@ describe('syncDeployWorkspace — no escaping node_modules symlink', () => {
     }
   });
 
+  it('manifest-less static site: the detected doc root escapes the exclude list (dist/index.html deploys)', async () => {
+    await makeFile(path.join(codebase, 'dist/index.html'), '<h1>site</h1>');
+    await makeFile(path.join(codebase, 'dist/assets/app.js'), 'x');
+
+    const deploy = await syncDeployWorkspace(codebase);
+    expect(fs.existsSync(path.join(deploy, 'dist/index.html'))).toBe(true);
+    expect(fs.existsSync(path.join(deploy, 'dist/assets/app.js'))).toBe(true);
+  });
+
+  it('a Node project keeps dist excluded (build artifacts are produced by the deploy build itself)', async () => {
+    await makeFile(path.join(codebase, 'package.json'), JSON.stringify({ name: 'app', scripts: { dev: 'vite' } }));
+    await makeFile(path.join(codebase, 'dist/artifact.js'), 'x');
+    await makeFile(path.join(codebase, 'src/index.ts'), 'export {};');
+
+    const deploy = await syncDeployWorkspace(codebase);
+    expect(fs.existsSync(path.join(deploy, 'src/index.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(deploy, 'dist'))).toBe(false);
+  });
+
+  it('root-doc-root static site: only the DETECTED doc root is lifted — junk build/ stays excluded', async () => {
+    await makeFile(path.join(codebase, 'report.html'), '<h1>report</h1>');
+    await makeFile(path.join(codebase, 'build/junk.bin'), 'x');
+
+    const deploy = await syncDeployWorkspace(codebase);
+    expect(fs.existsSync(path.join(deploy, 'report.html'))).toBe(true);
+    expect(fs.existsSync(path.join(deploy, 'build'))).toBe(false);
+  });
+
   it('re-sync never introduces a node_modules symlink', async () => {
     await makeFile(path.join(codebase, 'package.json'), JSON.stringify({ name: 'solo' }));
     await makeFile(path.join(codebase, 'node_modules', '.sentinel'), 'root');

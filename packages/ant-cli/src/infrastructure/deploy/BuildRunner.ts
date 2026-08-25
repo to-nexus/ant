@@ -60,18 +60,20 @@ export function getBuildOutputDir(workspacePath: string, framework: DeployFramew
     case 'cra': return path.join(workspacePath, 'build');
     case 'nextjs': return path.join(workspacePath, '.next');
     default: {
-      // Check common output dirs
-      const candidates = ['dist', 'build', 'out', 'public'];
-      for (const dir of candidates) {
-        const full = path.join(workspacePath, dir);
-        if (fs.existsSync(full) && fs.statSync(full).isDirectory()) return full;
-      }
       // A manifest-less site has no build step, so its sources ARE the output.
+      // The SSOT answer must win over the candidates loop: a root-'.' site with
+      // a stray `public/` would otherwise serve a directory the entry is not in.
       // Only for `static`: under `unknown` a build script exists and produced
       // nothing, and serving the sources would hide that failure.
       if (framework === 'static') {
         const docRoot = staticDocRoot(workspacePath);
         if (docRoot) return docRoot;
+      }
+      // Check common output dirs
+      const candidates = ['dist', 'build', 'out', 'public'];
+      for (const dir of candidates) {
+        const full = path.join(workspacePath, dir);
+        if (fs.existsSync(full) && fs.statSync(full).isDirectory()) return full;
       }
       return path.join(workspacePath, 'dist');
     }

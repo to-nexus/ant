@@ -113,3 +113,68 @@ describe('deploy profile (cache: short, fallback: always-index)', () => {
     expect(await deep.text()).toContain('<h1>site</h1>');
   });
 });
+
+describe('entryFile option (non-index static entry)', () => {
+  let namedRoot: string;
+  beforeAll(() => {
+    namedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-static-named-'));
+    fs.writeFileSync(path.join(namedRoot, 'ax-tf-weekly-report.html'), '<h1>report</h1>');
+    fs.writeFileSync(path.join(namedRoot, '.env'), 'SECRET=1');
+  });
+  afterAll(() => {
+    fs.rmSync(namedRoot, { recursive: true, force: true });
+  });
+  const opts = {
+    basePath: '/',
+    cache: 'none',
+    fallback: 'navigation-only',
+    entryFile: 'ax-tf-weekly-report.html',
+  } as const;
+
+  it('`/` serves the entry via the static index', async () => {
+    const base = await serve({ ...opts, root: namedRoot });
+    const res = await fetch(`${base}/`, { headers: html });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<h1>report</h1>');
+  });
+
+  it('an HTML navigation falls back to the entry, and the file stays reachable at its own URL', async () => {
+    const base = await serve({ ...opts, root: namedRoot });
+    const nav = await fetch(`${base}/about`, { headers: html });
+    expect(nav.status).toBe(200);
+    expect(await nav.text()).toContain('<h1>report</h1>');
+    const direct = await fetch(`${base}/ax-tf-weekly-report.html`);
+    expect(direct.status).toBe(200);
+  });
+
+  it('dotfile refusal is unaffected by the entry choice', async () => {
+    const base = await serve({ ...opts, root: namedRoot });
+    expect((await fetch(`${base}/.env`)).status).toBe(403);
+  });
+
+  it('omitting entryFile keeps the index.html default', async () => {
+    const base = await serve({ basePath: '/', cache: 'none', fallback: 'navigation-only' });
+    const res = await fetch(`${base}/`, { headers: html });
+    expect(await res.text()).toContain('<h1>site</h1>');
+  });
+
+  it.each([['../x.html'], ['.x.html'], ['sub/x.html']])(
+    'fails closed on an entry that could escape the root or dodge the dotfile guard (%s)',
+    (entryFile) => {
+      expect(() =>
+        createStaticApp({ root: namedRoot, basePath: '/', cache: 'none', fallback: 'navigation-only', entryFile }),
+      ).toThrow(/Invalid static entry file/);
+    },
+  );
+
+  it('the manifest SSOT feeds the app: staticEntryFile(dir) → served entry', async () => {
+    const { staticEntryFile } = await import(
+      '../../src/periphery/adapters/http/services/PreviewService/detectors/manifest'
+    );
+    const entry = staticEntryFile(namedRoot);
+    expect(entry).toBe('ax-tf-weekly-report.html');
+    const base = await serve({ basePath: '/', cache: 'none', fallback: 'navigation-only', entryFile: entry, root: namedRoot });
+    const res = await fetch(`${base}/`, { headers: html });
+    expect(await res.text()).toContain('<h1>report</h1>');
+  });
+});
