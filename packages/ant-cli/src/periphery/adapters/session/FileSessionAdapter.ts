@@ -23,6 +23,7 @@ import {
   getSessionsDir,
   getFeatureJsonlPath,
   getChatJsonlPath,
+  readSessionTextBoundedAsync,
 } from "../../../core/utils/sessionPaths";
 
 
@@ -216,9 +217,15 @@ export class FileSessionAdapter implements SessionPort {
     const sessionPath = this.getSessionPath(project, feature, job);
     
     try {
-      const content = await fs.readFile(sessionPath, "utf-8");
-      
-      if (!content || content.trim() === "") {
+      // Bound the read on its own descriptor (M-NEW-029): a session grown past
+      // the budget must not be materialised and JSON-parsed on the load path.
+      const content = await readSessionTextBoundedAsync(sessionPath);
+
+      if (content === null) {
+        console.log(`📝 Missing session file detected, creating new session`);
+        return this.createNewSession(project, feature);
+      }
+      if (content.trim() === "") {
         console.log(`📝 Empty session file detected, creating new session`);
         return this.createNewSession(project, feature);
       }

@@ -6,7 +6,7 @@ import { toBaseRelative, readTextContainedBase } from '../../../../core/config/c
 import { StateStorePort } from '../../../../core/ports/stateStore';
 import type { TaskQueueSnapshot, KanbanData } from '../../../../core/types/task';
 import type { SessionState } from '../../../../core/types/session';
-import { getSessionFilePathByJob, getAgentForJobSafe } from '../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, getAgentForJobSafe, readSessionTextBounded, SessionTooLargeError, SESSION_MAX_BYTES } from '../../../../core/utils/sessionPaths';
 import { projectSessionStateToKanban } from '../../../../core/realtime/projectSessionStateToKanban';
 import { deriveResumableState } from '../../../../core/session/resumable';
 import type { SessionableJobType } from '@ant/shared';
@@ -550,14 +550,19 @@ export class KanbanService {
       try {
         let raw: string;
         if (br) {
-          const read = readTextContainedBase(br);
+          // Bound per attempt on the read's own descriptor (M-NEW-029): the retry
+          // loop and the last-known-good cache must not retain an unbounded blob.
+          const read = readTextContainedBase(br, { maxBytes: SESSION_MAX_BYTES });
           if (!read.ok) {
             if (read.reason === 'missing') return null;
+            if (read.reason === 'too-large') throw new SessionTooLargeError(sessionPath, SESSION_MAX_BYTES, SESSION_MAX_BYTES);
             throw new Error(`session read failed: ${read.reason}`);
           }
           raw = read.text;
         } else {
-          raw = await fs.promises.readFile(sessionPath, 'utf-8');
+          const bounded = readSessionTextBounded(sessionPath);
+          if (bounded === null) return null;
+          raw = bounded;
         }
         if (!raw || raw.trim().length === 0) {
           if (attempt < maxAttempts) {

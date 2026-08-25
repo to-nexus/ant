@@ -35,6 +35,7 @@ import {
   getPreviewControlPort,
   getPreviewContentPort,
   assertPreviewOriginSeparation,
+  refusesSharedOriginPrivateAdmission,
 } from '../../core/config/previewRouting';
 import { resolveRedisUrl } from '../../core/config/redisUrl';
 import { extractLabelFromHost } from '../../periphery/adapters/http/services/PreviewService/utils/previewLabel';
@@ -572,12 +573,18 @@ export class PreviewServer {
     }
     if (visibility !== 'private') return true;
 
-    // Ambient cross-site upgrade to a private tunnel: refuse. Absent Fetch
-    // Metadata (non-browser) falls through to the cookie-ownership check.
-    if (String(req.headers['sec-fetch-site'] ?? '') === 'cross-site') return false;
-
     const jwtService = createJwtServiceFromEnv();
     if (!jwtService) return true; // no JWT configured (local single-user)
+
+    // Cloud path-mode: the private tunnel shares the content origin with public
+    // deploys, so a browser same-origin upgrade from attacker public content
+    // carries the victim's ambient cookie and would pass the owner check below
+    // (M-029 — cross-site alone does not catch it, the attack source is
+    // same-origin). Refuse ambient/browser admission to a private tunnel in path
+    // mode; private serving requires subdomain mode, where the per-deploy origin
+    // stops an attacker hosting content on the victim's host. Non-ambient bearer
+    // callers and local mode are unaffected. `jwtService` present ⇒ cloud.
+    if (refusesSharedOriginPrivateAdmission(req.headers)) return false;
     const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
     if (!token) return false;
     try {
@@ -2008,6 +2015,13 @@ export class PreviewServer {
           if (isCloudMode) {
             const jwtService = createJwtServiceFromEnv();
             if (jwtService) {
+              // A preview is owner-only. In cloud path-mode it shares the content
+              // origin with public deploys, so a browser same-origin WS upgrade
+              // from attacker public content carries the victim's ambient cookie
+              // and would pass the owner check as the victim (M-029). Refuse
+              // ambient/browser admission on the shared path-mode origin; private
+              // serving requires subdomain mode. Non-ambient/local unaffected.
+              if (refusesSharedOriginPrivateAdmission(req.headers)) { socket.destroy(); return; }
               const token = parseCookieHeader(req.headers.cookie)[JwtService.cookieName];
               if (!token) { socket.destroy(); return; }
               try { previewPayload = jwtService.verify(token); } catch { socket.destroy(); return; }

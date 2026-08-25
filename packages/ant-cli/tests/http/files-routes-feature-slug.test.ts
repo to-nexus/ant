@@ -22,6 +22,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import http from 'node:http';
@@ -147,5 +148,38 @@ describe('files.routes — slash-named feature content round-trip', () => {
     );
     expect(rawRes.status).toBe(200);
     expect(await rawRes.text()).toBe(content);
+  });
+
+  // M-NEW-029: sessions/** is job-lifecycle state, not a user file surface. The
+  // generic file API must refuse every mutation aimed at it so it cannot be
+  // grown into the (now-bounded) session readers.
+  it('PUT under sessions/** → 409 reserved-name-sessions, nothing written', async () => {
+    const res = await fetch(
+      `${baseUrl}/projects/${PROJECT_ID}/features/${SLASH_SLUG}/files/sessions/architect/code.json`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '{"state":{"jobId":"x"}}' }),
+      },
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.code).toBe('reserved-name-sessions');
+    const onDisk = fsSync.existsSync(
+      path.join(tmpWorkspaces, ORG, USER, PROJECT_ID, 'features', SLASH_SLUG, 'sessions', 'architect', 'code.json'),
+    );
+    expect(onDisk).toBe(false);
+  });
+
+  it('a non-session PUT still succeeds (guard is scoped to sessions/**)', async () => {
+    const res = await fetch(
+      `${baseUrl}/projects/${PROJECT_ID}/features/${SLASH_SLUG}/files/plan/ok.md`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '# ok\n' }),
+      },
+    );
+    expect(res.status).toBe(200);
   });
 });

@@ -84,6 +84,53 @@ describe('preview profile (cache: none, fallback: navigation-only)', () => {
   });
 });
 
+/**
+ * audit-8 static-serve regression: express.static / `send` reject a lexical `..`
+ * but do NO realpath check, so an in-root symlink pointing OUT of root is
+ * followed and served. `root` is a live tenant workspace (preview) or a deploy
+ * snapshot that preserves symlinks, and a deploy defaults to public — so a
+ * planted link would leak host/other-tenant files. The serve app refuses any
+ * request whose realpath escapes root.
+ */
+describe('symlink containment (audit-8 static-serve regression)', () => {
+  let linkRoot: string;
+  let outside: string;
+
+  beforeAll(() => {
+    const parent = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'ant-static-link-'));
+    linkRoot = path.join(parent, 'docroot');
+    outside = path.join(parent, 'outside');
+    fs.mkdirSync(linkRoot, { recursive: true });
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(linkRoot, 'index.html'), '<h1>site</h1>');
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'HOST-SECRET');
+    // A file symlink and a directory symlink, both escaping the doc root.
+    fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(linkRoot, 'leak.txt'));
+    fs.symlinkSync(outside, path.join(linkRoot, 'jump'));
+  });
+
+  it('refuses a leaf symlink that resolves outside root', async () => {
+    const base = await serve({ root: linkRoot, basePath: '/', cache: 'none', fallback: 'navigation-only' });
+    const res = await fetch(`${base}/leak.txt`);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('HOST-SECRET');
+  });
+
+  it('refuses a path through a directory symlink that escapes root', async () => {
+    const base = await serve({ root: linkRoot, basePath: '/', cache: 'none', fallback: 'navigation-only' });
+    const res = await fetch(`${base}/jump/secret.txt`);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('HOST-SECRET');
+  });
+
+  it('still serves a normal in-root file', async () => {
+    const base = await serve({ root: linkRoot, basePath: '/', cache: 'none', fallback: 'navigation-only' });
+    const res = await fetch(`${base}/index.html`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<h1>site</h1>');
+  });
+});
+
 describe('deploy profile (cache: short, fallback: always-index)', () => {
   it('caches the immutable build artifact', async () => {
     const base = await serve({ basePath: '/deploy/k', cache: 'short', fallback: 'always-index' });

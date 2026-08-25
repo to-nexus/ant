@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
 import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
+import { FileTooLargeError } from '../../src/core/ports/filesystem';
 
 // C3 (security review): the relative-path branch of resolveAbsolute must reject
 // a sibling directory that merely shares the basePath as a string prefix
@@ -75,5 +76,38 @@ describe('FileSystemAdapter read/write containment (M-NEW-005)', () => {
   it('still writes a normal nested workspace file', async () => {
     await adapter.writeFile('codebase/src/nested/new.ts', 'body');
     expect(fs.readFileSync(path.join(base, 'codebase/src/nested/new.ts'), 'utf-8')).toBe('body');
+  });
+});
+
+/**
+ * M-032: the read's byte budget must bind to the SAME descriptor the read opens,
+ * not a path-reopened pre-stat, so a file grown/replaced after a caller's check
+ * cannot still be materialised whole. `readFile(path, { maxBytes })` throws
+ * FileTooLargeError on oversize and returns content within budget.
+ */
+describe('FileSystemAdapter.readFile descriptor-bound maxBytes (M-032)', () => {
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fsa-budget-'));
+  const base = path.join(root, 'workspace');
+  fs.mkdirSync(base, { recursive: true });
+  fs.writeFileSync(path.join(base, 'small.txt'), 'x'.repeat(100), 'utf-8');
+  fs.writeFileSync(path.join(base, 'big.txt'), 'x'.repeat(5000), 'utf-8');
+  const adapter = new FileSystemAdapter(base);
+
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  it('returns content when within the budget', async () => {
+    expect(await adapter.readFile('small.txt', { maxBytes: 1000 })).toHaveLength(100);
+  });
+
+  it('throws FileTooLargeError (not null) when the descriptor exceeds the budget', async () => {
+    await expect(adapter.readFile('big.txt', { maxBytes: 1000 })).rejects.toBeInstanceOf(FileTooLargeError);
+  });
+
+  it('is unbounded when no budget is passed (existing callers unchanged)', async () => {
+    expect(await adapter.readFile('big.txt')).toHaveLength(5000);
+  });
+
+  it('still returns null for a missing file even with a budget', async () => {
+    expect(await adapter.readFile('nope.txt', { maxBytes: 1000 })).toBeNull();
   });
 });

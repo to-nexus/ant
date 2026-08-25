@@ -12,7 +12,7 @@ import { extractUserContext, isLocalServerMode } from './helpers/userContext';
 import { assertJobAccess as assertJobAccessShared } from './helpers/jobAccess';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { checkApproval, approvalErrorCode, checkTeamMembership } from './helpers/approvalGate';
-import { getAllSessionPaths, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { getAllSessionPaths, getSessionFilePathByJob, readSessionTextBounded } from '../../../../core/utils/sessionPaths';
 import { deriveResumableState } from '../../../../core/session/resumable';
 import { generateTurnId } from '../../../../composition/recordUserTurn';
 import { readBranchBase } from '../../../../core/utils/branchUtils';
@@ -34,6 +34,14 @@ import { finalizeTerminalJob } from '../express/lifecycle/finalizeTerminalJob';
 import { setSessionDismissed } from './helpers/sessionCleanup';
 import { ensureSubmitUserTurn } from './helpers/submitUserTurn';
 import { getFallbackModel } from '../../../../core/config/defaultModels';
+
+/**
+ * Ceiling on a single continue directive. It is unshifted into the canonical
+ * session state and re-read on every subsequent continue, so an unbounded value
+ * grows the file the bounded session readers must load (M-NEW-029). Generous for
+ * a real multi-paragraph instruction, bounded well under the session budget.
+ */
+const CONTINUE_DIRECTIVE_MAX_CHARS = 100_000;
 
 /**
  * Pre-flight credit gate — rule lives in `core/scheduling/UniversalDispatchGate`
@@ -236,7 +244,7 @@ export function createJobRoutes(deps: {
     for (const entry of getAllSessionPaths(featurePath)) {
       try {
         if (!fs.existsSync(entry.path)) continue;
-        const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+        const data = JSON.parse(readSessionTextBounded(entry.path) ?? '{}');
         if (data.state?.jobId === jobId && data.state?.interruption) {
           return true;
         }
@@ -841,7 +849,7 @@ export function createJobRoutes(deps: {
         if (!fs.existsSync(entry.path)) continue;
         let parsed: any;
         try {
-          parsed = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+          parsed = JSON.parse(readSessionTextBounded(entry.path) ?? '{}');
         } catch {
           continue;
         }
@@ -1054,10 +1062,11 @@ export function createJobRoutes(deps: {
         const universalSessionPath = getSessionFilePath(
           resolvedUniversal.containerPath, resolvedUniversal.ref.agentId, resolvedUniversal.ref.jobId,
         );
-        if (!fs.existsSync(universalSessionPath)) {
+        const universalSessionRaw = readSessionTextBounded(universalSessionPath);
+        if (universalSessionRaw === null) {
           return res.status(404).json({ error: 'No universal session found', message: `No session for custom job ${customJobRef}` });
         }
-        const universalSession = JSON.parse(fs.readFileSync(universalSessionPath, 'utf-8'));
+        const universalSession = JSON.parse(universalSessionRaw);
         const universalJobId = universalSession.state?.jobId ?? requestedJobId;
         // Explicit turn meta must survive a resume. Without this the resumed
         // turn fell back to the default/general intent even when the
@@ -1115,7 +1124,7 @@ export function createJobRoutes(deps: {
 
       for (const entry of getAllSessionPaths(featurePath)) {
         if (!fs.existsSync(entry.path)) continue;
-        const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+        const data = JSON.parse(readSessionTextBounded(entry.path) ?? '{}');
         if (!data.state?.jobId) continue;
         // ✅ If a specific jobId was requested, only match that exact session
         if (requestedJobId && data.state.jobId !== requestedJobId) continue;
@@ -1271,6 +1280,16 @@ export function createJobRoutes(deps: {
         message: 'newDirective is required and must be a string'
       });
     }
+    // The directive is unshifted into the canonical session state and re-read on
+    // every subsequent continue, so an unbounded value grows the session file the
+    // bounded readers must then load (M-NEW-029). Cap it at the source.
+    if (newDirective.length > CONTINUE_DIRECTIVE_MAX_CHARS) {
+      return res.status(413).json({
+        error: 'Directive too large',
+        code: 'DIRECTIVE_TOO_LARGE',
+        message: `newDirective exceeds ${CONTINUE_DIRECTIVE_MAX_CHARS} characters`,
+      });
+    }
     
     try {
       const userContext = extractUserContext(req);
@@ -1325,7 +1344,7 @@ export function createJobRoutes(deps: {
       
       for (const entry of getAllSessionPaths(featurePath)) {
         if (fs.existsSync(entry.path)) {
-          const sessionData = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+          const sessionData = JSON.parse(readSessionTextBounded(entry.path) ?? '{}');
           if (sessionData.state?.jobId === jobId) {
             jobType = entry.job;
             sessionPath = entry.path;
@@ -1344,8 +1363,12 @@ export function createJobRoutes(deps: {
         });
       }
       
-      const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
-      
+      const sessionRaw = readSessionTextBounded(sessionPath);
+      if (sessionRaw === null) {
+        return res.status(404).json({ error: 'Job not found', message: `Session file for ${jobId} is unreadable` });
+      }
+      const sessionData = JSON.parse(sessionRaw);
+
       if (!sessionData.state.directives) {
         sessionData.state.directives = [];
       }
@@ -1745,7 +1768,7 @@ export function createJobRoutes(deps: {
         let existingInterruption: InterruptionDetails | undefined;
         for (const entry of getAllSessionPaths(featurePath)) {
           try {
-            const data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+            const data = JSON.parse(readSessionTextBounded(entry.path) ?? '{}');
             if (data.state?.jobId === jobId && data.state.interruption) {
               existingInterruption = data.state.interruption;
               break;

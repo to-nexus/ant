@@ -13,10 +13,32 @@ import {
   getSessionDebugDir,
   getAllSessionPaths,
   DEBUG_SUBDIRS,
+  SessionTooLargeError,
+  SESSION_MAX_BYTES,
 } from '../../../../../core/utils/sessionPaths';
 import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
 import { wouldRegressRun } from '../../../../../core/utils/sessionRunGuard';
 import { deleteArchivedState } from '../../../../../core/session/archive';
+
+/**
+ * Read a session file bounded to SESSION_MAX_BYTES on its own descriptor, so a
+ * session grown past the budget cannot be pulled whole into a cleanup pass and
+ * JSON-parsed (M-NEW-029). Preserves the ENOENT throw the callers below branch
+ * on; throws SessionTooLargeError (not ENOENT) on oversize so those callers log
+ * and skip rather than treating it as missing.
+ */
+async function readSessionFileBounded(sessionPath: string): Promise<string> {
+  const handle = await fs.promises.open(sessionPath, 'r');
+  try {
+    const st = await handle.stat();
+    if (st.size > SESSION_MAX_BYTES) {
+      throw new SessionTooLargeError(sessionPath, st.size, SESSION_MAX_BYTES);
+    }
+    return await handle.readFile('utf-8');
+  } finally {
+    await handle.close();
+  }
+}
 
 /**
  * Append (or upsert) a per-jobId run record into a session file's `runs[]`
@@ -54,7 +76,7 @@ export async function appendRunToSessionFile(
   let session: any;
   let raw: string | null = null;
   try {
-    raw = await fs.promises.readFile(sessionPath, 'utf-8');
+    raw = await readSessionFileBounded(sessionPath);
   } catch (err: any) {
     if (err.code !== 'ENOENT') {
       logger.warn(
@@ -196,7 +218,7 @@ export async function setSessionDismissed(
   for (const entry of getAllSessionPaths(featurePath)) {
     let raw: string;
     try {
-      raw = await fs.promises.readFile(entry.path, 'utf-8');
+      raw = await readSessionFileBounded(entry.path);
     } catch {
       continue;
     }
@@ -367,7 +389,7 @@ export async function deleteJobRunFromSession(
   const sessionPath = getSessionFilePathByJob(featurePath, jobType);
   let raw: string | null = null;
   try {
-    raw = await fs.promises.readFile(sessionPath, 'utf-8');
+    raw = await readSessionFileBounded(sessionPath);
   } catch (err: any) {
     if (err.code !== 'ENOENT') {
       logger.warn(

@@ -27,7 +27,7 @@ import {
   parseUrlKey,
 } from '../services/PreviewService/utils/serverKeyUtils';
 import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
-import { isSubdomainRouting, getDeployBaseDomain } from '../../../../core/config/previewRouting';
+import { isSubdomainRouting, getDeployBaseDomain, refusesSharedOriginPrivateAdmission } from '../../../../core/config/previewRouting';
 import type { DeployState } from '../../../../core/ports/portRegistry';
 import {
   buildCleanHeaders,
@@ -128,6 +128,13 @@ async function mayAccessDeploy(
     visibility = 'private'; // fail closed on a read error
   }
   if (visibility !== 'private') return true;
+  // Cloud path-mode: a private upstream shares the content origin with public
+  // deploys, so a browser same-origin request from attacker public content
+  // carries the victim's ambient cookie and passes the owner check as the victim
+  // (M-029). Refuse ambient/browser admission to private upstreams in path mode;
+  // private serving requires subdomain mode. `jwtService` present ⇒ cloud; local
+  // mode (no jwtService) is a single trust boundary and is left untouched.
+  if (deps.jwtService && refusesSharedOriginPrivateAdmission(req.headers)) return false;
   return isAuthorizedForPrivateDeploy(req, deps.jwtService, cookieName, coords.tenantId, coords.userId);
 }
 

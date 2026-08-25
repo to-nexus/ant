@@ -23,6 +23,15 @@ export interface FigmaFilesRoutesDeps {
   projectService?: { getProjectConfig(id: string, userContext: any): Promise<any> };
 }
 
+/**
+ * figma.json carries only a URL + nodeId (canonical.md: "only the URL + nodeId").
+ * It is normal-small metadata, so bound both the read and the write: neither the
+ * GET (whole text → JSON.parse → res.json) nor a generic file PUT should be able
+ * to grow it into an unbounded response/parse (M-NEW-028). Applied on both writers
+ * so an oversized value is refused before it is ever stored.
+ */
+const FIGMA_CONFIG_MAX_BYTES = 512 * 1024;
+
 export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
   const router = Router();
   registerFeatureParamDecoders(router);
@@ -76,8 +85,15 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
 
       let content: string | undefined;
       if (br) {
-        const read = readTextContainedBase(br);
+        const read = readTextContainedBase(br, { maxBytes: FIGMA_CONFIG_MAX_BYTES });
         if (!read.ok) {
+          if (read.reason === 'too-large') {
+            return res.status(413).json({
+              success: false,
+              code: 'FIGMA_CONFIG_TOO_LARGE',
+              limit: FIGMA_CONFIG_MAX_BYTES,
+            });
+          }
           config = createEmptyFigmaData();
           res.json({ success: true, config });
           return;
@@ -85,6 +101,14 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
         content = read.text;
       } else {
         try {
+          const st = await fs.stat(figmaPath);
+          if (st.size > FIGMA_CONFIG_MAX_BYTES) {
+            return res.status(413).json({
+              success: false,
+              code: 'FIGMA_CONFIG_TOO_LARGE',
+              limit: FIGMA_CONFIG_MAX_BYTES,
+            });
+          }
           content = await fs.readFile(figmaPath, 'utf-8');
         } catch {
           // Middleware guarantees the file exists for valid features. If read
@@ -124,12 +148,23 @@ export function createFigmaFilesRoutes(deps: FigmaFilesRoutesDeps): Router {
       const figmaPath = await getFigmaJsonPath(req);
       const config: FigmaDataConfig = req.body;
 
+      const serialized = JSON.stringify(config, null, 2);
+      // Refuse an oversized config before it is stored, so the GET above can
+      // stay bounded (M-NEW-028). figma.json is a URL + nodeId, never large.
+      if (Buffer.byteLength(serialized, 'utf8') > FIGMA_CONFIG_MAX_BYTES) {
+        return res.status(413).json({
+          success: false,
+          code: 'FIGMA_CONFIG_TOO_LARGE',
+          limit: FIGMA_CONFIG_MAX_BYTES,
+        });
+      }
+
       const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), figmaPath);
       if (br) {
-        const w = writeTextContainedBase(br, JSON.stringify(config, null, 2));
+        const w = writeTextContainedBase(br, serialized);
         if (!w.ok) return sendErrorResponse(res, 500, new Error(`figma write failed: ${w.reason}`), 'FigmaConfig');
       } else {
-        await fs.writeFile(figmaPath, JSON.stringify(config, null, 2), 'utf-8');
+        await fs.writeFile(figmaPath, serialized, 'utf-8');
       }
 
       res.json({ success: true });

@@ -15,6 +15,7 @@
 import express, { Express } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
+import { resolveWithinRoot } from '../../core/config/pathContainment';
 
 export interface StaticAppOptions {
   /** Absolute directory to serve. */
@@ -63,8 +64,34 @@ export function createStaticApp(options: StaticAppOptions): Express {
   // is the user's live workspace and may hold a `.env` the preview machinery
   // itself wrote, and whether `dotfiles: 'deny'` answers 403 or falls through to
   // the SPA fallback is an express-version detail we must not depend on.
+  //
+  // Symlink containment: express.static / `send` reject a lexical `..` but do NO
+  // realpath check, so an in-root symlink pointing OUT of root is followed and
+  // served. `root` is a live tenant workspace (preview — a code job rewrites it)
+  // or a deploy snapshot that preserves symlinks verbatim, and a deploy defaults
+  // to public — so a planted link would leak host/other-tenant files. containedIo
+  // has no serve-static adapter, so we gate here: resolve the requested path and
+  // refuse anything whose realpath (following every symlink component) escapes
+  // root. Runs before express.static, on every request.
   app.use((req, res, next) => {
     if (hasDotSegment(req.path)) {
+      res.status(403).send('Forbidden');
+      return;
+    }
+    let rel = req.path;
+    if (basePath !== '/' && (rel === basePath || rel.startsWith(basePath + '/'))) {
+      rel = rel.slice(basePath.length);
+    }
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(rel);
+    } catch {
+      res.status(400).send('Bad request');
+      return;
+    }
+    const relUnderRoot = decoded.replace(/^\/+/, '');
+    // Empty (root itself) is allowed; a non-empty target must realpath inside root.
+    if (relUnderRoot && resolveWithinRoot(root, relUnderRoot) === null) {
       res.status(403).send('Forbidden');
       return;
     }

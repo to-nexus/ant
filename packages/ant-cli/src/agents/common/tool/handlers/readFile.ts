@@ -162,7 +162,13 @@ export async function handleReadFile(
 
   try {
     console.log(`[readFile] Reading file: ${resolved.displayPath} (fsPath: ${resolved.fsPath})`);
-    const fileContent = await fileSystem.readFile(resolved.fsPath);
+    // The pre-stat guards above give the better message, but they stat the path
+    // and the read binds a different descriptor — a file grown/replaced in the
+    // gap would still be materialised whole. Bound the actual read on its own
+    // descriptor as the backstop (M-032). Full and range share this ceiling.
+    const fileContent = await fileSystem.readFile(resolved.fsPath, {
+      maxBytes: hasRange ? READ_FILE_RANGE_MAX_BYTES : READ_FILE_FULL_READ_LIMIT,
+    });
 
     if (!fileContent) {
       const errorMsg =

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { WorkspaceResolver, WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../core/types/user';
-import { getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, readSessionTextBounded, SessionTooLargeError, SESSION_MAX_BYTES } from '../../../../core/utils/sessionPaths';
 import { toBaseRelative, readTextContainedBase, statContainedBase } from '../../../../core/config/containedIo';
 
 /**
@@ -147,17 +147,19 @@ export class SessionService {
       try {
         let content: string;
         if (br) {
-          const read = readTextContainedBase(br);
+          // Bound per attempt on the read's own descriptor (M-NEW-029): the retry
+          // loop must not multiply an unbounded read into heap pressure.
+          const read = readTextContainedBase(br, { maxBytes: SESSION_MAX_BYTES });
           if (!read.ok) {
             if (read.reason === 'missing') return null;
+            if (read.reason === 'too-large') throw new SessionTooLargeError(sessionPath, SESSION_MAX_BYTES, SESSION_MAX_BYTES);
             throw new Error(`session read failed: ${read.reason}`);
           }
           content = read.text;
         } else {
-          if (!fs.existsSync(sessionPath)) {
-            return null;
-          }
-          content = fs.readFileSync(sessionPath, 'utf-8');
+          const bounded = readSessionTextBounded(sessionPath);
+          if (bounded === null) return null;
+          content = bounded;
         }
 
         // Empty or whitespace-only file: likely still being written (EFS propagation)

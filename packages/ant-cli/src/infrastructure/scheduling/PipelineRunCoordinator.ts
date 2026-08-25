@@ -56,7 +56,7 @@ import { generateHumanId } from '../../utils/humanId';
 import { generateTurnId } from '../../composition/recordUserTurn';
 import { logger } from '../../utils/logger';
 import { buildInitialSteps, planAdvance, applyStepOutcome, deriveRunStatus, effectiveNeeds, type StepDispatch } from '../../core/pipelines/ChainExecutor';
-import { getSessionFilePath } from '../../core/utils/sessionPaths';
+import { getSessionFilePath, readSessionTextBounded } from '../../core/utils/sessionPaths';
 import { deriveActivationsRoot, type PipelineTenantContext } from '../../core/pipelines/paths';
 import { resolveDefRoot } from '../../core/pipelines/scopeRoots';
 import {
@@ -826,7 +826,12 @@ export class PipelineRunCoordinator {
       if (!ref) return null;
       const containerPath = this.deps.workspaceResolver.getUniversalContainerPath(owner, run.projectId);
       const sessionPath = getSessionFilePath(containerPath, ref.agentId, ref.jobId);
-      const session = JSON.parse(fs.readFileSync(sessionPath, 'utf-8'));
+      // Bound the read on its own descriptor (M-NEW-029): the scheduler hot path
+      // must not sync-read and JSON-parse an unbounded session. Oversize throws
+      // and is swallowed by the catch below (treated as "no clarify seal").
+      const raw = readSessionTextBounded(sessionPath);
+      if (raw === null) return null;
+      const session = JSON.parse(raw);
       const state = session?.state ?? session;
       if (state?.awaitingClarify !== true || state?.jobId !== jobId) return null;
       return {

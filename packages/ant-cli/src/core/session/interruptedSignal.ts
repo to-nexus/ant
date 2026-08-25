@@ -14,7 +14,7 @@
 
 import * as fs from 'fs';
 import type { SessionableJobType } from '@ant/shared';
-import { getAllSessionPaths } from '../utils/sessionPaths';
+import { getAllSessionPaths, readSessionTextBounded } from '../utils/sessionPaths';
 import type { SessionState } from '../types/session';
 import { deriveResumableState } from './resumable';
 
@@ -118,7 +118,11 @@ export function deriveInterruptedJobSignal(
   for (const entry of getAllSessionPaths(featurePath)) {
     let data: { state?: SessionState; runs?: unknown };
     try {
-      data = JSON.parse(fs.readFileSync(entry.path, 'utf-8'));
+      // Bounded read (M-NEW-029): an oversized session throws and is skipped
+      // rather than sync-materialised and parsed across every path in the scan.
+      const raw = readSessionTextBounded(entry.path);
+      if (raw === null) continue;
+      data = JSON.parse(raw);
     } catch {
       continue;
     }

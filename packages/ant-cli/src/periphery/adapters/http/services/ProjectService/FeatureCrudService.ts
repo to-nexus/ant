@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceResolver } from '../../../../../core/config/WorkspacePathResolver';
 import { UserContext } from '../../../../../core/types/user';
-import { getSessionFilePathByJob, ensureCanonicalStructure } from '../../../../../core/utils/sessionPaths';
+import { getSessionFilePathByJob, ensureCanonicalStructure, readSessionTextBoundedAsync } from '../../../../../core/utils/sessionPaths';
 import type { StateStorePort } from '../../../../../core/ports/stateStore';
 import { acquireLock } from '../../../../../core/redis/distributedLock';
 import { REDIS_KEYS } from '../../../../../core/constants/redis';
@@ -101,7 +101,16 @@ export class FeatureCrudService {
   private async readFileWithRetry(filePath: string, retries = 2): Promise<string> {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        return await fs.promises.readFile(filePath, 'utf-8');
+        // Bound the session read on its own descriptor (M-NEW-029): a session
+        // grown past the budget must not be pulled whole into the API heap and
+        // JSON-parsed into the response. Throws SessionTooLargeError on oversize.
+        const bounded = await readSessionTextBoundedAsync(filePath);
+        if (bounded === null) {
+          const enoent: any = new Error(`Session file not found: ${filePath}`);
+          enoent.code = 'ENOENT';
+          throw enoent;
+        }
+        return bounded;
       } catch (err: any) {
         const isStale = err.errno === -116 || err.code === 'ESTALE' 
           || (err.message && err.message.includes('system error -116'));

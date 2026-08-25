@@ -83,6 +83,76 @@ export function getAgentForJobSafe(jobType: string): string {
 // ============================================
 
 /**
+ * Canonical feature-relative directory that holds job-lifecycle session state.
+ * A single owner for the literal every path builder below uses, so the file
+ * API's reserved-namespace guard and the readers stay in lockstep (M-NEW-029).
+ */
+export const SESSIONS_DIR_NAME = 'sessions';
+
+/**
+ * Largest a single session JSON may be for a bounded read. Session state is
+ * job-runner-authored and small in normal operation; a file past this is a sign
+ * of the M-NEW-029 growth vector (or corruption), and every reader refuses it as
+ * `SESSION_TOO_LARGE` rather than materialising and parsing it. Generous for a
+ * real accumulated directive/task history, bounded against the 50 MiB body cap.
+ */
+export const SESSION_MAX_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Read a session file bounded to {@link SESSION_MAX_BYTES} on its own descriptor.
+ * The single owner every canonical/universal session reader routes through, so a
+ * file grown past the budget cannot be pulled whole into API/worker heap and
+ * `JSON.parse`d (M-NEW-029). Returns `null` for a missing/unreadable file (the
+ * historical reader contract); throws {@link SessionTooLargeError} on oversize.
+ */
+export function readSessionTextBounded(sessionFilePath: string): string | null {
+  let fd: number;
+  try {
+    fd = fs.openSync(sessionFilePath, 'r');
+  } catch {
+    return null;
+  }
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) return null;
+    if (Number(stat.size) > SESSION_MAX_BYTES) {
+      throw new SessionTooLargeError(sessionFilePath, Number(stat.size), SESSION_MAX_BYTES);
+    }
+    return fs.readFileSync(fd, 'utf-8');
+  } finally {
+    try { fs.closeSync(fd); } catch { /* already closed */ }
+  }
+}
+
+/** Async twin of {@link readSessionTextBounded} for `fs.promises` callers. */
+export async function readSessionTextBoundedAsync(sessionFilePath: string): Promise<string | null> {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(sessionFilePath, 'r');
+  } catch {
+    return null;
+  }
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) return null;
+    if (Number(stat.size) > SESSION_MAX_BYTES) {
+      throw new SessionTooLargeError(sessionFilePath, Number(stat.size), SESSION_MAX_BYTES);
+    }
+    return await handle.readFile('utf-8');
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Thrown by the bounded session readers when a session file exceeds the budget. */
+export class SessionTooLargeError extends Error {
+  readonly code = 'SESSION_TOO_LARGE' as const;
+  constructor(readonly sessionPath: string, readonly size: number, readonly limit: number) {
+    super(`Session state too large: ${sessionPath} (${size} > ${limit} bytes)`);
+  }
+}
+
+/**
  * Get the full path to a session JSON file.
  * 
  * @example getSessionFilePath('/path/to/feature', 'architect', 'design')

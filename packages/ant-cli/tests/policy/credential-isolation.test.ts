@@ -695,4 +695,29 @@ describe('proxy withholds platform credentials from a user-controlled upstream (
       });
     }
   });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // M-NEW-026: the Go private-dependency install carries the user's PAT in env,
+  // so — like the Node acquire pass — it must run under the DEDICATED credential
+  // UID when credentials are present, not the shared child UID (a same-UID peer
+  // could read the PAT from /proc). Structural: runGoCommand must branch on
+  // credential presence and use the credentialed contract.
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('Go credentialed acquire identity (M-NEW-026)', () => {
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'src/periphery/adapters/http/services/PreviewService/managers/DependencyInstaller.ts'),
+      'utf-8',
+    );
+    // Isolate the runGoCommand body so the assertions are about THAT spawn.
+    const goBody = src.slice(src.indexOf('runGoCommand'), src.indexOf('runGoCommand') + 2000);
+
+    it('branches on credential presence and applies the credentialed acquire gate', () => {
+      expect(goBody).toMatch(/const credentialed\s*=/);
+      expect(goBody).toContain("assertCredentialedAcquireIsolationOrThrow('preview:install:go:acquire')");
+    });
+
+    it('selects credentialedAcquireIdentity when credentialed, childSpawnIdentity otherwise', () => {
+      expect(goBody).toMatch(/credentialed\s*\?\s*credentialedAcquireIdentity\(\)\s*:\s*childSpawnIdentity\(\)/);
+    });
+  });
 });

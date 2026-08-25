@@ -10,13 +10,44 @@
  * - Tenant isolation
  */
 
+/**
+ * Thrown by `readFile` when a `maxBytes` budget is set and the opened
+ * descriptor's actual size exceeds it. Distinct from the `null` "not found"
+ * contract so a caller that bounds the read can tell an oversized file apart
+ * from a missing one and surface the right message (M-032). The budget is
+ * checked on the SAME descriptor the read binds, so a file grown or swapped
+ * after a caller's own pre-stat cannot slip past.
+ */
+export class FileTooLargeError extends Error {
+  constructor(
+    readonly relativePath: string,
+    readonly size: number | undefined,
+    readonly maxBytes: number,
+  ) {
+    super(`File too large: ${relativePath} exceeds ${maxBytes} bytes`);
+    this.name = 'FileTooLargeError';
+  }
+}
+
+export interface FileReadOptions {
+  /**
+   * Reject before allocating when the opened descriptor exceeds this many
+   * bytes. Enforced against `fstat` on the read's own descriptor — not a
+   * path-reopened pre-check — so it holds across a concurrent grow/replace.
+   * On exceed, `readFile` throws {@link FileTooLargeError}.
+   */
+  maxBytes?: number;
+}
+
 export interface FileSystemPort {
   /**
    * Read file content
    * @param path - File path (relative to workspace root)
+   * @param opts - Optional read budget (see {@link FileReadOptions})
    * @returns File content or null if not found
+   * @throws FileTooLargeError if `opts.maxBytes` is set and exceeded
    */
-  readFile(path: string): Promise<string | null>;
+  readFile(path: string, opts?: FileReadOptions): Promise<string | null>;
   
   /**
    * Write file content

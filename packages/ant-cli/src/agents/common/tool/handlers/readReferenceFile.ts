@@ -9,6 +9,7 @@ import type { ToolExecutionContext, ToolResult } from '../types';
 import { AdapterFactory } from '../../../../infrastructure/adapters/AdapterFactory';
 import { isBinaryPath } from '../../../../core/utils/binaryExtensions';
 import { sniffToolFile } from './containedToolMeta';
+import { FileTooLargeError } from '../../../../core/ports/filesystem';
 import { getRefDeps, isRegistered, notRegisteredError } from '../reference/handlerSupport';
 import { resolveReferenceCodebase, ReferenceTargetError } from '../reference/resolve';
 import { refGitRead, RefGitTooLargeError } from '../reference/refGit';
@@ -91,7 +92,21 @@ export async function handleReadReferenceFile(
       } catch {
         // resolveAbsolute failure → normal read path surfaces the error.
       }
-      const read = await adapter.readFile(filePath);
+      // Bound the actual read on its own descriptor (M-032): the sniff above
+      // stats the path, but the read binds a different descriptor and a file
+      // grown/replaced in the gap would still be materialised whole.
+      let read: string | null;
+      try {
+        read = await adapter.readFile(filePath, { maxBytes: preReadLimit });
+      } catch (e) {
+        if (e instanceof FileTooLargeError) {
+          const msg =
+            `Error: reference file too large (limit ${preReadLimit.toLocaleString()} bytes). ` +
+            (hasRange ? 'Narrow the file before reading.' : 'Re-issue with startLine/endLine to read a range.');
+          return { content: msg, error: msg };
+        }
+        throw e;
+      }
       if (read == null) {
         const msg = `File not found in "${project}": ${filePath}`;
         return { content: msg, error: msg };

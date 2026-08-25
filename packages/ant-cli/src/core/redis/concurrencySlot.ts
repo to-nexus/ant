@@ -25,6 +25,16 @@ import { logger } from '../../utils/logger';
 export interface ConcurrencySlot {
   /** Release the slot. Idempotent — safe to call from several teardown paths. */
   release(): Promise<void>;
+  /**
+   * Re-arm this slot's TTL so a legitimately long hold does not let the crash
+   * backstop expire it — at which point the count drops and the same account
+   * re-admits past the limit (M-NEW-027). Returns `false` when the member is
+   * already gone (expired or released) so the caller can abort rather than run
+   * on past the budget; `true` when the TTL was extended. The member id stays
+   * private to the slot — callers heartbeat through this, never by rebuilding
+   * `refreshSlot` arguments themselves.
+   */
+  refresh(): Promise<boolean>;
 }
 
 export interface ConcurrencySlotOptions {
@@ -62,7 +72,10 @@ export async function acquireConcurrencySlot(
       { component: 'concurrencySlot' },
       err,
     );
-    return { release: async () => {} };
+    // No real reservation was taken (fail-open), so a refresh has nothing to
+    // re-arm — report success so a heartbeat loop does not abort a request the
+    // guard deliberately admitted.
+    return { release: async () => {}, refresh: async () => true };
   }
 
   if (!admitted) return null;
@@ -81,6 +94,22 @@ export async function acquireConcurrencySlot(
           { component: 'concurrencySlot' },
           err,
         );
+      }
+    },
+    refresh: async () => {
+      if (released) return false;
+      try {
+        return await stateStore.refreshSlot(key, member, opts.ttlSeconds);
+      } catch (err) {
+        // Treat a transport blip as still-alive: the same fail-open rationale as
+        // acquire. A genuinely expired member is reported by refreshSlot's XX
+        // miss returning false, which is a real signal to stop.
+        logger.warn(
+          `[concurrencySlot] refresh failed for ${key} — treating slot as live`,
+          { component: 'concurrencySlot' },
+          err,
+        );
+        return true;
       }
     },
   };

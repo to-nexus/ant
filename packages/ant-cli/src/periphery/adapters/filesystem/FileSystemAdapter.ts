@@ -15,7 +15,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { FileSystemPort } from '../../../core/ports/filesystem';
+import { FileSystemPort, FileReadOptions, FileTooLargeError } from '../../../core/ports/filesystem';
 import {
   mkdirpContained,
   readTextContained,
@@ -112,13 +112,24 @@ export class FileSystemAdapter implements FileSystemPort {
    * already "missing file → null", and a refused path must not be distinguishable
    * from an absent one.
    */
-  async readFile(relativePath: string): Promise<string | null> {
+  async readFile(relativePath: string, opts?: FileReadOptions): Promise<string | null> {
     // Keeps the loud traversal diagnostic for `../` and absolute escapes.
     const fullPath = this.resolveAbsolute(relativePath);
 
     const br = this.baseRel(fullPath);
-    const result = br ? readTextContainedBase(br) : readTextContained(this.basePath, relativePath);
-    return result.ok ? result.text : null;
+    const result = br
+      ? readTextContainedBase(br, opts)
+      : readTextContained(this.basePath, relativePath, opts);
+    if (!result.ok) {
+      // The budget is a real refusal, not an absence — surface it distinctly so
+      // the caller reports "too large" instead of the misleading "not found"
+      // (M-032). Every other failure keeps the historical null contract.
+      if (result.reason === 'too-large' && opts?.maxBytes !== undefined) {
+        throw new FileTooLargeError(relativePath, undefined, opts.maxBytes);
+      }
+      return null;
+    }
+    return result.text;
   }
   
   async writeFile(relativePath: string, content: string): Promise<void> {

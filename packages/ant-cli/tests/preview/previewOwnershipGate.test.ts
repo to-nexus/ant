@@ -25,13 +25,18 @@ const jwt: ProxyJwtVerifier = {
   },
 };
 
+function previewRecord() {
+  return {
+    tenantId: 'org', userId: 'user', projectId: 'proj', feature: 'feat',
+    running: true, ready: true, host: '127.0.0.1', port: 3000,
+    packages: [{ name: 'web', slug: 'web', type: 'frontend', port: 3000, urlKey: URL_KEY }],
+  };
+}
+
 function mockRegistry(): any {
   return {
-    getPreview: vi.fn(async () => ({
-      tenantId: 'org', userId: 'user', projectId: 'proj', feature: 'feat',
-      running: true, ready: true, host: '127.0.0.1', port: 3000,
-      packages: [{ name: 'web', slug: 'web', type: 'frontend', port: 3000, urlKey: URL_KEY }],
-    })),
+    getPreview: vi.fn(async () => previewRecord()),
+    getPreviewByLabel: vi.fn(async () => previewRecord()),
     touchPreview: vi.fn(async () => {}),
   };
 }
@@ -42,7 +47,21 @@ function mockReq(token?: string): Request {
     url,
     method: 'GET',
     path: url,
-    headers: { host: 'preview.test', ...(token ? { cookie: `${COOKIE}=${token}` } : {}) },
+    // A browser request on the shared path-mode content origin: carries
+    // Fetch-Metadata and (when authed) an ambient cookie.
+    headers: { host: 'preview.test', 'sec-fetch-site': 'same-origin', ...(token ? { cookie: `${COOKIE}=${token}` } : {}) },
+  } as any as Request;
+}
+
+// Subdomain-mode request: the preview has its own origin, so the owner cookie is
+// the authority (M-029's shared-origin refusal does not apply).
+function mockSubdomainReq(token?: string): Request {
+  const host = `${URL_KEY}.ant-preview.example.com`;
+  return {
+    url: '/dashboard',
+    method: 'GET',
+    path: '/dashboard',
+    headers: { host, 'sec-fetch-site': 'same-origin', ...(token ? { cookie: `${COOKIE}=${token}` } : {}) },
   } as any as Request;
 }
 
@@ -77,6 +96,7 @@ beforeEach(() => {
 
 afterEach(() => {
   fetchSpy.mockRestore();
+  vi.unstubAllEnvs();
 });
 
 describe('previewProxy owner-only gate', () => {
@@ -88,12 +108,25 @@ describe('previewProxy owner-only gate', () => {
     expect(lastFetchUrl).toBe(`http://127.0.0.1:3000/${URL_KEY}/dashboard`);
   });
 
-  it('cloud mode + owner cookie → proxies', async () => {
+  // M-029: in cloud PATH mode a preview shares the content origin with public
+  // deploys, so a browser/ambient owner-cookie request cannot be told apart from
+  // attacker content on that origin — it is refused. Private serving requires
+  // subdomain mode (next test).
+  it('cloud PATH mode + owner cookie + browser → 403 (M-029 shared-origin)', async () => {
     const mw = createPreviewProxyMiddleware({ portRegistry: mockRegistry(), jwtService: jwt, cookieName: COOKIE });
     const res = mockRes();
     await mw(mockReq('org|user'), res, mockNext());
+    expect(res._captured.status).toBe(403);
+    expect(lastFetchUrl).toBeUndefined();
+  });
+
+  it('cloud SUBDOMAIN mode + owner cookie → proxies (per-preview origin)', async () => {
+    vi.stubEnv('ANT_PREVIEW_BASE_DOMAIN', 'ant-preview.example.com');
+    const mw = createPreviewProxyMiddleware({ portRegistry: mockRegistry(), jwtService: jwt, cookieName: COOKIE });
+    const res = mockRes();
+    await mw(mockSubdomainReq('org|user'), res, mockNext());
     expect(res._captured.status).not.toBe(403);
-    expect(lastFetchUrl).toBe(`http://127.0.0.1:3000/${URL_KEY}/dashboard`);
+    expect(lastFetchUrl).toBe('http://127.0.0.1:3000/dashboard');
   });
 
   it('cloud mode + no cookie → 403, no upstream fetch', async () => {

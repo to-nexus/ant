@@ -2,6 +2,7 @@ import { Router, Request, Response, type RequestHandler } from 'express';
 import { registerFeatureParamDecoders, decodeFeatureSegment } from './helpers/featureParam';
 import * as fs from 'fs';
 import * as path from 'path';
+import { pipeline } from 'stream/promises';
 import multer from 'multer';
 import archiver from 'archiver';
 import { ProjectService } from '../services';
@@ -30,11 +31,11 @@ import {
   renameContainedBase,
   toBaseRelative,
   statContainedBase,
-  readBufferContainedBase,
   walkContainedBase,
   createReadStreamContainedBase,
 } from '../../../../core/config/containedIo';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+import { SESSIONS_DIR_NAME } from '../../../../core/utils/sessionPaths';
 
 /**
  * `mkdir -p featurePath/relDir` bound to the physical workspace base by
@@ -91,6 +92,59 @@ const DIRECTORY_DOWNLOAD_MAX_INFLIGHT = 2;
 /** Entries and raw bytes one archive may cover. */
 const DIRECTORY_DOWNLOAD_MAX_ENTRIES = 20_000;
 const DIRECTORY_DOWNLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+/**
+ * A live ZIP/raw stream re-arms its slot's 15-min TTL well before it lapses, so a
+ * legitimately long download keeps COUNTING against the per-account budget instead
+ * of freeing its own slot and letting the account re-admit past the limit
+ * (M-NEW-027). Interval ≪ TTL.
+ */
+const STREAM_SLOT_HEARTBEAT_MS = 5 * 60 * 1000;
+/**
+ * Backstop for a socket that neither delivers nor emits `close` (a wedged proxy):
+ * past this the stream is torn down so its slot cannot be pinned indefinitely. Set
+ * well above any legitimate large-archive-over-slow-link download.
+ */
+const STREAM_SLOT_MAX_LIFETIME_MS = 60 * 60 * 1000;
+/** Per-account concurrent raw file streams, cluster-wide (M-NEW-028). */
+const RAW_STREAM_MAX_INFLIGHT = 4;
+const RAW_STREAM_SLOT_TTL_SECONDS = 15 * 60;
+
+/**
+ * Bind a concurrency slot's lifetime to the RESPONSE, not to a `finally` after
+ * `archive.finalize()`. `finalize()` resolves when the last chunk is accepted by
+ * `res`, not delivered — and on a client disconnect the archiver can be left
+ * undrained so `finalize()` never settles, which would pin the slot for the full
+ * TTL. Releasing on `finish`/`close`/`error` (idempotent) covers every exit, and a
+ * heartbeat keeps the slot counted while the stream is genuinely alive. Returns a
+ * disposer for early returns taken before the response ends.
+ */
+function bindStreamSlotToResponse(
+  res: Response,
+  slot: { release: () => Promise<void>; refresh: () => Promise<boolean> },
+): void {
+  let released = false;
+  const startedAt = Date.now();
+  const heartbeat = setInterval(() => {
+    if (Date.now() - startedAt > STREAM_SLOT_MAX_LIFETIME_MS) {
+      res.destroy();
+      return;
+    }
+    void slot.refresh().then((alive) => {
+      // The member was pruned (TTL lapsed and a concurrent reserve counted it
+      // out): stop rather than run on past a budget we no longer hold.
+      if (!alive) res.destroy();
+    });
+  }, STREAM_SLOT_HEARTBEAT_MS);
+  const release = () => {
+    if (released) return;
+    released = true;
+    clearInterval(heartbeat);
+    void slot.release();
+  };
+  res.on('finish', release);
+  res.on('close', release);
+  res.on('error', release);
+}
 
 export function createFilesRoutes(deps: {
   projectService: ProjectService;
@@ -178,6 +232,29 @@ export function createFilesRoutes(deps: {
     res.status(409).json({
       code: 'universal-plane',
       error: 'Workspace projects manage files through /projects/:id/universal/artifacts',
+    });
+    return true;
+  };
+
+  /**
+   * Refuse a generic file mutation aimed at the canonical `sessions/**`
+   * namespace, and answer the response when it does.
+   *
+   * `sessions/{agent}/{job}.json` is job-lifecycle state, not a user artifact:
+   * it has no artifact-dir policy, so `validateFileForDir` waves it through, and
+   * a generic PUT/upload/rename could grow it without bound. Every canonical
+   * session reader then full-reads and `JSON.parse`s it across the API and job
+   * lifecycle (M-NEW-029). The only legitimate writer is the job runner, which
+   * does not go through these HTTP file routes — so the whole namespace is
+   * off-limits to the generic file surface. Mirrors the universal plane's
+   * `reservedRootViolation` (customAgents.routes.ts).
+   */
+  const refusedCanonicalSessionPath = (res: Response, relativeFilePath: string): boolean => {
+    const first = (relativeFilePath ?? '').replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0] ?? '';
+    if (first !== SESSIONS_DIR_NAME) return false;
+    res.status(409).json({
+      code: 'reserved-name-sessions',
+      error: '"sessions" is a reserved job-state namespace and cannot be modified through the file API',
     });
     return true;
   };
@@ -323,8 +400,32 @@ export function createFilesRoutes(deps: {
       const fullPath = resolveFeatureScopedFilePath(workspaceResolver, userContext, projectId, featureName, filePath);
       const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), fullPath);
 
+      // A raw file response used to read the WHOLE file into a Buffer and
+      // res.send() it — no streaming, no backpressure, no admission (M-NEW-028).
+      // A 50 MiB asset (upload cap) fetched repeatedly or over a slow client
+      // pinned API heap and sockets with nothing bounding concurrency. Take a
+      // per-account active-stream slot before the first byte, stream with
+      // pipeline backpressure, and release on the response lifecycle.
+      const rawSlot = deps.stateStore
+        ? await acquireConcurrencySlot(
+            deps.stateStore,
+            `ant:slots:raw:${userContext.organizationId}:${userContext.userId}`,
+            { limit: RAW_STREAM_MAX_INFLIGHT, ttlSeconds: RAW_STREAM_SLOT_TTL_SECONDS },
+          )
+        : { release: async () => {}, refresh: async () => true };
+      if (!rawSlot) {
+        res.setHeader('Retry-After', '2');
+        res.status(429).json({
+          code: 'TOO_MANY_FILE_STREAMS',
+          error: 'Too many file downloads in progress. Retry shortly.',
+        });
+        return;
+      }
+      bindStreamSlotToResponse(res, rawSlot);
+
       try {
-        let buf: Buffer;
+        let source: NodeJS.ReadableStream;
+        let size: number;
         if (br) {
           // Contained: the type check and the bytes bind to the same descended
           // descriptor, so a directory component swapped after resolve cannot
@@ -332,19 +433,22 @@ export function createFilesRoutes(deps: {
           const st = statContainedBase(br);
           if (!st.ok) { res.status(404).json({ error: 'File not found' }); return; }
           if (st.stat.isDirectory()) { res.status(400).json({ error: 'Path is a directory, not a file' }); return; }
-          const read = readBufferContainedBase(br);
-          if (!read.ok) { res.status(404).json({ error: 'File not found' }); return; }
-          buf = read.bytes;
+          const s = createReadStreamContainedBase(br);
+          if (!s.ok) { res.status(404).json({ error: 'File not found' }); return; }
+          source = s.stream;
+          size = s.size;
         } else {
           const stat = await fs.promises.stat(fullPath);
           if (stat.isDirectory()) {
             res.status(400).json({ error: 'Path is a directory, not a file' });
             return;
           }
-          buf = await fs.promises.readFile(fullPath);
+          source = fs.createReadStream(fullPath);
+          size = stat.size;
         }
         const mimeType = getMimeTypeFromPath(filePath);
         res.setHeader('Content-Type', mimeType);
+        res.setHeader('Content-Length', size);
         res.setHeader('Cache-Control', 'no-store');
         // The bytes are user- or LLM-authored and this route is same-origin, so
         // never let the browser re-sniff a type it was told.
@@ -363,10 +467,14 @@ export function createFilesRoutes(deps: {
           'Content-Disposition',
           `${disposition}; filename*=UTF-8''${encodeURIComponent(path.basename(filePath))}`,
         );
-        res.status(200).send(buf);
+        // pipeline propagates backpressure and destroys the source if the client
+        // disconnects, so a slow/aborted reader cannot buffer the whole file.
+        await pipeline(source, res);
       } catch (error: any) {
         if (error.code === 'ENOENT') {
-          res.status(404).json({ error: 'File not found' });
+          if (!res.headersSent) res.status(404).json({ error: 'File not found' });
+        } else if (error?.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+          // Client disconnected mid-stream — normal, slot released by lifecycle.
         } else {
           throw error;
         }
@@ -400,6 +508,8 @@ export function createFilesRoutes(deps: {
           res.status(400).json({ error: 'Path is a directory, not a file' });
         } else if (error.code === 'BINARY_FILE') {
           res.status(422).json({ code: 'BINARY_FILE', message: error.message, size: error.size });
+        } else if (error.code === 'FILE_TOO_LARGE') {
+          res.status(413).json({ code: 'FILE_TOO_LARGE', message: error.message, size: error.size, limit: error.limit });
         } else {
           throw error;
         }
@@ -408,7 +518,7 @@ export function createFilesRoutes(deps: {
       sendErrorResponse(res, 500, error, 'Files');
     }
   });
-  
+
   // Update/Create file content — returns FileResource (normalized content + recomputed meta)
   router.put(/^\/projects\/([^\/]+)\/features\/([^\/]+)\/files\/(.+)$/, async (req: Request, res: Response) => {
     try {
@@ -428,6 +538,13 @@ export function createFilesRoutes(deps: {
       }
 
       const userContext = extractUserContext(req);
+
+      // sessions/** is job-lifecycle state, not a user artifact — off-limits to
+      // the generic file surface on BOTH planes (M-NEW-029). The first-segment
+      // guard fires whether the path resolves to the canonical feature root or
+      // the universal container's grafted `sessions/`, so a normal universal
+      // artifact PUT (e.g. plan/*) is unaffected — only session paths are refused.
+      if (refusedCanonicalSessionPath(res, filePath)) return;
 
       // Reject a write to a feature that was never created — otherwise the
       // recursive mkdir would materialize a ghost feature directory (M-NEW-017).
@@ -491,6 +608,7 @@ export function createFilesRoutes(deps: {
         return;
       }
       if (refusedUniversalPlane(res, userContext, projectId, featureName)) return;
+      if (refusedCanonicalSessionPath(res, dirPath)) return;
 
       // `dirPath` is caller-supplied. `resolveWriteTarget` below anchors each
       // per-file path to `baseDir`, so an escaped baseDir would be honoured —
@@ -650,6 +768,7 @@ export function createFilesRoutes(deps: {
         return res.status(404).json({ error: 'Feature not found' });
       }
       if (refusedUniversalPlane(res, userContext, projectId, featureName)) return;
+      if (refusedCanonicalSessionPath(res, dirPath)) return;
       // Security: must stay within the feature directory. A bare `startsWith`
       // compares no separator, so `../<feature>-escaped` normalizes to a sibling
       // that still shares the prefix — the shared helper compares by segment and
@@ -709,6 +828,9 @@ export function createFilesRoutes(deps: {
         return res.status(404).json({ error: 'Feature not found' });
       }
       if (refusedUniversalPlane(res, userContext, projectId, featureName)) return;
+      // Neither endpoint of the rename may touch sessions/** (M-NEW-029).
+      if (refusedCanonicalSessionPath(res, oldPath)) return;
+      if (refusedCanonicalSessionPath(res, newPath)) return;
 
       let fullOldPath: string;
       let fullNewPath: string;
@@ -916,7 +1038,7 @@ export function createFilesRoutes(deps: {
               `ant:slots:zip:${userContext.organizationId}:${userContext.userId}`,
               { limit: DIRECTORY_DOWNLOAD_MAX_INFLIGHT, ttlSeconds: 15 * 60 },
             )
-          : { release: async () => {} };
+          : { release: async () => {}, refresh: async () => true };
         if (!slot) {
           return res.status(429).json({
             code: 'DIRECTORY_DOWNLOAD_IN_PROGRESS',
@@ -925,7 +1047,12 @@ export function createFilesRoutes(deps: {
           });
         }
 
-        try {
+        // Release when the RESPONSE ends (finish/close/error), never in a finally
+        // after finalize() — see bindStreamSlotToResponse (M-NEW-027). Every early
+        // return below ends the response, which fires the release.
+        bindStreamSlotToResponse(res, slot);
+
+        {
           const tooLarge = () =>
             res.status(413).json({
               code: 'DIRECTORY_DOWNLOAD_LIMIT_EXCEEDED',
@@ -1015,8 +1142,6 @@ export function createFilesRoutes(deps: {
           }
 
           await archive.finalize();
-        } finally {
-          await slot.release();
         }
       } else {
         // File: send as attachment

@@ -1246,9 +1246,10 @@ export function clearContainedBase(target: BaseRelative): { ok: true } | Contain
  */
 export function sniffContainedBase(
   target: BaseRelative,
+  opts: ContainedIoOptions = {},
 ): { ok: true; binary: boolean; size: number } | ContainedFail {
   const hint = target.relative.split(/[\\/]+/).pop() ?? target.relative;
-  const result = withContainedFdBase(target, (fd) => sniffFd(fd, hint));
+  const result = withContainedFdBase(target, (fd) => sniffFd(fd, hint), opts);
   if (!result.ok) return result;
   return { ok: true, binary: result.value.binary, size: Number(result.stat.size) };
 }

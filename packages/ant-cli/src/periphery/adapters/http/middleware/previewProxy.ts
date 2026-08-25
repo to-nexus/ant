@@ -20,7 +20,7 @@ import { PortRegistryPort, PreviewState } from '../../../../core/ports/portRegis
 import { logger } from '../../../../utils/logger';
 import { fromUrlKey, isUrlKey, parseUrlKey, toUrlKey } from '../services/PreviewService/utils/serverKeyUtils';
 import { extractLabelFromHost } from '../services/PreviewService/utils/previewLabel';
-import { isSubdomainRouting, getPreviewBaseDomain } from '../../../../core/config/previewRouting';
+import { isSubdomainRouting, getPreviewBaseDomain, refusesSharedOriginPrivateAdmission } from '../../../../core/config/previewRouting';
 import {
   resolvePreviewTarget,
   resolvePreviewLabel,
@@ -183,8 +183,18 @@ export function createPreviewProxyMiddleware(config: PreviewProxyConfig) {
   // Owner-only access gate. Runs before cookie-parser (see PreviewServer mount
   // order), so the raw Cookie header is parsed here. Local mode (no jwtService)
   // → always authorized.
-  const isOwner = (req: Request, owner: { tenantId: string; userId: string }): boolean =>
-    authorizeProxyToken(parseCookieHeader(req.headers.cookie)[cookieName], jwtService, owner);
+  //
+  // A preview is owner-only, i.e. always private. In cloud path-mode it shares
+  // the content origin with public deploys, so a browser same-origin request
+  // from attacker public-deploy content carries the victim's ambient cookie and
+  // would pass the owner check as the victim (M-029). Refuse ambient/browser
+  // admission on the shared path-mode origin before the cookie check; subdomain
+  // mode (per-preview origin) and non-ambient bearer/local callers are
+  // unaffected.
+  const isOwner = (req: Request, owner: { tenantId: string; userId: string }): boolean => {
+    if (jwtService && refusesSharedOriginPrivateAdmission(req.headers)) return false;
+    return authorizeProxyToken(parseCookieHeader(req.headers.cookie)[cookieName], jwtService, owner);
+  };
 
   // The upstream is a user-authored dev server: it must never receive the
   // caller's platform session. Its own cookies / bearer tokens pass through.

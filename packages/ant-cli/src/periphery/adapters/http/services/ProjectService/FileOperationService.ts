@@ -51,6 +51,30 @@ export class BinaryFileOperationError extends Error {
 }
 
 /**
+ * Largest text file the JSON file-content API will load into a response. The
+ * JSON endpoint materialises the whole file as a string plus meta into the API
+ * heap and serializer, so — unlike the streaming `/files-raw/` route — it needs
+ * a descriptor-bound ceiling; oversized files are offered as a raw download
+ * instead (M-NEW-028). Generous for real source/text/config, bounded enough that
+ * one GET cannot pull a 50 MiB upload into the shared process.
+ */
+export const FILE_READ_MAX_BYTES = 10 * 1024 * 1024;
+/** Bounded template-classifier read for the file tree — it never returns the body. */
+export const TEMPLATE_SNIFF_MAX_BYTES = 256 * 1024;
+
+/**
+ * Thrown when a text file exceeds {@link FILE_READ_MAX_BYTES}. Routes map it to
+ * HTTP 413 with `code: 'FILE_TOO_LARGE'` so the FE can steer the user to the raw
+ * download instead of the in-editor view.
+ */
+export class FileTooLargeOperationError extends Error {
+  readonly code = 'FILE_TOO_LARGE' as const;
+  constructor(filePath: string, readonly size: number | undefined, readonly limit: number) {
+    super(`File too large to open as text: ${filePath} (limit ${limit} bytes)`);
+  }
+}
+
+/**
  * Blacklist for depth ≥ 1 only. The feature root is governed by the
  * `isFeatureTreeRootEntry` allowlist, which already excludes `codebase/`
  * (not a canonical dir) and everything else that is not an artifact domain.
@@ -233,16 +257,21 @@ export class FileOperationService {
           const st = statContainedBase(fileBr);
           if (st.ok) { size = Number(st.stat.size); mtimeMs = Number(st.stat.mtimeMs); }
           if (shouldEvaluateTemplate(itemRelativePath)) {
-            const read = readTextContainedBase(fileBr);
+            // The tree never returns the body — it only classifies plan/*
+            // templates — so bound the read: a large file under plan/ must not
+            // pull its whole content into heap on every tree request (M-NEW-028).
+            const read = readTextContainedBase(fileBr, { maxBytes: TEMPLATE_SNIFF_MAX_BYTES });
             if (read.ok) content = read.text;
           }
         } else {
+          let statSize = 0;
           try {
             const stats = await fs.promises.stat(fullPath);
             size = stats.size;
+            statSize = stats.size;
             mtimeMs = stats.mtimeMs;
           } catch { /* skip stat failures */ }
-          if (shouldEvaluateTemplate(itemRelativePath)) {
+          if (shouldEvaluateTemplate(itemRelativePath) && statSize <= TEMPLATE_SNIFF_MAX_BYTES) {
             try {
               content = await fs.promises.readFile(fullPath, 'utf-8');
             } catch { /* skip read failures */ }
@@ -312,8 +341,16 @@ export class FileOperationService {
           throw new BinaryFileOperationError('BINARY_FILE', filePath, sniff.size);
         }
       }
-      const read = readTextContainedBase(br);
-      if (!read.ok) throw new Error(`Invalid file path: ${filePath}`);
+      // Budget on the SAME descriptor the read binds — a file grown/replaced
+      // after the stat above cannot slip a 50 MiB body into the JSON response
+      // (M-NEW-028). Oversized → typed 413, the FE offers a raw download.
+      const read = readTextContainedBase(br, { maxBytes: FILE_READ_MAX_BYTES });
+      if (!read.ok) {
+        if (read.reason === 'too-large') {
+          throw new FileTooLargeOperationError(filePath, Number(st.stat.size), FILE_READ_MAX_BYTES);
+        }
+        throw new Error(`Invalid file path: ${filePath}`);
+      }
       const meta = computeFileMeta({
         relativePath: filePath,
         content: read.text,
@@ -328,6 +365,9 @@ export class FileOperationService {
       const sniff = sniffFile(fullPath);
       if (sniff.binary) {
         throw new BinaryFileOperationError('BINARY_FILE', filePath, sniff.size ?? stats.size);
+      }
+      if (stats.size > FILE_READ_MAX_BYTES) {
+        throw new FileTooLargeOperationError(filePath, stats.size, FILE_READ_MAX_BYTES);
       }
     }
 

@@ -660,12 +660,22 @@ export class DependencyInstaller {
       // without UID isolation so a same-UID child cannot read the service /proc
       // environment while it holds credentials (M-015).
       assertUserCodeIsolationOrThrow('preview:install:go');
+      // When credentials are actually present, this acquire must run under the
+      // DEDICATED credential UID, not the shared child UID — otherwise a
+      // concurrent ordinary user-code child at the same UID can read the PAT out
+      // of /proc/<pid>/environ (M-NEW-026), the same vector the Node acquire pass
+      // closes. Credential-free Go installs keep the ordinary child identity.
+      const credentialed = env !== undefined && Object.keys(env).length > 0;
+      if (credentialed) {
+        assertCredentialedAcquireIsolationOrThrow('preview:install:go:acquire');
+      }
+      const identity = credentialed ? credentialedAcquireIdentity() : childSpawnIdentity();
       const proc = spawn('go', args, {
         cwd,
         shell: true,
         stdio: 'pipe',
         env: composeChildEnv(env),
-        ...childSpawnIdentity(),
+        ...identity,
       });
 
       const onAbort = () => {

@@ -10,7 +10,7 @@ import type { SessionableJobType, KanbanData } from '@ant/shared';
 import { SESSIONABLE_JOB_TYPES, isSessionableJobType } from '@ant/shared';
 import type { SessionRun } from '../../../../core/types/session';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
-import { getAgentForJob, getSessionFilePathByJob } from '../../../../core/utils/sessionPaths';
+import { getAgentForJob, getSessionFilePathByJob, readSessionTextBoundedAsync, SessionTooLargeError, SESSION_MAX_BYTES } from '../../../../core/utils/sessionPaths';
 import {
   sealJobRedisState,
   scrubJobDebugArtifacts,
@@ -39,19 +39,18 @@ import { toBaseRelative, readTextContainedBase } from '../../../../core/config/c
 async function readSessionUtf8OrNull(absPath: string): Promise<string | null> {
   const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), absPath);
   if (br) {
-    const read = readTextContainedBase(br);
+    // Bound the read on its own descriptor (M-NEW-029): a session grown past the
+    // budget must not be pulled whole into this HTTP response.
+    const read = readTextContainedBase(br, { maxBytes: SESSION_MAX_BYTES });
     if (!read.ok) {
       if (read.reason === 'missing') return null;
+      if (read.reason === 'too-large') throw new SessionTooLargeError(absPath, SESSION_MAX_BYTES, SESSION_MAX_BYTES);
       throw new Error(`session read failed: ${read.reason}`);
     }
     return read.text;
   }
-  try {
-    return await fs.promises.readFile(absPath, 'utf-8');
-  } catch (err: any) {
-    if (err?.code === 'ENOENT') return null;
-    throw err;
-  }
+  // Out-of-base (repoType:local): the shared bounded reader keeps the same budget.
+  return readSessionTextBoundedAsync(absPath);
 }
 
 /**

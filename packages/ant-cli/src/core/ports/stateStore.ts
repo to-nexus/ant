@@ -885,8 +885,14 @@ export interface StateStorePort {
    */
   reserveSlot(setKey: string, member: string, limit: number, ttlSeconds: number): Promise<boolean>;
 
-  /** Extend a held slot's expiry — heartbeat for a long-lived holder. */
-  refreshSlot(setKey: string, member: string, ttlSeconds: number): Promise<void>;
+  /**
+   * Extend a held slot's expiry — heartbeat for a long-lived holder. Returns
+   * `true` when the member existed and its expiry was extended, `false` when it
+   * had already expired or been released (an XX add cannot resurrect it). A long
+   * holder uses the `false` to stop rather than run on past a budget it no longer
+   * counts against (M-NEW-027).
+   */
+  refreshSlot(setKey: string, member: string, ttlSeconds: number): Promise<boolean>;
 
   /** Release a held slot. Idempotent. */
   releaseSlot(setKey: string, member: string): Promise<void>;

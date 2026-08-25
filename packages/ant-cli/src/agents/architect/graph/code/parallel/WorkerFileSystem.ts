@@ -11,7 +11,7 @@
  * - Tracks read versions in readVersions map for stale detection
  */
 
-import type { FileSystemPort } from '../../../../../core/ports/filesystem';
+import type { FileSystemPort, FileReadOptions } from '../../../../../core/ports/filesystem';
 import { SharedFileBuffer, WriteResult } from './SharedFileBuffer';
 
 /**
@@ -50,7 +50,7 @@ export class WorkerFileSystem implements FileSystemPort {
 
   // ─── Read ────────────────────────────────────────────────────────
 
-  async readFile(path: string): Promise<string | null> {
+  async readFile(path: string, opts?: FileReadOptions): Promise<string | null> {
     // Check shared buffer first (cross-worker visibility)
     const entry = this.sharedBuffer.read(path);
     if (entry) {
@@ -59,7 +59,7 @@ export class WorkerFileSystem implements FileSystemPort {
     }
 
     // Fall back to disk
-    const content = await this.delegate.readFile(path);
+    const content = await this.delegate.readFile(path, opts);
     if (content !== null) {
       // v0 = disk original, not yet in SharedFileBuffer
       this.readVersions.set(this.sharedBuffer.normalizePath(path), 0);

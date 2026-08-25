@@ -1638,12 +1638,17 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     return Number(result) === 1;
   }
 
-  async refreshSlot(setKey: string, member: string, ttlSeconds: number): Promise<void> {
+  async refreshSlot(setKey: string, member: string, ttlSeconds: number): Promise<boolean> {
     // Only refreshes an EXISTING member (`XX`): a holder whose slot already expired
-    // must go back through `reserveSlot` and be counted again.
+    // and was pruned must go back through `reserveSlot` and be counted again. `CH`
+    // makes zadd report the changed count, so a caller can tell "still mine, TTL
+    // extended" (1) from "already gone" (0) and stop rather than run on past a
+    // budget it no longer counts against (M-NEW-027). The expiry always advances,
+    // so an existing member always counts as changed.
     const expiry = Date.now() + ttlSeconds * 1000;
-    await this.redis.zadd(setKey, 'XX', String(expiry), member);
+    const changed = await this.redis.zadd(setKey, 'XX', 'CH', String(expiry), member);
     await this.redis.pexpire(setKey, ttlSeconds * 1000 + 60000);
+    return Number(changed) === 1;
   }
 
   async releaseSlot(setKey: string, member: string): Promise<void> {

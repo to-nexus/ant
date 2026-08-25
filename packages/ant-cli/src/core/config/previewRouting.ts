@@ -35,6 +35,52 @@
 
 export type PreviewRoutingMode = 'path' | 'subdomain';
 
+/** Minimal header view — the fields the shared-origin admission gate reads. */
+type AdmissionHeaders = {
+  authorization?: string | string[];
+  cookie?: string | string[];
+  'sec-fetch-site'?: string | string[];
+};
+
+function headerValue(v: string | string[] | undefined): string {
+  return Array.isArray(v) ? (v[0] ?? '') : (v ?? '');
+}
+
+/**
+ * A caller is NON-AMBIENT iff it presents a bearer token and NO cookie. A bearer
+ * is not attached automatically by the browser to a cross-document request, so
+ * it proves the caller intended THIS request; an ambient cookie does not.
+ */
+function isNonAmbientCaller(headers: AdmissionHeaders): boolean {
+  const auth = headerValue(headers.authorization);
+  const hasBearer = /^bearer\s+\S/i.test(auth);
+  const hasCookie = headerValue(headers.cookie).length > 0;
+  return hasBearer && !hasCookie;
+}
+
+/**
+ * Whether a request to a PRIVATE preview/deploy upstream must be refused because
+ * it can only be reaching the shared path-mode content origin with ambient
+ * authority (M-029).
+ *
+ * In path mode every preview, every public deploy and every private deploy share
+ * ONE content origin. Script in an attacker's public-deploy page can therefore
+ * issue a browser same-origin request to a victim's private-deploy URL, and the
+ * browser attaches the victim's session cookie — indistinguishable, on that
+ * shared origin, from the private app's own request (there is no browser signal
+ * that identifies the initiating document's path). The owner-cookie check cannot
+ * separate them, so a cookie/browser (ambient) request to a private upstream is
+ * refused in path mode; private serving requires subdomain mode, where each
+ * deploy has its own origin and an attacker cannot host content on the victim's
+ * host. Non-ambient bearer callers (CLI/API) and local mode are unaffected.
+ *
+ * Subdomain mode → always false (per-deploy origin closes the confused deputy).
+ */
+export function refusesSharedOriginPrivateAdmission(headers: AdmissionHeaders): boolean {
+  if (isSubdomainRouting()) return false;
+  return !isNonAmbientCaller(headers);
+}
+
 /**
  * Subdomain routing is active iff a base domain is configured (its presence is
  * the switch — see the module comment). No separate `ANT_PREVIEW_ROUTING` flag.
