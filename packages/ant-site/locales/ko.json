@@ -33,19 +33,19 @@
     "rights": "{{license}} 라이선스로 배포됩니다."
   },
   "home": {
-    "tagline": "소프트웨어를 짓는 오픈소스 AI 에이전트",
+    "tagline": "제품을 만들고 업무를 돌리는 오픈소스 AI 에이전트",
     "title1": "선언된 컨텍스트.",
     "title2": "감사 가능한 엔지니어링.",
-    "desc": "PRD → 설계 → 코드 → 검증을 상태 머신으로 실행하고, 각 프롬프트에 무엇이 들어가는지 그대로 보여주는 멀티 에이전트 플랫폼. 노트북에서 셀프호스트하거나 매니지드 클라우드로 — 같은 아키텍처, 같은 경험.",
+    "desc": "셀프호스트 런타임 하나, 두 개의 날개. 소프트웨어를 상태 기계로 만들고 — PRD → 설계 → 코드 → 검증 — 조직의 업무 에이전트를 스케줄에 올려 돌립니다. 둘 다 직접 선언한 컨텍스트를 상대로 실행되므로, 무엇이 프롬프트에 들어가는지 정확히 보입니다. 내 머신 또는 내 클러스터, 내 키로.",
     "ctaQuickstart": "빠른 시작",
     "ctaDocs": "문서 보기",
     "quickstart": {
       "title": "60초 안에 시작하기",
-      "desc": "clone → 의존성 설치 → Redis + ChromaDB 기동 → 로컬 서버 실행."
+      "desc": "clone → 의존성 설치 → Redis 기동 → 로컬 서버 실행."
     },
     "workflow": {
-      "title": "작동 방식",
-      "desc": "대화에서 시작해 동작하는 코드까지. 4단계 AI 에이전트 워크플로우.",
+      "title": "구축 루프의 동작 방식",
+      "desc": "대화에서 돌아가는 코드까지, 네 단계. 업무 에이전트는 그보다 짧은 자기 루프를 돕니다 — 정의하고, 실행하거나 스케줄에 올리고, 쓰인 파일을 읽습니다.",
       "step1Title": "Plan",
       "step1Agent": "Planner",
       "step1Desc": "대화로 아이디어를 PRD로 구체화합니다. 에이전트가 모호한 부분을 묻고, 정제된 스펙을 작성합니다.",
@@ -61,6 +61,12 @@
     },
     "features": {
       "title": "포함된 기능",
+      "declaredTitle": "선언된 컨텍스트",
+      "declaredDesc": "모든 잡은 리포지토리 검색이 우연히 찾아낸 것이 아니라, 결의된 아티팩트 셋을 상대로 실행됩니다. 같은 입력은 같은 프롬프트를 만듭니다.",
+      "workAgentsTitle": "당신의 업무 에이전트",
+      "workAgentsDesc": "에이전트와 그 직무, 손댈 수 있는 시스템을 파일로 정의합니다. 역량은 직접 소유한 MCP 서버에서 오고, 비밀은 암호화 저장소에 있습니다.",
+      "pipelinesTitle": "무인 실행",
+      "pipelinesDesc": "업무 에이전트를 cron 트리거에 올리고, 에이전트를 넘나들며 잇고, 승인 게이트나 확인 질문에서 사람을 기다립니다.",
       "multiAgentTitle": "다중 에이전트 워크플로우",
       "multiAgentDesc": "Planner, Architect, Runtime — 각 단계를 별도 에이전트가 책임집니다.",
       "parallelTitle": "병렬 실행",
@@ -84,13 +90,13 @@
       "selfHostTitle": "직접 운영",
       "selfHostTagline": "내 노트북, 내 데이터, 내 LLM 키.",
       "selfHostBullet1": "한 명령으로 clone, 한 명령으로 시작",
-      "selfHostBullet2": "docker compose로 Redis + ChromaDB",
-      "selfHostBullet3": "본인 LLM API 키 사용 (Anthropic / OpenAI / Bedrock)",
+      "selfHostBullet2": "docker compose로 Redis (ChromaDB는 선택, 기본 비활성)",
+      "selfHostBullet3": "본인 LLM API 키 사용 (Anthropic / OpenAI / Google, 그리고 OpenAI 호환 3종)",
       "selfHostBullet4": "텔레메트리 없음, 계정 없음",
       "selfHostCta": "셀프호스트 가이드",
       "cloudTitle": "매니지드 클라우드",
       "cloudTagline": "인프라는 저희가 운영, 아이디어만 가져오세요.",
-      "cloudBullet1": "Redis, ChromaDB, IDE pod 매니지드",
+      "cloudBullet1": "Redis와 IDE pod 매니지드",
       "cloudBullet2": "워크스페이스마다 격리된 프리뷰 서버",
       "cloudBullet3": "Google 계정으로 SSO",
       "cloudBullet4": "OSS와 같은 코드 — 별도 프로프라이어터리 fork 없음",
@@ -125,11 +131,11 @@
         },
         {
           "q": "어떤 LLM을 지원하나요?",
-          "a": "Anthropic Claude, OpenAI, Bedrock이 현재 연결되어 있습니다. 프로바이더 어댑터는 작아서 새 프로바이더 추가는 컨트리뷰션 친화적인 작업입니다."
+          "a": "현재 6개 프로바이더가 3개 어댑터 패밀리로 연결되어 있습니다: Anthropic, OpenAI 호환(OpenAI, DeepSeek, GLM, Kimi), Google Gemini. 호출은 본인 키로 각 벤더에 직접 갑니다 — 중간 라우터도, 마크업도 없습니다. 어댑터가 작아서 프로바이더 추가는 컨트리뷰션 친화적인 작업입니다."
         },
         {
           "q": "셀프호스트에 어떤 인프라가 필요한가요?",
-          "a": "Redis와 ChromaDB(둘 다 docker compose로). Node 20+, pnpm 10+. dev 스크립트가 모두 로컬에서 띄웁니다."
+          "a": "Redis만 있으면 됩니다(docker compose). Node 22.13+, pnpm 11.1.0. ChromaDB는 선택이고 기본 비활성입니다. dev 스크립트가 모두 로컬에서 띄웁니다."
         },
         {
           "q": "ANT Cloud는 뭔가요?",
@@ -162,7 +168,7 @@
       "step2Desc": "셋업, 브랜치 명명, PR 절차, 아키텍처 개요.",
       "step2Cta": "CONTRIBUTING.md →",
       "step3Title": "3. PR 열기",
-      "step3Desc": "테스트는 코드 옆에 있습니다. 빌드가 게이트 — 빌드 통과 = 테스트 통과.",
+      "step3Desc": "테스트는 코드 옆에 있습니다. CI가 게이트이며, 빌드 자체는 테스트를 돌리지 않습니다.",
       "step3Cta": "PR 보기 →"
     },
     "policy": {
@@ -197,17 +203,33 @@
     "envTitle": "최소 env",
     "envDesc": "Local mode 는 OAuth, JWT, CORS allowlist 를 모두 스킵합니다. 네 값이면 충분.",
     "env": [
-      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "이 페이지에서는 항상 local" },
-      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "필수. openssl rand -hex 32 (64자 hex)" },
-      { "name": "ANTHROPIC_API_KEY", "default": "—", "desc": "또는 다른 LLM 키 (OPENAI_API_KEY, AWS Bedrock)" },
-      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "워크스페이스 저장 경로" }
+      {
+        "name": "ANT_SERVER_MODE",
+        "default": "local",
+        "desc": "이 페이지에서는 항상 local"
+      },
+      {
+        "name": "ANT_ENCRYPTION_KEY",
+        "default": "—",
+        "desc": "필수. openssl rand -hex 32 (64자 hex)"
+      },
+      {
+        "name": "ANTHROPIC_API_KEY",
+        "default": "—",
+        "desc": "또는 다른 LLM 키 (OPENAI_API_KEY, GEMINI_API_KEY, …)"
+      },
+      {
+        "name": "ANT_WORKSPACE_BASE_PATH",
+        "default": "~/ant-workspaces",
+        "desc": "워크스페이스 저장 경로"
+      }
     ],
     "llmTitle": "본인 LLM 키 사용",
     "llmDesc": "Local mode 는 LLM 호출을 프록시하지 않습니다. 아래 중 하나만.",
     "llmKeys": [
       "ANTHROPIC_API_KEY (Claude — 기본)",
       "OPENAI_API_KEY (GPT-4)",
-      "AWS credentials (Bedrock)"
+      "Google Gemini 키 (이미지 생성)"
     ],
     "uiTitle": "Local mode 의 UI",
     "uiDesc": "GNB 에 Cloud 모드의 Sign In 자리에 Local Org / Local User 배지가 보입니다. 백엔드의 ANT_SERVER_MODE 가 SSOT — UI 모드 토글은 없습니다. 가입 화면도 없음 — 모두 단일 고정 local:local 테넌트에 속합니다.",
@@ -223,10 +245,22 @@
     "discussionsTitle": "대화는 여기서",
     "discussionsDesc": "GitHub Discussions가 유일한 채팅 surface입니다 — Discord, Slack 없이 단일화. 카테고리:",
     "categories": [
-      { "name": "Q&A", "desc": "막혔나요? 물어보세요. 메인테이너와 컨트리뷰터가 답변합니다." },
-      { "name": "Ideas", "desc": "기능 제안. 코딩 전에 토론." },
-      { "name": "Show and tell", "desc": "ANT로 만든 것 자랑." },
-      { "name": "General", "desc": "그 외 모든 것." }
+      {
+        "name": "Q&A",
+        "desc": "막혔나요? 물어보세요. 메인테이너와 컨트리뷰터가 답변합니다."
+      },
+      {
+        "name": "Ideas",
+        "desc": "기능 제안. 코딩 전에 토론."
+      },
+      {
+        "name": "Show and tell",
+        "desc": "ANT로 만든 것 자랑."
+      },
+      {
+        "name": "General",
+        "desc": "그 외 모든 것."
+      }
     ],
     "responseNote": "응답은 메인테이너와 컨트리뷰터로부터 옵니다. 보통 며칠, 빠르면 더 빨리.",
     "activityTitle": "최근 활동",
@@ -336,7 +370,13 @@
     "heroDesc": "스크린샷 캡처가 아닙니다. Figma의 실제 컴포넌트 구조, 디자인 토큰, 변수를 AI가 직접 읽고 분석합니다.",
     "archTitle": "동작 원리",
     "readsTitle": "ANT가 Figma에서 읽는 것",
-    "reads": ["레이어 구조 및 컴포넌트 계층", "디자인 토큰 (색상, 타이포그래피, 간격)", "컴포넌트 변수 및 바리언트", "오토 레이아웃 속성", "에셋 (아이콘, 이미지)"],
+    "reads": [
+      "레이어 구조 및 컴포넌트 계층",
+      "디자인 토큰 (색상, 타이포그래피, 간격)",
+      "컴포넌트 변수 및 바리언트",
+      "오토 레이아웃 속성",
+      "에셋 (아이콘, 이미지)"
+    ],
     "generatesTitle": "ANT가 생성하는 것",
     "gen1Label": "ui-tokens",
     "gen1Desc": "디자인 토큰 정의 (색상 팔레트, 타이포그래피 스케일, 간격 시스템)",
@@ -356,9 +396,18 @@
     "step3Link": "문서 보기 →",
     "faqTitle": "자주 묻는 질문",
     "faqItems": [
-      { "q": "Figma 웹 버전도 되나요?", "a": "아니요. MCP 접근을 위해 Figma Desktop App이 필요합니다." },
-      { "q": "Ant Desktop이 Figma에 쓰기 권한을 가지나요?", "a": "아니요. 읽기 전용입니다. 디자인 데이터를 분석만 하며, Figma 파일을 수정하지 않습니다." },
-      { "q": "Figma 없이도 ANT를 쓸 수 있나요?", "a": "네. 레퍼런스 이미지(스크린샷)를 업로드하거나, 텍스트 설명만으로도 됩니다. Figma 연동은 더 정확한 결과를 위한 옵션입니다." }
+      {
+        "q": "Figma 웹 버전도 되나요?",
+        "a": "아니요. MCP 접근을 위해 Figma Desktop App이 필요합니다."
+      },
+      {
+        "q": "Ant Desktop이 Figma에 쓰기 권한을 가지나요?",
+        "a": "아니요. 읽기 전용입니다. 디자인 데이터를 분석만 하며, Figma 파일을 수정하지 않습니다."
+      },
+      {
+        "q": "Figma 없이도 ANT를 쓸 수 있나요?",
+        "a": "네. 레퍼런스 이미지(스크린샷)를 업로드하거나, 텍스트 설명만으로도 됩니다. Figma 연동은 더 정확한 결과를 위한 옵션입니다."
+      }
     ]
   },
   "capabilities": {

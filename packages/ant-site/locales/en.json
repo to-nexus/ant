@@ -33,19 +33,19 @@
     "rights": "Released under {{license}}."
   },
   "home": {
-    "tagline": "Open source AI agents that build software",
+    "tagline": "Open source AI agents that build your product and run your process",
     "title1": "Declared context.",
     "title2": "Auditable engineering.",
-    "desc": "Multi-agent platform that runs PRD → design → code → verification as a state machine, and shows you exactly what enters each prompt. Self-host on your laptop or use the managed cloud — same architecture, same experience.",
+    "desc": "One self-hosted runtime, two wings. Build software as a state machine — PRD → design → code → verification — and run your organization's own work agents on a schedule. Both against a context you declare, so you can see exactly what enters each prompt. Your machine or your cluster, your keys.",
     "ctaQuickstart": "Quickstart",
     "ctaDocs": "Read the docs",
     "quickstart": {
       "title": "Get started in 60 seconds",
-      "desc": "Clone, install dependencies, spin up Redis + ChromaDB, and start the local server."
+      "desc": "Clone, install dependencies, spin up Redis, and start the local server."
     },
     "workflow": {
-      "title": "How It Works",
-      "desc": "From conversation to working code. A 4-step AI agent workflow.",
+      "title": "How the build loop works",
+      "desc": "From conversation to running code, in four steps. Work agents run a shorter loop of their own — define, run or schedule, read the files it wrote.",
       "step1Title": "Plan",
       "step1Agent": "Planner",
       "step1Desc": "Turn ideas into a PRD through conversation. The agent asks clarifying questions and produces a refined spec.",
@@ -61,6 +61,12 @@
     },
     "features": {
       "title": "What you get",
+      "declaredTitle": "Declared context",
+      "declaredDesc": "Every job runs against a resolved set of artifacts, not whatever a repo search turned up. The same inputs produce the same prompt.",
+      "workAgentsTitle": "Your own work agents",
+      "workAgentsDesc": "Define an agent, its duties, and the systems it may reach as files. Capability comes from MCP servers you own; secrets live in an encrypted store.",
+      "pipelinesTitle": "Unattended runs",
+      "pipelinesDesc": "Put a work agent on a cron trigger, chain it across agents, and stop for a human at an approval gate or a clarifying question.",
       "multiAgentTitle": "Multi-agent workflow",
       "multiAgentDesc": "Planner, Architect, Runtime — separate agents for separate concerns. Each owns its phase.",
       "parallelTitle": "Parallel execution",
@@ -84,13 +90,13 @@
       "selfHostTitle": "Run it yourself",
       "selfHostTagline": "Your laptop, your data, your LLM key.",
       "selfHostBullet1": "One command to clone, one command to start",
-      "selfHostBullet2": "Redis + ChromaDB via docker compose",
-      "selfHostBullet3": "BYO LLM API key (Anthropic / OpenAI / Bedrock)",
+      "selfHostBullet2": "Redis via docker compose (ChromaDB optional, off by default)",
+      "selfHostBullet3": "BYO LLM API key (Anthropic / OpenAI / Google, plus three OpenAI-compatible providers)",
       "selfHostBullet4": "No telemetry, no account",
       "selfHostCta": "Self-host guide",
       "cloudTitle": "Use the managed cloud",
       "cloudTagline": "We run the infrastructure. You bring the ideas.",
-      "cloudBullet1": "Managed Redis, ChromaDB, and IDE pods",
+      "cloudBullet1": "Managed Redis and IDE pods",
       "cloudBullet2": "Hosted preview servers + isolated workspaces",
       "cloudBullet3": "Single sign-on with Google",
       "cloudBullet4": "Same code as the OSS build — no proprietary fork",
@@ -125,11 +131,11 @@
         },
         {
           "q": "Which LLMs are supported?",
-          "a": "Anthropic Claude, OpenAI, and Bedrock are wired in today. The provider adapter is small — adding a new provider is a contribution-friendly task."
+          "a": "Six providers are wired in today through three adapter families: Anthropic, OpenAI-compatible (OpenAI, DeepSeek, GLM, Kimi), and Google Gemini. Calls go straight to each vendor with your own key — no router, no markup. The adapter is small, so adding a provider is a contribution-friendly task."
         },
         {
           "q": "What infrastructure does self-host need?",
-          "a": "Redis and ChromaDB (both via docker compose). Node 20+, pnpm 10+. The dev script spins everything up locally."
+          "a": "Redis, via docker compose — that is the only required infrastructure. Node 22.13+, pnpm 11.1.0. ChromaDB is optional and off by default. The dev script spins everything up locally."
         },
         {
           "q": "Where's ANT Cloud?",
@@ -162,7 +168,7 @@
       "step2Desc": "Setup, branch naming, PR process, and the architecture overview.",
       "step2Cta": "CONTRIBUTING.md →",
       "step3Title": "3. Open a PR",
-      "step3Desc": "Tests live next to the code. Build is the gate — passing build = passing tests.",
+      "step3Desc": "Tests live next to the code. CI is the gate — the build itself does not run them.",
       "step3Cta": "View pull requests →"
     },
     "policy": {
@@ -197,17 +203,33 @@
     "envTitle": "Minimal env",
     "envDesc": "Local mode skips OAuth, JWT, and CORS allowlists entirely. Four values do the job.",
     "env": [
-      { "name": "ANT_SERVER_MODE", "default": "local", "desc": "Always local on this page" },
-      { "name": "ANT_ENCRYPTION_KEY", "default": "—", "desc": "Required. openssl rand -hex 32 (64-char hex)" },
-      { "name": "ANTHROPIC_API_KEY", "default": "—", "desc": "Or another LLM key (OPENAI_API_KEY, AWS Bedrock)" },
-      { "name": "ANT_WORKSPACE_BASE_PATH", "default": "~/ant-workspaces", "desc": "Where workspaces live on disk" }
+      {
+        "name": "ANT_SERVER_MODE",
+        "default": "local",
+        "desc": "Always local on this page"
+      },
+      {
+        "name": "ANT_ENCRYPTION_KEY",
+        "default": "—",
+        "desc": "Required. openssl rand -hex 32 (64-char hex)"
+      },
+      {
+        "name": "ANTHROPIC_API_KEY",
+        "default": "—",
+        "desc": "Or another LLM key (OPENAI_API_KEY, GEMINI_API_KEY, …)"
+      },
+      {
+        "name": "ANT_WORKSPACE_BASE_PATH",
+        "default": "~/ant-workspaces",
+        "desc": "Where workspaces live on disk"
+      }
     ],
     "llmTitle": "Bring your own LLM key",
     "llmDesc": "Local mode doesn't proxy LLM calls. Set one of these.",
     "llmKeys": [
       "ANTHROPIC_API_KEY (Claude — primary)",
       "OPENAI_API_KEY (GPT-4)",
-      "AWS credentials (Bedrock)"
+      "Google Gemini key (image generation)"
     ],
     "uiTitle": "What the UI looks like in local mode",
     "uiDesc": "The GNB shows a Local Org / Local User badge where Sign In normally sits in cloud mode. ANT_SERVER_MODE on the backend is the single source of truth — there is no mode toggle in the UI. No sign-up screen either; everything belongs to a single fixed local:local tenant.",
@@ -223,10 +245,22 @@
     "discussionsTitle": "Where conversation happens",
     "discussionsDesc": "GitHub Discussions is the only chat surface — no Discord, no Slack, no fragmentation. Categories:",
     "categories": [
-      { "name": "Q&A", "desc": "Stuck? Ask. Maintainers and contributors answer." },
-      { "name": "Ideas", "desc": "Propose a feature. Discuss before you code." },
-      { "name": "Show and tell", "desc": "Built something with ANT? Share it." },
-      { "name": "General", "desc": "Anything else." }
+      {
+        "name": "Q&A",
+        "desc": "Stuck? Ask. Maintainers and contributors answer."
+      },
+      {
+        "name": "Ideas",
+        "desc": "Propose a feature. Discuss before you code."
+      },
+      {
+        "name": "Show and tell",
+        "desc": "Built something with ANT? Share it."
+      },
+      {
+        "name": "General",
+        "desc": "Anything else."
+      }
     ],
     "responseNote": "Responses come from maintainers and contributors. Expect a few days, sometimes faster.",
     "activityTitle": "Recent activity",
@@ -280,7 +314,7 @@
   },
   "cloudGate": {
     "title": "ANT Cloud is coming soon",
-    "body": "The managed service isn't open yet. Everything ANT does is available today by self-hosting \u2014 same agents, same pipeline, your own infrastructure and your own LLM key.",
+    "body": "The managed service isn't open yet. Everything ANT does is available today by self-hosting — same agents, same pipeline, your own infrastructure and your own LLM key.",
     "selfHostCta": "Read the self-host guide",
     "close": "Close",
     "dismiss": "Dismiss"
@@ -336,7 +370,13 @@
     "heroDesc": "Not screenshot capture. AI directly reads and analyzes Figma's actual component structure, design tokens, and variables.",
     "archTitle": "How it works",
     "readsTitle": "What ANT reads from Figma",
-    "reads": ["Layer structure and component hierarchy", "Design tokens (color, typography, spacing)", "Component variables and variants", "Auto layout properties", "Assets (icons, images)"],
+    "reads": [
+      "Layer structure and component hierarchy",
+      "Design tokens (color, typography, spacing)",
+      "Component variables and variants",
+      "Auto layout properties",
+      "Assets (icons, images)"
+    ],
     "generatesTitle": "What ANT generates",
     "gen1Label": "ui-tokens",
     "gen1Desc": "Design token definitions (color palette, typography scale, spacing system)",
@@ -356,9 +396,18 @@
     "step3Link": "Read the docs →",
     "faqTitle": "FAQ",
     "faqItems": [
-      { "q": "Does it work with Figma web?", "a": "No. Figma Desktop App is required for MCP access." },
-      { "q": "Does Ant Desktop have write access to Figma?", "a": "No. Read-only. It only analyzes design data and never modifies Figma files." },
-      { "q": "Can I use ANT without Figma?", "a": "Yes. Upload reference images (screenshots) or use text descriptions only. Figma integration is an option for more accurate results." }
+      {
+        "q": "Does it work with Figma web?",
+        "a": "No. Figma Desktop App is required for MCP access."
+      },
+      {
+        "q": "Does Ant Desktop have write access to Figma?",
+        "a": "No. Read-only. It only analyzes design data and never modifies Figma files."
+      },
+      {
+        "q": "Can I use ANT without Figma?",
+        "a": "Yes. Upload reference images (screenshots) or use text descriptions only. Figma integration is an option for more accurate results."
+      }
     ]
   },
   "capabilities": {

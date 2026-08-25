@@ -12,6 +12,9 @@ import {
   Server,
   Globe,
   MessageSquare,
+  Bot,
+  CalendarClock,
+  ListChecks,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { GitHubStarsBadge } from '@/components/GitHubStarsBadge';
@@ -38,12 +41,15 @@ interface FeatureItem {
 }
 
 const FEATURES: FeatureItem[] = [
-  { icon: Layers, titleKey: 'multiAgentTitle', descKey: 'multiAgentDesc', tone: 'violet' },
-  { icon: Zap, titleKey: 'parallelTitle', descKey: 'parallelDesc', tone: 'pink' },
-  { icon: Palette, titleKey: 'figmaTitle', descKey: 'figmaDesc', tone: 'orange' },
-  { icon: Cpu, titleKey: 'stackTitle', descKey: 'stackDesc', tone: 'teal' },
+  { icon: ListChecks, titleKey: 'declaredTitle', descKey: 'declaredDesc', tone: 'violet' },
+  { icon: Layers, titleKey: 'multiAgentTitle', descKey: 'multiAgentDesc', tone: 'pink' },
+  { icon: Zap, titleKey: 'parallelTitle', descKey: 'parallelDesc', tone: 'orange' },
+  { icon: Bot, titleKey: 'workAgentsTitle', descKey: 'workAgentsDesc', tone: 'teal' },
+  { icon: CalendarClock, titleKey: 'pipelinesTitle', descKey: 'pipelinesDesc', tone: 'violet' },
+  { icon: Palette, titleKey: 'figmaTitle', descKey: 'figmaDesc', tone: 'emerald' },
+  { icon: Cpu, titleKey: 'stackTitle', descKey: 'stackDesc', tone: 'pink' },
   { icon: Server, titleKey: 'selfHostTitle', descKey: 'selfHostDesc', tone: 'violet' },
-  { icon: Globe, titleKey: 'localTitle', descKey: 'localDesc', tone: 'emerald' },
+  { icon: Globe, titleKey: 'localTitle', descKey: 'localDesc', tone: 'teal' },
 ];
 
 const WORKFLOW: { icon: typeof FileText; tone: IconOrbTone; key: string }[] = [
