@@ -7,10 +7,12 @@ are here to be read and copied, not to run in production.
 |---|---|
 | [`mcp-reference-server/`](mcp-reference-server/) | The **external** side of an MCP integration: a fixture-only ops incident/SLA server (streamable HTTP + stdio, bearer auth) that the team owning a domain copies and refills with its own API. |
 | [`custom-agents/ops-team/`](custom-agents/ops-team/) | The **Ant** side: an agent with two jobs — one that declares the connection above, one that deliberately does not. |
+| [`pipelines/weekly-ops.yaml`](pipelines/weekly-ops.yaml) | The **unattended** side: a cron trigger that drives the agent above through an approval gate. |
 
-The two halves are one end-to-end example, split at the seam. Read
+The first two are one end-to-end example, split at the seam. Read
 [docs/guides/custom-agent-authoring.md](../docs/guides/custom-agent-authoring.md)
-alongside them.
+alongside them, and
+[docs/concepts/pipelines.md](../docs/concepts/pipelines.md) alongside the third.
 
 ## This tree is not loaded at runtime
 

@@ -10,6 +10,7 @@ you've read the [concepts](../concepts/) docs at least once.
 | [../cloud-mode/self-host.md](../cloud-mode/self-host.md)           | Run the multi-user cloud profile yourself — no billing.   |
 | [design-input/](design-input/)                                     | Bring your own design — Claude / Figma / native tokens.   |
 | [custom-agent-authoring](custom-agent-authoring.md)                | Define a custom agent/job (universal runtime) with files. *(Experimental.)* |
+| [../concepts/pipelines.md](../concepts/pipelines.md)               | Run a custom job on a cron schedule, chained and human-gated. *(Experimental.)* |
 | [custom-prompts](custom-prompts.md)                                | Tune Ant's prompt templates for your stack or codebase.   |
 | [observability](observability.md)                                  | Logging, debug artifacts, metric strategy.                |
 

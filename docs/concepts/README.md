@@ -20,6 +20,8 @@ flags exist (that's [reference/](../reference/)).
    which jobs run in each, and what every directory means.
 7. [**custom-agents**](custom-agents.md) — File-defined custom agents/jobs on
    the universal runtime — the workspace kind's whole point. *(Experimental.)*
+8. [**pipelines**](pipelines.md) — Putting a custom job on a cron schedule,
+   chaining several, and stopping for a human. *(Experimental.)*
 
 ## Background documents
 

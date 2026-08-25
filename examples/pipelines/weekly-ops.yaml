@@ -1,0 +1,66 @@
+# The Ant side of an unattended duty: this pipeline drives the `ops-team` agent
+# in ../custom-agents/ops-team/ on a schedule.
+#
+# It is here to be read and copied, not to run in production. Register it under
+# your account (Pipelines tab → New pipeline, or drop it at
+# `.ant/pipelines/weekly-ops/pipeline.yaml`), enable it, then activate it onto a
+# Workspace project. See docs/concepts/pipelines.md.
+version: 2
+name: Weekly ops report
+
+on:
+  schedule:
+    # 5 fields: minute hour day month weekday. Mondays at 09:00 Seoul time.
+    cron: "0 9 * * 1"
+    tz: Asia/Seoul
+    # The worker was down when this should have fired: drop it rather than
+    # publishing a report about the wrong week. `runOnce` catches up instead.
+    onMissed: skip
+    # Last Monday's run is somehow still going: don't start a second one.
+    overlap: skip
+
+defaults:
+  # The first failure cancels what is still pending. `continue` would let
+  # independent branches finish and seal the run `partial`.
+  onStepFailure: abort
+
+steps:
+  # Step 1 — draft. `intent` is pinned here, so the run never has to guess which
+  # situation it is in; the intent's prompt.md is inlined for the whole turn.
+  # This job declares an MCP connection, so the incident data comes from the
+  # reference server rather than from the model's memory.
+  - id: draft
+    customJobRef: ops-team/weekly-report
+    intent: report
+    directive: >-
+      Draft the weekly operations report for the week ending
+      {{trigger.fireDate}}. Cover incident volume, SLA breaches, and anything
+      that needs a decision. Write it to reports/ following the convention in
+      your job prose.
+
+  # Step 2 — a human. This step dispatches no job: it parks the run until
+  # somebody answers, on the chat card or in the approvals inbox. If nobody
+  # answers within a day the timeout arm decides, and `reject` is the safe
+  # default — an unread report is not an approved one.
+  - id: sign-off
+    type: approval
+    prompt: >-
+      The weekly ops report is drafted. Publish it and file any escalations?
+    timeout:
+      after: 24h
+      onTimeout: reject
+
+  # Step 3 — act on the approval. `on: success` means this is skipped when the
+  # gate is rejected or times out; a skipped step is neither a success nor a
+  # failure, so nothing downstream of it fires by accident.
+  #
+  # `needs` is omitted throughout: with no `needs`, a step depends on the
+  # previous step in file order, which is what a linear chain wants.
+  - id: escalate
+    customJobRef: ops-team/weekly-report
+    intent: escalate
+    on: success
+    directive: >-
+      The report for {{trigger.fireDate}} was approved. File incidents for the
+      items it flagged as needing one, and append the resulting ticket ids to
+      the report.

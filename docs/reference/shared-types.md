@@ -37,6 +37,23 @@ key types and their meaning.
 | `MCP_SECRET_REF_PATTERN` / `parseSecretRef` / `formatSecretRef` | `custom-agents.ts` | The one marker (`${secret:KEY}`) that makes a value a credential-store lookup. Credential-ness is authored, never inferred from shape. |
 | `isAllowedDefinitionPath` | `custom-agents.ts` | Write whitelist for definition files edited over HTTP. |
 
+## Pipelines (scheduled custom-job chains)
+
+> ⚠️ Experimental — see [concepts/pipelines.md](../concepts/pipelines.md).
+
+| Type / function | Source | Purpose |
+|-----------------|--------|---------|
+| `PipelineDef` / `PIPELINE_DEF_VERSION` | `pipeline.ts` | One definition: `version`, `name`, `on.schedule`, `defaults?`, `steps[]`. Project-free by construction — `projectId` was a v1 field and is now rejected. |
+| `PipelineStepDef` = `JobStepDef` \| `ApprovalStepDef` / `isApprovalStep` | `pipeline.ts` | A step is either a custom-job dispatch (`customJobRef`, `intent?`, `directive`, `context?`) or a gate that issues no job. |
+| `PipelineScheduleTrigger` | `pipeline.ts` | `cron` (5 fields, parsed server-side), `tz?`, `onMissed?`, `overlap?`. |
+| `StepEdgeCondition` / `StepFailurePolicy` | `pipeline.ts` | `'success' \| 'failure' \| 'always'` per edge; `'abort' \| 'continue'` for the run. |
+| `PipelineAvailability` | `pipeline.ts` | The `enabled` sidecar. Gates *activatability*, not execution — a missing sidecar reads as disabled. |
+| `PipelineActivation` / `ActivePipelineInfo` | `pipeline.ts` | The scheduling unit: one pipeline bound to one project, self-describing, pinning the scope its definition resolves from. |
+| `RunRecord` / `StepRecord` / `GateRecord` / `ClarifyRecord` | `pipeline.ts` | Run history shapes, including the `awaiting_clarify` step state. |
+| `PipelineRunEvent` | `pipeline.ts` | The SSE payload the Pipelines tab renders live. |
+| `validatePipelineDef` | `pipeline.ts` | Every definition rule as plain messages (empty = valid), the `validateMcpServers` precedent. Reserved knobs fail loudly instead of no-opping. |
+| `PIPELINE_TEMPLATE_VARS` / `DEFAULT_PIPELINE_CAPS` | `pipeline.ts` | The three directive variables (`trigger.fireDate`, `trigger.fireEpoch`, `run.id`) and the default caps. |
+
 ## Action / RAC
 
 | Type | Source | Purpose |

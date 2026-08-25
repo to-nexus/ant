@@ -32,6 +32,7 @@ In cloud mode, every endpoint outside `/health` requires a valid token.
 | Account agents     | `/api/account/agents` | Custom agent/job definitions (account-scoped) |
 | MCP credentials    | `/api/account/mcp-credentials` | Encrypted credential store (write-only values) |
 | Custom agents      | `/api/projects/:id/custom-agents` | Per-project discovery + workspace artifacts |
+| Pipelines          | `/api/pipelines`    | Scheduled custom-job chains (account-scoped) |
 
 ## Health
 
@@ -164,6 +165,54 @@ is bidirectional and rejects at accept time, never inside the worker:
 | 400 | `invalid-custom-job-ref` | the ref is not a well-formed `{agentId}/{jobId}` |
 | 400 | `invalid-custom-job-definition` | the definition failed to load or validate |
 | 400 | `unknown-intent` | an `@intent:` mention not in the job's catalog |
+
+## Pipelines (scheduled custom-job chains)
+
+> ⚠️ **Experimental** — see [concepts/pipelines.md](../concepts/pipelines.md).
+> Pipelines drive `universal` jobs, so they apply to workspace projects only.
+
+Definitions are **account-owned templates**, exactly like agent definitions, so
+CRUD is account-scoped and needs no project. Binding one to a project is a
+separate call (`activate`), and the activation lives in the caller's account.
+
+| Verb | Path | Notes |
+|------|------|-------|
+| GET  | `/api/pipelines` | List definitions with `scope`, availability, and activation counts. |
+| POST | `/api/pipelines` | Create. Body is validated by `validatePipelineDef`; reserved knobs are rejected, never ignored. |
+| GET/PUT/DELETE | `/api/pipelines/:pipelineId` | Read, replace, delete. Writes answer **409** `pipeline-enabled` while the definition is enabled. |
+| POST | `/api/pipelines/:pipelineId/enable` · `/disable` | The availability state machine. `disable` answers **409** `pipeline-has-activations` while anyone holds one — never cascaded. |
+| POST | `/api/pipelines/:pipelineId/promote` | Move a user-scope definition into the org scope (team organizations only). Requires **disabled**. |
+| GET  | `/api/pipelines/:pipelineId/permissions` · PUT `/editors` | Org ACL — owner plus delegated editors, the same rule set as agent definitions. |
+| POST | `/api/pipelines/preview-fires` | Server-side cron expansion; the FE never parses cron itself. |
+| GET  | `/api/pipelines/activatable-projects` | Workspace projects with no live pipeline and no live job. |
+
+Activation, runs, and the human gates:
+
+| Verb | Path | Notes |
+|------|------|-------|
+| GET  | `/api/pipelines/:pipelineId/activations` | Every binding, including other members' (`mine: false`, read-only). |
+| POST | `/api/pipelines/:pipelineId/activate` | Body `{ projectId }`. Gates in order: enabled → universal project → project free → no live job. |
+| POST | `/api/pipelines/:pipelineId/deactivate` | Body `{ projectId }`, own activation only. Cancels the live run, kills running step jobs, keeps run history. |
+| POST | `/api/pipelines/:pipelineId/run-now` | Fire once through the same path a cron fire takes. |
+| GET  | `/api/pipelines/:pipelineId/runs` · `/api/pipelines/runs/:runId` | Run index and one run's history. |
+| POST | `/api/pipelines/runs/:runId/cancel` | Cancel a live run. |
+| POST | `/api/pipelines/runs/:runId/steps/:stepId/clarify` | Answer a step parked on `awaiting_clarify`; the step re-dispatches under a new job id. |
+| GET  | `/api/pipelines/approvals` · POST `/approvals/:gateId` | The approvals inbox. Resolving is idempotent and shares one funnel with the chat card and the timeout arm, so a gate settles exactly once. |
+| GET  | `/api/projects/:id/active-pipeline` | The one project-scoped read: which pipeline, if any, currently owns this project. |
+
+While a project holds an activation, every interactive job start on it
+(`execute`, `resume`, `continue`, `inline-ask`) answers **409**
+`project-pipeline-active`. This is a separate axis from the project-kind gate
+above:
+
+| Status | Code | Cause |
+|---|---|---|
+| 409 | `project-pipeline-active` | an interactive job aimed at a project a pipeline owns |
+| 409 | `project-has-active-pipeline` | activating onto a project that already has one |
+| 409 | `project-has-live-job` | activating onto a project with a running or paused job |
+| 409 | `pipeline-disabled` | activating a definition that is not enabled |
+| 409 | `pipeline-enabled` | editing, deleting, or promoting an enabled definition |
+| 409 | `pipeline-has-activations` | disabling a definition somebody still holds |
 
 ## Realtime (SSE)
 

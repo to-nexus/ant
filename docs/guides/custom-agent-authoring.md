@@ -351,6 +351,19 @@ Definitions are read fresh at every job start (the workspace disk is the
 source of truth) — edit the files and the next run picks them up. A running
 job keeps the definition it started with.
 
+## 7. Put it on a schedule
+
+Once a job earns its keep, it shouldn't need a human to remember to start it. A
+**pipeline** is one more yaml file: a cron trigger plus a list of steps, where a
+step is either one of the jobs you just wrote or a gate that waits for a person.
+Chaining is cross-agent, so a report job and an escalation job can be two steps
+of the same run.
+
+`examples/pipelines/weekly-ops.yaml` drives the `ops-team` example agent this
+way. The model — definitions vs. activations, the availability state machine, and
+what a gate does while it waits — is in
+[concepts/pipelines.md](../concepts/pipelines.md).
+
 ## Migrating a pre-job-only definition
 
 Older definitions carried agent-level catalogs and extra yaml fields. Each
