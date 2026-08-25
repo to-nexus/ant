@@ -143,7 +143,7 @@ describe('design-side techTier partials', () => {
     'src/core/prompt/templates/jobs/design/basis/techTier',
   );
   const frameworks = ['nestjs', 'react', 'react-native', 'gin', 'nextjs', 'go'];
-  const languages = ['typescript-node', 'typescript-browser'];
+  const languages = ['typescript-node', 'typescript-browser', 'html'];
 
   it('all supported framework partials exist', async () => {
     for (const fw of frameworks) {
@@ -165,6 +165,7 @@ describe('design-side techTier partials', () => {
       ['framework/react-native.md', 'React Native'],
       ['language/typescript-node.md', 'TypeScript'],
       ['language/typescript-browser.md', 'TypeScript'],
+      ['language/html.md', 'HTML'],
     ];
     for (const [rel, token] of checks) {
       const body = await fs.readFile(path.join(dir, rel), 'utf-8');

@@ -130,7 +130,7 @@ function collectAutoInjectionPaths(): Set<string> {
     'error', 'verification', 'explain', 'doc', undefined,
   ] as const;
   const MODES = ['generate', 'refactor', 'explain', undefined] as const;
-  const LANGUAGES: SupportedLanguage[] = ['typescript', 'go'];
+  const LANGUAGES: SupportedLanguage[] = ['typescript', 'go', 'html'];
   const STACKS: (SupportedStack | undefined)[] = ['frontend', 'backend', 'fullstack', undefined];
 
   const DATA_COMBOS = [
@@ -199,12 +199,12 @@ const TEMPLATE_VAR_EXPANSIONS: Record<string, string[]> = {
   templateSuffix: ['by-figma', 'by-desc', 'by-handoff'],
   freshLogSuffix: ['by-figma', 'by-desc', 'by-handoff'],
   job: ['code', 'design'],
-  'mapLang(techTier.language)': ['typescript', 'go'],
-  'mapLang(lang)': ['typescript', 'go'],
-  language: ['typescript', 'go'],
-  lang: ['typescript', 'go'],
-  fallbackLanguage: ['typescript', 'go'],
-  primaryLang: ['typescript', 'go'],
+  'mapLang(techTier.language)': ['typescript', 'go', 'html'],
+  'mapLang(lang)': ['typescript', 'go', 'html'],
+  language: ['typescript', 'go', 'html'],
+  lang: ['typescript', 'go', 'html'],
+  fallbackLanguage: ['typescript', 'go', 'html'],
+  primaryLang: ['typescript', 'go', 'html'],
   'tool.name': ['run_command', 'http_request'],
 };
 

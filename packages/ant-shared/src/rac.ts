@@ -287,6 +287,7 @@ export function resolveLanguage(profile?: CodebaseProfileLike): Language {
   const raw = profile?.language?.toLowerCase();
   if (!raw) return 'typescript';
   if (raw.includes('typescript') || raw.includes('javascript')) return 'typescript';
+  if (raw.includes('html')) return 'html';
   if (raw.includes('go') || raw.includes('golang')) return 'go';
   return 'typescript';
 }

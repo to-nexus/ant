@@ -28,7 +28,7 @@ const TEMPLATES_ROOT = join(__dirname, '../../src/core/prompt/templates');
 const BASIS_ROOT = join(TEMPLATES_ROOT, 'jobs/code/basis/techTier');
 
 const ALLOWED_FRAMEWORK = ['nextjs', 'react', 'react-native', 'nestjs', 'gin'];
-const ALLOWED_LANGUAGE = ['typescript-browser', 'typescript-node', 'go'];
+const ALLOWED_LANGUAGE = ['typescript-browser', 'typescript-node', 'go', 'html'];
 
 const ALLOWED_SECTIONS = [
   '## Entry-Point Topology',

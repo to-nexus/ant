@@ -17,7 +17,7 @@
 // Language
 // ============================================
 
-export const SUPPORTED_LANGUAGES = ['typescript', 'go'] as const;
+export const SUPPORTED_LANGUAGES = ['typescript', 'go', 'html'] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 // ============================================
@@ -34,7 +34,7 @@ export type TechTierKey = Exclude<SupportedStack, 'fullstack'>;
 // Language Variant
 // ============================================
 
-export type LanguageVariant = 'typescript-browser' | 'typescript-node' | 'go';
+export type LanguageVariant = 'typescript-browser' | 'typescript-node' | 'go' | 'html';
 
 export const LANGUAGE_VARIANT_MAP: Record<
   SupportedLanguage,
@@ -48,6 +48,16 @@ export const LANGUAGE_VARIANT_MAP: Record<
   go: {
     backend: 'go',
   },
+  html: {
+    frontend: 'html',
+  },
+};
+
+/** Per-language fallback variant when (language, stack) has no map entry. */
+const DEFAULT_VARIANT: Record<SupportedLanguage, LanguageVariant> = {
+  typescript: 'typescript-browser',
+  go: 'go',
+  html: 'html',
 };
 
 /**
@@ -58,9 +68,9 @@ export function resolveLanguageVariants(
   lang: SupportedLanguage,
   stack?: SupportedStack,
 ): LanguageVariant[] {
-  if (!stack) return [lang === 'go' ? 'go' : 'typescript-browser'];
+  if (!stack) return [DEFAULT_VARIANT[lang]];
   const result = LANGUAGE_VARIANT_MAP[lang]?.[stack];
-  if (!result) return [lang === 'go' ? 'go' : 'typescript-browser'];
+  if (!result) return [DEFAULT_VARIANT[lang]];
   return Array.isArray(result) ? [...result] : [result];
 }
 
@@ -77,8 +87,8 @@ export const TECH_TIER_CONSTRAINTS: Record<TechTierKey, {
   readonly frameworks: Partial<Record<SupportedLanguage, readonly string[]>>;
 }> = {
   frontend: {
-    languages: ['typescript'],
-    frameworks: { typescript: ['react', 'nextjs', 'react-native'] },
+    languages: ['typescript', 'html'],
+    frameworks: { typescript: ['react', 'nextjs', 'react-native'], html: [] },
   },
   backend: {
     languages: ['typescript', 'go'],
@@ -107,6 +117,17 @@ export function getFullstackLanguages(): SupportedLanguage[] {
   return [...TECH_TIER_CONSTRAINTS.backend.languages].filter(l => fe.has(l));
 }
 
+/**
+ * Languages with no install/typecheck/build/test toolchain — the browser (or
+ * equivalent host) is the runtime and files are served as written. Single
+ * owner for "does this tier carry toolchain verification gates".
+ */
+export const TOOLCHAIN_FREE_LANGUAGES: ReadonlySet<SupportedLanguage> = new Set(['html']);
+
+export function languageHasToolchain(lang?: string): boolean {
+  return !TOOLCHAIN_FREE_LANGUAGES.has(lang as SupportedLanguage);
+}
+
 // ============================================
 // FRAMEWORK_LABELS — UI label SSOT
 // ============================================
@@ -132,6 +153,7 @@ export const VALID_LANGUAGES_BY_STACK: Record<SupportedStack, readonly Supported
 export const VALID_STACKS_BY_LANGUAGE: Record<SupportedLanguage, readonly SupportedStack[]> = {
   typescript: ['frontend', 'backend', 'fullstack'],
   go: ['backend'],
+  html: ['frontend'],
 };
 
 export function isValidLanguageStackCombo(
@@ -157,6 +179,7 @@ export const SUPPORTED_FRAMEWORKS = {
   'typescript-browser': ['react', 'nextjs', 'react-native'],
   'typescript-node': ['nestjs'],
   'go': ['gin'],
+  'html': [],
 } as const satisfies Record<LanguageVariant, readonly string[]>;
 
 // ============================================
@@ -171,6 +194,7 @@ export const SUPPORTED_FRAMEWORKS = {
 export const LANGUAGE_BASE_TEMPLATE: Record<SupportedLanguage, string | null> = {
   typescript: 'basis/techTier/language/_typescript-common',
   go: 'basis/techTier/language/go',
+  html: 'basis/techTier/language/html',
 };
 
 export const TECH_TIER_TEMPLATE_PATHS = {
@@ -260,6 +284,7 @@ export const STACK_OPTIONS: BasisOption[] = [
 export const TECH_TIER_LANGUAGES: BasisOption[] = [
   { id: 'typescript', label: { en: 'TypeScript', ko: 'TypeScript' }, description: { en: 'Type-safe JavaScript for scalable applications', ko: '확장 가능한 앱을 위한 타입 안전 JavaScript' }, icon: 'typescript', accentColor: 'blue' },
   { id: 'go', label: { en: 'Go', ko: 'Go' }, description: { en: 'Fast, efficient language for cloud-native services', ko: '클라우드 네이티브 서비스를 위한 고성능 언어' }, icon: 'go', accentColor: 'cyan' },
+  { id: 'html', label: { en: 'HTML', ko: 'HTML' }, description: { en: 'Plain static HTML/CSS — no build step, served as-is', ko: '빌드 없이 그대로 서빙되는 정적 HTML/CSS' }, icon: 'html', accentColor: 'orange' },
 ];
 
 export const VISUAL_TIER_DESIGN_SYSTEMS: BasisOption[] = [];

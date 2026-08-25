@@ -350,7 +350,7 @@ export class AutoInjectionResolver {
    *
    * Returns null instead of falling back to avoid injecting the wrong file.
    * The allowed filename set is:
-   *   code: typescript-node | typescript-browser | go
+   *   code: typescript-node | typescript-browser | go | html
    *   design: (same set; contents curated separately)
    *
    * Intentionally stricter than `resolveLanguage` which uses a 'typescript' fallback.
@@ -361,6 +361,7 @@ export class AutoInjectionResolver {
     const lang = tier.language;
     const stack = tier.stack;
     if (lang === 'go') return 'go';
+    if (lang === 'html') return 'html';
     if (lang === 'typescript') {
       if (stack === 'backend') return 'typescript-node';
       if (stack === 'frontend' || stack === 'fullstack') return 'typescript-browser';

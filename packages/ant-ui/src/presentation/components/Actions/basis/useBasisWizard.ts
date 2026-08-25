@@ -32,22 +32,14 @@ import {
 } from '@ant/shared';
 import { useActiveTiers } from '@/application/hooks/features/useActiveTiers';
 import {
-  TECH_STEPS,
-  FULLSTACK_STEPS,
   VISUAL_STEPS,
   pickInitialTier,
 } from './constants';
 import {
-  GAME_ENGINE_STEP,
   GAME_ART_STEPS,
 } from './TierStepDef';
 import type { BasisWizardState, TierKey, WizardStepDef } from './types';
-
-const AUTO = '__auto__';
-
-function isReal(val: string | undefined): val is string {
-  return !!val && val !== AUTO;
-}
+import { AUTO, isReal, computeTechSteps } from './techSteps';
 
 /**
  * Build a `Basis` from wizard selections (Phase 1 — 4 tiers).
@@ -131,45 +123,6 @@ function buildBasisFromSelections(
   });
 
   return (basis.techTier || basis.visualTier || basis.gameArtTier) ? basis : undefined;
-}
-
-// Pure step-set computation. Hoisted to module scope so `selectVariant` can
-// compute the post-pick step set inline (and avoid the closure-staleness bug
-// where `isLastStep` was judged against a pre-prune snapshot, blocking the
-// natural advance after the user picks a real upstream value).
-function computeTechSteps(
-  selections: BasisWizardState['selections'],
-  hasTechTier: boolean,
-  hasDefaultStack: boolean,
-  domain: Domain,
-  hasLockedStack: boolean,
-): WizardStepDef[] {
-  if (!hasTechTier) return [];
-  const sel = selections.techTier;
-  const isFullstack = sel.stack === 'fullstack';
-  const steps: WizardStepDef[] = [];
-  // `lockedStack` (intent identity already pins the stack — gen-sys-fe / -be
-  // / -full) and `hasDefaultStack` (per-domain seed) both make the Stack
-  // step redundant; the wizard should never let the user pick a value the
-  // intent matrix has already decided.
-  if (!hasDefaultStack && !hasLockedStack) {
-    steps.push(TECH_STEPS[0]);
-    if (!isReal(sel.stack)) return steps;
-  }
-  if (isFullstack) {
-    steps.push(FULLSTACK_STEPS[0]);
-    if (isReal(sel.feLanguage)) steps.push(FULLSTACK_STEPS[1]);
-    steps.push(FULLSTACK_STEPS[2]);
-    if (isReal(sel.beLanguage)) steps.push(FULLSTACK_STEPS[3]);
-  } else {
-    steps.push(TECH_STEPS[1]);
-    if (isReal(sel.language)) steps.push(TECH_STEPS[2]);
-  }
-  // Game-engine 5th slot (game domain only, frontend or fullstack).
-  if (domain === 'game' && (sel.stack === 'frontend' || sel.stack === 'fullstack')) {
-    steps.push(GAME_ENGINE_STEP);
-  }
-  return steps;
 }
 
 function computeVisualSteps(

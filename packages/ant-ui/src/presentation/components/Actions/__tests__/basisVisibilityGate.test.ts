@@ -30,6 +30,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { getConfigSlots, listActiveTiers, type IntentId, type Domain } from '@ant/shared';
+import { computeTechSteps } from '../basis/techSteps';
 
 const visibilityCount = (intent: IntentId, domain: Domain): number =>
   listActiveTiers(getConfigSlots(intent)?.basis, domain).length;
@@ -153,5 +154,34 @@ describe('useBasisWizard funnels every tier through the matrix', () => {
 
   it('derives its tier set from the useActiveTiers facade', () => {
     expect(wizardSource).toMatch(/useActiveTiers\s*\(/);
+  });
+});
+
+describe('computeTechSteps — framework step prunes for zero-framework languages', () => {
+  const baseSelections = {
+    techTier: {} as Record<string, string | undefined>,
+    visualTier: {},
+    gameArtTier: {},
+  };
+
+  const steps = (techTier: Record<string, string | undefined>) =>
+    computeTechSteps(
+      { ...baseSelections, techTier } as never,
+      true, /* hasTechTier */
+      false, /* hasDefaultStack */
+      'service',
+      false, /* hasLockedStack */
+    ).map(s => s.layerKey);
+
+  it('frontend + html → no framework step (registry has zero html frameworks)', () => {
+    expect(steps({ stack: 'frontend', language: 'html' })).toEqual(['stack', 'language']);
+  });
+
+  it('frontend + typescript → framework step kept', () => {
+    expect(steps({ stack: 'frontend', language: 'typescript' })).toEqual(['stack', 'language', 'framework']);
+  });
+
+  it('backend + go → framework step kept (gin exists)', () => {
+    expect(steps({ stack: 'backend', language: 'go' })).toEqual(['stack', 'language', 'framework']);
   });
 });

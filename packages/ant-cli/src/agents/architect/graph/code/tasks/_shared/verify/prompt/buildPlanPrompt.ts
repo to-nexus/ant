@@ -11,7 +11,7 @@
  */
 
 import type { PlanPromptCtx, PlanPromptResult } from '../../types';
-import { effectiveTechTier, getTechTier } from '@ant/shared';
+import { effectiveTechTier, getTechTier, languageHasToolchain } from '@ant/shared';
 import { CONV_KEYS } from '../../../../../../../common/graph/conversations';
 import { formatCodeContext, mapLang } from '../../helpers/planPrompt';
 import { workspaceDepSnapshotVars } from '../../helpers/workspaceDepSnapshotHook';
@@ -145,7 +145,9 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
     hasUserRuntimeErrorContext,
     acceptanceSource,
     hasAcceptanceSource: acceptanceSource.length > 0,
-    runTests: true,
+    // Toolchain-free tiers (static html) have no test gate to run — the
+    // language hints file owns the static gate set instead.
+    runTests: languageHasToolchain(techTier?.language),
     projectCodeContext: fmtCtx,
     directoryTree: (codeContext as any)?.directoryTree || '',
     violationsText,

@@ -683,4 +683,24 @@ describe('Setup task: config injection', () => {
     });
     expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/go/setup/constraints');
   });
+
+  it('setup + html tier → html setup config/constraints (never typescript)', () => {
+    const injections = resolveAutoInjections({
+      job: 'code', node: 'execute', taskType: 'setup',
+      techTier: makeTechTier({ language: 'html', stack: 'frontend' }),
+      data: {},
+    });
+    expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/html/setup/config');
+    expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/html/setup/constraints');
+    expect(injections.filter(i => i.includes('techTier/typescript/'))).toEqual([]);
+  });
+
+  it('test-code + html tier → html test-code hints', () => {
+    const injections = resolveAutoInjections({
+      job: 'code', node: 'execute', taskType: 'test-code',
+      techTier: makeTechTier({ language: 'html', stack: 'frontend' }),
+      data: {},
+    });
+    expect(injections).toContain('jobs/code/nodes/execute/basis/techTier/html/test-code/hints');
+  });
 });

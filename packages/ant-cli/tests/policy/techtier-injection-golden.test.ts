@@ -136,6 +136,22 @@ describe('Code job techTier injection — golden snapshot', () => {
     ]);
   });
 
+  it('verification task with html frontend tier → language hint only (no framework layer)', () => {
+    expect(
+      codePaths([{ language: 'html', stack: 'frontend' }], 'verification'),
+    ).toEqual([
+      'jobs/code/basis/techTier/language/html',
+    ]);
+  });
+
+  it('setup task with html tier → language hint only', () => {
+    expect(
+      codePaths([{ language: 'html', stack: 'frontend' }], 'setup'),
+    ).toEqual([
+      'jobs/code/basis/techTier/language/html',
+    ]);
+  });
+
   it('doc task → no hint injection (not relevant to documentation authoring)', () => {
     expect(
       codePaths([{ framework: 'nextjs', language: 'typescript', stack: 'frontend' }], 'doc'),

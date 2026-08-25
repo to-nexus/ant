@@ -27,6 +27,7 @@ import {
   getValidFrameworks,
   getFrameworkOptions,
   getFullstackLanguages,
+  languageHasToolchain,
   VISUAL_TIER_TEMPLATE_PATHS,
   VISUAL_TIER_LAYER_KEYS,
   VISUAL_LANGUAGE_VARIANTS,
@@ -73,6 +74,10 @@ describe('Registry → Template files exist', () => {
     expect(templateExists('basis/techTier/language/go')).toBe(true);
   });
 
+  it('root html.md language base exists', () => {
+    expect(templateExists('basis/techTier/language/html')).toBe(true);
+  });
+
   it.each([...SUPPORTED_STACKS])('stack "%s" has template file (may be skeleton)', (stack) => {
     const tmplPath = TECH_TIER_TEMPLATE_PATHS.stack(stack);
     expect(templateExists(tmplPath)).toBe(true);
@@ -84,7 +89,7 @@ describe('Registry → Template files exist', () => {
 // ============================================
 
 describe('Job-scoped: code job templates exist', () => {
-  const allVariants: LanguageVariant[] = ['typescript-browser', 'typescript-node', 'go'];
+  const allVariants: LanguageVariant[] = ['typescript-browser', 'typescript-node', 'go', 'html'];
 
   it.each(allVariants)('code job language variant "%s" has template file', (variant) => {
     const tmplPath = TECH_TIER_TEMPLATE_PATHS.jobLanguageVariant('code', variant);
@@ -110,6 +115,10 @@ describe('Job-scoped: design job templates exist', () => {
 
   it('design job framework go exists', () => {
     expect(templateExists(TECH_TIER_TEMPLATE_PATHS.jobFramework('design', 'go'))).toBe(true);
+  });
+
+  it('design job language variant html exists', () => {
+    expect(templateExists(TECH_TIER_TEMPLATE_PATHS.jobLanguageVariant('design', 'html'))).toBe(true);
   });
 
   it('design job domain game exists', () => {
@@ -197,6 +206,14 @@ describe('VALID_STACKS_BY_LANGUAGE ↔ LANGUAGE_VARIANT_MAP consistency', () => 
       expect(isValidLanguageStackCombo('typescript', stack)).toBe(true);
     }
   });
+
+  it('html + backend is invalid', () => {
+    expect(isValidLanguageStackCombo('html', 'backend')).toBe(false);
+  });
+
+  it('html + fullstack is invalid', () => {
+    expect(isValidLanguageStackCombo('html', 'fullstack')).toBe(false);
+  });
 });
 
 // ============================================
@@ -234,6 +251,18 @@ describe('resolveLanguageVariants', () => {
   it('go + frontend (invalid combo) → falls back to go', () => {
     expect(resolveLanguageVariants('go', 'frontend')).toEqual(['go']);
   });
+
+  it('html + frontend → html', () => {
+    expect(resolveLanguageVariants('html', 'frontend')).toEqual(['html']);
+  });
+
+  it('html without stack → html', () => {
+    expect(resolveLanguageVariants('html')).toEqual(['html']);
+  });
+
+  it('html + backend (invalid combo) → falls back to html', () => {
+    expect(resolveLanguageVariants('html', 'backend')).toEqual(['html']);
+  });
 });
 
 // ============================================
@@ -268,7 +297,15 @@ describe('TECH_TIER_CONSTRAINTS SSOT', () => {
     const fullstackLangs = getFullstackLanguages();
     expect(fullstackLangs).toContain('typescript');
     expect(fullstackLangs).not.toContain('go');
+    expect(fullstackLangs).not.toContain('html');
     expect(fullstackLangs).toEqual(VALID_LANGUAGES_BY_STACK.fullstack);
+  });
+
+  it('languageHasToolchain truth table', () => {
+    expect(languageHasToolchain('typescript')).toBe(true);
+    expect(languageHasToolchain('go')).toBe(true);
+    expect(languageHasToolchain('html')).toBe(false);
+    expect(languageHasToolchain(undefined)).toBe(true);
   });
 });
 
@@ -277,8 +314,8 @@ describe('TECH_TIER_CONSTRAINTS SSOT', () => {
 // ============================================
 
 describe('getValidLanguages', () => {
-  it('frontend → typescript only', () => {
-    expect(getValidLanguages('frontend')).toEqual(['typescript']);
+  it('frontend → typescript, html', () => {
+    expect(getValidLanguages('frontend')).toEqual(['typescript', 'html']);
   });
 
   it('backend → typescript, go', () => {
@@ -301,6 +338,11 @@ describe('getValidFrameworks', () => {
 
   it('invalid combo returns empty', () => {
     expect(getValidFrameworks('frontend', 'go')).toEqual([]);
+  });
+
+  it('frontend + html → no frameworks', () => {
+    expect(getValidFrameworks('frontend', 'html')).toEqual([]);
+    expect(getFrameworkOptions('frontend', 'html')).toEqual([]);
   });
 
   it('unknown tierKey returns empty (defense-in-depth)', () => {

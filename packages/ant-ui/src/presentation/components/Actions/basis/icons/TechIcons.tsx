@@ -76,6 +76,16 @@ export function GinLogo(props: IconProps) {
   );
 }
 
+export function HtmlLogo(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" {...props}>
+      <path d="M4 3l1.5 17L12 22l6.5-2L20 3H4z" fill="#E34F26" />
+      <path d="M12 5v15.2l5.2-1.6L18.5 5H12z" fill="#F16529" />
+      <path d="M8 8h8l-.2 2H10l.15 2h5.5l-.4 4.5-3.25 1-3.25-1-.2-2.5h2l.1 1.2 1.35.4 1.35-.4.15-1.7H7.8L7.5 8H8z" fill="white" fillOpacity="0.95" />
+    </svg>
+  );
+}
+
 export function AutoDetectIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -88,6 +98,7 @@ export function AutoDetectIcon(props: IconProps) {
 export const TECH_ICON_COMPONENTS: Record<string, React.ComponentType<IconProps>> = {
   typescript: TypeScriptLogo,
   go: GoLogo,
+  html: HtmlLogo,
   react: ReactLogo,
   nextjs: NextJsLogo,
   'react-native': ReactNativeLogo,

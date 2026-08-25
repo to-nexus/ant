@@ -16,7 +16,7 @@ import { LLMClient } from "../../../../../../core/ports";
 import { extractLLMInfo } from "../../../../../../core/ports/workflow";
 import { ArchitectGraphState, basePriorityFor } from "../../state";
 import { renderPriorityBandGuide } from "../../state.priorityGuide";
-import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, applyExplicitGameArtTierOverrides, getTechTier, type Boundary, type TechTierConfig, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
+import { BOUNDARY, SUGGESTED_BOUNDARY, resolveTaskTechTierFromStack, applyExplicitTechTierOverrides, applyExplicitGameArtTierOverrides, getTechTier, type Boundary, type TechTierConfig, type Language, SURFACE_SYSTEM_VARIANTS, SPATIAL_SYSTEM_VARIANTS, getVisualLanguagesWithModes, isTierActive, getEffectiveDomain, getConfigSlots, GAME_ART_CONCEPT_VARIANTS, GAME_ART_PERSPECTIVE_VARIANTS, getGameArtConceptsWithPerspectives, SUPPORTED_GAME_ENGINES, isClarifyActive, getClarifyPolicy } from "@ant/shared";
 import { JobTimingManager } from "../../../../../common/graph/timing/JobTimingManager";
 import { logErrorHeader } from "../_common/errorHandler";
 import { logPrompt } from "../../../../../../core/utils/promptLogger";
@@ -252,19 +252,23 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
 
       let hasSourceDir = false;
       let hasConfigFile = false;
+      let hasRootHtml = false;
       for (const rel of relFiles) {
         const slashIdx = rel.indexOf('/');
         if (slashIdx > 0) {
           const firstSeg = rel.slice(0, slashIdx);
           if (!hasSourceDir && sourceDirs.has(firstSeg)) hasSourceDir = true;
-        } else if (!hasConfigFile && configFiles.has(rel)) {
-          hasConfigFile = true;
+        } else {
+          if (!hasConfigFile && configFiles.has(rel)) hasConfigFile = true;
+          // A manifest-less static site has no source dir and no manifest —
+          // root-level HTML is its only code signal.
+          if (!hasRootHtml && /\.html?$/i.test(rel)) hasRootHtml = true;
         }
-        if (hasSourceDir && hasConfigFile) break;
+        if (hasSourceDir && hasConfigFile && hasRootHtml) break;
       }
 
-      hasProjectCode = hasSourceDir || hasConfigFile;
-      console.log(`   ${hasProjectCode ? '✅' : '❌'} [Decompose] Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasConfigFile=${hasConfigFile})`);
+      hasProjectCode = hasSourceDir || hasConfigFile || hasRootHtml;
+      console.log(`   ${hasProjectCode ? '✅' : '❌'} [Decompose] Project code exists: ${hasProjectCode} (hasSourceDir=${hasSourceDir}, hasConfigFile=${hasConfigFile}, hasRootHtml=${hasRootHtml})`);
 
       if (hasProjectCode && (!codebaseFilePaths || codebaseFilePaths.length === 0)) {
         codebaseFilePaths = relFiles;
@@ -1454,13 +1458,13 @@ export async function decompose(state: ArchitectGraphState): Promise<ArchitectGr
       const feParsed = parsedTechTier.frontend;
       const beParsed = parsedTechTier.backend;
       inferredConfig.frontend = {
-        language: ((feParsed?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
+        language: ((feParsed?.language ?? defaultTier.language) as Language) ?? 'typescript',
         framework: feParsed?.framework ?? undefined,
         stack: 'frontend',
         gameEngine: parsedGameEngine,
       };
       inferredConfig.backend = {
-        language: ((beParsed?.language ?? defaultTier.language) as 'typescript' | 'go') ?? 'typescript',
+        language: ((beParsed?.language ?? defaultTier.language) as Language) ?? 'typescript',
         framework: beParsed?.framework ?? undefined,
         stack: 'backend',
       };

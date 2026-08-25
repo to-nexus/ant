@@ -104,6 +104,34 @@ This default applies ONLY when all design documents are absent.
 
 **Framework**: If no framework is mentioned or implied, set `framework: null`.
 
+### Static HTML Tier
+
+**Principle**: A deliverable that is a static HTML page, report, document, or flat
+multi-page site — with no application behavior, no server, no framework, and no build
+step — is the `html` language tier, NOT typescript.
+
+**Criterion**: The directive asks for content to be authored/published as HTML (a page,
+a report, a document, a simple site) and nothing requires a component framework,
+bundler, server runtime, or package dependency. Emit:
+
+`<techTier>{"stack":"frontend","language":"html","framework":null}</techTier>`
+
+**Consequences of the html tier — MANDATORY:**
+
+- **NO setup task** for a single-file or flat-tree deliverable — there is no manifest,
+  toolchain, or configuration to set up. Each task creates its own files directly.
+- **NEVER create a dependency manifest** (`package.json`, lockfiles) or any build/dev-server
+  tooling — in any task. A static file is published by serving or copying it as-is.
+- Do NOT include test-code or doc tasks on the strength of a test/build toolchain — none
+  exists. Include them only when the directive explicitly asks for them as deliverables.
+- The Tier 3/4 verification task still applies, but its gates are static: deliverable
+  files exist, internal `href`/`src` references resolve, documents are well-formed.
+  There is no install/typecheck/build/test gate.
+
+⚠️ **Blind Spot**: "This needs to be published/built/shared" is NOT a reason to create
+`package.json` or build scripts — a static file is published by copying it. Adding a
+manifest silently reclassifies the project and breaks static serving.
+
 ### Fullstack frameworks (`frontend` / `backend` sub-objects)
 
 **Principle**: When `stack` is `"fullstack"`, the frontend (browser) and backend (server)

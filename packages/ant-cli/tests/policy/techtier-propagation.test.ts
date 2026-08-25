@@ -58,6 +58,17 @@ describe('buildTechTier', () => {
     expect(tier.language).toBe('typescript');
   });
 
+  it('preserves html profile (no typescript collapse)', () => {
+    const tier = buildTechTier({ language: 'html' }, 'frontend');
+    expect(tier.language).toBe('html');
+    expect(tier.framework).toBeUndefined();
+  });
+
+  it('unknown language still defaults to typescript (fallback regression pin)', () => {
+    const tier = buildTechTier({ language: 'elm' }, 'frontend');
+    expect(tier.language).toBe('typescript');
+  });
+
   it('uses taskProfile when profile is absent', () => {
     const tier = buildTechTier(undefined, 'backend', { language: 'go', framework: 'gin' });
     expect(tier.language).toBe('go');

@@ -39,12 +39,13 @@ export function substantivePrePlanText(task: { prePlanText?: string }): string |
  * Coarse language → language-hint folder mapping. The plan/verification
  * template tree keys hint partials under
  * `jobs/code/nodes/plan/variants/verification/basis/techTier/{lang}/hints`
- * and setup uses the same four buckets for setup-constraint partials.
+ * and setup uses the same buckets for setup-constraint partials.
  * Unknown / empty language falls back to `typescript` which is the
  * default stack.
  */
 export function mapLang(language: string): string {
   const l = language.toLowerCase();
+  if (l.includes('html')) return 'html';
   if (l.includes('go')) return 'go';
   if (l.includes('python')) return 'python';
   if (l.includes('rust')) return 'rust';
