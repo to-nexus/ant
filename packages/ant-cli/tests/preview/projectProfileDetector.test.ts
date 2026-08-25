@@ -18,6 +18,7 @@ import {
   frameworkFromManifests,
   languageFromManifests,
   readManifests,
+  staticDocRoot,
 } from '../../src/periphery/adapters/http/services/PreviewService/detectors/manifest';
 import { ProjectProfileDetector } from '../../src/periphery/adapters/http/services/PreviewService/detectors/ProjectProfileDetector';
 
@@ -162,6 +163,27 @@ describe('manifest → language / framework', () => {
     const dir = fixture('empty', {});
     expect(readManifests(dir)).toBeNull();
   });
+
+  it.each([
+    ['index.html at the root', 'static-root', { 'index.html': '<h1>hi</h1>' }, '.'],
+    ['public/index.html', 'static-public', { 'public/index.html': '<h1>hi</h1>' }, 'public'],
+  ])('%s → html, docRoot %s', (_label, name, files, docRoot) => {
+    const dir = fixture(name, files as Record<string, unknown>);
+    const m = readManifests(dir)!;
+    expect(languageFromManifests(m)).toBe('html');
+    expect(frameworkFromManifests(m)).toBeUndefined();
+    expect(staticDocRoot(dir)).toBe(path.join(dir, docRoot === '.' ? '' : docRoot));
+  });
+
+  it.each([
+    ['package.json without a dev script', { 'package.json': { name: 'x', scripts: { build: 'tsc' } }, 'index.html': '<h1/>' }, 'javascript'],
+    ['a Makefile with only build:', { Makefile: 'build:\n\ttrue\n', 'index.html': '<h1/>' }, undefined],
+  ])('index.html alongside %s does NOT become a static project', (_label, files, expected) => {
+    const dir = fixture(`static-guard-${_label.replace(/\W/g, '')}`, files as Record<string, unknown>);
+    const m = readManifests(dir)!;
+    expect(languageFromManifests(m)).toBe(expected);
+    expect(staticDocRoot(dir)).toBeUndefined();
+  });
 });
 
 describe('ProjectProfileDetector.detectFacts', () => {
@@ -173,6 +195,16 @@ describe('ProjectProfileDetector.detectFacts', () => {
     expect(facts!.structureType).toBe('frontend-only');
     expect(facts!.profile).toMatchObject({ language: 'typescript', framework: 'react', source: 'manifest' });
     expect(facts!.canStart).toBe(true);
+  });
+
+  it('static site → frontend-only / html, startable, root entry', async () => {
+    const facts = await detect(path.join(root, 'static-root'));
+    expect(facts).not.toBeNull();
+    expect(facts!.structureType).toBe('frontend-only');
+    expect(facts!.profile).toMatchObject({ language: 'html', source: 'manifest' });
+    expect(facts!.profile.framework).toBeUndefined();
+    expect(facts!.canStart).toBe(true);
+    expect(facts!.structure!.entry?.type).toBe('frontend');
   });
 
   it('nestjs-only → backend-only (was frontend-only under quickDetect)', async () => {

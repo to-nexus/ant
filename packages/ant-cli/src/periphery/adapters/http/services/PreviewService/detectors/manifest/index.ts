@@ -26,6 +26,8 @@ import {
   PYTHON_FRAMEWORKS,
   RUNNABLE_MAKE_TARGETS,
   RUST_FRAMEWORKS,
+  STATIC_DOC_ROOTS,
+  STATIC_ENTRY_FILE,
 } from './tables';
 
 export interface ManifestSet {
@@ -45,6 +47,12 @@ export interface ManifestSet {
   pomXml?: string;
   buildGradle?: string;
   makefileTargets?: string[];
+  /**
+   * A servable static site: the doc root (relative to `dir`, `'.'` for the
+   * directory itself) holding an `index.html`. Present whenever one is found —
+   * whether it ALONE identifies the project is {@link isStaticWebProject}.
+   */
+  staticEntry?: { docRoot: string };
 }
 
 function readIfExists(file: string): string | undefined {
@@ -63,6 +71,14 @@ function exists(file: string): boolean {
  * Read every recognized manifest in `dir`. Returns `null` when the directory
  * holds no recognized project manifest at all (greenfield / not a codebase).
  */
+/** First {@link STATIC_DOC_ROOTS} entry holding an `index.html`, if any. */
+function findStaticEntry(dir: string): { docRoot: string } | undefined {
+  for (const docRoot of STATIC_DOC_ROOTS) {
+    if (exists(path.join(dir, docRoot, STATIC_ENTRY_FILE))) return { docRoot };
+  }
+  return undefined;
+}
+
 export function readManifests(dir: string): ManifestSet | null {
   const pkgJsonPath = path.join(dir, 'package.json');
   const pkgRaw = readIfExists(pkgJsonPath);
@@ -81,6 +97,8 @@ export function readManifests(dir: string): ManifestSet | null {
     ? RUNNABLE_MAKE_TARGETS.filter(t => new RegExp(`^${t}:`, 'm').test(makefileRaw))
     : undefined;
 
+  const staticEntry = findStaticEntry(dir);
+
   const set: ManifestSet = {
     dir,
     ...(packageJson ? { packageJson } : {}),
@@ -98,6 +116,7 @@ export function readManifests(dir: string): ManifestSet | null {
       readIfExists(path.join(dir, 'build.gradle')) ??
       readIfExists(path.join(dir, 'build.gradle.kts')),
     ...(makefileTargets ? { makefileTargets } : {}),
+    ...(staticEntry ? { staticEntry } : {}),
   };
 
   return isRecognized(set) ? set : null;
@@ -105,6 +124,38 @@ export function readManifests(dir: string): ManifestSet | null {
 
 function isRecognized(m: ManifestSet): boolean {
   return !!(
+    m.packageJson ||
+    m.packageJsonMalformed ||
+    m.hasPnpmWorkspaceYaml ||
+    m.goMod ||
+    m.hasGoWork ||
+    m.pyRequirements ||
+    m.pyProject ||
+    m.hasSetupPy ||
+    m.cargoToml ||
+    m.pomXml ||
+    m.buildGradle ||
+    m.makefileTargets ||
+    m.staticEntry
+  );
+}
+
+/**
+ * Is an `index.html` the ONLY thing that identifies this directory?
+ *
+ * The static fallback is deliberately last-resort: a directory carrying any
+ * build manifest — even one that cannot start (`package.json` without a dev
+ * script, a `Makefile` with only `build:`) — keeps its own ecosystem's answer.
+ * Serving such a project's raw sources would mask a real authoring defect, and
+ * gating on "sole signal" is what makes the static rule unable to change any
+ * currently-working project's detection result.
+ *
+ * Single owner for both the language and the `canStart` answer, so the two
+ * cannot disagree.
+ */
+export function isStaticWebProject(m: ManifestSet): boolean {
+  if (!m.staticEntry) return false;
+  return !(
     m.packageJson ||
     m.packageJsonMalformed ||
     m.hasPnpmWorkspaceYaml ||
@@ -136,6 +187,7 @@ export function languageFromManifests(m: ManifestSet): string | undefined {
   if (m.cargoToml) return 'rust';
   if (m.pyRequirements || m.pyProject || m.hasSetupPy) return 'python';
   if (m.pomXml || m.buildGradle) return 'java';
+  if (isStaticWebProject(m)) return 'html';
   return undefined;
 }
 
@@ -214,6 +266,10 @@ function matchSubstring(
  * target. `ProjectStructureDetector.detect()` cannot answer this: it falls
  * through to `singlePackage(root)` for a script-less Node repo, which would flip
  * `canStart` to true. Locked by `projectProfileCanStartParity.test.ts`.
+ *
+ * The static rule is the last one consulted and only fires when an `index.html`
+ * is the sole signal ({@link isStaticWebProject}) — a script-less Node repo
+ * stays `false` so "Missing script: dev" remains the diagnostic.
  */
 export function canStartFromManifests(
   m: ManifestSet,
@@ -230,7 +286,20 @@ export function canStartFromManifests(
   if (m.pyRequirements || m.pyProject || m.hasSetupPy) return true;
   if (m.pomXml || m.buildGradle) return true;
   if (m.makefileTargets) return m.makefileTargets.length > 0;
+  if (isStaticWebProject(m)) return true;
   return false;
+}
+
+/**
+ * Absolute doc root to serve for a static web project, or `undefined` when this
+ * directory is not one. The single accessor for "where do the files live" —
+ * shared by the preview spawner and the deploy build-output resolver so neither
+ * can invent its own answer.
+ */
+export function staticDocRoot(dir: string): string | undefined {
+  const m = readManifests(dir);
+  if (!m || !isStaticWebProject(m) || !m.staticEntry) return undefined;
+  return path.resolve(dir, m.staticEntry.docRoot);
 }
 
 /** Node workspace root: `package.json.workspaces` or `pnpm-workspace.yaml`. */

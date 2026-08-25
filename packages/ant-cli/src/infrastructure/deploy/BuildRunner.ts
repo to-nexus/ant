@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import { spawn } from 'child_process';
 import type { DeployFramework } from '../../core/ports/portRegistry';
 import { detectPackageManager, buildInstallCommand, findProjectRoot } from '../../utils/packageManager';
+import { staticDocRoot } from '../../periphery/adapters/http/services/PreviewService/detectors/manifest';
 import { composeChildEnv } from '../../core/config/childEnv';
 import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
 
@@ -64,6 +65,13 @@ export function getBuildOutputDir(workspacePath: string, framework: DeployFramew
       for (const dir of candidates) {
         const full = path.join(workspacePath, dir);
         if (fs.existsSync(full) && fs.statSync(full).isDirectory()) return full;
+      }
+      // A manifest-less site has no build step, so its sources ARE the output.
+      // Only for `static`: under `unknown` a build script exists and produced
+      // nothing, and serving the sources would hide that failure.
+      if (framework === 'static') {
+        const docRoot = staticDocRoot(workspacePath);
+        if (docRoot) return docRoot;
       }
       return path.join(workspacePath, 'dist');
     }

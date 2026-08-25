@@ -60,6 +60,8 @@ export class ProjectStructureDetector {
         return this.detectRustProject(localPath, profile);
       case 'java':
         return this.detectJavaProject(localPath, profile);
+      case 'html':
+        return this.detectStaticProject(localPath, profile);
       default:
         return this.detectGenericProject(localPath, profile);
     }
@@ -144,7 +146,11 @@ export class ProjectStructureDetector {
     // strategy handles it.
     if (manifests) return 'unknown';
 
-    throw new Error('No recognized project files found (no package.json, go.mod, go.work, Cargo.toml, requirements.txt, pom.xml, etc.)');
+    throw new Error(
+      'No recognized project files found (no package.json, go.mod, go.work, Cargo.toml, ' +
+      'requirements.txt, pom.xml, a Makefile with a dev/run/serve target, or an index.html ' +
+      'for a static site)',
+    );
   }
 
   /**
@@ -447,6 +453,19 @@ export class ProjectStructureDetector {
     return this.singlePackage(localPath, 'backend', profile);
   }
   
+  /**
+   * Static site detection — an `index.html` with no build manifest anywhere.
+   *
+   * Frontend by nature: the package gets a `urlKey`, so the proxy routes it and
+   * the FE renders an Open button exactly as it does for a dev server. The doc
+   * root is NOT carried on the package — `ProcessSpawner` re-reads it from the
+   * manifest SSOT, so the two cannot drift.
+   */
+  private detectStaticProject(localPath: string, profile: ProjectProfile): ProjectStructure {
+    logger.debug('Static site detected (no build manifest — serving files directly)', { component: 'ProjectStructureDetector' });
+    return this.singlePackage(localPath, 'frontend', profile);
+  }
+
   /**
    * Generic / unknown language detection
    * Supports: Makefile-based projects

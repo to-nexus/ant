@@ -109,6 +109,25 @@ describe('canStart parity with the retired quickDetect', () => {
     expect(canStart(dir)).toBe(expected);
   });
 
+  it.each([
+    ['index.html at the root', { 'index.html': '<h1/>' }],
+    ['public/index.html', { 'public/index.html': '<h1/>' }],
+  ])('static site (%s) → true', (label, files) => {
+    const dir = fixture(`static-${label.replace(/\W/g, '')}`, files as Record<string, unknown>);
+    expect(canStart(dir)).toBe(true);
+  });
+
+  it.each([
+    ['package.json with no dev script', { 'package.json': { name: 'a', scripts: { build: 'tsc' } } }],
+    ['a Makefile with only build:', { Makefile: 'build:\n\ttrue\n' }],
+  ])('an index.html next to %s does NOT rescue it → false', (label, files) => {
+    const dir = fixture(`static-noresc-${label.replace(/\W/g, '')}`, {
+      ...(files as Record<string, unknown>),
+      'index.html': '<h1/>',
+    });
+    expect(canStart(dir)).toBe(false);
+  });
+
   it('unrecognized directory → no answer at all (null)', () => {
     const dir = fixture('nothing', { 'README.md': '# hi' });
     expect(canStart(dir)).toBeNull();

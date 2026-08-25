@@ -1,0 +1,115 @@
+/**
+ * Locks the two serving PROFILES of `createStaticApp` — the single owner shared
+ * by the deploy SPA server and the preview static server.
+ *
+ * The axis is the profile truth table (cache × fallback × basePath), not any
+ * particular byte of HTML: a preview serves a live source directory (no cache,
+ * honest 404s for missing assets) while a deploy serves an immutable SPA build
+ * (cached, every unmatched path is a client-side route).
+ */
+
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import type { Server } from 'http';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { createStaticApp, type StaticAppOptions } from '../../src/infrastructure/static/staticApp';
+
+let root: string;
+const servers: Server[] = [];
+
+async function serve(options: Omit<StaticAppOptions, 'root'> & { root?: string }): Promise<string> {
+  const app = createStaticApp({ root, ...options } as StaticAppOptions);
+  const server = await new Promise<Server>((resolve) => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  servers.push(server);
+  const { port } = server.address() as { port: number };
+  return `http://127.0.0.1:${port}`;
+}
+
+const html = { Accept: 'text/html,application/xhtml+xml' };
+
+beforeAll(() => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-static-'));
+  fs.writeFileSync(path.join(root, 'index.html'), '<h1>site</h1>');
+  fs.writeFileSync(path.join(root, 'style.css'), 'body{}');
+  fs.writeFileSync(path.join(root, '.env'), 'SECRET=1');
+});
+afterAll(async () => {
+  await Promise.all(servers.map(s => new Promise<void>(r => s.close(() => r()))));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe('preview profile (cache: none, fallback: navigation-only)', () => {
+  const preview = { basePath: '/t--u--p--f', cache: 'none', fallback: 'navigation-only' } as const;
+
+  it('serves files under the basePath the proxy forwards verbatim', async () => {
+    const base = await serve(preview);
+    const res = await fetch(`${base}${preview.basePath}/style.css`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/css');
+  });
+
+  it('never caches — a code job rewrites these files between requests', async () => {
+    const base = await serve(preview);
+    const res = await fetch(`${base}${preview.basePath}/index.html`);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('answers `/` so the health check sees a live server', async () => {
+    const base = await serve(preview);
+    const res = await fetch(`${base}/`, { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(preview.basePath);
+  });
+
+  it('an HTML navigation falls back to index.html', async () => {
+    const base = await serve(preview);
+    const res = await fetch(`${base}${preview.basePath}/about`, { headers: html });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<h1>site</h1>');
+  });
+
+  it('a missing ASSET 404s instead of coming back as HTML', async () => {
+    const base = await serve(preview);
+    expect((await fetch(`${base}${preview.basePath}/typo.css`)).status).toBe(404);
+  });
+
+  it('refuses dotfiles — the preview root can hold a written .env', async () => {
+    const base = await serve(preview);
+    const res = await fetch(`${base}${preview.basePath}/.env`);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('SECRET');
+  });
+});
+
+describe('deploy profile (cache: short, fallback: always-index)', () => {
+  it('caches the immutable build artifact', async () => {
+    const base = await serve({ basePath: '/deploy/k', cache: 'short', fallback: 'always-index' });
+    const res = await fetch(`${base}/deploy/k/style.css`);
+    expect(res.headers.get('cache-control')).toContain('max-age=3600');
+  });
+
+  it('every unmatched path is a client-side route, asset extensions included', async () => {
+    const base = await serve({ basePath: '/deploy/k', cache: 'short', fallback: 'always-index' });
+    const res = await fetch(`${base}/deploy/k/deep/link.json`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<h1>site</h1>');
+  });
+
+  it('refuses dotfiles too — the SPA fallback must not swallow them', async () => {
+    const base = await serve({ basePath: '/deploy/k', cache: 'short', fallback: 'always-index' });
+    const res = await fetch(`${base}/deploy/k/.env`);
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain('SECRET');
+  });
+
+  it('at the host root (subdomain routing) the SPA fallback still fires', async () => {
+    const base = await serve({ basePath: '/', cache: 'short', fallback: 'always-index' });
+    expect((await fetch(`${base}/`)).status).toBe(200);
+    const deep = await fetch(`${base}/deep/link`, { headers: html });
+    expect(deep.status).toBe(200);
+    expect(await deep.text()).toContain('<h1>site</h1>');
+  });
+});

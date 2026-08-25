@@ -6,10 +6,10 @@
  * - Next.js: `next start` child process
  */
 
-import express, { Express } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
+import { createStaticApp } from '../static/staticApp';
 import { composeChildEnv } from '../../core/config/childEnv';
 import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from '../../core/config/childIdentity';
 import { logger } from '../../utils/logger';
@@ -30,37 +30,24 @@ export interface StaticServerHandle {
 
 /**
  * Start a static file server for SPA frameworks (Vite, CRA, generic).
- * Uses express.static with index.html fallback for client-side routing.
+ * Serving policy (cache, dotfiles, SPA fallback) lives in `createStaticApp` —
+ * the same owner the preview static server uses.
  */
 function startSpaServer(options: StaticServerOptions): Promise<StaticServerHandle> {
   const { outputDir, port, basePath } = options;
-  const app: Express = express();
-
-  // Serve static files under the basePath prefix
-  app.use(basePath, express.static(outputDir, {
-    maxAge: '1h',
-    etag: true,
-  }));
-
-  // SPA fallback: serve index.html for any non-file request under basePath
-  app.get(`${basePath}/{*splat}`, (_req, res) => {
-    const indexPath = path.join(outputDir, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.status(404).send('index.html not found');
-    }
+  const app = createStaticApp({
+    root: outputDir,
+    basePath,
+    cache: 'short',
+    fallback: 'always-index',
   });
 
-  // Root redirect to basePath
-  if (basePath !== '/') {
-    app.get('/', (_req, res) => {
-      res.redirect(basePath);
-    });
-  }
-
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, () => {
+    const server = app.listen(port);
+
+    // `'listening'`, not the listen callback — express fires that callback even
+    // on a failed bind, which resolved this promise for a server that then died.
+    server.on('listening', () => {
       logger.info(`[Deploy] SPA server started on port ${port} (basePath: ${basePath})`, { component: 'StaticServer' });
       resolve({
         port,

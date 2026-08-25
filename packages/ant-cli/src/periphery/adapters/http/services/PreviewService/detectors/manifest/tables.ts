@@ -75,3 +75,22 @@ export const JVM_FRAMEWORKS: ReadonlyArray<readonly [string, string]> = [
 
 /** Makefile targets that count as "this project can be started". */
 export const RUNNABLE_MAKE_TARGETS: readonly string[] = ['dev', 'run', 'serve'];
+
+/**
+ * Doc-root candidates for a manifest-less static site, in probe order — the
+ * first directory holding {@link STATIC_ENTRY_FILE} wins. Depth-1 allowlist, so
+ * the probe stays a handful of `existsSync` calls (the manifest module's
+ * shallow/synchronous contract).
+ */
+export const STATIC_DOC_ROOTS: readonly string[] = [
+  '.',
+  'public',
+  'www',
+  'site',
+  'dist',
+  'build',
+  'src',
+];
+
+/** The file whose presence makes a directory a servable static site. */
+export const STATIC_ENTRY_FILE = 'index.html';

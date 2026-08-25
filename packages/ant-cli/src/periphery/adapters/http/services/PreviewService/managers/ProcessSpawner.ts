@@ -7,6 +7,8 @@ import { ServiceConnection } from '../../../../../../core/ports/portRegistry';
 import { logger } from '../../../../../../utils/logger';
 import { DevProcessControl, getDefaultDevProcessControl } from '../../../../../../core/process/DevProcessControl';
 import { resolveRunScript } from '../detectors/PackageDetector';
+import { staticDocRoot } from '../detectors/manifest';
+import { WorkspacePathResolver } from '../../../../../../core/config/WorkspacePathResolver';
 import { resolveSpawnLanguage } from '../utils/projectFacts';
 import { loadProjectEnv as loadProjectEnvShared, composeChildEnv } from './envAssembly';
 import { backfillMockToggles } from './mockToggles';
@@ -83,7 +85,8 @@ export class ProcessSpawner {
 
   /**
    * Spawn dev process for a package.
-   * Dispatches to language-specific spawn based on projectProfile.
+   * Dispatches to language-specific spawn based on projectProfile. `html` is a
+   * project with no build manifest — served directly, never executed.
    */
   spawn(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
     const lang = resolveSpawnLanguage(pkg.projectProfile);
@@ -92,6 +95,8 @@ export class ProcessSpawner {
       case 'typescript':
       case 'javascript':
         return this.spawnNode(pkg, port, options);
+      case 'html':
+        return this.spawnStatic(pkg, port, options);
       case 'go':
       case 'python':
       case 'rust':
@@ -258,6 +263,85 @@ export class ProcessSpawner {
     return childProcess;
   }
   
+  /**
+   * Spawn the static preview server for a project with no build manifest.
+   *
+   * The doc root is re-read from the manifest SSOT rather than carried on the
+   * package, so the detector and the spawner cannot disagree about which
+   * directory is served.
+   *
+   * No `.env` is loaded and no mock toggles are backfilled: a hand-written HTML
+   * directory has nothing to configure, and the preview must not start writing
+   * files into it.
+   */
+  private spawnStatic(pkg: PackageInfo, port: number, options: SpawnOptions): ChildProcess {
+    const root = staticDocRoot(pkg.path) ?? pkg.path;
+
+    // Same rule as every other frontend: path routing keeps the urlKey prefix
+    // (the proxy forwards `req.url` verbatim), subdomain routing serves at the
+    // host root.
+    const basePath =
+      options.packageUrlKey && !isSubdomainRouting() ? `/${options.packageUrlKey}` : '/';
+
+    // `getCliRoot()` is the SSOT for "where does our own code live" — dist/ when
+    // bundled, src/ under tsx. Counting `../` from this file would break in the
+    // bundle, where __dirname is the ENTRY's directory, not this module's.
+    const cliRoot = WorkspacePathResolver.getCliRoot();
+    const bundled = cliRoot.endsWith(`${path.sep}dist`);
+    const entry = path.join(
+      cliRoot,
+      'infrastructure',
+      'preview',
+      bundled ? 'static-preview-server.js' : 'static-preview-server.ts',
+    );
+    const command = bundled ? process.execPath : 'npx';
+    const args = bundled ? [entry] : ['tsx', entry];
+    // cwd is OUR package root, not the served directory: the server takes an
+    // absolute root, and `npx tsx` resolved from a user workspace outside this
+    // repo would try to DOWNLOAD tsx instead of using the local one.
+    const cwd = path.dirname(cliRoot);
+
+    const env = composeChildEnv({}, {
+      PORT: port.toString(),
+      ANT_STATIC_ROOT: root,
+      ANT_BASE_PATH: basePath,
+      ...(options.extraEnv || {}),
+    });
+
+    logger.warn(`[Preview] Starting static site: ${pkg.name} on port ${port} (root=${root})`, { component: 'ProcessSpawner' });
+    options.onLog('stdout', `🚀 Starting ${pkg.name} (static) on port ${port}...`);
+    options.onLog('stdout', `📋 Serving: ${root} at ${basePath}`);
+
+    // This child runs ANT's own code, but it reads the user's workspace and is
+    // part of the same preview fleet — hold it to the one isolation policy
+    // rather than carving out an exemption.
+    assertUserCodeIsolationOrThrow('preview:static');
+    const childProcess = spawn(command, args, {
+      cwd,
+      detached: true,
+      env,
+      stdio: 'pipe',
+      ...childSpawnIdentity(),
+    });
+
+    logger.warn(`[Preview] Process spawned PID=${childProcess.pid}`, { component: 'ProcessSpawner' });
+
+    childProcess.stdout?.on('data', (data) => options.onLog('stdout', data.toString()));
+    childProcess.stderr?.on('data', (data) => options.onLog('stderr', data.toString()));
+
+    childProcess.on('close', (code, signal) => {
+      logger.info(`Process exited PID=${childProcess.pid} code=${code}`, { component: 'ProcessSpawner' });
+      options.onExit(code, signal, childProcess.pid ?? undefined);
+    });
+
+    childProcess.on('error', (error) => {
+      logger.error(`Process error PID=${childProcess.pid}: ${error.message}`, { component: 'ProcessSpawner' }, error);
+      options.onError(error);
+    });
+
+    return childProcess;
+  }
+
   /**
    * Spawn dev process by language (Go, Python, Rust, Java, etc.).
    * Checks Makefile first for dev/run/serve targets, then uses language-specific commands.

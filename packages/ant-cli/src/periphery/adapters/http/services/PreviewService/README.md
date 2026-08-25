@@ -103,6 +103,27 @@ if (detector.isFrontendPackage(packageJson)) {
 4. **Maintainability**: modifying a specific feature only touches that file
 5. **Extensibility**: adding a new framework validator is easy (e.g., `SvelteValidator`)
 
+## 🗂️ Static sites (no build manifest)
+
+A directory holding only an `index.html` is a first-class project here, not an
+error. The rule lives in `detectors/manifest/index.ts`:
+
+- `isStaticWebProject(m)` — true only when an `index.html` is the **sole**
+  recognition signal. Any build manifest (even one that cannot start, like a
+  `package.json` without a dev script) keeps its own ecosystem's answer, so this
+  rule can never change a currently-working project's detection result.
+- `staticDocRoot(dir)` — the single accessor for *which* directory to serve,
+  probing `STATIC_DOC_ROOTS` (`.`, `public`, `www`, `site`, `dist`, `build`,
+  `src`) in order. Shared with the deploy build-output resolver.
+
+Such a project detects as `language: 'html'` / `frontend-only`, and
+`ProcessSpawner.spawnStatic` runs `infrastructure/preview/static-preview-server.ts`
+as an ordinary child process — so log streaming, `killTree`, health check, port
+registry and port-conflict retry all apply unchanged. Nothing is installed and
+nothing is written into the project directory. Serving policy (no-cache,
+navigation-only fallback, dotfile refusal) is `infrastructure/static/staticApp.ts`,
+the same module the deploy SPA server uses.
+
 ## 📝 Future Improvement Plans
 
 - [ ] Extract `ProcessManager` (spawn, health check, process management)
