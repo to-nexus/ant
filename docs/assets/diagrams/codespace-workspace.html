@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="canvas" content="880x572">
+<meta name="canvas" content="880x632">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="_diagram.css">
 <style>
-  .canvas { height: 572px; }
+  .canvas { height: 632px; }
 
   .spaces { align-items: stretch; }
   .spaces .node { gap: 0; padding: 13px 15px 14px; }
@@ -45,6 +45,7 @@
     border: 1px solid var(--border-1);
   }
   .surface .what { font-size: 11px; font-weight: 600; color: var(--text-2); line-height: 1.3; }
+  .surface.trigger { margin-top: 8px; background: oklch(23% 0.07 290 / 0.35); }
 
   /* two columns converging on the shared runtime */
   /* height must be flex-locked: an empty flex item shrinks to nothing first */
@@ -104,6 +105,11 @@
         <span class="chip violet">kanban</span>
         <span class="what">Tasks run in parallel, gated by a verification task</span>
       </div>
+
+      <div class="surface trigger">
+        <span class="chip">on demand</span>
+        <span class="what">A person starts every job</span>
+      </div>
     </div>
 
     <div class="node acc acc-orange">
@@ -132,6 +138,11 @@
       <div class="surface">
         <span class="chip orange">checklist</span>
         <span class="what">The agent writes its own list as the work proceeds</span>
+      </div>
+
+      <div class="surface trigger">
+        <span class="chip orange">pipeline</span>
+        <span class="what">On demand, or a cron trigger chaining steps through a human gate</span>
       </div>
     </div>
 

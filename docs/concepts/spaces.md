@@ -180,9 +180,10 @@ uses the service pool or the game pool — never both at once.
 
 ## Workspace layout
 
-> ⚠️ **Experimental.** The workspace kind and the custom-agent runtime behind
-> it ship and are covered by tests, but several parts are deliberately open —
-> see [custom-agents.md](custom-agents.md) for the current limits.
+> ⚠️ **Experimental.** The workspace kind, the custom-agent runtime behind it,
+> and the pipeline scheduler on top of it all ship and are covered by tests, but
+> several parts are deliberately open — see [custom-agents.md](custom-agents.md)
+> and [pipelines.md](pipelines.md) for the current limits.
 
 A workspace has **no features**, so it has none of the feature axes above: no
 `repo.git`, no `codebase/`, no per-feature preview. Feature creation is refused
@@ -247,10 +248,20 @@ render as kanban cards, and never count toward per-task billing.
 Details, including when a checklist appears at all, are in
 [custom-agents.md](custom-agents.md).
 
+### Unattended runs
+
+A workspace job is not limited to what a human starts. A **pipeline** binds a
+cron trigger and a chain of steps to one workspace project, so the same
+(agent, job) pair runs on a calendar and can stop for a human at an approval
+gate. While a project holds an activation, interactive job starts on it are
+refused — an unattended run owns its project. See
+[pipelines.md](pipelines.md).
+
 ## Read next
 
 - [**custom-agents**](custom-agents.md) — the agent/job definition model that
   runs inside a workspace, and what the runtime gives every custom job.
+- [**pipelines**](pipelines.md) — running those jobs on a schedule.
 - [**design-input-channels**](design-input-channels.md) — the three UI
   input modes and how they map into `visual/ui/` (codespace only).
 - [internals/35-codebase-meta-policy.md](../internals/35-codebase-meta-policy.md)

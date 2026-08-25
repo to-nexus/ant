@@ -5,7 +5,7 @@
 
 <p align="center">
   <b>Your agent's context is a declared list, not a search.</b><br>
-  Build: <b>PRD → System & UI Design → Code</b> · Iterate: <b>Spec → Code</b> — every code job verifies itself.<br>
+  The same runtime <b>builds your product</b> — PRD → design → code, every code job verifying itself — and <b>runs your process</b>, on work agents you define in files and put on a schedule.<br>
   <sub>Self-hosted · Bring your own LLM key · Apache-2.0</sub>
 </p>
 
@@ -34,7 +34,7 @@ commit.</sub></p>
 
 ## Why Ant?
 
-Most agent tools assemble the model's context by searching your repo at run
+Most agent tools assemble the model's context by searching your files at run
 time — whatever the search happens to find is what the model reads. So every
 run reads slightly different context, costs a slightly different amount, and
 fails in ways you can't reproduce.
@@ -42,10 +42,10 @@ fails in ways you can't reproduce.
 Ant is built on the opposite premise: **context is declared, not discovered.**
 
 - **You see what enters the prompt, before the job runs.** Every job executes
-  against a resolved set of artifacts — the PRD, the system design, the spec
-  it was given — and a binding runtime rule forbids wholesale-walking the
-  workspace into that set. Anything the agent explores beyond it goes through
-  logged tool calls under hard token budgets.
+  against a resolved set of artifacts — the PRD and system design handed to a
+  code job, the documents handed to a work agent — and a binding runtime rule
+  forbids wholesale-walking the project into that set. Anything the agent
+  explores beyond it goes through logged tool calls under hard token budgets.
 - **Your chat is not the model's context.** The UI transcript and the LLM
   context are separate files by construction. A job receives a bounded
   distillation of prior work (4–12k tokens) — never the scrollback — and
@@ -56,8 +56,58 @@ Ant is built on the opposite premise: **context is declared, not discovered.**
   diff, and revise, and every job ends with a per-model token / cost /
   cache-hit breakdown.
 
-What runs on those rails is a pipeline shaped like engineering, not like a
-chat. **The build loop** — greenfield, once per project:
+---
+
+## Two wings, one runtime
+
+Ant runs two kinds of project, and they are not two products. A **codespace**
+builds software: a PRD becomes a system design, a UI design, and code — each
+stage a durable file, every code job gated by its own verification task. A
+**workspace** runs your organization's work: you define an agent and its duties
+in files, connect the systems it may reach over MCP, and run it on demand or on
+a cron schedule.
+
+Both wings sit on the same four processes, the same Redis bus, the same agent
+loop, the same Handlebars prompt surface, and the same encrypted credential
+store. That is the whole point: the thing that builds your product and the thing
+that runs your process are one install, one set of keys, and one audit trail —
+not two tools you have to keep in sync.
+
+<p align="center">
+  <img src="docs/assets/codespace-workspace.png" width="880"
+       alt="Two kinds of space over one runtime — a codespace exposing the plan, design, code, visual, learn and ask jobs with a git anchor, feature worktrees, a kanban board and jobs a person starts, beside a workspace exposing only file-defined custom jobs with a universal artifacts and sessions tree, a checklist board and a cron pipeline that chains steps through a human gate, both converging on one runtime where projectType decides policy and never layout">
+</p>
+
+|                          | **Codespace**                                 | **Workspace** *(experimental)*                 |
+|--------------------------|-----------------------------------------------|------------------------------------------------|
+| You build                | a product                                     | your organization's work agents                |
+| Jobs it exposes          | `plan` `design` `code` `visual` `learn` `ask` | your own, defined in files                     |
+| Unit of work             | a **feature** — branch + worktree             | an **(agent, job)** pair                       |
+| Progress surface         | Kanban tasks, gated by a verification task    | a checklist the agent writes as it works       |
+| Runs when                | you start a job                               | you start a job, or a **pipeline** fires on cron |
+| Git, live preview, browser IDE | yes                                     | no — a workspace has no codebase               |
+| On disk                  | `repo.git` + `features/{feature}/…`           | `universal/{artifacts,sessions}/`              |
+
+The kind is chosen at creation and fixed for the project's life; it is stored as
+`projectType` in `config.json`. The partition is strict in both directions —
+there is no job type that runs in both kinds — which is why it is a creation-time
+decision rather than a toggle.
+
+What the flag is *not* is a fork: `projectType` decides which jobs a project
+exposes, and never what the runtime does or how the disk is laid out.
+
+Further down: [the build loop](#the-build-loop-and-the-iteration-loop) for the
+codespace, [the work loop](#the-work-loop) for the workspace, and
+[Maturity](#maturity) for how far each one honestly is. Read more:
+[docs/concepts/spaces.md](docs/concepts/spaces.md).
+
+---
+
+## The build loop and the iteration loop
+
+Inside a codespace, what runs on those rails is a pipeline shaped like
+engineering, not like a chat. **The build loop** — greenfield, once per
+project:
 
 1. Write the **PRD**. The `planner` agent helps you clarify it.
 2. Generate the **system design** (architecture, API contracts, system docs).
@@ -90,6 +140,29 @@ Code, or Lovable *instead of* Ant.
   <img src="docs/assets/build-loop.png" width="880"
        alt="Two pipelines. The build loop, for greenfield or a major new feature, runs plan (plan/PRD.md) then system design (architecture/system/) then UI or game art (visual/ui/) then code (codebase/). The iteration loop, for every change after that, skips both plan and system design and runs spec (architecture/spec/) straight into code, with a rev-spec return arc">
 </p>
+
+---
+
+## The work loop
+
+A workspace has no PRD and no verification gate, because it isn't building
+anything. Its loop is shorter than the one above, and it repeats on a calendar
+rather than once per project:
+
+1. Write the **agent**: who it is, in prose, plus the systems it may reach.
+2. Write its **jobs** — one per duty — each with its own tool allowlist, and
+   its own intents for the situations it has to tell apart.
+3. **Run one** from the composer, or **activate a pipeline** that fires it on
+   cron, chains it into other jobs, and stops for a human at an approval gate.
+4. Read what it produced under `universal/artifacts/` — real files at real
+   paths, announced with a manifest built from actual tool side-effects rather
+   than from what the model said it did.
+
+Steps 1 and 2 are file operations: no code change, no new job type, no deploy.
+Definitions are read fresh at every run, so editing one and re-running it is the
+whole iteration cycle.
+
+Detail: [Custom agents & the universal runtime](#custom-agents--the-universal-runtime).
 
 ---
 
@@ -150,8 +223,9 @@ footnote.
 | `creator` agent / `visual` job | **Experimental** | **Google Gemini only** — needs `GEMINI_API_KEY` no matter which provider you use elsewhere. Background removal needs an optional sidecar. **No mid-graph resume**: an interruption restarts the job. The graph nodes have no execution tests. |
 | Game domain | **Experimental** | **Greenfield only** — the game-art tier is suppressed on existing codebases. Phaser only (3D is the `enable3d` extension, not a separate engine). The sprite-atlas hand-off between the design and visual jobs isn't closed, so production art is user-placed. |
 | Vector DB / RAG (`learn` job) | **Experimental** | Wired end-to-end but **off by default — and we recommend leaving it off** (`ANT_VECTOR_DB_ENABLED=false`; needs a ChromaDB sidecar; hidden from the UI). The chunking / indexing strategy isn't tuned enough for indexing to pay off yet — the framework exists ahead of a future org-shared vector DB. Nothing degrades without it: retrieval is a 3-tier chain (vector → git-changes → keyword). The `learn` node itself still earns its keep with the DB off — it writes the LLM job summary and the session distillation every job ends with. |
-| Workspaces & custom agents (`universal` runtime) | **Experimental** | The runtime, the definition loader, the MCP overlay with its encrypted credential store, and the checklist board all ship and are covered by tests. Read-only work against an HTTP MCP server is the proven path (verified end to end). Three things are **not** there: **interactive approval** — a gated write tool is refused with guidance, so a job writes only under an explicit `approval: never` grant; **team sharing** — definitions are account-owned and the org scope is a single read-only directory, so every artifact lives in a personal project; **scheduling** — there is no unattended-run path. Also: MCP image results are dropped (text only), and an interrupted run can lose one checklist turn. |
-| Team / org sharing | **Not shipped** | Account switching works. Team creation and invites do not. |
+| Workspaces & custom agents (`universal` runtime) | **Experimental** | The runtime, the definition loader, the MCP overlay with its encrypted credential store, and the checklist board all ship and are covered by tests. Read-only work against an HTTP MCP server is the proven path (verified end to end). The gap that bites first is **interactive approval** — a gated write tool is refused with guidance, so a job writes only under an explicit `approval: never` grant. Also: MCP image results are dropped (text only), and an interrupted run can lose one checklist turn. |
+| Pipelines — scheduled agent chains | **Experimental** | Cron triggers and run-now, linear chains with `on: success / failure / always`, approval gates (chat card, inbox, or a timeout arm), clarify questions that park a run until you answer it, and per-project activation whose run history survives deactivation. Definitions can be promoted to an org scope. Not there yet: webhook and event triggers, Slack/email delivery, per-step retry, `{{steps.*}}` substitution between steps, and parallel branches. **Workspace-only** — the Codespace toggle in the UI is reserved, not wired. |
+| Team / org sharing | **Beta** | Team organizations, the owner/admin/member ladder, invites, and domain claims all ship. Agent and pipeline definitions have a real org scope: promoting one moves it into the organization's directory, an ACL sidecar names the owner plus delegated editors, and authority is re-checked against live membership rather than a token claim. One sharp edge — **MCP credentials are per-user**, so every member running an org agent registers its `${secret:}` keys in their own store. |
 | Managed cloud (billing, credits, deploy quota, custom domains) | **Not open** | Inert no-op seams in a self-hosted deployment. |
 
 If something in the Experimental rows blocks you, say so in an issue — knowing
@@ -202,7 +276,8 @@ OpenRouter) via `ANT_{DEEPSEEK,GLM,KIMI}_BASE_URL` — see
 ## Bring your own design
 
 Ant accepts **three kinds of design input** as first-class citizens. You
-don't pick a tool — you drop what you have:
+don't pick a tool — you drop what you have. (This section, and the two that
+follow it, are the codespace wing.)
 
 <p align="center">
   <img src="docs/assets/design-input.png" width="880"
@@ -279,7 +354,7 @@ no prefix, no sanitising. Feature names may contain `/`, so `feature/base` and
 `release/1.0` work as you would expect.
 
 <p align="center">
-  <img src="docs/assets/workspace.png" width="880"
+  <img src="docs/assets/codespace-layout.png" width="880"
        alt="A project's hidden bare anchor at repo.git fanning out to three peer feature worktrees, each holding codebase/ plus plan/, architecture/, visual/ and assets/, with the branch name matching the feature name exactly">
 </p>
 
@@ -296,7 +371,7 @@ own artifact set — and merge them like any other branches.
 
 ---
 
-## What it can build
+## What a codespace can build
 
 | Domain                   | Status         | Examples                                     |
 |--------------------------|----------------|----------------------------------------------|
@@ -309,40 +384,38 @@ The two domains share the same agents but ship different prompt overlays,
 different design templates, and different visual-tier catalogs. Adding
 new verticals is a domain-registry change — no fork required.
 
-A domain describes what a *codespace* builds. Workspaces are domain-less by
-construction — what they do is decided by the agents you write, not by a
-registry entry.
+A domain is a codespace concept, and there is deliberately no equivalent knob
+on the other side: workspaces are domain-less by construction — what they do is
+decided by the agents you write, not by a registry entry.
 
 ---
 
-## Codespace & workspace
+## Workspace layout
 
-Everything above describes a **codespace** — a project that builds software.
-There is a second kind of project, and it is not a smaller version of the first:
-a **workspace**, where you define the agents yourself.
+A workspace has no features, so none of the codespace axes apply: no `repo.git`,
+no `codebase/`, no per-feature preview. Feature creation is refused outright —
+a feature without git is a contradiction, not a degraded mode. Everything lives
+under one container:
 
-<p align="center">
-  <img src="docs/assets/codespace-workspace.png" width="880"
-       alt="Two kinds of space over one runtime — a codespace exposing the plan, design, code, visual, learn and ask jobs with a git anchor and feature worktrees and a kanban board, beside a workspace exposing only file-defined custom jobs with a universal artifacts and sessions tree and a checklist board, both converging on one runtime where projectType decides policy and never layout">
-</p>
+```
+{project}/
+  config.json                      projectType: 'universal'
+  universal/
+    artifacts/                   the shared working tree — read-write
+      plan/{agentId}/{jobId}/    reserved; `@plan` turns write here
+      …                          free-form; whatever your jobs produce
+    sessions/                    per-(agent, job) checkpoints, chat, debug logs
+```
 
-|                          | **Codespace**                                | **Workspace** *(experimental)*                 |
-|--------------------------|----------------------------------------------|------------------------------------------------|
-| You build                | a product                                    | your organization's work agents                |
-| Jobs it exposes          | `plan` `design` `code` `visual` `learn` `ask` | your own, defined in files                    |
-| Unit of work             | a **feature** — branch + worktree            | an **(agent, job)** pair                       |
-| Progress surface         | Kanban tasks, gated by a verification task   | a checklist the agent writes as it works       |
-| Git, live preview, browser IDE | yes                                    | no — a workspace has no codebase               |
-| On disk                  | `repo.git` + `features/{feature}/…`          | `universal/{artifacts,sessions}/`              |
+Two ownership rules follow from that shape, and the asymmetry between them is
+what trips people up:
 
-The kind is chosen at creation and fixed for the project's life; it is stored as
-`projectType` in `config.json`. The partition is strict in both directions —
-there is no job type that runs in both kinds — which is why it is a creation-time
-decision rather than a toggle.
-
-What it is *not* is a fork: the two kinds run on the same four processes, the
-same Redis bus, and the same agent loop. `projectType` decides which jobs a
-project exposes and nothing else.
+- **Definitions are account-owned.** The agents and jobs live outside every
+  project, so one `ops-team` agent serves every workspace you own — and can be
+  promoted into your organization so the whole team shares it.
+- **Artifacts are project-owned.** One shared `universal/artifacts/` tree serves
+  every agent and job in the project, so you upload a folder once and every
+  custom job can read it.
 
 Read more: [docs/concepts/spaces.md](docs/concepts/spaces.md).
 
@@ -422,7 +495,48 @@ definition merely connects to. The model decides *when* to call
 `refund_payment`; the server decides *whether this refund is allowed*. Ant owns
 the orchestration; each system owns its own guarantees.
 
+### Pipelines — put it on a schedule
+
+A duty that runs every Monday shouldn't need someone to remember Monday. A
+**pipeline** is one more file: a cron trigger plus a list of steps, where a step
+is either a custom job or a gate that waits for a human.
+
+```yaml
+version: 2
+name: Weekly ops report
+on:
+  schedule:
+    cron: "0 9 * * 1"                    # Mondays, 09:00
+    tz: Asia/Seoul
+steps:
+  - id: draft
+    customJobRef: ops-team/weekly-report
+    intent: report
+    directive: "Draft last week's report. Run date: {{trigger.fireDate}}."
+  - id: sign-off
+    type: approval
+    prompt: "Publish the weekly report?"
+    timeout: { after: 24h, onTimeout: reject }
+  - id: publish
+    customJobRef: ops-team/weekly-report
+    directive: "Publish the approved report."
+    on: success
+```
+
+A definition is a **template** — project-free, and promotable to your
+organization. Binding it to a project is a separate act, so one pipeline can run
+on several projects at once, each keeping its own history. While a binding is
+live it *owns* that project: interactive jobs are refused, so a scheduled run and
+a person can never fight over the same artifacts.
+
+Two kinds of stop are first-class, and both are the reason this is a pipeline
+rather than a cron entry. An **approval gate** waits on a chat card, in the
+approvals inbox, or until its timeout arm fires. And a step that needs to *ask*
+something parks the whole run — **clarify** waits open-ended, resumes exactly
+where it stopped, and may ask again.
+
 Concepts: [docs/concepts/custom-agents.md](docs/concepts/custom-agents.md) ·
+[docs/concepts/pipelines.md](docs/concepts/pipelines.md) ·
 build one: [docs/guides/custom-agent-authoring.md](docs/guides/custom-agent-authoring.md).
 
 ---
@@ -435,8 +549,13 @@ build one: [docs/guides/custom-agent-authoring.md](docs/guides/custom-agent-auth
 - **Custom work agents.** Define an agent, its jobs, and the systems it may
   reach in files, and run them on the same runtime — no code change, no new job
   type. MCP for capability, an encrypted credential store for its secrets, a
-  fail-closed approval gate for anything mutating
+  fail-closed approval gate for anything mutating. Promote a definition to your
+  organization and the team shares it
   ([custom agents](#custom-agents--the-universal-runtime), experimental).
+- **Scheduled agent chains.** Put a work agent on a cron trigger, chain it
+  across agents, and gate a step on a human — an approval card that waits, or a
+  clarifying question that parks the run until you answer
+  ([pipelines](#pipelines--put-it-on-a-schedule), experimental).
 - **Drop-in Claude designs.** Paste your Claude.ai artifact (HTML/CSS/MD)
   into `visual/ui/handoff/` and Ant treats it as observable-only design
   source. No conversion, no schema. Often the single biggest reason teams
@@ -444,8 +563,8 @@ build one: [docs/guides/custom-agent-authoring.md](docs/guides/custom-agent-auth
 - **Figma MCP.** Live exploration via the Figma MCP server at prompt time —
   nothing is snapshotted to disk. Design tokens are emitted into the canonical
   `visual/ui/ant/` trio.
-- **Multi-agent pipeline.** Planner writes the PRD; architect generates the
-  system design, the UI design, and the code. Every code job ends with a
+- **Multi-agent build pipeline.** Planner writes the PRD; architect generates
+  the system design, the UI design, and the code. Every code job ends with a
   verification task that gates completion — failures spawn fix tasks and
   re-verify.
 - **5 execution tiers.** From one-shot Q&A to refs-grounded multi-task
@@ -492,6 +611,7 @@ cloud-only symbol reaches the open-source bundle.
 - **[Concepts](docs/concepts/)** — architecture, agents, jobs, execution tiers, the engineering-loop philosophy
 - **[Codespace & workspace](docs/concepts/spaces.md)** — the two project kinds and what each puts on disk
 - **[Custom agents](docs/concepts/custom-agents.md)** — the universal runtime, and [authoring a custom agent](docs/guides/custom-agent-authoring.md)
+- **[Pipelines](docs/concepts/pipelines.md)** — cron triggers, chained steps, approval and clarify gates
 - **[Guides](docs/guides/)** — design input, custom prompts, observability
 - **[Reference](docs/reference/)** — CLI, env vars, API, shared types
 - **[First feature](docs/getting-started/first-feature.md)** — PRD → Design → Code walkthrough

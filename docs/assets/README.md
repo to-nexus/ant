@@ -197,14 +197,18 @@ the two-slot scarcity rule above does not apply here: a diagram does not go stal
 when the UI moves, and when the architecture itself changes you edit a `<div>`
 and re-run one command rather than re-shooting anything.
 
+Listed in README order, which is also their order of prominence — the
+codespace/workspace diagram was promoted to the first screen when the README was
+rebalanced around the two wings, so it now carries the pipeline trigger too.
+
 | File | README location | The one claim it carries |
 |---|---|---|
-| `build-loop.png` | End of `## Why Ant?` | Two pipelines — build once, then iterate spec → code — each stage a real file |
+| `codespace-workspace.png` | `## Two wings, one runtime` | Two kinds of space over one runtime — canonical jobs, a kanban, and human-started work, or file-defined agents, a checklist, and a cron pipeline |
+| `build-loop.png` | `## The build loop and the iteration loop` | Two pipelines — build once, then iterate spec → code — each stage a real file |
 | `design-input.png` | `## Bring your own design` | Three inputs, one hard-exclusive contract |
 | `architecture.png` | `## How it works` | Four processes, Redis as the only channel |
 | `job-anatomy.png` | `## How it works` | Parallel tasks, gated by a first-class verification task |
-| `workspace.png` | `## Codespace layout` | One bare anchor, features as peer worktrees |
-| `codespace-workspace.png` | `## Codespace & workspace` | Two kinds of space over one runtime — canonical jobs and a kanban, or file-defined agents and a checklist |
+| `codespace-layout.png` | `## Codespace layout` | One bare anchor, features as peer worktrees |
 
 ### The wordmark is the one localised pair
 
@@ -244,6 +248,15 @@ produces a clean side-by-side lockup.
   run if a file goes over.
 - The aurora gradient is the accent, not the background — **use it once per
   diagram**, on the single most important element.
+
+### One naming trap, already stepped in
+
+`codespace-layout.png` was called `workspace.png` until the README grew a
+`## Workspace layout` section about the *other* project kind — at which point the
+filename pointed at the wrong wing. "Workspace" means four different things in
+this repository (see
+[concepts/spaces.md](../concepts/spaces.md)), so no asset may be named for it
+alone. Name a diagram for the section it illustrates.
 
 Colour semantics are held constant across the set: violet = agent/compute,
 pink = bus/realtime, orange = in-flight/preview, teal = optional/external,

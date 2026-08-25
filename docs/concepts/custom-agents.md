@@ -2,12 +2,15 @@
 
 > ⚠️ **Experimental.** The runtime, the definition loader, the MCP overlay with
 > its encrypted credential store, and the checklist board all ship and are
-> covered by tests. Three things are deliberately not there yet: **interactive
-> approval** (a gated write tool is refused with guidance, so writes need an
-> explicit `approval: never` grant), **team/org sharing** (definitions are
-> account-owned; the org scope is a single read-only directory), and
-> **scheduling** (there is no unattended-run path). The file format may still
-> change — a definition is a handful of files, so migrating one is cheap.
+> covered by tests. The gap that bites first is **interactive approval**: a
+> gated write tool is refused with guidance, so writes need an explicit
+> `approval: never` grant. The file format may still change — a definition is a
+> handful of files, so migrating one is cheap.
+>
+> Two things this banner used to list as missing now ship: **org sharing** (a
+> definition can be promoted into the organization's scope, with an ACL naming
+> the owner plus delegated editors — see [scopes](#where-definitions-live-scopes))
+> and **scheduling** (see [pipelines.md](pipelines.md)).
 
 Ant's builtin jobs (plan/design/code/visual/learn) are special-purpose
 pipelines bound to a codespace's feature layout. **Custom agents** are the
@@ -66,11 +69,33 @@ Definitions are **account/org-owned, never project-owned** — register once,
 use across all of the account's workspace projects. Registration and editing
 live in the Agent Settings screen (profile menu), or edit the files directly.
 
-| Scope     | Location                                | Who edits            |
-|-----------|------------------------------------------|----------------------|
-| `user`    | `{user dir}/.ant/agents/{agentId}/`      | you, across all your projects |
-| `org`     | `$ANT_CUSTOM_AGENTS_DIR` (self-host)     | org admins (read-only for members) |
-| `builtin` | shipped with Ant (read-only samples)     | nobody |
+| Scope        | Location                                     | Who edits            |
+|--------------|----------------------------------------------|----------------------|
+| `user`       | `{ws}/{org}/{user}/.ant/agents/{agentId}/`    | you, across all your projects |
+| `org`        | `{ws}/{orgId}/.ant/agents/{agentId}/` — team organizations only | the owner, any delegated editor, and live org admins/owners |
+| `org` (env)  | `$ANT_CUSTOM_AGENTS_DIR` — self-host escape hatch | read-only for everyone |
+| `builtin`    | shipped with Ant (read-only samples)         | nobody |
+
+Two properties of that table are worth stating outright, because both were
+learned the hard way:
+
+- **Your personal agents are anchored under the individual org**, not under the
+  active one. Switching the active organization never empties your list.
+- **The env root is a single global directory with no org separation**, which is
+  why it ranks below the per-org root and is read-only. It exists for a
+  self-hosted single-tenant deployment; a team organization should use the `org`
+  scope instead.
+
+Promoting a definition from `user` to `org` moves the directory and writes an
+ACL entry naming the owner. Write authority is re-checked against **live**
+membership on every request rather than trusting a token claim, and the ACL
+sidecar lives outside every agent directory so the definition-write endpoint
+structurally cannot rewrite it. A missing or corrupt ACL falls back to
+admin-only.
+
+One consequence to plan for: **MCP credentials are per-user.** An org agent's
+`${secret:KEY}` resolves against whichever member is running it, so every member
+registers the keys in their own store.
 
 Pre-existing on-disk id collisions resolve by scope priority (user > org >
 builtin, whole-directory — the closer agent replaces the farther one
@@ -135,6 +160,10 @@ See the authoring guide: [guides/custom-agent-authoring.md](../guides/custom-age
   announced in chat. Output conventions, when a job needs them, are plain
   prose in its `base/*.md`.
 - **A checklist board** — see below.
+- **An unattended path** — the same (agent, job) pair a human triggers from the
+  composer can be fired by a cron trigger instead, chained with other jobs, and
+  gated on a human before a step proceeds. See
+  [pipelines.md](pipelines.md).
 
 ## Credentials for MCP servers
 
@@ -188,6 +217,8 @@ The full layout, and why the project kind is policy rather than a fork, is in
 
 ## Read next
 
+- [**pipelines**](pipelines.md) — put a custom job on a cron schedule, chain
+  several of them, and gate a step on a human.
 - [**spaces**](spaces.md) — codespace vs workspace, and the layout of each.
 - [**guides/custom-agent-authoring**](../guides/custom-agent-authoring.md) —
   build one, start to finish.
