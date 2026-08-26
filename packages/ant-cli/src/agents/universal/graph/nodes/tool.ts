@@ -30,7 +30,7 @@ import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import {
   requiresApproval,
-  isMcpToolName,
+  isExtensionToolName,
   planTurnViolation,
   isClarifyEnabled,
   UNIVERSAL_CLARIFY_BUDGET,
@@ -100,10 +100,10 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
       };
     }
 
-    if (isMcpToolName(call.name)) {
+    if (isExtensionToolName(call.name)) {
       const info = getUniversalMcp()?.getToolInfo(call.name);
       if (!info) {
-        return { allowed: false, error: `Unknown MCP tool "${call.name}" — it is not provided by any connected server.` };
+        return { allowed: false, error: `Unknown tool "${call.name}" — it is not provided by any connected MCP server or declared API.` };
       }
       if (state.turnContext?.planTurn && info.readOnlyHint !== true) {
         return { allowed: false, error: PLAN_TURN_EXECUTION_ERROR(call.name) };

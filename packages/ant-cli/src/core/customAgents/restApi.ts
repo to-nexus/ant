@@ -1,0 +1,377 @@
+/**
+ * Declared REST API executor — the in-process counterpart of an MCP server
+ * for systems that speak plain HTTP and have no MCP surface (`apis` entries).
+ *
+ * The declaration carries connectivity only (baseUrl + auth headers + optional
+ * method/path allow-list); the runtime synthesizes two generic tools per entry
+ * and executes calls itself with fetch. The API's knowledge (endpoints,
+ * fields, sequences) is prose the model reads — intent prompt.md and
+ * `reference/` files — never per-endpoint tool schemas.
+ *
+ * Boundary rules (each mechanical, not advisory):
+ *  - `get` carries GET/HEAD only (readOnlyHint: true → approval-exempt);
+ *    `request` carries writes only (fail-closed approval). The method enums
+ *    are disjoint so a write can never ride the exempt tool.
+ *  - `path` is a /-rooted relative path resolved under baseUrl; origin and
+ *    path-prefix are asserted post-normalization (no absolute URLs, no
+ *    `//host`, no `..` escapes).
+ *  - Redirects are never followed (`redirect: 'manual'`) — a 3xx returns to
+ *    the model as data, so an off-origin Location can't exfiltrate the auth
+ *    header.
+ *  - Declared headers (resolved `${secret:KEY}` values) win; a per-call
+ *    header naming a declared one is rejected. Secret values never appear in
+ *    tool args, results, or error text.
+ *  - A 2xx/3xx response is a SUCCESS result (isError: false); 4xx/5xx return
+ *    isError: true WITH the response body (a legacy API's error body is data
+ *    the model must read), alongside network failures, timeouts, and policy
+ *    rejections. The error framing matters beyond wording: action stop-hook
+ *    evidence counts successful calls only, so an API-rejected write must
+ *    never satisfy an `api__{server}__request` hook.
+ *  - `McpConfigError` is thrown at compile (connect) time only — bad baseUrl
+ *    — so job-runner keeps classifying definition mistakes as config_invalid.
+ */
+
+import { parseRestAllowLine, type RestAllowRule, type RestApiServerConfig, API_TOOL_PREFIX } from '@ant/shared';
+import { McpConfigError } from './McpConfigError';
+import type { McpCallResult, McpToolInfo } from './McpConnectionManager';
+import type { ToolDefinition } from '../ports/llm';
+
+export const REST_CALL_TIMEOUT_DEFAULT_MS = 30_000;
+export const REST_CALL_TIMEOUT_MIN_MS = 1_000;
+export const REST_CALL_TIMEOUT_MAX_MS = 60_000;
+/** Response-body read cap — beyond this the text is truncated with a note. */
+export const REST_BODY_CAP_BYTES = 2 * 1024 * 1024;
+
+const GET_METHODS = ['GET', 'HEAD'] as const;
+const WRITE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
+
+export interface CompiledRestServer {
+  serverName: string;
+  /** Parsed baseUrl; pathname normalized without a trailing slash ('' for root). */
+  baseUrl: URL;
+  basePath: string;
+  /** Declared headers with `${secret:KEY}` references already resolved. */
+  headers: Record<string, string>;
+  /** Compiled allow rules; undefined = every method+path under baseUrl. */
+  allow?: RestAllowRule[];
+}
+
+export function buildApiToolName(serverName: string, tool: 'get' | 'request'): string {
+  return `${API_TOOL_PREFIX}${serverName}__${tool}`;
+}
+
+/** Split `api__{server}__{get|request}`; null if not api-shaped. */
+export function parseApiToolName(prefixed: string): { serverName: string; toolName: 'get' | 'request' } | null {
+  if (!prefixed.startsWith(API_TOOL_PREFIX)) return null;
+  const rest = prefixed.slice(API_TOOL_PREFIX.length);
+  const sep = rest.lastIndexOf('__');
+  if (sep <= 0) return null;
+  const toolName = rest.slice(sep + 2);
+  if (toolName !== 'get' && toolName !== 'request') return null;
+  return { serverName: rest.slice(0, sep), toolName };
+}
+
+/**
+ * Compile one declared API server. Headers arrive ALREADY RESOLVED (the
+ * caller runs them through the credential resolver — single credential rule
+ * with MCP). Throws McpConfigError on a bad baseUrl; performs no network I/O.
+ */
+export function compileRestServer(
+  serverName: string,
+  cfg: RestApiServerConfig,
+  resolvedHeaders: Record<string, string>,
+): CompiledRestServer {
+  let baseUrl: URL;
+  try {
+    baseUrl = new URL(cfg.baseUrl);
+  } catch {
+    throw new McpConfigError(`API server "${serverName}": baseUrl "${cfg.baseUrl}" is not a valid absolute URL`, { serverName });
+  }
+  if (baseUrl.protocol !== 'http:' && baseUrl.protocol !== 'https:') {
+    throw new McpConfigError(`API server "${serverName}": baseUrl must be http(s)`, { serverName });
+  }
+  let allow: RestAllowRule[] | undefined;
+  if (cfg.allow !== undefined) {
+    allow = [];
+    for (const line of cfg.allow) {
+      const rule = parseRestAllowLine(line);
+      if (typeof rule === 'string') {
+        throw new McpConfigError(`API server "${serverName}": ${rule}`, { serverName });
+      }
+      allow.push(rule);
+    }
+  }
+  return {
+    serverName,
+    baseUrl,
+    basePath: baseUrl.pathname.replace(/\/+$/, ''),
+    headers: resolvedHeaders,
+    allow,
+  };
+}
+
+function describeAllow(cfg: RestApiServerConfig): string {
+  return cfg.allow && cfg.allow.length > 0 ? cfg.allow.join(', ') : 'every path under the base URL';
+}
+
+const PATH_PROP = {
+  type: 'string',
+  description: "Path relative to the base URL, starting with '/'. Never an absolute URL.",
+};
+const QUERY_PROP = {
+  type: 'object',
+  additionalProperties: { type: 'string' },
+  description: 'Query parameters, appended URL-encoded.',
+};
+const HEADERS_PROP = {
+  type: 'object',
+  additionalProperties: { type: 'string' },
+  description: 'Extra request headers (e.g. Accept, Content-Type). Declared server headers (auth) cannot be overridden.',
+};
+const TIMEOUT_PROP = {
+  type: 'integer',
+  minimum: REST_CALL_TIMEOUT_MIN_MS,
+  maximum: REST_CALL_TIMEOUT_MAX_MS,
+  description: `Request timeout in milliseconds (default ${REST_CALL_TIMEOUT_DEFAULT_MS}).`,
+};
+
+/**
+ * The two synthesized tool definitions for one declared API server. The
+ * descriptions point the model at the prose knowledge channel — endpoint
+ * discovery means reading the documented files, not probing paths.
+ */
+export function buildRestToolInfos(serverName: string, cfg: RestApiServerConfig): McpToolInfo[] {
+  const docsPointer =
+    'For endpoint documentation (paths, fields, call sequences) consult this job\'s instructions and reference files — do not guess paths.';
+  const getName = buildApiToolName(serverName, 'get');
+  const requestName = buildApiToolName(serverName, 'request');
+  return [
+    {
+      name: getName,
+      serverName,
+      toolName: 'get',
+      readOnlyHint: true,
+      definition: {
+        name: getName,
+        description:
+          `HTTP GET/HEAD against the "${serverName}" REST API (base: ${cfg.baseUrl}). Read-only. ` +
+          `Allowed: ${describeAllow(cfg)}. ${docsPointer}`,
+        input_schema: {
+          type: 'object',
+          properties: {
+            path: PATH_PROP,
+            method: { type: 'string', enum: [...GET_METHODS], description: 'Defaults to GET.' },
+            query: QUERY_PROP,
+            headers: HEADERS_PROP,
+            timeout_ms: TIMEOUT_PROP,
+          },
+          required: ['path'],
+        } as ToolDefinition['input_schema'],
+      },
+    },
+    {
+      name: requestName,
+      serverName,
+      toolName: 'request',
+      readOnlyHint: false,
+      definition: {
+        name: requestName,
+        description:
+          `HTTP write (POST/PUT/PATCH/DELETE) against the "${serverName}" REST API (base: ${cfg.baseUrl}). ` +
+          `Allowed: ${describeAllow(cfg)}. ${docsPointer}`,
+        input_schema: {
+          type: 'object',
+          properties: {
+            method: { type: 'string', enum: [...WRITE_METHODS] },
+            path: PATH_PROP,
+            query: QUERY_PROP,
+            body: {
+              description:
+                'Request body. An object/array is sent as JSON (Content-Type: application/json unless overridden); a string is sent verbatim (set Content-Type in headers for form-encoded legacy APIs).',
+            },
+            headers: HEADERS_PROP,
+            timeout_ms: TIMEOUT_PROP,
+          },
+          required: ['method', 'path'],
+          // `body` deliberately omits `type` (object OR string) — wider than
+          // the narrowed TS schema shape, same escape hatch as MCP-listed schemas.
+        } as unknown as ToolDefinition['input_schema'],
+      },
+    },
+  ];
+}
+
+function policyError(text: string): McpCallResult {
+  return { text, isError: true };
+}
+
+function matchSegments(patternSegs: string[], pathSegs: string[]): boolean {
+  let pi = 0;
+  let si = 0;
+  while (pi < patternSegs.length) {
+    const p = patternSegs[pi];
+    if (p === '**') return true; // any suffix, including empty
+    if (si >= pathSegs.length) return false;
+    if (p !== '*' && p !== pathSegs[si]) return false;
+    pi++;
+    si++;
+  }
+  return si === pathSegs.length;
+}
+
+/** Method+path admission against the compiled allow rules (GET implies HEAD). */
+export function isAllowedByRules(allow: RestAllowRule[] | undefined, method: string, relPath: string): boolean {
+  if (!allow) return true;
+  const pathSegs = relPath.replace(/^\/+/, '').split('/').filter((s) => s !== '');
+  return allow.some((rule) => {
+    const methodOk = rule.method === '*' || rule.method === method || (rule.method === 'GET' && method === 'HEAD');
+    if (!methodOk) return false;
+    if (rule.pattern === '*') return true;
+    return matchSegments(rule.pattern.replace(/^\//, '').split('/'), pathSegs);
+  });
+}
+
+function isTextLike(contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  return (
+    ct.startsWith('text/') ||
+    ct.includes('json') ||
+    ct.includes('xml') ||
+    ct.includes('x-www-form-urlencoded') ||
+    ct.includes('javascript') ||
+    ct === ''
+  );
+}
+
+/**
+ * Execute one synthesized-tool call. Returns an McpCallResult so the shared
+ * registry handler (spooling, error framing) applies unchanged. Never throws
+ * on request failure; `fetchImpl` is injectable for tests.
+ */
+export async function executeRestCall(
+  compiled: CompiledRestServer,
+  toolName: 'get' | 'request',
+  args: Record<string, unknown>,
+  fetchImpl: typeof fetch = fetch,
+): Promise<McpCallResult> {
+  // method — bounded by the tool's own enum, defense-in-depth re-checked here.
+  const legalMethods: readonly string[] = toolName === 'get' ? GET_METHODS : WRITE_METHODS;
+  const method = typeof args.method === 'string' ? args.method.toUpperCase() : toolName === 'get' ? 'GET' : '';
+  if (!legalMethods.includes(method)) {
+    return policyError(`Policy: method must be one of ${legalMethods.join(', ')} for this tool (got: ${String(args.method)}).`);
+  }
+
+  // path — /-rooted relative only; resolve and assert it stays under baseUrl.
+  const rawPath = args.path;
+  if (typeof rawPath !== 'string' || !/^\/(?!\/)/.test(rawPath) || rawPath.includes('\\') || /\s/.test(rawPath)) {
+    return policyError(`Policy: "path" must be a /-rooted path relative to the base URL (got: ${String(rawPath)}).`);
+  }
+  const baseHref = compiled.baseUrl.href.replace(/\/+$/, '') + '/';
+  let resolved: URL;
+  try {
+    resolved = new URL('.' + rawPath, baseHref);
+  } catch {
+    return policyError(`Policy: "path" could not be resolved under the base URL (got: ${rawPath}).`);
+  }
+  if (
+    resolved.origin !== compiled.baseUrl.origin ||
+    (resolved.pathname !== compiled.basePath && !resolved.pathname.startsWith(compiled.basePath + '/'))
+  ) {
+    return policyError(`Policy: resolved path escapes the declared base URL (${compiled.baseUrl.href}).`);
+  }
+  const relPath = resolved.pathname.slice(compiled.basePath.length) || '/';
+
+  // allow-list — mechanical scope, checked before any request is sent.
+  if (!isAllowedByRules(compiled.allow, method, relPath)) {
+    const allowText = compiled.allow?.map((r) => `${r.method} ${r.pattern}`).join(', ') ?? '';
+    return policyError(
+      `Policy: ${method} ${relPath} is not permitted by API server "${compiled.serverName}" (allowed: ${allowText}). ` +
+        'Adjust the call, or ask the job author to extend "allow" in the definition.',
+    );
+  }
+
+  // query
+  if (args.query !== undefined) {
+    if (typeof args.query !== 'object' || args.query === null || Array.isArray(args.query)) {
+      return policyError('Policy: "query" must be an object of string values.');
+    }
+    for (const [k, v] of Object.entries(args.query as Record<string, unknown>)) {
+      resolved.searchParams.append(k, String(v));
+    }
+  }
+
+  // headers — declared (auth) win; a per-call collision is rejected, so the
+  // model can neither replace nor read back a resolved secret.
+  const declaredNames = new Set(Object.keys(compiled.headers).map((k) => k.toLowerCase()));
+  const headers: Record<string, string> = {};
+  if (args.headers !== undefined) {
+    if (typeof args.headers !== 'object' || args.headers === null || Array.isArray(args.headers)) {
+      return policyError('Policy: "headers" must be an object of string values.');
+    }
+    for (const [k, v] of Object.entries(args.headers as Record<string, unknown>)) {
+      if (declaredNames.has(k.toLowerCase())) {
+        return policyError(`Policy: header "${k}" is declared by the server definition and cannot be overridden per call.`);
+      }
+      headers[k] = String(v);
+    }
+  }
+
+  // body (write tool only)
+  let body: string | undefined;
+  if (toolName === 'request' && args.body !== undefined && args.body !== null) {
+    if (typeof args.body === 'string') {
+      body = args.body;
+    } else {
+      body = JSON.stringify(args.body);
+      const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
+      if (!hasContentType) headers['Content-Type'] = 'application/json';
+    }
+  }
+  Object.assign(headers, compiled.headers);
+
+  const timeoutRaw = typeof args.timeout_ms === 'number' ? args.timeout_ms : REST_CALL_TIMEOUT_DEFAULT_MS;
+  const timeoutMs = Math.min(REST_CALL_TIMEOUT_MAX_MS, Math.max(REST_CALL_TIMEOUT_MIN_MS, timeoutRaw));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetchImpl(resolved.href, {
+      method,
+      headers,
+      ...(body !== undefined ? { body } : {}),
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+
+    const contentType = res.headers.get('content-type') ?? '';
+    const head = `HTTP ${res.status} ${res.statusText}`.trimEnd();
+    if (res.status >= 300 && res.status < 400) {
+      // Never followed — an off-origin Location must not receive the auth header.
+      const location = res.headers.get('location') ?? '(no Location header)';
+      return { text: `${head}\nlocation: ${location}\n\n(redirect not followed by policy)`, isError: false };
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!isTextLike(contentType)) {
+      return {
+        text: `${head}\ncontent-type: ${contentType}\n\n(binary body, ${buf.byteLength} bytes — not returned inline)`,
+        isError: res.status >= 400,
+      };
+    }
+    let text = buf.toString('utf-8');
+    let note = '';
+    if (buf.byteLength > REST_BODY_CAP_BYTES) {
+      text = buf.subarray(0, REST_BODY_CAP_BYTES).toString('utf-8');
+      note = `\n\n[... truncated: body is ${buf.byteLength} bytes, cap is ${REST_BODY_CAP_BYTES} ...]`;
+    }
+    // 4xx/5xx are errors (stop-hook evidence must not count a rejected write),
+    // but the body rides along — it is what the model plans recovery from.
+    return { text: `${head}\ncontent-type: ${contentType}\n\n${text}${note}`, isError: res.status >= 400 };
+  } catch (e) {
+    const reason = (e as Error)?.name === 'AbortError'
+      ? `request timed out after ${timeoutMs}ms`
+      : `${(e as Error)?.message ?? String(e)}`;
+    return { text: `Network error calling ${method} ${relPath} on API server "${compiled.serverName}": ${reason}`, isError: true };
+  } finally {
+    clearTimeout(timer);
+  }
+}

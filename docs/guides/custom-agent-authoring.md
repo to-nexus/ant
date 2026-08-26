@@ -132,8 +132,53 @@ provider keys.
 
 That is the whole schema. There is no `description` (the persona lives in
 `base/*.md` prose the model actually reads) and no agent-level `tools` —
-each job declares its own. `mcp` is the one shared field: servers here are
-unioned into every member job (a job-level server with the same name wins).
+each job declares its own. `mcp` and `apis` are the two shared fields: entries
+here are unioned into every member job (a job-level entry with the same name
+wins).
+
+## 2.2 `apis` — REST APIs with no MCP server
+
+For a legacy system that only speaks REST (an ERP, an internal service),
+declare the **connection** and let the model learn the API from prose:
+
+```yaml
+apis:
+  douzone:
+    baseUrl: https://erp.example.com/api        # where
+    headers:
+      Authorization: ${secret:DOUZONE_TOKEN}     # as whom — same rule as MCP headers
+    allow:                                       # optional: how far. Absent = every path.
+      - GET *
+      - POST /vouchers/**
+```
+
+The agent gets two generic tools per entry — `api__douzone__get` (read,
+approval-free) and `api__douzone__request` (write, approval-gated; declare
+`tools.approval["api__douzone__request"]: never` in job.yaml for unattended
+writes, ideally together with a scoped `allow`). Auth headers are attached by
+the runtime; the model never sees the secret.
+
+Do NOT enumerate endpoints here — no per-endpoint tools, no OpenAPI import.
+The API's knowledge is prose, in three layers:
+
+1. `base/*.md` — always-injected conventions (short).
+2. the intent's `prompt.md` — the task-shaped subset: the 3–8 endpoints this
+   intent uses, field tables, the call sequence, one worked example. Keep it
+   under the 12k inline budget — overflow demotes the whole file to a pointer.
+3. `reference/**` (agent-level, or `jobs/{id}/reference/**`) — the FULL spec,
+   `.md` or `.json`: drop the vendor's swagger/PDF-export in verbatim. These
+   files are never injected; the runtime renders a "Reference Files (read on
+   demand)" index into the system block and the model reads what it needs via
+   the `_agent-definition/` mount.
+
+Authoring flow that works: paste the vendor docs into `reference/`, curate the
+intent's `prompt.md`, write the 4-line declaration (a model can generate it
+from the swagger), then register the secret — the one step a human must do.
+
+Static-header auth only. A login-dance or request-signing API, and any write
+that needs server-enforced rules (validation, idempotency, dry-run), is the
+signal to write a thin MCP capability server instead — see
+`examples/mcp-reference-server/`.
 
 ## 2.5 Register the credentials the definition references
 

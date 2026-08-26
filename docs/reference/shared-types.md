@@ -33,6 +33,7 @@ key types and their meaning.
 | `CustomIntentDef` / `GENERAL_INTENT` | `custom-agents.ts` | A job's intent catalog entry, and the reserved no-match fallback. Intent ids are runtime strings, deliberately outside the compile-time `IntentId` union. |
 | `UniversalTurnMeta` | `custom-agents.ts` | The per-turn axes: `intents[]`, `context[]`, `plan?` (`@intent:` / `@ctx:` / `@plan`). |
 | `McpServerConfig` | `custom-agents.ts` | One MCP server declaration: `transport` (`stdio` \| `http`), plus `command`/`args`/`env` or `url`/`headers`. |
+| `RestApiServerConfig` | `custom-agents.ts` | One declared REST API connection (`apis` entry): `baseUrl` + `headers` (`${secret:KEY}` rule shared with MCP) + optional `allow` method/path rules (`parseRestAllowLine` grammar). |
 | `validateMcpServers` | `custom-agents.ts` | Every MCP rule as plain messages (empty = valid). Shared by the loader (throws), the HTTP gate (400), and the settings form (disables save). |
 | `MCP_SECRET_REF_PATTERN` / `parseSecretRef` / `formatSecretRef` | `custom-agents.ts` | The one marker (`${secret:KEY}`) that makes a value a credential-store lookup. Credential-ness is authored, never inferred from shape. |
 | `isAllowedDefinitionPath` | `custom-agents.ts` | Write whitelist for definition files edited over HTTP. |

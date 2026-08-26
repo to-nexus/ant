@@ -597,7 +597,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       target.kind === 'intent-hooks'
     ) {
       selectAgentSettingsNode(agentId, target.jobId, target.intentId);
-    } else if (target.kind === 'prose') {
+    } else if (target.kind === 'prose' || target.kind === 'reference') {
       selectAgentSettingsNode(agentId, target.jobId);
       void openDefinitionFileBuffer(agentId, path);
     }

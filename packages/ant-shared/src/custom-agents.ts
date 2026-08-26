@@ -113,6 +113,8 @@ export const ARTIFACT_GLOB_MAX = 200;
 export const ARTIFACT_GLOB_CHARSET = /^[A-Za-z0-9._\-/*]+$/;
 /** Full `mcp__{server}__{tool}` action name — same vocabulary as the approval map and the advertised tool list. */
 export const MCP_ACTION_PATTERN = /^mcp__[a-z0-9]+(?:-[a-z0-9]+)*__[A-Za-z0-9_-]+$/;
+/** Full `api__{server}__{get|request}` action name — the two tools synthesized per declared REST API. */
+export const API_ACTION_PATTERN = /^api__[a-z0-9]+(?:-[a-z0-9]+)*__(?:get|request)$/;
 
 export interface IntentHooksValidationOptions {
   /**
@@ -184,18 +186,21 @@ export function validateStopHookEntry(
     return { normalized: { artifact: v } };
   }
 
-  // H6 — builtin from the universal preset, or a full mcp__{server}__{tool}
-  // name. `clarify` is a control tool outside the preset, so it is naturally
-  // excluded. Without a builtin predicate the judgement is deferred: only
-  // mcp-shaped names are pattern-checked.
+  // H6 — builtin from the universal preset, a full mcp__{server}__{tool}
+  // name, or an api__{server}__{get|request} synthesized tool. `clarify` is a
+  // control tool outside the preset, so it is naturally excluded. Without a
+  // builtin predicate the judgement is deferred: only mcp/api-shaped names
+  // are pattern-checked.
   if (opts.isKnownBuiltinAction) {
-    if (!opts.isKnownBuiltinAction(v) && !MCP_ACTION_PATTERN.test(v)) {
+    if (!opts.isKnownBuiltinAction(v) && !MCP_ACTION_PATTERN.test(v) && !API_ACTION_PATTERN.test(v)) {
       return {
-        error: `hooks.stop action "${v}" is neither a universal builtin tool nor a full mcp__{server}__{tool} name`,
+        error: `hooks.stop action "${v}" is neither a universal builtin tool, a full mcp__{server}__{tool} name, nor an api__{server}__{get|request} name`,
       };
     }
   } else if (v.startsWith('mcp__') && !MCP_ACTION_PATTERN.test(v)) {
     return { error: `hooks.stop action "${v}" is not a full mcp__{server}__{tool} name` };
+  } else if (v.startsWith('api__') && !API_ACTION_PATTERN.test(v)) {
+    return { error: `hooks.stop action "${v}" is not a full api__{server}__{get|request} name` };
   }
   return { normalized: { action: v } };
 }
@@ -458,6 +463,24 @@ export function isForbiddenMcpEnvKey(key: string): boolean {
 }
 
 /**
+ * One rule for env and headers on BOTH declaration channels (`mcp.servers`
+ * and `apis`): `${secret:KEY}` reference or non-empty literal. Pushes
+ * messages onto `errors`; `label` names the declaring channel.
+ */
+function checkSecretableValue(errors: string[], label: string, name: string, slot: string, value: unknown): void {
+  if (typeof value !== 'string' || value.trim() === '') {
+    errors.push(`${label} "${name}": ${slot} must be a non-empty string (got: ${String(value)})`);
+    return;
+  }
+  if (MCP_SECRET_REF_PATTERN.test(value)) return;
+  if (value.startsWith('${secret:')) {
+    errors.push(
+      `${label} "${name}": ${slot} looks like a credential reference but is malformed — use \${secret:KEY} with KEY matching ${String(MCP_ENV_VAR_NAME_PATTERN)}`,
+    );
+  }
+}
+
+/**
  * Every rule the loader enforces, as plain messages. Empty = valid. Callers
  * decide the shape of the failure: the loader throws
  * `CustomAgentValidationError`, the HTTP gate answers 400, the form disables
@@ -465,19 +488,8 @@ export function isForbiddenMcpEnvKey(key: string): boolean {
  */
 export function validateMcpServers(servers: Record<string, McpServerConfig> | undefined): string[] {
   const errors: string[] = [];
-  // One rule for env and headers: `${secret:KEY}` reference or non-empty literal.
-  const checkValue = (name: string, slot: string, value: unknown): void => {
-    if (typeof value !== 'string' || value.trim() === '') {
-      errors.push(`MCP server "${name}": ${slot} must be a non-empty string (got: ${String(value)})`);
-      return;
-    }
-    if (MCP_SECRET_REF_PATTERN.test(value)) return;
-    if (value.startsWith('${secret:')) {
-      errors.push(
-        `MCP server "${name}": ${slot} looks like a credential reference but is malformed — use \${secret:KEY} with KEY matching ${String(MCP_ENV_VAR_NAME_PATTERN)}`,
-      );
-    }
-  };
+  const checkValue = (name: string, slot: string, value: unknown): void =>
+    checkSecretableValue(errors, 'MCP server', name, slot, value);
   for (const [name, cfg] of Object.entries(servers ?? {})) {
     if (!isValidCustomId(name)) {
       errors.push(`MCP server name "${name}" must be ${CUSTOM_ID_HINT}`);
@@ -508,6 +520,141 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
         errors.push(`MCP server "${name}": headers."${key}" is not a valid HTTP header name`);
       }
       checkValue(name, `headers.${key}`, value);
+    }
+  }
+  return errors;
+}
+
+// ── Declared REST API connections (`apis`) ──────────────────────────────────
+
+/**
+ * One declared REST API connection — the SECOND capability-extension channel
+ * next to `mcp.servers`, for systems that speak plain HTTP and have no MCP
+ * server (legacy ERP, internal REST services). The declaration carries
+ * connectivity ONLY (where + as-whom + optionally how-far); the API's
+ * knowledge (endpoints, fields, call sequences) is prose — intent prompt.md
+ * and `reference/` files — that the model reads and composes calls from.
+ *
+ * The runtime synthesizes two generic tools per entry, in-process (no child
+ * process, no MCP handshake): `api__{name}__get` (GET/HEAD, read-only,
+ * approval-exempt) and `api__{name}__request` (writes, fail-closed approval).
+ */
+export interface RestApiServerConfig {
+  /** Absolute http(s) base URL. A path prefix is allowed; query/fragment are not. */
+  baseUrl: string;
+  /**
+   * Request-header name → literal value or `${secret:KEY}` reference — the
+   * single auth mechanism, same value rule as {@link McpServerConfig.headers}.
+   * Resolved values are injected at request time and never enter the model's
+   * context; per-call headers may not override a declared name.
+   */
+  headers?: Record<string, string>;
+  /**
+   * Optional method+path scope, one rule per line: `METHOD PATTERN` (see
+   * {@link parseRestAllowLine}). Absent = every method+path under baseUrl
+   * (reads free, writes behind the approval gate as usual). Enforced
+   * mechanically in the executor before any request is sent.
+   */
+  allow?: string[];
+}
+
+export const REST_ALLOW_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', '*'] as const;
+export type RestAllowMethod = (typeof REST_ALLOW_METHODS)[number];
+
+export interface RestAllowRule {
+  method: RestAllowMethod;
+  /** `*` (any path) or a `/`-rooted pattern: literal segments, `*` (one segment), `**` (any suffix). */
+  pattern: string;
+}
+
+/**
+ * Parse one allow line — `METHOD SP PATTERN`. Returns the rule or an error
+ * message (string). The single grammar for the validator, the executor, and
+ * the settings form. `GET` implies `HEAD` at match time.
+ */
+export function parseRestAllowLine(line: unknown): RestAllowRule | string {
+  if (typeof line !== 'string' || line.trim() === '') {
+    return 'allow rule must be a non-empty string "METHOD PATTERN" (e.g. "GET *", "POST /vouchers/**")';
+  }
+  const parts = line.trim().split(/\s+/);
+  if (parts.length !== 2) {
+    return `allow rule "${line.trim()}" must be exactly "METHOD PATTERN" (e.g. "GET *", "POST /vouchers/**")`;
+  }
+  const method = parts[0].toUpperCase();
+  const pattern = parts[1];
+  if (!(REST_ALLOW_METHODS as readonly string[]).includes(method)) {
+    return `allow rule "${line.trim()}": method must be one of ${REST_ALLOW_METHODS.join(', ')}`;
+  }
+  if (pattern !== '*') {
+    if (!pattern.startsWith('/') || pattern.startsWith('//')) {
+      return `allow rule "${line.trim()}": pattern must be "*" or a /-rooted path (relative to baseUrl)`;
+    }
+    const segments = pattern.slice(1).split('/');
+    for (const seg of segments) {
+      if (seg === '' || seg === '.' || seg === '..') {
+        return `allow rule "${line.trim()}": pattern has an empty, "." or ".." segment`;
+      }
+      if (/\s/.test(seg)) {
+        return `allow rule "${line.trim()}": pattern segments must not contain whitespace`;
+      }
+      if (seg.includes('*') && seg !== '*' && seg !== '**') {
+        return `allow rule "${line.trim()}": "*" and "**" must stand as whole path segments`;
+      }
+    }
+  }
+  return { method: method as RestAllowMethod, pattern };
+}
+
+/**
+ * Every rule for the `apis` map, as plain messages (same three-failure-shape
+ * contract as {@link validateMcpServers}: loader throw / HTTP 400 / form
+ * disable). Keys that belong to MCP transports are rejected so an entry
+ * pasted into the wrong channel fails loud instead of half-working.
+ */
+export function validateApiServers(servers: Record<string, RestApiServerConfig> | undefined): string[] {
+  const errors: string[] = [];
+  for (const [name, cfg] of Object.entries(servers ?? {})) {
+    if (!isValidCustomId(name)) {
+      errors.push(`API server name "${name}" must be ${CUSTOM_ID_HINT}`);
+    }
+    for (const key of ['transport', 'command', 'args', 'env', 'url'] as const) {
+      if ((cfg as unknown as Record<string, unknown> | null | undefined)?.[key] !== undefined) {
+        errors.push(`API server "${name}": "${key}" belongs to mcp.servers — an apis entry declares baseUrl / headers / allow only`);
+      }
+    }
+    if (typeof cfg?.baseUrl !== 'string' || cfg.baseUrl.trim() === '') {
+      errors.push(`API server "${name}": "baseUrl" is required (absolute http(s) URL)`);
+    } else {
+      let parsed: URL | null = null;
+      try {
+        parsed = new URL(cfg.baseUrl);
+      } catch {
+        errors.push(`API server "${name}": baseUrl "${cfg.baseUrl}" is not a valid absolute URL`);
+      }
+      if (parsed) {
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          errors.push(`API server "${name}": baseUrl must be http(s), got "${parsed.protocol}"`);
+        }
+        if (parsed.search !== '' || parsed.hash !== '') {
+          errors.push(`API server "${name}": baseUrl must not carry a query string or fragment`);
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(cfg?.headers ?? {})) {
+      if (!MCP_HEADER_NAME_PATTERN.test(key)) {
+        errors.push(`API server "${name}": headers."${key}" is not a valid HTTP header name`);
+      }
+      checkSecretableValue(errors, 'API server', name, `headers.${key}`, value);
+    }
+    if (cfg?.allow !== undefined) {
+      if (!Array.isArray(cfg.allow) || cfg.allow.length === 0) {
+        errors.push(`API server "${name}": "allow" must be a non-empty list of "METHOD PATTERN" rules (omit it to allow every path)`);
+      } else {
+        for (const line of cfg.allow) {
+          const rule = parseRestAllowLine(line);
+          if (typeof rule === 'string') errors.push(`API server "${name}": ${rule}`);
+        }
+      }
     }
   }
   return errors;
@@ -600,24 +747,41 @@ export interface CustomJobPromptPreview {
 /**
  * Write whitelist for definition files — the single vocabulary of paths the
  * settings API may create or edit inside an agent dir:
- *   agent.yaml | base/*.md
- *   jobs/{jobId}/(job.yaml | base/*.md)
+ *   agent.yaml | base/*.md | reference/** (.md/.json, any depth)
+ *   jobs/{jobId}/(job.yaml | base/*.md | reference/**)
  *   jobs/{jobId}/intents/{intentId}/(infer.md | prompt.md | hooks.yaml)
- * Intents are job-only. Legacy shapes are rejected with move messages at the
- * save gate: agent-level catalogs, the retired single-file
- * `jobs/{jobId}/intents.yaml`, per-intent `intent.yaml`, and the retired
- * `jobs/{jobId}/injections/` pool (each intent owns its prose as prompt.md).
+ * Intents are job-only. `reference/` holds API/domain documentation the agent
+ * reads on demand via the read-only `_agent-definition/` mount (progressive
+ * disclosure: intent prompt.md curates, reference files carry the full spec —
+ * e.g. a vendor swagger dropped in verbatim). Legacy shapes are rejected with
+ * move messages at the save gate: agent-level catalogs, the retired
+ * single-file `jobs/{jobId}/intents.yaml`, per-intent `intent.yaml`, and the
+ * retired `jobs/{jobId}/injections/` pool (each intent owns its prose as
+ * prompt.md).
  */
+export const REFERENCE_DIR_NAME = 'reference' as const;
+export const REFERENCE_FILE_EXTENSIONS = ['.md', '.json'] as const;
+
+function isReferenceFileName(name: string): boolean {
+  return REFERENCE_FILE_EXTENSIONS.some((ext) => name.endsWith(ext) && name.length > ext.length);
+}
+
 export function isAllowedDefinitionPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
   if (normalized.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')) return false;
   const MD_NAME = /^[^/]+\.md$/;
   const parts = normalized.split('/');
+  if (parts[0] === REFERENCE_DIR_NAME && parts.length >= 2) {
+    return isReferenceFileName(parts[parts.length - 1]);
+  }
   if (parts.length === 1) return parts[0] === 'agent.yaml';
   if (parts.length === 2) {
     return parts[0] === 'base' && MD_NAME.test(parts[1]);
   }
   if (parts[0] !== 'jobs' || !isValidCustomId(parts[1])) return false;
+  if (parts[2] === REFERENCE_DIR_NAME && parts.length >= 4) {
+    return isReferenceFileName(parts[parts.length - 1]);
+  }
   if (parts.length === 3) return parts[2] === 'job.yaml';
   if (parts.length === 4) {
     return parts[2] === 'base' && MD_NAME.test(parts[3]);
@@ -640,6 +804,7 @@ export type DefinitionDirKind =
   | 'job-base'
   | 'intents'
   | 'intent'
+  | 'reference'
   | 'unknown';
 
 /** Which directories the definition whitelist admits, by shape. */
@@ -648,8 +813,10 @@ export function classifyDefinitionDir(relPath: string): DefinitionDirKind {
   if (normalized === '') return 'agent-root';
   const parts = normalized.split('/');
   if (parts.some((seg) => seg === '' || seg === '.' || seg === '..')) return 'unknown';
+  if (parts[0] === REFERENCE_DIR_NAME) return 'reference';
   if (parts.length === 1) return parts[0] === 'base' ? 'agent-base' : parts[0] === 'jobs' ? 'jobs' : 'unknown';
   if (parts[0] !== 'jobs' || !isValidCustomId(parts[1])) return 'unknown';
+  if (parts[2] === REFERENCE_DIR_NAME) return 'reference';
   if (parts.length === 2) return 'job';
   if (parts.length === 3) {
     return parts[2] === 'base' ? 'job-base' : parts[2] === INTENTS_DIR_NAME ? 'intents' : 'unknown';
@@ -678,14 +845,14 @@ export function getDefinitionDirPolicy(relPath: string): DefinitionDirPolicy {
   const kind = classifyDefinitionDir(relPath);
   switch (kind) {
     case 'agent-root':
-      return { kind, fixedFiles: ['agent.yaml'], fixedDirs: ['base', 'jobs'] };
+      return { kind, fixedFiles: ['agent.yaml'], fixedDirs: ['base', 'jobs', REFERENCE_DIR_NAME] };
     case 'agent-base':
     case 'job-base':
       return { kind, fixedFiles: [], acceptedExtensions: ['.md'], fixedDirs: [] };
     case 'jobs':
       return { kind, fixedFiles: [], fixedDirs: [], customIdChild: 'job' };
     case 'job':
-      return { kind, fixedFiles: ['job.yaml'], fixedDirs: ['base', INTENTS_DIR_NAME] };
+      return { kind, fixedFiles: ['job.yaml'], fixedDirs: ['base', INTENTS_DIR_NAME, REFERENCE_DIR_NAME] };
     case 'intents':
       return { kind, fixedFiles: [], fixedDirs: [], customIdChild: 'intent' };
     case 'intent':
@@ -694,6 +861,10 @@ export function getDefinitionDirPolicy(relPath: string): DefinitionDirPolicy {
         fixedFiles: [INTENT_INFER_FILE_NAME, INTENT_PROMPT_FILE_NAME, INTENT_HOOKS_FILE_NAME],
         fixedDirs: [],
       };
+    case 'reference':
+      // Subdirectories are free-form (classifyDefinitionDir admits any depth
+      // under reference/) — the policy lists no fixedDirs by design.
+      return { kind, fixedFiles: [], acceptedExtensions: [...REFERENCE_FILE_EXTENSIONS], fixedDirs: [] };
     default:
       return { kind: 'unknown', fixedFiles: [], fixedDirs: [] };
   }

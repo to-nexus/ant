@@ -451,6 +451,15 @@ debugging session.
 
 - `jobType='universal'` for every custom job; the definition rides
   `customJobRef = "{agentId}/{jobId}"`.
+- Capability extension has exactly TWO declaration channels: `mcp.servers`
+  (MCP servers, stdio/http) and `apis` (declared REST API connections for
+  systems with no MCP server — baseUrl + `${secret:}` headers + optional
+  method/path `allow`; the runtime synthesizes `api__{name}__get` /
+  `api__{name}__request` in-process). Both share the credential store, the
+  approval gate, and result spooling. API *knowledge* (endpoints, fields,
+  sequences) is never declared — it is prose in `base/`, intent `prompt.md`,
+  and `reference/**` docs (read-on-demand index rendered into the system
+  block). No per-endpoint tool schemas, no OpenAPI→tools import.
 - `decideProjectJobGate` (`core/customAgents/universalContainer.ts`) is the one
   bidirectional truth table; enforcement is HTTP 400 at job-accept.
 - `${secret:KEY}` (`MCP_SECRET_REF_PATTERN`) is the only credential marker;

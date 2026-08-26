@@ -375,6 +375,38 @@ describe('definition file endpoints', () => {
   });
 
   it.each([
+    // reference/ docs (agent + job level, .md/.json, any depth) are writable;
+    // other extensions stay outside the whitelist.
+    ['agent reference md', 'reference/erp/notes.md', 'x', 200],
+    ['agent reference json (vendor swagger verbatim)', 'reference/erp/openapi.json', '{"openapi":"3.0"}', 200],
+    ['reference txt → 400', 'reference/erp/notes.txt', 'x', 400],
+  ] as const)('PUT reference path: %s → %s', async (_label, relPath, content, expectedStatus) => {
+    const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content }) });
+    expect(res.status).toBe(expectedStatus);
+  });
+
+  it('PUT job-level reference doc lands under the job dir', async () => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    const res = await api('/ops/file', {
+      method: 'PUT',
+      body: JSON.stringify({ path: 'jobs/weekly/reference/fields.md', content: '# fields' }),
+    });
+    expect(res.status).toBe(200);
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/reference/fields.md'), 'utf-8')).toBe('# fields');
+  });
+
+  it.each([
+    ['agent.yaml apis missing baseUrl', 'agent.yaml', 'id: ops\nname: x\napis:\n  erp: {}\n', /"baseUrl" is required/],
+    ['agent.yaml apis with mcp key', 'agent.yaml', 'id: ops\nname: x\napis:\n  erp:\n    baseUrl: https://x/api\n    url: https://y\n', /belongs to mcp\.servers/],
+    ['job.yaml apis bad allow line', 'jobs/weekly/job.yaml', 'id: weekly\nname: W\napis:\n  erp:\n    baseUrl: https://x/api\n    allow: [GET]\n', /allow rule/],
+  ] as const)('PUT apis contract: %s → 400', async (_label, relPath, content, pattern) => {
+    await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
+    const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content }) });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(pattern);
+  });
+
+  it.each([
     ['agent-level intents.yaml', 'intents.yaml', /intents are job-only/],
     ['job-level single-file intents.yaml', 'jobs/weekly/intents.yaml', /was replaced by per-intent directories/],
     ['agent-level injections file', 'injections/style.md', /injections\/ was removed/],
@@ -529,13 +561,18 @@ describe('definition file endpoints', () => {
 
 describe('definition dir policy (create/upload vocabulary)', () => {
   it.each([
-    ['', ['agent.yaml'], undefined, ['base', 'jobs'], undefined],
+    ['', ['agent.yaml'], undefined, ['base', 'jobs', 'reference'], undefined],
     ['base', [], ['.md'], [], undefined],
     ['jobs', [], undefined, [], 'job'],
-    ['jobs/weekly', ['job.yaml'], undefined, ['base', 'intents'], undefined],
+    ['jobs/weekly', ['job.yaml'], undefined, ['base', 'intents', 'reference'], undefined],
     ['jobs/weekly/base', [], ['.md'], [], undefined],
     ['jobs/weekly/intents', [], undefined, [], 'intent'],
     ['jobs/weekly/intents/research', ['infer.md', 'prompt.md', 'hooks.yaml'], undefined, [], undefined],
+    // reference/ admits .md + .json docs at any depth (agent- and job-level).
+    ['reference', [], ['.md', '.json'], [], undefined],
+    ['reference/douzone', [], ['.md', '.json'], [], undefined],
+    ['jobs/weekly/reference', [], ['.md', '.json'], [], undefined],
+    ['jobs/weekly/reference/vendor/v2', [], ['.md', '.json'], [], undefined],
   ])('%s', (dir, fixedFiles, acceptedExtensions, fixedDirs, customIdChild) => {
     const policy = getDefinitionDirPolicy(dir as string);
     expect(policy.fixedFiles).toEqual(fixedFiles);

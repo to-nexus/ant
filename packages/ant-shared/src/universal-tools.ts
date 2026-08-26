@@ -70,6 +70,22 @@ export function isMcpToolName(name: string): boolean {
   return name.startsWith(MCP_TOOL_PREFIX);
 }
 
+/** Prefix of the two tools synthesized per declared REST API (`apis`): `api__{server}__{get|request}`. */
+export const API_TOOL_PREFIX = 'api__';
+
+export function isApiToolName(name: string): boolean {
+  return name.startsWith(API_TOOL_PREFIX);
+}
+
+/**
+ * MCP tool or declared-API synthesized tool — the two capability-extension
+ * planes share gate mechanics (readOnlyHint-driven approval, plan-turn
+ * confinement, dispatch through the connection manager).
+ */
+export function isExtensionToolName(name: string): boolean {
+  return isMcpToolName(name) || isApiToolName(name);
+}
+
 /**
  * Builtin tools that mutate the artifact tree — during a plan turn (`@plan`)
  * these are confined to the `plan/` directory.

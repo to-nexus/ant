@@ -180,7 +180,13 @@ export function JobDefinitionCard({
           </div>
         </div>
 
-        <McpServersEditor servers={docs.mcpServers} disabled={disabled} onChange={docs.setMcpServers} />
+        <McpServersEditor
+          servers={docs.mcpServers}
+          apiServers={docs.apiServers}
+          disabled={disabled}
+          onChange={docs.setMcpServers}
+          onApiChange={docs.setApiServers}
+        />
 
         {docs.mcpErrors.length > 0 && (
           <div

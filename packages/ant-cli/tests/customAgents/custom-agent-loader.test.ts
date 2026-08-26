@@ -313,6 +313,31 @@ describe('loadCustomJob — composition (job-only tools, mcp union)', () => {
     expect(resolved.builtinTools).toContain('read_file');
     expect(resolved.builtinTools).toContain('run_command');
   });
+
+  it('apis union mirrors mcp: agent ∪ job, job wins on name collision', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {
+      apis: { erp: { baseUrl: 'https://agent.example.com/api' }, shared: { baseUrl: 'https://s.example.com' } },
+    }, { base: { 'p.md': 'Persona.' } });
+    writeJob(dir, 'weekly', {
+      apis: { erp: { baseUrl: 'https://job.example.com/api', headers: { Authorization: '${secret:ERP_TOKEN}' } } },
+    });
+    const resolved = loadCustomJob(roots(), 'ops', 'weekly');
+    expect(Object.keys(resolved.apiServers).sort()).toEqual(['erp', 'shared']);
+    expect(resolved.apiServers.erp.baseUrl).toBe('https://job.example.com/api');
+  });
+
+  it('an invalid apis entry fails loud as CustomAgentValidationError (same shape as mcp)', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', { apis: { erp: {} } });
+    writeJob(dir, 'weekly', {});
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(CustomAgentValidationError);
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/"baseUrl" is required/);
+  });
+
+  it('a job with no apis resolves to an empty map', () => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    expect(loadCustomJob(roots(), 'ops', 'weekly').apiServers).toEqual({});
+  });
 });
 
 describe('discoverAgents — D8 scope priority', () => {
@@ -716,6 +741,19 @@ describe('loadCustomJob — stop hooks (H7/H8 cross-file + happy path)', () => {
   it('H8: mcp action whose server is not declared → throws', () => {
     setupHookJob({}, { stop: [{ action: 'mcp__ghost__do-thing' }] });
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/no MCP server "ghost"/);
+  });
+
+  it('H8: api action satisfied by a declared apis entry; undeclared server → throws', () => {
+    setupHookJob(
+      { apis: { erp: { baseUrl: 'https://erp.example.com/api' } } },
+      { stop: [{ action: 'api__erp__request' }] },
+    );
+    expect(loadCustomJob(roots(), 'ops', 'weekly').intents[0].hooks?.stop).toEqual([
+      { action: 'api__erp__request' },
+    ]);
+
+    setupHookJob({}, { stop: [{ action: 'api__ghost__request' }] });
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/no API server "ghost"/);
   });
 
   it('H8: mcp action satisfied by an AGENT-declared server (merged view)', () => {

@@ -302,14 +302,77 @@ decoration).
   definition dir ro-mounted at `_agent-definition/`. Canonical plane writes
   are impossible under any configuration.
 - Known deviation from the plan doc: builtin `http_request` is the existing
-  loopback-only probe (SSRF-guarded), not a general HTTP client. External
-  mutations go through MCP; revisit if a real need appears.
+  loopback-only probe (SSRF-guarded), not a general HTTP client. The "revisit
+  if a real need appears" clause was resolved by the `apis` channel (below),
+  NOT by opening this tool: the real need was *authenticated* calls to systems
+  without an MCP server, and unlocking a generic builtin would have left
+  nowhere to hang per-server identity, declared auth, or scope. `http_request`
+  stays a loopback probe. (A public unauthenticated `http_get` builtin —
+  private-range-blocked, the opposite guard — remains a follow-up candidate;
+  `fetch_url`/`search_web` cover public reads meanwhile.)
 
-## MCP connections & the credential plane (A16/A13)
+## MCP connections, declared REST APIs & the credential plane (A16/A13)
 
-MCP is the ONLY way a custom job gains capability beyond the builtin preset
-(`tools.builtin` can narrow the preset, never extend it), which makes the
-connection contract a security surface rather than a convenience.
+A custom job gains capability beyond the builtin preset through exactly TWO
+declaration channels — `mcp.servers` (MCP servers) and `apis` (declared REST
+API connections); `tools.builtin` can narrow the preset, never extend it.
+Both channels share one credential rule, one approval gate, and one result
+plane, which makes the connection contract a security surface rather than a
+convenience.
+
+### `apis` — declared REST API connections (no MCP server exists)
+
+For legacy systems that speak plain HTTP and will never ship an MCP server
+(ERP, internal REST services), an `apis` entry declares connectivity ONLY —
+where (`baseUrl`), as-whom (`headers` with `${secret:KEY}`), optionally
+how-far (`allow` method+path rules). The runtime itself plays the missing
+server's role **in-process** (no child process, no MCP handshake):
+`McpConnectionManager.connect()` compiles the entry and synthesizes two
+generic tools per server (`core/customAgents/restApi.ts`):
+
+- `api__{server}__get` — GET/HEAD only, `readOnlyHint: true` → approval-exempt,
+  allowed on `@plan` turns.
+- `api__{server}__request` — POST/PUT/PATCH/DELETE only, fail-closed approval;
+  the author opts into unattended writes with
+  `tools.approval["api__{server}__request"]: never`. The method enums are
+  disjoint, so a write can never ride the exempt tool.
+
+The two-tool split is forced by mechanics, not taste: `gateCall` and
+`requiresApproval` read `readOnlyHint` statically per tool NAME, so a single
+tool could not be read-exempt and write-gated at once.
+
+The API's **knowledge** (endpoints, fields, call sequences) is deliberately
+NOT declared — no per-endpoint tool schemas, no OpenAPI import. It is prose:
+`base/*.md` for always-on conventions, the intent's `prompt.md` for the
+task-shaped subset, and `reference/**` (agent- and job-level, `.md`/`.json`,
+any depth) for full specs read on demand via the `_agent-definition/` mount.
+The loader collects the reference file list into `resolved.referenceDocs` and
+`buildCustomJobSystemBlock` renders it as a structural "Reference Files (read
+on demand)" index — the model is TOLD the documents exist and must be read
+before acting; their content never inlines. This is the industry-consensus
+layer split (MCP/declaration = connectivity + governance, docs = knowledge,
+the model = orchestration), and it pins the empirically dominant failure axis
+of OpenAPI→tools conversion (auth metadata) in the declaration while leaving
+everything else to prose.
+
+Executor rules (each mechanical — `tests/customAgents/rest-api.test.ts`):
+`path` is `/`-rooted and re-asserted under baseUrl's origin+prefix after
+normalization; redirects are never followed (`redirect: 'manual'` — an
+off-origin Location must not receive the auth header); declared headers win
+and per-call collisions are rejected; resolved secret values never appear in
+args/results/errors; the allow-list is checked before any request; 2xx/3xx
+are success results, 4xx/5xx are `isError: true` WITH the body (an
+API-rejected write must never satisfy an `api__…__request` action stop hook);
+`McpConfigError` only at compile time (bad baseUrl / unregistered secret) so
+job-runner keeps classifying it `config_invalid`. Results flow through the
+same registry handler as MCP tools, so >32KB responses spool identically.
+
+Out of scope by design: session-login dances, request signing (HMAC), OAuth —
+a `${secret:KEY}` resolves into declared headers only, never into a request
+body the model composes, so a body-credential login is mechanically
+impossible. Systems needing those, and rule-bound writes needing server-side
+validation/idempotency/dry-run, take the capability-server escalation path
+(doc 45 §3, `examples/mcp-reference-server`).
 
 - **Transport-exclusive auth**, validated in `@ant/shared::validateMcpServers`
   (one SSOT, three consumers: loader throw / HTTP 400 / settings form disable):

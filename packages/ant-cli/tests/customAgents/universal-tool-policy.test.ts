@@ -140,6 +140,11 @@ describe('requiresApproval — default table', () => {
     ['mcp read-only hint lifts the default', 'mcp__db__list', {}, { mcpReadOnlyHint: true }, false],
     ['explicit always wins over read-only hint', 'mcp__db__list', { mcp__db__list: 'always' as const }, { mcpReadOnlyHint: true }, true],
     ['explicit never wins for mcp', 'mcp__db__push', { mcp__db__push: 'never' as const }, undefined, false],
+    // Declared REST APIs (apis) share the extension-tool mechanics: the get
+    // tool carries readOnlyHint structurally, the request tool never does.
+    ['api get with read-only hint is exempt', 'api__erp__get', {}, { mcpReadOnlyHint: true }, false],
+    ['api request defaults to always (fail-closed)', 'api__erp__request', {}, { mcpReadOnlyHint: false }, true],
+    ['explicit never relaxes an api write', 'api__erp__request', { api__erp__request: 'never' as const }, undefined, false],
   ])('%s', (_label, tool, declared, opts, expected) => {
     expect(requiresApproval(tool, declared as Record<string, 'always' | 'never'>, opts)).toBe(expected);
   });

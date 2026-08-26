@@ -41,6 +41,8 @@ function makeResolved(overrides?: Partial<Pick<ResolvedCustomJob, 'clarifyDefaul
     intents: overrides?.intents ?? [],
     intentPrompts: {},
     mcpServers: {},
+    apiServers: {},
+    referenceDocs: [],
     builtinTools: overrides?.builtinTools ?? ['read_file'],
     approval: {},
     clarifyDefault: overrides?.clarifyDefault ?? true,

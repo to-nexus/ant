@@ -12,7 +12,7 @@ import { wrapCustomJobContent } from '../../src/core/prompt/builder/InputSanitiz
 import { PromptBuilder } from '../../src/core/prompt/builder/PromptBuilder';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import { TEMPLATE_PATHS } from '../../src/core/prompt/builder/templatePaths';
-import { buildCustomJobSystemBlock, INTENT_PROMPT_INLINE_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
+import { buildCustomJobSystemBlock, INTENT_PROMPT_INLINE_CAP, REFERENCE_INDEX_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
 import type { ResolvedCustomJob } from '../../src/core/customAgents/types';
 
 const SENTINEL = 'UNIQUE-CUSTOM-DEFINITION-SENTINEL-9313';
@@ -201,6 +201,7 @@ describe('PromptBuilder inertSystemAppend gate', () => {
 function makeResolved(
   intents: ResolvedCustomJob['intents'],
   intentPrompts: Record<string, string> = {},
+  over: Partial<ResolvedCustomJob> = {},
 ): ResolvedCustomJob {
   return {
     agentId: 'ops',
@@ -212,11 +213,14 @@ function makeResolved(
     intents,
     intentPrompts,
     mcpServers: {},
+    apiServers: {},
+    referenceDocs: [],
     builtinTools: [],
     approval: {},
     clarifyDefault: true,
     agentDir: '/tmp/x',
     jobDir: '/tmp/x/jobs/weekly',
+    ...over,
   };
 }
 
@@ -381,5 +385,31 @@ describe('buildCustomJobSystemBlock — intent catalog rendering', () => {
       ['general'],
     );
     expect(block.text.trimEnd().endsWith('</custom_job_instructions>')).toBe(true);
+  });
+});
+
+describe('buildCustomJobSystemBlock — reference docs index (read-on-demand channel)', () => {
+  it('reference docs render as a mount-path index with the read-before-acting instruction — never inlined', () => {
+    const block = buildCustomJobSystemBlock(
+      makeResolved([], {}, { referenceDocs: ['reference/douzone/openapi.json', 'jobs/weekly/reference/notes.md'] }),
+      ['general'],
+    );
+    expect(block.text).toContain('## Reference Files (read on demand)');
+    expect(block.text).toContain('`_agent-definition/reference/douzone/openapi.json`');
+    expect(block.text).toContain('`_agent-definition/jobs/weekly/reference/notes.md`');
+    expect(block.text).toMatch(/read the relevant file with `read_file` BEFORE acting/);
+  });
+
+  it('no reference docs → no index section', () => {
+    const block = buildCustomJobSystemBlock(makeResolved([]), ['general']);
+    expect(block.text).not.toContain('Reference Files');
+  });
+
+  it('over the cap, the tail collapses to a list_files pointer instead of an unbounded index', () => {
+    const docs = Array.from({ length: REFERENCE_INDEX_CAP + 5 }, (_, i) => `reference/doc-${String(i).padStart(3, '0')}.md`);
+    const block = buildCustomJobSystemBlock(makeResolved([], {}, { referenceDocs: docs }), ['general']);
+    expect(block.text).toContain('doc-000.md');
+    expect(block.text).not.toContain(`doc-${String(REFERENCE_INDEX_CAP).padStart(3, '0')}.md`);
+    expect(block.text).toMatch(/and 5 more — `list_files`/);
   });
 });

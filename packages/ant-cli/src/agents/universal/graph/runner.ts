@@ -170,14 +170,14 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
   // timeout, handshake error — crosses this single boundary as McpConfigError
   // so job-runner classifies it as config_invalid, never process_crash.
   let mcp: McpConnectionManager | null = null;
-  if (Object.keys(resolved.mcpServers).length > 0) {
+  if (Object.keys(resolved.mcpServers).length > 0 || Object.keys(resolved.apiServers).length > 0) {
     const resolver = params.deps.mcpCredentialResolver;
     if (!resolver) {
       throw new McpConfigError(
-        `Definition ${resolved.agentId}/${resolved.jobId} declares mcp.servers but no credential resolver was wired`,
+        `Definition ${resolved.agentId}/${resolved.jobId} declares mcp.servers/apis but no credential resolver was wired`,
       );
     }
-    mcp = new McpConnectionManager(resolved.mcpServers, resolver);
+    mcp = new McpConnectionManager(resolved.mcpServers, resolver, resolved.apiServers);
     try {
       await mcp.connect();
     } catch (e) {

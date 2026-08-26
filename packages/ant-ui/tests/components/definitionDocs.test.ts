@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validateMcpServers } from '@ant/shared';
+import { validateMcpServers, validateApiServers } from '@ant/shared';
 import {
   CARD_OF_KIND,
   DEFINITION_DIR_KINDS,
@@ -18,11 +18,13 @@ import {
   applyInferClarify,
   applyMainDraft,
   applyMcpServers,
+  applyApiServers,
   applyName,
   classifyDefinitionPath,
   deriveHooks,
   deriveMainDraft,
   deriveMcpServers,
+  deriveApiServers,
   deriveName,
   editRaw,
   parseInferMd,
@@ -329,6 +331,46 @@ describe('mcp.servers round-trip', () => {
   it('a bare ALL-CAPS env value stays plain text — the value shape never implies a store lookup', () => {
     expect(
       validateMcpServers({ db: { transport: 'stdio', command: 'npx', env: { DB_URL: 'OPS_DB_URL' } } }),
+    ).toEqual([]);
+  });
+});
+
+describe('apis round-trip (declared REST APIs)', () => {
+  it('an entry with headers + allow survives derive → apply unchanged', () => {
+    const servers = {
+      douzone: {
+        baseUrl: 'https://erp.example.com/api',
+        headers: { Authorization: '${secret:DOUZONE_TOKEN}' },
+        allow: ['GET *', 'POST /vouchers/**'],
+      },
+    };
+    const next = editRaw(JOB_YAML, (doc) => applyApiServers(doc, servers));
+    expect(deriveApiServers(docOf(next))).toEqual(servers);
+    expect(next).toContain('# the weekly report job');
+  });
+
+  it('a raw-authored apis block survives an mcp form save untouched (setIn does not rewrite siblings)', () => {
+    const withApis = editRaw(JOB_YAML, (doc) =>
+      applyApiServers(doc, { erp: { baseUrl: 'https://x/api' } }),
+    );
+    const afterMcpSave = editRaw(withApis, (doc) =>
+      applyMcpServers(doc, { db: { transport: 'stdio', command: 'npx' } }),
+    );
+    expect(deriveApiServers(docOf(afterMcpSave))).toEqual({ erp: { baseUrl: 'https://x/api' } });
+  });
+
+  it('removing the last entry drops the apis block; validator refuses missing baseUrl and mcp-shaped keys', () => {
+    const withApis = editRaw(JOB_YAML, (doc) => applyApiServers(doc, { erp: { baseUrl: 'https://x/api' } }));
+    const cleared = editRaw(withApis, (doc) => applyApiServers(doc, {}));
+    expect(cleared).not.toContain('apis:');
+
+    expect(validateApiServers({ erp: {} as never }).join('\n')).toMatch(/"baseUrl" is required/);
+    expect(validateApiServers({ erp: { baseUrl: 'https://x/api', url: 'https://y' } as never }).join('\n')).toMatch(
+      /belongs to mcp\.servers/,
+    );
+    expect(validateApiServers({ erp: { baseUrl: 'https://x/api', allow: ['GET'] } }).join('\n')).toMatch(/allow rule/);
+    expect(
+      validateApiServers({ erp: { baseUrl: 'https://x/api', headers: { Authorization: '${secret:DOUZONE_TOKEN}' }, allow: ['GET *'] } }),
     ).toEqual([]);
   });
 });

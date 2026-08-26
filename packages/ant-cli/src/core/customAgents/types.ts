@@ -10,11 +10,11 @@
  * loader and the runtime consume.
  */
 
-import type { CustomAgentScope, CustomIntentDef, McpServerConfig } from '@ant/shared';
+import type { CustomAgentScope, CustomIntentDef, McpServerConfig, RestApiServerConfig } from '@ant/shared';
 
-// The MCP shape and its rules live in `@ant/shared` — the settings screen edits
-// them structurally, so type and validator have one owner across BE↔FE.
-export type { McpServerConfig };
+// The MCP/API shapes and their rules live in `@ant/shared` — the settings
+// screen edits them structurally, so type and validator have one owner across BE↔FE.
+export type { McpServerConfig, RestApiServerConfig };
 
 export type ApprovalPolicy = 'always' | 'never';
 
@@ -25,6 +25,8 @@ export interface CustomAgentYaml {
   version?: number;
   /** Shared connection config unioned into every member job (job wins on name collision). */
   mcp?: { servers?: Record<string, McpServerConfig> };
+  /** Shared declared REST API connections, unioned like `mcp.servers`. */
+  apis?: Record<string, RestApiServerConfig>;
   /**
    * Clarify-tool default for every member job. `false` declares the agent's
    * jobs autonomous/unattended (no blocking questions; proceed with
@@ -39,6 +41,8 @@ export interface CustomJobYaml {
   name: string;
   version?: number;
   mcp?: { servers?: Record<string, McpServerConfig> };
+  /** Declared REST API connections (job wins over agent on name collision). */
+  apis?: Record<string, RestApiServerConfig>;
   tools?: {
     /** Builtin allowlist — validates directly against the universal preset. Absent ⇒ full preset. */
     builtin?: string[];
@@ -79,6 +83,15 @@ export interface ResolvedCustomJob {
   intentPrompts: Record<string, string>;
   /** Union of MCP servers (job definition wins on name collision). */
   mcpServers: Record<string, McpServerConfig>;
+  /** Union of declared REST API connections (job wins on name collision). */
+  apiServers: Record<string, RestApiServerConfig>;
+  /**
+   * Definition-relative paths of `reference/` documents (agent-level +
+   * this job's), collected at load. Rendered as a read-on-demand index in
+   * the system block — never inlined (that is the whole point: progressive
+   * disclosure for large API/domain specs).
+   */
+  referenceDocs: string[];
   /** Effective builtin allowlist (job ⊆ universal preset). */
   builtinTools: string[];
   /** Job-declared approval map; consult via requiresApproval(). */

@@ -23,9 +23,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Document } from 'yaml';
 import {
   validateMcpServers,
+  validateApiServers,
   type CustomIntentDef,
   type DefinitionValidationResult,
   type McpServerConfig,
+  type RestApiServerConfig,
 } from '@ant/shared';
 import { deleteDefinitionFile, fetchDefinitionFile, saveDefinitionFile } from '@/infrastructure/http/api/accountAgents';
 import {
@@ -34,11 +36,13 @@ import {
   applyInferClarify,
   applyMainDraft,
   applyMcpServers,
+  applyApiServers,
   applyName,
   deriveHooks,
   deriveId,
   deriveMainDraft,
   deriveMcpServers,
+  deriveApiServers,
   deriveName,
   editRaw,
   parseInferMd,
@@ -86,12 +90,15 @@ export interface UseDefinitionDocsResult {
   identity: { id: string; name: string };
   /** `mcp.servers` of the identity document (agent.yaml or job.yaml). */
   mcpServers: Record<string, McpServerConfig>;
+  /** `apis` (declared REST API connections) of the identity document. */
+  apiServers: Record<string, RestApiServerConfig>;
   main: MainDraft;
   /** Draft catalog assembled across the per-intent docs (entry + hooks merged). */
   intents: CustomIntentDef[];
   setRaw: (key: DocKey, text: string) => void;
   setName: (name: string) => void;
   setMcpServers: (servers: Record<string, McpServerConfig>) => void;
+  setApiServers: (servers: Record<string, RestApiServerConfig>) => void;
   setMain: (patch: Partial<MainDraft>) => void;
   /** Surgical per-field intent edit — `hooks` routes to hooks.yaml, infer/clarify to infer.md. */
   updateIntent: (intentId: string, patch: IntentPatch) => void;
@@ -239,6 +246,7 @@ export function useDefinitionDocs(
     [identityParsed],
   );
   const mcpServers = useMemo(() => deriveMcpServers(identityParsed), [identityParsed]);
+  const apiServers = useMemo(() => deriveApiServers(identityParsed), [identityParsed]);
   const main = useMemo(
     () => (identityDoc?.key === 'main' ? deriveMainDraft(identityParsed) : EMPTY_MAIN),
     [identityDoc?.key, identityParsed],
@@ -305,6 +313,12 @@ export function useDefinitionDocs(
   const setMcpServers = useCallback(
     (servers: Record<string, McpServerConfig>) =>
       edit(identityKey, (doc) => applyMcpServers(doc, servers)),
+    [edit, identityKey],
+  );
+
+  const setApiServers = useCallback(
+    (servers: Record<string, RestApiServerConfig>) =>
+      edit(identityKey, (doc) => applyApiServers(doc, servers)),
     [edit, identityKey],
   );
 
@@ -391,8 +405,9 @@ export function useDefinitionDocs(
   }, [parsedIntents, inferDocs, hooksDocs, isPhantomIntent]);
 
   const mcpErrors = useMemo(
-    () => (identityDoc?.dirty ? validateMcpServers(mcpServers) : []),
-    [identityDoc?.dirty, mcpServers],
+    () =>
+      identityDoc?.dirty ? [...validateMcpServers(mcpServers), ...validateApiServers(apiServers)] : [],
+    [identityDoc?.dirty, mcpServers, apiServers],
   );
 
   const save = useCallback(async (): Promise<{ warnings: string[] } | null> => {
@@ -429,11 +444,13 @@ export function useDefinitionDocs(
     hooksDocs,
     identity,
     mcpServers,
+    apiServers,
     main,
     intents,
     setRaw,
     setName,
     setMcpServers,
+    setApiServers,
     setMain,
     updateIntent,
     addIntent,

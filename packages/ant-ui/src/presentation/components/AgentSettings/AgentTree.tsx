@@ -421,7 +421,8 @@ export function AgentTree({
           onCancel={() => setCreating(null)}
           onSubmit={(name) => {
             setCreating(null);
-            const file = name.endsWith('.md') ? name : `${name}.md`;
+            const exts = getDefinitionDirPolicy(dirPath).acceptedExtensions ?? ['.md'];
+            const file = exts.some((e) => name.endsWith(e)) ? name : `${name}${exts[0]}`;
             void onCreateFile(agentId, dirPath ? `${dirPath}/${file}` : file);
           }}
         />

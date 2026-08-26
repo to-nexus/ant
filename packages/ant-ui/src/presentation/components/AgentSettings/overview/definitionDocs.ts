@@ -18,6 +18,7 @@ import {
   type IntentHooks,
   type IntentStopHook,
   type McpServerConfig,
+  type RestApiServerConfig,
 } from '@ant/shared';
 
 export interface MainDraft {
@@ -92,6 +93,29 @@ export function deriveMcpServers(doc: Document | null): Record<string, McpServer
             ),
           }
         : {}),
+    };
+  }
+  return out;
+}
+
+/** Agent/job-level `apis` (declared REST API connections). */
+export function deriveApiServers(doc: Document | null): Record<string, RestApiServerConfig> {
+  const servers = doc ? toJs(doc, ['apis']) : null;
+  if (!servers || typeof servers !== 'object' || Array.isArray(servers)) return {};
+  const out: Record<string, RestApiServerConfig> = {};
+  for (const [name, raw] of Object.entries(servers as Record<string, unknown>)) {
+    const cfg = (raw ?? {}) as Record<string, unknown>;
+    out[name] = {
+      // Kept verbatim so a missing baseUrl stays visible to the validator.
+      baseUrl: cfg.baseUrl as RestApiServerConfig['baseUrl'],
+      ...(cfg.headers && typeof cfg.headers === 'object' && !Array.isArray(cfg.headers)
+        ? {
+            headers: Object.fromEntries(
+              Object.entries(cfg.headers as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+            ),
+          }
+        : {}),
+      ...(Array.isArray(cfg.allow) ? { allow: cfg.allow.map((a) => String(a)) } : {}),
     };
   }
   return out;
@@ -284,6 +308,35 @@ export function applyMcpServers(doc: Document, servers: Record<string, McpServer
 }
 
 /**
+ * Writes the top-level `apis` map (declared REST API connections), dropping
+ * keys the runtime ignores (baseUrl / headers / allow only). An empty map
+ * removes `apis` entirely.
+ */
+export function applyApiServers(doc: Document, servers: Record<string, RestApiServerConfig>): void {
+  const names = Object.keys(servers);
+  if (names.length === 0) {
+    doc.delete('apis');
+    return;
+  }
+  doc.set(
+    'apis',
+    Object.fromEntries(
+      names.map((name) => {
+        const cfg = servers[name];
+        return [
+          name,
+          {
+            baseUrl: cfg.baseUrl ?? '',
+            ...(cfg.headers && Object.keys(cfg.headers).length > 0 ? { headers: cfg.headers } : {}),
+            ...(cfg.allow && cfg.allow.length > 0 ? { allow: cfg.allow } : {}),
+          },
+        ];
+      }),
+    ),
+  );
+}
+
+/**
  * Intent edits are SURGICAL per file: `infer`/`clarify` splice the
  * infer.md text (`applyInferBody` / `applyInferClarify` — fence comments
  * survive), `hooks` routes to the sibling hooks.yaml document. There is no
@@ -405,6 +458,7 @@ export type DefinitionPathKind =
   | { kind: 'intent-hooks'; jobId: string; intentId: string }
   | { kind: 'intents-dir'; jobId: string }
   | { kind: 'prose'; jobId?: string }
+  | { kind: 'reference'; jobId?: string }
   | { kind: 'other' };
 
 /**
@@ -418,15 +472,26 @@ export const DEFINITION_DIR_KINDS: ReadonlySet<string> = new Set([
   'intent-dir',
 ]);
 
+/** reference/ doc file (read-on-demand knowledge channel) — .md or .json. */
+const isReferenceDocName = (name: string): boolean => name.endsWith('.md') || name.endsWith('.json');
+
 /** Classify a definition-tree path into the screen/section that owns it. */
 export function classifyDefinitionPath(path: string): DefinitionPathKind {
   const parts = path.replace(/\\/g, '/').replace(/^\/+/, '').split('/');
   if (parts.length === 1 && parts[0] === 'agent.yaml') return { kind: 'agent-yaml' };
+  if (parts[0] === 'reference') {
+    return parts.length >= 2 && isReferenceDocName(parts[parts.length - 1]) ? { kind: 'reference' } : { kind: 'other' };
+  }
   if (parts[0] === 'jobs' && parts.length === 2) return { kind: 'job-dir', jobId: parts[1] };
   if (parts[0] === 'jobs' && parts.length >= 3) {
     const jobId = parts[1];
     if (parts.length === 3 && parts[2] === 'job.yaml') return { kind: 'job-yaml', jobId };
     if (parts.length === 3 && parts[2] === 'intents') return { kind: 'intents-dir', jobId };
+    if (parts[2] === 'reference') {
+      return parts.length >= 4 && isReferenceDocName(parts[parts.length - 1])
+        ? { kind: 'reference', jobId }
+        : { kind: 'other' };
+    }
     if (parts[2] === 'intents') {
       // The intent DIRECTORY is the intent's identity (no file declares its
       // id), so it opens the intent screen. Files under it map to their own
@@ -465,4 +530,6 @@ export const CARD_OF_KIND: Record<Exclude<DefinitionPathKind['kind'], 'other'>, 
   'intent-prompt': 'c3g-intent-prompt',
   'intent-hooks': 'c3g-intent-hooks',
   prose: 'c3g-prompts',
+  // Reference docs open in the same raw editor surface as prose.
+  reference: 'c3g-prompts',
 };

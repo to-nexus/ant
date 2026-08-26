@@ -82,11 +82,34 @@ export function sanitizeBlock(text: string): string {
  * member, so when activeIntents is `['general']` nothing inlines (always-on
  * prose belongs in `base/`, not in an intent prompt).
  */
+/** Cap on reference-index rows — beyond it the model is pointed at list_files. */
+export const REFERENCE_INDEX_CAP = 40;
+
 export function buildCustomJobSystemBlock(
   resolved: ResolvedCustomJob,
   activeIntents: string[] = [],
 ): CustomJobSystemBlock {
   const parts: string[] = [resolved.prose];
+
+  // Reference docs index — the read-on-demand knowledge channel (API specs,
+  // field tables, domain docs). Structural, not incidental: the model is told
+  // these files exist and MUST consult them instead of guessing, but their
+  // content never inlines — that is the progressive-disclosure contract.
+  const referenceDocs = resolved.referenceDocs ?? []; // tolerate pre-field checkpoint shapes
+  if (referenceDocs.length > 0) {
+    const listed = referenceDocs.slice(0, REFERENCE_INDEX_CAP);
+    const rows = listed.map((p) => `- \`${DEFINITION_MOUNT_PREFIX}${sanitizeCell(p)}\``);
+    if (referenceDocs.length > listed.length) {
+      rows.push(
+        `- …and ${referenceDocs.length - listed.length} more — \`list_files\` \`${DEFINITION_MOUNT_PREFIX}reference/\``,
+      );
+    }
+    parts.push(
+      `## Reference Files (read on demand)\n` +
+      `Documents shipped with this definition — API specifications, field tables, domain knowledge. They are NOT loaded automatically: when the task touches their subject, read the relevant file with \`read_file\` BEFORE acting, and never guess what these files document (endpoints, fields, formats, rules).\n\n` +
+      rows.join('\n'),
+    );
+  }
 
   const active = new Set(activeIntents);
   const promptOf = (intentId: string): string | undefined => resolved.intentPrompts[intentId];

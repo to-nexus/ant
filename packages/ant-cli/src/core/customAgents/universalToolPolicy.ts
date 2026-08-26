@@ -13,7 +13,7 @@
  * confinement, clarify) BE-only.
  */
 
-import { MUTATING_BUILTIN_TOOLS, isMcpToolName } from '@ant/shared';
+import { MUTATING_BUILTIN_TOOLS, isExtensionToolName } from '@ant/shared';
 
 export {
   UNIVERSAL_BUILTIN_TOOLS,
@@ -21,6 +21,9 @@ export {
   MUTATING_BUILTIN_TOOLS,
   MCP_TOOL_PREFIX,
   isMcpToolName,
+  API_TOOL_PREFIX,
+  isApiToolName,
+  isExtensionToolName,
   ARTIFACT_WRITE_TOOLS,
   ARTIFACT_WRITE_EVIDENCE_TOOLS,
 } from '@ant/shared';
@@ -99,9 +102,9 @@ export function isClarifyEnabled(
  * Effective approval decision for one tool call.
  *
  * Order: explicit declaration → mutating-builtin default (`always`) →
- * MCP default (`always` unless the server annotated the tool read-only —
- * annotations are hints, but the workspace trust model already treats MCP
- * servers as run_command-equivalent).
+ * extension-tool default (`always` unless annotated read-only — MCP servers
+ * annotate via readOnlyHint; declared-API `get` tools carry it structurally,
+ * `request` tools never do, so writes stay fail-closed).
  */
 export function requiresApproval(
   toolName: string,
@@ -111,6 +114,6 @@ export function requiresApproval(
   const explicit = declared[toolName];
   if (explicit) return explicit === 'always';
   if ((MUTATING_BUILTIN_TOOLS as readonly string[]).includes(toolName)) return true;
-  if (isMcpToolName(toolName)) return opts?.mcpReadOnlyHint !== true;
+  if (isExtensionToolName(toolName)) return opts?.mcpReadOnlyHint !== true;
   return false;
 }

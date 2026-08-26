@@ -17,10 +17,12 @@ import {
   isAllowedDefinitionPath,
   isValidCustomId,
   validateMcpServers,
+  validateApiServers,
   type CustomAgentDefinitionFileNode,
   type DefinitionValidationResult,
   type CustomAgentSummary,
   type McpServerConfig,
+  type RestApiServerConfig,
   type OrgMembershipRole,
 } from '@ant/shared';
 import { canEditOrgResource, computeOrgResourcePermissions, type OrgResourceGate } from './orgAclStore';
@@ -216,10 +218,10 @@ export type DefinitionSaveGate =
  * the loader stays the authority, this only turns a would-be broken catalog
  * into an immediate 400.
  */
-/** First MCP contract violation in a parsed agent.yaml/job.yaml, or null. */
+/** First MCP/API contract violation in a parsed agent.yaml/job.yaml, or null. */
 function mcpErrorOf(parsed: unknown): string | null {
-  const servers = (parsed as { mcp?: { servers?: Record<string, McpServerConfig> } } | null)?.mcp?.servers;
-  return validateMcpServers(servers)[0] ?? null;
+  const doc = parsed as { mcp?: { servers?: Record<string, McpServerConfig> }; apis?: Record<string, RestApiServerConfig> } | null;
+  return validateMcpServers(doc?.mcp?.servers)[0] ?? validateApiServers(doc?.apis)[0] ?? null;
 }
 
 export function gateDefinitionSave(

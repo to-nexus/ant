@@ -245,6 +245,7 @@ export function createCustomAgentRoutes(deps: {
         valid: true,
         builtinTools: resolved.builtinTools,
         mcpServers: Object.keys(resolved.mcpServers),
+        apiServers: Object.keys(resolved.apiServers),
         intents: resolved.intents,
       });
     } catch (error: any) {

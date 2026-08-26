@@ -45,6 +45,7 @@ only one is Ant-spawned foreign code. Confusing them mis-assigns trust.
 | ant-job worker → **job-runner child** | OS process (`spawn`, `JobWorker.ts`) | Ant | Ant's own code; carries the full job env (`ANT_CUSTOM_JOB_REF`, …) |
 | job-runner → **stdio MCP child** | OS process (`StdioClientTransport` spawns `cfg.command`) | Ant (connect at job start, close at job end) | **Arbitrary third-party code on Ant's host.** Receives ONLY `buildStdioChildEnv()` = exec baseline (`PATH`/`HOME`/`LANG`/`LC_ALL`/`TMPDIR`/`SystemRoot`) + explicitly declared vars — never Ant's env (`McpConnectionManager.ts`) |
 | job-runner → **HTTP MCP server** | network (streamable HTTP) | **the server's operator** | Not a child at all: an independent peer with its own deploy, monitoring, and credentials. Auth = `headers` whose values are `${secret:KEY}` references into the encrypted per-user store. The server never runs on Ant's host |
+| job-runner → **declared REST API** (`apis` entry) | network (plain HTTP, Ant-authored in-process executor) | **the API's operator** | No MCP counterpart exists; `restApi.ts` synthesizes `api__{server}__get`/`__request` and executes fetch itself — no child process, no handshake. Auth = `headers` with `${secret:KEY}`, same store; scope = baseUrl origin+prefix + optional `allow` rules, asserted per call; redirects never followed. See [44 §apis](44-universal-job.md#apis--declared-rest-api-connections-no-mcp-server-exists) |
 | job-runner → **subagent** (explore seam) | none (same process, separate LLM loop) | Ant | Logical child only; shares the tool registry via `ctx.subagent` — no process or trust boundary |
 
 The stdio/HTTP asymmetry drives the deployment policy: **HTTP transport is the
@@ -52,6 +53,17 @@ default for any server you did not write yourself**; stdio is exception-only. A
 stdio server is arbitrary code execution equivalent to `run_command`, and its
 process dies with the job — no independent scaling, no operator-side
 observability.
+
+**When to declare an `apis` entry vs write a capability server.** An `apis`
+entry is the long-tail answer: a static-header REST API (bearer/API-key) the
+model can drive from prose docs — authoring cost is the 4-line declaration
+plus dropping the vendor's docs into `reference/`. Graduate to a hand-written
+capability server (this section's contract) when writes are rule-bound
+(server-enforced validation, idempotency, dry-run), when auth needs a
+session/login dance or request signing, or when responses need server-side
+shaping. The `apis` executor deliberately supports none of those — adding a
+`session:` block or a signing DSL would be rebuilding OpenAPI security
+schemes, the per-endpoint machinery this design excludes.
 
 **Closed-network constraint.** The MCP client connects *outbound from the
 job-runner child*. A capability server inside a closed network is reachable

@@ -31,6 +31,8 @@ import {
   INTENT_HOOKS_FILE_NAME,
   isValidCustomId,
   validateMcpServers,
+  validateApiServers,
+  API_TOOL_PREFIX,
   type CustomAgentScope,
   type CustomAgentSummary,
   type CustomJobSummary,
@@ -41,6 +43,7 @@ import {
   type CustomAgentYaml,
   type CustomJobYaml,
   type McpServerConfig,
+  type RestApiServerConfig,
   type ResolvedCustomJob,
 } from './types.js';
 import { ARTIFACT_WRITE_EVIDENCE_TOOLS, UNIVERSAL_BUILTIN_TOOLS, isUniversalBuiltinTool } from './universalToolPolicy.js';
@@ -175,6 +178,12 @@ function assertMcpServers(servers: Record<string, McpServerConfig> | undefined, 
   if (first) throw new CustomAgentValidationError(first, agentId, jobId);
 }
 
+/** Same contract for the declared REST API channel (`apis`). */
+function assertApiServers(servers: Record<string, RestApiServerConfig> | undefined, agentId: string, jobId?: string): void {
+  const [first] = validateApiServers(servers);
+  if (first) throw new CustomAgentValidationError(first, agentId, jobId);
+}
+
 /**
  * The `clarify` knob must be a real boolean at every level — a truthy string
  * like `"yes"`/`"false"` would silently invert the author's intent. The
@@ -201,7 +210,7 @@ function validateBuiltinSubset(
   for (const tool of child) {
     if (!bound.includes(tool)) {
       throw new CustomAgentValidationError(
-        `tools.builtin contains "${tool}" which is not in ${boundLabel} — narrowing only, tools cannot be added (use MCP for extra capability)`,
+        `tools.builtin contains "${tool}" which is not in ${boundLabel} — narrowing only, tools cannot be added (use mcp.servers or apis for extra capability)`,
         agentId,
         jobId,
       );
@@ -225,6 +234,27 @@ function readBaseProse(dir: string): string {
     .map((f) => fs.readFileSync(path.join(dir, f), 'utf-8').trim())
     .filter((s) => s.length > 0)
     .join('\n\n');
+}
+
+/**
+ * Recursive listing of a `reference/` docs dir (.md/.json, any depth) as
+ * definition-relative paths — the read-on-demand index the system block
+ * renders so the model knows these documents exist without inlining them.
+ */
+function listReferenceDocs(agentDir: string, relBase: string): string[] {
+  const walk = (rel: string): string[] => {
+    const abs = path.join(agentDir, rel);
+    if (!fs.existsSync(abs)) return [];
+    const out: string[] = [];
+    for (const entry of fs.readdirSync(abs, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.name.startsWith('.')) continue;
+      const childRel = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) out.push(...walk(childRel));
+      else if (entry.name.endsWith('.md') || entry.name.endsWith('.json')) out.push(childRel);
+    }
+    return out;
+  };
+  return walk(relBase);
 }
 
 // ── discovery ────────────────────────────────────────────────────────────────
@@ -371,6 +401,8 @@ export function loadCustomJob(
 
   assertMcpServers(agent.mcp?.servers, agentId);
   assertMcpServers(job.mcp?.servers, agentId, jobId);
+  assertApiServers(agent.apis, agentId);
+  assertApiServers(job.apis, agentId, jobId);
 
   assertClarifyKnob(agent.clarify, 'agent.yaml', agentId);
   assertClarifyKnob(job.clarify, 'job.yaml', agentId, jobId);
@@ -413,6 +445,17 @@ export function loadCustomJob(
     ...(agent.mcp?.servers ?? {}),
     ...(job.mcp?.servers ?? {}),
   };
+  // declared REST APIs: same union rule
+  const apiServers: Record<string, RestApiServerConfig> = {
+    ...(agent.apis ?? {}),
+    ...(job.apis ?? {}),
+  };
+
+  // reference/ docs index: agent-level + this job's (read-on-demand channel)
+  const referenceDocs = [
+    ...listReferenceDocs(agentDir, 'reference'),
+    ...listReferenceDocs(agentDir, `jobs/${jobId}/reference`),
+  ];
 
   // Stop-hook cross-file rules (H7/H8) — intra-file shape was validated by
   // parseIntentsDir; here the declaration must be SATISFIABLE by this job's
@@ -434,6 +477,16 @@ export function loadCustomJob(
         if (!builtinTools.includes(hook.action)) {
           throw new CustomAgentValidationError(
             `${hooksLabel}: intent "${intent.id}" declares action stop hook "${hook.action}" which is not in this job's tools.builtin`,
+            agentId,
+            jobId,
+          );
+        }
+      } else if (hook.action.startsWith(API_TOOL_PREFIX)) {
+        // H8 — a synthesized api__ action's server must be declared in the merged apis.
+        const serverName = hook.action.slice(API_TOOL_PREFIX.length).split('__')[0];
+        if (!apiServers[serverName]) {
+          throw new CustomAgentValidationError(
+            `${hooksLabel}: intent "${intent.id}" declares action stop hook "${hook.action}" but no API server "${serverName}" is declared in apis`,
             agentId,
             jobId,
           );
@@ -462,6 +515,8 @@ export function loadCustomJob(
     intents,
     intentPrompts,
     mcpServers,
+    apiServers,
+    referenceDocs,
     builtinTools,
     approval,
     clarifyDefault,

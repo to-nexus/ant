@@ -84,6 +84,7 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
       jobName: resolved.jobName,
       artifactsOverview: state.artifactsOverview || '(not scanned)',
       hasMcpServers: Object.keys(resolved.mcpServers).length > 0,
+      hasApiServers: Object.keys(resolved.apiServers).length > 0,
       definitionMount: DEFINITION_MOUNT_PREFIX,
       // @plan turn axis: per-turn plan-mode request — writes outside plan/
       // are gated in the tool node while this is set.

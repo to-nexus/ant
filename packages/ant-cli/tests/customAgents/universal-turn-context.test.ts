@@ -45,6 +45,8 @@ function makeResolved(intents: ResolvedCustomJob['intents'] = []): ResolvedCusto
     intents,
     intentPrompts: {},
     mcpServers: {},
+    apiServers: {},
+    referenceDocs: [],
     builtinTools: [],
     approval: {},
     clarifyDefault: true,

@@ -20,8 +20,10 @@ import {
   MCP_HEADER_NAME_PATTERN,
   formatSecretRef,
   isValidCustomId,
+  parseRestAllowLine,
   parseSecretRef,
   type McpServerConfig,
+  type RestApiServerConfig,
 } from '@ant/shared';
 import { Button } from '@/presentation/components/aurora';
 import { AuroraInput, AuroraSelect, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
@@ -577,14 +579,248 @@ function McpCredentialsPanel({
   );
 }
 
-export function McpServersEditor({
+/** Rename an API entry key without losing its position. */
+function renameApiKey(
+  servers: Record<string, RestApiServerConfig>,
+  from: string,
+  to: string,
+): Record<string, RestApiServerConfig> {
+  return Object.fromEntries(Object.entries(servers).map(([k, v]) => [k === from ? to : k, v]));
+}
+
+/**
+ * Declared REST API connections (`apis`) — connectivity-only entries (baseUrl
+ * + auth headers + optional method/path allow rules). Endpoint knowledge is
+ * NOT declared here: it lives in intent prompt.md / reference/ files. Shares
+ * the MCP editor's row idiom and credential panel (same `${secret:KEY}` rule).
+ */
+function ApiServersSection({
   servers,
   disabled,
   onChange,
+  credentialStatusOf,
+  onCredentialJump,
+}: {
+  servers: Record<string, RestApiServerConfig>;
+  disabled: boolean;
+  onChange: (next: Record<string, RestApiServerConfig>) => void;
+  credentialStatusOf: (credKey: string) => boolean;
+  onCredentialJump: (credKey: string) => void;
+}) {
+  const { t } = useTranslation('agents');
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const names = Object.keys(servers);
+  const newNameValid = isValidCustomId(newName) && !names.includes(newName);
+
+  const patch = (name: string, next: Partial<RestApiServerConfig>) =>
+    onChange({ ...servers, [name]: { ...servers[name], ...next } });
+
+  const submitAdd = () => {
+    if (!newNameValid) return;
+    onChange({ ...servers, [newName]: { baseUrl: '' } });
+    setAdding(false);
+    setNewName('');
+  };
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <FieldLabel optional>{t('agentDef.apiServers', 'REST APIs')}</FieldLabel>
+      <FieldHint spacing="below">
+        {t(
+          'agentDef.apiHint',
+          'For systems with no MCP server: declare where (base URL), as whom (auth headers), and optionally how far (allow rules). The agent gets two generic tools per entry (api__{name}__get / api__{name}__request) and composes calls from this job\'s instructions and reference files.',
+        )}
+      </FieldHint>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {names.length === 0 && !adding && (
+          <FieldHint tone="muted">{t('agentDef.apiEmpty', 'None declared.')}</FieldHint>
+        )}
+
+        {names.map((name) => {
+          const cfg = servers[name];
+          const allow = cfg.allow ?? [];
+          return (
+            <div
+              key={name}
+              className="mcp-server-card"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                padding: '10px 12px',
+                borderRadius: 'var(--r-md)',
+                border: '1px solid var(--border-1)',
+                background: 'var(--bg-surface)',
+              }}
+            >
+              <div className="mcp-head">
+                <div className="mcp-head-name">
+                  <AuroraInput
+                    value={name}
+                    mono
+                    disabled={disabled}
+                    hasError={!isValidCustomId(name)}
+                    onChange={(v) => onChange(renameApiKey(servers, name, v))}
+                  />
+                </div>
+                {!disabled && (
+                  <button
+                    type="button"
+                    className={ICON_BTN}
+                    title={t('agentDef.apiRemove', 'Remove API')}
+                    aria-label={t('agentDef.apiRemove', 'Remove API')}
+                    onClick={() =>
+                      onChange(Object.fromEntries(Object.entries(servers).filter(([k]) => k !== name)))
+                    }
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+
+              <div className="mcp-field-row">
+                <RowLabel>baseUrl</RowLabel>
+                <div className="mcp-field-body">
+                  <AuroraInput
+                    value={cfg.baseUrl ?? ''}
+                    mono
+                    disabled={disabled}
+                    hasError={typeof cfg.baseUrl === 'string' && cfg.baseUrl.length > 0 && !/^https?:\/\//.test(cfg.baseUrl)}
+                    onChange={(v) => patch(name, { baseUrl: v })}
+                    placeholder="https://erp.example.com/api"
+                  />
+                </div>
+              </div>
+
+              <div className="mcp-field-row">
+                <RowLabel>headers</RowLabel>
+                <EnvVarNameRows
+                  entries={Object.entries(cfg.headers ?? {})}
+                  disabled={disabled}
+                  keyPlaceholder="Authorization"
+                  keyHasError={(key) => key.length > 0 && !MCP_HEADER_NAME_PATTERN.test(key)}
+                  removeLabel={t('agentDef.mcpRemoveHeader', 'Remove header')}
+                  addLabel={t('agentDef.mcpAddHeader', 'Add header')}
+                  credentialStatusOf={credentialStatusOf}
+                  onCredentialJump={onCredentialJump}
+                  onChange={(headers) => patch(name, { headers })}
+                />
+              </div>
+
+              <div className="mcp-field-row">
+                <RowLabel>allow</RowLabel>
+                <div className="mcp-field-body">
+                  {allow.length === 0 && (
+                    <FieldHint tone="muted">
+                      {t('agentDef.apiAllowEmpty', 'No rules — every path under the base URL is reachable (writes still gate on approval).')}
+                    </FieldHint>
+                  )}
+                  {allow.map((rule, i) => (
+                    <div key={i} className="mcp-kv-row">
+                      <div className="mcp-kv-solo">
+                        <AuroraInput
+                          value={rule}
+                          mono
+                          disabled={disabled}
+                          hasError={rule.trim().length > 0 && typeof parseRestAllowLine(rule) === 'string'}
+                          onChange={(v) => patch(name, { allow: allow.map((a, j) => (j === i ? v : a)) })}
+                          placeholder="POST /vouchers/**"
+                        />
+                      </div>
+                      {!disabled && (
+                        <button
+                          type="button"
+                          className={ICON_BTN}
+                          aria-label={t('agentDef.apiRemoveRule', 'Remove rule')}
+                          onClick={() => {
+                            const next = allow.filter((_, j) => j !== i);
+                            patch(name, { allow: next.length > 0 ? next : undefined });
+                          }}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {!disabled && (
+                    <div>
+                      <Button size="sm" variant="ghost" onClick={() => patch(name, { allow: [...allow, ''] })}>
+                        <Plus className="w-3 h-3" /> {t('agentDef.apiAddRule', 'Add rule')}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {!disabled && !adding && (
+          <div>
+            <Button size="sm" variant="ghost" onClick={() => setAdding(true)}>
+              <Plus className="w-3 h-3" /> {t('agentDef.apiAddServer', 'Add REST API')}
+            </Button>
+          </div>
+        )}
+        {!disabled && adding && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitAdd();
+            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420, flexWrap: 'wrap' }}
+          >
+            <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+              <AuroraInput
+                value={newName}
+                mono
+                hasError={newName.length > 0 && !newNameValid}
+                onChange={setNewName}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setAdding(false);
+                    setNewName('');
+                  }
+                }}
+                placeholder={t('agentDef.apiServerName', 'api-name')}
+              />
+            </div>
+            <Button size="sm" type="submit" disabled={!newNameValid}>
+              {t('tree.create', 'Create')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                setAdding(false);
+                setNewName('');
+              }}
+            >
+              {t('tree.cancel', 'Cancel')}
+            </Button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function McpServersEditor({
+  servers,
+  apiServers = {},
+  disabled,
+  onChange,
+  onApiChange,
 }: {
   servers: Record<string, McpServerConfig>;
+  /** Declared REST API connections (`apis`) — rendered as a sibling section sharing the credential panel. */
+  apiServers?: Record<string, RestApiServerConfig>;
   disabled: boolean;
   onChange: (next: Record<string, McpServerConfig>) => void;
+  onApiChange?: (next: Record<string, RestApiServerConfig>) => void;
 }) {
   const { t } = useTranslation('agents');
   const [adding, setAdding] = useState(false);
@@ -601,10 +837,11 @@ export function McpServersEditor({
   );
 
   const names = Object.keys(servers);
+  const apiNames = Object.keys(apiServers);
   const newNameValid = isValidCustomId(newName) && !names.includes(newName);
 
-  // Distinct credential keys the declared servers reference via valid
-  // `${secret:KEY}` values — half-typed references don't spawn panel rows.
+  // Distinct credential keys the declared servers (MCP + REST API) reference
+  // via valid `${secret:KEY}` values — half-typed references don't spawn rows.
   const referencedCredentialKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const cfg of Object.values(servers)) {
@@ -613,12 +850,18 @@ export function McpServersEditor({
         if (key !== null) keys.add(key);
       }
     }
+    for (const cfg of Object.values(apiServers)) {
+      for (const v of Object.values(cfg.headers ?? {})) {
+        const key = parseSecretRef(v);
+        if (key !== null) keys.add(key);
+      }
+    }
     return [...keys].sort();
-  }, [servers]);
+  }, [servers, apiServers]);
 
   const panelRows = useMemo(
-    () => credentialPanelRows(referencedCredentialKeys, registry.registeredAt, names.length),
-    [referencedCredentialKeys, registry.registeredAt, names.length],
+    () => credentialPanelRows(referencedCredentialKeys, registry.registeredAt, names.length + apiNames.length),
+    [referencedCredentialKeys, registry.registeredAt, names.length, apiNames.length],
   );
 
   const credentialStatusOf = useCallback(
@@ -863,6 +1106,16 @@ export function McpServersEditor({
           </form>
         )}
       </div>
+
+      {onApiChange && (
+        <ApiServersSection
+          servers={apiServers}
+          disabled={disabled}
+          onChange={onApiChange}
+          credentialStatusOf={credentialStatusOf}
+          onCredentialJump={jumpToCredential}
+        />
+      )}
 
       <div className="mcp-server-card">
         <McpCredentialsPanel rows={panelRows} registry={registry} highlightKey={highlightKey} />

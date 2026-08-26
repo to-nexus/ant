@@ -21,6 +21,12 @@ Paths are relative to the working tree root. Explore deeper with `list_files` / 
 This job has external MCP servers connected. Their tools appear in your tool list with the `mcp__` prefix. Tools marked as requiring user approval cannot run unattended — if such a call is rejected, explain to the user what you intended and how to proceed.
 {{/if}}
 
+{{#if hasApiServers}}
+## Declared REST APIs
+
+This job declares REST API connections. Each appears in your tool list as two generic tools: `api__{server}__get` (read) and `api__{server}__request` (write, may require approval). Authentication headers are attached by the runtime — never ask for or handle credentials yourself. Endpoint knowledge (paths, fields, call sequences) comes from this job's instructions and reference files; read them before calling — do not guess paths. Compose requests yourself: read what you need, then act, reacting to each HTTP response.
+{{/if}}
+
 {{#if planDocs}}
 ## Plan Documents
 

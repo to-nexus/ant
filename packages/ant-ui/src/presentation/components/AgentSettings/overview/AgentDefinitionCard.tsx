@@ -67,8 +67,10 @@ export function AgentDefinitionCard({
 
         <McpServersEditor
           servers={docs.mcpServers}
+          apiServers={docs.apiServers}
           disabled={disabled}
           onChange={docs.setMcpServers}
+          onApiChange={docs.setApiServers}
         />
 
         {docs.mcpErrors.length > 0 && (

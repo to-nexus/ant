@@ -1,20 +1,27 @@
 /**
- * MCP connection manager — universal-job overlay tools.
+ * Extension-tool connection manager — universal-job overlay tools.
  *
- * Connects to the servers declared in the resolved custom job (`mcp.servers`,
- * D4 merge of agent + job), lists their tools, and exposes them to the agent
- * round under the `mcp__{server}__{tool}` naming convention. The tool node
- * routes any `mcp__`-prefixed call here; everything else stays builtin.
+ * Hosts BOTH capability-extension channels of a resolved custom job:
+ *  - `mcp.servers` (D4 merge of agent + job) — real MCP servers, connected and
+ *    tool-listed, exposed as `mcp__{server}__{tool}`.
+ *  - `apis` — declared REST API connections with NO MCP counterpart: the
+ *    manager itself plays the missing server's role in-process (no child, no
+ *    handshake), synthesizing `api__{server}__get` / `api__{server}__request`
+ *    and executing calls with fetch (see `restApi.ts`).
+ * The tool node routes any `mcp__`/`api__`-prefixed call here; everything
+ * else stays builtin.
  *
  * Trust model: an MCP stdio server is arbitrary code execution, equivalent to
  * run_command — acceptable under the workspace trust model; cloud multitenancy
  * relies on pod isolation (documented risk, Phase 3 adds org approval). A stdio
  * child therefore gets a MINIMAL env (see {@link STDIO_EXEC_ENV_KEYS}), not the
  * host's, and secrets travel as `${secret:KEY}` references only (other values
- * are authored plain text) — for http servers through `headers`, for stdio
- * through `env`. Reference resolution goes through
- * {@link McpCredentialResolver} (encrypted per-user store); it never reads
- * process.env, so a definition cannot name-and-exfiltrate host secrets.
+ * are authored plain text) — for http servers AND declared APIs through
+ * `headers`, for stdio through `env` (one auth mechanism per transport).
+ * Reference resolution goes through {@link McpCredentialResolver} (encrypted
+ * per-user store); it never reads process.env, so a definition cannot
+ * name-and-exfiltrate host secrets, and resolved values never enter the
+ * model's context.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -26,7 +33,8 @@ import { MCP_TOOL_PREFIX } from './universalToolPolicy';
 import { parseSecretRef, isForbiddenMcpEnvKey } from '@ant/shared';
 import { McpConfigError } from './McpConfigError';
 import type { McpCredentialResolver } from './McpCredentialResolver';
-import type { McpServerConfig } from './types';
+import type { McpServerConfig, RestApiServerConfig } from './types';
+import { buildRestToolInfos, compileRestServer, executeRestCall, parseApiToolName, type CompiledRestServer } from './restApi';
 import { assertUserCodeIsolationOrThrow, wrapCommandForChildIdentity } from '../config/childIdentity';
 
 const CONNECT_TIMEOUT_MS = 60_000;
@@ -104,12 +112,14 @@ export function buildStdioChildEnv(resolvedEnv: Record<string, string> | undefin
 
 export class McpConnectionManager {
   private clients = new Map<string, Client>();
+  private restServers = new Map<string, CompiledRestServer>();
   private tools: McpToolInfo[] = [];
   private connected = false;
 
   constructor(
     private readonly servers: Record<string, McpServerConfig>,
     private readonly resolver: McpCredentialResolver,
+    private readonly apis: Record<string, RestApiServerConfig> = {},
   ) {}
 
   /**
@@ -123,6 +133,7 @@ export class McpConnectionManager {
     declared: Record<string, string> | undefined,
     field: 'env' | 'headers',
     serverName: string,
+    label: 'MCP server' | 'API server' = 'MCP server',
   ): Promise<Record<string, string>> {
     const resolved: Record<string, string> = {};
     for (const [key, declaredValue] of Object.entries(declared ?? {})) {
@@ -134,7 +145,7 @@ export class McpConnectionManager {
       const value = await this.resolver.resolve(credentialKey);
       if (value === undefined) {
         throw new McpConfigError(
-          `MCP server "${serverName}" ${field} "${key}" references credential key "${credentialKey}" which is not registered — ` +
+          `${label} "${serverName}" ${field} "${key}" references credential key "${credentialKey}" which is not registered — ` +
             `register it via PUT /api/account/mcp-credentials (or the agent settings UI) before starting the job`,
           { serverName },
         );
@@ -147,6 +158,20 @@ export class McpConnectionManager {
   /** Connect every declared server and collect its tool list. Fail-loud. */
   async connect(): Promise<void> {
     if (this.connected) return;
+    // Declared REST APIs first — compile + resolve secrets, no network I/O
+    // (nothing to handshake; requests fail per call). A definition mistake
+    // (bad baseUrl, unregistered credential) still fails loud here as
+    // McpConfigError → config_invalid.
+    for (const [serverName, cfg] of Object.entries(this.apis)) {
+      const compiled = compileRestServer(
+        serverName,
+        cfg,
+        await this.resolveCredentials(cfg.headers, 'headers', serverName, 'API server'),
+      );
+      this.restServers.set(serverName, compiled);
+      this.tools.push(...buildRestToolInfos(serverName, cfg));
+      console.log(`🔌 [API] "${serverName}" declared — 2 synthesized tools (base: ${cfg.baseUrl})`);
+    }
     for (const [serverName, cfg] of Object.entries(this.servers)) {
       const client = new Client({ name: 'ant-universal', version: '1.0.0' });
       let transport;
@@ -204,8 +229,14 @@ export class McpConnectionManager {
     return this.tools.find((t) => t.name === prefixedName);
   }
 
-  /** Dispatch one `mcp__`-prefixed call. Throws on unknown server/tool. */
+  /** Dispatch one `mcp__`/`api__`-prefixed call. Throws on unknown server/tool. */
   async callTool(prefixedName: string, args: Record<string, unknown>): Promise<McpCallResult> {
+    const api = parseApiToolName(prefixedName);
+    if (api) {
+      const compiled = this.restServers.get(api.serverName);
+      if (!compiled) throw new Error(`API server not declared: ${api.serverName}`);
+      return executeRestCall(compiled, api.toolName, args);
+    }
     const parsed = parseMcpToolName(prefixedName);
     if (!parsed) throw new Error(`Not an MCP tool name: ${prefixedName}`);
     const client = this.clients.get(parsed.serverName);
@@ -231,6 +262,7 @@ export class McpConnectionManager {
       }
     }
     this.clients.clear();
+    this.restServers.clear();
     this.connected = false;
   }
 }
