@@ -18,6 +18,13 @@ publish to your organization or grant edit access; those stay in the settings
 screen. It also cannot edit builtins, itself included: ask it for your own copy
 under a different id instead.
 
+Write to it in your own language: the prose it authors — `base/*.md`, intent
+criteria, prompts, display names — comes back in the language you used, and an
+edit keeps whatever language the file is already in. Only the structure stays
+fixed: ids, yaml keys, paths, tool names, and `${secret:}` references. The same
+holds when you author by hand — nothing in the definition contract requires
+English.
+
 Read on if you would rather author by hand, or want to understand what it wrote.
 
 ## 0. Study the shipped sample

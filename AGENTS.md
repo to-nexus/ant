@@ -701,6 +701,7 @@ as if it were one.
 | WHAT / HOW split (§1) | ⚠️ Guideline | reviewer judgement (transitional — legacy violations tolerated) |
 | FPOP (§4) | ⚠️ Guideline | reviewer judgement only — no CI lock |
 | SBS (§5) | ⚠️ Guideline | soft sanity grep only — not a build gate |
+| Artifact-language ladder (§3) | ⚠️ Guideline | prompt prose; only the inverse is gated — `builtin-agents` (shipped definitions stay Latin-script) |
 
 The policies below are four orthogonal failure-mode axes: **specificity =
 activation scope** (SBS, FPOP "Universal over Specific"), **single home /
@@ -745,13 +746,30 @@ private partial inside a basis-adjacent file.
 
 ### 3. Language and platform neutrality
 
-All prompt templates are **English only**. No project-specific examples
-(`Hero.tsx`, `page.tsx`), no platform-specific terms (`React`, `Tailwind`,
-`Next.js`). Use generic, platform-neutral wording (`component`,
-`container`, `element`).
+Prompt **source shipped with Ant** is English only — everything under
+`core/prompt/templates/**` and the builtin agent definitions under
+`core/data/agents/**`. No project-specific examples (`Hero.tsx`, `page.tsx`),
+no platform-specific terms (`React`, `Tailwind`, `Next.js`). Use generic,
+platform-neutral wording (`component`, `container`, `element`).
 
 Ant supports frontend / backend / fullstack across multiple languages.
 Prompts must not assume a stack.
+
+**This rule does not reach user-authored universal definitions**
+(`.ant/agents/**`). Those are one team's data, read and maintained in the agent
+settings screen by the person who owns them, and full of proper nouns with no
+English form — so their prose follows the requester's language. The universal
+runtime states the precedence once, in
+`templates/jobs/universal/nodes/agent/rules.md` (Output Channel): an explicit
+user instruction → the definition's stated convention → the language of the file
+being revised → the language of the user's request. Rungs 2 and 3 above 4 are
+what keep an existing file from flipping language on its own. Structural tokens
+(ids, yaml keys, paths, tool names, `${secret:}` refs) never localize.
+⚠️ Guideline, not a contract — it is prompt prose and pinning it would violate
+the no-prose-pinning rule. What IS guarded is the inverse: shipped definitions
+carry no non-Latin script (`tests/customAgents/builtin-agents.test.ts`).
+Do not re-derive the authored language from `state.language` — it is a binary
+ko/en UI locale and cannot express any other language.
 
 ### 4. FPOP — First-Principles Observation Prompting — guideline (not CI-enforced)
 

@@ -30,6 +30,20 @@ save is validated on the way in, and the job as a whole is validated on
 request. A turn is not finished because the writes returned 200 — it is
 finished when the job validates.
 
+## The language you write in
+
+Definitions you author are read and maintained by the person who asked for them,
+in the agent settings screen. Write their prose — `base/*.md`, `infer.md`,
+`prompt.md`, `name:` values, comments — in the language that person is writing to
+you in, unless they ask for another one. This definition being in English says
+nothing about theirs.
+
+When you edit, match the file already on disk. A definition keeps the language it
+was written in, even when this turn's request arrives in another one.
+
+Ids, yaml keys, paths, tool names, and `${secret:}` references are structural and
+stay exactly as the format requires, whatever language the prose is in.
+
 ## When a call fails
 
 The API tells you what is wrong; read the response body before reacting.

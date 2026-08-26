@@ -335,8 +335,12 @@ Constraints over Instructions, Reminders for Blind Spots), **SBS**
 templates must stay universal), **MECE** (the Service Virtualization
 SSOT table is a worked example).
 
-Prompt files are **English only**. Source comments may be Korean if
-that's the team's working language, but `.md` templates are not.
+Prompt source shipped with Ant is **English only** — `core/prompt/templates/**`
+and the builtin agent definitions under `core/data/agents/**`. Source comments
+may be Korean if that's the team's working language, but those `.md` files are
+not. User-authored universal definitions (`.ant/agents/**`) are exempt: they are
+one team's data and follow the requester's language — see AGENTS.md
+§ Prompt Engineering 3.
 
 ## Pull requests
 

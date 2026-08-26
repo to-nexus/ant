@@ -31,6 +31,22 @@ const builtinRoots: CustomAgentScopeRoot[] = [
   { scope: 'builtin', root: SRC_AGENTS_DIR, readonly: true },
 ];
 
+/**
+ * Non-Latin scripts (Hangul, Kana, CJK, Cyrillic, Arabic, Hebrew, Devanagari,
+ * Thai). Deliberately NOT an ASCII-only test — the shipped prose uses em
+ * dashes, arrows and emoji, which are fine.
+ */
+const NON_LATIN_SCRIPT =
+  /[\u1100-\u11FF\u3040-\u30FF\u3130-\u318F\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F]/u;
+
+function listFilesDeep(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const abs = path.join(dir, e.name);
+    return e.isDirectory() ? listFilesDeep(abs) : [abs];
+  });
+}
+
 function listDirs(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs
@@ -80,6 +96,20 @@ describe('shipped builtin definitions — smoke', () => {
   it.each(shippedAgents)('%s carries no agent-level intents.yaml or injections/ (job-only)', (agentId) => {
     expect(fs.existsSync(path.join(SRC_AGENTS_DIR, agentId, 'intents.yaml'))).toBe(false);
     expect(fs.existsSync(path.join(SRC_AGENTS_DIR, agentId, 'injections'))).toBe(false);
+  });
+
+  // The English-only rule binds prompt source Ant SHIPS; user definitions under
+  // `.ant/agents/**` follow their author's language (AGENTS.md § Prompt
+  // Engineering 3). This is the gated half of that split — the ladder itself is
+  // prose and is not pinned.
+  it.each(shippedAgents)('%s is authored in Latin script (shipped source stays neutral)', (agentId) => {
+    for (const file of listFilesDeep(path.join(SRC_AGENTS_DIR, agentId))) {
+      const match = NON_LATIN_SCRIPT.exec(fs.readFileSync(file, 'utf-8'));
+      expect(
+        match,
+        `${path.relative(SRC_AGENTS_DIR, file)} carries non-Latin script ("${match?.[0]}") — shipped definitions are English`,
+      ).toBeNull();
+    }
   });
 
   it('lenient discovery lists every shipped agent with all of its jobs', () => {

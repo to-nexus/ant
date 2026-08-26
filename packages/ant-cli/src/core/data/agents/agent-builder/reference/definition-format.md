@@ -110,6 +110,14 @@ anything long in `reference/`.
 can read when it needs them — the right home for a full API spec, a schema, or
 a vendor document.
 
+Prose has no required language: the `base/*.md` bodies, `infer.md`, `prompt.md`,
+`name:` values, and comments may be written in whatever language the definition's
+owner reads. Structural tokens are not prose and are never localized — ids, yaml
+keys, paths under the whitelist, tool names in `tools.builtin` / `approval` /
+`hooks.yaml`, and `${secret:KEY}` names stay exactly as this contract defines
+them. Note that the 8000-character prose budget is counted in characters, not
+tokens.
+
 ## Intents
 
 `infer.md` is a trigger criterion, at most 1000 characters, written as a

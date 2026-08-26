@@ -681,6 +681,50 @@ restated for its channel model in `jobs/universal/nodes/agent/rules.md`
 Guard: `tests/customAgents/universal-prompt-injection.test.ts` (gate truth
 table, not prose pinning).
 
+### Authored-artifact language
+
+The harness prompt is English; the artifacts a universal job produces need not
+be. `rules.md` (Output Channel) states one precedence ladder for file contents:
+an explicit user instruction → the language convention the definition states →
+the language of the file being revised → the language of the user's request.
+Rungs 2 and 3 above 4 are the compatibility guarantee — an English-authored
+definition and an existing English file both keep English, so nothing flips on
+its own; rung 4 is what makes a Korean team's report agent write Korean reports
+without its author having to think of the rule.
+
+Before this, `rules.md` said only "file contents in the language the definition
+or the artifact's purpose requires" and left the silent case undefined, so the
+English system prompt decided it. That hurt most where it was least wanted: the
+builtin `agent-builder` writes definition prose that its requester then
+maintains verbatim in the settings screen (§ File ↔ section isomorphism), and a
+definition its owner cannot read is one they cannot maintain. `agent-builder`
+therefore also states the rule in its own `base/role.md` — rung 2 reads the
+definition's convention, and that definition is itself English, so silence there
+would have read as "write English".
+
+Deliberately NOT built:
+
+- **A yaml `language:` key.** The file body already states its language; a
+  declared key is a second owner of the same fact and drifts from it. It would
+  also cost a `@ant/shared` type, loader validation, a `gateDefinitionSave` rule,
+  and an FE field.
+- **Wiring `state.language` / `isKorean` into the ladder.** That channel is a
+  binary ko/en regex (`detectLanguage`) serving UI locale — it cannot express
+  ja/de/fr, and it is strictly less informed than the directive the model already
+  reads. `base.md`'s `{{#if isKorean}}` reply booster stays as-is and is
+  unrelated to artifact language.
+- **A per-turn language classification pass** — same reason every other
+  pre-classification pass is forbidden here (§ Why one JobType).
+
+The ladder is prose and is not pinned by a test. The gated invariant is its
+inverse: `tests/customAgents/builtin-agents.test.ts` fails if a shipped
+definition under `src/core/data/agents/**` carries non-Latin script, so the
+tree Ant ships stays neutral while user definitions localize freely. Structural
+tokens (ids, yaml keys, paths, tool names, `${secret:}` refs) never localize at
+any rung. Note the prose cap is counted in characters (`CUSTOM_PROSE_CAP`), so
+CJK prose buys a larger token budget at the same cap rather than truncating
+earlier.
+
 ## Streaming & turn identity (A14/A15)
 
 Two defects the WS-D end-to-end surfaced, both structural rather than cosmetic:
