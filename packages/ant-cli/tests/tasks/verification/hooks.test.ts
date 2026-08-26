@@ -308,8 +308,8 @@ describe('plan/variants/verification/base — missing-test-entry classification 
 
   it('block is anchored to Step 3 (Analyze Errors), not floating elsewhere', () => {
     const text = fs.readFileSync(tplPath, 'utf8');
-    const stepIdx = text.search(/^### Step \{\{#if runTests\}\}3\{\{else\}\}2\{\{\/if\}\}: Analyze Errors/m);
-    const planStepIdx = text.search(/^### Step \{\{#if runTests\}\}4\{\{else\}\}3\{\{\/if\}\}: Produce Remediation Plan/m);
+    const stepIdx = text.search(/^### Step \{\{#if \(or runTests hasAcceptanceSource\)\}\}3\{\{else\}\}2\{\{\/if\}\}: Analyze Errors/m);
+    const planStepIdx = text.search(/^### Step \{\{#if \(or runTests hasAcceptanceSource\)\}\}4\{\{else\}\}3\{\{\/if\}\}: Produce Remediation Plan/m);
     const classifierIdx = text.indexOf('missing-test-entry');
     expect(stepIdx).toBeGreaterThan(-1);
     expect(planStepIdx).toBeGreaterThan(-1);

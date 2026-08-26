@@ -1,18 +1,23 @@
 {{#if hasTools}}
 ## Diagnostic Tool Usage
 
-**Principle**: You have tools (read_file, list_files, search_code, run_command) to diagnose build/test failures. Your PRIMARY use of `run_command` is to execute build and test commands.
+**Principle**: You have tools (read_file, list_files, search_code, run_command) to diagnose verification-gate failures.{{#if runTests}} Your PRIMARY use of `run_command` is to execute build and test commands.{{else}} This project's required gates are static (defined by the language hints) — `run_command` serves observation only.{{/if}}
 
 **`run_command` is permitted for**:
+{{#if runTests}}
 - **Build/test execution**: Run the project's build command, test command, or related verification commands
+{{/if}}
 - **Observation**: Read-only commands that inspect configuration, dependencies, or project state
+{{#if runTests}}
 - **Dependency recovery**: Install dependencies when the Install Decision Principle below is satisfied
+{{/if}}
 
 **`run_command` is NOT permitted for**:
 - Modifying source files (use the code execution phase for that)
 
 {{> jobs/code/base/injections/persistent-process-policy}}
 
+{{#if runTests}}
 ### Install Decision Principle
 
 **Principle**: Dependency installation is never precautionary. Install iff at least one of the following evidence sources is positive:
@@ -23,10 +28,15 @@
 - The two evidence sources are independent. Either signal alone is sufficient; both can agree, disagree, or one can be absent. When the Dependency Observation section is not rendered (non-JavaScript project), rely on the build/test evidence source only.
 - Do NOT install without at least one positive evidence signal. If no evidence is yet available (observation absent AND build/test not yet run), run a build/test first — do not guess module availability.
 - Use the correct package manager for the project's language and lockfile. Refer to the Package Manager section (above, when rendered) for JavaScript projects; refer to the language-specific hints below (e.g. `go mod tidy` for Go modules, `pip install -r` / `poetry install` for Python, `cargo` for Rust) for other ecosystems. Do NOT default to `npm install` regardless of project type.
-- When you need to read multiple files referenced in build errors, issue ALL reads in ONE response. Do NOT read files one at a time.
-- Produce `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient. If the error message does not name any file, ONE targeted `search_code` is permitted to locate the site.
 
 **Grounding Principle**: When the error references a library symbol, version boundary, or framework API (e.g., `Cannot find namespace 'JSX'`, `ERR_REQUIRE_ESM`, `next/font requires SWC`), verify the real contract in the installed library rather than guessing from pre-training knowledge. Use `search_code` with `include_dependencies: true` or `read_file` on `node_modules/@types/*.d.ts`, `node_modules/<pkg>/package.json`, or the package's actual source. One focused library lookup is cheaper than five rounds of speculative fixes.
+{{/if}}
+
+### Diagnostic Efficiency
+
+**Constraints**:
+- When you need to read multiple files referenced in gate failures, issue ALL reads in ONE response. Do NOT read files one at a time.
+- Produce `<plan>` as soon as the failing command's output AND the referenced source file(s) are in context. One `read_file` per source file named in the error is sufficient. If the error message does not name any file, ONE targeted `search_code` is permitted to locate the site.
 
 {{> jobs/code/base/injections/gate-validity-principle}}
 
@@ -36,6 +46,7 @@
 - After observing a gate's failure, proceed directly to producing the remediation `<plan>` from that output. Do NOT re-run the same gate in the same plan cycle to "double check" or "confirm" — it wastes a tool slot and cannot change the result.
 - When the conversation history shows a gate already passed in this cycle and no input it consumes has changed since, do not re-run it. Move to the next gate in the ordering.
 
+{{#if runTests}}
 ### Cache Replay Detection
 
 **Principle**: Monorepo build tools (Turbo, Nx, Lerna) skip task re-execution and replay cached logs when their input hash hasn't changed. The shell exit code is 0 in both real-execution and replay paths, so a passing exit code from a replayed gate command is NOT trustworthy evidence that the post-fix source tree was actually validated.
@@ -61,6 +72,11 @@
 **Principle**: Verification gates validate DIFFERENT failure classes — type-check (do the types resolve), build (does the project assemble: bundling, code generation, artifact/manifest validation that type-checking never exercises), test (does it behave). A green type-check does NOT establish a green build; they are independent gates.
 
 **Constraint**: Do NOT skip a required gate — every required gate (type-check, build, test) MUST be observed clean before completion. Observing them in dependency order (type-check → build → test) is the efficient sequence (a build aborts early on type errors), but the sequencing is your judgment; completeness is not. Do not declare success while any required gate is unobserved (or has been invalidated by a later edit).
+{{else}}
+### Verification Gate Ordering
+
+**Constraint**: The required gates for this project are the static gates defined by the language-specific hints — nothing more. Do NOT skip one of them, and do NOT manufacture a type-check, build, or test gate to substitute for them. Do not declare success while any required static gate is unobserved (or has been invalidated by a later edit).
+{{/if}}
 
 ### Binary Asset Integrity Gate
 
@@ -156,6 +172,7 @@ Priority ordering:
 - Count the distinct files across `rootCauses[].affectedFiles`. If ≥ 5 files share the same surface symptom, default to `upstream` unless you can name a concrete reason the upstream fix is infeasible.
 - Consult any `Symptom → Upstream Cues` hints from the framework/language basis. A blind-spot match is sufficient evidence to choose `upstream`.
 
+{{#if runTests}}
 ### Build Command Discovery
 
 If you are unsure which build command to use, observe:
@@ -164,6 +181,7 @@ If you are unsure which build command to use, observe:
 - `Cargo.toml` (Rust), `go.mod` (Go), `build.gradle` (Java/Kotlin)
 
 Use `read_file` on the project root's configuration files to determine the correct build command.
+{{/if}}
 
 ### Prior Error Sub-Tasks Awareness
 

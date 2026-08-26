@@ -587,24 +587,24 @@ export class LLMResponseService {
     if (!this.enabled) return;
     const turnId = this.getTurnId();
     if (!turnId) return;
-    const buffer = await this.stateStore
-      .getTurnBuffer(
+    // Atomic take (read + remove in one Redis step). A get → clear →
+    // re-append sequence here raced the unawaited ToolFileStreamer chain and
+    // silently dropped thinking chunks appended between snapshot and rewrite.
+    const taken = await this.stateStore
+      .takeTurnBufferKind(
         this.turnContext.context.sessionKey,
         turnId,
         this.turnContext.getWorkerScopeKey(),
+        'thinking',
       )
-      .catch(() => null);
+      .catch(() => undefined);
     const ws = this.getWorkerState();
-    const text = buffer?.thinking?.trim();
+    const text = taken?.trim();
     const finalCardId = cardId ?? ws.thinking?.cardId;
     if (text && text.length > 0) {
       await this.appendThinking(text, finalCardId, durationMs);
     }
-    // Clear ONLY the thinking field — text and pendingCards live on.
-    if (buffer) {
-      const next = { ...buffer, thinking: undefined };
-      await this.replaceTurnBuffer(turnId, next);
-    }
+    await this.broadcastBufferSnapshot(turnId);
     ws.thinking = null;
   }
 
@@ -612,14 +612,15 @@ export class LLMResponseService {
     if (!this.enabled) return;
     const turnId = this.getTurnId();
     if (!turnId) return;
-    const buffer = await this.stateStore
-      .getTurnBuffer(
+    const taken = await this.stateStore
+      .takeTurnBufferKind(
         this.turnContext.context.sessionKey,
         turnId,
         this.turnContext.getWorkerScopeKey(),
+        'text',
       )
-      .catch(() => null);
-    const rawText = buffer?.text?.trim();
+      .catch(() => undefined);
+    const rawText = taken?.trim();
     if (rawText && rawText.length > 0) {
       // Streaming chunks may have split a canonical tag across chunk
       // boundaries — `SpecialTagTransformer` is single-shot per chunk
@@ -633,10 +634,7 @@ export class LLMResponseService {
         await this.appendAssistantMessage(cleaned);
       }
     }
-    if (buffer) {
-      const next = { ...buffer, text: undefined };
-      await this.replaceTurnBuffer(turnId, next);
-    }
+    await this.broadcastBufferSnapshot(turnId);
     this.getWorkerState().textBuffered = false;
   }
 
@@ -834,6 +832,26 @@ export class LLMResponseService {
           const durationMs = event.metadata?.durationMs;
           if (event.thinking) await this.streamThinkingChunk(event.thinking);
           if (blockEnd) await this.flushThinkingBuffer(undefined, durationMs);
+          break;
+        }
+        case 'retry': {
+          // The provider stream restarts from scratch — discard the aborted
+          // attempt's partial thinking/text so the retried stream does not
+          // record a duplicated head in chat.jsonl. Pending cards keep their
+          // own lifecycle (the tool streamer finalizes or clears them).
+          const turnId = this.getTurnId()!;
+          const sessionKey = this.turnContext.context.sessionKey;
+          const scope = this.turnContext.getWorkerScopeKey();
+          await this.stateStore
+            .takeTurnBufferKind(sessionKey, turnId, scope, 'thinking')
+            .catch(() => undefined);
+          await this.stateStore
+            .takeTurnBufferKind(sessionKey, turnId, scope, 'text')
+            .catch(() => undefined);
+          const ws = this.getWorkerState();
+          ws.thinking = null;
+          ws.textBuffered = false;
+          await this.broadcastBufferSnapshot(turnId);
           break;
         }
         case 'text': {
@@ -1208,61 +1226,34 @@ export class LLMResponseService {
   }
 
   /**
-   * Replace the buffer contents for the active `(turnId, workerScope)`
-   * pair. Used by the flush helpers to drop just the `text` or
-   * `thinking` field while preserving `pendingCards`. Implemented as
-   * clear + re-append since the StateStorePort lacks a single-shot
-   * "set whole buffer" primitive; the operation is idempotent and the
-   * key TTL is refreshed on every write.
-   *
-   * After the Redis write succeeds, broadcasts a
-   * `streaming_buffer_snapshot` SSE so the FE projector clears its
-   * in-memory `streamingBuffers[key]` mirror. Without this signal the
-   * FE keeps the previously streamed `activeText`/`activeThinking` and
-   * renders it as an overlay alongside the durable `assistant_message`
-   * / `assistant_thinking` ChatLine, producing duplicate text in the
-   * UI (chat-SSOT regression seen in detect/decompose phases).
+   * Broadcast the CURRENT Redis buffer state as a
+   * `streaming_buffer_snapshot` SSE so the FE projector replaces its
+   * in-memory `streamingBuffers[key]` mirror. The flush helpers call this
+   * after an atomic `takeTurnBufferKind` — without the signal the FE keeps
+   * the previously streamed `activeText`/`activeThinking` and renders it as
+   * an overlay alongside the durable ChatLine (chat-SSOT regression seen in
+   * detect/decompose phases).
    */
-  private async replaceTurnBuffer(
-    turnId: string,
-    next: { text?: string; thinking?: string; pendingCards?: Record<string, PendingCardSnapshot> },
-  ): Promise<void> {
-    const sessionKey = this.turnContext.context.sessionKey;
-    const scope = this.turnContext.getWorkerScopeKey();
-    try {
-      await this.stateStore.clearTurnBuffer(sessionKey, turnId, scope);
-      if (next.text) {
-        await this.stateStore.appendToTurnBuffer(sessionKey, turnId, scope, 'text', next.text);
-      }
-      if (next.thinking) {
-        await this.stateStore.appendToTurnBuffer(
-          sessionKey,
-          turnId,
-          scope,
-          'thinking',
-          next.thinking,
-        );
-      }
-      if (next.pendingCards) {
-        for (const card of Object.values(next.pendingCards)) {
-          await this.stateStore.setTurnBufferPendingCard(sessionKey, turnId, scope, card);
-        }
-      }
-      this.broadcaster.broadcastStreamingBufferSnapshot(
-        this.turnContext.context.projectId,
-        this.turnContext.context.featureName,
-        {
-          turnId,
-          workerScope: this.workerScopeForLine(),
-          text: next.text,
-          thinking: next.thinking,
-          pendingCards: next.pendingCards,
-        },
-        this.turnContext.context.userContext,
-      );
-    } catch (err) {
-      logger.warn(`replaceTurnBuffer failed`, { component: 'LLMResponseService' }, err);
-    }
+  private async broadcastBufferSnapshot(turnId: string): Promise<void> {
+    const buffer = await this.stateStore
+      .getTurnBuffer(
+        this.turnContext.context.sessionKey,
+        turnId,
+        this.turnContext.getWorkerScopeKey(),
+      )
+      .catch(() => null);
+    this.broadcaster.broadcastStreamingBufferSnapshot(
+      this.turnContext.context.projectId,
+      this.turnContext.context.featureName,
+      {
+        turnId,
+        workerScope: this.workerScopeForLine(),
+        text: buffer?.text,
+        thinking: buffer?.thinking,
+        pendingCards: buffer?.pendingCards,
+      },
+      this.turnContext.context.userContext,
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════

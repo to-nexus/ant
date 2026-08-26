@@ -114,9 +114,9 @@ If build succeeds, execute the project's test command using `run_command`.
 {{/if}}
 
 {{#if hasAcceptanceSource}}
-### Step 2.5: Check Acceptance Criteria (ref document injected)
+### Step {{#if runTests}}2.5{{else}}2{{/if}}: Check Acceptance Criteria (ref document injected)
 
-This verification cycle is grounded in a reference design document (below). Its acceptance criteria are part of this cycle's gates, alongside build/typecheck/test:
+This verification cycle is grounded in a reference design document (below). Its acceptance criteria are part of this cycle's gates, alongside {{#if runTests}}build/typecheck/test{{else}}the static gates{{/if}}:
 
 - **Machine-checkable criteria** — a named command whose result is observable, a named test, a file/symbol whose existence is checkable — MUST be checked with your tools (`run_command`, `read_file`, `search_code`). An unmet machine-checkable criterion is a violation: include it in the Fix Plan like any other error, citing the criterion.
 - **Human-only criteria** (visual quality, interaction feel, anything the document marks as requiring human confirmation) — do NOT invent a machine proxy for them. List them verbatim in your final report as requiring human confirmation; they never justify a fix batch on their own.
@@ -129,9 +129,9 @@ This verification cycle is grounded in a reference design document (below). Its 
 {{{acceptanceSource}}}
 {{/if}}
 
-### Step {{#if runTests}}3{{else}}2{{/if}}: Analyze Errors
+### Step {{#if (or runTests hasAcceptanceSource)}}3{{else}}2{{/if}}: Analyze Errors
 
-If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE command output — not just error lines:
+If a required gate failed, analyze the COMPLETE output — not just error lines:
 
 1. **Observe warnings and environment signals FIRST** — non-error output (warnings, notices, environment variable messages) often reveals the true root cause that error messages alone cannot explain
 2. **Observe mode-specific behavior** — if the same project succeeds in one mode but fails in another, the root cause is likely environmental or configuration-level, not a code defect
@@ -156,7 +156,7 @@ If build{{#if runTests}}/test{{/if}} failed, analyze the COMPLETE command output
 
 ⚠️ **Over-fire guard**: The `missing-test-entry` classification fires ONLY when the failing command IS the project's test-run entry-point. Other "Missing script: X" or "command not found" failures stay in their normal root-cause buckets — do not extend this classification to cover them.
 
-### Step {{#if runTests}}4{{else}}3{{/if}}: Produce Remediation Plan
+### Step {{#if (or runTests hasAcceptanceSource)}}4{{else}}3{{/if}}: Produce Remediation Plan
 
 Output the structured plan.
 

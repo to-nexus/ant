@@ -556,6 +556,21 @@ export interface StateStorePort {
   ): Promise<void>;
 
   /**
+   * Atomically read AND remove one scalar field (`text` / `thinking`) from
+   * the turn buffer, returning the removed value (undefined when absent).
+   * The flush paths MUST use this instead of get → clear → re-append: the
+   * buffer is written concurrently by the LLM stream loop and the tool
+   * streamer chain, and a stale-snapshot rewrite silently drops whichever
+   * chunks landed in between (head-truncated `assistant_thinking` records).
+   */
+  takeTurnBufferKind(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    kind: 'text' | 'thinking',
+  ): Promise<string | undefined>;
+
+  /**
    * Register an in-flight card (typically called when a command / file /
    * long-running card starts, before the first stdout chunk arrives).
    */

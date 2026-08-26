@@ -253,6 +253,8 @@ When Plan doesn't anticipate everything needed:
 
 **⚠️ File content goes in the tool's `content`/`new_str` argument — NEVER in your text output.** Text-channel file bodies are discarded silently.
 
+**⚠️ A file body is composed ONCE — inside the write tool's argument.** Reasoning decides structure, naming, ordering, and trade-offs; it does NOT draft the file text. A body drafted in reasoning is generated twice — double the latency for zero information. When the decisions are made, call the write tool and author the content there directly.
+
 ────────────────────────────────────────────────────────────────────────────────
 ### 3. Before Any CREATE: Check First
 

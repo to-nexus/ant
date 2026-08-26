@@ -1726,18 +1726,106 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     }
   }
 
-  private async writeTurnBuffer(
+  // Every turn-buffer mutation is a Lua script: the buffer is one JSON blob
+  // written concurrently by the LLM stream loop and the unawaited
+  // ToolFileStreamer chain, so a JS-side GET → modify → SETEX loses whichever
+  // write lands second (head-truncated `assistant_thinking` records).
+
+  /** Shared Lua tail: persist `buf` (or drop the key when nothing remains). */
+  private static readonly TURN_BUFFER_PERSIST_LUA = `
+    local function hasContent(buf)
+      if buf.text ~= nil and buf.text ~= '' then return true end
+      if buf.thinking ~= nil and buf.thinking ~= '' then return true end
+      if buf.pendingCards ~= nil then
+        for _ in pairs(buf.pendingCards) do return true end
+      end
+      return false
+    end
+    local function persist(buf)
+      if hasContent(buf) then
+        redis.call('SETEX', KEYS[1], tonumber(ARGV[1]), cjson.encode(buf))
+        redis.call('SADD', KEYS[2], ARGV[2])
+        redis.call('EXPIRE', KEYS[2], tonumber(ARGV[1]))
+      else
+        redis.call('DEL', KEYS[1])
+        redis.call('SREM', KEYS[2], ARGV[2])
+      end
+    end
+    local raw = redis.call('GET', KEYS[1])
+    local buf = raw and cjson.decode(raw) or {}
+  `;
+
+  private static readonly TURN_BUFFER_APPEND_LUA = RedisStateStore.TURN_BUFFER_PERSIST_LUA + `
+    local kind = ARGV[3]
+    if kind == 'text' then
+      buf.text = (buf.text or '') .. ARGV[4]
+    elseif kind == 'thinking' then
+      buf.thinking = (buf.thinking or '') .. ARGV[4]
+    else
+      local cards = buf.pendingCards or {}
+      local card = cards[ARGV[5]]
+      if card then
+        card.streamedOutput = (card.streamedOutput or '') .. ARGV[4]
+      else
+        cards[ARGV[5]] = { cardId = ARGV[5], statusType = 'tool_action', metadata = cjson.decode('{}'), streamedOutput = ARGV[4] }
+      end
+      buf.pendingCards = cards
+    end
+    persist(buf)
+    return 1
+  `;
+
+  private static readonly TURN_BUFFER_TAKE_LUA = RedisStateStore.TURN_BUFFER_PERSIST_LUA + `
+    if raw == false then return false end
+    local value = buf[ARGV[3]]
+    buf[ARGV[3]] = nil
+    persist(buf)
+    return value
+  `;
+
+  private static readonly TURN_BUFFER_SET_CARD_LUA = RedisStateStore.TURN_BUFFER_PERSIST_LUA + `
+    local card = cjson.decode(ARGV[3])
+    local cards = buf.pendingCards or {}
+    local existing = cards[card.cardId]
+    if existing then
+      local streamed = existing.streamedOutput
+      for k, v in pairs(card) do existing[k] = v end
+      existing.streamedOutput = streamed
+    else
+      cards[card.cardId] = card
+    end
+    buf.pendingCards = cards
+    persist(buf)
+    return 1
+  `;
+
+  private static readonly TURN_BUFFER_CLEAR_CARD_LUA = RedisStateStore.TURN_BUFFER_PERSIST_LUA + `
+    if raw == false then return 0 end
+    if buf.pendingCards == nil or buf.pendingCards[ARGV[3]] == nil then return 0 end
+    buf.pendingCards[ARGV[3]] = nil
+    local remaining = false
+    for _ in pairs(buf.pendingCards) do remaining = true; break end
+    if not remaining then buf.pendingCards = nil end
+    persist(buf)
+    return 1
+  `;
+
+  private async evalTurnBuffer(
+    lua: string,
     sessionKey: string,
     turnId: string,
     workerScope: string | undefined,
-    buffer: TurnBufferData,
-  ): Promise<void> {
-    const key = getTurnBufferKey(sessionKey, turnId, workerScope);
-    await this.redis.setex(key, REDIS_TTL.CHAT.TURN_BUFFER, JSON.stringify(buffer));
-    const indexKey = getTurnBufferIndexKey(sessionKey);
-    const member = getTurnBufferIndexMember(turnId, workerScope);
-    await this.redis.sadd(indexKey, member);
-    await this.redis.expire(indexKey, REDIS_TTL.CHAT.TURN_BUFFER);
+    ...args: string[]
+  ): Promise<unknown> {
+    return this.redis.eval(
+      lua,
+      2,
+      getTurnBufferKey(sessionKey, turnId, workerScope),
+      getTurnBufferIndexKey(sessionKey),
+      String(REDIS_TTL.CHAT.TURN_BUFFER),
+      getTurnBufferIndexMember(turnId, workerScope),
+      ...args,
+    );
   }
 
   async appendToTurnBuffer(
@@ -1752,29 +1840,31 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     if (kind === 'card_output' && !cardId) {
       throw new Error('appendToTurnBuffer: cardId required when kind=card_output');
     }
-    const current = (await this.getTurnBuffer(sessionKey, turnId, workerScope)) ?? {};
-    if (kind === 'text') {
-      current.text = (current.text ?? '') + chunk;
-    } else if (kind === 'thinking') {
-      current.thinking = (current.thinking ?? '') + chunk;
-    } else {
-      const pendingCards = current.pendingCards ?? {};
-      const card = pendingCards[cardId!];
-      if (!card) {
-        // Caller should have invoked setTurnBufferPendingCard first; still
-        // accept the chunk to avoid lost output if the worker missed it.
-        pendingCards[cardId!] = {
-          cardId: cardId!,
-          statusType: 'tool_action',
-          metadata: {},
-          streamedOutput: chunk,
-        };
-      } else {
-        card.streamedOutput = (card.streamedOutput ?? '') + chunk;
-      }
-      current.pendingCards = pendingCards;
-    }
-    await this.writeTurnBuffer(sessionKey, turnId, workerScope, current);
+    await this.evalTurnBuffer(
+      RedisStateStore.TURN_BUFFER_APPEND_LUA,
+      sessionKey,
+      turnId,
+      workerScope,
+      kind,
+      chunk,
+      cardId ?? '',
+    );
+  }
+
+  async takeTurnBufferKind(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    kind: 'text' | 'thinking',
+  ): Promise<string | undefined> {
+    const result = await this.evalTurnBuffer(
+      RedisStateStore.TURN_BUFFER_TAKE_LUA,
+      sessionKey,
+      turnId,
+      workerScope,
+      kind,
+    );
+    return typeof result === 'string' ? result : undefined;
   }
 
   async setTurnBufferPendingCard(
@@ -1783,14 +1873,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     workerScope: string | undefined,
     card: PendingCardSnapshot,
   ): Promise<void> {
-    const current = (await this.getTurnBuffer(sessionKey, turnId, workerScope)) ?? {};
-    const pendingCards = current.pendingCards ?? {};
-    const existing = pendingCards[card.cardId];
-    pendingCards[card.cardId] = existing
-      ? { ...existing, ...card, streamedOutput: existing.streamedOutput }
-      : card;
-    current.pendingCards = pendingCards;
-    await this.writeTurnBuffer(sessionKey, turnId, workerScope, current);
+    await this.evalTurnBuffer(
+      RedisStateStore.TURN_BUFFER_SET_CARD_LUA,
+      sessionKey,
+      turnId,
+      workerScope,
+      JSON.stringify(card),
+    );
   }
 
   async clearTurnBufferPendingCard(
@@ -1799,19 +1888,13 @@ export class RedisStateStore implements StateStorePort, PortRegistryPort {
     workerScope: string | undefined,
     cardId: string,
   ): Promise<void> {
-    const current = await this.getTurnBuffer(sessionKey, turnId, workerScope);
-    if (!current?.pendingCards) return;
-    if (!(cardId in current.pendingCards)) return;
-    delete current.pendingCards[cardId];
-    if (Object.keys(current.pendingCards).length === 0) {
-      delete current.pendingCards;
-    }
-    // If nothing meaningful remains, remove the key entirely.
-    if (!current.text && !current.thinking && !current.pendingCards) {
-      await this.clearTurnBuffer(sessionKey, turnId, workerScope);
-      return;
-    }
-    await this.writeTurnBuffer(sessionKey, turnId, workerScope, current);
+    await this.evalTurnBuffer(
+      RedisStateStore.TURN_BUFFER_CLEAR_CARD_LUA,
+      sessionKey,
+      turnId,
+      workerScope,
+      cardId,
+    );
   }
 
   async clearTurnBuffer(

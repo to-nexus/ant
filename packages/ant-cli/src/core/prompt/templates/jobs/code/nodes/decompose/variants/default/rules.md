@@ -383,6 +383,8 @@ Do NOT embed token setup in setup or ui tasks.
 
 **Constraint**: The verification task fixes build and runtime errors ONLY. It MUST NOT review, add, complete, or improve feature implementations. Feature completeness is the responsibility of individual feature tasks.
 
+**Constraint (Tier 4 acceptance criteria)**: When the verification task carries an `include` ref (Tier 4), the verification pass cross-checks the document's acceptance criteria as one of its gates — that is gate observation, not feature review. Do NOT transplant the document's unit enumeration into the verification task's `description`: the description names the gate set only; coverage enumeration belongs to the work tasks' descriptions.
+
 **Constraint (Tier 3/4)**: Tier 3 and Tier 4 breakdowns MUST include a dedicated verification task. The breakdown total is always `>= 2` tasks — any non-verification work plus the verification task.
 
 **Constraint (Tier 2)**: Tier 2 (Exploratory, single unit of work) does NOT emit a separate verification task. The sole task is marked with `selfVerifyOnDone: true` and the runtime transitions the same task into a verify cycle automatically after the apply phase emits `<done>`.

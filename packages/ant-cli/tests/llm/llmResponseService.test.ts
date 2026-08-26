@@ -52,6 +52,7 @@ class FakeStateStore implements Partial<StateStorePort> {
     { text?: string; thinking?: string; pendingCards: Record<string, PendingCardSnapshot> }
   >();
   appendCalls: AppendCall[] = [];
+  takeCalls: Array<{ key: BufferKey; kind: 'text' | 'thinking' }> = [];
   setPendingCardCalls: Array<{ key: BufferKey; card: PendingCardSnapshot }> = [];
   clearPendingCardCalls: Array<{ key: BufferKey; cardId: string }> = [];
   clearBufferCalls: Array<BufferKey> = [];
@@ -109,6 +110,21 @@ class FakeStateStore implements Partial<StateStorePort> {
         };
       }
     }
+  }
+
+  async takeTurnBufferKind(
+    sessionKey: string,
+    turnId: string,
+    workerScope: string | undefined,
+    kind: 'text' | 'thinking',
+  ): Promise<string | undefined> {
+    const key = { sessionKey, turnId, workerScope };
+    this.takeCalls.push({ key, kind });
+    const buf = this.buffers.get(bufferKey(key));
+    if (!buf) return undefined;
+    const value = buf[kind];
+    buf[kind] = undefined;
+    return value;
   }
 
   async setTurnBufferPendingCard(
@@ -748,6 +764,43 @@ describe('LLMResponseService — flush broadcasts streaming_buffer_snapshot', ()
       expect(snap.turnId).toBe('turn-1');
       expect(snap.workerScope).toBeUndefined();
     }
+  });
+
+  it('a thinking chunk appended mid-flush survives (atomic take, no stale-snapshot rewrite)', async () => {
+    // Repro of the head-truncated `assistant_thinking` loss: the unawaited
+    // ToolFileStreamer chain appends while a flush is in flight. With the
+    // old get → clear → re-append flush, the 'late' chunk was silently
+    // wiped by the stale-snapshot rewrite.
+    const { service, store } = makeService();
+    await service.streamThinkingChunk('early');
+    const origTake = store.takeTurnBufferKind.bind(store);
+    store.takeTurnBufferKind = async (sk, t, wsc, kind) => {
+      const value = await origTake(sk, t, wsc, kind);
+      await store.appendToTurnBuffer(sk, t, wsc, 'thinking', 'late');
+      return value;
+    };
+    await service.flushThinkingBuffer();
+
+    const lines = emittedLines(store).filter((l) => l.type === 'assistant_thinking');
+    expect(lines).toHaveLength(1);
+    expect((lines[0] as any).text).toBe('early');
+    // The concurrent chunk is still buffered — the flush never rewrote or
+    // cleared the whole key.
+    const bufs = [...store.buffers.values()];
+    expect(bufs.some((b) => b.thinking === 'late')).toBe(true);
+    expect(store.clearBufferCalls).toHaveLength(0);
+  });
+
+  it('sendLLMEvent(retry) discards buffered thinking/text — no duplicated head after stream restart', async () => {
+    const { service, store } = makeService();
+    await service.sendLLMEvent({ type: 'thinking', thinking: 'aborted attempt ' });
+    await service.sendLLMEvent({ type: 'retry' });
+    await service.sendLLMEvent({ type: 'thinking', thinking: 'fresh attempt' });
+    await service.sendLLMEvent({ type: 'thinking', thinking: '', metadata: { blockEnd: true } });
+
+    const lines = emittedLines(store).filter((l) => l.type === 'assistant_thinking');
+    expect(lines).toHaveLength(1);
+    expect((lines[0] as any).text).toBe('fresh attempt');
   });
 
   it('flushTextBuffer preserves pendingCards in the snapshot', async () => {
