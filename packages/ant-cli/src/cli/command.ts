@@ -25,7 +25,7 @@ const program = new Command();
 program
   .name('aidev')
   .description('AI-powered development framework for automated architecture design and code generation')
-  .version('1.1.0');
+  .version('1.2.0');
 
 // Architect agent commands
 const architect = program

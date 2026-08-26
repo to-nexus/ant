@@ -1,6 +1,6 @@
 {
   "name": "@ant/admin-ui",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "ANT cloud admin dashboard — standalone SPA served at /admin/. Approval, billing, refunds, test-account level.",

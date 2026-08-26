@@ -7,8 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-26
+
 ### Added
 
+- **Pipelines** — cron-scheduled, chained job runs with approval and clarify
+  (HITL) gates, an n8n-style canvas editor, and a definition/activation split:
+  definitions are personal- or org-scoped templates, activations are the
+  scheduling unit (N:M against projects). See `docs/concepts/pipelines.md` and
+  `docs/internals/46-pipeline-scheduling.md`.
+- **Organizations (Phase 1)** — team creation, a 3-role ladder, invites, and
+  domain claims. Cloud identity (auth / org / admin UI) is promoted into the
+  OSS core, so a self-hosted deployment can run the cloud shape.
+- **Universal runtime** — per-intent directories
+  (`intents/{id}/{infer.md,prompt.md,hooks.yaml}`) replacing injections, a
+  rendered intent catalog with a default intent for unpinned turns, a `clarify`
+  tool for blocking questions, org-owned agents (promote + ACL), persisted run
+  history, and oversized MCP results spooled to the artifacts sandbox.
+- **`static-html` tech tier** — manifest-less static sites are first class
+  across the registry, decompose, verify, and the project wizard; preview and
+  deploy serve them, including non-`index.html` entry points.
 - **Root `docker-compose.yml`** — the full stack (Redis, the four backend
   processes, and an nginx gateway serving the UI same-origin at `:4200`) with
   only Docker installed: `cp .env.example .env && docker compose up -d`. The
@@ -33,6 +51,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   auto-generated and persisted on first boot; a manually set value must be
   64 hex chars (`openssl rand -hex 32` — the previously documented `-base64`
   variant was rejected at boot).
+- **The visual-processor sidecar publishes host port 4104**; 4103 is reserved
+  for the ant-preview user-content origin, which must own it to boot.
+- **User-attached files outrank the directory allowlist** when a RAC and the
+  artifact pool are resolved — an attachment is no longer dropped because of
+  where it lives.
+- **`run_command`**: the allowlist matches the workflows actually supported,
+  and write-target extraction is quote-aware.
+- **LLM temperature has one wire owner** (`wireTemperature`); it is omitted on
+  GLM/DeepSeek thinking rounds, which reject it.
 - **`pnpm dev:all` / `start:all` no longer boot the marketing site**; run
   `pnpm dev:site` separately. Added a root `pnpm test` entry point.
 - **Installs are guarded**: `preinstall` rejects npm/yarn, and
@@ -44,6 +71,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **NFC/NFD path tolerance** — tool path resolution accepts either Unicode
+  normalization form, and read-only text channels are NFC-normalized at the
+  prompt boundary.
 - **`packages/ant-cli/Dockerfile` ripgrep sanity checks** were pinned to the
   pre-1.18 layout (postinstall-downloaded `@vscode/ripgrep/bin/rg`); since the
   1.18 bump the binary ships as a platform-specific optionalDependency, so
@@ -51,10 +81,31 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - **`packages/ant-ui/Dockerfile` did not copy `@ant/shared` / `@ant/auth-client`**,
   so the vite build could not resolve its workspace imports. (The cloud deploy
   builds the UI on CI and syncs to S3, so only image builds were affected.)
+- SSE admission is decided before `writeHead`, so the realtime stream survives
+  a Redis outage instead of hanging half-open.
+- Idle local IDEs are reaped by the registry's `lastAccessedAt`, not a stale
+  in-memory stamp.
+- The plan single-shot round is bounded by `PLAN_TOOL_LOOP` (code and design
+  jobs).
+- Cloud test payment: deduped `react-i18next`, seeded the test level.
+
+### Security
+
+- Remediation of internal audits 3–9. Notably: per-tenant containment of file,
+  session, kanban, and artifact reads and of every enumeration/metadata sink;
+  origin checks on the IDE proxy and its WebSocket upgrade, with iframe
+  navigation admitted by a short-lived non-ambient ticket; fail-closed UID
+  isolation on every user-code spawn; method-aware JWT public-path exemptions;
+  pipeline activation path + org-membership validation; bounded multipart and
+  Bridge WebSocket admission; deploy ownership checked before rehydration; an
+  O(1) preview/deploy label index in place of per-request enumeration; and
+  session/JSONL bounds with a directive cap.
 
 ### Removed
 
-- Dead env vars: `ANT_PREVIEW_WORKERS` (no readers) from scripts and docs.
+- The HS256 JWT fallback — session auth is ES256-only.
+- Dead code and config: `ANT_PREVIEW_WORKERS` (no readers) and the unused
+  `invokeStructured` LLM port method.
 
 ## [1.1.0] - 2026-08-12
 
@@ -141,4 +192,6 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   created. An owner entry that resolves to nobody advertises review coverage
   that does not exist; it can come back when there is a real team to name.
 
-[Unreleased]: ../../compare/HEAD...HEAD
+[Unreleased]: ../../compare/v1.2.0...HEAD
+[1.2.0]: ../../compare/v1.1.0...v1.2.0
+[1.1.0]: ../../releases/tag/v1.1.0
