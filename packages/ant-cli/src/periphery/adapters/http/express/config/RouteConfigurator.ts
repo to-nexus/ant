@@ -616,12 +616,14 @@ export class RouteConfigurator {
       const { getInfrastructureFactory } = await import('../../../../../infrastructure/adapters/InfrastructureFactory');
       const factory = getInfrastructureFactory();
       const { UniversalDispatchService } = await import('../../../../../core/scheduling/UniversalDispatchService');
+      const { createSelfApiTokenMinter } = await import('../../../../../infrastructure/auth/selfApiToken');
       const service = new UniversalDispatchService(
         { jobQueue: factory.getJobQueue(), stateStore: factory.getStateStore() },
         {
           workspaceService: this.deps.workspaceService,
           workspaceResolver: this.deps.workspaceResolver,
           stateTracker: this.stateTracker,
+          selfApiTokenMinter: createSelfApiTokenMinter(),
         },
       );
       return service.enqueue(params);

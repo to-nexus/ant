@@ -367,6 +367,60 @@ API-rejected write must never satisfy an `api__…__request` action stop hook);
 job-runner keeps classifying it `config_invalid`. Results flow through the
 same registry handler as MCP tools, so >32KB responses spool identically.
 
+### `apis` self entries — this Ant server's own API
+
+An entry takes one of two mutually exclusive forms. The external form above is
+one; the second is `self: true`, which carries **neither URL nor credential**:
+
+```yaml
+apis:
+  ant:
+    self: true
+    allow:
+      - GET /account/agents/**
+      - PUT /account/agents/**
+```
+
+`resolveSelfApiConfig` (`restApi.ts`) resolves the base URL from
+`ANT_API_URL` — the env both spawn sites already inject — plus the `/api`
+mount, and attaches `ANT_SELF_API_TOKEN` when one exists. Both failures are
+definition-independent misconfiguration and therefore loud at connect time
+(`McpConfigError` → `config_invalid`): an absent/unusable `ANT_API_URL`, and
+cloud with no minted token. Local mode legitimately has neither a token nor an
+auth gate. The model-facing tool description says "this Ant server", never the
+resolved origin.
+
+This form exists because a definition must not hard-code an install's origin or
+assume a registered credential — which is also why it is **the only `apis`
+form a builtin agent may declare** (`tests/customAgents/builtin-agents.test.ts`;
+the same reason `mcp.servers` is forbidden there).
+
+**The token, and why `allow` is not the boundary.** When
+`resolveUniversalExecuteContext` sees a self entry it returns `declaresSelfApi`,
+and `UniversalDispatchService` — the single dispatch owner — mints an ES256 JWT
+carrying `scope: 'self-api'`. Minting happens in the process holding the private
+key (C-001); the child receives one signed, non-renewable token on the queue
+payload → `ANT_SELF_API_TOKEN`, a name the `ANT_*` namespace rule keeps out of
+every `run_command` child.
+
+A definition is user-editable, so its `allow` list is one save away from
+`* *` — it scopes what the model is TOLD it may call, not what it MAY call.
+The boundary is `createSelfApiScopeGuard`, mounted on `/api` after
+authentication and before every router:
+
+| Request under a `self-api` token | Result |
+|---|---|
+| `/api/account/agents/**` | admitted — the account router's own ACL then decides |
+| anything else under `/api` | 403 (`self-api-scope`) — including the auth routes, so the token cannot mint another |
+| `…/promote`, `…/editors` | 403 — publishing to the org and granting edit access are a person's decision |
+| `…/import`, `…/files/upload` | 403 — the two write routes that skip `gateDefinitionSave` |
+
+Absence of the claim is an ordinary session and is never treated as a pin.
+The builtin `agent-builder` agent is the first consumer of this form; job
+authoring therefore goes through the same validated write funnel as the
+settings UI (`PUT /account/agents/:agentId/file` → `gateDefinitionSave` →
+`loadCustomJob`), and needs no new write plane.
+
 Out of scope by design: session-login dances, request signing (HMAC), OAuth —
 a `${secret:KEY}` resolves into declared headers only, never into a request
 body the model composes, so a body-credential login is mechanically

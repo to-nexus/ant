@@ -349,6 +349,20 @@ describe('apis round-trip (declared REST APIs)', () => {
     expect(next).toContain('# the weekly report job');
   });
 
+  it('a self entry round-trips without acquiring the connectivity keys that would invalidate it', () => {
+    const servers = { ant: { self: true as const, allow: ['GET /account/agents/**'] } };
+    const next = editRaw(JOB_YAML, (doc) => applyApiServers(doc, servers));
+    expect(deriveApiServers(docOf(next))).toEqual(servers);
+    expect(next).not.toContain('baseUrl');
+    expect(validateApiServers(deriveApiServers(docOf(next)))).toEqual([]);
+  });
+
+  it('a wrong self literal survives the round trip so the validator can refuse it', () => {
+    const servers = { ant: { self: 'true' } } as never;
+    const next = editRaw(JOB_YAML, (doc) => applyApiServers(doc, servers));
+    expect(validateApiServers(deriveApiServers(docOf(next))).join('\n')).toMatch(/literal boolean true/);
+  });
+
   it('a raw-authored apis block survives an mcp form save untouched (setIn does not rewrite siblings)', () => {
     const withApis = editRaw(JOB_YAML, (doc) =>
       applyApiServers(doc, { erp: { baseUrl: 'https://x/api' } }),

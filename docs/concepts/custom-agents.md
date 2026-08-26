@@ -101,8 +101,11 @@ Pre-existing on-disk id collisions resolve by scope priority (user > org >
 builtin, whole-directory — the closer agent replaces the farther one
 entirely, jobs included), but creating or importing a NEW agent under an id
 any scope already owns is refused with 409: silent shadowing has no UI
-story. The shipped `assistant` agent is a builtin you can study; to
-customize behavior, build your own agent under its own id.
+story. Two builtins ship: `assistant`, a general-purpose agent you can study,
+and `agent-builder`, whose `author` job creates and edits agents in your
+personal scope for you. Neither can be edited or forked — to customize
+behavior, build your own agent under its own id (which `agent-builder` will
+do for you).
 
 ## Definition layout
 

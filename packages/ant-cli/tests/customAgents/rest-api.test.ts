@@ -12,6 +12,9 @@
  *   4. framing — 2xx/3xx are success results; 4xx/5xx are errors WITH the
  *      body (an API-rejected write must not satisfy an action stop hook);
  *      network failures and policy rejections are errors.
+ *   5. self — the second entry form declares neither URL nor credential; the
+ *      runtime resolves both from the env, and every way that resolution can
+ *      be wrong is loud at connect time rather than a 401 mid-turn.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -22,7 +25,10 @@ import {
   executeRestCall,
   isAllowedByRules,
   parseApiToolName,
+  resolveRestConnectivity,
+  resolveSelfApiConfig,
   REST_BODY_CAP_BYTES,
+  SELF_API_LABEL,
   type CompiledRestServer,
 } from '../../src/core/customAgents/restApi';
 import { McpConnectionManager } from '../../src/core/customAgents/McpConnectionManager';
@@ -35,7 +41,12 @@ const stubResolver = (entries: Record<string, string>): McpCredentialResolver =>
 });
 
 function compiled(over: Partial<CompiledRestServer> = {}): CompiledRestServer {
-  return compileRestServer('douzone', { baseUrl: 'https://erp.example.com/api' }, { Authorization: 'Bearer sk-live-XYZ' , ...(over.headers ?? {}) });
+  const baseUrl = 'https://erp.example.com/api';
+  return compileRestServer(
+    'douzone',
+    { baseUrl },
+    { baseUrl, headers: { Authorization: 'Bearer sk-live-XYZ', ...(over.headers ?? {}) }, label: baseUrl },
+  );
 }
 
 /** fetch stub that records the request and returns a canned Response. */
@@ -180,7 +191,7 @@ describe('executor — allow rules', () => {
     const server = compileRestServer(
       'douzone',
       { baseUrl: 'https://erp.example.com/api', allow: ['GET *', 'POST /vouchers/**'] },
-      {},
+      { baseUrl: 'https://erp.example.com/api', headers: {}, label: 'https://erp.example.com/api' },
     );
     const { impl, calls } = fetchStub(ok());
     const res = await executeRestCall(server, 'request', { method: 'DELETE', path: '/vouchers/1' }, impl);
@@ -315,3 +326,103 @@ describe('connection manager — apis channel', () => {
     expect(isMcpConfigError(err)).toBe(true);
   });
 });
+
+describe('self entry — connectivity resolved by the runtime', () => {
+  const LOCAL = { ANT_API_URL: 'http://localhost:4100' } as NodeJS.ProcessEnv;
+  const CLOUD = {
+    ANT_API_URL: 'https://api.example.com',
+    ANT_SERVER_MODE: 'cloud',
+    ANT_SELF_API_TOKEN: 'ey.job.bearer',
+  } as NodeJS.ProcessEnv;
+
+  it('resolves the API mount under the injected origin', () => {
+    expect(resolveSelfApiConfig('ant', LOCAL).baseUrl).toBe('http://localhost:4100/api');
+    expect(resolveSelfApiConfig('ant', { ANT_API_URL: 'http://localhost:4100/' }).baseUrl).toBe('http://localhost:4100/api');
+    expect(resolveSelfApiConfig('ant', CLOUD).baseUrl).toBe('https://api.example.com/api');
+  });
+
+  it('attaches the job bearer in cloud and nothing in local (no auth gate there)', () => {
+    expect(resolveSelfApiConfig('ant', CLOUD).headers).toEqual({ Authorization: 'Bearer ey.job.bearer' });
+    expect(resolveSelfApiConfig('ant', LOCAL).headers).toEqual({});
+  });
+
+  it('never puts the internal origin in the model-facing description', () => {
+    const infos = buildRestToolInfos('ant', { self: true }, resolveSelfApiConfig('ant', CLOUD).label);
+    expect(infos[0].definition.description).toContain(SELF_API_LABEL);
+    for (const info of infos) {
+      expect(info.definition.description).not.toContain('api.example.com');
+    }
+  });
+
+  it('a missing or unusable origin fails loud at connect, not as a 401 mid-turn', () => {
+    expect(() => resolveSelfApiConfig('ant', {})).toThrow(/ANT_API_URL is not set/);
+    expect(() => resolveSelfApiConfig('ant', { ANT_API_URL: 'not-a-url' })).toThrow(/not a valid absolute URL/);
+    expect(() => resolveSelfApiConfig('ant', { ANT_API_URL: 'ftp://x/y' })).toThrow(/must be http/);
+    expect(isMcpConfigError(catchOf(() => resolveSelfApiConfig('ant', {})))).toBe(true);
+  });
+
+  it('cloud without a minted token is a wiring fault, not a silent 401', () => {
+    expect(() =>
+      resolveSelfApiConfig('ant', { ANT_API_URL: 'https://api.example.com', ANT_SERVER_MODE: 'cloud' }),
+    ).toThrow(/carries no ANT_SELF_API_TOKEN/);
+  });
+
+  it('a self entry never consumes the credential resolver', () => {
+    const conn = resolveRestConnectivity('ant', { self: true }, { Authorization: 'must-be-ignored' }, CLOUD);
+    expect(conn.headers).toEqual({ Authorization: 'Bearer ey.job.bearer' });
+  });
+
+  it('an external entry keeps its own connectivity', () => {
+    const conn = resolveRestConnectivity(
+      'erp',
+      { baseUrl: 'https://erp.example.com/api' },
+      { Authorization: 'Bearer sk' },
+      CLOUD,
+    );
+    expect(conn).toEqual({
+      baseUrl: 'https://erp.example.com/api',
+      headers: { Authorization: 'Bearer sk' },
+      label: 'https://erp.example.com/api',
+    });
+  });
+
+  it('the resolved path prefix still bounds every call', async () => {
+    const server = compileRestServer('ant', { self: true }, resolveSelfApiConfig('ant', CLOUD));
+    const { impl, calls } = fetchStub(ok());
+    const escaped = await executeRestCall(server, 'get', { path: '/../auth/me' }, impl);
+    expect(escaped.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+    const inside = await executeRestCall(server, 'get', { path: '/account/agents' }, impl);
+    expect(inside.isError).toBe(false);
+    expect(calls[0].url).toBe('https://api.example.com/api/account/agents');
+  });
+});
+
+describe('validator — the two entry forms are mutually exclusive', () => {
+  it('accepts a self entry with only allow rules', () => {
+    expect(validateApiServers({ ant: { self: true, allow: ['GET /account/agents/**'] } })).toEqual([]);
+  });
+
+  it('refuses connectivity keys alongside self', () => {
+    expect(validateApiServers({ ant: { self: true, baseUrl: 'https://x/y' } as never })[0]).toMatch(/remove "baseUrl"/);
+    expect(validateApiServers({ ant: { self: true, headers: { A: 'b' } } as never })[0]).toMatch(/remove "headers"/);
+  });
+
+  it('refuses a truthy string in place of the literal true', () => {
+    expect(validateApiServers({ ant: { self: 'true' } as never })[0]).toMatch(/must be the literal boolean true/);
+    expect(validateApiServers({ ant: { self: false } as never })[0]).toMatch(/must be the literal boolean true/);
+  });
+
+  it('an entry that is neither form still names baseUrl as the fix', () => {
+    expect(validateApiServers({ ant: {} as never })[0]).toMatch(/"baseUrl" is required.*or declare "self: true"/);
+  });
+});
+
+function catchOf(fn: () => unknown): unknown {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e;
+  }
+}

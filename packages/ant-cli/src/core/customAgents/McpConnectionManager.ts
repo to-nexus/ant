@@ -30,11 +30,18 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { ToolDefinition } from '../ports/llm';
 import { extractMCPTextContent, extractMCPImageContent } from '../utils/mcpContent';
 import { MCP_TOOL_PREFIX } from './universalToolPolicy';
-import { parseSecretRef, isForbiddenMcpEnvKey } from '@ant/shared';
+import { parseSecretRef, isForbiddenMcpEnvKey, isSelfApiConfig } from '@ant/shared';
 import { McpConfigError } from './McpConfigError';
 import type { McpCredentialResolver } from './McpCredentialResolver';
 import type { McpServerConfig, RestApiServerConfig } from './types';
-import { buildRestToolInfos, compileRestServer, executeRestCall, parseApiToolName, type CompiledRestServer } from './restApi';
+import {
+  buildRestToolInfos,
+  compileRestServer,
+  executeRestCall,
+  parseApiToolName,
+  resolveRestConnectivity,
+  type CompiledRestServer,
+} from './restApi';
 import { assertUserCodeIsolationOrThrow, wrapCommandForChildIdentity } from '../config/childIdentity';
 
 const CONNECT_TIMEOUT_MS = 60_000;
@@ -158,19 +165,21 @@ export class McpConnectionManager {
   /** Connect every declared server and collect its tool list. Fail-loud. */
   async connect(): Promise<void> {
     if (this.connected) return;
-    // Declared REST APIs first — compile + resolve secrets, no network I/O
+    // Declared REST APIs first — compile + resolve connectivity, no network I/O
     // (nothing to handshake; requests fail per call). A definition mistake
-    // (bad baseUrl, unregistered credential) still fails loud here as
-    // McpConfigError → config_invalid.
+    // (bad baseUrl, unregistered credential) and a self entry's missing
+    // wiring both fail loud here as McpConfigError → config_invalid.
     for (const [serverName, cfg] of Object.entries(this.apis)) {
-      const compiled = compileRestServer(
+      // A self entry declares no headers, so it never reaches the credential
+      // resolver — its bearer comes from the env the parent injected.
+      const connectivity = resolveRestConnectivity(
         serverName,
         cfg,
-        await this.resolveCredentials(cfg.headers, 'headers', serverName, 'API server'),
+        isSelfApiConfig(cfg) ? {} : await this.resolveCredentials(cfg.headers, 'headers', serverName, 'API server'),
       );
-      this.restServers.set(serverName, compiled);
-      this.tools.push(...buildRestToolInfos(serverName, cfg));
-      console.log(`🔌 [API] "${serverName}" declared — 2 synthesized tools (base: ${cfg.baseUrl})`);
+      this.restServers.set(serverName, compileRestServer(serverName, cfg, connectivity));
+      this.tools.push(...buildRestToolInfos(serverName, cfg, connectivity.label));
+      console.log(`🔌 [API] "${serverName}" declared — 2 synthesized tools (base: ${connectivity.label})`);
     }
     for (const [serverName, cfg] of Object.entries(this.servers)) {
       const client = new Client({ name: 'ant-universal', version: '1.0.0' });

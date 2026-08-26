@@ -614,7 +614,20 @@ function ApiServersSection({
   const newNameValid = isValidCustomId(newName) && !names.includes(newName);
 
   const patch = (name: string, next: Partial<RestApiServerConfig>) =>
-    onChange({ ...servers, [name]: { ...servers[name], ...next } });
+    onChange({ ...servers, [name]: { ...servers[name], ...next } as RestApiServerConfig });
+
+  /**
+   * Flip between the two entry forms. Each keeps only its own keys plus
+   * `allow`, so the saved yaml is never a mix of `self` and connectivity —
+   * which the validator refuses.
+   */
+  const setSelf = (name: string, self: boolean) => {
+    const allow = servers[name].allow;
+    onChange({
+      ...servers,
+      [name]: (self ? { self: true, ...(allow ? { allow } : {}) } : { baseUrl: '', ...(allow ? { allow } : {}) }) as RestApiServerConfig,
+    });
+  };
 
   const submitAdd = () => {
     if (!newNameValid) return;
@@ -629,7 +642,7 @@ function ApiServersSection({
       <FieldHint spacing="below">
         {t(
           'agentDef.apiHint',
-          'For systems with no MCP server: declare where (base URL), as whom (auth headers), and optionally how far (allow rules). The agent gets two generic tools per entry (api__{name}__get / api__{name}__request) and composes calls from this job\'s instructions and reference files.',
+          'For systems with no MCP server: declare where (base URL), as whom (auth headers), and optionally how far (allow rules) — or tick "self" to target this Ant server, whose URL and credential the runtime supplies. The agent gets two generic tools per entry (api__{name}__get / api__{name}__request) and composes calls from this job\'s instructions and reference files.',
         )}
       </FieldHint>
 
@@ -641,6 +654,7 @@ function ApiServersSection({
         {names.map((name) => {
           const cfg = servers[name];
           const allow = cfg.allow ?? [];
+          const isSelf = cfg.self !== undefined;
           return (
             <div
               key={name}
@@ -681,33 +695,52 @@ function ApiServersSection({
               </div>
 
               <div className="mcp-field-row">
-                <RowLabel>baseUrl</RowLabel>
+                <RowLabel>self</RowLabel>
                 <div className="mcp-field-body">
-                  <AuroraInput
-                    value={cfg.baseUrl ?? ''}
-                    mono
-                    disabled={disabled}
-                    hasError={typeof cfg.baseUrl === 'string' && cfg.baseUrl.length > 0 && !/^https?:\/\//.test(cfg.baseUrl)}
-                    onChange={(v) => patch(name, { baseUrl: v })}
-                    placeholder="https://erp.example.com/api"
-                  />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelf}
+                      disabled={disabled}
+                      onChange={(e) => setSelf(name, e.target.checked)}
+                    />
+                    {t('agentDef.apiSelf', 'This Ant server — the runtime supplies the URL and the credential')}
+                  </label>
                 </div>
               </div>
 
-              <div className="mcp-field-row">
-                <RowLabel>headers</RowLabel>
-                <EnvVarNameRows
-                  entries={Object.entries(cfg.headers ?? {})}
-                  disabled={disabled}
-                  keyPlaceholder="Authorization"
-                  keyHasError={(key) => key.length > 0 && !MCP_HEADER_NAME_PATTERN.test(key)}
-                  removeLabel={t('agentDef.mcpRemoveHeader', 'Remove header')}
-                  addLabel={t('agentDef.mcpAddHeader', 'Add header')}
-                  credentialStatusOf={credentialStatusOf}
-                  onCredentialJump={onCredentialJump}
-                  onChange={(headers) => patch(name, { headers })}
-                />
-              </div>
+              {!isSelf && (
+                <div className="mcp-field-row">
+                  <RowLabel>baseUrl</RowLabel>
+                  <div className="mcp-field-body">
+                    <AuroraInput
+                      value={cfg.baseUrl ?? ''}
+                      mono
+                      disabled={disabled}
+                      hasError={typeof cfg.baseUrl === 'string' && cfg.baseUrl.length > 0 && !/^https?:\/\//.test(cfg.baseUrl)}
+                      onChange={(v) => patch(name, { baseUrl: v })}
+                      placeholder="https://erp.example.com/api"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!isSelf && (
+                <div className="mcp-field-row">
+                  <RowLabel>headers</RowLabel>
+                  <EnvVarNameRows
+                    entries={Object.entries(cfg.headers ?? {})}
+                    disabled={disabled}
+                    keyPlaceholder="Authorization"
+                    keyHasError={(key) => key.length > 0 && !MCP_HEADER_NAME_PATTERN.test(key)}
+                    removeLabel={t('agentDef.mcpRemoveHeader', 'Remove header')}
+                    addLabel={t('agentDef.mcpAddHeader', 'Add header')}
+                    credentialStatusOf={credentialStatusOf}
+                    onCredentialJump={onCredentialJump}
+                    onChange={(headers) => patch(name, { headers })}
+                  />
+                </div>
+              )}
 
               <div className="mcp-field-row">
                 <RowLabel>allow</RowLabel>

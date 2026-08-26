@@ -538,8 +538,29 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
  * The runtime synthesizes two generic tools per entry, in-process (no child
  * process, no MCP handshake): `api__{name}__get` (GET/HEAD, read-only,
  * approval-exempt) and `api__{name}__request` (writes, fail-closed approval).
+ *
+ * An entry takes one of two mutually exclusive forms: {@link RestApiExternalConfig}
+ * (`baseUrl` + `headers`) for a third-party system, or {@link RestApiSelfConfig}
+ * (`self: true`) for Ant's own control-plane API, whose connectivity the runtime
+ * resolves instead of the author.
  */
-export interface RestApiServerConfig {
+interface RestApiScopeConfig {
+  /**
+   * Optional method+path scope, one rule per line: `METHOD PATTERN` (see
+   * {@link parseRestAllowLine}). Absent = every method+path under the base URL
+   * (reads free, writes behind the approval gate as usual). Enforced
+   * mechanically in the executor before any request is sent.
+   *
+   * NOT a security boundary: the definition is user-editable, so a widened
+   * `allow` is always one save away. Server-side authorization is what bounds
+   * a call — for {@link RestApiSelfConfig} that is the token's scope pin.
+   */
+  allow?: string[];
+}
+
+/** An external system: the author declares where and as whom. */
+export interface RestApiExternalConfig extends RestApiScopeConfig {
+  self?: undefined;
   /** Absolute http(s) base URL. A path prefix is allowed; query/fragment are not. */
   baseUrl: string;
   /**
@@ -549,13 +570,28 @@ export interface RestApiServerConfig {
    * context; per-call headers may not override a declared name.
    */
   headers?: Record<string, string>;
-  /**
-   * Optional method+path scope, one rule per line: `METHOD PATTERN` (see
-   * {@link parseRestAllowLine}). Absent = every method+path under baseUrl
-   * (reads free, writes behind the approval gate as usual). Enforced
-   * mechanically in the executor before any request is sent.
-   */
-  allow?: string[];
+}
+
+/**
+ * Ant's own control-plane API. Carries neither URL nor credential: the runtime
+ * resolves the base URL from the env the parent process already injects
+ * (`ANT_API_URL`) and attaches the job-scoped token when one exists, so a
+ * definition never hard-codes an install's origin nor assumes a registered
+ * credential. That is also why it is the only `apis` form a builtin agent may
+ * declare.
+ */
+export interface RestApiSelfConfig extends RestApiScopeConfig {
+  /** Literal `true`. A truthy string is refused — it would silently invert intent. */
+  self: true;
+  baseUrl?: undefined;
+  headers?: undefined;
+}
+
+export type RestApiServerConfig = RestApiExternalConfig | RestApiSelfConfig;
+
+/** Discriminates the two entry forms. One owner for BE runtime and FE editor. */
+export function isSelfApiConfig(cfg: RestApiServerConfig | undefined | null): cfg is RestApiSelfConfig {
+  return (cfg as { self?: unknown } | null | undefined)?.self === true;
 }
 
 export const REST_ALLOW_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', '*'] as const;
@@ -614,43 +650,67 @@ export function parseRestAllowLine(line: unknown): RestAllowRule | string {
 export function validateApiServers(servers: Record<string, RestApiServerConfig> | undefined): string[] {
   const errors: string[] = [];
   for (const [name, cfg] of Object.entries(servers ?? {})) {
+    // The yaml is untrusted shape — read it as a bag so the two entry forms
+    // can be told apart before the union type is trusted.
+    const raw = cfg as unknown as Record<string, unknown> | null | undefined;
     if (!isValidCustomId(name)) {
       errors.push(`API server name "${name}" must be ${CUSTOM_ID_HINT}`);
     }
     for (const key of ['transport', 'command', 'args', 'env', 'url'] as const) {
-      if ((cfg as unknown as Record<string, unknown> | null | undefined)?.[key] !== undefined) {
+      if (raw?.[key] !== undefined) {
         errors.push(`API server "${name}": "${key}" belongs to mcp.servers — an apis entry declares baseUrl / headers / allow only`);
       }
     }
-    if (typeof cfg?.baseUrl !== 'string' || cfg.baseUrl.trim() === '') {
-      errors.push(`API server "${name}": "baseUrl" is required (absolute http(s) URL)`);
+
+    if (raw?.self !== undefined) {
+      if (raw.self !== true) {
+        errors.push(`API server "${name}": "self" must be the literal boolean true (got: ${String(raw.self)})`);
+      }
+      for (const key of ['baseUrl', 'headers'] as const) {
+        if (raw[key] !== undefined) {
+          errors.push(
+            `API server "${name}": "self" targets this Ant server, whose "${key}" the runtime resolves — remove "${key}", or drop "self" to declare an external API`,
+          );
+        }
+      }
     } else {
-      let parsed: URL | null = null;
-      try {
-        parsed = new URL(cfg.baseUrl);
-      } catch {
-        errors.push(`API server "${name}": baseUrl "${cfg.baseUrl}" is not a valid absolute URL`);
-      }
-      if (parsed) {
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-          errors.push(`API server "${name}": baseUrl must be http(s), got "${parsed.protocol}"`);
+      const baseUrl = raw?.baseUrl;
+      if (typeof baseUrl !== 'string' || baseUrl.trim() === '') {
+        errors.push(`API server "${name}": "baseUrl" is required (absolute http(s) URL), or declare "self: true" to target this Ant server`);
+      } else {
+        let parsed: URL | null = null;
+        try {
+          parsed = new URL(baseUrl);
+        } catch {
+          errors.push(`API server "${name}": baseUrl "${baseUrl}" is not a valid absolute URL`);
         }
-        if (parsed.search !== '' || parsed.hash !== '') {
-          errors.push(`API server "${name}": baseUrl must not carry a query string or fragment`);
+        if (parsed) {
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            errors.push(`API server "${name}": baseUrl must be http(s), got "${parsed.protocol}"`);
+          }
+          if (parsed.search !== '' || parsed.hash !== '') {
+            errors.push(`API server "${name}": baseUrl must not carry a query string or fragment`);
+          }
+        }
+      }
+      const headers = raw?.headers;
+      if (headers !== undefined && (typeof headers !== 'object' || headers === null || Array.isArray(headers))) {
+        errors.push(`API server "${name}": "headers" must be an object of header name → value`);
+      } else {
+        for (const [key, value] of Object.entries((headers ?? {}) as Record<string, unknown>)) {
+          if (!MCP_HEADER_NAME_PATTERN.test(key)) {
+            errors.push(`API server "${name}": headers."${key}" is not a valid HTTP header name`);
+          }
+          checkSecretableValue(errors, 'API server', name, `headers.${key}`, value);
         }
       }
     }
-    for (const [key, value] of Object.entries(cfg?.headers ?? {})) {
-      if (!MCP_HEADER_NAME_PATTERN.test(key)) {
-        errors.push(`API server "${name}": headers."${key}" is not a valid HTTP header name`);
-      }
-      checkSecretableValue(errors, 'API server', name, `headers.${key}`, value);
-    }
-    if (cfg?.allow !== undefined) {
-      if (!Array.isArray(cfg.allow) || cfg.allow.length === 0) {
+
+    if (raw?.allow !== undefined) {
+      if (!Array.isArray(raw.allow) || raw.allow.length === 0) {
         errors.push(`API server "${name}": "allow" must be a non-empty list of "METHOD PATTERN" rules (omit it to allow every path)`);
       } else {
-        for (const line of cfg.allow) {
+        for (const line of raw.allow) {
           const rule = parseRestAllowLine(line);
           if (typeof rule === 'string') errors.push(`API server "${name}": ${rule}`);
         }

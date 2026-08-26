@@ -105,9 +105,17 @@ export function deriveApiServers(doc: Document | null): Record<string, RestApiSe
   const out: Record<string, RestApiServerConfig> = {};
   for (const [name, raw] of Object.entries(servers as Record<string, unknown>)) {
     const cfg = (raw ?? {}) as Record<string, unknown>;
+    const allow = Array.isArray(cfg.allow) ? { allow: cfg.allow.map((a) => String(a)) } : {};
+    // A self entry carries neither URL nor headers — the runtime resolves both.
+    // Read `self` verbatim (not coerced) so a wrong literal stays visible to
+    // the validator instead of being silently normalized to true.
+    if (cfg.self !== undefined) {
+      out[name] = { self: cfg.self as true, ...allow };
+      continue;
+    }
     out[name] = {
       // Kept verbatim so a missing baseUrl stays visible to the validator.
-      baseUrl: cfg.baseUrl as RestApiServerConfig['baseUrl'],
+      baseUrl: cfg.baseUrl as string,
       ...(cfg.headers && typeof cfg.headers === 'object' && !Array.isArray(cfg.headers)
         ? {
             headers: Object.fromEntries(
@@ -115,7 +123,7 @@ export function deriveApiServers(doc: Document | null): Record<string, RestApiSe
             ),
           }
         : {}),
-      ...(Array.isArray(cfg.allow) ? { allow: cfg.allow.map((a) => String(a)) } : {}),
+      ...allow,
     };
   }
   return out;
@@ -309,8 +317,10 @@ export function applyMcpServers(doc: Document, servers: Record<string, McpServer
 
 /**
  * Writes the top-level `apis` map (declared REST API connections), dropping
- * keys the runtime ignores (baseUrl / headers / allow only). An empty map
- * removes `apis` entirely.
+ * keys the runtime ignores. An entry is written in ONE of its two forms —
+ * `self` + allow, or baseUrl + headers + allow — so a round trip through the
+ * form cannot leave a self entry carrying the connectivity keys that make it
+ * invalid. An empty map removes `apis` entirely.
  */
 export function applyApiServers(doc: Document, servers: Record<string, RestApiServerConfig>): void {
   const names = Object.keys(servers);
@@ -323,12 +333,16 @@ export function applyApiServers(doc: Document, servers: Record<string, RestApiSe
     Object.fromEntries(
       names.map((name) => {
         const cfg = servers[name];
+        const allow = cfg.allow && cfg.allow.length > 0 ? { allow: cfg.allow } : {};
+        if (cfg.self !== undefined) {
+          return [name, { self: cfg.self, ...allow }];
+        }
         return [
           name,
           {
             baseUrl: cfg.baseUrl ?? '',
             ...(cfg.headers && Object.keys(cfg.headers).length > 0 ? { headers: cfg.headers } : {}),
-            ...(cfg.allow && cfg.allow.length > 0 ? { allow: cfg.allow } : {}),
+            ...allow,
           },
         ];
       }),

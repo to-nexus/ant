@@ -1,0 +1,55 @@
+# The agent-builder's single job: author and edit custom agent definitions
+# through this Ant server's own account-agents API.
+id: author
+name: 'Author'
+version: 1
+apis:
+  # `self: true` targets THIS Ant server. The runtime resolves the base URL
+  # from the process environment and attaches the job's capability-pinned
+  # token, so a shipped definition assumes neither an install's origin nor a
+  # registered credential.
+  #
+  # `allow` scopes what this job may compose; it is not the security boundary.
+  # The token itself is pinned server-side to the account-agents surface and
+  # refuses promote / editors / import / upload whatever this list says.
+  ant:
+    self: true
+    allow:
+      - GET /account/agents/**
+      - POST /account/agents/**
+      - PUT /account/agents/**
+      - PATCH /account/agents/**
+      - DELETE /account/agents/**
+tools:
+  # Allowlist — validates directly against the universal preset. Omitting
+  # `builtin` entirely would grant the full preset. This is the preset MINUS
+  # three deliberate exclusions:
+  #   http_request — loopback-only service probe; this job's HTTP is api__ant__*
+  #   run_command  — definitions are authored through the validated API route,
+  #                  never by writing files from a shell
+  #   read_state   — reads canonical feature history, empty on universal projects
+  builtin:
+    - read_file
+    - list_files
+    - search_files
+    - create_file
+    - edit_file
+    - append_file
+    - delete_file
+    - mkdir
+    - copy_file
+    - fetch_url
+    - search_web
+    - explore
+    - subagent_report
+    # Ant platform self-source (read-only) — check a loader rule against the
+    # actual code instead of guessing at it.
+    - read_ant_source
+    - list_ant_files
+    - search_ant_code
+  # Per-tool approval override: 'always' | 'never'. Writes through a declared
+  # API default to 'always'; authoring a definition IS this job's purpose, and
+  # its boundary is the token's server-side scope pin plus the save-time
+  # validation gate — not a prompt on every file.
+  approval:
+    api__ant__request: never

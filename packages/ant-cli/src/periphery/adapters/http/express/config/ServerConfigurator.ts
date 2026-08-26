@@ -14,6 +14,7 @@ import {
   stripNavTicket,
 } from '../../middleware/ideNavTicket';
 import { createRequireOnboardedJwt } from '../../middleware/requireOnboardedJwt';
+import { createSelfApiScopeGuard } from '../../middleware/selfApiScopeGuard';
 
 import { JwtService } from '../../../../../infrastructure/auth/JwtService';
 import { parseIDEKey } from '../../../../../infrastructure/state/redisKeyUtils';
@@ -317,6 +318,11 @@ export class ServerConfigurator {
     // onboarding-flow endpoints (auth/me, auth/signout, auth/onboarding,
     // organizations). Local mode skips this entirely (early return above).
     app.use('/api', createRequireOnboardedJwt());
+
+    // A universal job's self-API bearer is pinned to the account-agents
+    // surface. Mounts here — after verification, before every router — so no
+    // route can be reached by a pinned token without passing it.
+    app.use('/api', createSelfApiScopeGuard());
   }
 
   /**

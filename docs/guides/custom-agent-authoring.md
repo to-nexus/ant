@@ -4,6 +4,22 @@ This guide walks through defining a custom agent with one job, from empty
 directory to a running chat. Concepts:
 [concepts/custom-agents.md](../concepts/custom-agents.md).
 
+## Let an agent write it for you
+
+Ant ships **`agent-builder`**, a read-only builtin whose one job (`author`)
+does what this guide describes: describe the agent you want, paste in whatever
+context it should work from, and it creates or edits the definition in your
+personal scope, then validates the job before reporting.
+
+It works through the same account-agents API the settings screen uses, so
+everything below still applies — the rules, the whitelist, and the validation
+are identical whether a person or the agent types them. What it cannot do is
+publish to your organization or grant edit access; those stay in the settings
+screen. It also cannot edit builtins, itself included: ask it for your own copy
+under a different id instead.
+
+Read on if you would rather author by hand, or want to understand what it wrote.
+
 ## 0. Study the shipped sample
 
 Every universal project already lists **`assistant`** — a read-only builtin
@@ -179,6 +195,26 @@ Static-header auth only. A login-dance or request-signing API, and any write
 that needs server-enforced rules (validation, idempotency, dry-run), is the
 signal to write a thin MCP capability server instead — see
 `examples/mcp-reference-server/`.
+
+### `self: true` — Ant's own API
+
+One entry form declares no URL and no credential:
+
+```yaml
+apis:
+  ant:
+    self: true
+    allow:
+      - GET /account/agents/**
+      - PUT /account/agents/**
+```
+
+The runtime supplies both, so the definition works unchanged on any install and
+needs nothing registered. In exchange the token it receives is pinned
+server-side to `/api/account/agents` — it cannot reach the rest of the API, and
+it is refused on `promote`, `editors`, `import`, and `files/upload` no matter
+what `allow` says. Writing `self: true` next to `baseUrl` or `headers` is a
+validation error: an entry is one form or the other.
 
 ## 2.5 Register the credentials the definition references
 

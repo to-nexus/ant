@@ -460,6 +460,24 @@ debugging session.
   sequences) is never declared — it is prose in `base/`, intent `prompt.md`,
   and `reference/**` docs (read-on-demand index rendered into the system
   block). No per-endpoint tool schemas, no OpenAPI→tools import.
+- An `apis` entry takes one of two mutually exclusive forms: external
+  (`baseUrl` + `headers`) or `self: true`, which targets Ant's own API and
+  carries NEITHER — the runtime resolves the origin from `ANT_API_URL` and the
+  bearer from the token minted at accept. It is the only `apis` form a builtin
+  agent may declare (same reason MCP is forbidden there: a shipped definition
+  assumes no install URL and no registered credential).
+- **A definition's `allow` list is not a security boundary** — the definition is
+  user-editable. For a self entry the boundary is `createSelfApiScopeGuard`,
+  mounted on `/api` after authentication: a `scope: 'self-api'` token reaches
+  `/api/account/agents` and nothing else, and is refused on `promote` /
+  `editors` (authority spread) and `import` / `files/upload` (they skip
+  `gateDefinitionSave`). Absence of the claim is an ordinary session, never a
+  pin. Minting stays in the process holding the JWT private key (C-001).
+- **Definition writes have one funnel**: `PUT /account/agents/:agentId/file` →
+  `gateDefinitionSave` → `loadCustomJob`. A job authors definitions by calling
+  it (the builtin `agent-builder`), never by writing the files directly — which
+  is also why `run_command`'s containment check runs on every plane, not only
+  where the `codebase/` prefix rule applies.
 - `decideProjectJobGate` (`core/customAgents/universalContainer.ts`) is the one
   bidirectional truth table; enforcement is HTTP 400 at job-accept.
 - `${secret:KEY}` (`MCP_SECRET_REF_PATTERN`) is the only credential marker;
@@ -473,6 +491,8 @@ debugging session.
 ```bash
 rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0
 rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal            # Expected: 0
+# The pin is mounted once, on the whole /api surface, and nowhere else re-judged.
+rg -n "createSelfApiScopeGuard\(" packages/ant-cli/src                              # Expected: 2 (definition + mount)
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0
 ```
 

@@ -18,6 +18,11 @@ declare global {
         id: string;
         email: string;
         organizationId: string;
+        /**
+         * Capability pin carried by the verified token. Absent = an ordinary
+         * session; never treat absence as a pin. See `selfApiScopeGuard`.
+         */
+        scope?: 'self-api';
       };
       
       /**

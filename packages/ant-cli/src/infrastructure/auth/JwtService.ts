@@ -29,6 +29,15 @@ export interface JwtPayload {
   kind?: OrganizationKind; // active org kind — optional for BC with pre-kind tokens
   name?: string;      // display name
   picture?: string;   // profile picture URL
+  /**
+   * Capability pin. Absent = an ordinary session with the user's full
+   * authority — never infer a pin from absence. `'self-api'` is minted for a
+   * universal job whose definition declares an `apis` self entry and is
+   * refused everywhere outside the account-agents surface (see
+   * `selfApiScopeGuard`), so a job cannot spend its owner's session on the
+   * rest of the control plane.
+   */
+  scope?: 'self-api';
   iat: number;        // issued at (epoch seconds)
   exp: number;        // expiration (epoch seconds)
 }

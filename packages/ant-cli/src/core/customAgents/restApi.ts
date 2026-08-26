@@ -31,7 +31,8 @@
  *    — so job-runner keeps classifying definition mistakes as config_invalid.
  */
 
-import { parseRestAllowLine, type RestAllowRule, type RestApiServerConfig, API_TOOL_PREFIX } from '@ant/shared';
+import { parseRestAllowLine, isSelfApiConfig, type RestAllowRule, type RestApiServerConfig, API_TOOL_PREFIX } from '@ant/shared';
+import { CHILD_PROCESS_ENV } from '../types/processEnv';
 import { McpConfigError } from './McpConfigError';
 import type { McpCallResult, McpToolInfo } from './McpConnectionManager';
 import type { ToolDefinition } from '../ports/llm';
@@ -71,21 +72,103 @@ export function parseApiToolName(prefixed: string): { serverName: string; toolNa
   return { serverName: rest.slice(0, sep), toolName };
 }
 
+/** Path prefix every Ant HTTP route is mounted under. */
+const SELF_API_BASE_PATH = '/api';
+
+/** What the tool descriptions call a self entry — never the internal origin. */
+export const SELF_API_LABEL = 'this Ant server';
+
 /**
- * Compile one declared API server. Headers arrive ALREADY RESOLVED (the
- * caller runs them through the credential resolver — single credential rule
- * with MCP). Throws McpConfigError on a bad baseUrl; performs no network I/O.
+ * Connectivity for one entry: where to call and as whom. An external entry
+ * carries its own; a self entry has it resolved from the process env.
+ */
+export interface ResolvedRestConnectivity {
+  baseUrl: string;
+  headers: Record<string, string>;
+  /** Shown to the model in place of a raw origin. */
+  label: string;
+}
+
+/**
+ * Resolve a `self: true` entry against the env the parent already injects.
+ *
+ * The author declares neither URL nor credential, so both failures are
+ * definition-independent misconfiguration and must be loud: they surface as
+ * McpConfigError at connect time (→ `config_invalid`), never as a mysterious
+ * 401 mid-turn. Local mode legitimately has no token — it runs no auth gate.
+ */
+export function resolveSelfApiConfig(
+  serverName: string,
+  env: NodeJS.ProcessEnv = process.env,
+): ResolvedRestConnectivity {
+  const apiUrl = env[CHILD_PROCESS_ENV.API_URL]?.trim();
+  if (!apiUrl) {
+    throw new McpConfigError(
+      `API server "${serverName}" declares "self: true" but ${CHILD_PROCESS_ENV.API_URL} is not set on this process — ` +
+        'the runtime cannot resolve this Ant server\'s own origin',
+      { serverName },
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(apiUrl);
+  } catch {
+    throw new McpConfigError(
+      `API server "${serverName}": ${CHILD_PROCESS_ENV.API_URL} ("${apiUrl}") is not a valid absolute URL`,
+      { serverName },
+    );
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new McpConfigError(`API server "${serverName}": ${CHILD_PROCESS_ENV.API_URL} must be http(s)`, { serverName });
+  }
+
+  const token = env[CHILD_PROCESS_ENV.SELF_API_TOKEN]?.trim();
+  const isCloud = env[CHILD_PROCESS_ENV.SERVER_MODE] === 'cloud';
+  if (isCloud && !token) {
+    // The mint is unconditional whenever a self entry is declared, so an
+    // absent token in cloud is a wiring fault — every call would 401.
+    throw new McpConfigError(
+      `API server "${serverName}" declares "self: true" but this job carries no ${CHILD_PROCESS_ENV.SELF_API_TOKEN} — ` +
+        'the API would refuse every call',
+      { serverName },
+    );
+  }
+
+  const base = parsed.href.replace(/\/+$/, '') + SELF_API_BASE_PATH;
+  return {
+    baseUrl: base,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    label: SELF_API_LABEL,
+  };
+}
+
+/** Connectivity for either entry form. External entries need their headers already resolved. */
+export function resolveRestConnectivity(
+  serverName: string,
+  cfg: RestApiServerConfig,
+  resolvedHeaders: Record<string, string>,
+  env: NodeJS.ProcessEnv = process.env,
+): ResolvedRestConnectivity {
+  if (isSelfApiConfig(cfg)) return resolveSelfApiConfig(serverName, env);
+  return { baseUrl: cfg.baseUrl, headers: resolvedHeaders, label: cfg.baseUrl };
+}
+
+/**
+ * Compile one declared API server. Connectivity arrives ALREADY RESOLVED via
+ * {@link resolveRestConnectivity} — external headers through the credential
+ * resolver (single credential rule with MCP), a self entry through the process
+ * env. Throws McpConfigError on a bad baseUrl; performs no network I/O.
  */
 export function compileRestServer(
   serverName: string,
   cfg: RestApiServerConfig,
-  resolvedHeaders: Record<string, string>,
+  connectivity: ResolvedRestConnectivity,
 ): CompiledRestServer {
   let baseUrl: URL;
   try {
-    baseUrl = new URL(cfg.baseUrl);
+    baseUrl = new URL(connectivity.baseUrl);
   } catch {
-    throw new McpConfigError(`API server "${serverName}": baseUrl "${cfg.baseUrl}" is not a valid absolute URL`, { serverName });
+    throw new McpConfigError(`API server "${serverName}": baseUrl "${connectivity.baseUrl}" is not a valid absolute URL`, { serverName });
   }
   if (baseUrl.protocol !== 'http:' && baseUrl.protocol !== 'https:') {
     throw new McpConfigError(`API server "${serverName}": baseUrl must be http(s)`, { serverName });
@@ -105,7 +188,7 @@ export function compileRestServer(
     serverName,
     baseUrl,
     basePath: baseUrl.pathname.replace(/\/+$/, ''),
-    headers: resolvedHeaders,
+    headers: connectivity.headers,
     allow,
   };
 }
@@ -140,7 +223,11 @@ const TIMEOUT_PROP = {
  * descriptions point the model at the prose knowledge channel — endpoint
  * discovery means reading the documented files, not probing paths.
  */
-export function buildRestToolInfos(serverName: string, cfg: RestApiServerConfig): McpToolInfo[] {
+export function buildRestToolInfos(
+  serverName: string,
+  cfg: RestApiServerConfig,
+  baseLabel: string = isSelfApiConfig(cfg) ? SELF_API_LABEL : cfg.baseUrl,
+): McpToolInfo[] {
   const docsPointer =
     'For endpoint documentation (paths, fields, call sequences) consult this job\'s instructions and reference files — do not guess paths.';
   const getName = buildApiToolName(serverName, 'get');
@@ -154,7 +241,7 @@ export function buildRestToolInfos(serverName: string, cfg: RestApiServerConfig)
       definition: {
         name: getName,
         description:
-          `HTTP GET/HEAD against the "${serverName}" REST API (base: ${cfg.baseUrl}). Read-only. ` +
+          `HTTP GET/HEAD against the "${serverName}" REST API (base: ${baseLabel}). Read-only. ` +
           `Allowed: ${describeAllow(cfg)}. ${docsPointer}`,
         input_schema: {
           type: 'object',
@@ -177,7 +264,7 @@ export function buildRestToolInfos(serverName: string, cfg: RestApiServerConfig)
       definition: {
         name: requestName,
         description:
-          `HTTP write (POST/PUT/PATCH/DELETE) against the "${serverName}" REST API (base: ${cfg.baseUrl}). ` +
+          `HTTP write (POST/PUT/PATCH/DELETE) against the "${serverName}" REST API (base: ${baseLabel}). ` +
           `Allowed: ${describeAllow(cfg)}. ${docsPointer}`,
         input_schema: {
           type: 'object',

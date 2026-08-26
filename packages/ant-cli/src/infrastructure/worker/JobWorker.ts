@@ -588,6 +588,12 @@ export class JobWorker {
     if (payload.customJobRef) {
       env.ANT_CUSTOM_JOB_REF = payload.customJobRef;
     }
+    if (payload.selfApiToken) {
+      // Capability-pinned bearer for the definition's `apis` self entry. Rides
+      // the ANT_* namespace on purpose: `composeCommandChildEnv()` refuses that
+      // whole namespace by name, so an LLM-chosen command never sees it.
+      env.ANT_SELF_API_TOKEN = payload.selfApiToken;
+    }
     if (payload.universalTurnMeta) {
       // Single JSON env — context paths may contain commas, so never CSV.
       env.ANT_UNIVERSAL_TURN_META = JSON.stringify(payload.universalTurnMeta);

@@ -111,6 +111,39 @@ describe('detectWritePathViolations', () => {
     expect(v.length).toBeGreaterThan(0);
     expect(v[0].reason).toMatch(/expansion/);
   });
+
+  // Two independent axes. Containment holds everywhere — the spawned shell
+  // never goes through FileSystemAdapter, so nothing else bounds it. The
+  // codebase/ prefix rule is canonical-plane only; a universal artifact tree
+  // has no such subtree. Gating both together let `cp x ../../../.ant/agents/…`
+  // walk out of a universal job's sandbox.
+  describe('containment holds on the universal plane, the codebase/ rule does not', () => {
+    const artifacts = '/srv/workspace/universal/artifacts';
+
+    it.each([
+      ['../ traversal out of the sandbox', 'cp payload.txt ../../../.ant/agents/ops/agent.yaml'],
+      ['absolute path outside the sandbox', 'cp payload.txt /srv/workspace/.ant/agents/ops/agent.yaml'],
+      ['a .git write', 'echo break > .git/config'],
+      ['an unverifiable expansion', 'cp a.txt "$HOME/evil.txt"'],
+    ])('refuses %s', (_name, cmd) => {
+      expect(detectWritePathViolations(cmd, artifacts, artifacts, false).length).toBeGreaterThan(0);
+    });
+
+    it('admits an ordinary write inside the artifact tree — no codebase/ prefix demanded', () => {
+      expect(detectWritePathViolations('echo hi > notes/today.md', artifacts, artifacts, false)).toEqual([]);
+      expect(detectWritePathViolations('mkdir -p reports', artifacts, artifacts, false)).toEqual([]);
+    });
+
+    it('the same write outside codebase/ is still refused on a canonical root', () => {
+      const v = detectWritePathViolations('echo hi > notes/today.md', project, project, true);
+      expect(v.length).toBeGreaterThan(0);
+      expect(v[0].reason).toMatch(/outside codebase\//);
+    });
+
+    it('a path merely starting with ".." is not an escape', () => {
+      expect(detectWritePathViolations('echo hi > ..hidden.md', artifacts, artifacts, false)).toEqual([]);
+    });
+  });
 });
 
 describe('isLikelyBuildCommand', () => {

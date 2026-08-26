@@ -34,6 +34,12 @@ export interface ExecuteJobParams {
   customJobRef?: string;
   /** Universal only — explicit `@intent:`/`@ctx:` turn meta (validated at accept). */
   universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
+  /**
+   * Universal only — the resolved definition declares an `apis` self entry.
+   * A FLAG, never a token: the credential is minted by the dispatch owner from
+   * the signing key, never accepted from a caller.
+   */
+  declaresSelfApi?: boolean;
   inputFile?: string;  // ✅ Optional: undefined for chat-initiated jobs with overrideDirective
   mode?: 'generate' | 'refactor' | 'explain';
   enableEvaluation?: boolean;

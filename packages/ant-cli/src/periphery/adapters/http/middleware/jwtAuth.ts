@@ -92,6 +92,7 @@ export function createJwtAuthMiddleware(options: JwtAuthMiddlewareOptions) {
         id: payload.sub,
         email: payload.email,
         organizationId: payload.org,
+        ...(payload.scope ? { scope: payload.scope } : {}),
       };
       req.organization = {
         id: payload.org,

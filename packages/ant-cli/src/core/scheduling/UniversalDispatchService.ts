@@ -28,6 +28,18 @@ export interface UniversalDispatchPorts {
 export interface UniversalDispatchDeps {
   workspaceService: { createWorkspace(tenantId: string, projectId: string): Promise<unknown> };
   workspaceResolver: { getPhysicalWorkspacesPath(): string };
+  /**
+   * Mints the capability-pinned bearer for a definition that declares an
+   * `apis` self entry. Injected because signing authority belongs to the
+   * process holding the key, not to core. Absent in local mode (no auth gate)
+   * and in any process that cannot sign — the job then fails loud at connect
+   * rather than 401-ing mid-turn.
+   */
+  selfApiTokenMinter?: (owner: {
+    userId: string;
+    organizationId: string;
+    organizationKind?: import('@ant/shared').OrganizationKind;
+  }) => string | undefined;
   /** In-memory kanban cache — present in the API server, absent for headless callers. */
   stateTracker?: {
     initializeJob(
@@ -115,6 +127,11 @@ export class UniversalDispatchService {
       // channel as overrideDirective — body → payload → env → runner.
       customJobRef: params.customJobRef,
       universalTurnMeta: params.universalTurnMeta,
+      // Minted from the accept-time flag, never accepted from the caller: a
+      // job that declares no self entry carries no credential at all.
+      ...(params.declaresSelfApi === true
+        ? { selfApiToken: this.deps.selfApiTokenMinter?.(params.userContext) }
+        : {}),
       // Pipeline attribution — absent on interactive starts.
       firedBy: params.firedBy,
       pipelineRunId: params.pipelineRunId,

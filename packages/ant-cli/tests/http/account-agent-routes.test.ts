@@ -17,6 +17,7 @@ import http from 'node:http';
 import express from 'express';
 import * as yaml from 'js-yaml';
 import { createAccountAgentRoutes } from '../../src/periphery/adapters/http/routes/accountAgents.routes';
+import { createSelfApiScopeGuard } from '../../src/periphery/adapters/http/middleware/selfApiScopeGuard';
 import type { WorkspaceResolver } from '../../src/core/config/WorkspacePathResolver';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
 import { getDefinitionDirPolicy, type OrgMembershipRole } from '@ant/shared';
@@ -1132,5 +1133,80 @@ describe('org-owned agents (team org)', () => {
       expect(res.status).toBe(400);
       expect(readAcl().agents.shared).toEqual({ owner: OWNER, editors: [] });
     });
+  });
+});
+
+/**
+ * `self-api` capability pin — a universal job's token reaches the definition
+ * surface and nothing else.
+ *
+ * The definition's own `allow` list cannot be the boundary (it is user-editable
+ * and one save away from `* *`), so these assertions run against the guard as
+ * it is composed in the server: auth populates `req.user`, the guard runs on
+ * the whole `/api` mount, then the routers.
+ */
+describe('self-api scope pin', () => {
+  let pinnedServer: http.Server;
+  let pinnedBase: string;
+  let scope: 'self-api' | undefined;
+
+  beforeAll(async () => {
+    const app = express();
+    app.use(express.json());
+    // Stands in for jwtAuth: the claim rides the verified token, never a header
+    // the caller controls.
+    app.use('/api', (req, _res, next) => {
+      req.user = { id: 'localuser', email: 'localuser@localorg', organizationId: 'localorg', ...(scope ? { scope } : {}) };
+      next();
+    });
+    app.use('/api', createSelfApiScopeGuard());
+    app.use('/api/projects', (_req, res) => res.status(200).json({ reached: true }));
+    app.use('/api/auth/refresh', (_req, res) => res.status(200).json({ reached: true }));
+    app.use('/api/account/agents', (_req, res) => res.status(200).json({ reached: true }));
+    pinnedServer = http.createServer(app);
+    await new Promise<void>((resolve) => pinnedServer.listen(0, resolve));
+    pinnedBase = `http://127.0.0.1:${(pinnedServer.address() as { port: number }).port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => pinnedServer.close((e) => (e ? reject(e) : resolve())));
+  });
+
+  const call = (pathname: string, method = 'GET') =>
+    fetch(`${pinnedBase}${pathname}`, { method, headers: { 'Content-Type': 'application/json' } });
+
+  it('reaches the definition surface', async () => {
+    scope = 'self-api';
+    expect((await call('/api/account/agents')).status).toBe(200);
+    expect((await call('/api/account/agents/ops/file', 'PUT')).status).toBe(200);
+  });
+
+  it('refuses every other route, including the one that would mint another token', async () => {
+    scope = 'self-api';
+    for (const pathname of ['/api/projects', '/api/projects/p/jobs', '/api/auth/refresh']) {
+      const res = await call(pathname);
+      expect(res.status, pathname).toBe(403);
+      expect((await res.json()).code).toBe('self-api-scope');
+    }
+  });
+
+  it('refuses the routes that spread authority or skip validation', async () => {
+    scope = 'self-api';
+    for (const pathname of [
+      '/api/account/agents/ops/promote',
+      '/api/account/agents/ops/editors',
+      '/api/account/agents/import',
+      '/api/account/agents/ops/files/upload',
+    ]) {
+      const res = await call(pathname, 'POST');
+      expect(res.status, pathname).toBe(403);
+      expect((await res.json()).code).toBe('self-api-scope');
+    }
+  });
+
+  it('an ordinary session is untouched — absence of the claim is not a pin', async () => {
+    scope = undefined;
+    expect((await call('/api/projects')).status).toBe(200);
+    expect((await call('/api/account/agents/ops/promote', 'POST')).status).toBe(200);
   });
 });

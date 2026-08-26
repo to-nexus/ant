@@ -35,7 +35,20 @@ export async function resolveUniversalExecuteContext(
   projectId: string,
   customJobRef: unknown,
 ): Promise<
-  | { ok: true; containerPath: string; ref: { agentId: string; jobId: string }; intentIds: Set<string> }
+  | {
+      ok: true;
+      containerPath: string;
+      ref: { agentId: string; jobId: string };
+      intentIds: Set<string>;
+      /**
+       * The definition declares an `apis` self entry, so this job needs a
+       * capability-pinned token to reach this server's own API. Decided here
+       * because this is where the definition is already loaded — the dispatch
+       * owner mints from the flag, and a job that declares nothing gets no
+       * credential at all.
+       */
+      declaresSelfApi: boolean;
+    }
   | { ok: false; status: number; error: string; code: string }
 > {
   const { parseCustomJobRef } = await import('@ant/shared');
@@ -55,6 +68,7 @@ export async function resolveUniversalExecuteContext(
     return { ok: false, status: 400, error: `Cannot read project config for "${projectId}": ${e instanceof Error ? e.message : String(e)}`, code: 'project-config-unreadable' };
   }
   let intentIds: Set<string>;
+  let declaresSelfApi = false;
   try {
     const { deriveCustomAgentScopeRootsForTenant } = await import('../customAgents/scopeRoots');
     const { loadCustomJob } = await import('../customAgents/CustomAgentLoader');
@@ -66,13 +80,15 @@ export async function resolveUniversalExecuteContext(
     });
     const loaded = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
     intentIds = new Set(loaded.intents.map((i) => i.id));
+    const { isSelfApiConfig } = await import('@ant/shared');
+    declaresSelfApi = Object.values(loaded.apiServers).some((cfg) => isSelfApiConfig(cfg));
   } catch (e) {
     return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e), code: 'invalid-custom-job-definition' };
   }
   const { ensureUniversalContainer } = await import('../customAgents/universalContainer');
   ensureUniversalContainer(projectPath);
   const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
-  return { ok: true, containerPath, ref, intentIds };
+  return { ok: true, containerPath, ref, intentIds, declaresSelfApi };
 }
 
 /**

@@ -76,6 +76,7 @@ import {
   checkStartCredits,
 } from '../../core/scheduling/UniversalDispatchGate';
 import { UniversalDispatchService } from '../../core/scheduling/UniversalDispatchService';
+import { createSelfApiTokenMinter } from '../auth/selfApiToken';
 
 const COMPONENT = 'PipelineCoordinator';
 /** A cron fire older than this is "missed" (worker downtime) — `onMissed` decides. */
@@ -420,6 +421,7 @@ export class PipelineRunCoordinator {
         workspaceService: this.deps.workspaceService,
         workspaceResolver: this.deps.workspaceResolver,
         stateTracker: this.deps.stateTracker,
+        selfApiTokenMinter: createSelfApiTokenMinter(),
       },
     );
 
@@ -433,6 +435,7 @@ export class PipelineRunCoordinator {
         userContext: owner,
         overrideDirective: directive,
         customJobRef: step.customJobRef,
+        declaresSelfApi: resolved.declaresSelfApi,
         universalTurnMeta: meta.meta ?? undefined,
         firedBy: 'schedule',
         pipelineRunId: run.runId,

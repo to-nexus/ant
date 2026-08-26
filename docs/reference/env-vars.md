@@ -162,6 +162,16 @@ projects under any other org/user directory are invisible to that server.
 |----------|---------|---------|
 | `ANT_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. |
 
+## Job child process
+
+Injected by the spawning process, not by the operator — with one exception noted
+below. Full inventory: `core/types/processEnv.ts`.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ANT_API_URL` | `http://localhost:${PORT}` | This Ant server's own origin, forwarded to every job-runner child. An `apis` **self entry** resolves its base URL from it (`+ /api`). **Cloud must set it explicitly** when ant-api is not reachable at the fallback: the self entry fails loud at connect rather than calling the wrong host. |
+| `ANT_SELF_API_TOKEN` | — | Capability-pinned bearer for an `apis` self entry. **Never set this by hand.** It is minted at job accept by the process holding the JWT private key, only for a definition that declares a self entry, and is refused outside `/api/account/agents` (see [44 §apis self entries](internals/44-universal-job.md#apis-self-entries--this-ant-servers-own-api)). Like every `ANT_*` name it is denied to `run_command` children. |
+
 ## Ports
 
 Each backend process reads `PORT` (e.g. `PORT=4110 pnpm dev:api-server`);

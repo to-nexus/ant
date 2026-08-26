@@ -230,6 +230,31 @@ describe('preview/deploy child env is composed, not inherited (C-003)', () => {
     });
   });
 
+  // The `apis` self entry hands a universal job a bearer for this Ant server's
+  // own account-agents API. It lives in the job-runner child's env, which is
+  // exactly the env an LLM-chosen `run_command` would inherit if the namespace
+  // rule did not refuse it by name (M-014 / M-NEW-016).
+  describe('a job self-API bearer never reaches a command child', () => {
+    it('drops ANT_SELF_API_TOKEN from both child profiles', () => {
+      process.env.ANT_SELF_API_TOKEN = 'ey.job-scoped.bearer';
+      expect(composeCommandChildEnv().ANT_SELF_API_TOKEN).toBeUndefined();
+      expect(composeChildEnv().ANT_SELF_API_TOKEN).toBeUndefined();
+    });
+
+    it('cannot be re-admitted by the preview passthrough', () => {
+      process.env.ANT_SELF_API_TOKEN = 'ey.job-scoped.bearer';
+      process.env.ANT_PREVIEW_ENV_PASSTHROUGH = 'ANT_SELF_API_TOKEN';
+      expect(composeChildEnv().ANT_SELF_API_TOKEN).toBeUndefined();
+      expect(composeCommandChildEnv().ANT_SELF_API_TOKEN).toBeUndefined();
+    });
+
+    it('keeps the signing key out of every child profile (C-001)', () => {
+      process.env.ANT_JWT_PRIVATE_KEY = '-----BEGIN PRIVATE KEY-----';
+      expect(composeChildEnv().ANT_JWT_PRIVATE_KEY).toBeUndefined();
+      expect(composeCommandChildEnv().ANT_JWT_PRIVATE_KEY).toBeUndefined();
+    });
+  });
+
   // M-013 / M-015: blocking names is not enough — `$HOME/.npmrc`, `~/.aws` and
   // `~/.ssh` are read from the filesystem by the same user-authored scripts.
   describe('child HOME is not the service account HOME', () => {

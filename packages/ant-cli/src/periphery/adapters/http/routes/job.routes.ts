@@ -357,7 +357,7 @@ export function createJobRoutes(deps: {
       // Universal (D5/D6): validate the definition fail-loud at accept time and
       // resolve the container path that flows where a featurePath would. The
       // `:feature` URL param must be the constant universal pseudo-feature.
-      let universalCtx: { containerPath: string; ref: { agentId: string; jobId: string } } | null = null;
+      let universalCtx: { containerPath: string; ref: { agentId: string; jobId: string }; declaresSelfApi: boolean } | null = null;
       let universalTurnMeta: { intents: string[]; context: string[]; plan?: boolean } | null = null;
       if (jobType === 'universal') {
         const { UNIVERSAL_FEATURE } = await import('@ant/shared');
@@ -375,7 +375,7 @@ export function createJobRoutes(deps: {
         if (!resolved.ok) {
           return await rejectWithChatLine(resolved.status, resolved.error, resolved.code, 'defn');
         }
-        universalCtx = { containerPath: resolved.containerPath, ref: resolved.ref };
+        universalCtx = { containerPath: resolved.containerPath, ref: resolved.ref, declaresSelfApi: resolved.declaresSelfApi };
 
         // Explicit turn meta (`@intent:` / `@ctx:` mentions) — fail-loud at
         // accept; explicit input never silently drops.
@@ -563,6 +563,7 @@ export function createJobRoutes(deps: {
         userContext,
         ...(universalCtx && {
           customJobRef: `${universalCtx.ref.agentId}/${universalCtx.ref.jobId}`,
+          declaresSelfApi: universalCtx.declaresSelfApi,
         }),
         ...(universalTurnMeta && { universalTurnMeta }),
         // chat SSOT §6 — the turnId this request owns (from
@@ -1089,6 +1090,7 @@ export function createJobRoutes(deps: {
           jobId: universalJobId,
           isResume: true,
           customJobRef,
+          declaresSelfApi: resolvedUniversal.declaresSelfApi,
           ...(resumeMeta.meta && { universalTurnMeta: resumeMeta.meta }),
         };
         const universalResult = await deps.executeJob(universalParams);

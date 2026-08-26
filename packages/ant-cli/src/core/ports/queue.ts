@@ -32,6 +32,12 @@ export interface JobPayload {
   customJobRef?: string;
   /** Universal only — explicit `@intent:`/`@ctx:` turn meta (validated at accept). */
   universalTurnMeta?: import('@ant/shared').UniversalTurnMeta;
+  /**
+   * Universal only — capability-pinned bearer for an `apis` self entry, minted
+   * at accept by the process holding the signing key. Present only when the
+   * definition declares one; absent in local mode, which runs no auth gate.
+   */
+  selfApiToken?: string;
 
   /**
    * Pipeline attribution — who started this run. Absent = interactive user

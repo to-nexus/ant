@@ -1,0 +1,14 @@
+# Built-in agent-authoring agent, shipped read-only with Ant (`builtin` scope).
+# It is not editable or forkable from the UI — create your own agent (under a
+# different id; same-id creation is refused with 409) to customize behavior.
+# Authoring guide: docs/guides/custom-agent-authoring.md
+#
+# The agent contributes identity (name) and the always-on base/*.md prose.
+# Tools, intents, and the API connection are job-owned — see jobs/author/.
+id: agent-builder # must equal the directory name, [a-z0-9][a-z0-9-]*
+name: 'Agent Builder'
+version: 1
+# No mcp: block on purpose. An MCP server runs arbitrary code and depends on
+# registered credentials a shipped agent cannot assume. The one connection this
+# agent needs — this Ant server's own API — is declared as an `apis` self entry
+# in the job, which resolves from the runtime and needs no registration.

@@ -22,6 +22,8 @@ import {
   type CustomAgentScopeRoot,
 } from '../../src/core/customAgents/CustomAgentLoader';
 import { deriveCustomAgentScopeRoots } from '../../src/core/customAgents/scopeRoots';
+import { isSelfApiConfig } from '@ant/shared';
+import { McpConnectionManager } from '../../src/core/customAgents/McpConnectionManager';
 
 const SRC_AGENTS_DIR = path.join(__dirname, '../../src/core/data/agents');
 
@@ -55,6 +57,15 @@ describe('shipped builtin definitions — smoke', () => {
     // prose under the cap (no truncation footer).
     expect(Object.keys(resolved.mcpServers)).toEqual([]);
     expect(resolved.prose).not.toContain('[... truncated');
+
+    // Same reason MCP is forbidden: a shipped definition may not assume an
+    // install's URL or a registered credential. `self` is the one API form
+    // that assumes neither — the runtime resolves both.
+    for (const [name, cfg] of Object.entries(resolved.apiServers)) {
+      expect(isSelfApiConfig(cfg), `builtin ${agentId}/${jobId} declares non-self api "${name}"`).toBe(true);
+      expect((cfg as unknown as Record<string, unknown>).baseUrl).toBeUndefined();
+      expect((cfg as unknown as Record<string, unknown>).headers).toBeUndefined();
+    }
 
     // Every intent that advertises a prompt carries a preloaded non-blank body.
     for (const intent of resolved.intents) {
@@ -190,6 +201,54 @@ describe('shipped assistant definition', () => {
     expect(resolved.builtinTools).not.toContain('http_request');
     expect(resolved.builtinTools).toContain('run_command');
     expect(resolved.approval.run_command).toBe('never');
+  });
+});
+
+describe('shipped agent-builder definition', () => {
+  it('agent-builder/author exposes the authoring catalog — every intent carries its own prompt', () => {
+    const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
+    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['create', 'edit', 'review']);
+    for (const intent of resolved.intents) {
+      expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
+      expect(intent.infer).not.toContain('#');
+    }
+  });
+
+  it('reaches this Ant server through a self entry — no URL, no credential', () => {
+    const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
+    expect(Object.keys(resolved.apiServers)).toEqual(['ant']);
+    expect(isSelfApiConfig(resolved.apiServers.ant)).toBe(true);
+    // The declared scope is guidance for the model; the token's server-side
+    // pin is the boundary. Both must point at the same surface.
+    for (const rule of resolved.apiServers.ant.allow ?? []) {
+      expect(rule).toMatch(/^[A-Z]+ \/account\/agents/);
+    }
+  });
+
+  it('authors through the validated API route, never from a shell', () => {
+    const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
+    expect(resolved.builtinTools).not.toContain('run_command');
+    expect(resolved.builtinTools).not.toContain('http_request');
+    // Writing definition files IS the job; its boundary is the scope pin and
+    // the save gate, not an approval prompt per file.
+    expect(resolved.approval.api__ant__request).toBe('never');
+  });
+
+  it('the shipped definition really synthesizes working tools against this server', async () => {
+    vi.stubEnv('ANT_API_URL', 'http://localhost:4100');
+    vi.stubEnv('ANT_SERVER_MODE', 'local');
+    const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
+    const mcp = new McpConnectionManager({}, { resolve: async () => undefined }, resolved.apiServers);
+    await mcp.connect();
+    expect(mcp.listToolInfos().map((t) => t.name)).toEqual(['api__ant__get', 'api__ant__request']);
+    // Read-exempt vs write-gated, decided per tool name by the approval gate.
+    expect(mcp.listToolInfos().map((t) => t.readOnlyHint)).toEqual([true, false]);
+    await mcp.close();
+  });
+
+  it('carries its format contract as read-on-demand reference, not standing prose', () => {
+    const refDir = path.join(SRC_AGENTS_DIR, 'agent-builder', 'reference');
+    expect(fs.readdirSync(refDir).sort()).toEqual(['api-surface.md', 'definition-format.md']);
   });
 });
 

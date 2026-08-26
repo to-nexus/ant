@@ -335,7 +335,28 @@ function extractWriteTargets(command: string): string[] {
   return extractWriteTargetsDetailed(command).targets;
 }
 
-function detectWritePathViolations(command: string, workingDir: string, projectPath: string): WriteViolation[] {
+/**
+ * Two independent axes, deliberately separated.
+ *
+ * CONTAINMENT — a write must land inside the tool sandbox's own root and must
+ * not touch `.git`. This holds on every plane: the spawned shell bypasses
+ * `FileSystemAdapter` entirely, so the fs facade's containment does not cover
+ * it, and a `../` target reaches whatever the OS lets the process reach.
+ *
+ * CODEBASE PREFIX — a write must land under `codebase/`. This is a canonical
+ * feature-root concept only; a universal artifact tree has no such subtree and
+ * the rule would reject every legitimate write there.
+ *
+ * They used to be one function gated as a whole on `pathAutoCorrect`, so
+ * turning the prefix rule off for universal also turned containment off and
+ * `cp x ../../../.ant/agents/…` escaped the sandbox.
+ */
+function detectWritePathViolations(
+  command: string,
+  workingDir: string,
+  boundaryRoot: string,
+  enforceCodebasePrefix = true,
+): WriteViolation[] {
   const { targets, unsafe } = extractWriteTargetsDetailed(command);
   const violations: WriteViolation[] = [];
 
@@ -353,17 +374,19 @@ function detectWritePathViolations(command: string, workingDir: string, projectP
 
   for (const target of targets) {
     const absTarget = path.isAbsolute(target) ? target : path.resolve(workingDir, target);
-    const relToProject = normalizeRelPath(path.relative(projectPath, absTarget));
+    const relToProject = normalizeRelPath(path.relative(boundaryRoot, absTarget));
 
     if (relToProject === '.git' || relToProject.startsWith('.git/') || relToProject.includes('/.git/') || relToProject.includes('/.git')) {
       violations.push({ path: target, reason: 'writing to .git files/directories is forbidden' });
       continue;
     }
 
-    if (relToProject.startsWith('..')) {
-      violations.push({ path: target, reason: 'escapes project root via ../ traversal' });
+    if (relToProject === '..' || relToProject.startsWith('../')) {
+      violations.push({ path: target, reason: `escapes the sandbox root (${boundaryRoot})` });
       continue;
     }
+
+    if (!enforceCodebasePrefix) continue;
 
     const { normalized, wasFixed } = normalizeToCodebasePath(relToProject);
     if (wasFixed && normalized !== relToProject) {
@@ -758,6 +781,20 @@ async function executeCommandLogic(
       const { normalized } = normalizeToCodebasePath(working_directory);
       workingDir = path.join(projectPath, normalized);
     }
+    // The cwd decides what every relative write target in the command resolves
+    // against, so an out-of-root cwd makes the containment check below moot.
+    // Both forms are re-contained: an absolute path is taken verbatim, and a
+    // relative one can still climb out through `../`.
+    const relCwd = normalizeRelPath(path.relative(projectPath, workingDir));
+    if (relCwd === '..' || relCwd.startsWith('../')) {
+      return makeRejection(
+        ctx,
+        command,
+        `❌ COMMAND REJECTED: working_directory "${working_directory}" resolves outside the sandbox root (${projectPath}).`,
+        cardId,
+        verifies,
+      );
+    }
   } else {
     workingDir = projectPath;
   }
@@ -770,19 +807,22 @@ async function executeCommandLogic(
     }
   }
 
-  // The codebase/-bound write-path policy only applies to canonical feature
-  // roots; a non-canonical root has no codebase/ tree to protect (the sandbox
-  // is the fileSystem root itself).
-  const writeViolations = ctx.pathAutoCorrect === 'none'
-    ? []
-    : detectWritePathViolations(command, workingDir, projectPath);
+  // Containment always; the codebase/ prefix rule only on a canonical feature
+  // root (a universal artifact tree has no such subtree). The spawned shell
+  // does not go through FileSystemAdapter, so this is the only thing standing
+  // between a relative write target and the rest of the workspace.
+  const enforceCodebasePrefix = ctx.pathAutoCorrect !== 'none';
+  const writeViolations = detectWritePathViolations(command, workingDir, projectPath, enforceCodebasePrefix);
   if (writeViolations.length > 0) {
     const msg = writeViolations.map(v => `  - "${v.path}" → ${v.reason}`).join('\n');
     console.error(`\n   ❌ [run_command] Write path violation detected:\n${msg}\n`);
+    const rule = enforceCodebasePrefix
+      ? 'All file writes must target paths under codebase/.'
+      : 'All file writes must target paths inside this job\'s own directory.';
     return makeRejection(
       ctx,
       command,
-      `❌ COMMAND REJECTED: File write targets outside codebase/ directory.\n\nViolations:\n${msg}\n\nAll file writes must target paths under codebase/.`,
+      `❌ COMMAND REJECTED: File write target outside the allowed area.\n\nViolations:\n${msg}\n\n${rule}`,
       cardId,
       verifies,
     );

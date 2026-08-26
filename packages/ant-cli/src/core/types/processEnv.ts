@@ -13,7 +13,7 @@
  * 
  * Consumer (reads env vars):
  *   - job-runner.ts (child process entry point)
- *   - ChatAPIClient.ts, LLMResponseService, Broadcasters (within child process)
+ *   - LLMResponseService, Broadcasters, customAgents/restApi (within child process)
  */
 
 // ============================================
@@ -64,8 +64,16 @@ export const CHILD_PROCESS_ENV = {
   // --- Infrastructure (required) ---
   /** Redis URL for direct state access */
   REDIS_URL: 'ANT_REDIS_URL',
-  /** API Server URL for HTTP clients */
+  /** ant-api base URL — the origin an `apis` self entry resolves its calls against. */
   API_URL: 'ANT_API_URL',
+  /**
+   * Job-scoped bearer for the `apis` self entry (cloud only; local mode has no
+   * auth gate and mints nothing). Minted by ant-api at job accept, never by a
+   * child — the signing key stays in the minting process (C-001). Denied to
+   * `run_command` children by the `ANT_*` namespace rule, so LLM-chosen
+   * commands never see it.
+   */
+  SELF_API_TOKEN: 'ANT_SELF_API_TOKEN',
 
   // --- Optional ---
   /** Override directive text */
