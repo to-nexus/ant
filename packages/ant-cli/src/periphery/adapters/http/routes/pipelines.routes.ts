@@ -35,6 +35,7 @@ import {
   type PipelineScope,
 } from '@ant/shared';
 import { extractUserContext } from './helpers/userContext';
+import { directiveTooLarge } from './helpers/submitUserTurn';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { assertPathSegment } from '../../../../core/config/pathContainment';
 import {
@@ -646,6 +647,14 @@ export function createPipelinesRoutes(deps: PipelinesRoutesDeps): Router {
       const answer = req.body?.answer;
       if (typeof answer !== 'string' || !answer.trim()) {
         res.status(400).json({ error: 'answer must be a non-empty string' });
+        return;
+      }
+      // The answer becomes the resume directive verbatim (the stored audit copy
+      // is truncated, the dispatched one is not), so it carries the same ceiling
+      // as every other directive ingress (M-NEW-029).
+      const answerTooLarge = directiveTooLarge(answer, 'answer');
+      if (answerTooLarge) {
+        res.status(413).json(answerTooLarge);
         return;
       }
       const run = await deps.coordinator.getRun(req.params.runId);

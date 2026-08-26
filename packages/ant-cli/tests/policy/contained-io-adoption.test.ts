@@ -82,20 +82,53 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
   /** `fs.readFile(x)` / `fs.readFileSync(x)` / `fsPromises.readFile(x)` … */
   const RAW_READ = /\b(?:await\s+)?fs(?:Promises|p)?\.(?:promises\.)?readFile(?:Sync)?\s*\(\s*([A-Za-z_$][\w$]*\s*\(?|)/g;
 
+  /**
+   * The audit-9 version of this row judged "is this a session path?" from the
+   * SPELLING OF THE ARGUMENT TOKEN. `universalRuns.ts` read
+   * `sessions/{agentId}/{jobId}.json` through a parameter named `filePath`, so
+   * the enclosing function (`readSessionJson`), the module name and the value
+   * itself were all session-shaped and the guard still passed it. Judge the
+   * enclosing FUNCTION NAME and the MODULE PATH too — a raw read cannot rename
+   * its way out of all three.
+   */
+  const ENCLOSING_FN = /(?:function|const)\s+([A-Za-z_$][\w$]*)[^\n]*$/;
+
   it('no caller whole-file-reads a session or JSONL path', () => {
     const offenders: string[] = [];
     for (const p of ALL_TS) {
       if (rel(p) === OWNER) continue;
       const src = read(p);
+      const moduleIsSessionish = /session/i.test(path.basename(rel(p)));
       for (const m of src.matchAll(RAW_READ)) {
         const arg = (m[1] ?? '').trim();
+        // Nearest preceding declaration — good enough to name the function a
+        // raw read sits inside without parsing the file.
+        const before = src.slice(0, m.index ?? 0);
+        const fnName = before.split('\n').reverse().map((l) => ENCLOSING_FN.exec(l)?.[1]).find(Boolean) ?? '';
         const isSessionish =
           /session/i.test(arg) ||
+          /session/i.test(fnName) ||
+          (moduleIsSessionish && /path|file/i.test(arg)) ||
           arg.startsWith('getChatJsonlPath') ||
           arg.startsWith('getFeatureJsonlPath');
-        if (isSessionish) offenders.push(`${rel(p)}: readFile(${arg})`);
+        if (isSessionish) offenders.push(`${rel(p)}: ${fnName || '?'}() readFile(${arg})`);
       }
     }
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * A private near-copy of the bounded reader is how the seam drifted: three
+   * had grown (features.routes / sessionCleanup / universalRuns) and the fourth
+   * forgot the bound. The SHAPE — open, stat, compare to a budget, read — may
+   * exist only in the owner.
+   */
+  it('nobody hand-rolls a second bounded session reader', () => {
+    const offenders = ALL_TS.filter((p) => {
+      if (rel(p) === OWNER) return false;
+      const src = read(p);
+      return /\.stat\(\)/.test(src) && /SESSION_MAX_BYTES/.test(src) && /readFile/.test(src);
+    }).map(rel);
     expect(offenders).toEqual([]);
   });
 
@@ -109,6 +142,10 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
     ['src/agents/planner/graph/plan/nodes/resolve.ts', /readSessionTextBounded\(/],
     ['src/agents/creator/graph/visual/nodes/resolve.ts', /readSessionTextBounded\(/],
     ['src/periphery/adapters/session/FileSessionAdapter.ts', /readJsonlTailBounded\(/],
+    // audit-10: universal was absent from BOTH halves of this guard.
+    ['src/periphery/adapters/http/routes/helpers/universalRuns.ts', /readSessionTextContained\(/],
+    ['src/periphery/adapters/http/routes/helpers/sessionCleanup.ts', /readSessionTextContained\(/],
+    ['src/periphery/adapters/http/routes/features.routes.ts', /readSessionTextContained\(/],
   ];
   for (const [file, expected] of CONVERGED) {
     it(`${file} reads through the bounded seam`, () => {
@@ -142,5 +179,61 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
     const jobRoutes = read(path.join(process.cwd(), 'src/periphery/adapters/http/routes/job.routes.ts'));
     expect(jobRoutes.match(/directiveTooLarge\(/g) ?? []).toHaveLength(3); // execute / continue / inline-ask
     expect(jobRoutes).not.toMatch(/const\s+\w*DIRECTIVE_MAX\w*\s*=\s*\d/);
+  });
+
+  /**
+   * PRODUCER SET, not one file.
+   *
+   * The row above reads a single literal path and counts occurrences in it.
+   * That is why the pipeline scheduler slipped through: the durable writer is
+   * `ChatService.appendUserTurn`, and `PipelineRunCoordinator` calls it
+   * DIRECTLY — never touching `job.routes.ts` or `submitUserTurn.ts`, so no
+   * assertion in the repo could see it. `submitUserTurn.ts`'s own docstring
+   * ("Every HTTP entry point ... routes through here") stayed literally true
+   * while a non-HTTP producer walked past the cap.
+   *
+   * Enumerate the callers instead: anything that reaches the durable turn
+   * writer must also carry the ceiling.
+   */
+  it('every appendUserTurn producer carries the directive ceiling', () => {
+    const CAP_OWNER = 'src/periphery/adapters/http/routes/helpers/submitUserTurn.ts';
+    const offenders = ALL_TS.filter((p) => {
+      const r = rel(p);
+      if (r === CAP_OWNER) return false;
+      const src = read(p);
+      // The DURABLE + BROADCAST writer specifically. The session port has a
+      // same-named method for the worker-side feature.jsonl copy, whose text
+      // was already capped at the ingress that started the job — matching on
+      // the bare method name would flag that copy instead of a real producer.
+      const calls = [...src.matchAll(/(\w+)\.appendUserTurn\s*\(/g)].map((m) => m[1]);
+      const durable = calls.filter((recv) => !/session$/i.test(recv));
+      if (durable.length === 0) return false;
+      if (/class\s+ChatService/.test(src)) return false;
+      return !/directiveTooLarge\(|DIRECTIVE_MAX_CHARS/.test(src);
+    }).map(rel);
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The write half of the session budget. `SESSION_MAX_BYTES` was a read-only
+   * refusal, so a writer could produce a file no reader could ever open again
+   * (and `updateArtifacts` loads first, so the session bricked itself). Every
+   * session-JSON writer goes through the one budgeted seam.
+   */
+  it('no writer serializes a session outside the budgeted seam', () => {
+    const WRITE_OWNER = 'src/core/session/stateBudget.ts';
+    const offenders = ALL_TS.filter((p) => {
+      if (rel(p) === WRITE_OWNER) return false;
+      const src = read(p);
+      return /atomicWriteFile\(\s*\w*[Ss]ession\w*Path/.test(src)
+        || /atomicWriteFile\([^)]*JSON\.stringify\(\s*session/.test(src);
+    }).map(rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it('the session adapter enforces the write budget', () => {
+    const src = read(path.join(process.cwd(), 'src/periphery/adapters/session/FileSessionAdapter.ts'));
+    expect(src).toMatch(/shedToFit\(/);
+    expect(src).toMatch(/SessionWriteTooLargeError/);
   });
 });

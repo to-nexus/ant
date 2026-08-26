@@ -414,7 +414,7 @@ export interface UniversalTreeNode {
 export const UNIVERSAL_TREE_MAX_DEPTH = 12;
 export const UNIVERSAL_TREE_MAX_ENTRIES = 5000;
 
-interface TraversalBudget {
+export interface TraversalBudget {
   remaining: number;
   /** Set when the budget ran out at the very top level, where no parent node can carry the flag. */
   rootTruncated?: boolean;
@@ -433,7 +433,7 @@ interface TraversalBudget {
  * Hidden entries are skipped from the RESULT but still charged, so a flood of
  * dotfiles cannot buy unlimited enumeration under the same cap.
  */
-function readBoundedEntries(abs: string, budget: TraversalBudget): ContainedDirent[] {
+export function readBoundedEntries(abs: string, budget: TraversalBudget): ContainedDirent[] {
   const collected: ContainedDirent[] = [];
 
   // Contained bounded read when in-base: still charges the budget as it reads

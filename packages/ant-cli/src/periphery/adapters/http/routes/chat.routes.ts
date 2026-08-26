@@ -6,7 +6,7 @@ import { ChatService } from '../services';
 import { extractUserContext } from './helpers/userContext';
 import { checkApproval, approvalErrorCode, checkTeamMembership } from './helpers/approvalGate';
 import { MEMBERSHIP_REQUIRED } from '@ant/shared';
-import { ensureSubmitUserTurn } from './helpers/submitUserTurn';
+import { ensureSubmitUserTurn, directiveTooLarge } from './helpers/submitUserTurn';
 import { ChoiceService } from '../../../../infrastructure/choice';
 import type { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
@@ -256,6 +256,19 @@ export function createChatRoutes(deps: {
     if (!cardId || !choiceSelected || !resolvedLabel) {
       res.status(400).json({ error: 'cardId, choiceSelected, and resolvedLabel are required' });
       return;
+    }
+
+    // `answer` reaches two durable sinks: appendChoiceResolved persists it as-is,
+    // and the clarifying-card branch below turns it into a pipeline resume
+    // directive. Budget the SERIALIZED value here, ahead of both — a per-field
+    // check would miss the `resolvedAnswers` join, which concatenates N values
+    // into one directive (M-NEW-029).
+    if (answer !== undefined && answer !== null) {
+      const answerTooLarge = directiveTooLarge(JSON.stringify(answer), 'answer');
+      if (answerTooLarge) {
+        res.status(413).json(answerTooLarge);
+        return;
+      }
     }
 
     if (!deps.chatService) {

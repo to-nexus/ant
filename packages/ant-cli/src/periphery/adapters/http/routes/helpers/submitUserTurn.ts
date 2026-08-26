@@ -15,22 +15,16 @@
  */
 
 import type { ChatService } from '../../services';
+import { DIRECTIVE_MAX_CHARS } from '@ant/shared';
 import type { ActionMetadata, LogJobType } from '@ant/shared';
 import { generateTurnId } from '../../../../../composition/recordUserTurn';
 
 /**
- * Ceiling on a single user directive, applied at EVERY HTTP ingress that reaches
- * the durable turn writer below.
- *
- * `ensureSubmitUserTurn` appends the directive to `chat.jsonl` (and the worker
- * copies it into `feature.jsonl`) before the job-start gates run, and the
- * continue path additionally unshifts it into canonical session state that is
- * re-read on every subsequent turn. An uncapped field therefore rides the 50 MiB
- * authenticated JSON body straight into files that timers, jobs and the UI then
- * read back (M-NEW-029). One owner so a new ingress cannot pick a different
- * number — or none at all, which is how `/execute` and `/inline-ask` were missed.
+ * The directive ceiling itself lives in `@ant/shared` (`session-log.ts`) — the
+ * pipeline definition validator needs the same number and is shared with the FE.
+ * Re-exported here so the HTTP layer keeps importing it next to the 413 helper.
  */
-export const DIRECTIVE_MAX_CHARS = 100_000;
+export { DIRECTIVE_MAX_CHARS } from '@ant/shared';
 
 /**
  * 413 body for an over-cap directive, or null when it fits. Callers MUST answer

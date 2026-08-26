@@ -385,6 +385,21 @@ export interface SubagentReportMetadata extends SubagentRunningMetadata {
 }
 
 /**
+ * Ceiling on a single user directive — the `text` of the durable turn line below.
+ *
+ * Lives here, in `@ant/shared`, because the durable writer is not the only gate
+ * that needs it: the pipeline definition validator (`pipeline.ts`) has to refuse
+ * an over-cap `step.directive` at authoring time, and that validator is shared
+ * with the FE. One number for every producer — a second constant is how
+ * `/execute`, `/inline-ask` and then the whole pipeline plane each ended up with
+ * a different ceiling, or none (M-NEW-029).
+ *
+ * HTTP callers get the typed 413 shape from `directiveTooLarge()`; the pipeline
+ * validator reports it as a definition error.
+ */
+export const DIRECTIVE_MAX_CHARS = 100_000;
+
+/**
  * user_turn — feature.jsonl 사본 (text만 유지)
  *
  * sourceRef:

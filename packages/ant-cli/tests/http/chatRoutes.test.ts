@@ -17,6 +17,7 @@ import * as os from 'os';
 import http from 'node:http';
 import express from 'express';
 import type { ChatLine } from '@ant/shared';
+import { DIRECTIVE_MAX_CHARS } from '@ant/shared';
 
 // Bypass the rate-limit middleware (uses rate-limit-redis, requires
 // ANT_REDIS_URL which is not configured in unit-test mode).
@@ -242,6 +243,42 @@ describe('chat.routes — Phase 9/13 contract', () => {
       );
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/cardId, choiceSelected, and resolvedLabel are required/);
+    });
+
+    // M-NEW-029 (audit-10): a clarifying card's answer becomes a pipeline step's
+    // resume directive, and `appendChoiceResolved` persists it either way. The
+    // ceiling therefore applies at the ROUTE HEAD, ahead of both sinks — and to
+    // the SERIALIZED answer, because `resolvedAnswers` is joined into one
+    // directive and a per-field cap would miss the concatenation.
+    it('refuses an over-cap answer.directive with a typed 413, before any sink', async () => {
+      const res = await harness.call(
+        'POST',
+        '/projects/proj/features/feat-a/chat/choice-resolved',
+        {
+          body: {
+            cardId: 'card-x', choiceSelected: 'proceed', resolvedLabel: 'Proceeded',
+            answer: { directive: 'x'.repeat(DIRECTIVE_MAX_CHARS + 1) },
+          },
+        },
+      );
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe('DIRECTIVE_TOO_LARGE');
+    });
+
+    it('refuses an answer whose resolvedAnswers JOIN exceeds the cap (per-field would miss it)', async () => {
+      const each = Math.ceil(DIRECTIVE_MAX_CHARS / 4);
+      const res = await harness.call(
+        'POST',
+        '/projects/proj/features/feat-a/chat/choice-resolved',
+        {
+          body: {
+            cardId: 'card-x', choiceSelected: 'proceed', resolvedLabel: 'Proceeded',
+            answer: { resolvedAnswers: { a: 'a'.repeat(each), b: 'b'.repeat(each), c: 'c'.repeat(each), d: 'd'.repeat(each) } },
+          },
+        },
+      );
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe('DIRECTIVE_TOO_LARGE');
     });
 
     it('returns 404 when the cardId has no originating choice_presented', async () => {

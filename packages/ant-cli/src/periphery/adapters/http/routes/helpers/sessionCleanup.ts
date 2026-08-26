@@ -13,31 +13,28 @@ import {
   getSessionDebugDir,
   getAllSessionPaths,
   DEBUG_SUBDIRS,
-  SessionTooLargeError,
-  SESSION_MAX_BYTES,
+  readSessionTextContained,
 } from '../../../../../core/utils/sessionPaths';
-import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
+import { writeSessionBounded } from '../../../../../core/session/stateBudget';
 import { wouldRegressRun } from '../../../../../core/utils/sessionRunGuard';
 import { deleteArchivedState } from '../../../../../core/session/archive';
 
 /**
- * Read a session file bounded to SESSION_MAX_BYTES on its own descriptor, so a
- * session grown past the budget cannot be pulled whole into a cleanup pass and
- * JSON-parsed (M-NEW-029). Preserves the ENOENT throw the callers below branch
- * on; throws SessionTooLargeError (not ENOENT) on oversize so those callers log
- * and skip rather than treating it as missing.
+ * Contract adapter over the shared session read seam — NOT a second reader.
+ * The bound and the base-relative containment both come from
+ * `readSessionTextContained`; this only restores the ENOENT *throw* the callers
+ * below branch on (`createIfMissing`), since the shared owner returns null for
+ * a missing file. Oversize still surfaces as SessionTooLargeError, so those
+ * callers log and skip rather than treating it as missing.
  */
 async function readSessionFileBounded(sessionPath: string): Promise<string> {
-  const handle = await fs.promises.open(sessionPath, 'r');
-  try {
-    const st = await handle.stat();
-    if (st.size > SESSION_MAX_BYTES) {
-      throw new SessionTooLargeError(sessionPath, st.size, SESSION_MAX_BYTES);
-    }
-    return await handle.readFile('utf-8');
-  } finally {
-    await handle.close();
+  const text = await readSessionTextContained(sessionPath);
+  if (text === null) {
+    const err: NodeJS.ErrnoException = new Error(`session file not found: ${sessionPath}`);
+    err.code = 'ENOENT';
+    throw err;
   }
+  return text;
 }
 
 /**
@@ -164,7 +161,7 @@ export async function appendRunToSessionFile(
   session.runs = runs;
   session.updatedAt = completedAt;
   try {
-    await atomicWriteFile(sessionPath, JSON.stringify(session, null, 2));
+    await writeSessionBounded(sessionPath, session);
     logger.debug(
       `[SessionCleanup] Appended kanban snapshot for jobId=${jobId} (${runJob})`,
     );
@@ -239,7 +236,7 @@ export async function setSessionDismissed(
     };
     session.updatedAt = new Date().toISOString();
     try {
-      await atomicWriteFile(entry.path, JSON.stringify(session, null, 2));
+      await writeSessionBounded(entry.path, session);
     } catch (err) {
       logger.warn(
         `[SessionCleanup] Failed to persist interruption.dismissed=${dismissed} (jobId=${jobId})`,
@@ -433,7 +430,7 @@ export async function deleteJobRunFromSession(
   if (mutated) {
     session.updatedAt = new Date().toISOString();
     try {
-      await atomicWriteFile(sessionPath, JSON.stringify(session, null, 2));
+      await writeSessionBounded(sessionPath, session);
     } catch (err) {
       logger.warn(
         `[SessionCleanup] Failed to write session after jobId removal`,

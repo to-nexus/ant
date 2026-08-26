@@ -25,6 +25,7 @@
  */
 
 import { parseCustomJobRef, isValidCustomId, GENERAL_INTENT } from './custom-agents';
+import { DIRECTIVE_MAX_CHARS } from './session-log';
 import type { CustomAgentOrgPermissions } from './custom-agents';
 
 /** Definition scope — agents precedent minus builtin (pipelines ship no samples). */
@@ -649,6 +650,8 @@ export function validatePipelineDef(
       errors.push(...unknownKeyErrors(rawStep, APPROVAL_STEP_KEYS, `step "${stepId}"`, RESERVED_STEP_KEYS));
       if (typeof rawStep.prompt !== 'string' || rawStep.prompt.trim().length === 0) {
         errors.push(`step "${stepId}": approval steps need a non-empty prompt`);
+      } else if (rawStep.prompt.length > DIRECTIVE_MAX_CHARS) {
+        errors.push(`step "${stepId}": prompt must be at most ${DIRECTIVE_MAX_CHARS} characters`);
       }
       if (rawStep.channels !== undefined) {
         if (!Array.isArray(rawStep.channels) || rawStep.channels.length === 0) {
@@ -684,6 +687,11 @@ export function validatePipelineDef(
       }
       if (typeof rawStep.directive !== 'string' || rawStep.directive.trim().length === 0) {
         errors.push(`step "${stepId}": directive must be a non-empty string`);
+      } else if (rawStep.directive.length > DIRECTIVE_MAX_CHARS) {
+        // Same ceiling the direct HTTP job-start ingresses apply. A stored
+        // directive is dispatched on every firing, so refusing it at authoring
+        // time is the only place the author sees why (M-NEW-029).
+        errors.push(`step "${stepId}": directive must be at most ${DIRECTIVE_MAX_CHARS} characters`);
       } else {
         errors.push(...templateVarErrors(rawStep.directive, stepId));
       }

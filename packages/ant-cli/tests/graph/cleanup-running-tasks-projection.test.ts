@@ -42,13 +42,17 @@ vi.mock('../../src/infrastructure/adapters/InfrastructureFactory', () => ({
   }),
 }));
 
-vi.mock('../../src/core/utils/atomicWriteFile', () => ({
-  atomicWriteFile: vi.fn(async (_path: string, content: string) => {
-    capturedSessionData = JSON.parse(content);
+// The session write goes through the budgeted seam now (audit-10), so capture
+// there — that is the one place every session-JSON write funnels through.
+vi.mock('../../src/core/session/stateBudget', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/core/session/stateBudget')>()),
+  writeSessionBounded: vi.fn(async (_path: string, session: unknown) => {
+    capturedSessionData = JSON.parse(JSON.stringify(session));
   }),
 }));
 
-vi.mock('../../src/core/utils/sessionPaths', () => ({
+vi.mock('../../src/core/utils/sessionPaths', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/core/utils/sessionPaths')>()),
   getSessionFilePathByJob: () => '/tmp/jcm-test-session.json',
 }));
 

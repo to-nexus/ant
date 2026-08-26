@@ -14,6 +14,7 @@ import { UNIVERSAL_FEATURE } from '@ant/shared';
 import { buildUniversalGraph } from './graph';
 import { createInitialUniversalState, parseSealedTurnContext, type InheritedTurnContext, type UniversalGraphState } from './state';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../common/graph/conversations';
+import { sealUniversalConversation } from './session/sealConversation';
 import { loadRecursionLimit, isRecursionLimitError, invokeGraph } from '../../common/graph/runnerHelpers';
 import { getChatAPIClient } from '../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../core/customAgents/activeCustomJob';
@@ -254,12 +255,17 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
         // `main` is the pre-graph history; only respond's seal persists one.
         await params.deps.session.updateArtifacts(params.projectId, UNIVERSAL_FEATURE, resolved.jobId, {
           state: {
-            conversations: { [CONV_KEYS.SESSION_MAIN]: main },
+            conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(main) },
             customJobRef: `${resolved.agentId}/${resolved.jobId}`,
             ...(restoredClarifyRounds !== undefined && { clarifyRoundsUsed: restoredClarifyRounds }),
           },
         });
-      } catch { /* best-effort */ }
+      } catch (e) {
+        if ((e as any)?.code === 'SESSION_WRITE_TOO_LARGE') {
+          console.error('🚨 [Universal] Error-path session save REFUSED — over the write budget:', (e as Error).message);
+        }
+        /* best-effort otherwise */
+      }
     }
 
     throw error;

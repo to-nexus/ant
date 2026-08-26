@@ -44,6 +44,10 @@ describe('single dispatch owner', () => {
   it('the coordinator has chat/tracker parity with the HTTP path (user turn before enqueue, stateTracker forwarded)', () => {
     const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
     expect(coordinator).toMatch(/appendUserTurn/);
+    // Parity means the HTTP path's WHOLE contract, ceiling included. This row
+    // used to require only the append — pinning the uncapped call in place
+    // while `/execute` and `/inline-ask` were being capped (M-NEW-029).
+    expect(coordinator).toMatch(/DIRECTIVE_MAX_CHARS/);
     expect(coordinator).toMatch(/stateTracker:\s*this\.deps\.stateTracker/);
     // The pipeline is exempt from its own project lock — the coordinator
     // never reads the mutual-exclusion gate.

@@ -10,7 +10,7 @@ import type { SessionableJobType, KanbanData } from '@ant/shared';
 import { SESSIONABLE_JOB_TYPES, isSessionableJobType } from '@ant/shared';
 import type { SessionRun } from '../../../../core/types/session';
 import { FileSessionAdapter } from '../../session/FileSessionAdapter';
-import { getAgentForJob, getSessionFilePathByJob, readSessionTextBoundedAsync, SessionTooLargeError, SESSION_MAX_BYTES } from '../../../../core/utils/sessionPaths';
+import { getAgentForJob, getSessionFilePathByJob, readSessionTextContained, SessionTooLargeError } from '../../../../core/utils/sessionPaths';
 import {
   sealJobRedisState,
   scrubJobDebugArtifacts,
@@ -28,30 +28,7 @@ import * as fs from 'fs';
 import { GitOperationError } from '../services/GitService/errors';
 import { FeatureDeletionError } from '../services/ProjectService/errors';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
-import { toBaseRelative, readTextContainedBase } from '../../../../core/config/containedIo';
 
-/**
- * Read a session JSON file, binding the read to a base descent when the path is
- * inside the multi-tenant workspace base — a reparented feature root must not
- * return another tenant's session runs to this HTTP response (H-017). Returns
- * null when missing; out-of-base (repoType:local) keeps the raw read.
- */
-async function readSessionUtf8OrNull(absPath: string): Promise<string | null> {
-  const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), absPath);
-  if (br) {
-    // Bound the read on its own descriptor (M-NEW-029): a session grown past the
-    // budget must not be pulled whole into this HTTP response.
-    const read = readTextContainedBase(br, { maxBytes: SESSION_MAX_BYTES });
-    if (!read.ok) {
-      if (read.reason === 'missing') return null;
-      if (read.reason === 'too-large') throw new SessionTooLargeError(absPath, SESSION_MAX_BYTES, SESSION_MAX_BYTES);
-      throw new Error(`session read failed: ${read.reason}`);
-    }
-    return read.text;
-  }
-  // Out-of-base (repoType:local): the shared bounded reader keeps the same budget.
-  return readSessionTextBoundedAsync(absPath);
-}
 
 /**
  * Allowed job types for the per-jobId history / restore / delete endpoints —
@@ -413,7 +390,7 @@ export function createFeaturesRoutes(deps: {
             continue;
           }
           const sessionPath = getSessionFilePathByJob(featurePath!, t);
-          const raw = await readSessionUtf8OrNull(sessionPath);
+          const raw = await readSessionTextContained(sessionPath);
           if (raw) {
             const parsed = JSON.parse(raw);
             const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
@@ -552,7 +529,7 @@ export function createFeaturesRoutes(deps: {
           if (isUniversalContainer) {
             const ref = await findUniversalSessionFileByJobId(featurePath, jobId);
             if (ref) {
-              const refRaw = await readSessionUtf8OrNull(ref.path);
+              const refRaw = await readSessionTextContained(ref.path);
               const parsed = refRaw ? JSON.parse(refRaw) : {};
               const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
               const match = runs.find((r) => r.jobId === jobId);
@@ -564,7 +541,7 @@ export function createFeaturesRoutes(deps: {
           }
         } else {
           const sessionPath = getSessionFilePathByJob(featurePath, requestedType);
-          const raw = await readSessionUtf8OrNull(sessionPath);
+          const raw = await readSessionTextContained(sessionPath);
           const parsed = raw ? JSON.parse(raw) : {};
           const runs: SessionRun[] = Array.isArray(parsed?.runs) ? parsed.runs : [];
           const match = runs.find((r) => r.jobId === jobId);

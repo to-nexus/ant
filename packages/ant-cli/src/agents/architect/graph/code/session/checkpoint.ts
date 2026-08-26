@@ -114,8 +114,15 @@ export async function saveCheckpoint(state: ArchitectGraphState): Promise<void> 
     
     const hasInterruption = !!state.interruption;
     console.log(`[saveCheckpoint] ✅ Checkpoint saved successfully (interrupted: ${hasInterruption}, recursion: ${state.recursionCount}/${state.recursionLimit})`);
-  } catch (error) {
-    console.warn(`⚠️  Failed to save checkpoint: ${error}`);
+  } catch (error: any) {
+    // A refused write means the checkpoint did NOT land, so resume will read a
+    // stale queue. That is not a warning-level event: it is the "tasks vanish
+    // from the Kanban" class, and a quiet warn is how it stays undiagnosed.
+    if (error?.code === 'SESSION_WRITE_TOO_LARGE') {
+      console.error(`🚨 [saveCheckpoint] Checkpoint REFUSED — session over the write budget: ${error.message}`);
+    } else {
+      console.warn(`⚠️  Failed to save checkpoint: ${error}`);
+    }
   }
 }
 

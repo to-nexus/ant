@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validatePipelineDef, validatePipelineActivation, PIPELINE_DEF_VERSION } from '@ant/shared';
+import { validatePipelineDef, validatePipelineActivation, PIPELINE_DEF_VERSION, DIRECTIVE_MAX_CHARS } from '@ant/shared';
 import { validatePipelineDefServer } from '../../src/core/pipelines/store';
 
 function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -20,6 +20,45 @@ function baseDef(overrides: Record<string, unknown> = {}): Record<string, unknow
     ...overrides,
   };
 }
+
+describe('validatePipelineDef — directive/prompt ceiling (M-NEW-029)', () => {
+  // A stored directive is dispatched on EVERY firing and becomes a durable
+  // user turn plus the universal job's overrideDirective. It carries the same
+  // ceiling as the direct HTTP job-start ingresses; the definition validator is
+  // where the author actually sees why.
+  const over = 'x'.repeat(DIRECTIVE_MAX_CHARS + 1);
+  const at = 'y'.repeat(DIRECTIVE_MAX_CHARS);
+
+  it('refuses a step directive over the ceiling', () => {
+    const errors = validatePipelineDef(baseDef({
+      steps: [{ id: 'collect', customJobRef: 'research/collect', directive: over }],
+    }));
+    expect(errors.join('\n')).toMatch(/directive must be at most/);
+  });
+
+  it('accepts a step directive exactly at the ceiling (inclusive boundary)', () => {
+    expect(validatePipelineDef(baseDef({
+      steps: [{ id: 'collect', customJobRef: 'research/collect', directive: at }],
+    }))).toEqual([]);
+  });
+
+  it('refuses an approval prompt over the ceiling (same class, same number)', () => {
+    const errors = validatePipelineDef(baseDef({
+      steps: [
+        { id: 'collect', customJobRef: 'research/collect', directive: 'Collect sources' },
+        { id: 'gate', type: 'approval', prompt: over },
+      ],
+    }));
+    expect(errors.join('\n')).toMatch(/prompt must be at most/);
+  });
+
+  it('the ceiling is the shared constant, not a pipeline-local number', () => {
+    const errors = validatePipelineDef(baseDef({
+      steps: [{ id: 'collect', customJobRef: 'research/collect', directive: over }],
+    }));
+    expect(errors.join('\n')).toContain(String(DIRECTIVE_MAX_CHARS));
+  });
+});
 
 describe('validatePipelineDef — structural rules', () => {
   const valid: Array<[string, Record<string, unknown>]> = [

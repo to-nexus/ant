@@ -10,7 +10,7 @@ import { ServerDependencies } from '../types';
 import { getInfrastructureFactory } from '../../../../../infrastructure/adapters/InfrastructureFactory';
 import { getRealtimeBroadcastChannel } from '../../../../../infrastructure/state';
 import { getSessionFilePathByJob } from '../../../../../core/utils/sessionPaths';
-import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
+import { writeSessionBounded } from '../../../../../core/session/stateBudget';
 import { appendJobSnapshotToSession, appendRunToSessionFile } from '../../routes/helpers/sessionCleanup';
 import { findUniversalSessionFileByJobId, readUniversalRunOverlay } from '../../routes/helpers/universalRuns';
 import { resolveUniversalContainerPath } from '../../../../../core/customAgents/universalContainer';
@@ -440,7 +440,7 @@ export class JobCleanupManager {
           }
           
           // Write updated session (atomic: temp file + rename to prevent corruption)
-          await atomicWriteFile(sessionPath, JSON.stringify(sessionData, null, 2));
+          await writeSessionBounded(sessionPath, sessionData);
         } else if (interruptionReason && !skipSessionSync) {
           // ✅ Session file unreadable (corrupted mid-write, EFS stale, or not yet created).
           // CRITICAL: Do NOT blindly create a minimal session with empty taskQueue — this
@@ -485,13 +485,20 @@ export class JobCleanupManager {
           }
           
           if (hasFallback) {
+            // Schema shape, not the pre-rename one. This block exists to PRESERVE
+            // task state, but `{ turns: [], projectId, featureName }` is exactly
+            // what `load()` rejects as legacy (`turns` && !`runs`) — and if it got
+            // past that, `safeParseSession` would fail on the missing
+            // project/feature/runs keys and the loader would UNLINK the file. The
+            // recovery write was destroying the state it was written to save.
             const minimalSession = {
               sessionId: crypto.randomUUID(),
-              projectId: mapping.projectId,
-              featureName: mapping.featureName,
+              project: mapping.projectId,
+              feature: mapping.featureName,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-              turns: [],
+              runs: [],
+              artifacts: {},
               state: {
                 taskQueue: fallbackTaskQueue,
                 completedTasks: fallbackCompletedTasks.map((t: any) => t.id || t),
@@ -502,7 +509,7 @@ export class JobCleanupManager {
             };
             
             await fs.promises.mkdir(path.dirname(sessionPath), { recursive: true });
-            await atomicWriteFile(sessionPath, JSON.stringify(minimalSession, null, 2));
+            await writeSessionBounded(sessionPath, minimalSession);
           } else {
             // No Redis fallback available — do NOT overwrite potentially valid session file.
             // Log a warning so we can diagnose if this path is ever hit.

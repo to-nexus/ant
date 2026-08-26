@@ -28,7 +28,9 @@ import {
   getChatJsonlPath,
   readSessionTextBoundedAsync,
   readJsonlTailBounded,
+  SESSION_MAX_BYTES,
 } from "../../../core/utils/sessionPaths";
+import { shedToFit, SessionWriteTooLargeError } from "../../../core/session/stateBudget";
 
 
 /**
@@ -309,7 +311,21 @@ export class FileSessionAdapter implements SessionPort {
       throw new Error(`Invalid session data: ${error}`);
     }
     
-    const content = JSON.stringify(session, null, 2);
+    // Write budget (M-NEW-029): never write a session no reader can open again.
+    // `load()` refuses past SESSION_MAX_BYTES, and updateArtifacts/addRun both
+    // load first — so a file written over the line bricks itself permanently.
+    // Shed the recoverable parts first (compaction before failure); refuse only
+    // what still does not fit, leaving the previous valid file untouched.
+    const budgeted = shedToFit(session);
+    if (!budgeted.ok) {
+      throw new SessionWriteTooLargeError(sessionPath, budgeted.bytes, budgeted.limit);
+    }
+    if (budgeted.shed.length > 0) {
+      console.warn(
+        `🗜️  [Session] Shed to fit the ${SESSION_MAX_BYTES}-byte budget: ${sessionPath} — ${budgeted.shed.join(', ')}`,
+      );
+    }
+    const content = budgeted.content;
     const dir = path.dirname(sessionPath);
     const tmpPath = path.join(dir, `.${path.basename(sessionPath)}.${process.pid}.tmp`);
     
@@ -327,12 +343,46 @@ export class FileSessionAdapter implements SessionPort {
   }
   
   /**
+   * Load for a read-modify-write, recovering a session that is already over the
+   * read budget.
+   *
+   * Such a file predates the write budget above (nothing can produce one now),
+   * but while it sits there `load()` throws and every mutation through this
+   * adapter fails forever — the session is bricked with no way back. Set the
+   * oversized file aside into a DIRECTORY (`{job}.oversized/`, the same shape
+   * `archive.ts` uses) rather than a `.json` sibling: the universal run helpers
+   * enumerate `*.json` and would otherwise re-materialise it on every history
+   * call and surface it as a phantom job. Nothing is deleted — the bytes stay
+   * on disk for recovery — and the live path continues from a fresh session.
+   */
+  private async loadForMutation(project: string, feature: string, job: SessionableJobType): Promise<Session> {
+    try {
+      return await this.load(project, feature, job);
+    } catch (err: any) {
+      if (err?.code !== 'SESSION_TOO_LARGE') throw err;
+      const sessionPath = this.getSessionPath(project, feature, job);
+      const asideDir = `${sessionPath.slice(0, -'.json'.length)}.oversized`;
+      try {
+        await fs.mkdir(asideDir, { recursive: true });
+        await fs.rename(sessionPath, path.join(asideDir, `${new Date().toISOString().replace(/[:.]/g, '-')}.json`));
+        console.error(
+          `🚨 [Session] Oversized session set aside (not deleted): ${sessionPath} -> ${asideDir}`,
+        );
+      } catch (renameErr) {
+        console.error(`❌ [Session] Could not set aside oversized session ${sessionPath}:`, renameErr);
+        throw err;
+      }
+      return this.createNewSession(project, feature);
+    }
+  }
+
+  /**
    * Add a new run to the session (serialized with per-job lock)
    */
   async addRun(project: string, feature: string, job: SessionableJobType, run: SessionRun): Promise<void> {
     const lock = this.getFileLock(job);
     await lock.runExclusive(async () => {
-      const session = await this.load(project, feature, job);
+      const session = await this.loadForMutation(project, feature, job);
 
       if (!run.timestamp) {
         run.timestamp = new Date().toISOString();
@@ -377,7 +427,7 @@ export class FileSessionAdapter implements SessionPort {
   ): Promise<void> {
     const lock = this.getFileLock(job);
     await lock.runExclusive(async () => {
-      const session = await this.load(project, feature, job);
+      const session = await this.loadForMutation(project, feature, job);
       
       const { state, ...actualArtifacts } = artifacts as any;
       

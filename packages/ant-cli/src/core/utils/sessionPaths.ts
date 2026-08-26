@@ -34,6 +34,8 @@ import type { SessionableJobType } from '@ant/shared';
 import { CANONICAL_FEATURE_DIRS, CANONICAL_FEATURE_FILE_PATHS, UNIVERSAL_FEATURE, isCanonicalDir, createEmptyFigmaData } from '@ant/shared';
 import { UNIVERSAL_DIRNAME, isUniversalProject } from '../customAgents/universalContainer';
 import { logger } from '../../utils/logger';
+import { toBaseRelative, readTextContainedBase } from '../config/containedIo';
+import { WorkspacePathResolver } from '../config/WorkspacePathResolver';
 
 export { CANONICAL_FEATURE_DIRS, isCanonicalDir };
 
@@ -227,6 +229,36 @@ export async function readSessionTextBoundedAsync(sessionFilePath: string): Prom
   } finally {
     await handle.close();
   }
+}
+
+/**
+ * THE session-JSON read seam. Bounded on the descriptor actually read AND bound
+ * to a descriptor descent anchored at the service-owned physical workspace base,
+ * so a reparented feature/container root cannot serve another tenant's session
+ * (H-017) and a file grown past the budget is never materialised (M-NEW-029).
+ *
+ * Returns `null` for a missing file — the historical reader contract every
+ * caller already has. Throws {@link SessionTooLargeError} past the budget.
+ *
+ * Out-of-base (`repoType: 'local'`) has no service-owned base to make the target
+ * relative to, so it keeps the plain bounded read at the same budget.
+ *
+ * This function exists because three private near-copies of it had grown
+ * (features.routes / sessionCleanup / universalRuns) and the fourth forgot the
+ * bound entirely. One owner, so a new caller cannot reach for a weaker one.
+ */
+export async function readSessionTextContained(absPath: string): Promise<string | null> {
+  const br = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), absPath);
+  if (br) {
+    const read = readTextContainedBase(br, { maxBytes: SESSION_MAX_BYTES });
+    if (!read.ok) {
+      if (read.reason === 'missing') return null;
+      if (read.reason === 'too-large') throw new SessionTooLargeError(absPath, SESSION_MAX_BYTES, SESSION_MAX_BYTES);
+      throw new Error(`session read failed: ${read.reason}`);
+    }
+    return read.text;
+  }
+  return readSessionTextBoundedAsync(absPath);
 }
 
 /** Thrown by the bounded session readers when a session file exceeds the budget. */

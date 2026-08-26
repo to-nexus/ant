@@ -54,7 +54,8 @@ vi.mock('../../src/core/utils/atomicWriteFile', () => ({
   }),
 }));
 
-vi.mock('../../src/core/utils/sessionPaths', () => ({
+vi.mock('../../src/core/utils/sessionPaths', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/core/utils/sessionPaths')>()),
   getSessionFilePathByJob: () => '/tmp/recard-preserve-session.json',
 }));
 

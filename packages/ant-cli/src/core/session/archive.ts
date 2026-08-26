@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { SessionableJobType } from '@ant/shared';
 import { getSessionFilePath, SESSION_SEARCH_MAP, readSessionTextBoundedAsync } from '../utils/sessionPaths';
-import { atomicWriteFile } from '../utils/atomicWriteFile';
+import { writeSessionBounded } from './stateBudget';
 import type { SessionState } from '../types/session';
 import { deriveResumableState } from './resumable';
 import { logger } from '../../utils/logger';
@@ -63,7 +63,7 @@ export async function archiveSupersededState(
   };
   try {
     await fs.promises.mkdir(dir, { recursive: true });
-    await atomicWriteFile(path.join(dir, `${state.jobId}.json`), JSON.stringify(envelope, null, 2));
+    await writeSessionBounded(path.join(dir, `${state.jobId}.json`), envelope);
   } catch (err) {
     logger.warn(
       `[SessionArchive] Failed to archive superseded state (jobId=${state.jobId})`,
@@ -180,7 +180,7 @@ export async function restoreArchivedState(
   session.state = hit.state;
   session.updatedAt = new Date().toISOString();
   try {
-    await atomicWriteFile(sessionPath, JSON.stringify(session, null, 2));
+    await writeSessionBounded(sessionPath, session);
   } catch (err) {
     logger.warn(
       `[SessionArchive] Failed to write restored state (jobId=${jobId})`,

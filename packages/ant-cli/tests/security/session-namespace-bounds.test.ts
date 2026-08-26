@@ -28,6 +28,16 @@ import {
   JSONL_MAX_LINES,
 } from '../../src/core/utils/sessionPaths';
 import { FileSessionAdapter } from '../../src/periphery/adapters/session/FileSessionAdapter';
+import {
+  serializeSessionBounded,
+  writeSessionBounded,
+  shedToFit,
+  trimConversationToByteBudget,
+  sessionWriteGuardOf,
+  SessionWriteTooLargeError,
+  SessionWriteConflictError,
+  TRIM_BRIDGE_TEXT,
+} from '../../src/core/session/stateBudget';
 
 describe('bounded session readers (M-NEW-029)', () => {
   const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'sess-'));
@@ -188,5 +198,142 @@ describe('FileSessionAdapter collapse preserves every record (M-NEW-029)', () =>
     expect(JSON.parse(lines[1]).collapsed).toBeUndefined(); // boundary is structural
     expect(JSON.parse(lines[2]).collapsed).toBeUndefined(); // other job
     expect(lines[3]).toBe('not json at all');               // passed through verbatim
+  });
+});
+
+/**
+ * WRITE half of the same budget (audit-10).
+ *
+ * `SESSION_MAX_BYTES` was a read-only refusal, so nothing stopped a writer from
+ * producing a file no reader could open again — and since `updateArtifacts`
+ * loads before it saves, such a session became permanently unreadable AND
+ * unwritable. These rows pin the write contract and the trim that keeps the
+ * refusal unreachable in normal operation.
+ */
+describe('session write budget (M-NEW-029)', () => {
+  const msg = (role: 'user' | 'assistant', content: any) => ({ role, content });
+
+  it('serializeSessionBounded refuses exactly what the readers refuse', () => {
+    const small = serializeSessionBounded({ a: 1 });
+    expect(small.ok).toBe(true);
+    const huge = serializeSessionBounded({ blob: 'x'.repeat(SESSION_MAX_BYTES + 1) });
+    expect(huge.ok).toBe(false);
+    if (!huge.ok) expect(huge.limit).toBe(SESSION_MAX_BYTES);
+  });
+
+  it('writeSessionBounded refuses an oversized write and leaves the previous file intact', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-write-budget-'));
+    const target = path.join(dir, 'code.json');
+    fs.writeFileSync(target, JSON.stringify({ keep: 'previous-valid' }), 'utf-8');
+
+    await expect(
+      writeSessionBounded(target, { blob: 'x'.repeat(SESSION_MAX_BYTES + 1) }),
+    ).rejects.toBeInstanceOf(SessionWriteTooLargeError);
+
+    // The point of refusing: the last good snapshot survives untouched.
+    expect(JSON.parse(fs.readFileSync(target, 'utf-8'))).toEqual({ keep: 'previous-valid' });
+  });
+
+  it('shedToFit drops recoverable bulk before refusing, and never the resume core', () => {
+    const big = 'x'.repeat(Math.floor(SESSION_MAX_BYTES / 3));
+    const session: any = {
+      runs: [
+        { jobId: 'a', kanbanSnapshot: { blob: big } },
+        { jobId: 'b', kanbanSnapshot: { blob: big } },
+        { jobId: 'c', kanbanSnapshot: { blob: big } },
+        { jobId: 'd', kanbanSnapshot: { blob: big } },
+      ],
+      state: { taskQueue: [{ id: 't1' }], currentTask: { id: 't1' }, interruption: { reason: 'user_stopped' } },
+    };
+    const out = shedToFit(session, { keepSnapshots: 1 });
+    expect(out.ok).toBe(true);
+    expect(out.shed.join(',')).toMatch(/kanbanSnapshot/);
+    // Resume core is never shed — dropping it would turn an availability
+    // finding into data loss.
+    expect(session.state.taskQueue).toEqual([{ id: 't1' }]);
+    expect(session.state.currentTask).toEqual({ id: 't1' });
+    expect(session.state.interruption).toEqual({ reason: 'user_stopped' });
+  });
+
+  it('a CAS guard turns a concurrent overwrite into a typed conflict, not a clobber', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-write-cas-'));
+    const target = path.join(dir, 'code.json');
+    fs.writeFileSync(target, JSON.stringify({ v: 1 }), 'utf-8');
+    const guard = sessionWriteGuardOf(fs.readFileSync(target, 'utf-8'));
+
+    // Someone else (a worker seal) lands between our read and our write.
+    fs.writeFileSync(target, JSON.stringify({ v: 2 }), 'utf-8');
+
+    await expect(writeSessionBounded(target, { v: 99 }, { expect: guard }))
+      .rejects.toBeInstanceOf(SessionWriteConflictError);
+    expect(JSON.parse(fs.readFileSync(target, 'utf-8'))).toEqual({ v: 2 });
+  });
+});
+
+/**
+ * The trim's guarantees ARE its proof — each row is one post-condition.
+ * Group-granular dropping is what keeps a tool_use with its tool_result, and
+ * tail identity is what keeps clarify resume working.
+ */
+describe('conversation trim post-conditions (M-NEW-029)', () => {
+  const filler = (n: number) => 'y'.repeat(n);
+
+  function longHistory(turns: number, bytesPerTurn: number) {
+    const h: any[] = [{ role: 'user', content: 'the original directive' }];
+    for (let i = 0; i < turns; i++) {
+      h.push({ role: 'assistant', content: [{ type: 'tool_use', id: `tu-${i}`, name: 'read_file', input: {} }] });
+      h.push({ role: 'user', content: [{ type: 'tool_result', tool_use_id: `tu-${i}`, content: filler(bytesPerTurn) }] });
+    }
+    return h;
+  }
+
+  it('leaves a history under budget completely untouched', () => {
+    const h = longHistory(3, 10);
+    const out = trimConversationToByteBudget(h, { budgetBytes: 10 * 1024 * 1024 });
+    expect(out.trimmed).toBe(false);
+    expect(out.messages).toBe(h);
+  });
+
+  it('post-condition 1+2: starts with a user message and keeps the tail by IDENTITY', () => {
+    const h = longHistory(40, 5000);
+    const out = trimConversationToByteBudget(h, { budgetBytes: 20_000 });
+    expect(out.trimmed).toBe(true);
+    expect(out.messages[0].role).toBe('user');
+    // Identity, not equality: clarify resume reads ONLY the last message, so
+    // nothing may ever be appended after the tail.
+    expect(out.messages[out.messages.length - 1]).toBe(h[h.length - 1]);
+  });
+
+  it('post-condition 3: every surviving tool_result still has its tool_use', () => {
+    const h = longHistory(40, 5000);
+    const out = trimConversationToByteBudget(h, { budgetBytes: 20_000 });
+    const useIds = new Set<string>();
+    for (const m of out.messages) {
+      if (m.role === 'assistant' && Array.isArray(m.content)) {
+        for (const b of m.content as any[]) if (b.type === 'tool_use') useIds.add(b.id);
+      }
+    }
+    for (const m of out.messages) {
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        for (const b of m.content as any[]) {
+          if (b.type === 'tool_result') expect(useIds.has(b.tool_use_id)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('post-condition 4: the newest turns survive regardless of budget', () => {
+    const h = longHistory(40, 5000);
+    const out = trimConversationToByteBudget(h, { budgetBytes: 1, minKeepTurns: 3 });
+    expect(out.messages).toContain(h[h.length - 1]);
+    expect(out.messages).toContain(h[h.length - 2]);
+  });
+
+  it('the bridge text is constant — a varying one would break prompt caching', () => {
+    const a = trimConversationToByteBudget(longHistory(40, 5000), { budgetBytes: 20_000 });
+    const b = trimConversationToByteBudget(longHistory(60, 5000), { budgetBytes: 20_000 });
+    const bridgeOf = (r: any) => r.messages.find((m: any) => m.content === TRIM_BRIDGE_TEXT);
+    expect(bridgeOf(a)).toBeDefined();
+    expect(bridgeOf(b)?.content).toBe(bridgeOf(a)?.content);
   });
 });

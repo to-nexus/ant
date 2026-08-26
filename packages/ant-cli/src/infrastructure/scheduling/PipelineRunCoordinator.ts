@@ -30,6 +30,7 @@ import {
   parseCustomJobRef,
   parsePipelineDuration,
   DEFAULT_PIPELINE_CAPS,
+  DIRECTIVE_MAX_CHARS,
   UNIVERSAL_FEATURE,
   type ApprovalStepDef,
   type ClarifyRecord,
@@ -385,6 +386,14 @@ export class PipelineRunCoordinator {
     // a durable, live-broadcast user_turn (pipeline-attributed), and the run's
     // FIRST step also carries a run-started notice on the same turn.
     const directive = directiveOverride ?? this.renderDirective(step.directive, run);
+    // Last common point before BOTH durable sinks (chat.jsonl append + universal
+    // enqueue). The ingress caps are where the author/answerer sees the error;
+    // this is where the axis is actually closed, because template expansion,
+    // clarify resume and step-retry replay all arrive here with a value no
+    // ingress inspected (M-NEW-029). A cap after the append protects nothing.
+    if (directive.length > DIRECTIVE_MAX_CHARS) {
+      return void (await fail(`directive-too-large: ${directive.length} > ${DIRECTIVE_MAX_CHARS} characters`));
+    }
     const turnId = generateTurnId();
     const isFirstTurn = !run.steps.some((s) => s.turnId);
     if (this.deps.chatService) {

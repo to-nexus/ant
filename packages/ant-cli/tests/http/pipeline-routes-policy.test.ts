@@ -20,7 +20,7 @@ import http from 'node:http';
 import express from 'express';
 import { createPipelinesRoutes } from '../../src/periphery/adapters/http/routes/pipelines.routes';
 import type { OrganizationRepositoryPort } from '../../src/core/ports/organizationRepository';
-import { MEMBERSHIP_REQUIRED, type OrgMembershipRole } from '@ant/shared';
+import { MEMBERSHIP_REQUIRED, DIRECTIVE_MAX_CHARS, type OrgMembershipRole } from '@ant/shared';
 
 let wsRoot: string;
 let userDir: string;
@@ -527,4 +527,34 @@ describe('path-traversal rejection on activation identifiers (H-016 / M-025)', (
       expect(res.status).toBe(400);
     });
   }
+});
+
+/**
+ * Directive ceiling on the pipeline ingresses (M-NEW-029, audit-10).
+ *
+ * The clarify answer is re-dispatched as the step's resume directive VERBATIM —
+ * only the stored audit copy is truncated — so it reaches `appendUserTurn` and
+ * the universal enqueue exactly like a job-start directive, and carries the
+ * same ceiling. The check runs before the run lookup, so an over-cap answer is
+ * refused without any state being touched.
+ */
+describe('clarify answer ceiling', () => {
+  const over = 'x'.repeat(DIRECTIVE_MAX_CHARS + 1);
+
+  it('refuses an over-cap clarify answer with a typed 413', async () => {
+    const res = await api('/runs/run-1/steps/step-1/clarify', {
+      method: 'POST',
+      body: JSON.stringify({ answer: over }),
+    });
+    expect(res.status).toBe(413);
+    expect((await res.json()).code).toBe('DIRECTIVE_TOO_LARGE');
+  });
+
+  it('still refuses an empty answer with 400 (the ceiling did not replace that)', async () => {
+    const res = await api('/runs/run-1/steps/step-1/clarify', {
+      method: 'POST',
+      body: JSON.stringify({ answer: '   ' }),
+    });
+    expect(res.status).toBe(400);
+  });
 });

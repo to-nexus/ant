@@ -10,6 +10,7 @@
 import { UNIVERSAL_FEATURE } from '@ant/shared';
 import type { UniversalGraphState } from '../state';
 import { CONV_KEYS, getConv } from '../../../common/graph/conversations';
+import { sealUniversalConversation } from '../session/sealConversation';
 import { getChatAPIClient } from '../../../../core/adapters/ChatAPIClient';
 import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import { isUnderPlanDir } from '../../../../core/customAgents/universalToolPolicy';
@@ -179,7 +180,7 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
   if (session && state.projectId) {
     try {
       const sessionState = {
-        conversations: { [CONV_KEYS.SESSION_MAIN]: getConv(state.conversations, CONV_KEYS.SESSION_MAIN) },
+        conversations: { [CONV_KEYS.SESSION_MAIN]: sealUniversalConversation(getConv(state.conversations, CONV_KEYS.SESSION_MAIN)) },
         tokenUsage: state.tokenUsage,
         tokenUsageByModel: state.tokenUsageByModel,
         customJobRef: `${resolved.agentId}/${resolved.jobId}`,
@@ -222,7 +223,13 @@ export async function respondNode(state: UniversalGraphState): Promise<Partial<U
       await session.updateArtifacts(state.projectId, UNIVERSAL_FEATURE, resolved.jobId, { state: sessionState });
       console.log('💾 [Universal:Respond] Session sealed');
     } catch (e) {
-      console.warn('⚠️ [Universal:Respond] Session seal failed:', e instanceof Error ? e.message : String(e));
+      // Over-budget here means this turn's memory was not persisted, so the
+      // next turn silently starts from the previous seal — loud, not a warn.
+      if ((e as any)?.code === 'SESSION_WRITE_TOO_LARGE') {
+        console.error('🚨 [Universal:Respond] Session seal REFUSED — over the write budget:', (e as Error).message);
+      } else {
+        console.warn('⚠️ [Universal:Respond] Session seal failed:', e instanceof Error ? e.message : String(e));
+      }
     }
   }
 

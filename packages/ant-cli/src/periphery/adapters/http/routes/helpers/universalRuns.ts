@@ -11,12 +11,13 @@
  * `state.conversations` / `state.checklist` are never touched.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import type { KanbanData } from '@ant/shared';
 import type { KanbanService } from '../../services';
 import type { SessionRun } from '../../../../../core/types/session';
-import { atomicWriteFile } from '../../../../../core/utils/atomicWriteFile';
+import { writeSessionBounded, sessionWriteGuardOf, type SessionWriteGuard } from '../../../../../core/session/stateBudget';
+import { readSessionTextContained } from '../../../../../core/utils/sessionPaths';
+import { readBoundedEntries, type TraversalBudget } from '../../../../../core/customAgents/universalContainer';
 import { logger } from '../../../../../utils/logger';
 import { deleteArchivedState } from '../../../../../core/session/archive';
 
@@ -31,25 +32,21 @@ export interface UniversalSessionFileRef {
  * (chat.jsonl / feature.jsonl) and dotfiles are skipped by construction —
  * only one directory level below `sessions/` is scanned.
  */
+export const UNIVERSAL_SESSION_SCAN_MAX_ENTRIES = 5000;
+
 export async function listUniversalSessionFiles(containerPath: string): Promise<UniversalSessionFileRef[]> {
   const sessionsDir = path.join(containerPath, 'sessions');
-  let agentDirs: fs.Dirent[];
-  try {
-    agentDirs = await fs.promises.readdir(sessionsDir, { withFileTypes: true });
-  } catch {
-    return [];
-  }
+  // Budget-charged enumeration (shared with the universal artifact tree): a raw
+  // `readdir` materialises and sorts the WHOLE directory before any cap applies,
+  // and every ref found here is then whole-file read + parsed by the callers
+  // below — so bounding the walk bounds the parse fan-out too (M-NEW-029).
+  const budget: TraversalBudget = { remaining: UNIVERSAL_SESSION_SCAN_MAX_ENTRIES };
+  const agentDirs = readBoundedEntries(sessionsDir, budget);
   const refs: UniversalSessionFileRef[] = [];
   for (const agentDir of agentDirs) {
-    if (!agentDir.isDirectory() || agentDir.name.startsWith('.')) continue;
-    let files: fs.Dirent[];
-    try {
-      files = await fs.promises.readdir(path.join(sessionsDir, agentDir.name), { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const file of files) {
-      if (!file.isFile() || !file.name.endsWith('.json') || file.name.startsWith('.')) continue;
+    if (!agentDir.isDirectory) continue;
+    for (const file of readBoundedEntries(path.join(sessionsDir, agentDir.name), budget)) {
+      if (!file.isFile || !file.name.endsWith('.json')) continue;
       refs.push({
         path: path.join(sessionsDir, agentDir.name, file.name),
         agentId: agentDir.name,
@@ -57,13 +54,44 @@ export async function listUniversalSessionFiles(containerPath: string): Promise<
       });
     }
   }
+  if (budget.remaining <= 0) {
+    logger.warn(
+      `[UniversalRuns] Session scan hit the entry budget; serving a partial view`,
+      { component: 'UniversalRuns' },
+      { containerPath, budget: UNIVERSAL_SESSION_SCAN_MAX_ENTRIES, refs: refs.length },
+    );
+  }
   return refs;
 }
 
+/**
+ * Best-effort session read for the run helpers. Goes through the shared
+ * bounded + contained seam: a raw whole-file `readFile` here put an
+ * attacker-growable number of bytes into the API/worker heap on every history
+ * call, kanban restore, delete and terminal cleanup (M-NEW-029).
+ *
+ * Keeps the historical `null` contract for missing/unreadable, but an
+ * over-budget file is LOGGED rather than swallowed — a silent null here would
+ * make `deleteUniversalRunFromSession` quietly skip the delete.
+ */
 async function readSessionJson(filePath: string): Promise<any | null> {
+  return (await readSessionJsonGuarded(filePath))?.session ?? null;
+}
+
+/** As {@link readSessionJson}, plus the guard a read-modify-write CASes on. */
+async function readSessionJsonGuarded(
+  filePath: string,
+): Promise<{ session: any; guard: SessionWriteGuard } | null> {
   try {
-    return JSON.parse(await fs.promises.readFile(filePath, 'utf-8'));
-  } catch {
+    const text = await readSessionTextContained(filePath);
+    if (text === null) return null;
+    return { session: JSON.parse(text), guard: sessionWriteGuardOf(text) };
+  } catch (err) {
+    logger.warn(
+      `[UniversalRuns] Session read refused or unparseable; skipping`,
+      { component: 'UniversalRuns' },
+      { filePath, error: err instanceof Error ? err.message : String(err) },
+    );
     return null;
   }
 }
@@ -158,8 +186,12 @@ export async function deleteUniversalRunFromSession(
   await deleteArchivedState(containerPath, jobId).catch(() => {});
   const ref = await findUniversalSessionFileByJobId(containerPath, jobId);
   if (!ref) return;
-  const session = await readSessionJson(ref.path);
-  if (!session) return;
+  // Read-modify-write from the API process while a worker may be sealing the
+  // same file: the adapter's mutex is instance-local, so nothing orders these
+  // two. CAS on the bytes we read rather than clobbering a newer seal.
+  const read = await readSessionJsonGuarded(ref.path);
+  if (!read) return;
+  const { session, guard } = read;
   let mutated = false;
   if (Array.isArray(session.runs)) {
     const before = session.runs.length;
@@ -173,7 +205,7 @@ export async function deleteUniversalRunFromSession(
   if (mutated) {
     session.updatedAt = new Date().toISOString();
     try {
-      await atomicWriteFile(ref.path, JSON.stringify(session, null, 2));
+      await writeSessionBounded(ref.path, session, { expect: guard });
     } catch (err) {
       logger.warn(
         `[UniversalRuns] Failed to write session after jobId removal`,
