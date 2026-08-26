@@ -16,6 +16,17 @@
 
 import type { BalanceSnapshot, CreditTransaction, SubscriptionTier } from '@ant/shared';
 
+/** Result of a read-only peek. */
+export interface PeekedBalance {
+  snapshot: BalanceSnapshot;
+  /**
+   * Stored account predates the current billing schema, so its balance is
+   * pre-reseed (the cutover re-grants at a different unit). Callers must not
+   * render the number as a live balance.
+   */
+  stale: boolean;
+}
+
 export interface ReserveResult {
   ok: boolean;
   /** Current balance in micro-credits at decision time. */
@@ -90,6 +101,15 @@ export interface AuxiliaryDebitArgs {
 export interface CreditLedgerPort {
   /** Read balance + tier, applying any due monthly grant lazily. */
   getBalance(orgId: string, userId: string): Promise<BalanceSnapshot>;
+
+  /**
+   * Balance without creating the account or applying a grant; null if absent.
+   * Admin surfaces read through this — `getBalance` mints an initial grant.
+   */
+  peekBalance(orgId: string, userId: string): Promise<PeekedBalance | null>;
+
+  /** Org ids this user already has a billing account in. */
+  listAccountScopes(userId: string): Promise<string[]>;
 
   /**
    * Debit toward a job's CUMULATIVE cost. Idempotent + monotonic: tracks the

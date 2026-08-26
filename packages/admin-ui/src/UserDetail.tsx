@@ -1,6 +1,107 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { AdminUserDetail, ApprovalStatus } from '@ant/shared';
+import type { AdminScopeDetail, AdminUserDetail, ApprovalStatus } from '@ant/shared';
 import { adminApi, getSystemConfig } from './api/admin';
+
+/**
+ * One card per billing scope. Credits are keyed per (org, user), so a refund
+ * must name its scope — this card is the only place that number is entered.
+ */
+function ScopeCard({
+  scope,
+  userId,
+  busy,
+  billingEnabled,
+  onRefund,
+}: {
+  scope: AdminScopeDetail;
+  userId: string;
+  busy: boolean;
+  billingEnabled: boolean;
+  onRefund: (organizationId: string, credits: number, reason: string) => void;
+}) {
+  const [credits, setCredits] = useState('');
+  const [reason, setReason] = useState('');
+  const label = scope.organizationName ?? scope.organizationId;
+
+  return (
+    <div className="card" style={{ background: 'var(--surface-2)' }}>
+      <div className="row" style={{ marginBottom: 8 }}>
+        <strong>{label}</strong>
+        <span className="badge approved">{scope.organizationKind === 'team' ? '팀' : '개인'}</span>
+        {scope.role && <span className="muted">{scope.role}</span>}
+        {scope.active && <span className="muted">· 활성</span>}
+        {scope.orphaned && <span className="badge denied">소속 없음</span>}
+        <div className="spacer" />
+        <span className="muted">
+          {scope.stale
+            ? '마이그레이션 대기 — 잔액 표시 보류'
+            : scope.balance
+              ? `${scope.balance.tier} · ${scope.balance.credits.toFixed(2)} credits`
+              : '결제 계정 없음'}
+        </span>
+      </div>
+
+      {scope.grantOverdue && (
+        <div className="muted" style={{ marginBottom: 8 }}>
+          월 grant 미적용 — 표시된 잔액은 지급 이전 값입니다.
+        </div>
+      )}
+
+      {billingEnabled && scope.balance && !scope.stale && (
+        <div className="row">
+          <div className="field">
+            <label>환불 크레딧</label>
+            <input
+              type="number"
+              min={0}
+              value={credits}
+              onChange={(e) => setCredits(e.target.value)}
+              style={{ width: 120 }}
+            />
+          </div>
+          <div className="field" style={{ flex: 1 }}>
+            <label>사유</label>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </div>
+          <button
+            className="primary"
+            disabled={busy || !(Number(credits) > 0)}
+            onClick={() => onRefund(scope.organizationId, Number(credits) || 0, reason)}
+            style={{ alignSelf: 'flex-end' }}
+          >
+            {label}에 환불
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginTop: 12 }}>
+        <strong>거래 내역 ({scope.transactions.length})</strong>
+        <div className="ledger">
+          <table>
+            <thead>
+              <tr>
+                <th>시각</th>
+                <th>종류</th>
+                <th>크레딧</th>
+                <th>메모</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scope.transactions.map((t) => (
+                <tr key={`${userId}:${scope.organizationId}:${t.id}`}>
+                  <td className="muted">{new Date(t.ts).toLocaleString()}</td>
+                  <td>{t.kind}</td>
+                  <td>{(t.microCredits / 100000).toFixed(2)}</td>
+                  <td className="muted">{t.note ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function UserDetail({
   userId,
@@ -14,8 +115,6 @@ export function UserDetail({
   const [detail, setDetail] = useState<AdminUserDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [refundCredits, setRefundCredits] = useState('');
-  const [refundReason, setRefundReason] = useState('');
   const [testLevel, setTestLevel] = useState('');
   // Refund is a billing action — self-hosted (unmetered) deployments have no refund route.
   const [billingEnabled, setBillingEnabled] = useState(false);
@@ -57,13 +156,14 @@ export function UserDetail({
 
   const setApproval = (status: ApprovalStatus) => run(() => adminApi.setApproval(userId, status));
   const applyTestLevel = () => run(() => adminApi.setTestLevel(userId, Number(testLevel) || 0));
-  const applyRefund = () =>
+  const applyRefund = (organizationId: string, credits: number, reason: string) =>
     run(() =>
       adminApi.refund(
         userId,
-        Number(refundCredits) || 0,
-        refundReason,
-        `admin-refund-${userId}-${refundCredits}-${refundReason}`,
+        organizationId,
+        credits,
+        reason,
+        `admin-refund-${userId}-${organizationId}-${credits}-${reason}`,
       ),
     );
 
@@ -122,67 +222,17 @@ export function UserDetail({
         </div>
       </div>
 
-      <div className="card" style={{ background: 'var(--surface-2)' }}>
-        <div className="row" style={{ marginBottom: 8 }}>
-          <strong>결제</strong>
-          <div className="spacer" />
-          <span className="muted">
-            {detail.balance.tier} · {detail.balance.credits.toFixed(2)} credits
-          </span>
-        </div>
-        {billingEnabled && (
-          <div className="row">
-            <div className="field">
-              <label>환불 크레딧</label>
-              <input
-                type="number"
-                min={0}
-                value={refundCredits}
-                onChange={(e) => setRefundCredits(e.target.value)}
-                style={{ width: 120 }}
-              />
-            </div>
-            <div className="field" style={{ flex: 1 }}>
-              <label>사유</label>
-              <input value={refundReason} onChange={(e) => setRefundReason(e.target.value)} />
-            </div>
-            <button
-              className="primary"
-              disabled={busy || !(Number(refundCredits) > 0)}
-              onClick={applyRefund}
-              style={{ alignSelf: 'flex-end' }}
-            >
-              환불
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <strong>거래 내역 ({detail.transactions.length})</strong>
-        <div className="ledger">
-          <table>
-            <thead>
-              <tr>
-                <th>시각</th>
-                <th>종류</th>
-                <th>크레딧</th>
-                <th>메모</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.transactions.map((t) => (
-                <tr key={t.id}>
-                  <td className="muted">{new Date(t.ts).toLocaleString()}</td>
-                  <td>{t.kind}</td>
-                  <td>{(t.microCredits / 100000).toFixed(2)}</td>
-                  <td className="muted">{t.note ?? ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <strong>소속별 결제 ({detail.scopes.length})</strong>
+      {detail.scopes.map((s) => (
+        <ScopeCard
+          key={s.organizationId}
+          scope={s}
+          userId={userId}
+          busy={busy}
+          billingEnabled={billingEnabled}
+          onRefund={applyRefund}
+        />
+      ))}
     </div>
   );
 }

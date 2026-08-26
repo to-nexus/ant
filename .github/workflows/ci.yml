@@ -32,6 +32,9 @@ jobs:
       - run: pnpm build:shared
       - run: pnpm typecheck:cli
       - run: pnpm typecheck:ui
+      # The admin SPA's build is a bare `vite build` (no tsc), so without this
+      # step a broken admin surface lands green here and only fails in ant-cloud.
+      - run: pnpm typecheck:admin-ui
       # An example that no longer compiles is worse than no example.
       - run: pnpm --filter @ant/example-mcp-reference typecheck
       # Test sources are excluded from tsconfig.json on purpose (it ships into

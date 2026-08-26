@@ -85,6 +85,77 @@ The switch foundation:
 - FE: `AppNavBar` shows the active account (kind-aware label) and, when
   `memberships.length > 1`, a switcher dropdown.
 
+## Admin reads the scope axis, not `currentOrganizationId`
+
+Every billing key is `(orgId, userId)`:
+
+```
+ant:billing:{balance,ledger,account,held,grantLock}:{orgId}:{userId}
+```
+
+So one identity owns **N independent billing accounts** — its own tier, balance,
+monthly grant and ledger per 소속. `UserRecord.currentOrganizationId` is a
+denormalised pointer that exists only to issue the JWT; it is **never** the
+authority for a billing read. A helper that resolved the scope as
+`currentOrganizationId ?? INDIVIDUAL_ORG_ID` (once duplicated in
+`admin.routes.ts` and the overlay's `admin-billing.routes.ts`) collapsed every
+user to a single admin row whose identity was decided by their last
+`POST /auth/switch-org`, hid credits held in any other 소속, and let a refund
+land in the wrong wallet. Both copies are deleted.
+
+The admin surface is therefore **one row per (user × scope)**:
+
+| Axis | Fields | Cardinality |
+|---|---|---|
+| identity | email, `approvalStatus`, `testAccountLevel`, `isSuperAdmin` | one per user, repeated across its rows |
+| scope | `organizationId`, `role`, `tier`, `credits` | one per billing account |
+
+Scope enumeration is `memberships ∪ ledger accounts ∪ {active}`, minus the
+`_pending` onboarding sentinel:
+
+- **memberships** (`listMembershipsByUser`) is the authoritative 소속 list.
+- **ledger accounts** (`CreditLedgerPort.listAccountScopes`) recover money that
+  outlived its membership — `removeMembership` and the `softDeleteOrganization`
+  cascade detach the membership but **never touch `ant:billing:*`**, so a balance
+  is otherwise stranded and invisible. Such rows are flagged `orphaned`.
+- **active** is a safety net for legacy `personal-*` ids.
+
+### Reads must not mint
+
+`CreditLedgerPort.getBalance` is not a read: it calls `getOrCreateAccount`
+(creating the account and applying an `'initial grant'`), applies a due monthly
+grant under `GRANT_LOCK`, and can run `reseedForPricingCutover`. Fanning it over
+every (user × 소속) pair would **issue free credits for scopes an admin merely
+looked at**. `peekBalance` is the only legal read for a fan-out:
+
+- returns `null` when no account exists (so the row is omitted), and runs
+  `migrate` **in memory** without persisting;
+- reports `stale: true` for an account below `BILLING_SCHEMA_VERSION`, whose
+  stored balance is in the pre-cutover unit — the row shows the account exists
+  but withholds the number rather than displaying a 100×-wrong one;
+- refreshes the 365-day sliding TTL. This one write is deliberate: the admin
+  list used to be a `getBalance` and thus an accidental keep-alive for dormant
+  accounts, so peeking must not silently start letting real balances expire.
+- `grantOverdue` marks a scope whose cycle has elapsed; the balance shown
+  predates the grant and must never be presented as adjusted.
+
+`NoopCreditLedger` (billing off / self-hosted) returns a free snapshot for every
+scope rather than `null`, so the admin list still shows every membership instead
+of coming back empty.
+
+A user with **no** billing account anywhere still gets exactly one row (tier and
+credits `null`). Approval is a user-axis duty — dropping such a row would make a
+brand-new pending account invisible and therefore unapprovable.
+
+### Billing mutations name their scope
+
+`POST /admin/users/:userId/refund` takes a **required** `organizationId`
+(`REFUND_SCOPE_REQUIRED` on absence) and validates it against
+`memberships ∪ listAccountScopes` before touching the ledger. Both halves matter:
+`refund` goes through `getOrCreateAccount`, so an unvalidated slug would mint a
+new funded account at an arbitrary pair, while the account-index arm keeps
+credits in a left or deleted org refundable.
+
 ## Team lifecycle (Phase 1 — live)
 
 Team orgs are creatable and manageable through OSS routes
@@ -194,6 +265,11 @@ into the new identity. Pre-launch alternative: wipe the legacy cloud trees +
   collision fix; `assertColonFreeUserId`.
 - `tests/auth/organization-repository.test.ts` — `listMembershipsByUser`,
   `searchOrganizations` excludes individual.
+- `tests/http/admin-account-scope.test.ts` — one admin row per (user × scope);
+  row set unchanged by an org switch; `getBalance` never called from the admin
+  path (the anti-minting guard); orphaned accounts surfaced; Noop lists every
+  membership; account-less user still listed; pre-cutover balance withheld;
+  `_pending` never a scope.
 - `tests/http/auth-me-route.test.ts` — envelope (`activeOrg`/`memberships`/`kind`
   + Phase 1 `pendingInvites`/`domainJoinableOrgs` with lazy-expiry filtering).
 - `tests/http/team-routes.test.ts` — role-gate truth table, invite acceptance

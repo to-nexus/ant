@@ -19,9 +19,12 @@ import type { CreditLedgerPort } from '../../../../core/ports/creditLedger';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
 import type { UserRecord } from '../../../../core/auth/types';
 import type {
-  AdminUserSummary,
+  AdminAccountRow,
+  AdminAccountListResponse,
+  AdminScopeDetail,
+  AdminScopeInfo,
   AdminUserDetail,
-  AdminUserListResponse,
+  AdminUserIdentity,
   ApprovalStatus,
   DefaultApprovalMode,
   AdminOrgSummary,
@@ -33,6 +36,7 @@ import {
   INDIVIDUAL_ORG_ID,
   ORG_NOT_FOUND,
   DOMAIN_NOT_FOUND,
+  deriveKindFromOrgId,
 } from '@ant/shared';
 import { isSuperAdminEmail } from '../../../../core/auth/superAdmin';
 import { toInviteView, toDomainClaimView, buildMemberViews } from './teams.routes';
@@ -45,6 +49,18 @@ export interface AdminRoutesDeps {
 }
 
 const APPROVAL_VALUES: readonly ApprovalStatus[] = ['pending', 'approved', 'denied'];
+/** Onboarding sentinel — never a real billing scope. */
+const PENDING_ORG_SENTINEL = '_pending';
+
+/**
+ * `peekBalance` never applies a due grant, so a stale cycle would otherwise be
+ * indistinguishable from a spent balance. `nextBillingDate` is the cycle end.
+ */
+function isGrantOverdue(balance: { nextBillingDate?: string }): boolean {
+  if (!balance.nextBillingDate) return false;
+  const due = Date.parse(balance.nextBillingDate);
+  return Number.isFinite(due) && due < Date.now();
+}
 const POLICY_VALUES: readonly DefaultApprovalMode[] = ['auto-approve', 'require-approval'];
 
 export function createAdminRoutes(deps: AdminRoutesDeps): Router {
@@ -62,12 +78,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
   };
   router.use('/admin', requireAdmin);
 
-  function orgOf(u: UserRecord): string {
-    return u.currentOrganizationId ?? INDIVIDUAL_ORG_ID;
-  }
-
-  async function toSummary(u: UserRecord): Promise<AdminUserSummary> {
-    const balance = await creditLedger.getBalance(orgOf(u), u.id);
+  function toIdentity(u: UserRecord): AdminUserIdentity {
     return {
       userId: u.id,
       email: u.email,
@@ -79,23 +90,137 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       createdAt: u.createdAt,
       isSuperAdmin: u.isSuperAdmin ?? false,
       testAccountLevel: u.testAccountLevel ?? 0,
-      tier: balance.tier,
-      credits: balance.credits,
     };
   }
 
-  // GET /admin/users?status=&limit= → { users, defaultApprovalMode }
+  /**
+   * Per-request org cache — the shared `individual` org is a member of nearly
+   * every user, so resolving per user would refetch it once per row.
+   */
+  function orgResolver(): (orgId: string) => Promise<Organization | null> {
+    const cache = new Map<string, Promise<Organization | null>>();
+    return (orgId) => {
+      let hit = cache.get(orgId);
+      if (!hit) {
+        hit = organizationRepository.getOrganization(orgId);
+        cache.set(orgId, hit);
+      }
+      return hit;
+    };
+  }
+
+  /**
+   * Every scope whose money belongs to this user: memberships (the authoritative
+   * list), plus scopes the ledger still holds an account for so a balance that
+   * outlived its membership stays visible, plus the active pointer as a
+   * legacy-`personal-*` safety net. `currentOrganizationId` is a denormalised
+   * JWT-issuance pointer and is never the authority here.
+   *
+   * `includeUnaccounted` keeps scopes the ledger has no account for — the detail
+   * view shows them so an admin can tell "org exists, never billed" apart from
+   * "org absent".
+   */
+  async function resolveScopes(
+    u: UserRecord,
+    resolveOrg: (orgId: string) => Promise<Organization | null>,
+    includeUnaccounted = false,
+  ): Promise<AdminScopeInfo[]> {
+    const [memberships, ledgerScopes] = await Promise.all([
+      organizationRepository.listMembershipsByUser(u.id),
+      creditLedger.listAccountScopes(u.id),
+    ]);
+
+    const roleByOrg = new Map(memberships.map((m) => [m.organizationId, m.role]));
+    const active = u.currentOrganizationId ?? INDIVIDUAL_ORG_ID;
+    const candidates = new Set(
+      [...roleByOrg.keys(), ...ledgerScopes, active].filter(
+        (id) => id !== PENDING_ORG_SENTINEL,
+      ),
+    );
+
+    const build = async (
+      organizationId: string,
+      force = false,
+    ): Promise<AdminScopeInfo | null> => {
+      const [peeked, org] = await Promise.all([
+        creditLedger.peekBalance(organizationId, u.id),
+        resolveOrg(organizationId),
+      ]);
+      if (!peeked && !includeUnaccounted && !force) return null;
+      const role = roleByOrg.get(organizationId);
+      // A pre-cutover account's stored number is in the old unit, so report the
+      // account's existence without a balance rather than a wrong one.
+      const usable = peeked && !peeked.stale ? peeked.snapshot : null;
+      return {
+        organizationId,
+        organizationName: org?.name,
+        organizationKind: org?.kind ?? deriveKindFromOrgId(organizationId),
+        role,
+        orphaned: role === undefined,
+        active: organizationId === active,
+        tier: usable?.tier ?? null,
+        credits: usable?.credits ?? null,
+        grantOverdue: usable ? isGrantOverdue(usable) : false,
+        stale: peeked?.stale ?? false,
+      };
+    };
+
+    // Wrap: `.map(build)` would pass the array index in as `force`.
+    const rows = (await Promise.all([...candidates].map((id) => build(id)))).filter(
+      (r): r is AdminScopeInfo => r !== null,
+    );
+
+    // Approval and test level are user-axis duties, so a user with no billing
+    // account anywhere must still be listed — otherwise a brand-new pending
+    // account would be invisible and therefore unapprovable.
+    if (rows.length === 0) {
+      const fallback =
+        [...roleByOrg.keys()].find((id) => deriveKindFromOrgId(id) === 'individual') ??
+        memberships[0]?.organizationId ??
+        INDIVIDUAL_ORG_ID;
+      return [(await build(fallback, true))!];
+    }
+
+    return rows.sort(
+      (a, b) =>
+        Number(b.active) - Number(a.active) ||
+        a.organizationId.localeCompare(b.organizationId),
+    );
+  }
+
+  async function toRows(
+    u: UserRecord,
+    resolveOrg: (orgId: string) => Promise<Organization | null>,
+  ): Promise<AdminAccountRow[]> {
+    const identity = toIdentity(u);
+    const scopes = await resolveScopes(u, resolveOrg);
+    return scopes.map((scope) => ({ ...identity, ...scope }));
+  }
+
+  // GET /admin/users?status=&limit=&organizationId= → { rows, defaultApprovalMode }
+  // One row per (user × scope). `limit` bounds the identity axis; the org
+  // filter applies to assembled rows, since rows outnumber users.
   router.get('/admin/users', async (req: Request, res: Response) => {
     try {
       const status = req.query.status as ApprovalStatus | undefined;
       const limit = req.query.limit ? parseInt(String(req.query.limit), 10) || undefined : undefined;
+      const organizationId = req.query.organizationId
+        ? String(req.query.organizationId)
+        : undefined;
       const records = await organizationRepository.listUsers({
         ...(status && APPROVAL_VALUES.includes(status) ? { status } : {}),
         ...(limit ? { limit } : {}),
       });
-      const users = await Promise.all(records.map((u) => toSummary(u)));
+      const resolveOrg = orgResolver();
+      const assembled = await Promise.all(records.map((u) => toRows(u, resolveOrg)));
+      const rows = assembled
+        .flat()
+        .filter((r) => !organizationId || r.organizationId === organizationId);
       const cfg = await organizationRepository.getAdminConfig();
-      const body: AdminUserListResponse = { users, defaultApprovalMode: cfg.defaultApprovalMode };
+      const body: AdminAccountListResponse = {
+        rows,
+        defaultApprovalMode: cfg.defaultApprovalMode,
+      };
       res.json(body);
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Admin');
@@ -111,15 +236,29 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
         res.status(404).json({ error: 'user not found', code: 'user-not-found' });
         return;
       }
-      const summary = await toSummary(u);
-      const memberships = await organizationRepository.listMembershipsByUser(userId);
-      const balance = await creditLedger.getBalance(orgOf(u), u.id);
-      const transactions = await creditLedger.listTransactions(orgOf(u), u.id, CREDIT_LEDGER_MAX_ENTRIES);
+      const [memberships, scopeInfos] = await Promise.all([
+        organizationRepository.listMembershipsByUser(userId),
+        resolveScopes(u, orgResolver(), true),
+      ]);
+      const scopes: AdminScopeDetail[] = await Promise.all(
+        scopeInfos.map(async (scope) => ({
+          ...scope,
+          balance:
+            (await creditLedger.peekBalance(scope.organizationId, u.id))?.snapshot ?? null,
+          transactions:
+            scope.tier === null && !scope.stale
+              ? []
+              : await creditLedger.listTransactions(
+                  scope.organizationId,
+                  u.id,
+                  CREDIT_LEDGER_MAX_ENTRIES,
+                ),
+        })),
+      );
       const detail: AdminUserDetail = {
-        ...summary,
+        ...toIdentity(u),
         memberships: memberships.map((m) => ({ organizationId: m.organizationId, role: m.role })),
-        balance,
-        transactions,
+        scopes,
       };
       res.json(detail);
     } catch (err) {
@@ -140,7 +279,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       await organizationRepository.setUserApproval(userId, status, adminEmail);
       logger.info(`[Admin] approval ${userId} → ${status} by ${adminEmail}`, { component: 'Admin' });
       const u = await organizationRepository.getUser(userId);
-      res.json(u ? await toSummary(u) : { ok: true });
+      res.json(u ? { rows: await toRows(u, orgResolver()) } : { ok: true });
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Admin');
     }
@@ -158,7 +297,7 @@ export function createAdminRoutes(deps: AdminRoutesDeps): Router {
       const adminEmail = (req as any).user?.email as string;
       await organizationRepository.setTestAccountLevel(userId, level, adminEmail);
       const u = await organizationRepository.getUser(userId);
-      res.json(u ? await toSummary(u) : { ok: true });
+      res.json(u ? { rows: await toRows(u, orgResolver()) } : { ok: true });
     } catch (err) {
       sendErrorResponse(res, 500, err, 'Admin');
     }

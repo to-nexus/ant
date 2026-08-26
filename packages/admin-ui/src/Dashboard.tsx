@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { AdminUserSummary, DefaultApprovalMode } from '@ant/shared';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { AdminAccountRow, DefaultApprovalMode } from '@ant/shared';
 import { adminApi } from './api/admin';
 import { UserDetail } from './UserDetail';
 import { OrganizationsTab } from './OrganizationsTab';
@@ -8,21 +8,40 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`badge ${status}`}>{status}</span>;
 }
 
+/** 소속 cell — name (or id), kind, and the active / orphaned markers. */
+function ScopeCell({ row }: { row: AdminAccountRow }) {
+  return (
+    <>
+      <span>{row.organizationName ?? row.organizationId}</span>
+      <span className="badge approved" style={{ marginLeft: 6 }}>
+        {row.organizationKind === 'team' ? '팀' : '개인'}
+      </span>
+      {row.active && <span className="muted" style={{ marginLeft: 6 }}>· 활성</span>}
+      {row.orphaned && (
+        <span className="badge denied" style={{ marginLeft: 6 }}>
+          소속 없음
+        </span>
+      )}
+    </>
+  );
+}
+
 export function Dashboard({ adminEmail }: { adminEmail: string }) {
   // Tab state only — no router in this SPA by design.
   const [view, setView] = useState<'users' | 'organizations'>('users');
-  const [users, setUsers] = useState<AdminUserSummary[]>([]);
+  const [rows, setRows] = useState<AdminAccountRow[]>([]);
   const [policy, setPolicy] = useState<DefaultApprovalMode>('auto-approve');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [orgFilter, setOrgFilter] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await adminApi.listUsers();
-      setUsers(res.users);
+      const res = await adminApi.listAccounts();
+      setRows(res.rows);
       setPolicy(res.defaultApprovalMode);
     } catch (e) {
       setError((e as Error).message);
@@ -34,6 +53,20 @@ export function Dashboard({ adminEmail }: { adminEmail: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Filter options come from the rows themselves, so the select never offers
+  // an org with nothing under it.
+  const orgOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const r of rows) byId.set(r.organizationId, r.organizationName ?? r.organizationId);
+    return [...byId].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
+
+  const visible = useMemo(
+    () => (orgFilter ? rows.filter((r) => r.organizationId === orgFilter) : rows),
+    [rows, orgFilter],
+  );
+  const userCount = useMemo(() => new Set(visible.map((r) => r.userId)).size, [visible]);
 
   const togglePolicy = async () => {
     const next: DefaultApprovalMode = policy === 'auto-approve' ? 'require-approval' : 'auto-approve';
@@ -88,8 +121,18 @@ export function Dashboard({ adminEmail }: { adminEmail: string }) {
 
       <div className="card">
         <div className="row" style={{ marginBottom: 12 }}>
-          <strong>사용자 ({users.length})</strong>
+          <strong>
+            사용자 {userCount}명 · 소속 계정 {visible.length}개
+          </strong>
           <div className="spacer" />
+          <select value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
+            <option value="">전체 소속</option>
+            {orgOptions.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
           <button onClick={() => void load()} disabled={loading}>
             새로고침
           </button>
@@ -101,6 +144,7 @@ export function Dashboard({ adminEmail }: { adminEmail: string }) {
             <thead>
               <tr>
                 <th>이메일</th>
+                <th>소속</th>
                 <th>승인</th>
                 <th>Tier</th>
                 <th>크레딧</th>
@@ -109,16 +153,37 @@ export function Dashboard({ adminEmail }: { adminEmail: string }) {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.userId} className="clickable" onClick={() => setSelected(u.userId)}>
-                  <td>{u.email}</td>
-                  <td><StatusBadge status={u.approvalStatus} /></td>
-                  <td>{u.tier}</td>
-                  <td>{u.credits.toFixed(2)}</td>
-                  <td>{u.testAccountLevel}</td>
-                  <td>{u.isSuperAdmin ? '✓' : ''}</td>
-                </tr>
-              ))}
+              {visible.map((r, i) => {
+                // A user's rows are contiguous; repeat the email only on the first.
+                const repeat = i > 0 && visible[i - 1].userId === r.userId;
+                return (
+                  <tr
+                    key={`${r.userId}::${r.organizationId}`}
+                    className="clickable"
+                    onClick={() => setSelected(r.userId)}
+                  >
+                    <td className={repeat ? 'muted' : undefined}>{repeat ? '↳' : r.email}</td>
+                    <td><ScopeCell row={r} /></td>
+                    <td><StatusBadge status={r.approvalStatus} /></td>
+                    <td>{r.tier ?? '—'}</td>
+                    <td>
+                      {r.credits === null ? '—' : r.credits.toFixed(2)}
+                      {r.stale && (
+                        <span className="badge pending" style={{ marginLeft: 6 }}>
+                          마이그레이션 대기
+                        </span>
+                      )}
+                      {r.grantOverdue && (
+                        <span className="badge pending" style={{ marginLeft: 6 }}>
+                          grant 대기
+                        </span>
+                      )}
+                    </td>
+                    <td>{r.testAccountLevel}</td>
+                    <td>{r.isSuperAdmin ? '✓' : ''}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

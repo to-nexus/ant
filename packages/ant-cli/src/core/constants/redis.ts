@@ -393,6 +393,10 @@ export const REDIS_KEYS = {
     /** Monthly grant lock (one grant per cycle) - ant:billing:grantLock:{orgId}:{userId} */
     GRANT_LOCK: (org: string, user: string): string =>
       `${REDIS_DOMAINS.BILLING}:grantLock:${org}:${user}`,
+    /** SET of orgIds this user holds an ACCOUNT in - ant:billing:accountIndex:{userId}.
+     *  Deliberately NOT `accounts:` — that sits under a `account*` MATCH glob. */
+    ACCOUNT_INDEX: (user: string): string =>
+      `${REDIS_DOMAINS.BILLING}:accountIndex:${user}`,
   },
 
   /**

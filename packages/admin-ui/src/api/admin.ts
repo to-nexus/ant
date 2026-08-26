@@ -1,5 +1,6 @@
 import type {
-  AdminUserListResponse,
+  AdminAccountListResponse,
+  AdminAccountListQuery,
   AdminUserDetail,
   AdminConfig,
   ApprovalStatus,
@@ -44,16 +45,38 @@ export function getSystemConfig(): Promise<SystemConfigResponse> {
   return systemConfigPromise;
 }
 
+function qs(query: AdminAccountListQuery): string {
+  const p = new URLSearchParams();
+  if (query.status) p.set('status', query.status);
+  if (query.organizationId) p.set('organizationId', query.organizationId);
+  if (query.limit) p.set('limit', String(query.limit));
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
+
 export const adminApi = {
-  listUsers: (status?: ApprovalStatus) =>
-    req<AdminUserListResponse>('GET', `/admin/users${status ? `?status=${status}` : ''}`),
+  /** One row per (user × scope) — a user appears once per billing scope. */
+  listAccounts: (query: AdminAccountListQuery = {}) =>
+    req<AdminAccountListResponse>('GET', `/admin/users${qs(query)}`),
   getUser: (userId: string) => req<AdminUserDetail>('GET', `/admin/users/${enc(userId)}`),
   setApproval: (userId: string, status: ApprovalStatus) =>
     req('POST', `/admin/users/${enc(userId)}/approval`, { status }),
   setTestLevel: (userId: string, testAccountLevel: number) =>
     req('POST', `/admin/users/${enc(userId)}/test-level`, { testAccountLevel }),
-  refund: (userId: string, credits: number, reason: string, idempotencyKey: string) =>
-    req<BalanceSnapshot>('POST', `/admin/users/${enc(userId)}/refund`, { credits, reason, idempotencyKey }),
+  // organizationId is required: the ledger is keyed per (org, user).
+  refund: (
+    userId: string,
+    organizationId: string,
+    credits: number,
+    reason: string,
+    idempotencyKey: string,
+  ) =>
+    req<BalanceSnapshot>('POST', `/admin/users/${enc(userId)}/refund`, {
+      organizationId,
+      credits,
+      reason,
+      idempotencyKey,
+    }),
   getConfig: () => req<AdminConfig>('GET', '/admin/config'),
   setConfig: (defaultApprovalMode: DefaultApprovalMode) =>
     req<AdminConfig>('PUT', '/admin/config', { defaultApprovalMode }),

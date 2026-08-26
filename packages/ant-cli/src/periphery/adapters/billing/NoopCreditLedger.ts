@@ -3,6 +3,7 @@ import type {
   AuxiliaryDebitArgs,
   CreditLedgerPort,
   DebitCumulativeArgs,
+  PeekedBalance,
   ReserveResult,
   SettleArgs,
 } from '../../../core/ports/creditLedger';
@@ -14,7 +15,7 @@ import type {
  * OSS build without the cloud package falls back to this no-op).
  *
  * Contract:
- *   - `getBalance()` reports a free-tier, zero-balance snapshot.
+ *   - `getBalance()` / `peekBalance()` report a free-tier, zero-balance snapshot.
  *   - `reserve()` always succeeds (billing never blocks a job).
  *   - `settle/releaseHold/topUp/changeTier/cancelSubscription` are no-ops.
  *   - `listTransactions()` → `[]`.
@@ -44,6 +45,16 @@ export class NoopCreditLedger implements CreditLedgerPort {
 
   async getBalance(): Promise<BalanceSnapshot> {
     return this.freeSnapshot();
+  }
+
+  // Non-null: every scope has a trivial account here, so admin still lists
+  // each membership on a billing-off deployment.
+  async peekBalance(): Promise<PeekedBalance | null> {
+    return { snapshot: this.freeSnapshot(), stale: false };
+  }
+
+  async listAccountScopes(): Promise<string[]> {
+    return [];
   }
 
   async reserve(
