@@ -19,6 +19,7 @@ import { existsSync } from 'node:fs';
 import { rgPath } from '@vscode/ripgrep';
 import type { FileSystemPort } from '../../../../core/ports/filesystem';
 import { normalizeToCodebasePath } from '../../../../core/utils/pathNormalizer';
+import { buildNfcTolerantRegex, globNormalizationVariants } from '../../../../core/utils/unicodePath';
 import type { ToolExecutionContext, ToolResult } from '../types';
 
 const DEFAULT_EXCLUDES = ['node_modules', '.git', 'dist', 'build'];
@@ -252,6 +253,46 @@ export function planSearch(
   };
 }
 
+/**
+ * Zero-match NFC/NFD-tolerant retry (sure-judging-bluff / navy-dropping-crowd
+ * content axis): macOS-uploaded filenames and doc content are NFD on disk
+ * while the model emits NFC patterns — byte-exact ripgrep can never match.
+ * Derives a tolerant arg vector from the plan (pattern slot rewritten via
+ * `buildNfcTolerantRegex`, glob variants added as extra `--glob` includes —
+ * a union) and runs ONE extra spawn. Returns the cleaned result lines, or
+ * `null` when nothing is normalization-sensitive / the substitution is not
+ * provably safe / the retry also found nothing (caller then returns the
+ * existing zero-match message byte-identically).
+ */
+async function runNfcTolerantRetry(plan: SearchPlan, pattern: string): Promise<string[] | null> {
+  const tolerantPattern = buildNfcTolerantRegex(pattern);
+  const globVariants = plan.effectiveFilePattern
+    ? globNormalizationVariants(plan.effectiveFilePattern)
+    : [];
+  if (!tolerantPattern && globVariants.length === 0) return null;
+
+  const rgArgs = [...plan.rgArgs];
+  if (tolerantPattern) rgArgs[rgArgs.length - 2] = tolerantPattern;
+  if (globVariants.length > 0) {
+    const dashIdx = rgArgs.lastIndexOf('--');
+    rgArgs.splice(dashIdx, 0, ...globVariants.flatMap(g => ['--glob', g]));
+  }
+
+  const { stdout, code } = await runRipgrep(rgArgs, plan.cwd);
+  if (code !== 0) return null;
+  const lines = stdout
+    .split('\n')
+    .filter(l => l.length > 0)
+    .map(l => (l.startsWith('./') ? l.slice(2) : l));
+  return lines.length > 0 ? lines : null;
+}
+
+const NFC_RETRY_NOTICE =
+  '[unicode-note] The byte-exact pattern had 0 matches; the matches below were found with ' +
+  'NFC/NFD normalization tolerance — the on-disk content/filenames are NFD-encoded (macOS upload), ' +
+  'visually identical to NFC but byte-different. Byte-exact shell matching (grep/find/cmp on typed ' +
+  'names) will miss these files; prefer list_files/search_code or glob wildcards.\n\n';
+
 export async function handleSearchCode(
   ctx: ToolExecutionContext,
   args: { pattern: string; file_pattern?: string; include_dependencies?: boolean },
@@ -333,29 +374,37 @@ export async function runSearchTool(
     // format used elsewhere.
     lines = lines.map(l => (l.startsWith('./') ? l.slice(2) : l));
 
+    let nfcRetryNotice = '';
     if (code === 1 || lines.length === 0) {
-      // A zero-match search is a legitimate, informative exploration result —
-      // NOT a tool failure. Returning `error` here made every failure-based
-      // consumer (Safety Net B `detectRecentToolFailures`, the error-flavored
-      // no-progress breaker `isAllRepeatErrorBatch`, the ≥3 same-command loop
-      // warning, and `summarizeDominantFailure`'s `no_done_signal` framing)
-      // count normal exploratory no-matches as failures — exhausting the retry
-      // budget of exploration-heavy tasks once `commandHistory` went live in
-      // 97ed51c25. The diagnostic still reaches the LLM via `content` and the
-      // UI card via `showStatus`, mirroring the sibling `searchReferenceCode`
-      // handler which already returns a no-match as content-only. The real
-      // error path (ripgrep exit 2, above) keeps `error`.
-      const zeroMatchMsg = formatZeroMatchMessage(pattern, args.file_pattern, plan);
-      console.log(`[searchCode] ${zeroMatchMsg.split('\n')[0]}`);
-      await ctx.chatStatus.showStatus('searched_code', {
-        pattern,
-        filesCount: 0,
-        totalMatches: 0,
-        filesList: [],
-        error: zeroMatchMsg,
-        _mergeIndex: searchingIndex,
-      });
-      return { content: zeroMatchMsg };
+      const retryLines = await runNfcTolerantRetry(plan, pattern);
+      if (retryLines) {
+        console.log(`[searchCode] NFC/NFD-tolerant retry matched ${retryLines.length} line(s) after byte-exact 0-match`);
+        lines = retryLines;
+        nfcRetryNotice = NFC_RETRY_NOTICE;
+      } else {
+        // A zero-match search is a legitimate, informative exploration result —
+        // NOT a tool failure. Returning `error` here made every failure-based
+        // consumer (Safety Net B `detectRecentToolFailures`, the error-flavored
+        // no-progress breaker `isAllRepeatErrorBatch`, the ≥3 same-command loop
+        // warning, and `summarizeDominantFailure`'s `no_done_signal` framing)
+        // count normal exploratory no-matches as failures — exhausting the retry
+        // budget of exploration-heavy tasks once `commandHistory` went live in
+        // 97ed51c25. The diagnostic still reaches the LLM via `content` and the
+        // UI card via `showStatus`, mirroring the sibling `searchReferenceCode`
+        // handler which already returns a no-match as content-only. The real
+        // error path (ripgrep exit 2, above) keeps `error`.
+        const zeroMatchMsg = formatZeroMatchMessage(pattern, args.file_pattern, plan);
+        console.log(`[searchCode] ${zeroMatchMsg.split('\n')[0]}`);
+        await ctx.chatStatus.showStatus('searched_code', {
+          pattern,
+          filesCount: 0,
+          totalMatches: 0,
+          filesList: [],
+          error: zeroMatchMsg,
+          _mergeIndex: searchingIndex,
+        });
+        return { content: zeroMatchMsg };
+      }
     }
 
     let truncatedNotice = '';
@@ -380,7 +429,7 @@ export async function runSearchTool(
     });
 
     const fixNotice = plan.filePatternFix ? `${plan.filePatternFix}\n\n` : '';
-    return { content: fixNotice + lines.join('\n') + truncatedNotice };
+    return { content: fixNotice + nfcRetryNotice + lines.join('\n') + truncatedNotice };
   } catch (e) {
     const errorMsg = (e as Error).message;
     console.error(`[searchCode] Error:`, errorMsg);

@@ -88,13 +88,14 @@ const editFile: ToolDefinition = {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const { applySearchReplace } = await import('../../../../../core/streaming/strategies/common/EditOperations');
-      const newContent = applySearchReplace(content, args.old_str, args.new_str, args.path);
+      let nfcFallbackNote = '';
+      const newContent = applySearchReplace(content, args.old_str, args.new_str, args.path, (note) => { nfcFallbackNote = note; });
       fs.writeFileSync(filePath, newContent, 'utf-8');
 
       notifyFileTree(ctx);
       await ctx.chatStatus.completeFileEdit(args.path, args.old_str, args.new_str);
 
-      return `✅ Edited ${args.path}. Replaced ${args.old_str.length} → ${args.new_str.length} chars.`;
+      return `✅ Edited ${args.path}. Replaced ${args.old_str.length} → ${args.new_str.length} chars.${nfcFallbackNote ? `\n${nfcFallbackNote}` : ''}`;
     } catch (error: any) {
       await ctx.chatStatus.failFileEdit(args.path, (error as Error).message);
 

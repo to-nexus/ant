@@ -14,10 +14,20 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { reconcileOnDiskPath, toNfc, nfcEquals, type ExistenceProbe } from '../../src/core/utils/unicodePath';
+import {
+  reconcileOnDiskPath,
+  toNfc,
+  nfcEquals,
+  buildNfcTolerantRegex,
+  globNormalizationVariants,
+  type ExistenceProbe,
+} from '../../src/core/utils/unicodePath';
 import { normalizeTemplateDoc } from '../../src/core/utils/templateDetector';
+import { applySearchReplace } from '../../src/core/streaming/strategies/common/EditOperations';
 import { handleCopyFile } from '../../src/agents/common/tool/handlers/copyFile';
 import { handleReadFile } from '../../src/agents/common/tool/handlers';
+import { handleSearchCode } from '../../src/agents/common/tool/handlers/searchCode';
+import { nfdCommandHint } from '../../src/agents/common/tool/handlers/runCommand';
 import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
 import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
 
@@ -233,5 +243,172 @@ describe('NFC content normalization at the prompt boundary (sure-judging-bluff)'
     } finally {
       fs.rmSync(ws, { recursive: true, force: true });
     }
+  });
+});
+
+describe('applySearchReplace NFC line-span fallback (navy-dropping-crowd)', () => {
+  const NFD_LINE = '통보 체계 · 환불 처리'.normalize('NFD');
+  const NFC_LINE = NFD_LINE.normalize('NFC');
+
+  it('NFC old_str matches an NFD file line; bytes outside the span are untouched', () => {
+    const original = `<header>\n  <h1>${NFD_LINE}</h1>\n</header>`;
+    let note = '';
+    const result = applySearchReplace(
+      original, `  <h1>${NFC_LINE}</h1>`, '  <h1>REPLACED</h1>', 'codebase/page.html',
+      (n) => { note = n; },
+    );
+    expect(result).toBe('<header>\n  <h1>REPLACED</h1>\n</header>');
+    expect(note).toMatch(/NFC\/NFD normalization tolerance/);
+  });
+
+  it('matches the last line of a file with no trailing newline', () => {
+    const original = `line1\n${NFD_LINE}`;
+    const result = applySearchReplace(original, NFC_LINE, 'tail', 'f.md');
+    expect(result).toBe('line1\ntail');
+  });
+
+  it('two NFC-equal spans are ambiguous → the exact-match error is thrown unchanged', () => {
+    const original = `${NFD_LINE}\nmid\n${NFD_LINE}\n`;
+    expect(() => applySearchReplace(original, NFC_LINE, 'x', 'codebase/a.ts'))
+      .toThrowError('Search block not found in codebase/a.ts');
+  });
+
+  it('byte-exact path is untouched: first occurrence wins and no fallback note fires', () => {
+    const original = `${NFD_LINE}\nmid\n${NFD_LINE}\n`;
+    let note = '';
+    const result = applySearchReplace(original, NFD_LINE, 'first', 'f.md', (n) => { note = n; });
+    expect(result).toBe(`first\nmid\n${NFD_LINE}\n`);
+    expect(note).toBe('');
+  });
+
+  it('old_str with a trailing newline consumes the newline like the byte path', () => {
+    const original = `a\n${NFD_LINE}\nb\n`;
+    const result = applySearchReplace(original, `${NFC_LINE}\n`, '', 'f.md');
+    expect(result).toBe('a\nb\n');
+  });
+
+  it('CRLF on both sides still matches (\\r rides inside each line)', () => {
+    const original = `a\r\n${NFD_LINE}\r\nb\r\n`;
+    const result = applySearchReplace(original, `${NFC_LINE}\r`, 'x\r', 'f.md');
+    expect(result).toBe('a\r\nx\r\nb\r\n');
+  });
+});
+
+describe('buildNfcTolerantRegex / globNormalizationVariants', () => {
+  const 한NFD = '한'.normalize('NFD');
+  const 글NFD = '글'.normalize('NFD');
+
+  it('substitutes per-codepoint NFC/NFD groups', () => {
+    expect(buildNfcTolerantRegex('한글')).toBe(`(?:한|${한NFD})(?:글|${글NFD})`);
+  });
+
+  it('keeps ASCII regex structure around the runs', () => {
+    expect(buildNfcTolerantRegex('id="한글"')).toBe(`id="(?:한|${한NFD})(?:글|${글NFD})"`);
+  });
+
+  it('a quantifier after an NFC run binds to the group (semantics preserved)', () => {
+    expect(buildNfcTolerantRegex('한{2}')).toBe(`(?:한|${한NFD}){2}`);
+  });
+
+  it('fail-closed gates: character class, NFD-run+quantifier, nothing sensitive', () => {
+    expect(buildNfcTolerantRegex('[한글]')).toBeNull();
+    expect(buildNfcTolerantRegex(`${한NFD}?`)).toBeNull();
+    expect(buildNfcTolerantRegex('plain ascii')).toBeNull();
+  });
+
+  it('glob variants: the other normalization form only; class-bearing/ASCII globs get none', () => {
+    expect(globNormalizationVariants('codebase/한글.md')).toEqual([`codebase/${한NFD}${글NFD}.md`]);
+    expect(globNormalizationVariants('codebase/**/*.ts')).toEqual([]);
+    expect(globNormalizationVariants('codebase/[한글].md')).toEqual([]);
+  });
+});
+
+describe('search_code NFC/NFD-tolerant zero-match retry (navy-dropping-crowd)', () => {
+  const NFD_TEXT = '통보 체계 · 환불 처리'.normalize('NFD');
+  const NFC_TEXT = NFD_TEXT.normalize('NFC');
+
+  function makeSearchCtx(workspacePath: string): ToolExecutionContext {
+    const noop = async () => undefined as any;
+    return {
+      fileSystem: new FileSystemAdapter(workspacePath),
+      chatStatus: new Proxy({}, { get: () => noop }) as ToolExecutionContext['chatStatus'],
+      workingDir: workspacePath,
+    } as ToolExecutionContext;
+  }
+
+  it('NFC pattern finds NFD file content and annotates the result', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-nfc-'));
+    try {
+      fs.mkdirSync(path.join(ws, 'codebase'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'codebase/report.html'), `<h1>${NFD_TEXT}</h1>\n`);
+      const result = await handleSearchCode(makeSearchCtx(ws), { pattern: '통보 체계'.normalize('NFC') });
+      expect(result.error).toBeUndefined();
+      expect(result.content).toContain('[unicode-note]');
+      expect(result.content).toContain('codebase/report.html');
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('character-class patterns skip the retry and return the zero-match message verbatim', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-nfc-'));
+    try {
+      fs.mkdirSync(path.join(ws, 'codebase'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'codebase/report.html'), `<h1>${NFD_TEXT}</h1>\n`);
+      const result = await handleSearchCode(makeSearchCtx(ws), { pattern: `[${'통'.normalize('NFC')}]보` });
+      expect(result.error).toBeUndefined();
+      expect(result.content).toMatch(/^No matches found/);
+      expect(result.content).not.toContain('[unicode-note]');
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('NFC file_pattern reaches an NFD filename via the glob-union variants', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-nfc-'));
+    try {
+      const nfdName = `${'스크린샷'.normalize('NFD')}.md`;
+      fs.mkdirSync(path.join(ws, 'codebase/docs'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'codebase/docs', nfdName), 'glob-union-marker\n');
+      const result = await handleSearchCode(makeSearchCtx(ws), {
+        pattern: 'glob-union-marker',
+        file_pattern: `codebase/docs/${'스크린샷'.normalize('NFC')}.md`,
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.content).toContain('[unicode-note]');
+      expect(result.content).toContain('glob-union-marker');
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('byte-exact first-run matches carry no retry annotation', async () => {
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-nfc-'));
+    try {
+      fs.mkdirSync(path.join(ws, 'codebase'), { recursive: true });
+      fs.writeFileSync(path.join(ws, 'codebase/a.ts'), 'const exactMarker = 1;\n');
+      const result = await handleSearchCode(makeSearchCtx(ws), { pattern: 'exactMarker' });
+      expect(result.error).toBeUndefined();
+      expect(result.content).toContain('codebase/a.ts');
+      expect(result.content).not.toContain('[unicode-note]');
+    } finally {
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('nfdCommandHint (run_command miss annotation)', () => {
+  const KOREAN_CMD = `find . -name '*${'스크린샷'.normalize('NFC')}*'`;
+
+  it('fires on the miss shapes: not-found failure, empty failure, empty success', () => {
+    expect(nfdCommandHint(KOREAN_CMD, 'find: no such file or directory', false)).toMatch(/Unicode note/);
+    expect(nfdCommandHint(KOREAN_CMD, '', false)).toMatch(/Unicode note/);
+    expect(nfdCommandHint(KOREAN_CMD, '', true)).toMatch(/Unicode note/);
+  });
+
+  it('stays silent for ASCII commands, successful output, and unrelated failures', () => {
+    expect(nfdCommandHint("find . -name '*.png'", '', true)).toBe('');
+    expect(nfdCommandHint(KOREAN_CMD, './docs/file.md', true)).toBe('');
+    expect(nfdCommandHint(KOREAN_CMD, 'TypeError: x is not a function', false)).toBe('');
   });
 });

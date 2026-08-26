@@ -60,6 +60,15 @@ describe('splitOnShellOperators', () => {
       'cd dir ', ' grep test ', ' head', ' echo done',
     ]);
   });
+
+  it('exposes one-line loop bodies as their own segments (allowlist head validation relies on this)', () => {
+    expect(splitOnShellOperators('for f in *.txt; do cat "$f"; done')).toEqual([
+      'for f in *.txt', ' do cat "$f"', ' done',
+    ]);
+    expect(splitOnShellOperators('while true; do curl localhost; done')).toEqual([
+      'while true', ' do curl localhost', ' done',
+    ]);
+  });
 });
 
 describe('hasActualPipe', () => {

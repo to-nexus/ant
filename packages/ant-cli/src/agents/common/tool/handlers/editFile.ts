@@ -72,6 +72,7 @@ export async function handleEditFile(
 
     let modifiedContent = '';
     let originalContentForCompare = '';
+    let nfcFallbackNote = '';
 
     // Manifest writes share `packageManagerMutex` with `run_command` install
     // guards so the snapshot scan + violation check + actual write are
@@ -96,6 +97,7 @@ export async function handleEditFile(
             old_str,
             new_str,
             resolved.displayPath,
+            (note) => { nfcFallbackNote = note; },
           );
         } catch (searchError) {
           const msg =
@@ -173,7 +175,7 @@ export async function handleEditFile(
     if (!contentChanged) {
       console.log(`   ℹ️  [EditFile] Content unchanged after edit — emitting fileNotChanged`);
       return {
-        content: prependFixMessage(resolved, `File edited (no content change): ${resolved.displayPath}`),
+        content: prependFixMessage(resolved, `File edited (no content change): ${resolved.displayPath}${nfcFallbackNote ? `\n${nfcFallbackNote}` : ''}`),
         sideEffects: [{ type: 'fileNotChanged', path: resolved.displayPath }],
       };
     }
@@ -184,7 +186,7 @@ export async function handleEditFile(
 
     const manifestSuffix = isDepManifestPath(resolved.displayPath) ? DEP_MANIFEST_INSTALL_HINT : '';
     return {
-      content: prependFixMessage(resolved, `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.${manifestSuffix}`),
+      content: prependFixMessage(resolved, `File edited successfully: ${resolved.displayPath}\nReplaced ${old_str.length} characters with ${new_str.length} characters.${nfcFallbackNote ? `\n${nfcFallbackNote}` : ''}${manifestSuffix}`),
       sideEffects,
     };
   } catch (e) {

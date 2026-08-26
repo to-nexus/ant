@@ -103,6 +103,7 @@ export interface CommandPort {
   }): Promise<{ stdout: string; stderr: string; exitCode: number; success: boolean }>;
   isAllowed(command: string): boolean;
   notAllowedGuidance?(): string;
+  firstDisallowedHead?(command: string): string | null;
 }
 
 export interface GitPort {

@@ -290,4 +290,56 @@ describe('NodeCommandAdapter.isAllowed', () => {
       expect(guidance).toContain('node_modules/.bin/');
     });
   });
+
+  describe('shell control flow (navy-dropping-crowd)', () => {
+    it('allows loops/conditionals whose body commands are allowlisted', () => {
+      expect(adapter.isAllowed('for f in *.png; do base64 "$f"; done')).toBe(true);
+      expect(adapter.isAllowed('for f in codebase/assets/*.png; do sha256sum "$f"; done')).toBe(true);
+      expect(adapter.isAllowed('while true; do curl localhost:3000; done')).toBe(true);
+      expect(adapter.isAllowed('until curl localhost:3000; do sleep 1; done')).toBe(true);
+      expect(adapter.isAllowed('if [ -f package.json ]; then echo yes; fi')).toBe(true);
+      expect(adapter.isAllowed('if ! grep -q marker file.txt; then echo miss; fi')).toBe(true);
+      expect(adapter.isAllowed('if [ -d dist ]; then ls dist; else echo none; fi')).toBe(true);
+    });
+
+    it('allows multi-line loops (newline statement boundaries)', () => {
+      expect(adapter.isAllowed('for f in a.png b.png\ndo\n  cmp "$f" "backup/$f"\ndone')).toBe(true);
+      expect(adapter.isAllowed('while true\ndo\n  perl x.pl\ndone')).toBe(false);
+    });
+
+    it('validates loop BODY heads against the allowlist (the core contract)', () => {
+      expect(adapter.isAllowed('for f in *.txt; do perl "$f"; done')).toBe(false);
+      expect(adapter.isAllowed('while true; do bash -c "x"; done')).toBe(false);
+      expect(adapter.isAllowed('if [ -f x ]; then sh -c "ls"; fi')).toBe(false);
+      expect(adapter.isAllowed('for f in *; do cat "$f" | perl -e 1; done')).toBe(false);
+    });
+
+    it('keeps unparseable constructs fail-closed', () => {
+      expect(adapter.isAllowed('case "$x" in a) ls;; esac')).toBe(false);
+      expect(adapter.isAllowed('select opt in a b; do echo "$opt"; done')).toBe(false);
+      expect(adapter.isAllowed('[[ -f x ]] && echo yes')).toBe(false);
+      expect(adapter.isAllowed('"do" something')).toBe(false); // quoted keyword is not a keyword
+    });
+
+    it('does not split backslash line-continuations into bogus statement lines', () => {
+      expect(adapter.isAllowed('npm install \\\n  --save-dev vitest')).toBe(true);
+    });
+
+    it('keeps heredoc commands on the single-string head check (bodies are data)', () => {
+      expect(adapter.isAllowed('cat <<EOF\nhello world\nEOF')).toBe(true);
+    });
+
+    it('firstDisallowedHead names the offending token; null means allowed', () => {
+      expect(adapter.firstDisallowedHead('cd codebase && npm install')).toBeNull();
+      expect(adapter.firstDisallowedHead('for f in *.png; do base64 "$f"; done')).toBeNull();
+      expect(adapter.firstDisallowedHead('case "$x" in a) ls;; esac')).toBe('case');
+      expect(adapter.firstDisallowedHead('cat x | perl -e 1')).toBe('perl');
+      expect(adapter.firstDisallowedHead('for f in *; do perl "$f"; done')).toBe('perl');
+      expect(adapter.firstDisallowedHead('')).toBe('(empty command)');
+      // isAllowed must stay exactly the null-check over firstDisallowedHead.
+      for (const cmd of ['ls', 'perl x.pl', 'grep -rn "foo" src/ | head -20', 'timeout 30 bash -c "ls"']) {
+        expect(adapter.isAllowed(cmd)).toBe(adapter.firstDisallowedHead(cmd) === null);
+      }
+    });
+  });
 });

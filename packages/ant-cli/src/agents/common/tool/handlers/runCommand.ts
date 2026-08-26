@@ -413,6 +413,39 @@ export const packageManagerMutex = new AsyncMutex();
  * the -1 sentinel + `[Policy] ...` prefix in stdout identify rejections
  * for downstream readers.
  */
+/**
+ * Shell constructs the allowlist still rejects after loops/conditionals were
+ * admitted (keyword-aware head validation in NodeCommandAdapter): `case`
+ * pattern arms cannot be head-validated by a stateless segmenter, `select`
+ * is interactive, function definitions and `[[`/`{` groups stay fail-closed.
+ * Used only to make the rejection message name the construct.
+ */
+const UNSUPPORTED_SHELL_CONSTRUCTS = new Set(['case', 'select', 'function', '[[', '{']);
+
+const NFD_MISS_SIGNATURE = /no such file or directory|not found|cannot (?:stat|open|access)|does not exist/i;
+
+/**
+ * One-line hint appended to run_command results that look like a byte-match
+ * miss while the command names normalization-sensitive text (Hangul/accents):
+ * on-disk names/content from macOS uploads are NFD while the model types NFC —
+ * visually identical, byte-different — so find/grep/cmp miss files that
+ * visibly exist (navy-dropping-crowd). The command itself is NEVER normalized
+ * (byte-faithful arguments are legitimate); this only annotates the result.
+ */
+export function nfdCommandHint(command: string, output: string, success: boolean): string {
+  if (command.normalize('NFC') === command.normalize('NFD')) return '';
+  const isMiss = success
+    ? output.trim().length === 0
+    : output.trim().length === 0 || NFD_MISS_SIGNATURE.test(output);
+  if (!isMiss) return '';
+  return (
+    '\n\n💡 Unicode note: this command names non-ASCII paths/text. On-disk filenames and file ' +
+    'content may be NFD-encoded (macOS uploads) while your text is NFC — visually identical but ' +
+    'byte-different, so exact shell matching can miss a file that exists. Use list_files / ' +
+    'search_code (both NFC-tolerant) to locate it, or match via glob wildcards instead of typing the name.'
+  );
+}
+
 async function makeRejection(
   ctx: ToolExecutionContext,
   command: string,
@@ -677,6 +710,27 @@ async function executeCommandLogic(
 
   const cardId = await ctx.chatStatus.commandStart(command);
 
+  // Allowlist pre-check for EVERY command (was long-running-only): rejections
+  // get the `[Policy] ❌ COMMAND NOT ALLOWED` framing instead of surfacing as
+  // a thrown `COMMAND EXECUTION ERROR` from the adapter (which reads as a
+  // runtime failure and amplifies blind retries). Runs before the write-path
+  // guard so a still-unsupported construct (`case …`) is named precisely
+  // instead of being masked by an expansion-target message. The adapter's own
+  // `execute` throw stays as the backstop for other call sites.
+  if (!commandPort.isAllowed(command)) {
+    const head = commandPort.firstDisallowedHead?.(command);
+    const constructNote = head && UNSUPPORTED_SHELL_CONSTRUCTS.has(head)
+      ? `'${head}' is a shell construct that is not supported here. Use if/&& chains, \`find … -exec\`, xargs, or per-file commands instead.\n\n`
+      : '';
+    return makeRejection(
+      ctx,
+      command,
+      `❌ COMMAND NOT ALLOWED: ${command}\n\n${constructNote}${commandPort.notAllowedGuidance?.() ?? 'Only whitelisted commands are permitted.'}`,
+      cardId,
+      verifies,
+    );
+  }
+
   const isLongRunning = LONG_RUNNING_PATTERNS.some(p => p.test(command));
   const isInstallCommand = isLikelyInstallCommand(command);
   const hasShellOperators = /(\|\||&&|;)/.test(command);
@@ -751,15 +805,6 @@ async function executeCommandLogic(
   try {
     // Long-running command path
     if (isLongRunning) {
-      if (!commandPort.isAllowed(command)) {
-        return makeRejection(
-          ctx,
-          command,
-          `❌ COMMAND NOT ALLOWED: ${command}\n\n${commandPort.notAllowedGuidance?.() ?? 'Only whitelisted commands are permitted.'}`,
-          cardId,
-          verifies,
-        );
-      }
       const r = await handleLongRunningCommand(
         ctx, command, workingDir, cardId, Boolean(keep_running), spawnEnv,
       );
@@ -912,9 +957,10 @@ async function executeCommandLogic(
       // means the command redirected its output to a file (`> file`, `2> file`,
       // `1>/dev/null`) or simply produced nothing. Guide the LLM to a diagnosable
       // form instead of sending it guessing.
-      const content = output.trim().length > 0
+      const content = (output.trim().length > 0
         ? `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT:\n${output}\n\n⚠️  You MUST read the error above and fix the specific issue mentioned.\nDO NOT guess - the error tells you exactly what's wrong.`
-        : `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT: (none captured)\n\n⚠️  The command failed but produced NO output to read. Likely causes:\n- Output was redirected to a file (e.g. \`> out.txt\`, \`2> err.log\`, \`1>/dev/null\`) — re-run WITHOUT redirecting so the output is returned to you, or read the file you wrote.\n- The command genuinely produced no output before failing.\nDo NOT keep retrying the same command with different redirection — change the approach so the output reaches you.`;
+        : `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT: (none captured)\n\n⚠️  The command failed but produced NO output to read. Likely causes:\n- Output was redirected to a file (e.g. \`> out.txt\`, \`2> err.log\`, \`1>/dev/null\`) — re-run WITHOUT redirecting so the output is returned to you, or read the file you wrote.\n- The command genuinely produced no output before failing.\nDo NOT keep retrying the same command with different redirection — change the approach so the output reaches you.`)
+        + nfdCommandHint(command, output, false);
       return {
         content,
         error: output,
@@ -960,7 +1006,7 @@ async function executeCommandLogic(
     return {
       content: hasOutput
         ? `✅ COMMAND SUCCEEDED: ${command}\nExit Code: 0\n\nOutput:\n${output}`
-        : `✅ COMMAND SUCCEEDED: ${command}\nExit Code: 0\n(No output)`,
+        : `✅ COMMAND SUCCEEDED: ${command}\nExit Code: 0\n(No output)` + nfdCommandHint(command, output, true),
       sideEffects,
     };
   } catch (error) {

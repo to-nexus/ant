@@ -16,7 +16,7 @@
 import { CommandPort, CommandResult, CommandOptions } from "../../../core/ports";
 import { spawn } from "child_process";
 import { isProcessGroupAlive } from "./processTree";
-import { splitOnShellOperators, tokenizeShellSegment } from "../../../core/utils/shellParser";
+import { splitOnShellOperators, tokenizeShellSegment, maskQuotedRegions } from "../../../core/utils/shellParser";
 import { composeCommandChildEnv } from "../../../core/config/childEnv";
 import { childSpawnIdentity, assertUserCodeIsolationOrThrow } from "../../../core/config/childIdentity";
 
@@ -205,51 +205,109 @@ export class NodeCommandAdapter implements CommandPort {
   ];
 
   /**
+   * Shell control-flow keywords that prefix the command they run — the
+   * prefixed command head must itself pass the allowlist (`while true; do
+   * base64 "$f"; done` validates `true` and `base64`). Quoted keywords keep
+   * their quotes through `tokenizeShellSegment`, so they can never be
+   * mistaken for these. `case`/`select`/`function`/`[[` stay unlisted →
+   * rejected (case pattern arms cannot be parsed by a stateless segmenter).
+   */
+  private static readonly CONTROL_FLOW_SKIP = new Set([
+    'do', 'then', 'else', 'elif', 'while', 'until', 'if', '!',
+    // Closers/no-ops: nothing executable may follow in valid shell; if
+    // something does, it is validated as a head like any other token.
+    'done', 'fi', 'esac', '}',
+  ]);
+
+  /**
    * Check if a command is allowed
    */
   isAllowed(command: string): boolean {
     if (this.ALLOW_ALL_COMMANDS) return true;
+    return this.firstDisallowedHead(command) === null;
+  }
 
+  /**
+   * The first segment head that fails the allowlist, or `null` when the
+   * whole command is allowed. Exposed on the port so rejection messages can
+   * name the offending token instead of echoing the full command.
+   */
+  firstDisallowedHead(command: string): string | null {
     const normalized = command.trim();
-    if (!normalized) return false;
+    if (!normalized) return '(empty command)';
 
-    const segments = splitOnShellOperators(normalized);
+    for (const line of this.splitStatementLines(normalized)) {
+      const segments = splitOnShellOperators(line);
+      for (const seg of segments) {
+        const cmd = this.firstExecutableToken(seg);
+        if (!cmd) continue;
+        if (this.ALLOWED_COMMANDS.includes(cmd)) continue;
+        if (this.isAllowedRelativeBinary(cmd)) continue;
+        return cmd;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Unquoted newlines are statement boundaries (multi-line `for`/`while`
+   * bodies must expose their command heads for validation) — but backslash
+   * line-continuations join lines, and heredoc bodies are data, so a command
+   * containing `<<` keeps today's single-string treatment (head-only check).
+   * Validation-only split: `execute` always runs the original string.
+   */
+  private splitStatementLines(command: string): string[] {
+    if (!command.includes('\n')) return [command];
+    const masked = maskQuotedRegions(command);
+    if (masked.includes('<<')) return [command];
+
+    const lines: string[] = [];
+    let start = 0;
+    for (let i = 0; i < masked.length; i++) {
+      if (masked[i] !== '\n') continue;
+      if (i > 0 && masked[i - 1] === '\\') continue;
+      lines.push(command.slice(start, i));
+      start = i + 1;
+    }
+    lines.push(command.slice(start));
+    return lines;
+  }
+
+  private firstExecutableToken(segment: string): string | null {
+    const tokens = tokenizeShellSegment(segment.trim());
+    if (tokens.length === 0) return null;
 
     const isAssignment = (token: string) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(token);
 
-    const firstExecutableToken = (segment: string): string | null => {
-      const tokens = tokenizeShellSegment(segment.trim());
-      if (tokens.length === 0) return null;
+    let i = 0;
+    while (i < tokens.length) {
+      const tok = tokens[i];
+      if (isAssignment(tok)) { i++; continue; }
+      // `for NAME in words…` — the header is data (never executed); the loop
+      // body arrives as its own `;`/newline-delimited segments and is
+      // validated there. No worse than status quo for `$(…)` words, which are
+      // unvalidated on every path today.
+      if (tok === 'for') return null;
+      if (NodeCommandAdapter.CONTROL_FLOW_SKIP.has(tok)) { i++; continue; }
+      break;
+    }
+    if (i >= tokens.length) return null;
 
-      let i = 0;
-      while (i < tokens.length && isAssignment(tokens[i])) i++;
-      if (i >= tokens.length) return null;
+    if (tokens[i] === 'export' || tokens[i] === 'unset') return tokens[i];
 
-      if (tokens[i] === 'export' || tokens[i] === 'unset') return tokens[i];
-
-      // `env` / `timeout` are wrappers — the command they run must pass the
-      // allowlist itself, so skip the wrapper and its own arguments.
-      while (i < tokens.length && (tokens[i] === 'env' || tokens[i] === 'timeout')) {
-        const wrapper = tokens[i];
-        i++;
-        while (i < tokens.length && (tokens[i].startsWith('-') || isAssignment(tokens[i]))) i++;
-        if (wrapper === 'timeout' && i < tokens.length && /^\d+(\.\d+)?[smhd]?$/.test(tokens[i])) i++;
-        if (i >= tokens.length) return wrapper;
-      }
-
-      const token = tokens[i].replace(/^\(+/, '').replace(/\)+$/, '');
-      return token || null;
-    };
-
-    for (const seg of segments) {
-      const cmd = firstExecutableToken(seg);
-      if (!cmd) continue;
-      if (this.ALLOWED_COMMANDS.includes(cmd)) continue;
-      if (this.isAllowedRelativeBinary(cmd)) continue;
-      return false;
+    // `env` / `timeout` are wrappers — the command they run must pass the
+    // allowlist itself, so skip the wrapper and its own arguments.
+    while (i < tokens.length && (tokens[i] === 'env' || tokens[i] === 'timeout')) {
+      const wrapper = tokens[i];
+      i++;
+      while (i < tokens.length && (tokens[i].startsWith('-') || isAssignment(tokens[i]))) i++;
+      if (wrapper === 'timeout' && i < tokens.length && /^\d+(\.\d+)?[smhd]?$/.test(tokens[i])) i++;
+      if (i >= tokens.length) return wrapper;
     }
 
-    return true;
+    const token = tokens[i].replace(/^\(+/, '').replace(/\)+$/, '');
+    return token || null;
   }
 
   /**
@@ -317,7 +375,7 @@ export class NodeCommandAdapter implements CommandPort {
       //   cd codebase && npm install
       // because the shell only receives "cd" as the -c string.
       const needsShell =
-        /(\|\||&&|;|\||[<>])/.test(trimmed) ||
+        /(\|\||&&|;|\||[<>]|\n)/.test(trimmed) ||
         /^\s*cd\b/.test(trimmed);
 
       const isWindows = process.platform === 'win32';

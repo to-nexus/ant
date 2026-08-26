@@ -53,4 +53,11 @@ export interface CommandPort {
 
   /** Model-facing guidance appended to allowlist rejections. */
   notAllowedGuidance(): string;
+
+  /**
+   * The first segment head that fails the allowlist (`null` when allowed) —
+   * lets rejection messages name the offending token. Optional so test stubs
+   * and alternate adapters keep compiling.
+   */
+  firstDisallowedHead?(command: string): string | null;
 }
