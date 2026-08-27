@@ -144,6 +144,7 @@
   "checklistBoard": {
     "empty": "이번 턴의 체크리스트가 없습니다 — 다중 산출물 작업 시 에이전트가 생성합니다.",
     "progress": "{{total}}개 중 {{done}}개 완료",
-    "fromPlan": "플랜 기반"
+    "fromPlan": "플랜 기반",
+    "interrupted": "중단됨"
   }
 }

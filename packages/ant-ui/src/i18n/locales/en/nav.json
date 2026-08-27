@@ -144,6 +144,7 @@
   "checklistBoard": {
     "empty": "No checklist for this turn — the agent creates one for multi-deliverable work.",
     "progress": "{{done}} of {{total}} done",
-    "fromPlan": "From plan"
+    "fromPlan": "From plan",
+    "interrupted": "Interrupted"
   }
 }

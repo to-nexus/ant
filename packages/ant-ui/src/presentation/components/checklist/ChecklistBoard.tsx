@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Check, FileText, ListTodo } from 'lucide-react';
+import { Check, FileText, ListTodo, Pause } from 'lucide-react';
 import { BoardContainer } from '../BoardContainer';
 import { ElapsedTimeBadge, TokenUsageBadge, GaugesGroup } from '../kanban/KanbanHeader';
 import { useStore } from '@/domain/store';
@@ -32,6 +32,10 @@ export function ChecklistBoard({ kanbanData }: ChecklistBoardProps) {
   const checklist = kanbanData.checklist;
   const items = checklist?.items ?? [];
   const doneCount = items.filter((i) => i.state === 'done').length;
+  // Per-frame liveness (same predicate as kanbanReducer): an `active` item on
+  // a non-running board is by definition interrupted — the item state itself
+  // is never rewritten, so sealed snapshots and history replays settle too.
+  const running = kanbanData.dataSource === 'live' || kanbanData.dataSource === 'estimating';
 
   return (
     <BoardContainer
@@ -86,7 +90,7 @@ export function ChecklistBoard({ kanbanData }: ChecklistBoardProps) {
             </div>
             <div className="flex flex-col gap-3">
               {items.map((item) => (
-                <ChecklistItemRow key={item.id} item={item} />
+                <ChecklistItemRow key={item.id} item={item} running={running} />
               ))}
             </div>
           </>
@@ -96,9 +100,11 @@ export function ChecklistBoard({ kanbanData }: ChecklistBoardProps) {
   );
 }
 
-/** Single checklist row — pending ring / active spinner / done check (QuickStart StepRow vocabulary). */
-function ChecklistItemRow({ item }: { item: UniversalChecklistItem }) {
+/** Single checklist row — pending ring / active spinner / interrupted pause / done check (QuickStart StepRow vocabulary). */
+export function ChecklistItemRow({ item, running }: { item: UniversalChecklistItem; running: boolean }) {
+  const { t } = useTranslation('nav');
   const status = item.state;
+  const interrupted = status === 'active' && !running;
   return (
     <div
       className={`flex items-center gap-3 transition-all duration-300 ${
@@ -113,6 +119,13 @@ function ChecklistItemRow({ item }: { item: UniversalChecklistItem }) {
           >
             <Check className="w-3 h-3" strokeWidth={3} style={{ color: 'var(--text-on-brand)' }} />
           </div>
+        ) : interrupted ? (
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center"
+            style={{ border: '2px solid var(--border-2)' }}
+          >
+            <Pause className="w-3 h-3" style={{ color: 'var(--text-3)' }} />
+          </div>
         ) : status === 'active' ? (
           <Spinner size="lg" style={{ color: 'var(--violet-500)' }} />
         ) : (
@@ -120,13 +133,28 @@ function ChecklistItemRow({ item }: { item: UniversalChecklistItem }) {
         )}
       </div>
       <span
-        className={`text-sm transition-colors duration-300 ${status === 'active' ? 'font-medium' : ''} ${status === 'done' ? 'line-through' : ''}`}
+        className={`text-sm transition-colors duration-300 ${status === 'active' && !interrupted ? 'font-medium' : ''} ${status === 'done' ? 'line-through' : ''}`}
         style={{
-          color: status === 'active' ? 'var(--violet-600)' : status === 'done' ? 'var(--text-2)' : 'var(--text-3)',
+          color:
+            status === 'active'
+              ? interrupted
+                ? 'var(--text-2)'
+                : 'var(--violet-600)'
+              : status === 'done'
+                ? 'var(--text-2)'
+                : 'var(--text-3)',
         }}
       >
         {item.text}
       </span>
+      {interrupted && (
+        <span
+          className="inline-flex items-center text-xs px-2 py-0.5 rounded-full shrink-0"
+          style={{ background: 'var(--bg-raised)', color: 'var(--text-2)', border: '1px solid var(--border-1)' }}
+        >
+          {t('checklistBoard.interrupted', 'Interrupted')}
+        </span>
+      )}
     </div>
   );
 }
