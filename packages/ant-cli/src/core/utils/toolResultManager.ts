@@ -13,7 +13,7 @@
  * - 기타: JSON 포맷팅 간소화
  */
 
-import { TokenBudgetManager } from './tokenBudget';
+import { TokenBudgetManager, ESTIMATE_CHARS_PER_TOKEN } from './tokenBudget';
 import { generateFileOutline } from './fileOutline';
 import type { FigmaNodeSummary } from '@ant/shared';
 
@@ -311,12 +311,10 @@ export class ToolResultManager {
       };
     }
 
-    // tokenBudget.estimateTokens = ceil(chars / 2.8). SAFETY_MARGIN으로
-    // 추정 오차 + 배너 자리(~120 chars)를 보수적으로 흡수한다.
-    const CHARS_PER_TOKEN = 2.8;
+    // SAFETY_MARGIN으로 추정 오차 + 배너 자리(~120 chars)를 보수적으로 흡수한다.
     const SAFETY_MARGIN = 0.9;
     const charBudget = Math.max(
-      Math.floor(maxTokens * CHARS_PER_TOKEN * SAFETY_MARGIN),
+      Math.floor(maxTokens * ESTIMATE_CHARS_PER_TOKEN * SAFETY_MARGIN),
       1000,
     );
     const headChars = Math.floor(charBudget * 0.35);

@@ -302,7 +302,19 @@ decoration).
 - Sandbox: n-mount facade (`createUniversalFileSystem`) — artifacts rw + a
   list of read-only mounts. Canonical plane writes are impossible under any
   configuration. See **The agent plane** below for the mount set and why the
-  attachable set is derived from it.
+  attachable set is derived from it. The facade forwards `FileReadOptions`
+  on every read branch — dropping it (the historical arity-1 lambda) silently
+  removes the descriptor-level `maxBytes` backstop (M-032).
+- **Result sizing & decompaction**: universal's `ToolResultManager` caps are
+  explicit (`UNIVERSAL_RESULT_LIMITS` in `runtime.ts`), at code-execute parity
+  — the defaults would clamp reads to ~3000 tokens and make the outline →
+  `read_file(startLine/endLine)` decompaction cycle lossy (including the
+  demoted-to-pointer intent `prompt.md` over 12,000 chars). `read_state
+  scope='history'` is the sanctioned recall path over the persisted
+  `session:main` originals that in-flight compaction folded (`sessions/`
+  stays outside the sandbox; the runner stamps each turn-opening user message
+  with `metadata.jobId` so turn ids survive seal-time byte trims);
+  `scope='run'` is intentionally the empty stub — universal has no tasks.
 - Known deviation from the plan doc: builtin `http_request` is the existing
   loopback-only probe (SSRF-guarded), not a general HTTP client. The "revisit
   if a real need appears" clause was resolved by the `apis` channel (below),
@@ -590,10 +602,16 @@ validation/idempotency/dry-run, take the capability-server escalation path
   implementation detail (A1: replacing the singleton made every `mcp__*` call
   resolve to `Unknown tool`).
 - **Result spooling** (`runtime.ts`): a non-error result over
-  `MCP_SPOOL_THRESHOLD_BYTES` (32 KiB) is written to the artifacts sandbox at
+  `MCP_SPOOL_THRESHOLD_BYTES` is written to the artifacts sandbox at
   `mcp-results/{server}/{tool}-{seq}.txt` via `ctx.fileSystem` and only the
   path + byte/line counts + a head preview enter the context; the agent reads
-  slices back with `read_file`/`search_files`. This is the short form of the
+  slices back with `read_file(startLine/endLine)`/`search_files`. The threshold
+  is DERIVED, not chosen: `floor(UNIVERSAL_RESULT_LIMITS.maxTokensPerResult ×
+  ESTIMATE_CHARS_PER_TOKEN)`, so anything the generic truncator would cut has
+  been spooled first (UTF-8 chars ≤ bytes ⇒ an inline result estimates under
+  the cap) — two magic numbers once owned this invariant and left a
+  ~17–32 KiB band where a result was neither spooled nor recoverable after
+  `truncateGeneric`. This is the short form of the
   cross-tool data plane — without it, moving one system's data toward another
   (or into artifacts processing) forces the model to re-type the entire
   payload. Spool writes emit **no side effects**, so they never fold into

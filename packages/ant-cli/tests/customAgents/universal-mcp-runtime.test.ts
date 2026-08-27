@@ -34,7 +34,10 @@ import {
   getUniversalRegistry,
   _resetUniversalRuntimeForTests,
   MCP_SPOOL_THRESHOLD_BYTES,
+  UNIVERSAL_RESULT_LIMITS,
 } from '../../src/agents/universal/graph/runtime';
+import { ToolResultManager } from '../../src/core/utils/toolResultManager';
+import { TokenBudgetManager } from '../../src/core/utils/tokenBudget';
 
 const READ_TOOL = 'mcp__ops-db__list_incidents';
 const WRITE_TOOL = 'mcp__ops-db__push';
@@ -172,6 +175,31 @@ describe('universal MCP result spooling', () => {
 
     expect(result.content).toBe(text);
     expect(result.error).toBeUndefined();
+  });
+
+  it('single-owner invariant: a result inline (not spooled) is never cut by the generic truncator', () => {
+    // The spool threshold DERIVES from maxTokensPerResult, so the band where a
+    // result was neither spooled nor recoverable after truncateGeneric cannot
+    // exist. Red under two independent magic numbers (32 KiB vs a 5000-token cap).
+    const manager = new ToolResultManager(new TokenBudgetManager(), UNIVERSAL_RESULT_LIMITS);
+    const inlineMax = 'x'.repeat(MCP_SPOOL_THRESHOLD_BYTES);
+
+    const truncation = manager.truncateResult(READ_TOOL, inlineMax);
+
+    expect(truncation.wasTruncated).toBe(false);
+    expect(truncation.content).toBe(inlineMax);
+  });
+
+  it('the spool instruction points at real read_file params (startLine/endLine, not offset/limit)', async () => {
+    const text = 'd'.repeat(MCP_SPOOL_THRESHOLD_BYTES + 1);
+    buildUniversalRegistry(fakeMcp({ text }).mcp);
+    const { ctx } = spoolCtx();
+
+    const result = await getUniversalRegistry().get(READ_TOOL)!(ctx, {});
+
+    const content = result.content as string;
+    expect(content).toContain('startLine');
+    expect(content).not.toContain('offset');
   });
 
   it('an oversized result is spooled: full text on disk, only path + shape + preview in context', async () => {

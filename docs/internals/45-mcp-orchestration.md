@@ -106,7 +106,8 @@ this list; its README carries the copy checklist.
    permission checks. Never prompt-only (§1).
 7. Errors are human-readable sentences; the model plans recovery from that text.
 8. Response size caps + pagination. Context budget is cost. Ant spools
-   non-error results over 32 KiB to the artifacts sandbox
+   non-error results over the derived threshold (`MCP_SPOOL_THRESHOLD_BYTES`,
+   ~33 KB — see 44 §Result spooling) to the artifacts sandbox
    (`mcp-results/{server}/{tool}-{seq}.txt`, path + preview in context — see
    [44 §MCP connections](44-universal-job.md#mcp-connections--the-credential-plane-a16a13)),
    but that is a backstop for legitimately large datasets, not a license to

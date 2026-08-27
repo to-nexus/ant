@@ -13,6 +13,7 @@
 
 import { UNIVERSAL_AGENTS_DIRNAME, UNIVERSAL_PIPELINE_RUNS_DIRNAME, parseUniversalAgentRef } from '@ant/shared';
 import type { FileSystemPort } from '../../../core/ports/filesystem';
+import { ESTIMATE_CHARS_PER_TOKEN } from '../../../core/utils/tokenBudget';
 import { findAgentRoot, type CustomAgentScopeRoot } from '../../../core/customAgents/CustomAgentLoader';
 import { McpConnectionManager, type McpToolInfo } from '../../../core/customAgents/McpConnectionManager';
 import { DEFINITION_MOUNT_PREFIX } from '../../../core/customAgents/promptBlock';
@@ -57,7 +58,29 @@ export function getUniversalMcp(): McpConnectionManager | null {
  * hook can be satisfied by a spool. Error results are never spooled — the
  * model plans recovery from the error text itself.
  */
-export const MCP_SPOOL_THRESHOLD_BYTES = 32 * 1024;
+
+/**
+ * ToolResultManager caps for universal jobs — explicit, at code-execute parity
+ * (see code/nodes/tool/utils/managers.ts). The defaults (3000-token reads)
+ * would clamp every ranged decompaction read to ~8.4KB, making the outline →
+ * read_file(startLine/endLine) cycle lossy.
+ */
+export const UNIVERSAL_RESULT_LIMITS = {
+  maxReadFileTokens: 16_000,
+  maxRunCommandTokens: 5_000,
+  maxTokensPerResult: 12_000, // generic cap; the spool threshold derives from this
+} as const;
+
+/**
+ * Derived, not chosen: anything the generic truncator would cut must have been
+ * spooled first. UTF-8 `chars ≤ bytes` and `estimateTokens = ceil(chars/2.8)`,
+ * so a result that stays inline (bytes ≤ this) estimates ≤ maxTokensPerResult
+ * and `truncateGeneric` never touches it — no irrecoverable band between the
+ * spool decision (handler, bytes) and truncation (orchestrator, tokens).
+ */
+export const MCP_SPOOL_THRESHOLD_BYTES = Math.floor(
+  UNIVERSAL_RESULT_LIMITS.maxTokensPerResult * ESTIMATE_CHARS_PER_TOKEN,
+);
 export const MCP_SPOOL_DIR = 'mcp-results';
 const MCP_SPOOL_PREVIEW_CHARS = 1500;
 
@@ -84,7 +107,7 @@ async function spoolMcpResult(
   return {
     content:
       `MCP result too large to return inline — spooled to ${spoolPath} (${bytes} bytes, ${lines} lines).\n` +
-      `Read slices with read_file (offset/limit) or locate rows with search_files; do NOT re-read the whole file at once.\n` +
+      `Read slices with read_file (startLine/endLine, 1-based) or locate rows with search_files; do NOT re-read the whole file at once.\n` +
       `--- head preview ---\n${preview}\n--- preview truncated ---`,
   };
 }
@@ -277,7 +300,7 @@ export function createUniversalFileSystem(
   };
 
   return {
-    readFile: (p) => read(p, (fs, rel) => fs.readFile(rel), () => artifactsFs.readFile(p)),
+    readFile: (p, opts) => read(p, (fs, rel) => fs.readFile(rel, opts), () => artifactsFs.readFile(p, opts)),
     fileExists: (p) => read(p, (fs, rel) => fs.fileExists(rel), () => artifactsFs.fileExists(p)),
     readDirectory: (p) => read(p, (fs, rel) => fs.readDirectory(rel), () => artifactsFs.readDirectory(p)),
     listFiles: (p, exclude) => read(p, (fs, rel) => fs.listFiles(rel, exclude), () => artifactsFs.listFiles(p, exclude)),

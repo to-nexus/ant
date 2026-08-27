@@ -27,7 +27,7 @@ tools:
   #   http_request — loopback-only service probe; this job's HTTP is api__ant__*
   #   run_command  — definitions are authored through the validated API route,
   #                  never by writing files from a shell
-  #   read_state   — reads canonical feature history, empty on universal projects
+  #   read_state   — session recall adds nothing to single-sitting authoring turns
   builtin:
     - read_file
     - list_files

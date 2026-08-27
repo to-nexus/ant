@@ -7,9 +7,8 @@ version: 1
 tools:
   # Allowlist — validates directly against the universal preset. Omitting
   # `builtin` entirely would grant the full preset. This is the preset MINUS
-  # two deliberate exclusions:
+  # one deliberate exclusion:
   #   http_request — loopback-only service probe, no general-purpose use here
-  #   read_state   — reads canonical feature history, empty on universal projects
   builtin:
     - read_file
     - list_files
@@ -25,6 +24,9 @@ tools:
     - run_command
     - explore
     - subagent_report
+    # Session recall — scope='history' reads this session's own past turns
+    # (persisted session:main), the escape hatch when compaction folded them.
+    - read_state
     # Ant platform self-source (read-only) — answer questions about Ant
     # itself from its shipped docs/source instead of guessing.
     - read_ant_source

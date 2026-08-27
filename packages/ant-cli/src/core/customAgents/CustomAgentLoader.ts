@@ -66,7 +66,8 @@ export interface CustomAgentScopeRoot {
 
 /** Cap applied to the merged (agent base + job base) prose, ANTRULES-style. */
 export const CUSTOM_PROSE_CAP = 8_000;
-const TRUNCATION_FOOTER = '\n\n[... truncated: custom prose exceeds the size cap — move detail into intents/{intentId}/prompt.md ...]';
+const TRUNCATION_FOOTER =
+  '\n\n[... truncated: custom prose exceeds the size cap — read the full base/*.md via read_file under _agent-definition/ (startLine/endLine). Authors: move detail into intents/{intentId}/prompt.md ...]';
 
 // ── yaml reading ─────────────────────────────────────────────────────────────
 

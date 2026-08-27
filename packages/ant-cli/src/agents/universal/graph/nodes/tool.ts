@@ -36,7 +36,8 @@ import {
   UNIVERSAL_CLARIFY_BUDGET,
 } from '../../../../core/customAgents/universalToolPolicy';
 import { CLARIFY_TOOL_NAME, clarifyBlockFromArgs } from '../../../common/clarify/tool';
-import { getUniversalMcp, getUniversalRegistry } from '../runtime';
+import { getUniversalMcp, getUniversalRegistry, UNIVERSAL_RESULT_LIMITS } from '../runtime';
+import { projectHistoryTurns } from '../session/historyProjection';
 import { clarifyPauseNode } from './clarifyPause';
 
 const WRITE_SIDE_EFFECTS = new Set(['fileCreated', 'fileModified']);
@@ -48,7 +49,7 @@ const PLAN_TURN_EXECUTION_ERROR = (name: string): string =>
   `"${name}" is blocked: this is a PLAN turn — no work is executed this turn. ` +
   `Write the plan document under plan/ or present the plan in chat; the actual work runs on a normal turn.`;
 
-const universalResultManager = new ToolResultManager(new TokenBudgetManager());
+const universalResultManager = new ToolResultManager(new TokenBudgetManager(), UNIVERSAL_RESULT_LIMITS);
 
 /**
  * Clarify availability RIGHT NOW (knob × session budget) — shared by the
@@ -174,6 +175,12 @@ export const universalToolNodeConfig: import('../../../common/tool/createToolNod
       allowShellExecution: true,
       command: state.deps?.command,
       fileTreeUpdate: state.deps?.fileTreeUpdate,
+      // read_state scope='history' — recall over the persisted session:main
+      // originals that in-flight compaction folded (compaction works on a
+      // throwaway copy). scope='run' stays the accurate "no tasks" stub:
+      // universal has no TaskQueue, so completedTasks is deliberately unset.
+      featureHistory: async () =>
+        projectHistoryTurns(getConv(state.conversations, CONV_KEYS.SESSION_MAIN)),
     };
     ctx.subagent = createSubagentSeam({
       jobId: state._httpJobId,

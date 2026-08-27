@@ -31,6 +31,14 @@ import { logger } from '../../utils/logger';
  */
 const FALLBACK_BUDGET_CONTEXT_WINDOW = 200_000;
 
+/**
+ * The estimator's chars-per-token ratio — the ONE spelling.
+ * Anything deriving a byte/char threshold from a token cap (e.g. the universal
+ * MCP spool threshold) must use this constant so the derivation and
+ * `estimateTokens` cannot drift apart.
+ */
+export const ESTIMATE_CHARS_PER_TOKEN = 2.8;
+
 export interface TokenAreaBudgets {
   systemPrompt: number;         // System prompt + rules + profile
   projectContext: number;       // PRD, design docs, codebase context
@@ -107,7 +115,7 @@ export class TokenBudgetManager {
    */
   estimateTokens(text: string): number {
     if (!text) return 0;
-    return Math.ceil(text.length / 2.8);
+    return Math.ceil(text.length / ESTIMATE_CHARS_PER_TOKEN);
   }
   
   /**

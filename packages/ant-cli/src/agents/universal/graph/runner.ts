@@ -139,7 +139,16 @@ export async function runUniversalGraph(params: UniversalRunnerParams): Promise<
       main.push(buildClarifyToolResultTurn(dangling.toolUseId, params.input) as ConversationMessage);
       inheritedTurnContext = restoredClarifyContext;
     } else {
-      main.push({ role: 'user', content: params.input });
+      // Turn-opening stamp: a stable identity for read_state scope='history'.
+      // Adapter wire mapping rebuilds {role, content} only, so the stamp never
+      // reaches the LLM (prompt-cache safe); legacy unstamped turns fall back
+      // to synthesized indices in the history projection.
+      main.push({
+        role: 'user',
+        content: params.input,
+        timestamp: new Date().toISOString(),
+        metadata: params._httpJobId ? { jobId: params._httpJobId } : undefined,
+      });
     }
   } else if (main.length === 0) {
     throw new Error('[Universal] Empty input on a fresh session — nothing to do');

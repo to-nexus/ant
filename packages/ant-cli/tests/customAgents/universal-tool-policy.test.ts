@@ -75,6 +75,49 @@ describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
     expect(ctx.command).toBe(command);
   });
 
+  it('result caps are at code-execute parity — ranged decompaction reads come back whole', async () => {
+    const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+    const manager = universalToolNodeConfig.resultManager!;
+    // ~40k chars ≈ 14.3k tokens: over the 3000-token default clamp, under the
+    // 16000 parity cap — a truncated slice here makes the outline →
+    // read_file(startLine/endLine) decompaction cycle lossy.
+    expect(manager.truncateResult('read_file', 'x'.repeat(40_000), undefined, 'big.md').wasTruncated).toBe(false);
+    // ~10k chars ≈ 3.6k tokens: over the 2500-token default, under the 5000 parity cap.
+    expect(manager.truncateResult('run_command', 'y'.repeat(10_000)).wasTruncated).toBe(false);
+  });
+
+  it('buildContext wires featureHistory over session:main — read_state history is live, not a stub', async () => {
+    const { universalToolNodeConfig } = await import('../../src/agents/universal/graph/nodes/tool');
+    const fileSystem = { getRootPath: () => '/tmp/universal-artifacts' };
+    const state = {
+      deps: { fileSystem },
+      featurePath: '/tmp/container',
+      projectId: 'p',
+      conversations: {
+        'session:main': [
+          { role: 'user', content: 'first ask', timestamp: '2026-08-27T00:00:00.000Z', metadata: { jobId: 'job-1' } },
+          { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'read_file', input: {} }] },
+          // tool_result round — a continuation, never a turn opener.
+          { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'body' }] },
+          { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+          // Pre-stamp legacy turn — falls back to a synthesized index id.
+          { role: 'user', content: 'legacy unstamped ask' },
+          { role: 'assistant', content: 'second answer' },
+        ],
+      },
+    } as any;
+
+    const ctx = universalToolNodeConfig.buildContext(state);
+    const turns = await ctx.featureHistory!();
+
+    expect(turns).toEqual([
+      { turnId: 'job-1', ts: '2026-08-27T00:00:00.000Z', userText: 'first ask', assistantFinalText: 'first answer' },
+      { turnId: 'turn-2', ts: '', userText: 'legacy unstamped ask', assistantFinalText: 'second answer' },
+    ]);
+    // scope='run' stays the accurate stub — universal has no TaskQueue.
+    expect(ctx.completedTasks).toBeUndefined();
+  });
+
   it('domain-bound tools stay excluded (search_code, workspace/reference, assets, figma)', () => {
     const forbidden = [
       'search_code', 'read_workspace_file', 'list_workspace_files', 'read_reference_file',
@@ -259,6 +302,27 @@ describe('createUniversalFileSystem — agent-plane mount table', () => {
     // Refused as EITHER operand — a copy out of a mount is still a mount write.
     expect(() => fs.copyFile(p, 'out.md')).toThrow(/read-only/);
     expect(() => fs.copyFile('in.md', p)).toThrow(/read-only/);
+  });
+
+  it('readFile forwards FileReadOptions on both branches (M-032 maxBytes backstop)', async () => {
+    const calls: Array<{ tag: string; path: string; opts: unknown }> = [];
+    const recording = (tag: string): FileSystemPort =>
+      ({
+        ...(port(tag) as any),
+        readFile: async (p: string, opts?: unknown) => {
+          calls.push({ tag, path: p, opts });
+          return `${tag}:${p}`;
+        },
+      }) as unknown as FileSystemPort;
+    const fs = createUniversalFileSystem(recording('artifacts'), [definitionMount(recording('own-def'))]);
+
+    await fs.readFile('plan/notes.md', { maxBytes: 123 } as any);
+    await fs.readFile('_agent-definition/agent.yaml', { maxBytes: 456 } as any);
+
+    expect(calls).toEqual([
+      { tag: 'artifacts', path: 'plan/notes.md', opts: { maxBytes: 123 } },
+      { tag: 'own-def', path: 'agent.yaml', opts: { maxBytes: 456 } },
+    ]);
   });
 
   it('sessions/ is not a mount — it stays outside the sandbox entirely', async () => {
