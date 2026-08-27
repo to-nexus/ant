@@ -10,11 +10,12 @@
  * Real `ws` clients against the handler wired to an http server's upgrade event.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
 import { WebSocket } from 'ws';
 
 import { BridgeWebSocketHandler } from '../../src/infrastructure/realtime/BridgeWebSocketHandler';
+import { BridgeSessionManager } from '../../src/infrastructure/realtime/BridgeSessionManager';
 
 // Minimal stateStore stub — admission never touches Redis.
 const stubStore = {
@@ -75,5 +76,114 @@ describe('BridgeWebSocketHandler admission (M-NEW-022/025)', () => {
 
     b.ws.close();
     d.ws.close();
+  });
+});
+
+/**
+ * Bridge session tenant scoping.
+ *
+ * Two holes that together let any unauthenticated peer own "Ant Desktop is
+ * running" for every tenant on a deployment: `handleRegister` accepted a
+ * client-supplied `msg.userId` on a connection that had proved nothing, and the
+ * probe record lives under one global, unscoped Redis key that `getStatus`
+ * returned to whoever asked. The key stays global on purpose (there is no
+ * correlation value tying an anonymous desktop to a browser session) — so the
+ * probe fallback is confined to local mode, a single-developer trust boundary.
+ */
+describe('bridge session tenant scoping', () => {
+  it('an unauthenticated register cannot claim an identity', async () => {
+    const writes: Array<{ key: string; value: any }> = [];
+    const capturing = {
+      ...stubStore,
+      setKeyWithTTL: async (key: string, value: string) => {
+        writes.push({ key, value: JSON.parse(value) });
+      },
+    };
+    const h = new BridgeWebSocketHandler({ stateStore: capturing as any });
+    const srv = http.createServer();
+    srv.on('upgrade', (req, socket, head) => h.handleUpgrade(req, socket, head as Buffer));
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    const port = (srv.address() as { port: number }).port;
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/bridge/ws`);
+    await new Promise<void>((r) => ws.once('open', () => r()));
+    // No Authorization header was sent, so this peer proved nothing — yet it
+    // asserts a userId in the payload.
+    ws.send(JSON.stringify({
+      type: 'bridge.register',
+      userId: 'victim-user',
+      machineId: 'attacker-laptop',
+      capabilities: [],
+      figmaDesktopReachable: true,
+    }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(writes.length).toBeGreaterThan(0);
+    for (const w of writes) {
+      expect(w.value.userId).toBe('anonymous');
+      expect(w.key).not.toContain('victim-user');
+    }
+
+    ws.close();
+    await h.close().catch(() => {});
+    await new Promise<void>((r) => srv.close(() => r()));
+  });
+
+  const probeStore = (probe: unknown) => ({
+    getKey: async (k: string) => (k === 'ant:bridge:probe' ? JSON.stringify(probe) : null),
+    setKeyWithTTL: async () => {},
+    deleteKey: async () => {},
+  });
+
+  const freshProbe = () => ({
+    userId: 'anonymous',
+    machineId: 'someone-elses-laptop',
+    capabilities: [],
+    connectedAt: Date.now(),
+    lastPingAt: Date.now(),
+    status: 'detected' as const,
+    figmaDesktopReachable: true,
+  });
+
+  const rows: Array<[string, string, boolean]> = [
+    ['cloud', 'cloud', false],
+    ['local', 'local', true],
+  ];
+
+  it.each(rows)('%s mode: another peer\'s probe is visible = %s', async (_label, mode, visible) => {
+    vi.stubEnv('ANT_SERVER_MODE', mode);
+    vi.resetModules();
+    const { BridgeSessionManager: Fresh } = await import(
+      '../../src/infrastructure/realtime/BridgeSessionManager'
+    );
+    const mgr = new Fresh(probeStore(freshProbe()));
+    const status = await mgr.getStatus('some-other-user');
+    expect(status.detected).toBe(visible);
+    expect(status.connected).toBe(false);
+    vi.unstubAllEnvs();
+  });
+
+  it('an authenticated session is still reported in cloud mode', async () => {
+    vi.stubEnv('ANT_SERVER_MODE', 'cloud');
+    const store = {
+      getKey: async (k: string) =>
+        k === 'ant:bridge:session:u1'
+          ? JSON.stringify({
+              userId: 'u1',
+              machineId: 'm1',
+              capabilities: [],
+              connectedAt: Date.now(),
+              lastPingAt: Date.now(),
+              status: 'connected',
+              figmaDesktopReachable: true,
+            })
+          : null,
+      setKeyWithTTL: async () => {},
+      deleteKey: async () => {},
+    };
+    const status = await new BridgeSessionManager(store).getStatus('u1');
+    expect(status.connected).toBe(true);
+    expect(status.detected).toBe(true);
+    vi.unstubAllEnvs();
   });
 });

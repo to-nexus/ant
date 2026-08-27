@@ -19,6 +19,7 @@ import helmet from 'helmet';
 import { createCorsMiddleware } from '../../periphery/adapters/http/middleware/corsConfig';
 import { createJwtAuthMiddleware } from '../../periphery/adapters/http/middleware/jwtAuth';
 import { createSameOriginGuard } from '../../periphery/adapters/http/middleware/sameOriginGuard';
+import { createSelfApiScopeGuard } from '../../periphery/adapters/http/middleware/selfApiScopeGuard';
 import { createJwtServiceFromEnv, JwtService } from '../auth/JwtService';
 import { createSSERoutes } from '../../periphery/adapters/http/routes';
 import { 
@@ -159,6 +160,13 @@ export class RealtimeServer {
         ],
         publicPrefixes: [],
       }));
+      // `self-api` capability pin. A job-minted token is bounded to the
+      // account-agents surface, which does not exist on this server — so every
+      // realtime route is out of scope and the guard refuses the claim
+      // wholesale. Mounting the same guard rather than a bespoke refusal keeps
+      // the rule in one place.
+      this.app.use(createSelfApiScopeGuard());
+
       // Same-origin gate for cookie-authenticated state changes (H-NEW-001).
       this.app.use(createSameOriginGuard({
         publicPaths: ['/health', '/api/health', '/bridge/health'],

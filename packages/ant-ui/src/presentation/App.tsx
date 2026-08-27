@@ -424,7 +424,7 @@ function AppShell() {
   useHealthCheck();
 
   // ✅ Session restoration (extracted to hook)
-  useSessionLoader(connectionStatus);
+  useSessionLoader();
 
   // ✅ Job restoration (extracted to hook)
   useJobRestoration({ 

@@ -25,6 +25,12 @@
  * Absence of the claim is an ordinary session and passes through untouched.
  * Mounts AFTER authentication (M-010: an unauthenticated request must not
  * reach a body parser) and before the account router.
+ *
+ * Mounted on every server that authenticates a bearer, not just the one that
+ * owns the surface. The realtime server has no account-agents routes, so this
+ * same guard refuses the claim there wholesale — otherwise a job-minted token
+ * would reach its owner's SSE stream and `/bridge/*`, well outside the bound
+ * declared above.
  */
 
 import { Request, Response, NextFunction } from 'express';

@@ -468,11 +468,14 @@ debugging session.
   assumes no install URL and no registered credential).
 - **A definition's `allow` list is not a security boundary** — the definition is
   user-editable. For a self entry the boundary is `createSelfApiScopeGuard`,
-  mounted on `/api` after authentication: a `scope: 'self-api'` token reaches
-  `/api/account/agents` and nothing else, and is refused on `promote` /
-  `editors` (authority spread) and `import` / `files/upload` (they skip
-  `gateDefinitionSave`). Absence of the claim is an ordinary session, never a
-  pin. Minting stays in the process holding the JWT private key (C-001).
+  mounted after authentication on `/api` (ant-api) and on the realtime server:
+  a `scope: 'self-api'` token reaches `/api/account/agents` and nothing else,
+  and is refused on `promote` / `editors` (authority spread) and `import` /
+  `files/upload` (they skip `gateDefinitionSave`). The realtime server has no
+  account-agents surface, so the same guard refuses the claim there wholesale —
+  a job-minted token must not open its owner's SSE stream or `/bridge/*`.
+  Absence of the claim is an ordinary session, never a pin. Minting stays in
+  the process holding the JWT private key (C-001).
 - **Definition writes have one funnel**: `PUT /account/agents/:agentId/file` →
   `gateDefinitionSave` → `loadCustomJob`. A job authors definitions by calling
   it (the builtin `agent-builder`), never by writing the files directly — which
@@ -491,8 +494,8 @@ debugging session.
 ```bash
 rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0
 rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal            # Expected: 0
-# The pin is mounted once, on the whole /api surface, and nowhere else re-judged.
-rg -n "createSelfApiScopeGuard\(" packages/ant-cli/src                              # Expected: 2 (definition + mount)
+# The pin is one rule, mounted whole-surface on each cookie/bearer server — never re-judged per route.
+rg -n "createSelfApiScopeGuard\(" packages/ant-cli/src                              # Expected: 3 (definition + api mount + realtime mount)
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0
 ```
 

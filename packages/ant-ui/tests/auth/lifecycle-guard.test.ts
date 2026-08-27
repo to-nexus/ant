@@ -75,6 +75,7 @@ describe('I2 — lifecycle / sync surfaces consume the SSOT selector', () => {
     'application/hooks/preview/usePreviewSync.ts',
     'application/hooks/ui/useDesktopBridge.ts',
     'application/hooks/ui/useHealthCheck.ts',
+    'application/hooks/ui/useSessionLoader.ts',
     'presentation/App.tsx',
     'domain/store/slices/projectSlice.ts',
     'domain/store/slices/sseSlice.ts',

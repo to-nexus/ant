@@ -7,7 +7,8 @@ import { CreateTeamModal } from './auth/CreateTeamModal';
 import { LocalLlmBadge } from './pricing/LocalLlmBadge';
 import { Slot } from '@/presentation/extensions/slots';
 import { useStore } from '@/domain/store';
-import { OAUTH_BASE, API_BASE, switchOrg } from '@/infrastructure/http/api';
+import { OAUTH_BASE, API_BASE } from '@/infrastructure/http/api';
+import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
 import { selectServerMode, selectOrgDisplayLabel } from '@/domain/store/selectors/auth';
 import { runUnifiedLogout } from '@ant/auth-client';
 import { getAuthBroadcaster } from '@/infrastructure/auth/authBridge';
@@ -122,8 +123,7 @@ export function AppNavBar({}: AppNavBarProps) {
       return;
     }
     try {
-      await switchOrg(organizationId);
-      window.location.reload();
+      await switchActiveOrg(organizationId);
     } catch (err) {
       console.warn('[Auth] switch-org failed:', err);
       setShowUserMenu(false);

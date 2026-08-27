@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '@/domain/store';
-import { loadFromStorage, removeFromStorage, STORAGE_KEYS } from '@/domain/store/storage';
+import { loadFromStorage, STORAGE_KEYS } from '@/domain/store/storage';
+import { selectIsAuthBlocked, selectProjectsSettled } from '@/domain/store/selectors';
+import { sessionRestoreGateOpen, verifySavedProject } from './sessionRestoreGate';
 
 /**
  * ✅ 완전히 리팩토링된 Session Loader
@@ -18,12 +20,17 @@ import { loadFromStorage, removeFromStorage, STORAGE_KEYS } from '@/domain/store
  * 5. expectedFeature 설정 (있으면 해당 feature, 없으면 undefined)
  * 6. completeSessionRestore() 호출 → branch manager가 실행
  */
-export function useSessionLoader(connectionStatus: string) {
+export function useSessionLoader() {
   const hasRestoredRef = useRef(false);
-  
+  const authBlocked = useStore(selectIsAuthBlocked);
+  const projectsSettled = useStore(selectProjectsSettled);
+
   useEffect(() => {
-    // Only restore session after successful connection AND only once
-    if (connectionStatus !== 'connected' || hasRestoredRef.current) return;
+    // Gate on the CURRENT tenant's project list having loaded, not on
+    // `connectionStatus` — see `sessionRestoreGate` for why that flag cannot
+    // carry this decision. The one-shot below is only burned once the gate
+    // genuinely opens.
+    if (!sessionRestoreGateOpen({ authBlocked, projectsSettled }) || hasRestoredRef.current) return;
     
     hasRestoredRef.current = true;
     const tRestore = performance.now();
@@ -41,12 +48,17 @@ export function useSessionLoader(connectionStatus: string) {
           return;
         }
         
-        // Verify project still exists
+        // Verify project still exists for this tenant
         const currentProjects = useStore.getState().projects;
-        if (!currentProjects.includes(projectId)) {
-          console.log('[useSessionLoader] Saved project no longer exists, clearing');
-          removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
-          removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
+        if (verifySavedProject(projectId, currentProjects) === 'stale') {
+          console.log('[useSessionLoader] Saved project not in this tenant\'s list, clearing');
+          // The store identity has to go too, not just the storage keys —
+          // leaving a hydrated `selectedProject` behind is what lets
+          // `useProjectLifecycle` open an SSE stream for a project the current
+          // tenant does not have. `setSelectedProject(undefined)` is the SSOT:
+          // it disconnects SSE, runs the identity transition, removes both
+          // storage keys, and restores `connectionStatus`.
+          useStore.getState().setSelectedProject(undefined);
           useStore.getState().completeSessionRestore();
           return;
         }
@@ -123,5 +135,5 @@ export function useSessionLoader(connectionStatus: string) {
       console.log('[useSessionLoader] Current agent:', currentAgent);
       console.log('[useSessionLoader] Current job type:', currentJobType);
     })();
-  }, [connectionStatus]);
+  }, [authBlocked, projectsSettled]);
 }

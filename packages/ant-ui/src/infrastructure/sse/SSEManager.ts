@@ -117,6 +117,17 @@ class SSEManager {
    */
   private carriedRetry: { key: string; attempts: number } | null = null;
 
+  /**
+   * Handle for the self-scheduled unified reconnect below.
+   *
+   * The callback closes over the (project, feature, job) that failed, so a
+   * pending retry re-opens the OLD identity even after the app has moved on.
+   * `disconnect()` therefore has to cancel it: without that, tearing down a
+   * stale cross-tenant connection heals for up to 30 s and then un-heals when
+   * the orphaned timer fires and 404s again.
+   */
+  private unifiedRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
   private static retryKey(projectId: string, featureName: string, job: string): string {
     return `${projectId}|${featureName}|${job}`;
   }
@@ -330,7 +341,8 @@ class SSEManager {
             // JWT expiry mid-session. If the session is gone, fire the same
             // session-expired cascade as the HTTP 401 interceptor and STOP.
             console.log(`[SSE] unified: reconnecting in ${retryDelay}ms (probing auth first)`);
-            setTimeout(() => {
+            this.unifiedRetryTimer = setTimeout(() => {
+              this.unifiedRetryTimer = null;
               this.runAuthProbeAndMaybeReconnect(savedProjectId, savedFeatureName, savedJob);
             }, retryDelay);
           }
@@ -608,6 +620,13 @@ class SSEManager {
    * Disconnect unified SSE
    */
   disconnect(): void {
+    // Outside the connection check on purpose: the retry is scheduled AFTER
+    // `disconnect()` has already nulled the connection, so a pending timer
+    // routinely outlives it.
+    if (this.unifiedRetryTimer) {
+      clearTimeout(this.unifiedRetryTimer);
+      this.unifiedRetryTimer = null;
+    }
     if (this.unifiedConnection) {
       console.log('[SSE] unified: closed');
       try {

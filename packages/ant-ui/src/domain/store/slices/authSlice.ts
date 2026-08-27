@@ -5,6 +5,7 @@ import { STORAGE_KEYS, saveToStorage, loadFromStorage, removeFromStorage } from 
 import { resolveAgentForJobType } from '@/shared/utils/constants';
 import { isNonTaskJob, type OrganizationKind } from '@ant/shared';
 import { restoresLatestRunFromHistory } from './sse/restoresLatestRun';
+import { isTenantChange, tenantScrubPatch, removeTenantScopedStorage } from './auth/tenantScrub';
 import type {
   OrgMembership,
   AuthApprovalStatus,
@@ -191,7 +192,35 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
   },
 
   setUser: (email, organization, name, picture, userId, orgKind, memberships, approvalStatus, testAccountLevel) => {
+    const state = get() as any;
+    // The store hydrates `userOrganization` from storage at creation, so this
+    // covers an org switch (which reloads the page), a switch made in another
+    // tab, and a re-login as a different account. Without it the previous
+    // tenant's `selectedProject` survives the reload and the unified SSE opens
+    // against a project that does not exist under the new workspace root — the
+    // backend 404s and the client reconnect-loops forever on "connecting".
+    const tenantChanged = isTenantChange(state.userOrganization, organization);
+
+    if (tenantChanged) {
+      // Side-effecting half FIRST, while `authStatus` is still 'verifying' so
+      // `selectIsAuthBlocked` keeps `useProjectLifecycle` parked. This cannot
+      // fold into the set() below — `applyIdentityTransition` runs its own
+      // set() plus cross-slice calls.
+      sseManager.disconnectAll();
+      state.applyIdentityTransition?.({
+        scope: 'project',
+        prevProject: state.selectedProject,
+        prevFeature: state.selectedFeature,
+      });
+      removeTenantScopedStorage();
+    }
+
+    // ONE set(): the scrub and the 'verified' flip must be atomic. Split in
+    // two, `useProjectLifecycle` (deps include both `selectedProject` and
+    // `authStatus`) can observe "verified + stale project" and fire exactly
+    // the `initializeSSE()` this is here to prevent.
     set({
+      ...(tenantChanged ? tenantScrubPatch() : {}),
       userEmail: email,
       userOrganization: organization,
       userName: name,
@@ -202,7 +231,7 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
       approvalStatus,
       testAccountLevel: testAccountLevel ?? 0,
       authStatus: 'verified',
-    });
+    } as any);
     saveToStorage(STORAGE_KEYS.USER_EMAIL, email);
     saveToStorage(STORAGE_KEYS.USER_ORGANIZATION, organization);
     // `userName` / `userPicture` / `userId` / `userOrgKind` / `memberships` are
@@ -251,24 +280,10 @@ export const createAuthSlice: StateCreator<any, [], [], AuthSlice> = (set, get) 
     if (typeof state.reset === 'function') {
       state.reset();
     }
-    // Agent state is tenant-scoped (org-owned agents differ per active org),
-    // so a user change must not leak the previous identity's lists/selection.
-    set({
-      projects: [],
-      projectsStatus: 'idle',
-      accountAgents: [],
-      accountAgentsError: null,
-      agentSettingsSelection: { agentId: undefined, jobId: undefined, intentId: undefined },
-      definitionTree: [],
-      openDefinitionFile: null,
-      definitionValidation: null,
-      customAgents: [],
-      customAgentsError: null,
-      selectedCustomAgentId: undefined,
-      selectedCustomJobId: undefined,
-    } as any);
-    removeFromStorage(STORAGE_KEYS.SELECTED_PROJECT);
-    removeFromStorage(STORAGE_KEYS.PROJECT_LAST_FEATURES);
+    // Shared with `setUser`'s tenant-change branch so the two teardowns cannot
+    // drift — see `./auth/tenantScrub`.
+    set({ ...tenantScrubPatch() } as any);
+    removeTenantScopedStorage();
   },
   };
 };

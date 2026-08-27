@@ -9,10 +9,25 @@
  * 
  * Sessions use two key patterns:
  * - `ant:bridge:session:{userId}` — authenticated (full MCP relay)
- * - `ant:bridge:probe:{machineId}` — unauthenticated probe (detected only)
+ * - `ant:bridge:probe`            — unauthenticated probe (detected only)
+ *
+ * The probe key is deliberately UNSCOPED, and that is exactly why it is
+ * local-mode only. An unauthenticated desktop process and the browser session
+ * that should learn about it share nothing the server can correlate — no user,
+ * no machine (the reader, `getStatus(userId)`, has only a userId). Keyed by
+ * machine it would be unreadable; keyed by nothing it is one deployment-wide
+ * flag, so in cloud any unauthenticated peer would set and clear "desktop
+ * detected" for every tenant at once. Local mode is a single-developer trust
+ * boundary, so there the global key is the correct scope.
+ *
+ * Cloud desktop detection therefore runs off the authenticated session key
+ * alone — the same path that gates the MCP relay. Reviving the unauthenticated
+ * probe in cloud needs a correlation value both ends share (a pairing code),
+ * not a different key name.
  */
 
 import type { BridgeSession, BridgeStatusResponse } from '@ant/shared';
+import { isLocalServerMode } from '../../core/config/serverMode';
 import { BRIDGE_HEARTBEAT_TIMEOUT_MS } from '@ant/shared';
 
 const BRIDGE_SESSION_PREFIX = 'ant:bridge:session:';
@@ -81,7 +96,9 @@ export class BridgeSessionManager {
       }
     }
 
-    const probeSession = await this.findAnyProbe();
+    // Local mode only — see the file header. In cloud this global probe would
+    // report one tenant's desktop to every other tenant.
+    const probeSession = isLocalServerMode() ? await this.findAnyProbe() : null;
     if (probeSession) {
       const isStale = Date.now() - probeSession.lastPingAt > BRIDGE_HEARTBEAT_TIMEOUT_MS;
       if (!isStale) {

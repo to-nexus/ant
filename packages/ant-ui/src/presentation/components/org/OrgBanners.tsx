@@ -24,7 +24,8 @@ import { useToastContext } from '@/presentation/providers/ToastProvider';
 import { Button } from '../aurora/Button';
 import { RoleBadge } from './RoleBadge';
 import { acceptOrgInvite, joinByDomain } from '@/infrastructure/http/api/organizations';
-import { switchOrg, fetchAuthMeDetailed } from '@/infrastructure/http/api/auth';
+import { fetchAuthMeDetailed } from '@/infrastructure/http/api/auth';
+import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
 import { orgErrorMessage } from './orgErrors';
 
 const INVITE_TOKEN_SS_KEY = 'ant-ui:org:invite-token';
@@ -60,8 +61,7 @@ export function OrgBanners() {
       confirmText: t('auth.switchNow', 'Switch'),
       onConfirm: async () => {
         try {
-          await switchOrg(orgId);
-          window.location.reload();
+          await switchActiveOrg(orgId);
         } catch (err) {
           showError(orgErrorMessage(err, t));
         }

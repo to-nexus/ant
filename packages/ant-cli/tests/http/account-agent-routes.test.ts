@@ -1210,3 +1210,52 @@ describe('self-api scope pin', () => {
     expect((await call('/api/account/agents/ops/promote', 'POST')).status).toBe(200);
   });
 });
+
+/**
+ * The same pin on the realtime server. It has no account-agents surface, so
+ * every route there is out of scope and the guard refuses the claim wholesale
+ * — otherwise a job-minted token opens its owner's SSE stream and `/bridge/*`,
+ * well outside the bound the pin declares. Mounting the same guard rather than
+ * a bespoke refusal keeps one rule.
+ */
+describe('self-api scope pin on the realtime surface', () => {
+  let rtServer: http.Server;
+  let rtBase: string;
+  let rtScope: 'self-api' | undefined;
+
+  beforeAll(async () => {
+    const app = express();
+    app.use((req, _res, next) => {
+      req.user = { id: 'localuser', email: 'localuser@localorg', organizationId: 'localorg', ...(rtScope ? { scope: rtScope } : {}) };
+      next();
+    });
+    // Mounted at the root, exactly as RealtimeServer.setupMiddleware does.
+    app.use(createSelfApiScopeGuard());
+    app.use('/projects', (_req, res) => res.status(200).json({ reached: true }));
+    app.use('/bridge', (_req, res) => res.status(200).json({ reached: true }));
+    rtServer = http.createServer(app);
+    await new Promise<void>((resolve) => rtServer.listen(0, resolve));
+    rtBase = `http://127.0.0.1:${(rtServer.address() as { port: number }).port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve, reject) => rtServer.close((e) => (e ? reject(e) : resolve())));
+  });
+
+  const rtCall = (pathname: string) => fetch(`${rtBase}${pathname}`);
+
+  it('refuses a job-minted token on the SSE stream and the bridge', async () => {
+    rtScope = 'self-api';
+    for (const pathname of ['/projects/p/features/f/stream', '/bridge/status']) {
+      const res = await rtCall(pathname);
+      expect(res.status, pathname).toBe(403);
+      expect((await res.json()).code).toBe('self-api-scope');
+    }
+  });
+
+  it('an ordinary session still reaches them', async () => {
+    rtScope = undefined;
+    expect((await rtCall('/projects/p/features/f/stream')).status).toBe(200);
+    expect((await rtCall('/bridge/status')).status).toBe(200);
+  });
+});

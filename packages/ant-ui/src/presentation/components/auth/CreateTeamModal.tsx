@@ -14,7 +14,7 @@ import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora/Auror
 import { IdentityOrb } from '@/presentation/components/ConfigEditor/aurora/IdentityOrb';
 import { Button } from '@/presentation/components/aurora/Button';
 import { createTeam } from '@/infrastructure/http/api/organizations';
-import { switchOrg } from '@/infrastructure/http/api/auth';
+import { switchActiveOrg } from '@/application/auth/switchActiveOrg';
 import { orgErrorMessage } from '@/presentation/components/org/orgErrors';
 import type { OrgSummaryView } from '@ant/shared';
 
@@ -76,8 +76,7 @@ export function CreateTeamModal({ isOpen, onClose }: CreateTeamModalProps) {
     if (!created || switching) return;
     setSwitching(true);
     try {
-      await switchOrg(created.id);
-      window.location.reload();
+      await switchActiveOrg(created.id);
     } catch (err) {
       setSwitching(false);
       setError(orgErrorMessage(err, t));

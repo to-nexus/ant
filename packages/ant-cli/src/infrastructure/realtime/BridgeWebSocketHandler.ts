@@ -254,7 +254,10 @@ export class BridgeWebSocketHandler {
   private async handleRegister(client: BridgeClient, msg: BridgeRegisterMessage): Promise<void> {
     // A registering connection is no longer a dangling idle socket.
     if (client.idleTimer) { clearTimeout(client.idleTimer); client.idleTimer = null; }
-    const userId = client.userId || msg.userId || 'anonymous';
+    // `msg.userId` is attacker-controlled on an unauthenticated ('detected')
+    // connection — a peer that never proved an identity must not claim one.
+    // `client.userId` is set only by `authenticate()` from a verified JWT.
+    const userId = client.userId || 'anonymous';
     client.userId = userId;
     client.machineId = msg.machineId;
 
