@@ -22,6 +22,7 @@ import { UPLOAD_LIMITS } from '../../src/core/config/uploadLimits.js';
 // ────────────────────────────────────────────────────────────────────────────
 
 const order: string[] = [];
+const invoked: string[] = [];
 
 vi.mock('express', async (importOriginal) => {
   const actual: any = await importOriginal<typeof import('express')>();
@@ -29,18 +30,28 @@ vi.mock('express', async (importOriginal) => {
   const wrapped: any = (...args: unknown[]) => base(...args);
   Object.assign(wrapped, base);
   wrapped.json = (opts?: { limit?: string }) => {
-    order.push(`json:${opts?.limit ?? 'default'}`);
-    return (_req: unknown, _res: unknown, next: () => void) => next();
+    const label = `json:${opts?.limit ?? 'default'}`;
+    order.push(label);
+    return (_req: unknown, _res: unknown, next: () => void) => {
+      invoked.push(label);
+      next();
+    };
   };
   return { ...actual, default: wrapped };
 });
 
-vi.mock('../../src/periphery/adapters/http/middleware/jwtAuth', () => ({
-  createJwtAuthMiddleware: () => {
-    order.push('jwt-auth');
-    return (_req: unknown, _res: unknown, next: () => void) => next();
-  },
-}));
+// The matcher stays REAL — the gate on the small parser is what these tests
+// assert; only the JWT middleware itself is stubbed.
+vi.mock('../../src/periphery/adapters/http/middleware/jwtAuth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/periphery/adapters/http/middleware/jwtAuth')>();
+  return {
+    ...actual,
+    createJwtAuthMiddleware: () => {
+      order.push('jwt-auth');
+      return (_req: unknown, _res: unknown, next: () => void) => next();
+    },
+  };
+});
 
 vi.mock('../../src/periphery/adapters/http/middleware/requireOnboardedJwt', () => ({
   createRequireOnboardedJwt: () => (_req: unknown, _res: unknown, next: () => void) => next(),
@@ -49,6 +60,7 @@ vi.mock('../../src/periphery/adapters/http/middleware/requireOnboardedJwt', () =
 describe('unauthenticated requests cannot spend the full body budget (M-010)', () => {
   beforeEach(() => {
     order.length = 0;
+    invoked.length = 0;
   });
 
   const configure = async () => {
@@ -65,11 +77,11 @@ describe('unauthenticated requests cannot spend the full body budget (M-010)', (
         ideOrchestrator: undefined,
       } as any,
     ).configure(app);
-    return order;
+    return { seq: order, app };
   };
 
   it('mounts the small parser first, then auth, then the full-size parser', async () => {
-    const seq = await configure();
+    const { seq } = await configure();
     const small = seq.indexOf('json:100kb');
     const auth = seq.indexOf('jwt-auth');
     const full = seq.indexOf('json:50mb');
@@ -80,9 +92,37 @@ describe('unauthenticated requests cannot spend the full body budget (M-010)', (
   });
 
   it('registers exactly one parser ahead of authentication', async () => {
-    const seq = await configure();
+    const { seq } = await configure();
     const beforeAuth = seq.slice(0, seq.indexOf('jwt-auth')).filter(s => s.startsWith('json:'));
     expect(beforeAuth).toEqual(['json:100kb']);
+  });
+
+  // The small parser is gated to requests the JWT gate would exempt. Ungated,
+  // it parses first for EVERY route and its `req._body` mark turns the
+  // post-auth full-size parser into a no-op — the authenticated budget dies.
+  it('the small parser runs only for requests the JWT gate would exempt', async () => {
+    const { app } = await configure();
+    const middlewares = (app.use as ReturnType<typeof vi.fn>).mock.calls
+      .filter((c: unknown[]) => c.length === 1 && typeof c[0] === 'function')
+      .map((c: unknown[]) => c[0] as (req: unknown, res: unknown, next: () => void) => void);
+    const probe = (req: { path: string; method: string }) => {
+      invoked.length = 0;
+      for (const fn of middlewares) {
+        try {
+          fn(req, {}, () => {});
+        } catch {
+          // middlewares other than the parser gate may reject the bare stub req
+        }
+      }
+      return [...invoked];
+    };
+
+    // Authenticated surface: the 100kb parser must not touch it.
+    expect(probe({ path: '/api/account/agents/a1/file', method: 'PUT' })).not.toContain('json:100kb');
+    // Method-aware: a public GET path does not admit a POST body (M-010 core).
+    expect(probe({ path: '/api/health', method: 'POST' })).not.toContain('json:100kb');
+    // Public request: small parser serves it.
+    expect(probe({ path: '/api/auth/signout', method: 'POST' })).toContain('json:100kb');
   });
 });
 

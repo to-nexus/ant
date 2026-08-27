@@ -24,6 +24,10 @@ import {
   requireActiveCustomJob,
   _resetActiveCustomJobForTests,
 } from '../../src/core/customAgents/activeCustomJob';
+import {
+  gateDefinitionSave,
+  DEFINITION_FILE_MAX_BYTES,
+} from '../../src/periphery/adapters/http/routes/helpers/customAgentHandlers';
 
 let tmpRoot: string;
 
@@ -828,5 +832,26 @@ describe('loadCustomJob — clarify knob (agent / job / intent)', () => {
     expect(intents.find((i) => i.id === 'a')?.clarify).toBe(false);
     expect(intents.find((i) => i.id === 'b')?.clarify).toBe(true);
     expect(intents.find((i) => i.id === 'c')?.clarify).toBeUndefined();
+  });
+});
+
+describe('gateDefinitionSave — per-file byte budget', () => {
+  // The 100kb pre-auth parser used to shadow this funnel; once the full-size
+  // parser is reachable, the funnel must carry its own budget.
+  it('refuses a file over DEFINITION_FILE_MAX_BYTES with 413', () => {
+    const gate = gateDefinitionSave('ops', 'on-demand/spec.md', 'x'.repeat(DEFINITION_FILE_MAX_BYTES + 1));
+    expect(gate.ok).toBe(false);
+    if (!gate.ok) expect(gate.status).toBe(413);
+  });
+
+  it('accepts a file exactly at the budget', () => {
+    const gate = gateDefinitionSave('ops', 'on-demand/spec.md', 'x'.repeat(DEFINITION_FILE_MAX_BYTES));
+    expect(gate.ok).toBe(true);
+  });
+
+  it('measures serialized bytes, not characters (multibyte content)', () => {
+    // 3 bytes per char in UTF-8 — a character count under the cap must still refuse.
+    const gate = gateDefinitionSave('ops', 'on-demand/spec.md', '\u{AC00}'.repeat(Math.ceil(DEFINITION_FILE_MAX_BYTES / 3) + 1));
+    expect(gate.ok).toBe(false);
   });
 });

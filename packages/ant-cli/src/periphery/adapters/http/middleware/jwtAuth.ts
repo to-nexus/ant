@@ -36,14 +36,15 @@ export interface JwtAuthMiddlewareOptions {
 }
 
 /**
- * Create JWT cookie authentication middleware.
- *
- * Reads the `ant_session` cookie, verifies it, and populates req.user and req.organization.
- * Returns 401 for missing/invalid tokens on non-public paths.
+ * Method-aware public-request predicate — the ONE judgement of "would the JWT
+ * gate exempt this request". Shared by the gate itself and by the pre-auth
+ * public body parser, so the two mounts can never drift (M-010): an entry
+ * restricted to GET does not exempt a POST to the same path.
  */
-export function createJwtAuthMiddleware(options: JwtAuthMiddlewareOptions) {
-  const { jwtService, publicPaths = [], publicPrefixes = [] } = options;
-
+export function createPublicRequestMatcher(
+  publicPaths: PublicPathSpec[],
+  publicPrefixes: string[] = [],
+): (req: { path: string; method: string }) => boolean {
   // path → set of exempt methods, or null for "any method" (legacy string form).
   const publicPathMethods = new Map<string, Set<string> | null>();
   for (const spec of publicPaths) {
@@ -53,23 +54,28 @@ export function createJwtAuthMiddleware(options: JwtAuthMiddlewareOptions) {
       publicPathMethods.set(spec.path, new Set(spec.methods.map((m) => m.toUpperCase())));
     }
   }
-
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // Skip auth for public paths — method-aware: an entry restricted to GET does
-    // not exempt a POST to the same path (which would otherwise reach the body
-    // parser mounted behind this gate unauthenticated — M-010).
+  return (req) => {
     if (publicPathMethods.has(req.path)) {
       const methods = publicPathMethods.get(req.path);
-      if (!methods || methods.has(req.method.toUpperCase())) {
-        return next();
-      }
+      if (!methods || methods.has(req.method.toUpperCase())) return true;
     }
+    return publicPrefixes.some((prefix) => req.path.startsWith(prefix));
+  };
+}
 
-    // Skip auth for public prefixes
-    for (const prefix of publicPrefixes) {
-      if (req.path.startsWith(prefix)) {
-        return next();
-      }
+/**
+ * Create JWT cookie authentication middleware.
+ *
+ * Reads the `ant_session` cookie, verifies it, and populates req.user and req.organization.
+ * Returns 401 for missing/invalid tokens on non-public paths.
+ */
+export function createJwtAuthMiddleware(options: JwtAuthMiddlewareOptions) {
+  const { jwtService, publicPaths = [], publicPrefixes = [] } = options;
+  const isPublic = createPublicRequestMatcher(publicPaths, publicPrefixes);
+
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (isPublic(req)) {
+      return next();
     }
 
     // Extract JWT from cookie or Authorization header (for Ant Desktop)

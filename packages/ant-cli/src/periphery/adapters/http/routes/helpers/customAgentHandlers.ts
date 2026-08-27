@@ -209,6 +209,13 @@ export type DefinitionSaveGate =
   | { ok: false; status: number; error: string };
 
 /**
+ * Per-file byte budget for the definition write funnel. Definition files are
+ * prose and yaml; anything larger belongs in the multipart upload channel,
+ * which carries its own reservation budget.
+ */
+export const DEFINITION_FILE_MAX_BYTES = 1024 * 1024;
+
+/**
  * PRE-WRITE gate for the single definition write funnel: whitelist membership,
  * YAML syntax, the id ≡ directory-name invariant for agent.yaml/job.yaml, the
  * infer.md contract (frontmatter grammar + criterion body), and the hooks.yaml
@@ -232,6 +239,15 @@ export function gateDefinitionSave(
   agentDir?: string,
 ): DefinitionSaveGate {
   const normalized = relPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (Buffer.byteLength(content, 'utf-8') > DEFINITION_FILE_MAX_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      error:
+        `File exceeds the ${Math.floor(DEFINITION_FILE_MAX_BYTES / 1024)}KB definition-file budget — ` +
+        'split the document, or attach large material through the file upload channel instead',
+    };
+  }
   if (!isAllowedDefinitionPath(normalized)) {
     // Legacy intent/injection paths get the migration message, not the
     // generic whitelist refusal.

@@ -282,7 +282,7 @@ export function buildRestToolInfos(
             query: QUERY_PROP,
             body: {
               description:
-                'Request body. An object/array is sent as JSON (Content-Type: application/json unless overridden); a string is sent verbatim (set Content-Type in headers for form-encoded legacy APIs).',
+                'Request body. An object/array is serialized as JSON; a string is sent verbatim. Either way Content-Type defaults to application/json unless set in headers — set it explicitly for form-encoded or plain-text bodies.',
             },
             headers: HEADERS_PROP,
             timeout_ms: TIMEOUT_PROP,
@@ -411,16 +411,13 @@ export async function executeRestCall(
     }
   }
 
-  // body (write tool only)
+  // body (write tool only) — Content-Type defaults to JSON for ANY body shape:
+  // a caller-serialized JSON string must not silently ride as text/plain.
   let body: string | undefined;
   if (toolName === 'request' && args.body !== undefined && args.body !== null) {
-    if (typeof args.body === 'string') {
-      body = args.body;
-    } else {
-      body = JSON.stringify(args.body);
-      const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
-      if (!hasContentType) headers['Content-Type'] = 'application/json';
-    }
+    body = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
+    const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type');
+    if (!hasContentType) headers['Content-Type'] = 'application/json';
   }
   Object.assign(headers, compiled.headers);
 

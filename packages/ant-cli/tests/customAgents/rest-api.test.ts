@@ -250,7 +250,7 @@ describe('executor — result framing', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('an object body is sent as JSON with Content-Type; a string body rides verbatim', async () => {
+  it('any body defaults Content-Type to application/json unless headers override; a string rides verbatim', async () => {
     const { impl, calls } = fetchStub(ok());
     await executeRestCall(compiled(), 'request', { method: 'POST', path: '/v', body: { a: 1 } }, impl);
     expect(calls[0].init.body).toBe('{"a":1}');
@@ -259,6 +259,12 @@ describe('executor — result framing', () => {
     await executeRestCall(compiled(), 'request', { method: 'POST', path: '/v', body: 'a=1&b=2', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, impl);
     expect(calls[1].init.body).toBe('a=1&b=2');
     expect((calls[1].init.headers as Record<string, string>)['Content-Type']).toBe('application/x-www-form-urlencoded');
+
+    // A caller-serialized JSON string must not silently ride as text/plain —
+    // without the default, fetch stamps text/plain and express.json drops the body.
+    await executeRestCall(compiled(), 'request', { method: 'PUT', path: '/v', body: '{"a":1}' }, impl);
+    expect(calls[2].init.body).toBe('{"a":1}');
+    expect((calls[2].init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
   });
 
   it('a write method can never ride the get tool', async () => {

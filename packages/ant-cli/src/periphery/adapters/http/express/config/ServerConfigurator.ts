@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import { createIDEProxyMiddleware } from '../../middleware/ideProxy';
 import { createIdeFaviconStub, createIdeVsdaStub } from '../../middleware/ideStubInterceptors';
 import { createCorsMiddleware } from '../../middleware/corsConfig';
-import { createJwtAuthMiddleware } from '../../middleware/jwtAuth';
+import { createJwtAuthMiddleware, createPublicRequestMatcher, type PublicPathSpec } from '../../middleware/jwtAuth';
 import { createSameOriginGuard, isTrustedCookieOrigin } from '../../middleware/sameOriginGuard';
 import {
   NAV_TICKET_PARAM,
@@ -33,6 +33,30 @@ const PUBLIC_JSON_BODY_LIMIT = '100kb';
 
 /** Artifacts and base64-bearing payloads legitimately reach this size. */
 const AUTHENTICATED_JSON_BODY_LIMIT = '50mb';
+
+/**
+ * The requests the JWT gate exempts — one list feeding BOTH the gate and the
+ * pre-auth public body parser, so an exemption can never widen one without the
+ * other. Method-aware: each entry names the method its route actually serves,
+ * so a mismatched method (e.g. POST /api/health) is not waved past the JWT
+ * gate to the body parser behind it (M-010).
+ */
+const PUBLIC_PATHS: PublicPathSpec[] = [
+  { path: '/api/health', methods: ['GET'] },
+  { path: '/api/system/config', methods: ['GET'] },
+  { path: '/api/agents', methods: ['GET'] },
+  // Server-driven pricing catalog — read anonymously by the marketing
+  // site (`@ant/site`). Billing is always-on today so this is mounted;
+  // a future `@ant/cloud`-absent OSS build leaves the router unmounted
+  // (→ 404, which the site degrades to its self-host fallback).
+  { path: '/api/billing/catalog', methods: ['GET'] },
+  { path: '/', methods: ['GET'] },
+  { path: '/local', methods: ['GET'] },
+  { path: '/api/auth/google', methods: ['GET'] },
+  { path: '/api/auth/google/callback', methods: ['GET'] },
+  { path: '/api/auth/me', methods: ['GET'] },
+  { path: '/api/auth/signout', methods: ['POST'] },
+];
 
 /**
  * ServerConfigurator
@@ -242,13 +266,20 @@ export class ServerConfigurator {
   /**
    * Small-body parser for the handful of endpoints that answer without a JWT.
    *
-   * Mounted BEFORE authentication, so it is the only parser an unauthenticated
-   * request can reach — and it is capped at a size no public endpoint needs.
-   * `body-parser` marks a parsed request (`req._body`) and later parsers no-op,
-   * so the full-size parser below never re-reads these.
+   * Mounted BEFORE authentication but gated to the requests the JWT gate would
+   * exempt (same PUBLIC_PATHS list), so it is the only parser an unauthenticated
+   * request can reach — capped at a size no public endpoint needs. Every other
+   * request keeps its body unparsed until it has authenticated, then the
+   * full-size parser below reads it; an unauthenticated non-public request is
+   * 401'd having reached no parser at all (M-010). An ungated mount here would
+   * shadow the full-size parser for every route (`body-parser` marks parsed
+   * requests via `req._body` and later parsers no-op).
    */
   private setupPublicBodyParser(app: Express): void {
-    app.use(express.json({ limit: PUBLIC_JSON_BODY_LIMIT }));
+    const parser = express.json({ limit: PUBLIC_JSON_BODY_LIMIT });
+    const isPublic = createPublicRequestMatcher(PUBLIC_PATHS);
+    app.use((req: Request, res: Response, next: NextFunction) =>
+      isPublic(req) ? parser(req, res, next) : next());
   }
 
   /**
@@ -283,25 +314,7 @@ export class ServerConfigurator {
 
     app.use(createJwtAuthMiddleware({
       jwtService,
-      // Method-aware: each exemption names the method its route actually serves
-      // so a mismatched method (e.g. POST /api/health) is not waved past the
-      // JWT gate to the body parser behind it (M-010).
-      publicPaths: [
-        { path: '/api/health', methods: ['GET'] },
-        { path: '/api/system/config', methods: ['GET'] },
-        { path: '/api/agents', methods: ['GET'] },
-        // Server-driven pricing catalog — read anonymously by the marketing
-        // site (`@ant/site`). Billing is always-on today so this is mounted;
-        // a future `@ant/cloud`-absent OSS build leaves the router unmounted
-        // (→ 404, which the site degrades to its self-host fallback).
-        { path: '/api/billing/catalog', methods: ['GET'] },
-        { path: '/', methods: ['GET'] },
-        { path: '/local', methods: ['GET'] },
-        { path: '/api/auth/google', methods: ['GET'] },
-        { path: '/api/auth/google/callback', methods: ['GET'] },
-        { path: '/api/auth/me', methods: ['GET'] },
-        { path: '/api/auth/signout', methods: ['POST'] },
-      ],
+      publicPaths: PUBLIC_PATHS,
       publicPrefixes: [],
     }));
 

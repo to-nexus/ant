@@ -13,7 +13,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import express from 'express';
 
-import { createJwtAuthMiddleware } from '../../src/periphery/adapters/http/middleware/jwtAuth';
+import { createJwtAuthMiddleware, createPublicRequestMatcher } from '../../src/periphery/adapters/http/middleware/jwtAuth';
 import type { JwtService } from '../../src/infrastructure/auth/JwtService';
 
 // A stub verifier: any token throws (we only exercise the public-path leg and
@@ -75,5 +75,22 @@ describe('jwtAuth public-path method awareness (M-010)', () => {
   it('legacy string exemption stays any-method', async () => {
     expect((await fetch(`${baseUrl}/legacy-any`)).status).toBe(200);
     expect((await fetch(`${baseUrl}/legacy-any`, { method: 'POST' })).status).toBe(200);
+  });
+});
+
+// The gate and the pre-auth public body parser share this ONE predicate — a
+// drift between the two mounts would re-open M-010 from either side.
+describe('createPublicRequestMatcher', () => {
+  const isPublic = createPublicRequestMatcher(
+    [{ path: '/health', methods: ['GET'] }, '/legacy-any'],
+    ['/assets/'],
+  );
+
+  it('is method-aware for object specs, any-method for legacy strings, prefix-matched for prefixes', () => {
+    expect(isPublic({ path: '/health', method: 'GET' })).toBe(true);
+    expect(isPublic({ path: '/health', method: 'POST' })).toBe(false);
+    expect(isPublic({ path: '/legacy-any', method: 'POST' })).toBe(true);
+    expect(isPublic({ path: '/assets/logo.png', method: 'GET' })).toBe(true);
+    expect(isPublic({ path: '/api/account/agents/a1/file', method: 'PUT' })).toBe(false);
   });
 });
