@@ -199,6 +199,7 @@ async function handleRetryEntry(
     violations: [],
     _noProgressStreak: 0,
     _noOutputStreak: 0,
+    _drainSalvageTools: null,
     _recentExecuteTextHashes: [],
     _lastToolBatchAllDupReads: false,
     commandHistory: [],

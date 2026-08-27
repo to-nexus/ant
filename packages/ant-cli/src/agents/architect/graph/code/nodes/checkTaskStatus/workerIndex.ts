@@ -106,6 +106,7 @@ export async function workerCheckTaskStatus(
       _executeCallIndex: 0,
       _noProgressStreak: 0,
       _noOutputStreak: 0,
+      _drainSalvageTools: null,
       _recentExecuteTextHashes: [],
       _lastToolBatchAllDupReads: false,
       commandHistory: [],
@@ -178,6 +179,7 @@ export async function workerCheckTaskStatus(
       _executeCallIndex: 0,
       _noProgressStreak: 0,
       _noOutputStreak: 0,
+      _drainSalvageTools: null,
       _recentExecuteTextHashes: [],
       _lastToolBatchAllDupReads: false,
       commandHistory: [],
@@ -231,6 +233,7 @@ export async function workerCheckTaskStatus(
     // burning the whole retry budget in seconds (22af62056 failure class).
     _noProgressStreak: 0,
     _noOutputStreak: 0,
+    _drainSalvageTools: null,
     _recentExecuteTextHashes: [],
     _lastToolBatchAllDupReads: false,
     commandHistory: [],

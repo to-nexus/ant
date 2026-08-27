@@ -182,6 +182,14 @@ export interface DrainFinalizeResult<TTool> {
    */
   toolChoice?: import('../../../../../../core/ports/llm').LLMToolChoice;
   drainFinalizing: boolean;
+  /**
+   * The salvage allow-list this round's LLM actually received (same value as
+   * `toolChoice.allow`). Published on the `_drainSalvageTools` channel so the
+   * tool node can REFUSE calls outside it — `{ allow }` only narrows the
+   * ADVERTISED declarations, and OpenAI-compat providers (GLM) keep emitting
+   * history-pattern tools that are not declared (narrow-ending-flour RCA).
+   */
+  salvageTools?: string[];
 }
 
 /**
@@ -229,5 +237,10 @@ export function applyDrainFinalization<TTool>(
   console.warn(
     `🧯 [Execute] No-output salvage (noProgress=${progressStreak}/${NO_PROGRESS_HARD_CAP}, noOutput=${outputStreak}/${NO_OUTPUT_HARD_CAP}) → toolChoice={allow: write tools}, forcing final output`,
   );
-  return { tools, toolChoice: { allow: [...DRAIN_SALVAGE_WRITE_TOOLS] }, drainFinalizing: true };
+  return {
+    tools,
+    toolChoice: { allow: [...DRAIN_SALVAGE_WRITE_TOOLS] },
+    drainFinalizing: true,
+    salvageTools: [...DRAIN_SALVAGE_WRITE_TOOLS],
+  };
 }

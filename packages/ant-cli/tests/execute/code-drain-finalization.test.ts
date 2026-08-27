@@ -290,6 +290,12 @@ describe('applyDrainFinalization — code execute', () => {
     expect(tools).toBe(TOOLS);
     expect(toolChoice).toEqual({ allow: ['create_file', 'append_file', 'edit_file'] });
     expect((toolChoice as any).allow).toEqual([...DRAIN_SALVAGE_WRITE_TOOLS]);
+    // The channel value published for the tool node's execution-side gate
+    // (gateDrainSalvage) must be the SAME list the LLM was advertised
+    // (narrow-ending-flour: advertisement-only narrowing let GLM keep reading).
+    expect(
+      applyDrainFinalization({ _noProgressStreak: SALVAGE_AT }, [userMsg('x')], TOOLS).salvageTools,
+    ).toEqual([...DRAIN_SALVAGE_WRITE_TOOLS]);
     const content = messages[0].content as any[];
     expect(content[0]).toEqual({ type: 'text', text: 'apply the plan' });
     expect(content[1].text).toContain('no file output');

@@ -524,6 +524,12 @@ export interface ArchitectGraphState extends TriageableState {
    * missed reset would re-trip the breaker on a retry's first router pass.
    */
   _noOutputStreak?: number;
+  /** The drain-salvage allow-list the JUST-RUN execute round actually
+   * advertised (drainFinalize `toolChoice.allow`), or null when not draining.
+   * The tool node's `gateCall` refuses calls outside it — `{ allow }` only
+   * narrows declarations, and OpenAI-compat providers (GLM) keep emitting
+   * undeclared history-pattern tools (narrow-ending-flour RCA). */
+  _drainSalvageTools?: string[] | null;
   /**
    * Package manager (npm / pnpm / yarn / bun) detected from lockfile at the
    * verification plan entry, cached for the rest of the job.

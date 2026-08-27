@@ -57,6 +57,11 @@ describe('applyDrainFinalization — unit', () => {
     // The narrowing happens via the allow-list at resolveToolChoice.
     expect(tools).toBe(TOOLS);
     expect(toolChoice).toEqual({ allow: ['edit_file', 'append_file'] });
+    // The channel value the execute node publishes for the tool node's
+    // execution-side gate must be the SAME list the LLM was advertised
+    // (narrow-ending-flour: advertisement-only narrowing let GLM keep reading).
+    expect(applyDrainFinalization(state, [userMsg('x')], TOOLS).salvageTools)
+      .toEqual(['edit_file', 'append_file']);
     const content = messages[0].content as any[];
     expect(Array.isArray(content)).toBe(true);
     expect(content[0]).toEqual({ type: 'text', text: 'do the task' });
@@ -177,10 +182,11 @@ describe('applyDrainFinalization — targetExists dispatch', () => {
 
   it('target absent → allow-list is create_file/append_file (never edit_file); note teaches create_file', () => {
     const messages = [userMsg('go')];
-    const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
+    const { tools, toolChoice, drainFinalizing, salvageTools } = applyDrainFinalization(
       drainState, messages, MIXED_TOOLS, { targetExists: false },
     );
     expect(drainFinalizing).toBe(true);
+    expect(salvageTools).toEqual(['create_file', 'append_file']);
     // Declarations preserved; the provider-level allow-list carries the
     // narrowing (sage-causing-rover axis — deleting declarations while the
     // history carries tool_calls is the GLM degeneration trigger).
@@ -304,7 +310,7 @@ describe('design execute node — every return commits recursionCount', () => {
     expect(returnBlocks.length).toBeGreaterThanOrEqual(2);
   });
 
-  it.each([['recursionCount:']])('every return block contains %s', (field) => {
+  it.each([['recursionCount:'], ['_drainSalvageTools:']])('every return block contains %s', (field) => {
     for (const [i, block] of returnBlocks.entries()) {
       expect(
         block.includes(field),
@@ -313,5 +319,61 @@ describe('design execute node — every return commits recursionCount', () => {
           `(drain-guard starvation, local-caring-board RCA)\n${block.slice(0, 300)}`,
       ).toBe(true);
     }
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// gateDrainSalvage — execution-side enforcement of the drain allow-list.
+// narrow-ending-flour RCA: `toolChoice { allow }` only narrows the ADVERTISED
+// declarations; GLM (OpenAI-compat, cloud) kept emitting undeclared read_file
+// calls through every salvage round, and the tool executor — which dispatches
+// any registered tool by name — executed them and returned fresh reads,
+// rewarding the violation until the breaker discarded the run. The gate makes
+// the narrowing binding at the seam that actually runs tools.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('gateDrainSalvage — execution-side enforcement', () => {
+  it.each([
+    // [salvageTools, callName, allowed]
+    [null, 'read_file', true],                                    // not draining
+    [undefined, 'read_file', true],                               // channel unset
+    [[], 'read_file', true],                                      // degenerate empty = inactive
+    [['create_file', 'append_file'], 'create_file', true],        // salvage write allowed
+    [['create_file', 'append_file'], 'append_file', true],
+    [['create_file', 'append_file'], 'read_file', false],         // undeclared read refused
+    [['create_file', 'append_file'], 'search_code', false],
+    [['edit_file', 'append_file'], 'create_file', false],         // REVISE side refuses create
+  ] as Array<[string[] | null | undefined, string, boolean]>)(
+    'salvage=%j call=%s → allowed=%s',
+    async (salvageTools, callName, allowed) => {
+      const { gateDrainSalvage } = await import('../../src/agents/common/tool/drainSalvageGate');
+      const verdict = gateDrainSalvage(salvageTools, { name: callName });
+      expect(verdict.allowed).toBe(allowed);
+      if (!verdict.allowed) {
+        // Instructive refusal: names the surviving write channel and the exit
+        // signal so the refusal funnels the model into writing.
+        expect(verdict.error).toContain(callName);
+        for (const t of salvageTools!) expect(verdict.error).toContain(t);
+        expect(verdict.error).toContain('<done>true</done>');
+      }
+    },
+  );
+
+  it('both tool nodes bind the gate (design gateCall + code gateCall drain-first composition)', () => {
+    const designToolSrc = readFileSync(
+      resolve(__dirname, '../../src/agents/architect/graph/design/nodes/tool/index.ts'),
+      'utf-8',
+    );
+    const codeToolSrc = readFileSync(
+      resolve(__dirname, '../../src/agents/architect/graph/code/nodes/tool/index.ts'),
+      'utf-8',
+    );
+    expect(designToolSrc).toContain('gateDrainSalvage(state._drainSalvageTools');
+    expect(codeToolSrc).toContain('gateDrainSalvage(state._drainSalvageTools');
+    // Composition order: the drain refusal must be judged BEFORE the RAC
+    // read-scope gate — a drained round's read is refused as "write now",
+    // not admitted/denied on RAC grounds.
+    expect(codeToolSrc.indexOf('gateDrainSalvage(state._drainSalvageTools'))
+      .toBeLessThan(codeToolSrc.indexOf('computeRacScope(state.resolvedAction)'));
   });
 });

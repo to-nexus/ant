@@ -16,6 +16,7 @@ import { TokenBudgetManager } from '../../../../../../core/utils/tokenBudget';
 import { ToolResultManager } from '../../../../../../core/utils/toolResultManager';
 import { getExecutionLogger } from '../../../../../../core/utils/executionLogger';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
+import { gateDrainSalvage } from '../../../../../common/tool/drainSalvageGate';
 import { createDesignToolRegistry } from '../../../../../common/tool/presets';
 import { createChatStatusReporter } from '../../../../../common/tool/chatStatusAdapter';
 import { CACHEABLE_TOOLS, TOOL_SETS } from '../../../../../common/tool/toolCatalog';
@@ -136,6 +137,16 @@ const toolNodeFn = createToolNode<DesignGraphState>({
       name: tc.name,
       args: tc.args,
     }));
+  },
+
+  // Drain-salvage enforcement: during forced finalization the execute node
+  // narrows the ADVERTISED tools, but OpenAI-compat providers (GLM) keep
+  // emitting undeclared history-pattern reads — refuse them here instead of
+  // executing (narrow-ending-flour RCA). See common/tool/drainSalvageGate.ts.
+  gateCall(state, call) {
+    // Execute-only: the plan loop shares this node but never drains.
+    if (state._activePhase === 'plan') return { allowed: true };
+    return gateDrainSalvage(state._drainSalvageTools, call);
   },
 
   buildContext(state): ToolExecutionContext {

@@ -198,7 +198,7 @@ export async function execute(
     state.context?.featurePath,
     state.currentTask,
   );
-  const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(
+  const { tools, toolChoice, drainFinalizing, salvageTools } = applyDrainFinalization(
     state,
     messages,
     // PRD sync is a no-tool full rewrite: the current doc is injected in the
@@ -463,6 +463,7 @@ export async function execute(
           llmResponse: { textResponse, done: true },
           _executeCallIndex: newCallIndex,
           _noOutputCallCount: 0,
+          _drainSalvageTools: null,
           _taskFilesWritten: newTaskFilesWritten,
           _turnToolWrites: 0,
           // Clarify pause is treated as a stable boundary — not an
@@ -513,6 +514,7 @@ export async function execute(
             conversations: { [CONV_KEYS.NODE_EXECUTE]: joinHistory },
             _executeCallIndex: newCallIndex,
             _noOutputCallCount: newNoOutputCount,
+            _drainSalvageTools: drainFinalizing ? (salvageTools ?? null) : null,
             _taskFilesWritten: newTaskFilesWritten,
             _turnToolWrites: 0,
             _pendingDoneCheck: false,
@@ -538,6 +540,9 @@ export async function execute(
       conversations: { [CONV_KEYS.NODE_EXECUTE]: nodeHistory },
       _executeCallIndex: newCallIndex,
       _noOutputCallCount: newNoOutputCount,
+      // The salvage allow-list THIS round's LLM actually received — the tool
+      // node's gateCall refuses calls outside it (drainSalvageGate.ts).
+      _drainSalvageTools: drainFinalizing ? (salvageTools ?? null) : null,
       _taskFilesWritten: newTaskFilesWritten,
       // Consume-and-clear: the tool node's write count is per-batch.
       _turnToolWrites: 0,

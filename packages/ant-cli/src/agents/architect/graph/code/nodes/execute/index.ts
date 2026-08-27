@@ -167,7 +167,7 @@ export async function execute(
   // (toolChoice={allow: create/append/edit} — declarations never deleted)
   // and append a persistent "apply your changes now" note to the trailing
   // user message (post-composeMessages — never inside a cached prefix).
-  const { tools, toolChoice, drainFinalizing } = applyDrainFinalization(state, messages, allTools);
+  const { tools, toolChoice, drainFinalizing, salvageTools } = applyDrainFinalization(state, messages, allTools);
   
   if (!state.resolvedAction?.mode) {
     console.warn(`⚠️ [CodeGen] resolvedAction.mode is missing — defaulting to tools enabled`);
@@ -692,6 +692,7 @@ export async function execute(
           _lastToolBatchAllDupReads: false,
           _noProgressStreak: nextNoProgressStreak,
           _noOutputStreak: nextNoOutputStreak,
+          _drainSalvageTools: drainFinalizing ? (salvageTools ?? null) : null,
           _recentExecuteTextHashes: nextTextRing,
           recursionCount: state.recursionCount,
           recursionLimit: state.recursionLimit,
@@ -699,7 +700,7 @@ export async function execute(
         };
       }
     }
-    
+
     // ── Join barrier (explore subagent): the LLM wants to finish this task
     // (<done>, no tool calls) while reports are still owed. Withhold `done`
     // — routeAfterExecute rule 3 (no tools + no done) re-enters execute —
@@ -749,6 +750,7 @@ export async function execute(
             // Subagent reports delivered = novel information, not a loop.
             _noProgressStreak: 0,
             _noOutputStreak: 0,
+            _drainSalvageTools: null,
             _recentExecuteTextHashes: nextTextRing,
             recursionCount: state.recursionCount,
             recursionLimit: state.recursionLimit,
@@ -793,6 +795,9 @@ export async function execute(
       _lastToolBatchAllDupReads: false,
       _noProgressStreak: nextNoProgressStreak,
       _noOutputStreak: nextNoOutputStreak,
+      // The salvage allow-list THIS round's LLM actually received — the tool
+      // node's gateCall refuses calls outside it (drainSalvageGate.ts).
+      _drainSalvageTools: drainFinalizing ? (salvageTools ?? null) : null,
       _recentExecuteTextHashes: nextTextRing,
       recursionCount: state.recursionCount,
       recursionLimit: state.recursionLimit,

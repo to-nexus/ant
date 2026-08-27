@@ -136,6 +136,7 @@ export function finalizePlanOutcome(
     // (plan-loop accrual: shy-crushing-bloom).
     _noProgressStreak: 0,
     _noOutputStreak: 0,
+    _drainSalvageTools: null,
     _lastToolBatchAllDupReads: false,
     conversations: { [CONV_KEYS.NODE_EXECUTE]: [] },
     llmResponse: isDone

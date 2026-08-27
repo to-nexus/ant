@@ -323,6 +323,7 @@ export class TaskWorker<T extends BaseTask> {
       _lastToolBatchAllDupReads: false,
       _noProgressStreak: 0,
       _noOutputStreak: 0,
+      _drainSalvageTools: null,
       _recentExecuteTextHashes: [],
       commandHistory: [],
       toolResults: [],

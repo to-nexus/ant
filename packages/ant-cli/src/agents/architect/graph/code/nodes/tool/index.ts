@@ -16,6 +16,7 @@ import { hashCommandOutput } from '../execute/drainFinalize';
 import { isVerificationTask } from '../../tasks/verification';
 import { recordServerStarted } from './utils/serverTracking';
 import { createToolNode } from '../../../../../common/tool/createToolNode';
+import { gateDrainSalvage } from '../../../../../common/tool/drainSalvageGate';
 import { createCodeToolRegistry } from '../../../../../common/tool/presets';
 import { TOOL_SETS } from '../../../../../common/tool/toolCatalog';
 import { getToolsByNames } from '../../../../../common/tool/toolSchemas';
@@ -48,6 +49,15 @@ const toolNodeFn = createToolNode<ArchitectGraphState>({
   // allow everything. Only file-access tools carry a single artifact path.
   // Common handlers stay RAC-orthogonal — the policy lives here, not in them.
   gateCall(state, call) {
+    // Drain-salvage enforcement first (execute-only; the plan loop never sets
+    // the channel): during forced finalization the execute node narrows the
+    // ADVERTISED tools, but OpenAI-compat providers (GLM) keep emitting
+    // undeclared history-pattern reads — refuse them instead of executing
+    // (narrow-ending-flour RCA). See common/tool/drainSalvageGate.ts.
+    if (state._activePhase === 'execute') {
+      const drainGate = gateDrainSalvage(state._drainSalvageTools, call);
+      if (!drainGate.allowed) return drainGate;
+    }
     if (call.name !== 'read_file' && call.name !== 'list_files') return { allowed: true };
     const racScope = computeRacScope(state.resolvedAction);
     if (!racScope) return { allowed: true };

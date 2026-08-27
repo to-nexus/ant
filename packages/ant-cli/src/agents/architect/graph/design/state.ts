@@ -200,6 +200,13 @@ export interface DesignGraphState extends TriageableState {
    * no longer a terminal gate (LangGraph `recursionLimit` is the backstop). */
   _noOutputCallCount?: number;
 
+  /** The drain-salvage allow-list the JUST-RUN execute round actually
+   * advertised (drainFinalize `toolChoice.allow`), or null when not draining.
+   * The tool node's `gateCall` refuses calls outside it — `{ allow }` only
+   * narrows declarations, and OpenAI-compat providers (GLM) keep emitting
+   * undeclared history-pattern tools (narrow-ending-flour RCA). */
+  _drainSalvageTools?: string[] | null;
+
   /** Monotonic count of artifact files the execute node has written for the
    * CURRENT task this run (incremented by `files.length` each execute turn,
    * reset to 0 on task boundary). `0` at completion means the model never

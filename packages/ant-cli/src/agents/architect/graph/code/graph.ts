@@ -792,6 +792,10 @@ export const CodeGraphChannels = {
         reducer: (_prev: any, next: any) => next,
         default: () => 0,
       }),
+      _drainSalvageTools: Annotation<any>({
+        reducer: (_prev: any, next: any) => next,
+        default: () => null,
+      }),
       _detectedPackageManager: Annotation<any>,
       _otherWorkerFiles: Annotation<any>,
       _existingCodebaseFiles: Annotation<any>,
