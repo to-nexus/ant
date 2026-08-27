@@ -39,7 +39,7 @@ import { buildCustomJobSystemBlock, DEFINITION_MOUNT_PREFIX } from '../../../../
 import { getToolsByNames } from '../../../common/tool/toolSchemas';
 import { ToolName } from '../../../common/tool/toolCatalog';
 import { maybeJoinSubagents, ownerKeyFor } from '../../../common/subagent';
-import { requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
+import { getActiveCustomAgentScopeRoots, requireActiveCustomJob } from '../../../../core/customAgents/activeCustomJob';
 import type { ResolvedCustomJob } from '../../../../core/customAgents/types';
 import { requiresApproval, isClarifyEnabled, UNIVERSAL_CLARIFY_BUDGET } from '../../../../core/customAgents/universalToolPolicy';
 import { CLARIFY_TOOL_DEFINITION } from '../../../common/clarify/tool';
@@ -113,7 +113,11 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
   // directories get a list_files-first instruction, large files an inline
   // outline so read_file's range-refusal has a real target.
   const attachedSection = state.featurePath
-    ? buildAttachedContextSection(state.featurePath, state.turnContext?.context ?? [])
+    ? buildAttachedContextSection(
+        state.featurePath,
+        state.turnContext?.context ?? [],
+        getActiveCustomAgentScopeRoots(),
+      )
     : null;
   if (attachedSection) sections.push(attachedSection);
 

@@ -28,6 +28,13 @@ import {
   ToolName,
 } from '../../src/agents/common/tool/toolCatalog';
 import { getToolsByNames } from '../../src/agents/common/tool/toolSchemas';
+import {
+  createUniversalFileSystem,
+  definitionMount,
+  peerAgentsMount,
+  pipelineRunsMount,
+} from '../../src/agents/universal/graph/runtime';
+import type { FileSystemPort } from '../../src/core/ports/filesystem';
 import { createUniversalToolRegistry } from '../../src/agents/common/tool/presets';
 
 describe('UNIVERSAL_BUILTIN_TOOLS ↔ tool layer reconciliation', () => {
@@ -189,5 +196,78 @@ describe('isClarifyEnabled — knob truth table', () => {
     ['general-only → default (general matches no declared intent)', false, [intent('a', true)], ['general'], false],
   ])('%s', (_label, clarifyDefault, intents, activeIntents, expected) => {
     expect(isClarifyEnabled({ clarifyDefault, intents }, activeIntents)).toBe(expected);
+  });
+});
+
+describe('createUniversalFileSystem — agent-plane mount table', () => {
+  // The mount set IS the attachable set (`resolveUniversalAgentPlanePath`).
+  // These rows pin the facade's routing and its read-only contract; drifting
+  // either side re-creates the attachable-but-unreadable class of bug.
+  const port = (tag: string): FileSystemPort =>
+    ({
+      readFile: async (p: string) => `${tag}:${p}`,
+      fileExists: async (p: string) => p !== 'ghost',
+      readDirectory: async () => [],
+      listFiles: async (p: string) => [`${tag}:${p}`],
+      isDirectory: async () => false,
+      writeFile: async () => undefined,
+      deleteFile: async () => undefined,
+      createDirectory: async () => undefined,
+      copyFile: async () => undefined,
+      moveFile: async () => undefined,
+      copyDirectory: async () => undefined,
+      moveDirectory: async () => undefined,
+      getRootPath: () => `/root/${tag}`,
+      resolveAbsolute: (p: string) => `/root/${tag}/${p}`,
+    }) as unknown as FileSystemPort;
+
+  const build = () =>
+    createUniversalFileSystem(port('artifacts'), [
+      definitionMount(port('own-def')),
+      peerAgentsMount(
+        [{ scope: 'user', root: '/scope', readonly: false }],
+        (root) => port(`peer:${root}`),
+      ),
+      pipelineRunsMount('/runs', () => port('runs')),
+    ]);
+
+  it.each([
+    ['artifact path → artifacts root', 'plan/notes.md', 'artifacts:plan/notes.md'],
+    ['own definition mount strips its prefix', '_agent-definition/agent.yaml', 'own-def:agent.yaml'],
+    ['run log mount strips its prefix', 'pipeline-runs/r1.jsonl', 'runs:r1.jsonl'],
+  ] as const)('%s', async (_label, p, expected) => {
+    await expect(build().readFile(p)).resolves.toBe(expected);
+  });
+
+  it('an unresolvable peer id is an error, never a fall-through to the artifacts root', () => {
+    // findAgentRoot requires an agent.yaml on disk. The facade rejects the
+    // path outright — silently reading `artifacts/_agents/…` instead would be
+    // the dead-promise bug in a new costume. (Throws synchronously, as every
+    // mount refusal has since the facade existed.)
+    expect(() => build().readFile('_agents/no-such-agent/agent.yaml')).toThrow(/Cannot resolve mounted path/);
+  });
+
+  it.each([
+    ['_agent-definition/', '_agent-definition/agent.yaml'],
+    ['_agents/', '_agents/payments-ops/agent.yaml'],
+    ['pipeline-runs/', 'pipeline-runs/r1.jsonl'],
+  ] as const)('every mount is read-only (%s)', (_prefix, p) => {
+    const fs = build();
+    expect(() => fs.writeFile(p, 'x')).toThrow(/read-only/);
+    expect(() => fs.deleteFile(p)).toThrow(/read-only/);
+    expect(() => fs.createDirectory(p)).toThrow(/read-only/);
+    // Refused as EITHER operand — a copy out of a mount is still a mount write.
+    expect(() => fs.copyFile(p, 'out.md')).toThrow(/read-only/);
+    expect(() => fs.copyFile('in.md', p)).toThrow(/read-only/);
+  });
+
+  it('sessions/ is not a mount — it stays outside the sandbox entirely', async () => {
+    // It resolves against artifacts (i.e. nowhere useful), which is why the
+    // accept gate refuses it rather than letting the turn discover this.
+    await expect(build().readFile('sessions/chat.jsonl')).resolves.toBe('artifacts:sessions/chat.jsonl');
+  });
+
+  it('getRootPath stays the artifacts root (ripgrep cwd — mounts are not searchable)', () => {
+    expect(build().getRootPath()).toBe('/root/artifacts');
   });
 });

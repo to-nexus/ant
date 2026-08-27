@@ -14,6 +14,7 @@ import {
   INTENT_INFER_FILE_NAME,
   INTENT_PROMPT_FILE_NAME,
   INTENT_HOOKS_FILE_NAME,
+  ON_DEMAND_DIR_NAME,
   isAllowedDefinitionPath,
   isValidCustomId,
   validateMcpServers,
@@ -260,6 +261,13 @@ export function gateDefinitionSave(
         ok: false,
         status: 400,
         error: `injections/ was removed — each intent owns its prose as jobs/{jobId}/${INTENTS_DIR_NAME}/{intentId}/${INTENT_PROMPT_FILE_NAME} (its ${INTENT_INFER_FILE_NAME} criterion says when it applies)`,
+      };
+    }
+    if (/^(jobs\/[^/]+\/)?reference\//.test(normalized)) {
+      return {
+        ok: false,
+        status: 400,
+        error: `reference/ was renamed to ${ON_DEMAND_DIR_NAME}/ — the channel is unchanged (paths rendered into the system block, bodies read on demand); save the file under ${ON_DEMAND_DIR_NAME}/ instead`,
       };
     }
     return { ok: false, status: 400, error: `Path is outside the definition whitelist: ${normalized}` };

@@ -499,6 +499,15 @@ describe('classifyDefinitionPath — file-tree navigation targets', () => {
     ['jobs/weekly/intents/report/notes.md', { kind: 'other' }],
     ['base/role.md', { kind: 'prose' }],
     ['jobs/weekly/base/system.md', { kind: 'prose', jobId: 'weekly' }],
+    // on-demand/ nests to any depth and admits .md + .json; anything else
+    // there is 'other' (dimmed in the tree, no editor).
+    ['on-demand/spec.md', { kind: 'on-demand' }],
+    ['on-demand/erp/v2/openapi.json', { kind: 'on-demand' }],
+    ['on-demand/erp/notes.txt', { kind: 'other' }],
+    ['on-demand', { kind: 'other' }],
+    ['jobs/weekly/on-demand/fields.md', { kind: 'on-demand', jobId: 'weekly' }],
+    ['jobs/weekly/on-demand/vendor/dump.json', { kind: 'on-demand', jobId: 'weekly' }],
+    ['jobs/weekly/on-demand/dump.yaml', { kind: 'other' }],
     ['random/notes.txt', { kind: 'other' }],
   ] as const)('%s', (path, expected) => {
     expect(classifyDefinitionPath(path)).toEqual(expected);
@@ -529,6 +538,7 @@ describe('classifyDefinitionPath — file-tree navigation targets', () => {
       'jobs/weekly/intents/report/prompt.md',
       'jobs/weekly/intents/report/hooks.yaml',
       'base/role.md',
+      'on-demand/spec.md',
     ].map((p) => classifyDefinitionPath(p).kind);
     expect(new Set(kinds).size).toBe(kinds.length);
     for (const kind of kinds) {

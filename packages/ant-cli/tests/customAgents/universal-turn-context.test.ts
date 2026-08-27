@@ -46,7 +46,7 @@ function makeResolved(intents: ResolvedCustomJob['intents'] = []): ResolvedCusto
     intentPrompts: {},
     mcpServers: {},
     apiServers: {},
-    referenceDocs: [],
+    onDemandDocs: [],
     builtinTools: [],
     approval: {},
     clarifyDefault: true,
@@ -349,6 +349,70 @@ describe('validateUniversalTurnMeta — accept gate', () => {
     const validate = await load();
     const result = await validate(container, CATALOG, [], ['reports']);
     expect(result).toEqual({ ok: true, meta: { intents: [], context: ['reports'] } });
+  });
+
+  // ── peer agent definitions (`_agents/{agentId}/…`) ────────────────────────
+  describe('_agents context paths', () => {
+    let agentsRoot: string;
+    const roots = () => [{ scope: 'user' as const, root: agentsRoot, readonly: false }];
+
+    beforeEach(() => {
+      agentsRoot = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'ant-turn-meta-agents-'));
+      const agent = nodePath.join(agentsRoot, 'payments-ops');
+      fs.mkdirSync(nodePath.join(agent, 'jobs', 'settle', 'intents', 'reconcile'), { recursive: true });
+      fs.writeFileSync(nodePath.join(agent, 'agent.yaml'), 'id: payments-ops\n');
+      fs.writeFileSync(nodePath.join(agent, 'jobs', 'settle', 'job.yaml'), 'id: settle\n');
+      fs.writeFileSync(nodePath.join(agent, 'jobs', 'settle', 'intents', 'reconcile', 'infer.md'), 'x');
+      // Not in the definition whitelist — present on disk, still refused.
+      fs.writeFileSync(nodePath.join(agent, 'jobs', 'settle', 'secret.txt'), 'x');
+    });
+
+    afterEach(() => {
+      fs.rmSync(agentsRoot, { recursive: true, force: true });
+    });
+
+    it.each([
+      ['a definition file', '_agents/payments-ops/jobs/settle/job.yaml'],
+      ['an intent file', '_agents/payments-ops/jobs/settle/intents/reconcile/infer.md'],
+    ] as const)('accepts %s', async (_label, rel) => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], [rel], undefined, ['read_file'], roots());
+      expect(result).toEqual({ ok: true, meta: { intents: [], context: [rel] } });
+    });
+
+    it.each([
+      ['whole agent', '_agents/payments-ops'],
+      ['a job dir', '_agents/payments-ops/jobs/settle'],
+      ['an intent dir', '_agents/payments-ops/jobs/settle/intents/reconcile'],
+    ] as const)('accepts %s as a folder unit when list_files is granted', async (_label, rel) => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], [rel], undefined, ['read_file', 'list_files'], roots());
+      expect(result).toEqual({ ok: true, meta: { intents: [], context: [rel] } });
+    });
+
+    it('a definition directory without list_files → 400 context-dir-not-listable', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['_agents/payments-ops'], undefined, ['read_file'], roots());
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'context-dir-not-listable' });
+    });
+
+    it.each([
+      ['unknown agent', '_agents/no-such-agent/agent.yaml'],
+      ['bare _agents (a picker group row, not a directory)', '_agents'],
+      ['traversal out of the agent dir', '_agents/payments-ops/../../escape.md'],
+      ['a file outside the definition vocabulary', '_agents/payments-ops/jobs/settle/secret.txt'],
+      ['a definition path that does not exist', '_agents/payments-ops/base/ghost.md'],
+    ] as const)('refuses %s → 400 invalid-context-path', async (_label, rel) => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], [rel], undefined, ['read_file', 'list_files'], roots());
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
+
+    it('with no scope roots supplied every peer path is refused (no ambient discovery)', async () => {
+      const validate = await load();
+      const result = await validate(container, CATALOG, [], ['_agents/payments-ops/agent.yaml'], undefined, ['read_file']);
+      expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+    });
   });
 });
 

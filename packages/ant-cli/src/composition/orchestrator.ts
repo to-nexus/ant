@@ -629,10 +629,12 @@ export async function orchestrator(params: {
         console.log('ℹ️  Real-time updates disabled (no ANT_REDIS_URL) [Universal]');
       }
 
-      // Two-root sandbox (D6): artifacts rw + definition ro mount. The
+      // Agent-plane sandbox (D6): artifacts rw + read-only mounts. The
       // definition was activated by job-runner main() before orchestration.
-      const { requireActiveCustomJob } = await import('../core/customAgents/activeCustomJob');
-      const { createUniversalFileSystem } = await import('../agents/universal/graph/runtime');
+      const { requireActiveCustomJob, getActiveCustomAgentScopeRoots } = await import('../core/customAgents/activeCustomJob');
+      const { createUniversalFileSystem, definitionMount, peerAgentsMount, pipelineRunsMount } = await import(
+        '../agents/universal/graph/runtime'
+      );
       const activeDef = requireActiveCustomJob();
 
       // Per-(agentId, jobId) session — {container}/sessions/{agentId}/{jobId}.json,
@@ -643,8 +645,16 @@ export async function orchestrator(params: {
       const path = await import('path');
       const artifactsRoot = process.env.ANT_CODEBASE_PATH || path.join(projectPath, 'universal', 'artifacts');
       const artifactsFs = AdapterFactory.createFileSystemAdapterWithPath(artifactsRoot);
-      const definitionFs = AdapterFactory.createFileSystemAdapterWithPath(activeDef.agentDir);
-      const fileSystem = createUniversalFileSystem(artifactsFs, definitionFs);
+      // Mount set == the agent plane (`resolveUniversalAgentPlanePath`): own
+      // definition, peer definitions, run logs. `sessions/` is deliberately
+      // absent from both.
+      const { getPipelineRunsRootOf } = await import('../core/customAgents/universalContainer');
+      const createFs = (root: string) => AdapterFactory.createFileSystemAdapterWithPath(root);
+      const fileSystem = createUniversalFileSystem(artifactsFs, [
+        definitionMount(createFs(activeDef.agentDir)),
+        peerAgentsMount(getActiveCustomAgentScopeRoots(), createFs),
+        pipelineRunsMount(getPipelineRunsRootOf(featurePath), createFs),
+      ]);
 
       // Record user_turn — the workspace's chat.jsonl/feature.jsonl live under
       // the universal container (featurePath-shaped), so the shared helper works.

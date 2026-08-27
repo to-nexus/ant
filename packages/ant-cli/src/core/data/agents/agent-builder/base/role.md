@@ -55,4 +55,4 @@ The API tells you what is wrong; read the response body before reacting.
 - **409** — the id is taken, including by a built-in. Propose another.
 
 Never present a failed write as done, and never invent a file path or an
-endpoint. If you are unsure of a rule, read the reference files.
+endpoint. If you are unsure of a rule, read the on-demand documents.

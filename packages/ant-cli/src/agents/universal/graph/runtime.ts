@@ -11,7 +11,9 @@
  * this module hands out must never be replaced, only populated.
  */
 
+import { UNIVERSAL_AGENTS_DIRNAME, UNIVERSAL_PIPELINE_RUNS_DIRNAME, parseUniversalAgentRef } from '@ant/shared';
 import type { FileSystemPort } from '../../../core/ports/filesystem';
+import { findAgentRoot, type CustomAgentScopeRoot } from '../../../core/customAgents/CustomAgentLoader';
 import { McpConnectionManager, type McpToolInfo } from '../../../core/customAgents/McpConnectionManager';
 import { DEFINITION_MOUNT_PREFIX } from '../../../core/customAgents/promptBlock';
 import { XMLStreamParser } from '../../../core/streaming/parsers/XMLStreamParser';
@@ -163,39 +165,131 @@ export function _resetUniversalRuntimeForTests(): void {
 }
 
 /**
- * Two-root sandbox facade: `universal/artifacts/` read-write, plus the custom
- * agent definition dir mounted read-only at {@link DEFINITION_MOUNT_PREFIX}.
- * Everything else delegates verbatim to the artifacts adapter (whose
- * `resolveAbsolute` supplies path-traversal protection for both roots).
+ * One read-only mount in the universal sandbox facade.
+ *
+ * `resolve` returns the port + port-relative path a mounted path maps to, or
+ * `null` when the mount owns the prefix but cannot serve that path (an unknown
+ * agent id) — which surfaces as a tool error rather than a silent fall-through
+ * to the artifacts root.
+ */
+export interface UniversalReadOnlyMount {
+  /** Merged-view prefix, trailing slash included (`_agent-definition/`). */
+  prefix: string;
+  resolve(rel: string): { fs: FileSystemPort; path: string } | null;
+}
+
+/** The own-definition mount, the shape every caller used before mounts were plural. */
+export function definitionMount(definitionFs: FileSystemPort): UniversalReadOnlyMount {
+  return {
+    prefix: DEFINITION_MOUNT_PREFIX,
+    resolve: (rel) => ({ fs: definitionFs, path: rel }),
+  };
+}
+
+/**
+ * Peer-definition mount (`_agents/{agentId}/…`) — read-only view of every agent
+ * definition this account can see, resolved through the SAME ordered scope
+ * roots (`findAgentRoot`, user > org > builtin) that `GET /account/agents`
+ * lists. Read authority is therefore identical to the settings screen's; this
+ * mount widens nothing, it only removes an HTTP round trip.
+ *
+ * An unknown or invalid agent id resolves to `null` — the facade turns that
+ * into a tool error instead of falling through to the artifacts root.
+ */
+export function peerAgentsMount(
+  scopeRoots: CustomAgentScopeRoot[],
+  createFs: (root: string) => FileSystemPort,
+): UniversalReadOnlyMount {
+  const cache = new Map<string, FileSystemPort>();
+  return {
+    prefix: `${UNIVERSAL_AGENTS_DIRNAME}/`,
+    resolve: (rel) => {
+      const parsed = parseUniversalAgentRef(`${UNIVERSAL_AGENTS_DIRNAME}/${rel}`);
+      if (!parsed) return null;
+      let fs = cache.get(parsed.agentId);
+      if (!fs) {
+        const found = findAgentRoot(scopeRoots, parsed.agentId);
+        if (!found) return null;
+        fs = createFs(found.agentDir);
+        cache.set(parsed.agentId, fs);
+      }
+      return { fs, path: parsed.rest };
+    },
+  };
+}
+
+/** Pipeline run-log mount — the grafted node the explorer already shows, now
+ * readable by the tools that were being handed its paths. */
+export function pipelineRunsMount(
+  runsRoot: string,
+  createFs: (root: string) => FileSystemPort,
+): UniversalReadOnlyMount {
+  const fs = createFs(runsRoot);
+  return {
+    prefix: `${UNIVERSAL_PIPELINE_RUNS_DIRNAME}/`,
+    resolve: (rel) => ({ fs, path: rel }),
+  };
+}
+
+/**
+ * N-root sandbox facade: `universal/artifacts/` read-write, plus read-only
+ * mounts (the agent's own definition dir at {@link DEFINITION_MOUNT_PREFIX},
+ * peer definitions at `_agents/`, run logs at `pipeline-runs/`). Everything
+ * else delegates verbatim to the artifacts adapter (whose `resolveAbsolute`
+ * supplies path-traversal protection for every root).
+ *
+ * The mount set is the AGENT PLANE — the same set `resolveUniversalAgentPlanePath`
+ * admits, and therefore the same set the composer may attach. Adding a mount
+ * here without teaching that resolver (or the reverse) re-creates the
+ * attachable-but-unreadable class of bug this replaced.
  */
 export function createUniversalFileSystem(
   artifactsFs: FileSystemPort,
-  definitionFs: FileSystemPort,
+  mounts: UniversalReadOnlyMount[],
 ): FileSystemPort {
-  const strip = (p: string): string => p.slice(DEFINITION_MOUNT_PREFIX.length);
-  const isMounted = (p: string): boolean => p.startsWith(DEFINITION_MOUNT_PREFIX);
-  const readOnly = (op: string): never => {
-    throw new Error(`${op}: the agent definition mount (${DEFINITION_MOUNT_PREFIX}) is read-only`);
+  const mountFor = (p: string): UniversalReadOnlyMount | undefined =>
+    mounts.find((m) => p.startsWith(m.prefix));
+
+  const readOnly = (op: string, prefix: string): never => {
+    throw new Error(`${op}: the ${prefix} mount is read-only`);
+  };
+
+  /** Resolve a mounted path, or throw the mount's own "cannot serve this" error. */
+  const target = (m: UniversalReadOnlyMount, p: string): { fs: FileSystemPort; path: string } => {
+    const t = m.resolve(p.slice(m.prefix.length));
+    if (!t) throw new Error(`Cannot resolve mounted path: ${p}`);
+    return t;
+  };
+
+  /** Read op: route to the owning mount, else the artifacts adapter. */
+  const read = <T>(p: string, onMount: (fs: FileSystemPort, rel: string) => T, onArtifacts: () => T): T => {
+    const m = mountFor(p);
+    if (!m) return onArtifacts();
+    const t = target(m, p);
+    return onMount(t.fs, t.path);
+  };
+
+  /** Write op: refuse if EITHER operand is mounted. */
+  const write = <T>(paths: string[], op: string, run: () => T): T => {
+    const m = paths.map(mountFor).find(Boolean);
+    if (m) return readOnly(op, m.prefix);
+    return run();
   };
 
   return {
-    readFile: (p) => (isMounted(p) ? definitionFs.readFile(strip(p)) : artifactsFs.readFile(p)),
-    fileExists: (p) => (isMounted(p) ? definitionFs.fileExists(strip(p)) : artifactsFs.fileExists(p)),
-    readDirectory: (p) => (isMounted(p) ? definitionFs.readDirectory(strip(p)) : artifactsFs.readDirectory(p)),
-    listFiles: (p, exclude) => (isMounted(p) ? definitionFs.listFiles(strip(p), exclude) : artifactsFs.listFiles(p, exclude)),
-    isDirectory: (p) => (isMounted(p) ? definitionFs.isDirectory(strip(p)) : artifactsFs.isDirectory(p)),
-    writeFile: (p, c) => (isMounted(p) ? readOnly('writeFile') : artifactsFs.writeFile(p, c)),
-    deleteFile: (p) => (isMounted(p) ? readOnly('deleteFile') : artifactsFs.deleteFile(p)),
-    createDirectory: (p) => (isMounted(p) ? readOnly('createDirectory') : artifactsFs.createDirectory(p)),
-    copyFile: (src, dest, overwrite) =>
-      isMounted(src) || isMounted(dest) ? readOnly('copyFile') : artifactsFs.copyFile(src, dest, overwrite),
-    moveFile: (src, dest, overwrite) =>
-      isMounted(src) || isMounted(dest) ? readOnly('moveFile') : artifactsFs.moveFile(src, dest, overwrite),
-    copyDirectory: (src, dest) =>
-      isMounted(src) || isMounted(dest) ? readOnly('copyDirectory') : artifactsFs.copyDirectory(src, dest),
-    moveDirectory: (src, dest) =>
-      isMounted(src) || isMounted(dest) ? readOnly('moveDirectory') : artifactsFs.moveDirectory(src, dest),
+    readFile: (p) => read(p, (fs, rel) => fs.readFile(rel), () => artifactsFs.readFile(p)),
+    fileExists: (p) => read(p, (fs, rel) => fs.fileExists(rel), () => artifactsFs.fileExists(p)),
+    readDirectory: (p) => read(p, (fs, rel) => fs.readDirectory(rel), () => artifactsFs.readDirectory(p)),
+    listFiles: (p, exclude) => read(p, (fs, rel) => fs.listFiles(rel, exclude), () => artifactsFs.listFiles(p, exclude)),
+    isDirectory: (p) => read(p, (fs, rel) => fs.isDirectory(rel), () => artifactsFs.isDirectory(p)),
+    writeFile: (p, c) => write([p], 'writeFile', () => artifactsFs.writeFile(p, c)),
+    deleteFile: (p) => write([p], 'deleteFile', () => artifactsFs.deleteFile(p)),
+    createDirectory: (p) => write([p], 'createDirectory', () => artifactsFs.createDirectory(p)),
+    copyFile: (src, dest, overwrite) => write([src, dest], 'copyFile', () => artifactsFs.copyFile(src, dest, overwrite)),
+    moveFile: (src, dest, overwrite) => write([src, dest], 'moveFile', () => artifactsFs.moveFile(src, dest, overwrite)),
+    copyDirectory: (src, dest) => write([src, dest], 'copyDirectory', () => artifactsFs.copyDirectory(src, dest)),
+    moveDirectory: (src, dest) => write([src, dest], 'moveDirectory', () => artifactsFs.moveDirectory(src, dest)),
     getRootPath: () => artifactsFs.getRootPath(),
-    resolveAbsolute: (p) => (isMounted(p) ? definitionFs.resolveAbsolute(strip(p)) : artifactsFs.resolveAbsolute(p)),
+    resolveAbsolute: (p) => read(p, (fs, rel) => fs.resolveAbsolute(rel), () => artifactsFs.resolveAbsolute(p)),
   };
 }

@@ -4,8 +4,8 @@
 # Authoring guide: docs/guides/custom-agent-authoring.md
 #
 # The agent contributes identity (name), the always-on base/*.md prose, and
-# optionally shared MCP connections. Tools, intents, and injections are
-# job-owned — see jobs/chat/.
+# optionally shared MCP connections. Tools and intents are job-owned — see
+# jobs/chat/; on-demand/ documents may sit at either level.
 id: assistant # must equal the directory name, [a-z0-9][a-z0-9-]*
 name: 'Assistant'
 version: 1

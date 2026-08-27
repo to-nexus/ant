@@ -29,6 +29,7 @@ import {
   type CustomJobPromptPreview,
 } from '@ant/shared';
 import type { WorkspaceResolver } from '../../../../core/config/WorkspacePathResolver';
+import { FILE_READ_MAX_BYTES } from '../services/ProjectService/FileOperationService';
 import { CUSTOM_AGENTS_DIRNAME, deriveCustomAgentScopeRootsForTenant } from '../../../../core/customAgents/scopeRoots';
 import type { OrganizationRepositoryPort } from '../../../../core/ports/organizationRepository';
 import {
@@ -641,6 +642,17 @@ export function createAccountAgentRoutes(deps: {
       }
       if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
         return res.status(404).json({ error: `Definition file not found: ${rel}` });
+      }
+      // Same descriptor-bound ceiling as every other JSON file read: the whole
+      // body is materialised into the API heap and the serializer, and the
+      // whitelist admits `on-demand/**.json` of any size (a vendor swagger
+      // dropped in verbatim). An authenticated route is not a budgeted one.
+      const size = fs.statSync(full).size;
+      if (size > FILE_READ_MAX_BYTES) {
+        return res.status(413).json({
+          error: `Definition file too large to open as text: ${rel} (limit ${FILE_READ_MAX_BYTES} bytes)`,
+          code: 'FILE_TOO_LARGE',
+        });
       }
       res.json({ path: rel, content: fs.readFileSync(full, 'utf-8') });
     } catch (error: any) {

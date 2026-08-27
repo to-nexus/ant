@@ -288,9 +288,9 @@ describe('shipped agent-builder definition', () => {
     await mcp.close();
   });
 
-  it('carries its format contract as read-on-demand reference, not standing prose', () => {
-    const refDir = path.join(SRC_AGENTS_DIR, 'agent-builder', 'reference');
-    expect(fs.readdirSync(refDir).sort()).toEqual(['api-surface.md', 'definition-format.md']);
+  it('carries its format contract as on-demand documents, not standing prose', () => {
+    const docsDir = path.join(SRC_AGENTS_DIR, 'agent-builder', 'on-demand');
+    expect(fs.readdirSync(docsDir).sort()).toEqual(['api-surface.md', 'definition-format.md']);
   });
 });
 

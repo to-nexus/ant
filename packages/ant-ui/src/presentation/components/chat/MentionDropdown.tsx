@@ -1,12 +1,14 @@
 import { useEffect, useRef, Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { MentionSuggestion } from './hooks/useMentionAutocomplete';
-import { Target, Crosshair, FileText, BookOpen, Zap, FolderTree, ClipboardList } from 'lucide-react';
+import { Target, Crosshair, FileText, BookOpen, Zap, FolderTree, ClipboardList, Bot } from 'lucide-react';
 
 const TYPE_ICONS: Record<string, any> = {
   intent: Target,
   target: Crosshair,
   ref: FileText,
   context: BookOpen,
+  agentCtx: Bot,
   explicit: Zap,
   plan: ClipboardList,
   browse: FolderTree,
@@ -17,9 +19,20 @@ const TYPE_COLORS: Record<string, string> = {
   target: 'text-orange-500',
   ref: 'text-emerald-500',
   context: 'text-gray-500',
+  agentCtx: 'text-cyan-500',
   explicit: 'text-indigo-500',
   plan: 'text-amber-500',
   browse: 'text-violet-500',
+};
+
+/** Group header i18n keys under `chat:mention.group`. Keyed by
+ * `MentionSuggestion.group` so a new namespace is one row here, not another
+ * ternary. */
+const GROUP_LABEL_KEYS: Record<string, string> = {
+  suggested: 'suggested',
+  all: 'all',
+  artifacts: 'artifacts',
+  agents: 'agentDefinitions',
 };
 
 const COMMAND_ICON_MAP: Record<string, { icon: any; color: string }> = {
@@ -40,6 +53,7 @@ interface MentionDropdownProps {
 
 export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover }: MentionDropdownProps) {
   const listRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation('chat');
 
   useEffect(() => {
     if (!listRef.current) return;
@@ -81,7 +95,7 @@ export function MentionDropdown({ suggestions, selectedIndex, onSelect, onHover 
                   <div style={{ borderTop: '1px solid var(--border-1)' }} />
                 )}
                 <div className="px-3 py-1 text-[10px] font-medium text-[color:var(--text-4)] uppercase tracking-wider select-none">
-                  {s.group === 'suggested' ? '★ Suggested' : 'All Files'}
+                  {t(`mention.group.${GROUP_LABEL_KEYS[s.group!] ?? 'all'}`)}
                 </div>
               </>
             )}

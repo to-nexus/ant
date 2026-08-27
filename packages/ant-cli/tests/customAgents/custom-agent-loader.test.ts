@@ -247,6 +247,20 @@ describe('loadCustomJob — legacy schema fails loud with migration messages', (
     expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(/Agent-level injections\/ is no longer supported/);
   });
 
+  // The rename is a hard cutover for the same reason the injections removal
+  // was: an author whose docs silently stopped being listed would conclude the
+  // channel works. Both levels refuse, and the message names the new directory.
+  it.each([
+    ['agent-level', ['reference'], /Agent-level reference\/ was renamed to on-demand\//],
+    ['job-level', ['jobs', 'weekly', 'reference'], /reference\/ was renamed to on-demand\//],
+  ] as const)('%s reference/ on disk → throws rename instruction', (_label, segments, expected) => {
+    const dir = writeAgent(roots()[0].root, 'ops', {});
+    writeJob(dir, 'weekly', {});
+    fs.mkdirSync(path.join(dir, ...segments), { recursive: true });
+    fs.writeFileSync(path.join(dir, ...segments, 'spec.md'), '# spec');
+    expect(() => loadCustomJob(roots(), 'ops', 'weekly')).toThrow(expected);
+  });
+
   it('job-level injections/*.md on disk → throws move instruction', () => {
     const dir = writeAgent(roots()[0].root, 'ops', {});
     writeJob(dir, 'weekly', {});

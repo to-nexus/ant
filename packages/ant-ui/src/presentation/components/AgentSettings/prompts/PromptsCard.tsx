@@ -1,9 +1,10 @@
 /**
- * Prompts section card — the selection-scoped BASE-PROSE surface: file list on
- * top, the selected file's editor below. Scope model: agent = base/*.md ·
- * job = jobs/{id}/base/*.md. Renders on agent/job levels only — an intent's
- * prose is its own prompt.md card, and structured files (yaml, infer.md) are
- * owned by their own cards above.
+ * Prompts section card — the selection-scoped PROSE surface: file list on
+ * top, the selected file's editor below. Scope model: agent = base/*.md +
+ * on-demand/** · job = the same two under jobs/{id}/. Renders on agent/job
+ * levels only — an intent's prose is its own prompt.md card, and structured
+ * files (yaml, infer.md) are owned by their own cards above. On-demand docs
+ * have no card of their own, so this one owns them.
  *
  * SAME ANATOMY as the intent prompt card (header description + a right-edge
  * raw ⇄ preview toggle over the shared `proseSurface` body); what a multi-file
@@ -58,6 +59,11 @@ export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) 
 
   const baseDir = scope.level === 'agent' ? 'base/' : `jobs/${scope.jobId}/base/`;
   const [mode, setMode] = useProseMode(openFile?.path ?? '', readonly);
+  // Markdown preview only means something for markdown. An on-demand `.json`
+  // (a vendor swagger) is raw-only — rendering it through ReactMarkdown would
+  // show a mangled blob, and readonly scopes default to preview.
+  const previewable = !!openFile?.path.endsWith('.md');
+  const effectiveMode = previewable ? mode : 'raw';
 
   const dirty = !!openFile && openFile.content !== openFile.savedContent;
 
@@ -154,7 +160,7 @@ export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) 
       accent="cool"
       title={t('prompts.title', 'Prompts')}
       description={description}
-      headerAction={openFile ? <ProseModeToggle mode={mode} onChange={setMode} /> : undefined}
+      headerAction={openFile && previewable ? <ProseModeToggle mode={mode} onChange={setMode} /> : undefined}
     >
       <div className="flex flex-col gap-3">
         {/* file list + toolbar — boxed, so the list reads as one control inside
@@ -239,7 +245,7 @@ export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) 
             <PromptEditor
               openFile={openFile}
               readonly={readonly}
-              mode={mode}
+              mode={effectiveMode}
               validation={validation}
               onChange={setDefinitionFileContent}
               onSave={handleSave}

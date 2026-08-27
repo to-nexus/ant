@@ -26,6 +26,7 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 import {
   INTENTS_DIR_NAME,
+  ON_DEMAND_DIR_NAME,
   INTENT_INFER_FILE_NAME,
   INTENT_PROMPT_FILE_NAME,
   INTENT_HOOKS_FILE_NAME,
@@ -237,11 +238,11 @@ function readBaseProse(dir: string): string {
 }
 
 /**
- * Recursive listing of a `reference/` docs dir (.md/.json, any depth) as
+ * Recursive listing of an `on-demand/` docs dir (.md/.json, any depth) as
  * definition-relative paths — the read-on-demand index the system block
  * renders so the model knows these documents exist without inlining them.
  */
-function listReferenceDocs(agentDir: string, relBase: string): string[] {
+function listOnDemandDocs(agentDir: string, relBase: string): string[] {
   const walk = (rel: string): string[] => {
     const abs = path.join(agentDir, rel);
     if (!fs.existsSync(abs)) return [];
@@ -391,6 +392,13 @@ export function loadCustomJob(
       jobId,
     );
   }
+  if (fs.existsSync(path.join(agentDir, 'reference'))) {
+    throw new CustomAgentValidationError(
+      `Agent-level reference/ was renamed to ${ON_DEMAND_DIR_NAME}/ — the channel is unchanged (paths rendered, bodies read on demand); rename the directory.`,
+      agentId,
+      jobId,
+    );
+  }
 
   const agent = readYamlFile<CustomAgentYaml>(path.join(agentDir, 'agent.yaml'), agentId);
   validateAgentYamlDoc(agent, agentId);
@@ -438,6 +446,13 @@ export function loadCustomJob(
       jobId,
     );
   }
+  if (fs.existsSync(path.join(jobDir, 'reference'))) {
+    throw new CustomAgentValidationError(
+      `jobs/${jobId}/reference/ was renamed to ${ON_DEMAND_DIR_NAME}/ — the channel is unchanged (paths rendered, bodies read on demand); rename the directory.`,
+      agentId,
+      jobId,
+    );
+  }
   const { intents, intentPrompts } = parseIntentsDir(jobDir, agentId, jobId);
 
   // mcp servers: union, job wins on name collision
@@ -451,10 +466,10 @@ export function loadCustomJob(
     ...(job.apis ?? {}),
   };
 
-  // reference/ docs index: agent-level + this job's (read-on-demand channel)
-  const referenceDocs = [
-    ...listReferenceDocs(agentDir, 'reference'),
-    ...listReferenceDocs(agentDir, `jobs/${jobId}/reference`),
+  // on-demand/ docs index: agent-level + this job's (paths only — never inlined)
+  const onDemandDocs = [
+    ...listOnDemandDocs(agentDir, ON_DEMAND_DIR_NAME),
+    ...listOnDemandDocs(agentDir, `jobs/${jobId}/${ON_DEMAND_DIR_NAME}`),
   ];
 
   // Stop-hook cross-file rules (H7/H8) — intra-file shape was validated by
@@ -516,7 +531,7 @@ export function loadCustomJob(
     intentPrompts,
     mcpServers,
     apiServers,
-    referenceDocs,
+    onDemandDocs,
     builtinTools,
     approval,
     clarifyDefault,

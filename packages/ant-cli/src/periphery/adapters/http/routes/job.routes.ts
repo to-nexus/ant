@@ -380,7 +380,7 @@ export function createJobRoutes(deps: {
 
         // Explicit turn meta (`@intent:` / `@ctx:` mentions) — fail-loud at
         // accept; explicit input never silently drops.
-        const metaResult = await validateUniversalTurnMeta(resolved.containerPath, resolved.intentIds, intents, context, plan, resolved.builtinTools);
+        const metaResult = await validateUniversalTurnMeta(resolved.containerPath, resolved.intentIds, intents, context, plan, resolved.builtinTools, resolved.scopeRoots);
         if (!metaResult.ok) {
           return await rejectWithChatLine(metaResult.status, metaResult.error, metaResult.code, 'meta');
         }
@@ -1076,6 +1076,7 @@ export function createJobRoutes(deps: {
         // funnel as a fresh start.
         const resumeMeta = await validateUniversalTurnMeta(
           resolvedUniversal.containerPath, resolvedUniversal.intentIds, intents, context, plan, resolvedUniversal.builtinTools,
+          resolvedUniversal.scopeRoots,
         );
         if (!resumeMeta.ok) {
           return res.status(resumeMeta.status).json({ error: resumeMeta.error, code: resumeMeta.code });

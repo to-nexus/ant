@@ -48,6 +48,10 @@ Intents have no endpoints of their own. An intent exists once
 `jobs/{jobId}/intents/{intentId}/infer.md` is saved, and is renamed by renaming
 its directory.
 
+`on-demand/**` takes the same `PUT /file` — any depth, `.md` or `.json`, at the
+agent or the job level. That is how a full vendor spec gets in: save it there
+rather than pasting it into prose.
+
 ## Routes you will not reach
 
 `promote`, `editors`, `import`, and `files/upload` refuse this job's token.

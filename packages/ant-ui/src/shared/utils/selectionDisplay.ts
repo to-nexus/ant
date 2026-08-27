@@ -20,6 +20,19 @@ export interface SelectedEntry {
   rawPath: string;
 }
 
+/** Locate a node by its addressable `path` (NOT by a chain of display names —
+ * a graft may label a row differently from its path segment). */
+function findNode(fileTree: readonly FileNode[], target: string): FileNode | null {
+  for (const n of fileTree) {
+    if (n.path === target) return n;
+    if (n.children && (target === n.path || target.startsWith(`${n.path}/`))) {
+      const hit = findNode(n.children, target);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 /**
  * Sync `listDir` over the in-memory `fileTree`, feeding the shared
  * `compressPathsByFolderCore` so a live FE preview collapses directory
@@ -29,14 +42,17 @@ export interface SelectedEntry {
  */
 export function makeTreeListDir(fileTree: readonly FileNode[]): ListDir {
   return (dir: string): readonly DirEntry[] | null => {
-    let nodes: readonly FileNode[] = fileTree;
-    for (const part of dir.split('/')) {
-      const found = nodes.find(n => n.name === part);
-      if (!found || found.type !== 'directory' || !found.children) return null;
-      nodes = found.children;
-    }
-    return nodes.map(n => ({ name: n.name, isDirectory: n.type === 'directory' }));
+    const found = findNode(fileTree, dir);
+    if (!found || found.type !== 'directory' || !found.children) return null;
+    return found.children.map(n => ({ name: n.name, isDirectory: n.type === 'directory' }));
   };
+}
+
+/** Is this path a directory in the rendered tree? The folder-select gesture
+ * commits a bare directory path (no trailing `/`), which `describePath` alone
+ * cannot tell from a file — so the chip row asks the tree. */
+export function isDirectoryInTree(fileTree: readonly FileNode[], p: string): boolean {
+  return findNode(fileTree, p.replace(/\/+$/, ''))?.type === 'directory';
 }
 
 function describePath(p: string): { isFolder: boolean; display: string } {
@@ -83,13 +99,31 @@ export function resolveSelectedEntries(
  * Without a tree there is nothing to collapse against, so paths pass through
  * uncompressed rather than being dropped.
  */
+/** Files under a node, recursively — the `(N)` a folder chip carries. */
+function countFiles(node: FileNode): number {
+  if (node.type === 'file') return 1;
+  return (node.children ?? []).reduce((n, c) => n + countFiles(c), 0);
+}
+
 export function compressSelection(
   paths: readonly string[],
   fileTree: readonly FileNode[],
 ): SelectedEntry[] {
   if (paths.length === 0) return [];
   if (fileTree.length === 0) return paths.map(entryFromPath);
-  return compressPathsByFolderCore(paths, makeTreeListDir(fileTree)).map(entryFromCompressed);
+  return compressPathsByFolderCore(paths, makeTreeListDir(fileTree))
+    .map(entryFromCompressed)
+    .map((e) => {
+      // `compressPathsByFolderCore` collapses only when every descendant FILE
+      // was individually selected. The folder-select gesture commits the bare
+      // directory path instead, which arrives here uncollapsed and — with no
+      // trailing slash — reads as a file. Ask the tree.
+      if (e.isFolder) return e;
+      const node = findNode(fileTree, e.rawPath);
+      if (node?.type !== 'directory') return e;
+      const tail = e.rawPath.split('/').pop() || e.rawPath;
+      return { isFolder: true, display: `${tail}/`, fileCount: countFiles(node), rawPath: e.rawPath };
+    });
 }
 
 /** Every path a tree can represent — files AND directories. */

@@ -14,6 +14,7 @@ import * as path from 'path';
 import { logger } from '../../utils/logger';
 import { isBillingEnabled } from '../config/billingCapability';
 import { peekCloudModule } from '../cloud/cloudPlugin';
+import type { CustomAgentScopeRoot } from '../customAgents/CustomAgentLoader';
 
 // ============================================
 // Definition / turn-meta accept gates (moved verbatim from job.routes.ts)
@@ -50,6 +51,13 @@ export async function resolveUniversalExecuteContext(
       declaresSelfApi: boolean;
       /** Job tool allowlist — the turn-meta gate needs it to judge directory attachments. */
       builtinTools: string[];
+      /**
+       * Definition scope roots, built once here. The turn-meta gate resolves
+       * `_agents/**` attachments against them; NEVER re-derive
+       * (`deriveCustomAgentScopeRootsForTenant` is an SSOT with a fixed
+       * consumer list — a fourth derivation site is a drift vector).
+       */
+      scopeRoots: CustomAgentScopeRoot[];
     }
   | { ok: false; status: number; error: string; code: string }
 > {
@@ -72,10 +80,11 @@ export async function resolveUniversalExecuteContext(
   let intentIds: Set<string>;
   let declaresSelfApi = false;
   let builtinTools: string[] = [];
+  let scopeRoots: CustomAgentScopeRoot[] = [];
   try {
     const { deriveCustomAgentScopeRootsForTenant } = await import('../customAgents/scopeRoots');
     const { loadCustomJob } = await import('../customAgents/CustomAgentLoader');
-    const scopeRoots = deriveCustomAgentScopeRootsForTenant({
+    scopeRoots = deriveCustomAgentScopeRootsForTenant({
       workspacesPath: workspaceResolver.getPhysicalWorkspacesPath(),
       userId: userContext.userId,
       organizationId: userContext.organizationId,
@@ -92,12 +101,13 @@ export async function resolveUniversalExecuteContext(
   const { ensureUniversalContainer } = await import('../customAgents/universalContainer');
   ensureUniversalContainer(projectPath);
   const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
-  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools };
+  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools, scopeRoots };
 }
 
 /**
  * Validate the explicit turn meta (`@intent:` / `@ctx:` / `@plan` mentions)
- * against the job's catalog and the container's artifacts subtree. Explicit
+ * against the job's catalog and the AGENT PLANE (artifacts ∪ `pipeline-runs`
+ * ∪ `_agents` peer definitions — never `sessions`). Explicit
  * input is user intent — an unknown id is a 400 (`unknown-intent`), never a
  * silent drop (that contract belongs to the inference channel). `@plan` is
  * job-independent: a boolean per-turn flag, adopted only when strictly true.
@@ -109,6 +119,7 @@ export async function validateUniversalTurnMeta(
   rawContext: unknown,
   rawPlan?: unknown,
   builtinTools?: readonly string[],
+  scopeRoots: CustomAgentScopeRoot[] = [],
 ): Promise<
   | { ok: true; meta: { intents: string[]; context: string[]; plan?: boolean } | null }
   | { ok: false; status: number; error: string; code: string }
@@ -138,24 +149,41 @@ export async function validateUniversalTurnMeta(
     }
   }
 
-  const { resolveUniversalMergedPath, UNIVERSAL_SESSIONS_NODE } = await import('../customAgents/universalContainer');
+  // Attachability is judged against the AGENT PLANE — the same roots the tool
+  // sandbox mounts. `sessions/**` throws here (outside the sandbox), `_agents/**`
+  // resolves to a peer definition, everything else to the artifacts tree.
+  const { resolveUniversalAgentPlanePath } = await import('../customAgents/universalAgentPlane');
+  const { isAllowedDefinitionPath, classifyDefinitionDir, parseUniversalAgentRef } = await import('@ant/shared');
   for (const rel of context) {
-    const first = rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/')[0];
-    if (first === UNIVERSAL_SESSIONS_NODE) {
-      // sessions is outside the agent sandbox (artifacts + definition mount
-      // only) — an attached file the agent cannot read is a broken promise.
-      return { ok: false, status: 400, error: `Context path is outside the artifacts tree: "${rel}"`, code: 'invalid-context-path' };
-    }
-    let full: string;
+    let resolved: { absPath: string; root: string; agentId?: string };
     try {
-      full = resolveUniversalMergedPath(containerPath, rel);
-    } catch {
-      return { ok: false, status: 400, error: `Invalid context path: "${rel}"`, code: 'invalid-context-path' };
+      resolved = resolveUniversalAgentPlanePath(rel, { containerPath, scopeRoots });
+    } catch (e) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Invalid context path: "${rel}" (${e instanceof Error ? e.message : String(e)})`,
+        code: 'invalid-context-path',
+      };
     }
-    if (!fs.existsSync(full)) {
+    // A peer definition is addressed by the definition VOCABULARY, not by
+    // whatever happens to sit in the dir — the same whitelist the save funnel
+    // enforces, so the two surfaces name the same set of files.
+    if (resolved.root === 'agents') {
+      const rest = parseUniversalAgentRef(rel)!.rest;
+      if (!isAllowedDefinitionPath(rest) && classifyDefinitionDir(rest) === 'unknown') {
+        return {
+          ok: false,
+          status: 400,
+          error: `Context path "${rel}" is not a definition file or directory`,
+          code: 'invalid-context-path',
+        };
+      }
+    }
+    if (!fs.existsSync(resolved.absPath)) {
       return { ok: false, status: 400, error: `Context file not found: "${rel}"`, code: 'invalid-context-path' };
     }
-    if (fs.statSync(full).isDirectory() && builtinTools && !builtinTools.includes('list_files')) {
+    if (fs.statSync(resolved.absPath).isDirectory() && builtinTools && !builtinTools.includes('list_files')) {
       // Explicit input never silently drops: a directory the agent cannot
       // enumerate is a dead promise, so refuse at accept instead.
       return {

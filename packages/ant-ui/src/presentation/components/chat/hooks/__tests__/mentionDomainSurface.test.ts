@@ -91,7 +91,7 @@ describe('universal mention surface (D-E) — source-level invariants', () => {
   it('universal @ctx: offers the Browse row (folder-tree picker entry point)', () => {
     // The universal branch must surface the same tree-picker entry the
     // canonical slots have — a flat top-10 list cannot express folders.
-    expect(useMentionSrc).toMatch(/prefix === '@ctx:'[\s\S]{0,200}type: 'browse' as const, id: 'context'/);
+    expect(useMentionSrc).toMatch(/prefix === '@ctx:'[\s\S]{0,900}type: 'browse' as const, id: 'context'/);
   });
 
   it('picker confirm routes to universalTurnMeta on universal, never actionMetadata', () => {
@@ -117,5 +117,30 @@ describe('isUniversalCtxSuggestible — behavior rows', () => {
     expect(isUniversalCtxSuggestible('sessions/chat.jsonl')).toBe(false);
     // Name-collision guard: a user dir merely PREFIXED with "sessions" stays suggestible.
     expect(isUniversalCtxSuggestible('sessions-notes/a.md')).toBe(true);
+  });
+
+  it('peer definition paths are suggestible; the bare _agents group row is not', async () => {
+    const { isUniversalCtxSuggestible } = await import('../universalMentionSurface');
+    expect(isUniversalCtxSuggestible('_agents/payments-ops/jobs/settle/job.yaml')).toBe(true);
+    expect(isUniversalCtxSuggestible('_agents/payments-ops')).toBe(true);
+    // `_agents` itself is the picker's synthetic grouping row, not a directory
+    // the agent plane can resolve — selecting it would be a dead promise.
+    expect(isUniversalCtxSuggestible('_agents')).toBe(false);
+    // Name-collision guard, same shape as the sessions row.
+    expect(isUniversalCtxSuggestible('_agents-notes/a.md')).toBe(true);
+  });
+});
+
+describe('ctxAgentIdOf — peer path recognition', () => {
+  it.each([
+    ['_agents/payments-ops/jobs/settle/job.yaml', 'payments-ops'],
+    ['_agents/payments-ops', 'payments-ops'],
+    ['plan/notes.md', null],
+    ['_agents', null],
+    ['_agents-notes/a.md', null],
+    ['_agents/Not_A_Valid_Id/agent.yaml', null],
+  ] as const)('%s → %s', async (p, expected) => {
+    const { ctxAgentIdOf } = await import('../universalMentionSurface');
+    expect(ctxAgentIdOf(p)).toBe(expected);
   });
 });

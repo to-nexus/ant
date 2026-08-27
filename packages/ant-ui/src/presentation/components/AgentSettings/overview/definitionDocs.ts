@@ -12,6 +12,7 @@
 
 import { isMap, parseDocument, type Document } from 'yaml';
 import {
+  ON_DEMAND_DIR_NAME,
   splitFrontmatter,
   validateIntentHooks,
   type CustomIntentDef,
@@ -472,7 +473,7 @@ export type DefinitionPathKind =
   | { kind: 'intent-hooks'; jobId: string; intentId: string }
   | { kind: 'intents-dir'; jobId: string }
   | { kind: 'prose'; jobId?: string }
-  | { kind: 'reference'; jobId?: string }
+  | { kind: 'on-demand'; jobId?: string }
   | { kind: 'other' };
 
 /**
@@ -486,24 +487,24 @@ export const DEFINITION_DIR_KINDS: ReadonlySet<string> = new Set([
   'intent-dir',
 ]);
 
-/** reference/ doc file (read-on-demand knowledge channel) — .md or .json. */
-const isReferenceDocName = (name: string): boolean => name.endsWith('.md') || name.endsWith('.json');
+/** on-demand/ doc file (paths-only knowledge channel) — .md or .json. */
+const isOnDemandDocName = (name: string): boolean => name.endsWith('.md') || name.endsWith('.json');
 
 /** Classify a definition-tree path into the screen/section that owns it. */
 export function classifyDefinitionPath(path: string): DefinitionPathKind {
   const parts = path.replace(/\\/g, '/').replace(/^\/+/, '').split('/');
   if (parts.length === 1 && parts[0] === 'agent.yaml') return { kind: 'agent-yaml' };
-  if (parts[0] === 'reference') {
-    return parts.length >= 2 && isReferenceDocName(parts[parts.length - 1]) ? { kind: 'reference' } : { kind: 'other' };
+  if (parts[0] === ON_DEMAND_DIR_NAME) {
+    return parts.length >= 2 && isOnDemandDocName(parts[parts.length - 1]) ? { kind: 'on-demand' } : { kind: 'other' };
   }
   if (parts[0] === 'jobs' && parts.length === 2) return { kind: 'job-dir', jobId: parts[1] };
   if (parts[0] === 'jobs' && parts.length >= 3) {
     const jobId = parts[1];
     if (parts.length === 3 && parts[2] === 'job.yaml') return { kind: 'job-yaml', jobId };
     if (parts.length === 3 && parts[2] === 'intents') return { kind: 'intents-dir', jobId };
-    if (parts[2] === 'reference') {
-      return parts.length >= 4 && isReferenceDocName(parts[parts.length - 1])
-        ? { kind: 'reference', jobId }
+    if (parts[2] === ON_DEMAND_DIR_NAME) {
+      return parts.length >= 4 && isOnDemandDocName(parts[parts.length - 1])
+        ? { kind: 'on-demand', jobId }
         : { kind: 'other' };
     }
     if (parts[2] === 'intents') {
@@ -544,6 +545,7 @@ export const CARD_OF_KIND: Record<Exclude<DefinitionPathKind['kind'], 'other'>, 
   'intent-prompt': 'c3g-intent-prompt',
   'intent-hooks': 'c3g-intent-hooks',
   prose: 'c3g-prompts',
-  // Reference docs open in the same raw editor surface as prose.
-  reference: 'c3g-prompts',
+  // On-demand docs have no structured card of their own, so PromptsCard both
+  // lists and edits them (see promptRows.ts) — no two-writers hazard.
+  'on-demand': 'c3g-prompts',
 };

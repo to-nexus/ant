@@ -11,7 +11,9 @@
  */
 
 import * as fs from 'fs';
-import { resolveUniversalMergedPath } from '../../../../core/customAgents/universalContainer';
+import { parseUniversalAgentRef } from '@ant/shared';
+import type { CustomAgentScopeRoot } from '../../../../core/customAgents/CustomAgentLoader';
+import { resolveUniversalAgentPlanePath } from '../../../../core/customAgents/universalAgentPlane';
 import { compactContent } from '../../../../core/utils/contentCompactor';
 import {
   READ_FILE_FULL_READ_LIMIT,
@@ -43,15 +45,19 @@ export function classifyAttachedEntry(stat: {
   return 'file';
 }
 
-function renderEntry(containerPath: string, rel: string): string {
+function renderEntry(rel: string, ctx: { containerPath: string; scopeRoots: CustomAgentScopeRoot[] }): string {
   let full: string | null = null;
   let stat: fs.Stats | null = null;
   try {
-    full = resolveUniversalMergedPath(containerPath, rel);
+    full = resolveUniversalAgentPlanePath(rel, ctx).absPath;
     stat = fs.statSync(full);
   } catch {
     stat = null;
   }
+  // A peer definition is named by WHOSE it is — `job.yaml` alone tells the
+  // model nothing about which agent it is looking at.
+  const peer = parseUniversalAgentRef(rel);
+  const label = peer ? `\`${rel}\` — definition of agent \`${peer.agentId}\`` : `\`${rel}\``;
   const kind = classifyAttachedEntry({
     exists: stat !== null,
     isDirectory: stat?.isDirectory() ?? false,
@@ -60,14 +66,14 @@ function renderEntry(containerPath: string, rel: string): string {
 
   switch (kind) {
     case 'missing':
-      return `- \`${rel}\` — no longer exists (removed after it was attached)`;
+      return `- ${label} — no longer exists (removed after it was attached)`;
     case 'directory':
-      return `- \`${rel}/\` — directory: explore with \`list_files\`, then \`read_file\` only what you need`;
+      return `- ${label} — directory: explore with \`list_files\`, then \`read_file\` only what you need`;
     case 'file':
-      return `- \`${rel}\` — read with \`read_file\` before acting`;
+      return `- ${label} — read with \`read_file\` before acting`;
     case 'oversize-file':
       return (
-        `- \`${rel}\` — very large file (${formatByteSize(stat!.size)}), beyond the read tool's ceiling; ` +
+        `- ${label} — very large file (${formatByteSize(stat!.size)}), beyond the read tool's ceiling; ` +
         `reason from its name/size or ask the user for the relevant part`
       );
     case 'large-file': {
@@ -81,7 +87,7 @@ function renderEntry(containerPath: string, rel: string): string {
         outline = null;
       }
       const head =
-        `- \`${rel}\` — large file (${formatByteSize(stat!.size)}): full read is refused; ` +
+        `- ${label} — large file (${formatByteSize(stat!.size)}): full read is refused; ` +
         `use the outline below with \`read_file("${rel}", startLine, endLine)\``;
       return outline ? `${head}\n\n${outline}\n` : head;
     }
@@ -92,11 +98,12 @@ function renderEntry(containerPath: string, rel: string): string {
 export function buildAttachedContextSection(
   containerPath: string,
   attachedContext: readonly string[],
+  scopeRoots: CustomAgentScopeRoot[] = [],
 ): string | null {
   if (attachedContext.length === 0) return null;
   return (
     `## Attached Context (user-specified)\n` +
     `The user attached these workspace paths to this request:\n` +
-    attachedContext.map((p) => renderEntry(containerPath, p)).join('\n')
+    attachedContext.map((p) => renderEntry(p, { containerPath, scopeRoots })).join('\n')
   );
 }

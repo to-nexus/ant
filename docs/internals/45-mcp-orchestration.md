@@ -58,7 +58,7 @@ observability.
 **When to declare an `apis` entry vs write a capability server.** An `apis`
 entry is the long-tail answer: a static-header REST API (bearer/API-key) the
 model can drive from prose docs — authoring cost is the 4-line declaration
-plus dropping the vendor's docs into `reference/`. Graduate to a hand-written
+plus dropping the vendor's docs into `on-demand/`. Graduate to a hand-written
 capability server (this section's contract) when writes are rule-bound
 (server-enforced validation, idempotency, dry-run), when auth needs a
 session/login dance or request signing, or when responses need server-side

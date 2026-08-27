@@ -56,9 +56,11 @@ import type { ExtensionServers } from './overview/actionHook';
  *
  *   agent.yaml                   → AgentDefinitionCard   (c3g-agent)
  *   base/*.md                    → PromptsCard           (c3g-prompts)
+ *   on-demand/**.md|.json        → PromptsCard           (c3g-prompts)
  *   jobs/{j}/                    → JobDefinitionCard     (c3g-tools)
  *   jobs/{j}/job.yaml            → JobDefinitionCard     (c3g-tools)
  *   jobs/{j}/base/*.md           → PromptsCard           (c3g-prompts)
+ *   jobs/{j}/on-demand/**        → PromptsCard           (c3g-prompts)
  *   jobs/{j}/intents/            → IntentsCard           (c3g-intents)
  *   intents/{i}/                 → IntentIdentityCard    (c3g-intent)
  *   intents/{i}/infer.md         → IntentDetailCard      (c3g-intent-criteria)
@@ -600,7 +602,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
       target.kind === 'intent-hooks'
     ) {
       selectAgentSettingsNode(agentId, target.jobId, target.intentId);
-    } else if (target.kind === 'prose' || target.kind === 'reference') {
+    } else if (target.kind === 'prose' || target.kind === 'on-demand') {
       selectAgentSettingsNode(agentId, target.jobId);
       void openDefinitionFileBuffer(agentId, path);
     }

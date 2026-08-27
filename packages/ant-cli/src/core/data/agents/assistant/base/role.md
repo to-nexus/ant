@@ -34,9 +34,11 @@ it. Refer to earlier work by path.
 
 ---
 
-A note if you study this agent as a template: everything under `base/` (agent
-and job level) is always part of the instructions; files under a job's
-`injections/` carry situational rules that the runtime inlines when the
-matching intent (declared under that job's `intents/` directory) is active, and lists
-in an on-demand table of contents otherwise. Always-on rules belong in
-`base/`, situational rules belong in the job's injections.
+A note if you study this agent as a template: a definition reaches the model
+through three channels, and which one a file belongs in is decided by when it
+should apply. Everything under `base/` (agent and job level) is always part of
+the instructions — that is where always-on rules go. An intent's `prompt.md`
+(under that job's `intents/{intentId}/`) is added only while that intent is
+active — that is where situational rules go. Files under `on-demand/` are never
+added: their paths are listed, and the model reads the ones it needs — that is
+where long documents go, such as a full API specification.

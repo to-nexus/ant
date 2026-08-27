@@ -206,6 +206,7 @@
     "viewRaw": "원본",
     "viewPreview": "미리보기",
     "empty": "이 범위에 프롬프트 파일이 아직 없습니다.",
+    "onDemandGroup": "온디맨드 — 에이전트가 필요할 때 읽음, 주입 안 됨",
     "newFile": "새 파일",
     "newFileName": "file-name.md",
     "rename": "이름 변경",

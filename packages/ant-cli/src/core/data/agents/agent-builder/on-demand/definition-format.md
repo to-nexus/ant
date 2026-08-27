@@ -9,11 +9,11 @@ rule the loader enforces on them.
 {agentId}/
   agent.yaml                              identity
   base/*.md                               agent prose — always injected
-  reference/**.md | **.json               read on demand, any depth
+  on-demand/**.md | **.json               read on demand, any depth
   jobs/{jobId}/
     job.yaml                              tools, approvals, connections
     base/*.md                             job prose — always injected
-    reference/**.md | **.json             read on demand
+    on-demand/**.md | **.json             read on demand
     intents/{intentId}/
       infer.md                            required — the intent exists once this is saved
       prompt.md                           optional — inlined while the intent is active
@@ -104,9 +104,9 @@ or `**` (any suffix).
 `base/*.md` files are concatenated in filename order and injected on every
 turn. Agent and job prose share an 8000-character budget; past it the text is
 truncated with a visible footer, so keep standing instructions tight and put
-anything long in `reference/`.
+anything long in `on-demand/`.
 
-`reference/` files are not injected. They are offered to the agent as paths it
+`on-demand/` files are not injected. They are offered to the agent as paths it
 can read when it needs them — the right home for a full API spec, a schema, or
 a vendor document.
 

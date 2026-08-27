@@ -369,6 +369,15 @@ export const UNIVERSAL_FEATURE = 'universal' as const;
 export const UNIVERSAL_PIPELINE_RUNS_DIRNAME = 'pipeline-runs' as const;
 
 /**
+ * Reserved top-level node in the universal AGENT PLANE — the read-only mount of
+ * peer agent definitions (`_agents/{agentId}/…`), grafted into the `@ctx:`
+ * picker and resolvable by the job's `read_file` / `list_files`. BE↔FE name
+ * SSOT. The leading underscore matches the `_agent-definition/` virtual-mount
+ * convention and keeps a user-created `artifacts/agents/` from colliding.
+ */
+export const UNIVERSAL_AGENTS_DIRNAME = '_agents' as const;
+
+/**
  * id charset for agentId / jobId / intentId / MCP server name — strict
  * kebab-case: `a-z0-9` segments joined by SINGLE hyphens, no leading or
  * trailing hyphen. agent and job ids are directory names, so a doubled or
@@ -382,6 +391,28 @@ export const CUSTOM_ID_HINT = 'lowercase kebab-case (a-z, 0-9, single hyphens)';
 
 export function isValidCustomId(id: string): boolean {
   return CUSTOM_ID_PATTERN.test(id);
+}
+
+/** Does this path address the agent-plane mount at all? (prefix test only —
+ * a malformed `_agents/…` must be REFUSED, never silently re-rooted elsewhere,
+ * so the shape question and the validity question are asked separately.) */
+export function isUniversalAgentRef(rel: string): boolean {
+  const normalized = rel.replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized === UNIVERSAL_AGENTS_DIRNAME || normalized.startsWith(`${UNIVERSAL_AGENTS_DIRNAME}/`);
+}
+
+/**
+ * Split a universal agent-plane path (`_agents/{agentId}[/{rest}]`) into its
+ * agent id and the definition-relative remainder. The one splitter both planes
+ * use — returns null for anything that is not an agent-plane path OR whose id
+ * is not a valid custom id, so no caller can hand an unvalidated segment to a
+ * `path.join`.
+ */
+export function parseUniversalAgentRef(rel: string): { agentId: string; rest: string } | null {
+  if (!isUniversalAgentRef(rel)) return null;
+  const [, agentId, ...rest] = rel.replace(/\\/g, '/').replace(/^\/+/, '').split('/');
+  if (!agentId || !isValidCustomId(agentId)) return null;
+  return { agentId, rest: rest.join('/') };
 }
 
 /** Coerce free text (a display name) into a valid {@link CUSTOM_ID_PATTERN} id. */
@@ -541,7 +572,7 @@ export function validateMcpServers(servers: Record<string, McpServerConfig> | un
  * server (legacy ERP, internal REST services). The declaration carries
  * connectivity ONLY (where + as-whom + optionally how-far); the API's
  * knowledge (endpoints, fields, call sequences) is prose — intent prompt.md
- * and `reference/` files — that the model reads and composes calls from.
+ * and `on-demand/` files — that the model reads and composes calls from.
  *
  * The runtime synthesizes two generic tools per entry, in-process (no child
  * process, no MCP handshake): `api__{name}__get` (GET/HEAD, read-only,
@@ -815,23 +846,23 @@ export interface CustomJobPromptPreview {
 /**
  * Write whitelist for definition files — the single vocabulary of paths the
  * settings API may create or edit inside an agent dir:
- *   agent.yaml | base/*.md | reference/** (.md/.json, any depth)
- *   jobs/{jobId}/(job.yaml | base/*.md | reference/**)
+ *   agent.yaml | base/*.md | on-demand/** (.md/.json, any depth)
+ *   jobs/{jobId}/(job.yaml | base/*.md | on-demand/**)
  *   jobs/{jobId}/intents/{intentId}/(infer.md | prompt.md | hooks.yaml)
- * Intents are job-only. `reference/` holds API/domain documentation the agent
+ * Intents are job-only. `on-demand/` holds API/domain documentation the agent
  * reads on demand via the read-only `_agent-definition/` mount (progressive
- * disclosure: intent prompt.md curates, reference files carry the full spec —
+ * disclosure: intent prompt.md curates, on-demand files carry the full spec —
  * e.g. a vendor swagger dropped in verbatim). Legacy shapes are rejected with
  * move messages at the save gate: agent-level catalogs, the retired
  * single-file `jobs/{jobId}/intents.yaml`, per-intent `intent.yaml`, and the
  * retired `jobs/{jobId}/injections/` pool (each intent owns its prose as
- * prompt.md).
+ * prompt.md), and `reference/` at either level (renamed to `on-demand/`).
  */
-export const REFERENCE_DIR_NAME = 'reference' as const;
-export const REFERENCE_FILE_EXTENSIONS = ['.md', '.json'] as const;
+export const ON_DEMAND_DIR_NAME = 'on-demand' as const;
+export const ON_DEMAND_FILE_EXTENSIONS = ['.md', '.json'] as const;
 
-function isReferenceFileName(name: string): boolean {
-  return REFERENCE_FILE_EXTENSIONS.some((ext) => name.endsWith(ext) && name.length > ext.length);
+function isOnDemandFileName(name: string): boolean {
+  return ON_DEMAND_FILE_EXTENSIONS.some((ext) => name.endsWith(ext) && name.length > ext.length);
 }
 
 export function isAllowedDefinitionPath(relPath: string): boolean {
@@ -839,16 +870,16 @@ export function isAllowedDefinitionPath(relPath: string): boolean {
   if (normalized.split('/').some((seg) => seg === '' || seg === '.' || seg === '..')) return false;
   const MD_NAME = /^[^/]+\.md$/;
   const parts = normalized.split('/');
-  if (parts[0] === REFERENCE_DIR_NAME && parts.length >= 2) {
-    return isReferenceFileName(parts[parts.length - 1]);
+  if (parts[0] === ON_DEMAND_DIR_NAME && parts.length >= 2) {
+    return isOnDemandFileName(parts[parts.length - 1]);
   }
   if (parts.length === 1) return parts[0] === 'agent.yaml';
   if (parts.length === 2) {
     return parts[0] === 'base' && MD_NAME.test(parts[1]);
   }
   if (parts[0] !== 'jobs' || !isValidCustomId(parts[1])) return false;
-  if (parts[2] === REFERENCE_DIR_NAME && parts.length >= 4) {
-    return isReferenceFileName(parts[parts.length - 1]);
+  if (parts[2] === ON_DEMAND_DIR_NAME && parts.length >= 4) {
+    return isOnDemandFileName(parts[parts.length - 1]);
   }
   if (parts.length === 3) return parts[2] === 'job.yaml';
   if (parts.length === 4) {
@@ -872,7 +903,7 @@ export type DefinitionDirKind =
   | 'job-base'
   | 'intents'
   | 'intent'
-  | 'reference'
+  | 'on-demand'
   | 'unknown';
 
 /** Which directories the definition whitelist admits, by shape. */
@@ -881,10 +912,10 @@ export function classifyDefinitionDir(relPath: string): DefinitionDirKind {
   if (normalized === '') return 'agent-root';
   const parts = normalized.split('/');
   if (parts.some((seg) => seg === '' || seg === '.' || seg === '..')) return 'unknown';
-  if (parts[0] === REFERENCE_DIR_NAME) return 'reference';
+  if (parts[0] === ON_DEMAND_DIR_NAME) return 'on-demand';
   if (parts.length === 1) return parts[0] === 'base' ? 'agent-base' : parts[0] === 'jobs' ? 'jobs' : 'unknown';
   if (parts[0] !== 'jobs' || !isValidCustomId(parts[1])) return 'unknown';
-  if (parts[2] === REFERENCE_DIR_NAME) return 'reference';
+  if (parts[2] === ON_DEMAND_DIR_NAME) return 'on-demand';
   if (parts.length === 2) return 'job';
   if (parts.length === 3) {
     return parts[2] === 'base' ? 'job-base' : parts[2] === INTENTS_DIR_NAME ? 'intents' : 'unknown';
@@ -913,14 +944,14 @@ export function getDefinitionDirPolicy(relPath: string): DefinitionDirPolicy {
   const kind = classifyDefinitionDir(relPath);
   switch (kind) {
     case 'agent-root':
-      return { kind, fixedFiles: ['agent.yaml'], fixedDirs: ['base', 'jobs', REFERENCE_DIR_NAME] };
+      return { kind, fixedFiles: ['agent.yaml'], fixedDirs: ['base', 'jobs', ON_DEMAND_DIR_NAME] };
     case 'agent-base':
     case 'job-base':
       return { kind, fixedFiles: [], acceptedExtensions: ['.md'], fixedDirs: [] };
     case 'jobs':
       return { kind, fixedFiles: [], fixedDirs: [], customIdChild: 'job' };
     case 'job':
-      return { kind, fixedFiles: ['job.yaml'], fixedDirs: ['base', INTENTS_DIR_NAME, REFERENCE_DIR_NAME] };
+      return { kind, fixedFiles: ['job.yaml'], fixedDirs: ['base', INTENTS_DIR_NAME, ON_DEMAND_DIR_NAME] };
     case 'intents':
       return { kind, fixedFiles: [], fixedDirs: [], customIdChild: 'intent' };
     case 'intent':
@@ -929,10 +960,10 @@ export function getDefinitionDirPolicy(relPath: string): DefinitionDirPolicy {
         fixedFiles: [INTENT_INFER_FILE_NAME, INTENT_PROMPT_FILE_NAME, INTENT_HOOKS_FILE_NAME],
         fixedDirs: [],
       };
-    case 'reference':
+    case 'on-demand':
       // Subdirectories are free-form (classifyDefinitionDir admits any depth
-      // under reference/) — the policy lists no fixedDirs by design.
-      return { kind, fixedFiles: [], acceptedExtensions: [...REFERENCE_FILE_EXTENSIONS], fixedDirs: [] };
+      // under on-demand/) — the policy lists no fixedDirs by design.
+      return { kind, fixedFiles: [], acceptedExtensions: [...ON_DEMAND_FILE_EXTENSIONS], fixedDirs: [] };
     default:
       return { kind: 'unknown', fixedFiles: [], fixedDirs: [] };
   }

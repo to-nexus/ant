@@ -28,6 +28,8 @@ import {
   UNIVERSAL_TREE_MAX_DEPTH,
   UNIVERSAL_TREE_MAX_ENTRIES,
 } from '../../src/core/customAgents/universalContainer';
+import { resolveUniversalAgentPlanePath } from '../../src/core/customAgents/universalAgentPlane';
+import type { CustomAgentScopeRoot } from '../../src/core/customAgents/CustomAgentLoader';
 import { createEmptyFigmaData } from '@ant/shared';
 import { ensureCanonicalStructure, getSessionFilePath } from '../../src/core/utils/sessionPaths';
 
@@ -217,6 +219,64 @@ describe('resolveUniversalMergedPath — merged-path routing truth table', () =>
     expect(resolveUniversalMergedPath(container(), 'pipeline-runs-x/a.md')).toBe(
       path.join(projectPath, 'universal', 'artifacts', 'pipeline-runs-x', 'a.md'),
     );
+  });
+});
+
+describe('resolveUniversalAgentPlanePath — agent-plane routing truth table', () => {
+  // The AGENT plane is what the tool sandbox mounts, and therefore what the
+  // composer may attach. It differs from the explorer plane in exactly two
+  // ways: `sessions/**` is refused, `_agents/**` resolves to a peer definition.
+  let agentsRoot: string;
+  const container = () => getUniversalContainerPathOf(projectPath);
+  const scopeRoots = (): CustomAgentScopeRoot[] => [{ scope: 'user', root: agentsRoot, readonly: false }];
+
+  beforeEach(() => {
+    agentsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-agents-root-'));
+    fs.mkdirSync(path.join(agentsRoot, 'payments-ops', 'jobs', 'settle'), { recursive: true });
+    fs.writeFileSync(path.join(agentsRoot, 'payments-ops', 'agent.yaml'), 'id: payments-ops\n');
+  });
+
+  afterEach(() => {
+    fs.rmSync(agentsRoot, { recursive: true, force: true });
+  });
+
+  it('artifact and pipeline-runs paths route exactly as the explorer plane does', () => {
+    const ctx = { containerPath: container(), scopeRoots: scopeRoots() };
+    expect(resolveUniversalAgentPlanePath('plan/notes.md', ctx)).toMatchObject({
+      root: 'artifacts',
+      absPath: path.join(projectPath, 'universal', 'artifacts', 'plan', 'notes.md'),
+    });
+    expect(resolveUniversalAgentPlanePath('pipeline-runs/r1.jsonl', ctx).root).toBe('pipeline-runs');
+  });
+
+  it('_agents/{id}/… resolves into that agent definition dir, carrying the agent id', () => {
+    const ctx = { containerPath: container(), scopeRoots: scopeRoots() };
+    expect(resolveUniversalAgentPlanePath('_agents/payments-ops/jobs/settle/job.yaml', ctx)).toEqual({
+      root: 'agents',
+      agentId: 'payments-ops',
+      absPath: path.join(agentsRoot, 'payments-ops', 'jobs', 'settle', 'job.yaml'),
+    });
+    // A whole-agent attachment is the agent dir itself.
+    expect(resolveUniversalAgentPlanePath('_agents/payments-ops', ctx).absPath).toBe(
+      path.join(agentsRoot, 'payments-ops'),
+    );
+  });
+
+  it.each([
+    ['sessions is outside the sandbox', 'sessions/chat.jsonl'],
+    ['bare sessions', 'sessions'],
+    ['bare _agents is a picker group row, not a directory', '_agents'],
+    ['unknown agent id', '_agents/no-such-agent/agent.yaml'],
+    ['invalid agent id (traversal attempt)', '_agents/../../etc/passwd'],
+    ['traversal inside an agent dir', '_agents/payments-ops/../../outside.md'],
+    ['traversal out of artifacts', '../outside.md'],
+  ] as const)('refuses %s', (_label, rel) => {
+    expect(() => resolveUniversalAgentPlanePath(rel, { containerPath: container(), scopeRoots: scopeRoots() })).toThrow();
+  });
+
+  it('name-collision guard: an artifact dir merely prefixed with _agents stays in artifacts', () => {
+    const ctx = { containerPath: container(), scopeRoots: scopeRoots() };
+    expect(resolveUniversalAgentPlanePath('_agents-notes/a.md', ctx).root).toBe('artifacts');
   });
 });
 

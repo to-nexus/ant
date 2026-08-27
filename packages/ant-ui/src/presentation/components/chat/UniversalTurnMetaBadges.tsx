@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
-import { X, Target, BookOpen, ClipboardList, Folder } from 'lucide-react';
+import { X, Target, BookOpen, ClipboardList, Folder, Bot } from 'lucide-react';
 import { compressSelection, removeSelectedEntry } from '@/shared/utils/selectionDisplay';
+import { ctxAgentIdOf } from './hooks/universalMentionSurface';
 import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 
 /**
@@ -70,15 +71,19 @@ export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { clas
           () => removeIntent(id),
         ),
       )}
-      {contextEntries.map(entry =>
-        chip(
+      {contextEntries.map(entry => {
+        // A peer definition chip is named by WHOSE it is — a bare `job.yaml`
+        // is indistinguishable from an artifact of the same name.
+        const agentId = ctxAgentIdOf(entry.rawPath);
+        const display = agentId ? `${agentId} · ${entry.display}` : entry.display;
+        return chip(
           `ctx:${entry.rawPath}`,
-          entry.isFolder ? Folder : BookOpen,
-          entry.fileCount !== undefined ? `${entry.display} (${entry.fileCount})` : entry.display,
+          agentId ? Bot : entry.isFolder ? Folder : BookOpen,
+          entry.fileCount !== undefined ? `${display} (${entry.fileCount})` : display,
           'bg-[color:var(--bg-surface-2)] border-[color:var(--border-1)] text-[color:var(--text-3)]',
           () => setContextMentions(removeSelectedEntry(meta.context, entry) ?? []),
-        ),
-      )}
+        );
+      })}
     </div>
   );
 }

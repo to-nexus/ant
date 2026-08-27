@@ -6,7 +6,7 @@
  * method/path allow-list); the runtime synthesizes two generic tools per entry
  * and executes calls itself with fetch. The API's knowledge (endpoints,
  * fields, sequences) is prose the model reads — intent prompt.md and
- * `reference/` files — never per-endpoint tool schemas.
+ * `on-demand/` files — never per-endpoint tool schemas.
  *
  * Boundary rules (each mechanical, not advisory):
  *  - `get` carries GET/HEAD only (readOnlyHint: true → approval-exempt);
@@ -237,7 +237,7 @@ export function buildRestToolInfos(
   baseLabel: string = isSelfApiConfig(cfg) ? SELF_API_LABEL : cfg.baseUrl,
 ): McpToolInfo[] {
   const docsPointer =
-    'For endpoint documentation (paths, fields, call sequences) consult this job\'s instructions and reference files — do not guess paths.';
+    'For endpoint documentation (paths, fields, call sequences) consult this job\'s instructions and on-demand documents — do not guess paths.';
   const getName = buildApiToolName(serverName, 'get');
   const requestName = buildApiToolName(serverName, 'request');
   return [

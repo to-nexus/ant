@@ -38,6 +38,7 @@ import {
   UNIVERSAL_ARTIFACT_CANONICAL_DIRS,
   UNIVERSAL_SESSIONS_NODE,
   UNIVERSAL_PIPELINE_RUNS_NODE,
+  UNIVERSAL_AGENTS_NODE,
   buildUniversalMergedTree,
   resolveUniversalMergedPath,
   type UniversalTreeNode,
@@ -287,6 +288,9 @@ export function createCustomAgentRoutes(deps: {
     }
     if (first === PIPELINE_RUNS_NODE) {
       return { error: `"${PIPELINE_RUNS_NODE}" is a read-only pipeline run-log folder`, code: 'reserved-name-pipeline-runs' };
+    }
+    if (first === UNIVERSAL_AGENTS_NODE) {
+      return { error: `"${UNIVERSAL_AGENTS_NODE}" is the read-only agent-definition mount`, code: 'reserved-name-agents' };
     }
     return null;
   }

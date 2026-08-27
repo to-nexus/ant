@@ -18,11 +18,14 @@ import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPol
 import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 
 export interface MentionSuggestion {
-  type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'plan' | 'command' | 'browse';
+  /** `agentCtx` arms the SAME `context[]` slot as `context` — the distinct
+   * type exists so the row can carry a peer icon and an agent breadcrumb
+   * instead of a raw `_agents/…` path. */
+  type: 'intent' | 'target' | 'ref' | 'context' | 'agentCtx' | 'explicit' | 'plan' | 'command' | 'browse';
   id: string;
   label: string;
   description?: string;
-  group?: 'suggested' | 'all';
+  group?: 'suggested' | 'all' | 'artifacts' | 'agents';
 }
 
 /** Which RAC field the folder-tree picker should target when opened from chat. */
@@ -38,7 +41,7 @@ const MENTION_PREFIXES = ['@intent:', '@target:', '@ref:', '@ctx:', '@explicit']
 // removal / keyboard nav) is shared; only vocabulary, cardinality, and the
 // target store field differ. The pure data rules live in
 // `universalMentionSurface.ts` (store-free, directly testable).
-import { UNIVERSAL_MENTION_PREFIXES, isUniversalCtxSuggestible } from './universalMentionSurface';
+import { UNIVERSAL_MENTION_PREFIXES, ctxAgentIdOf, isUniversalCtxSuggestible } from './universalMentionSurface';
 
 type MentionPrefix =
   | (typeof MENTION_PREFIXES)[number]
@@ -46,15 +49,33 @@ type MentionPrefix =
 
 type FileMentionPrefix = '@target:' | '@ref:' | '@ctx:';
 
-function flattenTreePaths(nodes: FileNode[], includeDirs: boolean, prefix = ''): string[] {
+/**
+ * `_agents/payments-ops/jobs/settle/intents/reconcile/prompt.md`
+ * → `payments-ops › settle › reconcile`. A raw mount path tells the user
+ * nothing; the breadcrumb is what they picked the row by.
+ */
+function peerDescription(path: string, agentId: string): string {
+  const parts = path.split('/').slice(2); // drop `_agents/{agentId}`
+  const crumbs = [agentId];
+  if (parts[0] === 'jobs' && parts[1]) crumbs.push(parts[1]);
+  if (parts[2] === 'intents' && parts[3]) crumbs.push(parts[3]);
+  return crumbs.join(' › ');
+}
+
+/**
+ * Every path the tree can address. Keyed on `node.path`, never on a chain of
+ * `node.name` — a node's display name is not required to equal its path
+ * segment (the `_agents` graft labels rows with agent display names), and the
+ * BE ships `path` on every node anyway.
+ */
+function flattenTreePaths(nodes: FileNode[], includeDirs: boolean): string[] {
   const paths: string[] = [];
   for (const node of nodes) {
-    const fullPath = prefix ? `${prefix}/${node.name}` : node.name;
     if (node.type === 'file' || (includeDirs && node.type === 'directory')) {
-      paths.push(fullPath);
+      paths.push(node.path);
     }
     if (node.children) {
-      paths.push(...flattenTreePaths(node.children, includeDirs, fullPath));
+      paths.push(...flattenTreePaths(node.children, includeDirs));
     }
   }
   return paths;
@@ -270,12 +291,20 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
           .map(i => ({ type: 'intent' as const, id: i.id, label: i.id, description: i.infer }));
       }
       if (prefix === '@ctx:') {
+        // Two namespaces in one field: the project's artifacts and the peer
+        // agent definitions grafted at `_agents/`. Capped per GROUP so a large
+        // definition set cannot crowd out the artifacts a user usually wants.
+        const matches = allPaths.filter(p => isUniversalCtxSuggestible(p) && p.toLowerCase().includes(q));
+        const row = (p: string) => {
+          const agentId = ctxAgentIdOf(p);
+          return agentId
+            ? { type: 'agentCtx' as const, id: p, label: basename(p), description: peerDescription(p, agentId), group: 'agents' as const }
+            : { type: 'context' as const, id: p, label: basename(p), description: p, group: 'artifacts' as const };
+        };
         return [
           { type: 'browse' as const, id: 'context', label: t('mention.browse.label'), description: t('mention.browse.description') },
-          ...allPaths
-            .filter(p => isUniversalCtxSuggestible(p) && p.toLowerCase().includes(q))
-            .slice(0, 10)
-            .map(p => ({ type: 'context' as const, id: p, label: basename(p), description: p })),
+          ...matches.filter(p => !ctxAgentIdOf(p)).slice(0, 10).map(row),
+          ...matches.filter(p => ctxAgentIdOf(p)).slice(0, 10).map(row),
         ];
       }
       if (prefix === '@plan') {
@@ -399,7 +428,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     // slot (a run binds at most one intent — last pick replaces).
     if (isUniversal) {
       if (suggestion.type === 'intent') addUniversalIntentMention(suggestion.id);
-      else if (suggestion.type === 'context') addUniversalContextMention(suggestion.id);
+      else if (suggestion.type === 'context' || suggestion.type === 'agentCtx') addUniversalContextMention(suggestion.id);
       else if (suggestion.type === 'plan') setUniversalPlanMention(true);
       setIsOpen(false);
       setSelectedIndex(0);

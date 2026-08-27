@@ -42,6 +42,12 @@
     "plan": {
       "label": "plan",
       "description": "플랜 턴 — 작업 대신 계획을 먼저 산출"
+    },
+    "group": {
+      "suggested": "★ 추천",
+      "all": "전체 파일",
+      "artifacts": "산출물",
+      "agentDefinitions": "에이전트 정의"
     }
   },
   "panelTabs": {

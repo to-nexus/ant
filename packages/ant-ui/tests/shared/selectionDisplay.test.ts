@@ -154,6 +154,32 @@ describe('compressSelection — render-ready entries', () => {
   it('is empty for an empty selection', () => {
     expect(compressSelection([], tree)).toEqual([]);
   });
+
+  it('a bare directory path renders as a folder entry, not as a file', () => {
+    // The folder-SELECT gesture commits the directory path itself (no trailing
+    // slash and no descendant files), so the core has nothing to collapse and
+    // `describePath` cannot tell it from a file. Resolve it against the tree.
+    expect(compressSelection(['visual/ui/handoff/screens'], tree)).toEqual([
+      { isFolder: true, display: 'screens/', fileCount: 2, rawPath: 'visual/ui/handoff/screens' },
+    ]);
+  });
+
+  it('a display name that differs from its path segment still resolves', () => {
+    // The `_agents` graft labels rows with agent DISPLAY names, so nothing may
+    // key the tree walk on a chain of `node.name`.
+    const grafted: FileNode[] = [
+      dir('Agent definitions', '_agents', [
+        dir('Payments Ops', '_agents/payments-ops', [
+          dir('jobs', '_agents/payments-ops/jobs', [
+            file('job.yaml', '_agents/payments-ops/jobs/settle/job.yaml'),
+          ]),
+        ]),
+      ]),
+    ];
+    expect(compressSelection(['_agents/payments-ops'], grafted)).toEqual([
+      { isFolder: true, display: 'payments-ops/', fileCount: 1, rawPath: '_agents/payments-ops' },
+    ]);
+  });
 });
 
 describe('removeSelectedEntry — a folder entry stands for its subtree', () => {

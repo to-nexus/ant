@@ -95,9 +95,11 @@ account-owned and shared across your workspace projects:
 .ant/agents/ops-team/
   agent.yaml
   base/role.md                 # agent prose — who this agent is (default name)
+  on-demand/**.md|.json        # long docs the agent reads when it needs them (§4.6)
   jobs/weekly-report/
     job.yaml
     base/system.md             # job prose — how this job runs (default name)
+    on-demand/**.md|.json      # same channel, scoped to this job
     intents/report/            # one directory per intent (§4.5)
       infer.md                 #   REQUIRED: when it applies (prose criterion + optional clarify frontmatter)
       prompt.md                #   optional: prose inlined while the intent is active
@@ -188,13 +190,15 @@ The API's knowledge is prose, in three layers:
 2. the intent's `prompt.md` — the task-shaped subset: the 3–8 endpoints this
    intent uses, field tables, the call sequence, one worked example. Keep it
    under the 12k inline budget — overflow demotes the whole file to a pointer.
-3. `reference/**` (agent-level, or `jobs/{id}/reference/**`) — the FULL spec,
+3. `on-demand/**` (agent-level, or `jobs/{id}/on-demand/**`) — the FULL spec,
    `.md` or `.json`: drop the vendor's swagger/PDF-export in verbatim. These
-   files are never injected; the runtime renders a "Reference Files (read on
-   demand)" index into the system block and the model reads what it needs via
-   the `_agent-definition/` mount.
+   files are never injected; the runtime renders an "On-Demand Documents" index
+   into the system block and the model reads what it needs via the
+   `_agent-definition/` mount. Because only paths are rendered, this layer
+   costs no prompt budget — which is why it, and not `prompt.md`, is where a
+   large document belongs.
 
-Authoring flow that works: paste the vendor docs into `reference/`, curate the
+Authoring flow that works: paste the vendor docs into `on-demand/`, curate the
 intent's `prompt.md`, write the 4-line declaration (a model can generate it
 from the swagger), then register the secret — the one step a human must do.
 
@@ -463,6 +467,7 @@ now fails loud with the fix in the message:
 | `jobs/{jobId}/intents.yaml` | split into `jobs/{jobId}/intents/{intentId}/infer.md` (+ `prompt.md`, `hooks.yaml`) |
 | `intents/{id}/intent.yaml` | `description` → the `infer.md` body; `clarify` → its frontmatter; `injections` → the intent's own `prompt.md`; `default` → removed (pin explicitly) |
 | `{agent}/injections/*.md`, `jobs/{jobId}/injections/*.md` | move each file into the intent that used it, as `intents/{id}/prompt.md`; delete the directory |
+| `{agent}/reference/**`, `jobs/{jobId}/reference/**` | renamed to `on-demand/**` — same channel (paths rendered, bodies read on demand); rename the directory |
 | `agent.yaml: tools` | declare in `jobs/{jobId}/job.yaml` |
 | `agent.yaml: description` | fold into `base/*.md` prose |
 | `job.yaml: description` | fold into the job's `base/*.md` prose |

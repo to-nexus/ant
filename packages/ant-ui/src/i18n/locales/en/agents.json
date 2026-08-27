@@ -206,6 +206,7 @@
     "viewRaw": "Raw",
     "viewPreview": "Preview",
     "empty": "No prompt files in this scope yet.",
+    "onDemandGroup": "On demand — read by the agent, not injected",
     "newFile": "New file",
     "newFileName": "file-name.md",
     "rename": "Rename",

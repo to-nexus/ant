@@ -435,6 +435,15 @@ debugging session.
   stdio MCP child — either turns a definition into an exfiltration vector.
 - Treating checklist items as tasks: no TaskQueue, no kanban cards, no
   `billableTaskCount`.
+- Offering a path in the `@ctx:` picker that the tool sandbox cannot resolve.
+  The attachable set is DERIVED from the agent plane
+  (`resolveUniversalAgentPlanePath` — artifacts ∪ `pipeline-runs` ∪ `_agents`,
+  never `sessions`); adding a mount without teaching that resolver, or the
+  reverse, re-creates the attachable-but-unreadable bug.
+- Grafting an account-scoped root (agent definitions) into the project file-tree
+  endpoint. It is cached per project × feature for 24h and the account-scoped
+  write funnel cannot bust that key — the `_agents` subtree is a picker-side
+  client merge.
 - Re-judging the project × jobType gate anywhere other than the truth table,
   or letting a definition error crash the worker child instead of answering 400
   at accept.
@@ -458,8 +467,9 @@ debugging session.
   `api__{name}__request` in-process). Both share the credential store, the
   approval gate, and result spooling. API *knowledge* (endpoints, fields,
   sequences) is never declared — it is prose in `base/`, intent `prompt.md`,
-  and `reference/**` docs (read-on-demand index rendered into the system
-  block). No per-endpoint tool schemas, no OpenAPI→tools import.
+  and `on-demand/**` docs (paths-only index rendered into the system block —
+  the bodies never inline, so the channel costs no prompt budget). No
+  per-endpoint tool schemas, no OpenAPI→tools import.
 - An `apis` entry takes one of two mutually exclusive forms: external
   (`baseUrl` + `headers`) or `self: true`, which targets Ant's own API and
   carries NEITHER — the runtime resolves the origin from `ANT_API_URL` and the
@@ -494,6 +504,8 @@ debugging session.
 ```bash
 rg -n "process\.env" packages/ant-cli/src/core/customAgents/McpCredentialResolver.ts  # Expected: 0
 rg -n "ExecutionTier|executionTier" packages/ant-cli/src/agents/universal            # Expected: 0
+# The attachable set has ONE owner; the gate and the band both go through it.
+rg -n "resolveUniversalMergedPath" packages/ant-cli/src/core/scheduling packages/ant-cli/src/agents/universal  # Expected: 0
 # The pin is one rule, mounted whole-surface on each cookie/bearer server — never re-judged per route.
 rg -n "createSelfApiScopeGuard\(" packages/ant-cli/src                              # Expected: 3 (definition + api mount + realtime mount)
 rg -n "ANT_THREAD_ID|threadPaths|getAgentThreadPath" packages/*/src                  # Expected: 0

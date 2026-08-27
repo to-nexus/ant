@@ -86,12 +86,12 @@ export interface ResolvedCustomJob {
   /** Union of declared REST API connections (job wins on name collision). */
   apiServers: Record<string, RestApiServerConfig>;
   /**
-   * Definition-relative paths of `reference/` documents (agent-level +
-   * this job's), collected at load. Rendered as a read-on-demand index in
-   * the system block — never inlined (that is the whole point: progressive
-   * disclosure for large API/domain specs).
+   * Definition-relative paths of `on-demand/` documents (agent-level +
+   * this job's), collected at load. Rendered as a paths-only index in the
+   * system block — never inlined (that is the whole point: progressive
+   * disclosure for large API/domain specs, at zero prompt budget).
    */
-  referenceDocs: string[];
+  onDemandDocs: string[];
   /** Effective builtin allowlist (job ⊆ universal preset). */
   builtinTools: string[];
   /** Job-declared approval map; consult via requiresApproval(). */

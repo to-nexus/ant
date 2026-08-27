@@ -370,6 +370,7 @@ export class PipelineRunCoordinator {
       step.context ?? [],
       undefined,
       resolved.builtinTools,
+      resolved.scopeRoots,
     );
     if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
 

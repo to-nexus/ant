@@ -203,7 +203,8 @@ is conditional):
   dir carrying anything besides those three files, a stray file under
   `intents/`, a leftover `intent.yaml` or single-file `jobs/{jobId}/
   intents.yaml`, a `jobs/{jobId}/injections/` directory (even empty — the
-  pool was replaced by per-intent prompt.md, hard cutover), and the retired
+  pool was replaced by per-intent prompt.md, hard cutover), a `reference/`
+  directory at either level (renamed to `on-demand/`), and the retired
   frontmatter keys `default` / `injections` / `description` / `id` / `hooks`
   (each names its replacement — a silently-ignored removed key is how an
   author concludes a knob works). `default: true` is GONE entirely: unpinned
@@ -298,9 +299,10 @@ decoration).
   `normalizeToCodebasePath` Rule 4 in `resolveToolPath` and run_command's
   working-dir/write-path policy. Without it every artifact write would be
   silently re-rooted under `codebase/`.
-- Sandbox: two-root facade (`createUniversalFileSystem`) — artifacts rw +
-  definition dir ro-mounted at `_agent-definition/`. Canonical plane writes
-  are impossible under any configuration.
+- Sandbox: n-mount facade (`createUniversalFileSystem`) — artifacts rw + a
+  list of read-only mounts. Canonical plane writes are impossible under any
+  configuration. See **The agent plane** below for the mount set and why the
+  attachable set is derived from it.
 - Known deviation from the plan doc: builtin `http_request` is the existing
   loopback-only probe (SSRF-guarded), not a general HTTP client. The "revisit
   if a real need appears" clause was resolved by the `apis` channel (below),
@@ -310,6 +312,89 @@ decoration).
   stays a loopback probe. (A public unauthenticated `http_get` builtin —
   private-range-blocked, the opposite guard — remains a follow-up candidate;
   `fetch_url`/`search_web` cover public reads meanwhile.)
+
+### The agent plane — what may be attached is what can be read
+
+Universal answers two different path questions, and conflating them produced a
+whole bug class:
+
+| Plane | Owner | Roots |
+|---|---|---|
+| **Explorer** — codespace panel, `GET /projects/:id/features/:feature/files`, `FileTreeBroadcaster` | `resolveUniversalMergedPath` / `buildUniversalMergedTreeResult` | artifacts ∪ `sessions` ∪ `pipeline-runs` |
+| **Agent** — tool sandbox, `@ctx:` accept gate, the Attached Context prompt band | `resolveUniversalAgentPlanePath` (`core/customAgents/universalAgentPlane.ts`) | artifacts ∪ `pipeline-runs` ∪ `_agents` — never `sessions` |
+
+**The attachable set is the agent plane.** Before this split, the gate and the
+band resolved through the *container* resolver while the tools resolved through
+a hard-coded two-root facade, so `pipeline-runs/…` was offered in the picker,
+passed accept, and was even outlined into the prompt — then 404'd at tool time,
+because the tools only ever saw `{container}/artifacts`. A path a turn is told
+it has and cannot open is worse than one it was never offered.
+
+The facade's mount table (`composition/orchestrator.ts`) IS that plane:
+
+| Mount | Root | Why |
+|---|---|---|
+| `_agent-definition/` | the running job's own `agentDir` | self-reference — `buildCustomJobSystemBlock` emits `read_file` pointers into it |
+| `_agents/{agentId}/` | peer definitions via `findAgentRoot(scopeRoots, id)` | the `@ctx:` designation channel (below) |
+| `pipeline-runs/` | `getPipelineRunsRootOf(containerPath)` | same-tenant project data the explorer already showed |
+
+Every mount is read-only: a write refuses if EITHER operand is mounted, so a
+copy out of a mount is still a mount write. Definition writes keep their single
+funnel (`PUT /account/agents/:agentId/file` → `gateDefinitionSave`) — the mount
+never becomes a second write path.
+
+**`_agents/` — designating a peer definition.** `agent-builder` could always
+*reach* other definitions over its declared `apis.ant.self` connection; what it
+had no way to receive was *which one the user meant*, so every turn spent a
+discovery round on `GET /account/agents` and could still pick the wrong
+similarly-named agent. `@ctx:` now addresses them directly as
+`_agents/{agentId}/{definitionPath}` — a file, or a folder unit that is exactly
+an agent / job / intent directory.
+
+- Read authority equals `GET /account/agents/:agentId/files`: both resolve
+  through `deriveCustomAgentScopeRootsForTenant` → `findAgentRoot`, and
+  `findViewableAgent` consults no ACL (`readonly`/`aclGoverned` gate WRITES).
+  The mount widens the *path set* for nobody. It does widen *job* authority:
+  reads are ambient and untokened where the API channel was pinned by
+  `createSelfApiScopeGuard`. That was the accepted trade for making the
+  designation work in any universal job rather than only in one that declares a
+  self API. **If a read restriction ever lands on org agents, it must land on
+  `findAgentRoot`/the scope roots — not only on the HTTP funnel — or this mount
+  silently misses it.**
+- The ACL sidecar lives at `{ws}/{orgId}/.ant/agent-acl.json`, deliberately
+  OUTSIDE every agent dir, and mounts are per-agent-dir with `resolveWithinRoot`
+  containment — so it stays unreachable. Never mount a scope ROOT.
+- `parseUniversalAgentRef` / `isUniversalAgentRef` (`@ant/shared`) are the one
+  splitter. `_agents` is a **declared reserved prefix**, never a sniffed shape:
+  bare `_agents` is refused (it is the picker's synthetic group row), an invalid
+  id never reaches a `path.join`, and `reservedRootViolation` +
+  `buildUniversalMergedTreeResult`'s filter keep a user-created
+  `artifacts/_agents/` from shadowing it.
+- The gate validates against the definition VOCABULARY
+  (`isAllowedDefinitionPath` ∪ `classifyDefinitionDir`), not against whatever
+  happens to sit in the dir — so the picker and the save funnel name the same
+  set of files.
+
+**Known limitation:** `search_files`/`search_code` run ripgrep at
+`fileSystem.getRootPath()` (the artifacts root), so no mount is searchable —
+true for `_agent-definition/` since it existed. The supported path is the band's
+`list_files` → `read_file` instruction.
+
+**The `_agents` subtree is NOT in the container tree.** Definitions are
+account-owned; the project file-tree endpoint is Redis-cached per
+(user, project, feature) for 24h and re-broadcast by `FileTreeBroadcaster`, and
+a definition saved through the account-scoped write funnel could never bust that
+key — a file `agent-builder` had just written would stay unattachable for up to
+a day. The picker grafts it client-side instead
+(`useAgentDefinitionPickerTree` → `useArtifactPickerTree`, gated on
+`projectType === 'universal'`), sourced from `ensureDefinitionTree`, the same
+deduped per-agent cache the settings rail uses. Typeahead, Browse modal and chip
+row therefore still read ONE tree.
+
+Guards: `universal-container.test.ts` (agent-plane routing truth table),
+`universal-turn-context.test.ts` (`_agents` accept rows),
+`universal-tool-policy.test.ts` (mount table + read-only contract),
+`selectionDisplay.test.ts`, `mentionDomainSurface.test.ts`.
 
 ## MCP connections, declared REST APIs & the credential plane (A16/A13)
 
@@ -344,16 +429,42 @@ tool could not be read-exempt and write-gated at once.
 The API's **knowledge** (endpoints, fields, call sequences) is deliberately
 NOT declared — no per-endpoint tool schemas, no OpenAPI import. It is prose:
 `base/*.md` for always-on conventions, the intent's `prompt.md` for the
-task-shaped subset, and `reference/**` (agent- and job-level, `.md`/`.json`,
+task-shaped subset, and `on-demand/**` (agent- and job-level, `.md`/`.json`,
 any depth) for full specs read on demand via the `_agent-definition/` mount.
-The loader collects the reference file list into `resolved.referenceDocs` and
-`buildCustomJobSystemBlock` renders it as a structural "Reference Files (read
-on demand)" index — the model is TOLD the documents exist and must be read
-before acting; their content never inlines. This is the industry-consensus
-layer split (MCP/declaration = connectivity + governance, docs = knowledge,
-the model = orchestration), and it pins the empirically dominant failure axis
-of OpenAPI→tools conversion (auth metadata) in the declaration while leaving
+The loader collects the file list into `resolved.onDemandDocs` and
+`buildCustomJobSystemBlock` renders it as a structural "On-Demand Documents"
+index — the model is TOLD the documents exist and must be read before acting;
+their content never inlines. This is the industry-consensus layer split
+(MCP/declaration = connectivity + governance, docs = knowledge, the model =
+orchestration), and it pins the empirically dominant failure axis of
+OpenAPI→tools conversion (auth metadata) in the declaration while leaving
 everything else to prose.
+
+**Why the directory is named `on-demand/`** — the question recurs, so the
+answer lives here. A definition has THREE delivery channels, and this
+directory is named after the one thing that distinguishes it:
+
+| Channel | Rendered into the system block | Who decides | Prompt budget |
+|---|---|---|---|
+| `base/*.md` | the whole body, every turn | nobody — unconditional | `CUSTOM_PROSE_CAP` 8000 |
+| `intents/{i}/prompt.md` | the whole body, while that intent is active | the builder (gate) | `INTENT_PROMPT_INLINE_CAP` 12k |
+| `on-demand/**` | the PATH only | the model (`read_file`) | none |
+
+Not `injections/` — that is canonical's name for the FIRST kind of
+conditional delivery (`AutoInjectionResolver` merges the body in), and
+universal's mechanical counterpart to it is `prompt.md`, not this. The
+universal pool actually was called `injections/` from `f63d95300` (2026-08-07)
+with today's on-demand semantics, and one day later `b28cf13a9` bolted
+inlining onto it: the name says the body arrives, so code arrived that made it
+arrive. That pool was retired whole in `98560b4e8`; its tombstones still fire,
+and reusing the name would have to delete them. Not `reference/` (its name
+until `ab93228c7`) — the word already carries three unrelated meanings in this
+repo: `docs/reference/`, the reference-codebase tool family
+(`searchReferenceCode` / `readReferenceFile` / `refGit`), and
+`codebaseSlot('ref')`. A leftover `reference/` at either level fails loud with
+a rename instruction, at the loader and at `gateDefinitionSave` — the rename
+must not be something an author discovers by their docs silently going
+unread.
 
 Executor rules (each mechanical — `tests/customAgents/rest-api.test.ts`):
 `path` is `/`-rooted and re-asserted under baseUrl's origin+prefix after
@@ -951,7 +1062,9 @@ surfaces.
 | `infer.md` `clarify` frontmatter | intent | IntentDetailCard "Behavior flags" (tri-state; "inherit" deletes the key — line-level splice, fence comments survive) | same Raw toggle |
 | `intents/{i}/prompt.md` | intent | IntentPromptCard (plain editor — markdown IS the file; emptied = DELETE on save) | the card IS the raw surface |
 | `hooks.yaml` `hooks.stop` | intent | IntentHooksCard (a DefinitionCard, `StopHooksEditor` — glob builder + action picker) | same card's YAML toggle — this intent's hooks.yaml |
+| `apis` entries | agent/job | McpServersEditor "REST APIs" section | the owning yaml's toggle (`agent.yaml` / `job.yaml`) |
 | MCP credential VALUES | agent/job | McpServersEditor (write-only, masked) | **no raw by design** — yaml holds only `${secret:KEY}` references; values live in the encrypted account store |
+| `on-demand/**` (.md/.json) | agent/job | — (no structured shape) | PromptsCard, second list group — the ONLY card that owns them, so listing them there is not a two-writers hazard; `.json` is raw-only (markdown preview would mangle it) |
 
 A broken `infer.md` (frontmatter error) on the intent screen keeps the
 DefinitionCard frame (parse banner + Raw editor) instead of mis-reporting

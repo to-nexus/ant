@@ -411,7 +411,7 @@ async function main(): Promise<void> {
         })
       : deriveCustomAgentScopeRoots(params.projectPath);
     const resolved = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
-    activateCustomJob(resolved);
+    activateCustomJob(resolved, scopeRoots);
     console.log(`🧩 [JobRunner] Custom job activated: ${params.customJobRef} (scope: ${resolved.scope})`);
   }
 

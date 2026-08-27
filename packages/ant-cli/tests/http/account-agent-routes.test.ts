@@ -376,24 +376,24 @@ describe('definition file endpoints', () => {
   });
 
   it.each([
-    // reference/ docs (agent + job level, .md/.json, any depth) are writable;
+    // on-demand/ docs (agent + job level, .md/.json, any depth) are writable;
     // other extensions stay outside the whitelist.
-    ['agent reference md', 'reference/erp/notes.md', 'x', 200],
-    ['agent reference json (vendor swagger verbatim)', 'reference/erp/openapi.json', '{"openapi":"3.0"}', 200],
-    ['reference txt → 400', 'reference/erp/notes.txt', 'x', 400],
-  ] as const)('PUT reference path: %s → %s', async (_label, relPath, content, expectedStatus) => {
+    ['agent on-demand md', 'on-demand/erp/notes.md', 'x', 200],
+    ['agent on-demand json (vendor swagger verbatim)', 'on-demand/erp/openapi.json', '{"openapi":"3.0"}', 200],
+    ['on-demand txt → 400', 'on-demand/erp/notes.txt', 'x', 400],
+  ] as const)('PUT on-demand path: %s → %s', async (_label, relPath, content, expectedStatus) => {
     const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content }) });
     expect(res.status).toBe(expectedStatus);
   });
 
-  it('PUT job-level reference doc lands under the job dir', async () => {
+  it('PUT job-level on-demand doc lands under the job dir', async () => {
     await api('/ops/jobs', { method: 'POST', body: JSON.stringify({ id: 'weekly', name: 'W' }) });
     const res = await api('/ops/file', {
       method: 'PUT',
-      body: JSON.stringify({ path: 'jobs/weekly/reference/fields.md', content: '# fields' }),
+      body: JSON.stringify({ path: 'jobs/weekly/on-demand/fields.md', content: '# fields' }),
     });
     expect(res.status).toBe(200);
-    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/reference/fields.md'), 'utf-8')).toBe('# fields');
+    expect(fs.readFileSync(path.join(userDir, '.ant/agents/ops/jobs/weekly/on-demand/fields.md'), 'utf-8')).toBe('# fields');
   });
 
   it.each([
@@ -413,6 +413,8 @@ describe('definition file endpoints', () => {
     ['agent-level injections file', 'injections/style.md', /injections\/ was removed/],
     ['job-level injections file', 'jobs/weekly/injections/style.md', /injections\/ was removed/],
     ['per-intent intent.yaml', 'jobs/weekly/intents/review/intent.yaml', /was replaced by infer\.md/],
+    ['agent-level reference doc', 'reference/erp/spec.md', /reference\/ was renamed to on-demand\//],
+    ['job-level reference doc', 'jobs/weekly/reference/erp/spec.json', /reference\/ was renamed to on-demand\//],
   ] as const)('PUT legacy path: %s → 400 with move instruction', async (_label, relPath, pattern) => {
     const res = await api('/ops/file', { method: 'PUT', body: JSON.stringify({ path: relPath, content: 'x' }) });
     expect(res.status).toBe(400);
@@ -562,18 +564,18 @@ describe('definition file endpoints', () => {
 
 describe('definition dir policy (create/upload vocabulary)', () => {
   it.each([
-    ['', ['agent.yaml'], undefined, ['base', 'jobs', 'reference'], undefined],
+    ['', ['agent.yaml'], undefined, ['base', 'jobs', 'on-demand'], undefined],
     ['base', [], ['.md'], [], undefined],
     ['jobs', [], undefined, [], 'job'],
-    ['jobs/weekly', ['job.yaml'], undefined, ['base', 'intents', 'reference'], undefined],
+    ['jobs/weekly', ['job.yaml'], undefined, ['base', 'intents', 'on-demand'], undefined],
     ['jobs/weekly/base', [], ['.md'], [], undefined],
     ['jobs/weekly/intents', [], undefined, [], 'intent'],
     ['jobs/weekly/intents/research', ['infer.md', 'prompt.md', 'hooks.yaml'], undefined, [], undefined],
-    // reference/ admits .md + .json docs at any depth (agent- and job-level).
-    ['reference', [], ['.md', '.json'], [], undefined],
-    ['reference/douzone', [], ['.md', '.json'], [], undefined],
-    ['jobs/weekly/reference', [], ['.md', '.json'], [], undefined],
-    ['jobs/weekly/reference/vendor/v2', [], ['.md', '.json'], [], undefined],
+    // on-demand/ admits .md + .json docs at any depth (agent- and job-level).
+    ['on-demand', [], ['.md', '.json'], [], undefined],
+    ['on-demand/douzone', [], ['.md', '.json'], [], undefined],
+    ['jobs/weekly/on-demand', [], ['.md', '.json'], [], undefined],
+    ['jobs/weekly/on-demand/vendor/v2', [], ['.md', '.json'], [], undefined],
   ])('%s', (dir, fixedFiles, acceptedExtensions, fixedDirs, customIdChild) => {
     const policy = getDefinitionDirPolicy(dir as string);
     expect(policy.fixedFiles).toEqual(fixedFiles);

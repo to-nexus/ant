@@ -42,6 +42,12 @@
     "plan": {
       "label": "plan",
       "description": "Plan turn — produce a plan first, not the work"
+    },
+    "group": {
+      "suggested": "★ Suggested",
+      "all": "All Files",
+      "artifacts": "Artifacts",
+      "agentDefinitions": "Agent Definitions"
     }
   },
   "panelTabs": {

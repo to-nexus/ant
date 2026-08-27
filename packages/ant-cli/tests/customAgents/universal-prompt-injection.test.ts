@@ -7,14 +7,17 @@
  *   3. Omitting inertSystemAppend injects nothing (gate off).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { wrapCustomJobContent } from '../../src/core/prompt/builder/InputSanitizer';
 import { PromptBuilder } from '../../src/core/prompt/builder/PromptBuilder';
 import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromptAdapter';
 import { TEMPLATE_PATHS } from '../../src/core/prompt/builder/templatePaths';
-import { buildCustomJobSystemBlock, INTENT_PROMPT_INLINE_CAP, REFERENCE_INDEX_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
+import { buildCustomJobSystemBlock, INTENT_PROMPT_INLINE_CAP, ON_DEMAND_INDEX_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
 import type { ResolvedCustomJob } from '../../src/core/customAgents/types';
-import { classifyAttachedEntry } from '../../src/agents/universal/graph/nodes/attachedContext';
+import { buildAttachedContextSection, classifyAttachedEntry } from '../../src/agents/universal/graph/nodes/attachedContext';
 import {
   READ_FILE_FULL_READ_LIMIT,
   READ_FILE_RANGE_MAX_BYTES,
@@ -219,7 +222,7 @@ function makeResolved(
     intentPrompts,
     mcpServers: {},
     apiServers: {},
-    referenceDocs: [],
+    onDemandDocs: [],
     builtinTools: [],
     approval: {},
     clarifyDefault: true,
@@ -393,28 +396,28 @@ describe('buildCustomJobSystemBlock — intent catalog rendering', () => {
   });
 });
 
-describe('buildCustomJobSystemBlock — reference docs index (read-on-demand channel)', () => {
-  it('reference docs render as a mount-path index with the read-before-acting instruction — never inlined', () => {
+describe('buildCustomJobSystemBlock — on-demand docs index (paths-only channel)', () => {
+  it('on-demand docs render as a mount-path index with the read-before-acting instruction — never inlined', () => {
     const block = buildCustomJobSystemBlock(
-      makeResolved([], {}, { referenceDocs: ['reference/douzone/openapi.json', 'jobs/weekly/reference/notes.md'] }),
+      makeResolved([], {}, { onDemandDocs: ['on-demand/douzone/openapi.json', 'jobs/weekly/on-demand/notes.md'] }),
       ['general'],
     );
-    expect(block.text).toContain('## Reference Files (read on demand)');
-    expect(block.text).toContain('`_agent-definition/reference/douzone/openapi.json`');
-    expect(block.text).toContain('`_agent-definition/jobs/weekly/reference/notes.md`');
+    expect(block.text).toContain('## On-Demand Documents');
+    expect(block.text).toContain('`_agent-definition/on-demand/douzone/openapi.json`');
+    expect(block.text).toContain('`_agent-definition/jobs/weekly/on-demand/notes.md`');
     expect(block.text).toMatch(/read the relevant file with `read_file` BEFORE acting/);
   });
 
-  it('no reference docs → no index section', () => {
+  it('no on-demand docs → no index section', () => {
     const block = buildCustomJobSystemBlock(makeResolved([]), ['general']);
-    expect(block.text).not.toContain('Reference Files');
+    expect(block.text).not.toContain('On-Demand Documents');
   });
 
   it('over the cap, the tail collapses to a list_files pointer instead of an unbounded index', () => {
-    const docs = Array.from({ length: REFERENCE_INDEX_CAP + 5 }, (_, i) => `reference/doc-${String(i).padStart(3, '0')}.md`);
-    const block = buildCustomJobSystemBlock(makeResolved([], {}, { referenceDocs: docs }), ['general']);
+    const docs = Array.from({ length: ON_DEMAND_INDEX_CAP + 5 }, (_, i) => `on-demand/doc-${String(i).padStart(3, '0')}.md`);
+    const block = buildCustomJobSystemBlock(makeResolved([], {}, { onDemandDocs: docs }), ['general']);
     expect(block.text).toContain('doc-000.md');
-    expect(block.text).not.toContain(`doc-${String(REFERENCE_INDEX_CAP).padStart(3, '0')}.md`);
+    expect(block.text).not.toContain(`doc-${String(ON_DEMAND_INDEX_CAP).padStart(3, '0')}.md`);
     expect(block.text).toMatch(/and 5 more — `list_files`/);
   });
 });
@@ -438,5 +441,52 @@ describe('classifyAttachedEntry — @ctx prompt-band branch table', () => {
     ['beyond the range ceiling', { exists: true, isDirectory: false, sizeBytes: READ_FILE_RANGE_MAX_BYTES + 1 }, 'oversize-file'],
   ] as const)('%s → %s', (_label, stat, expected) => {
     expect(classifyAttachedEntry(stat)).toBe(expected);
+  });
+});
+
+describe('buildAttachedContextSection — gate + peer labelling', () => {
+  // Gate truth table and the ONE piece of contract copy (whose definition a
+  // path belongs to). Instruction prose stays unpinned.
+  let container: string;
+  let agentsRoot: string;
+  const roots = () => [{ scope: 'user' as const, root: agentsRoot, readonly: false }];
+
+  beforeEach(() => {
+    container = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-band-'));
+    fs.mkdirSync(path.join(container, 'artifacts'), { recursive: true });
+    fs.writeFileSync(path.join(container, 'artifacts', 'notes.md'), 'x');
+    agentsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-band-agents-'));
+    const agent = path.join(agentsRoot, 'payments-ops');
+    fs.mkdirSync(path.join(agent, 'jobs', 'settle'), { recursive: true });
+    fs.writeFileSync(path.join(agent, 'agent.yaml'), 'id: payments-ops\n');
+    fs.writeFileSync(path.join(agent, 'jobs', 'settle', 'job.yaml'), 'id: settle\n');
+  });
+
+  afterEach(() => {
+    fs.rmSync(container, { recursive: true, force: true });
+    fs.rmSync(agentsRoot, { recursive: true, force: true });
+  });
+
+  it('nothing attached → no section at all', () => {
+    expect(buildAttachedContextSection(container, [], roots())).toBeNull();
+  });
+
+  it('an artifact attachment renders one row and names no agent', () => {
+    const section = buildAttachedContextSection(container, ['notes.md'], roots())!;
+    expect(section).toContain('`notes.md`');
+    expect(section).not.toContain('definition of agent');
+  });
+
+  it('a peer definition row names WHOSE definition it is', () => {
+    // `job.yaml` alone is indistinguishable from an artifact of the same name.
+    const rel = '_agents/payments-ops/jobs/settle/job.yaml';
+    const section = buildAttachedContextSection(container, [rel], roots())!;
+    expect(section).toContain(rel);
+    expect(section).toContain('definition of agent `payments-ops`');
+  });
+
+  it('a peer path that no longer resolves degrades, never throws', () => {
+    const section = buildAttachedContextSection(container, ['_agents/ghost-agent/agent.yaml'], roots())!;
+    expect(section).toContain('no longer exists');
   });
 });

@@ -113,18 +113,27 @@ do for you).
 .ant/agents/{agentId}/
   agent.yaml             # identity: id, name (+ optional shared MCP servers)
   base/*.md              # shared persona — always injected for every job
+  on-demand/**           # long docs (.md/.json, any depth) — paths listed, read on demand
   jobs/{jobId}/
     job.yaml             # job contract: name, tools (⊆ universal preset), approval
     base/*.md            # job procedure — always injected
+    on-demand/**         # same channel, scoped to this job
     intents/{intentId}/  # job intent catalog — one directory per intent
       infer.md           #   REQUIRED: when it applies (prose criterion; optional clarify frontmatter)
       prompt.md          #   optional prose inlined while the intent is active
       hooks.yaml         #   optional per-intent completion contract
 ```
 
+Three channels, and which one a file belongs in is decided by *when* it should
+apply. `base/*.md` is added to every turn. An intent's `prompt.md` is added
+only while that intent is active. `on-demand/**` is never added — the runtime
+lists the paths and the agent reads what it needs, so this channel costs no
+prompt budget and is where a full vendor API specification belongs.
+
 Legacy shapes — agent-level intent catalogs, `injections/` (agent or job
-level), the retired single-file `jobs/{jobId}/intents.yaml`, and per-intent
-`intent.yaml` — are **not** supported: a definition carrying them fails loud
+level), `reference/` (renamed to `on-demand/`), the retired single-file
+`jobs/{jobId}/intents.yaml`, and per-intent `intent.yaml` — are **not**
+supported: a definition carrying them fails loud
 at load with a move instruction. Neither `agent.yaml` nor `job.yaml` carries
 a `description`: identity and procedure live in `base/` prose, which is what
 the model actually reads. The one prompt-serving criterion is each intent's

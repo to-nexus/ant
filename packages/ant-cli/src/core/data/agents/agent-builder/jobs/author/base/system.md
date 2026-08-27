@@ -20,8 +20,8 @@ Work in this order:
 5. **Report.** Say what you created or changed, list the paths, and name the
    agent and job the user should pick to run it.
 
-Consult `reference/definition-format.md` for the file contract and
-`reference/api-surface.md` for the endpoints and their order. Read them rather
+Consult `on-demand/definition-format.md` for the file contract and
+`on-demand/api-surface.md` for the endpoints and their order. Read them rather
 than guessing — a wrong path is rejected, and a wrong rule wastes a round trip.
 
 Ask a clarifying question only when the request is genuinely ambiguous and
