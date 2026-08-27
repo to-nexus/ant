@@ -49,3 +49,13 @@ export const subagentMaxTokens = (): number => envInt('ANT_SUBAGENT_MAX_TOKENS',
 /** Output cap for the one corrective re-ask after a degenerate round — reduced
  * so a second degeneration is cheap. */
 export const subagentReAskMaxTokens = (): number => envInt('ANT_SUBAGENT_REASK_MAX_TOKENS', 4096);
+
+/**
+ * Floor (chars) under which a round-cap-exhausted final response is treated as
+ * mid-exploration narration rather than a report, triggering the corrective
+ * re-ask (slow-fleeing-camel RCA: 12 rounds / ~100K tokens of evidence
+ * delivered as ~1.2KB of "Now let me read…"). Heuristic by nature — a false
+ * positive costs one bounded re-ask; a false negative keeps today's behavior.
+ */
+export const subagentUnfinishedReportFloorChars = (): number =>
+  envInt('ANT_SUBAGENT_UNFINISHED_REPORT_FLOOR_CHARS', 2000);

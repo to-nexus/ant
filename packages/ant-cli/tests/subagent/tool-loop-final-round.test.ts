@@ -74,6 +74,30 @@ describe('final-round toolChoice contract', () => {
     expect(res.exhausted).toBe(true);
     expect(res.response).toBe('partial');
     expect(res.degenerate).toBeUndefined();
+    // The exhausted shape carries the accumulated evidence so the caller can
+    // mount a corrective re-ask (slow-fleeing-camel RCA).
+    expect(res.finalMessages).toBeDefined();
+    expect(res.finalMessages!.length).toBeGreaterThan(0);
+  });
+
+  it('a cap-forced final response with text still carries finalMessages (exhausted re-ask contract)', async () => {
+    const llm = scriptedLLM([[toolUse('t1')], [text('Now let me read the next file to confirm.')]]);
+    const res = await callLLMWithToolLoop(llm, [{ role: 'user', content: 'q' }], READ_TOOL,
+      async () => 'result', { ...BASE, maxRounds: 2 });
+    expect(res.exhausted).toBe(true);
+    expect(res.finalMessages).toBeDefined();
+    // The narration turn itself is NOT in the history — a re-ask replays the
+    // evidence without the failed final turn.
+    const lastAssistant = [...res.finalMessages!].reverse().find((m) => m.role === 'assistant');
+    expect(JSON.stringify(lastAssistant ?? {})).not.toContain('Now let me read');
+  });
+
+  it('a non-exhausted final response does NOT carry finalMessages', async () => {
+    const llm = scriptedLLM([[toolUse('t1')], [text('done answer')]]);
+    const res = await callLLMWithToolLoop(llm, [{ role: 'user', content: 'q' }], READ_TOOL,
+      async () => 'result', { ...BASE, maxRounds: 5 });
+    expect(res.exhausted).toBe(false);
+    expect(res.finalMessages).toBeUndefined();
   });
 });
 

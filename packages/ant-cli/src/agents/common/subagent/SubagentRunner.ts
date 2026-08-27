@@ -19,7 +19,26 @@ import {
   subagentTimeoutMs,
   subagentMaxTokens,
   subagentReAskMaxTokens,
+  subagentUnfinishedReportFloorChars,
 } from './config';
+
+/**
+ * Textual tool-call markup leaked into the TEXT channel — observed when an
+ * OpenAI-compat provider (GLM) keeps trying to call tools on the
+ * toolChoice='none' final round and the server, told not to parse tool
+ * tokens, streams them as plain text (slow-fleeing-camel RCA). Its presence
+ * proves the response is an unfinished exploration turn, not a report.
+ */
+const TOOL_CALL_MARKUP_RE = /<tool_call\b|<arg_key>|<arg_value>/;
+
+export function hasToolCallMarkup(text: string): boolean {
+  return TOOL_CALL_MARKUP_RE.test(text);
+}
+
+/** Remove leaked tool-call blocks (each runs to the next block, an explicit close, or EOF). */
+export function stripToolCallMarkup(text: string): string {
+  return text.replace(/<tool_call\b[\s\S]*?(?:<\/tool_call>|(?=<tool_call\b)|$)/g, '').trim();
+}
 
 function mergeChildUsage(
   a: TaskTokenUsage | undefined,
@@ -100,7 +119,10 @@ async function runInner(
       modelId,
     };
   }
-  const messages = await buildChildMessages(internals.promptBuilder, params);
+  const messages = await buildChildMessages(internals.promptBuilder, {
+    ...params,
+    toolNames: internals.childTools.map((t) => t.name),
+  });
 
   // Depth-1 layer 2: the child's ctx cannot launch further children, and the
   // child is chat-silent (its only surface is the runner's card).
@@ -118,7 +140,12 @@ async function runInner(
     const gate = internals.gate?.({ id: params.id, name, args });
     if (gate && gate.allowed === false) return gate.error;
     const handler = internals.registry.get(name);
-    if (!handler) return `Error: unknown tool '${name}'`;
+    // Name the available set: a goal/hint authored by the parent may
+    // prescribe tools from the PARENT's wider set, and without guidance the
+    // child burns further rounds retrying surfaces it does not have.
+    if (!handler) {
+      return `Error: unknown tool '${name}'. Your available tools: ${internals.registry.names().join(', ')}.`;
+    }
     const paramNotice = unknownParamNotice(name, args) ?? '';
     try {
       const res = await handler(childCtx as any, args);
@@ -165,6 +192,18 @@ async function runInner(
         roundCounter++;
         onRound(roundCounter);
         await emitProgressCard(params, roundCounter);
+        // Early convergence notice: the loop's own budget warning lands only
+        // on the second-to-last round — too late to change course. Three
+        // rounds out gives the model room to stop widening and consolidate.
+        const total = subagentMaxRounds();
+        if (total - 3 > 0 && roundCounter === total - 3) {
+          return [
+            {
+              type: 'text' as const,
+              text: '[SYSTEM] 3 tool rounds remain — finish gathering and reserve the final round for your report.',
+            },
+          ];
+        }
         return [];
       },
     });
@@ -185,25 +224,36 @@ async function runInner(
     };
   }
 
-  // Corrective re-ask (once): both failure shapes leave the accumulated tool
-  // evidence intact in `finalMessages` — a degenerate round severed by the
-  // in-stream breaker (lapis-oaring-drain RCA), and a thinking-starved round
+  // Corrective re-ask (once): all three failure shapes leave the accumulated
+  // tool evidence intact in `finalMessages` — a degenerate round severed by
+  // the in-stream breaker (lapis-oaring-drain RCA), a thinking-starved round
   // where reasoning consumed the whole output cap before any report text
-  // (local-nursing-churn RCA). A verbatim replay reproduces the same failure —
-  // the re-ask names WHY the previous attempt failed and demands the report
-  // from evidence already gathered. The reason is computed ONCE so a re-ask
-  // that fails the other way cannot chain into a second re-ask.
-  const reAskReason: 'degenerate' | 'starved' | null = !raced.finalMessages
+  // (local-nursing-churn RCA), and a round-cap-exhausted final that narrated
+  // the next tool intent (or leaked textual tool-call markup) instead of
+  // reporting (slow-fleeing-camel RCA). A verbatim replay reproduces the same
+  // failure — the re-ask names WHY the previous attempt failed and demands
+  // the report from evidence already gathered. The reason is computed ONCE so
+  // a re-ask that fails another way cannot chain into a second re-ask.
+  const racedText = String(raced.response ?? '').trim();
+  const reAskReason: 'degenerate' | 'starved' | 'unfinished' | null = !raced.finalMessages
     ? null
     : raced.degenerate
       ? 'degenerate'
-      : !String(raced.response ?? '').trim() && raced.stopReason === 'max_tokens'
+      : !racedText && raced.stopReason === 'max_tokens'
         ? 'starved'
-        : null;
+        : raced.exhausted &&
+            (hasToolCallMarkup(racedText) ||
+              racedText.length < subagentUnfinishedReportFloorChars())
+          ? 'unfinished'
+          : null;
   if (reAskReason && !isJobAborted()) {
-    console.warn(
-      `⚠️ [Subagent] ${reAskReason === 'degenerate' ? 'Degenerate round severed' : 'Report round starved by the output-token cap'} (id=${params.id}) — issuing one corrective re-ask`,
-    );
+    const reasonLabel =
+      reAskReason === 'degenerate'
+        ? 'Degenerate round severed'
+        : reAskReason === 'starved'
+          ? 'Report round starved by the output-token cap'
+          : 'Round cap hit mid-exploration without a report';
+    console.warn(`⚠️ [Subagent] ${reasonLabel} (id=${params.id}) — issuing one corrective re-ask`);
     const retryMessages = [
       ...raced.finalMessages!,
       {
@@ -214,21 +264,27 @@ async function runInner(
               'sentence and was discarded. Do NOT narrate further tool intentions. ' +
               'Write your COMPLETE final report NOW, from the evidence already ' +
               'gathered above, following your report contract.'
-            : '[SYSTEM] Your previous response was cut off by the output token cap ' +
-              'before any report text was produced. Do NOT deliberate further. ' +
-              'Write a CONCISE final report NOW, from the evidence already ' +
-              'gathered above, following your report contract.',
+            : reAskReason === 'starved'
+              ? '[SYSTEM] Your previous response was cut off by the output token cap ' +
+                'before any report text was produced. Do NOT deliberate further. ' +
+                'Write a CONCISE final report NOW, from the evidence already ' +
+                'gathered above, following your report contract.'
+              : '[SYSTEM] You ran out of tool rounds, and your previous response was ' +
+                'mid-exploration narration or tool-call syntax, not a report — it was ' +
+                'discarded. No tool calls remain. Write your COMPLETE final report ' +
+                'NOW, from the evidence already gathered above, following your ' +
+                'report contract.',
       },
     ];
     const priorUsage = raced.usage as TaskTokenUsage | undefined;
     // maxRounds=1 → the re-ask IS a forced-final round (toolChoice='none').
-    // degenerate: reduced cap so a second degeneration is cheap. starved: the
-    // full cap — a reduced one would starve again by construction.
+    // degenerate: reduced cap so a second degeneration is cheap. starved and
+    // unfinished: the full cap — the whole report must fit.
     const reRaced = await raceAgainstDeadline(
       runLoop(
         retryMessages,
         1,
-        reAskReason === 'starved' ? subagentMaxTokens() : subagentReAskMaxTokens(),
+        reAskReason === 'degenerate' ? subagentReAskMaxTokens() : subagentMaxTokens(),
       ),
     );
     if (reRaced !== 'timeout') {
@@ -253,14 +309,27 @@ async function runInner(
   }
 
   let report = (response || '').trim();
+  // Leaked textual tool-call markup never reaches the parent conversation —
+  // it is provider syntax, not findings. Reached only when the corrective
+  // re-ask was skipped (non-exhausted rounds) or itself leaked markup. The
+  // raw text is preserved on `reportFull` for the card/store forensics.
+  let markupRaw: string | undefined;
+  if (hasToolCallMarkup(report)) {
+    console.warn(`⚠️ [Subagent] Tool-call markup leaked into report text (id=${params.id}) — stripping`);
+    markupRaw = report;
+    report = stripToolCallMarkup(report);
+  }
   if (!report) {
     return {
       report:
         `Exploration produced no report` +
         (stopReason === 'max_tokens'
           ? ' (truncated at the output-token cap before any report text — the report did not fit the output budget)'
-          : '') +
+          : markupRaw
+            ? ' (the response contained only leaked tool-call syntax)'
+            : '') +
         ` (goal: ${params.goal}). Treat as no findings; re-issue explore with a narrower goal or read directly.`,
+      ...(markupRaw !== undefined ? { reportFull: markupRaw } : {}),
       usage: usage as TaskTokenUsage | undefined,
       rounds: roundsUsed,
       state: 'error',
@@ -310,7 +379,7 @@ async function runInner(
   // `subagent_report` tool and to the chat card via `reportFull`. Compaction
   // is recoverable delivery compression, so it does NOT mark the run partial —
   // `partial` is reserved for genuinely incomplete exploration (exhaustion).
-  let reportFull: string | undefined;
+  let reportFull: string | undefined = markupRaw;
   const cap = subagentMaxReportChars();
   if (report.length > cap) {
     reportFull = report;

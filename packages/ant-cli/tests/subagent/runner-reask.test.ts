@@ -150,3 +150,93 @@ describe('runExploreSubagent — corrective re-ask', () => {
     expect(result.report).toContain('severed by the repetition breaker');
   });
 });
+
+describe('runExploreSubagent — exhausted-unfinished re-ask (slow-fleeing-camel RCA)', () => {
+  afterEach(() => {
+    delete process.env.ANT_SUBAGENT_MAX_ROUNDS;
+  });
+
+  const toolUse = (id: string): StreamEvent => ({
+    type: 'tool_use',
+    toolUse: { id, name: 'read_file', input: { path: 'src/a.ts' } },
+  });
+  const done = (): StreamEvent => ({ type: 'done', stopReason: 'end_turn' });
+  const clean =
+    'Direct answer: llmInfo is dropped at respond.ts:107. ' +
+    'Evidence: agent.ts:227 passes extractLLMInfo(llm); respond.ts passes undefined. ' +
+    'Absence finding: no caller of startJob exists.';
+
+  function scripted(batches: StreamEvent[][], onCall?: (call: number, messages: any[]) => void): { calls: () => number } {
+    let call = 0;
+    setLLMClientFactory(() => ({
+      modelName: 'mock-child',
+      async *stream(messages: any[]) {
+        call++;
+        onCall?.(call, messages);
+        for (const ev of batches[Math.min(call - 1, batches.length - 1)]) yield ev;
+      },
+    }) as any);
+    return { calls: () => call };
+  }
+
+  it('re-asks once when the cap-forced final response leaked textual tool-call markup', async () => {
+    process.env.ANT_SUBAGENT_MAX_ROUNDS = '2';
+    const counter = scripted(
+      [
+        [toolUse('t1')],
+        [
+          text(
+            'This is the key. Let me read the callers.<tool_call>read_file<arg_key>path</arg_key><arg_value>b.ts</arg_value>',
+          ),
+          done(),
+        ],
+        [text(clean), done()],
+      ],
+      (call, messages) => {
+        if (call === 3) {
+          const last = messages[messages.length - 1];
+          expect(String(last.content)).toContain('ran out of tool rounds');
+        }
+      },
+    );
+
+    const result = await runExploreSubagent({ id: 'reask5', goal: 'g', internals: internals() });
+
+    expect(counter.calls()).toBe(3); // 2 loop rounds + ONE re-ask
+    expect(result.state).toBe('partial'); // exploration WAS cut short — honest label
+    expect(result.report).toContain('Direct answer');
+    expect(result.report).not.toContain('<tool_call>');
+  });
+
+  it('re-asks once when the cap-forced final response is short mid-exploration narration', async () => {
+    process.env.ANT_SUBAGENT_MAX_ROUNDS = '2';
+    const counter = scripted([
+      [toolUse('t1')],
+      [text('Now let me read the LLMClientFactory to understand model selection.'), done()],
+      [text(clean), done()],
+    ]);
+
+    const result = await runExploreSubagent({ id: 'reask6', goal: 'g', internals: internals() });
+
+    expect(counter.calls()).toBe(3);
+    expect(result.state).toBe('partial');
+    expect(result.report).toContain('Direct answer');
+    expect(result.report).not.toContain('Now let me read');
+  });
+
+  it('does NOT re-ask when the cap-forced final response is already a substantive report', async () => {
+    process.env.ANT_SUBAGENT_MAX_ROUNDS = '2';
+    const longReport =
+      'Direct answer: the model flows through three layers. ' +
+      Array.from({ length: 60 }, (_, i) => `Evidence ${i}: module-${i}.ts:${i + 10} carries field f${i}.`).join(' ');
+    expect(longReport.length).toBeGreaterThan(2000);
+    const counter = scripted([[toolUse('t1')], [text(longReport), done()]]);
+
+    const result = await runExploreSubagent({ id: 'reask7', goal: 'g', internals: internals() });
+
+    expect(counter.calls()).toBe(2); // no re-ask
+    expect(result.state).toBe('partial');
+    expect(result.report).toContain('[partial]');
+    expect(result.report).toContain('Direct answer');
+  });
+});

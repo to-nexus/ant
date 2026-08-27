@@ -145,6 +145,53 @@ describe('runExploreSubagent', () => {
     expect(result.report).toContain('no report');
   });
 
+  it('strips leaked textual tool-call markup from the report; raw kept on reportFull', async () => {
+    // GLM shape (slow-fleeing-camel RCA): tool-call syntax streamed as text.
+    withLLM([
+      [
+        text(
+          'Answer: found at a.ts:3.\n<tool_call>read_file<arg_key>path</arg_key><arg_value>b.ts</arg_value>',
+        ),
+      ],
+    ]);
+    const result = await runExploreSubagent({ id: 'sub-markup', goal: 'g', internals: internals() });
+    expect(result.state).toBe('done');
+    expect(result.report).toBe('Answer: found at a.ts:3.');
+    expect(result.reportFull).toContain('<tool_call>');
+  });
+
+  it('a response that is ONLY leaked tool-call markup degrades to the error shape', async () => {
+    withLLM([[text('<tool_call>read_file<arg_key>path</arg_key><arg_value>b.ts</arg_value>')]]);
+    const result = await runExploreSubagent({ id: 'sub-markup2', goal: 'g', internals: internals() });
+    expect(result.state).toBe('error');
+    expect(result.report).toContain('only leaked tool-call syntax');
+  });
+
+  it("unknown tool call is answered with the child's actual tool inventory", async () => {
+    // A parent-authored goal can prescribe tools from the PARENT's wider set
+    // (slow-fleeing-camel: "use search_ant_code" against a child without it).
+    let secondCallMessages: any[] | null = null;
+    let call = 0;
+    const batches: StreamEvent[][] = [
+      [{ type: 'tool_use', toolUse: { id: 'u1', name: 'search_ant_code', input: { query: 'x' } } }],
+      [text('Answer: adapted using my own tools.')],
+    ];
+    setLLMClientFactory(() => ({
+      modelName: 'mock-child-model',
+      async *stream(messages: any[]) {
+        call++;
+        if (call === 2) secondCallMessages = messages;
+        for (const ev of batches[Math.min(call - 1, batches.length - 1)]) yield ev;
+      },
+    }) as any);
+
+    const result = await runExploreSubagent({ id: 'sub-unknown', goal: 'g', internals: internals() });
+    expect(result.state).toBe('done');
+    const history = JSON.stringify(secondCallMessages);
+    expect(history).toContain("unknown tool 'search_ant_code'");
+    expect(history).toContain('Your available tools: read_file');
+  });
+
   it('missing promptBuilder degrades to an error report, not a throw', async () => {
     withLLM([[text('unused')]]);
     const result = await runExploreSubagent({

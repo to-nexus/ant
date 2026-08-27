@@ -121,8 +121,11 @@ export interface ToolLoopResult {
    * Conversation as of the LAST COMPLETED round (the failed round's output
    * is NOT included). Lets callers mount a corrective re-ask on the
    * accumulated evidence instead of discarding the whole exploration
-   * (SubagentRunner). Populated when `degenerate` is true, and when the
-   * final round produced no text at all (thinking-starved max_tokens round).
+   * (SubagentRunner). Populated when `degenerate` is true, when the
+   * final round produced no text at all (thinking-starved max_tokens round),
+   * and when the round cap forced the final response (`exhausted` — a model
+   * cut off mid-exploration often narrates its next tool intent instead of
+   * producing the artifact, and only the caller can judge that shape).
    */
   finalMessages?: Array<{ role: string; content: string | MessageContentBlock[] }>;
 }
@@ -353,10 +356,11 @@ export async function callLLMWithToolLoop(
         roundsUsed: round + 1,
         exhausted: isLastRound,
         stopReason: roundStopReason,
-        // A textless final round (thinking-starved max_tokens) left the
-        // accumulated evidence intact in allMessages — the empty assistant
-        // turn was never pushed, so the shape matches the degenerate contract.
-        ...(response.trim() ? {} : { finalMessages: allMessages }),
+        // A textless final round (thinking-starved max_tokens) and a
+        // cap-forced final round both leave the accumulated evidence intact
+        // in allMessages — the final assistant turn was never pushed, so the
+        // shape matches the degenerate re-ask contract.
+        ...(response.trim() && !isLastRound ? {} : { finalMessages: allMessages }),
       };
     }
 
@@ -370,7 +374,7 @@ export async function callLLMWithToolLoop(
         roundsUsed: round + 1,
         exhausted: true,
         stopReason: roundStopReason,
-        ...(response.trim() ? {} : { finalMessages: allMessages }),
+        finalMessages: allMessages,
       };
     }
 
