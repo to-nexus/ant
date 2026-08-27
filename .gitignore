@@ -38,6 +38,9 @@ build/
 *.js.map
 packages/*/dist/
 packages/*/build/
+# Shipped agent definitions are data, not build outputs — an intent directory
+# may legitimately be named `build` (agent-builder's authoring intent).
+!packages/ant-cli/src/core/data/agents/**/build/
 
 # IDE
 .vscode/

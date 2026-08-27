@@ -4,4 +4,4 @@
 # ("applies when ..."), not a summary. Frontmatter allows one optional key:
 #   clarify: <bool>   # false = turns under this intent never ask blocking questions
 ---
-Bringing something new into existence: a new agent, a new job under an agent that already exists, or a new intent under a job.
+Creating or changing definitions: a new agent, a job or intent under one that exists, edits to prose, tools, connections, or structure — or turning a body of material into one or more complete agents at once.

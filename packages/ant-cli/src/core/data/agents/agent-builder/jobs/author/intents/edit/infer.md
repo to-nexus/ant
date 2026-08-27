@@ -1,7 +1,0 @@
----
-# infer.md — this intent's inference criterion. The BODY below is rendered
-# into the agent's Intent Catalog every turn: write it as a trigger condition
-# ("applies when ..."), not a summary. Frontmatter allows one optional key:
-#   clarify: <bool>   # false = turns under this intent never ask blocking questions
----
-Changing something that already exists: rewriting prose, adjusting tools or approvals, renaming, declaring a connection, or deleting a part of a definition.

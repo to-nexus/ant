@@ -237,11 +237,23 @@ describe('shipped assistant definition', () => {
 describe('shipped agent-builder definition', () => {
   it('agent-builder/author exposes the authoring catalog — every intent carries its own prompt', () => {
     const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
-    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['create', 'edit', 'review']);
+    expect(resolved.intents.map((i) => i.id).sort()).toEqual(['build', 'review']);
     for (const intent of resolved.intents) {
       expect(intent.hasPrompt, `intent ${intent.id} ships without a prompt.md`).toBe(true);
       expect(intent.infer).not.toContain('#');
     }
+  });
+
+  it('the intents are units of work, not CRUD verbs — build contracts a real write, review never blocks', () => {
+    const resolved = loadCustomJob(builtinRoots, 'agent-builder', 'author');
+    const build = resolved.intents.find((i) => i.id === 'build');
+    const review = resolved.intents.find((i) => i.id === 'review');
+    // A pinned build turn is done only when a definition write went through
+    // the API; the sanctioned no-op exit is clarify, which this gate exempts.
+    expect(build?.hooks?.stop).toEqual([{ action: 'api__ant__request' }]);
+    // Inspection reports with stated assumptions instead of blocking on questions.
+    expect(review?.clarify).toBe(false);
+    expect(review?.hooks).toBeUndefined();
   });
 
   it('reaches this Ant server through a self entry — no URL, no credential', () => {

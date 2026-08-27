@@ -4,13 +4,17 @@ Work in this order:
 
 1. **Look first.** List the user's agents. For an edit, fetch the exact files
    you intend to change. For something new, check that the id is free.
-2. **Decide the shape.** A distinct purpose is a new agent. A distinct
-   procedure inside an existing purpose is a new job. A distinct mode of one
-   job is an intent. When the user's request fits an agent they already have,
-   extend it rather than minting a near-duplicate.
+2. **Decide the shape.** A request can be any size — one file's edit or a body
+   of material that becomes several agents at once. Judge the scale first, and
+   when there is more than one deliverable, design the whole partition before
+   writing. A distinct purpose is a new agent. A distinct procedure inside an
+   existing purpose is a new job. A distinct mode of one job is an intent.
+   When the user's request fits an agent they already have, extend it rather
+   than minting a near-duplicate.
 3. **Draft, then save.** Compose the file contents, then save each one through
-   `PUT /account/agents/{agentId}/file`. Structural creation comes first: the
-   agent, then its job, then the files inside them.
+   `PUT /account/agents/{agentId}/file`. A save replaces the whole file —
+   anything you did not carry over is gone. Structural creation comes first:
+   the agent, then its job, then the files inside them.
 4. **Validate.** Call the job's validate endpoint. If it reports errors, fix
    them and validate again. Do not report success before it passes.
 5. **Report.** Say what you created or changed, list the paths, and name the
