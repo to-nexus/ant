@@ -41,6 +41,7 @@ import { handleGracefulShutdown } from './gracefulShutdown';
 import { abortJob, isJobAborted } from './jobAbort';
 import { REDIS_CHANNELS } from '../infrastructure/state/redisConstants';
 import { RedisStateStore } from '../infrastructure/state/RedisStateStore';
+import { registerChatLogLock } from '../periphery/adapters/session/FileSessionAdapter';
 import { buildRedisTlsOptions } from '../infrastructure/utils/redis';
 import type { InterruptionReason, InterruptionDetails } from '../core/types/session';
 import { resolveKillReason, buildSigtermInterruption } from './sigtermInterruption';
@@ -152,6 +153,11 @@ async function watchUserStop(jobId: string): Promise<void> {
 
   try {
     stopSignalStore = new RedisStateStore({ url: redisUrl, maxRetriesPerRequest: 1 });
+
+    // Same store, second job: the cross-pod JSONL lock. A worker child appends
+    // to the same chat.jsonl/feature.jsonl the API process does, so registering
+    // the provider on only one side orders nothing (M-NEW-029).
+    registerChatLogLock(stopSignalStore);
 
     // Primary: pub/sub STOP signal.
     await stopSignalStore.subscribe(

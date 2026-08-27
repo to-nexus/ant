@@ -132,6 +132,21 @@ export const JSONL_READ_MAX_BYTES = 16 * 1024 * 1024;
 export const JSONL_MAX_LINES = 200_000;
 
 /**
+ * Size at which the append path trims a log back to the reader window.
+ *
+ * The sentence above — "the file on disk is never truncated" — bounded the READ
+ * but left the file growing without limit, so the bytes past the window became
+ * storage nobody could reach and a cost every streaming rewrite still paid
+ * (M-NEW-029). Trimming to the window is therefore observably lossless: what is
+ * dropped is precisely what no reader could return.
+ *
+ * Set above `JSONL_READ_MAX_BYTES` on purpose. Equal values would rewrite the
+ * whole log on nearly every append once it reached the window; the gap is the
+ * amortization.
+ */
+export const JSONL_COMPACT_TRIGGER_BYTES = 24 * 1024 * 1024;
+
+/**
  * Read the newest {@link JSONL_READ_MAX_BYTES} of a JSONL log on a single
  * descriptor and return its complete lines, newest-window-first-truncated.
  *

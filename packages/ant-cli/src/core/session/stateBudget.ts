@@ -49,6 +49,18 @@ export const TRIM_MIN_KEEP_TURNS = 4;
 export const TRIM_BRIDGE_TEXT =
   '[Earlier conversation was trimmed to fit the session size budget.]';
 
+/**
+ * Newest `runs[]` entries a shed keeps.
+ *
+ * `appendRunToSessionFile` adds one entry per job finalize and never prunes, so
+ * `runs[]` is the one array that grows without an upper bound for the life of a
+ * feature. Clearing old snapshots (step a) shrinks each entry but not the count,
+ * so a long-lived feature eventually hits the ceiling and the checkpoint write
+ * is REFUSED — turning an availability finding into lost task state. Shedding
+ * the oldest history entries is strictly safer than refusing the write.
+ */
+export const SESSION_RUNS_MAX = 500;
+
 export class SessionWriteTooLargeError extends Error {
   readonly code = 'SESSION_WRITE_TOO_LARGE' as const;
   constructor(readonly sessionPath: string, readonly bytes: number, readonly limit: number) {
@@ -211,6 +223,21 @@ export function shedToFit(
     shed.push(`${field}(-${list.length - 10})`);
     attempt = serializeSessionBounded(session);
     if (attempt.ok) return { ...attempt, shed };
+  }
+
+  // (d) Oldest `runs[]` entries — history, not resume state. Last resort before
+  //     refusing, because it is the only shed that drops a record rather than
+  //     thinning one; still preferable to a refused checkpoint (see
+  //     `SESSION_RUNS_MAX`).
+  if (Array.isArray(session.runs) && session.runs.length > 1) {
+    for (const keepRuns of [SESSION_RUNS_MAX, 100, 20, 1]) {
+      if (session.runs.length <= keepRuns) continue;
+      const dropped = session.runs.length - keepRuns;
+      session.runs = session.runs.slice(-keepRuns);
+      shed.push(`runs(-${dropped})`);
+      attempt = serializeSessionBounded(session);
+      if (attempt.ok) return { ...attempt, shed };
+    }
   }
 
   return { ok: false, bytes: attempt.bytes, limit: attempt.limit, shed };

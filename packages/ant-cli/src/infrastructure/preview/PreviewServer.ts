@@ -58,6 +58,25 @@ import { StateStorePort } from '../../core/ports/stateStore';
 import { PortRegistryPort } from '../../core/ports/portRegistry';
 import { DeployService } from '../deploy/DeployService';
 import { CustomDomainService } from '../deploy/customDomain/CustomDomainService';
+import { getTlsAskSecret, assertTlsAskSecretConfigured } from '../deploy/customDomain/config';
+import { timingSafeEqual } from 'crypto';
+
+/**
+ * Constant-time comparison of a request header against a shared secret.
+ *
+ * `!==` on a secret leaks its prefix through response timing to anything that
+ * can reach the endpoint (ADV-094). Lengths are compared first, and non-secretly:
+ * `timingSafeEqual` throws on a length mismatch, and the LENGTH of a shared
+ * secret is not the secret.
+ */
+function timingSafeHeaderEquals(header: string | string[] | undefined, secret: string): boolean {
+  const value = Array.isArray(header) ? header[0] : header;
+  if (typeof value !== 'string') return false;
+  const a = Buffer.from(value, 'utf-8');
+  const b = Buffer.from(secret, 'utf-8');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 import { isBillingEnabled } from '../../core/config/billingCapability';
 import { getInfrastructureFactory } from '../adapters/InfrastructureFactory';
 import { extractUserContext } from '../../periphery/adapters/http/routes/helpers/userContext';
@@ -1011,16 +1030,32 @@ export class PreviewServer {
       });
     });
 
+    const isCloudTlsAsk = this.options.mode === 'cloud' || process.env.ANT_SERVER_MODE === 'cloud';
+    assertTlsAskSecretConfigured(isCloudTlsAsk);
+
     // Custom-domain TLS ask endpoint (Caddy on-demand TLS).
     // Caddy pauses the TLS handshake for an unknown SNI and asks here whether a
     // certificate may be issued. Answer 200 ONLY for a verified (`active`)
     // custom domain whose target deploy is alive — this is the abuse gate that
     // stops arbitrary domains from triggering Let's Encrypt issuance. Mounted
     // before the proxies + auth so it is reachable without a session. Internal
-    // only (NetworkPolicy); an optional shared secret adds defense-in-depth.
+    // only (NetworkPolicy) — and in cloud with custom domains enabled the shared
+    // secret is REQUIRED, not optional: a NetworkPolicy is a deployment artifact
+    // this process cannot verify, and the sink behind this endpoint starts a
+    // private deploy (L-NEW-002).
     this.app.get('/internal/tls-ask', async (req: Request, res: Response) => {
-      const secret = process.env.ANT_TLS_ASK_SECRET;
-      if (secret && req.headers['x-ant-tls-ask-secret'] !== secret) {
+      const secret = getTlsAskSecret();
+      // Cloud fails CLOSED. `assertTlsAskSecretConfigured` already refuses to
+      // boot a custom-domain deployment without the secret, so reaching here
+      // with it unset means custom domains are off and there is nothing to
+      // answer for. Either way this must not fall through to
+      // `resolveCustomDomain()` + `ensureRunning()`, which wakes a private
+      // deploy (L-NEW-002).
+      if (isCloudTlsAsk && !secret) {
+        res.status(503).end();
+        return;
+      }
+      if (secret && !timingSafeHeaderEquals(req.headers['x-ant-tls-ask-secret'], secret)) {
         res.status(403).end();
         return;
       }

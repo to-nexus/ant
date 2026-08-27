@@ -1,6 +1,6 @@
 import * as path from 'path';
 import { readSessionTextBounded, SessionTooLargeError } from '../../../../../core/utils/sessionPaths';
-import * as fs from 'fs';
+import { writeSessionBounded } from '../../../../../core/session/stateBudget';
 import * as fsPromises from 'fs/promises';
 import { PlanGraphState, getPlanMode } from '../state';
 import { CONV_KEYS, getConv, type ConversationKey, type ConversationMessage } from '../../../../common/graph/conversations';
@@ -161,13 +161,21 @@ export async function saveConversationToSession(
 
     const sessionDir = path.dirname(sessionPath);
     await fsPromises.mkdir(sessionDir, { recursive: true });
-    const tmpPath = `${sessionPath}.tmp`;
-    await fsPromises.writeFile(tmpPath, JSON.stringify(sessionData, null, 2), 'utf-8');
-    await fsPromises.rename(tmpPath, sessionPath);
+    // Through the budgeted seam: both conversation channels here are appended to
+    // on every turn and were never trimmed on this path, so the hand-rolled
+    // tmp+rename could produce a file no reader can open again (M-NEW-029). The
+    // fixed `.tmp` name was also a collision between two planner processes.
+    await writeSessionBounded(sessionPath, sessionData);
 
     console.log(`💬 [Planner] Conversation saved to ${nodeKey} (${updatedConversation.length} entries, ${nodeHistory?.length || 0} history)`);
   } catch (error: any) {
-    console.warn(`⚠️ [Planner] Failed to save conversation: ${error.message}`);
+    // A refused write is a silent loss, not a safe failure — say so loudly. The
+    // persist stays best-effort: the job must not die because a checkpoint did.
+    if (error?.code === 'SESSION_WRITE_TOO_LARGE' || error?.code === 'SESSION_WRITE_CONFLICT') {
+      console.error(`❌ [Planner] Session write refused (${error.code}): ${error.message}`);
+    } else {
+      console.warn(`⚠️ [Planner] Failed to save conversation: ${error.message}`);
+    }
   }
 }
 

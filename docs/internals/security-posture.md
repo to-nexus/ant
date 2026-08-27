@@ -260,7 +260,27 @@ check passed.
   `Content-Length` when present and on the actual stream when it is not (a chunked
   body declares no length), interposing the counter by wrapping `pipe` so multer
   stays the only consumer. ✅
+- **A pod ceiling is not a division of it.** One account holding
+  `maxInFlight` chunked uploads reserved the whole replica budget and 429'd
+  everyone else while staying inside its own allowance, so the reservation is
+  also split per account, sized so one maximum request always fits. ✅
+- **Every durable-write ingress carries a rate limit AND a body schema**, enforced
+  as a SET over the router rather than a list of remembered routes — `chat/job-error`
+  slipped through precisely because the previous guard enumerated. A field that
+  lands in a JSONL line is capped on its SERIALIZED form, since that is what gets
+  written. ✅
+- **A per-item cap is not a per-request bound.** 5,000 files × 8 MiB each is not a
+  budget; job-history aggregation charges cumulative runs and cumulative parsed
+  bytes, and says `truncated` when it stops. Growth on the append side is a
+  RETENTION policy, not a refusal: JSONL logs trim back to the readers' window,
+  which is observably lossless because nothing past it was ever readable. ✅
+- **The walk is charged, and running out is not an error.** Folder compression
+  spends one entry+depth budget across every root; exhausting it degrades to less
+  compression rather than failing a request that would otherwise have worked. ✅
 - Guards: `tests/http/resource-admission.test.ts`,
+  `tests/policy/resource-admission.test.ts`,
+  `tests/security/session-namespace-bounds.test.ts`,
+  `tests/core/context/compressPathsByFolder.test.ts`,
   `tests/state/sse-slot-atomicity.test.ts`.
 
 ---

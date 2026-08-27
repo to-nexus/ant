@@ -198,3 +198,34 @@ describe('pipeline run-log graft (read-only)', () => {
     expect(routes.match(/reserved-name-pipeline-runs/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });
+
+/**
+ * L-031 — the account-wide concurrent-run cap.
+ *
+ * It used to READ a count, COMPARE it, and only reserve much later (the
+ * per-activation NX lock), so two activations firing at once both passed an
+ * N-1 cap. Exactly the `SCAN`-then-`SETEX` shape M-005 replaced for SSE slots,
+ * and the fix is the same primitive: count and reserve in one Lua body.
+ */
+describe('account concurrent-run cap is reserved atomically', () => {
+  const coordinator = read('infrastructure/scheduling/PipelineRunCoordinator.ts');
+
+  it('reserves through the atomic slot primitive', () => {
+    expect(coordinator).toMatch(/reserveSlot\(/);
+    expect(coordinator).toMatch(/RUN_SLOTS\(/);
+    expect(coordinator).toMatch(/maxConcurrentRuns/);
+  });
+
+  it('no longer counts live runs by walking activations first', () => {
+    // The read-then-compare helper is gone, not merely unused: leaving it
+    // available is how the shape comes back.
+    expect(coordinator).not.toMatch(/countLiveRuns/);
+  });
+
+  it('releases the slot on every path that gives up the activation', () => {
+    // A reservation that outlives its run permanently consumes the account's
+    // cap — the failure mode a TTL only bounds, never prevents.
+    const releases = coordinator.match(/releaseSlot\(/g) ?? [];
+    expect(releases.length).toBeGreaterThanOrEqual(2);
+  });
+});

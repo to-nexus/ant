@@ -297,29 +297,52 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
     expect(labels.user).toBe('probe-to.nexus');
   });
 
-  it('service selector matches the pod instance label exactly (routing consistency)', () => {
+  // L-NEW-001. A Service SELECTOR decides which Pods receive its traffic, so it
+  // may only key on a value that cannot collide. `sanitizeLabelValue` truncates
+  // at 63 chars and folds `@` to `-`, so two accounts can share it — the same
+  // lossiness that was already fixed for the resource NAME (M-NEW-002) but left
+  // in the selector. The pod label stays for observability; it is not a selector.
+  it('service selector keys on the injective digest, never the lossy instance label', () => {
     writeWorktreeMarker(fx);
     const orch = makeOrch();
+    const resourceName = (orch as any).createResourceName(emailInstanceKey);
     const podSpec = (orch as any).createPodSpec(
       emailInstanceKey,
-      'ide-individual-probe-to-nexus-classboard-feat-x',
+      resourceName,
       fx.featureCodebase,
       emailUser,
       'feat-x',
     );
-    const serviceSpec = (orch as any).createServiceSpec
-      ? (orch as any).createServiceSpec(emailInstanceKey, 'ide-individual-probe-to-nexus-classboard-feat-x')
-      : null;
+    const serviceSpec = (orch as any).createServiceSpec(emailInstanceKey, resourceName);
 
-    // `instance` value goes through the same sanitizer in both pod label and
-    // service selector — assert against the sanitizer output directly.
     const sanitized = (orch as any).sanitizeLabelValue(emailInstanceKey);
     expect(podSpec.metadata.labels.instance).toBe(sanitized);
     expect(sanitized).toMatch(K8S_LABEL_RE);
-    if (serviceSpec) {
-      expect(serviceSpec.spec.selector.instance).toBe(sanitized);
-      expect(serviceSpec.metadata.labels.instance).toBe(sanitized);
-    }
+
+    // The selector's value is the digest, and it is a legal label value.
+    expect(serviceSpec.spec.selector['ant-instance-digest']).toBe(resourceName);
+    expect(resourceName).toMatch(K8S_LABEL_RE);
+    // The pod must actually carry what the Service selects on.
+    expect(podSpec.metadata.labels['ant-instance-digest']).toBe(resourceName);
+    // The lossy label must NOT participate in selection.
+    expect(serviceSpec.spec.selector.instance).toBeUndefined();
+  });
+
+  // The collision the selector fix closes: two raw keys differing only past the
+  // 63-char label limit fold to ONE `instance` value but stay distinct digests.
+  it('two keys that collide on the lossy label do not collide on the selector', () => {
+    writeWorktreeMarker(fx);
+    const orch = makeOrch();
+    const a = `${'x'.repeat(70)}:victim`;
+    const b = `${'x'.repeat(70)}:attacker`;
+
+    expect((orch as any).sanitizeLabelValue(a)).toBe((orch as any).sanitizeLabelValue(b));
+
+    const nameA = (orch as any).createResourceName(a);
+    const nameB = (orch as any).createResourceName(b);
+    const selA = (orch as any).createServiceSpec(a, nameA).spec.selector;
+    const selB = (orch as any).createServiceSpec(b, nameB).spec.selector;
+    expect(selA['ant-instance-digest']).not.toBe(selB['ant-instance-digest']);
   });
 
   it('listByUser selector encodes the sanitized user value (matches the pod user label)', () => {

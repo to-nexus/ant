@@ -13,6 +13,7 @@ import { assertJobAccess as assertJobAccessShared } from './helpers/jobAccess';
 import { sendErrorResponse } from './helpers/errorResponse';
 import { checkApproval, approvalErrorCode, checkTeamMembership } from './helpers/approvalGate';
 import { getAllSessionPaths, getSessionFilePathByJob, readSessionTextBounded } from '../../../../core/utils/sessionPaths';
+import { writeSessionBounded, sessionWriteGuardOf } from '../../../../core/session/stateBudget';
 import { deriveResumableState } from '../../../../core/session/resumable';
 import { generateTurnId } from '../../../../composition/recordUserTurn';
 import { readBranchBase } from '../../../../core/utils/branchUtils';
@@ -1267,7 +1268,11 @@ export function createJobRoutes(deps: {
   });
   
   // Continue existing job with additional directive
-  router.post('/jobs/:jobId/continue', async (req: Request, res: Response) => {
+  // Same admission axis as `/execute`: this starts a job run, reads and
+  // rewrites the canonical session, and had no request budget of its own
+  // (M-NEW-029). Reuses the existing job limiter rather than minting a
+  // second category for the same cost.
+  router.post('/jobs/:jobId/continue', jobExecuteRateLimiter, async (req: Request, res: Response) => {
     const jobId = req.params.jobId;
     const { projectId, featureName, newDirective, chatSource = true } = req.body;
     
@@ -1364,6 +1369,8 @@ export function createJobRoutes(deps: {
         return res.status(404).json({ error: 'Job not found', message: `Session file for ${jobId} is unreadable` });
       }
       const sessionData = JSON.parse(sessionRaw);
+      // CAS token from the bytes we just read — no second read, no new lock.
+      const sessionGuard = sessionWriteGuardOf(sessionRaw);
 
       if (!sessionData.state.directives) {
         sessionData.state.directives = [];
@@ -1373,7 +1380,29 @@ export function createJobRoutes(deps: {
       
       logger.debug(`   ✅ Added new directive (total: ${sessionData.state.directives.length})`);
       
-      fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), 'utf-8');
+      // Through the budgeted seam, not a raw write: each continue unshifts
+      // another capped directive into a file every reader must load back under
+      // SESSION_MAX_BYTES, and the raw write here also skipped tmp+rename — a
+      // crash mid-write truncated the live session (M-NEW-029).
+      try {
+        await writeSessionBounded(sessionPath, sessionData, { expect: sessionGuard });
+      } catch (err: any) {
+        if (err?.code === 'SESSION_WRITE_TOO_LARGE') {
+          return res.status(413).json({
+            code: 'SESSION_WRITE_TOO_LARGE',
+            error: 'Session too large',
+            message: 'This job has accumulated more state than one session file may hold. Start a new job instead of continuing this one.',
+          });
+        }
+        if (err?.code === 'SESSION_WRITE_CONFLICT') {
+          return res.status(409).json({
+            code: 'SESSION_WRITE_CONFLICT',
+            error: 'Session changed',
+            message: 'The job state changed while this request was in flight. Retry.',
+          });
+        }
+        throw err;
+      }
       logger.debug(`   ✅ Session updated with new directive`);
       
       // ✅ Resolve all unresolved cancelled cards for this jobId. See

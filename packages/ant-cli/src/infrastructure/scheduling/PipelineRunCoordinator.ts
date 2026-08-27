@@ -233,17 +233,6 @@ export class PipelineRunCoordinator {
       return;
     }
 
-    // Caps: bound the activator's simultaneously-live runs across all their
-    // activations (enforce-at-fire = skip + log, caps doctrine).
-    const liveRuns = await this.countLiveRuns(owner, actRoot);
-    if (liveRuns >= DEFAULT_PIPELINE_CAPS.maxConcurrentRuns) {
-      logger.warn(
-        `[Pipeline] fire skipped — maxConcurrentRuns reached (${liveRuns}/${DEFAULT_PIPELINE_CAPS.maxConcurrentRuns}): ${pipelineId}`,
-        { component: COMPONENT },
-      );
-      return;
-    }
-
     const fireEpoch = data.fireEpoch ?? Math.floor(intendedFireAt / 60_000) * 60_000;
 
     // Missed-fire policy (cron only; manual fires are always "now").
@@ -258,12 +247,35 @@ export class PipelineRunCoordinator {
     const firedKey = REDIS_KEYS.PIPE.FIRED(owner.organizationId, owner.userId, projectId, fireEpoch);
     if (!(await this.deps.stateStore.acquireLock(firedKey, REDIS_TTL.PIPE.FIRED))) return;
 
+    // Cap: bound the activator's simultaneously-live runs across all of their
+    // activations. Counted and reserved in ONE step — the previous shape read a
+    // count, compared it, and only reserved much later, so two activations
+    // firing at once both passed an N-1 cap (L-031). Same primitive, same
+    // reasoning as the SSE connection slot (M-005). Member is the projectId, so
+    // a retry of the same activation refreshes rather than double-counting.
+    const slotKey = REDIS_KEYS.PIPE.RUN_SLOTS(owner.organizationId, owner.userId);
+    const reserved = await this.deps.stateStore.reserveSlot(
+      slotKey,
+      projectId,
+      DEFAULT_PIPELINE_CAPS.maxConcurrentRuns,
+      REDIS_TTL.PIPE.ACTIVE,
+    );
+    if (!reserved) {
+      logger.warn(
+        `[Pipeline] fire skipped — maxConcurrentRuns reached (${DEFAULT_PIPELINE_CAPS.maxConcurrentRuns}): ${pipelineId}`,
+        { component: COMPONENT },
+      );
+      await this.deps.stateStore.releaseLock(firedKey).catch(() => {});
+      return;
+    }
+
     // Overlap guard — one live run per ACTIVATION (the same pipeline may run
     // concurrently on other projects).
     const runId = generateHumanId();
     const activeKey = REDIS_KEYS.PIPE.ACTIVE(owner.organizationId, owner.userId, projectId);
     const acquired = await this.deps.stateStore.tryAcquireLock(activeKey, runId, REDIS_TTL.PIPE.ACTIVE);
     if (!acquired) {
+      await this.deps.stateStore.releaseSlot(slotKey, projectId).catch(() => {});
       const overlap = def.on.schedule.overlap ?? 'skip';
       // Release the fire NX so a queued re-arm (same fireEpoch) can pass it.
       await this.deps.stateStore.releaseLock(firedKey).catch(() => {});
@@ -297,16 +309,6 @@ export class PipelineRunCoordinator {
     await this.saveRun(plan.run);
     await this.publish(owner, { cause: 'runUpdate', projectId: run.projectId, pipelineId, run: this.publicRun(plan.run) });
     await this.executeDispatches(owner, def, plan.run, plan.dispatches);
-  }
-
-  /** Live-run count across the activator's activations (≤ maxPipelines GETs). */
-  private async countLiveRuns(owner: PipelineOwner, actRoot: string): Promise<number> {
-    let count = 0;
-    for (const { projectId } of listAccountActivations(actRoot)) {
-      const runId = await this.getActiveRunId(owner, projectId);
-      if (runId) count += 1;
-    }
-    return count;
   }
 
   // ============================================
@@ -1154,6 +1156,12 @@ export class PipelineRunCoordinator {
     const holder = await this.deps.stateStore.getKey(activeKey);
     if (holder === run.runId) {
       await this.deps.stateStore.deleteKey(activeKey).catch(() => {});
+      // The concurrency slot shares the ACTIVE key's lifetime — one reservation
+      // per live activation. Releasing only under the same holder check keeps a
+      // late seal from freeing a slot a newer run already holds.
+      await this.deps.stateStore
+        .releaseSlot(REDIS_KEYS.PIPE.RUN_SLOTS(owner.organizationId, owner.userId), run.projectId)
+        .catch(() => {});
     }
     await this.emitRunFinishedNotice(owner, sealed);
   }

@@ -219,21 +219,65 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
    * refusal, so a writer could produce a file no reader could ever open again
    * (and `updateArtifacts` loads first, so the session bricked itself). Every
    * session-JSON writer goes through the one budgeted seam.
+   *
+   * audit-11: this used to be keyed on `atomicWriteFile(` — the NAME of the
+   * function the seam happens to call. Three writers reached the same files by
+   * a different shape (`fs.writeFileSync(sessionPath, …)` and a hand-rolled
+   * tmp+rename) and the guard passed them all. Adoption is a property of the
+   * FILE, so the offense is "a session path reached any write call that is not
+   * the seam", whatever that call is named.
    */
   it('no writer serializes a session outside the budgeted seam', () => {
     const WRITE_OWNER = 'src/core/session/stateBudget.ts';
+    // Any write-ish call whose first argument names a session path, plus the
+    // older `atomicWriteFile(..., JSON.stringify(session…))` shape. `rename` is
+    // deliberately absent: moving an oversized session aside is a legitimate
+    // non-write. The tmp+rename shape is caught by the next case instead.
+    const RAW_SESSION_WRITE =
+      /(?:fs|fsPromises|fsp)?\.?(?:promises\.)?(?:writeFile|writeFileSync|appendFile|appendFileSync)\(\s*(?:`?\$?\{?)?\w*[Ss]ession\w*Path/;
     const offenders = ALL_TS.filter((p) => {
       if (rel(p) === WRITE_OWNER) return false;
       const src = read(p);
-      return /atomicWriteFile\(\s*\w*[Ss]ession\w*Path/.test(src)
+      return RAW_SESSION_WRITE.test(src)
+        || /atomicWriteFile\(\s*\w*[Ss]ession\w*Path/.test(src)
         || /atomicWriteFile\([^)]*JSON\.stringify\(\s*session/.test(src);
     }).map(rel);
     expect(offenders).toEqual([]);
   });
 
-  it('the session adapter enforces the write budget', () => {
-    const src = read(path.join(process.cwd(), 'src/periphery/adapters/session/FileSessionAdapter.ts'));
-    expect(src).toMatch(/shedToFit\(/);
-    expect(src).toMatch(/SessionWriteTooLargeError/);
+  /**
+   * A tmp+rename pair is the same write in two statements — the shape all three
+   * audit-11 offenders used to slip past a call-name guard. Only the seam owns
+   * an atomic session write; nobody else may rebuild one.
+   */
+  it('nobody hand-rolls a second atomic session write', () => {
+    const WRITE_OWNER = 'src/core/utils/atomicWriteFile.ts';
+    const offenders = ALL_TS.filter((p) => {
+      if (rel(p) === WRITE_OWNER) return false;
+      const src = read(p);
+      return /\$\{\s*\w*[Ss]ession\w*Path\s*\}\.tmp/.test(src)
+        || /tmpPath[^\n]*\w*[Ss]ession\w*Path[^\n]*\.tmp/.test(src);
+    }).map(rel);
+    expect(offenders).toEqual([]);
   });
+
+  // The adapter is the highest-traffic writer; pin it onto the seam by name so
+  // a revert to its own shed/serialize/rename copy is loud.
+  it('the session adapter writes through the budgeted seam', () => {
+    const src = read(path.join(process.cwd(), 'src/periphery/adapters/session/FileSessionAdapter.ts'));
+    expect(src).toMatch(/writeSessionBounded\(/);
+  });
+
+  // The three writers audit-11 found on the raw shape. Pinned by name for the
+  // same reason the readers are: a silent revert must fail loudly.
+  const SEAM_WRITERS = [
+    'src/periphery/adapters/http/routes/job.routes.ts',
+    'src/agents/planner/graph/plan/nodes/sessionWriter.ts',
+    'src/agents/planner/graph/plan/nodes/resolve.ts',
+  ];
+  for (const file of SEAM_WRITERS) {
+    it(`${file} writes through the budgeted seam`, () => {
+      expect(read(path.join(process.cwd(), file))).toMatch(/writeSessionBounded\(/);
+    });
+  }
 });

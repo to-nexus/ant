@@ -77,6 +77,31 @@ describe('BridgeWebSocketHandler admission (M-NEW-022/025)', () => {
     b.ws.close();
     d.ws.close();
   });
+
+  /**
+   * M-NEW-025. The per-IP cap was keyed on the LEFTMOST X-Forwarded-For hop —
+   * a value the client writes. An unauthenticated peer could vary it per
+   * connection and walk straight past the cap. The rightmost hop is the one the
+   * trusted proxy appended, and "one trusted hop" is the same shape as this
+   * server's own `app.set('trust proxy', 1)`.
+   */
+  it('keys the per-IP cap on the trusted hop, not the client-written one', () => {
+    const ip = (headers: Record<string, string | string[]>) =>
+      (handler as any).clientIp({ headers, socket: { remoteAddress: '10.0.0.9' } });
+
+    // A forged leftmost hop must not change the key.
+    const forgedA = ip({ 'x-forwarded-for': '1.2.3.4, 203.0.113.7' });
+    const forgedB = ip({ 'x-forwarded-for': '9.9.9.9, 203.0.113.7' });
+    expect(forgedA).toBe('203.0.113.7');
+    expect(forgedB).toBe(forgedA);
+
+    // Repeated header fields are still one chain.
+    expect(ip({ 'x-forwarded-for': ['1.2.3.4', '203.0.113.7'] })).toBe('203.0.113.7');
+
+    // No proxy in front: the socket address is the only truth there is.
+    expect(ip({})).toBe('10.0.0.9');
+    expect(ip({ 'x-forwarded-for': '   ' })).toBe('10.0.0.9');
+  });
 });
 
 /**

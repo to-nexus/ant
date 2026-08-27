@@ -11,7 +11,9 @@ import { ChoiceService } from '../../../../infrastructure/choice';
 import type { ChoiceAction } from '../../../../agents/common/graph/nodes/triage/types';
 import { getRealtimeBroadcastChannel } from '../../../../core/realtime/types';
 import { chatRateLimiter } from '../middleware/rateLimiter';
-import { validateBody, chatUserMessageSchema } from '../middleware/validateBody';
+import { validateBody, chatUserMessageSchema, chatJobErrorSchema, choiceResolvedSchema } from '../middleware/validateBody';
+import { toBaseRelative, mkdirpContainedBase, writeTextContainedBase } from '../../../../core/config/containedIo';
+import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
 import { logger } from '../../../../utils/logger';
 
 /**
@@ -72,7 +74,10 @@ export function createChatRoutes(deps: {
    *    via `finalizeActiveJob` (user-stopped) before clearing — used
    *    by the F5 Hard Reset flow.
    */
-  router.delete('/projects/:id/features/:feature/chat/messages', async (req: Request, res: Response) => {
+  // A clear is a full-log streaming rewrite plus an optional job seal — the
+  // most expensive thing on this router, and it had no request budget
+  // (M-NEW-029).
+  router.delete('/projects/:id/features/:feature/chat/messages', chatRateLimiter, async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const cancelActive = req.query.cancelActive === 'true';
@@ -165,7 +170,7 @@ export function createChatRoutes(deps: {
    * Single `assistant_message` line carrying the failure summary.
    * Replaces the legacy `MessageManager.addJobError` path.
    */
-  router.post('/projects/:id/features/:feature/chat/job-error', async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/job-error', chatRateLimiter, validateBody(chatJobErrorSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { jobId, errorMessage, errorDetails } = req.body;
@@ -248,7 +253,7 @@ export function createChatRoutes(deps: {
    * Idempotency lives in ChatService.appendChoiceResolved — the per-cardId
    * NX flag ensures a duplicate click no-ops at the BE layer.
    */
-  router.post('/projects/:id/features/:feature/chat/choice-resolved', async (req: Request, res: Response) => {
+  router.post('/projects/:id/features/:feature/chat/choice-resolved', chatRateLimiter, validateBody(choiceResolvedSchema), async (req: Request, res: Response) => {
     const projectId = req.params.id;
     const featureName = req.params.feature;
     const { cardId, choiceSelected, resolvedLabel, answer } = req.body || {};
@@ -316,8 +321,26 @@ export function createChatRoutes(deps: {
             const evalFilePath = path.join(evalDir, `eval-${timestamp}.md`);
             const relativePath = `meta/evals/${evalType}/eval-${timestamp}.md`;
 
-            await fs.mkdir(evalDir, { recursive: true });
-            await fs.writeFile(evalFilePath, evalContent, 'utf-8');
+            // `evalType` is caller-supplied and becomes a directory segment, so
+            // the write goes through the descriptor-contained seam rather than a
+            // raw mkdir/writeFile: the schema rejects a traversal segment, and
+            // this refuses one that got past it, or an ancestor symlink swapped
+            // after the check (H-017). Out-of-base (local `repoType`) has no
+            // service-owned base to anchor to and keeps the raw path.
+            const evalBr = toBaseRelative(WorkspacePathResolver.getPhysicalWorkspacesPath(), evalFilePath);
+            if (evalBr) {
+              const made = mkdirpContainedBase({ base: evalBr.base, relative: path.dirname(evalBr.relative) });
+              if ('ok' in made && made.ok === false) {
+                throw new Error(`eval directory refused: ${made.reason}`);
+              }
+              const written = writeTextContainedBase(evalBr, evalContent);
+              if (written.ok !== true) {
+                throw new Error(`eval write refused: ${written.reason}`);
+              }
+            } else {
+              await fs.mkdir(evalDir, { recursive: true });
+              await fs.writeFile(evalFilePath, evalContent, 'utf-8');
+            }
 
             if (deps.fileTreeNotifier) {
               deps.fileTreeNotifier.notifyFileTreeUpdate(projectId, featureName, userContext);

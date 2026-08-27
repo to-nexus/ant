@@ -10,6 +10,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { DIRECTIVE_MAX_CHARS } from '../routes/helpers/submitUserTurn';
+import {
+  ACTION_METADATA_MAX_PATHS,
+  CHAT_ERROR_MESSAGE_MAX_CHARS,
+  CHAT_ERROR_DETAILS_MAX_CHARS,
+  CHOICE_ID_MAX_CHARS,
+  CHOICE_LABEL_MAX_CHARS,
+} from '@ant/shared';
 
 /**
  * Express middleware that validates req.body against a Zod schema.
@@ -61,15 +68,25 @@ const racPathSchema = z
     { message: 'Artifact paths must be relative to the feature root (no absolute paths, no "..")' },
   );
 
+/** A RAC slot: every entry path-checked, and the slot itself count-bounded. */
+const racPathListSchema = z.array(racPathSchema).max(ACTION_METADATA_MAX_PATHS);
+
 /**
  * `actionMetadata` carries the resolved-action context (intent + artifact
  * selection) the FE computed. Only the path-bearing fields are constrained —
  * the rest stays open so the RAC shape can evolve without a schema change.
+ *
+ * All THREE slots are constrained, `target` included. It used to be absent from
+ * this object and rode `.passthrough()` completely unchecked — no traversal
+ * test, no length cap, no count — while still reaching both the durable line and
+ * the folder-compression walk (M-NEW-029). And the count matters as much as the
+ * per-entry length: each entry is an independent root for that walk.
  */
 const actionMetadataSchema = z
   .object({
-    refs: z.array(racPathSchema).optional(),
-    context: z.array(racPathSchema).optional(),
+    target: racPathListSchema.optional(),
+    refs: racPathListSchema.optional(),
+    context: racPathListSchema.optional(),
   })
   .passthrough();
 
@@ -100,9 +117,9 @@ export const executeJobSchema = z.object({
   /** chat SSOT §6 — pre-allocated turn id from /chat/user-message. */
   seedTurnId: z.string().optional(),
   /** universal only — explicit `@intent:` mentions (catalog-validated at accept). */
-  intents: z.array(z.string()).optional(),
+  intents: z.array(z.string().max(1024)).max(ACTION_METADATA_MAX_PATHS).optional(),
   /** universal only — explicit `@ctx:` artifact paths (existence-checked at accept). */
-  context: z.array(z.string()).optional(),
+  context: racPathListSchema.optional(),
   /** universal only — `@plan` per-turn plan mode (adopted only when strictly true). */
   plan: z.boolean().optional(),
 }).passthrough();
@@ -135,4 +152,55 @@ export const chatUserMessageSchema = z.object({
     .enum(['code', 'design', 'plan', 'learn', 'ask', 'inline-ask', 'visual', 'universal'])
     .optional(),
   actionMetadata: actionMetadataSchema.optional(),
+}).passthrough();
+
+/**
+ * POST /projects/:id/features/:feature/chat/job-error
+ *
+ * Every field lands verbatim in a durable `assistant_message` line, so each one
+ * is a ceiling of its own. `errorDetails` is checked on its SERIALIZED form
+ * because that — not the object — is what the route concatenates into the line.
+ *
+ * Fields are `.optional()` here on purpose: PRESENCE is the route's 400 (with its
+ * own message, which clients match on), SIZE is this schema's. One axis, one
+ * owner — the same split `overrideDirective` uses above.
+ */
+export const chatJobErrorSchema = z.object({
+  jobId: z.string().max(CHOICE_ID_MAX_CHARS).optional(),
+  errorMessage: z.string().max(CHAT_ERROR_MESSAGE_MAX_CHARS).optional(),
+  errorDetails: z
+    .unknown()
+    .refine(
+      (v) => v === undefined || v === null || JSON.stringify(v ?? null).length <= CHAT_ERROR_DETAILS_MAX_CHARS,
+      { message: `errorDetails must serialize to at most ${CHAT_ERROR_DETAILS_MAX_CHARS} characters` },
+    )
+    .optional(),
+}).passthrough();
+
+/**
+ * POST /projects/:id/features/:feature/chat/choice-resolved
+ *
+ * `answer` is deliberately NOT capped here: the route applies the shared
+ * directive ceiling to its serialized form and answers the typed 413 the FE
+ * already handles. A `.max()` here would shadow that with a generic 400 and
+ * give the axis two owners — the same reasoning as `overrideDirective` above.
+ *
+ * `evalType` becomes a directory segment under `meta/evals/`, so it is
+ * constrained to a single safe segment rather than merely length-capped.
+ */
+export const choiceResolvedSchema = z.object({
+  cardId: z.string().max(CHOICE_ID_MAX_CHARS).optional(),
+  choiceSelected: z.string().max(CHOICE_ID_MAX_CHARS).optional(),
+  resolvedLabel: z.string().max(CHOICE_LABEL_MAX_CHARS).optional(),
+  answer: z
+    .object({
+      evalType: z
+        .string()
+        .max(64)
+        .regex(/^[A-Za-z0-9._-]+$/, 'evalType must be a single path segment')
+        .refine((v) => v !== '.' && v !== '..', { message: 'evalType must be a single path segment' })
+        .optional(),
+    })
+    .passthrough()
+    .optional(),
 }).passthrough();

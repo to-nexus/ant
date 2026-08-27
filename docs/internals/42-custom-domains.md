@@ -67,10 +67,14 @@ Nothing here is per-user; once done, issuance and routing are automatic.
    (`caddy-storage-redis` on the existing ElastiCache) or replicas double-issue
    and hit Let's Encrypt limits.
 3. **DNS**: create the stable CNAME target (e.g. `ant-domains.your-domain.tld`) → NLB.
-4. **ant-preview env**: set `ANT_CUSTOM_DOMAIN_CNAME_TARGET` (required to enable),
-   optionally `ANT_CUSTOM_DOMAIN_APEX_IPS` (apex support) and
-   `ANT_TLS_ASK_SECRET`.
-5. **NetworkPolicy**: restrict `/internal/tls-ask` to Caddy.
+4. **ant-preview env**: set `ANT_CUSTOM_DOMAIN_CNAME_TARGET` (required to enable)
+   and `ANT_TLS_ASK_SECRET` (**required** in cloud once the CNAME target is set —
+   the process refuses to boot without it, and answers `tls-ask` with `503`).
+   Optionally `ANT_CUSTOM_DOMAIN_APEX_IPS` (apex support).
+5. **NetworkPolicy**: restrict `/internal/tls-ask` to Caddy. This is defence in
+   depth, not the boundary — a NetworkPolicy is a deployment artifact the process
+   cannot verify, and answering `tls-ask` starts a deploy. The shared secret is
+   the check ant-preview can actually make (L-NEW-002).
 
 The manifests + Caddyfile that implement this are part of your deployment
 infra (not shipped with OSS). A managed alternative (Cloudflare for SaaS)

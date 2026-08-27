@@ -412,6 +412,9 @@ export const REDIS_KEYS = {
     /** Overlap guard (NX, value = runId), per activation - ant:pipe:active:{orgId}:{userId}:{projectId} */
     ACTIVE: (org: string, user: string, projectId: string): string =>
       `${REDIS_DOMAINS.PIPE}:active:${org}:${user}:${projectId}`,
+    /** Account-wide concurrent-run slot set (ZSET, member = projectId) - ant:pipe:runslots:{orgId}:{userId} */
+    RUN_SLOTS: (org: string, user: string): string =>
+      `${REDIS_DOMAINS.PIPE}:runslots:${org}:${user}`,
     /** Fire idempotency (NX) - ant:pipe:fired:{orgId}:{userId}:{projectId}:{fireEpoch} */
     FIRED: (org: string, user: string, projectId: string, fireEpoch: number): string =>
       `${REDIS_DOMAINS.PIPE}:fired:${org}:${user}:${projectId}:${fireEpoch}`,

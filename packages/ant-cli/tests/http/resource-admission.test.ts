@@ -230,6 +230,96 @@ describe('boundedMultipart — pod-wide in-flight byte ceiling across accounts (
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// L-033 — per-account share of the replica's upload budget
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('boundedMultipart — one account cannot hold the whole replica budget (L-033)', () => {
+  const MAX = 4096;         // per-request budget
+  const POD_MAX = 100_000;  // pod ceiling far above what one account may take
+  const ACCOUNT_MAX = 4200; // …but the account share is not
+  let server: http.Server;
+  let baseUrl: string;
+  let account = 'a';
+
+  beforeEach(async () => {
+    multipartTesting.resetStateStoreCache();
+    multipartTesting.resetPodInflight();
+    const upload = multer({ storage: multer.memoryStorage(), limits: UPLOAD_LIMITS });
+    const app = express();
+    app.use((req, _res, next) => {
+      (req as any).user = { id: `u-${account}` };
+      (req as any).organization = { id: `o-${account}` };
+      next();
+    });
+    app.post(
+      '/upload',
+      // No stateStore → the cluster-wide per-account SLOT is skipped, isolating
+      // the process-local per-account BYTE share, which is the axis under test.
+      ...boundedMultipart({ maxBytes: MAX, podMaxBytes: POD_MAX, accountMaxBytes: ACCOUNT_MAX }),
+      upload.array('files'),
+      (req, res) => { res.json({ count: (req.files as unknown[])?.length ?? 0 }); },
+    );
+    await new Promise<void>(resolve => { server = app.listen(0, () => resolve()); });
+    const addr = server.address();
+    baseUrl = `http://127.0.0.1:${typeof addr === 'object' && addr ? addr.port : 0}`;
+  });
+
+  afterEach(async () => {
+    multipartTesting.resetPodInflight();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  });
+
+  const slowForm = () => new ReadableStream({
+    async start(controller) {
+      controller.enqueue(new Uint8Array(16));
+      await new Promise(r => setTimeout(r, 200));
+      controller.close();
+    },
+  });
+
+  it('refuses the SAME account past its share while a DIFFERENT account still passes', async () => {
+    account = 'a';
+    // Chunked: no declared length, so it reserves the whole per-request budget
+    // (4096) and holds it while the body trickles — the shape one account used
+    // to be able to repeat until the replica was full.
+    const first = fetch(`${baseUrl}/upload`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'multipart/form-data; boundary=----x' },
+      body: slowForm(),
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' }).catch(() => undefined);
+
+    await new Promise(r => setTimeout(r, 50));
+
+    // Same account: 4096 already held + this request > ACCOUNT_MAX(4200).
+    const same = new FormData();
+    same.append('files', new Blob([new Uint8Array(512)]), 'f.bin');
+    const secondRes = await fetch(`${baseUrl}/upload`, { method: 'POST', body: same });
+    expect(secondRes.status).toBe(429);
+    expect((await secondRes.json()).code).toBe('UPLOAD_ACCOUNT_BUSY');
+
+    // The whole point: a DIFFERENT account is unaffected — the pod still has
+    // room, and it is the per-account share, not the pod ceiling, that fired.
+    account = 'b';
+    const other = new FormData();
+    other.append('files', new Blob([new Uint8Array(512)]), 'f.bin');
+    expect((await fetch(`${baseUrl}/upload`, { method: 'POST', body: other })).status).toBe(200);
+
+    await first;
+  });
+
+  it('releases the account reservation on every terminal outcome', async () => {
+    account = 'a';
+    const form = new FormData();
+    form.append('files', new Blob([new Uint8Array(512)]), 'f.bin');
+    await fetch(`${baseUrl}/upload`, { method: 'POST', body: form });
+    // A reservation that outlives its request is a leak that eventually 429s
+    // the account permanently — the pod counter's failure mode, per account.
+    expect(multipartTesting.accountInflightBytes().size).toBe(0);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // H-008 — artifact tree enumeration budget
 // ────────────────────────────────────────────────────────────────────────────
 

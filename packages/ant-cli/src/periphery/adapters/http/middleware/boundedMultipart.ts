@@ -29,6 +29,7 @@ import {
   UPLOAD_MAX_INFLIGHT_PER_USER,
   UPLOAD_REQUEST_MAX_BYTES,
   UPLOAD_POD_MAX_INFLIGHT_BYTES,
+  UPLOAD_ACCOUNT_MAX_INFLIGHT_BYTES,
 } from '../../../../core/config/uploadLimits';
 import { acquireConcurrencySlot, type ConcurrencySlot } from '../../../../core/redis/concurrencySlot';
 import type { StateStorePort } from '../../../../core/ports/stateStore';
@@ -49,6 +50,8 @@ export interface BoundedMultipartDeps {
   maxInFlight?: number;
   /** Pod-wide in-flight byte ceiling (test override). Defaults to the SSOT. */
   podMaxBytes?: number;
+  /** Per-account share of the pod ceiling (test override). Defaults to the SSOT. */
+  accountMaxBytes?: number;
 }
 
 let cachedStateStore: StateStorePort | null | undefined;
@@ -75,6 +78,14 @@ const SLOT_TTL_SECONDS = 10 * 60;
  */
 let podInflightBytes = 0;
 
+/**
+ * The same reservation, split per account (L-033). The pod counter bounds the
+ * replica but does not divide it, so one account could hold the whole ceiling
+ * and 429 everyone else while staying inside its own allowance. Same map, same
+ * release points — a second lifetime is a second leak.
+ */
+const accountInflightBytes = new Map<string, number>();
+
 function accountKey(req: Request): string {
   const org = (req as any).organization?.id ?? 'unknown';
   const user = (req as any).user?.id ?? 'unknown';
@@ -93,6 +104,7 @@ export function boundedMultipart(deps: BoundedMultipartDeps = {}): RequestHandle
   const maxBytes = deps.maxBytes ?? UPLOAD_REQUEST_MAX_BYTES;
   const maxInFlight = deps.maxInFlight ?? UPLOAD_MAX_INFLIGHT_PER_USER;
   const podMaxBytes = deps.podMaxBytes ?? UPLOAD_POD_MAX_INFLIGHT_BYTES;
+  const accountMaxBytes = deps.accountMaxBytes ?? UPLOAD_ACCOUNT_MAX_INFLIGHT_BYTES;
 
   const gate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     // 1. Declared length — refuse before reading a single byte when we can.
@@ -119,12 +131,31 @@ export function boundedMultipart(deps: BoundedMultipartDeps = {}): RequestHandle
       });
       return;
     }
+    //    …and this account's share of it, so a single account cannot occupy the
+    //    whole replica budget (L-033). Checked before either counter moves, so a
+    //    refusal leaves both untouched.
+    const acctKey = accountKey(req);
+    const acctInflight = accountInflightBytes.get(acctKey) ?? 0;
+    if (acctInflight + reserveBytes > accountMaxBytes) {
+      res.setHeader('Retry-After', '2');
+      res.status(429).json({
+        code: 'UPLOAD_ACCOUNT_BUSY',
+        error: 'Too many uploads in progress for this account',
+        message: 'You already have uploads in flight on this server. Retry when they finish.',
+      });
+      return;
+    }
+
     podInflightBytes += reserveBytes;
+    accountInflightBytes.set(acctKey, acctInflight + reserveBytes);
     let podReleased = false;
     const releasePod = () => {
       if (podReleased) return;
       podReleased = true;
       podInflightBytes = Math.max(0, podInflightBytes - reserveBytes);
+      const left = (accountInflightBytes.get(acctKey) ?? reserveBytes) - reserveBytes;
+      if (left <= 0) accountInflightBytes.delete(acctKey);
+      else accountInflightBytes.set(acctKey, left);
     };
     res.on('finish', releasePod);
     res.on('close', releasePod);
@@ -210,6 +241,8 @@ export const __testing = {
   },
   resetPodInflight: () => {
     podInflightBytes = 0;
+    accountInflightBytes.clear();
   },
   podInflightBytes: () => podInflightBytes,
+  accountInflightBytes: () => new Map(accountInflightBytes),
 };

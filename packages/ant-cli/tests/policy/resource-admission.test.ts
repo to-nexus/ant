@@ -228,3 +228,123 @@ describe('multipart uploads bound the request, not just each file (M-007)', () =
     });
   }
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Durable-write ingress: rate limit + body schema (M-NEW-029)
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Authorization answers WHOSE data a route touches. It never answers HOW MUCH
+ * work one caller may ask for, and these routes append to durable JSONL logs,
+ * rewrite whole logs, or start job runs.
+ *
+ * A SET, not a list of remembered offenders. `chat/job-error` slipped through
+ * the previous round precisely because the guard enumerated the routes someone
+ * had thought of; here every route in the file must carry the gate, so a NEW
+ * route inherits the requirement instead of having to be remembered.
+ *
+ * Structural on purpose: the route-level tests mock the limiter out (they are
+ * testing behaviour, not admission), so only a source check can see it.
+ */
+describe('every chat route is admission-gated (M-NEW-029)', () => {
+  const chatSrc = readFileSync(
+    path.resolve(__dirname, '../../src/periphery/adapters/http/routes/chat.routes.ts'),
+    'utf8',
+  );
+  const ROUTE_RE = /router\.(get|post|put|delete)\((\s*)'([^']+)'([^\n]*)/g;
+
+  const routes = [...chatSrc.matchAll(ROUTE_RE)].map((m) => ({
+    method: m[1],
+    path: m[3],
+    rest: m[4],
+  }));
+
+  it('finds the routes it is meant to be guarding', () => {
+    expect(routes.length).toBeGreaterThanOrEqual(5);
+  });
+
+  for (const r of routes) {
+    // GET /pending-choice reads in-memory state and writes nothing.
+    if (r.method === 'get') continue;
+
+    it(`${r.method.toUpperCase()} ${r.path} carries a rate limiter`, () => {
+      expect(r.rest).toContain('chatRateLimiter');
+    });
+
+    // A DELETE has no body to validate; every POST body reaches a durable line.
+    if (r.method !== 'post') continue;
+    it(`${r.method.toUpperCase()} ${r.path} validates its body`, () => {
+      expect(r.rest).toContain('validateBody(');
+    });
+  }
+});
+
+describe('expensive job routes are admission-gated (M-NEW-029)', () => {
+  const read = (rel: string) =>
+    readFileSync(path.resolve(__dirname, '../../src/periphery/adapters/http', rel), 'utf8');
+
+  it('/jobs/:jobId/continue is rate-limited like /execute', () => {
+    const src = read('routes/job.routes.ts');
+    expect(src).toMatch(/router\.post\('\/jobs\/:jobId\/continue',\s*jobExecuteRateLimiter/);
+  });
+
+  // The job-history scan walks a whole container and parses everything it finds
+  // — the same class of work as the artifact tree, so the same pair of gates.
+  it('the job-history route takes both a rate limit and an in-flight slot', () => {
+    const src = read('routes/features.routes.ts');
+    expect(src).toMatch(/router\.get\('\/projects\/:id\/features\/:feature\/jobs',\s*treeRateLimiter/);
+    expect(src).toContain('acquireConcurrencySlot');
+    expect(src).toContain('ant:slots:history:');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Aggregation budgets — a per-item cap is not a per-request bound (M-NEW-029)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('history aggregation is bounded cumulatively, not just per file', () => {
+  it('collectUniversalRuns declares both a run count and a byte budget', async () => {
+    const mod = await import('../../src/periphery/adapters/http/routes/helpers/universalRuns.js');
+    // Two axes because either alone is escapable: many small sessions with many
+    // runs each, or few sessions that are individually huge.
+    expect(mod.UNIVERSAL_RUN_COLLECT_MAX_RUNS).toBeGreaterThan(0);
+    expect(mod.UNIVERSAL_RUN_COLLECT_MAX_BYTES).toBeGreaterThan(0);
+  });
+
+  it('a partial history says so rather than reading as a complete one', () => {
+    const src = readFileSync(
+      path.resolve(__dirname, '../../src/periphery/adapters/http/routes/features.routes.ts'),
+      'utf8',
+    );
+    // Additive key — the FE reads `jobs` and ignores the rest, so this cannot
+    // break the contract, but a truncated list that is silent about it can.
+    expect(src).toMatch(/truncated:\s*true/);
+  });
+});
+
+describe('actionMetadata bounds the slot COUNT, not only each path', () => {
+  it('every RAC slot — target included — is path-checked and count-capped', async () => {
+    const { executeJobSchema } = await import(
+      '../../src/periphery/adapters/http/middleware/validateBody.js'
+    );
+    const { ACTION_METADATA_MAX_PATHS } = await import('@ant/shared');
+    const over = Array.from({ length: ACTION_METADATA_MAX_PATHS + 1 }, (_, i) => `a/${i}.ts`);
+
+    // `target` used to be absent from the schema entirely and rode
+    // `.passthrough()` unchecked, while still reaching the folder walk.
+    for (const slot of ['target', 'refs', 'context'] as const) {
+      expect(
+        executeJobSchema.safeParse({ task: 'code', actionMetadata: { [slot]: over } }).success,
+        `${slot} count`,
+      ).toBe(false);
+      expect(
+        executeJobSchema.safeParse({ task: 'code', actionMetadata: { [slot]: ['../etc/passwd'] } }).success,
+        `${slot} traversal`,
+      ).toBe(false);
+      expect(
+        executeJobSchema.safeParse({ task: 'code', actionMetadata: { [slot]: ['src/a.ts'] } }).success,
+        `${slot} normal`,
+      ).toBe(true);
+    }
+  });
+});

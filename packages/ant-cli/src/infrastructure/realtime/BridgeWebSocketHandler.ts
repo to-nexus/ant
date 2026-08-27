@@ -173,12 +173,23 @@ export class BridgeWebSocketHandler {
     });
   }
 
-  /** First X-Forwarded-For hop, else the socket remote address. */
+  /**
+   * The client address the per-IP cap is keyed on.
+   *
+   * Takes the LAST X-Forwarded-For hop, not the first. The leftmost entry is
+   * whatever the client wrote — an unauthenticated peer could vary it per
+   * connection and walk straight past `maxPerIp` (M-NEW-025). The rightmost is
+   * the one the trusted proxy in front of this process appended.
+   *
+   * One trusted hop, matching `app.set('trust proxy', 1)` on this same server:
+   * both must describe the same deployment or the HTTP and WebSocket planes
+   * disagree about who the caller is.
+   */
   private clientIp(req: IncomingMessage): string {
     const xff = req.headers['x-forwarded-for'];
-    const raw = Array.isArray(xff) ? xff[0] : xff;
-    const first = raw?.split(',')[0]?.trim();
-    return first || req.socket?.remoteAddress || 'unknown';
+    const raw = Array.isArray(xff) ? xff.join(',') : xff;
+    const hops = raw?.split(',').map((h) => h.trim()).filter(Boolean) ?? [];
+    return hops[hops.length - 1] || req.socket?.remoteAddress || 'unknown';
   }
 
   /** Release the admission reservation this client charged, exactly once. */

@@ -45,6 +45,17 @@ import type { IdePhase } from '@ant/shared';
  * delete compares against it (M-NEW-002).
  */
 const INSTANCE_KEY_ANNOTATION = 'ant.example.com/instance-key';
+/**
+ * Injective selector label. Its value is `resourceName` — the SHA-256 digest of
+ * the raw instance key — so it is RFC 1123-legal without being lossy.
+ *
+ * The human-readable `instance` label is `sanitizeLabelValue(instanceKey)`,
+ * which truncates at 63 chars and folds `@` to `-`. Two different accounts can
+ * therefore share it, and a Service selecting on it puts the OTHER account's
+ * OpenVSCode Pod into its own endpoint list (L-NEW-001). The resource NAME was
+ * already fixed this way (M-NEW-002); the selector was the half left behind.
+ */
+const INSTANCE_DIGEST_LABEL = 'ant-instance-digest';
 
 // ============================================
 // Kubernetes Types (simplified, avoid @kubernetes/client-node dependency)
@@ -499,7 +510,9 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         namespace: this.options.namespace,
         labels: {
           'app': 'ant-ide',
+          // Lossy — observability only. Never a selector; see INSTANCE_DIGEST_LABEL.
           'instance': this.sanitizeLabelValue(instanceKey),
+          [INSTANCE_DIGEST_LABEL]: resourceName,
           'user': this.sanitizeLabelValue(userContext.userId)
         },
         annotations: {
@@ -676,7 +689,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         namespace: this.options.namespace,
         labels: {
           'app': 'ant-ide',
-          'instance': this.sanitizeLabelValue(instanceKey)
+          'instance': this.sanitizeLabelValue(instanceKey),
+          [INSTANCE_DIGEST_LABEL]: resourceName
         },
         // The RAW key, exact. Labels are lossy (RFC 1123 strips `@`), so the label
         // above cannot decide ownership — the Service delete path needs the same
@@ -688,7 +702,10 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       spec: {
         selector: {
           'app': 'ant-ide',
-          'instance': this.sanitizeLabelValue(instanceKey)
+          // Digest, not the lossy `instance` label: a selector decides which
+          // Pods receive this Service's traffic, so a collision here routes one
+          // account's IDE session into another's Pod (L-NEW-001).
+          [INSTANCE_DIGEST_LABEL]: resourceName
         },
         ports: [{ port: 3000, targetPort: 3000 }],
         type: 'ClusterIP'
@@ -797,6 +814,7 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         // Ignore 409 conflict for service (already exists)
         if (!e.message?.includes('409')) throw e;
         logger.debug(`Service already exists: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
+        await this.convergeServiceSelector(resourceName, instanceKey, serviceSpec);
       }
 
       // Emitter for FE-observable startup phases (pod-pending / image-pulling
@@ -1040,6 +1058,57 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
     } catch (error: any) {
       if (error.message?.includes('404')) return false;
       throw error;
+    }
+  }
+
+  /**
+   * Replace a Service still selecting on the lossy `instance` label.
+   *
+   * Only reached right after a fresh Pod create, so the Pod this Service will
+   * front already carries the digest label and nothing that is currently
+   * serving a user is disturbed — a Service left from a previous run of the
+   * SAME key would otherwise keep the collision-prone selector forever
+   * (L-NEW-001). Deliberately does NOT touch Services whose Pod was reused:
+   * that Pod predates the label and the old selector is what still reaches it.
+   *
+   * Best-effort: a Service that cannot be converged still routes to the right
+   * Pod for this key; it just also permits a (vanishingly unlikely) collision.
+   */
+  private async convergeServiceSelector(
+    resourceName: string,
+    instanceKey: string,
+    serviceSpec: K8sService,
+  ): Promise<void> {
+    try {
+      const svc = await this.k8sRequest<K8sService>(
+        `/api/v1/namespaces/${this.options.namespace}/services/${resourceName}`,
+      );
+      if (svc?.spec?.selector?.[INSTANCE_DIGEST_LABEL] === resourceName) return;
+      // Same exact-annotation basis every other mutation uses — never act on a
+      // Service on the strength of its name alone (M-NEW-002).
+      if (svc?.metadata?.annotations?.[INSTANCE_KEY_ANNOTATION] !== instanceKey) {
+        logger.warn(
+          `Service ${resourceName} has a stale selector but is not ours — leaving it`,
+          { component: 'KubernetesIDEOrchestrator' },
+        );
+        return;
+      }
+      logger.warn(`Converging IDE Service selector to the instance digest: ${resourceName}`, {
+        component: 'KubernetesIDEOrchestrator',
+      });
+      await this.k8sRequest(
+        `/api/v1/namespaces/${this.options.namespace}/services/${resourceName}`,
+        'DELETE',
+      );
+      await this.k8sRequest(
+        `/api/v1/namespaces/${this.options.namespace}/services`,
+        'POST',
+        serviceSpec,
+      );
+    } catch (err: any) {
+      logger.warn(`Service selector convergence skipped for ${resourceName}: ${err?.message}`, {
+        component: 'KubernetesIDEOrchestrator',
+      });
     }
   }
 

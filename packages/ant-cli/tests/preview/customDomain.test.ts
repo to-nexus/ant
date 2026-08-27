@@ -20,10 +20,14 @@ import {
   isCustomDomainEnabled,
   getCustomDomainCnameTarget,
   getCustomDomainApexIps,
+  getTlsAskSecret,
+  assertTlsAskSecretConfigured,
 } from '../../src/infrastructure/deploy/customDomain/config';
 import { CustomDomainService } from '../../src/infrastructure/deploy/customDomain/CustomDomainService';
 import { createDeployProxyMiddleware } from '../../src/periphery/adapters/http/middleware/deployProxy';
 import type { CustomDomain } from '@ant/shared';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const COORDS = { tenantId: 'org', userId: 'user', projectId: 'proj', feature: 'feat' };
 
@@ -113,6 +117,62 @@ describe('custom-domain config gate', () => {
   it('parses comma-separated apex IPs', () => {
     process.env.ANT_CUSTOM_DOMAIN_APEX_IPS = '1.1.1.1, 2.2.2.2 ,';
     expect(getCustomDomainApexIps()).toEqual(['1.1.1.1', '2.2.2.2']);
+  });
+
+  /**
+   * L-NEW-002. `/internal/tls-ask` answers BEFORE authentication by design
+   * (Caddy pauses a TLS handshake to ask it), and answering it calls
+   * `ensureRunning()` — it wakes a private deploy. NetworkPolicy was the only
+   * boundary, and a NetworkPolicy is a deployment artifact this process cannot
+   * verify. The shared secret is one it can, so it is required rather than
+   * optional — but only where the sink actually exists.
+   */
+  describe('tls-ask secret is required exactly where the sink exists', () => {
+    const prevSecret = process.env.ANT_TLS_ASK_SECRET;
+    afterEach(() => {
+      if (prevSecret === undefined) delete process.env.ANT_TLS_ASK_SECRET;
+      else process.env.ANT_TLS_ASK_SECRET = prevSecret;
+    });
+
+    it('refuses to boot: cloud + custom domains enabled + no secret', () => {
+      process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.example.net';
+      delete process.env.ANT_TLS_ASK_SECRET;
+      expect(() => assertTlsAskSecretConfigured(true)).toThrow(/ANT_TLS_ASK_SECRET/);
+    });
+
+    it('boots: cloud + custom domains DISABLED — no sink, so no new variable', () => {
+      delete process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET;
+      delete process.env.ANT_TLS_ASK_SECRET;
+      expect(() => assertTlsAskSecretConfigured(true)).not.toThrow();
+    });
+
+    it('boots: local mode is a single-operator trust boundary', () => {
+      process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.example.net';
+      delete process.env.ANT_TLS_ASK_SECRET;
+      expect(() => assertTlsAskSecretConfigured(false)).not.toThrow();
+    });
+
+    it('boots once the secret is set', () => {
+      process.env.ANT_CUSTOM_DOMAIN_CNAME_TARGET = 'ant-domains.example.net';
+      process.env.ANT_TLS_ASK_SECRET = 's3cret';
+      expect(() => assertTlsAskSecretConfigured(true)).not.toThrow();
+      expect(getTlsAskSecret()).toBe('s3cret');
+    });
+
+    it('a blank secret is not a secret', () => {
+      process.env.ANT_TLS_ASK_SECRET = '   ';
+      expect(getTlsAskSecret()).toBeUndefined();
+    });
+
+    // ADV-094: `!==` on a secret leaks its prefix through response timing.
+    it('the endpoint compares the secret in constant time', () => {
+      const src = fs.readFileSync(
+        path.resolve(__dirname, '../../src/infrastructure/preview/PreviewServer.ts'),
+        'utf8',
+      );
+      expect(src).toContain('timingSafeEqual');
+      expect(src).not.toMatch(/x-ant-tls-ask-secret'\]\s*!==/);
+    });
   });
 });
 

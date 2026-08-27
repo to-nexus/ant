@@ -18,6 +18,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readSessionTextBounded } from '../../../../../core/utils/sessionPaths';
+import { writeSessionBounded, sessionWriteGuardOf } from '../../../../../core/session/stateBudget';
 import { PlanGraphState } from '../state';
 import type { ConversationEntry } from '../../../../../core/types/session';
 import { CONV_KEYS, getConv, type ConversationMessage } from '../../../../common/graph/conversations';
@@ -192,17 +193,27 @@ async function loadPlanContext(state: PlanGraphState): Promise<Partial<PlanGraph
       isConversationContinuation = true;
       console.log(`   Conversation: Appended new user message (now ${sessionMain.length} entries)`);
       try {
-        const sessionWriteData = JSON.parse(readSessionTextBounded(sessionPath) ?? 'null') ?? {};
+        const sessionRaw = readSessionTextBounded(sessionPath);
+        const sessionWriteData = JSON.parse(sessionRaw ?? 'null') ?? {};
         sessionWriteData.state = sessionWriteData.state || {};
         sessionWriteData.state.conversations = {
           ...sessionWriteData.state.conversations,
           [CONV_KEYS.SESSION_MAIN]: sessionMain,
         };
         sessionWriteData.updatedAt = new Date().toISOString();
-        fs.writeFileSync(sessionPath, JSON.stringify(sessionWriteData, null, 2), 'utf-8');
+        // Through the budgeted seam: this appends a user turn to SESSION_MAIN on
+        // every continuation, so a raw write here can grow the file past what
+        // the bounded readers will open (M-NEW-029).
+        await writeSessionBounded(sessionPath, sessionWriteData, {
+          expect: sessionWriteGuardOf(sessionRaw),
+        });
         console.log(`   Conversation: Persisted to session (crash-safe)`);
       } catch (err: any) {
-        console.warn(`   ⚠️ Conversation: Failed to persist: ${err.message}`);
+        if (err?.code === 'SESSION_WRITE_TOO_LARGE' || err?.code === 'SESSION_WRITE_CONFLICT') {
+          console.error(`   ❌ Conversation: session write refused (${err.code}): ${err.message}`);
+        } else {
+          console.warn(`   ⚠️ Conversation: Failed to persist: ${err.message}`);
+        }
       }
     }
 

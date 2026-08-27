@@ -13,7 +13,7 @@
  *      loss on a read-modify-write.
  */
 
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, afterEach } from 'vitest';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -26,8 +26,9 @@ import {
   readJsonlTailBounded,
   JSONL_READ_MAX_BYTES,
   JSONL_MAX_LINES,
+  JSONL_COMPACT_TRIGGER_BYTES,
 } from '../../src/core/utils/sessionPaths';
-import { FileSessionAdapter } from '../../src/periphery/adapters/session/FileSessionAdapter';
+import { FileSessionAdapter, setChatLogLockProvider } from '../../src/periphery/adapters/session/FileSessionAdapter';
 import {
   serializeSessionBounded,
   writeSessionBounded,
@@ -199,6 +200,95 @@ describe('FileSessionAdapter collapse preserves every record (M-NEW-029)', () =>
     expect(JSON.parse(lines[2]).collapsed).toBeUndefined(); // other job
     expect(lines[3]).toBe('not json at all');               // passed through verbatim
   });
+
+  /**
+   * The append path had no growth budget at all — but refusing an append is the
+   * wrong shape of fix (it stops chat working). The readers already serve only
+   * the newest `JSONL_READ_MAX_BYTES`, so trimming to that window is observably
+   * lossless: what is dropped is exactly what no reader could return
+   * (M-NEW-029).
+   */
+  it('an over-grown log is trimmed to the reader window, losing nothing readable', async () => {
+    const featurePath = path.join(root, 'retention');
+    fs.mkdirSync(path.join(featurePath, 'sessions'), { recursive: true });
+    const chatPath = path.join(featurePath, 'sessions', 'chat.jsonl');
+
+    // Head is far outside the reader window; tail is inside it.
+    const fd = fs.openSync(chatPath, 'w');
+    fs.writeSync(fd, `${JSON.stringify({ type: 'user_turn', turnId: 'unreadable-head', pad: 'x'.repeat(JSONL_COMPACT_TRIGGER_BYTES) })}\n`);
+    fs.writeSync(fd, `${JSON.stringify({ type: 'user_turn', turnId: 'readable-tail' })}\n`);
+    fs.closeSync(fd);
+
+    const readableBefore = (await readJsonlTailBounded(chatPath))!.lines.map((l) => JSON.parse(l).turnId);
+    expect(fs.statSync(chatPath).size).toBeGreaterThan(JSONL_COMPACT_TRIGGER_BYTES);
+
+    await makeAdapter(featurePath).appendLine('chat', { type: 'user_turn', turnId: 'appended' } as any);
+
+    // The file shrank...
+    expect(fs.statSync(chatPath).size).toBeLessThan(JSONL_COMPACT_TRIGGER_BYTES);
+    // ...and everything a reader could ever have returned is still there.
+    const readableAfter = (await readJsonlTailBounded(chatPath))!.lines.map((l) => JSON.parse(l).turnId);
+    expect(readableAfter).toEqual([...readableBefore, 'appended']);
+  });
+
+  it('a log inside the window is left exactly as it is', async () => {
+    const featurePath = path.join(root, 'no-retention');
+    fs.mkdirSync(path.join(featurePath, 'sessions'), { recursive: true });
+    const chatPath = path.join(featurePath, 'sessions', 'chat.jsonl');
+    fs.writeFileSync(chatPath, `${JSON.stringify({ type: 'user_turn', turnId: 'a' })}\n`, 'utf-8');
+
+    await makeAdapter(featurePath).appendLine('chat', { type: 'user_turn', turnId: 'b' } as any);
+
+    const lines = fs.readFileSync(chatPath, 'utf-8').split('\n').filter(l => l.trim() !== '');
+    expect(lines.map(l => JSON.parse(l).turnId)).toEqual(['a', 'b']);
+  });
+
+  /**
+   * Append and rewrite are only mutually exclusive if they contend for the SAME
+   * key — and neither took one in production, because the provider was never
+   * registered (M-NEW-029). Failure policy is asymmetric on purpose: an append
+   * must not be lost to a slow lock; a whole-file rewrite must not race one.
+   */
+  describe('cross-pod JSONL lock', () => {
+    afterEach(() => setChatLogLockProvider(null));
+
+    const recordingProvider = (keys: string[], fail = false) => ({
+      acquireLock: async (key: string) => { keys.push(key); return !fail; },
+      releaseLock: async () => {},
+    });
+
+    it('append and collapse contend for the same key', async () => {
+      const featurePath = path.join(root, 'lock-key');
+      fs.mkdirSync(path.join(featurePath, 'sessions'), { recursive: true });
+      const keys: string[] = [];
+      setChatLogLockProvider(recordingProvider(keys));
+
+      const adapter = makeAdapter(featurePath);
+      await adapter.appendLine('chat', { type: 'user_turn', turnId: 'a' } as any);
+      await adapter.collapseChatLog();
+
+      expect(keys).toHaveLength(2);
+      expect(keys[0]).toBe(keys[1]);
+    });
+
+    it('an unavailable lock never loses an append, but does refuse a rewrite', async () => {
+      const featurePath = path.join(root, 'lock-fail');
+      fs.mkdirSync(path.join(featurePath, 'sessions'), { recursive: true });
+      const chatPath = path.join(featurePath, 'sessions', 'chat.jsonl');
+      fs.writeFileSync(chatPath, `${JSON.stringify({ type: 'user_turn', turnId: 'a' })}\n`, 'utf-8');
+      setChatLogLockProvider(recordingProvider([], true));
+
+      const adapter = makeAdapter(featurePath);
+      await adapter.appendLine('chat', { type: 'user_turn', turnId: 'b' } as any);
+      const lines = fs.readFileSync(chatPath, 'utf-8').split('\n').filter(l => l.trim() !== '');
+      expect(lines.map(l => JSON.parse(l).turnId)).toEqual(['a', 'b']);
+
+      await expect(adapter.collapseChatLog()).rejects.toThrow(/chatlog lock timeout/);
+      // Refused, not half-done: the log is untouched.
+      const after = fs.readFileSync(chatPath, 'utf-8').split('\n').filter(l => l.trim() !== '');
+      expect(after.every(l => JSON.parse(l).collapsed === undefined)).toBe(true);
+    });
+  });
 });
 
 /**
@@ -253,6 +343,50 @@ describe('session write budget (M-NEW-029)', () => {
     expect(session.state.taskQueue).toEqual([{ id: 't1' }]);
     expect(session.state.currentTask).toEqual({ id: 't1' });
     expect(session.state.interruption).toEqual({ reason: 'user_stopped' });
+  });
+
+  /**
+   * `appendRunToSessionFile` adds one `runs[]` entry per job finalize and never
+   * prunes. Clearing old snapshots thins each entry but not the count, so a
+   * long-lived feature eventually refused its own checkpoint write — an
+   * availability finding turning into lost task state (M-NEW-029). Shedding the
+   * oldest history is the last resort BEFORE refusing, never instead of the
+   * cheaper sheds.
+   */
+  it('sheds oldest runs only after the cheaper sheds, and still keeps the resume core', () => {
+    const big = 'z'.repeat(4096);
+    const session: any = {
+      // No snapshots and no conversations to shed: only (d) can make this fit.
+      runs: Array.from({ length: 4000 }, (_, i) => ({ jobId: `j${i}`, blob: big })),
+      state: { taskQueue: [{ id: 't1' }], currentTask: { id: 't1' }, completedTasks: ['t0'] },
+    };
+    const before = session.runs.length;
+    const out = shedToFit(session);
+    expect(out.ok).toBe(true);
+    expect(out.shed.join(',')).toMatch(/runs\(-/);
+    expect(session.runs.length).toBeLessThan(before);
+    // Newest-first retention — the tail is what the UI and restore read.
+    expect(session.runs[session.runs.length - 1].jobId).toBe(`j${before - 1}`);
+    expect(session.state.taskQueue).toEqual([{ id: 't1' }]);
+    expect(session.state.currentTask).toEqual({ id: 't1' });
+    expect(session.state.completedTasks).toEqual(['t0']);
+  });
+
+  it('leaves runs alone when a cheaper shed already made it fit', () => {
+    const big = 'x'.repeat(Math.floor(SESSION_MAX_BYTES / 3));
+    const session: any = {
+      runs: [
+        { jobId: 'a', kanbanSnapshot: { blob: big } },
+        { jobId: 'b', kanbanSnapshot: { blob: big } },
+        { jobId: 'c', kanbanSnapshot: { blob: big } },
+        { jobId: 'd', kanbanSnapshot: { blob: big } },
+      ],
+      state: {},
+    };
+    const out = shedToFit(session, { keepSnapshots: 1 });
+    expect(out.ok).toBe(true);
+    expect(out.shed.join(',')).not.toMatch(/runs\(-/);
+    expect(session.runs).toHaveLength(4);
   });
 
   it('a CAS guard turns a concurrent overwrite into a typed conflict, not a clobber', async () => {

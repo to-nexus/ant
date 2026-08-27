@@ -42,6 +42,7 @@ import { recoverStaleJobs } from './lifecycle/StaleJobRecovery';
 
 // Pipeline scheduling
 import { getInfrastructureFactory } from '../../../../infrastructure/adapters/InfrastructureFactory';
+import { registerChatLogLock } from '../../session/FileSessionAdapter';
 import { resolveRedisUrl } from '../../../../core/config/redisUrl';
 import { PipelineQueue, PipelineRunCoordinator, reconcilePipelines } from '../../../../infrastructure/scheduling';
 import { checkApproval, checkTeamMembership } from '../routes/helpers/approvalGate';
@@ -292,6 +293,15 @@ export class ExpressServerAdapter implements
     // passthrough proxy. InfrastructureFactory is initialized by the
     // process entry point before `ExpressServerAdapter.start()` runs.
     initializeRateLimiters();
+
+    // Wire the cross-pod chat/feature JSONL lock. This registration never
+    // existed in production, so neither the appends nor the whole-file collapse
+    // rewrites were serialized across pods on the shared mount (M-NEW-029).
+    try {
+      registerChatLogLock(getInfrastructureFactory().getStateStore());
+    } catch (err: any) {
+      console.warn(`[Server] chat-log cross-pod lock not registered: ${err?.message}`);
+    }
 
     // Run stale job recovery BEFORE accepting connections so that Redis
     // state is clean by the time the Realtime server (or any client) reads it.

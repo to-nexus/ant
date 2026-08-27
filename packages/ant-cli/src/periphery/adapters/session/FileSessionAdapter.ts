@@ -28,9 +28,9 @@ import {
   getChatJsonlPath,
   readSessionTextBoundedAsync,
   readJsonlTailBounded,
-  SESSION_MAX_BYTES,
+  JSONL_COMPACT_TRIGGER_BYTES,
 } from "../../../core/utils/sessionPaths";
-import { shedToFit, SessionWriteTooLargeError } from "../../../core/session/stateBudget";
+import { writeSessionBounded } from "../../../core/session/stateBudget";
 
 
 /**
@@ -74,10 +74,20 @@ class FileMutex {
  * In single-process mode (tests, local dev without Redis), no provider is
  * registered and the in-process `FileMutex` alone is sufficient.
  *
- * The provider is injected once at bootstrap by the API server composition
- * root (see periphery/adapters/http/express/ChatLogLockProvider.ts) via
- * `setChatLogLockProvider`. Worker processes register the same provider
- * from their own composition root.
+ * The provider is injected once at bootstrap by `registerChatLogLock()`, which
+ * the API composition root and the job-runner child both call. It went
+ * unregistered in production for a long time, which meant neither the appends
+ * nor the whole-file collapse rewrites were serialized across pods at all
+ * (M-NEW-029).
+ *
+ * **Failure policy is asymmetric, and deliberately so:**
+ *   - APPEND is best-effort. A chat line must never be lost because Redis was
+ *     slow; the in-process mutex still orders same-process writers, and this is
+ *     exactly the behaviour that shipped while no provider existed.
+ *   - A whole-file REWRITE (chat clear / job delete) requires the lock. It is a
+ *     read-modify-write over the entire log, so racing an append silently drops
+ *     records. It is also an explicit user action, so a typed failure the user
+ *     can retry beats a silent loss.
  */
 export interface ChatLogLockProvider {
   acquireLock(key: string, ttlSeconds: number): Promise<boolean>;
@@ -95,15 +105,37 @@ export function getChatLogLockProvider(): ChatLogLockProvider | null {
 }
 
 const CHATLOG_LOCK_TTL_SECONDS = 5;
+/**
+ * A whole-file rewrite streams the entire log, so it can outlive the append
+ * TTL — a lock that expires mid-rewrite is worse than none, because it reads
+ * as protection. Sized above the slowest realistic collapse.
+ */
+const CHATLOG_REWRITE_LOCK_TTL_SECONDS = 60;
 const CHATLOG_LOCK_RETRY_MS = 20;
 const CHATLOG_LOCK_MAX_RETRIES = 250; // ≈ 5s worst case
 
-async function acquireChatLogLockBlocking(provider: ChatLogLockProvider, lockKey: string): Promise<void> {
+async function acquireChatLogLockBlocking(
+  provider: ChatLogLockProvider,
+  lockKey: string,
+  ttlSeconds: number,
+): Promise<void> {
   for (let i = 0; i < CHATLOG_LOCK_MAX_RETRIES; i++) {
-    if (await provider.acquireLock(lockKey, CHATLOG_LOCK_TTL_SECONDS)) return;
+    if (await provider.acquireLock(lockKey, ttlSeconds)) return;
     await new Promise((resolve) => setTimeout(resolve, CHATLOG_LOCK_RETRY_MS));
   }
   throw new Error(`chatlog lock timeout: ${lockKey}`);
+}
+
+/**
+ * Wire the cross-pod JSONL lock to the process's Redis state store.
+ *
+ * `StateStorePort` already exposes exactly `acquireLock`/`releaseLock`, so this
+ * is a registration, not an adapter. Both the API composition root and the
+ * job-runner child call it: they append to the same logs on the same shared
+ * mount, so a lock only one of them takes orders nothing.
+ */
+export function registerChatLogLock(store: ChatLogLockProvider): void {
+  setChatLogLockProvider(store);
 }
 
 /**
@@ -314,28 +346,10 @@ export class FileSessionAdapter implements SessionPort {
     // Write budget (M-NEW-029): never write a session no reader can open again.
     // `load()` refuses past SESSION_MAX_BYTES, and updateArtifacts/addRun both
     // load first — so a file written over the line bricks itself permanently.
-    // Shed the recoverable parts first (compaction before failure); refuse only
-    // what still does not fit, leaving the previous valid file untouched.
-    const budgeted = shedToFit(session);
-    if (!budgeted.ok) {
-      throw new SessionWriteTooLargeError(sessionPath, budgeted.bytes, budgeted.limit);
-    }
-    if (budgeted.shed.length > 0) {
-      console.warn(
-        `🗜️  [Session] Shed to fit the ${SESSION_MAX_BYTES}-byte budget: ${sessionPath} — ${budgeted.shed.join(', ')}`,
-      );
-    }
-    const content = budgeted.content;
-    const dir = path.dirname(sessionPath);
-    const tmpPath = path.join(dir, `.${path.basename(sessionPath)}.${process.pid}.tmp`);
-    
-    try {
-      await fs.writeFile(tmpPath, content, "utf-8");
-      await fs.rename(tmpPath, sessionPath);
-    } catch (err) {
-      try { await fs.unlink(tmpPath); } catch { /* ignore */ }
-      throw err;
-    }
+    // The seam sheds first (compaction before failure) and refuses without
+    // touching the previous valid file; it also owns the atomic tmp+rename, so
+    // there is exactly one copy of that sequence.
+    await writeSessionBounded(sessionPath, session);
     
     if (this.fileTreeUpdate) {
       this.fileTreeUpdate.notifyFileTreeUpdate(this.projectId, this.featureName);
@@ -496,28 +510,100 @@ export class FileSessionAdapter implements SessionPort {
       ? getFeatureJsonlPath(this.featurePath)
       : getChatJsonlPath(this.featurePath);
 
+    await this.withJsonlLock(filePath, { requireCrossPod: false }, async () => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      const content = JSON.stringify(line) + '\n';
+      await fs.appendFile(filePath, content, 'utf-8');
+      await this.compactIfOverGrown(filePath);
+    });
+  }
+
+  /**
+   * Run `fn` under this file's in-process mutex AND, when a provider is
+   * registered, the cross-pod lock for the same file.
+   *
+   * One helper so append and rewrite cannot drift onto different keys — they
+   * are only mutually exclusive if they contend for the same one. See the
+   * `ChatLogLockProvider` docblock for why `requireCrossPod` differs between
+   * the two callers.
+   */
+  private async withJsonlLock(
+    filePath: string,
+    opts: { requireCrossPod: boolean },
+    fn: () => Promise<void>,
+  ): Promise<void> {
     const lock = this.getJsonlLock(filePath);
-    // Cross-pod lock (only when a ChatLogLockProvider is registered).
-    // Protects against line interleaving when multiple pods append to the
-    // same chat.jsonl / feature.jsonl on a shared filesystem (EFS). Uses
-    // a per-file key so unrelated features do not contend. The in-process
-    // FileMutex is ALSO held to protect same-process writers.
     const provider = _chatLogLockProvider;
-    const crossPodLockKey = provider ? `ant:chatlog:${this.projectId}:${this.featureName}:${file}` : null;
+    const key = provider ? this.crossPodLockKey(filePath) : null;
     await lock.runExclusive(async () => {
-      if (provider && crossPodLockKey) {
-        await acquireChatLogLockBlocking(provider, crossPodLockKey);
+      let held = false;
+      if (provider && key) {
+        try {
+          await acquireChatLogLockBlocking(
+            provider,
+            key,
+            opts.requireCrossPod ? CHATLOG_REWRITE_LOCK_TTL_SECONDS : CHATLOG_LOCK_TTL_SECONDS,
+          );
+          held = true;
+        } catch (err) {
+          if (opts.requireCrossPod) throw err;
+          console.warn(
+            `[FileSessionAdapter] cross-pod lock unavailable, appending anyway: ${key}`,
+          );
+        }
       }
       try {
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        const content = JSON.stringify(line) + '\n';
-        await fs.appendFile(filePath, content, 'utf-8');
+        await fn();
       } finally {
-        if (provider && crossPodLockKey) {
-          await provider.releaseLock(crossPodLockKey).catch(() => { /* best-effort */ });
+        if (held && provider && key) {
+          await provider.releaseLock(key).catch(() => { /* best-effort */ });
         }
       }
     });
+  }
+
+  /** Per-file cross-pod key — unrelated features never contend. */
+  private crossPodLockKey(filePath: string): string {
+    const kind = filePath === getChatJsonlPath(this.featurePath) ? 'chat' : 'feature';
+    return `ant:chatlog:${this.projectId}:${this.featureName}:${kind}`;
+  }
+
+  /**
+   * Trim a JSONL log back to the readers' window once it has grown well past it.
+   *
+   * The append path had no growth budget at all, but REFUSING an append is the
+   * wrong shape of fix: it stops chat working to bound a cost that nobody can
+   * observe anyway. `readJsonlTailBounded` already serves only the newest
+   * `JSONL_READ_MAX_BYTES`, so everything before that window is storage no
+   * reader can reach — dropping it loses nothing observable, while letting it
+   * grow costs EFS and every rewrite that must stream the whole file
+   * (M-NEW-029).
+   *
+   * The trigger sits above the window so a log hovering at the boundary is not
+   * rewritten on every append; the amortized cost is one streaming pass per
+   * `JSONL_COMPACT_TRIGGER_BYTES − JSONL_READ_MAX_BYTES` of new content. The
+   * caller already holds this file's lock.
+   */
+  private async compactIfOverGrown(filePath: string): Promise<void> {
+    try {
+      const stat = await fs.stat(filePath);
+      if (stat.size <= JSONL_COMPACT_TRIGGER_BYTES) return;
+      const tail = await readJsonlTailBounded(filePath);
+      if (!tail || tail.lines.length === 0) return;
+      // `lines` are the RAW serialized lines, not parsed objects — write them
+      // back verbatim so an unparseable line survives a trim exactly as it
+      // survives a collapse.
+      const tmpPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      await fs.writeFile(tmpPath, tail.lines.join('\n') + '\n', 'utf-8');
+      await fs.rename(tmpPath, filePath);
+      console.warn(
+        `🗜️  [FileSessionAdapter] Trimmed ${filePath} to the reader window ` +
+        `(${stat.size} bytes → ${tail.lines.length} lines)`,
+      );
+    } catch (err: any) {
+      // Never fail an append because a retention pass could not run.
+      console.warn(`[FileSessionAdapter] JSONL compaction skipped: ${err?.message}`);
+    }
   }
 
   /**
@@ -911,8 +997,7 @@ export class FileSessionAdapter implements SessionPort {
 
   async collapseByJobId(jobId: string): Promise<void> {
     const filePath = getFeatureJsonlPath(this.featurePath);
-    const lock = this.getJsonlLock(filePath);
-    await lock.runExclusive(() =>
+    await this.withJsonlLock(filePath, { requireCrossPod: true }, () =>
       this.rewriteJsonlStreaming(filePath, obj => {
         if (obj.jobId === jobId && obj.type !== 'boundary' && !obj.collapsed) {
           return { ...obj, collapsed: true };
@@ -937,8 +1022,7 @@ export class FileSessionAdapter implements SessionPort {
   // ───── Private JSONL helpers ─────
 
   private async collapseAllInFile(filePath: string): Promise<void> {
-    const lock = this.getJsonlLock(filePath);
-    await lock.runExclusive(() =>
+    await this.withJsonlLock(filePath, { requireCrossPod: true }, () =>
       this.rewriteJsonlStreaming(filePath, obj =>
         obj.collapsed ? null : { ...obj, collapsed: true },
       ),

@@ -286,3 +286,74 @@ describe('compressPathsByFolder', () => {
     expect(out).toEqual([{ kind: 'file', path: 'plan/prd.md' }]);
   });
 });
+
+/**
+ * M-NEW-029 — the walk is on the request's critical path, and its roots come
+ * straight off the wire (`actionMetadata.target/refs/context`). It recursed
+ * with no depth, breadth or entry bound, and memoization only dedupes IDENTICAL
+ * directory strings, so N distinct prefixes meant N independent unbounded walks.
+ *
+ * Exhausting the budget is deliberately NOT an error: this is display-only
+ * metadata, so it degrades to less compression, never to a failed request.
+ */
+describe('compressPathsByFolder — walk budget', () => {
+  /** A directory tree `depth` levels deep, `width` dirs at each level. */
+  const deepLayout = (depth: number, width: number) => {
+    const layout: Record<string, Array<{ name: string; isDirectory: boolean }>> = {};
+    const build = (prefix: string, level: number) => {
+      if (level >= depth) {
+        layout[prefix] = [{ name: 'leaf.ts', isDirectory: false }];
+        return;
+      }
+      layout[prefix] = Array.from({ length: width }, (_, i) => ({ name: `d${i}`, isDirectory: true }));
+      for (let i = 0; i < width; i++) build(`${prefix}/d${i}`, level + 1);
+    };
+    build('root', 0);
+    return layout;
+  };
+
+  it('stops descending instead of walking an unbounded tree', async () => {
+    const layout = deepLayout(8, 6); // ≈ 6^8 entries if nothing bounds it
+    const fs = makeFS(layout);
+    const out = await compressPathsByFolder(['root/d0/d0/leaf.ts'], fs);
+
+    const reads = (fs.readDirectory as any).mock.calls.length;
+    expect(reads).toBeLessThan(5000);
+    // Degraded, not failed: the caller still gets its entry back.
+    expect(out.length).toBeGreaterThan(0);
+  });
+
+  it('spends ONE budget across all roots, not one per root', async () => {
+    const layout = deepLayout(6, 6);
+    // Distinct prefixes: memoization cannot merge them, so each used to open an
+    // independent unbounded walk.
+    const many = Array.from({ length: 200 }, (_, i) => `root/d${i % 6}/d${i % 6}/file-${i}.ts`);
+
+    const fs = makeFS(layout);
+    await compressPathsByFolder(many, fs);
+    const manyReads = (fs.readDirectory as any).mock.calls.length;
+
+    const fsOne = makeFS(layout);
+    await compressPathsByFolder(['root/d0/d0/file-0.ts'], fsOne);
+    const oneReads = (fsOne.readDirectory as any).mock.calls.length;
+
+    // 200× the roots must not mean 200× the work.
+    expect(manyReads).toBeLessThan(oneReads * 5);
+    expect(manyReads).toBeLessThan(5000);
+  });
+
+  it('a normal selection is unaffected by the budget', async () => {
+    const out = await compressPathsByFolder(
+      ['architecture/spec/a.md', 'architecture/spec/b.md'],
+      makeFS({
+        'architecture': [{ name: 'spec', isDirectory: true }],
+        'architecture/spec': [
+          { name: 'a.md', isDirectory: false },
+          { name: 'b.md', isDirectory: false },
+        ],
+      }),
+    );
+    // Topmost fully-covered dir wins — unchanged by the budget.
+    expect(out).toEqual([{ kind: 'folder', path: 'architecture', fileCount: 2 }]);
+  });
+});

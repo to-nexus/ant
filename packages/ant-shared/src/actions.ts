@@ -417,6 +417,21 @@ export type PathOrFolder =
   | { kind: 'file'; path: string }
   | { kind: 'folder'; path: string; fileCount: number };
 
+/**
+ * Ceiling on how many paths one RAC slot (`target` / `refs` / `context`) may
+ * carry in a single request.
+ *
+ * The per-path length cap bounded ONE entry; nothing bounded the count, and
+ * these arrays are the roots of the folder-compression walk that runs on the
+ * request's critical path before the durable append (M-NEW-029). The same
+ * number is enforced at the HTTP schema and inside the walk, so the two cannot
+ * drift into "validated but unbounded" again.
+ *
+ * Far above any real selection: a folder drop resolves to a handful of slots,
+ * not hundreds.
+ */
+export const ACTION_METADATA_MAX_PATHS = 500;
+
 export interface ActionMetadata {
   /**
    * FE UI badge state only — BE does not read this field. Authority SSOT

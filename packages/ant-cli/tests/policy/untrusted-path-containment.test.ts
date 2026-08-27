@@ -33,7 +33,7 @@ import {
 import { UnifiedWorkspaceResolver } from '../../src/core/config/WorkspacePathResolver.js';
 import { WorkspaceServiceAdapter } from '../../src/infrastructure/workspace/WorkspaceServiceAdapter.js';
 import { resolveConnectionDir } from '../../src/periphery/adapters/http/services/PreviewService/utils/connectionDir.js';
-import { executeJobSchema } from '../../src/periphery/adapters/http/middleware/validateBody.js';
+import { executeJobSchema, choiceResolvedSchema } from '../../src/periphery/adapters/http/middleware/validateBody.js';
 
 const USER = { organizationId: 'acme', userId: 'alice' };
 
@@ -603,6 +603,12 @@ describe('actionMetadata RAC paths are relative and traversal-free (H-004)', () 
     ['absolute windows path', { refs: ['C:\\secrets\\a.txt'] }, false],
     ['backslash traversal', { refs: ['..\\..\\victim'] }, false],
     ['NUL byte', { refs: ['plan/prd.md\0'] }, false],
+    // audit-11: `target` was absent from the schema and rode `.passthrough()`
+    // completely unchecked, while still reaching the durable line and the
+    // folder-compression walk.
+    ['normal target', { target: ['plan/prd.md'] }, true],
+    ['traversal in target', { target: ['../../victim/features/main/.env'] }, false],
+    ['absolute target', { target: ['/etc/passwd'] }, false],
   ];
 
   for (const [label, metadata, ok] of CASES) {
@@ -614,5 +620,51 @@ describe('actionMetadata RAC paths are relative and traversal-free (H-004)', () 
   it('a dotdot-looking filename is not a traversal', () => {
     // Only a whole `..` SEGMENT escapes; `..foo` is an ordinary name.
     expect(parse({ refs: ['plan/..prd.md'] }).success).toBe(true);
+  });
+});
+
+/**
+ * `answer.evalType` becomes a DIRECTORY SEGMENT under `meta/evals/` and is then
+ * written to. It reached `path.join(featurePath, 'meta', 'evals', evalType)`
+ * with no validation at all — the same defect class as C-002/H-007, found while
+ * closing M-NEW-029. A single safe segment is the contract; the write itself is
+ * descriptor-contained so a segment that somehow got past this still cannot
+ * escape.
+ */
+describe('eval_save evalType is a single safe path segment', () => {
+  const parse = (evalType: unknown) =>
+    choiceResolvedSchema.safeParse({
+      cardId: 'c', choiceSelected: 'save', resolvedLabel: 'Saved',
+      answer: { evalType, content: 'x' },
+    });
+
+  const CASES: Array<[label: string, value: unknown, ok: boolean]> = [
+    ['an ordinary type name', 'design-review', true],
+    ['digits and underscores', 'round_2', true],
+    ['no evalType at all', undefined, true],
+    ['parent traversal', '../../..', false],
+    ['embedded traversal', 'a/../../etc', false],
+    ['a nested segment', 'a/b', false],
+    ['a backslash segment', 'a\\b', false],
+    ['an absolute path', '/etc', false],
+    ['a bare dotdot', '..', false],
+    ['a NUL byte', 'a\0b', false],
+  ];
+
+  for (const [label, value, ok] of CASES) {
+    it(`${ok ? 'accepts' : 'rejects'} ${label}`, () => {
+      expect(parse(value).success).toBe(ok);
+    });
+  }
+
+  it('the write goes through the contained seam, not raw fs', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../src/periphery/adapters/http/routes/chat.routes.ts'),
+      'utf8',
+    );
+    // The schema is the first gate; this is the one that holds if a caller
+    // reaches the sink another way, or an ancestor is swapped after the check.
+    expect(src).toContain('writeTextContainedBase(');
+    expect(src).toContain('mkdirpContainedBase(');
   });
 });

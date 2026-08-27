@@ -28,6 +28,20 @@ import * as fs from 'fs';
 import { GitOperationError } from '../services/GitService/errors';
 import { FeatureDeletionError } from '../services/ProjectService/errors';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver';
+import { treeRateLimiter } from '../middleware/rateLimiter';
+import { acquireConcurrencySlot } from '../../../../core/redis/concurrencySlot';
+
+/**
+ * Job-history admission (M-NEW-029). The scan is the same class of work as the
+ * artifact tree — a whole-container walk plus a parse of everything it finds —
+ * so it takes the same shape of gate: a per-account in-flight slot on top of
+ * the request rate limit, because a rate limit alone still allows a few very
+ * long, very heavy requests to overlap.
+ */
+const HISTORY_MAX_INFLIGHT = 2;
+const HISTORY_SLOT_TTL_SECONDS = 120;
+/** Ceiling on a caller-requested `?limit=`. */
+const HISTORY_MAX_ENTRIES = 2000;
 
 
 /**
@@ -255,7 +269,28 @@ export function createFeaturesRoutes(deps: {
    * it carries the live status. Ordering uses
    * `(completedAt ?? startedAt ?? timestamp)` descending.
    */
-  router.get('/projects/:id/features/:feature/jobs', async (req: Request, res: Response) => {
+  // Two gates, as on the sibling universal artifact-tree route: this walks the
+  // container's whole sessions/ tree, parses every session file it finds and
+  // materializes the result three times before the response. Authorization
+  // said whose history it is; it never said how much work one request may be
+  // (M-NEW-029).
+  router.get('/projects/:id/features/:feature/jobs', treeRateLimiter, async (req: Request, res: Response) => {
+    const historyOwner = extractUserContext(req);
+    const historySlot = deps.stateStore
+      ? await acquireConcurrencySlot(
+          deps.stateStore,
+          `ant:slots:history:${historyOwner.organizationId}:${historyOwner.userId}`,
+          { limit: HISTORY_MAX_INFLIGHT, ttlSeconds: HISTORY_SLOT_TTL_SECONDS },
+        )
+      : { release: async () => {}, refresh: async () => true };
+    if (!historySlot) {
+      res.setHeader('Retry-After', '2');
+      res.status(429).json({
+        code: 'TOO_MANY_HISTORY_SCANS',
+        error: 'Too many job-history scans in progress. Retry shortly.',
+      });
+      return;
+    }
     try {
       const projectId = req.params.id;
       const featureName = req.params.feature;
@@ -270,6 +305,10 @@ export function createFeaturesRoutes(deps: {
         return;
       }
       const types: readonly SessionableJobType[] = requestedType ? [requestedType] : JOB_TAB_JOB_TYPES;
+      const rawLimit = Number(req.query.limit);
+      const requestedLimit = Number.isFinite(rawLimit) && rawLimit > 0
+        ? Math.min(Math.floor(rawLimit), HISTORY_MAX_ENTRIES)
+        : undefined;
       const userContext = extractUserContext(req);
 
       type HistoryEntry = {
@@ -292,6 +331,7 @@ export function createFeaturesRoutes(deps: {
       };
 
       const merged = new Map<string, HistoryEntry>();
+      let historyTruncated = false;
 
       // (1) Redis — **live (running/paused) jobs only**.
       //
@@ -367,7 +407,9 @@ export function createFeaturesRoutes(deps: {
               }
               continue;
             }
-            for (const r of await collectUniversalRuns(featurePath!)) {
+            const collected = await collectUniversalRuns(featurePath!);
+            if (collected.truncated) historyTruncated = true;
+            for (const r of collected.runs) {
               const existing = merged.get(r.jobId!);
               if (existing) {
                 if (r.kanbanSnapshot && !existing.kanbanSnapshot) {
@@ -423,16 +465,25 @@ export function createFeaturesRoutes(deps: {
         }
       }
 
-      const entries = Array.from(merged.values());
-      entries.sort((a, b) => {
+      const sorted = Array.from(merged.values());
+      sorted.sort((a, b) => {
         const at = (a.completedAt ?? a.startedAt ?? '').toString();
         const bt = (b.completedAt ?? b.startedAt ?? '').toString();
         return bt.localeCompare(at);
       });
+      // Clamped, optional, newest-first — a client that wants a short list can
+      // say so instead of paying for the whole history. Default is the full
+      // budgeted set, so the existing contract is unchanged.
+      const entries = requestedLimit !== undefined ? sorted.slice(0, requestedLimit) : sorted;
 
-      res.json({ jobs: entries });
+      // `truncated` is additive: a partial history that says nothing reads as a
+      // complete one. Same spread-only-when-set idiom as the artifact tree.
+      const wasTruncated = historyTruncated || entries.length < sorted.length;
+      res.json({ jobs: entries, ...(wasTruncated ? { truncated: true } : {}) });
     } catch (error: any) {
       sendErrorResponse(res, 500, error, 'Features');
+    } finally {
+      await historySlot.release();
     }
   });
 

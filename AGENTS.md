@@ -506,6 +506,73 @@ MCP orchestration & capability-server contract:
 
 ---
 
+## Authorization Answers Whose, Never How Much
+
+**An authenticated route is not a budgeted one.** Every gate on
+`/jobs/:jobId/continue` — access, approval, membership, credit, canonical-project,
+pipeline-ownership — proved WHOSE session it was, and none of them bounded the
+work: the handler then read that session, unshifted another directive, and wrote
+it back with a raw `fs.writeFileSync()`, outside the byte budget every reader
+enforces. The same split produced `chat/job-error` (no schema, no cap, no rate
+limit) and a job-history scan that parsed 5,000 session files into one response.
+
+Two rules, and the second is why the first kept failing:
+
+- **Each authenticated route carries its own field caps, request rate, and
+  response-materialization budget.** A per-item cap is not a per-request bound.
+- **A seam is adopted by FILE, not by call name.** `atomicWriteFile(` was the
+  guard, so three writers reached the same session files by a different shape and
+  no test failed. Enforce the offense as "this path reached a write that is not
+  the seam", whatever that write is spelled.
+
+### ❌ Forbidden
+
+- Writing a session JSON by any route other than `writeSessionBounded()` — raw
+  `fs.write*`, or a hand-rolled tmp+rename. A read-modify-write passes
+  `{ expect: sessionWriteGuardOf(text) }` built from the bytes it already read;
+  it does not re-read, and it does not add a lock.
+- REFUSING an append to bound a JSONL log. Readers already serve only the newest
+  window, so the fix is retention (trim to that window — observably lossless),
+  never a rejection that stops chat working.
+- THROWING when an enumeration budget runs out on a display-only path. Degrade
+  (less folder compression, a `truncated: true` sibling key); never fail a request
+  that would otherwise have succeeded.
+- Registering a cross-pod lock on one side only. The API process and the job-runner
+  child append to the same logs on the same mount.
+- Capping a field that is serialized into a durable line by its per-field length.
+  Cap the SERIALIZED value — a join or a `JSON.stringify` amplifies past it.
+- A guard that enumerates the routes someone remembered. Enumerate the SET.
+
+### ✅ Correct
+
+- `writeSessionBounded()` sheds in a fixed order — snapshots → conversations →
+  diagnostics → oldest `runs[]` — and only then refuses, leaving the previous valid
+  file untouched. The resume core (`taskQueue` / `currentTask` / `completedTasks` /
+  `interruption` / `jobId`) is never shed.
+- Count and reserve in ONE step: `StateStorePort.reserveSlot` (Redis ZSET + Lua).
+  A read-then-compare admits N callers past an N-1 cap — SSE slots (M-005),
+  pipeline concurrent runs (L-031), and uploads all share that shape.
+- Asymmetric lock failure where the two operations have asymmetric stakes: an
+  append is best-effort (never lose a line to a slow lock), a whole-file rewrite
+  requires the lock (never race one silently).
+- A per-account share of any pod-local ceiling, released on the same
+  `finish`/`close`/`aborted` the pod counter uses — a second lifetime is a second
+  leak.
+
+```bash
+# The write seam is a property of the file, not of one call name.
+rg -n "fs\.(writeFile|writeFileSync)\(\s*sessionPath" packages/ant-cli/src  # Expected: 0
+# Every chat POST carries both gates.
+rg -c "chatRateLimiter" packages/ant-cli/src/periphery/adapters/http/routes/chat.routes.ts  # Expected: >= 5
+```
+
+Guards: `tests/policy/contained-io-adoption.test.ts`,
+`tests/policy/resource-admission.test.ts`, `tests/http/resource-admission.test.ts`,
+`tests/security/session-namespace-bounds.test.ts`. Rationale:
+[`docs/internals/security-posture.md`](docs/internals/security-posture.md) Axis 7.
+
+---
+
 ## Untrusted Content and the Control Plane Are Different Origins
 
 **A browser origin that serves user-authored content MUST NOT also answer a

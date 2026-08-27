@@ -400,6 +400,29 @@ export interface SubagentReportMetadata extends SubagentRunningMetadata {
 export const DIRECTIVE_MAX_CHARS = 100_000;
 
 /**
+ * Ceilings for the chat ingress fields that are NOT a user directive.
+ *
+ * `DIRECTIVE_MAX_CHARS` guards what the user typed. These guard the smaller
+ * machine-authored fields that also land verbatim in a durable JSONL line —
+ * they had no ceiling at all, so an authenticated caller could append 50 MB of
+ * `errorDetails` per request to a log every reader must load back (M-NEW-029).
+ *
+ * `CHAT_ERROR_DETAILS_MAX_CHARS` is measured on the SERIALIZED value, because
+ * that is what reaches the line: the route stringifies the object with 2-space
+ * indent, so a per-field check would miss the amplification — the same reason
+ * the `choice-resolved` `answer` cap is applied after `JSON.stringify`.
+ *
+ * Sized far above every real producer (the FE sends `Job failed with exit code:
+ * N` and `{code, signal}`) and far below the 50 MB authenticated body limit.
+ */
+export const CHAT_ERROR_MESSAGE_MAX_CHARS = 4_000;
+export const CHAT_ERROR_DETAILS_MAX_CHARS = 8_000;
+
+/** Choice-card identifiers and the resolved label — short by construction. */
+export const CHOICE_ID_MAX_CHARS = 200;
+export const CHOICE_LABEL_MAX_CHARS = 1_000;
+
+/**
  * user_turn — feature.jsonl 사본 (text만 유지)
  *
  * sourceRef:

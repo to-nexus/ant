@@ -53,3 +53,19 @@ export const UPLOAD_MAX_INFLIGHT_PER_USER = 3;
  * well above the aggregate of a few concurrent legitimate uploads.
  */
 export const UPLOAD_POD_MAX_INFLIGHT_BYTES = 512 * 1024 * 1024;
+
+/**
+ * Per-account share of the replica's in-flight upload bytes.
+ *
+ * The pod ceiling bounds the REPLICA; it does not divide it. One account may
+ * hold `UPLOAD_MAX_INFLIGHT_PER_USER` requests at once, and a chunked body
+ * (no declared length) reserves the whole request budget — so a single account
+ * could reserve 3 × 200 MiB and push every other account on that replica into
+ * 429 while staying inside its own documented allowance (L-033).
+ *
+ * Sized so that ONE maximum-size request always fits (never 429 a request the
+ * per-request budget accepts) while no account can hold more than half the
+ * replica. `UPLOAD_MAX_INFLIGHT_PER_USER` is unchanged: real uploads — a 50 MiB
+ * asset, a folder drop of small files — sit far below this and are unaffected.
+ */
+export const UPLOAD_ACCOUNT_MAX_INFLIGHT_BYTES = 256 * 1024 * 1024;
