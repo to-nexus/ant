@@ -222,7 +222,7 @@ export class ChatService {
     turnId: string,
     jobId?: string,
     userContext?: UserContext,
-    actionMetadata?: import('@ant/shared').ActionMetadata,
+    actionMetadata?: import('../../../../../core/context/actionMetadataBudget').BoundedActionMetadata,
     jobType?: LogJobType,
     pipeline?: import('@ant/shared').ChatUserTurnLine['pipeline'],
   ): Promise<void> {
@@ -1506,12 +1506,18 @@ export class ChatService {
     userContext: UserContext | undefined,
   ): Promise<void> {
     if (adapter) {
-      await adapter.appendLine('chat', line).catch((err) =>
+      // Ordinary append failures degrade to broadcast-only (the UI still shows
+      // the line live; only the durable copy is missing). An over-cap line is
+      // different: no bounded reader could ever return it, so echoing it over
+      // SSE would show viewers a message that does not durably exist — refuse
+      // the whole emission instead.
+      await adapter.appendLine('chat', line).catch((err) => {
+        if ((err as { code?: string })?.code === 'JSONL_LINE_TOO_LARGE') throw err;
         logger.warn(
           `appendLine(${line.type}) failed: ${(err as Error)?.message ?? err}`,
           { component: COMPONENT },
-        ),
-      );
+        );
+      });
     }
     if (line.type === 'choice_presented') {
       this.indexChoicePresented(line as ChatChoicePresentedLine);

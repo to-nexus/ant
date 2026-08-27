@@ -86,7 +86,8 @@ export async function orchestrator(params: {
   overrideDirective?: string;  // ✅ Chat input as directive (highest priority)
   chatSource?: boolean;  // ✅ Flag for Chat SSE
   skipTriage?: boolean;  // ✅ Skip triage node (after user selects "proceed" on redirect)
-  actionMetadata?: import('@ant/shared').ActionMetadata;  // ✅ Structured context from Actions panel
+  /** Size-validated at its trust boundary (`job-runner` re-bounds the env value). */
+  actionMetadata?: import('../core/context/actionMetadataBudget').BoundedActionMetadata;
   /**
    * True when this invocation is a resume of a previously paused/interrupted job.
    * When true, recordUserTurn MUST skip writing a new user_turn (the original

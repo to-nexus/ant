@@ -143,7 +143,10 @@ interface Harness {
 
 async function startHarness(deps: Parameters<typeof createChatRoutes>[0]): Promise<Harness> {
   const app = express();
-  app.use(express.json());
+  // Mirrors the production AUTHENTICATED parser budget (50 MiB) — the
+  // actionMetadata byte-budget row needs a body larger than express's 100 KB
+  // default to reach the schema at all.
+  app.use(express.json({ limit: '60mb' }));
   app.use(createChatRoutes(deps));
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -577,6 +580,30 @@ describe('chat.routes — Phase 9/13 contract', () => {
       expect(line?.jobType).toBe(expected);
 
       await fs.rm(configPath, { force: true });
+    });
+
+    // M-NEW-029 byte axis: the shared actionMetadata schema measures the WHOLE
+    // serialized object (unknown `.passthrough()` fields included), so this
+    // ingress inherits the typed 413 with no route code — and nothing durable,
+    // no SSE, happens for a refused turn.
+    it('over-budget actionMetadata → 413 ACTION_METADATA_TOO_LARGE, no durable line, no SSE', async () => {
+      const { ACTION_METADATA_MAX_SERIALIZED_BYTES } = await import('@ant/shared');
+      const res = await harness.call(
+        'POST',
+        '/projects/proj/features/feat-a/chat/user-message',
+        {
+          body: {
+            content: 'hello',
+            actionMetadata: { pad: 'x'.repeat(ACTION_METADATA_MAX_SERIALIZED_BYTES + 1) },
+          },
+        },
+      );
+      expect(res.status).toBe(413);
+      expect(res.body.code).toBe('ACTION_METADATA_TOO_LARGE');
+      expect(chatEvents(store)).toHaveLength(0);
+      await expect(
+        fs.readFile(path.join(featurePath, 'sessions', 'chat.jsonl'), 'utf-8'),
+      ).rejects.toThrow();
     });
   });
 });

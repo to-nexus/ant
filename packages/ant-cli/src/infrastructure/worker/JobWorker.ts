@@ -34,7 +34,11 @@ import { readBranchBase } from '../../core/utils/branchUtils';
 import { parseRedisUrl } from '../utils/redis';
 import { CredentialsStore, GitHubCredentials, buildCredentialEnv } from '../../utils/userConfig';
 import type { InterruptionReason } from '@ant/shared';
-import { buildInfrastructureInterruption } from '@ant/shared';
+import { buildInfrastructureInterruption, ACTION_METADATA_MAX_SERIALIZED_BYTES } from '@ant/shared';
+import {
+  ActionMetadataTooLargeError,
+  measureActionMetadataBytes,
+} from '../../core/context/actionMetadataBudget';
 import { readCgroupMemoryLimit, readCgroupMemoryUsage, deriveDefaultHeapMb } from '../../periphery/system/cgroupLimits';
 import * as fs from 'fs';
 
@@ -568,6 +572,14 @@ export class JobWorker {
       env.ANT_SKIP_TRIAGE = 'true';
     }
     if (payload.actionMetadata) {
+      // Trust-boundary re-check (M-NEW-029): a queued payload may pre-date the
+      // HTTP schema, and the env string is about to cross into a child process.
+      // Over-budget metadata fails here — before any env is set or a child is
+      // spawned — and rides the ordinary BullMQ failed lifecycle.
+      const metadataBytes = measureActionMetadataBytes(payload.actionMetadata);
+      if (metadataBytes > ACTION_METADATA_MAX_SERIALIZED_BYTES) {
+        throw new ActionMetadataTooLargeError(metadataBytes, ACTION_METADATA_MAX_SERIALIZED_BYTES);
+      }
       env.ANT_ACTION_METADATA = JSON.stringify(payload.actionMetadata);
     }
     if (payload.inputFile) {

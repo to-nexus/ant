@@ -16,7 +16,12 @@ import {
   CHAT_ERROR_DETAILS_MAX_CHARS,
   CHOICE_ID_MAX_CHARS,
   CHOICE_LABEL_MAX_CHARS,
+  type ActionMetadata,
 } from '@ant/shared';
+import {
+  ActionMetadataTooLargeError,
+  boundActionMetadata,
+} from '../../../../core/context/actionMetadataBudget';
 
 /**
  * Express middleware that validates req.body against a Zod schema.
@@ -26,6 +31,25 @@ export function validateBody<T extends z.ZodTypeAny>(schema: T) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
+      // A schema may own a size axis outright (e.g. actionMetadata's
+      // serialized byte budget): its refinement stamps `httpStatus: 413`
+      // on the issue, and the middleware answers the same typed-413 shape
+      // as `directiveTooLarge` instead of a generic 400.
+      const tooLarge = result.error.issues.find(
+        issue =>
+          issue.code === 'custom' &&
+          (issue as { params?: { httpStatus?: number; code?: string } }).params?.httpStatus ===
+            413,
+      );
+      if (tooLarge) {
+        const params = (tooLarge as { params?: { code?: string } }).params;
+        res.status(413).json({
+          error: 'Payload too large',
+          code: params?.code ?? 'PAYLOAD_TOO_LARGE',
+          message: tooLarge.message,
+        });
+        return;
+      }
       const errors = result.error.issues.map(issue => ({
         path: issue.path.join('.'),
         message: issue.message,
@@ -88,7 +112,31 @@ const actionMetadataSchema = z
     refs: racPathListSchema.optional(),
     context: racPathListSchema.optional(),
   })
-  .passthrough();
+  .passthrough()
+  /**
+   * Byte budget over the WHOLE serialized object — unknown `.passthrough()`
+   * fields included. Field caps cannot bound an open shape (M-NEW-029); the
+   * transform mints the `BoundedActionMetadata` brand every durable /
+   * broadcast / env consumer requires, so any ingress reusing this schema
+   * inherits the cap and hands validated metadata downstream. Over-budget
+   * values answer a typed 413 via the `httpStatus` issue param below —
+   * this schema is the single owner of that axis.
+   */
+  .transform((value, ctx) => {
+    try {
+      return boundActionMetadata(value as ActionMetadata);
+    } catch (err) {
+      if (err instanceof ActionMetadataTooLargeError) {
+        ctx.addIssue({
+          code: 'custom',
+          message: err.message,
+          params: { code: err.code, httpStatus: 413 },
+        });
+        return z.NEVER;
+      }
+      throw err;
+    }
+  });
 
 /**
  * POST /projects/:id/features/:feature/execute

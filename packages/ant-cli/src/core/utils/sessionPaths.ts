@@ -147,6 +147,35 @@ export const JSONL_MAX_LINES = 200_000;
 export const JSONL_COMPACT_TRIGGER_BYTES = 24 * 1024 * 1024;
 
 /**
+ * Largest a SINGLE serialized JSONL line may be, enforced at the append seam.
+ *
+ * A line larger than {@link JSONL_READ_MAX_BYTES} is worse than refused — once
+ * on disk, the tail window falls entirely inside it, every bounded reader gets
+ * ZERO lines (the whole chat goes permanently blank), and the retention pass
+ * has no complete line to trim to. Refusing such a line is therefore the only
+ * observably-lossless choice: nothing that could ever be read is lost. This is
+ * NOT a total-size bound on the log (that stays retention's job — see
+ * `compactIfOverGrown`); it is the invariant that every durable line stays
+ * observable inside the reader window.
+ *
+ * Half the window (and equal to {@link SESSION_MAX_BYTES}) so a tail read
+ * always yields at least one complete line even after discarding a partial
+ * first line. Ingress budgets (`ACTION_METADATA_MAX_SERIALIZED_BYTES`,
+ * `DIRECTIVE_MAX_CHARS`) keep normal lines orders of magnitude below this —
+ * the seam guard is the field-agnostic last resort, not the primary gate.
+ */
+export const JSONL_LINE_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Thrown by the JSONL append seam when one serialized line exceeds the cap. */
+export class JsonlLineTooLargeError extends Error {
+  readonly code = 'JSONL_LINE_TOO_LARGE' as const;
+  constructor(readonly filePath: string, readonly size: number, readonly limit: number) {
+    super(`JSONL line too large for ${filePath} (${size} > ${limit} bytes)`);
+    this.name = 'JsonlLineTooLargeError';
+  }
+}
+
+/**
  * Read the newest {@link JSONL_READ_MAX_BYTES} of a JSONL log on a single
  * descriptor and return its complete lines, newest-window-first-truncated.
  *

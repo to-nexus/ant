@@ -277,9 +277,35 @@ check passed.
 - **The walk is charged, and running out is not an error.** Folder compression
   spends one entry+depth budget across every root; exhausting it degrades to less
   compression rather than failing a request that would otherwise have worked. ✅
+- **Adoption is enforced in TYPE space; greps guard only what the compiler cannot
+  see.** Four rounds of the same finding (M-NEW-029) shipped a correct primitive
+  with a name-keyed adoption guard — literal paths, then call names, then variable
+  names — and each round a differently-spelled caller passed it: a name is
+  re-spellable by construction. The only budget axis that never recurred
+  (pipeline path validation, `core/pipelines/paths.ts`) put the check in a
+  typed helper chokepoint callers cannot spell around. `actionMetadata` now
+  follows that form: `boundActionMetadata()` is the single mint of the branded
+  `BoundedActionMetadata`, every consumer between an ingress and a
+  durable/broadcast/env sink requires the brand (compile-time), and the three
+  `any` trust boundaries — HTTP `req.body` (the shared schema's `.transform()`
+  mints), pre-spawn env serialization (`JobWorker` measures), child env
+  deserialization (`job-runner` re-bounds) — each keep a runtime re-check on the
+  same helper. An open-shaped (`.passthrough()`) object is budgeted on its WHOLE
+  serialized size, never by field enumeration — an unknown field is outside a
+  field-cap model by definition. ✅
+- **A single durable line stays inside the reader window.** The retention rule
+  above ("append growth is retention, not refusal") assumed every line is smaller
+  than the window; a line past it blanks the tail read (zero complete lines) so
+  retention could never trim it and every reader served an empty log. The append
+  seam refuses one line over `JSONL_LINE_MAX_BYTES` (half the window — the sole
+  refusal that is observably lossless, since such a line was never readable), the
+  refusal also suppresses the SSE echo, and a pre-cap polluted file heals via a
+  streaming pass that drops oversized lines without materialising them. ✅
 - Guards: `tests/http/resource-admission.test.ts`,
   `tests/policy/resource-admission.test.ts`,
+  `tests/policy/contained-io-adoption.test.ts` (seam/brand adoption),
   `tests/security/session-namespace-bounds.test.ts`,
+  `tests/core/context/actionMetadataBudget.test.ts`,
   `tests/core/context/compressPathsByFolder.test.ts`,
   `tests/state/sse-slot-atomicity.test.ts`.
 

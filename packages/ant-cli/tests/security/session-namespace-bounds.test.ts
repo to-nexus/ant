@@ -27,6 +27,7 @@ import {
   JSONL_READ_MAX_BYTES,
   JSONL_MAX_LINES,
   JSONL_COMPACT_TRIGGER_BYTES,
+  JSONL_LINE_MAX_BYTES,
 } from '../../src/core/utils/sessionPaths';
 import { FileSessionAdapter, setChatLogLockProvider } from '../../src/periphery/adapters/session/FileSessionAdapter';
 import {
@@ -229,6 +230,88 @@ describe('FileSessionAdapter collapse preserves every record (M-NEW-029)', () =>
     // ...and everything a reader could ever have returned is still there.
     const readableAfter = (await readJsonlTailBounded(chatPath))!.lines.map((l) => JSON.parse(l).turnId);
     expect(readableAfter).toEqual([...readableBefore, 'appended']);
+  });
+
+  /**
+   * The single-line cap is NOT a total-size bound (that is retention's job
+   * above) — a line past the reader window would put the tail window entirely
+   * inside itself, so every bounded reader returns ZERO lines and the whole
+   * log goes blank. Refusing the line is the only observably-lossless outcome,
+   * and it must happen before anything durable.
+   */
+  it('refuses a single line larger than the line cap with a typed error, before anything durable', async () => {
+    const featurePath = path.join(root, 'line-cap');
+    fs.mkdirSync(path.join(featurePath, 'sessions'), { recursive: true });
+    const chatPath = path.join(featurePath, 'sessions', 'chat.jsonl');
+
+    await expect(
+      makeAdapter(featurePath).appendLine('chat', {
+        type: 'user_turn',
+        turnId: 'giant',
+        pad: 'x'.repeat(JSONL_LINE_MAX_BYTES),
+      } as any),
+    ).rejects.toMatchObject({ code: 'JSONL_LINE_TOO_LARGE' });
+
+    expect(fs.existsSync(chatPath)).toBe(false);
+  });
+
+  /**
+   * Pre-cap pollution: a giant LAST line larger than the reader window made
+   * `readJsonlTailBounded` return zero complete lines, so the old retention
+   * early-returned — the file grew forever and the chat stayed blank for every
+   * reader. The next append must heal the log back to readable instead.
+   */
+  it('a giant tail line (pre-cap pollution) is healed on the next append instead of blanking the log forever', async () => {
+    const featurePath = path.join(root, 'giant-tail');
+    fs.mkdirSync(path.join(featurePath, 'sessions'), { recursive: true });
+    const chatPath = path.join(featurePath, 'sessions', 'chat.jsonl');
+
+    const fd = fs.openSync(chatPath, 'w');
+    fs.writeSync(fd, `${JSON.stringify({ type: 'user_turn', turnId: 'old-good' })}\n`);
+    fs.writeSync(fd, `${JSON.stringify({ type: 'user_turn', turnId: 'giant-tail', pad: 'x'.repeat(JSONL_COMPACT_TRIGGER_BYTES + JSONL_READ_MAX_BYTES) })}\n`);
+    fs.closeSync(fd);
+
+    // The defect being healed: the whole newest window sits inside the giant
+    // line, so a bounded reader sees an empty log.
+    expect((await readJsonlTailBounded(chatPath))!.lines).toHaveLength(0);
+
+    await makeAdapter(featurePath).appendLine('chat', { type: 'user_turn', turnId: 'appended' } as any);
+
+    expect(fs.statSync(chatPath).size).toBeLessThan(JSONL_COMPACT_TRIGGER_BYTES);
+    const after = (await readJsonlTailBounded(chatPath))!.lines;
+    expect(after.length).toBeGreaterThan(0);
+    expect(after.map((l) => JSON.parse(l).turnId)).toContain('appended');
+    for (const line of after) {
+      expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(JSONL_LINE_MAX_BYTES);
+    }
+  });
+
+  it('the streaming heal drops only oversized lines and keeps the rest verbatim', async () => {
+    const featurePath = path.join(root, 'streaming-heal');
+    fs.mkdirSync(path.join(featurePath, 'sessions'), { recursive: true });
+    const chatPath = path.join(featurePath, 'sessions', 'chat.jsonl');
+
+    const oversized = JSON.stringify({
+      type: 'user_turn',
+      turnId: 'too-big',
+      pad: 'x'.repeat(JSONL_LINE_MAX_BYTES),
+    });
+    fs.writeFileSync(
+      chatPath,
+      `${JSON.stringify({ type: 'user_turn', turnId: 'a' })}\n${oversized}\nnot json at all\n${JSON.stringify({ type: 'user_turn', turnId: 'b' })}\n`,
+      'utf-8',
+    );
+
+    await (makeAdapter(featurePath) as any).dropOversizedLinesStreaming(chatPath);
+
+    const lines = fs.readFileSync(chatPath, 'utf-8').split('\n').filter((l) => l.trim() !== '');
+    // The unparseable small line survives verbatim — the pass measures bytes,
+    // it does not judge content (same contract as trim and collapse).
+    expect(lines).toEqual([
+      JSON.stringify({ type: 'user_turn', turnId: 'a' }),
+      'not json at all',
+      JSON.stringify({ type: 'user_turn', turnId: 'b' }),
+    ]);
   });
 
   it('a log inside the window is left exactly as it is', async () => {

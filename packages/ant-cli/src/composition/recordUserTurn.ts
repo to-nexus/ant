@@ -17,6 +17,10 @@ import * as crypto from "crypto";
 import type { LogJobType, FeatureUserTurnLine, Mode } from "@ant/shared";
 import { FileSessionAdapter } from "../periphery/adapters/session/FileSessionAdapter";
 import { enrichActionMetadataWithFolders } from "../core/context/enrichActionMetadataWithFolders";
+import {
+  boundActionMetadata,
+  type BoundedActionMetadata,
+} from "../core/context/actionMetadataBudget";
 import type { FileSystemPort } from "../core/ports/filesystem";
 
 export interface RecordUserTurnParams {
@@ -36,8 +40,13 @@ export interface RecordUserTurnParams {
   agent?: string;
   projectId?: string;
   featureName?: string;
-  /** Structured context from the Actions panel. Persisted to chat.jsonl so mention badges survive page refresh. */
-  actionMetadata?: import('@ant/shared').ActionMetadata;
+  /**
+   * Structured context from the Actions panel. Persisted to chat.jsonl so
+   * mention badges survive page refresh. Size-validated at its trust
+   * boundary (`job-runner` re-bounds the env value) — raw objects do not
+   * compile here.
+   */
+  actionMetadata?: BoundedActionMetadata;
   /**
    * Optional FileSystem handle. When provided (or auto-derived from
    * `featurePath`), the helper folds
@@ -77,10 +86,16 @@ export async function recordUserTurn(params: RecordUserTurnParams): Promise<stri
   // Failure / missing FS degrades to raw paths via the helper's own guards.
   const fileSystemForEnrich =
     params.fileSystem ?? (await deriveFileSystem(featurePath, actionMetadata));
-  const enrichedActionMetadata = await enrichActionMetadataWithFolders(
-    actionMetadata,
-    fileSystemForEnrich,
-  );
+  // Enrichment adds fields after the trust-boundary check, so the result is
+  // re-bounded; over-budget enrichment degrades to the already-bounded input.
+  let enrichedActionMetadata = actionMetadata;
+  try {
+    enrichedActionMetadata = boundActionMetadata(
+      await enrichActionMetadataWithFolders(actionMetadata, fileSystemForEnrich),
+    );
+  } catch (err) {
+    console.warn('[recordUserTurn] foldersCompressed enrichment skipped:', err);
+  }
 
   if (isResume) {
     // Resume = no new user turn. We MUST reuse the existing turnId already in

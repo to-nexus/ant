@@ -80,7 +80,10 @@ interface Harness {
 
 async function startHarness(deps: Parameters<typeof createJobRoutes>[0]): Promise<Harness> {
   const app = express();
-  app.use(express.json());
+  // Mirrors the production AUTHENTICATED parser budget (50 MiB) — the
+  // actionMetadata byte-budget rows need a body larger than express's 100 KB
+  // default to reach the schema at all.
+  app.use(express.json({ limit: '60mb' }));
   app.use(createJobRoutes(deps));
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -305,6 +308,42 @@ describe('job-start routes — submit-time user_turn ownership', () => {
   it('the chat/user-message schema shares the constant (one owner, not a copy)', () => {
     expect(chatUserMessageSchema.safeParse({ content: overCap }).success).toBe(false);
     expect(chatUserMessageSchema.safeParse({ content: atCap }).success).toBe(true);
+  });
+
+  // ───────────────────────────────────────────────────────────────────
+  // actionMetadata byte budget (M-NEW-029) — the schema owns the axis, so
+  // the WHOLE serialized object (unknown `.passthrough()` fields included)
+  // answers a typed 413 before the folder walk, the durable append, the SSE
+  // broadcast, and the job dispatch.
+  // ───────────────────────────────────────────────────────────────────
+
+  it('/execute with over-budget actionMetadata → 413, nothing durable, no SSE, no dispatch', async () => {
+    const { ACTION_METADATA_MAX_SERIALIZED_BYTES } = await import('@ant/shared');
+    const res = await harness.call('POST', EXECUTE_URL, {
+      task: 'code',
+      agent: 'architect',
+      overrideDirective: 'build the login page',
+      actionMetadata: { pad: 'x'.repeat(ACTION_METADATA_MAX_SERIALIZED_BYTES + 1) },
+    });
+    expect(res.status).toBe(413);
+    expect(res.body.code).toBe('ACTION_METADATA_TOO_LARGE');
+    expect(await chatLog()).toHaveLength(0);
+    expect(broadcastLines(store)).toHaveLength(0);
+    expect(executeCalls).toHaveLength(0);
+  });
+
+  it('/execute with roomy-but-legal actionMetadata still lands on the durable line', async () => {
+    const res = await harness.call('POST', EXECUTE_URL, {
+      task: 'code',
+      agent: 'architect',
+      overrideDirective: 'build the login page',
+      actionMetadata: { intent: 'gen-plan', refs: ['plan/prd.md'], someFutureRacField: 'ok' },
+    });
+    expect(res.status).toBe(200);
+    const turns = await userTurns();
+    expect(turns).toHaveLength(1);
+    expect(turns[0].actionMetadata.refs).toEqual(['plan/prd.md']);
+    expect(turns[0].actionMetadata.someFutureRacField).toBe('ok');
   });
 
   // ───────────────────────────────────────────────────────────────────

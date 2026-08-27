@@ -16,7 +16,11 @@
 
 import type { ChatService } from '../../services';
 import { DIRECTIVE_MAX_CHARS } from '@ant/shared';
-import type { ActionMetadata, LogJobType } from '@ant/shared';
+import type { LogJobType } from '@ant/shared';
+import {
+  boundActionMetadata,
+  type BoundedActionMetadata,
+} from '../../../../../core/context/actionMetadataBudget';
 import { generateTurnId } from '../../../../../composition/recordUserTurn';
 
 /**
@@ -54,7 +58,8 @@ export interface SubmitUserTurnArgs {
   /** Already-owned turn id (from `/chat/user-message`). Short-circuits. */
   seedTurnId?: string;
   userContext: { userId: string; organizationId: string };
-  actionMetadata?: ActionMetadata;
+  /** Size-validated at the ingress schema — raw objects do not compile here. */
+  actionMetadata?: BoundedActionMetadata;
   /**
    * Permanent jobType stamp for the chat line. When omitted the universal
    * container is probed (A15 — the stamp is never corrected later).
@@ -85,7 +90,12 @@ export async function ensureSubmitUserTurn(args: SubmitUserTurnArgs): Promise<st
       const { AdapterFactory } = await import('../../../../../infrastructure/adapters/AdapterFactory');
       const { enrichActionMetadataWithFolders } = await import('../../../../../core/context/enrichActionMetadataWithFolders');
       const fs = AdapterFactory.createFileSystemAdapterWithPath(featurePath);
-      enrichedActionMetadata = await enrichActionMetadataWithFolders(actionMetadata, fs);
+      // Enrichment adds fields after the ingress check, so the result is
+      // re-bounded; over-budget enrichment degrades to the already-bounded
+      // original via this same best-effort catch.
+      enrichedActionMetadata = boundActionMetadata(
+        await enrichActionMetadataWithFolders(actionMetadata, fs),
+      );
     } catch (err) {
       console.warn('[submitUserTurn] foldersCompressed enrichment failed:', err);
     }

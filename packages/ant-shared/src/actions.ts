@@ -432,6 +432,24 @@ export type PathOrFolder =
  */
 export const ACTION_METADATA_MAX_PATHS = 500;
 
+/**
+ * Ceiling on the SERIALIZED size of one `actionMetadata` object — every field,
+ * known or unknown, measured once as `JSON.stringify` bytes.
+ *
+ * The per-slot caps above are per-item guards; they cannot bound the object,
+ * because the schema deliberately keeps `.passthrough()` so the RAC shape can
+ * evolve without a schema change (M-NEW-029). A field-by-field cap model is
+ * open-ended by definition — this byte budget over the whole serialized value
+ * is the authority, enforced at the single mint (`boundActionMetadata`) that
+ * every durable/broadcast/env consumer requires.
+ *
+ * Margin chain: 2 MiB (this) → 8 MiB (`JSONL_LINE_MAX_BYTES`) → 16 MiB
+ * (`JSONL_READ_MAX_BYTES` reader window) → 24 MiB (compaction trigger). Real
+ * payloads are tens of KB; enrichment (`foldersCompressed`) at worst doubles
+ * the slot bytes, still far under the line cap.
+ */
+export const ACTION_METADATA_MAX_SERIALIZED_BYTES = 2 * 1024 * 1024;
+
 export interface ActionMetadata {
   /**
    * FE UI badge state only — BE does not read this field. Authority SSOT

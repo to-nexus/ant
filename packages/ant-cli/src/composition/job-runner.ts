@@ -50,6 +50,10 @@ import { isPromptTooLongError } from '../core/utils/apiErrorClassify';
 import { toNfc } from '../core/utils/unicodePath';
 import { isLlmAuthError } from '../core/llm/isLlmAuthError';
 import { isMcpConfigError } from '../core/customAgents/McpConfigError';
+import {
+  ActionMetadataTooLargeError,
+  boundActionMetadata,
+} from '../core/context/actionMetadataBudget';
 
 interface JobParams {
   jobId: string;
@@ -68,7 +72,8 @@ interface JobParams {
   originalJobId?: string;
   skipTriage?: boolean;
   chatSource?: boolean;
-  actionMetadata?: import('@ant/shared').ActionMetadata;
+  /** Re-bounded below after the env JSON.parse — env/queue replay is a trust boundary. */
+  actionMetadata?: import('../core/context/actionMetadataBudget').BoundedActionMetadata;
   /** chat SSOT §6 — pre-allocated turnId from /chat/user-message. */
   seedTurnId?: string;
   /** Universal only — `{agentId}/{jobId}` custom job definition ref. */
@@ -107,7 +112,18 @@ function getJobParams(): JobParams {
     originalJobId: process.env.ANT_ORIGINAL_JOB_ID,
     chatSource: process.env.ANT_CHAT_SOURCE === 'true',
     skipTriage: process.env.ANT_SKIP_TRIAGE === 'true',
-    actionMetadata: process.env.ANT_ACTION_METADATA ? (() => { try { return JSON.parse(process.env.ANT_ACTION_METADATA); } catch { return undefined; } })() : undefined,
+    // Trust-boundary re-check (M-NEW-029): the env value may pre-date the HTTP
+    // schema (queue replay, resume) — an unparseable value degrades to
+    // undefined as before, an over-budget one fails the run's normal lifecycle.
+    actionMetadata: process.env.ANT_ACTION_METADATA
+      ? (() => {
+          try { return boundActionMetadata(JSON.parse(process.env.ANT_ACTION_METADATA!)); }
+          catch (err) {
+            if (err instanceof ActionMetadataTooLargeError) throw err;
+            return undefined;
+          }
+        })()
+      : undefined,
     seedTurnId: process.env.ANT_SEED_TURN_ID,
     customJobRef: process.env.ANT_CUSTOM_JOB_REF,
     universalTurnMeta: process.env.ANT_UNIVERSAL_TURN_META

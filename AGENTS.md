@@ -528,7 +528,7 @@ it back with a raw `fs.writeFileSync()`, outside the byte budget every reader
 enforces. The same split produced `chat/job-error` (no schema, no cap, no rate
 limit) and a job-history scan that parsed 5,000 session files into one response.
 
-Two rules, and the second is why the first kept failing:
+Three rules; each later one is why the one before it kept failing:
 
 - **Each authenticated route carries its own field caps, request rate, and
   response-materialization budget.** A per-item cap is not a per-request bound.
@@ -536,6 +536,19 @@ Two rules, and the second is why the first kept failing:
   guard, so three writers reached the same session files by a different shape and
   no test failed. Enforce the offense as "this path reached a write that is not
   the seam", whatever that write is spelled.
+- **Seam adoption is enforced in TYPE space, not by name greps.** Four audit
+  rounds keyed the guard on names (literal paths → call names → variable names)
+  and each round a differently-spelled caller slipped past — names are
+  re-spellable by construction. The closed form is a branded type with a single
+  mint (`boundActionMetadata` → `BoundedActionMetadata`) that every consumer
+  signature between an ingress and a durable/broadcast/env sink requires: a new
+  typed ingress fails `pnpm typecheck`, not a regex. Greps survive only for what
+  the compiler cannot see — brand fabrication (`as BoundedActionMetadata`, a
+  finite spelling) and the `any` trust boundaries (HTTP `req.body`, queue/env
+  replay), each of which pairs with a RUNTIME re-check calling the same mint.
+  An open-shaped object (`.passthrough()`) is budgeted by its **whole serialized
+  size**, never by field enumeration — an unknown field is outside a field-cap
+  model by definition.
 
 ### ❌ Forbidden
 
@@ -543,9 +556,15 @@ Two rules, and the second is why the first kept failing:
   `fs.write*`, or a hand-rolled tmp+rename. A read-modify-write passes
   `{ expect: sessionWriteGuardOf(text) }` built from the bytes it already read;
   it does not re-read, and it does not add a lock.
+- Passing action metadata to a durable/broadcast/env consumer as a raw object —
+  the consumers take `BoundedActionMetadata`, and the only mint is
+  `boundActionMetadata()` (typed 413 / typed job failure on over-budget).
 - REFUSING an append to bound a JSONL log. Readers already serve only the newest
   window, so the fix is retention (trim to that window — observably lossless),
-  never a rejection that stops chat working.
+  never a rejection that stops chat working. The ONE exception is a single line
+  over `JSONL_LINE_MAX_BYTES`: appended, it swallows the whole tail window and
+  every bounded reader returns zero lines (the log goes blank), so refusing that
+  line — before append AND broadcast — is the only observably-lossless outcome.
 - THROWING when an enumeration budget runs out on a display-only path. Degrade
   (less folder compression, a `truncated: true` sibling key); never fail a request
   that would otherwise have succeeded.
@@ -570,12 +589,18 @@ Two rules, and the second is why the first kept failing:
 - A per-account share of any pod-local ceiling, released on the same
   `finish`/`close`/`aborted` the pod counter uses — a second lifetime is a second
   leak.
+- The chat.jsonl append seam owns two field-agnostic invariants: no single line
+  past `JSONL_LINE_MAX_BYTES` (typed refusal, no SSE echo of a line no reader
+  could return), and a streaming heal that drops pre-cap oversized lines without
+  materialising them when retention finds zero complete lines in the window.
 
 ```bash
 # The write seam is a property of the file, not of one call name.
 rg -n "fs\.(writeFile|writeFileSync)\(\s*sessionPath" packages/ant-cli/src  # Expected: 0
 # Every chat POST carries both gates.
 rg -c "chatRateLimiter" packages/ant-cli/src/periphery/adapters/http/routes/chat.routes.ts  # Expected: >= 5
+# The actionMetadata brand has ONE mint; a cast is the only spelling that bypasses the compiler.
+rg -n "as (unknown as )?BoundedActionMetadata" packages/ant-cli/src --type ts  # Expected: 1 (the mint)
 ```
 
 Guards: `tests/policy/contained-io-adoption.test.ts`,

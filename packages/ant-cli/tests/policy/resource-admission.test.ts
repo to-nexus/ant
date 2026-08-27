@@ -348,3 +348,63 @@ describe('actionMetadata bounds the slot COUNT, not only each path', () => {
     }
   });
 });
+
+describe('actionMetadata bounds the SERIALIZED OBJECT, not only known fields', () => {
+  // Field caps cannot bound an open shape: the schema deliberately keeps
+  // `.passthrough()` so the RAC contract can evolve, which puts every unknown
+  // field outside a field-enumeration model by definition (M-NEW-029). The
+  // closed model is one measurement of the whole serialized object, owned by
+  // the shared schema so every ingress that reuses it inherits the cap.
+  it('both durable-ingress schemas reject an over-budget unknown field with a typed 413 issue', async () => {
+    const { executeJobSchema, chatUserMessageSchema } = await import(
+      '../../src/periphery/adapters/http/middleware/validateBody.js'
+    );
+    const { ACTION_METADATA_MAX_SERIALIZED_BYTES } = await import('@ant/shared');
+    const oversized = { pad: 'x'.repeat(ACTION_METADATA_MAX_SERIALIZED_BYTES + 1) };
+
+    const cases: Array<[string, { success: boolean }]> = [
+      ['execute', executeJobSchema.safeParse({ task: 'code', actionMetadata: oversized })],
+      [
+        'chat user-message',
+        chatUserMessageSchema.safeParse({ content: 'hi', actionMetadata: oversized }),
+      ],
+    ];
+    for (const [label, result] of cases) {
+      expect(result.success, `${label} oversized`).toBe(false);
+      const issue: any = (result as any).error.issues.find(
+        (i: any) => i.params?.httpStatus === 413,
+      );
+      // The 413 stamp is what lets validateBody answer the typed shape instead
+      // of a generic 400 — losing it silently downgrades the contract.
+      expect(issue?.params?.code, `${label} issue code`).toBe('ACTION_METADATA_TOO_LARGE');
+    }
+  });
+
+  it('a small unknown field still passes through — size and shape are orthogonal', async () => {
+    const { executeJobSchema } = await import(
+      '../../src/periphery/adapters/http/middleware/validateBody.js'
+    );
+    const parsed = executeJobSchema.safeParse({
+      task: 'code',
+      actionMetadata: { intent: 'gen-plan', someFutureRacField: { nested: true } },
+    });
+    expect(parsed.success).toBe(true);
+    expect((parsed as any).data.actionMetadata.someFutureRacField).toEqual({ nested: true });
+  });
+
+  it('the schema maximum for all three slots stays under the byte budget', async () => {
+    // 500 realistic paths × 3 slots must remain a legal request — the byte
+    // budget bounds abuse, not the documented slot contract.
+    const { executeJobSchema } = await import(
+      '../../src/periphery/adapters/http/middleware/validateBody.js'
+    );
+    const { ACTION_METADATA_MAX_PATHS } = await import('@ant/shared');
+    const full = Array.from({ length: ACTION_METADATA_MAX_PATHS }, (_, i) => `src/dir/${i}/file-${i}.ts`);
+    expect(
+      executeJobSchema.safeParse({
+        task: 'code',
+        actionMetadata: { target: full, refs: full, context: full },
+      }).success,
+    ).toBe(true);
+  });
+});

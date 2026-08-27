@@ -53,7 +53,8 @@ export interface JobPayload {
   overrideDirective?: string;
   chatSource?: boolean;
   skipTriage?: boolean;
-  actionMetadata?: import('@ant/shared').ActionMetadata;
+  /** Size-validated at the HTTP ingress schema (`boundActionMetadata` mint). */
+  actionMetadata?: import('../context/actionMetadataBudget').BoundedActionMetadata;
   enableEvaluation?: boolean;
   inputFile?: string;
   

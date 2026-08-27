@@ -281,3 +281,94 @@ describe('session / JSONL bounded-read adoption (M-NEW-029)', () => {
     });
   }
 });
+
+/**
+ * actionMetadata byte-budget adoption (M-NEW-029, final round) — enforced in
+ * TYPE space, with this file guarding only the escape hatches.
+ *
+ * Four audit rounds keyed adoption on names (literal paths → call names →
+ * variable names) and each round a differently-spelled caller slipped past —
+ * a name grep is re-spellable by construction. The fix moves adoption into the
+ * compiler: `BoundedActionMetadata` is a branded type whose brand symbol is
+ * private to `actionMetadataBudget.ts`, its mint (`boundActionMetadata`) is the
+ * only producer, and every consumer signature between an ingress and a durable
+ * / broadcast / env sink requires the brand. A new TYPED ingress that skips the
+ * mint fails `pnpm typecheck`, not a regex.
+ *
+ * What the compiler cannot see — and what this guard therefore pins:
+ *   1. a cast that fabricates the brand (`as BoundedActionMetadata`) — the
+ *      only spelling that works, so the grep surface is finite;
+ *   2. the three `any` trust boundaries, each of which must keep its RUNTIME
+ *      re-check: the HTTP schema transform (ingress), the JobWorker pre-spawn
+ *      measure (queue replay), and the job-runner env re-bound (child side);
+ *   3. the field-agnostic sink invariant (`JSONL_LINE_MAX_BYTES`) that holds
+ *      whatever field a future producer inflates.
+ */
+describe('actionMetadata byte-budget adoption (M-NEW-029)', () => {
+  const MINT_OWNER = 'src/core/context/actionMetadataBudget.ts';
+
+  it('nobody fabricates the brand outside the mint module', () => {
+    const FABRICATION = /as\s+(?:unknown\s+as\s+)?(?:[\w$.]*\.)?BoundedActionMetadata\b/;
+    const offenders = ALL_TS.filter((p) => {
+      if (rel(p) === MINT_OWNER) return false;
+      return FABRICATION.test(read(p));
+    }).map(rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it('the mint module contains exactly one brand cast', () => {
+    const src = read(path.join(process.cwd(), MINT_OWNER));
+    const casts = src.match(/as\s+BoundedActionMetadata\b/g) ?? [];
+    expect(casts).toHaveLength(1);
+  });
+
+  // The `any` trust boundaries the brand cannot reach — each keeps its runtime
+  // re-check. Pinned by module because each IS the single owner of its boundary.
+  const RUNTIME_CHECKS: Array<[file: string, pattern: RegExp, boundary: string]> = [
+    [
+      'src/periphery/adapters/http/middleware/validateBody.ts',
+      /boundActionMetadata\(/,
+      'HTTP ingress (schema transform mints the brand)',
+    ],
+    [
+      'src/infrastructure/worker/JobWorker.ts',
+      /measureActionMetadataBytes\(/,
+      'pre-spawn env serialization (queued payload may pre-date the schema)',
+    ],
+    [
+      'src/composition/job-runner.ts',
+      /boundActionMetadata\(/,
+      'child env deserialization (env value crosses a process boundary)',
+    ],
+  ];
+  for (const [file, pattern, boundary] of RUNTIME_CHECKS) {
+    it(`${boundary} keeps its runtime re-check`, () => {
+      expect(read(path.join(process.cwd(), file))).toMatch(pattern);
+    });
+  }
+
+  // Consumer signatures that make the compile-time seam: the durable writers
+  // and the queue/HTTP ports. Removing the brand from any of these reopens the
+  // raw-object path for every future typed caller.
+  const BRANDED_CONSUMERS = [
+    'src/periphery/adapters/http/routes/helpers/submitUserTurn.ts',
+    'src/periphery/adapters/http/services/ChatService/index.ts',
+    'src/periphery/adapters/session/FileSessionAdapter.ts',
+    'src/composition/recordUserTurn.ts',
+    'src/core/ports/http.ts',
+    'src/core/ports/queue.ts',
+  ];
+  for (const file of BRANDED_CONSUMERS) {
+    it(`${file} requires the branded type`, () => {
+      expect(read(path.join(process.cwd(), file))).toMatch(/BoundedActionMetadata/);
+    });
+  }
+
+  // The sink-side invariant is field-agnostic on purpose: whatever field a
+  // future producer inflates, the append seam measures the serialized line.
+  it('the JSONL append seam enforces the single-line byte cap', () => {
+    const src = read(path.join(process.cwd(), 'src/periphery/adapters/session/FileSessionAdapter.ts'));
+    expect(src).toMatch(/JsonlLineTooLargeError/);
+    expect(src).toMatch(/JSONL_LINE_MAX_BYTES/);
+  });
+});

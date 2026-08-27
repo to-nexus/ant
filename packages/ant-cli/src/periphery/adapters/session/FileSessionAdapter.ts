@@ -29,6 +29,8 @@ import {
   readSessionTextBoundedAsync,
   readJsonlTailBounded,
   JSONL_COMPACT_TRIGGER_BYTES,
+  JSONL_LINE_MAX_BYTES,
+  JsonlLineTooLargeError,
 } from "../../../core/utils/sessionPaths";
 import { writeSessionBounded } from "../../../core/session/stateBudget";
 
@@ -498,6 +500,13 @@ export class FileSessionAdapter implements SessionPort {
    * Append-only. JSON.stringify(line) + '\n'.
    *
    * Bails silently if the enclosing feature directory is missing (ghost guard).
+   *
+   * Refuses a single line over {@link JSONL_LINE_MAX_BYTES} with a typed error
+   * BEFORE anything durable happens. This is not the total-size bound (that is
+   * retention's job below) — a line past the reader window would blank the
+   * whole log for every bounded reader, so refusing it is the only
+   * observably-lossless outcome. Field-agnostic on purpose: whatever field a
+   * future producer inflates, the seam measures the serialized line.
    */
   async appendLine(file: 'feature' | 'chat', line: FeatureLine | ChatLine): Promise<void> {
     if (!(await this.featureDirExists())) {
@@ -510,12 +519,20 @@ export class FileSessionAdapter implements SessionPort {
       ? getFeatureJsonlPath(this.featurePath)
       : getChatJsonlPath(this.featurePath);
 
+    const content = JSON.stringify(line) + '\n';
+    const bytes = Buffer.byteLength(content, 'utf-8');
+    if (bytes > JSONL_LINE_MAX_BYTES) {
+      throw new JsonlLineTooLargeError(filePath, bytes, JSONL_LINE_MAX_BYTES);
+    }
+
     await this.withJsonlLock(filePath, { requireCrossPod: false }, async () => {
       await fs.mkdir(path.dirname(filePath), { recursive: true });
-      const content = JSON.stringify(line) + '\n';
       await fs.appendFile(filePath, content, 'utf-8');
-      await this.compactIfOverGrown(filePath);
     });
+    // Retention runs OUTSIDE the append lock: the trim/heal pass takes the
+    // cross-pod rewrite lock itself and FileMutex is non-reentrant, so calling
+    // it under the append lock would self-deadlock.
+    await this.compactIfOverGrown(filePath);
   }
 
   /**
@@ -581,28 +598,126 @@ export class FileSessionAdapter implements SessionPort {
    *
    * The trigger sits above the window so a log hovering at the boundary is not
    * rewritten on every append; the amortized cost is one streaming pass per
-   * `JSONL_COMPACT_TRIGGER_BYTES − JSONL_READ_MAX_BYTES` of new content. The
-   * caller already holds this file's lock.
+   * `JSONL_COMPACT_TRIGGER_BYTES − JSONL_READ_MAX_BYTES` of new content.
+   *
+   * Runs AFTER the append lock is released and takes the cross-pod REWRITE
+   * lock itself — a trim is a read-modify-write over the whole log, so racing
+   * another pod's append would silently drop records. Lock unavailability
+   * skips the pass (the next append retries); a lock-free `stat` fast path
+   * keeps the per-append cost at one stat while the log is under the trigger.
    */
   private async compactIfOverGrown(filePath: string): Promise<void> {
     try {
-      const stat = await fs.stat(filePath);
-      if (stat.size <= JSONL_COMPACT_TRIGGER_BYTES) return;
-      const tail = await readJsonlTailBounded(filePath);
-      if (!tail || tail.lines.length === 0) return;
-      // `lines` are the RAW serialized lines, not parsed objects — write them
-      // back verbatim so an unparseable line survives a trim exactly as it
-      // survives a collapse.
-      const tmpPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
-      await fs.writeFile(tmpPath, tail.lines.join('\n') + '\n', 'utf-8');
-      await fs.rename(tmpPath, filePath);
-      console.warn(
-        `🗜️  [FileSessionAdapter] Trimmed ${filePath} to the reader window ` +
-        `(${stat.size} bytes → ${tail.lines.length} lines)`,
-      );
+      const fastStat = await fs.stat(filePath);
+      if (fastStat.size <= JSONL_COMPACT_TRIGGER_BYTES) return;
+      await this.withJsonlLock(filePath, { requireCrossPod: true }, async () => {
+        const stat = await fs.stat(filePath);
+        if (stat.size <= JSONL_COMPACT_TRIGGER_BYTES) return; // another pod's pass won
+        let tail = await readJsonlTailBounded(filePath);
+        if (tail && tail.lines.length === 0) {
+          // The newest window sits entirely inside ONE oversized line (written
+          // before the line cap existed): every bounded reader gets zero lines
+          // — the log looks blank — and a trim has no complete line to keep.
+          // Heal by dropping oversized lines without materialising them, then
+          // re-read what remains.
+          await this.dropOversizedLinesStreaming(filePath);
+          tail = await readJsonlTailBounded(filePath);
+        }
+        if (!tail || tail.lines.length === 0) return;
+        const healedSize = (await fs.stat(filePath)).size;
+        if (healedSize <= JSONL_COMPACT_TRIGGER_BYTES) return;
+        // `lines` are the RAW serialized lines, not parsed objects — write them
+        // back verbatim so an unparseable line survives a trim exactly as it
+        // survives a collapse.
+        const tmpPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+        await fs.writeFile(tmpPath, tail.lines.join('\n') + '\n', 'utf-8');
+        await fs.rename(tmpPath, filePath);
+        console.warn(
+          `🗜️  [FileSessionAdapter] Trimmed ${filePath} to the reader window ` +
+          `(${stat.size} bytes → ${tail.lines.length} lines)`,
+        );
+      });
     } catch (err: any) {
       // Never fail an append because a retention pass could not run.
       console.warn(`[FileSessionAdapter] JSONL compaction skipped: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Rewrite a JSONL file dropping every line whose serialized size exceeds
+   * {@link JSONL_LINE_MAX_BYTES}, without ever materialising an oversized line:
+   * bytes of the current line are buffered only up to the cap, past which the
+   * scanner discards and skips to the next newline. Heap ceiling is the line
+   * cap plus one read chunk (`readline` would materialise the whole oversized
+   * line as one string — exactly the allocation this pass exists to avoid).
+   * Caller must hold this file's rewrite lock.
+   */
+  private async dropOversizedLinesStreaming(filePath: string): Promise<void> {
+    const tmpPath = `${filePath}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    const NEWLINE = 0x0a;
+    const out = createWriteStream(tmpPath);
+    let kept = 0;
+    let dropped = 0;
+    try {
+      const write = async (buf: Buffer): Promise<void> => {
+        if (!out.write(buf)) {
+          await new Promise<void>((resolve, reject) => {
+            out.once('drain', resolve);
+            out.once('error', reject);
+          });
+        }
+      };
+      let pending: Buffer[] = [];
+      let pendingBytes = 0;
+      let skipping = false;
+      for await (const chunk of createReadStream(filePath)) {
+        const buf = chunk as Buffer;
+        let start = 0;
+        while (start <= buf.length) {
+          const nl = buf.indexOf(NEWLINE, start);
+          const end = nl === -1 ? buf.length : nl;
+          const sliceLen = end - start;
+          if (!skipping && sliceLen > 0) {
+            if (pendingBytes + sliceLen > JSONL_LINE_MAX_BYTES) {
+              pending = [];
+              pendingBytes = 0;
+              skipping = true;
+              dropped++;
+            } else {
+              pending.push(buf.subarray(start, end));
+              pendingBytes += sliceLen;
+            }
+          }
+          if (nl === -1) break;
+          if (skipping) {
+            skipping = false;
+          } else if (pendingBytes > 0) {
+            await write(Buffer.concat([...pending, Buffer.from('\n')]));
+            kept++;
+            pending = [];
+            pendingBytes = 0;
+          }
+          start = nl + 1;
+        }
+      }
+      // A trailing fragment without a newline is an interrupted append —
+      // preserve it (terminated) when it fits, exactly as a collapse would.
+      if (!skipping && pendingBytes > 0) {
+        await write(Buffer.concat([...pending, Buffer.from('\n')]));
+        kept++;
+      }
+      await new Promise<void>((resolve, reject) => {
+        out.once('error', reject);
+        out.end(resolve);
+      });
+      await fs.rename(tmpPath, filePath);
+      console.warn(
+        `🗜️  [FileSessionAdapter] Dropped ${dropped} oversized line(s) from ${filePath} (${kept} kept)`,
+      );
+    } catch (err) {
+      out.destroy();
+      await fs.rm(tmpPath, { force: true }).catch(() => { /* best-effort */ });
+      throw err;
     }
   }
 
@@ -634,7 +749,10 @@ export class FileSessionAdapter implements SessionPort {
    */
   async appendUserTurn(
     line: FeatureUserTurnLine,
-    options: { skipFeature?: boolean; actionMetadata?: import('@ant/shared').ActionMetadata } = {},
+    options: {
+      skipFeature?: boolean;
+      actionMetadata?: import('../../../core/context/actionMetadataBudget').BoundedActionMetadata;
+    } = {},
   ): Promise<void> {
     // 1. feature.jsonl에 append (skipFeature가 true면 건너뜀). 실패 시 throw.
     if (!options.skipFeature) {
