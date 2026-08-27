@@ -107,8 +107,9 @@ truncated with a visible footer, so keep standing instructions tight and put
 anything long in `on-demand/`.
 
 `on-demand/` files are not injected. They are offered to the agent as paths it
-can read when it needs them — the right home for a full API spec, a schema, or
-a vendor document.
+can read when it needs them — the right home for reference the agent consults
+while working: a full API spec, a schema, a vendor document. Material that
+defines the work itself belongs in job prose and intents, not here.
 
 Prose has no required language: the `base/*.md` bodies, `infer.md`, `prompt.md`,
 `name:` values, and comments may be written in whatever language the definition's
