@@ -25,8 +25,6 @@ interface ArtifactRowProps {
   onRenameSubmit: () => void;
   onRenameCancel: () => void;
   onActivate: () => void;
-  /** Hidden upload input id — when present, FileActionMenu's onUpload triggers it. */
-  uploadInputId?: string;
   onMenuOpenChange: (open: boolean) => void;
   /** Pre-built FileActionMenu prop bundle from ArtifactsSection (which owns mutation policy). */
   menuProps: {
@@ -39,6 +37,7 @@ interface ArtifactRowProps {
     onCreateFile?: () => void;
     onCreateDirectory?: () => void;
     onUpload?: () => void;
+    onUploadFolder?: () => void;
     onRename?: () => void;
     onDelete?: () => void;
     onClearContents?: () => void;
@@ -72,7 +71,6 @@ export function ArtifactRow({
   onRenameSubmit,
   onRenameCancel,
   onActivate,
-  uploadInputId,
   onMenuOpenChange,
   menuProps,
 }: ArtifactRowProps) {
@@ -203,9 +201,8 @@ export function ArtifactRow({
           onMarkAllSeen={menuProps.onMarkAllSeen}
           onCreateFile={menuProps.onCreateFile}
           onCreateDirectory={menuProps.onCreateDirectory}
-          onUpload={menuProps.onUpload ?? (uploadInputId
-            ? () => document.getElementById(uploadInputId)?.click()
-            : undefined)}
+          onUpload={menuProps.onUpload}
+          onUploadFolder={menuProps.onUploadFolder}
           onRename={menuProps.onRename}
           onDelete={menuProps.onDelete}
           onClearContents={menuProps.onClearContents}

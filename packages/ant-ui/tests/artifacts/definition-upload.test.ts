@@ -11,7 +11,11 @@ import {
   hasEntry,
   pickedFolderName,
 } from '../../src/presentation/components/AgentSettings/definitionUpload';
-import { findConflicts } from '../../src/shared/utils/upload-utils';
+import {
+  applyPerFileResolutions,
+  fileListToEntries,
+  findConflicts,
+} from '../../src/shared/utils/upload-utils';
 import type { FileNode } from '@ant/shared';
 
 function fileList(paths: string[]): FileList {
@@ -67,5 +71,53 @@ describe('findConflicts at the tree root', () => {
       'agent.yaml',
     ]);
     expect(findConflicts(tree, '', [{ file: new File([''], 'job.yaml'), relativePath: 'job.yaml' }])).toEqual([]);
+  });
+});
+
+describe('folder picks keep their structure', () => {
+  it('webkitRelativePath is the relative path; a bare file falls back to its name', () => {
+    expect(fileListToEntries(fileList(['docs/api/spec.md'])).map((e) => e.relativePath)).toEqual([
+      'docs/api/spec.md',
+    ]);
+    const bare = new File(['x'], 'notes.md');
+    const list = { length: 1, item: () => bare, 0: bare } as unknown as FileList;
+    expect(fileListToEntries(list)[0].relativePath).toBe('notes.md');
+  });
+});
+
+describe('conflict identity is the relative path, not the file name', () => {
+  const tree: FileNode[] = [
+    {
+      name: 'plan',
+      path: 'plan',
+      type: 'directory',
+      children: [
+        { name: 'a.md', path: 'plan/a.md', type: 'file' },
+        {
+          name: 'docs',
+          path: 'plan/docs',
+          type: 'directory',
+          children: [{ name: 'a.md', path: 'plan/docs/a.md', type: 'file' }],
+        },
+      ],
+    },
+  ];
+  const entry = (relativePath: string) => ({ file: new File([''], 'a.md'), relativePath });
+
+  it('the same name under a different sub-folder is not a conflict', () => {
+    expect(findConflicts(tree, 'plan', [entry('other/a.md')])).toEqual([]);
+  });
+
+  it('a nested path that does exist IS a conflict, reported as the full relative path', () => {
+    expect(findConflicts(tree, 'plan', [entry('docs/a.md')])).toEqual(['docs/a.md']);
+  });
+
+  it('two same-named files in different sub-folders resolve independently', () => {
+    const resolved = applyPerFileResolutions(
+      [entry('docs/a.md'), entry('other/a.md')],
+      { 'docs/a.md': 'copy', 'other/a.md': 'overwrite' },
+      ['a.md', 'docs', 'docs/a.md'],
+    );
+    expect(resolved.map((e) => e.relativePath)).toEqual(['docs/a (1).md', 'other/a.md']);
   });
 });

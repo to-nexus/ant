@@ -55,6 +55,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
   const selectedProject = useStore(s => s.selectedProject);
   const fileTree = useStore(s => s.fileTree);
   const highlightArtifactDirs = useStore(s => s.highlightArtifactDirs);
+  const requestArtifactUpload = useStore(s => s.requestArtifactUpload);
   const spotlightTarget = useStore(s => s.spotlightTarget);
   const setSpotlightTarget = useStore(s => s.setSpotlightTarget);
   const clearSpotlightTarget = useStore(s => s.clearSpotlightTarget);
@@ -204,9 +205,7 @@ export function ActionConfigView({ actionId, intentId, onBack }: ActionConfigVie
 
   const handleUploadDir = (dir: string) => {
     highlightArtifactDirs([dir]);
-    setTimeout(() => {
-      (document.getElementById(`upload-${dir}`) as HTMLInputElement)?.click();
-    }, 150);
+    requestArtifactUpload(dir);
   };
 
   const handleToggleSpotlight = useCallback((type: 'file' | 'dir', path: string) => {

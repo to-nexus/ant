@@ -286,6 +286,13 @@ export interface UIState {
   selectedIntentId: string | null;
   actionMetadata: import('@ant/shared').ActionMetadata;
   highlightedArtifactDirs: string[];
+  /**
+   * Cross-component request to open the artifact tree's upload picker for a
+   * directory. `seq` (not the path) is the trigger, so asking twice for the
+   * same directory re-opens it. The tree owns the picker; callers elsewhere
+   * must never reach into its DOM.
+   */
+  artifactUploadRequest: { dirPath: string; seq: number } | null;
   spotlightTarget: { type: 'file' | 'dir'; path: string } | null;
   // Expanded directories in the Artifacts tree. Lifted from ArtifactsSection
   // component-local state so it survives transient remounts of the panel

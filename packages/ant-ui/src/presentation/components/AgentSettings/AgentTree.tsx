@@ -35,7 +35,7 @@
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FilePlus, FolderPlus, FolderTree, ListTree, Plus, Target, Upload } from 'lucide-react';
+import { AlertTriangle, Bot, Briefcase, ChevronDown, ChevronRight, CircleCheckBig, FilePlus, FolderPlus, FolderTree, FolderUp, ListTree, Plus, Target, Upload } from 'lucide-react';
 import {
   getDefinitionDirPolicy,
   toCustomId,
@@ -46,6 +46,7 @@ import {
 import { Button, KebabMenu, type KebabMenuItem } from '@/presentation/components/aurora';
 import { AuroraInput, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
 import { selectedRowLabel, selectedRowStyle } from '@/presentation/components/aurora/selection';
+import { useFilePicker } from '@/application/hooks/ui/useFilePicker';
 import { STORAGE_KEYS } from '@/domain/store/storage';
 import type { AgentSettingsSelection, DefinitionTreeEntry } from '@/domain/store/slices/agentSettingsSlice';
 import { DefinitionFileTree } from './overview/DefinitionFileTree';
@@ -222,34 +223,6 @@ function InlineCreateForm({
   );
 }
 
-/** Hidden file/folder inputs wrapped by one imperative opener. */
-function useFilePicker(): [React.ReactNode, (onFiles: (files: FileList) => void, directory?: boolean) => void] {
-  const [inputKey, setInputKey] = useState(0);
-  const [handler, setHandler] = useState<((files: FileList) => void) | null>(null);
-  const [mode, setMode] = useState<'files' | 'directory'>('files');
-  const open = (onFiles: (files: FileList) => void, directory = false) => {
-    setHandler(() => onFiles);
-    setMode(directory ? 'directory' : 'files');
-    // The input is remounted per pick so re-selecting the same file re-fires.
-    setInputKey((k) => k + 1);
-    requestAnimationFrame(() => document.getElementById('agent-tree-file-picker')?.click());
-  };
-  const node = (
-    <input
-      key={`${mode}-${inputKey}`}
-      id="agent-tree-file-picker"
-      type="file"
-      multiple
-      className="hidden"
-      {...((mode === 'directory' ? { webkitdirectory: '' } : {}) as Record<string, string>)}
-      onChange={(e) => {
-        if (e.target.files && e.target.files.length > 0) handler?.(e.target.files);
-      }}
-    />
-  );
-  return [node, open];
-}
-
 export function AgentTree({
   agents,
   selection,
@@ -317,7 +290,7 @@ export function AgentTree({
       {
         icon: Upload,
         label: t('tree.menu.uploadJobFolder', 'Upload job folder…'),
-        onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, files), true),
+        onClick: () => openFilePicker((files) => void onUploadUnitFolder('job', agent.id, undefined, files), { directory: true }),
       },
     ];
   };
@@ -334,7 +307,7 @@ export function AgentTree({
           {
             icon: Upload,
             label: t('tree.menu.uploadIntentFolder', 'Upload intent folder…'),
-            onClick: () => openFilePicker((files) => void onUploadUnitFolder('intent', agent.id, jobId, files), true),
+            onClick: () => openFilePicker((files) => void onUploadUnitFolder('intent', agent.id, jobId, files), { directory: true }),
           },
         ];
 
@@ -388,8 +361,14 @@ export function AgentTree({
     }
     items.push({
       icon: Upload,
-      label: t('artifacts:actions.upload', 'Upload'),
+      label: t('artifacts:actions.upload', 'Upload files'),
       onClick: () => openFilePicker((files) => void onUploadFiles(agentId, files, dirPath)),
+    });
+    items.push({
+      icon: FolderUp,
+      label: t('artifacts:actions.uploadFolder', 'Upload folder'),
+      onClick: () =>
+        openFilePicker((files) => void onUploadFiles(agentId, files, dirPath), { directory: true }),
     });
     if (policy.customIdChild) {
       items.push({
@@ -401,7 +380,7 @@ export function AgentTree({
         onClick: () =>
           openFilePicker(
             (files) => void onUploadUnitFolder(policy.customIdChild!, agentId, dirPath.split('/')[1], files),
-            true,
+            { directory: true },
           ),
       });
     }

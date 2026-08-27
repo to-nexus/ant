@@ -39,7 +39,8 @@
   "actions": {
     "createFile": "Create file",
     "createDirectory": "Create directory",
-    "upload": "Upload",
+    "upload": "Upload files",
+    "uploadFolder": "Upload folder",
     "download": "Download",
     "send": "Send",
     "clearContents": "Clear all contents",

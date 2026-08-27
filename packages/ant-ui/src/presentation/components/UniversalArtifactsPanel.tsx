@@ -198,16 +198,7 @@ export function UniversalArtifactsPanel({ explorerWidth: _explorerWidth }: { exp
         onCreateDirectory={(dirPath, dirName) =>
           void mutate(() => createUniversalArtifactDirectory(selectedProject, joinDir(dirPath, dirName)))
         }
-        onUploadFiles={(dirPath, files) =>
-          void doUpload(
-            dirPath,
-            Array.from(files).map((f) => ({
-              file: f,
-              relativePath: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
-            })),
-          )
-        }
-        onDropFiles={(dirPath, entries) => void doUpload(dirPath, entries)}
+        onUploadEntries={(dirPath, entries) => void doUpload(dirPath, entries)}
         onRename={(oldPath, newName) =>
           void mutate(() => renameUniversalArtifact(selectedProject, oldPath, newName))
         }

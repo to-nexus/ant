@@ -21,7 +21,6 @@ import { useAlertModalContext } from '@/presentation/providers/AlertModalProvide
 import { ApiError } from '@/infrastructure/http/api/client';
 import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
 import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
-import { fileListToEntries } from '@/shared/utils/upload-utils';
 import {
   UI_PANEL_TOP_LEVEL_DIRS,
   pruneFileTreeForWorkspaceDomain,
@@ -356,14 +355,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
     guard: notifyArtifactMutationBlocked,
   });
 
-  const handleUploadFiles = useCallback(
-    (dirPath: string, files: FileList) => {
-      checkConflictsAndUpload(dirPath, fileListToEntries(files));
-    },
-    [checkConflictsAndUpload],
-  );
-
-  const handleDropFiles = useCallback(
+  const handleUploadEntries = useCallback(
     (dirPath: string, entries: UploadFileEntry[]) => {
       checkConflictsAndUpload(dirPath, entries);
     },
@@ -523,8 +515,7 @@ export function ArtifactsPanel({ explorerWidth }: { explorerWidth: number }) {
           selectedFile={selectedFile}
           onCreateFile={handleCreateFile}
           onCreateDirectory={handleCreateDirectory}
-          onUploadFiles={handleUploadFiles}
-          onDropFiles={handleDropFiles}
+          onUploadEntries={handleUploadEntries}
           onRename={handleRename}
           onDelete={handleDelete}
           onSend={handleSend}

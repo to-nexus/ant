@@ -241,6 +241,8 @@ export interface UIActions {
   resetActionMetadata: () => void;
   highlightArtifactDirs: (dirs: string[]) => void;
   clearHighlightedArtifactDirs: () => void;
+  requestArtifactUpload: (dirPath: string) => void;
+  clearArtifactUploadRequest: () => void;
   setSpotlightTarget: (target: { type: 'file' | 'dir'; path: string }) => void;
   clearSpotlightTarget: () => void;
   /** @deprecated Use `resetArtifactExpansion` — this clears only one of the two paired sets. */
@@ -405,6 +407,7 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
   // in-panel switcher writing this field directly.
   actionMetadata: { domain: 'service' } as ActionMetadata,
   highlightedArtifactDirs: [] as string[],
+  artifactUploadRequest: null as { dirPath: string; seq: number } | null,
   spotlightTarget: null as { type: 'file' | 'dir'; path: string } | null,
   expandedArtifactDirs: new Set<string>() as ReadonlySet<string>,
   seenArtifactTopLevelDirs: new Set<string>() as ReadonlySet<string>,
@@ -1776,6 +1779,16 @@ export const createUISlice: StateCreator<any, [], [], UISlice> = (set, get) => (
 
   clearHighlightedArtifactDirs: () => {
     set({ highlightedArtifactDirs: [] });
+  },
+
+  requestArtifactUpload: (dirPath: string) => {
+    set((s: any) => ({
+      artifactUploadRequest: { dirPath, seq: (s.artifactUploadRequest?.seq ?? 0) + 1 },
+    }));
+  },
+
+  clearArtifactUploadRequest: () => {
+    set({ artifactUploadRequest: null });
   },
 
   setSpotlightTarget: (target: { type: 'file' | 'dir'; path: string }) => {

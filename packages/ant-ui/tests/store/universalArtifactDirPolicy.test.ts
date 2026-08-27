@@ -59,6 +59,29 @@ describe('resolveDirPolicy prop wiring (source-level)', () => {
     expect((sectionSrc.match(/resolveDirPolicy\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 
+  it('folder upload is offered only where the policy allows sub-directories', () => {
+    // The ⋯ menu must not hand the user a folder picker for a flat-only
+    // directory — that is exactly the verdict a folder DROP gets there.
+    expect(sectionSrc).toMatch(
+      /canUploadFolderTo = \(path: string\) =>\s*\n?\s*canUploadTo\(path\) && resolveDirPolicy\(path\)\?\.allowSubdirs !== false/,
+    );
+  });
+
+  it('the ⋯ upload path owns its picker — no hidden-input DOM coupling', () => {
+    // Uploads used to reach a hidden <input> by DOM id, which no folder mode
+    // could ever be attached to and which vanished with a collapsed row.
+    expect(sectionSrc).not.toMatch(/getElementById/);
+    expect(sectionSrc).toMatch(/useFilePicker\(\)/);
+  });
+
+  it('drop and picker share one policy-filtered sink', () => {
+    // Both entry points go through submitEntries → onUploadEntries; a second
+    // sink is how the two paths diverged in the first place.
+    expect(sectionSrc).toMatch(/submitEntries\(dirPath, await extractDroppedFiles/);
+    expect(sectionSrc).toMatch(/openPicker\(\(files\) => submitEntries\(/);
+    expect((sectionSrc.match(/onUploadEntries\(dirPath,/g) ?? []).length).toBe(2);
+  });
+
   it('UniversalArtifactsPanel passes the universal policy table', () => {
     expect(panelSrc).toMatch(/resolveDirPolicy=\{getUniversalArtifactDirPolicy\}/);
   });

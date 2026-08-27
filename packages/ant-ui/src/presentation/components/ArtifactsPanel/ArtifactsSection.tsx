@@ -21,6 +21,8 @@ import {
   type SectionAccent,
 } from '@/shared/utils/canonical-dirs';
 import { extractDroppedFiles } from '@/application/hooks/ui/useDropZone';
+import { useFilePicker } from '@/application/hooks/ui/useFilePicker';
+import { fileListToEntries, normalizeRelativePath } from '@/shared/utils/upload-utils';
 import type { ArtifactDirPolicy, ArtifactPermissions } from '@ant/shared';
 
 const DRAG_EXPAND_DELAY_MS = 600;
@@ -32,8 +34,12 @@ export interface ArtifactsSectionProps {
   selectedFile: string | undefined;
   onCreateFile?: (dirPath: string, fileName: string) => void;
   onCreateDirectory?: (dirPath: string, dirName: string) => void;
-  onUploadFiles?: (dirPath: string, files: FileList) => void;
-  onDropFiles?: (dirPath: string, entries: UploadFileEntry[]) => void;
+  /**
+   * The one upload sink. Drop and the ⋯ menu's file/folder pickers all
+   * arrive here as entries whose `relativePath` carries the folder
+   * structure, already filtered against the directory's policy.
+   */
+  onUploadEntries?: (dirPath: string, entries: UploadFileEntry[]) => void;
   onRename?: (oldPath: string, newName: string) => void;
   onDelete?: (filePath: string) => void;
   onSend?: (path: string, type: 'file' | 'directory') => void;
@@ -101,8 +107,7 @@ export function ArtifactsSection({
   selectedFile,
   onCreateFile,
   onCreateDirectory,
-  onUploadFiles,
-  onDropFiles,
+  onUploadEntries,
   onRename,
   onDelete,
   onSend,
@@ -134,10 +139,68 @@ export function ArtifactsSection({
   const removeExpandedArtifactDirs = useStore((s) => s.removeExpandedArtifactDirs);
   const toggleExpandedArtifactDir = useStore((s) => s.toggleExpandedArtifactDir);
   const highlightedDirs = useStore((s) => s.highlightedArtifactDirs);
+  const artifactUploadRequest = useStore((s) => s.artifactUploadRequest);
+  const clearArtifactUploadRequest = useStore((s) => s.clearArtifactUploadRequest);
   const spotlightTarget = useStore((s) => s.spotlightTarget);
   const clearSpotlightTarget = useStore((s) => s.clearSpotlightTarget);
   const selectedProject = useStore((s) => s.selectedProject);
   const selectedFeature = useStore((s) => s.selectedFeature);
+
+  const [pickerNode, openPicker] = useFilePicker();
+
+  /**
+   * The single gate every upload passes — drop and picker alike. Entries the
+   * directory's policy refuses (a sub-path where subdirs are banned, a
+   * disallowed extension) are dropped with the same message the drop path has
+   * always shown; a picker that bypassed this would be a hole, since
+   * `webkitdirectory` makes the browser ignore `accept`.
+   */
+  const submitEntries = (dirPath: string, entries: UploadFileEntry[]) => {
+    if (!onUploadEntries || entries.length === 0) return;
+    const policy = resolveDirPolicy(dirPath);
+    if (!policy) {
+      onUploadEntries(dirPath, entries);
+      return;
+    }
+
+    const valid: UploadFileEntry[] = [];
+    let blocked = 0;
+    for (const entry of entries) {
+      const relPath = normalizeRelativePath(entry.relativePath);
+      const name = relPath.split('/').pop() || relPath;
+      if ((!policy.allowSubdirs && relPath.includes('/')) || !validateFileForDir(dirPath, name).valid) {
+        blocked++;
+        continue;
+      }
+      valid.push({ ...entry, relativePath: relPath });
+    }
+
+    if (blocked > 0) {
+      if (valid.length === 0) {
+        const allowed = policy.acceptedExtensions?.join(', ') || '';
+        onDropError?.(t('error.invalidExtension', { dir: dirPath, allowed }));
+        return;
+      }
+      onDropError?.(t('error.uploadPartialBlocked', { blocked, total: entries.length }));
+    }
+    if (valid.length > 0) onUploadEntries(dirPath, valid);
+  };
+
+  const pickAndUpload = (dirPath: string, directory: boolean) =>
+    openPicker((files) => submitEntries(dirPath, fileListToEntries(files)), {
+      directory,
+      // Browsers ignore `accept` in folder mode — submitEntries filters instead.
+      accept: directory ? undefined : resolveDirPolicy(dirPath)?.acceptedExtensions?.join(','),
+    });
+
+  /** May this directory receive an upload at all — the one owner of that predicate. */
+  const canUploadTo = (path: string) =>
+    !!onUploadEntries &&
+    !isStructuralCanonicalDir(path) &&
+    getNodePermissions?.(path)?.upload !== false;
+
+  const canUploadFolderTo = (path: string) =>
+    canUploadTo(path) && resolveDirPolicy(path)?.allowSubdirs !== false;
 
   const belongsToSpotlight = !spotlightTarget
     ? true
@@ -145,6 +208,19 @@ export function ArtifactsSection({
       ? true
       : spotlightTarget.path === sectionPrefix ||
         spotlightTarget.path.startsWith(sectionPrefix + '/');
+
+  // A request from outside the tree (the Actions panel's per-directory upload
+  // button) opens THIS section's picker. `seq` is the trigger, so the same
+  // directory can be asked for twice.
+  useEffect(() => {
+    const req = artifactUploadRequest;
+    if (!req) return;
+    const owned = !sectionPrefix || req.dirPath === sectionPrefix || req.dirPath.startsWith(sectionPrefix + '/');
+    if (!owned) return;
+    clearArtifactUploadRequest();
+    if (canUploadTo(req.dirPath)) pickAndUpload(req.dirPath, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [artifactUploadRequest?.seq]);
 
   // [trace] Diagnostic — observe ArtifactsSection mount/unmount in dev so the
   // unmount-trigger (connectionStatus flicker, conditional render churn, etc.)
@@ -417,14 +493,11 @@ export function ArtifactsSection({
 
     const isSession = node.path.startsWith('sessions');
     const isClearable = isDirectory && isCanonicalDir(node.path);
-    const uploadInputId = isDirectory && onUploadFiles ? `upload-${node.path}` : undefined;
-
     // Per-row permission gating (unified-tree mode). When
     // `getNodePermissions` is not supplied (legacy per-domain mount),
     // every gate defaults to `true` so behavior is unchanged.
     const rowPerms = getNodePermissions?.(node.path);
     const allowCreate = rowPerms?.create !== false;
-    const allowUpload = rowPerms?.upload !== false;
     const allowRename = rowPerms?.rename !== false;
     const allowSend = rowPerms?.send !== false;
     const allowDelete = rowPerms?.delete !== false;
@@ -467,10 +540,9 @@ export function ArtifactsSection({
               setNewFileName('');
             }
           : undefined,
-      onUpload:
-        isDirectory && onUploadFiles && !isStructural && allowUpload
-          ? () => document.getElementById(`upload-${node.path}`)?.click()
-          : undefined,
+      onUpload: isDirectory && canUploadTo(node.path) ? () => pickAndUpload(node.path, false) : undefined,
+      onUploadFolder:
+        isDirectory && canUploadFolderTo(node.path) ? () => pickAndUpload(node.path, true) : undefined,
       onRename:
         onRename && !isClearable && allowRename
           ? () => {
@@ -509,28 +581,10 @@ export function ArtifactsSection({
     return (
       <div
         key={node.path}
-        data-drop-dir={isDirectory && onDropFiles ? node.path : undefined}
-        data-drop-blocked={isDirectory && onDropFiles && isStructural ? '' : undefined}
+        data-drop-dir={isDirectory && onUploadEntries ? node.path : undefined}
+        data-drop-blocked={isDirectory && onUploadEntries && isStructural ? '' : undefined}
         data-spotlight-path={isSpotlighted ? node.path : undefined}
       >
-        {/* Hidden file input for uploads — kept adjacent to the row so the
-            FileActionMenu's onUpload click handler can resolve it by id. */}
-        {isDirectory && onUploadFiles && (
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            id={`upload-${node.path}`}
-            accept={resolveDirPolicy(node.path)?.acceptedExtensions?.join(',') || undefined}
-            onChange={(e) => {
-              if (e.target.files && onUploadFiles) {
-                onUploadFiles(node.path, e.target.files);
-                e.target.value = '';
-              }
-            }}
-          />
-        )}
-
         <ArtifactRow
           node={node}
           level={currentLevel}
@@ -564,7 +618,6 @@ export function ArtifactsSection({
               }
             }
           }}
-          uploadInputId={uploadInputId}
           onMenuOpenChange={(open) => setActiveMenuPath(open ? node.path : null)}
           menuProps={menuProps}
         />
@@ -599,11 +652,11 @@ export function ArtifactsSection({
   // legacy per-domain mount (sectionPrefix). Note rootDirPath may be '' —
   // presence checks below must not be truthiness checks.
   const rootDropDir = sectionPrefix ?? rootDirPath;
-  const rootDropEnabled = rootDropDir !== undefined && !!onDropFiles;
+  const rootDropEnabled = rootDropDir !== undefined && !!onUploadEntries;
   const rootIsDragTarget = rootDropEnabled && dragOverPath === rootDropDir;
 
-  const rootUploadInputId = rootDirPath !== undefined && onUploadFiles ? 'upload-__section-root__' : undefined;
   const isCreatingAtRoot = rootDirPath !== undefined && showCreateForm === rootDirPath;
+  const rootPath = rootDirPath as string;
   const rootMenu =
     rootDirPath !== undefined ? (
       <FileActionMenu
@@ -628,10 +681,9 @@ export function ArtifactsSection({
               }
             : undefined
         }
-        onUpload={
-          rootUploadInputId
-            ? () => document.getElementById(rootUploadInputId)?.click()
-            : undefined
+        onUpload={canUploadTo(rootPath) ? () => pickAndUpload(rootPath, false) : undefined}
+        onUploadFolder={
+          canUploadFolderTo(rootPath) ? () => pickAndUpload(rootPath, true) : undefined
         }
       />
     ) : undefined;
@@ -675,20 +727,7 @@ export function ArtifactsSection({
       }
       fill
     >
-      {rootUploadInputId && (
-        <input
-          type="file"
-          multiple
-          className="hidden"
-          id={rootUploadInputId}
-          onChange={(e) => {
-            if (e.target.files && onUploadFiles) {
-              onUploadFiles(rootDirPath!, e.target.files);
-              e.target.value = '';
-            }
-          }}
-        />
-      )}
+      {pickerNode}
       <div
         style={{ ...dropWrapperStyle, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
         data-drop-dir={rootDropEnabled ? rootDropDir : undefined}
@@ -696,13 +735,13 @@ export function ArtifactsSection({
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
-          if (onDropFiles) {
+          if (onUploadEntries) {
             const target = (e.target as HTMLElement).closest('[data-drop-dir]');
             updateDragTarget(target?.getAttribute('data-drop-dir') ?? null);
           }
         }}
         onDragLeave={
-          onDropFiles
+          onUploadEntries
             ? (e) => {
                 const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 const { clientX, clientY } = e;
@@ -720,7 +759,7 @@ export function ArtifactsSection({
         onDrop={async (e) => {
           e.preventDefault();
           clearDragState();
-          if (!onDropFiles) {
+          if (!onUploadEntries) {
             onDropError?.(t('error.dropBlockedSection'));
             return;
           }
@@ -731,44 +770,7 @@ export function ArtifactsSection({
           }
           const dirPath = target?.getAttribute('data-drop-dir');
           if (dirPath != null) {
-            const entries = await extractDroppedFiles(e.dataTransfer);
-            if (entries.length > 0) {
-              const policy = resolveDirPolicy(dirPath);
-              if (policy) {
-                const valid: typeof entries = [];
-                const blocked: typeof entries = [];
-                for (const entry of entries) {
-                  const relPath = entry.relativePath.replace(/\\/g, '/');
-                  if (!policy.allowSubdirs && relPath.includes('/')) {
-                    blocked.push(entry);
-                    continue;
-                  }
-                  if (
-                    !validateFileForDir(dirPath, relPath.split('/').pop() || relPath).valid
-                  ) {
-                    blocked.push(entry);
-                    continue;
-                  }
-                  valid.push(entry);
-                }
-                if (blocked.length > 0) {
-                  if (valid.length === 0) {
-                    const allowed = policy.acceptedExtensions?.join(', ') || '';
-                    onDropError?.(t('error.invalidExtension', { dir: dirPath, allowed }));
-                    return;
-                  }
-                  onDropError?.(
-                    t('error.uploadPartialBlocked', {
-                      blocked: blocked.length,
-                      total: entries.length,
-                    }),
-                  );
-                }
-                if (valid.length > 0) onDropFiles(dirPath, valid);
-              } else {
-                onDropFiles(dirPath, entries);
-              }
-            }
+            submitEntries(dirPath, await extractDroppedFiles(e.dataTransfer));
           }
         }}
       >

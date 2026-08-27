@@ -6,7 +6,7 @@
  * 
  * Menu items vary by context:
  * - File: Send / Download / --- / Delete
- * - Directory: Create File / Create Folder / Upload / --- / Send / Download / --- / Delete
+ * - Directory: Create File / Create Folder / Upload files / Upload folder / --- / Send / Download / --- / Delete
  * - sessions/ paths: Download / --- / Delete (no Send)
  * 
  * The dropdown is rendered via React Portal (document.body) so it is never
@@ -17,7 +17,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
-import { MoreHorizontal, ArrowUpRight, Download, FileText, FolderPlus, Upload, Trash2, CheckCircle, Pencil } from 'lucide-react';
+import { MoreHorizontal, ArrowUpRight, Download, FileText, FolderPlus, Upload, FolderUp, Trash2, CheckCircle, Pencil } from 'lucide-react';
 import { Button } from '@/presentation/components/aurora';
 import { cn } from '@/shared/utils/design-system';
 
@@ -33,6 +33,8 @@ interface FileActionMenuProps {
   onCreateFile?: () => void;
   onCreateDirectory?: () => void;
   onUpload?: () => void;
+  /** Folder-mode pick. Absent where the directory forbids sub-directories. */
+  onUploadFolder?: () => void;
   onRename?: () => void;
   onDelete?: () => void;
   onClearContents?: () => void;
@@ -53,6 +55,7 @@ export function FileActionMenu({
   onCreateFile,
   onCreateDirectory,
   onUpload,
+  onUploadFolder,
   onRename,
   onDelete,
   onClearContents,
@@ -93,6 +96,9 @@ export function FileActionMenu({
       }
       if (onUpload) {
         items.push({ icon: Upload, label: t('actions.upload'), onClick: onUpload });
+      }
+      if (onUploadFolder) {
+        items.push({ icon: FolderUp, label: t('actions.uploadFolder'), onClick: onUploadFolder });
       }
       if (items.length > 0) {
         items.push('separator');
@@ -154,7 +160,7 @@ export function FileActionMenu({
     }
 
     return items;
-  }, [t, nodeType, nodePath, isSessionPath, isProtectedDir, isClearableDir, onCreateFile, onCreateDirectory, onUpload, onRename, onSend, onDownload, onDelete, onClearContents, onMarkAllSeen]);
+  }, [t, nodeType, nodePath, isSessionPath, isProtectedDir, isClearableDir, onCreateFile, onCreateDirectory, onUpload, onUploadFolder, onRename, onSend, onDownload, onDelete, onClearContents, onMarkAllSeen]);
 
   // Compute position: menu opens to the RIGHT of the trigger button, top-aligned.
   // If menu would overflow viewport bottom, flip vertically (bottom-align to button).

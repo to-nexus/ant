@@ -39,7 +39,8 @@
   "actions": {
     "createFile": "파일 생성",
     "createDirectory": "폴더 생성",
-    "upload": "업로드",
+    "upload": "파일 업로드",
+    "uploadFolder": "폴더 업로드",
     "download": "다운로드",
     "send": "보내기",
     "clearContents": "내용 비우기",

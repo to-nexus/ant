@@ -1,6 +1,7 @@
 /**
- * Conflict-checked upload — the single owner of "does this name already exist
- * in the target directory, and what did the user choose about it".
+ * Conflict-checked upload — the single owner of "does this relative path
+ * already exist under the target directory, and what did the user choose
+ * about it".
  * `modalProps` spread straight into <UploadConflictModal />.
  *
  * A caller with one stable tree passes it once (`tree`); a caller whose tree
@@ -13,7 +14,7 @@ import { useCallback, useState } from 'react';
 import type { FileNode } from '@ant/shared';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import type { ConflictResolution } from '@/presentation/components/common/UploadConflictModal';
-import { applyPerFileResolutions, findConflicts, getAllExistingNames } from '@/shared/utils/upload-utils';
+import { applyPerFileResolutions, findConflicts, getAllExistingPaths } from '@/shared/utils/upload-utils';
 
 export interface UploadRequestContext {
   tree?: FileNode[] | null;
@@ -67,8 +68,8 @@ export function useUploadConflicts<Ctx extends UploadRequestContext = UploadRequ
       const { dirPath, entries, tree: target, ctx } = pending;
       setPending((prev) => ({ ...prev, isOpen: false }));
       if (resolution === 'cancel') return;
-      const existingNames = target ? getAllExistingNames(target, dirPath) : [];
-      upload(dirPath, applyPerFileResolutions(entries, resolution.perFile, existingNames), ctx);
+      const existingPaths = target ? getAllExistingPaths(target, dirPath) : [];
+      upload(dirPath, applyPerFileResolutions(entries, resolution.perFile, existingPaths), ctx);
     },
     [pending, upload],
   );

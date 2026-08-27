@@ -21,6 +21,7 @@ import type { CustomAgentDefinitionFileNode, FileNode } from '@ant/shared';
 import { isValidCustomId } from '@ant/shared';
 import type { UploadFileEntry } from '@/infrastructure/http/api/files';
 import { useUploadConflicts } from '@/application/hooks/ui/useUploadConflicts';
+import { fileListToEntries } from '@/shared/utils/upload-utils';
 import { UploadConflictModal } from '@/presentation/components/common/UploadConflictModal';
 import { entriesUnder, findDefinitionNode, hasEntry, pickedFolderName } from './definitionUpload';
 import { selectIsTeamActive } from '@/domain/store/selectors/auth';
@@ -384,10 +385,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
     });
 
   const handleImportFolder = async (files: FileList) => {
-    const entries = Array.from(files).map((f) => ({
-      file: f,
-      relativePath: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
-    }));
+    const entries = fileListToEntries(files);
     const picked = pickedFolderName(files);
     const existing = picked ? agents.find((a) => a.id === picked) : undefined;
     if (existing && existing.scope !== 'user') {
