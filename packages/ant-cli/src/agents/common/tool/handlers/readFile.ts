@@ -19,6 +19,8 @@ import type { ToolExecutionContext, ToolResult } from '../types';
 import { resolveToolPath, prependFixMessage } from './pathResolver';
 import { isBinaryPath, formatByteSize } from '../../../../core/utils/binaryExtensions';
 import { sniffToolFile, statToolFileSize } from './containedToolMeta';
+import { coerceLineRange } from './lineRange';
+import { findInAntSourceRoots } from '../antSource/core';
 
 /**
  * Threshold above which a `read_file` call without `startLine`/`endLine`
@@ -53,9 +55,10 @@ function binaryFileMessage(displayPath: string, sizeBytes?: number): string {
 
 export async function handleReadFile(
   ctx: ToolExecutionContext,
-  args: { path: string; startLine?: number; endLine?: number },
+  args: { path: string; startLine?: number | string; endLine?: number | string },
 ): Promise<ToolResult> {
-  const { path: filePath, startLine, endLine } = args;
+  const { path: filePath } = args;
+  const { startLine, endLine } = coerceLineRange(args);
 
   if (!filePath) {
     return { content: 'read_file requires path', error: 'read_file requires path' };
@@ -171,10 +174,27 @@ export async function handleReadFile(
     });
 
     if (!fileContent) {
-      const errorMsg =
+      let errorMsg =
         `File not found: ${resolved.displayPath}\n\n` +
         `Before retrying: use list_files("${path.dirname(resolved.displayPath)}") to verify the exact path, ` +
         `or if this file is meant to be new, call create_file("${resolved.displayPath}") to create it instead of reading it.`;
+      // Cross-namespace backstop: a bare platform-source citation (e.g. from a
+      // sealed plan) gets Rule-4'd into codebase/ and misses — probe the
+      // ORIGINAL path against the ant-source roots and redirect instead of
+      // letting the model rediscover the tree (narrow-ending-flour). Paths the
+      // model explicitly addressed to the workspace are not probed.
+      const rawPath = String(filePath).replace(/^\.\//, '');
+      const workspaceAddressed = /^(codebase|features|plan|architecture|visual|assets|meta|sessions)\//.test(rawPath);
+      if (!workspaceAddressed && ctx.availableToolNames?.has('read_ant_source')) {
+        const antHit = findInAntSourceRoots(rawPath);
+        if (antHit) {
+          errorMsg =
+            `File not found: ${resolved.displayPath}\n\n` +
+            `Note: "${rawPath}" exists in the PLATFORM source, not in this app's workspace. ` +
+            `If you meant the platform file, read it with read_ant_source({ path: "${rawPath}", source: "${antHit}" }). ` +
+            `Platform-source paths never resolve via read_file. Do not create this file.`;
+        }
+      }
       console.error(`[readFile] ❌ File not found: ${resolved.displayPath}`);
       await ctx.chatStatus.addReadComplete(resolved.displayPath, mergeIndex, { error: errorMsg });
       return { content: errorMsg, error: `File not found: ${resolved.displayPath}` };

@@ -75,6 +75,25 @@ describe('handleReadFile — small files (<= 100K)', () => {
     expect(result.startsWith('Error:')).toBe(false);
   });
 
+  it('numeric-string startLine/endLine coerces instead of degrading to a full read', async () => {
+    // GLM emits "650"-style strings regardless of the schema's number type;
+    // a typeof check silently returned the full file (narrow-ending-flour).
+    const result = await read({
+      path: 'plan/small.md',
+      startLine: '10' as unknown as number,
+      endLine: '12' as unknown as number,
+    });
+    expect(result).toContain('[Lines 10-12 of 50]');
+    expect(result).not.toContain('Line 9');
+  });
+
+  it('non-numeric startLine is treated as absent (full read)', async () => {
+    const result = await read({ path: 'plan/small.md', startLine: 'abc' as unknown as number });
+    expect(result).toContain('Line 1');
+    expect(result).toContain('Line 50');
+    expect(result.startsWith('Error:')).toBe(false);
+  });
+
   it('startLine/endLine returns just the requested range with header', async () => {
     const result = await read({ path: 'plan/small.md', startLine: 10, endLine: 12 });
     expect(result).toContain('[Lines 10-12 of 50]');

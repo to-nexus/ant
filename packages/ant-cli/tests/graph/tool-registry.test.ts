@@ -20,6 +20,8 @@ import {
   getAllToolNames,
 } from '../../src/agents/common/tool/toolCatalog';
 import type { ToolHandler, ToolExecutionContext, ToolExecutionEvent } from '../../src/agents/common/tool/types';
+import { ToolOrchestrator } from '../../src/agents/common/tool/orchestrator';
+import { unknownParamNotice } from '../../src/agents/common/tool/toolSchemas';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ToolName enum completeness
@@ -273,6 +275,90 @@ describe('ToolRegistry', () => {
     registry.register(ToolName.MKDIR, async () => ({ content: '' }));
 
     expect(registry.names().sort()).toEqual([ToolName.LIST_FILES, ToolName.MKDIR, ToolName.READ_FILE].sort());
+  });
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// unknownParamNotice — unschema'd args must never vanish silently
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+describe('unknownParamNotice', () => {
+  const rows: Array<[string, string, Record<string, any>, string | undefined]> = [
+    ['unknown key on a schema tool', 'read_ant_source', { path: 'x.ts', bogusKey: 1 }, 'bogusKey'],
+    ['clean args', 'read_ant_source', { path: 'x.ts', source: 'cli', startLine: 1 }, undefined],
+    ['MCP overlay tool (no schema) is skipped', 'mcp__github__get_issue', { anything: 1 }, undefined],
+    ['job-local tool (no schema) is skipped', 'read_source_doc', { weird: 1 }, undefined],
+    ['clarify (no schema) is skipped', 'clarify', { weird: 1 }, undefined],
+  ];
+  it.each(rows)('%s', (_label, tool, args, expectedFragment) => {
+    const notice = unknownParamNotice(tool, args);
+    if (expectedFragment === undefined) {
+      expect(notice).toBeUndefined();
+    } else {
+      expect(notice).toContain(`Ignored unknown parameter(s): ${expectedFragment}`);
+      expect(notice).toContain(`${tool} accepts:`);
+    }
+  });
+
+  it('executeBatch appends the notice to success, error, and cache-replayed results', async () => {
+    const registry = new ToolRegistry();
+    registry.register(ToolName.READ_STATE, async (_ctx, args) =>
+      args.fail ? { content: 'Error: boom', error: 'boom' } : { content: 'state-body' },
+    );
+    const orchestrator = new ToolOrchestrator({
+      registry,
+      cacheEnabled: true,
+      cacheableTools: new Set([ToolName.READ_STATE]),
+    });
+    const ctx = {
+      fileSystem: {} as any,
+      chatStatus: createNoopChatStatusReporter(),
+      workingDir: '/tmp',
+    } as ToolExecutionContext;
+
+    const badArgs = { scope: 'run', phantom: 'x' };
+    const first = await orchestrator.executeBatch(ctx, {
+      calls: [{ id: '1', name: ToolName.READ_STATE, args: badArgs }],
+      cache: {},
+      uiCardAnimationDelay: 0,
+    });
+    expect(first.events[0].result.content).toContain('state-body');
+    expect(first.events[0].result.content).toContain('Ignored unknown parameter(s): phantom');
+
+    // Cache replay of the same bad args carries the notice too (it was
+    // appended before the cache write).
+    const replay = await orchestrator.executeBatch(ctx, {
+      calls: [{ id: '2', name: ToolName.READ_STATE, args: badArgs }],
+      cache: first.updatedCache,
+      uiCardAnimationDelay: 0,
+    });
+    expect(replay.events[0].cached).toBe(true);
+    expect(replay.events[0].result.content).toContain('Ignored unknown parameter(s): phantom');
+
+    const errored = await orchestrator.executeBatch(ctx, {
+      calls: [{ id: '3', name: ToolName.READ_STATE, args: { scope: 'run', phantom: 'x', fail: true } }],
+      cache: {},
+      uiCardAnimationDelay: 0,
+    });
+    expect(errored.events[0].result.error).toBeDefined();
+    expect(errored.events[0].result.content).toContain('Ignored unknown parameter(s)');
+  });
+
+  it('executeBatch stamps ctx.availableToolNames from the registry', async () => {
+    const registry = new ToolRegistry();
+    registry.register(ToolName.READ_STATE, async () => ({ content: 'ok' }));
+    const orchestrator = new ToolOrchestrator({ registry });
+    const ctx = {
+      fileSystem: {} as any,
+      chatStatus: createNoopChatStatusReporter(),
+      workingDir: '/tmp',
+    } as ToolExecutionContext;
+    await orchestrator.executeBatch(ctx, {
+      calls: [{ id: '1', name: ToolName.READ_STATE, args: {} }],
+      uiCardAnimationDelay: 0,
+    });
+    expect(ctx.availableToolNames?.has(ToolName.READ_STATE)).toBe(true);
+    expect(ctx.availableToolNames?.has(ToolName.READ_FILE)).toBe(false);
   });
 });
 

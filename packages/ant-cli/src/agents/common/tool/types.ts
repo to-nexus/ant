@@ -169,6 +169,15 @@ export interface ToolExecutionContext {
    */
   taskId?: string;
 
+  /**
+   * Names of the tools dispatchable in the current registry/tool set.
+   * Stamped per batch by ToolOrchestrator (and explicitly per child by
+   * SubagentRunner — a parent-ctx spread must not leak a wider set).
+   * Handlers use it to keep cross-namespace redirects honest: never
+   * point the model at a tool it cannot call.
+   */
+  availableToolNames?: ReadonlySet<string>;
+
   // === Command policy / verification handlers ===
   activePhase?: 'plan' | 'execute';
   /**

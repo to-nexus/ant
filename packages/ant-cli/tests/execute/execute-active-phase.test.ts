@@ -171,7 +171,7 @@ function makeRegistry(result: ToolResult): ToolRegistry {
       return async (_ctx: ToolExecutionContext, _args: any): Promise<ToolResult> => result;
     },
     has() { return true; },
-    list() { return ['fake_tool']; },
+    names() { return ['fake_tool']; },
   } as unknown as ToolRegistry;
 }
 

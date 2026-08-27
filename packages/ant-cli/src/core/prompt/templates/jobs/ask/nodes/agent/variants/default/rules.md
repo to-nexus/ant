@@ -63,7 +63,7 @@
 
 | Tool | Purpose |
 |------|---------|
-| `read_ant_source` | Read a file from Ant source/docs (path, source: cli/ui/docs) |
+| `read_ant_source` | Read a file from Ant source/docs (path, source: cli/ui/docs, optional startLine/endLine) |
 | `list_ant_files` | List Ant source/docs directory contents |
 | `search_ant_code` | Search text in Ant source code or documentation |
 

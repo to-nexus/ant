@@ -11,6 +11,7 @@ import type { TaskTokenUsage, SubagentReportMetadata } from '@ant/shared';
 import { getJobAbortSignal, isJobAborted } from '../../../composition/jobAbort';
 import { LLM_TEMPERATURE } from '../graph/llmConfig';
 import { createNoopChatStatusReporter } from '../tool/chatStatusAdapter';
+import { unknownParamNotice } from '../tool/toolSchemas';
 import {
   subagentMaxRounds,
   subagentMaxReportChars,
@@ -108,6 +109,9 @@ async function runInner(
     chatStatus: createNoopChatStatusReporter(),
     subagent: undefined,
     currentToolCallId: undefined,
+    // Explicit narrow stamp — the parent-ctx spread would leak the parent's
+    // wider tool set into the child's cross-namespace redirects.
+    availableToolNames: new Set(internals.registry.names()) as ReadonlySet<string>,
   };
 
   const toolHandler = async (name: string, args: Record<string, any>): Promise<string> => {
@@ -115,12 +119,13 @@ async function runInner(
     if (gate && gate.allowed === false) return gate.error;
     const handler = internals.registry.get(name);
     if (!handler) return `Error: unknown tool '${name}'`;
+    const paramNotice = unknownParamNotice(name, args) ?? '';
     try {
       const res = await handler(childCtx as any, args);
-      if (res.error) return typeof res.content === 'string' ? res.content : res.error;
-      return typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
+      if (res.error) return (typeof res.content === 'string' ? res.content : res.error) + paramNotice;
+      return (typeof res.content === 'string' ? res.content : JSON.stringify(res.content)) + paramNotice;
     } catch (err: unknown) {
-      return `Error: ${(err as Error)?.message ?? String(err)}`;
+      return `Error: ${(err as Error)?.message ?? String(err)}` + paramNotice;
     }
   };
 

@@ -15,6 +15,7 @@ import {
   FORBIDDEN_PATTERNS,
   type AntSource as AskSource,
 } from '../../../common/tool/antSource/core';
+import { ARCHITECT_TOOLS } from '../../../common/tool/toolSchemas';
 import {
   toBaseRelative,
   readTextContainedBase,
@@ -54,7 +55,12 @@ export interface ToolResult {
 /**
  * Read a file from Ant source code — delegates to the shared core.
  */
-export async function readAntSource(args: { path: string; source?: AskSource }): Promise<ToolResult> {
+export async function readAntSource(args: {
+  path: string;
+  source?: AskSource;
+  startLine?: number | string;
+  endLine?: number | string;
+}): Promise<ToolResult> {
   return coreReadAntSource(args);
 }
 
@@ -81,21 +87,10 @@ export const ASK_TOOLS = [
   {
     name: 'read_ant_source',
     description: 'Read a file from Ant source code or documentation. Use this to understand how Ant works.',
-    parameters: {
-      type: 'object',
-      properties: {
-        path: {
-          type: 'string',
-          description: 'Relative path to the file (e.g., "core/data/triage/jobs/design.yaml" for cli, "rubric/PRD-RUBRIC.md" for docs)',
-        },
-        source: {
-          type: 'string',
-          enum: ['cli', 'ui', 'docs'],
-          description: 'Source: "cli" for ant-cli source, "ui" for ant-ui source, "docs" for project documentation (docs/ directory including rubrics, architecture, guides). Default: cli',
-        },
-      },
-      required: ['path'],
-    },
+    // Parameter SSOT is the shared schema (exploreDef precedent in
+    // ask/nodes/agent.ts) — hand-copied duplicates drifted once
+    // (startLine/endLine, narrow-ending-flour).
+    parameters: ARCHITECT_TOOLS.read_ant_source.input_schema as Record<string, any>,
   },
   {
     name: 'list_ant_files',

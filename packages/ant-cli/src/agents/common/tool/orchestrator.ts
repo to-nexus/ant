@@ -23,6 +23,7 @@ import type {
 import type { ToolResultManager, FigmaContext } from '../../../core/utils/toolResultManager';
 import { buildToolResultMessage } from './messageBuilder';
 import { ToolName, TOOL_DISPLAY_NAMES } from './toolCatalog';
+import { unknownParamNotice } from './toolSchemas';
 
 /**
  * Side effects that mean "the file tree the FE renders has changed".
@@ -123,6 +124,10 @@ export class ToolOrchestrator {
     const events: ToolExecutionEvent[] = [];
     const updatedCache: Record<string, string> = cache ? { ...cache } : {};
 
+    // Handlers may only redirect the model to tools that are actually
+    // dispatchable in this batch's registry.
+    ctx.availableToolNames = new Set(this.config.registry.names());
+
     console.log(`🔧 [Tool] Executing ${calls.length} tool call(s)`);
 
     for (const tc of calls) {
@@ -201,7 +206,15 @@ export class ToolOrchestrator {
       }
 
       // Truncation
-      const truncatedResult = this.truncateResult(name, result, args, figmaContext);
+      let truncatedResult = this.truncateResult(name, result, args, figmaContext);
+
+      // Unschema'd params are silently invisible to handlers — surface them
+      // AFTER truncation (so the notice survives) and BEFORE the cache write
+      // (so a replay of the same bad args carries it too).
+      const paramNotice = unknownParamNotice(name, args);
+      if (paramNotice && typeof truncatedResult.content === 'string') {
+        truncatedResult = { ...truncatedResult, content: truncatedResult.content + paramNotice };
+      }
 
       // Update cache
       if (this.config.cacheEnabled && this.config.cacheableTools?.has(name) && !result.error) {

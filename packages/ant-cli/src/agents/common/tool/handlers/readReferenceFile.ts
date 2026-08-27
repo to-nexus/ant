@@ -13,6 +13,7 @@ import { FileTooLargeError } from '../../../../core/ports/filesystem';
 import { getRefDeps, isRegistered, notRegisteredError } from '../reference/handlerSupport';
 import { resolveReferenceCodebase, ReferenceTargetError } from '../reference/resolve';
 import { refGitRead, RefGitTooLargeError } from '../reference/refGit';
+import { coerceLineRange } from './lineRange';
 
 const READ_REFERENCE_FULL_READ_LIMIT = 100_000;
 // A range read still materialises the whole object before slicing, so it needs
@@ -21,9 +22,10 @@ const READ_REFERENCE_RANGE_MAX_BYTES = 10_000_000;
 
 export async function handleReadReferenceFile(
   ctx: ToolExecutionContext,
-  args: { project: string; path: string; branch?: string; startLine?: number; endLine?: number },
+  args: { project: string; path: string; branch?: string; startLine?: number | string; endLine?: number | string },
 ): Promise<ToolResult> {
-  const { project, path: filePath, branch, startLine, endLine } = args;
+  const { project, path: filePath, branch } = args;
+  const { startLine, endLine } = coerceLineRange(args);
   if (!project || !filePath) {
     const msg = 'read_reference_file requires "project" and "path"';
     return { content: msg, error: msg };

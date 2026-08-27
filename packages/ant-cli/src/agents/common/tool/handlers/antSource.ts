@@ -14,6 +14,7 @@ import {
   readAntSource as coreReadAntSource,
   listAntFiles as coreListAntFiles,
   searchAntCode as coreSearchAntCode,
+  antSourceToCodebasePath,
   type AntSource,
 } from '../antSource/core';
 
@@ -25,9 +26,30 @@ function adapt(r: { success: boolean; content?: string; error?: string }): ToolR
 }
 
 export async function handleReadAntSource(
-  _ctx: ToolExecutionContext,
+  ctx: ToolExecutionContext,
   args: Record<string, any>,
 ): Promise<ToolResult> {
+  // Workspace-copy priority: when the job's codebase IS a clone of the Ant
+  // monorepo (self-development), the clone is the SSOT the job reads AND
+  // edits — the in-image copy may be a different version, and citations in
+  // its namespace poison later phases (narrow-ending-flour). Redirect only
+  // where read_file is actually dispatchable (ask jobs keep in-image reads).
+  const source: AntSource = (args?.source as AntSource) || 'cli';
+  if (args?.path && ctx.availableToolNames?.has('read_file')) {
+    try {
+      const codebasePath = antSourceToCodebasePath(source, args.path);
+      if (await ctx.fileSystem.fileExists(codebasePath)) {
+        const msg =
+          `This file is present in YOUR workspace codebase: ${codebasePath}. ` +
+          `Your job operates on the workspace copy — read it with read_file("${codebasePath}") ` +
+          `(supports startLine/endLine) and cite that path. ` +
+          `read_ant_source serves the RUNNING platform's in-image copy, which may be a DIFFERENT version from the code you are editing.`;
+        return { content: msg, error: msg };
+      }
+    } catch {
+      // Probe failure (reparented/absent tree) → normal in-image read.
+    }
+  }
   return adapt(await coreReadAntSource(args as { path: string; source?: AntSource }));
 }
 

@@ -390,12 +390,20 @@ export const ARCHITECT_TOOLS = {
   read_ant_source: {
     name: 'read_ant_source',
     description:
-      'Read a file from Ant\'s OWN source or docs — the platform running this job (NOT the app you are building). Use when a runtime/serving/build symptom cannot be explained from the app alone (e.g. reproduces only in preview/deploy, not locally) to see how the platform serves apps. Read-only.',
+      'Read a file from Ant\'s OWN source or docs — the platform running this job (NOT the app you are building). Use when a runtime/serving/build symptom cannot be explained from the app alone (e.g. reproduces only in preview/deploy, not locally) to see how the platform serves apps. Read-only. Large files are truncated — use startLine/endLine to read further sections.',
     input_schema: {
       type: 'object' as const,
       properties: {
         path: { type: 'string', description: 'File path relative to the source root (e.g. "periphery/adapters/http/middleware/deployProxy.ts").' },
         source: { type: 'string', enum: ['cli', 'ui', 'docs'], description: 'Which Ant source: "cli" (backend/serving), "ui" (frontend), "docs". Default: cli.' },
+        startLine: {
+          type: 'number',
+          description: 'Start line number (1-based, inclusive). Omit to read from the beginning.',
+        },
+        endLine: {
+          type: 'number',
+          description: 'End line number (1-based, inclusive). Omit to read to the end.',
+        },
       },
       required: ['path'],
     },
@@ -630,6 +638,24 @@ export const ARCHITECT_TOOLS = {
  * Tools that have template files for their descriptions
  */
 const TOOLS_WITH_TEMPLATES = ['run_command', 'http_request'] as const;
+
+/**
+ * Notice for model-authored parameters outside a tool's schema. The dispatch
+ * layer has no arg validation, so an unschema'd param is silently invisible to
+ * the handler — the model gets a wrong-but-plausible result and no signal
+ * (narrow-ending-flour: read_ant_source + startLine). Warning-append, not
+ * reject: the result is usually still useful. Tools without an
+ * ARCHITECT_TOOLS entry (MCP overlay, api__*, job-local tools) own their
+ * schemas elsewhere and are skipped.
+ */
+export function unknownParamNotice(toolName: string, args: Record<string, any>): string | undefined {
+  const def = ARCHITECT_TOOLS[toolName as keyof typeof ARCHITECT_TOOLS];
+  if (!def) return undefined;
+  const known = Object.keys(def.input_schema.properties as Record<string, unknown>);
+  const unknown = Object.keys(args ?? {}).filter((k) => !known.includes(k));
+  if (unknown.length === 0) return undefined;
+  return `\n\n⚠️ Ignored unknown parameter(s): ${unknown.join(', ')} — ${toolName} accepts: ${known.join(', ')}.`;
+}
 
 /**
  * Get tools by names

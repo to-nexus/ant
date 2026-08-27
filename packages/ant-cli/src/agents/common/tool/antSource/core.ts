@@ -15,6 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspacePathResolver } from '../../../../core/config/WorkspacePathResolver.js';
+import { coerceLineRange } from '../handlers/lineRange.js';
 
 const DEBUG = process.env.ASK_DEBUG === 'true';
 
@@ -106,9 +107,15 @@ export function sanitizeOutput(content: string): string {
 }
 
 /** Read a file from Ant source code. */
-export async function readAntSource(args: { path: string; source?: AntSource }): Promise<AntSourceResult> {
+export async function readAntSource(args: {
+  path: string;
+  source?: AntSource;
+  startLine?: number | string;
+  endLine?: number | string;
+}): Promise<AntSourceResult> {
   const source = args.source || 'cli';
   const relativePath = args.path;
+  const { startLine, endLine } = coerceLineRange(args);
 
   if (DEBUG) console.log(`📖 [AntSource] readAntSource: ${source}/${relativePath}`);
 
@@ -130,16 +137,65 @@ export async function readAntSource(args: { path: string; source?: AntSource }):
 
     // Limit content length (higher for docs since rubrics/guides need full content)
     const maxLength = source === 'docs' ? 50000 : 10000;
-    if (sanitized.length > maxLength) {
-      return {
-        success: true,
-        content: sanitized.substring(0, maxLength) + '\n\n[... truncated, file too large ...]',
-      };
+    const lines = sanitized.split('\n');
+    const total = lines.length;
+
+    const hasRange = startLine !== undefined || endLine !== undefined;
+    let body = sanitized;
+    let header = '';
+    if (hasRange) {
+      const start = Math.max(1, startLine ?? 1);
+      const end = Math.min(total, endLine ?? total);
+      if (start > end) {
+        return { success: false, error: `startLine (${start}) > endLine (${end}) for ${relativePath}.` };
+      }
+      body = lines.slice(start - 1, end).join('\n');
+      header = `[Lines ${start}-${end} of ${total}]\n\n`;
     }
 
-    return { success: true, content: sanitized };
+    // Cap AFTER slicing — a range starting past the cap must still return
+    // content, otherwise a large file's tail is unreachable by any tool.
+    if (body.length > maxLength) {
+      body =
+        body.substring(0, maxLength) +
+        `\n\n[... truncated at ${maxLength} chars — file has ${total} lines; re-issue with startLine/endLine to read beyond this point ...]`;
+    }
+
+    return { success: true, content: header + body };
   } catch (error: any) {
     return { success: false, error: `Failed to read file: ${error.message}` };
+  }
+}
+
+/**
+ * Probe the ant-source roots for a path that missed in the workspace.
+ * Read-only backstop for read_file's not-found reply: a plan citation in the
+ * ant-source namespace must redirect to read_ant_source, not to rediscovery.
+ * Tolerates missing roots (deployed images do not ship the ui tree).
+ */
+export function findInAntSourceRoots(relativePath: string): AntSource | undefined {
+  if (!relativePath || !validatePath(relativePath).valid) return undefined;
+  for (const source of ['cli', 'ui', 'docs'] as AntSource[]) {
+    try {
+      const root = resolveSourceRoot(source);
+      if (fs.existsSync(root) && fs.existsSync(path.join(root, relativePath))) return source;
+    } catch {
+      // Unresolvable root (partial image) — keep probing the others.
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Map an ant-source path to its location inside a workspace clone of the Ant
+ * monorepo (`codebase/` namespace). Same layout knowledge as
+ * `resolveSourceRoot` — keep the two in sync.
+ */
+export function antSourceToCodebasePath(source: AntSource, relativePath: string): string {
+  switch (source) {
+    case 'cli': return `codebase/packages/ant-cli/src/${relativePath}`;
+    case 'ui': return `codebase/packages/ant-ui/${relativePath}`;
+    case 'docs': return `codebase/docs/${relativePath}`;
   }
 }
 

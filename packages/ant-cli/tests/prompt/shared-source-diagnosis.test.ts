@@ -21,6 +21,7 @@ import {
   createPlanToolRegistry,
 } from '../../src/agents/common/tool/presets';
 import { ARCHITECT_TOOLS, getToolsByNames } from '../../src/agents/common/tool/toolSchemas';
+import { ASK_TOOLS } from '../../src/agents/architect/graph/ask/tools';
 import { AutoInjectionResolver } from '../../src/core/prompt/builder/AutoInjectionResolver';
 
 const ANT_SOURCE = [ToolName.READ_ANT_SOURCE, ToolName.LIST_ANT_FILES, ToolName.SEARCH_ANT_CODE];
@@ -58,6 +59,19 @@ describe('ant-source self-diagnosis exposure (Phase 3-a)', () => {
       const names = getToolsByNames([...set]).map(t => t.name);
       for (const t of ANT_SOURCE) expect(names).toContain(t);
     }
+  });
+
+  it('read_ant_source declares startLine/endLine (large-file tails must be reachable)', () => {
+    const props = (ARCHITECT_TOOLS as Record<string, any>).read_ant_source.input_schema.properties;
+    expect(props.startLine).toBeDefined();
+    expect(props.endLine).toBeDefined();
+  });
+
+  it('ask duplicate schema converges on the shared input_schema by reference', () => {
+    const askEntry = (ASK_TOOLS as Array<{ name: string; parameters: unknown }>).find(
+      (t) => t.name === 'read_ant_source',
+    );
+    expect(askEntry?.parameters).toBe((ARCHITECT_TOOLS as Record<string, any>).read_ant_source.input_schema);
   });
 });
 
