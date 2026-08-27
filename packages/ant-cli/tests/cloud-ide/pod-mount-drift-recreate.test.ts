@@ -1,5 +1,5 @@
 /**
- * `KubernetesIDEOrchestrator.hasMountDrift` regression — auto-recreate stale
+ * `KubernetesIDEOrchestrator.needsRecreate` regression — auto-recreate stale
  * pods whose `volumeMounts.length` no longer matches what
  * `resolveK8sWorktreeMounts` would produce now.
  *
@@ -44,13 +44,14 @@ function makeOrch(): KubernetesIDEOrchestrator {
 }
 
 // `readinessProbe.httpGet` is the second drift gate added in 145d8458
-// (close 3-layer readiness race). Pods predating that rollout are
-// recreated to apply the HTTP-readiness check; current pods carry the
-// probe so reuse is safe. Tests that exercise the no-drift path MUST
-// include the probe — otherwise hasMountDrift returns true at the
-// readinessProbe gate and reuse never happens.
+// (close 3-layer readiness race), and the INSTANCE_DIGEST_LABEL is the third
+// (L-NEW-001 — a pod predating the digest label pins its Service on the lossy
+// selector, so it is recreated once). Tests that exercise the no-drift path
+// MUST include both — otherwise needsRecreate returns true at those gates and
+// reuse never happens.
+const RESOURCE = 'ide-fake-digest';
 const fakePod = (mountCount: number) => ({
-  metadata: { name: 'fake', namespace: 'ax-ant-dev' },
+  metadata: { name: 'fake', namespace: 'ax-ant-dev', labels: { 'ant-instance-digest': RESOURCE } },
   status: { phase: 'Running' },
   spec: {
     containers: [{
@@ -65,7 +66,7 @@ const fakePod = (mountCount: number) => ({
   },
 });
 
-describe('KubernetesIDEOrchestrator.hasMountDrift', () => {
+describe('KubernetesIDEOrchestrator.needsRecreate', () => {
   let fx: Fixture;
   let originalBase: string | undefined;
 
@@ -88,7 +89,7 @@ describe('KubernetesIDEOrchestrator.hasMountDrift', () => {
       'utf-8',
     );
     const pod = fakePod(1);  // pod has only the alias mount (race-failure remnant)
-    const drift = (makeOrch() as any).hasMountDrift(pod, fx.featureCodebase, 'feat-x');
+    const drift = (makeOrch() as any).needsRecreate(pod, fx.featureCodebase, 'feat-x', RESOURCE);
     expect(drift).toBe(true);
   });
 
@@ -99,7 +100,7 @@ describe('KubernetesIDEOrchestrator.hasMountDrift', () => {
       'utf-8',
     );
     const pod = fakePod(3);  // alias + mainGitDir + worktreePath
-    const drift = (makeOrch() as any).hasMountDrift(pod, fx.featureCodebase, 'feat-x');
+    const drift = (makeOrch() as any).needsRecreate(pod, fx.featureCodebase, 'feat-x', RESOURCE);
     expect(drift).toBe(false);
   });
 
@@ -107,7 +108,7 @@ describe('KubernetesIDEOrchestrator.hasMountDrift', () => {
     // Base case: no .git marker on featureCodebase, but workspacePath here is
     // mainCodebase (where .git is a directory). resolveK8sWorktreeMounts → [].
     const pod = fakePod(1);
-    const drift = (makeOrch() as any).hasMountDrift(pod, fx.mainCodebase, '_base');
+    const drift = (makeOrch() as any).needsRecreate(pod, fx.mainCodebase, '_base', RESOURCE);
     expect(drift).toBe(false);
   });
 
@@ -116,7 +117,7 @@ describe('KubernetesIDEOrchestrator.hasMountDrift', () => {
     // legitimately differs from the expected base-pod count of 1. Treating
     // this as drift is correct — the pod is unusable and should be recreated.
     const malformed = { metadata: { name: 'x' }, spec: { containers: [], volumes: [] } } as any;
-    const drift = (makeOrch() as any).hasMountDrift(malformed, fx.mainCodebase, '_base');
+    const drift = (makeOrch() as any).needsRecreate(malformed, fx.mainCodebase, '_base', RESOURCE);
     expect(drift).toBe(true);
   });
 });

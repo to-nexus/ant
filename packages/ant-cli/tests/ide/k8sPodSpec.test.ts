@@ -164,11 +164,11 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
     ).not.toThrow();
   });
 
-  it('hasMountDrift returns true when existing pod has no readinessProbe (post-rollout migration)', () => {
+  it('needsRecreate returns true when existing pod has no readinessProbe (post-rollout migration)', () => {
     const orch = makeOrch();
     // Existing pod with the correct mount count but pre-rollout — no readinessProbe.
     const podWithoutProbe = {
-      metadata: { name: 'p', namespace: 'ns', labels: {} },
+      metadata: { name: 'p', namespace: 'ns', labels: { 'ant-instance-digest': 'ide-r' } },
       spec: {
         containers: [{
           name: 'c',
@@ -178,14 +178,14 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
         }],
       },
     } as any;
-    const drift = (orch as any).hasMountDrift(podWithoutProbe, fx.mainCodebase, NO_FEATURE_KEY);
+    const drift = (orch as any).needsRecreate(podWithoutProbe, fx.mainCodebase, NO_FEATURE_KEY, 'ide-r');
     expect(drift).toBe(true);
   });
 
-  it('hasMountDrift returns false when readinessProbe is present and mounts match', () => {
+  it('needsRecreate returns false when readinessProbe, mounts and digest label all match', () => {
     const orch = makeOrch();
     const podWithProbe = {
-      metadata: { name: 'p', namespace: 'ns', labels: {} },
+      metadata: { name: 'p', namespace: 'ns', labels: { 'ant-instance-digest': 'ide-r' } },
       spec: {
         containers: [{
           name: 'c',
@@ -196,8 +196,30 @@ describe('KubernetesIDEOrchestrator.createPodSpec', () => {
         }],
       },
     } as any;
-    const drift = (orch as any).hasMountDrift(podWithProbe, fx.mainCodebase, NO_FEATURE_KEY);
+    const drift = (orch as any).needsRecreate(podWithProbe, fx.mainCodebase, NO_FEATURE_KEY, 'ide-r');
     expect(drift).toBe(false);
+  });
+
+  // L-NEW-001 residual: a legacy pod without the digest label can never be
+  // reached by the digest selector, so reusing it pins its Service on the
+  // lossy `instance` selector forever. Recreate instead (same one-time cost
+  // the readinessProbe rollout paid).
+  it('needsRecreate returns true when the pod predates the instance-digest label', () => {
+    const orch = makeOrch();
+    const legacyPod = {
+      metadata: { name: 'p', namespace: 'ns', labels: { instance: 'lossy-value' } },
+      spec: {
+        containers: [{
+          name: 'c',
+          image: 'i',
+          ports: [{ containerPort: 3000 }],
+          volumeMounts: [{ name: 'workspace', mountPath: '/workspace', subPath: 'x' }],
+          readinessProbe: { httpGet: { path: '/ide/x/', port: 3000 } },
+        }],
+      },
+    } as any;
+    const drift = (orch as any).needsRecreate(legacyPod, fx.mainCodebase, NO_FEATURE_KEY, 'ide-r');
+    expect(drift).toBe(true);
   });
 
   it('pod is hardened: no SA token, non-root pod + container securityContext, caps dropped (O8/O12)', () => {
@@ -277,7 +299,7 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
   const emailUser = { userId: 'probe@to.nexus', organizationId: 'individual', email: 'probe@to.nexus' } as any;
   const emailInstanceKey = 'individual:probe@to.nexus:classboard:feat-x';
 
-  it('pod labels (user, instance) are K8s-valid and <=63 chars with an email userId', () => {
+  it('pod labels are K8s-valid and <=63 chars with an email userId — and carry no lossy instance label', () => {
     writeWorktreeMarker(fx);
     const orch = makeOrch();
     const spec = (orch as any).createPodSpec(
@@ -289,19 +311,21 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
     );
 
     const labels = spec.metadata.labels;
-    for (const key of ['user', 'instance'] as const) {
-      expect(labels[key], `label ${key}`).toMatch(K8S_LABEL_RE);
-      expect(labels[key].length, `label ${key} length`).toBeLessThanOrEqual(63);
-      expect(labels[key]).not.toContain('@');
-    }
+    expect(labels.user, 'label user').toMatch(K8S_LABEL_RE);
+    expect(labels.user.length, 'label user length').toBeLessThanOrEqual(63);
+    expect(labels.user).not.toContain('@');
     expect(labels.user).toBe('probe-to.nexus');
+    // A LEGACY Service still selects on the lossy `instance` label; a new pod
+    // carrying it could be captured by a sanitize-colliding account's Service.
+    expect(labels.instance).toBeUndefined();
   });
 
   // L-NEW-001. A Service SELECTOR decides which Pods receive its traffic, so it
   // may only key on a value that cannot collide. `sanitizeLabelValue` truncates
   // at 63 chars and folds `@` to `-`, so two accounts can share it — the same
   // lossiness that was already fixed for the resource NAME (M-NEW-002) but left
-  // in the selector. The pod label stays for observability; it is not a selector.
+  // in the selector. New pods no longer carry the lossy label at all, so a
+  // LEGACY Service's selector cannot capture them either.
   it('service selector keys on the injective digest, never the lossy instance label', () => {
     writeWorktreeMarker(fx);
     const orch = makeOrch();
@@ -315,9 +339,7 @@ describe('KubernetesIDEOrchestrator — label value sanitization (email userId)'
     );
     const serviceSpec = (orch as any).createServiceSpec(emailInstanceKey, resourceName);
 
-    const sanitized = (orch as any).sanitizeLabelValue(emailInstanceKey);
-    expect(podSpec.metadata.labels.instance).toBe(sanitized);
-    expect(sanitized).toMatch(K8S_LABEL_RE);
+    expect(podSpec.metadata.labels.instance).toBeUndefined();
 
     // The selector's value is the digest, and it is a legal label value.
     expect(serviceSpec.spec.selector['ant-instance-digest']).toBe(resourceName);

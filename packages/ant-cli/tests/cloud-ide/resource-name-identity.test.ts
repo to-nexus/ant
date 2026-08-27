@@ -14,8 +14,18 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, mkdirSync, rmSync } from 'fs';
+
+// The L-NEW-001 flow reaches the post-create HTTP readiness probe; nothing
+// listens on the fake podIP, so stub it out (never reached by the other cases).
+vi.mock('../../src/infrastructure/ide/readiness', () => ({
+  waitForHttpReady: vi.fn(async () => undefined),
+}));
+import * as os from 'os';
+import * as path from 'path';
 
 import { KubernetesIDEOrchestrator } from '../../src/infrastructure/ide/KubernetesIDEOrchestrator';
+import { createIDEKey } from '../../src/infrastructure/state/redisKeyUtils';
 import type { StateStorePort } from '../../src/core/ports/stateStore';
 
 const ANNOTATION = 'ant.example.com/instance-key';
@@ -195,6 +205,91 @@ describe('ownership is verified on the resource, not inferred from the name', ()
 
     const svcDeletes = k8s.mock.calls.filter(([p, m]) => m === 'DELETE' && String(p).includes('/services/'));
     expect(svcDeletes).toHaveLength(0);
+  });
+});
+
+/**
+ * L-NEW-001 residual — the reuse path used to return BEFORE ever reading the
+ * Service, so a legacy pod (no digest label) kept its Service pinned on the
+ * lossy `instance` selector forever. Now `needsRecreate` treats the missing
+ * digest label as spec drift: the legacy pod is deleted, the fresh create's
+ * Service POST answers 409, and `convergeServiceSelector` replaces the lossy
+ * selector with the digest.
+ */
+describe('legacy pod reuse converges the Service selector (L-NEW-001)', () => {
+  // Base (featureless) pod — needs no worktree mounts, so the fresh create
+  // succeeds against a plain workspace path.
+  const KEY = createIDEKey('acme', 'victim@example.com', 'shop');
+
+  it('a running pod without the digest label is recreated and its Service converged', async () => {
+    const base = mkdtempSync(path.join(os.tmpdir(), 'ant-l-new-001-'));
+    const workspacePath = path.join(base, 'acme', 'victim', 'shop', 'codebase');
+    mkdirSync(path.join(workspacePath, '.git'), { recursive: true });
+    const originalBase = process.env.ANT_WORKSPACE_BASE_PATH;
+    process.env.ANT_WORKSPACE_BASE_PATH = base;
+    try {
+      const orch = makeOrch();
+      vi.spyOn(orch as any, 'waitForPodReady').mockResolvedValue(undefined);
+      const name = nameFor(orch, KEY);
+
+      let podDeleted = false;
+      let serviceDeleted = false;
+      const servicePosts: any[] = [];
+      vi.spyOn(orch as any, 'k8sRequest').mockImplementation(
+        async (reqPath: any, method?: any, body?: any) => {
+          const p = String(reqPath);
+          const m = method ?? 'GET';
+          if (p.includes(`/pods/${name}`) && m === 'GET') {
+            return {
+              metadata: {
+                name,
+                annotations: { [ANNOTATION]: KEY },
+                labels: { app: 'ant-ide', instance: 'lossy-legacy' }, // predates the digest label
+              },
+              status: { phase: 'Running', podIP: '10.0.0.9' },
+              spec: {
+                containers: [{
+                  volumeMounts: [{ name: 'workspace', mountPath: '/w', subPath: 's' }],
+                  readinessProbe: { httpGet: { path: '/', port: 3000 } },
+                }],
+              },
+            };
+          }
+          if (p.includes(`/pods/${name}`) && m === 'DELETE') { podDeleted = true; return undefined; }
+          if (p.endsWith('/pods') && m === 'POST') return undefined;
+          if (p.endsWith('/services') && m === 'POST') {
+            if (!serviceDeleted) throw new Error('409 conflict'); // legacy Service still present
+            servicePosts.push(body);
+            return undefined;
+          }
+          if (p.includes(`/services/${name}`) && m === 'GET') {
+            return {
+              metadata: { name, annotations: { [ANNOTATION]: KEY } },
+              spec: { selector: { app: 'ant-ide', instance: 'lossy-legacy' } },
+            };
+          }
+          if (p.includes(`/services/${name}`) && m === 'DELETE') { serviceDeleted = true; return undefined; }
+          return undefined;
+        },
+      );
+
+      const result = await orch.start({
+        userContext: { organizationId: 'acme', userId: 'victim@example.com' } as any,
+        projectId: 'shop',
+        workspacePath,
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(podDeleted).toBe(true);
+      expect(serviceDeleted).toBe(true);
+      expect(servicePosts).toHaveLength(1);
+      expect(servicePosts[0].spec.selector['ant-instance-digest']).toBe(name);
+      expect(servicePosts[0].spec.selector.instance).toBeUndefined();
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+      if (originalBase === undefined) delete process.env.ANT_WORKSPACE_BASE_PATH;
+      else process.env.ANT_WORKSPACE_BASE_PATH = originalBase;
+    }
   });
 });
 

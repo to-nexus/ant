@@ -49,11 +49,14 @@ const INSTANCE_KEY_ANNOTATION = 'ant.example.com/instance-key';
  * Injective selector label. Its value is `resourceName` — the SHA-256 digest of
  * the raw instance key — so it is RFC 1123-legal without being lossy.
  *
- * The human-readable `instance` label is `sanitizeLabelValue(instanceKey)`,
+ * The historical human-readable `instance` label was `sanitizeLabelValue(instanceKey)`,
  * which truncates at 63 chars and folds `@` to `-`. Two different accounts can
  * therefore share it, and a Service selecting on it puts the OTHER account's
  * OpenVSCode Pod into its own endpoint list (L-NEW-001). The resource NAME was
  * already fixed this way (M-NEW-002); the selector was the half left behind.
+ * New Pods no longer carry the lossy label at all (a LEGACY Service's selector
+ * must not be able to capture them), and a legacy Pod without this digest label
+ * is recreated by `needsRecreate` so its Service converges too.
  */
 const INSTANCE_DIGEST_LABEL = 'ant-instance-digest';
 
@@ -510,8 +513,9 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         namespace: this.options.namespace,
         labels: {
           'app': 'ant-ide',
-          // Lossy — observability only. Never a selector; see INSTANCE_DIGEST_LABEL.
-          'instance': this.sanitizeLabelValue(instanceKey),
+          // No lossy `instance` label: LEGACY Services still select on it, so
+          // carrying it lets a sanitize-collision route another account's
+          // Service to this Pod (L-NEW-001). The digest label is the identity.
           [INSTANCE_DIGEST_LABEL]: resourceName,
           'user': this.sanitizeLabelValue(userContext.userId)
         },
@@ -640,7 +644,12 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
    * Falls back to `false` (reuse) on inspection error so a transient k8s
    * API hiccup doesn't churn pods.
    */
-  private hasMountDrift(existingPod: K8sPod, workspacePath: string, feature: string): boolean {
+  private needsRecreate(
+    existingPod: K8sPod,
+    workspacePath: string,
+    feature: string,
+    resourceName: string,
+  ): boolean {
     try {
       const expectedExtraMounts = resolveK8sWorktreeMounts(workspacePath, getWorkspaceBasePath());
       const expectedCount = 1 + expectedExtraMounts.length; // alias mount + worktree mounts
@@ -669,10 +678,22 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
         return true;
       }
 
+      // A pod predating INSTANCE_DIGEST_LABEL can never be reached by the
+      // digest selector, so reusing it pins its Service on the lossy
+      // `instance` selector forever — the L-NEW-001 collision surface.
+      // Recreating is the same one-time cost the readinessProbe rollout paid,
+      // and lets the fresh-create path converge the Service selector.
+      if (existingPod.metadata?.labels?.[INSTANCE_DIGEST_LABEL] !== resourceName) {
+        logger.warn(`Existing pod has no instance-digest label — recreating to converge the Service selector`, {
+          component: 'KubernetesIDEOrchestrator',
+        }, { feature, workspacePath, resourceName });
+        return true;
+      }
+
       return false;
     } catch (err: any) {
       // Inspection error (e.g. malformed pod spec) — keep existing pod, don't churn.
-      logger.warn(`hasMountDrift inspection failed (treating as no drift)`, {
+      logger.warn(`needsRecreate inspection failed (treating as reusable)`, {
         component: 'KubernetesIDEOrchestrator',
       }, err);
       return false;
@@ -771,8 +792,8 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
           // volumeMounts no longer match what `resolveK8sWorktreeMounts` would
           // produce now. Reusing such a pod leaves the user stuck on broken
           // mounts forever (pod spec is immutable). Detect drift and recreate.
-          if (this.hasMountDrift(existingPod, workspacePath, feature)) {
-            logger.warn(`Mount drift detected — recreating pod: ${resourceName}`, {
+          if (this.needsRecreate(existingPod, workspacePath, feature, resourceName)) {
+            logger.warn(`Pod spec drift detected — recreating pod: ${resourceName}`, {
               component: 'KubernetesIDEOrchestrator',
             }, { resourceName });
             await this.deleteResources(resourceName, instanceKey);
@@ -780,6 +801,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
             // fall through to fresh create
           } else {
             logger.info(`Pod already running, reusing: ${resourceName}`, { component: 'KubernetesIDEOrchestrator' });
+            // The reused Pod carries the digest label (needsRecreate replaces
+            // any that predate it), so its Service can be restored if missing
+            // and converged off the lossy selector — the reuse path used to
+            // return without ever looking at the Service (L-NEW-001).
+            await this.reconcileServiceForReuse(resourceName, instanceKey);
             return this.createInstanceResult(existingPod, userContext.organizationId, userContext, projectId, feature, instanceKey);
           }
         } else {
@@ -1064,12 +1090,11 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
   /**
    * Replace a Service still selecting on the lossy `instance` label.
    *
-   * Only reached right after a fresh Pod create, so the Pod this Service will
-   * front already carries the digest label and nothing that is currently
-   * serving a user is disturbed — a Service left from a previous run of the
-   * SAME key would otherwise keep the collision-prone selector forever
-   * (L-NEW-001). Deliberately does NOT touch Services whose Pod was reused:
-   * that Pod predates the label and the old selector is what still reaches it.
+   * Reached from the fresh-create path (Service POST answered 409) and from
+   * the reuse path via `reconcileServiceForReuse`. Both are safe: the Pod this
+   * Service fronts carries the digest label — fresh pods are created with it,
+   * and `needsRecreate` replaces any reused pod that predates it — so the
+   * converged selector still reaches it (L-NEW-001).
    *
    * Best-effort: a Service that cannot be converged still routes to the right
    * Pod for this key; it just also permits a (vanishingly unlikely) collision.
@@ -1109,6 +1134,38 @@ export class KubernetesIDEOrchestrator implements IDEOrchestratorPort {
       logger.warn(`Service selector convergence skipped for ${resourceName}: ${err?.message}`, {
         component: 'KubernetesIDEOrchestrator',
       });
+    }
+  }
+
+  /**
+   * Make a reused Pod's Service exist and select on the digest.
+   *
+   * A reused Pod can outlive its Service (partial delete, operator cleanup) —
+   * the reuse path used to return without ever reading the Service, so the
+   * pair stayed broken until the next recreate. POST-first mirrors the
+   * fresh-create flow exactly: created → restored; 409 → converge the
+   * selector. Best-effort — live IDE traffic rides the Redis podIP mapping,
+   * so a failure here degrades no current session.
+   */
+  private async reconcileServiceForReuse(resourceName: string, instanceKey: string): Promise<void> {
+    const serviceSpec = this.createServiceSpec(instanceKey, resourceName);
+    try {
+      await this.k8sRequest(
+        `/api/v1/namespaces/${this.options.namespace}/services`,
+        'POST',
+        serviceSpec,
+      );
+      logger.warn(`Recreated missing IDE Service for reused pod: ${resourceName}`, {
+        component: 'KubernetesIDEOrchestrator',
+      });
+    } catch (e: any) {
+      if (!e.message?.includes('409')) {
+        logger.warn(`IDE Service reconcile skipped for ${resourceName}: ${e?.message}`, {
+          component: 'KubernetesIDEOrchestrator',
+        });
+        return;
+      }
+      await this.convergeServiceSelector(resourceName, instanceKey, serviceSpec);
     }
   }
 
