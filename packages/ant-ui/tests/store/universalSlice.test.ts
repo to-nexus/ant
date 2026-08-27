@@ -131,8 +131,19 @@ describe('universalTurnMeta — explicit @intent:/@ctx:/@plan mention arming', (
     expect(s.getState().universalTurnMeta).toEqual({ intents: ['cite'], context: ['plan/a.md', 'plan/b.md'], plan: false });
 
     s.getState().removeUniversalIntentMention('cite');
-    s.getState().removeUniversalContextMention('plan/a.md');
+    // Chip removal + picker confirm share the replace funnel (folder entries
+    // drop whole subtrees, so per-path removal is derived by the caller).
+    s.getState().setUniversalContextMentions(['plan/b.md']);
     expect(s.getState().universalTurnMeta).toEqual({ intents: [], context: ['plan/b.md'], plan: false });
+  });
+
+  it('setUniversalContextMentions replaces the whole set and dedupes', () => {
+    const s = makeStore();
+    s.getState().addUniversalContextMention('plan/a.md');
+    s.getState().setUniversalContextMentions(['reports', 'reports', 'plan/b.md']);
+    expect(s.getState().universalTurnMeta.context).toEqual(['reports', 'plan/b.md']);
+    s.getState().setUniversalContextMentions([]);
+    expect(s.getState().universalTurnMeta.context).toEqual([]);
   });
 
   it('re-picking the armed intent keeps reference stability', () => {

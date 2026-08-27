@@ -14,6 +14,11 @@ import { FilePromptAdapter } from '../../src/periphery/adapters/prompt/FilePromp
 import { TEMPLATE_PATHS } from '../../src/core/prompt/builder/templatePaths';
 import { buildCustomJobSystemBlock, INTENT_PROMPT_INLINE_CAP, REFERENCE_INDEX_CAP, sanitizeCell, sanitizeBlock } from '../../src/core/customAgents/promptBlock';
 import type { ResolvedCustomJob } from '../../src/core/customAgents/types';
+import { classifyAttachedEntry } from '../../src/agents/universal/graph/nodes/attachedContext';
+import {
+  READ_FILE_FULL_READ_LIMIT,
+  READ_FILE_RANGE_MAX_BYTES,
+} from '../../src/agents/common/tool/handlers/readFile';
 
 const SENTINEL = 'UNIQUE-CUSTOM-DEFINITION-SENTINEL-9313';
 
@@ -411,5 +416,27 @@ describe('buildCustomJobSystemBlock — reference docs index (read-on-demand cha
     expect(block.text).toContain('doc-000.md');
     expect(block.text).not.toContain(`doc-${String(REFERENCE_INDEX_CAP).padStart(3, '0')}.md`);
     expect(block.text).toMatch(/and 5 more — `list_files`/);
+  });
+});
+
+// ── Attached Context band — entry classification (agent prompt) ──────────────
+//
+// The `@ctx:` band must branch per entry: a directory gets a list_files-first
+// instruction, a file above READ_FILE_FULL_READ_LIMIT gets an inline outline
+// (the Compact half of the read_file range-refusal contract), and a file
+// beyond READ_FILE_RANGE_MAX_BYTES cannot be read at all. Prose stays
+// unpinned — only the branch decision is contract.
+
+describe('classifyAttachedEntry — @ctx prompt-band branch table', () => {
+  it.each([
+    ['missing path', { exists: false, isDirectory: false, sizeBytes: 0 }, 'missing'],
+    ['directory', { exists: true, isDirectory: true, sizeBytes: 0 }, 'directory'],
+    ['small file', { exists: true, isDirectory: false, sizeBytes: 10 }, 'file'],
+    ['at the one-shot limit', { exists: true, isDirectory: false, sizeBytes: READ_FILE_FULL_READ_LIMIT }, 'file'],
+    ['just above the one-shot limit', { exists: true, isDirectory: false, sizeBytes: READ_FILE_FULL_READ_LIMIT + 1 }, 'large-file'],
+    ['at the range ceiling', { exists: true, isDirectory: false, sizeBytes: READ_FILE_RANGE_MAX_BYTES }, 'large-file'],
+    ['beyond the range ceiling', { exists: true, isDirectory: false, sizeBytes: READ_FILE_RANGE_MAX_BYTES + 1 }, 'oversize-file'],
+  ] as const)('%s → %s', (_label, stat, expected) => {
+    expect(classifyAttachedEntry(stat)).toBe(expected);
   });
 });

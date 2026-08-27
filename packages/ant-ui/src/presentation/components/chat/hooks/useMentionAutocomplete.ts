@@ -15,6 +15,7 @@ import {
 } from '@ant/shared';
 import type { FileNode } from '@/infrastructure/http/api';
 import { useActionFooterPolicy } from '@/application/hooks/ui/useActionFooterPolicy';
+import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 
 export interface MentionSuggestion {
   type: 'intent' | 'target' | 'ref' | 'context' | 'explicit' | 'plan' | 'command' | 'browse';
@@ -45,15 +46,15 @@ type MentionPrefix =
 
 type FileMentionPrefix = '@target:' | '@ref:' | '@ctx:';
 
-function flattenFilePaths(nodes: FileNode[], prefix = ''): string[] {
+function flattenTreePaths(nodes: FileNode[], includeDirs: boolean, prefix = ''): string[] {
   const paths: string[] = [];
   for (const node of nodes) {
     const fullPath = prefix ? `${prefix}/${node.name}` : node.name;
-    if (node.type === 'file') {
+    if (node.type === 'file' || (includeDirs && node.type === 'directory')) {
       paths.push(fullPath);
     }
     if (node.children) {
-      paths.push(...flattenFilePaths(node.children, fullPath));
+      paths.push(...flattenTreePaths(node.children, includeDirs, fullPath));
     }
   }
   return paths;
@@ -161,7 +162,9 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
   // When set, ChatInput opens the unified folder-tree picker for this field
   // (the tree replaces the flat file list — see MentionDropdown "Browse" row).
   const [browseField, setBrowseField] = useState<BrowseField | null>(null);
-  const fileTree = useStore(s => s.fileTree);
+  // Same domain-pruned tree the Browse picker renders — the typeahead and the
+  // modal must never disagree on what exists.
+  const fileTree = useArtifactPickerTree();
   const updateActionMetadata = useStore(s => s.updateActionMetadata);
   const actionMetadata = useStore(s => s.actionMetadata);
   // Universal surface inputs — vocabulary comes from the selected custom
@@ -172,6 +175,8 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
   const selectedCustomJobId = useStore(s => s.selectedCustomJobId);
   const addUniversalIntentMention = useStore(s => s.addUniversalIntentMention);
   const addUniversalContextMention = useStore(s => s.addUniversalContextMention);
+  const setUniversalContextMentions = useStore(s => s.setUniversalContextMentions);
+  const universalContext = useStore(s => s.universalTurnMeta.context);
   const setUniversalPlanMention = useStore(s => s.setUniversalPlanMention);
   const universalPlanOn = useStore(s => s.universalTurnMeta.plan);
   const { canStartChat } = useActionFooterPolicy();
@@ -213,7 +218,10 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     description: t('mention.explicit.description'),
   }), [t]);
 
-  const allFilePaths = useMemo(() => flattenFilePaths(fileTree), [fileTree]);
+  const allFilePaths = useMemo(() => flattenTreePaths(fileTree, false), [fileTree]);
+  // Files + directories — `@ref:`/`@ctx:` accept folder-unit mentions;
+  // `@target:` stays files-only (writable-path filter + single-select contract).
+  const allPaths = useMemo(() => flattenTreePaths(fileTree, true), [fileTree]);
 
   const activePrefixes: readonly MentionPrefix[] = isUniversal ? UNIVERSAL_MENTION_PREFIXES : MENTION_PREFIXES;
 
@@ -262,10 +270,13 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
           .map(i => ({ type: 'intent' as const, id: i.id, label: i.id, description: i.infer }));
       }
       if (prefix === '@ctx:') {
-        return allFilePaths
-          .filter(p => isUniversalCtxSuggestible(p) && p.toLowerCase().includes(q))
-          .slice(0, 10)
-          .map(p => ({ type: 'context' as const, id: p, label: basename(p), description: p }));
+        return [
+          { type: 'browse' as const, id: 'context', label: t('mention.browse.label'), description: t('mention.browse.description') },
+          ...allPaths
+            .filter(p => isUniversalCtxSuggestible(p) && p.toLowerCase().includes(q))
+            .slice(0, 10)
+            .map(p => ({ type: 'context' as const, id: p, label: basename(p), description: p })),
+        ];
       }
       if (prefix === '@plan') {
         if (universalPlanOn || q !== '') return [];
@@ -320,13 +331,13 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       case '@ref:':
         return [
           { type: 'browse', id: 'refs', label: t('mention.browse.label'), description: t('mention.browse.description') },
-          ...buildGroupedFileSuggestions('ref', '@ref:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain),
+          ...buildGroupedFileSuggestions('ref', '@ref:', allPaths, query, actionMetadata.intent, actionMetadata.domain),
         ];
 
       case '@ctx:':
         return [
           { type: 'browse', id: 'context', label: t('mention.browse.label'), description: t('mention.browse.description') },
-          ...buildGroupedFileSuggestions('context', '@ctx:', allFilePaths, query, actionMetadata.intent, actionMetadata.domain),
+          ...buildGroupedFileSuggestions('context', '@ctx:', allPaths, query, actionMetadata.intent, actionMetadata.domain),
         ];
 
       case '@explicit':
@@ -337,7 +348,7 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
       default:
         return [];
     }
-  }, [prefix, query, commandQuery, allFilePaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, t, isUniversal, universalJobIntents, universalPlanOn]);
+  }, [prefix, query, commandQuery, allFilePaths, allPaths, actionMetadata.intent, actionMetadata.domain, explicitSettable, COMMAND_MENU_BASE, EXPLICIT_COMMAND, t, isUniversal, universalJobIntents, universalPlanOn]);
 
   const showSuggestions = (prefix !== null || commandQuery !== null) && suggestions.length > 0;
 
@@ -458,6 +469,23 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     }
   }, [showSuggestions, suggestions, selectedIndex, applySuggestion, message, cursorPos]);
 
+  // Picker wiring — universal confirms into `universalTurnMeta.context`
+  // (replace contract), canonical into the armed actionMetadata field.
+  const browseInitialSelected = useMemo((): string[] => {
+    if (!browseField) return [];
+    if (isUniversal) return universalContext;
+    return actionMetadata[browseField] ?? [];
+  }, [browseField, isUniversal, universalContext, actionMetadata]);
+
+  const applyBrowseSelection = useCallback((paths: string[]) => {
+    if (!browseField) return;
+    if (isUniversal) {
+      setUniversalContextMentions(paths.filter(isUniversalCtxSuggestible));
+      return;
+    }
+    updateActionMetadata({ [browseField]: paths.length > 0 ? paths : undefined });
+  }, [browseField, isUniversal, setUniversalContextMentions, updateActionMetadata]);
+
   return {
     suggestions,
     showSuggestions,
@@ -468,6 +496,8 @@ export function useMentionAutocomplete(message: string, cursorPos: number) {
     isOpen: showSuggestions,
     setIsOpen,
     browseField,
+    browseInitialSelected,
+    applyBrowseSelection,
     clearBrowseField: () => setBrowseField(null),
   };
 }

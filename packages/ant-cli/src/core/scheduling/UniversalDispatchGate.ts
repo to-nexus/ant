@@ -48,6 +48,8 @@ export async function resolveUniversalExecuteContext(
        * credential at all.
        */
       declaresSelfApi: boolean;
+      /** Job tool allowlist — the turn-meta gate needs it to judge directory attachments. */
+      builtinTools: string[];
     }
   | { ok: false; status: number; error: string; code: string }
 > {
@@ -69,6 +71,7 @@ export async function resolveUniversalExecuteContext(
   }
   let intentIds: Set<string>;
   let declaresSelfApi = false;
+  let builtinTools: string[] = [];
   try {
     const { deriveCustomAgentScopeRootsForTenant } = await import('../customAgents/scopeRoots');
     const { loadCustomJob } = await import('../customAgents/CustomAgentLoader');
@@ -80,6 +83,7 @@ export async function resolveUniversalExecuteContext(
     });
     const loaded = loadCustomJob(scopeRoots, ref.agentId, ref.jobId);
     intentIds = new Set(loaded.intents.map((i) => i.id));
+    builtinTools = [...loaded.builtinTools];
     const { isSelfApiConfig } = await import('@ant/shared');
     declaresSelfApi = Object.values(loaded.apiServers).some((cfg) => isSelfApiConfig(cfg));
   } catch (e) {
@@ -88,7 +92,7 @@ export async function resolveUniversalExecuteContext(
   const { ensureUniversalContainer } = await import('../customAgents/universalContainer');
   ensureUniversalContainer(projectPath);
   const containerPath = workspaceResolver.getUniversalContainerPath(userContext as any, projectId);
-  return { ok: true, containerPath, ref, intentIds, declaresSelfApi };
+  return { ok: true, containerPath, ref, intentIds, declaresSelfApi, builtinTools };
 }
 
 /**
@@ -104,6 +108,7 @@ export async function validateUniversalTurnMeta(
   rawIntents: unknown,
   rawContext: unknown,
   rawPlan?: unknown,
+  builtinTools?: readonly string[],
 ): Promise<
   | { ok: true; meta: { intents: string[]; context: string[]; plan?: boolean } | null }
   | { ok: false; status: number; error: string; code: string }
@@ -147,8 +152,18 @@ export async function validateUniversalTurnMeta(
     } catch {
       return { ok: false, status: 400, error: `Invalid context path: "${rel}"`, code: 'invalid-context-path' };
     }
-    if (!fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+    if (!fs.existsSync(full)) {
       return { ok: false, status: 400, error: `Context file not found: "${rel}"`, code: 'invalid-context-path' };
+    }
+    if (fs.statSync(full).isDirectory() && builtinTools && !builtinTools.includes('list_files')) {
+      // Explicit input never silently drops: a directory the agent cannot
+      // enumerate is a dead promise, so refuse at accept instead.
+      return {
+        ok: false,
+        status: 400,
+        error: `Context path "${rel}" is a directory, but this job's tools.builtin grants no list_files — attach individual files instead`,
+        code: 'context-dir-not-listable',
+      };
     }
   }
 

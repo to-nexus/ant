@@ -56,6 +56,7 @@ import { getUniversalMcp, getOrCreateUniversalTurnStreaming } from '../runtime';
 import { compactRun } from '../../../../core/context';
 import { TokenBudgetManager } from '../../../../core/utils/tokenBudget';
 import { getModelContextWindowOrDefault } from '@ant/shared';
+import { buildAttachedContextSection } from './attachedContext';
 
 const DEBUG = process.env.UNIVERSAL_DEBUG === 'true';
 
@@ -108,16 +109,13 @@ async function buildSystemPrompt(state: UniversalGraphState, resolved: ResolvedC
 
   const sections = [result.system, result.user];
 
-  // `@ctx:` mentions — path list only (universal has no RAC/pool; tool access
-  // suffices, no full-content load).
-  const attachedContext = state.turnContext?.context ?? [];
-  if (attachedContext.length > 0) {
-    sections.push(
-      `## Attached Context (user-specified)\n` +
-      `The user attached these workspace files to this request. Read each with \`read_file\` before acting:\n` +
-      attachedContext.map((p) => `- \`${p}\``).join('\n'),
-    );
-  }
+  // `@ctx:` mentions — no eager content load (universal has no RAC/pool);
+  // directories get a list_files-first instruction, large files an inline
+  // outline so read_file's range-refusal has a real target.
+  const attachedSection = state.featurePath
+    ? buildAttachedContextSection(state.featurePath, state.turnContext?.context ?? [])
+    : null;
+  if (attachedSection) sections.push(attachedSection);
 
   return sections.filter(Boolean).join('\n\n---\n\n');
 }

@@ -87,6 +87,25 @@ describe('universal mention surface (D-E) — source-level invariants', () => {
   it('@explicit is never settable on universal (no triage to bypass)', () => {
     expect(useMentionSrc).toMatch(/!isUniversal && canStartChat && actionMetadata\.explicit !== true/);
   });
+
+  it('universal @ctx: offers the Browse row (folder-tree picker entry point)', () => {
+    // The universal branch must surface the same tree-picker entry the
+    // canonical slots have — a flat top-10 list cannot express folders.
+    expect(useMentionSrc).toMatch(/prefix === '@ctx:'[\s\S]{0,200}type: 'browse' as const, id: 'context'/);
+  });
+
+  it('picker confirm routes to universalTurnMeta on universal, never actionMetadata', () => {
+    // applyBrowseSelection is the single confirm funnel; its universal arm
+    // must return before the updateActionMetadata call.
+    expect(useMentionSrc).toMatch(/if \(isUniversal\) \{\s*setUniversalContextMentions\(paths\.filter\(isUniversalCtxSuggestible\)\);\s*return;/);
+  });
+
+  it('typeahead suggests directories for @ref:/@ctx: but @target: stays files-only', () => {
+    expect(useMentionSrc).toMatch(/flattenTreePaths\(fileTree, true\)/);
+    expect(useMentionSrc).toMatch(/buildGroupedFileSuggestions\('target', '@target:', allFilePaths/);
+    expect(useMentionSrc).toMatch(/buildGroupedFileSuggestions\('ref', '@ref:', allPaths/);
+    expect(useMentionSrc).toMatch(/buildGroupedFileSuggestions\('context', '@ctx:', allPaths/);
+  });
 });
 
 describe('isUniversalCtxSuggestible — behavior rows', () => {

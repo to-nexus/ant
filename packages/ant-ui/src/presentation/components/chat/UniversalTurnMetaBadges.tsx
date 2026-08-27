@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
 import { useStore } from '@/domain/store';
-import { X, Target, BookOpen, ClipboardList } from 'lucide-react';
+import { X, Target, BookOpen, ClipboardList, Folder } from 'lucide-react';
+import { compressSelection, removeSelectedEntry } from '@/shared/utils/selectionDisplay';
+import { useArtifactPickerTree } from '@/application/hooks/ui/useArtifactPickerTree';
 
 /**
  * Chips for the universal explicit turn meta (`@intent:` / `@ctx:` / `@plan`
@@ -11,8 +14,15 @@ export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { clas
   const projectType = useStore(s => s.projectType);
   const meta = useStore(s => s.universalTurnMeta);
   const removeIntent = useStore(s => s.removeUniversalIntentMention);
-  const removeContext = useStore(s => s.removeUniversalContextMention);
+  const setContextMentions = useStore(s => s.setUniversalContextMentions);
   const setPlan = useStore(s => s.setUniversalPlanMention);
+  const fileTree = useArtifactPickerTree();
+  // Folder-unit ctx selections render as one `name/ (N)` chip — same shared
+  // compression core the canonical badge row uses.
+  const contextEntries = useMemo(
+    () => compressSelection(meta.context, fileTree),
+    [meta.context, fileTree],
+  );
 
   if (projectType !== 'universal') return null;
   if (meta.intents.length === 0 && meta.context.length === 0 && !meta.plan) return null;
@@ -60,13 +70,13 @@ export function UniversalTurnMetaBadges({ className = 'px-3 pt-2 pb-1' }: { clas
           () => removeIntent(id),
         ),
       )}
-      {meta.context.map(path =>
+      {contextEntries.map(entry =>
         chip(
-          `ctx:${path}`,
-          BookOpen,
-          path.split('/').pop() || path,
+          `ctx:${entry.rawPath}`,
+          entry.isFolder ? Folder : BookOpen,
+          entry.fileCount !== undefined ? `${entry.display} (${entry.fileCount})` : entry.display,
           'bg-[color:var(--bg-surface-2)] border-[color:var(--border-1)] text-[color:var(--text-3)]',
-          () => removeContext(path),
+          () => setContextMentions(removeSelectedEntry(meta.context, entry) ?? []),
         ),
       )}
     </div>

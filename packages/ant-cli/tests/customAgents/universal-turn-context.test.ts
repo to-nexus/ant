@@ -274,6 +274,8 @@ describe('validateUniversalTurnMeta — accept gate', () => {
     fs.mkdirSync(nodePath.join(container, 'artifacts', 'plan'), { recursive: true });
     fs.mkdirSync(nodePath.join(container, 'sessions'), { recursive: true });
     fs.writeFileSync(nodePath.join(container, 'artifacts', 'plan', 'notes.md'), 'x');
+    fs.mkdirSync(nodePath.join(container, 'artifacts', 'reports'), { recursive: true });
+    fs.writeFileSync(nodePath.join(container, 'artifacts', 'reports', 'w1.md'), 'x');
   });
 
   afterEach(() => {
@@ -329,6 +331,24 @@ describe('validateUniversalTurnMeta — accept gate', () => {
     const validate = await load();
     const result = await validate(container, CATALOG, [], context as unknown as string[]);
     expect(result).toMatchObject({ ok: false, status: 400, code: 'invalid-context-path' });
+  });
+
+  it('directory context + list_files granted → ok (folder-unit mention)', async () => {
+    const validate = await load();
+    const result = await validate(container, CATALOG, [], ['reports'], undefined, ['read_file', 'list_files']);
+    expect(result).toEqual({ ok: true, meta: { intents: [], context: ['reports'] } });
+  });
+
+  it('directory context without list_files → 400 context-dir-not-listable (dead promise)', async () => {
+    const validate = await load();
+    const result = await validate(container, CATALOG, [], ['reports'], undefined, ['read_file']);
+    expect(result).toMatchObject({ ok: false, status: 400, code: 'context-dir-not-listable' });
+  });
+
+  it('directory context with no allowlist supplied → ok (gate needs the allowlist to judge)', async () => {
+    const validate = await load();
+    const result = await validate(container, CATALOG, [], ['reports']);
+    expect(result).toEqual({ ok: true, meta: { intents: [], context: ['reports'] } });
   });
 });
 

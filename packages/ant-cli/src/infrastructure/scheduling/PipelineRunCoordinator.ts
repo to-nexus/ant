@@ -368,6 +368,8 @@ export class PipelineRunCoordinator {
       resolved.intentIds,
       step.intent ? [step.intent] : [],
       step.context ?? [],
+      undefined,
+      resolved.builtinTools,
     );
     if (!meta.ok) return void (await fail(`${meta.code}: ${meta.error}`));
 

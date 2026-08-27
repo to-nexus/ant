@@ -92,14 +92,21 @@ export function FileTreePicker({
   const nodes = useMemo(() => filterNodes(fileTree, excludePatterns), [fileTree, excludePatterns]);
 
   // Auto-expand suggested dirs (and their ancestors) so candidates are visible.
+  // With no suggestions (the chat Browse entry point), expand the top level —
+  // an all-collapsed tree reads as an empty modal.
   const initialExpanded = useMemo(() => {
     const set = new Set<string>();
     for (const dir of suggestedDirs) {
       const parts = dir.split('/');
       for (let i = 1; i <= parts.length; i++) set.add(parts.slice(0, i).join('/'));
     }
+    if (set.size === 0) {
+      for (const node of nodes) {
+        if (node.type === 'directory') set.add(node.path);
+      }
+    }
     return set;
-  }, [suggestedDirs]);
+  }, [suggestedDirs, nodes]);
   const [expanded, setExpanded] = useState<Set<string>>(initialExpanded);
 
   const q = query.trim().toLowerCase();

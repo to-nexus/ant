@@ -67,7 +67,8 @@ export interface UniversalActions {
   removeUniversalIntentMention: (intentId: string) => void;
   /** Accumulate an `@ctx:` artifact-path mention (deduped). */
   addUniversalContextMention: (path: string) => void;
-  removeUniversalContextMention: (path: string) => void;
+  /** Replace the whole `@ctx:` set (folder-tree picker confirm & chip removal). */
+  setUniversalContextMentions: (paths: string[]) => void;
   /** `@plan` per-turn plan-mode flag. */
   setUniversalPlanMention: (on: boolean) => void;
   resetUniversalTurnMeta: () => void;
@@ -189,10 +190,9 @@ export const createUniversalSlice: StateCreator<any, [], [], UniversalSlice> = (
     set({ universalTurnMeta: { ...meta, context: [...meta.context, path] } });
   },
 
-  removeUniversalContextMention: (path) => {
+  setUniversalContextMentions: (paths) => {
     const meta = get().universalTurnMeta;
-    if (!meta.context.includes(path)) return;
-    set({ universalTurnMeta: { ...meta, context: meta.context.filter((p: string) => p !== path) } });
+    set({ universalTurnMeta: { ...meta, context: [...new Set(paths)] } });
   },
 
   setUniversalPlanMention: (on) => {

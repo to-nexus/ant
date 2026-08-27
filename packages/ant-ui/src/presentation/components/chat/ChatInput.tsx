@@ -59,8 +59,6 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
 
   // Unified folder-tree picker (opened from the mention "Browse" row).
   const pickerTree = useArtifactPickerTree();
-  const browseTarget = useStore((state) => state.actionMetadata.target);
-  const updateActionMetadata = useStore((state) => state.updateActionMetadata);
 
   // PR-2 baseline gauge — fire-and-forget hook. Debounced 300ms inside.
   // Writes `kanban.baselinePhaseTokenUsage` so `TurnTokenRing` renders
@@ -239,18 +237,10 @@ export function ChatInput({ disabled, messageCount = 0, fileStats }: ChatInputPr
           eyebrow={mention.browseField}
           accent={mention.browseField === 'refs' ? 'emerald' : mention.browseField === 'target' ? 'orange' : 'violet'}
           fileTree={pickerTree}
-          initialSelected={
-            mention.browseField === 'refs'
-              ? (actionMetadataRefs ?? [])
-              : mention.browseField === 'context'
-              ? (actionMetadataContext ?? [])
-              : (browseTarget ?? [])
-          }
+          initialSelected={mention.browseInitialSelected}
           selectableTypes={mention.browseField === 'target' ? ['file'] : ['file', 'directory']}
           singleSelect={mention.browseField === 'target'}
-          onConfirm={(paths) =>
-            updateActionMetadata({ [mention.browseField!]: paths.length > 0 ? paths : undefined })
-          }
+          onConfirm={mention.applyBrowseSelection}
         />
       )}
 
