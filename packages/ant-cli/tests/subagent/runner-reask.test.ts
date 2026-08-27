@@ -78,6 +78,60 @@ describe('runExploreSubagent — corrective re-ask', () => {
     expect(result.report).not.toContain('degenerate repetitive output');
   });
 
+  it('recovers via re-ask when the report round is starved by the output-token cap', async () => {
+    // local-nursing-churn RCA: adaptive thinking consumed the whole output
+    // budget before any report text — zero text, stopReason max_tokens.
+    const clean =
+      'Direct answer: all 23 work docs read; triggers and rules tabulated below. ' +
+      'Evidence: work-weekly-mail.md, work-expense-processing.md (5 sub-triggers).';
+    let call = 0;
+    const starvedBatch: StreamEvent[] = [
+      { thinking: 'drafting the whole report in reasoning' },
+      { type: 'done', stopReason: 'max_tokens' },
+    ];
+    const batches: StreamEvent[][] = [starvedBatch, [text(clean), { type: 'done', stopReason: 'end_turn' }]];
+    setLLMClientFactory(() => ({
+      modelName: 'mock-child',
+      async *stream(messages: any[]) {
+        const batch = batches[Math.min(call, batches.length - 1)];
+        call++;
+        // The re-ask must name the truncation cause in its final user turn.
+        if (call === 2) {
+          const last = messages[messages.length - 1];
+          expect(String(last.content)).toContain('cut off by the output token cap');
+        }
+        for (const ev of batch) yield ev;
+      },
+    }) as any);
+
+    const result = await runExploreSubagent({ id: 'reask3', goal: 'g', internals: internals() });
+
+    expect(call).toBe(2);
+    // Same honest semantics as the degenerate re-ask: single forced-final
+    // round → exhausted → 'partial'.
+    expect(result.state).toBe('partial');
+    expect(result.report).toContain('Direct answer');
+    expect(result.report).not.toContain('produced no report');
+  });
+
+  it('reports the token-cap cause when the starved re-ask ALSO returns no text (exactly one re-ask)', async () => {
+    let call = 0;
+    setLLMClientFactory(() => ({
+      modelName: 'mock-child',
+      async *stream() {
+        call++;
+        yield { thinking: 'still deliberating' };
+        yield { type: 'done', stopReason: 'max_tokens' };
+      },
+    }) as any);
+
+    const result = await runExploreSubagent({ id: 'reask4', goal: 'g', internals: internals() });
+
+    expect(call).toBe(2); // main loop + ONE re-ask, never more
+    expect(result.state).toBe('error');
+    expect(result.report).toContain('truncated at the output-token cap');
+  });
+
   it('falls back to the failure notice when the re-ask ALSO degenerates (exactly one re-ask)', async () => {
     let call = 0;
     setLLMClientFactory(() => ({

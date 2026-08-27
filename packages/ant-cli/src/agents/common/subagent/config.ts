@@ -34,8 +34,17 @@ export const subagentJoinTimeoutMs = (): number => envInt('ANT_SUBAGENT_JOIN_TIM
 export const subagentMaxPendingAgeMs = (): number =>
   envInt('ANT_SUBAGENT_MAX_PENDING_AGE_MS', subagentTimeoutMs() + 30_000);
 
-/** Child max output tokens per round. */
-export const subagentMaxTokens = (): number => envInt('ANT_SUBAGENT_MAX_TOKENS', 8192);
+/**
+ * Child max output tokens per round. Adaptive-thinking models spend reasoning
+ * from this same budget and cannot be disabled on the stream channel, so the
+ * cap must hold thinking + a full report (subagentMaxReportChars ≈ 16K chars)
+ * together — 8192 physically could not (local-nursing-churn RCA). Anthropic
+ * OTPM pre-reserves by max_tokens (3 concurrent children reserve ~72K);
+ * withRetryStream absorbs the resulting 429s. Raising here (the one consumer
+ * is SubagentRunner) was chosen over an adapter-level adaptive floor, which
+ * would silently raise every stream caller's billing ceiling.
+ */
+export const subagentMaxTokens = (): number => envInt('ANT_SUBAGENT_MAX_TOKENS', 24576);
 
 /** Output cap for the one corrective re-ask after a degenerate round — reduced
  * so a second degeneration is cheap. */

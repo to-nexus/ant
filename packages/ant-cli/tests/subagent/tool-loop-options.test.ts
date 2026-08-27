@@ -131,6 +131,30 @@ describe('callLLMWithToolLoop — output-validity signals (final round)', () => 
     expect(res.stopReason).toBe('end_turn');
   });
 
+  it('populates finalMessages when the final round produced no text (thinking-starved max_tokens)', async () => {
+    const llm = scriptedLLM([
+      [toolUse('t1')],
+      [{ thinking: 'report drafted in reasoning' }, { type: 'done', stopReason: 'max_tokens' }],
+    ]);
+    const res = await callLLMWithToolLoop(llm, [{ role: 'user', content: 'q' }], READ_TOOL,
+      async () => 'result', { ...BASE, maxRounds: 5, silentChatCards: true });
+    expect(res.response).toBe('');
+    expect(res.stopReason).toBe('max_tokens');
+    // Accumulated evidence intact; the empty assistant turn was never pushed.
+    expect(res.finalMessages).toBeDefined();
+    const last = res.finalMessages![res.finalMessages!.length - 1];
+    expect(last.role).toBe('user');
+    expect(JSON.stringify(last.content)).toContain('tool_result');
+    expect(res.finalMessages!.filter((m) => m.role === 'assistant')).toHaveLength(1);
+  });
+
+  it('does NOT populate finalMessages on a clean non-empty final response', async () => {
+    const llm = scriptedLLM([[toolUse('t1')], [text('clean final'), { type: 'done', stopReason: 'end_turn' }]]);
+    const res = await callLLMWithToolLoop(llm, [{ role: 'user', content: 'q' }], READ_TOOL,
+      async () => 'result', { ...BASE, maxRounds: 5, silentChatCards: true });
+    expect(res.finalMessages).toBeUndefined();
+  });
+
   it('injects an explicit end-of-tools notice into the final (tool-stripped) round request', async () => {
     // Regression: tiny-counting-mocha — the last-round request silently lost
     // its tools and the model narrated exploration intent (degenerate

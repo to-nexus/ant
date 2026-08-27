@@ -23,8 +23,11 @@ There is **no enable flag** — only env tunables (`ANT_SUBAGENT_MAX_ROUNDS=12`,
 `ANT_SUBAGENT_MAX_REPORT_PERSIST_CHARS=100000` (card/drill-down ceiling),
 `ANT_SUBAGENT_MAX_CONCURRENT=3` per
 ownerKey, `ANT_SUBAGENT_TIMEOUT_MS=300000`, `ANT_SUBAGENT_JOIN_TIMEOUT_MS`,
-`ANT_SUBAGENT_MAX_PENDING_AGE_MS`, `ANT_SUBAGENT_MAX_TOKENS=8192`,
-`ANT_SUBAGENT_REASK_MAX_TOKENS=4096`; SSOT
+`ANT_SUBAGENT_MAX_PENDING_AGE_MS`, `ANT_SUBAGENT_MAX_TOKENS=24576` (shared by
+reasoning AND report text on adaptive-thinking models, which cannot disable
+thinking on the stream channel — 8192 could not physically hold the 16K-char
+report budget plus thinking, and starved runs to zero text,
+local-nursing-churn RCA), `ANT_SUBAGENT_REASK_MAX_TOKENS=4096`; SSOT
 [`config.ts`](../../packages/ant-cli/src/agents/common/subagent/config.ts)).
 
 ## Report compaction / decompaction
@@ -119,6 +122,7 @@ parent tool_use: explore ─▶ handlers/explore.ts ─▶ seam.launch() → lau
 | LLM/tool error | `Exploration failed: … re-issue or read directly` (`error`) | Parent LLM decides recovery |
 | Timeout / round exhaustion | `[partial] …` (`partial`) | Truncation does not belong here — see the compaction section above (`done` is kept) |
 | **Degeneration (repetition loop)** | Three-line defense: (1) the final round keeps tools + `toolChoice:'none'` (no stripping — deleting the declarations is what caused GLM degeneration, sage-causing-rover RCA), (2) an in-stream repetition breaker (`StreamRepetitionTracker`, `core/utils/textRepetition.ts`) cuts the round early (~a few hundred tokens instead of the token cap), (3) **one corrective re-ask** — on top of the accumulated evidence (`finalMessages`), a corrective note + `toolChoice:'none'` + reduced cap (`ANT_SUBAGENT_REASK_MAX_TOKENS`=4096), within the single deadline (`subagentTimeoutMs`). On success: `[partial]` (non-exhaustiveness stated); on re-degeneration: failure notice (`error`) + the raw text is preserved in the store/card | The re-ask is not a verbatim retry — it states the failure reason (lapis-oaring-drain lesson) |
+| **Thinking starvation (zero text + `max_tokens`)** | Adaptive models reason inside the same `max_tokens` budget and can consume it before any report text (local-nursing-churn RCA). The tool loop returns the accumulated evidence as `finalMessages`, and the same **one corrective re-ask** fires — corrective note names the truncation, cap = full `ANT_SUBAGENT_MAX_TOKENS` (the reduced re-ask cap would starve again by construction). On success: `[partial]`; on a second starvation: `error` naming the output-token cap | Shares the one-shot invariant with the degeneration re-ask — the reason is computed once, so one failure shape cannot chain into the other's re-ask |
 | Job stop | `[partial] aborted` (`aborted`) | `shouldAbort=isJobAborted` round polling + stream signal |
 | Resume after crash/interruption | Orphaned launch-ack detected in history → inject `[SUBAGENT REPORT <id> — LOST]` | The marker is the pairing SSOT (self-idempotent). **The ack body must NOT contain the marker literal** |
 | Concurrency exceeded | launch rejected (error tool_result) | |

@@ -118,10 +118,11 @@ export interface ToolLoopResult {
    */
   degenerate?: boolean;
   /**
-   * Conversation as of the LAST COMPLETED round (the degenerate round's
-   * output is NOT included). Lets callers mount a corrective re-ask on the
+   * Conversation as of the LAST COMPLETED round (the failed round's output
+   * is NOT included). Lets callers mount a corrective re-ask on the
    * accumulated evidence instead of discarding the whole exploration
-   * (SubagentRunner). Populated only when `degenerate` is true.
+   * (SubagentRunner). Populated when `degenerate` is true, and when the
+   * final round produced no text at all (thinking-starved max_tokens round).
    */
   finalMessages?: Array<{ role: string; content: string | MessageContentBlock[] }>;
 }
@@ -346,14 +347,31 @@ export async function callLLMWithToolLoop(
           continue;
         }
       }
-      return { response, usage: totalUsage, roundsUsed: round + 1, exhausted: isLastRound, stopReason: roundStopReason };
+      return {
+        response,
+        usage: totalUsage,
+        roundsUsed: round + 1,
+        exhausted: isLastRound,
+        stopReason: roundStopReason,
+        // A textless final round (thinking-starved max_tokens) left the
+        // accumulated evidence intact in allMessages — the empty assistant
+        // turn was never pushed, so the shape matches the degenerate contract.
+        ...(response.trim() ? {} : { finalMessages: allMessages }),
+      };
     }
 
     if (isLastRound) {
       // Reachable only when the provider ignores toolChoice='none' — the
       // pending calls are never executed; return whatever text arrived.
       console.warn(`⚠️ [ToolLoop] LLM returned tool calls on final round despite toolChoice='none' — returning partial response`);
-      return { response: response || '', usage: totalUsage, roundsUsed: round + 1, exhausted: true, stopReason: roundStopReason };
+      return {
+        response: response || '',
+        usage: totalUsage,
+        roundsUsed: round + 1,
+        exhausted: true,
+        stopReason: roundStopReason,
+        ...(response.trim() ? {} : { finalMessages: allMessages }),
+      };
     }
 
     console.log(`🔧 [ToolLoop] Round ${round + 1}: ${toolCalls.length} tool call(s)`);

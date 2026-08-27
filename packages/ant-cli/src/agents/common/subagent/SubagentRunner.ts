@@ -180,33 +180,51 @@ async function runInner(
     };
   }
 
-  // Corrective re-ask (once): a degenerate round severed by the in-stream
-  // breaker still leaves the accumulated tool evidence intact in
-  // `finalMessages`. A verbatim replay reproduces the same failure at low
-  // temperature (lapis-oaring-drain RCA) — the re-ask names WHY the previous
-  // attempt failed and demands the report from evidence already gathered.
-  // On success, 11 rounds of real investigation are recovered instead of
-  // discarded; on a second degeneration the normal failure notice stands.
-  if (raced.degenerate && raced.finalMessages && !isJobAborted()) {
+  // Corrective re-ask (once): both failure shapes leave the accumulated tool
+  // evidence intact in `finalMessages` — a degenerate round severed by the
+  // in-stream breaker (lapis-oaring-drain RCA), and a thinking-starved round
+  // where reasoning consumed the whole output cap before any report text
+  // (local-nursing-churn RCA). A verbatim replay reproduces the same failure —
+  // the re-ask names WHY the previous attempt failed and demands the report
+  // from evidence already gathered. The reason is computed ONCE so a re-ask
+  // that fails the other way cannot chain into a second re-ask.
+  const reAskReason: 'degenerate' | 'starved' | null = !raced.finalMessages
+    ? null
+    : raced.degenerate
+      ? 'degenerate'
+      : !String(raced.response ?? '').trim() && raced.stopReason === 'max_tokens'
+        ? 'starved'
+        : null;
+  if (reAskReason && !isJobAborted()) {
     console.warn(
-      `⚠️ [Subagent] Degenerate round severed (id=${params.id}) — issuing one corrective re-ask`,
+      `⚠️ [Subagent] ${reAskReason === 'degenerate' ? 'Degenerate round severed' : 'Report round starved by the output-token cap'} (id=${params.id}) — issuing one corrective re-ask`,
     );
     const retryMessages = [
-      ...raced.finalMessages,
+      ...raced.finalMessages!,
       {
         role: 'user' as const,
         content:
-          '[SYSTEM] Your previous response degenerated into repeating the same ' +
-          'sentence and was discarded. Do NOT narrate further tool intentions. ' +
-          'Write your COMPLETE final report NOW, from the evidence already ' +
-          'gathered above, following your report contract.',
+          reAskReason === 'degenerate'
+            ? '[SYSTEM] Your previous response degenerated into repeating the same ' +
+              'sentence and was discarded. Do NOT narrate further tool intentions. ' +
+              'Write your COMPLETE final report NOW, from the evidence already ' +
+              'gathered above, following your report contract.'
+            : '[SYSTEM] Your previous response was cut off by the output token cap ' +
+              'before any report text was produced. Do NOT deliberate further. ' +
+              'Write a CONCISE final report NOW, from the evidence already ' +
+              'gathered above, following your report contract.',
       },
     ];
     const priorUsage = raced.usage as TaskTokenUsage | undefined;
-    // maxRounds=1 → the re-ask IS a forced-final round (toolChoice='none');
-    // reduced cap so a second degeneration is cheap.
+    // maxRounds=1 → the re-ask IS a forced-final round (toolChoice='none').
+    // degenerate: reduced cap so a second degeneration is cheap. starved: the
+    // full cap — a reduced one would starve again by construction.
     const reRaced = await raceAgainstDeadline(
-      runLoop(retryMessages, 1, subagentReAskMaxTokens()),
+      runLoop(
+        retryMessages,
+        1,
+        reAskReason === 'starved' ? subagentMaxTokens() : subagentReAskMaxTokens(),
+      ),
     );
     if (reRaced !== 'timeout') {
       raced = {
@@ -232,7 +250,12 @@ async function runInner(
   let report = (response || '').trim();
   if (!report) {
     return {
-      report: `Exploration produced no report (goal: ${params.goal}). Treat as no findings; re-issue explore with a narrower goal or read directly.`,
+      report:
+        `Exploration produced no report` +
+        (stopReason === 'max_tokens'
+          ? ' (truncated at the output-token cap before any report text — the report did not fit the output budget)'
+          : '') +
+        ` (goal: ${params.goal}). Treat as no findings; re-issue explore with a narrower goal or read directly.`,
       usage: usage as TaskTokenUsage | undefined,
       rounds: roundsUsed,
       state: 'error',
