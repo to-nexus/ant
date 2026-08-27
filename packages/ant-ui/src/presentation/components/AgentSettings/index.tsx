@@ -40,7 +40,8 @@ import { IntentPromptCard } from './overview/IntentPromptCard';
 import { IntentHooksCard } from './overview/IntentHooksCard';
 import { CARD_OF_KIND, classifyDefinitionPath } from './overview/definitionDocs';
 import { useDefinitionDocs } from './overview/useDefinitionDocs';
-import { useAgentMcpServerNames } from './overview/useAgentMcpServerNames';
+import { useAgentExtensionServers } from './overview/useAgentExtensionServers';
+import type { ExtensionServers } from './overview/actionHook';
 
 /**
  * Agent Settings — account-scoped standalone screen (profile menu → main
@@ -191,12 +192,16 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
   const intentIds = useMemo(() => intentIdsKey.split(',').filter(Boolean), [intentIdsKey]);
   const docs = useDefinitionDocs(selection.agentId, selection.jobId, intentIds);
 
-  // Hook-editor picker vocabulary: MCP server names are job ∪ agent (H8's
-  // satisfiability set) — agent.yaml is fetched read-only, never as a buffer.
-  const agentMcpServerNames = useAgentMcpServerNames(selection.jobId ? selection.agentId : undefined);
-  const mcpServerNames = useMemo(
-    () => Array.from(new Set([...Object.keys(docs.mcpServers), ...agentMcpServerNames])).sort(),
-    [docs.mcpServers, agentMcpServerNames],
+  // Hook-editor picker vocabulary: every extension channel's server names are
+  // job ∪ agent (H8's satisfiability set) — agent.yaml is fetched read-only,
+  // never as a buffer.
+  const agentServers = useAgentExtensionServers(selection.jobId ? selection.agentId : undefined);
+  const extensionServers = useMemo<ExtensionServers>(
+    () => ({
+      mcp: Array.from(new Set([...Object.keys(docs.mcpServers), ...agentServers.mcp])).sort(),
+      api: Array.from(new Set([...Object.keys(docs.apiServers), ...agentServers.api])).sort(),
+    }),
+    [docs.mcpServers, docs.apiServers, agentServers],
   );
 
   // Wire the standalone validate endpoint: shows the definition's
@@ -642,7 +647,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           docs,
           builtinToolPreset,
           mutatingBuiltinTools,
-          mcpServerNames,
+          extensionServers,
         }
       : null;
 

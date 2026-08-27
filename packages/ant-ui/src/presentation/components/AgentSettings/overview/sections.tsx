@@ -26,6 +26,7 @@ import { McpServersEditor } from './McpServersEditor';
 import { ToolChip } from './ToolChip';
 import { INTENT_CATALOG_CAP } from './definitionDocs';
 import type { UseDefinitionDocsResult } from './useDefinitionDocs';
+import type { ExtensionServers } from './actionHook';
 
 export interface OverviewCtx {
   level: 'agent' | 'job' | 'intent';
@@ -33,8 +34,8 @@ export interface OverviewCtx {
   docs: UseDefinitionDocsResult;
   builtinToolPreset: string[];
   mutatingBuiltinTools: string[];
-  /** MCP server names declared on the job ∪ agent (the hook editor's picker set). */
-  mcpServerNames: string[];
+  /** Server names per extension channel, declared on the job ∪ agent (the hook editor's picker set). */
+  extensionServers: ExtensionServers;
 }
 
 /** Icon-only row action box — same box metrics as the tree's toolbar icons. */

@@ -73,6 +73,16 @@ export function isMcpToolName(name: string): boolean {
 /** Prefix of the two tools synthesized per declared REST API (`apis`): `api__{server}__{get|request}`. */
 export const API_TOOL_PREFIX = 'api__';
 
+/**
+ * The closed tool vocabulary synthesized per declared API — a read half and a
+ * write half, split so approval can be decided from the tool name alone. This
+ * list is the SSOT: `API_ACTION_PATTERN` is built from it and the FE action
+ * picker offers it, so the two cannot drift.
+ */
+export const API_TOOL_VERBS = ['get', 'request'] as const;
+
+export type ApiToolVerb = typeof API_TOOL_VERBS[number];
+
 export function isApiToolName(name: string): boolean {
   return name.startsWith(API_TOOL_PREFIX);
 }

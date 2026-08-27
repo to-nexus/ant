@@ -17,6 +17,8 @@
  * no UI story.
  */
 
+import { API_TOOL_PREFIX, API_TOOL_VERBS } from './universal-tools';
+
 /** Where a custom agent definition lives — determines ownership and editability. */
 export type CustomAgentScope = 'user' | 'org' | 'builtin';
 
@@ -113,8 +115,14 @@ export const ARTIFACT_GLOB_MAX = 200;
 export const ARTIFACT_GLOB_CHARSET = /^[A-Za-z0-9._\-/*]+$/;
 /** Full `mcp__{server}__{tool}` action name — same vocabulary as the approval map and the advertised tool list. */
 export const MCP_ACTION_PATTERN = /^mcp__[a-z0-9]+(?:-[a-z0-9]+)*__[A-Za-z0-9_-]+$/;
-/** Full `api__{server}__{get|request}` action name — the two tools synthesized per declared REST API. */
-export const API_ACTION_PATTERN = /^api__[a-z0-9]+(?:-[a-z0-9]+)*__(?:get|request)$/;
+/**
+ * Full `api__{server}__{get|request}` action name — the two tools synthesized
+ * per declared REST API. Built from `API_TOOL_VERBS` so the pattern, the
+ * runtime's synthesized names, and the FE picker share one vocabulary.
+ */
+export const API_ACTION_PATTERN = new RegExp(
+  `^${API_TOOL_PREFIX}[a-z0-9]+(?:-[a-z0-9]+)*__(?:${API_TOOL_VERBS.join('|')})$`,
+);
 
 export interface IntentHooksValidationOptions {
   /**

@@ -31,7 +31,15 @@
  *    — so job-runner keeps classifying definition mistakes as config_invalid.
  */
 
-import { parseRestAllowLine, isSelfApiConfig, type RestAllowRule, type RestApiServerConfig, API_TOOL_PREFIX } from '@ant/shared';
+import {
+  parseRestAllowLine,
+  isSelfApiConfig,
+  type RestAllowRule,
+  type RestApiServerConfig,
+  type ApiToolVerb,
+  API_TOOL_PREFIX,
+  API_TOOL_VERBS,
+} from '@ant/shared';
 import { CHILD_PROCESS_ENV } from '../types/processEnv';
 import { McpConfigError } from './McpConfigError';
 import type { McpCallResult, McpToolInfo } from './McpConnectionManager';
@@ -57,19 +65,19 @@ export interface CompiledRestServer {
   allow?: RestAllowRule[];
 }
 
-export function buildApiToolName(serverName: string, tool: 'get' | 'request'): string {
+export function buildApiToolName(serverName: string, tool: ApiToolVerb): string {
   return `${API_TOOL_PREFIX}${serverName}__${tool}`;
 }
 
 /** Split `api__{server}__{get|request}`; null if not api-shaped. */
-export function parseApiToolName(prefixed: string): { serverName: string; toolName: 'get' | 'request' } | null {
+export function parseApiToolName(prefixed: string): { serverName: string; toolName: ApiToolVerb } | null {
   if (!prefixed.startsWith(API_TOOL_PREFIX)) return null;
   const rest = prefixed.slice(API_TOOL_PREFIX.length);
   const sep = rest.lastIndexOf('__');
   if (sep <= 0) return null;
   const toolName = rest.slice(sep + 2);
-  if (toolName !== 'get' && toolName !== 'request') return null;
-  return { serverName: rest.slice(0, sep), toolName };
+  if (!(API_TOOL_VERBS as readonly string[]).includes(toolName)) return null;
+  return { serverName: rest.slice(0, sep), toolName: toolName as ApiToolVerb };
 }
 
 /** Path prefix every Ant HTTP route is mounted under. */

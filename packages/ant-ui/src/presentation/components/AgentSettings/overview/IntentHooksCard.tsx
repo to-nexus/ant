@@ -50,7 +50,7 @@ export function IntentHooksCard({
         disabled={disabled}
         effectiveBuiltins={docs.main.toolsBuiltin ?? ctx.builtinToolPreset}
         presetBuiltins={ctx.builtinToolPreset}
-        mcpServerNames={ctx.mcpServerNames}
+        extensionServers={ctx.extensionServers}
         onChange={(stop) =>
           docs.updateIntent(intentId, { hooks: stop.length > 0 ? { stop } : undefined })
         }

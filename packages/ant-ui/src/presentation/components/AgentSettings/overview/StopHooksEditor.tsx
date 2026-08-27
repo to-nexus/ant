@@ -28,7 +28,7 @@ import { AuroraSelect, FieldHint } from '@/presentation/components/ConfigEditor/
 import { INTENT_STOP_HOOKS_CAP, validateStopHookEntry, type IntentStopHook } from '@ant/shared';
 import { ArtifactGlobInput } from './ArtifactGlobInput';
 import { ActionHookInput } from './ActionHookInput';
-import { jobLacksArtifactWriter } from './actionHook';
+import { jobLacksArtifactWriter, type ExtensionServers } from './actionHook';
 
 type HookKind = 'artifact' | 'action';
 
@@ -54,7 +54,7 @@ function HookRow({
   disabled,
   effectiveBuiltins,
   presetBuiltins,
-  mcpServerNames,
+  extensionServers,
   onChange,
   onRemove,
 }: {
@@ -62,7 +62,7 @@ function HookRow({
   disabled: boolean;
   effectiveBuiltins: string[];
   presetBuiltins: string[];
-  mcpServerNames: string[];
+  extensionServers: ExtensionServers;
   onChange: (next: IntentStopHook) => void;
   onRemove: () => void;
 }) {
@@ -103,7 +103,7 @@ function HookRow({
           hasError={rowError}
           effectiveBuiltins={effectiveBuiltins}
           presetBuiltins={presetBuiltins}
-          mcpServerNames={mcpServerNames}
+          extensionServers={extensionServers}
           onChange={(v) => onChange(makeHook(kind, v))}
         />
       )}
@@ -146,7 +146,7 @@ export function StopHooksEditor({
   hooks,
   disabled,
   effectiveBuiltins,
-  mcpServerNames,
+  extensionServers,
   presetBuiltins,
   onChange,
 }: {
@@ -154,8 +154,8 @@ export function StopHooksEditor({
   disabled: boolean;
   /** This job's effective tools.builtin — the action picker's vocabulary and the H7/H8 hint basis. */
   effectiveBuiltins: string[];
-  /** MCP server names declared on the job ∪ agent. */
-  mcpServerNames: string[];
+  /** Server names per extension channel, declared on the job ∪ agent. */
+  extensionServers: ExtensionServers;
   /** The full universal preset (hint wording only). */
   presetBuiltins: string[];
   /** The full next `stop` list; empty = remove the intent's hooks.yaml. */
@@ -183,7 +183,7 @@ export function StopHooksEditor({
             disabled={disabled}
             effectiveBuiltins={effectiveBuiltins}
             presetBuiltins={presetBuiltins}
-            mcpServerNames={mcpServerNames}
+            extensionServers={extensionServers}
             onChange={(next) => replaceAt(i, next)}
             onRemove={() => onChange(hooks.filter((_, j) => j !== i))}
           />
