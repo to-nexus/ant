@@ -63,12 +63,24 @@ is observable.**
   evidence. Completion only a person can judge stays in `prompt.md` prose —
   a hook the runtime cannot observe is a turn that can never end.
 - `infer.md` names what arrives or is asked for — "a settlement file for the
-  closed month is in hand" — never when a calendar fires it; "on the 1st of
-  each month" is a schedule, and schedules, like run order between intents,
-  are pipeline material this job filters out, not intent prose. Keep in
-  `prompt.md` only the time rules the agent applies while working — a filing
-  deadline, a do-not-resend window — because those change what the agent
-  does, not when it is started.
+  closed month is in hand" — never when a calendar fires it, not even as a
+  trailing "typically runs at month-end" clause; a calendar anywhere in
+  `infer.md` is schedule material in the wrong home. Time rules the agent
+  applies while working — a filing deadline, a do-not-send window — stay in
+  the procedure, because they change what the agent does, not when it is
+  started.
+- Calendars, cadence, the legacy automation a task replaces, and run order
+  between tasks are not discarded — they are quarantined: one labeled
+  section at the end of `prompt.md` (e.g. "Operating context — reference,
+  not instructions") whose first line says scheduling truth lives in the
+  pipeline definition, not here. Write it as description of the world the
+  work sits in — its cadence, the automation this intent now performs, what
+  its output feeds — never as steps, and never as dispatch machinery (a
+  timer, a sent marker, a fallback task) the agent might mistake for
+  something it must operate or wait on. When the material calls a task
+  "fully automated, unattended", the context section states that this intent
+  is that performer — the procedure must not leave the agent believing the
+  work is already done elsewhere.
 
 **Admit to `on-demand/` only what the runner will open.**
 
@@ -117,3 +129,7 @@ is observable.**
   agent cannot reach until the user wires it up.
 - The report repeats the mapping as built: which sources became which intents,
   what merged, what split, what was dropped and why.
+- The report states each job's hook decision — which intents carry a
+  completion contract, or that none do and why (e.g. no observable done in
+  the material). A correct "no hooks" is invisible without this line, and an
+  auditor cannot tell it from a forgotten one.

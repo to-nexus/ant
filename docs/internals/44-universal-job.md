@@ -907,6 +907,31 @@ unnamed:
   window — stay in `prompt.md` because they change what the agent does, not
   when it is started.
 
+**Amendment — delete became quarantine** (rural-bracing-grate, 2026-08-28,
+the first run on the corrected text): the hooks half held exactly as written —
+a 21-intent agent authored zero hooks and was RIGHT to (the material carried
+no endpoints, so no connections; every task's "done" was an external side
+effect the runtime cannot observe) — but the filter half was only partially
+followed: 12/21 `infer.md` kept calendars as trailing clauses, two prompts
+described legacy dispatch machinery (a daily timer, a sent-marker/fallback
+pair) the running agent could mistake for something it must operate, and
+19/21 prompts mirrored the inventory's "automation status" bookkeeping,
+leaving "fully automated, unattended" prose that invites the agent to
+conclude the work is already done elsewhere. Root cause of the residue: the
+filter was a semantic DELETE rule, judged clause by clause, and the deadline
+/ do-not-send exemption makes that judgment genuinely fuzzy — half-compliance
+is its natural outcome, and it also forces the builder to discard real
+curation. The rule is therefore now a PLACEMENT rule: `infer.md` stays
+calendar-free absolutely (trailing clauses included), while calendars,
+cadence, replaced legacy automation, and cross-task run order are quarantined
+into one labeled non-binding "operating context" section at the end of
+`prompt.md`, whose first line names the pipeline definition as the scheduling
+SSOT. Single ownership is preserved — the definition's copy is declared
+non-authoritative reference, never a second schedule owner — and the same
+section is the sanctioned home for the automation-status reframe ("this
+intent is that performer"). The report must also now state each job's hook
+decision, so a correct "no hooks" is distinguishable from a forgotten one.
+
 The corrected text architecture gives each rule one home: the design phase
 (design before the first write, state the mapping) and the clarify risk case
 (a design that meaningfully reshapes user-provided material is confirmed
