@@ -20,6 +20,7 @@ import {
   GitNetworkError,
   GitNotFoundError,
   GitOperationError,
+  asPushRejection,
 } from '../../errors';
 
 /**
@@ -136,7 +137,11 @@ export class InitOperation {
       console.log(`[${this.operationName}] ✅ Remote added`);
 
       console.log(`[${this.operationName}] Pushing base branch '${branchBase}' to remote...`);
-      await git.push(['-u', 'origin', branchBase]);
+      try {
+        await git.push(['-u', 'origin', branchBase]);
+      } catch (pushError) {
+        throw asPushRejection(pushError) ?? pushError;
+      }
       try {
         await git.raw(['remote', 'set-head', 'origin', branchBase]);
       } catch { /* best-effort */ }
@@ -213,7 +218,11 @@ export class InitOperation {
   ): Promise<void> {
     await git.addRemote('origin', authenticatedUrl);
     const currentBranch = (await git.revparse(['--abbrev-ref', 'HEAD'])).trim();
-    await git.push(['-u', 'origin', currentBranch]);
+    try {
+      await git.push(['-u', 'origin', currentBranch]);
+    } catch (pushError) {
+      throw asPushRejection(pushError) ?? pushError;
+    }
     console.log(`[${this.operationName}] ✅ Pushed to remote: ${currentBranch}`);
   }
 

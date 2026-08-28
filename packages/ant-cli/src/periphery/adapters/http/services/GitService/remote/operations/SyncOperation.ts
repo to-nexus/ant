@@ -2,8 +2,9 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { WorktreeService } from '../../worktree';
-import { GitOperationError, GitConflictError } from '../../errors';
+import { GitOperationError } from '../../errors';
 import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
+import { pullWithStrategy } from '../helpers/pullStrategy';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 
 /**
@@ -18,7 +19,12 @@ export class SyncOperation {
     private readonly githubAuthService?: GitHubAuthService
   ) {}
 
-  async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<{
+  async execute(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    strategy?: unknown
+  ): Promise<{
     success: boolean;
     pulledChanges?: boolean;
     pushedChanges?: boolean;
@@ -77,17 +83,7 @@ export class SyncOperation {
 
     if (freshStatus.behind > 0) {
       console.log(`[SyncOperation] Pulling from origin/${currentBranch}...`);
-      try {
-        await git.pull('origin', currentBranch);
-      } catch (error: any) {
-        const msg = error?.message || String(error);
-        if (msg.includes('CONFLICT') || msg.includes('Merge conflict') || msg.includes('merge conflict')) {
-          throw new GitConflictError(
-            `Merge conflict detected while syncing. Please resolve conflicts in the IDE.`
-          );
-        }
-        throw error;
-      }
+      await pullWithStrategy(git, currentBranch, strategy, freshStatus);
       pulledChanges = true;
       console.log('[SyncOperation] Pull completed');
     }

@@ -81,6 +81,12 @@ export type GitMenu =
       canPull: boolean;
       canFetch: boolean;
       pullBlockedByChanges: boolean;
+      /**
+       * Diverged: pushing is a guaranteed non-fast-forward rejection, so the
+       * item renders DISABLED with the reason rather than letting the user
+       * discover it from GitHub.
+       */
+      pushBlockedByBehind: boolean;
     };
 
 export interface DeriveGitMenuInput {
@@ -129,10 +135,11 @@ export function deriveGitMenu(input: DeriveGitMenuInput): GitMenu {
 
   return {
     kind: 'synced',
-    canPush: ahead > 0,
+    canPush: ahead > 0 && behind === 0,
     canPull: behind > 0 && !hasUncommittedChanges,
     canFetch: true,
     pullBlockedByChanges: behind > 0 && hasUncommittedChanges,
+    pushBlockedByBehind: ahead > 0 && behind > 0,
   };
 }
 

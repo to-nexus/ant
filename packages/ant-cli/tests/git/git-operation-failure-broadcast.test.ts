@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { GitOperation, type GitOperationContext } from '../../src/periphery/adapters/http/services/GitService/remote/GitOperation';
+import { GitConflictError } from '../../src/periphery/adapters/http/services/GitService/errors';
 import type { GitUserOperation } from '@ant/shared';
 import type { UserContext } from '../../src/core/types/user';
 
@@ -46,6 +47,20 @@ class FailingOp extends GitOperation<{ feature?: string }, void> {
   }
 }
 
+/** Throws the typed shape a classified operation produces. */
+class ClassifiedFailureOp extends GitOperation<{ feature?: string }, void> {
+  kind(): GitUserOperation {
+    return { kind: 'push' };
+  }
+  protected async run(): Promise<void> {
+    throw new GitConflictError('origin/main has 3 commit(s) this workspace does not have.', {
+      retryable: false,
+      suggestedAction: 'syncFirst',
+      params: { branch: 'main', count: 3 },
+    });
+  }
+}
+
 class SucceedingOp extends GitOperation<{ feature?: string }, string> {
   kind(): GitUserOperation {
     return { kind: 'commit' };
@@ -80,6 +95,42 @@ describe('GitOperation failure-path snapshot broadcast', () => {
     const operationArg = deps.broadcaster.notifyOperationComplete.mock.calls[0][3];
     expect(operationArg.status).toBe('succeeded');
     expect(deps.watcher.retryDeferredWatchers).toHaveBeenCalledWith('proj');
+  });
+
+  // Flattening every failure to `unknown` here left the SSE-delivered FSM
+  // unable to offer the recovery the HTTP response already knew about — the
+  // user saw raw git stderr and no next step.
+  it('preserves the typed classification instead of flattening to unknown', async () => {
+    const deps = makeDeps();
+    const op = new ClassifiedFailureOp(deps as never);
+
+    await expect(op.execute('proj', userContext, { feature: 'feat' })).rejects.toThrow(
+      /does not have/,
+    );
+
+    const operationArg = deps.broadcaster.notifyOperationComplete.mock.calls[0][3] as {
+      status: string;
+      error?: Record<string, unknown>;
+    };
+    expect(operationArg.status).toBe('failed');
+    expect(operationArg.error).toMatchObject({
+      kind: 'conflict',
+      retryable: false,
+      suggestedAction: 'syncFirst',
+      params: { branch: 'main', count: 3 },
+    });
+  });
+
+  it('an untyped failure still falls back to the retryable unknown shape', async () => {
+    const deps = makeDeps();
+    const op = new FailingOp(deps as never);
+
+    await expect(op.execute('proj', userContext, {})).rejects.toThrow('pathspec kaboom');
+
+    const operationArg = deps.broadcaster.notifyOperationComplete.mock.calls[0][3] as {
+      error?: Record<string, unknown>;
+    };
+    expect(operationArg.error).toMatchObject({ kind: 'unknown', retryable: true, suggestedAction: null });
   });
 
   it('a broadcaster hiccup on the failure path never masks the original error', async () => {

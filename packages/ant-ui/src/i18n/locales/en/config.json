@@ -393,7 +393,9 @@
     "confirmPublish": "Create a new GitHub repository and push your code?",
     "currentBranch": "Current branch:",
     "configRequired": "Configuration required. Click the settings icon above to create one.",
-    "localPathRequired": "Local path not configured. Click the settings icon to set it."
+    "localPathRequired": "Local path not configured. Click the settings icon to set it.",
+    "pullRebase": "Pull (rebase)",
+    "pullRebaseDesc": "Fetch remote commits and replay yours on top (no merge commit)"
   },
   "org": {
     "kindTeam": "Team",

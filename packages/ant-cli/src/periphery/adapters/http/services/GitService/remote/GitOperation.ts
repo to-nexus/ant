@@ -8,6 +8,7 @@ import type {
 import { UserContext } from '../../../../../../core/types/user';
 import { GitStateBroadcaster } from '../../../../../../core/realtime/GitStateBroadcaster';
 import { StatusService } from '../status';
+import { GitOperationError } from '../errors';
 
 /**
  * Watcher retry port — decoupled from the concrete `GitWatcherService`
@@ -110,15 +111,21 @@ export abstract class GitOperation<TIn, TOut> {
       // without it the FE keeps its stale change list, re-sends the same
       // dead paths, and the failure self-perpetuates. Watcher retry and
       // indexing remain success-only.
+      //
+      // The typed classification is preserved: flattening every failure to
+      // `unknown` here left the SSE-delivered FSM unable to offer the
+      // recovery the HTTP response already knew about.
       await this.broadcastSnapshot(ctx, {
         status: 'failed',
         op: this.kind(),
-        error: {
-          kind: 'unknown',
-          message: error instanceof Error ? error.message : String(error),
-          retryable: true,
-          suggestedAction: null,
-        },
+        error: error instanceof GitOperationError
+          ? error.toShape()
+          : {
+              kind: 'unknown',
+              message: error instanceof Error ? error.message : String(error),
+              retryable: true,
+              suggestedAction: null,
+            },
         failedAt: Date.now(),
       });
       throw error;

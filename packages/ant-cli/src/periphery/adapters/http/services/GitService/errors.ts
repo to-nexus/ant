@@ -26,6 +26,8 @@ export interface GitOperationErrorOptions {
   retryable?: boolean;
   cause?: unknown;
   retryAfterMs?: number;
+  /** Interpolation values for the FE's localized copy (branch, counts). */
+  params?: Readonly<Record<string, string | number>>;
 }
 
 const DEFAULT_STATUS_BY_KIND: Record<GitOperationErrorKind, number> = {
@@ -52,6 +54,7 @@ export class GitOperationError extends Error {
   public readonly retryable: boolean;
   public readonly suggestedAction: GitSuggestedAction | null;
   public readonly retryAfterMs: number | null;
+  public readonly params: Readonly<Record<string, string | number>> | null;
 
   constructor(
     message: string,
@@ -73,6 +76,7 @@ export class GitOperationError extends Error {
     this.retryable = options.retryable ?? DEFAULT_RETRYABLE_BY_KIND[this.kind];
     this.suggestedAction = options.suggestedAction ?? null;
     this.retryAfterMs = options.retryAfterMs ?? null;
+    this.params = options.params ?? null;
   }
 
   /** Serialize to the canonical cross-boundary contract. */
@@ -84,6 +88,7 @@ export class GitOperationError extends Error {
       suggestedAction: this.suggestedAction ?? null,
     };
     if (this.retryAfterMs !== null) shape.retryAfterMs = this.retryAfterMs;
+    if (this.params !== null) shape.params = this.params;
     return shape;
   }
 }
@@ -95,6 +100,7 @@ export class GitAuthError extends GitOperationError {
       retryable: options.retryable ?? false,
       cause: options.cause,
       retryAfterMs: options.retryAfterMs,
+      params: options.params,
     });
     this.name = 'GitAuthError';
   }
@@ -107,6 +113,7 @@ export class GitConflictError extends GitOperationError {
       retryable: options.retryable ?? false,
       cause: options.cause,
       retryAfterMs: options.retryAfterMs,
+      params: options.params,
     });
     this.name = 'GitConflictError';
   }
@@ -119,6 +126,7 @@ export class GitNotFoundError extends GitOperationError {
       retryable: options.retryable ?? false,
       cause: options.cause,
       retryAfterMs: options.retryAfterMs,
+      params: options.params,
     });
     this.name = 'GitNotFoundError';
   }
@@ -131,6 +139,7 @@ export class GitConfigError extends GitOperationError {
       retryable: options.retryable ?? false,
       cause: options.cause,
       retryAfterMs: options.retryAfterMs,
+      params: options.params,
     });
     this.name = 'GitConfigError';
   }
@@ -143,9 +152,31 @@ export class GitNetworkError extends GitOperationError {
       retryable: options.retryable ?? true,
       cause: options.cause,
       retryAfterMs: options.retryAfterMs,
+      params: options.params,
     });
     this.name = 'GitNetworkError';
   }
+}
+
+/**
+ * Promote a non-fast-forward `git push` rejection to a typed conflict.
+ *
+ * Shared by PushOperation and InitOperation's `push -u` so the stderr match
+ * exists exactly once. Returns `null` for anything else — the caller rethrows.
+ */
+export function asPushRejection(error: unknown): GitConflictError | null {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const lower = message.toLowerCase();
+  const rejected = lower.includes('[rejected]') || lower.includes('failed to push some refs');
+  const nonFastForward =
+    lower.includes('non-fast-forward') ||
+    lower.includes('fetch first') ||
+    lower.includes('behind its remote counterpart');
+  if (!rejected || !nonFastForward) return null;
+  return new GitConflictError(
+    'Push rejected: the remote branch has commits that are not in this workspace. Sync first.',
+    { retryable: false, suggestedAction: 'syncFirst', cause: error }
+  );
 }
 
 function statusCodeToKind(status: number): GitOperationErrorKind {

@@ -57,6 +57,7 @@ export function GitMenuButton() {
           handlePublish={actions.handlePublish}
           handlePush={actions.handlePush}
           handlePull={actions.handlePull}
+          handlePullRebase={actions.handlePullRebase}
           handleFetch={actions.handleFetch}
         />
       )}

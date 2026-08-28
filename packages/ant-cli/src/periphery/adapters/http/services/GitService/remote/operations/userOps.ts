@@ -34,6 +34,11 @@ interface DiscardInput extends FeatureInput {
   files?: string[];
 }
 
+/** `strategy` arrives unvalidated from the HTTP body — `pullArgs` narrows it. */
+interface ReconcileInput extends FeatureInput {
+  strategy?: unknown;
+}
+
 interface UserOpExtraDeps {
   remote: RemoteService;
 }
@@ -92,7 +97,7 @@ export class PushOperation extends GitOperation<FeatureInput, void> {
   }
 }
 
-export class PullOperation extends GitOperation<FeatureInput, void> {
+export class PullOperation extends GitOperation<ReconcileInput, void> {
   private readonly remote: RemoteService;
   constructor(deps: FullDeps) {
     super(deps);
@@ -103,8 +108,13 @@ export class PullOperation extends GitOperation<FeatureInput, void> {
     return { kind: 'pull' };
   }
 
-  protected async run(ctx: GitOperationContext<FeatureInput>): Promise<void> {
-    await this.remote.pullFromGitHub(ctx.projectId, ctx.userContext, ctx.input?.feature);
+  protected async run(ctx: GitOperationContext<ReconcileInput>): Promise<void> {
+    await this.remote.pullFromGitHub(
+      ctx.projectId,
+      ctx.userContext,
+      ctx.input?.feature,
+      ctx.input?.strategy,
+    );
   }
 }
 
@@ -125,7 +135,7 @@ export class FetchOperation extends GitOperation<FeatureInput, void> {
 }
 
 export class SyncOperation extends GitOperation<
-  FeatureInput,
+  ReconcileInput,
   { success: boolean; pulledChanges?: boolean; pushedChanges?: boolean }
 > {
   private readonly remote: RemoteService;
@@ -139,9 +149,14 @@ export class SyncOperation extends GitOperation<
   }
 
   protected async run(
-    ctx: GitOperationContext<FeatureInput>,
+    ctx: GitOperationContext<ReconcileInput>,
   ): Promise<{ success: boolean; pulledChanges?: boolean; pushedChanges?: boolean }> {
-    return this.remote.syncWithRemote(ctx.projectId, ctx.userContext, ctx.input?.feature);
+    return this.remote.syncWithRemote(
+      ctx.projectId,
+      ctx.userContext,
+      ctx.input?.feature,
+      ctx.input?.strategy,
+    );
   }
 }
 

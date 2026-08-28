@@ -1,5 +1,13 @@
 import { useTranslation } from 'react-i18next';
-import { Download, Plus, Upload, Download as DownloadIcon, RefreshCw, Globe } from 'lucide-react';
+import {
+  Download,
+  Plus,
+  Upload,
+  Download as DownloadIcon,
+  RefreshCw,
+  Globe,
+  GitBranch as GitBranchIcon,
+} from 'lucide-react';
 import type { GitMenu } from '@/domain/git-world';
 
 interface MenuDropdownProps {
@@ -9,6 +17,7 @@ interface MenuDropdownProps {
   handlePublish: () => void;
   handlePush: () => void;
   handlePull: () => void;
+  handlePullRebase: () => void;
   handleFetch: () => void;
 }
 
@@ -27,6 +36,7 @@ export function MenuDropdown({
   handlePublish,
   handlePush,
   handlePull,
+  handlePullRebase,
   handleFetch,
 }: MenuDropdownProps) {
   const { t } = useTranslation('explorer');
@@ -154,15 +164,26 @@ export function MenuDropdown({
             onClick: handlePush,
             icon: <Upload className="w-4 h-4" />,
             title: t('config:git.push'),
-            desc: t('config:git.pushDesc'),
+            desc: menu.pushBlockedByBehind ? t('git.syncFirstToPush') : t('config:git.pushDesc'),
             disabled: !menu.canPush,
             withDivider: true,
+            titleAttr: menu.pushBlockedByBehind ? t('git.syncFirstToPush') : undefined,
           })}
           {renderItem({
             onClick: handlePull,
             icon: <DownloadIcon className="w-4 h-4" />,
             title: t('config:git.pull'),
             desc: menu.pullBlockedByChanges ? t('git.commitFirstToPull') : t('config:git.pullDesc'),
+            disabled: !menu.canPull,
+            titleAttr: menu.pullBlockedByChanges ? t('git.commitFirstToPull') : undefined,
+          })}
+          {renderItem({
+            onClick: handlePullRebase,
+            icon: <GitBranchIcon className="w-4 h-4" />,
+            title: t('config:git.pullRebase'),
+            desc: menu.pullBlockedByChanges
+              ? t('git.commitFirstToPull')
+              : t('config:git.pullRebaseDesc'),
             disabled: !menu.canPull,
             withDivider: true,
             titleAttr: menu.pullBlockedByChanges ? t('git.commitFirstToPull') : undefined,

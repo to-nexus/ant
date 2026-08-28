@@ -468,7 +468,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
             // config.githubRepo, so a bad PAT fails loud here. Route it to the
             // Configure-PAT dialog rather than aborting with a raw message.
             const msg = featErr instanceof Error ? featErr.message : String(featErr);
-            if (handleGitError((featErr as { gitError?: GitOperationError })?.gitError).handled) {
+            if (handleGitError((featErr as { gitError?: GitOperationError })?.gitError, { fallback: 'none' }).handled) {
               updateExecStep('feature', 'error', msg);
             }
             throw featErr;
@@ -493,7 +493,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
                 // Auth failures route to the PAT dialog (Account Config tab)
                 // and abort the wizard — the skip/retry/abort decision UI
                 // would offer the wrong recovery path here.
-                if (handleGitError(cloneResult.error).handled) {
+                if (handleGitError(cloneResult.error, { op: { kind: 'clone' }, fallback: 'none' }).handled) {
                   updateExecStep(gitStepId, 'error', cloneResult.error?.message || 'PAT not configured');
                   throw new Error(cloneResult.error?.message || 'PAT not configured');
                 }
@@ -514,7 +514,7 @@ export function ProjectWizardModal({ isOpen, onClose, initialMode, existingProje
             } else {
               const initResult = await runGitOperation(projectId, { kind: 'publish' });
               if (!initResult.success) {
-                if (handleGitError(initResult.error).handled) {
+                if (handleGitError(initResult.error, { op: { kind: 'publish' }, fallback: 'none' }).handled) {
                   updateExecStep(gitStepId, 'error', initResult.error?.message || 'PAT not configured');
                   throw new Error(initResult.error?.message || 'PAT not configured');
                 }

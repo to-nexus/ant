@@ -2,7 +2,7 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { WorktreeService } from '../../worktree';
-import { GitOperationError } from '../../errors';
+import { GitConflictError, GitOperationError, asPushRejection } from '../../errors';
 import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 
@@ -11,6 +11,11 @@ import { ensureGitRepository } from './helpers/ensureGitRepository';
  *
  * Handles pushing changes to GitHub.
  * Includes lazy worktree creation and automatic upstream setup ("Publish Branch").
+ *
+ * A preflight fetch runs first: `ahead`/`behind` are only as fresh as the last
+ * fetch, and nothing else in a cloud workspace ever refreshes them — so
+ * without it the decision to push is made against a remote the process has
+ * not looked at since the clone, and GitHub rejects the result.
  */
 export class PushOperation {
   constructor(
@@ -45,11 +50,22 @@ export class PushOperation {
     
     await ensureRemote(git, authenticatedUrl);
 
-    const status = await git.status();
+    let status = await git.status();
     const currentBranch = status.current;
     
     if (!currentBranch) {
       throw new GitOperationError('No branch to push');
+    }
+
+    // Preflight: refresh the remote refs the ahead/behind decision rests on.
+    // Tolerate failure — a fetch that cannot run (transient network, a ref
+    // lock held by a concurrent fetch op) must never block a push that would
+    // otherwise have succeeded; the push itself then reports the real error.
+    try {
+      await git.fetch('origin');
+      status = await git.status();
+    } catch (error: any) {
+      console.warn(`[PushOperation] preflight fetch skipped: ${error?.message ?? error}`);
     }
 
     // Check upstream and push accordingly
@@ -60,19 +76,37 @@ export class PushOperation {
       hasUpstream = false;
     }
 
-    if (!hasUpstream) {
-      // "Publish Branch" — first push with upstream setup
-      console.log(`[PushOperation] Publishing branch ${currentBranch} to origin...`);
-      await git.push(['-u', 'origin', currentBranch]);
-      console.log('[PushOperation] Branch published successfully');
-    } else {
-      if (status.ahead === 0) {
-        console.log('[PushOperation] Nothing to push');
-        return;
+    if (hasUpstream && status.behind > 0) {
+      throw new GitConflictError(
+        `origin/${currentBranch} has ${status.behind} commit(s) this workspace does not have. ` +
+          `Sync first, then push.`,
+        {
+          retryable: false,
+          suggestedAction: 'syncFirst',
+          params: { branch: currentBranch, count: status.behind },
+        }
+      );
+    }
+
+    try {
+      if (!hasUpstream) {
+        // "Publish Branch" — first push with upstream setup
+        console.log(`[PushOperation] Publishing branch ${currentBranch} to origin...`);
+        await git.push(['-u', 'origin', currentBranch]);
+        console.log('[PushOperation] Branch published successfully');
+      } else {
+        if (status.ahead === 0) {
+          console.log('[PushOperation] Nothing to push');
+          return;
+        }
+        console.log(`[PushOperation] Pushing ${currentBranch} to origin...`);
+        await git.push('origin', currentBranch);
+        console.log('[PushOperation] Push completed');
       }
-      console.log(`[PushOperation] Pushing ${currentBranch} to origin...`);
-      await git.push('origin', currentBranch);
-      console.log('[PushOperation] Push completed');
+    } catch (error) {
+      // Race window between the preflight and the push, and the no-upstream
+      // branch the preflight cannot judge.
+      throw asPushRejection(error) ?? error;
     }
   }
 

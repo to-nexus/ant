@@ -49,8 +49,10 @@ const initialAsync = <T>(): AsyncFields<T> => ({
 const OP_TIMEOUTS: Record<GitUserOperation['kind'], number> = {
   clone: 120_000,
   publish: 120_000,
-  push: 60_000,
-  pull: 60_000,
+  // push preflights with a fetch and pull fetches before reconciling — two
+  // network round trips each, so they share sync's window.
+  push: 90_000,
+  pull: 90_000,
   sync: 90_000,
   fetch: 30_000,
   // ant-authored commits run an LLM call + a multi-commit loop — allow headroom.
@@ -81,6 +83,8 @@ function toGitOperationError(value: unknown): GitOperationErrorShape {
       message: typeof v.message === 'string' ? v.message : String(v.message),
       retryable: Boolean(v.retryable),
       suggestedAction: (v.suggestedAction as GitOperationErrorShape['suggestedAction']) ?? null,
+      ...(v.params ? { params: v.params as GitOperationErrorShape['params'] } : {}),
+      ...(typeof v.retryAfterMs === 'number' ? { retryAfterMs: v.retryAfterMs } : {}),
     };
   }
   const message = value instanceof Error ? value.message : String(value);

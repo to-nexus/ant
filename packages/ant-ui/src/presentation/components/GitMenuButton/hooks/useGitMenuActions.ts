@@ -13,13 +13,12 @@ import { useGitErrorRouting } from '@/application/hooks/git/useGitErrorRouting';
 
 /**
  * Action handlers for the secondary Git control button — the dropdown
- * carrying Clone / Initialize / Publish / Push / Pull / Fetch.
+ * carrying Clone / Initialize / Publish / Push / Pull / Pull (rebase) / Fetch.
  *
  * Every handler funnels through `runGitOperation` (the same FSM used by
  * GitStatusButton) so the two buttons always agree on in-flight state
- * by construction. PAT-class failures surface the "Configure PAT"
- * affordance routed to AccountConfig; all other errors fall back to
- * `showError(error.message)`.
+ * by construction. Failures go to `useGitErrorRouting`, which owns every
+ * Git dialog — no caller formats an error itself.
  */
 interface MenuActions {
   handleClone: () => void;
@@ -27,6 +26,7 @@ interface MenuActions {
   handlePublish: () => void;
   handlePush: () => void;
   handlePull: () => void;
+  handlePullRebase: () => void;
   handleFetch: () => void;
 }
 
@@ -48,7 +48,6 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
       opts: {
         successToast?: string;
         reloadIde?: boolean;
-        failureFallback: string;
       },
     ): Promise<{ success: boolean; result?: unknown }> => {
       if (!selectedProject) return { success: false };
@@ -59,11 +58,10 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
         if (opts.reloadIde) void useStore.getState().bumpIdeReloadTimestamp();
         return { success: true, result: result.result };
       }
-      const { handled } = handleGitError(result.error);
-      if (!handled) showError(result.error?.message || opts.failureFallback);
+      handleGitError(result.error, { op: gitOp });
       return { success: false };
     },
-    [selectedProject, runGitOperation, showError, handleGitError, toast, onClose],
+    [selectedProject, runGitOperation, handleGitError, toast, onClose],
   );
 
   /**
@@ -100,7 +98,6 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
             {
               successToast: t('git.repoCloned'),
               reloadIde: true,
-              failureFallback: t('git.actionFailed', { action: 'clone' }),
             },
           );
           if (!outcome.success) return;
@@ -135,7 +132,6 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
               {
                 successToast: t('git.repoInitialized'),
                 reloadIde: true,
-                failureFallback: t('git.actionFailed', { action: 'init' }),
               },
             );
             if (!outcome.success) return;
@@ -163,17 +159,24 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
       { kind: 'push', feature: selectedFeature || undefined },
       {
         successToast: t('git.pushSuccess'),
-        failureFallback: t('git.actionFailed', { action: 'push' }),
       },
     );
   }, [selectedFeature, runMenuOp, t]);
 
   const handlePull = useCallback(() => {
     void runMenuOp(
-      { kind: 'pull', feature: selectedFeature || undefined },
+      { kind: 'pull', feature: selectedFeature || undefined, strategy: 'merge' },
       {
         successToast: t('git.pullSuccess'),
-        failureFallback: t('git.actionFailed', { action: 'pull' }),
+      },
+    );
+  }, [selectedFeature, runMenuOp, t]);
+
+  const handlePullRebase = useCallback(() => {
+    void runMenuOp(
+      { kind: 'pull', feature: selectedFeature || undefined, strategy: 'rebase' },
+      {
+        successToast: t('git.pullRebaseSuccess'),
       },
     );
   }, [selectedFeature, runMenuOp, t]);
@@ -183,7 +186,6 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
       { kind: 'fetch', feature: selectedFeature || undefined },
       {
         successToast: t('git.fetchSuccess'),
-        failureFallback: t('git.actionFailed', { action: 'fetch' }),
       },
     );
   }, [selectedFeature, runMenuOp, t]);
@@ -194,6 +196,7 @@ export function useGitMenuActions(options: { onClose: () => void }): MenuActions
     handlePublish,
     handlePush,
     handlePull,
+    handlePullRebase,
     handleFetch,
   };
 }

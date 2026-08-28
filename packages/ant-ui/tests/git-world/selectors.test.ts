@@ -110,6 +110,21 @@ describe('deriveGitMenu', () => {
     }
   });
 
+  // Diverged: a push is a guaranteed non-fast-forward rejection, so the menu
+  // must say so instead of letting the user discover it from GitHub. The CTA
+  // resolves the same state to `sync`.
+  it('blocks push when the remote is ahead too (diverged)', () => {
+    const s = snap({ ahead: 2, behind: 3 });
+    const m = deriveGitMenu({ snapshot: s, githubRepo: 'x' });
+    expect(m.kind).toBe('synced');
+    if (m.kind === 'synced') {
+      expect(m.canPush).toBe(false);
+      expect(m.pushBlockedByBehind).toBe(true);
+      expect(m.canPull).toBe(true);
+    }
+    expect(deriveGitCta(s)).toEqual({ kind: 'sync', ahead: 2, behind: 3 });
+  });
+
   it('blocks pull when dirty working tree', () => {
     const s = snap({ behind: 1, unstaged: ['foo'] });
     const m = deriveGitMenu({ snapshot: s, githubRepo: 'x' });

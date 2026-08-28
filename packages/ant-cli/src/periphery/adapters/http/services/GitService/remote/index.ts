@@ -131,8 +131,13 @@ export class RemoteService {
     return this.pushOp.execute(projectId, userContext, featureName);
   }
 
-  async pullFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
-    return this.pullOp.execute(projectId, userContext, featureName);
+  async pullFromGitHub(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    strategy?: unknown,
+  ): Promise<void> {
+    return this.pullOp.execute(projectId, userContext, featureName, strategy);
   }
 
   async fetchFromGitHub(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
@@ -144,12 +149,17 @@ export class RemoteService {
     );
   }
 
-  async syncWithRemote(projectId: string, userContext: UserContext, featureName?: string): Promise<{
+  async syncWithRemote(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    strategy?: unknown,
+  ): Promise<{
     success: boolean;
     pulledChanges?: boolean;
     pushedChanges?: boolean;
   }> {
-    return this.syncOp.execute(projectId, userContext, featureName);
+    return this.syncOp.execute(projectId, userContext, featureName, strategy);
   }
 
   async commitChanges(

@@ -30,7 +30,7 @@ export function useGitActions(
   const { t } = useTranslation('explorer');
   const op = useGitOperation();
   const { runGitOperation, fetchGitWorldState } = useGitDispatch();
-  const { showError, showConfirm } = useAlertModalContext();
+  const { showConfirm } = useAlertModalContext();
   const { toast } = useToastContext();
   const handleGitError = useGitErrorRouting();
 
@@ -82,11 +82,12 @@ export function useGitActions(
         // (stale paths); leaving it stale would reproduce the same failure
         // on retry. Belt-and-braces with the BE's failure-path broadcast.
         void fetchGitWorldState(selectedProject, { feature: featureArg });
-        if (handleGitError(result.error).handled) return;
-        showError(result.error?.message || t('git.commitFailed'));
+        handleGitError(result.error, {
+          op: { kind: 'commit', feature: featureArg, files, authorMode, ...(message ? { message } : {}) },
+        });
       }
     },
-    [selectedProject, snapshot, featureArg, runGitOperation, fetchGitWorldState, showError, handleGitError, toast, t],
+    [selectedProject, snapshot, featureArg, runGitOperation, fetchGitWorldState, handleGitError, toast, t],
   );
 
   // Pure push — BE's push-variant of the `publish` operation auto-sets
@@ -102,11 +103,10 @@ export function useGitActions(
       if (result.success) {
         toast.success(t('git.pushSuccess'));
       } else {
-        if (handleGitError(result.error).handled) return;
-        showError(result.error?.message || t('git.pushFailed'));
+        handleGitError(result.error, { op: { kind: 'push', feature: featureArg } });
       }
     },
-    [selectedProject, featureArg, runGitOperation, showError, handleGitError, toast, t],
+    [selectedProject, featureArg, runGitOperation, handleGitError, toast, t],
   );
 
   // "Publish repository" — remote not yet created. Creates the GitHub repo
@@ -127,48 +127,52 @@ export function useGitActions(
             if (result.success) {
               toast.success(t('git.repoInitialized'));
             } else {
-              if (handleGitError(result.error).handled) return;
-              showError(result.error?.message || t('git.pushFailed'));
+              handleGitError(result.error, { op: { kind: 'publish', feature: featureArg } });
             }
           });
         },
       });
     },
-    [selectedProject, featureArg, runGitOperation, showConfirm, showError, handleGitError, toast, t],
+    [selectedProject, featureArg, runGitOperation, showConfirm, handleGitError, toast, t],
   );
 
   const handlePull = useMemo(
     () => async () => {
       if (!selectedProject) return;
-      const result = await runGitOperation(selectedProject, {
-        kind: 'pull',
-        feature: featureArg,
-      });
+      const op = { kind: 'pull', feature: featureArg, strategy: 'merge' } as const;
+      const result = await runGitOperation(selectedProject, op);
       if (result.success) {
         toast.success(t('git.pullSuccess'));
       } else {
-        if (handleGitError(result.error).handled) return;
-        showError(result.error?.message || t('git.pullFailed'));
+        handleGitError(result.error, { op });
       }
     },
-    [selectedProject, featureArg, runGitOperation, showError, handleGitError, toast, t],
+    [selectedProject, featureArg, runGitOperation, handleGitError, toast, t],
   );
 
   const handleSync = useMemo(
     () => async () => {
       if (!selectedProject) return;
-      const result = await runGitOperation(selectedProject, {
-        kind: 'sync',
-        feature: featureArg,
-      });
+      const op = { kind: 'sync', feature: featureArg, strategy: 'merge' } as const;
+      const result = await runGitOperation(selectedProject, op);
       if (result.success) {
-        toast.success(t('git.syncSuccess'));
+        const outcome = result.result as
+          | { pulledChanges?: boolean; pushedChanges?: boolean }
+          | undefined;
+        toast.success(
+          outcome?.pulledChanges && outcome?.pushedChanges
+            ? t('git.syncSuccessBoth')
+            : outcome?.pulledChanges
+              ? t('git.syncSuccessPulled')
+              : outcome?.pushedChanges
+                ? t('git.syncSuccessPushed')
+                : t('git.syncSuccessAlreadyUpToDate'),
+        );
       } else {
-        if (handleGitError(result.error).handled) return;
-        showError(result.error?.message || t('git.syncFailed'));
+        handleGitError(result.error, { op });
       }
     },
-    [selectedProject, featureArg, runGitOperation, showError, handleGitError, toast, t],
+    [selectedProject, featureArg, runGitOperation, handleGitError, toast, t],
   );
 
   const handleDiscard = useMemo(
@@ -192,14 +196,13 @@ export function useGitActions(
             if (result.success) {
               toast.success(t('git.discardSuccess'));
             } else {
-              if (handleGitError(result.error).handled) return;
-              showError(result.error?.message || t('git.discardFailed'));
+              handleGitError(result.error, { op: { kind: 'discard', feature: featureArg, files } });
             }
           });
         },
       });
     },
-    [selectedProject, featureArg, runGitOperation, showConfirm, showError, handleGitError, toast, t],
+    [selectedProject, featureArg, runGitOperation, showConfirm, handleGitError, toast, t],
   );
 
   return {

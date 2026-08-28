@@ -2,14 +2,17 @@ import { WorkspaceResolver } from '../../../../../../../core/config/WorkspacePat
 import { UserContext } from '../../../../../../../core/types/user';
 import { GitHubAuthService } from '../../../../../auth/GitHubAuthService';
 import { WorktreeService } from '../../worktree';
-import { GitOperationError, GitConflictError } from '../../errors';
+import { GitOperationError } from '../../errors';
 import { loadGitHubConfig, ensureRemote } from '../helpers/configLoader';
+import { pullWithStrategy } from '../helpers/pullStrategy';
 import { ensureGitRepository } from './helpers/ensureGitRepository';
 
 /**
  * PullOperation
  *
- * Handles pulling changes from GitHub.
+ * Handles pulling changes from GitHub. The reconciliation strategy is always
+ * explicit (see `pullWithStrategy`) — a bare `git pull` is refused outright by
+ * git once the branches diverge.
  */
 export class PullOperation {
   constructor(
@@ -18,7 +21,12 @@ export class PullOperation {
     private readonly githubAuthService?: GitHubAuthService
   ) {}
 
-  async execute(projectId: string, userContext: UserContext, featureName?: string): Promise<void> {
+  async execute(
+    projectId: string,
+    userContext: UserContext,
+    featureName?: string,
+    strategy?: unknown
+  ): Promise<void> {
     if (!this.githubAuthService) {
       throw new GitOperationError('GitHub integration not configured');
     }
@@ -41,12 +49,12 @@ export class PullOperation {
       credentialContext,
       config.githubRepo
     );
-    
+
     await ensureRemote(git, authenticatedUrl);
 
     const status = await git.status();
     const currentBranch = status.current;
-    
+
     if (!currentBranch) {
       throw new GitOperationError('No branch to pull');
     }
@@ -61,17 +69,7 @@ export class PullOperation {
     }
 
     console.log(`[PullOperation] Pulling from origin/${currentBranch} (${freshStatus.behind} behind)...`);
-    try {
-      await git.pull('origin', currentBranch);
-    } catch (error: any) {
-      const msg = error?.message || String(error);
-      if (msg.includes('CONFLICT') || msg.includes('Merge conflict') || msg.includes('merge conflict')) {
-        throw new GitConflictError(
-          `Merge conflict detected while pulling. Please resolve conflicts in the IDE.`
-        );
-      }
-      throw error;
-    }
+    await pullWithStrategy(git, currentBranch, strategy, freshStatus);
     console.log('[PullOperation] Pull completed');
   }
 

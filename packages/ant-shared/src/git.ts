@@ -91,12 +91,20 @@ export type GitSnapshot = Readonly<{
  * Canonical git vocabulary (`initialize`, `publish-branch`) is absent by
  * design — `publish` auto-resolves to init/base-push/branch-push variants.
  */
+/**
+ * How a pull reconciles divergent branches. Git >= 2.34 REFUSES a bare
+ * `git pull` when the branches diverge, so the strategy is always passed
+ * explicitly as a command-line flag — never written to `pull.rebase` in the
+ * repo config, which would silently change the user's own IDE terminal too.
+ */
+export type GitPullStrategy = 'merge' | 'rebase';
+
 export type GitUserOperation =
   | { kind: 'publish'; feature?: string }
   | { kind: 'push'; feature?: string }
-  | { kind: 'pull'; feature?: string }
+  | { kind: 'pull'; feature?: string; strategy?: GitPullStrategy }
   | { kind: 'fetch'; feature?: string }
-  | { kind: 'sync'; feature?: string }
+  | { kind: 'sync'; feature?: string; strategy?: GitPullStrategy }
   | { kind: 'commit'; message?: string; files?: string[]; feature?: string; authorMode?: 'user' | 'ant' }
   | { kind: 'discard'; files?: string[]; feature?: string }
   | { kind: 'clone' };
@@ -149,7 +157,10 @@ export type GitSuggestedAction =
   | 'configurePat'
   | 'resolveConflict'
   | 'reconfigureRepo'
-  | 'runClone';
+  | 'runClone'
+  | 'syncFirst'       // remote is ahead → Sync before pushing
+  | 'commitFirst'     // dirty worktree blocks an incoming merge/rebase
+  | 'retryWithMerge'; // a rebase was aborted → offer the merge strategy
 
 export interface GitOperationError {
   kind: GitOperationErrorKind;
@@ -158,6 +169,13 @@ export interface GitOperationError {
   suggestedAction?: GitSuggestedAction | null;
   /** Server-recommended minimum wait before retry (ms). Used for conflict countdown UX. */
   retryAfterMs?: number;
+  /**
+   * Interpolation values for the FE's localized copy (branch name, commit
+   * counts). `message` stays the raw/technical string — it is never the
+   * primary text of a dialog, only the collapsed detail of the unknown
+   * fallback.
+   */
+  params?: Readonly<Record<string, string | number>>;
 }
 
 /**

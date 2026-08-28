@@ -97,6 +97,10 @@ export async function dispatchGitOp<TResult = unknown>(
           message: parsed.error.message ?? `HTTP ${response.status}`,
           retryable: parsed.error.retryable ?? false,
           suggestedAction: parsed.error.suggestedAction ?? null,
+          // Interpolation values for the dialog copy — dropping them here left
+          // the localized message with empty placeholders.
+          ...(parsed.error.params ? { params: parsed.error.params } : {}),
+          ...(parsed.error.retryAfterMs ? { retryAfterMs: parsed.error.retryAfterMs } : {}),
         }
       : {
           kind: 'unknown',

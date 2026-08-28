@@ -388,8 +388,15 @@ export function createProjectsRoutes(deps: {
     // warm.
     // `commit` qualifies too: the ant-authored path runs an aux LLM call
     // (worst case ~51s) that can exceed proxy idle timeouts.
+    // `push`/`pull` each make two network round trips (push preflights with a
+    // fetch; pull fetches then reconciles), so they belong here as well.
     const isSlowOp =
-      userOp === 'publish' || userOp === 'clone' || userOp === 'sync' || userOp === 'commit';
+      userOp === 'publish' ||
+      userOp === 'clone' ||
+      userOp === 'sync' ||
+      userOp === 'commit' ||
+      userOp === 'push' ||
+      userOp === 'pull';
     let heartbeat: NodeJS.Timeout | null = null;
     if (isSlowOp) {
       res.setHeader('Content-Type', 'application/json');

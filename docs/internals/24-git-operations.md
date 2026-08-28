@@ -18,8 +18,9 @@ appears on the FE type surface.
 | `GitSnapshot` | Unified readonly state (hasGit/hasRemote/ahead/behind/staged/unstaged/untracked, etc.). Mutation prohibited via `Object.freeze` + `Readonly<>` |
 | `GitUserOperation` | Discriminated union of the 8 user ops |
 | `GitOperationState` | 4-state FSM (`idle` / `running` / `failed` / `succeeded`) |
-| `GitOperationError` | `{ kind, message, retryable, suggestedAction }` |
-| `GitSuggestedAction` | `configurePat` / `resolveConflict` / `reconfigureRepo` / `runClone` |
+| `GitOperationError` | `{ kind, message, retryable, suggestedAction, params? }` — `params` carries interpolation values (branch, counts) for the FE's localized copy; `message` is technical text, never a dialog's primary line |
+| `GitSuggestedAction` | `configurePat` / `resolveConflict` / `reconfigureRepo` / `runClone` / `syncFirst` / `commitFirst` / `retryWithMerge` |
+| `GitPullStrategy` | `merge` (default) / `rebase` — carried on `pull` and `sync` as an op field, NOT a ninth user op |
 | `GitPatState` | `{ configured, username? }` |
 | `GitStateEventData` | Discriminated union for the SSE `gitState` event (`workingTreeChange` / `operationComplete` / `reconnectRefill`) |
 | `GitCloneResult` | Clone response result — `{ defaultBranch, feature }` (includes the feature name that clone auto-created) |
@@ -415,9 +416,11 @@ All Git state reads are handled by a **single REST endpoint**.
 |------------|------|------|
 | `GET /projects/:id/git/state?feature=...&fresh=true` | `{ snapshot: GitSnapshot, pat: GitPatState }` | `snapshot` is deep-frozen read-only. `fresh=true` bypasses the `remoteExists` cache (60s TTL) |
 
-The legacy `/git/status` · `/git/changes` · `/push` · `/pull` · `/fetch` · `/initialize` · `/clone` · `/git/sync` · `/git/commit` · `/git/discard` were all removed in the Phase 7 cutover. The only remaining helper is `GET /projects/:id/clone/status` for the Wizard's post-clone polling. All operation dispatch converges on `POST /projects/:id/git/ops/:userOp`.
+The legacy `/git/status` · `/git/changes` · `/push` · `/pull` · `/fetch` · `/initialize` · `/clone` · `/git/sync` · `/git/commit` · `/git/discard` were all removed in the Phase 7 cutover. The only remaining helper is `GET /projects/:id/clone/status` for the Wizard's post-clone polling. All operation dispatch converges on `POST /projects/:id/git/ops/:userOp`. The path carries the op kind and the body carries its discriminant-specific fields — `commit` takes `message`/`files`/`authorMode`, `discard` takes `files`, and `pull`/`sync` take `strategy` (`merge` | `rebase`). `strategy` reaches git through `pullArgs()`, which whitelists the literal `'rebase'` and folds everything else to merge — the body is unvalidated, and an arbitrary string must never land in git's argv.
 
-`ahead` / `behind` are relative to the remote refs the local knows about; when freshness is needed, the user explicitly dispatches a `fetch` or `sync` operation.
+`publish` / `clone` / `sync` / `commit` / `push` / `pull` are answered with a keep-alive heartbeat (`isSlowOp`) because each makes at least one network round trip; the FE mirrors that with a 90s per-op timeout for push/pull/sync.
+
+`ahead` / `behind` are relative to the remote refs the local knows about; when freshness is needed, the user explicitly dispatches a `fetch` or `sync` operation. **There is still no read-time git-sync** — but `push` (and therefore the `publish` branch-push variant) preflights with its own `git fetch` before deciding, because a cloud workspace has no other window onto the remote and would otherwise push against refs it has not looked at since the clone. The preflight is best-effort: if the fetch cannot run, the push proceeds and reports its own error.
 
 Calling without the `feature` parameter serves state **based on the bare anchor**: `hasGit` = anchor exists, `currentBranch` = anchor HEAD = branchBase, `hasCodebase=false`, changes empty. Git commands against the anchor run with an explicit `GIT_DIR` (`GitHelper.bareAnchorEnv`).
 
@@ -502,16 +505,43 @@ The session restore loop is owned solely by `useSessionLoader` (the `pollForFeat
 
 ### Operation state UI
 
-`useGitOperation()` returns the `idle → running → succeeded|failed` FSM. `running` / `failed` are displayed inline by the `OperationProgress` banner component, and modal lifetime is decoupled from operation lifetime (`AlertModal.isProcessing` removed, `ConfirmAndDispatch` pattern).
+`useGitOperation()` returns the `idle → running → succeeded|failed` FSM. `running` drives the in-place spinner on the CTA and the menu trigger; modal lifetime is decoupled from operation lifetime (`AlertModal.isProcessing` removed, `ConfirmAndDispatch` pattern). **`failed` has no inline banner today** — the failure surface is the dialog raised by `useGitErrorRouting` (below).
 
-When `failed.error.suggestedAction` is present, the banner also renders a context button:
+`failed.error.suggestedAction` selects the recovery affordance that dialog offers:
 
-| suggestedAction | Context button |
+| suggestedAction | Recovery affordance |
 |-----------------|---------------|
 | `configurePat` | Open the PAT configuration page |
 | `resolveConflict` | Resolve the conflict in the IDE |
 | `reconfigureRepo` | Edit the project Config |
 | `runClone` | Run Clone again |
+| `syncFirst` | Run Sync (the remote is ahead — pushing would be rejected) |
+| `commitFirst` | None — commit or discard, then retry |
+| `retryWithMerge` | Pull with the merge strategy (the rebase was already rolled back) |
+
+### Error dialogs — `useGitErrorRouting` is TOTAL
+
+Every Git dispatch site funnels its failure into `useGitErrorRouting`; **no caller
+formats an error itself**. That split is how raw `git push` stderr
+(`! [rejected] (fetch first)`) became a user-facing modal: the hook handled the
+PAT class and every other kind fell through to `showError(error.message)`.
+
+| Condition (evaluated in order) | Dialog | Primary action |
+|---|---|---|
+| `configurePat` \| `kind:'auth'` | error | Configure PAT → Account Config |
+| `syncFirst` | confirm | Sync (`{kind:'sync', strategy:'merge'}`) |
+| `commitFirst` | error | acknowledge |
+| `retryWithMerge` | confirm | Pull (merge) |
+| `resolveConflict` | error | acknowledge (resolve in the IDE) |
+| `runClone` | confirm | Clone |
+| `reconfigureRepo` \| `kind:'notFound'`/`'config'` | error | Open project settings |
+| `kind:'conflict'` ∧ retryable | error | acknowledge (lock contention + countdown) |
+| `kind:'network'` (transport failure and the client timeout) | confirm | Retry the same op |
+| anything else | error | acknowledge — summary + the raw output in a collapsed `<details>` |
+
+`fallback: 'none'` is the single opt-out, used only by `ProjectWizardModal`, which
+owns per-step errors plus a skip/retry/abort decision dialog. Guard:
+`packages/ant-ui/tests/git-world/git-error-routing.test.ts`.
 
 ## Related Code
 

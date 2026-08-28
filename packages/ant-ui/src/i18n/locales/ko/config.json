@@ -393,7 +393,9 @@
     "confirmPublish": "새 GitHub 리포지토리를 생성하고 코드를 push하시겠습니까?",
     "currentBranch": "현재 브랜치:",
     "configRequired": "설정이 필요합니다. 위의 ⚙️ 아이콘을 클릭하여 설정을 생성하세요.",
-    "localPathRequired": "로컬 경로가 설정되지 않았습니다. ⚙️ 아이콘을 클릭하여 설정하세요."
+    "localPathRequired": "로컬 경로가 설정되지 않았습니다. ⚙️ 아이콘을 클릭하여 설정하세요.",
+    "pullRebase": "Pull (rebase)",
+    "pullRebaseDesc": "원격 커밋을 받고 내 커밋을 그 위로 재배치 (머지 커밋 없음)"
   },
   "org": {
     "kindTeam": "팀",
