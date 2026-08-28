@@ -21,14 +21,13 @@ import type { FileSystemPort } from '../../../../core/ports/filesystem';
 import { normalizeToCodebasePath } from '../../../../core/utils/pathNormalizer';
 import { buildNfcTolerantRegex, globNormalizationVariants } from '../../../../core/utils/unicodePath';
 import type { ToolExecutionContext, ToolResult } from '../types';
+import {
+  boundSearchResultLines,
+  MAX_COLUMNS_RG_ARGS,
+  SEARCH_PER_FILE_MAX_COUNT,
+} from './searchResultBounds';
 
 const DEFAULT_EXCLUDES = ['node_modules', '.git', 'dist', 'build'];
-/** Cap total result size fed back to the LLM. ripgrep's per-file `--max-count`
- *  still applies, but a pathological pattern on a large tree could otherwise
- *  produce thousands of lines; the truncator upstream would drop most of it
- *  anyway, so trim here with an explicit notice. */
-const MAX_RESULT_LINES = 500;
-const PER_FILE_MAX_COUNT = 200;
 
 /**
  * Hint appended when ripgrep is genuinely missing on disk (postinstall
@@ -233,8 +232,9 @@ export function planSearch(
     '--no-heading',
     '--line-number',
     '--color', 'never',
-    '--max-count', String(PER_FILE_MAX_COUNT),
+    '--max-count', String(SEARCH_PER_FILE_MAX_COUNT),
     '--max-filesize', '1M',
+    ...MAX_COLUMNS_RG_ARGS,
     ...(walkDepsTree ? ['--no-ignore', '--hidden', '--follow'] : []),
     ...appliedExcludes.flatMap(ex => ['--glob', `!${ex}`]),
     ...(effectiveFilePattern ? ['--glob', effectiveFilePattern] : []),
@@ -407,11 +407,9 @@ export async function runSearchTool(
       }
     }
 
-    let truncatedNotice = '';
-    if (lines.length > MAX_RESULT_LINES) {
-      truncatedNotice = `\n\n[Search truncated: showing first ${MAX_RESULT_LINES} of ${lines.length} matches. Narrow the pattern or use \`file_pattern\` to reduce scope.]`;
-      lines = lines.slice(0, MAX_RESULT_LINES);
-    }
+    const boundedResult = boundSearchResultLines(lines);
+    lines = boundedResult.lines;
+    const truncatedNotice = boundedResult.notice;
 
     const matchedFiles = Array.from(new Set(
       lines.map(l => {

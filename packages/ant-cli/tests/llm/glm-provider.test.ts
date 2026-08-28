@@ -314,3 +314,59 @@ describe('OpenAILLMClient — abort-signal forwarding (stream)', () => {
     expect(create).not.toHaveBeenCalled();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// marble-curling-clasp RCA — GLM's text tool-call markup leaked into the
+// structured channel: the ENTIRE payload arrived inside function.name
+// (`plan</arg_key><arg_value>{…17KB…}</arg_value>`) with empty arguments,
+// and the ghost call silently dropped a sealed plan. salvageMarkupToolCall
+// re-splits such names at the ingestion boundary.
+// ─────────────────────────────────────────────────────────────────────
+import { salvageMarkupToolCall } from '../../src/periphery/adapters/llm/toolCallMarkupSalvage';
+
+describe('salvageMarkupToolCall — GLM markup leak (marble-curling-clasp RCA)', () => {
+  it('passes clean names through untouched', () => {
+    const r = salvageMarkupToolCall('read_file');
+    expect(r).toEqual({ name: 'read_file', input: null, malformed: false });
+  });
+
+  it('recovers the marble shape: name + dangling </arg_key> + one JSON-object value', () => {
+    const payload = { task: { id: 'x' }, candidateSolutions: [1, 2, 3] };
+    const raw = `plan</arg_key><arg_value>${JSON.stringify(payload)}</arg_value>`;
+    const r = salvageMarkupToolCall(raw);
+    expect(r.malformed).toBe(true);
+    expect(r.name).toBe('plan');
+    expect(r.input).toEqual(payload);
+  });
+
+  it('recovers well-formed key/value pairs leaked into the name', () => {
+    const raw = 'read_file<arg_key>path</arg_key><arg_value>codebase/a.ts</arg_value>' +
+      '<arg_key>startLine</arg_key><arg_value>10</arg_value>';
+    const r = salvageMarkupToolCall(raw);
+    expect(r.malformed).toBe(true);
+    expect(r.name).toBe('read_file');
+    expect(r.input).toEqual({ path: 'codebase/a.ts', startLine: 10 });
+  });
+
+  it('recovers the name but not args for a non-object lone value (no guessing)', () => {
+    const r = salvageMarkupToolCall('read_file</arg_key><arg_value>codebase/a.ts</arg_value>');
+    expect(r.malformed).toBe(true);
+    expect(r.name).toBe('read_file');
+    expect(r.input).toBeNull();
+  });
+
+  it('keeps the raw name when nothing usable precedes the markup (loud unknown-tool failure)', () => {
+    const raw = '<arg_key>plan</arg_key><arg_value>{}</arg_value>';
+    const r = salvageMarkupToolCall(raw);
+    expect(r.malformed).toBe(true);
+    expect(r.name).toBe(raw);
+    expect(r.input).toBeNull();
+  });
+
+  it('strips a trailing tool_call closer from the salvaged segments', () => {
+    const raw = 'plan</arg_key><arg_value>{"a":1}</arg_value></tool_call>';
+    const r = salvageMarkupToolCall(raw);
+    expect(r.name).toBe('plan');
+    expect(r.input).toEqual({ a: 1 });
+  });
+});

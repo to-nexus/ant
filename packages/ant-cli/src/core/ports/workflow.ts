@@ -19,11 +19,6 @@ export function extractLLMInfo(client: LLMClient): LLMInfo {
 
 export interface WorkflowStateUpdatePort {
   /**
-   * Job 시작 알림
-   */
-  startJob(jobId: string, llmInfo?: LLMInfo): void;
-  
-  /**
    * 노드 진입 알림
    * @param workerId - Worker identifier (0 for sequential mode, N for parallel workers)
    * ✅ Returns Promise to ensure SSE is sent before continuing

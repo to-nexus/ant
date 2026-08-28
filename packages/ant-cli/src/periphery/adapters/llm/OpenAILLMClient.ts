@@ -24,6 +24,7 @@ import { TaskTokenUsage } from '../../../core/types/task';
 import { withRetryStream, streamAttemptWithIdleAbort } from '../../../core/utils/retry';
 import { getLLMDispatcher } from './llmDispatcher';
 import { sanitizeMessages, applySystemOption } from '../../../core/utils/sanitizeMessages';
+import { salvageMarkupToolCall } from './toolCallMarkupSalvage';
 
 /**
  * OpenAI-compatible providers that accept the `thinking:{type}` request param, mapped
@@ -627,9 +628,23 @@ export class OpenAILLMClient implements LLMClient {
             console.error(`[OpenAILLMClient] Raw arguments:`, buffer.arguments);
             parsedInput = {};
           }
+          // GLM-family models can leak their text tool-call markup into
+          // `function.name` (whole payload in the name, empty arguments) —
+          // re-split it here so the call is not a silent ghost.
+          const salvaged = salvageMarkupToolCall(buffer.name);
+          if (salvaged.malformed) {
+            console.warn(
+              `[OpenAILLMClient] Malformed tool-call markup in function.name ` +
+              `(${buffer.name.length} chars) — salvaged name="${salvaged.name.slice(0, 60)}", ` +
+              `args ${salvaged.input ? 'recovered' : 'NOT recovered'}`,
+            );
+          }
+          // Provider-delivered arguments stay authoritative; salvaged args only
+          // fill the malformed case where arguments arrived empty.
+          const input = Object.keys(parsedInput).length > 0 ? parsedInput : (salvaged.input ?? parsedInput);
           yield {
             type: 'tool_use',
-            toolUse: { id: buffer.id, name: buffer.name, input: parsedInput, type: 'function' as const },
+            toolUse: { id: buffer.id, name: salvaged.name, input, type: 'function' as const },
             index,
             metadata: metadata(),
           };

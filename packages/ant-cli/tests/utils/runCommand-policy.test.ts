@@ -5,9 +5,12 @@ import {
   COMMAND_OUTPUT_HEAD_CHARS,
   COMMAND_OUTPUT_TAIL_CHARS,
   CRITICAL_ERROR_PATTERNS,
+  TEST_GATE_FAILURE_PATTERNS,
   detectWritePathViolations,
   extractWriteTargets,
+  grepNoMatchHint,
   isLikelyBuildCommand,
+  standardSupervisorSignals,
 } from '../../src/agents/common/tool/handlers/runCommand';
 
 describe('extractWriteTargets', () => {
@@ -223,6 +226,82 @@ describe('CRITICAL_ERROR_PATTERNS — exit-0 false-success sniffer', () => {
   for (const output of clean) {
     it(`stays clean: ${JSON.stringify(output.slice(0, 60))}`, () => {
       expect(flags(output)).toEqual([]);
+    });
+  }
+});
+
+// vast-fusing-lemon: `vitest run … | tail -80` exited 0 on dash with 3 failed
+// tests — the generic sniffer has no test-runner grammar, so the failure read
+// as a clean ✅ gate pass. These rows apply only when `verifies === 'test'`.
+describe('TEST_GATE_FAILURE_PATTERNS — tail-masked test failures', () => {
+  const flags = (output: string): string[] =>
+    TEST_GATE_FAILURE_PATTERNS.filter(({ pattern }) => pattern.test(output)).map(({ label }) => label);
+
+  const flagged: Array<[string, string]> = [
+    // vitest summary (colors stripped): only printed when failures exist
+    ['Tests  3 failed | 8743 passed (8746)', 'test failures in runner summary'],
+    // jest summary
+    ['Tests:       2 failed, 14 passed, 16 total', 'test failures in runner summary'],
+    // per-file FAIL marker
+    ['FAIL tests/store/stoppedJobRestore.test.ts', 'failing test file'],
+  ];
+  for (const [output, label] of flagged) {
+    it(`flags: ${JSON.stringify(output.slice(0, 60))}`, () => {
+      expect(flags(output)).toContain(label);
+    });
+  }
+
+  const clean: string[] = [
+    // fully green runs never print a failed count
+    'Test Files  123 passed (123)\nTests  1393 passed (1393)',
+    // "0 failed" must not flag (defensive — some runners print it)
+    'Tests: 0 failed, 5 passed, 5 total',
+    // prose mentioning "failed" without a count
+    'the previous attempt failed because of a typo',
+  ];
+  for (const output of clean) {
+    it(`stays clean: ${JSON.stringify(output.slice(0, 60))}`, () => {
+      expect(flags(output)).toEqual([]);
+    });
+  }
+});
+
+// vast-fusing-lemon: expected-negative grep gates (`grep pattern file` → want
+// 0 matches) read as opaque ❌ failures with no output because `set -e` kills
+// the trailing `; echo $?` diagnostic. The hint names the semantics.
+describe('grepNoMatchHint — expected-negative grep gates', () => {
+  it('hints on grep exit 1', () => {
+    const hint = grepNoMatchHint("grep -n 'startJob' orchestrator.ts; echo \"EXIT: $?\"", 1);
+    expect(hint).toMatch(/ZERO MATCHES/);
+    expect(hint).toMatch(/set -e/);
+  });
+
+  it('hints on rg exit 1', () => {
+    expect(grepNoMatchHint('rg -n pattern file.ts', 1)).toMatch(/ZERO MATCHES/);
+  });
+
+  it('stays silent on grep exit 2 (real error) and on non-grep commands', () => {
+    expect(grepNoMatchHint('grep -n pattern file.ts', 2)).toBe('');
+    expect(grepNoMatchHint('pnpm test', 1)).toBe('');
+  });
+});
+
+// vast-fusing-lemon: `pnpm test:cli` was reaped mid-run because test output
+// (Redis connection logs) matched the server-start signature. Test commands
+// drop serverStartedPattern; everything else keeps the full default set.
+describe('standardSupervisorSignals — serverStartedPattern excluded for test gates', () => {
+  for (const cmd of ['pnpm test:cli', 'pnpm test', 'vitest run tests/', 'npm test', 'jest']) {
+    it(`test command drops serverStartedPattern: ${cmd}`, () => {
+      const signals = standardSupervisorSignals(cmd);
+      expect(signals).toBeDefined();
+      expect(signals).not.toContain('serverStartedPattern');
+      expect(signals).toContain('hardTimeout');
+    });
+  }
+
+  for (const cmd of ['pnpm dev', 'next dev', 'node server.js', 'pnpm build']) {
+    it(`non-test command keeps the default set: ${cmd}`, () => {
+      expect(standardSupervisorSignals(cmd)).toBeUndefined();
     });
   }
 });

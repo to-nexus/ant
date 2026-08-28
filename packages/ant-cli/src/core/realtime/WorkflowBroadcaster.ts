@@ -129,31 +129,6 @@ export class WorkflowBroadcaster implements WorkflowStateUpdatePort {
   }
 
   /**
-   * Start job tracking
-   */
-  startJob(jobId: string, llmInfo?: LLMInfo): void {
-    this.activeWorkers.clear();
-    this.state = {
-      jobId: this.jobId,
-      activeNodes: [],
-      llmInfo: llmInfo || null,
-      startedAt: new Date().toISOString(),
-      isCompleted: false,
-      nodeHistory: [],
-      activeActors: [],
-    };
-    
-    // Fire-and-forget broadcast — tracked so close() can flush.
-    this.inflight.track(
-      this.broadcastState(false).catch(err => {
-        console.warn(`[WorkflowBroadcaster] Failed to broadcast startJob:`, err.message);
-      })
-    );
-    
-    console.log(`[WorkflowBroadcaster] Job started: ${jobId}`);
-  }
-
-  /**
    * Track node entry
    * @param workerId - Worker identifier (0 for sequential, N for parallel workers)
    * Returns Promise to ensure SSE ordering

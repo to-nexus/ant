@@ -15,10 +15,13 @@ import type { ToolExecutionContext, ToolResult } from '../types';
 import { getRefDeps, isRegistered, notRegisteredError } from '../reference/handlerSupport';
 import { resolveReferenceCodebase, ReferenceTargetError } from '../reference/resolve';
 import { refGitGrep } from '../reference/refGit';
+import {
+  boundSearchResultLines,
+  MAX_COLUMNS_RG_ARGS,
+  SEARCH_PER_FILE_MAX_COUNT,
+} from './searchResultBounds';
 
 const DEFAULT_EXCLUDES = ['node_modules', '.git', 'dist', 'build'];
-const MAX_RESULT_LINES = 500;
-const PER_FILE_MAX_COUNT = 200;
 
 async function runRipgrep(args: string[], cwd: string): Promise<{ stdout: string; code: number; stderr: string }> {
   return new Promise((resolve) => {
@@ -74,8 +77,9 @@ export async function handleSearchReferenceCode(
         '--no-heading',
         '--line-number',
         '--color', 'never',
-        '--max-count', String(PER_FILE_MAX_COUNT),
+        '--max-count', String(SEARCH_PER_FILE_MAX_COUNT),
         '--max-filesize', '1M',
+        ...MAX_COLUMNS_RG_ARGS,
         ...DEFAULT_EXCLUDES.flatMap((ex) => ['--glob', `!${ex}`]),
         ...(file_pattern ? ['--glob', file_pattern] : []),
         '--', pattern, '.',
@@ -96,11 +100,11 @@ export async function handleSearchReferenceCode(
       return { content: `No matches for "${pattern}" in reference project "${project}".` };
     }
 
-    let truncated = '';
-    if (lines.length > MAX_RESULT_LINES) {
-      truncated = `\n\n[Search truncated: first ${MAX_RESULT_LINES} of ${lines.length} matches. Narrow the pattern or use file_pattern.]`;
-      lines = lines.slice(0, MAX_RESULT_LINES);
-    }
+    // git-grep output bypasses ripgrep's --max-columns — the process-side
+    // bound below is what keeps a single bundled/JSON line from flooding.
+    const boundedResult = boundSearchResultLines(lines);
+    lines = boundedResult.lines;
+    const truncated = boundedResult.notice;
     const matchedFiles = Array.from(
       new Set(lines.map((l) => (l.match(/^([^:]+):\d+:/) || [])[1]).filter(Boolean)),
     );

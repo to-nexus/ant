@@ -42,6 +42,17 @@ export async function finalizePlanOutcome(
       `selected="${summary.decisionSelected ?? 'n/a'}", ` +
       `outlineSections=${summary.outlineSectionCount}`,
     );
+  } else {
+    // An unparsed seal means execute runs plan-less — name the likely cause so
+    // the job trace alone answers "where did the plan go" (marble-curling-clasp:
+    // GLM markup leaked into the tool name and the payload never reached here).
+    console.warn(
+      `⚠️  [DesignPlan] Sealed plan is NOT parseable JSON (${planText.length} chars) — ` +
+      `execute will run without a decision contract. Head: ${JSON.stringify(planText.slice(0, 120))}` +
+      (/<\/?(?:tool_call|arg_key|arg_value)>/.test(planText)
+        ? ' [tool-call markup detected in plan text — provider markup leak]'
+        : ''),
+    );
   }
 
   await savePlanForDebug(state, task, planText);

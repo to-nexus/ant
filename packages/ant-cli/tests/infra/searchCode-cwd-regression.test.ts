@@ -37,8 +37,15 @@ import {
 } from '../../src/agents/common/tool/handlers/searchCode';
 import { FileSystemAdapter } from '../../src/periphery/adapters/filesystem/FileSystemAdapter';
 import type { ToolExecutionContext } from '../../src/agents/common/tool/types';
+import {
+  boundSearchResultLines,
+  SEARCH_MAX_LINE_CHARS,
+  SEARCH_MAX_RESULT_CHARS,
+  SEARCH_MAX_RESULT_LINES,
+} from '../../src/agents/common/tool/handlers/searchResultBounds';
 
 const NEEDLE = '__SEARCH_CODE_REGRESSION_NEEDLE__';
+const LONG_LINE_NEEDLE = '__SEARCH_CODE_LONG_LINE_NEEDLE__';
 const DEPS_NEEDLE = '__SEARCH_CODE_DEPS_NEEDLE__';
 const PNPM_NEEDLE = '__PNPM_LIB_NEEDLE__';
 
@@ -93,6 +100,15 @@ beforeAll(() => {
   fs.symlinkSync(
     path.join('.pnpm', 'pnpm-lib@1.0.0', 'node_modules', 'pnpm-lib'),
     path.join(pnpmSymlinkParent, 'pnpm-lib'),
+  );
+
+  // Result-size bound fixture — a session-log-shaped file whose match is ONE
+  // very long line (the marble-curling-clasp amplifier: 500-line cap, no byte
+  // cap → a single 140k-char JSON line rode through whole).
+  fs.mkdirSync(path.join(workspacePath, 'sessions'), { recursive: true });
+  fs.writeFileSync(
+    path.join(workspacePath, 'sessions', 'huge.json'),
+    `{"log":"${LONG_LINE_NEEDLE}","pad":"${'x'.repeat(50_000)}"}\n`,
   );
 
   // Realistic .gitignore that would mask node_modules from ripgrep's
@@ -368,6 +384,74 @@ describe('handleSearchCode — file_pattern unification (next-intl RCA)', () => 
     expect(Boolean(result.error)).toBe(false);
     // Diagnostic is still delivered to the LLM via content (no signal lost).
     expect(result.content).toMatch(/No matches found/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// marble-curling-clasp RCA — result-size bounds. The line-count cap alone let
+// a single ultra-long line (session/plan JSON, bundles) flood the tool result;
+// four such searches in one round blew the message token budget.
+// ─────────────────────────────────────────────────────────────────────
+
+describe('handleSearchCode — result-size bounds (marble-curling-clasp RCA)', () => {
+  it('truncates an ultra-long matching line via rg --max-columns', async () => {
+    const result = await handleSearchCode(makeCtx(), {
+      pattern: LONG_LINE_NEEDLE,
+      file_pattern: 'sessions/**/*.json',
+    });
+    expect(result.error).toBeUndefined();
+    // The 50k-char line must not ride through whole.
+    expect(result.content.length).toBeLessThan(SEARCH_MAX_LINE_CHARS + 2_000);
+    expect(result.content).toContain('sessions/huge.json');
+  });
+
+  it('rgArgs carry the per-line column cap', () => {
+    const plan = planSearch({ pattern: 'x' }, new FileSystemAdapter(workspacePath));
+    expect(plan.rgArgs).toContain('--max-columns');
+    expect(plan.rgArgs).toContain(String(SEARCH_MAX_LINE_CHARS));
+    expect(plan.rgArgs).toContain('--max-columns-preview');
+  });
+});
+
+describe('boundSearchResultLines — pure bounding contract', () => {
+  it('passes small results through untouched (no notice)', () => {
+    const { lines, notice } = boundSearchResultLines(['a.ts:1:hit', 'b.ts:2:hit']);
+    expect(lines).toEqual(['a.ts:1:hit', 'b.ts:2:hit']);
+    expect(notice).toBe('');
+  });
+
+  it('caps a single ultra-long line (git-grep path has no --max-columns)', () => {
+    const long = `a.ts:1:${'y'.repeat(SEARCH_MAX_RESULT_CHARS * 2)}`;
+    const { lines, notice } = boundSearchResultLines([long, 'b.ts:2:hit']);
+    expect(lines[0].length).toBeLessThanOrEqual(SEARCH_MAX_LINE_CHARS + 30);
+    expect(lines[0]).toContain('[... line truncated]');
+    // Nothing beyond the caps was dropped, so the second line survives.
+    expect(lines[1]).toBe('b.ts:2:hit');
+    expect(notice).toBe('');
+  });
+
+  it('caps line count at SEARCH_MAX_RESULT_LINES with a notice', () => {
+    const many = Array.from({ length: SEARCH_MAX_RESULT_LINES + 50 }, (_, i) => `f.ts:${i}:hit`);
+    const { lines, notice } = boundSearchResultLines(many);
+    expect(lines.length).toBe(SEARCH_MAX_RESULT_LINES);
+    expect(notice).toMatch(/Search truncated/);
+    expect(notice).toContain('file_pattern');
+  });
+
+  it('caps total chars even when every line is under the per-line cap', () => {
+    const line = `f.ts:1:${'z'.repeat(SEARCH_MAX_LINE_CHARS - 100)}`;
+    const many = Array.from({ length: 100 }, () => line);
+    const { lines, notice } = boundSearchResultLines(many);
+    const total = lines.join('\n').length;
+    expect(total).toBeLessThanOrEqual(SEARCH_MAX_RESULT_CHARS);
+    expect(lines.length).toBeLessThan(100);
+    expect(notice).toMatch(/Search truncated/);
+  });
+
+  it('never returns an empty result', () => {
+    const single = [`f.ts:1:${'w'.repeat(SEARCH_MAX_RESULT_CHARS * 3)}`];
+    const { lines } = boundSearchResultLines(single);
+    expect(lines.length).toBe(1);
   });
 });
 

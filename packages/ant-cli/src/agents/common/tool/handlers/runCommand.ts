@@ -67,6 +67,7 @@ import {
 import { probeHttp } from '../../../../infrastructure/ide/readiness';
 import {
   ProgressSupervisor,
+  type ProgressSignalKind,
   type SupervisorThresholds,
   readPositiveInt,
   DEFAULT_REPEAT_GRACE_MS,
@@ -74,6 +75,19 @@ import {
   DEFAULT_NO_OUTPUT_MS,
   DEFAULT_SERVER_DETECTION_MS,
 } from './progressSupervisor';
+
+/**
+ * Watchdog signals for the standard (non-keep-running) command path.
+ * Test runners legitimately emit server-like lines (Redis / HTTP fixtures
+ * booting inside tests); the serverStartedPattern reap exists for real dev
+ * servers and false-kills the test gate otherwise (vast-fusing-lemon).
+ * `undefined` keeps the supervisor's full default signal set.
+ */
+export function standardSupervisorSignals(command: string): ReadonlyArray<ProgressSignalKind> | undefined {
+  return isTestCommand(command)
+    ? (['repeatedSignature', 'noOutput', 'hardTimeout', 'memoryBudget'] as const)
+    : undefined;
+}
 
 const INTERACTIVE_COMMAND_PATTERNS = [
   /\bnpm\s+init\b(?!\s+(-y|--yes))/i,
@@ -553,6 +567,20 @@ export function boundCommandOutput(raw: string): string {
   );
 }
 
+/**
+ * `grep`/`rg` exit 1 means ZERO MATCHES, not a malfunction — and the shell
+ * runs with `set -e`, so trailing segments (`; echo $?`) never execute after
+ * the miss. Expected-negative verification gates (`grep pattern file` → want
+ * 0 matches) otherwise read as opaque failures with no output
+ * (vast-fusing-lemon verification friction).
+ */
+export function grepNoMatchHint(command: string, exitCode: number | null): string {
+  if (exitCode !== 1 || !/\b(grep|rg)\b/.test(command)) return '';
+  return '\n\nHint: `grep`/`rg` exit code 1 means ZERO MATCHES (exit 2+ is a real error). ' +
+    'The shell runs with `set -e`, so any trailing segments after the grep on the same line did not run. ' +
+    'If zero matches is the expected outcome of this gate, treat this result as a PASS.';
+}
+
 export const CRITICAL_ERROR_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
   { pattern: /command not found/i, label: 'command not found' },
   // dash: `sh: 1: ./node_modules/.bin/tsc: not found`
@@ -567,6 +595,17 @@ export const CRITICAL_ERROR_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: st
   { pattern: /FATAL|fatal error/i, label: 'fatal error' },
   { pattern: /segmentation fault/i, label: 'segmentation fault' },
   { pattern: /out of memory/i, label: 'out of memory' },
+];
+
+// Test-gate-only sniffer rows: a `verifies: 'test'` command piped through
+// `| tail` still exits 0 on POSIX sh when the runner failed, and the generic
+// patterns above don't know test-runner grammar. vitest/jest print a
+// `N failed` summary only when N ≥ 1 (a fully green run says `M passed`), so
+// matching a non-zero count is safe. Scoped to test gates so prose that
+// merely mentions "failed" in arbitrary command output can't false-flag.
+export const TEST_GATE_FAILURE_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  { pattern: /\b[1-9]\d* failed\b/i, label: 'test failures in runner summary' },
+  { pattern: /^\s*FAIL\s+\S+\.(test|spec)\.[cm]?[jt]sx?\b/m, label: 'failing test file' },
 ];
 
 const HARD_TIMEOUT_DEFAULT_MS = 10 * 60_000;
@@ -952,6 +991,7 @@ async function executeCommandLogic(
       command,
       thresholds: resolveThresholds(command, { oneshot: oneshotEffective, cgroupMemBytes }),
       sampleMemoryBytes: () => readCgroupMemoryUsage(),
+      enabledSignals: standardSupervisorSignals(command),
     });
 
     const commandPromise = commandPort.execute(command, {
@@ -1056,6 +1096,7 @@ async function executeCommandLogic(
       const content = (output.trim().length > 0
         ? `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT:\n${output}\n\n⚠️  You MUST read the error above and fix the specific issue mentioned.\nDO NOT guess - the error tells you exactly what's wrong.`
         : `❌ COMMAND FAILED: ${command}\nExit Code: ${exitCode}\n\n📋 ERROR OUTPUT: (none captured)\n\n⚠️  The command failed but produced NO output to read. Likely causes:\n- Output was redirected to a file (e.g. \`> out.txt\`, \`2> err.log\`, \`1>/dev/null\`) — re-run WITHOUT redirecting so the output is returned to you, or read the file you wrote.\n- The command genuinely produced no output before failing.\nDo NOT keep retrying the same command with different redirection — change the approach so the output reaches you.`)
+        + grepNoMatchHint(command, exitCode)
         + nfdCommandHint(command, output, false);
       return {
         content,
@@ -1065,8 +1106,12 @@ async function executeCommandLogic(
     }
 
     // False-positive success detection — patterns at module scope
-    // (CRITICAL_ERROR_PATTERNS) so the policy test pins them table-style.
-    const detectedIssues = CRITICAL_ERROR_PATTERNS
+    // (CRITICAL_ERROR_PATTERNS / TEST_GATE_FAILURE_PATTERNS) so the policy
+    // test pins them table-style.
+    const sniffPatterns = verifies === 'test'
+      ? [...CRITICAL_ERROR_PATTERNS, ...TEST_GATE_FAILURE_PATTERNS]
+      : CRITICAL_ERROR_PATTERNS;
+    const detectedIssues = sniffPatterns
       .filter(({ pattern }) => pattern.test(stderr) || pattern.test(stdout))
       .map(({ label }) => label);
 
