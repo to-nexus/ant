@@ -87,8 +87,6 @@
   },
   "editor": {
     "placeholder": "파일 내용...",
-    "raw": "편집",
-    "preview": "미리보기",
     "svgPreviewFailed": "SVG 프리뷰를 불러오지 못했습니다.",
     "binaryFileHint": "바이너리 파일 — 텍스트로 보거나 편집할 수 없습니다.",
     "binaryDownload": "다운로드",

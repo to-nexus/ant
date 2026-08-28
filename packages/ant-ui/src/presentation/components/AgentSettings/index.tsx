@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '@/domain/store';
-import { ChangedBar, DangerZone, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
+import { ChangedBar, DangerZone, PROSE_MEASURE, StatusPill } from '@/presentation/components/ConfigEditor/aurora';
 import {
   createAccountAgent,
   createAccountAgentJob,
@@ -921,7 +921,7 @@ export function AgentSettings({ onClose: _onClose }: { onClose?: () => void }) {
           style={{ color: 'var(--text-4)' }}
         >
           <span className="text-sm">{t('detail.selectAgent', 'Select an agent, job, or intent on the left')}</span>
-          <span className="text-xs" style={{ maxWidth: 380, lineHeight: 1.6 }}>
+          <span className="text-xs" style={{ maxWidth: PROSE_MEASURE, lineHeight: 1.6 }}>
             {t('detail.emptyHint', 'Built-in agents are read-only — create an agent of your own with the + button on the left.')}
           </span>
         </div>

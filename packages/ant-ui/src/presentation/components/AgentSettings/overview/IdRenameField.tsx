@@ -12,11 +12,11 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, CONTROL_MEASURE, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { isValidCustomId } from '@ant/shared';
 
 /** Width of the id input + Apply pair — a control measure, never a prose one. */
-const CONTROL_WIDTH = 420;
+const CONTROL_WIDTH = CONTROL_MEASURE;
 
 export function IdRenameField({
   label,

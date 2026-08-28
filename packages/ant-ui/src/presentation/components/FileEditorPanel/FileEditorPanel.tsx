@@ -18,10 +18,10 @@ import {
   type ViewMode,
 } from '@/domain/file/viewMode';
 import { withBaseHref } from '@/domain/file/htmlPreviewDocument';
-import { Button } from '@/presentation/components/aurora';
+import { Button, ViewModeToggle } from '@/presentation/components/aurora';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Eye, FileText, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { useAlertModalContext } from '@/presentation/providers/AlertModalProvider';
 import { useUIActionPolicy } from '@/application/hooks/ui/useUIActionPolicy';
 import { useNotifyArtifactMutationBlocked } from '@/application/hooks/ui/useNotifyArtifactMutationBlocked';
@@ -404,51 +404,19 @@ export function FileEditorPanel({ onClose: _onClose }: FileEditorPanelProps) {
     setFileViewMode(selectedFile, mode);
   };
 
-  // ── View toggle pill (Aurora) ───────────────────────
+  // ── View toggle (the shared Aurora control) ─────────
+  // Order, labels and default all live in `ViewModeToggle` — this panel used
+  // to hand-roll the pair raw-first with a ko label of "편집", which read as a
+  // different control from the identical one in agent settings.
   const renderViewToggle = () => {
     if (!showViewModeToggle) return null;
-    const pillBtn = (active: boolean): React.CSSProperties => ({
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 4,
-      height: 20,
-      padding: '0 8px',
-      fontSize: 11,
-      fontWeight: 600,
-      borderRadius: 'var(--r-sm)',
-      background: active ? 'var(--bg-canvas)' : 'transparent',
-      color: active ? 'var(--text-1)' : 'var(--text-3)',
-      border: 'none',
-      cursor: 'pointer',
-      boxShadow: active ? 'var(--shadow-xs)' : 'none',
-    });
     return (
-      <div
-        className="flex items-center gap-0.5 h-6"
-        style={{
-          background: 'var(--bg-surface-2)',
-          border: '1px solid var(--border-1)',
-          borderRadius: 'var(--r-md)',
-          padding: 2,
-        }}
-      >
-        <button
-          onClick={() => handleViewModeChange('raw')}
-          style={pillBtn(viewMode === 'raw')}
-          title={t('editor.raw')}
-        >
-          <FileText className="w-3 h-3" />
-          {t('editor.raw')}
-        </button>
-        <button
-          onClick={() => handleViewModeChange('preview')}
-          style={pillBtn(viewMode === 'preview')}
-          title={t('editor.preview')}
-        >
-          <Eye className="w-3 h-3" />
-          {t('editor.preview')}
-        </button>
-      </div>
+      <ViewModeToggle
+        size="sm"
+        left="preview"
+        value={viewMode === 'raw' ? 'raw' : 'left'}
+        onChange={(next) => handleViewModeChange(next === 'raw' ? 'raw' : 'preview')}
+      />
     );
   };
 

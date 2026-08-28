@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react';
 import * as LucideIcons from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { PROSE_MEASURE } from './measures';
+import { PROSE_MEASURE, PROSE_WRAP } from './measures';
 
 export type SectionAccent =
   | 'aurora'
@@ -154,6 +154,7 @@ export function SectionCard({
                 lineHeight: 1.5,
                 color: 'var(--text-3)',
                 maxWidth: PROSE_MEASURE,
+                ...PROSE_WRAP,
               }}
             >
               {description}

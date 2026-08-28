@@ -27,7 +27,7 @@ export function IntentPromptCard({
   const { t } = useTranslation('agents');
   const { docs } = ctx;
   const doc = docs.promptDocs[intentId] ?? null;
-  const [mode, setMode] = useProseMode(intentId, ctx.readonly);
+  const [mode, setMode] = useProseMode(intentId);
 
   if (!docs.loaded) return null;
 

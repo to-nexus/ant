@@ -9,8 +9,8 @@
  *
  * Every row is the SAME three-column frame regardless of kind — [kind]
  * [value editor] [row actions] — so the trailing controls line up down the
- * list: the raw/builder toggle and the delete button are equal-footprint icon
- * buttons in the trailing cluster, which keeps a fixed width even on rows
+ * list: the structured/raw toggle and the delete button are equal-footprint
+ * icon buttons in the trailing cluster, which keeps a fixed width even on rows
  * (action) that have no toggle.
  *
  * Validation here is the shared syntax rule set (`validateStopHookEntry`,
@@ -67,6 +67,7 @@ function HookRow({
   onRemove: () => void;
 }) {
   const { t } = useTranslation('agents');
+  const { t: tc } = useTranslation('common');
   const [rawMode, setRawMode] = useState(false);
 
   const kind = kindOf(hook);
@@ -118,13 +119,17 @@ function HookRow({
           gap: 2,
         }}
       >
+        {/* Deliberate exception to the shared ViewModeToggle: this is a
+            FIELD-level affordance inside a row, not a section header, so it
+            stays a single icon button. Only the vocabulary converges — it
+            names the two views with the same words every other surface uses. */}
         {kind === 'artifact' && (
           <IconButton
             size="sm"
             icon={<Braces size={13} />}
             active={rawMode}
-            title={rawMode ? t('intent.globModeBuilder', 'Builder') : t('intent.globModeRaw', 'Raw')}
-            aria-label={rawMode ? t('intent.globModeBuilder', 'Builder') : t('intent.globModeRaw', 'Raw')}
+            title={rawMode ? tc('viewMode.structured', 'Structured') : tc('viewMode.raw', 'Raw')}
+            aria-label={rawMode ? tc('viewMode.structured', 'Structured') : tc('viewMode.raw', 'Raw')}
             onClick={() => setRawMode((m) => !m)}
           />
         )}

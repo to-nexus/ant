@@ -3,6 +3,11 @@
     "expand": "더보기",
     "collapse": "접기"
   },
+  "viewMode": {
+    "structured": "구조화",
+    "preview": "미리보기",
+    "raw": "원문"
+  },
   "button": {
     "ok": "확인",
     "cancel": "취소",

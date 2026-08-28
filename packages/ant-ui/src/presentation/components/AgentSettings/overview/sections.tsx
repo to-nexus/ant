@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Plus, SquareArrowOutUpRight, Target } from 'lucide-react';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, FieldHint, FieldLabel, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, CONTROL_MEASURE, FieldHint, FieldLabel, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 import { CUSTOM_ID_PATTERN } from '@ant/shared';
 import { DefinitionCard } from './DefinitionCard';
 import { IdRenameField } from './IdRenameField';
@@ -138,7 +138,7 @@ export function JobDefinitionCard({
       onRawChange={(text) => docs.setRaw('main', text)}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ maxWidth: 420 }}>
+        <div style={{ maxWidth: CONTROL_MEASURE }}>
           <FieldLabel>{t('overview.jobName', 'Display name')}</FieldLabel>
           <AuroraInput value={docs.identity.name} disabled={disabled} onChange={(v) => docs.setName(v)} />
         </div>
@@ -367,7 +367,7 @@ export function IntentsCard({
               e.preventDefault();
               submitCreate();
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: CONTROL_MEASURE }}
           >
             <div style={{ flex: 1 }}>
               <AuroraInput

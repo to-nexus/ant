@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { Plus, Upload } from 'lucide-react';
 import { useStore } from '@/domain/store';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, FIELD_MEASURE, SectionCard } from '@/presentation/components/ConfigEditor/aurora';
 import {
   createDefinitionFile,
   deleteDefinitionFile,
@@ -58,10 +58,11 @@ export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) 
   const [createName, setCreateName] = useState('');
 
   const baseDir = scope.level === 'agent' ? 'base/' : `jobs/${scope.jobId}/base/`;
-  const [mode, setMode] = useProseMode(openFile?.path ?? '', readonly);
+  const [mode, setMode] = useProseMode(openFile?.path ?? '');
   // Markdown preview only means something for markdown. An on-demand `.json`
   // (a vendor swagger) is raw-only — rendering it through ReactMarkdown would
-  // show a mangled blob, and readonly scopes default to preview.
+  // show a mangled blob. The toggle still renders, with Preview disabled: a
+  // control that vanishes for some files moves position from card to card.
   const previewable = !!openFile?.path.endsWith('.md');
   const effectiveMode = previewable ? mode : 'raw';
 
@@ -160,7 +161,16 @@ export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) 
       accent="cool"
       title={t('prompts.title', 'Prompts')}
       description={description}
-      headerAction={openFile && previewable ? <ProseModeToggle mode={mode} onChange={setMode} /> : undefined}
+      headerAction={
+        openFile ? (
+          <ProseModeToggle
+            mode={effectiveMode}
+            onChange={setMode}
+            previewDisabled={!previewable}
+            previewDisabledTitle={t('prompts.previewMarkdownOnly', 'Preview is available for markdown files only.')}
+          />
+        ) : undefined
+      }
     >
       <div className="flex flex-col gap-3">
         {/* file list + toolbar — boxed, so the list reads as one control inside
@@ -186,7 +196,7 @@ export function PromptsCard({ id, agentId, readonly, scope }: PromptsCardProps) 
             <div className="flex flex-col gap-1.5">
               {showCreate && (
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <div style={{ width: 200 }}>
+                  <div style={{ flex: '1 1 0', minWidth: 0, maxWidth: FIELD_MEASURE }}>
                     <AuroraInput
                       value={createName}
                       mono

@@ -10,7 +10,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { DefinitionCard } from './DefinitionCard';
-import { AuroraInput, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, CONTROL_MEASURE, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { IdRenameField } from './IdRenameField';
 import { McpServersEditor } from './McpServersEditor';
 import type { OverviewCtx } from './sections';
@@ -46,7 +46,7 @@ export function AgentDefinitionCard({
       onRawChange={(text) => docs.setRaw('agent', text)}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ maxWidth: 420 }}>
+        <div style={{ maxWidth: CONTROL_MEASURE }}>
           <FieldLabel>{t('agentDef.name', 'Display name')}</FieldLabel>
           <AuroraInput value={docs.identity.name} disabled={disabled} onChange={(v) => docs.setName(v)} />
         </div>

@@ -4,7 +4,7 @@
  * intent's `prompt.md`. They differ in what OWNS the buffer (the first two are
  * a file list over the openDefinitionFile buffer with immediate saves; the
  * intent's rides `useDefinitionDocs` and the shell's ChangedBar) — but the
- * viewport, the raw ⇄ preview toggle and its per-file memory must not differ,
+ * viewport, the preview ⇄ raw toggle and its per-file memory must not differ,
  * or the same file type reads as three different editors.
  *
  * Placement contract: the toggle goes in the SectionCard's `headerAction`
@@ -13,54 +13,55 @@
  */
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Code, Eye } from 'lucide-react';
-import { ViewModeButton } from '@/presentation/components/aurora';
+import { ViewModeToggle } from '@/presentation/components/aurora';
+import { PROSE_WRAP } from '@/presentation/components/ConfigEditor/aurora';
 import { createMarkdownComponents } from '@/presentation/components/markdown/createMarkdownComponents';
 import { LineNumberedEditor } from '../../FileEditorPanel/LineNumberedEditor';
-import type { ViewMode } from '@/domain/file/viewMode';
+import { DEFAULT_VIEW_MODE, type ViewMode } from '@/domain/file/viewMode';
 
 const MARKDOWN_PREVIEW_COMPONENTS = createMarkdownComponents({ paragraphTag: 'p' });
 
-/** One box height for every prose surface, so cards line up across levels. */
+/**
+ * One box HEIGHT for every prose surface, so cards line up across levels.
+ * Not a width — unrelated to `PROSE_MEASURE`, which the name resembles.
+ */
 const PROSE_BOX = { height: 'min(60vh, 560px)', minHeight: 280 } as const;
 
 /**
  * Per-file view mode. Keyed so switching files (or intents) restores what that
- * file was last read as; readonly scopes open in preview — there is nothing to
- * edit, and the rendered form is the readable one.
+ * file was last read as. The unvisited default is the domain SSOT's
+ * `DEFAULT_VIEW_MODE` ('preview') for EVERY scope — opening editable prose in
+ * raw showed the author's own hard wraps, which read as the surface breaking
+ * lines far short of its container.
  */
-export function useProseMode(key: string, readonly: boolean): [ViewMode, (next: ViewMode) => void] {
+export function useProseMode(key: string): [ViewMode, (next: ViewMode) => void] {
   const [byKey, setByKey] = useState<Record<string, ViewMode>>({});
-  const mode = byKey[key] ?? (readonly ? 'preview' : 'raw');
+  const mode = byKey[key] ?? DEFAULT_VIEW_MODE;
   return [mode, (next) => setByKey((prev) => ({ ...prev, [key]: next }))];
 }
 
 export function ProseModeToggle({
   mode,
   onChange,
+  previewDisabled = false,
+  previewDisabledTitle,
 }: {
   mode: ViewMode;
   onChange: (next: ViewMode) => void;
+  /** The file cannot be markdown-previewed (e.g. an on-demand `.json`). */
+  previewDisabled?: boolean;
+  previewDisabledTitle?: string;
 }) {
-  const { t } = useTranslation('agents');
   return (
-    <div className="flex items-center gap-0.5">
-      <ViewModeButton
-        icon={Code}
-        label={t('prompts.viewRaw', 'Raw')}
-        active={mode === 'raw'}
-        onClick={() => onChange('raw')}
-      />
-      <ViewModeButton
-        icon={Eye}
-        label={t('prompts.viewPreview', 'Preview')}
-        active={mode === 'preview'}
-        onClick={() => onChange('preview')}
-      />
-    </div>
+    <ViewModeToggle
+      left="preview"
+      value={mode === 'raw' ? 'raw' : 'left'}
+      leftDisabled={previewDisabled}
+      leftDisabledTitle={previewDisabledTitle}
+      onChange={(next) => onChange(next === 'raw' ? 'raw' : 'preview')}
+    />
   );
 }
 
@@ -80,7 +81,7 @@ export function ProseBody({
       {mode === 'preview' ? (
         <div
           className="flex-1 overflow-y-auto prose prose-sm dark:prose-invert max-w-none px-3 py-2 rounded-md"
-          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)' }}
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-1)', ...PROSE_WRAP }}
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_PREVIEW_COMPONENTS}>
             {value}

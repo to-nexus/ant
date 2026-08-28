@@ -4,16 +4,16 @@
  * same `useDefinitionDocs` document, so switching views never loses or
  * reconciles anything — and neither view carries a Save button, the shell's
  * single ChangedBar does. No path caption: the left tree is the location
- * surface (file ↔ section isomorphism). The toggle rides SectionCard's
- * `headerAction`, i.e. the header's RIGHT edge — the same side as the prompt
- * editor's Raw ⇄ Preview pair.
+ * surface (file ↔ section isomorphism). The toggle is the shared
+ * `ViewModeToggle` in SectionCard's `headerAction` — it owns the order and
+ * the labels, so this card cannot name the raw view differently from the
+ * prompt cards (it used to, via a `rawLabel` prop).
  */
 
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Braces, LayoutList } from 'lucide-react';
-import { ViewModeButton } from '@/presentation/components/aurora';
+import { ViewModeToggle } from '@/presentation/components/aurora';
 import { SectionCard, type SectionAccent } from '@/presentation/components/ConfigEditor/aurora';
 import { LineNumberedEditor } from '../../FileEditorPanel/LineNumberedEditor';
 import type { DefinitionDoc } from './useDefinitionDocs';
@@ -27,7 +27,6 @@ export function DefinitionCard({
   doc,
   readonly,
   onRawChange,
-  rawLabel,
   parseErrorLabel,
   children,
 }: {
@@ -39,8 +38,6 @@ export function DefinitionCard({
   doc: DefinitionDoc | null;
   readonly: boolean;
   onRawChange: (text: string) => void;
-  /** Raw-view toggle label — defaults to "YAML"; markdown files pass "Raw". */
-  rawLabel?: string;
   /** Parse-banner prefix — defaults to the YAML syntax message. */
   parseErrorLabel?: string;
   children: ReactNode;
@@ -56,20 +53,11 @@ export function DefinitionCard({
       title={title}
       description={description}
       headerAction={
-        <div className="flex items-center gap-0.5">
-          <ViewModeButton
-            icon={LayoutList}
-            label={t('overview.viewStructured', 'Form')}
-            active={!yamlView}
-            onClick={() => setYamlView(false)}
-          />
-          <ViewModeButton
-            icon={Braces}
-            label={rawLabel ?? t('overview.viewYaml', 'YAML')}
-            active={yamlView}
-            onClick={() => setYamlView(true)}
-          />
-        </div>
+        <ViewModeToggle
+          left="structured"
+          value={yamlView ? 'raw' : 'left'}
+          onChange={(next) => setYamlView(next === 'raw')}
+        />
       }
     >
       {doc?.parseError && (

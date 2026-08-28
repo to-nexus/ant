@@ -26,7 +26,7 @@ import {
   type RestApiServerConfig,
 } from '@ant/shared';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput, AuroraSelect, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, AuroraSelect, CONTROL_MEASURE, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import {
   deleteMcpCredential,
   fetchMcpCredentials,
@@ -803,7 +803,7 @@ function ApiServersSection({
               e.preventDefault();
               submitAdd();
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420, flexWrap: 'wrap' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: CONTROL_MEASURE, flexWrap: 'wrap' }}
           >
             <div style={{ flex: '1 1 140px', minWidth: 0 }}>
               <AuroraInput
@@ -1105,7 +1105,7 @@ export function McpServersEditor({
               e.preventDefault();
               submitAdd();
             }}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 420, flexWrap: 'wrap' }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: CONTROL_MEASURE, flexWrap: 'wrap' }}
           >
             <div style={{ flex: '1 1 140px', minWidth: 0 }}>
               <AuroraInput

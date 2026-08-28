@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/presentation/components/aurora';
-import { AuroraInput } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraInput, FIELD_MEASURE } from '@/presentation/components/ConfigEditor/aurora';
 import { ProseBody } from './proseSurface';
 import type { ViewMode } from '@/domain/file/viewMode';
 import type { DefinitionValidationResult } from '@ant/shared';
@@ -83,7 +83,7 @@ export function PromptEditor({
           card header, shared with the intent prompt card) */}
       <div className="flex items-center gap-2 flex-wrap">
         {renaming !== null ? (
-          <div style={{ maxWidth: 260 }}>
+          <div style={{ flex: '1 1 0', minWidth: 0, maxWidth: FIELD_MEASURE }}>
             <AuroraInput
               value={renaming}
               mono

@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CustomAgentOrgPermissions } from '@ant/shared';
 import { Button } from '@/presentation/components/aurora';
-import { SectionCard, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { CONTROL_MEASURE, SectionCard, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { fetchOrgMembers } from '@/infrastructure/http/api/org';
 
 export function OrgAccessCard({
@@ -88,9 +88,8 @@ export function OrgAccessCard({
         'orgAccess.desc',
         'Every member can see and use this. Editing is limited to the owner, org admins, and the editors you delegate here.',
       )}
-      bodyMaxWidth={480}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: CONTROL_MEASURE }}>
         <div>
           <FieldLabel>{t('orgAccess.owner', 'Owner')}</FieldLabel>
           <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-2)' }}>

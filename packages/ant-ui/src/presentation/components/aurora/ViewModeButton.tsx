@@ -18,10 +18,12 @@ export interface ViewModeButtonProps {
   disabled?: boolean;
   onClick: () => void;
   title?: string;
+  /** Toolbar metrics (h-20 pill) instead of the section-header metrics. */
+  compact?: boolean;
 }
 
 export function ViewModeButton(props: ViewModeButtonProps): JSX.Element {
-  const { icon, label, active, disabled, onClick, title } = props;
+  const { icon, label, active, disabled, onClick, title, compact } = props;
   const IconComp = icon;
   return (
     <button
@@ -31,8 +33,9 @@ export function ViewModeButton(props: ViewModeButtonProps): JSX.Element {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 6,
-        padding: '5px 12px',
+        gap: compact ? 4 : 6,
+        height: compact ? 20 : undefined,
+        padding: compact ? '0 8px' : '5px 12px',
         borderRadius: 'var(--r-sm)',
         background: active ? 'var(--bg-surface)' : 'transparent',
         border: active ? '1px solid var(--violet-200)' : '1px solid transparent',
@@ -43,14 +46,14 @@ export function ViewModeButton(props: ViewModeButtonProps): JSX.Element {
             ? 'var(--text-4)'
             : 'var(--text-3)',
         opacity: disabled ? 0.55 : 1,
-        fontSize: 12,
+        fontSize: compact ? 11 : 12,
         fontWeight: 600,
         fontFamily: 'inherit',
         cursor: disabled ? 'not-allowed' : 'pointer',
         transition: 'all var(--dur-fast)',
       }}
     >
-      <IconComp size={14} />
+      <IconComp size={compact ? 12 : 14} />
       <span>{label}</span>
     </button>
   );

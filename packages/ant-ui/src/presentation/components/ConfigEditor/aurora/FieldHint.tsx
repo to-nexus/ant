@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { PROSE_MEASURE } from './measures';
+import { PROSE_MEASURE, PROSE_WRAP } from './measures';
 
 /**
  * Field hint — the ONE anatomy for explanatory copy under a label, a control,
@@ -46,6 +46,7 @@ export function FieldHint({ children, tone = 'default', spacing = 'none', style 
       style={{
         margin: SPACING_MARGIN[spacing],
         maxWidth: PROSE_MEASURE,
+        ...PROSE_WRAP,
         fontSize: 11.5,
         lineHeight: 1.55,
         color: TONE_COLOR[tone],

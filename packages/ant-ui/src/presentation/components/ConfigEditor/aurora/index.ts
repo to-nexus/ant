@@ -22,7 +22,7 @@ export type { FieldLabelProps } from './FieldLabel';
 export { FieldHint } from './FieldHint';
 export type { FieldHintProps, FieldHintTone } from './FieldHint';
 
-export { PROSE_MEASURE } from './measures';
+export { PROSE_MEASURE, CONTROL_MEASURE, FIELD_MEASURE, PROSE_WRAP } from './measures';
 
 export { AuroraInput } from './AuroraInput';
 export type { AuroraInputProps } from './AuroraInput';

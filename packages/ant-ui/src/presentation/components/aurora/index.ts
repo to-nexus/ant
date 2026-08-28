@@ -35,6 +35,12 @@ export {
 export { IconOrb, type IconOrbProps, type IconOrbTone } from './IconOrb';
 export { ViewModeButton, type ViewModeButtonProps } from './ViewModeButton';
 export {
+  ViewModeToggle,
+  type ViewModeToggleProps,
+  type ToggleLeftKind,
+  type ToggleValue,
+} from './ViewModeToggle';
+export {
   BoardViewModeToggle,
   type BoardViewModeToggleProps,
   type BoardViewModeToggleOption,

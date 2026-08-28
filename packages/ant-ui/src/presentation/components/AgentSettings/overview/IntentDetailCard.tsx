@@ -23,7 +23,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Textarea } from '@/presentation/components/aurora';
-import { AuroraSelect, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
+import { AuroraSelect, CONTROL_MEASURE, FIELD_MEASURE, FieldHint, FieldLabel } from '@/presentation/components/ConfigEditor/aurora';
 import { DefinitionCard } from './DefinitionCard';
 import { INFER_CRITERION_MAX } from './definitionDocs';
 import { inferDocKey } from './useDefinitionDocs';
@@ -101,12 +101,11 @@ export function IntentDetailCard({
       doc={doc}
       readonly={ctx.readonly}
       onRawChange={(text) => docs.setRaw(inferDocKey(intentId), text)}
-      rawLabel={t('overview.viewRaw', 'Raw')}
       parseErrorLabel={t('overview.inferParseError', 'Frontmatter error — the form is disabled and saving is blocked')}
     >
       {!entry || !doc ? (
         // Raw-edit race or a broken file: the intent is not derivable. The
-        // DefinitionCard frame stays up, so the parse banner and the YAML
+        // DefinitionCard frame stays up, so the parse banner and the raw
         // view remain available to repair the file in place.
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <FieldHint>{t('intent.notFound', 'This intent no longer exists in the catalog.')}</FieldHint>
@@ -139,11 +138,11 @@ export function IntentDetailCard({
           <div>
             <FieldLabel>{t('intent.flagsTitle', 'Behavior flags')}</FieldLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: 420 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, maxWidth: CONTROL_MEASURE }}>
                 <span style={{ fontSize: 12, color: 'var(--text-2)', flexShrink: 0 }}>
                   {t('intent.clarifyLabel', 'Clarify questions')}
                 </span>
-                <div style={{ width: 200 }}>
+                <div style={{ flex: '1 1 0', minWidth: 0, maxWidth: FIELD_MEASURE }}>
                   <AuroraSelect
                     value={clarifyValue}
                     disabled={disabled}

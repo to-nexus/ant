@@ -12,6 +12,12 @@ interface BoardContainerProps {
   headerActions?: ReactNode; // 우측 정렬될 요소
   children: ReactNode;
   className?: string;
+  /**
+   * Explicit body-scroll opt-in. Boards that own their own scroll chain pass
+   * `true`; when omitted the legacy className sniff below decides, so existing
+   * kanban call sites are unchanged.
+   */
+  scrollBody?: boolean;
 }
 
 /**
@@ -31,7 +37,8 @@ export function BoardContainer({
   titleActions,
   headerActions, 
   children,
-  className = ''
+  className = '',
+  scrollBody
 }: BoardContainerProps) {
   // Kanban 및 workflow 보드 인스턴스는 outline-only frame 시각 언어를 따른다 —
   // 헤더와 컨텐츠 영역 배경을 투명 처리하여 페이지 전역 aurora mesh가
@@ -39,6 +46,7 @@ export function BoardContainer({
   // 그대로 유지한다.
   const isKanbanBoard = className.includes('kanban-board');
   const isWorkflowBoard = className.includes('workflow-board');
+  const scrolls = scrollBody ?? (isKanbanBoard && className.includes('horizontal'));
   return (
     <div className={`flex flex-col h-full overflow-hidden ${className}`}>
       {/* Compact Sticky Header - pinned at top when scrolling */}
@@ -73,12 +81,12 @@ export function BoardContainer({
         </div>
       </div>
       
-      {/* Content Area - board-level scroll in horizontal split, no scroll in vertical split */}
+      {/* Content Area — the overflow verdict is computed ONCE. Emitting both
+          `overflow-hidden` and `overflow-y-auto` on this element made the
+          behaviour depend on Tailwind's class order. */}
       <div
-        className={`flex-1 overflow-hidden p-4 ${
-          isKanbanBoard && className.includes('horizontal')
-            ? 'overflow-y-auto scrollbar-hide'
-            : ''
+        className={`flex-1 min-h-0 p-4 ${
+          scrolls ? 'overflow-y-auto scrollbar-thin' : 'overflow-hidden'
         }`}
         style={{ background: isKanbanBoard || isWorkflowBoard ? 'transparent' : 'var(--bg-surface)' }}
       >

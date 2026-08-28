@@ -3,6 +3,11 @@
     "expand": "Show more",
     "collapse": "Collapse"
   },
+  "viewMode": {
+    "structured": "Structured",
+    "preview": "Preview",
+    "raw": "Raw"
+  },
   "button": {
     "ok": "OK",
     "cancel": "Cancel",

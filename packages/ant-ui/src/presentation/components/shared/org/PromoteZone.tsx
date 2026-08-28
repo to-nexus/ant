@@ -52,7 +52,6 @@ export function PromoteZone({
         'promote.desc',
         'Share this with your whole organization. It moves out of your personal scope; every member can see and use it, and you remain its owner.',
       )}
-      bodyMaxWidth={480}
     >
       <div>
         <Button size="sm" type="button" disabled={isPromoting} onClick={confirm}>

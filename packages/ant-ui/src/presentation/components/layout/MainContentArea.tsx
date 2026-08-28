@@ -252,7 +252,7 @@ export function MainContentArea({
           />
         </div>
       ) : (
-        <div className="flex-1 h-full">
+        <div className="flex-1 h-full min-h-0">
           {taskViewMode === 'workflow' ? (
             <AgentWorkflowBoard workflowState={workflowState} kanbanData={kanbanData} />
           ) : isUniversalProject ? (

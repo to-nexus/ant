@@ -87,8 +87,6 @@
   },
   "editor": {
     "placeholder": "File content...",
-    "raw": "Raw",
-    "preview": "Preview",
     "svgPreviewFailed": "Failed to load SVG preview.",
     "binaryFileHint": "Binary file — cannot be viewed or edited as text.",
     "binaryDownload": "Download",
