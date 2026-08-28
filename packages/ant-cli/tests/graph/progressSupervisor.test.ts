@@ -53,6 +53,25 @@ describe('stallLineKey', () => {
     expect(stallLineKey('   ')).toBe('');
     expect(stallLineKey('\n')).toBe('');
   });
+
+  // ember-hauling-glade RCA: pnpm's workspace reporter pads `../.. |` with a
+  // fixed space column that pushed the climbing counters past the 80-char cap,
+  // so distinct progress lines keyed identically and a healthy install was
+  // reaped as a stall. Whitespace runs collapse BEFORE the cap.
+  it('collapses whitespace runs so padded pnpm progress counters stay inside the 80-char window', () => {
+    const pad = ' '.repeat(40);
+    const a = `../..${pad}| Progress: resolved 827, reused 782, downloaded 0, added 671`;
+    const b = `../..${pad}| Progress: resolved 827, reused 782, downloaded 0, added 676`;
+    expect(stallLineKey(a)).not.toBe(stallLineKey(b));
+  });
+
+  it('padding-only variation of the same text keys identically (still a stall)', () => {
+    expect(stallLineKey('building    the app')).toBe(stallLineKey('building the app'));
+  });
+
+  it('reporter prefixes stay part of the key — two packages emitting the same suffix stay distinct', () => {
+    expect(stallLineKey('pkg-a | building...')).not.toBe(stallLineKey('pkg-b | building...'));
+  });
 });
 
 describe('pushLineSig', () => {
@@ -421,6 +440,50 @@ describe('ProgressSupervisor', () => {
     }
   });
 
+  // ember-hauling-glade RCA rows: build/install commands are legitimately
+  // silent end-to-end (`tsc --noEmit` prints only errors; `cmd | tail` buffers
+  // everything until the pipe closes) — with noOutputRequiresPriorOutput they
+  // wait for hardTimeout instead of being reaped as a slow filesystem walk.
+  it('noOutputRequiresPriorOutput: silent-from-start does NOT fire noOutput — hardTimeout is the ceiling', async () => {
+    const sup = new ProgressSupervisor({
+      command: 'pnpm typecheck 2>&1 | tail -80',
+      thresholds: {
+        ...baseThresholds,
+        noOutputRequiresPriorOutput: true,
+        hardTimeoutMs: DEFAULT_NO_OUTPUT_MS * 4,
+      },
+      enabledSignals: ['noOutput', 'hardTimeout'],
+    });
+
+    const sigPromise = sup.signal();
+    await vi.advanceTimersByTimeAsync(DEFAULT_NO_OUTPUT_MS * 4 + 1_000);
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('hardTimeout');
+  });
+
+  it('noOutputRequiresPriorOutput: once output HAS been observed, noOutput arms as usual', async () => {
+    const sup = new ProgressSupervisor({
+      command: 'pnpm build',
+      thresholds: {
+        ...baseThresholds,
+        noOutputRequiresPriorOutput: true,
+        hardTimeoutMs: 999 * 60_000,
+      },
+      enabledSignals: ['noOutput'],
+    });
+
+    const sigPromise = sup.signal();
+    sup.ingestChunk('compiling…\n');
+    await vi.advanceTimersByTimeAsync(DEFAULT_NO_OUTPUT_MS * 2);
+    const signal = await sigPromise;
+
+    expect(signal.kind).toBe('noOutput');
+    if (signal.kind === 'noOutput') {
+      expect(signal.hadOutputBeforeSilence).toBe(true);
+    }
+  });
+
   it('without postOutputIdleMs, output-then-silent waits for the full noOutputMs window (preserves existing behavior)', async () => {
     const sup = new ProgressSupervisor({
       command: 'no-oneshot-flag',
@@ -587,7 +650,9 @@ describe('ProgressSupervisor.renderTermination', () => {
     const r = ProgressSupervisor.renderTermination(sig, { command: 'cmd', output: big, tailChars: 1_000 });
     // The body line "Output (last 1000 chars):" + 1000 chars of x's
     expect(r.content).toContain('Output (last 1000 chars):');
-    const xs = r.content.match(/x+/)?.[0] ?? '';
+    // Anchor past the prose (which may itself contain an 'x') to the tail body.
+    const tailBody = r.content.split('Output (last 1000 chars):')[1] ?? '';
+    const xs = tailBody.match(/x+/)?.[0] ?? '';
     expect(xs.length).toBe(1_000);
   });
 });

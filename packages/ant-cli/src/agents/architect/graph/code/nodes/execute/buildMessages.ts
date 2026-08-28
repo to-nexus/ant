@@ -82,7 +82,29 @@ const DEFAULT_PLAN_FRAMING = {
     '- `modify`: Files to modify with specific changes. Dependency signatures relevant to the change are inlined in `changes`.',
 } as const;
 
-let _lastCacheBlockHashes: { block1?: string; block2?: string; taskId?: string } = {};
+// Per-task snapshot of the previous call's cache blocks. Keyed by taskId
+// because parallel workers interleave buildMessages calls in one process — a
+// single record was reset on every task switch, silently dropping detections
+// for every interleaved round. Text is retained (bounded by the map cap) so
+// an instability event can name the exact bytes that mutated instead of two
+// opaque hashes (ember-hauling-glade RCA follow-up).
+const CACHE_SNAPSHOT_MAX_TASKS = 8;
+const _lastCacheBlocksByTask = new Map<
+  string,
+  { block1Hash?: string; block2Hash?: string; block1Text?: string; block2Text?: string }
+>();
+
+/** First index where a and b differ, or -1 when equal. */
+function firstDiffIndex(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return i;
+  return a.length === b.length ? -1 : n;
+}
+
+/** ±60-char sanitized window around `at` for log embedding. */
+function diffSnippet(text: string, at: number): string {
+  return text.slice(Math.max(0, at - 60), at + 60).replace(/\s+/g, ' ');
+}
 
 /**
  * Dispatch a per-task classifier flag through the bundle's `classify`
@@ -824,51 +846,71 @@ export async function buildMessages(state: ArchitectGraphState): Promise<Array<{
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   {
     const currentTaskId = state.currentTask?.id || 'unknown';
-    if (_lastCacheBlockHashes.taskId !== currentTaskId) {
-      _lastCacheBlockHashes = { taskId: currentTaskId };
-    }
 
     const block1Text = blocks[0]?.type === 'text' ? blocks[0].text : '';
     const block2Text = blocks[1]?.type === 'text' ? blocks[1].text : '';
     const b1Hash = createHash('md5').update(block1Text).digest('hex').slice(0, 12);
     const b2Hash = createHash('md5').update(block2Text).digest('hex').slice(0, 12);
-    const b1Len = block1Text.length;
-    const b2Len = block2Text.length;
     const histLen = getConv(state.conversations, CONV_KEYS.NODE_EXECUTE).length;
 
-    // Synchronously snapshot prev hashes before the module-level record gets
-    // updated below — otherwise async logger callbacks (microtask-scheduled
-    // import().then) would read the already-overwritten new hash and record
-    // prevHash === currHash.
-    const prevB1 = _lastCacheBlockHashes.block1;
-    const prevB2 = _lastCacheBlockHashes.block2;
+    const prev = _lastCacheBlocksByTask.get(currentTaskId);
 
     // Static import + synchronous writeQueue update — see executionLogger
-    // contract (vast-curling-perch C-3 RCA). This eliminates the previous
-    // microtask-scheduled `import().then` race that the comment above
-    // referenced (the prev-hash snapshot is still kept for symmetry, but
-    // the dynamic-import scheduling concern is now moot).
-    if (prevB1 && prevB1 !== b1Hash) {
-      console.warn(`⚠️  [CacheStability] Block1 CHANGED between calls! prev=${prevB1} curr=${b1Hash} len=${b1Len} (task=${currentTaskId}, hist=${histLen})`);
+    // contract (vast-curling-perch C-3 RCA).
+    const reportInstability = (
+      block: 'block1' | 'block2',
+      prevHash: string,
+      currHash: string,
+      prevText: string | undefined,
+      currText: string,
+    ) => {
+      const diffAt = prevText !== undefined ? firstDiffIndex(prevText, currText) : undefined;
+      console.warn(
+        `⚠️  [CacheStability] ${block} CHANGED between calls! prev=${prevHash} curr=${currHash} ` +
+        `len=${currText.length} diffAt=${diffAt ?? 'n/a'} (task=${currentTaskId}, hist=${histLen})`,
+      );
       if (state.context?.featurePath && state._httpJobId) {
         void getExecutionLogger({ featurePath: state.context.featurePath, jobId: state._httpJobId, jobType: 'code' })
-          .logCacheInstability(currentTaskId, { block: 'block1', prevHash: prevB1, currHash: b1Hash, contentLength: b1Len, historyLength: histLen })
+          .logCacheInstability(currentTaskId, {
+            block,
+            prevHash,
+            currHash,
+            contentLength: currText.length,
+            historyLength: histLen,
+            ...(diffAt !== undefined && diffAt >= 0 && prevText !== undefined
+              ? {
+                  diffAt,
+                  prevSnippet: diffSnippet(prevText, diffAt),
+                  currSnippet: diffSnippet(currText, diffAt),
+                }
+              : {}),
+          })
           .catch(() => { /* non-blocking */ });
       }
+    };
+
+    if (prev?.block1Hash && prev.block1Hash !== b1Hash) {
+      reportInstability('block1', prev.block1Hash, b1Hash, prev.block1Text, block1Text);
     }
-    if (prevB2 && prevB2 !== b2Hash) {
-      console.warn(`⚠️  [CacheStability] Block2 CHANGED between calls! prev=${prevB2} curr=${b2Hash} len=${b2Len} (task=${currentTaskId}, hist=${histLen})`);
-      if (state.context?.featurePath && state._httpJobId) {
-        void getExecutionLogger({ featurePath: state.context.featurePath, jobId: state._httpJobId, jobType: 'code' })
-          .logCacheInstability(currentTaskId, { block: 'block2', prevHash: prevB2, currHash: b2Hash, contentLength: b2Len, historyLength: histLen })
-          .catch(() => { /* non-blocking */ });
-      }
+    if (prev?.block2Hash && prev.block2Hash !== b2Hash) {
+      reportInstability('block2', prev.block2Hash, b2Hash, prev.block2Text, block2Text);
     }
 
-    if (histLen === 0) {
-      console.log(`🔑 [CacheStability] New task → Block1=${b1Hash}(${b1Len}) Block2=${b2Hash}(${b2Len})`);
+    if (!prev) {
+      console.log(`🔑 [CacheStability] New task → Block1=${b1Hash}(${block1Text.length}) Block2=${b2Hash}(${block2Text.length})`);
+      // Bound retained text: evict the oldest task snapshot beyond the cap
+      // (insertion order — completed tasks age out naturally).
+      if (_lastCacheBlocksByTask.size >= CACHE_SNAPSHOT_MAX_TASKS) {
+        const oldest = _lastCacheBlocksByTask.keys().next().value;
+        if (oldest !== undefined) _lastCacheBlocksByTask.delete(oldest);
+      }
     }
-    _lastCacheBlockHashes = { block1: b1Hash, block2: b2Hash, taskId: currentTaskId };
+    _lastCacheBlocksByTask.set(currentTaskId, {
+      block1Hash: b1Hash,
+      block2Hash: b2Hash,
+      block1Text,
+      block2Text,
+    });
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

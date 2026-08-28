@@ -36,16 +36,24 @@ export function readPositiveInt(raw: string | undefined, fallback: number): numb
 }
 
 /**
- * Stall identity for one output line: trim + length-cap, NO digit collapse. A
- * `repeatedSignature` stall means the command re-emits the *same* line with no
- * progress; a line whose only delta is a climbing counter (`added 1`→`added 13`)
- * is progress and MUST key distinctly. Only byte-identical repetition is a stall;
- * a chatty loop varying only by a number stays bounded by noOutput / hardTimeout.
+ * Stall identity for one output line: trim + whitespace-collapse + length-cap,
+ * NO digit collapse. A `repeatedSignature` stall means the command re-emits the
+ * *same* line with no progress; a line whose only delta is a climbing counter
+ * (`added 1`→`added 13`) is progress and MUST key distinctly. Only
+ * byte-identical repetition is a stall; a chatty loop varying only by a number
+ * stays bounded by noOutput / hardTimeout.
  * (RCA `bronze-mending-blade`: digit-collapsing pnpm's monotonic install progress
  * into one signature killed every >60s install on slow EFS as a false stuck loop.)
+ *
+ * Interior whitespace runs collapse to one space BEFORE the 80-char cap:
+ * pnpm's workspace reporter pads the `../.. | Progress:` prefix with a fixed
+ * column of spaces that pushed the climbing counters past the cap, so distinct
+ * progress lines keyed identically and a healthy install was reaped
+ * (ember-hauling-glade RCA — same failure mode as bronze-mending-blade,
+ * reintroduced through the length cap instead of digit collapse).
  */
 export function stallLineKey(line: string): string {
-  return line.trim().slice(0, 80);
+  return line.trim().replace(/\s+/g, ' ').slice(0, 80);
 }
 
 /** Banner lines from package managers / shells — excluded from signature counting
@@ -103,6 +111,13 @@ export interface SupervisorThresholds {
    *  gate that defends silent-from-start commands. Caller declares this
    *  via the `oneshot` tool arg — the system does not infer it. */
   postOutputIdleMs?: number;
+  /** Build/install commands legitimately emit NOTHING until done (`tsc --noEmit`
+   *  prints only errors; a trailing `| tail` buffers everything until the pipe
+   *  closes). When true, the noOutput signal is suppressed while the command has
+   *  emitted no output at all — hardTimeout stays the ceiling for a true hang
+   *  (stdin is closed, so interactive waits are already impossible). Once ANY
+   *  output has been observed, noOutput arms as usual. */
+  noOutputRequiresPriorOutput?: boolean;
   /** When set (build/test commands on a cgroup-limited host), fire memoryBudget
    *  once sampled memory ≥ this many bytes. Undefined → memory signal disarmed. */
   memoryBudgetBytes?: number;
@@ -269,7 +284,8 @@ export class ProgressSupervisor {
           const elapsedMs = now - this.startedAt;
           const baseFire =
             silentMs >= this.thresholds.noOutputMs &&
-            elapsedMs >= this.thresholds.noOutputMs;
+            elapsedMs >= this.thresholds.noOutputMs &&
+            !(this.thresholds.noOutputRequiresPriorOutput && !this.hasEmittedOutput);
           const postOutputIdleMs = this.thresholds.postOutputIdleMs;
           const fastFire =
             postOutputIdleMs != null &&
@@ -397,8 +413,8 @@ export class ProgressSupervisor {
           detail = `Process emitted output then went idle for ${sec}s. Likely cause: foreground process did not reach termination — an open async handle (network connection, timer, watcher, unconsumed stream) is preventing exit.`;
           action = 'Ensure explicit termination at the end of all async paths in the embedded source. If this command is intended as a one-shot operation, also set `oneshot: true` so the watchdog reaps it immediately after output settles.';
         } else {
-          detail = `No output for ${sec}s. Typically slow filesystem/network walk (find / grep -r / npm ls / git blame / tar / du).`;
-          action = 'Use scoped tools instead: `search_code` / `list_files` for file search, `read_file` (supports ranges) for file content, `npm ls --depth=0 <name>` for deps, `git log -L <file>` for history.';
+          detail = `No output for ${sec}s. Typically a slow filesystem/network walk (find / grep -r / npm ls / git blame / tar / du), or the output is being buffered by a trailing pipe (\`| tail\` / \`| head\` hold everything until the command finishes).`;
+          action = 'If the command ended in a pipe, re-run it WITHOUT the pipe — the result is already bounded for you. For exploration, use scoped tools instead: `search_code` / `list_files` for file search, `read_file` (supports ranges) for file content, `npm ls --depth=0 <name>` for deps, `git log -L <file>` for history.';
         }
         break;
       }

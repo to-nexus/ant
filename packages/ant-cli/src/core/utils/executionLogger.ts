@@ -271,6 +271,13 @@ export class ExecutionLogger {
     currHash: string;
     contentLength: number;
     historyLength: number;
+    /** Offset of the first differing character between the previous and
+     *  current block text — pinpoints WHICH prompt part mutates. */
+    diffAt?: number;
+    /** Short sanitized windows around `diffAt` so the mutating value is
+     *  identifiable from the log alone (ember-hauling-glade RCA follow-up). */
+    prevSnippet?: string;
+    currSnippet?: string;
   }): Promise<void> {
     await this.log('cache_instability', data, taskId);
   }

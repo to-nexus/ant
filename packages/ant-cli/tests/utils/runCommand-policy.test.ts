@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import {
+  boundCommandOutput,
+  COMMAND_OUTPUT_HEAD_CHARS,
+  COMMAND_OUTPUT_TAIL_CHARS,
+  CRITICAL_ERROR_PATTERNS,
   detectWritePathViolations,
   extractWriteTargets,
   isLikelyBuildCommand,
@@ -184,4 +188,63 @@ describe('isLikelyBuildCommand', () => {
       expect(isLikelyBuildCommand(cmd)).toBe(false);
     });
   }
+});
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Exit-0 honesty backstop (ember-hauling-glade RCA): POSIX sh has no
+// pipefail, so `failing-cmd | head` exits 0 — the sniffer must flag the
+// masked failure from output alone, including the POSIX sh error grammar.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+describe('CRITICAL_ERROR_PATTERNS — exit-0 false-success sniffer', () => {
+  const flags = (output: string): string[] =>
+    CRITICAL_ERROR_PATTERNS.filter(({ pattern }) => pattern.test(output)).map(({ label }) => label);
+
+  const flagged: Array<[string, string]> = [
+    // dash (cloud sh): the exact line this session returned with ✅ Exit 0
+    ['sh: 1: ./node_modules/.bin/tsc: not found', 'command not found (sh)'],
+    ['sh: line 3: pnpm: not found', 'command not found (shell)'],
+    ['bash: tsc: command not found', 'command not found'],
+    ['npm error code EACCES\nnpm error syscall mkdir\nnpm error path /root/.npm/_cacache/tmp', 'npm error'],
+  ];
+  for (const [output, label] of flagged) {
+    it(`flags: ${JSON.stringify(output.slice(0, 60))}`, () => {
+      expect(flags(output)).toContain(label);
+    });
+  }
+
+  const clean: string[] = [
+    // incidental "not found" prose must NOT flag (grep/test output)
+    'user profile: not found in cache, regenerating',
+    '✓ tests/routes.test.ts — asserts 404 body "route not found"',
+    // npm warn is not npm error
+    'npm warn deprecated lodash@4.17.20',
+    'Progress: resolved 827, reused 827, downloaded 0, added 676',
+  ];
+  for (const output of clean) {
+    it(`stays clean: ${JSON.stringify(output.slice(0, 60))}`, () => {
+      expect(flags(output)).toEqual([]);
+    });
+  }
+});
+
+describe('boundCommandOutput — head+tail bound for the fact report', () => {
+  it('returns short output unchanged', () => {
+    expect(boundCommandOutput('all tests passed')).toBe('all tests passed');
+  });
+
+  it('preserves the head (compiler root error) and the tail (test summary) of a huge output', () => {
+    const head = 'src/a.ts(1,1): error TS2304: root cause\n';
+    const tail = '\nTests  3 failed | 120 passed';
+    const raw = head + 'noise '.repeat(10_000) + tail;
+    const bounded = boundCommandOutput(raw);
+    expect(bounded.startsWith(head)).toBe(true);
+    expect(bounded.endsWith(tail)).toBe(true);
+    expect(bounded).toContain('chars elided');
+    expect(bounded.length).toBeLessThan(COMMAND_OUTPUT_HEAD_CHARS + COMMAND_OUTPUT_TAIL_CHARS + 300);
+  });
+
+  it('never grows a payload near the limit (headroom guard)', () => {
+    const raw = 'y'.repeat(COMMAND_OUTPUT_HEAD_CHARS + COMMAND_OUTPUT_TAIL_CHARS + 100);
+    expect(boundCommandOutput(raw)).toBe(raw);
+  });
 });

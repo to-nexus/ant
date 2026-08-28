@@ -288,6 +288,26 @@ describe('preview/deploy child env is composed, not inherited (C-003)', () => {
       process.env.ANT_CHILD_HOME = '/tmp/explicit-child-home';
       expect(composeChildEnv({ HOME: '/tmp/caller' }).HOME).toBe('/tmp/caller');
     });
+
+    // ember-hauling-glade RCA: the job-runner child receives ANT_WORKSPACES_ROOT
+    // (JobWorker's name), not ANT_WORKSPACE_BASE_PATH — keying the base on the
+    // latter alone left HOME isolation silently OFF in cloud (children inherited
+    // /root and npm failed with EACCES).
+    it('derives the child HOME from ANT_WORKSPACES_ROOT when ANT_WORKSPACE_BASE_PATH is absent', () => {
+      const base = fs.mkdtempSync(path.join(os.tmpdir(), 'ant-childhome-root-'));
+      try {
+        delete process.env.ANT_WORKSPACE_BASE_PATH;
+        delete process.env.ANT_CHILD_HOME;
+        process.env.ANT_WORKSPACES_ROOT = base;
+        process.env.HOME = '/home/ant-service';
+        const env = composeCommandChildEnv();
+        expect(env.HOME).not.toBe('/home/ant-service');
+        expect(env.HOME!.startsWith(base)).toBe(true);
+      } finally {
+        delete process.env.ANT_WORKSPACES_ROOT;
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
   });
 });
 

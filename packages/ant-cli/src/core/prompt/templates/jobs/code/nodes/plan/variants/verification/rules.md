@@ -26,6 +26,7 @@
 
 **Constraints**:
 - The two evidence sources are independent. Either signal alone is sufficient; both can agree, disagree, or one can be absent. When the Dependency Observation section is not rendered (non-JavaScript project), rely on the build/test evidence source only.
+- **Ordering**: when the Dependency Observation already reports missing dependencies, run the install FIRST — before the first build/test gate. A gate executed against a missing install tree cannot pass, and its failure output is noise that misdirects diagnosis; the observation is the positive evidence, so no confirming gate run is needed.
 - Do NOT install without at least one positive evidence signal. If no evidence is yet available (observation absent AND build/test not yet run), run a build/test first — do not guess module availability.
 - Use the correct package manager for the project's language and lockfile. Refer to the Package Manager section (above, when rendered) for JavaScript projects; refer to the language-specific hints below (e.g. `go mod tidy` for Go modules, `pip install -r` / `poetry install` for Python, `cargo` for Rust) for other ecosystems. Do NOT default to `npm install` regardless of project type.
 

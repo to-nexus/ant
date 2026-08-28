@@ -81,6 +81,8 @@ This project uses **{{packageManager}}**. All dependency install and script comm
 
 {{#if hasLanguageHints}}
 Language-specific verification hints are provided below. They define the required verification gates for this project. A gate is verified only when the invocation those hints define for it has been executed (or observed, for static gates) and seen to pass — passing one gate does not discharge another.
+
+**Coverage scope**: the gates cover every workspace package that contains a file this job wrote — your own task's writes plus every file listed in the Files Already Created by Prior Tasks manifest (above, when rendered). In a multi-package workspace, running a gate for one package does not discharge the same gate for another touched package.
 {{else}}
 Observe the project's build system from the pre-loaded context (config files, directory tree).
 Execute the project's primary build command using `run_command`.
@@ -110,7 +112,7 @@ If you have NOT yet observed both conditions in this verification cycle, the no-
 {{#if runTests}}
 ### Step 2: Run Tests
 
-If build succeeds, execute the project's test command using `run_command`.
+If build succeeds, execute the project's test command using `run_command`. The coverage scope from Step 1 applies: every touched package's test suite is a required gate — a green suite in the package where a new test file landed does not discharge the suites of the other packages this job modified.
 {{/if}}
 
 {{#if hasAcceptanceSource}}

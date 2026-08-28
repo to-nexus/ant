@@ -518,6 +518,57 @@ function makeCommandExecuted(input: {
 // stall for minutes between banner lines).
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// False-positive success detection — exit-0 honesty backstop.
+//
+// Cloud shells are POSIX sh (dash/ash) where pipefail is unavailable, so
+// `failing-cmd | head` exits 0 (ember-hauling-glade RCA). When exit code 0
+// arrives with one of these signatures in the output, the result is labeled
+// `⚠️ OUTPUT CONTAINS ERRORS` and `hasWarnings` rides the commandExecuted
+// side-effect, so a masked pipe exit cannot read as a clean gate pass.
+// The set must cover the POSIX sh error grammar (`sh: 1: xxx: not found`),
+// not only bash's `command not found`.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Command-output bound for the LLM-facing fact report.
+//
+// The prompt tells the model NOT to append `| tail -N` (a trailing pipe masks
+// the exit code on POSIX sh and buffers output into a watchdog false-kill —
+// ember-hauling-glade RCA), which is only honest if the tool bounds the
+// volume itself. Head AND tail are preserved: compilers front-load the root
+// error, test runners tail-load the summary.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+export const COMMAND_OUTPUT_HEAD_CHARS = 8_000;
+export const COMMAND_OUTPUT_TAIL_CHARS = 8_000;
+
+export function boundCommandOutput(raw: string): string {
+  const max = COMMAND_OUTPUT_HEAD_CHARS + COMMAND_OUTPUT_TAIL_CHARS;
+  // Headroom so bounding never GROWS a payload that was near the limit.
+  if (raw.length <= max + 200) return raw;
+  const elided = raw.length - max;
+  return (
+    raw.slice(0, COMMAND_OUTPUT_HEAD_CHARS) +
+    `\n… [${elided} chars elided — head and tail of the output are shown; narrow the command's scope if the middle matters] …\n` +
+    raw.slice(-COMMAND_OUTPUT_TAIL_CHARS)
+  );
+}
+
+export const CRITICAL_ERROR_PATTERNS: ReadonlyArray<{ pattern: RegExp; label: string }> = [
+  { pattern: /command not found/i, label: 'command not found' },
+  // dash: `sh: 1: ./node_modules/.bin/tsc: not found`
+  { pattern: /^sh: \d+: .*: not found/m, label: 'command not found (sh)' },
+  // ash/bash line-anchored form: `sh: line 3: xxx: not found`
+  { pattern: /^[^:\n]+: line \d+: .*: not found/m, label: 'command not found (shell)' },
+  // npm's error-only prefix (warnings use `npm warn`): EACCES cache, E404, …
+  { pattern: /^npm error /m, label: 'npm error' },
+  { pattern: /EADDRINUSE|address already in use/i, label: 'port already in use' },
+  { pattern: /connection refused/i, label: 'connection refused' },
+  { pattern: /panic:/i, label: 'runtime panic' },
+  { pattern: /FATAL|fatal error/i, label: 'fatal error' },
+  { pattern: /segmentation fault/i, label: 'segmentation fault' },
+  { pattern: /out of memory/i, label: 'out of memory' },
+];
+
 const HARD_TIMEOUT_DEFAULT_MS = 10 * 60_000;
 const HARD_TIMEOUT_INSTALL_MS = 20 * 60_000;
 const NO_OUTPUT_INSTALL_MS = 5 * 60_000;
@@ -577,6 +628,11 @@ function resolveThresholds(
           : DEFAULT_NO_OUTPUT_MS,
     ),
     hardTimeoutMs: isInstall ? HARD_TIMEOUT_INSTALL_MS : HARD_TIMEOUT_DEFAULT_MS,
+    // Build/install gates can be legitimately silent end-to-end (tsc --noEmit,
+    // tail-buffered pipes) — for those, a from-the-start silence waits for
+    // hardTimeout instead of being reaped as a "slow filesystem walk"
+    // (ember-hauling-glade RCA). General commands keep the fast reap.
+    noOutputRequiresPriorOutput: isInstall || isBuild,
     postOutputIdleMs: opts.oneshot ? ONESHOT_POST_OUTPUT_IDLE_MS : undefined,
     memoryBudgetBytes,
   };
@@ -971,7 +1027,7 @@ async function executeCommandLogic(
       console.log(`🧪 [CommandInject][overlay] real exit=${result.exitCode} → overridden exit=${exitCode}`);
     }
 
-    const output = stdout + stderr;
+    const output = boundCommandOutput(stdout + stderr);
 
     if (!success && exitCode === 141 && hasActualPipe(command)) {
       console.log(`\n   ℹ️  SIGPIPE (exit 141) in piped command — treating as success\n`);
@@ -1008,18 +1064,9 @@ async function executeCommandLogic(
       };
     }
 
-    // False-positive success detection
-    const criticalErrorPatterns: Array<{ pattern: RegExp; label: string }> = [
-      { pattern: /command not found/i, label: 'command not found' },
-      { pattern: /EADDRINUSE|address already in use/i, label: 'port already in use' },
-      { pattern: /connection refused/i, label: 'connection refused' },
-      { pattern: /panic:/i, label: 'runtime panic' },
-      { pattern: /FATAL|fatal error/i, label: 'fatal error' },
-      { pattern: /segmentation fault/i, label: 'segmentation fault' },
-      { pattern: /out of memory/i, label: 'out of memory' },
-    ];
-
-    const detectedIssues = criticalErrorPatterns
+    // False-positive success detection — patterns at module scope
+    // (CRITICAL_ERROR_PATTERNS) so the policy test pins them table-style.
+    const detectedIssues = CRITICAL_ERROR_PATTERNS
       .filter(({ pattern }) => pattern.test(stderr) || pattern.test(stdout))
       .map(({ label }) => label);
 

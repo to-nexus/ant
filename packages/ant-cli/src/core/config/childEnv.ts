@@ -229,13 +229,32 @@ export function composeCommandChildEnv(
  * caches (`~/.npm`, `~/.cache`) still survive between builds — only the service
  * account's dotfiles are out of reach. Set `ANT_CHILD_HOME` to relocate it; set
  * it empty to opt out and keep inheriting the service HOME.
+ *
+ * Base resolution accepts `ANT_WORKSPACES_ROOT` as well: the job-runner child
+ * is the process that actually composes command envs, and `ANT_WORKSPACES_ROOT`
+ * is the name JobWorker hands it — keying on `ANT_WORKSPACE_BASE_PATH` alone
+ * left this control silently OFF in cloud, with children inheriting the
+ * service HOME (ember-hauling-glade RCA: `npm error EACCES /root/.npm`).
+ * Falling through is fail-open by design (never break every spawn), but it
+ * must be LOUD — this is a documented security control, not a nicety.
  */
+let warnedChildHomeOff = false;
 function resolveChildHome(): string | undefined {
   const configured = process.env.ANT_CHILD_HOME;
   if (configured !== undefined) return configured.trim() || undefined;
 
-  const base = process.env.ANT_WORKSPACE_BASE_PATH;
-  if (!base) return undefined;
+  const base = process.env.ANT_WORKSPACE_BASE_PATH || process.env.ANT_WORKSPACES_ROOT;
+  if (!base) {
+    if (!warnedChildHomeOff) {
+      warnedChildHomeOff = true;
+      console.warn(
+        '⚠️  [ChildEnv] Child HOME isolation is OFF — neither ANT_CHILD_HOME nor a ' +
+        'workspace base (ANT_WORKSPACE_BASE_PATH / ANT_WORKSPACES_ROOT) is set; ' +
+        'children inherit the service HOME and its dotfiles.',
+      );
+    }
+    return undefined;
+  }
 
   const home = path.join(base, '.ant-child-home');
   try {
@@ -243,6 +262,10 @@ function resolveChildHome(): string | undefined {
     return home;
   } catch {
     // Unwritable base — keep the service HOME rather than breaking every spawn.
+    if (!warnedChildHomeOff) {
+      warnedChildHomeOff = true;
+      console.warn(`⚠️  [ChildEnv] Child HOME isolation is OFF — base "${base}" is not writable.`);
+    }
     return undefined;
   }
 }

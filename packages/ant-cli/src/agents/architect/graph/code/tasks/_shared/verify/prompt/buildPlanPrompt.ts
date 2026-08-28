@@ -56,7 +56,7 @@ export async function buildPrompt(ctx: PlanPromptCtx): Promise<PlanPromptResult>
   if (depStatus === 'current') {
     dependencyStatus = 'Observation: every declared `package.json` dependency is present in `node_modules`.';
   } else if (depStatus === 'changed') {
-    dependencyStatus = 'Observation: one or more declared `package.json` dependencies are missing from `node_modules`.';
+    dependencyStatus = 'Observation: one or more declared `package.json` dependencies are missing from `node_modules` (possibly the entire install tree).';
   }
 
   const packageManager = techTier?.packageManager || state._detectedPackageManager || undefined;
