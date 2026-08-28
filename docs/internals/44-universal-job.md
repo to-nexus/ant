@@ -462,6 +462,9 @@ directory is named after the one thing that distinguishes it:
 | `intents/{i}/prompt.md` | the whole body, while that intent is active | the builder (gate) | `INTENT_PROMPT_INLINE_CAP` 12k |
 | `on-demand/**` | the PATH only | the model (`read_file`) | none |
 
+Which channel a given fact lands in is an authoring decision — see
+§ Source material carries no design authority.
+
 Not `injections/` — that is canonical's name for the FIRST kind of
 conditional delivery (`AutoInjectionResolver` merges the body in), and
 universal's mechanical counterpart to it is `prompt.md`, not this. The
@@ -853,6 +856,53 @@ tokens (ids, yaml keys, paths, tool names, `${secret:}` refs) never localize at
 any rung. Note the prose cap is counted in characters (`CUSTOM_PROSE_CAP`), so
 CJK prose buys a larger token budget at the same cap rather than truncating
 earlier.
+
+### Source material carries no design authority (agent-builder)
+
+Attached material handed to the `build` intent is a survey of the work, not a
+schema for the definition. The builder designs the partition — merging what
+overlaps, splitting what one piece bundles, correcting what is wrong, dropping
+what the material itself marks as no longer in force — and everything it
+writes is authored distillation, never archived context. The three delivery
+channels (§ Why the directory is named `on-demand/`) are destinations a
+designer assigns from the WORK the material describes; the source's file
+boundaries, directory names, and counts assign nothing.
+
+Two incidents, opposite poles of one axis — anchoring output shape to input
+file shape:
+
+- **cosmic-grasping-forge** (2026-08-27, `4f09abd23`): 26 per-task work
+  documents produced one agent, zero intents, and all 26 documents routed to
+  `on-demand/` — a librarian, not a doer. The fix added a positive intent
+  criterion, but anchored it to "a source *document* that names its own
+  trigger" — the file, not the trigger.
+- **gleam-hanging-fable** (2026-08-28): on a human-collected inventory, the
+  file-anchored rule produced the mirror failure: 21 intents mapped 1:1 onto
+  source files, every one a bare trigger (`infer.md` only, so the produced
+  catalog rendered "prompt: (none — this intent adds no additional
+  instructions)", `promptBlock.ts`), and all 26 sources — including pieces
+  whose own text declared them dead, and the collection's owners/schedule
+  bookkeeping — copied verbatim into `on-demand/`. A source directory that
+  happened to be named `intent/` was treated as the design.
+
+The corrected text architecture gives each rule one home: the design phase
+(design before the first write, state the mapping) and the clarify risk case
+(a design that meaningfully reshapes user-provided material is confirmed
+before authoring) live in `jobs/author/base/system.md`; the trigger-anchored
+unit rule, the distillation contract (`infer.md` = the trigger condition,
+`prompt.md` = the distilled procedure — no size limit, so richness has a
+sanctioned home), and the `on-demand/` admission constraint (curated lookup
+extracts only — never verbatim copies, per-task work descriptions, dead
+material, or collection bookkeeping) live in `intents/build/prompt.md`;
+channel semantics live in `on-demand/definition-format.md`; and
+`api-surface.md` is mechanics-only — its "that is how a full vendor spec gets
+in: save it there" line was an admission license hiding in an endpoint doc,
+and was removed.
+
+The tests assert structure only (intent id set, every builder intent ships a
+`prompt.md`, hooks, the on-demand filename set, Latin script,
+`tests/customAgents/builtin-agents.test.ts`) — prose is never regex-pinned,
+per the no-prose-pinning policy.
 
 ## Streaming & turn identity (A14/A15)
 

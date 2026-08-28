@@ -49,8 +49,8 @@ Intents have no endpoints of their own. An intent exists once
 its directory.
 
 `on-demand/**` takes the same `PUT /file` — any depth, `.md` or `.json`, at the
-agent or the job level. That is how a full vendor spec gets in: save it there
-rather than pasting it into prose.
+agent or the job level. The endpoint accepts whatever you save; what belongs
+there is an authoring decision, made before you reach for it.
 
 ## Routes you will not reach
 

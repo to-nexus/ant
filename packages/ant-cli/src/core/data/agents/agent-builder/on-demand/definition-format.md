@@ -103,13 +103,16 @@ or `**` (any suffix).
 
 `base/*.md` files are concatenated in filename order and injected on every
 turn. Agent and job prose share an 8000-character budget; past it the text is
-truncated with a visible footer, so keep standing instructions tight and put
-anything long in `on-demand/`.
+truncated with a visible footer, so keep standing instructions tight. Long
+material has two homes by kind: a task's full procedure goes in that intent's
+`prompt.md` — no size limit, inlined only while the intent is active — and
+lookup reference the agent opens itself goes in `on-demand/`.
 
 `on-demand/` files are not injected. They are offered to the agent as paths it
-can read when it needs them — the right home for reference the agent consults
-while working: a full API spec, a schema, a vendor document. Material that
-defines the work itself belongs in job prose and intents, not here.
+can read when it needs them — the home for lookup material consulted while
+working: a schema, a rate table, a full API spec. Material that defines the
+work itself belongs in the intent's `prompt.md` and the job's prose, never
+here.
 
 Prose has no required language: the `base/*.md` bodies, `infer.md`, `prompt.md`,
 `name:` values, and comments may be written in whatever language the definition's
@@ -126,7 +129,8 @@ condition rather than a summary. Its frontmatter accepts exactly one optional
 key, `clarify: <bool>`; `default`, `injections`, `description`, `id`, and
 `hooks` are rejected.
 
-`prompt.md` has no size limit and is inlined only while its intent is active.
+`prompt.md` has no size limit and is inlined only while its intent is active —
+it is where a task's procedure lives; `infer.md` only decides when it applies.
 
 `hooks.yaml` declares what must be true for a turn to be complete:
 
